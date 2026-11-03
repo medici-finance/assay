@@ -26,7 +26,8 @@ This is an explicit attestation by the caller, not an automatic forge upload or 
 claim that a zero process exit proves handoff. Do not acknowledge while evidence,
 resumption state, a running delegated task, or work not yet committed/pushed still
 depends on scratch. Do not generate further required output after acknowledgment.
-A missing receipt preserves the entire tree, including after successful exit.
+A missing receipt preserves the tree, including after successful exit. The one
+exception is abandoned build output, described under "Periodic maintenance" below.
 An acknowledgment alone never overrides a live execution lease or surviving child.
 
 Successful acknowledged tasks become eligible for explicit maintenance after child-tree cleanup. Failed or
@@ -37,7 +38,7 @@ diagnostic bundle records that terminal output could not be captured; redirected
 streams and non-interactive launches retain their bounded output tail. Capture
 any other required diagnostic file at its canonical destination *before* acknowledgment.
 Failed tasks without a receipt keep their workspace until an operator/desk completes
-that handoff. Mark an inactive run resumable with `ack --resumable`; sweeps always
+that handoff, apart from abandoned build output. Mark an inactive run resumable with `ack --resumable`; sweeps always
 preserve it. Finish resumption in a new managed run; an old resumable directory is
 intentionally not automatically released.
 
@@ -86,8 +87,9 @@ cellctl scratch <cell> inventory --path <legacy-temp-root>
 ```
 
 Startup and completion only register/finalize ownership. They never inventory historical
-payloads or reclaim data. Run the explicit sweep above for recursive accounting and
-reclamation; interrupted completion conservatively leaves the task protected.
+payloads or reclaim data. The running supervisor's periodic sweep (below) and the
+explicit sweep above do the recursive accounting and reclamation; interrupted
+completion conservatively leaves the task protected.
 The default retention policy is seven days and 256 MiB for retained diagnostics,
 oldest first. Set `CELL_SCRATCH_MAX_AGE` (a Go duration, such as `168h`) and
 `CELL_SCRATCH_MAX_BYTES` (integer bytes) in the existing `cell.env` to persist
@@ -103,7 +105,8 @@ Directory entries and filesystem metadata are not counted.
 
 Maintenance serializes other sweeps with a maintenance lease. Recursive inventory runs outside the root admission lock; each eligible run's execution lease remains held through revalidation and deletion. Short root transactions cover enrollment and lifecycle metadata. Live,
 resumable, unacknowledged, unverified, and Git-containing trees stay intact, with a
-reason in the report. The root and destructive operations use Go's confined
+reason in the report. Abandoned build output is the only part of an unacknowledged
+tree a sweep can remove. The root and destructive operations use Go's confined
 `os.Root`; symlinks cannot redirect deletion outside it. A failed inspection is
 reported as partial, not as a clean observation.
 
@@ -173,6 +176,48 @@ Maintenance streams directory entries and retains at most 262,144 inventory entr
 
 For an inventory wider than the default, explicitly raise the maintenance-only budget, for example `ASSAY_MAINTENANCE_ENTRY_LIMIT=524288 cellctl cache house clean` (or the existing scratch sweep command). Values must be 1 through 1,048,576. Invalid values and exhausted budgets fail closed; there is no unlimited fallback. This setting does not change retained-data protections, per-role authority or launch pressure policy. Trees beyond the finite ceiling or depth limit remain incomplete and require owner-assisted layout correction.
 
-No background job schedules this maintenance. Retention max-age and diagnostic reclamation take effect only when the operator runs the explicit sweep/clean command; retained diagnostics otherwise remain on disk.
-
 The default entry budget covers the representative fixture with 150,000 compiler-cache entries and 75,000 module-cache entries. The override remains finite; it is a maintenance resource budget, not a launch-policy or retention override.
+
+## Periodic maintenance
+
+A desk launched by `cellctl` runs the scratch sweep itself while its supervisor is
+alive, so a long-running cell does not depend on an operator remembering to sweep.
+The first sweep runs ten minutes after launch and later ones follow
+`CELL_SCRATCH_SWEEP_INTERVAL` in `cell.env` (a Go duration of at least `1m`;
+default `6h`; `0` turns periodic maintenance off). The sweep never runs on the
+launch or completion path. Sibling supervisors in one cell share the same
+maintenance lease and a `maintenance.stamp` file in the scratch root, so the cell
+sweeps once per interval however many desks are running. A sibling that finds
+the lease busy skips quietly. The stamp is written only after a sweep that
+finishes without errors or partial accounting, so a stopped or failed sweep is
+retried at the next supervisor's check instead of a whole interval later. A
+periodic sweep waits at most ten seconds for a sibling launch's scratch
+transaction and writes no lock-wait line to the desk's terminal. Stopping the supervisor cancels a sweep in
+progress: it stops before its next deletion and reports partial accounting.
+Each sweep appends one JSON summary line to `run/scratch-maintenance.log` beside
+the scratch root (rotated once past 1 MiB), and a cadenced supervisor also
+prints it on stderr. A failed sweep is logged and never stops the desk.
+
+The periodic sweep applies the same policy as `sweep --apply`. That policy has
+one narrow rule for tasks whose session died without acknowledging them. Such a task loses
+only its compiler and test-binary output, and only when all of these hold:
+
+- it has no receipt and is not resumable;
+- its execution lease is free, so its owner is gone;
+- its child process group is recorded as reaped or proved empty;
+- its last recorded activity is older than the retention max-age;
+- the task contains no Git data.
+
+The reclaimable output is the top-level `work/go-build<digits>` and
+`work/cellctl-bin-<digits>` entries (the Go toolchain's and `os.MkdirTemp`'s
+temporary directory shapes), which are regenerated by any rebuild; a name such
+as `go-builder` or `go-build-notes` is ordinary work and stays. The age test
+uses the same max-age as the rest of the policy, so `CELL_SCRATCH_MAX_AGE=0`
+makes an unacknowledged task's build output reclaimable at the first sweep after
+its lease is free. Symlinks are never followed:
+a `work` that is not a real directory is kept and never planned, and every
+directory above a deletion target is checked again right before removal, so a
+link cannot redirect a sweep into another task's workspace.
+The record, diagnostics, output tail and every other workspace entry stay, so
+an operator can still complete or inspect the handoff. The report row's
+action is `reclaim-build`, and a dry run lists the same rows.

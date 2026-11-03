@@ -2,6 +2,7 @@
 package cellscratch
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -46,11 +47,17 @@ type Store struct {
 	// its holder; lockWait bounds how long a sibling's sweep may delay this one.
 	cell, role string
 	lockWait   time.Duration
+	lockLog    io.Writer // late sweep-lock acquisitions; nil writes nothing
 	waited     time.Duration
 	walks      uint64
 	scanLimit  int
 	// Tests inject deletion failure at this single destruction boundary.
 	remove func(string) error
+	// ctx, when bound, stops a periodic sweep between filesystem steps; due and
+	// ran carry SweepIfDue's interval through Sweep's maintenance lease.
+	ctx context.Context
+	due time.Duration
+	ran bool
 }
 
 // sweepLockName is the cell-wide lock that serialises Open, Begin, Acknowledge
@@ -58,11 +65,39 @@ type Store struct {
 const sweepLockName = "sweep.lock"
 const maintenanceLockName = "maintenance.lock"
 
+// maintenanceStampName records when periodic maintenance last started, so the
+// supervisors of every role sharing one root coalesce onto one sweep per interval.
+const maintenanceStampName = "maintenance.stamp"
+
 // SweepLockWait bounds how long one launch waits for a sibling launch's scratch
 // metadata transaction. Recursive maintenance never holds this lock.
 var SweepLockWait = 2 * time.Minute
 
-func Open(path string) (*Store, error) {
+// MaintenanceLockWait bounds how long a periodic sweep waits for a sibling's scratch
+// transaction before giving up until its next turn.
+var MaintenanceLockWait = 10 * time.Second
+
+// OpenMaintenance opens a handle for the supervisor's periodic sweep. Its maintenance
+// stops at ctx's cancellation (Bind), each sweep-lock wait is bounded by
+// MaintenanceLockWait so stopping the supervisor never waits on a sibling's launch,
+// and it never writes lock-wait lines: the supervisor's stderr may be the child's
+// interactive terminal, and the maintenance log records any failure.
+func OpenMaintenance(ctx context.Context, path string) (*Store, error) {
+	s, err := Open(path, func(s *Store) { s.lockWait, s.lockLog = MaintenanceLockWait, nil })
+	if err != nil {
+		return nil, err
+	}
+	s.Bind(ctx)
+	return s, nil
+}
+
+// openOption adjusts a handle before Open takes its first sweep lock; only this
+// package supplies one.
+type openOption func(*Store)
+
+// Open is the launch and operator form: a busy sweep lock waits up to SweepLockWait
+// and a late acquisition is reported on stderr.
+func Open(path string, opts ...openOption) (*Store, error) {
 	if !filepath.IsAbs(path) {
 		return nil, errors.New("scratch root must be absolute")
 	}
@@ -80,7 +115,10 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Store{root: r, Path: path, lockWait: SweepLockWait}
+	s := &Store{root: r, Path: path, lockWait: SweepLockWait, lockLog: os.Stderr}
+	for _, opt := range opts {
+		opt(s)
+	}
 	s.remove = r.RemoveAll
 	lock, err := s.sweepLock()
 	if err != nil {
@@ -114,6 +152,17 @@ func (s *Store) LockWait() time.Duration { return s.waited }
 // Traversals reports this handle's explicit maintenance walks; admission stays zero.
 func (s *Store) Traversals() uint64 { return s.walks }
 
+// Bind makes this handle's maintenance stop at ctx's cancellation. A stopped sweep
+// reports partial accounting and reclaims nothing further; it never half-decides.
+func (s *Store) Bind(ctx context.Context) { s.ctx = ctx }
+
+func (s *Store) stopped() error {
+	if s.ctx == nil {
+		return nil
+	}
+	return s.ctx.Err()
+}
+
 // Label names the cell and role this store serves; they go into the sweep lock's
 // owner record so a sibling that waits on it can name the holder.
 func (s *Store) Label(cell, role string) { s.cell, s.role = cell, role }
@@ -137,7 +186,7 @@ func (s *Store) sweepLock() (*deskkit.HeldLock, error) {
 		return nil, err
 	}
 	began := time.Now()
-	held, err := deskkit.AcquireHeld(s.root, sweepLockName, f, deskkit.LockSpec{Name: "cell scratch sweep", Cell: s.cell, Role: s.role, Wait: s.lockWait, Log: os.Stderr})
+	held, err := deskkit.AcquireHeld(s.root, sweepLockName, f, deskkit.LockSpec{Name: "cell scratch sweep", Cell: s.cell, Role: s.role, Wait: s.lockWait, Log: s.lockLog})
 	s.waited += time.Since(began)
 	return held, err
 }
@@ -393,11 +442,38 @@ type Report struct {
 	OverBudget bool    `json:"over_budget"`
 }
 
+// SweepIfDue is the periodic form of Sweep. It skips, reporting ran=false, when a
+// sibling holds the maintenance lease or finished a sweep less than interval ago;
+// otherwise it sweeps exactly as Sweep does and, only when that sweep completes
+// without error or partial accounting, stamps its end under the same lease.
+// A zero interval never sweeps.
+func (s *Store) SweepIfDue(p Policy, interval time.Duration, apply bool) (Report, bool, error) {
+	if interval <= 0 {
+		return Report{Apply: apply, Entries: []Entry{}}, false, nil
+	}
+	s.due, s.ran = interval, false
+	defer func() { s.due, s.ran = 0, false }()
+	rep, err := s.Sweep(p, apply)
+	if !s.ran && errors.Is(err, deskkit.ErrLockBusy) {
+		return rep, false, nil
+	}
+	return rep, s.ran, err
+}
+
+// lastSweep reads the periodic maintenance stamp; a missing or damaged stamp reads as due.
+func (s *Store) lastSweep() (time.Time, error) {
+	b, err := s.read(maintenanceStampName, 64)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Parse(time.RFC3339Nano, string(b))
+}
+
 // Sweep holds a root lease and each candidate's execution lease across inspection and
 // deletion. OpenRoot confines destructive operations even if a path becomes a symlink.
 // Age is retention policy, NEVER liveness proof. Missing child enrollment fails closed.
-func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
-	rep := Report{Apply: apply, Entries: []Entry{}}
+func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
+	rep = Report{Apply: apply, Entries: []Entry{}}
 	if p.MaxAge < 0 || p.MaxBytes < 0 {
 		return rep, errors.New("negative scratch budget")
 	}
@@ -417,6 +493,20 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 		return rep, err
 	}
 	defer maintenance.Close()
+	if s.due > 0 {
+		if last, err := s.lastSweep(); err == nil && !last.After(time.Now()) && time.Since(last) < s.due {
+			return rep, nil
+		}
+		s.ran = true
+		// The stamp records a finished sweep, written under the same lease. A
+		// stopped, failed or partial sweep leaves the previous stamp, so a sibling
+		// supervisor does not wait a whole interval behind an incomplete pass.
+		defer func() {
+			if err == nil && !rep.Partial {
+				err = s.atomic(maintenanceStampName, []byte(time.Now().UTC().Format(time.RFC3339Nano)))
+			}
+		}()
+	}
 	lock, err := s.sweepLock()
 	if err != nil {
 		return rep, err
@@ -439,11 +529,14 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 		size, work int64
 		growth     int64
 		lease      *os.File
+		// build lists the disposable build output of an abandoned unacknowledged
+		// task; such a candidate loses only these paths, never its record or tail.
+		build []string
 	}
 	var candidates []candidate
 	var errs []error
 	for _, e := range entries {
-		if e.Name() == "owner" || e.Name() == "preparation.json" || e.Name() == maintenanceLockName || e.Name() == sweepLockName || strings.HasPrefix(e.Name(), sweepLockName+".holder") {
+		if e.Name() == "owner" || e.Name() == "preparation.json" || e.Name() == maintenanceLockName || strings.HasPrefix(e.Name(), maintenanceStampName) || e.Name() == sweepLockName || strings.HasPrefix(e.Name(), sweepLockName+".holder") {
 			continue
 		}
 		size, allGit, sizeErr := s.measure(e.Name())
@@ -480,6 +573,17 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 					row.Reason = "resumable task"
 				case receiptErr != nil:
 					row.Reason = "pending evidence handoff"
+					build, n, buildErr := s.abandonedBuild(r, p)
+					if errors.Is(buildErr, errNotRealDir) {
+						row.Reason = "workspace is not a real directory; retained"
+					} else if buildErr != nil {
+						row.Reason = "could-not-check abandoned build output"
+						errs = append(errs, buildErr)
+					} else if len(build) > 0 {
+						candidates = append(candidates, candidate{r: r, observed: r, entry: len(rep.Entries), size: size, work: n, lease: lease, build: build})
+						rep.Entries = append(rep.Entries, row)
+						continue
+					}
 				default:
 					inactive := r.Reaped
 					if !inactive && r.ChildGroup > 0 {
@@ -529,6 +633,9 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 	remaining := rep.Bytes
 	for _, c := range candidates {
 		remaining -= c.work
+		if c.build != nil {
+			continue
+		}
 		if c.r.ExitCode != 0 {
 			remaining += c.growth
 		}
@@ -539,11 +646,16 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 	var growthWritten int64
 	for _, c := range candidates {
 		row := &rep.Entries[c.entry]
-		entire := c.r.ExitCode == 0 || time.Since(c.r.Created) > p.MaxAge || remaining > p.MaxBytes
+		build := c.build != nil
+		entire := !build && (c.r.ExitCode == 0 || time.Since(c.r.Created) > p.MaxAge || remaining > p.MaxBytes)
 		target := c.r.ID + "/work"
 		planned := c.work
 		row.Action = "compact"
 		row.Reason = "acknowledged failure; retain bounded diagnostics"
+		if build {
+			row.Action = "reclaim-build"
+			row.Reason = "abandoned unacknowledged task; disposable build output only"
+		}
 		if entire {
 			target = c.r.ID
 			planned = c.size
@@ -554,6 +666,11 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 			}
 		}
 		if !apply {
+			continue
+		}
+		if err = s.stopped(); err != nil {
+			row.Action, row.Reason = "keep", "maintenance stopped"
+			errs = append(errs, err)
 			continue
 		}
 		// Revalidate Git retention under the task lease, outside admission's
@@ -576,12 +693,34 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 		current, readErr := s.record(c.r.ID)
 		_, receiptErr := s.receipt(c.r.ID)
 		owner, ownerErr := s.read("owner", 128)
-		if readErr != nil || current != c.observed || current.State == "resumable" || receiptErr != nil || ownerErr != nil || string(owner) != s.owner {
+		// An acknowledged candidate needs its receipt; an abandoned build candidate
+		// is admitted only while it still has none (an ack hands it to the rule above).
+		acknowledged := receiptErr == nil
+		if readErr != nil || current != c.observed || current.State == "resumable" || acknowledged == build || ownerErr != nil || string(owner) != s.owner {
 			lock.Release()
 			row.Action, row.Reason = "keep", "ownership or evidence changed during maintenance"
 			continue
 		}
-		if !entire {
+		// Every directory above a deletion target must still be real: a task whose
+		// work became a link to a sibling's work would otherwise delete the sibling's
+		// files under this task's lease. Checked before any record write or removal.
+		targets := []string{c.r.ID + "/work"}
+		if entire {
+			targets = append(targets, target)
+		}
+		if build {
+			targets = c.build
+		}
+		var linkErr error
+		for _, next := range targets {
+			linkErr = errors.Join(linkErr, s.realDir(filepath.Dir(next)))
+		}
+		if linkErr != nil {
+			lock.Release()
+			row.Action, row.Reason = "keep", "workspace is not a real directory at deletion"
+			continue
+		}
+		if !entire && !build {
 			if err = s.save(c.r); err != nil {
 				row.Action = "error"
 				row.Reason = err.Error()
@@ -595,17 +734,21 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 		// Remove the workspace before retiring its ownership record and receipt.
 		// RemoveAll(task) may otherwise unlink record.json first and fail on a
 		// workspace file, leaving a large tree that no later sweep may authorize.
-		targets := []string{c.r.ID + "/work"}
-		if entire {
-			targets = append(targets, target)
-		}
 		for _, next := range targets {
 			if err = s.remove(next); err != nil {
 				break
 			}
 		}
 		if err != nil {
-			left, _, measureErr := s.measure(target)
+			var left int64
+			var measureErr error
+			for _, rest := range c.build {
+				n, _, e := s.measure(rest)
+				left, measureErr = left+n, errors.Join(measureErr, e)
+			}
+			if !build {
+				left, _, measureErr = s.measure(target)
+			}
 			if measureErr == nil {
 				row.Reclaimed = planned - left
 				if row.Reclaimed < 0 {
@@ -649,6 +792,9 @@ func (s *Store) measure(name string) (int64, bool, error) {
 		if err != nil {
 			return err
 		}
+		if err := s.stopped(); err != nil {
+			return err
+		}
 		marked, err := s.gitMarker(p, d.Name())
 		if err != nil {
 			return err
@@ -666,6 +812,104 @@ func (s *Store) measure(name string) (int64, bool, error) {
 		return nil
 	})
 	return n, git, err
+}
+
+// abandonedBuild names the disposable build output of a task that never reached an
+// evidence receipt and can no longer get one. The caller already holds the task's
+// execution lease, so its owner is dead; the child group must be reaped or proved
+// empty, and its last activity older than the retention age. Only the temporary
+// directory shapes go-build<digits> and cellctl-bin-<digits> directly under work/
+// qualify. The record, the output tail
+// and every other work file stay for the owner's handoff; Git anywhere in the task
+// already kept the whole tree before this is asked.
+func (s *Store) abandonedBuild(r Record, p Policy) ([]string, int64, error) {
+	last := r.Created
+	if r.Finished.After(last) {
+		last = r.Finished
+	}
+	if time.Since(last) <= p.MaxAge {
+		return nil, 0, nil
+	}
+	quiet := r.Reaped
+	if !quiet && r.ChildGroup > 0 {
+		empty, err := groupEmpty(r.ChildGroup)
+		quiet = err == nil && empty
+	}
+	if !quiet {
+		return nil, 0, nil
+	}
+	// os.Root follows a link that stays inside the root: a work that is a link to a
+	// sibling's work must not list, measure or plan the sibling's build output.
+	err := s.realDir(r.ID + "/work")
+	if os.IsNotExist(err) {
+		return nil, 0, nil
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	f, err := s.root.Open(r.ID + "/work")
+	if err != nil {
+		return nil, 0, err
+	}
+	entries, err := deskkit.ReadDirBounded(f, s.inventoryLimit())
+	f.Close()
+	if err != nil {
+		return nil, 0, err
+	}
+	var build []string
+	var total int64
+	for _, e := range entries {
+		if !buildOutput(e.Name()) || e.Type()&fs.ModeSymlink != 0 {
+			continue
+		}
+		n, git, err := s.measure(r.ID + "/work/" + e.Name())
+		if err != nil {
+			return nil, 0, err
+		}
+		if git {
+			return nil, 0, nil
+		}
+		build = append(build, r.ID+"/work/"+e.Name())
+		total += n
+	}
+	return build, total, nil
+}
+
+var errNotRealDir = errors.New("scratch path crosses a link or non-directory")
+
+// realDir proves dir and every directory above it inside the scratch root is a real
+// directory, one Lstat per component. os.Root confines a path to the root but follows
+// a link that stays inside it, so without this one task's path can name a sibling's
+// files. Abandoned-build planning and every deletion target's parent pass through it.
+func (s *Store) realDir(dir string) error {
+	if dir == "." {
+		return nil
+	}
+	parts := strings.Split(filepath.ToSlash(dir), "/")
+	for i := range parts {
+		st, err := s.root.Lstat(strings.Join(parts[:i+1], "/"))
+		if err != nil {
+			return err
+		}
+		if !st.IsDir() {
+			return errNotRealDir
+		}
+	}
+	return nil
+}
+
+// buildOutput is the closed set of compiler and test-binary output names an
+// abandoned task may lose. Widening it needs its own retention decision.
+// Both are temporary directories whose name is the prefix plus decimal digits (the Go
+// toolchain's work directory and os.MkdirTemp's random suffix); go-builder/ or
+// go-build-notes/ is ordinary work and stays.
+func buildOutput(name string) bool {
+	for _, prefix := range []string{"go-build", "cellctl-bin-"} {
+		if digits, ok := strings.CutPrefix(name, prefix); ok && digits != "" && strings.Trim(digits, "0123456789") == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // gitMarker is a conservative filesystem classifier, not repository admission.
