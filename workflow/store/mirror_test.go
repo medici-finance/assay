@@ -155,6 +155,28 @@ func TestPGMirrorAtomicCoverage(t *testing.T) {
 	defer reopened.Close()
 	s, _ := reopened.Mirror(r.s.limits)
 	sameMirror(t, before, readMirror(t, s, a, u.Scope))
+	// Existing facts may be absent only under a qualified full inventory; absence
+	// is not closure or deletion, and a later observation can restore membership.
+	partial := mirror.ScanUpdate{Scope: u.Scope, ExpectedVersion: before.Version, Coverage: before.Coverage, NotInInventory: []mirror.RecordID{u.Upsert[0].ID}}
+	partial.Coverage.State = mirror.Partial
+	partial.Coverage.Reason = mirror.Truncated
+	if _, err = r.s.Apply(context.Background(), a, partial); !errors.Is(err, mirror.ErrInvalid) {
+		t.Fatal("partial inventory marked an existing row absent")
+	}
+	full := partial
+	full.CompleteScan = true
+	full.FullInventory = true
+	full.Coverage.State = mirror.Complete
+	full.Coverage.Reason = ""
+	absent := applyMirror(t, r.s, a, full)
+	if len(absent.Records) != 1 || absent.Records[0].InInventory || absent.Records[0].State != before.Records[0].State || absent.Records[0].Title != before.Records[0].Title {
+		t.Fatal("qualified absence deleted or closed a fact")
+	}
+	reobserved := u
+	reobserved.ExpectedVersion = absent.Version
+	if restored := applyMirror(t, r.s, a, reobserved); len(restored.Records) != 1 || !restored.Records[0].InInventory {
+		t.Fatal("reobservation did not restore inventory membership")
+	}
 }
 
 type processPacket struct {
