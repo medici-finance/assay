@@ -1463,6 +1463,7 @@ func TestRefreshWaiterCancel(t *testing.T) {
 // regression: #5399
 func TestRefreshGateFence(t *testing.T) {
 	t.Run("query-outcome", checkOutcomeFence)
+	t.Run("wait-stale", checkStaleWaitRecovery)
 	checkUnknownCompletion(t)
 	t.Run("missing", func(t *testing.T) {
 		f := setup(t)
@@ -2042,3 +2043,192 @@ func checkReadDeadline(t *testing.T) {
 
 // regression: #5399
 func TestRefreshReadDeadline(t *testing.T) { checkReadDeadline(t) }
+
+// waitFaultGate injects a Wait result only after a real source/apply flow.
+type waitFaultGate struct {
+	Gate
+	waitErr               error
+	afterWait, afterLeave func()
+	outcome               Outcome
+	leaves                int
+}
+
+func (g *waitFaultGate) Wait(ctx context.Context, ticket Ticket) (State, error) {
+	state, err := g.Gate.Wait(ctx, ticket)
+	if err != nil {
+		return state, err
+	}
+	if g.afterWait != nil {
+		g.afterWait()
+	}
+	return State{}, g.waitErr
+}
+func (g *waitFaultGate) Leave(ctx context.Context, ticket Ticket, o Outcome) (State, error) {
+	g.outcome = o
+	g.leaves++
+	state, err := g.Gate.Leave(ctx, ticket, o)
+	if g.afterLeave != nil {
+		g.afterLeave()
+	}
+	return state, err
+}
+func checkStaleWaitRecovery(t *testing.T) {
+	for _, name := range []string{"direct", "wrapped", "insufficient", "future", "caller-revoked", "admission-revoked", "epoch-changed", "after-leave-aged", "after-leave-revoked", "held", "quota", "cancelled", "deadline", "plain", "aggregate"} {
+		t.Run(name, func(t *testing.T) {
+			f := setup(t)
+			fault := &waitFaultGate{Gate: f.gate, waitErr: ErrStale}
+			store := &interceptReadStore{Store: f.store}
+			var armed atomic.Bool
+			store.after = func(s *mirror.Snapshot) {
+				if armed.Load() && name == "future" {
+					s.Coverage.LastComplete = f.clock.Now().Add(time.Second)
+				}
+			}
+			nonstale := false
+			switch name {
+			case "wrapped":
+				fault.waitErr = fmt.Errorf("generation: %w", ErrStale)
+			case "held":
+				fault.waitErr = ErrHeld
+				nonstale = true
+			case "quota":
+				fault.waitErr = ErrQuota
+				nonstale = true
+			case "cancelled":
+				fault.waitErr = context.Canceled
+				nonstale = true
+			case "deadline":
+				fault.waitErr = context.DeadlineExceeded
+				nonstale = true
+			case "plain":
+				fault.waitErr = errors.New("wait unavailable")
+				nonstale = true
+			case "aggregate":
+				fault.waitErr = errors.Join(ErrStale, ErrHeld)
+				nonstale = true
+			}
+			var readsAtWait int64
+			fault.afterWait = func() {
+				readsAtWait = store.reads.Load()
+				armed.Store(true)
+				switch name {
+				case "insufficient":
+					f.clock.step(2 * time.Minute)
+				case "caller-revoked":
+					f.auth.revoke(f.caller.ID)
+				case "admission-revoked":
+					f.a.allowed.Store(false)
+				case "epoch-changed":
+					changed := f.caller
+					changed.AccessEpoch = "access-new"
+					f.auth.set(changed)
+				}
+			}
+			fault.afterLeave = func() {
+				if name == "after-leave-aged" {
+					f.clock.step(2 * time.Minute)
+				}
+				if name == "after-leave-revoked" {
+					f.auth.revoke(f.caller.ID)
+				}
+			}
+			c, err := New(context.Background(), store, f.source, fault, f.clock, "issue-inventory", f.auth)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := c.Read(context.Background(), f.a, f.q, f.caller)
+			positive := name == "direct" || name == "wrapped"
+			if positive {
+				if err != nil || !r.Fulfilled || len(r.Snapshot.Records) != 1 {
+					t.Fatalf("stale wait recovery: fulfilled=%v records=%d err=%v", r.Fulfilled, len(r.Snapshot.Records), err)
+				}
+			} else if err == nil || r.Fulfilled || len(r.Snapshot.Records) != 0 {
+				t.Fatalf("wait refusal escaped: fulfilled=%v records=%d err=%v", r.Fulfilled, len(r.Snapshot.Records), err)
+			}
+			if nonstale && store.reads.Load() != readsAtWait {
+				t.Fatal("non-stale wait triggered recovery read")
+			}
+			if f.source.calls.Load() != 1 || fault.leaves != 1 || fault.outcome.Checked {
+				t.Fatalf("source/accounting changed: calls=%d leaves=%d outcome=%+v", f.source.calls.Load(), fault.leaves, fault.outcome)
+			}
+		})
+	}
+	t.Run("strong-refresh-progress", checkStrongRefreshProgress)
+}
+
+type blockLeaveGate struct {
+	Gate
+	entered, release chan struct{}
+	once             sync.Once
+}
+
+func (g *blockLeaveGate) Leave(ctx context.Context, ticket Ticket, o Outcome) (State, error) {
+	g.once.Do(func() { close(g.entered); <-g.release })
+	return g.Gate.Leave(ctx, ticket, o)
+}
+func checkStrongRefreshProgress(t *testing.T) {
+	f := setup(t)
+	blocked := &blockLeaveGate{Gate: f.gate, entered: make(chan struct{}), release: make(chan struct{})}
+	weak, err := New(context.Background(), f.store, f.source, blocked, f.clock, "issue-inventory", f.auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := make(chan Result, 1)
+	go func() { r, _ := weak.Read(context.Background(), f.a, f.q, f.caller); first <- r }()
+	await(t, blocked.entered)
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(blocked.release) }) }
+	defer unblock()
+	f.clock.step(2 * time.Second)
+	entered, release := make(chan struct{}), make(chan struct{})
+	var sourceOnce, closeOnce sync.Once
+	defer closeOnce.Do(func() { close(release) })
+	f.source.fn = func(ctx context.Context, _ mirror.Admission, s mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
+		sourceOnce.Do(func() { close(entered) })
+		select {
+		case <-release:
+			return f.scan(s, "strong"), nil
+		case <-ctx.Done():
+			return mirror.ScanResult{}, ctx.Err()
+		}
+	}
+	strongQ := f.q
+	strongQ.MaxAge = time.Second
+	strong := make(chan Result, 1)
+	go func() { r, _ := f.c[1].Read(context.Background(), f.a, strongQ, f.caller); strong <- r }()
+	await(t, entered)
+	var wg sync.WaitGroup
+	errorsOut := make(chan error, 64)
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 16; j++ {
+				r, e := f.c[0].Read(context.Background(), f.a, f.q, f.caller)
+				if e != nil || !r.Fulfilled {
+					errorsOut <- fmt.Errorf("weak read: %v fulfilled=%v", e, r.Fulfilled)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errorsOut)
+	for e := range errorsOut {
+		t.Error(e)
+	}
+	closeOnce.Do(func() { close(release) })
+	if !result(t, strong).Fulfilled || f.source.calls.Load() != 2 {
+		t.Fatalf("strong refresh starved or duplicated: calls=%d", f.source.calls.Load())
+	}
+	unblock()
+	if !result(t, first).Fulfilled {
+		t.Fatal("old weak waiter lost sufficient current data")
+	}
+	f.gate.mu.Lock()
+	defer f.gate.mu.Unlock()
+	for _, n := range f.gate.queued {
+		if n != 0 {
+			t.Fatal("waiter accounting leaked")
+		}
+	}
+}

@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5399
 issues: []
 schema: brief-v2
-version: 8
+version: 9
 outcome: none
 design: DR-forge-library
 authored: 2026-11-03 by statusgen newbrief
@@ -132,6 +132,18 @@ This decision gates acceptance and activation. Offline implementation and synthe
 ## Interface contract and substitution limits
 
 Inputs are a currently admitted scope and query, trusted caller/policy/epoch facts, explicit time, source/store and a shared gate. Outputs preserve `mirror.Result` plus explicit fulfilment/held/unavailable, typed reason and retry eligibility; they grant no authority. Gate references and owner generations are opaque, scoped and never credentials. A gate refusal is not a successful empty query.
+
+Only a typed stale-generation error from Gate.Wait may trigger a guarded current-snapshot
+requery, without another Acquire, source attempt or retry loop. Return success only if that
+snapshot satisfies this caller's complete observation/freshness requirements under current
+caller/admission/deadline checks, including after Leave I/O. If recovery is insufficient,
+future-dated or revoked, retain an explicit hold/error and no released rows. Other gate errors
+and multi-error holds are not recovered this way. The old ticket's Leave outcome remains
+UNCHECKED even when a current snapshot is sufficient; it cannot clear/install failures for
+a rotated generation. Exact old-ticket accounting release remains the canonical adapter's
+obligation. Do not pin completed generations while old weak readers remain: stronger reads
+must still acquire/complete a needed refresh under concurrent weak traffic. Qualify these
+cases through the existing gate-fence/shared-read tests and compiling removal controls.
 
 Demand carries one bounded observation requirement class: whether existing Reviews must be complete. It does not add arbitrary freshness, projection or request identifiers to the base fill key. Compatible demands retain one underlying fill; source-failure eligibility and query-qualified failure eligibility are separate shared records. After its actual requery, each waiter supplies a typed Leave outcome bound to its ticket, refresh generation and exact queried snapshot version. A current authorized unfulfilled outcome records the relevant bounded shared cooldown; a fulfilled outcome clears only the relevant requirement failure. Cancellation, expired deadline, admission/epoch denial and refusal are unchecked outcomes that cannot install shared failure. A late unfulfilled outcome from an older generation or snapshot version must not poison a later qualified recovery, including when another waiter in the same original fill is delayed. Canonical R2 persists this outcome/accounting atomically; the fixture supplies no production backend. Recheck current caller authority, repository admission and deadline after Leave I/O before releasing any rows.
 
