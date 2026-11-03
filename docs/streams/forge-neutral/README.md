@@ -252,6 +252,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 46 | [Pure read-only mirror kernel and conformance](brief-46-pure-read-only-mirror-kernel-and-conformance.md) | 2 | M | todo | — | — |
 | 47 | [Admitted incremental forge readers for mirror ingestion](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) | 2 | M | todo | — | — |
 | 48 | [Bound native mirror response allocation before decoding](brief-48-bound-native-mirror-response-allocation-before-decoding.md) | 3 | M | todo | — | — |
+| 49 | [Retire claim-decay stored GitHub login fallback](brief-49-retire-claim-decay-stored-github-login-fallback.md) | 0 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -742,3 +743,15 @@ Do not substitute another database or one poller per tool to make this path appe
 The requested purge-to-tombstones direction has a canonical human decision record at
 medici-finance/assay#5380; this bot-authored direction is not human ratification or activation.
 All 23 existing /37 Class/Command pairs remain unchanged.
+
+### Claim-decay stored-login contribution — 3 November 2026
+
+[49](brief-49-retire-claim-decay-stored-github-login-fallback.md) extracts only the
+claim-decay credential selector's CLI lookup and stored-login fallback from /18.
+The unchanged forge-ban instrument at main 678d7ea5 counts statusgen class a at 31
+and all statusgen sites at 39; after this contribution its counts are 30 and 38.
+That instrument counts the subprocess; the parent quoted-gh-line census separately
+loses two lines (one executable lookup and one possible subprocess). This retires
+neither every remaining forge read nor the parent contribution.
+Explicit token inputs and host separation remain until /77's migration. /18 remains
+partial and retains every original acceptance row and remaining read/CI obligation.
