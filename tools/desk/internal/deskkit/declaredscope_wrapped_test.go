@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-// regression: #3697 — the reported instance: desk-supervision/33's first files:
-// bullet wraps its description onto a line that starts with "(".
+// regression: #3697 — the reported instance: a brief's first files: bullet
+// wraps its description onto a line that starts with "(".
 func TestScopeWrappedBulletParen(t *testing.T) {
-	content, err := os.ReadFile(filepath.Join("testdata", "declaredscope", "desk-supervision-33.md"))
+	content, err := os.ReadFile(filepath.Join("testdata", "declaredscope", "wrapped-bullet.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

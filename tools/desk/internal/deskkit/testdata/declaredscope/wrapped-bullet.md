@@ -1,4 +1,4 @@
-<!-- Regression excerpt (#3697): the first Context files: bullet of desk-supervision/33, verbatim. Its description wraps onto a continuation line that starts with "(". -->
+<!-- Regression excerpt (#3697): the reported brief's first Context files: bullet, verbatim. Its description wraps onto a continuation line that starts with "(". -->
 ## Context
 files:
 - **edit** `spec/registers-v1.md` — §5.2: three OPTIONAL frontmatter keys on an intake entry
