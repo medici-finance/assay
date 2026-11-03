@@ -1109,6 +1109,6 @@ not deterministic and the brief is bounced.
 
 ### Accepted residual: board-bookkeeping exemption from witness invalidation
 Ruling: https://github.com/medici-finance/assay/issues/2339#issuecomment-6454859047 — maintainer decision A, accepted residual.
-- Residual: `isBoardBookkeepingPath` (in `statusgen/evaluation/coverage.go`) exempts `STATUS.md` and paths under `docs/streams/` from staling a witness. This is kept as is; no code change.
-- Consequence: a Verify row that reads `docs/streams` content (for example a lint run) can keep a reused PASS after an outcome-changing edit made only under `docs/streams/`.
-- Rule: a brief whose rows depend on such an artifact declares it in `files:`, which makes an edit to it invalidate the affected witness.
+- Residual: in the conservative scope, `isBoardBookkeepingPath` (in `statusgen/evaluation/coverage.go`) exempts `STATUS.md` and paths under `docs/streams/` from staling a witness. A row takes the conservative scope when no complete dependency manifest is supplied and its command's read set cannot be derived from its text; a derived scope decides from the paths the command reads. This is kept as is; no code change.
+- Consequence: a Verify row that reads `docs/streams/` content (for example a lint run) can keep a reused PASS after an outcome-changing edit made only there, until the row is run again.
+- Rule: declaring an artifact in `files:` restores invalidation only for a `docs/streams/` artifact that verify and regen do not necessarily write. An edit to `STATUS.md`, a stream `README.md`, a `brief-*.md` file or the verify outcome log never stales a witness, declared or not (`isVerifyWrittenPath`; a derived scope that reads one of them widens back to the conservative scope). A lint run reads exactly those files, so a lint row is not protected by a declaration.
