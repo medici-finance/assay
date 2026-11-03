@@ -107,8 +107,24 @@ Maintenance serializes other sweeps with a maintenance lease. Recursive inventor
 resumable, unacknowledged, unverified, and Git-containing trees stay intact, with a
 reason in the report. Abandoned build output is the only part of an unacknowledged
 tree a sweep can remove. The root and destructive operations use Go's confined
-`os.Root`; symlinks cannot redirect deletion outside it. A failed inspection is
-reported as partial, not as a clean observation.
+`os.Root`, so a symlink cannot redirect deletion outside the scratch root. While
+planning, the sweep pins the identity (device and inode) of every path it may
+delete through, the task, its `work` and each planned entry, before measuring
+them. Inside the root, every removal opens the target's parent one real directory
+at a time from the root, checking on each open handle that it is not a link, kept
+its identity once opened, and is the directory the plan pinned. The last name must
+also still be the one pinned: a directory is opened and proved the same way,
+emptied through that handle, then removed only while empty; anything else, a link
+included, is unlinked itself, never followed. The pins are also checked under the
+sweep lock before any record is written. A path component swapped for a link, or a
+different directory or file renamed onto a planned name, after planning therefore
+keeps the task or fails the removal (reported as partial) instead of redirecting it
+into another task. Not covered: a file renamed onto the last name in the instant
+between its identity check and the unlink, or an empty directory renamed there
+before the final empty-only removal, is removed in its place (on systems without a
+directory-only removal, any file renamed there then), and entries moved into a
+planned directory are removed with it. A failed inspection is reported as partial,
+not as a clean observation.
 
 Catchable termination uses the existing process-tree supervisor, then releases
 ownership. After SIGKILL/restart, a free lease *plus* an enrolled process group
@@ -186,11 +202,22 @@ The first sweep runs ten minutes after launch and later ones follow
 `CELL_SCRATCH_SWEEP_INTERVAL` in `cell.env` (a Go duration of at least `1m`;
 default `6h`; `0` turns periodic maintenance off). The sweep never runs on the
 launch or completion path. Sibling supervisors in one cell share the same
-maintenance lease and a `maintenance.stamp` file in the scratch root, so the cell
-sweeps once per interval however many desks are running. A sibling that finds
-the lease busy skips quietly. The stamp is written only after a sweep that
-finishes without errors or partial accounting, so a stopped or failed sweep is
-retried at the next supervisor's check instead of a whole interval later. A
+maintenance lease and a `maintenance.stamp` file in the scratch root, so while
+sweeps finish cleanly the cell sweeps at most once per interval however many desks
+are running. A sibling that finds the lease busy skips quietly. The stamp is
+written only after a sweep that finishes without errors or partial accounting. A
+sweep that fails or ends partial writes `maintenance.stamp.attempt` instead, with
+its time and how many sweeps in a row have failed, and no supervisor on the cell
+starts another sweep before the retry delay has passed: ten minutes after the
+first failure, doubling with each further failure, never more than the interval.
+A missing or damaged attempt record counts as no failure, so the cell is due again
+as soon as its stamp is. A supervisor that did not just run a sweep checks again
+after ten minutes (or the interval, if shorter); the one that ran the failing sweep
+waits a whole interval before its own next check. The retry therefore runs at the
+first sibling check after the delay, or a whole interval later on a cell with one
+supervisor, and siblings coalesce onto one retry rather than each sweeping in
+turn. The next finished sweep writes the stamp and removes the attempt record. A sweep stopped with its
+supervisor records nothing, so the next supervisor's check finds it due. A
 periodic sweep waits at most ten seconds for a sibling launch's scratch
 transaction and writes no lock-wait line to the desk's terminal. Stopping the supervisor cancels a sweep in
 progress: it stops before its next deletion and reports partial accounting.
@@ -205,19 +232,29 @@ only its compiler and test-binary output, and only when all of these hold:
 - it has no receipt and is not resumable;
 - its execution lease is free, so its owner is gone;
 - its child process group is recorded as reaped or proved empty;
-- its last recorded activity is older than the retention max-age;
-- the task contains no Git data.
+- its last recorded activity is older than the retention max-age.
 
-The reclaimable output is the top-level `work/go-build<digits>` and
-`work/cellctl-bin-<digits>` entries (the Go toolchain's and `os.MkdirTemp`'s
-temporary directory shapes), which are regenerated by any rebuild; a name such
-as `go-builder` or `go-build-notes` is ordinary work and stays. The age test
+The reclaimable output is a top-level `work/go-build<digits>` entry (the Go
+toolchain's work directory) or a top-level `work/<tool>-bin-<suffix>` entry with
+both parts non-empty (the `os.MkdirTemp` shape for built test and tool binaries,
+such as `cellctl-bin-123` or `deskpins-bin-4`), which any rebuild regenerates; a
+name such as `go-builder`, `go-build-notes`, `cellctl-bin-` or `-bin-x` is ordinary
+work and stays. Git data is judged per entry: each matching entry is walked in
+full, and one holding Git data anywhere inside it stays, while build output beside
+a Git worktree in the same task can go. An entry that cannot be walked fails the
+sweep closed: the task is kept and the sweep reports partial. Each planned entry
+is checked again for Git data right before removal, and any change keeps the whole
+task. The age test
 uses the same max-age as the rest of the policy, so `CELL_SCRATCH_MAX_AGE=0`
 makes an unacknowledged task's build output reclaimable at the first sweep after
 its lease is free. Symlinks are never followed:
-a `work` that is not a real directory is kept and never planned, and every
-directory above a deletion target is checked again right before removal, so a
-link cannot redirect a sweep into another task's workspace.
+a `work` that is not a real directory is kept and never planned, every directory
+above a deletion target is checked again right before removal, and the removal
+itself walks those directories as open handles held to the identities the plan
+pinned (see above). A link planted before planning keeps the task; a link or a
+renamed directory put in place after planning keeps the task if it lands before
+the deletion check and fails the removal if it lands after. Neither can redirect a
+sweep into another task's workspace.
 The record, diagnostics, output tail and every other workspace entry stay, so
 an operator can still complete or inspect the handoff. The report row's
 action is `reclaim-build`, and a dry run lists the same rows.

@@ -46,7 +46,10 @@ func (c *Cell) scratchSweepInterval() (time.Duration, error) {
 // startScratchMaintenance is the only scheduler of scratch maintenance. It runs beside
 // a supervised child, never on the launch path: the first sweep waits
 // scratchSweepDelay, later ones follow the interval, and the stamp under the
-// maintenance lease coalesces sibling supervisors onto one sweep per interval. stop
+// maintenance lease coalesces sibling supervisors onto one finished sweep per
+// interval. After a sweep it ran, this supervisor waits a whole interval even when
+// that sweep failed; a sibling checking sooner runs the retry once the store's
+// retry delay has passed. stop
 // cancels and waits, so no sweep outlives or follows the child it was started for.
 // Failures are logged and recorded; they never stop the desk.
 func (c *Cell) startScratchMaintenance(parent context.Context, role string, log io.Writer) (stop func()) {
