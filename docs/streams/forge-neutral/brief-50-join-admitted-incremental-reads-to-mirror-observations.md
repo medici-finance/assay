@@ -13,7 +13,7 @@ gate-why: "This adapter can carry private forge observations. Human acceptance c
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: 1a152bcf-dd69-451a-b02c-438e7ecc8e63
 outcome: none
 design: DR-forge-library
@@ -33,7 +33,7 @@ domain: complicated
 consumers:
   - "tools/desk/internal/deskkit/mirroringest.go and mirroringest_test.go: follow-up forge-neutral/50 (this contribution)"
   - "tools/desk/internal/deskkit/mirrorsource.go and tests: follow-up forge-neutral/50 (reuse existing enumerated reads)"
-  - "forgeread/mirror/types.go, presence tests and mirrortest: follow-up forge-neutral/50 (one observation owner and synthetic joined proof)"
+  - "forgeread/mirror/types.go, planner.go, scan.go, presence/baseline tests and mirrortest: follow-up forge-neutral/50 (one observation owner and synthetic joined proof)"
   - "docs/contracts.md and forgeread/README.md: follow-up forge-neutral/50"
   - "workflow/store/ and persisted joined-watermark proof: follow-up forge-neutral/37"
   - "forgeclient/ composition relocation: out-of-scope (no forgeclient implementation exists here; desktools-v2/75 retains its later relocation contract)"
@@ -44,7 +44,7 @@ consumers:
 
 ## Context
 
-files: `tools/desk/internal/deskkit/mirroringest.go` (planned), `mirroringest_test.go` (planned), `mirrorsource.go` and its tests; `forgeread/mirror/types.go`, presence tests and `mirrortest/`; `docs/contracts.md`, `forgeread/README.md`, `changelog/mirror-observation-source.md` (planned). Existing architecture/import and cross-module CI registries must include actual new inputs when required; do not weaken their assertions.
+files: `tools/desk/internal/deskkit/mirroringest.go` (planned), `mirroringest_test.go` (planned), `mirrorsource.go` and its tests; `forgeread/mirror/types.go`, `planner.go`, `scan.go`, presence/baseline tests and `mirrortest/`; `docs/contracts.md`, `forgeread/README.md`, `changelog/mirror-observation-source.md` (planned). Existing architecture/import and cross-module CI registries must include actual new inputs when required; do not weaken their assertions.
 
 facts:
 - Inspected main 863c43db contains /46, /47 and /48; no workflow module, mirror.Source implementation or populated production mirror caller exists.
@@ -83,16 +83,16 @@ This gate covers acceptance and activation. Offline implementation and synthetic
 
 ## Task
 
-1. Implement mirror.Source.Scan in trusted deskkit composition, constructed from the existing admitted MirrorReadSource plus an explicit trusted observation clock. Each call independently validates current Admission, exact admission id/provider/host/repository/kind and ScanPlan scope/window before transport. Do not accept caller-selected endpoints, credentials or a source route different from the constructor's bound identity. Keep native lower admission as a separate check.
+1. Add ScanPlan.PriorObservedUpTo, populated only from the selected Snapshot by canonical PlanRefresh. PlanScan independently requires that baseline to equal its own snapshot watermark and still checks exact scope/version, temporal regressions, admission and completeness. This retained maximum is not fresh coverage or permission. Source composition rejects a future baseline and only a qualified complete walk may report max(prior baseline, actual returned update maximum); incomplete, truncated and failed scans report zero. Do not infer the prior bound from Since plus an assumed overlap. Implement mirror.Source.Scan in trusted deskkit composition, constructed from the existing admitted MirrorReadSource plus an explicit trusted observation clock. Each call independently validates current Admission, exact admission id/provider/host/repository/kind and ScanPlan scope/window before transport. Do not accept caller-selected endpoints, credentials or a source route different from the constructor's bound identity. Keep native lower admission as a separate check.
 2. Delegate to exactly the existing issues/changes operation and its bounded paging. Preserve record ids, provider-specific change kind, state/reason, title/body presence, author, labels, requested individual reviewers, head revision and timestamps. GitHub repository case is canonicalized by trusted composition; GitLab project identity is not silently case-folded. Unqualified case aliases refuse. Reviews/checks/comments/teams not fetched remain unknown.
 3. Add BodyKnown to the canonical mirror observation and preserve non-nil empty versus nil slices through mapping, planner and cloned snapshots, with detached mutable collections. Unknown bodies cannot become known-empty; valid empty bodies must remain known-empty. Update S-forge-mirror and README, retaining root API/envelope compatibility.
 4. Map only complete qualified endpoint walks to Complete. Incomplete/limited results have zero ObservedUpTo and no conditional validator/304 claim; filtered-empty complete reads cannot fabricate or regress a source stamp. Preserve original errors and typed limit/status causes; failed scans expose no successful population. Status-only 403/404, including oversized or truncated bodies, never becomes confirmed permission loss, authoritative absence or retention authority. Return conservative unavailable/unknown without selecting or running purge policy.
-5. Exercise both providers through real native reads → MirrorReadSource → mapper → PlanScan → reference Store → QueryScope with synthetic data and explicit time. Include full then overlapping incremental scans, known-empty inventory, unknown fields, duplicate/foreign records, partial pagination, native and aggregate limits, transport/refusal/cancellation and later success. Incomplete or failed scans preserve prior LastComplete/inventory and make no closure/purge claim. This fixture uses a reference Store, never claims persistence or global fill ownership.
+5. Exercise both providers through real native reads → MirrorReadSource → mapper → PlanScan → reference Store → QueryScope with synthetic data and explicit time. Include full then overlapping incremental scans, newest-record removal leaving older nonempty rows, complete-empty and filtered-empty inventories, unknown fields, duplicate/foreign records, partial pagination, native and aggregate limits, transport/refusal/cancellation and later success. Incomplete or failed scans preserve prior LastComplete/inventory and make no closure/purge claim. This fixture uses a reference Store, never claims persistence or global fill ownership.
 6. Run independent source-layer and lower native scope bypass controls and actual production-path mutations for delegation, source binding, field presence and incomplete-watermark handling. Include exact restored passing evidence and the existing native-bound/read-only/pure-kernel suites. Record implementation/consumer routing and a fragment. Preserve the explicit /37 persisted joined proof.
 
 ## Interface contract
 
-Use mirror.Source.Scan unchanged. Composition holds only the already-admitted source; Admission is checked per call before its data or failures escape. ObservedAt comes from the trusted explicit clock, not request data. ScanResult completeness describes the endpoint inventory only, not unrequested fields. No new public network/query/wire API or refresh gate is introduced.
+Use mirror.Source.Scan unchanged. ScanPlan carries the trusted prior watermark with its existing expected version and admission-bound scope; PlanScan rejects a forged or regressed baseline against the selected snapshot before any update. Composition holds only the already-admitted source; Admission is checked per call before its data or failures escape. ObservedAt comes from the trusted explicit clock, not request data. ScanResult completeness describes the endpoint inventory only, not unrequested fields. No new public network/query/wire API or refresh gate is introduced.
 
 ## Verify
 
@@ -106,6 +106,7 @@ All rows use offline synthetic fixtures. Named PASS output is mandatory; no test
 | 4 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorFieldPresence$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorFieldPresence ' "$o" && GOWORK=off go test -count=1 ./...)` | Unknown versus known-empty body/collections survive canonical observation inputs, PlanScan and detached Store/query clones; unrequested review populations remain unknown. Dropping BodyKnown or normalizing empty collections to nil fails. Frozen root and pure-kernel suites pass. |
 | 5 | check:ci +flow | `(cd tools/desk && GOWORK=off go test -count=1 -run '^(TestMirrorNativeResponseBounds\|TestMirrorResponseBoundIsolation\|TestReadOnlyForgeRefusesEveryWriteMethod\|TestForgeSurfaceUnchangedByDeskread\|TestForgeGitlabCoverage\|TestAmbientTokenGuardCoversForgeread)$' ./internal/deskkit/)` | Existing native, neighboring operation, write refusal, frozen surface, inventory and ambient-token guard controls still run/pass; no new Forge method or credential surface. |
 | 6 | check +dereference | `statusgen --root . --consumers --brief forge-neutral/50 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | Pre-merge implementing-branch routing corroborates actual edits; unchecked exclusions remain reviewer obligations. Before post-merge verification bind independently established mainline delivery and first parent with --delivery/--base; routing alone is not producer identity or acceptance. |
+| 7 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorPlanBaseline$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorPlanBaseline ' "$o")` | Canonical plan carries the exact prior observed bound with scope/version. Future, forged, cleared or regressed baseline and stale expected version refuse independently before an update; existing raw scan-watermark regression controls stay unchanged. Actual plan-baseline check removal fails its mutation. Row 1 joins a legitimate full source inventory whose former newest record disappeared: complete coverage advances, the retained observed maximum never regresses and unqualified absence never becomes closed. Incomplete scans still have zero source ObservedUpTo and preserve prior LastComplete. |
 
 ## Pre-mortem and detection
 
