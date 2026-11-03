@@ -79,10 +79,18 @@ class ProofTests(unittest.TestCase):
             arm = '\n  probe)\n    probe\n    ;;'
             self.assertEqual(original.count(arm), 1)
             bad_arm = '\n  probe)\n    printf "dispatch reached\\n" >> "$VR_TEST_NETWORK"\n    probe\n    ;;'
-            witness.write_text(original.replace(arm, bad_arm, 1))
-            with self.assertRaisesRegex(RuntimeError, 'operational probe arm'):
-                check.probe(HERE / 'source_proof.py', witness)
-            print('DISPATCH-GUARD RED unsupported arm refused before execution')
+            candidates = [('arm command', original.replace(arm, bad_arm, 1))]
+            for pattern in ("'probe'", '"probe"', 'probe|x', '(probe', 'pro[b]e', 'p*'):
+                shadow = '\n  ' + pattern + ')\n    printf "shadow reached\\n" >> "$VR_TEST_NETWORK"\n    ;;'
+                candidates.append(('shadow ' + pattern, original.replace(arm, shadow + arm, 1)))
+            for terminator in (';;&', ';&'):
+                candidates.append(('fall-through ' + terminator, original.replace(arm, arm[:-2] + terminator, 1)))
+            for name, candidate in candidates:
+                with self.subTest(dispatch=name):
+                    witness.write_text(candidate)
+                    with self.assertRaisesRegex(RuntimeError, 'operational probe arm'):
+                        check.probe(HERE / 'source_proof.py', witness)
+                    print('DISPATCH-GUARD RED ' + name + ' refused before execution')
             witness.write_text(original)
 
             # Removing the substitution reaches the canary and must go red.
