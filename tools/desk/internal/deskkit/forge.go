@@ -21,9 +21,11 @@ package deskkit
 // changed nothing observable at the wire.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/medici-finance/assay/forgeread/adapters"
 	"strconv"
 	"strings"
 	"time"
@@ -1714,6 +1716,12 @@ func validateGateName(gate string) (string, error) {
 // per-tool inventory. It is FROZEN: an addition requires a consuming tool in the same
 // change.
 type Forge interface {
+	// ChangesUpdatedSince and IssuesUpdatedSince are bounded incremental source
+	// observations consumed by MirrorReadSource. An incomplete list is never an
+	// inventory; review/check coverage remains outside these endpoint reads.
+	ChangesUpdatedSince(context.Context, ForgeRepo, adapters.UpdateQuery) (adapters.ChangeUpdates, error)
+	IssuesUpdatedSince(context.Context, ForgeRepo, adapters.UpdateQuery) (adapters.IssueUpdates, error)
+
 	// --- Reads ---
 
 	// GetPullRequest reads a change's head/state/draft/node-id/changed-file-count/author.

@@ -3,7 +3,7 @@ brief: assay:assay:forge-neutral:37
 title: Scoped forge mirror with persisted freshness, coverage and polling repair
 why: "Every desk, status run and planning read asks the forge the same questions again, one verb at a time, and a throttled or partial read can look like an empty queue. One scoped mirror that records what it read, when, and how completely lets those readers share one answer and see when it is stale or incomplete, without each of them polling the forge."
 wave: 7
-depends: ["graph-execution/28", "graph-execution/29", "graph-execution/19", "forge-neutral/36", "forge-neutral/33", "desktools-v2/09"]
+depends: ["graph-execution/28", "graph-execution/29", "graph-execution/19", "forge-neutral/36", "forge-neutral/33", "desktools-v2/09", "forge-neutral/46", "forge-neutral/47"]
 unblocks: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43", "cell-api/02"]
 effort: L
 gate: human
@@ -12,7 +12,7 @@ gate-why: "sensitive-data is yes because the mirror copies private pull request,
 issues: []
 outcome: none
 schema: brief-v2
-version: 6
+version: 9
 id: 06dc3c03-bfb0-49cf-b171-8f7d192b7aea
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
 sources:
@@ -36,11 +36,16 @@ exec-tier-why: "Question (c), silent failure toward a pass: an unfinished scan t
 domain: complicated
 decision-trigger: start
 consumers:
-  - "forgeread/mirror/ (new), forgeread/mirror/mirrortest/ (new): follow-up forge-neutral/37"
-  - "forgeread/adapters/, forgeread/adapters/github/, forgeread/adapters/gitlab/: follow-up forge-neutral/37 (the two incremental list reads and the optional conditional page access of Task 3)"
-  - "tools/desk/internal/deskkit/forge.go, forge_github.go, forge_gitlab.go, sharedread.go, forge_surface_deskread_test.go: follow-up forge-neutral/37 (the two new operations delegate to the shared adapters; the surface test's want list gains exactly their names)"
-  - "tools/desk/internal/deskkit/mirrorsource.go (new): follow-up forge-neutral/37 (the trusted composition that supplies the mirror its source)"
-  - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/37 (two inventory rows at the next free numbers)"
+  - "forgeread/mirror/, forgeread/mirror/mirrortest/: follow-up forge-neutral/46 (pure kernel and reusable reference conformance creation)"
+  - "forgeread/mirror/, forgeread/mirror/mirrortest/: follow-up forge-neutral/37 (consume the kernel; add only joined ingestion, coalescing, chosen retention and PostgreSQL conformance extensions)"
+  - "forgeread/adapters/, forgeread/adapters/github/, forgeread/adapters/gitlab/: follow-up forge-neutral/47 (the two incremental list reads and explicit conditional-unsupported baseline)"
+  - "forgeread/adapters/access.go, forgeread/adapters/github/, forgeread/adapters/gitlab/, tools/desk/internal/deskkit/sharedread.go: follow-up forge-neutral/37 (optional conditional page access and actual mirror integration; no second incremental walker)"
+  - "tools/desk/internal/deskkit/forge.go, forge_github.go, forge_gitlab.go, forge_surface_deskread_test.go: follow-up forge-neutral/47 (create exactly the two enumerated methods, shared-adapter delegation and frozen surface entries)"
+  - "tools/desk/internal/deskkit/mirrorsource.go and its base tests: follow-up forge-neutral/47 (admitted MirrorReadSource consuming the two incremental operations)"
+  - "tools/desk/internal/deskkit/mirroringest.go and joined tests: follow-up forge-neutral/37 (assemble MirrorReadSource with the kernel; map provider observations, authenticated admissions and current authorizer to source/store ports)"
+  - "tools/desk/internal/deskkit/forge_response_bounds.go and forge_response_bounds_test.go: follow-up forge-neutral/37 (one native mirror-response byte-bound implementation and real-backend conformance; shared-library relocation later reuses this owner)"
+  - "tools/desk/internal/deskkit/forge_github.go, forge_gitlab.go, sharedread.go and mirrorsource.go: follow-up forge-neutral/37 (compose the response bound before native mirror-page buffering/decoding on both providers; preserve admitted custody and existing read/write semantics)"
+  - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/47 (the two incremental-operation inventory rows)"
   - "workflow/store/ (as planned by graph-execution/19 after its R2 amendment): follow-up forge-neutral/37 (the mirror tables, their migration, the mirror.Store implementation and the graph-execution/28 fact-completeness mapping)"
   - "statusgen/testdata/regressionfloor/ (as planned by graph-execution/29): follow-up forge-neutral/37 (one frozen mirror-coverage case under 29's inventory rules)"
   - "statusgen/: out-of-scope (forge-neutral/18 owns statusgen's forge reads; this brief adds no statusgen link and no deskread kind)"
@@ -54,10 +59,10 @@ consumers:
 ## Context
 
 files:
-- `tools/forge-import-check/check_env_imports.go` (source-only helper)
-- `tools/forge-import-check/check_env_imports_test.go` (source-only compiler fixtures)
-- `forgeread/mirror/` (new)
-- `forgeread/mirror/mirrortest/` (new)
+- `tools/forge-import-check/check_env_imports.go`
+- `tools/forge-import-check/check_env_imports_test.go`
+- `forgeread/mirror/` (planned)
+- `forgeread/mirror/mirrortest/` (planned)
 - `forgeread/adapters/access.go`
 - `forgeread/mirror/reviewcoverage_test.go` (planned)
 - `forgeread/adapters/github/`
@@ -67,12 +72,15 @@ files:
 - `tools/desk/internal/deskkit/forge_github.go`
 - `tools/desk/internal/deskkit/forge_gitlab.go`
 - `tools/desk/internal/deskkit/sharedread.go`
-- `tools/desk/internal/deskkit/mirrorsource.go` (new) and tests
+- `tools/desk/internal/deskkit/mirrorsource.go`
+- `tools/desk/internal/deskkit/mirroringest.go` (planned)
+- `tools/desk/internal/deskkit/forge_response_bounds.go` (planned)
+- `tools/desk/internal/deskkit/forge_response_bounds_test.go` (planned)
 - `tools/desk/internal/deskkit/forge_surface_deskread_test.go`
 - `docs/streams/forge-gitlab/inventory.md`
-- `workflow/store/` (planned by graph-execution/19; mirror tables, migration and the graph-execution/28 fact-completeness mapping)
-- `statusgen/testdata/regressionfloor/` (planned by graph-execution/29; one case)
-- `changelog/forge-mirror-polling.md` (new)
+- `workflow/store/` (planned)
+- `statusgen/testdata/regressionfloor/`
+- `changelog/forge-mirror-polling.md` (planned)
 
 facts (4696d598e, 2026-10-13):
 - `forgeread/` exists (forge-neutral/36, implemented). Its root package is offline and frozen only;
@@ -97,8 +105,10 @@ facts (4696d598e, 2026-10-13):
 
 layering: `forgeread/mirror` is a library with no network client, no process launch and no credential.
 It plans refreshes, applies observations and answers queries against a `Store` interface. The source of
-observations is supplied by trusted composition in desk-tools (`mirrorsource.go` (planned)) over existing and new
-adapters. PostgreSQL persistence implements `Store` inside the R2 store. Rows 2, 10, 11 and 18 hold the split.
+observations is supplied by trusted composition in desk-tools: `tools/desk/internal/deskkit/mirrorsource.go` (planned) from /47 owns the
+admitted incremental reader, while `tools/desk/internal/deskkit/mirroringest.go` (planned) maps its observations into /46's
+kernel/source/store contracts. Reuse those owners rather than creating competing walkers or models.
+PostgreSQL persistence implements `Store` inside the R2 store. Rows 2, 10, 11 and 18 hold the split.
 The mirror defines its own repository and change identities. The graph-execution/28 mapping lives
 in the `workflow` module, which links both `forgeread` and `statusgen`, never in `forgeread`
 (rows 17 and 19).
@@ -143,6 +153,34 @@ the read contract R7 consumes. When the R7 briefs are authored, each that reads 
 `depends: ["forge-neutral/37"]`, and `statusgen newbrief` writes the inverse `unblocks:` edge here.
 Until then `unblocks:` names only forge-neutral/38, because the lint refuses an edge to a brief that
 does not exist.
+
+## Early read-only contributions — 3 November 2026
+
+The first useful supported outcome is a fixture consumer that applies source observations and
+queries an admitted mirror scope with explicit coverage and freshness. Two independent capability
+contributions precede this joined delivery: [46](brief-46-pure-read-only-mirror-kernel-and-conformance.md)
+owns the pure mirror kernel and its reusable conformance contract;
+[47](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) owns the bounded provider
+update readers and their concrete source composition. Both reuse the already shipped admitted-read
+capability from 36; neither requires a new durable store or the write executor. Inspect source
+availability and the dependency's actual capability at pickup; lifecycle labels alone are not proof
+that an API is absent or independently accepted.
+
+This brief consumes those owners rather than implementing competing models or provider walkers.
+Every original Task and Verify criterion remains an obligation of the joined delivery. In
+particular, the two early contributions do not supply PostgreSQL persistence/transaction constraints,
+restart recovery, production permission-loss retention policy, event/controller mapping, full
+review/check coverage, conditional refresh transport, cross-process refresh coalescing, actual reader
+cutover or operational savings. Conditional requests in row 8 and coalescing in row 6 remain here;
+47's explicit unsupported/full-read baseline does not satisfy them. Passing early fixture tests does
+not satisfy rows 7, 9, 12, 13 or 15 against the assembled production adapters.
+
+The Human decision below remains unanswered; no retention default is selected, no gate is lowered,
+and this brief remains held for the existing decision and missing durable-store prerequisites.
+Early implementation does not claim this brief implemented or activate a cache. The current
+[DR-forge-library](../decisions/DR-forge-library.md) supersedes the older process-only integration
+boundary: trusted transport composition follows its shared-library owner, without moving credentials
+into the pure mirror or inventing another service. Historical source accounts remain unchanged.
 
 ## Human decision
 
@@ -204,8 +242,10 @@ existing completed batching/conditional requests are baseline, not this brief's 
 
 ## Task
 
-1. **Mirror model (`forgeread/mirror`).** Define typed records: scope (provider, host, repository,
-   record kind: change or issue); change and issue observations with PR versus MR provenance, state,
+1. **Mirror model (`forgeread/mirror`).** Reuse /46's typed kernel records rather than defining
+   another model. The joined delivery must retain and extend that owner where needed for scope
+   (provider, host, repository, record kind: change or issue); change and issue observations with
+   PR versus MR provenance, state,
    closure reason, head revision, labels, author, requested reviewers, provider updated time and
    observation time; and review/approval observations kept provider-specific beside the common
    fields (a GitHub review and a GitLab approval are never reduced to one boolean). The mirror
@@ -240,15 +280,18 @@ existing completed batching/conditional requests are baseline, not this brief's 
    last complete time, observed revision and stale flag. A query over a scope that is not complete
    never answers a bare empty list. Task 1's admission refusal overrides stored completeness;
    only an admitted query can expose the stored coverage.
-3. **Reads.** Add exactly two operations, `ChangesUpdatedSince` and `IssuesUpdatedSince`, for both
-   providers in `forgeread/adapters/{github,gitlab}`. Each lists records updated at or after a bound,
-   ordered by update time, walks every page up to a ceiling and returns `Incomplete` at the ceiling,
-   never a short list. deskkit's methods delegate to them, as forge-neutral/36's OpenIssues does.
-   Add an optional `ConditionalAccess` beside `adapters.Access`: one page with a supplied validator,
-   answering not-modified or a page with its new validator. Where the provider or endpoint gives no
-   validator, the read happens in full and the scan records `conditional: unsupported`. Inventory
-   rows and the surface test's want list gain exactly the two names.
-4. **Refresh planner and polling repair.** One ingestion owner per (admission ID, repository,
+3. **Reads.** Consume exactly the two operations created by /47, `ChangesUpdatedSince` and
+   `IssuesUpdatedSince`, for both providers in `forgeread/adapters/{github,gitlab}` and their admitted
+   deskkit delegation. Do not recreate them or add duplicate surface/inventory entries. The joined
+   delivery still must prove each lists records updated at or after a bound, ordered by update time,
+   walks every required page up to a ceiling and reports `Incomplete` at the ceiling, never a short
+   complete list. Extend that existing owner with optional `ConditionalAccess` beside `adapters.Access`:
+   one page with a supplied validator, answering not-modified or a page with its new validator.
+   Where the provider or endpoint gives no validator, read in full and record `conditional: unsupported`.
+   /47's unsupported/full-read baseline does not satisfy this conditional transport/scan acceptance.
+   Keep its inventory rows and the frozen surface's want list at exactly the same two operation names.
+4. **Refresh planner and polling repair.** Reuse /46's deterministic refresh/scan planning
+   semantics; compose the actual ingestion and polling owner here, one per (admission ID, repository,
    record kind) scope. The first read enumerates every page. Each incremental poll reads from the last observed-up-to time minus a
    declared overlap window. A periodic bounded full inventory reconciles closures, transfers and
    removals. Absence from a partial or failed scan is never deletion. Absence from a complete
@@ -265,19 +308,53 @@ existing completed batching/conditional requests are baseline, not this brief's 
    "no open changes" and never reports "no reviews". The handling of already-mirrored content
    follows the recorded human decision; implement only the chosen option. Option 1's "only to
    callers whose own authorization still covers the repository" is Task 1's query-time admission
-   check. Row 16 pins whichever option is chosen.
+   check. Row 16 pins whichever option is chosen. Recovery also preserves /46’s full-inventory
+   and fresh-completeness requirement; an incremental/304 result or stale Store update cannot
+   clear the permission hold. This changes no recorded retention choice.
 7. **Persistence.** Implement `mirror.Store` in `workflow/store/` with a versioned migration. The
    watermark advance and the complete scan's rows commit in one transaction, and the store refuses
-   an advance whose scan record is not complete. Ship `mirrortest`, one conformance suite run
-   against the in-memory reference store and the PostgreSQL store. Restart keeps rows and
+   an advance whose scan record is not complete. Reuse /46's `mirrortest` reference conformance
+   suite and extend it with this brief's durable-store requirements; run the same suite against
+   the in-memory reference store and the PostgreSQL store. Restart keeps rows and
    watermarks. Deleting the mirror tables and rebuilding starts every scope at `never-read` and
-   claims no earlier completeness.
-8. **Composition and floor.** `tools/desk/internal/deskkit/mirrorsource.go` (planned) implements the mirror's
-   source over the already-admitted access deskkit composes; it refuses a repository outside the
-   credential's scope before any request. It supplies the admission ID with each access, and the
-   query-time authorizer over the same admitted repository set to both library and store. Query
-   composition derives the admission from the authenticated caller; a request-supplied ID cannot
-   select another admission (row 9). Add one frozen case to
+   claims no earlier completeness. The durable Store owns RetainedFrom: populate it only from
+   retained-history coverage qualified under the selected policy, validate its ordering against
+   the other coverage stamps, and leave it unknown when that history has not been qualified.
+   The pure kernel’s optional zero value is not a retained-history guarantee.
+8. **Composition and floor.** Reuse /47's `tools/desk/internal/deskkit/mirrorsource.go` MirrorReadSource
+   and its two provider operations, including the lower-layer refusal of a repository outside the
+   credential's scope before any request. Implement the joined assembly/observation mapper in
+   `tools/desk/internal/deskkit/mirroringest.go` (planned), connecting that admitted source to /46's
+   mirror contracts and this brief's PostgreSQL store. Canonicalize GitHub owner/repository case
+   before constructing kernel scopes; use provider-qualified identities rather than aliases. The assembly supplies the composition-derived
+   admission ID with each access and the query-time authorizer over the same admitted repository set
+   to both library and store. It derives query admission from the authenticated caller; a
+   request-supplied ID cannot select another admission (row 9). The earlier base-source proof does not
+   replace the joined mapper/admission/store evidence.
+
+   **Native response allocation bound, before activation (row 23).** This full-mirror owner closes
+   /47's explicitly deferred single-response allocation gap for both existing GitHub and GitLab
+   backends. At the admitted native mirror-page transport/read boundary, enforce at most 8 MiB of
+   response JSON bytes per response, no wider than /47's aggregate operation budget. Count the bytes
+   actually presented to JSON consumers after any supported content decoding, before unbounded
+   full-body buffering or SDK decoding; account for oversized non-2xx/error bodies too. A Content-Length
+   check alone is insufficient: absent/incorrect lengths, chunked bodies and supported compressed
+   expansion cannot evade the bound. Oversize must return a typed could-not-check/limit failure with
+   no successful population and no nonzero ObservedUpTo, never a valid truncated JSON prefix or
+   complete-empty success. Preserve the prior complete mirror watermark and unavailable/partial
+   coverage through the joined mapper; it cannot advance on this failure.
+   Implement the bound once in the existing trusted deskkit response composition and apply that
+   same implementation before either provider's buffering/decoding. Reuse admitted clients,
+   cancellation, scope, no-redirect custody and current error classification; introduce no credential
+   owner, generic transport escape hatch, network probe/default, new flag or retry loop. Scope this
+   bound to the mirror's enumerated JSON page reads (including their conditional variants), not an
+   incidental new global cap on unrelated log/archive/write operations. If /75 relocates that
+   trusted composition into the approved shared forge library, move/reuse the same implementation
+   and conformance test rather than creating another bound or treating relocation as qualification.
+   A fixture-only adapter check or /47's post-fetch aggregate accounting does not satisfy row 23;
+   source and service activation stay held until both native provider paths pass it.
+
+   Add one frozen case to
    graph-execution/29's regression
    inventory: a partial mirror coverage assesses as could-not-check, never pass. Update
    `forgeread/README.md` and add the changelog fragment.
@@ -319,7 +396,7 @@ provider transports only.
 | 11 | check +dereference +mutation | `test -d forgeread/mirror && (cd forgeread && GOWORK=off go list -deps ./mirror > "${TMPDIR:-/tmp}/b37-r11.out") && { grep -x -F -e net/http -e os/exec -e database/sql "${TMPDIR:-/tmp}/b37-r11.out" \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: the mirror library's dependency closure has no HTTP client, no process launch and no database driver. Transport and persistence enter only through the source and the store. A missing package prints nothing and fails the row (it fails at authoring). **Mutation**: a mirror file importing `net/http` counts `1` |
 | 12 | check:ci +mutation | `(cd tools/desk && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestForgeSurfaceUnchangedByDeskread$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestForgeSurfaceUnchangedByDeskread " "$result" && GOWORK=off go test -count=1 -v -run "^TestForgeGitlabCoverage$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestForgeGitlabCoverage " "$result" && GOWORK=off go test -count=1 -v -run "^TestAmbientTokenGuardCoversForgeread$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestAmbientTokenGuardCoversForgeread " "$result")` | exit 0: the surface want list and the GitLab inventory reconcile with exactly the two new operations, and the ambient-token rule finds no forge-token read in `forgeread/`, `mirror` included. That rule recognises only six forge-token variable names; row 18 covers every other environment read. **Mutation**: add a third operation without an inventory row, and `TestForgeGitlabCoverage` fails. **Mutation**: a mirror file reading `GH_TOKEN` from the environment produces a finding, and `TestAmbientTokenGuardCoversForgeread` fails |
 | 13 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRegressionFloorOldNewAgree$" . > "$out" && grep -F -- "--- PASS: TestRegressionFloorOldNewAgree " "$out" && grep -rlF 'mirror-partial-is-could-not-check' testdata/regressionfloor/)` | exit 0: graph-execution/29's floor passes with the added frozen case, which names the mirror-partial case file. **Mutation**: make the case expect pass for partial coverage, and the floor fails |
-| 14 | check:ci +dereference | `statusgen --consumers --root .` | exit 0: the diff-aware consumers gate corroborates every routing token against the implementing branch's diff (each `follow-up forge-neutral/37` self-reference is satisfied by this brief's own changes and flips to `fixed-here` at implementation) |
+| 14 | check:ci +dereference | `statusgen --consumers --root .` | exit 0: the diff-aware consumers gate corroborates /37's actual integration/extension consumers against its implementing diff. Kernel/reference creation remains routed to /46; incremental-method/base-source/inventory creation remains routed to /47. Only /37 self-references edited by its integration diff flip to fixed-here; inherited contribution paths do not require duplicate creation or fabricated current-diff evidence. Out-of-scope judgments remain independently reviewed, and no prior contribution/acceptance criterion is waived. |
 | 15 | check:ci +flow +mutation | `(cd forgeread && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorQueryAdmissionScope$" ./mirror/... > "$result" && grep -F -- "--- PASS: TestMirrorQueryAdmissionScope " "$result")` | exit 0; named PASS. A complete scope under admission A contains a canary row; currently authorized A reads it as a positive control. Missing or invalid admission, uncovered B, and **covered-but-different B** each answer `unavailable: permission` with zero rows, never complete-empty. The library refuses before any scope-data query (spy call count zero). With the library check bypassed, the store independently returns the same typed permission refusal for those cases, not just a filtered empty list; with a permissive store double, the library still refuses. After A's coverage is withdrawn, its next query is refused in each layer. Only authorized A querying a genuinely empty scope may receive complete-empty. This production-path case is part of `mirrortest`, including PostgreSQL under row 7. **Mutation**: remove library admission equality while retaining coverage; covered B reaches the store and the zero-call assertion fails. **Mutation**: turn the store's nonmatching-admission refusal into a successful empty result; the bypass case fails on coverage/reason even though zero rows remain. **Mutation**: drop the store admission predicate with the library bypassed; B receives A's canary and the test fails. **Mutation**: cache authorization at ingestion; A still reads after withdrawal and the test fails |
 | 16 | check:ci +mutation | `(cd forgeread && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorPermissionLossRetention$" ./mirror/... > "$result" && grep -F -- "--- PASS: TestMirrorPermissionLossRetention " "$result")` | exit 0; named PASS. **Decision-conditional**: the worker implements only after the human decision is recorded, and the edit that records it deletes the unchosen option's sentence and mutation from this cell. Option 1 (stale, access-checked history): after confirmed permission loss every prior row remains, marked stale and permission-lost, served only with that coverage and only through row 15's query-time admission check; rows past the configured history window are gone. Option 2 (purge to tombstones): after confirmed permission loss, a scan of every stored field of the scope finds none of the fixture's private canary strings (titles, bodies, labels, review text), while identities, the coverage gap and the loss time remain. The case is part of `mirrortest`, so it also runs against PostgreSQL under row 7. **Mutation (option 1)**: serve stale rows without the admission check, and the test fails. **Mutation (option 2)**: make the purge a no-op, and a canary is found and the test fails |
 | 17 | check +mutation | `test -f forgeread/go.mod && { grep -n -w -e require -e replace forgeread/go.mod \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: `forgeread` keeps no module dependency, so no subpackage can import `statusgen/domain` or a `workflow` package, and no forgeread-to-statusgen require cycle can form. The graph-execution/28 mapping stays in `workflow`. Passes at authoring as an invariant guard. **Mutation**: a planted `require github.com/medici-finance/assay/statusgen v0.0.0` line counts `1` |
@@ -331,6 +408,7 @@ provider transports only.
 |---|---|---|---|
 | 21 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshBurstScopeAndCallBudget$' ./mirror/... > "$out" && grep -F -- '--- PASS: TestRefreshBurstScopeAndCallBudget ' "$out")` | exit 0; named PASS; 50 equivalent requests share one paginated inventory, two admissions remain isolated and outage retries stay within the explicit fixture budget; global authorization sharing or per-client scan fallback fails |
 | 22 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorPlannerReuse$' ./... > "$o" && grep -F -- '--- PASS: TestMirrorPlannerReuse ' "$o")` | exit 0; named PASS. compatible prose/discrete consumers query the same mirror cutoff without new provider reads; one changed item refreshes affected scope, and partial/removal/access/expiry failures cannot yield complete idle. Competing caller pollers or hidden producer attempts fail; final refresh requests remain explicit. |
+| 23 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorResponseBounds$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestMirrorResponseBounds ' "$o")` | Exit 0; named PASS. Actual admitted GitHub and GitLab backend-to-source-to-mapper paths accept a useful below-bound population and an exact-bound JSON control. Every oversized control contains syntactically valid JSON, so decode failure cannot substitute for enforcing the cap. Known-length, absent/false Content-Length and chunked oversized controls, plus supported compressed expansion, refuse before native full-body accumulation/SDK decode; a counting streaming body proves no more than bound plus one sentinel byte is consumed by the guarded read. Both providers return a typed limit/could-not-check, zero successful population and zero ObservedUpTo; the assembled mirror's prior complete watermark stays unchanged. Run each real path with the upper aggregate/mapper budget bypassed so that only its native response guard can catch overflow. Independently mutate the actual GitHub and GitLab native guard composition to bypass the cap (or only trust Content-Length); the named TestMirrorResponseBounds must fail its corresponding oversized control for each bypass, while the restored production guard passes both providers. A valid JSON prefix followed by oversized whitespace must never become complete-empty. No production endpoint or deployed-capacity claim. |
 
 ## Pre-mortem
 
