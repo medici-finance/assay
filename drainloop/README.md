@@ -285,3 +285,11 @@ PostgreSQL, signatures, Kubernetes custody or live credential revocation. The
 library installs no adapters and activates no consumer. All human activation and
 independent verification gates remain. Existing preparation documentation above
 records the earlier snapshot; this section describes the added opt-in seam.
+
+
+The Cell/group ownership generation and each work-item claim generation remain
+distinct. `CellState.Claims` is the existing claim authority's current per-item
+record, not a second lease: `CellJournal.Generation(item)` reads that claim, and
+both admission and the independent effect check require its exact original work,
+attempt, Cell owner and claim generation. A current Cell tuple cannot revive a
+released or transferred item claim; reevaluation identity remains separate.

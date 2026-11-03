@@ -1,6 +1,7 @@
 # Operator incarnation v1
 
-Status: schema/test preparation for graph-execution/16. No live authority source,
+Status: store-neutral contract and library seam for graph-execution/16; the earlier
+schema/test preparation account is retained below. No live authority source,
 key provisioning, credential cutover, Kubernetes resource or runtime wiring is
 installed. A passing record comparison is not effect authorization.
 
@@ -168,3 +169,11 @@ These ports install no source, signer, control-volume policy or runtime consumer
 The earlier preparation account above is retained as history. Actual custody,
 provider boundaries and credential cutover remain separately qualified before
 activation, including the two ruled restrictions and external restore provenance.
+
+
+The Cell/group ownership generation and each work-item claim generation remain
+distinct. `CellState.Claims` is the existing claim authority's current per-item
+record, not a second lease: `CellJournal.Generation(item)` reads that claim, and
+both admission and the independent effect check require its exact original work,
+attempt, Cell owner and claim generation. A current Cell tuple cannot revive a
+released or transferred item claim; reevaluation identity remains separate.

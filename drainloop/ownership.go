@@ -183,7 +183,16 @@ var ErrCellConflict = errors.New("cell version conflict")
 
 // CellState belongs to the existing coordination authority, not a second store.
 // Reservations, ownership and the effect intent commit in one transaction.
+// CellClaim is the existing item's claim record in the same authority. Its
+// generation is distinct from Cell ownership generation and reevaluation identity.
+// The existing Claimer acquires/transfers it; this library creates no new lease.
+type CellClaim struct {
+	ItemID, WorkID, AttemptID, Generation string
+	Owner                                 CellOwnership
+}
+
 type CellState struct {
+	Claims      []CellClaim
 	Version     uint64
 	Checkpoint  CellCheckpoint
 	Pending     []CellAdmission
@@ -210,6 +219,7 @@ type CellPermit struct {
 	CapabilityRef                     string
 	WorkID, AttemptID, RequestID, Key string
 	AdmissionDigest                   string
+	ClaimGeneration                   string
 }
 
 // CellCapabilityCheck owns authentication, expiry, scope and qualified provider
@@ -260,7 +270,7 @@ func (a CellAuthority) check(ctx context.Context, s CellState, p CellPermit) err
 	if s.Checkpoint.Schema != CellCheckpointSchema || s.Checkpoint.Stopped || s.Checkpoint.CancelRequested {
 		return errors.New("cell stopped or cancelled")
 	}
-	if p.CapabilityRef == "" || p.WorkID == "" || p.AttemptID == "" || p.RequestID == "" || p.Key == "" {
+	if p.CapabilityRef == "" || p.WorkID == "" || p.AttemptID == "" || p.RequestID == "" || p.Key == "" || p.ClaimGeneration == "" {
 		return errors.New("cell capability incomplete")
 	}
 	return a.Capabilities.CheckCellCapability(ctx, p)
@@ -285,7 +295,10 @@ func (a CellAuthority) Commit(ctx context.Context, r CellAdmission) error {
 			return err
 		}
 		e := r.Intent.Event
-		if e.Kind != "EFFECT-INTENT" || e.Key != p.Key || e.RunID != p.WorkID || e.AttemptID != p.AttemptID || e.Generation != p.Ownership.Generation || e.ItemID == "" {
+		if err := checkCellClaim(*s, r); err != nil {
+			return err
+		}
+		if e.Kind != "EFFECT-INTENT" || e.Key != p.Key || e.RunID != p.WorkID || e.AttemptID != p.AttemptID || e.Generation != p.ClaimGeneration || e.ItemID == "" {
 			return errors.New("cell intent identity mismatch")
 		}
 		for _, old := range append(append([]CellAdmission{}, s.Pending...), s.Completed...) {
@@ -333,6 +346,9 @@ func (a CellAuthority) CheckEffect(ctx context.Context, p CellPermit) error {
 	}
 	for _, r := range s.Pending {
 		if r.Permit == p {
+			if err := checkCellClaim(s, r); err != nil {
+				return err
+			}
 			if CellAdmissionDigest(r) != p.AdmissionDigest {
 				return errors.New("stored admission binding changed")
 			}
@@ -371,7 +387,7 @@ type CellJournal struct {
 	Request   func(Intent) (CellAdmission, error)
 }
 
-func (j CellJournal) Generation(ctx context.Context, _ string) (string, error) {
+func (j CellJournal) Generation(ctx context.Context, item string) (string, error) {
 	if err := j.Authority.ready(ctx); err != nil {
 		return "", err
 	}
@@ -379,7 +395,19 @@ func (j CellJournal) Generation(ctx context.Context, _ string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return s.Checkpoint.Ownership.Generation, nil
+	generation := ""
+	for _, claim := range s.Claims {
+		if claim.ItemID == item && claim.Owner == s.Checkpoint.Ownership {
+			if generation != "" || claim.Generation == "" {
+				return "", errors.New("claim generation ambiguous/unavailable")
+			}
+			generation = claim.Generation
+		}
+	}
+	if generation == "" {
+		return "", errors.New("current item claim unavailable")
+	}
+	return generation, nil
 }
 func (j CellJournal) CommitIntent(ctx context.Context, i Intent) error {
 	if j.Request == nil {
@@ -638,4 +666,22 @@ func (a CellAuthority) Settle(ctx context.Context, p CellPermit) error {
 		}
 		return nil
 	})
+}
+
+// checkCellClaim is evaluated at admission AND by the separately invoked provider.
+// A live Cell tuple alone cannot revive a released/transferred work-item claim.
+func checkCellClaim(s CellState, r CellAdmission) error {
+	matches := 0
+	for _, claim := range s.Claims {
+		if claim.ItemID == r.Intent.Event.ItemID {
+			matches++
+			if claim.Owner != s.Checkpoint.Ownership || claim.Owner != r.Permit.Ownership || claim.WorkID != r.Permit.WorkID || claim.AttemptID != r.Permit.AttemptID || claim.Generation == "" || claim.Generation != r.Permit.ClaimGeneration || claim.Generation != r.Intent.Event.Generation {
+				return errors.New("item claim owner/generation mismatched")
+			}
+		}
+	}
+	if matches != 1 {
+		return errors.New("item claim unavailable/ambiguous")
+	}
+	return nil
 }

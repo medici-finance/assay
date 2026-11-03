@@ -180,19 +180,31 @@ func cellRequest(t *testing.T, d *diskCell, c *cellControl, key string, amount u
 	if e != nil {
 		t.Fatal(e)
 	}
-	p := CellPermit{Ownership: s.Checkpoint.Ownership, WorkID: "work", AttemptID: "attempt-" + key, RequestID: "request-" + key, Key: key}
-	return c.issue(CellAdmission{Permit: p, Intent: Intent{Event: Event{Kind: "EFFECT-INTENT", RunID: p.WorkID, AttemptID: p.AttemptID, Key: key, Generation: p.Ownership.Generation, ItemID: "item", Time: time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)}}, Reservations: []BudgetReservation{{ID: "reservation-" + key, WorkID: p.WorkID, AttemptID: p.AttemptID, RequestID: p.RequestID, BalanceRef: "ref:input", Amount: amount}}, ControlBoundary: "request"})
+	p := CellPermit{Ownership: s.Checkpoint.Ownership, WorkID: "work", AttemptID: "attempt-" + key, RequestID: "request-" + key, Key: key, ClaimGeneration: "claim-" + key}
+	cellEdit(t, d, func(s *CellState) {
+		s.Claims = append(s.Claims, CellClaim{ItemID: "item-" + key, WorkID: p.WorkID, AttemptID: p.AttemptID, Generation: p.ClaimGeneration, Owner: p.Ownership})
+	})
+	return c.issue(CellAdmission{Permit: p, Intent: Intent{Event: Event{Kind: "EFFECT-INTENT", RunID: p.WorkID, AttemptID: p.AttemptID, Key: key, Generation: p.ClaimGeneration, ItemID: "item-" + key, Time: time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)}}, Reservations: []BudgetReservation{{ID: "reservation-" + key, WorkID: p.WorkID, AttemptID: p.AttemptID, RequestID: p.RequestID, BalanceRef: "ref:input", Amount: amount}}, ControlBoundary: "request"})
 }
 func cellEdit(t *testing.T, d *diskCell, f func(*CellState)) {
 	t.Helper()
-	s, e := d.ReadCell(context.Background(), "cell")
-	if e != nil {
-		t.Fatal(e)
+	for tries := 0; tries < 100; tries++ {
+		s, e := d.ReadCell(context.Background(), "cell")
+		if e != nil {
+			t.Fatal(e)
+		}
+		e = d.Transaction(context.Background(), "cell", s.Version, func(s *CellState) error { f(s); return nil })
+		if errors.Is(e, ErrCellConflict) {
+			continue
+		}
+		if e != nil {
+			t.Fatal(e)
+		}
+		return
 	}
-	if e = d.Transaction(context.Background(), "cell", s.Version, func(s *CellState) error { f(s); return nil }); e != nil {
-		t.Fatal(e)
-	}
+	t.Fatal("fixture edit exhausted version conflicts")
 }
+
 func cellRead(t *testing.T, d *diskCell) CellState {
 	t.Helper()
 	s, e := d.ReadCell(context.Background(), "cell")
@@ -310,7 +322,7 @@ func TestCellOwnership(t *testing.T) {
 		r := cellRequest(t, d, c, "flow", 1)
 		p := cellProvider(a)
 		j := CellJournal{Authority: a, CellID: "cell", Request: func(i Intent) (CellAdmission, error) { r.Intent = i; r = c.issue(r); return r, nil }}
-		q := NewMemoryQueue("cell", []Item{{ID: "item", RunID: "work", AttemptID: r.Permit.AttemptID}})
+		q := NewMemoryQueue("cell", []Item{{ID: r.Intent.Event.ItemID, RunID: "work", AttemptID: r.Permit.AttemptID}})
 		cl := mustFileClaim(t, t.TempDir())
 		e := Run(Config{Loop: q, Claimer: cl, PoolSize: 1, StopWhenIdle: true, Journal: j, RequireHandoff: true, Effects: func(Item) ([]Effect, error) { return []Effect{cellEffect{p: p, permit: &r.Permit}}, nil }})
 		if e != nil {
@@ -326,7 +338,7 @@ func TestCellOwnership(t *testing.T) {
 	})
 }
 func TestCellEffectRestoredRecords(t *testing.T) {
-	for _, name := range []string{"changed-intent", "missing-reservation", "unknown-brake"} {
+	for _, name := range []string{"changed-intent", "missing-reservation", "unknown-brake", "stale-claim", "released-claim"} {
 		t.Run(name, func(t *testing.T) {
 			d, c, a := cellFixture(t)
 			r := cellRequest(t, d, c, name, 1)
@@ -341,6 +353,10 @@ func TestCellEffectRestoredRecords(t *testing.T) {
 					s.Checkpoint.Budget.Reservations = nil
 				case "unknown-brake":
 					s.Checkpoint.Budget.Balances[0].Consumed = nil
+				case "stale-claim":
+					s.Claims[0].Generation = "new-item-generation"
+				case "released-claim":
+					s.Claims = nil
 				}
 			})
 			p := cellProvider(a)
@@ -348,6 +364,26 @@ func TestCellEffectRestoredRecords(t *testing.T) {
 				t.Fatal("restored invalid records authorized effect")
 			}
 		})
+	}
+}
+
+func TestCellItemClaimGeneration(t *testing.T) {
+	d, c, a := cellFixture(t)
+	first := cellRequest(t, d, c, "first", 1)
+	second := cellRequest(t, d, c, "second", 1)
+	j := CellJournal{Authority: a, CellID: "cell"}
+	for _, r := range []CellAdmission{first, second} {
+		generation, e := j.Generation(context.Background(), r.Intent.Event.ItemID)
+		if e != nil || generation != r.Permit.ClaimGeneration || generation == r.Permit.Ownership.Generation {
+			t.Fatal("item claim generation conflated with another item/Cell", generation, e)
+		}
+	}
+	if _, e := j.Generation(context.Background(), "absent"); e == nil {
+		t.Fatal("missing item claim became Cell ownership")
+	}
+	cellEdit(t, d, func(s *CellState) { s.Claims = append(s.Claims, s.Claims[0]) })
+	if e := a.Commit(context.Background(), first); e == nil {
+		t.Fatal("ambiguous claim admitted")
 	}
 }
 

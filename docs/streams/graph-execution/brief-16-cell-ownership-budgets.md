@@ -345,7 +345,10 @@ concrete launch/provider integration. Real control-volume custody, provider fenc
 and credential cutover remain could-not-check until those profiles are qualified.
 No runtime consumer, activation, signing material or deployment is supplied.
 
-The original eleven Verify Class/Command/Expect rows are unchanged. Their
+The group ownership and per-item claim generations are distinct. The existing
+claim authority retains exact work/attempt/owner bindings in `CellState.Claims`;
+admission and the separately invoked effect boundary reject stale or released item
+claims. The original eleven Verify Class/Command/Expect rows are unchanged. Their
 implementation tests are not independent acceptance Evidence or an activation ruling.
 
 ## Evidence

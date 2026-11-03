@@ -1,7 +1,8 @@
 # Cell checkpoint v1
 
-Status: passive schema/test preparation for graph-execution/16, not an active
-reservation store or policy engine. The six-method Loop interface is unchanged.
+Status: the checkpoint remains a passive wire record. The store-neutral admission
+seam below implements reservation/policy semantics without activating a runtime
+store. The six-method Loop interface is unchanged.
 
 `drainloop.CellCheckpoint` serializes `schema=cell-checkpoint/v1`, ownership,
 activation, budget, cancellation intent, durable stop, override references and
@@ -104,3 +105,11 @@ preservation, direct fake-provider refusal, unknown handback and real processes
 sharing intents through the test-only filesystem adapter. This is not PostgreSQL,
 live provider, key custody, credential cutover or activation qualification. The
 preparation account above remains historical; independent acceptance is still owed.
+
+
+The Cell/group ownership generation and each work-item claim generation remain
+distinct. `CellState.Claims` is the existing claim authority's current per-item
+record, not a second lease: `CellJournal.Generation(item)` reads that claim, and
+both admission and the independent effect check require its exact original work,
+attempt, Cell owner and claim generation. A current Cell tuple cannot revive a
+released or transferred item claim; reevaluation identity remains separate.

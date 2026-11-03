@@ -158,7 +158,16 @@ mutations += [
  ("cell-capability-unbound", "ownership.go", 'p.AdmissionDigest == "" || p.AdmissionDigest != CellAdmissionDigest(r)', "false", "TestCellOwnership"),
  ("cell-authentication-ignored", "ownership.go", "return a.Capabilities.CheckCellCapability(ctx, p)", "return nil", "TestCellOwnership"),
  ("cell-no-intent-authorized", "ownership.go", 'return errors.New("effect has no admitted intent")', "return nil", "TestCellOwnership"),
- ("cell-stale-writer-authorized", "incarnation.go", "if presented != owned {", "if false {", "TestCellOwnershipStaleWriterDenied"),
+ ("cell-claim-group-conflated", "ownership.go", "return generation, nil", "return s.Checkpoint.Ownership.Generation, nil", "TestCellOwnership"),
+ ("cell-claim-other-item", "ownership.go", "claim.ItemID == item && claim.Owner == s.Checkpoint.Ownership", "claim.Owner == s.Checkpoint.Ownership", "TestCellItemClaimGeneration"),
+ ("cell-stale-group-class", "ownership.go", [
+  ("if err = MatchCellFence(current, s.Checkpoint.Activation, s.Checkpoint.Ownership, p.Ownership); err != nil {", "if err = MatchCellFence(current, s.Checkpoint.Activation, s.Checkpoint.Ownership, p.Ownership); false {"),
+  ("claim.Owner != s.Checkpoint.Ownership ||", "false ||")
+ ], None, "TestCellOwnershipStaleWriterDenied"),
+ ("cell-stale-claim-class", "ownership.go", [
+  ("claim.Generation != r.Permit.ClaimGeneration || claim.Generation != r.Intent.Event.Generation", "false")
+ ], None, "TestCellEffectRestoredRecords"),
+ ("cell-released-claim-authorized", "ownership.go", "if matches != 1 {", "if false {", "TestCellEffectRestoredRecords"),
  ("cell-outstanding-not-charged", "budget.go", "if old.BalanceRef == q.BalanceRef {", "if false {", "TestCellBudgetConcurrentReservations"),
  ("cell-unknown-handback-released", "ownership.go", "len(s.Pending) != 0 || len(s.Checkpoint.PendingEffects) != 0", "false", "TestOwnershipBackendHandbackUnknown"),
  ("cell-incarnation-ignored", "ownership.go", "if err = MatchCellFence(current, s.Checkpoint.Activation, s.Checkpoint.Ownership, p.Ownership); err != nil {", "if err = MatchCellFence(current, s.Checkpoint.Activation, s.Checkpoint.Ownership, p.Ownership); false {", "TestIncarnationStaleRefused"),
@@ -186,9 +195,13 @@ for name, filename, old, new, test in mutations:
     path = root / filename
     original = path.read_bytes()
     source = original.decode()
-    if source.count(old) != 1: raise SystemExit(name + ": mutation site is not unique")
+    edits = old if isinstance(old, list) else [(old, new)]
+    mutated = source
+    for before, after in edits:
+        if mutated.count(before) != 1: raise SystemExit(name + ": mutation site is not unique")
+        mutated = mutated.replace(before, after)
     try:
-        path.write_text(source.replace(old, new))
+        path.write_text(mutated)
         result = subprocess.run(
             ["go", "test", "-timeout", "30s", "-count=1", "-v", "-run", "^" + test + "$", "."],
             cwd=root, env={**os.environ, "GOWORK": "off"}, capture_output=True, text=True, timeout=45)
