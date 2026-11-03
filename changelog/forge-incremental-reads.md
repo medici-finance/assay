@@ -1,2 +1,0 @@
-- Add admitted, bounded incremental issue and change readers for both GitHub and GitLab, with explicit incomplete results and a typed mirror-ingestion source.
-- Bound aggregate incremental JSON payload to 8 MiB, clear incomplete-read watermarks, and pin GitHub pull-request filtering capability and early-stop behavior.
