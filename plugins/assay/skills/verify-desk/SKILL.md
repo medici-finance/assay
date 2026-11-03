@@ -417,7 +417,7 @@ delivered the brief, as `{repo, number, merge_sha}`; or an explicit `prs: []` wi
 `strong`, equal to your admitted tier; never a model name), `started` and `finished` (RFC3339 UTC,
 `started <= finished <= ts`), plus the existing `rows_passed` / `rows_total`.
 When rows is non-empty, row_results is required for ALL original Verify IDs and their observed results.
-This includes non-contiguous numeric and suffixed inventories. Each exact result is
+This includes non-contiguous numeric, suffixed and label inventories. Each exact result is
 `{row, result}` (`pass` / `fail` / `could-not-run` / `deferred`); when `rows` is empty
 or omitted, `row_results` remains optional.
 `rows` names only exact identities still held by the receipt, never every covered row;
