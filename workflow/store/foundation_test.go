@@ -411,6 +411,9 @@ func TestPGFoundationFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := f.Config.Database
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	requireError(t, f.Reset(canceled))
 	// An owned name without its exact marker may not be dropped/reset.
 	var marker string
 	if err := f.Admin.QueryRow("SELECT shobj_description(oid,'pg_database') FROM pg_database WHERE datname=$1", original).Scan(&marker); err != nil {

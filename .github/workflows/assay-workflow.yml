@@ -34,20 +34,25 @@ jobs:
         options: --health-cmd "pg_isready -U fixture_admin -d postgres" --health-interval 1s --health-timeout 2s --health-retries 30
     env:
       GOWORK: "off"
-      ASSAY_TEST_POSTGRES_DSN: postgresql://fixture_admin:fixture_only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/postgres?sslmode=disable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install Go
         env:
           GO_VERSION: "1.27.3"
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
           curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
           mkdir -p "${HOME}/go-toolchain"
           tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
       - name: Qualify workflow against disposable PostgreSQL
+        env:
+          ASSAY_TEST_POSTGRES_DSN: postgresql://fixture_admin:fixture_only@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres?sslmode=disable
         run: |
           set -euo pipefail
           cd workflow
