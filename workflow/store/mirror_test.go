@@ -330,6 +330,19 @@ func TestPGMirrorRestartRebuild(t *testing.T) {
 	rawRefused(t, r.raw, key, "INSERT INTO public.mirror_scopes(scope_key,provider,host,repository,kind,admission,version,state,last_attempted,last_complete) VALUES($1,'github',$2,$3,'issue',$4,1,'complete',1,1)", []byte(u.Scope.Repository.Host), []byte(u.Scope.Repository.Path), []byte(a.Name))
 }
 
+type repositoryAdmission struct {
+	id         string
+	repository mirror.RepositoryID
+}
+
+func (a repositoryAdmission) ID() string { return a.id }
+func (a repositoryAdmission) Authorize(_ context.Context, repository mirror.RepositoryID) error {
+	if repository != a.repository {
+		return mirror.ErrPermission
+	}
+	return nil
+}
+
 type liveAdmission struct {
 	id      string
 	allowed atomic.Bool
@@ -368,7 +381,9 @@ func TestPGMirrorScopeIsolation(t *testing.T) {
 	r := sqlMirror(t)
 	a, u := mirrorInput()
 	before := applyMirror(t, r.s, a, u)
-	for _, bad := range []mirror.Admission{nil, &mirrortest.TestAdmission{Name: "other", Allowed: true}, &mirrortest.TestAdmission{Name: a.Name, Allowed: false}} {
+	foreign := u.Scope.Repository
+	foreign.Path = "foreign/project"
+	for _, bad := range []mirror.Admission{repositoryAdmission{id: a.Name, repository: foreign}, nil, &mirrortest.TestAdmission{Name: "other", Allowed: true}, &mirrortest.TestAdmission{Name: a.Name, Allowed: false}} {
 		snap, err := r.s.Read(context.Background(), bad, u.Scope)
 		if !errors.Is(err, mirror.ErrPermission) || !reflect.DeepEqual(snap, mirror.Snapshot{}) {
 			t.Fatal("unauthorized read disclosed rows")
@@ -517,6 +532,8 @@ func TestPGMirrorPresenceHistory(t *testing.T) {
 	if _, err = r.s.Apply(context.Background(), a, invalid); !errors.Is(err, mirror.ErrInvalid) {
 		t.Fatal("unqualified retention history accepted")
 	}
+	key, _ := scopeIndex(u.Scope, 1<<20)
+	rawRefused(t, r.raw, key, "UPDATE public.mirror_scopes SET version=version+1,retained_from=1 WHERE scope_key=$1")
 	bounded, _ := r.db.Mirror(MirrorLimits{1, 1 << 20})
 	if _, err = bounded.Read(context.Background(), a, u.Scope); !errors.Is(err, mirror.ErrInvalid) {
 		t.Fatal("record budget ignored")

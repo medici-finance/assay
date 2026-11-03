@@ -123,3 +123,19 @@ first/update races, independent client restart and canonical owned-table rebuild
 revocation, exact field presence/history, and schema/CI boundaries. Table rebuild is solely
 a synthetic fixture control; no production reset or automatic reconstruction API is exposed.
 The canonical ledger is neither deleted nor rewound during that control.
+
+Run the mirror controls separately with the same explicit fixture:
+
+```sh
+python3 store/testdata/mirror_mutations.py
+```
+
+The sixteen faults cover current authorization, post-I/O and precommit revocation,
+admission partitioning, SQL CAS, complete/inventory/observed/monotonic guards, hold recovery
+including NULL proof, new-row absence, rebuild completeness, codec framing and derived
+history. The split-transaction fault is one composite execution error: it commits the
+header early and disables the matching same-transaction row guard so the injected second-row
+failure exposes the prematurely committed version/coverage. It does not claim independent
+qualification of two guards. The complete-proof fault similarly removes both SQL clauses
+that implement that one proof. Every control restores exact production bytes and rejects
+build/setup failures as invalid evidence. These are implementer controls, not acceptance.
