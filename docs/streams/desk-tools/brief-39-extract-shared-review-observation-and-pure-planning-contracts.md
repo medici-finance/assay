@@ -169,3 +169,29 @@ is preserved and checked by the existing regression suite. The original fixed-he
 for those adapters describe the inherited extraction, not new edits in this follow-up.
 No status cell, historical Evidence or human gate is changed. Existing lifecycle reconciliation
 holds for the earlier delivery are disclosed rather than bypassed or repaired by a new stamp.
+
+## Delivery reconciliation — 2026-11-03
+
+Source inspection on main `3342a32ab90440ce7f2f6bf8957b83de626d70dd` confirms both
+implementation layers are present: original observation/classification extraction
+#3593 and candidate-plus-priority/capacity amendment #4235, merged as
+`f9cba0a88d39085831c86717aab04736c562a774`. The latter includes selection implementation
+`646808813` and qualified tie-breaking regression `e6dde9128`.
+
+| Original obligation | Delivered source to assess independently |
+|---|---|
+| Task 1: typed observation and full population | `spec/review-observation-v1.md`, `schemas/review-observation-v1.json`, `tools/desk/internal/reviewflow/observation.go`: `BuildObservation` |
+| Tasks 2–3: extraction, pure plan assembly and legal boundary | `tools/desk/internal/reviewflow/observation.go`: `PlanObservation`; `tools/desk/internal/reviewflow/selection.go`: `PlanCandidates`; existing deskboard/reviewloop adapters; collection stays outside this owner |
+| Task 4: compatibility, authority and intended behavior | `tools/desk/internal/reviewtest/observation_contract_test.go`, `tools/desk/internal/reviewtest/observation_boundary_test.go`, `tools/desk/internal/reviewtest/selection_test.go`: named contract, boundary and priority-join tests |
+| Task 5 and candidate amendment | existing source contracts, command adapters and selection amendment; consumer routing and implementation acceptance still require the original checks and review |
+
+No second extraction or classifier is needed. The remaining lifecycle hold is the
+record-specific human design ruling on #4521. Proposed `DR-desk-tools-39` supplies
+the reviewable record; it does not select option A on the human's behalf. After a
+valid ruling exists, bind it and `design:` and use the native reconciler with the
+actual merged witness. Do not substitute consumer routing for delivery qualification.
+
+The canonical row stays `todo`; all four original Verify rows, Evidence and the
+existing human gate are unchanged. Named tests were inspected as source, not run as
+independent verification. Runtime collection/adoption remains with the declared
+follow-on briefs, and final human acceptance stays separate.
