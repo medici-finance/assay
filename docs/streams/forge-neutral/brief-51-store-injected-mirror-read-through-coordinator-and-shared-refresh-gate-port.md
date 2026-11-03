@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5399
 issues: []
 schema: brief-v2
-version: 9
+version: 10
 outcome: none
 design: DR-forge-library
 authored: 2026-11-03 by statusgen newbrief
@@ -130,6 +130,17 @@ This decision gates acceptance and activation. Offline implementation and synthe
 8. Preserve root/offline and mirror boundaries, current operation inventory and no-dependency module manifest. Update README and the existing semantic-owner register; do not add a competing meaning/register. Record own source attempts, coalesced waits, bytes and cache outcomes only through an injected bounded observation seam compatible with perf-v3; unknown instrumentation is unknown, never measured zero or a copied waiter total.
 
 ## Interface contract and substitution limits
+
+The shared-gate composition admits only `Limits.Refresh.FailureBackoff == 0`.
+Reject any nonzero value, including negative values, before store reads, gate acquisition,
+quota debit or source work; do not silently derive a different policy. The canonical R2 gate
+is the sole shared retry-eligibility authority here, including provider-qualified retry floors
+when joined later. Its trusted configuration/profile validation must enforce the same zero
+kernel-backoff policy. Old incompatible profiles remain held until explicitly replaced.
+The standalone mirror planner retains its general nonzero advisory-backoff support unchanged.
+A kernel NotBefore non-attempt is never an unqualified source failure or permission to slide
+shared cooldown. Test positive zero and explicit 10-second, 3-minute and negative refusals
+with zero I/O, alongside existing actual cooldown-expiry and review-only partial controls.
 
 Inputs are a currently admitted scope and query, trusted caller/policy/epoch facts, explicit time, source/store and a shared gate. Outputs preserve `mirror.Result` plus explicit fulfilment/held/unavailable, typed reason and retry eligibility; they grant no authority. Gate references and owner generations are opaque, scoped and never credentials. A gate refusal is not a successful empty query.
 

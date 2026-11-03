@@ -219,11 +219,7 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 		finish()
 		return
 	}
-	if q.Now.Before(plan.NotBefore) {
-		complete.Failure = mirror.Unknown
-		finish()
-		return
-	}
+	// Admitted composition has zero kernel backoff; Gate owns retry eligibility.
 	// Attach the trusted gate grant only after the final snapshot re-plan.
 	// Binding consistency is independent of native authority's actual debit.
 	plan.AttemptGrant = t.AttemptGrant

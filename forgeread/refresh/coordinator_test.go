@@ -1286,6 +1286,7 @@ func checkAuthorityFreshness(t *testing.T) {
 // regression: #5399
 func TestRefreshFailureBackoff(t *testing.T) {
 	t.Run("mixed-demand", checkMixedDemandBackoff)
+	t.Run("single-retry-authority", checkSingleRetryAuthority)
 	t.Run("requirement-isolation", checkRequirementIsolation)
 	t.Run("strong-owner-base-waiter", checkStrongOwnerBaseWaiter)
 	checkPermissionRecovery(t)
@@ -2230,5 +2231,35 @@ func checkStrongRefreshProgress(t *testing.T) {
 		if n != 0 {
 			t.Fatal("waiter accounting leaked")
 		}
+	}
+}
+
+func checkSingleRetryAuthority(t *testing.T) {
+	for _, backoff := range []time.Duration{0, 10 * time.Second, 3 * time.Minute, -time.Second} {
+		t.Run(backoff.String(), func(t *testing.T) {
+			f := setup(t)
+			f.caller.Limits.Refresh.FailureBackoff = backoff
+			f.auth.set(f.caller)
+			store := &interceptReadStore{Store: f.store}
+			c, err := New(context.Background(), store, f.source, f.gate, f.clock, "issue-inventory", f.auth)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := c.Read(context.Background(), f.a, f.q, f.caller)
+			if backoff == 0 {
+				if err != nil || !r.Fulfilled || f.source.calls.Load() != 1 {
+					t.Fatalf("admitted zero policy lost real fill: fulfilled=%v calls=%d err=%v", r.Fulfilled, f.source.calls.Load(), err)
+				}
+				return
+			}
+			if !errors.Is(err, ErrPolicy) || r.Fulfilled || len(r.Snapshot.Records) != 0 || store.reads.Load() != 0 || f.source.calls.Load() != 0 {
+				t.Fatalf("incompatible policy reached I/O: err=%v fulfilled=%v rows=%d reads=%d calls=%d", err, r.Fulfilled, len(r.Snapshot.Records), store.reads.Load(), f.source.calls.Load())
+			}
+			f.gate.mu.Lock()
+			defer f.gate.mu.Unlock()
+			if f.gate.serial != 0 || len(f.gate.entries) != 0 || len(f.gate.waiters) != 0 || len(f.gate.failures) != 0 || len(f.gate.windows) != 0 {
+				t.Fatal("incompatible policy acquired/debited/shared-failed")
+			}
+		})
 	}
 }
