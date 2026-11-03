@@ -1,4 +1,0 @@
-### Added
-- The shared secret scan behind every desk write verb and the outbound write check refuses a URL whose userinfo carries a password (`scheme://user:<password>@host`, or `scheme://:<password>@host` with no username) under the new `url-userinfo` rule (`secret.url-userinfo` on the outbound check). Placeholders such as `<token>`, `${VAR}`, `$VAR` and `***`, username-only forms like `git@host` or `x-access-token@host`, and matches that leave the URL authority stay allowed.
-- `Scrub` (the diagnostic redactor) now also redacts the password of a userinfo with no username (`scheme://:<password>@host`).
-- Test fixtures that build a URL with a password in its userinfo now assemble it by concatenation (or a shell variable). The two rows left as literals carry a password with a forge credential prefix, which the existing credential arm already refuses on any diff that touches them.
