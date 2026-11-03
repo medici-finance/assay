@@ -105,6 +105,7 @@ func TestMirrorKernelAdmission(t *testing.T) {
 
 // regression: forge-neutral/46
 func TestMirrorKernelCoverage(t *testing.T) {
+	checkPermissionHold(t)
 	store, scope, a, s := seed(t, true)
 	ctx := context.Background()
 	q := mirror.Query{Scope: scope, Now: instant, MaxAge: time.Hour}
@@ -329,7 +330,10 @@ func TestMirrorKernelFlow(t *testing.T) {
 }
 
 // regression: sec-permission-loss-not-sticky
-func TestMirrorPermissionHold(t *testing.T) {
+func TestMirrorPermissionHold(t *testing.T) { checkPermissionHold(t) }
+
+func checkPermissionHold(t *testing.T) {
+	t.Helper()
 	for _, failure := range []mirror.Reason{mirror.Transport, mirror.RateLimited, mirror.Unknown, mirror.Truncated, ""} {
 		name := string(failure)
 		if name == "" {
