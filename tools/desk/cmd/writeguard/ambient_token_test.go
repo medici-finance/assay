@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -215,7 +216,6 @@ func TestHookMentionsRefused(t *testing.T) {
 		`gh auth status --hostname "$H"`,
 		"echo 'gh auth token' | cat",
 		"cat <<'X' | grep auth\ngh auth token\nX",
-		"git status && gh pr view 1",
 		"mkdir -p auth",
 	} {
 		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
@@ -697,5 +697,134 @@ func TestHookWordBreak(t *testing.T) {
 			v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
 			requireAmbientRefusal(t, v, err, cmd)
 		})
+	}
+}
+
+// regression: #5046
+func TestHookStatusWordsReadLikeTheShell(t *testing.T) {
+	// Through run(): every word over quote bytes and a flag's or a value's bytes. A
+	// real shell reads the word, and that reading alone decides the verdict.
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skipf("could not check: sh is not on PATH: %v", err)
+	}
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "worker-desk", "fixture-session")
+	for _, row := range []struct{ word, line string }{
+		{"-n", "gh pr list --json status | grep -v %s 5"},
+		{"-n", "gh pr list --json status | head %s 5"},
+		{"-l", "gh pr list --json status | wc %s"},
+		{".a", "gh pr view 1 --json status --jq %s"},
+	} {
+		allowed, refused := 0, 0
+		for _, w := range hookQuoteMixes(row.word) {
+			out, err := exec.Command(sh, "-c", "printf %s "+w).Output()
+			if err != nil {
+				continue // an open quote: the shell parses no command
+			}
+			cmd := fmt.Sprintf(row.line, w)
+			if string(out) == row.word {
+				allowed++
+				ambientAllowed(t, wt, cmd)
+				continue
+			}
+			refused++
+			v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+			requireAmbientRefusal(t, v, err, cmd)
+		}
+		if allowed == 0 || refused == 0 {
+			t.Errorf("%q: %d allowed, %d refused, so this row proves nothing", row.line, allowed, refused)
+		}
+	}
+}
+
+// hookQuoteMixes: the word's bytes in order, with up to three quote bytes placed
+// around and between them.
+func hookQuoteMixes(word string) []string {
+	mixes := []string{word}
+	seen := map[string]bool{word: true}
+	for from, n := 0, 0; n < 3; n++ {
+		end := len(mixes)
+		for _, m := range mixes[from:end] {
+			for i := 0; i <= len(m); i++ {
+				for _, q := range []string{`'`, `"`} {
+					if w := m[:i] + q + m[i:]; !seen[w] {
+						seen[w] = true
+						mixes = append(mixes, w)
+					}
+				}
+			}
+		}
+		from = end
+	}
+	return mixes
+}
+
+// regression: #5046
+func TestHookStatusReads(t *testing.T) {
+	// Through run(): a listed read naming status is allowed; a computed word, a
+	// gh alias, another program and every literal gh auth form are refused.
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "worker-desk", "fixture-session")
+	for _, cmd := range []string{
+		"git status --short && gh pr view 1 --json state",
+		"gh run view 1 --json status,conclusion",
+		"gh pr checks 1 | grep status",
+		`gh issue list -R x/y --search "status"`,
+		"gh pr view 1 --json statusCheckRollup",
+		"gh api repos/x/y/commits/abc/status",
+		"git status -sb",
+		"gh pr view 1 --json status --jq .status",
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") git status --short && gh pr view 1 --json state`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr checks 1 | grep status`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh issue list -R x/y --search "status"`,
+		`T=$(desktoken --no-rotate worker --repo x/y 2>/dev/null); GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
+		"gh pr list --json status | grep '^a'",
+	} {
+		ambientAllowed(t, wt, cmd)
+	}
+	for _, cmd := range []string{
+		`gh "$s" status -t`,
+		"gh pr view 1 --json status --jq x.y",
+		"gh pr view 1 --json status -qx.y",
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status --jq x.y`,
+		`GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+		`GH_TOKEN=$(cat "$X") gh pr view 1 --json status`,
+		`GH_TOKEN=$(cat "$T") gh pr view 1 --json status; T=$(desktoken worker)`,
+		`git status || T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+		"git status # ; T=$(desktoken worker)\nGH_TOKEN=$(cat \"$T\") gh pr view 1 --json status",
+		"gh pr view 1 --json status --template x",
+		"gh pr list --json status | grep ^a",
+		"gh pr list --json status | grep 'a''b'",
+		"gh pr list --json status | grep 'a;b'",
+		`git status "a;b"; gh pr view 1`,
+		`git status "'"; x; "'"; gh pr view 1`,
+		"gh pr list --json status | grep x\ty",
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T")gh pr view 1 --json status`,
+		`GH_TOKEN=$(cat "$(desktoken worker --repo o/n)") gh pr view 1 --json status`,
+		`GH_TOKEN="$(cat "$(desktoken worker --repo o/n)")" gh pr view 1 --json status`,
+		`tokfile="$(desktoken "$role" --repo "$repo")"; GH_TOKEN="$(cat "$tokfile")" gh issue list -R "$repo" --limit 1 --json status`,
+		"if ! tokfile=\"$(desktoken \"$role\" --repo \"$repo\")\"; then\n  false\nelse\n  GH_TOKEN=\"$(cat \"$tokfile\")\" gh issue list -R \"$repo\" --limit 1 --json status\nfi",
+		"PATH=$(desktoken worker); gh pr view 1 --json status",
+		`git status; gh pr list | grep "x -A" 123`,
+		`gh "$s" status --show-token`,
+		`gh "$s" status -at`,
+		`f=--show-token; gh "$s" status "$f"`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh "$s" status -t`,
+		`gh "$s" status "$f"`,
+		`gh "$s" status -aat`,
+		`gh au status "$f"`,
+		`gh au status -aat`,
+		"git status && gh issue mine",
+		"gh pr view 1 --json status; ./x.sh",
+		"gh auth status",
+		"gh auth status -t",
+		"git status && gh auth token",
+	} {
+		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+		requireAmbientRefusal(t, v, err, cmd)
 	}
 }

@@ -60,6 +60,54 @@ Before support, use the new forms in scoping proposals and retain supported lega
 for executable briefs. Do not invent generator flags or write new IDs under brief-v2.
 No automatic filename changes, bulk migration, UUID reminting or Evidence rewrite.
 
+## Outcomes delivered with simulated dependencies
+
+Use this section when an outcome relies on a stub, mock, fake, simulator, recorded
+response, manual stand-in or temporarily absent service. A small standalone change
+without such a boundary needs no extra profile or document.
+
+Identify what is real, substituted or absent at every material consumer/provider
+boundary. State the interface/contract version, behaviour and failure cases represented,
+limitations, selected environment and the evidence each substitute can and cannot supply.
+A stub returns canned answers; a mock can check interactions; a stateful fake implements
+selected behaviour. None establishes fidelity merely by its label or by passing its own
+fixture tests. A delivery profile describes this supported composition; it is distinct
+from a model/harness execution profile and confers no execution or acceptance authority.
+
+A simulated outcome can be useful and independently accepted when simulation is part
+of its explicit promise. A criterion requiring a real component must exercise that
+component. Never replace the component whose integration is the outcome under test with
+a test double and retain the same claim. Check actual APIs, module/version compatibility
+and owner delivery before choosing the critical-path head. Missing real orchestration
+remains a prerequisite, not an invitation to build a demo-only controller.
+
+Use the spec's existing supported-scope, acceptance, coverage and change sections to
+record repeatable setup/reset/teardown, scenario and artifact/configuration identity,
+resource/credential isolation, and who verifies the integrated journey. Require relevant
+failure cases and observable evidence through the actual consumer seam; a frontend
+fixture or mocked request cannot stand in for that path. Missing scope metadata and
+unavailable observations stay unqualified, not implicitly real or passed.
+
+For replacement by a real service, name its owner, consumer-contract checks and the
+fresh integrated evidence required. Shared cases against fake and real providers help
+detect drift, but prove only their declared behaviour; they do not establish model
+quality, deployment or untested durability. Keep prior simulated acceptance bound to its
+original subject. A changed promise follows the existing milestone version rule; a new
+artifact/environment subject needs its own applicable evidence even when the promise
+version is unchanged. No automatic promotion from simulated to real acceptance.
+
+Carry these obligations into brief Task/Verify and consumer routing, with profile
+lifecycle and joined qualification work assigned explicitly. Reuse current launch,
+test/conformance and acceptance owners; do not create a mock platform, profile schema,
+parallel approval store or extra service unless the product needs one. If runtime
+profile/milestone readers are unavailable, use authored prose and ordinary supported
+briefs; this procedure introduces no required schema keys, new gate or operational opt-in.
+
+For example, a real operator client → real supervisor → fake runner can establish a
+scripted launch/observe/cancel journey. It cannot establish real model execution or
+cluster deployment. Replacing that runner preserves the old fake evidence and requires
+new provider-contract and end-to-end evidence for the real subject.
+
 ## Author-spec: establish the promises
 
 1. Identify independently useful outcomes and owning streams from the requested scope.

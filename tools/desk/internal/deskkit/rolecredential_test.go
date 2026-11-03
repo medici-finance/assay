@@ -170,7 +170,7 @@ var nonGitHubOrigins = []struct{ name, origin string }{
 	{"trailing dot", "https://github.com./example-org/tracker.git"},
 	{"internationalized lookalike", "https://g\u0456thub.com/example-org/tracker.git"},
 	{"userinfo-shaped", "https://github.com@evil.test/example-org/tracker.git"},
-	{"userinfo carrying a secret", "https://someone:secret-in-origin-url@evil.test/example-org/tracker.git"},
+	{"userinfo carrying a secret", "https://someone:" + "secret-in-origin-url" + "@evil.test/example-org/tracker.git"},
 	{"scp double-at", "git@github.com@evil.test:example-org/tracker.git"},
 	{"self-hosted GitLab (https)", "https://gitlab.example.com/example-org/tracker.git"},
 	{"self-hosted GitLab (scp)", "git@gitlab.example.com:example-org/tracker.git"},

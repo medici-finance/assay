@@ -823,6 +823,49 @@ func runRemove(o removeOpts) (err error) {
 	// the only thing lost is untracked artifacts. removeWorktreeDir does the plain recursive
 	// remove + prune + positive-gone verification — the SAME primitive `prune` uses;
 	// there is no code path that overrides a failed guard.
+
+	// OWNER — judged BEFORE anything is deleted. git never prunes a locked registration, so
+	// deleting a locked tree stranded its registration (exit 6, branch still held) — and did
+	// so to a tree another live session had locked. A session's own end-of-PR remove of its
+	// own locked home is the normal case: the caller's OWN session's lock is retired just
+	// before the delete. Every other lock on the target is refused with the tree untouched — including one
+	// whose roster beacon looks old: a beacon is stamped only when its session mutates the
+	// roster, so a long-quiet beacon is no evidence the owner is gone, and this tree still
+	// holds content (untracked files the gates above do not count) with no open-handle probe
+	// behind it. A dead session's tree goes through `deskwt prune --reap-dead-sessions`, which
+	// holds on untracked files. Because the session id is self-asserted and inherited, the
+	// own-lock arm also refuses a tree whose `git status` lists anything. The lock check covers the
+	// TARGET's lock only: what git ignores (including a worktree nested under an ignored path,
+	// whose own lock, if it has one, is not judged) is deleted with the tree.
+	locked, lerr := guard.lockedWorktrees(dir)
+	if lerr != nil {
+		return lerr
+	}
+	lockReason, isLocked := locked[rt]
+	lockNote := ""
+	if isLocked {
+		ok, why := ownLockOwner(lockReason)
+		if !ok {
+			return deskkit.Refused("refused: " + rt + " is locked (" + lockReasonText(lockReason) + ") and " + why)
+		}
+		// The same read the recipe tells the session to run: git's own status, with untracked
+		// files forced on whatever status.showUntrackedFiles says and submodules compared in
+		// full. go-git's status is NOT used here: it ignores core.excludesFile and, in a linked
+		// worktree, info/exclude, so it refused a tree the recipe's command reports clean.
+		// The read is bound to the target: every inherited GIT_* variable (GIT_DIR,
+		// GIT_WORK_TREE, GIT_CONFIG_*) is dropped, which would otherwise point this destructive
+		// gate at another tree or another exclude file (deadsession.go states the rule). The
+		// fsmonitor hook is turned off so the gate runs no configured program.
+		dirty, derr := targetGitStatus(rt)
+		if derr != nil {
+			return deskkit.Unverifiable("cannot check "+rt+" for untracked files before retiring its lock", derr)
+		}
+		if rows := strings.Trim(dirty, "\r\n"); strings.TrimSpace(rows) != "" {
+			return deskkit.Refused("refused: " + rt + " holds untracked or uncommitted files that removing it would delete — commit or move them first:\n" + capRows(rows, 10))
+		}
+		lockNote = "; lock retired: " + why
+	}
+
 	// before_remove — runs before deletion. LOGGED failure class: a hook failure is reported
 	// but the deletion PROCEEDS (a cleanup hook that fails must never strand a worktree the
 	// caller asked to remove). The hook runs with cwd = the worktree about to be removed.
@@ -834,10 +877,21 @@ func runRemove(o removeOpts) (err error) {
 		fmt.Fprintln(os.Stderr, "deskwt: before_remove hook failed (deletion proceeds): "+herr.Error())
 	}
 
+	if isLocked {
+		if _, uerr := runGit(dir, "worktree", "unlock", rt); uerr != nil {
+			return deskkit.Unverifiable("could not unlock "+rt+" before removing it", uerr)
+		}
+	}
 	if rmErr := removeWorktreeDir(guard, dir, rt); rmErr != nil {
+		if isLocked {
+			if _, relErr := runGit(survivingGitDir(guard, dir, []string{rt}), "worktree", "lock", "--reason", lockReason, rt); relErr != nil {
+				return deskkit.Unverifiable("could not remove "+rt+" and could not restore its lock: "+rmErr.Error(), relErr)
+			}
+			fmt.Fprintln(os.Stderr, "deskwt: removal failed; the original lock on "+rt+" was restored")
+		}
 		return rmErr
 	}
-	ac.detail = "removed " + rt
+	ac.detail = "removed " + rt + lockNote
 	fmt.Println("removed " + path)
 	return nil
 }
@@ -967,4 +1021,49 @@ func lockForSession(guard *pathGuard, dir, rt, session string) error {
 		return deskkit.Unverifiable("git worktree lock reported success but "+rt+" is not locked", nil)
 	}
 	return nil
+}
+
+// ownLockOwner decides whether `remove` may retire a live tree's lock: only when the lock is the
+// caller's own session's. It never retires git's in-flight "initializing" lock, nor a lock naming
+// no session, and it does not read the roster: a beacon's age says when its session last wrote
+// the roster, not whether the session is alive, so no beacon state makes another session's lock
+// the caller's to retire. The way out for a dead session's tree is `deskwt prune
+// --reap-dead-sessions`.
+func ownLockOwner(reason string) (bool, string) {
+	if strings.TrimSpace(reason) == gitInitLockReason {
+		return false, `it is git's in-flight "initializing" add lock — never retired`
+	}
+	sess := sessionFromLockReason(reason)
+	if sess == "" {
+		return false, "it names no session, so no owner can be matched"
+	}
+	if caller := resolveSession(""); caller == sess {
+		return true, "the caller is the locking session " + sess
+	}
+	return false, "it belongs to session " + sess + ", not the caller — a roster beacon is not proof that session is gone (a clean, pushed tree of a dead session is reaped by `deskwt prune --reap-dead-sessions` once it has been idle past --min-idle, 1h by default; try --dry-run first, it sweeps every ownerless tree)"
+}
+
+// capRows keeps the first n lines of a multi-line report and says how many it left out, so a
+// refusal names the files without printing a whole build tree.
+func capRows(rows string, n int) string {
+	lines := strings.Split(rows, "\n")
+	if len(lines) <= n {
+		return rows
+	}
+	return strings.Join(lines[:n], "\n") + fmt.Sprintf("\n... and %d more (git status --porcelain)", len(lines)-n)
+}
+
+// targetGitStatus runs git's own `status --porcelain` in the target with the caller's GIT_*
+// variables dropped, and returns the output UNTRIMMED: the first row's leading status column
+// (" M vendor") is part of the row, and deskkit.Run would strip it.
+func targetGitStatus(rt string) (string, error) {
+	cmd := execCommand("git", "-c", "core.fsmonitor=false", "status", "--porcelain",
+		"--untracked-files=normal", "--ignore-submodules=none")
+	cmd.Dir = rt
+	cmd.Env = scrubbedGitEnv()
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }

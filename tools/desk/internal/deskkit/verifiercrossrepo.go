@@ -40,12 +40,32 @@ func verifierOrigin(root string) (string, error) {
 	return RemoteRepoSlug(raw)
 }
 
+// verifierVisibility refuses a binding whose tracking destination is MORE visible than the
+// deliverable repository it names: writing the binding there would publish it to readers
+// the source repository does not admit. Exposure is ranked private < internal < public, so
+// an internal tracker refuses a private source and a public tracker refuses an internal one.
+// An unstated (unknown) visibility on either side refuses: it cannot be ranked.
 func verifierVisibility(tracking, source string) error {
-	if RepoVisibility(tracking) == VisibilityUnknown || RepoVisibility(source) == VisibilityUnknown ||
-		(RepoVisibility(tracking) == VisibilityPublic && RepoVisibility(source) != VisibilityPublic) {
+	t, s := visibilityExposure(RepoVisibility(tracking)), visibilityExposure(RepoVisibility(source))
+	if t < 0 || s < 0 || t > s {
 		return Refused("verifier tracking destination cannot publish the deliverable repository binding")
 	}
 	return nil
+}
+
+// visibilityExposure ranks a configured visibility by how many readers it admits:
+// private 0, internal 1, public 2. Unknown is -1, which every caller must refuse.
+func visibilityExposure(v Visibility) int {
+	switch v {
+	case VisibilityPrivate:
+		return 0
+	case VisibilityInternal:
+		return 1
+	case VisibilityPublic:
+		return 2
+	default:
+		return -1
+	}
 }
 
 func verifierRepoIdentity(home, repo string) error {

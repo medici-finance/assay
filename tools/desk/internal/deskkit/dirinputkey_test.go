@@ -46,17 +46,25 @@ func dirKeyRecord(t *testing.T) ([]byte, WakeReceipt) {
 	return raw, r
 }
 
+// outcomeRecordRel is a path the per-outcome-record allowlist (#1804 A′) covers.
+const outcomeRecordRel = "docs/streams/verify-outcomes/demo/01-20261029T000000Z-0123456789ab.json"
+
 // gitleaksSweep runs the pinned scanner the way the pattern-sweep job does — `gitleaks dir .`
 // from a tree root carrying the repository's own .gitleaks.toml — over one record placed at
 // the per-outcome-record allowlist's path. It returns the generic-api-key findings.
 func gitleaksSweep(t *testing.T, bin string, record []byte) []string {
+	t.Helper()
+	return gitleaksSweepAt(t, bin, outcomeRecordRel, record)
+}
+
+// gitleaksSweepAt is gitleaksSweep with the record placed at rel instead.
+func gitleaksSweepAt(t *testing.T, bin, rel string, record []byte) []string {
 	t.Helper()
 	config, err := os.ReadFile(filepath.Join("..", "..", "..", "..", ".gitleaks.toml"))
 	if err != nil {
 		t.Fatalf("read the repository's .gitleaks.toml: %v", err)
 	}
 	root := t.TempDir()
-	rel := "docs/streams/verify-outcomes/demo/01-20261029T000000Z-0123456789ab.json"
 	for p, b := range map[string][]byte{".gitleaks.toml": config, rel: append(record, '\n')} {
 		full := filepath.Join(root, p)
 		if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
@@ -98,10 +106,13 @@ func gitleaksSweep(t *testing.T, bin string, record []byte) []string {
 }
 
 // The writer's record for a declared directory holding the reported trigger-word members
-// passes the repository's pattern sweep with its allowlist unchanged. The legacy shape of the
-// same record (one file: key per member) is swept too, as the control that proves the harness
-// fires: it must report exactly the three trigger-word members.
+// passes the repository's pattern sweep. The legacy shape of the same record (one file: key
+// per member, seven-letter `.fixture` extensions) passes too since #4992 widened the
+// receipt-digest allowlists' extension cap to eight letters, so a record written before #4865
+// can land. The control that proves the harness fires is the legacy shape with each member's
+// extension lengthened past the cap: it must report exactly the three trigger-word members.
 // regression: #4865
+// regression: #4992
 func TestDirKeysPassPatternSweep(t *testing.T) {
 	bin, err := exec.LookPath("gitleaks")
 	if err != nil {
@@ -125,13 +136,62 @@ func TestDirKeysPassPatternSweep(t *testing.T) {
 	}
 	fields["inputs"] = legacy
 	twin, _ := json.Marshal(fields)
+	if got := gitleaksSweep(t, bin, twin); len(got) != 0 {
+		t.Fatalf("the legacy per-file shape trips the pattern sweep:\n%s\n%s", strings.Join(got, "\n"), twin)
+	}
+
+	long := map[string]string{}
+	for k, v := range legacy {
+		if strings.HasSuffix(k, ".fixture") {
+			k += "xy" // nine letters: one past the allowlists' cap
+		}
+		long[k] = v
+	}
+	fields["inputs"] = long
+	twin, _ = json.Marshal(fields)
 	got := gitleaksSweep(t, bin, twin)
 	if len(got) != 3 {
-		t.Fatalf("control: the legacy per-file shape should trip exactly the three trigger-word members, got %d:\n%s", len(got), strings.Join(got, "\n"))
+		t.Fatalf("control: the legacy shape with nine-letter extensions should trip exactly the three trigger-word members, got %d:\n%s", len(got), strings.Join(got, "\n"))
 	}
-	for _, want := range []string{"credential-copy.fixture", "missing-secret-scan.fixture", "secret-mount.fixture"} {
+	for _, want := range []string{"credential-copy.fixturexy", "missing-secret-scan.fixturexy", "secret-mount.fixturexy"} {
 		if !strings.Contains(strings.Join(got, "\n"), want) {
 			t.Errorf("control: %s did not trip:\n%s", want, strings.Join(got, "\n"))
+		}
+	}
+}
+
+// Both receipt-digest allowlists (#1793's verify-outcomes.jsonl block and #1804 A′'s
+// per-outcome-record block) admit a file: key whose extension is one to eight lowercase
+// letters, and nothing wider: a nine-letter extension and an identifier-shaped key still
+// trip at either path.
+// regression: #4992
+func TestReceiptExtCapSweep(t *testing.T) {
+	bin, err := exec.LookPath("gitleaks")
+	if err != nil {
+		t.Skip("gitleaks is not on PATH; the leaksweep-pattern job runs the pinned scanner over the tree instead")
+	}
+	digest := func(s string) string { return Sha256Hex([]byte(s)) }
+	admitted := map[string]string{
+		"file:x/secret-a.go":       digest("a"),
+		"file:x/secret-b.yaml":     digest("b"),
+		"file:x/secret-c.fixture":  digest("c"),
+		"file:x/secret-d.abcdefgh": digest("d"),
+	}
+	refused := map[string]string{
+		"file:x/secret-e.abcdefghi": digest("e"),
+		"api_key":                   digest("f"),
+	}
+	for _, rel := range []string{"docs/streams/verify-outcomes.jsonl", outcomeRecordRel} {
+		raw, _ := json.Marshal(map[string]any{"inputs": admitted})
+		if got := gitleaksSweepAt(t, bin, rel, raw); len(got) != 0 {
+			t.Errorf("%s: an extension of one to eight letters tripped:\n%s", rel, strings.Join(got, "\n"))
+		}
+		raw, _ = json.Marshal(map[string]any{"inputs": refused})
+		got := strings.Join(gitleaksSweepAt(t, bin, rel, raw), "\n")
+		for _, want := range []string{"secret-e.abcdefghi", "api_key"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s: %s did not trip:\n%s", rel, want, got)
+			}
 		}
 	}
 }

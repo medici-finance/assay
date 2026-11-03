@@ -1062,6 +1062,104 @@ RISK-VALUE: NAMED, NOT DERIVED — R = 60 @ plugins/assay/references/tick-contra
 
 Status stays implemented.
 
+### Non-implementer verifier re-pass (container bracket) — 2026-10-30, admitted source c887e24dd952
+
+A fresh claude-opus-5-5 verifier (tier strong) ran this pass. It did not implement this brief. `deskdispatch --check-verifier` (v1.0.67) admitted it with exit 0, attestation medici-finance/assay#5053, before any row ran. The Verify table is unchanged since the 2026-10-29 re-pass at 2f1ede291fb4. In the range 2f1ede291fb4..c887e24dd952 none of these changed: tick-contract.md, tick-summary.sh, tick-summary.test.sh, GUARDRAILS.md, tools/skillslint, tools/harnesslint, the five desk-role bodies, or this stream's README. The tools moved from v1.0.65 to v1.0.67. The blockers medici-finance/assay#1920, medici-finance/assay#4689 and medici-finance/assay#1916 are all still open.
+
+Execution witness for the check:ci rows (1, 3, 6, 8, 13, 14): the container admission bracket.
+
+1. On the host, `statusgen verifyrun --open-bracket` (statusgen v1.0.67) recorded the home tree digest at 22:43:55Z.
+2. In the container, the rows ran under these settings:
+   - the published release runner image `ghcr.io/medici-finance/verify-runner:v1.0.67` (its digest is the Container-Image line below, equal to the release's verify-runner-image.txt, whose checksum matches the release's checksums.txt), emulated linux/amd64 on an arm64 host;
+   - `--network none`, a read-only root, a non-root uid, and read-only bind mounts for the home, the repository's git directory and a copy of the roster file, which the container copied into its throwaway HOME;
+   - the image's own pre-warmed module cache, and an exec-enabled tmpfs at /tmp;
+   - GOPROXY=off, GOSUMDB=off, GOTOOLCHAIN=local and GOFLAGS=-mod=readonly.
+3. On the host, `--close-bracket` closed the bracket at 22:49:23Z, and `--bracket-digest` then reported `verdict=match` with `span-lines=tree-digest:1,container-image:1,attestation:1`.
+
+There were two bracket attempts, and this block is the second. The first (opened 22:31:24Z, closed 22:33:17Z, witness sha256:b677bd77a701) is discarded and earns no credit. It set a config-home variable that statusgen does not consult, so its throwaway HOME had no roster. Its row 13 recorded `pass exit=0` although the output, whose hash sha256:5f8184148fc4 I reproduced byte for byte in a separate container run, ended `LINT: REFUSED configuration; trust-dependent checks could-not-check` and then `5`. The tree digest was the same in both attempts, and rows 1, 3, 6 and 8 recorded the same output hashes.
+
+The container's own exit in this attempt was also 1, because of row 14's `fail exit=0` explained below.
+
+The block directly below is the closed witness file, byte for byte.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/skillslint && go run . --root ../..` | pass exit=0 sandbox=container-netns | sha256:4f645d4db0a9 | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/harnesslint && go run . --vocab ../../docs/streams/harness-portability/README.md bodies ../../plugins/assay/skills` | pass exit=0 sandbox=container-netns | sha256:38c6aee7f466 | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `bash plugins/assay/scripts/tick-summary.test.sh` | pass exit=0 sandbox=container-netns | sha256:a75223552e32 | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `git diff refs/remotes/origin/main -- plugins/assay/skills/` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `statusgen --root . --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:bbd8f554e8c9 | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `statusgen --root . --consumers --brief assay:assay:desk-containers:08; echo $?` | fail exit=0 sandbox=container-netns | sha256:05c923dc7c4a | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:b44a0c45139757e78fe9aeb12c0bd27d8e3a356a8f197e1f72df82c7a2fc3b23
+Container-Image: sha256:f073d208c69e1e2f5ce5b680ad536d7a3cef3c80756823b9643cab4f7d1068aa
+Verification-Attestation: medici-finance/assay#5053 run=a17021409184746c639c271f711d2e27e02eceb5c0e702798c6b63e8de9206fa source=c887e24dd9521953b29d79414f95bc3757029719 brief=docs/streams/desk-containers/brief-08-tick-contract-for-desk-skills.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=a17021409184746c639c271f711d2e27e02eceb5c0e702798c6b63e8de9206fa source=c887e24dd9521953b29d79414f95bc3757029719 tree=sha256:b44a0c45139757e78fe9aeb12c0bd27d8e3a356a8f197e1f72df82c7a2fc3b23 witness=sha256:f32cbd8b7d9e06deee6320679ae867cd7ad703bd2ef22c0f24108f23548d3541 opened=2026-10-30T22:43:55Z closed=2026-10-30T22:49:23Z before=receipt after=check-verifier
+
+Host witness for the `check` rows (2, 4, 5, 7, 9, 10), from `statusgen verifyrun --rows 2,4,5,7,9,10` at the same source. The block directly below is the tool's appended witness, byte for byte.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 2 | `GUARDRAILS:` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:0d5053a5f84f | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/harnesslint && go run . --vocab ../../docs/streams/harness-portability/README.md bindings ../../plugins/assay/references` | pass exit=0 | sha256:0114f3b44931 | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `../../references/tick-contract.md` | could-not-run exit=- — prose-led-command: not executed; the first span ../../references/tick-contract.md is a .md file name, not a command. Mark the command with a cmd: code span | sha256: | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `bash plugins/assay/scripts/tick-summary.test.sh --case rejects-zero-for-unknown && bash plugins/assay/scripts/tick-summary.test.sh --case rejects-unknown-outcome` | pass exit=0 | sha256:165f6e5d57e5 | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `pr-review-desk` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:a3608250984e | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `**ONLINE LANE** — the transcript of row 9, grepped for the arming of any durable wake, any scheduled wake-up, any cadence sleep and any human prompt` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:06add9bcf8be | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5053 run=a17021409184746c639c271f711d2e27e02eceb5c0e702798c6b63e8de9206fa source=c887e24dd9521953b29d79414f95bc3757029719 brief=docs/streams/desk-containers/brief-08-tick-contract-for-desk-skills.md model=claude-opus-5-5 tier=strong
+
+Rows 11 and 12 were not executed in this pass. Their Command cells are prose: row 11's first span is a bare assignment, which would exit 0 and pass vacuously, and row 12's first span parses as a flag. A witness of either would record a parse artifact, not this row's obligation. Both are online-lane rows: they need a cell running the loop image, and this network-off verifier has none (medici-finance/assay#1920). This verifier records both as could-not-run on 2026-10-30. Their latest witness rows, from 2026-10-22, are the parse artifacts the 2026-10-27 desk correction describes, and they earn no credit.
+
+Row-by-row accounting at this source. Supplemental probes ran in a scratch clone at the same source, each under `go run` or the row's own script, and earn no credit. `go run` reports any non-zero tool exit as 1, so the exit codes below are the wrapper's.
+
+- **Row 1** passes: exit 0 in the bracket. Supplemental read: every verdict line is PASS, including `HOUSE-VALUES: PASS` over 49 markdown files under `plugins/`.
+- **Row 2** cannot run. Its Command cell is prose, so the witness ran the first span `GUARDRAILS:` and got exit 127. Supplemental reads:
+  - the clean run printed `GUARDRAILS: PASS — 33 guardrail copy/copies byte-match .claude/guardrails/GUARDRAILS.md`, and the `tick-mode` block declares exactly the five desk bodies as sites, each with one `## Tick mode` section;
+  - changing one word in verify-desk's copy gave `GUARDRAILS: FAIL — 1 copy/copies drifted` and a non-zero exit;
+  - deleting that copy gave `could-not-check: guardrail "tick-mode" — its anchor line is not present`, `GUARDRAILS: COULD-NOT-CHECK` and a non-zero exit;
+  - restoring the file gave exit 0.
+- **Row 3** passes: exit 0 in the bracket. Supplemental mutation: replacing `capability:durable-monitor` with a backticked harness wake-tool name in the-desk's copy gave `checked-failed: bodies — 1 violation(s)` and a non-zero exit.
+- **Row 4** is witnessed `pass exit=0`. The authored Expect still asks for an overall exit of 1, which is stale, because standing-note.md now carries its declaration (medici-finance/assay#1920). Supplemental read: the run printed `skipped (declared non-matrix-reference): ../../plugins/assay/references/tick-contract.md` and `checked-clean: bindings — no violations`. So the new file adds zero violations, which is this row's DELTA assertion.
+- **Row 5** cannot run, because its Command cell is prose. Supplemental read and mutations, from a script of this verifier's that no row admits:
+  - each of the five desk bodies carries exactly one markdown link to the relative path ../../references/tick-contract.md, and it resolves from that body's directory;
+  - none of the five carries the `tick role=` summary-line shape;
+  - appending that summary line to worker-desk's body made the script exit 1, and shortening pr-review-desk's link to a wrong relative path did too.
+- **Row 6** passes: exit 0 in the bracket.
+- **Row 7** passes: exit 0 on the host. Supplemental mutations:
+  - widening the outcome alternation to any lowercase word made the `rejects-unknown-outcome` case exit 1 (`2 passed, 1 failed`);
+  - disabling the `swept=-` rule for could-not-check made the `rejects-zero-for-unknown` case exit 1 (`0 passed, 2 failed`);
+  - restoring the file gave exit 0.
+- **Row 8** passes: exit 0 with empty output (the output hash is the empty-input hash). Supplemental read: across the delivering squash ef7bfc2292b5..21a3e1474c61, the five bodies gained 130 lines and lost none. Each body's `## Liveness contract (binding)` block hashes identically before and after.
+- **Rows 9 to 12** are online-lane rows. A network-off verifier cannot run them, and none has ever run. Rows 9 and 10 exit 127 on their first spans in the host witness above. Rows 11 and 12 are recorded could-not-run in the paragraph above. Row 12's Expect also contradicts the contract: it lists "no trigger" among the spellings that tick. All of this is filed on medici-finance/assay#1920.
+- **Row 13** earns no credit, although the bracket records `pass exit=0`. The trailing `; echo $?` makes the command exit 0 whatever lint did (medici-finance/assay#1906), so that result says nothing about the Expect of `0 — LINT: PASS`. Supplemental runs in the same image and container settings:
+  - a clean scratch clone with a github.com origin printed `PROBLEM: desktools-v2/65: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required`, then `LINT: FAIL 1 problem(s)` and `1`. That PROBLEM belongs to another brief, nothing in it names this one, and it is tracked on medici-finance/assay#4823;
+  - the home itself printed `reading docs/streams: open docs/streams: no such file or directory`, then `LINT: FAIL 1 problem(s)` and `1`. I did not establish why this form cannot read the stream tree under these mounts;
+  - neither output reproduces the witnessed hash sha256:bbd8f554e8c9, so I cannot say which text that witness row hashed. No form I ran printed `LINT: PASS`.
+  The row stays owed as could-not-check: the only named blocker is a human-authority read this network-off lane cannot make, which is not an observed defect in this brief.
+- **Row 14** is COULD-NOT-CHECK, and its own Expect cell says to report that state as itself, never as a pass. The bracket records `fail exit=0`, because the trailing `; echo $?` masks the process exit. Supplemental host runs:
+  - the literal form's status was 2: "COULD-NOT-CHECK: … the brief's delivery could not be derived: the committed Evidence has no Verification-Table marker naming the delivery";
+  - in the runner container with the roster in place the printed status was also 2, and that output's hash equals this bracket's row 14 hash, sha256:05c923dc7c4a;
+  - the delivery-pinned form (`--delivery 21a3e1474c61… --base ef7bfc2292b5…`) gave `summary: 4 corroborated, 0 disproved, 5 unchecked`, exit 0.
+  The self-delivered shape is owned by medici-finance/assay#4689, which is still open.
+
+`statusgen verifyrun --bracket-digest` over this whole brief reports `verdict=match` for this pass's bracket. It also reports 26 sandbox=container-netns rows at lines earlier in this section as lying in no bracket's span and never credited. Those rows predate this pass, and this pass takes no credit from them.
+
+Fail-first: no row is risk-bearing. The brief-wide risk answers are all no, and no row carries a risk-bearing, live, mutating or end-to-end Class tag. So no fail-first witness is owed.
+
+Risk-bearing values. I enumerated the literals in tick-contract.md and tick-summary.sh again at c887e24dd952. VERSION = "1" (:52) and ROLES (:56) are closed-set identifiers. ASSAY_TICK, COUNT/OUTCOMES and R carry load.
+RISK-VALUE: DERIVED — ASSAY_TICK = "1" @ plugins/assay/references/tick-contract.md:40 — exact equality is the only rule under which no inherited truthy value arms tick mode; it follows the precedent at statusgen/telemetry.go:65.
+RISK-VALUE: DERIVED — COUNT = '([0-9]+|-)' @ plugins/assay/scripts/tick-summary.sh:67 and OUTCOMES = "ok noop refused could-not-check" @ plugins/assay/scripts/tick-summary.sh:59 — "-" is the only spelling of an unknown count and the outcome set is closed at four; row 7 passes, and its supplemental mutations redden it, so both literals bear load.
+RISK-VALUE: NAMED, NOT DERIVED — R = 60 @ plugins/assay/references/tick-contract.md:99 — whether 60 s covers the exit-path forge writes depends on cell write latency, which cannot be measured offline; online row 11 is the test; routed on medici-finance/assay#1916.
+
+**VERIFY: BLOCKED** — at c887e24dd952: 6 of 14 rows pass, 0 fail, 8 owed.
+- Rows 1, 3, 6 and 8 pass in the container bracket; rows 4 and 7 pass on the host. Row 4's Expect exit is stale (medici-finance/assay#1920).
+- Still owed:
+  - online-lane rows 9 to 12 have never run (medici-finance/assay#1920);
+  - rows 2 and 5 are prose cells that the witness cannot execute (medici-finance/assay#1920);
+  - row 13's `pass exit=0` is masked by `; echo $?`, and no lint run here printed `LINT: PASS` (medici-finance/assay#1906, medici-finance/assay#4823);
+  - row 14 is COULD-NOT-CHECK, because a self-delivered brief has no derivable delivery (medici-finance/assay#4689).
+
+The 2026-10-29 pass above credited row 13 from the same masked form, so its count of 7 is not corroborated on that row. Status stays implemented.
+
 ## Review
 
 Gate: model (all four risk answers no). The change is additive prose plus a shell checker and its

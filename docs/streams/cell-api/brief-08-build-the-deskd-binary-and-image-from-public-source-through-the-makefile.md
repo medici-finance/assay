@@ -4,11 +4,11 @@ title: Build the deskd binary and image from public source through the Makefile
 why: "The deskd source is now a standalone public module, but nothing builds it into a reviewable artifact. A local, unprivileged, digest-pinned binary and image build through the root Makefile lets the service package be inspected before any profile, pin or release depends on it."
 wave: 0
 depends: []
-unblocks: ["cell-api/05"]
+unblocks: ["cell-api/05", "cell-api/09"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
-gate-why: "All four risk answers are no. The deliverable builds a binary and a local image from already-public source; it pushes, tags, publishes, deploys and provisions nothing, and handles no runtime data or credentials. Adding deskd to the release image set is cell-api/05's, publication remains the release workflow's separately approved act, and every deployment, profile and exposure decision stays behind cell-api/05's human gate."
+gate-why: "All four risk answers are no. The deliverable builds a binary and a local image from already-public source; it pushes, tags, publishes, deploys and provisions nothing, and handles no runtime data or credentials. Adding deskd to the release image set is cell-api/09's, publication remains the release workflow's separately approved act, and every deployment, profile and exposure decision stays behind cell-api/05's human gate."
 issues: []
 schema: brief-v2
 version: 1
@@ -41,7 +41,7 @@ consumers:
   - "tools/desk/internal/deskkit/citrigger_test.go: follow-up cell-api/08"
   - "changelog/deskd-image-build.md: follow-up cell-api/08"
   - "image artifact pin and supported service/client matrix: follow-up cell-api/05"
-  - "release image set (tools/release/images.py, its contract and docs/release-images.md): follow-up cell-api/05 (adds deskd to the release producer; publishing stays the release's separately approved act; this brief adds no image to the release set)"
+  - "release image set (tools/release/images.py, its contract and docs/release-images.md): follow-up cell-api/09 (adds deskd to the release producer; publishing stays the release's separately approved act; this brief adds no image to the release set)"
 ---
 
 # Brief 08 — Build the deskd binary and image from public source through the Makefile
@@ -61,7 +61,7 @@ facts:
 
 layering: This brief carves the image-build duty out of cell-api/05 Task 1 so it can proceed on the already-public source while 05's profile, database and qualification dependencies stay open. It packages the existing deskd closure unchanged. It adds no runtime behaviour, configuration or authority, and it neither pins nor publishes an artifact.
 
-single-point-of-failure: the static contract test (Verify 1) is the control that keeps an unpinned base, a credential or out-of-tree COPY, a widened default bind or a push out of the build definition. The built-image check (Verify 5) runs the existing layer-secret scan and inspects the actual image's user and contents on a different signal, A local image is never a pin: only the release job, once cell-api/05 adds deskd to its image set, produces a pinnable registry reference, under its own approval, pre-push checks and layer-secret gate.
+single-point-of-failure: the static contract test (Verify 1) is the control that keeps an unpinned base, a credential or out-of-tree COPY, a widened default bind or a push out of the build definition. The built-image check (Verify 5) runs the existing layer-secret scan and inspects the actual image's user and contents on a different signal, A local image is never a pin: only the release job, once cell-api/09 adds deskd to its image set, produces a pinnable registry reference, under its own approval, pre-push checks and layer-secret gate.
 
 design-fit:
   owner: R7 service host packaging (cell-api); the root Makefile owns local build entrypoints and `tools/winparity` owns their Windows parity
@@ -147,7 +147,7 @@ Dockerfile and Makefile-recipe test patterns.
    - The recipe contains no `push`, `--push`, `--output type=registry`, `login`, `tag`
      to a registry host, or `buildx` exporter that leaves the local image store.
      Building for the builder's default platform is enough. The published platform
-     matrix is cell-api/05's declaration and the release's act.
+     is cell-api/09's release-producer entry and the release's act.
 
 3. **Windows parity.** Add `deskd-build` and `deskd-image` to the
    `MAKEFILE-PARITY TARGETS` block and the dispatch table in `scripts/build-windows.ps1`.
@@ -188,14 +188,15 @@ Dockerfile and Makefile-recipe test patterns.
 ## Interface and acceptance contract
 
 The image packages the existing deskd closure and runtime contract unchanged. Its
-consumers are cell-api/05, which adds deskd to the release image set and declares the
-artifact pin (a published release record's reference), the supported service/client
-matrix and the deployment profile, and the release act that publishes it. This brief
-pushes, tags remotely, publishes and deploys nothing, and adds no entry to
-`release-images.json` or the release workflow. Explicitly out of scope, all owned by
-cell-api/05 or later briefs:
+consumers are cell-api/09, which adds deskd to the release image set and its contract;
+cell-api/05, which declares the artifact pin (a published release record's reference),
+the supported service/client matrix and the deployment profile; and the release act that
+publishes it. This brief pushes, tags remotely, publishes and deploys nothing, and adds
+no entry to `release-images.json` or the release workflow. Explicitly out of scope, all owned by
+cell-api/05, cell-api/09 or later briefs:
 
-- adding the image to the release image set, and publishing, pushing or release-tagging it;
+- adding the image to the release image set (cell-api/09), and publishing, pushing or
+  release-tagging it (the release's approved act);
 - the artifact pin and supported service/client matrix;
 - the Kubernetes service profile and network policy;
 - the service database role and grants;
@@ -205,25 +206,43 @@ cell-api/05 or later briefs:
 
 ## Verify
 
-The named test must be delivered and run, with a recorded failing control before the
-restored pass. Zero selected tests or a skipped fixture is failure. Row 5 needs a
-working container builder. Without one it is could-not-check, never pass, and the
-offline rows do not substitute for it.
+Rows 1–4, 6 and 7 are offline: they run on a clean checkout of merged main with
+`KUBECONFIG=/dev/null`, a populated Go module cache and no proxy, registry, cluster or
+forge contact. Each row was run against the pre-delivery base (the delivery's first
+parent) and fails there. The named test must be delivered and run, with a recorded
+failing control before the restored pass. Zero selected tests or a skipped test is
+failure: rows 1 and 3 require the named `--- PASS` line, and row 3 also refuses any
+`--- SKIP`.
 
-For row 7, the independent verifier obtains the actual implementation delivery from its
-merged PR and records its full immutable SHA in `ASSAY_DELIVERY_SHA` and its actual
-first-parent SHA in `ASSAY_DELIVERY_BASE_SHA`. Neither defaults to HEAD, origin/main or
-this authoring PR. Missing, unknown, not-yet-landed or wrong-parent inputs fail closed.
+Row 5 is the one host row. It needs a working container builder and pull access to the
+digest-pinned base images and the Go module proxy. Without them it is could-not-check,
+never pass, and the offline rows do not substitute for it.
+
+The registry's whole-tree sweeps (`TestCrossModuleTestsAreTriggeredByWhatTheyRead`,
+`TestCrossModuleReaderRegistryIsNotSilentlyStale`) read a workflow fixture this
+repository does not carry, so they skip here by design and earn no credit. Row 3 runs
+the public-layout check the delivery added for this test instead. No public-layout test
+proves that the test's registry entry lists every repository path the test reads
+(`Makefile`, `images/deskd/Dockerfile`, `images/deskd/Dockerfile.dockerignore`), so the
+reviewer checks that against the test's path constants. The whole-tree
+`statusgen --root . --lint` is the repository's CI gate and reads every brief, so an
+unrelated brief can redden it. It is not a row of this brief.
+
+For rows 6 and 7, the independent verifier obtains the actual implementation delivery
+from its merged PR and records its full immutable SHA in `ASSAY_DELIVERY_SHA` and its
+actual first-parent SHA in `ASSAY_DELIVERY_BASE_SHA`. Neither defaults to HEAD,
+origin/main or this authoring PR. Missing, unknown, not-yet-landed or wrong-parent
+inputs fail closed.
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +mutation | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 90s -count=1 -v -run '^TestDeskdImageBuildContract$' ./internal/cellapi/ > "$o" && grep -F -- '--- PASS: TestDeskdImageBuildContract ' "$o")` | exit 0; named PASS over the real `images/deskd/Dockerfile`, its ignore file and `Makefile`. Each property from Tasks 1–2 has a negative fixture that the same checker rejects by name: unpinned `FROM` or frontend, root or non-numeric final `USER`, missing `GOWORK=off`/CGO-off/readonly modules, each checksum-disabling setting (`GOSUMDB=off`, `GONOSUMDB`, `GONOSUMCHECK`, `GOPRIVATE`, `GOINSECURE`, `-mod=mod`, `-insecure`), credential-shaped or out-of-context COPY, extra final-stage COPY, secret-named ENV/ARG, baked config path or non-loopback bind, missing target, repo-root context, missing layer-secret scan, and `push`/`--push`/`login`/registry exporter in `deskd-image`. Zero fixtures read fails. |
-| 2 | check:ci +neighbour | `(cd tools/winparity && GOWORK=off go run . --root ../..)` | exit 0; prints `winparity: OK` for target parity, and the target list includes `deskd-build` and `deskd-image`. Also prints the 5.1-clean line. A target on one side only, or a non-ASCII or `>>>` script, fails. |
-| 3 | check:ci +neighbour | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 120s -count=1 -v -run '^(TestCrossModuleTestsAreTriggeredByWhatTheyRead\|TestCrossModuleReaderRegistryIsNotSilentlyStale)$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestCrossModuleTestsAreTriggeredByWhatTheyRead ' "$o" && grep -F -- '--- PASS: TestCrossModuleReaderRegistryIsNotSilentlyStale ' "$o")` | exit 0; both named PASS. The new test is registered with every path it reads, and the CI job that runs `tools/desk` reaches it on pull_request and push. |
-| 4 | check +flow | `make deskd-build && test -x deskd/dist/deskd && deskd/dist/deskd -h 2>&1 \| grep -F -- '-human-login'` | exit 0; the unprivileged target builds the real service binary from `deskd/` with `GOWORK=off`, and its usage lists the existing `-human-login` flag. Nothing is written outside `deskd/dist/`, and `git status --porcelain` shows no tracked change. |
-| 5 | check +flow +mutation | `command -v docker >/dev/null && docker info >/dev/null 2>&1 && make deskd-image && img="assay-deskd:$(git rev-parse HEAD)" && u=$(docker image inspect --format '{{.Config.User}}' "$img") && printf '%s\n' "$u" \| grep -Eqx '[1-9][0-9]*:[1-9][0-9]*' && test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$img")" = "$(git rev-parse HEAD)" && t=$(mktemp) && { docker run --rm --network none --entrypoint /bin/sh "$img" -c true > "$t" 2>&1; test $? -eq 127; } && grep -F -- '/bin/sh' "$t" && docker run --rm --network none "$img" -h 2>&1 \| grep -F -- '-human-login' && sh containers/scripts/layer-secret-scan.sh "$img"` | exit 0 on a clean checkout with a working builder. The local image exists under the source SHA, with no registry host. Its configured user is `<uid>:<gid>`, both numeric and non-zero, and its revision label equals the SHA. No `/bin/sh` exists in it: running it as the entrypoint exits 127 with an error naming `/bin/sh`, and any other failure (a missing image, a daemon error) fails the row instead of passing it. The binary runs offline and prints its usage. The layer-secret scan is clean. A missing builder or daemon, a scan could-not-check, or a missing image is non-zero and recorded as could-not-check, never pass. The recorded control plants `USER root` or a credential file in a scratch copy of the Dockerfile and shows the inspection or scan fail. |
-| 6 | check | `statusgen --root . --lint` | exit 0; no PROBLEM; no generated lifecycle cell or historical Evidence hand-edited. |
-| 7 | check:ci +dereference | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && statusgen --root . --consumers --brief cell-api/08 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed implementation delivery and its first parent. Record exact corroborated, disproved and unchecked counts, with 0 disproved. Unchecked consumers stay held, and the two non-path entries (the cell-api/05 pin and cell-api/05's release-set addition) are review obligations. |
+| 1 | check:ci +mutation | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 90s -count=1 -v -run '^TestDeskdImageBuildContract$' ./internal/cellapi/ > "$o" && grep -F -- '--- PASS: TestDeskdImageBuildContract ' "$o")` | exit 0; named PASS over the real `images/deskd/Dockerfile`, its ignore file and `Makefile`. Each property from Tasks 1–2 has a negative fixture that the same checker rejects by name: unpinned `FROM` or frontend, root or non-numeric final `USER`, missing `GOWORK=off`/CGO-off/readonly modules, each checksum-disabling setting (`GOSUMDB=off`, `GONOSUMDB`, `GONOSUMCHECK`, `GOPRIVATE`, `GOINSECURE`, `-mod=mod`, `-insecure`), credential-shaped or out-of-context COPY, extra final-stage COPY, secret-named ENV/ARG, baked config path or non-loopback bind, missing target, repo-root context, missing layer-secret scan, and `push`/`--push`/`login`/registry exporter in `deskd-image`. Zero fixtures read fails. At the pre-delivery base the `internal/cellapi` package does not exist, `go test` fails setup and the row exits non-zero. |
+| 2 | check:ci +neighbour +mutation | `(cd tools/winparity && o=$(mktemp) && GOWORK=off go run . --root ../.. > "$o" 2>&1 && grep -E '^winparity: OK .* targets in parity: (.* )?deskd-build( .*)?$' "$o" && grep -E '^winparity: OK .* targets in parity: (.* )?deskd-image( .*)?$' "$o" && grep -F -- 'is Windows PowerShell 5.1-clean' "$o")` | exit 0; the `winparity: OK` parity line lists both `deskd-build` and `deskd-image`, and the 5.1-clean line prints. At the pre-delivery base winparity passes with 9 targets and neither name, so the row fails on the first grep. Control: deleting `'deskd-image'` from the script's parity list makes winparity print `DRIFT` naming `deskd-image` as missing from `scripts/build-windows.ps1` and exit 1. A non-ASCII or `>>>` script also fails. |
+| 3 | check:ci +neighbour +mutation | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 120s -count=1 -v -run '^TestDeskdImageContractCI$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestDeskdImageContractCI ' "$o" && ! grep -F -- '--- SKIP' "$o")` | exit 0; named PASS and no SKIP. The test finds the row-1 contract test in the cross-module registry and proves that the `ci.yml` job running `tools/desk` is reached on pull_request and push, and that no unqualified paths-ignore filter hides the registered reads. At the pre-delivery base the test does not exist: `go test` selects zero tests and the PASS grep fails. Control: renaming the registry entry's test path fails the test with `tools/desk/internal/cellapi/deskdimage_test.go is absent from the cross-module registry`. |
+| 4 | check +flow | `rm -f deskd/dist/deskd && s0=$(git status --porcelain) && GOPROXY=off make deskd-build && test -x deskd/dist/deskd && deskd/dist/deskd -h 2>&1 \| grep -F -- '-human-login' && test "$(git status --porcelain)" = "$s0"` | exit 0; the unprivileged target builds the real service binary from `deskd/` with `GOWORK=off` and no module proxy, and the fresh binary's usage lists the existing `-human-login` flag. The porcelain status is unchanged, so the build wrote nothing tracked or unignored. A module missing from the local cache fails the row and is recorded as could-not-check, never pass. At the pre-delivery base `make` has no `deskd-build` rule and exits 2. |
+| 5 | check +flow +mutation | `command -v docker >/dev/null && docker info >/dev/null 2>&1 && make deskd-image && img="assay-deskd:$(git rev-parse HEAD)" && u=$(docker image inspect --format '{{.Config.User}}' "$img") && printf '%s\n' "$u" \| grep -Eqx '[1-9][0-9]*:[1-9][0-9]*' && test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$img")" = "$(git rev-parse HEAD)" && t=$(mktemp) && { docker run --rm --network none --entrypoint /bin/sh "$img" -c true > "$t" 2>&1; test $? -eq 127; } && grep -F -- '/bin/sh' "$t" && docker run --rm --network none "$img" -h 2>&1 \| grep -F -- '-human-login' && sh containers/scripts/layer-secret-scan.sh "$img"` | exit 0 on a clean checkout with a working builder. The local image exists under the source SHA, with no registry host. Its configured user is `<uid>:<gid>`, both numeric and non-zero, and its revision label equals the SHA. No `/bin/sh` exists in it: running it as the entrypoint exits 127 with an error naming `/bin/sh`, and any other failure (a missing image, a daemon error) fails the row instead of passing it. The binary runs offline and prints its usage. The layer-secret scan is clean. A missing builder or daemon, no pull access, a scan could-not-check, or a missing image is non-zero and recorded as could-not-check, never pass; `make deskd-image` without `docker` on PATH prints `deskd-image: could-not-check: docker is not on PATH` and exits 2. At the pre-delivery base `make` has no `deskd-image` rule and exits 2. The recorded control plants `USER root` or a credential file in a scratch copy of the Dockerfile and shows the inspection or scan fail. |
+| 6 | check +dereference | `grep -F -- 'make deskd-build' deskd/README.md && grep -F -- 'make deskd-image' deskd/README.md && grep -F -- 'local-only' deskd/README.md && git check-ignore -q deskd/dist/deskd && grep -rqF -- 'make deskd-image' CHANGELOG.md changelog && test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git diff --quiet "$ASSAY_DELIVERY_BASE_SHA" "$ASSAY_DELIVERY_SHA" -- STATUS.md docs/streams/cell-api` | exit 0. Task 5's documentation landed: `deskd/README.md` names both targets and states the image is local-only, `deskd/dist/` is ignored, and the changelog entry is present (as its fragment until a release aggregates it, then in `CHANGELOG.md`). The delivery changed no generated status file and no brief or lifecycle cell under `docs/streams/cell-api/`. At the pre-delivery base the README names neither target and the first grep fails. Control: a later commit that edits the stream README, given as the delivery with its first parent, makes the diff check exit 1. |
+| 7 | check:ci +dereference | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && git cat-file -e "${ASSAY_DELIVERY_SHA}:images/deskd/Dockerfile" && git cat-file -e "${ASSAY_DELIVERY_SHA}:tools/desk/internal/cellapi/deskdimage_test.go" && ! git cat-file -e "${ASSAY_DELIVERY_BASE_SHA}:images/deskd/Dockerfile" && o=$(mktemp) && statusgen --root . --consumers --brief cell-api/08 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA" > "$o" 2>&1 && grep -E '^summary: [1-9][0-9]* corroborated, 0 disproved' "$o"` | exit 0 only for the named landed implementation delivery and its first parent. The corroboration gate judges the routing entries and does not by itself tell the delivery from an earlier commit, so the row first proves the delivery adds the Dockerfile and the contract test that its first parent lacks. Record exact corroborated, disproved and unchecked counts, with 0 disproved. Unchecked consumers stay held, and the two non-path entries (the cell-api/05 pin and cell-api/09's release-set addition) are review obligations. Unset inputs exit 1, a parent other than the first is refused as could-not-check (exit 2), and the pre-delivery commit given as the delivery fails `git cat-file`. |
 
 ## Threat model and detection
 
@@ -293,6 +312,108 @@ RISK-VALUE: DERIVED — revision default = unknown @ images/deskd/Dockerfile:55 
 RISK-VALUE: DERIVED — could-not-check exit = 2 @ Makefile:148-149 — non-zero, distinct from build failure, so a missing docker or daemon never reads as pass.
 
 **VERIFY: FAIL** — row 3: both named registry tests skip on an absent workflow fixture, which the brief defines as failure; row 6: lint red on one PROBLEM in an unrelated brief (desktools-v2/65, could-not-check human authority). Rows 1, 2, 4, 5 and 7 pass. The item does not advance.
+### Independent re-verification — 2026-10-30
+
+Verifier: claude-opus-5-5, tier strong, non-implementer. Subject: merged main 40925e8233c8a63d70682e77ca333e665f1f955e. Delivery: PR #4755, merge 48ca54f64ffdd05956741619418a98d61eaf6a54, first parent 8f2d6865c6b290efd874fc30a21023aa817b6368. Tool: statusgen v1.0.66. Container rows (1, 2, 3, 7) ran network-off in verify-runner v1.0.66 (linux/arm64) inside a closed admission bracket; --bracket-digest verdict=match. Host rows (4, 5, 6) ran on a darwin arm64 host with docker 29.8.2, through statusgen verifyrun --rows 4,5,6 --dry-run after the bracket closed.
+
+Binding (check-verifier rc 0 before the rows and again before this write):
+
+Verification-Attestation: medici-finance/assay#4943 run=d7e30c9a06133bbe39edc2c72b74db3f974a076a3ca263eab59da6d72756c24a source=40925e8233c8a63d70682e77ca333e665f1f955e brief=docs/streams/cell-api/brief-08-build-the-deskd-binary-and-image-from-public-source-through-the-makefile.md model=claude-opus-5-5 tier=strong
+
+Container witness (closed bracket, bytes as emitted):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 90s -count=1 -v -run '^TestDeskdImageBuildContract$' ./internal/cellapi/ > "$o" && grep -F -- '--- PASS: TestDeskdImageBuildContract ' "$o")` | pass exit=0 sandbox=container-netns | sha256:0a32f890ac14 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/winparity && GOWORK=off go run . --root ../..)` | pass exit=0 sandbox=container-netns | sha256:7c18b0f9767a | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 120s -count=1 -v -run '^(TestCrossModuleTestsAreTriggeredByWhatTheyRead\|TestCrossModuleReaderRegistryIsNotSilentlyStale)$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestCrossModuleTestsAreTriggeredByWhatTheyRead ' "$o" && grep -F -- '--- PASS: TestCrossModuleReaderRegistryIsNotSilentlyStale ' "$o")` | fail exit=1 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && statusgen --root . --consumers --brief cell-api/08 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | pass exit=0 sandbox=container-netns | sha256:c7063fb6e4f3 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a661369244ed8355ed5de43fd37a5f06b998c2d984bad8d9609bf6f80f234465
+Container-Image: sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4
+Verification-Attestation: medici-finance/assay#4943 run=d7e30c9a06133bbe39edc2c72b74db3f974a076a3ca263eab59da6d72756c24a source=40925e8233c8a63d70682e77ca333e665f1f955e brief=docs/streams/cell-api/brief-08-build-the-deskd-binary-and-image-from-public-source-through-the-makefile.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=d7e30c9a06133bbe39edc2c72b74db3f974a076a3ca263eab59da6d72756c24a source=40925e8233c8a63d70682e77ca333e665f1f955e tree=sha256:a661369244ed8355ed5de43fd37a5f06b998c2d984bad8d9609bf6f80f234465 witness=sha256:c130e9ce0eb28059decedbfb583587d0684300246eb80a65ee5c447d590f4b42 opened=2026-10-30T01:31:07Z closed=2026-10-30T01:32:25Z before=receipt after=check-verifier
+
+Host witness (verifyrun --rows 4,5,6 --dry-run, bytes as emitted):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `make deskd-build && test -x deskd/dist/deskd && deskd/dist/deskd -h 2>&1 \| grep -F -- '-human-login'` | pass exit=0 | sha256:0137dfc409fd | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `command -v docker >/dev/null && docker info >/dev/null 2>&1 && make deskd-image && img="assay-deskd:$(git rev-parse HEAD)" && u=$(docker image inspect --format '{{.Config.User}}' "$img") && printf '%s\n' "$u" \| grep -Eqx '[1-9][0-9]*:[1-9][0-9]*' && test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$img")" = "$(git rev-parse HEAD)" && t=$(mktemp) && { docker run --rm --network none --entrypoint /bin/sh "$img" -c true > "$t" 2>&1; test $? -eq 127; } && grep -F -- '/bin/sh' "$t" && docker run --rm --network none "$img" -h 2>&1 \| grep -F -- '-human-login' && sh containers/scripts/layer-secret-scan.sh "$img"` | pass exit=0 | sha256:ba6e60fd532b | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --root . --lint` | fail exit=1 | sha256:4fc091bf7e31 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4943 run=d7e30c9a06133bbe39edc2c72b74db3f974a076a3ca263eab59da6d72756c24a source=40925e8233c8a63d70682e77ca333e665f1f955e brief=docs/streams/cell-api/brief-08-build-the-deskd-binary-and-image-from-public-source-through-the-makefile.md model=claude-opus-5-5 tier=strong
+
+Per-row accounting (observations only; the witness tables above are the execution record):
+
+- Row 1, pass: --- PASS: TestDeskdImageBuildContract over the real Dockerfile, ignore file and Makefile; 80 fixture subtests PASS, 0 FAIL. Control (scratch archive of this source): USER root planted in the Dockerfile copy failed with final-user-root, an unpinned build-stage FROM failed with unpinned-from, and the unmodified copy passed.
+- Row 2, pass: winparity: OK — 11 targets in parity, the list includes deskd-build and deskd-image; the PowerShell 5.1-clean line printed.
+- Row 3, fail: the row's named-PASS grep exits 1. Both named tests print --- SKIP at citrigger_test.go:143 and :2540 because their guard fixture .github/workflows/tools.yml is absent from this repository; go test itself exits 0. The brief counts a skipped fixture as failure, so the registry entry and its CI reach stay unproven. Unchanged since the 2026-10-29 verification; tracked by #1857.
+- Row 4, pass: make deskd-build produced deskd/dist/deskd and its usage lists -human-login; git status --porcelain showed only the ignored dist directory, which the verifier removed after the run.
+- Row 5, pass: local image assay-deskd:40925e8233c8a63d70682e77ca333e665f1f955e (id sha256:0ef83eded334), no registry host, User 65532:65532, revision label equal to the source SHA, entrypoint /deskd, /bin/sh absent (exit 127), offline -h lists -human-login, layer-secret scan clean. Control: a scratch Dockerfile copy with USER root built and its inspected User root failed the row's numeric non-zero check (rc 1); the control image was removed.
+- Row 6, fail: LINT: FAIL 1 problem(s). The one PROBLEM names desktools-v2/65 (protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required). No PROBLEM names cell-api/08, but the row's expectation (exit 0, no PROBLEM) is not met at this source; tracked by #4823.
+- Row 7, pass: consumers corroboration for 48ca54f64ffd over 8f2d6865c6b2: 12 corroborated, 0 disproved, 0 unchecked. The two non-path entries (the cell-api/05 pin and the release-set entry) are review obligations and stay with cell-api/05.
+
+RISK-VALUE: DERIVED — syntax frontend pin = docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e @ images/deskd/Dockerfile:1 — byte-identical to the reviewed pin at containers/base/Dockerfile:1; tag plus digest, so a re-pushed tag cannot change it.
+RISK-VALUE: DERIVED — build base pin = golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 @ images/deskd/Dockerfile:31 — byte-identical to images/verify-runner/Dockerfile:26 and images/assay-harness/Dockerfile:50, as the brief requires (reuse, not a new builder).
+RISK-VALUE: DERIVED — final user = 65532:65532 @ images/deskd/Dockerfile:66 — numeric, both non-zero, matching the passwd and group entries written at lines 50-51 (the conventional distroless nonroot id); the built image reports the same User.
+RISK-VALUE: DERIVED — licence label = Apache-2.0 @ images/deskd/Dockerfile:58 — matches deskd/LICENSE (Apache License, Version 2.0).
+RISK-VALUE: DERIVED — source label = https://github.com/medici-finance/assay @ images/deskd/Dockerfile:56 — the public repository the brief names; the built image carries it.
+RISK-VALUE: DERIVED — revision default = unknown @ images/deskd/Dockerfile:55 — a placeholder the Makefile always overrides with the source SHA (or SHA-dirty); row 5 shows the override took effect.
+RISK-VALUE: DERIVED — could-not-check exit = 2 @ Makefile:148-149 — non-zero and distinct from a build failure, so a missing docker or daemon never reads as pass.
+
+**VERIFY: FAIL** — row 3: both named registry tests print --- SKIP on an absent workflow fixture, which the brief defines as failure (#1857); row 6: lint red on one PROBLEM in an unrelated brief, desktools-v2/65 (#4823). Rows 1, 2, 4, 5 and 7 pass. The item does not advance.
+
+### Independent verification — 2026-10-30
+
+Verifier: claude-opus-5-5, tier strong, non-implementer. Subject: merged main 0006683ef1c8dc7341d0c2e67a4cb6b566e7814e. Delivery: PR #4755, merge 48ca54f64ffdd05956741619418a98d61eaf6a54, first parent 8f2d6865c6b290efd874fc30a21023aa817b6368 (read from the merge commit's parents). Tool: statusgen v1.0.67. Container rows (1, 2, 3, 7) ran network-off in verify-runner v1.0.67 (linux/amd64, sha256:f073d208c69e1e2f5ce5b680ad536d7a3cef3c80756823b9643cab4f7d1068aa) inside a closed admission bracket; --bracket-digest verdict=match. Host rows (4, 5, 6) ran on a darwin arm64 host with docker 29.9.1, through statusgen verifyrun --rows 4,5,6 --dry-run after the bracket closed.
+
+Disclosure: row 7 reads git history, and the host refuses a check:ci row on darwin (no unshare), so its container run mounted the checkout base's git directory read-only at its own path, beside the read-only home. Runner identity came from the bracket receipt. Row 4's ignored build output was removed before this Evidence was written. Three supplemental probes in scratch copies are labelled below and earn no acceptance credit. Attempts discarded without credit: a host dry run of row 7 returned could-not-run (check:ci hermetic execution requires a network-off sandbox, unavailable on this host); one container preflight was mis-mounted by a shell quoting slip and wrote nothing; the first row 3 scratch probe failed setup because its copy omitted sibling modules, and was repeated from a full copy.
+
+Binding (check-verifier rc 0 before the rows and again before this write):
+
+Verification-Attestation: medici-finance/assay#5045 run=6bd70d58885de6f2f3d2f918ad53fe90aead919d10c997ae0af84edc4aa04f91 source=0006683ef1c8dc7341d0c2e67a4cb6b566e7814e brief=docs/streams/cell-api/brief-08-build-the-deskd-binary-and-image-from-public-source-through-the-makefile.md model=claude-opus-5-5 tier=strong
+
+Container witness (closed bracket, bytes as emitted):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 90s -count=1 -v -run '^TestDeskdImageBuildContract$' ./internal/cellapi/ > "$o" && grep -F -- '--- PASS: TestDeskdImageBuildContract ' "$o")` | pass exit=0 sandbox=container-netns | sha256:ece42d8d0f56 | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/winparity && GOWORK=off go run . --root ../..)` | pass exit=0 sandbox=container-netns | sha256:7c18b0f9767a | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 120s -count=1 -v -run '^(TestCrossModuleTestsAreTriggeredByWhatTheyRead\|TestCrossModuleReaderRegistryIsNotSilentlyStale)$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestCrossModuleTestsAreTriggeredByWhatTheyRead ' "$o" && grep -F -- '--- PASS: TestCrossModuleReaderRegistryIsNotSilentlyStale ' "$o")` | fail exit=1 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && statusgen --root . --consumers --brief cell-api/08 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | pass exit=0 sandbox=container-netns | sha256:3ca0397af18c | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:43331633ff79d183de9bb98544ed3f7f2af71a445a0b56b4bfb723059587daa8
+Container-Image: sha256:f073d208c69e1e2f5ce5b680ad536d7a3cef3c80756823b9643cab4f7d1068aa
+Verification-Attestation: medici-finance/assay#5045 run=6bd70d58885de6f2f3d2f918ad53fe90aead919d10c997ae0af84edc4aa04f91 source=0006683ef1c8dc7341d0c2e67a4cb6b566e7814e brief=docs/streams/cell-api/brief-08-build-the-deskd-binary-and-image-from-public-source-through-the-makefile.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=6bd70d58885de6f2f3d2f918ad53fe90aead919d10c997ae0af84edc4aa04f91 source=0006683ef1c8dc7341d0c2e67a4cb6b566e7814e tree=sha256:43331633ff79d183de9bb98544ed3f7f2af71a445a0b56b4bfb723059587daa8 witness=sha256:c67dbd2a881e183512d1af6a88cc5338105447bea9a33439aba48f03554a566d opened=2026-10-30T22:01:17Z closed=2026-10-30T22:06:59Z before=receipt after=check-verifier
+
+Host witness (verifyrun --rows 4,5,6 --dry-run, bytes as emitted):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `make deskd-build && test -x deskd/dist/deskd && deskd/dist/deskd -h 2>&1 \| grep -F -- '-human-login'` | pass exit=0 | sha256:0137dfc409fd | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `command -v docker >/dev/null && docker info >/dev/null 2>&1 && make deskd-image && img="assay-deskd:$(git rev-parse HEAD)" && u=$(docker image inspect --format '{{.Config.User}}' "$img") && printf '%s\n' "$u" \| grep -Eqx '[1-9][0-9]*:[1-9][0-9]*' && test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$img")" = "$(git rev-parse HEAD)" && t=$(mktemp) && { docker run --rm --network none --entrypoint /bin/sh "$img" -c true > "$t" 2>&1; test $? -eq 127; } && grep -F -- '/bin/sh' "$t" && docker run --rm --network none "$img" -h 2>&1 \| grep -F -- '-human-login' && sh containers/scripts/layer-secret-scan.sh "$img"` | pass exit=0 | sha256:159f006770d4 | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --root . --lint` | fail exit=1 | sha256:7ea9ef9d883b | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5045 run=6bd70d58885de6f2f3d2f918ad53fe90aead919d10c997ae0af84edc4aa04f91 source=0006683ef1c8dc7341d0c2e67a4cb6b566e7814e brief=docs/streams/cell-api/brief-08-build-the-deskd-binary-and-image-from-public-source-through-the-makefile.md model=claude-opus-5-5 tier=strong
+
+Per-row accounting (observations only; the witness tables above are the execution record):
+
+- Row 1, pass: --- PASS: TestDeskdImageBuildContract over the real Dockerfile, ignore file and Makefile; a repeat run for detail counted 80 fixture subtests PASS, 0 FAIL. Control in a scratch copy: USER root failed with final-user-root, an unpinned build-stage FROM failed with unpinned-from, and the restored copy passed.
+- Row 2, pass: winparity: OK — 11 targets in parity, list includes deskd-build and deskd-image; the PowerShell 5.1-clean line printed.
+- Row 3, fail: both named tests print --- SKIP (citrigger_test.go:143 and :2540: fixture .github/workflows/tools.yml absent from this tree). go test exits 0 and the named-PASS grep exits 1. The brief counts a skipped fixture as failure. Tracked on medici-finance/assay#1857.
+- Row 4, pass: make deskd-build produced deskd/dist/deskd; usage lists -human-login; git status showed only the ignored deskd/dist/ afterwards.
+- Row 5, pass: local image assay-deskd:0006683ef1c8dc7341d0c2e67a4cb6b566e7814e (id sha256:4381fd18dfde), User 65532:65532, revision label equal to the source SHA, /bin/sh absent (exit 127), offline -h lists -human-login, layer-secret scan clean. Control: a scratch Dockerfile copy with USER root built, its inspected User was root, and the row's numeric non-zero check returned rc 1.
+- Row 6, fail: LINT: FAIL 1 problem(s). The one PROBLEM names desktools-v2/65 (protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required). No PROBLEM names cell-api/08, but the row's expectation (exit 0, no PROBLEM) is unmet at this source. Tracked on medici-finance/assay#4823.
+- Row 7, pass: consumers corroboration for 48ca54f64ffd over 8f2d6865c6b2: 12 corroborated, 0 disproved, 0 unchecked. The two non-path entries (the cell-api/05 pin and release-set entries) are review obligations and stay with cell-api/05.
+
+Supplemental, no acceptance credit: with the row 3 skip guard repointed to the ci.yml workflow in a scratch copy, both registry tests FAIL with 82 failed subtests, the deskdimage_test.go entry among them. The registry is never exercised on this tree, so row 3's CI-reach obligation remains unproven.
+
+RISK-VALUE: DERIVED — syntax frontend pin = docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e @ images/deskd/Dockerfile:1 — byte-identical to the reviewed pin at containers/base/Dockerfile:1; tag plus digest, so a re-pushed tag cannot change it.
+RISK-VALUE: DERIVED — build base pin = golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 @ images/deskd/Dockerfile:31 — byte-identical to images/verify-runner/Dockerfile:26 and images/assay-harness/Dockerfile:50, the reuse the brief requires.
+RISK-VALUE: DERIVED — final user = 65532:65532 @ images/deskd/Dockerfile:66 — numeric and both non-zero as the brief requires, matching the passwd and group entries written at lines 50-51; the built image reports the same User.
+RISK-VALUE: DERIVED — licence label = Apache-2.0 @ images/deskd/Dockerfile:58 — the licence the brief names for the deskd module.
+RISK-VALUE: DERIVED — revision default = unknown @ images/deskd/Dockerfile:55 — a placeholder that the Makefile overrides with the source SHA or SHA-dirty; row 5 shows the override took effect.
+RISK-VALUE: DERIVED — could-not-check exit = 2 @ Makefile:148-149 — non-zero, so a missing docker or daemon cannot read as success, as the brief requires.
+
+**VERIFY: FAIL** — row 3: both named registry tests skip on an absent workflow fixture, which the brief defines as failure; row 6: lint red on one PROBLEM in another brief (desktools-v2/65, could-not-check human authority). Rows 1, 2, 4, 5 and 7 pass. The item does not advance.
 
 ## Review
 

@@ -64,9 +64,9 @@ func FetchRepoVisibility(fetcher RepoInfoFetcher, owner, repo string) (string, e
 // PublicRepoGate enforces the public-repo write gate.
 //
 // It is called before ANY write-capable desk tool acts on a repo. The authorization
-// unit is the REPOSITORY, not the item: a public/internal repo listed in the
-// allowed-repos configuration with the `:public` visibility token is a place the desk
-// may write, decided once by a human out-of-band, and every write verb on it passes.
+// unit is the REPOSITORY, not the item: a public repo listed in the allowed-repos
+// configuration with the `:public` visibility token — or an internal repo listed with
+// the `:internal` token — is a place the desk may write, decided once by a human out-of-band, and every write verb on it passes.
 // This replaces the former per-item `+1` reaction check, which was unsatisfiable for the
 // write that matters most — opening the first pull request, which has no issue/PR number
 // yet — and expressed the human decision in the wrong unit. A draft PR is inert until a
@@ -80,19 +80,24 @@ func FetchRepoVisibility(fetcher RepoInfoFetcher, owner, repo string) (string, e
 //     `:public` for a repo the forge reports otherwise never authorizes on the stale
 //     claim (row 5 of the brief's Verify table).
 //  2. Allowlist, not a denylist: ONLY "private" (case-insensitively, trimmed) returns
-//     nil (gate does not apply). "public" and "internal" require an explicit `:public`
-//     allowed-repos entry (step 3); anything else — empty, unrecognised, a future value
-//     — exit 6 (fail closed).
+//     nil (gate does not apply). "public" requires an explicit `:public` allowed-repos
+//     entry and "internal" an explicit `:internal` one (step 3); anything else — empty,
+//     unrecognised, a future value — exit 6 (fail closed).
 //  3. For "public"/"internal", the repo MUST carry an EXPLICIT allowed-repos entry whose
-//     CONFIGURED visibility is public (RepoVisibility(owner/repo) == VisibilityPublic).
-//     If it does, return nil. If it does not — absent, matched only by an `owner/*`
-//     pattern (patterns carry no policy), tagged `:private`, or carrying no visibility
-//     token — return Refused (exit 5) naming the repo, what was read live, what the set
+//     CONFIGURED visibility is the SAME value the live read returned (live public needs
+//     VisibilityPublic, live internal needs VisibilityInternal). If it does, return nil.
+//     If it does not — absent, matched only by an `owner/*` pattern (patterns carry no
+//     policy), tagged `:private`, carrying no visibility token, or tagged with the OTHER
+//     non-private token (`:internal` on a live-public repo, `:public` on a live-internal
+//     one) — return Refused (exit 5) naming the repo, what was read live, what the set
 //     says, and the exact remedy. This is why BOTH reads are load-bearing at once: the
 //     live read AND the configured claim must AGREE.
 //
-// `internal` is org-visible, not private — the gate's premise is untrusted eyes, so it is
-// gated exactly like `public`, not treated as a pass. This mirrors config.go's
+// `internal` is instance-visible, not private — the gate's premise is untrusted eyes, so
+// it is gated exactly like `public`, not treated as a pass, and VisibilityInternal is not
+// private anywhere else either (risk-classing, the self-containment scan, the public-form
+// trailer). The `:internal` token exists only so the configured claim can name the value
+// the forge reports; it authorizes nothing a `:public` entry did not. This mirrors config.go's
 // ParseVisibility, which fails closed on the identical set of unrecognised inputs (#310);
 // the two visibility readers in this package must agree, not diverge.
 func PublicRepoGate(fetcher RepoInfoFetcher, owner, repo string) error {
@@ -108,27 +113,31 @@ func PublicRepoGate(fetcher RepoInfoFetcher, owner, repo string) error {
 	// spelling: security review on #310 drove the live gate over every visibility string
 	// GitHub's API can return and found "PUBLIC", "public " (whitespace), and "internal"
 	// all fell through ungated under `visibility != "public"`.
-	switch strings.ToLower(strings.TrimSpace(visibility)) {
+	live := strings.ToLower(strings.TrimSpace(visibility))
+	switch live {
 	case "private":
 		return nil
 	case "public", "internal":
 		// The single control standing between a desk tool and an outward write to a
-		// public/internal repo: an EXPLICIT allowed-repos entry tagged `:public`. The
+		// public/internal repo: an EXPLICIT allowed-repos entry whose visibility token
+		// names the live value (`:public` for public, `:internal` for internal). The
 		// configured value is read here (RepoVisibility, no network) AND compared against
 		// the LIVE read above — a repo absent from the set, matched only by an `owner/*`
 		// pattern (patterns widen IsAllowedRepo alone; they carry no visibility policy),
-		// tagged `:private`, or carrying no visibility token all answer something other
-		// than VisibilityPublic and refuse. The set is configured out-of-band, so no pull
-		// request can add its own repository to it.
-		if RepoVisibility(owner+"/"+repo) == VisibilityPublic {
+		// tagged `:private`, carrying no visibility token, or tagged with the other
+		// non-private token all answer something other than the live value and refuse.
+		// The set is configured out-of-band, so no pull request can add its own
+		// repository to it.
+		want := ParseVisibility(live)
+		configured := RepoVisibility(owner + "/" + repo)
+		if configured == want {
 			return nil
 		}
 		return Refused(fmt.Sprintf(
 			"public-repo gate: %s/%s reads live-%s but the allowed-repos set does not authorize outward writes to it "+
-				"(configured visibility: %s, not :public). Add %s/%s:public to the allowed-repos configuration (%s) — "+
+				"(configured visibility: %s, not :%s). Add %s/%s:%s to the allowed-repos configuration (%s) — "+
 				"the authorization is repository-scoped and covers every write verb; merge remains the human's.",
-			owner, repo, strings.ToLower(strings.TrimSpace(visibility)),
-			RepoVisibility(owner+"/"+repo).String(), owner, repo, EnvAllowedRepos))
+			owner, repo, live, configured.String(), live, owner, repo, live, EnvAllowedRepos))
 	default:
 		return Unverifiable(fmt.Sprintf("public-repo gate: repo %s/%s returned unrecognised visibility %q — refusing rather than treating it as private", owner, repo, visibility), nil)
 	}

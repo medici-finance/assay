@@ -73,7 +73,7 @@ var observationMembers = map[string]bool{
 	"received_at": true, "occurred_at": true, "occurred_after": true,
 	"occurred_before": true, "precision": true, "source_authority": true,
 	"source_ref": true, "coverage": true, "import_run": true,
-	"status_from": true,
+	"status_from": true, "context": true,
 }
 
 // Precedence among observations of one fact: authority first, then precision.
@@ -148,6 +148,9 @@ type BriefEvent struct {
 	StatusTo        string
 	AliasReason     string
 	Supersedes      string
+	// Context is the optional measurement context (spec §14.2), nil when
+	// absent. An observation member: it never changes the fact's digest.
+	Context *FlowContext
 
 	// Digest is the fact digest: sha256 over the canonical JSON of every
 	// member except the observation members.
@@ -174,11 +177,13 @@ var personKeys = map[string]bool{
 	"name": true, "author": true, "actor": true, "person": true,
 	"principal": true, "handle": true, "display_name": true,
 	"full_name": true, "user_id": true, "committer": true, "assignee": true,
+	// The people a human-act record (§16) would otherwise be tempted to name.
+	"approver": true, "submitter": true, "requester": true, "decider": true,
 }
 
 var personKeySuffixes = []string{
 	"_login", "_email", "_name", "_user", "_username", "_handle",
-	"_author", "_person", "_principal", "_mail",
+	"_author", "_person", "_principal", "_mail", "_approver", "_submitter",
 }
 
 var personKeyInfixes = []string{"login", "email", "username", "user_name"}
@@ -505,33 +510,49 @@ func bfeDecodeValue(dec *json.Decoder, depth int) (any, error) {
 	}
 }
 
-func briefEventFromMap(m map[string]any) (*BriefEvent, error) {
+// bfeCheckRecord runs the checks every record kind shares, in their
+// load-bearing order: the person-identifier scan, schema validation with
+// redacted messages, then `must_understand`.
+func bfeCheckRecord(m map[string]any) error {
 	if err := scanPerson(m, ""); err != nil {
-		return nil, err
+		return err
 	}
 	schema, err := eventSchema()
 	if err != nil {
-		return nil, fmt.Errorf("embedded event schema unreadable: %w", err)
+		return fmt.Errorf("embedded event schema unreadable: %w", err)
 	}
 	if v := validateValue(schema, m, ""); len(v) > 0 {
 		red := make([]string, len(v))
 		for i, msg := range v {
 			red[i] = bfeRedact(msg)
 		}
-		return nil, fmt.Errorf("schema: %s", strings.Join(red, "; "))
+		return fmt.Errorf("schema: %s", strings.Join(red, "; "))
 	}
 
 	known, err := eventKnownMembers()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if mu, ok := m["must_understand"].([]any); ok {
 		for i, x := range mu {
 			name, _ := x.(string)
 			if !known[name] {
-				return nil, fmt.Errorf("must_understand[%d]: names a member this reader does not understand; event refused", i)
+				return fmt.Errorf("must_understand[%d]: names a member this reader does not understand; event refused", i)
 			}
 		}
+	}
+	return nil
+}
+
+func briefEventFromMap(m map[string]any) (*BriefEvent, error) {
+	if err := bfeCheckRecord(m); err != nil {
+		return nil, err
+	}
+	// A wait or human-intervention record is not a milestone fact (spec §14):
+	// a fact reader refuses it rather than read it as one. Its kind is a
+	// schema enum value, so naming it discloses nothing.
+	if k := bfeStr(m, "record"); k != "" && k != "fact" {
+		return nil, fmt.Errorf("record kind %q is not a milestone fact; refused by the fact reader", k)
 	}
 
 	ev := &BriefEvent{
@@ -552,6 +573,7 @@ func briefEventFromMap(m map[string]any) (*BriefEvent, error) {
 		StatusTo:        bfeStr(m, "status_to"),
 		AliasReason:     bfeStr(m, "alias_reason"),
 		Supersedes:      bfeStr(m, "supersedes"),
+		Context:         flowContextOf(m),
 	}
 	for _, f := range []struct {
 		key string
@@ -620,22 +642,12 @@ func briefEventFromMap(m map[string]any) (*BriefEvent, error) {
 		return nil, fmt.Errorf("%s: a retraction cannot name itself", ev.FactID)
 	}
 
-	canon, err := canonicalJSON(m)
-	if err != nil {
-		return nil, err
-	}
-	fact := make(map[string]any, len(m))
-	for k, v := range m {
-		if !observationMembers[k] {
-			fact[k] = v
-		}
-	}
-	fcanon, err := canonicalJSON(fact)
+	canon, digest, err := recordDigest(m)
 	if err != nil {
 		return nil, err
 	}
 	ev.Canonical = canon
-	ev.Digest = sha256Tag(fcanon)
+	ev.Digest = digest
 	return ev, nil
 }
 
