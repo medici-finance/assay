@@ -33,7 +33,7 @@ domain: complicated
 consumers:
   - "tools/desk/internal/deskkit/mirroringest.go and mirroringest_test.go: follow-up forge-neutral/50 (this contribution)"
   - "tools/desk/internal/deskkit/mirrorsource.go and tests: follow-up forge-neutral/50 (reuse existing enumerated reads)"
-  - "forgeread/mirror/types.go, presence tests and mirrortest: follow-up forge-neutral/50 (one observation owner and synthetic joined proof)"
+  - "forgeread/mirror/types.go, planner.go, scan.go, presence/baseline tests and mirrortest: follow-up forge-neutral/50 (one observation owner and synthetic joined proof)"
   - "docs/contracts.md and forgeread/README.md: follow-up forge-neutral/50"
   - "workflow/store/ and persisted joined-watermark proof: follow-up forge-neutral/37"
   - "forgeclient/ composition relocation: out-of-scope (no forgeclient implementation exists here; desktools-v2/75 retains its later relocation contract)"
@@ -106,7 +106,6 @@ All rows use offline synthetic fixtures. Named PASS output is mandatory; no test
 | 4 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorFieldPresence$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorFieldPresence ' "$o" && GOWORK=off go test -count=1 ./...)` | Unknown versus known-empty body/collections survive canonical observation inputs, PlanScan and detached Store/query clones; unrequested review populations remain unknown. Dropping BodyKnown or normalizing empty collections to nil fails. Frozen root and pure-kernel suites pass. |
 | 5 | check:ci +flow | `(cd tools/desk && GOWORK=off go test -count=1 -run '^(TestMirrorNativeResponseBounds\|TestMirrorResponseBoundIsolation\|TestReadOnlyForgeRefusesEveryWriteMethod\|TestForgeSurfaceUnchangedByDeskread\|TestForgeGitlabCoverage\|TestAmbientTokenGuardCoversForgeread)$' ./internal/deskkit/)` | Existing native, neighboring operation, write refusal, frozen surface, inventory and ambient-token guard controls still run/pass; no new Forge method or credential surface. |
 | 6 | check +dereference | `statusgen --root . --consumers --brief forge-neutral/50 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | Pre-merge implementing-branch routing corroborates actual edits; unchecked exclusions remain reviewer obligations. Before post-merge verification bind independently established mainline delivery and first parent with --delivery/--base; routing alone is not producer identity or acceptance. |
-
 | 7 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorPlanBaseline$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorPlanBaseline ' "$o")` | Canonical plan carries the exact prior observed bound with scope/version. Future, forged, cleared or regressed baseline and stale expected version refuse independently before an update; existing raw scan-watermark regression controls stay unchanged. Actual plan-baseline check removal fails its mutation. Row 1 joins a legitimate full source inventory whose former newest record disappeared: complete coverage advances, the retained observed maximum never regresses and unqualified absence never becomes closed. Incomplete scans still have zero source ObservedUpTo and preserve prior LastComplete. |
 
 ## Pre-mortem and detection
