@@ -61,3 +61,76 @@ never retries through that path.
 ```sh
 cd forgeread && GOWORK=off go test ./...
 ```
+
+## Mirror kernel
+
+`mirror/` owns provider-qualified observations, admission-bound scopes, coverage,
+explicit-time refresh/scan plans and admitted queries over caller-supplied ports.
+`QueryScope` checks current admission before reading a Store; the Store must also
+check admission independently. Complete-empty is available only with complete,
+fresh coverage. Partial scans retain prior rows and their completeness watermark;
+full inventory absence means not-in-inventory, never closed. Full-inventory time
+is tracked separately so incremental success cannot postpone repair indefinitely.
+
+The package has no network, credential, filesystem, process, database or scheduler
+implementation. `mirror/mirrortest` is synthetic reference-store/conformance support,
+not production persistence. Permission loss returns unavailable coverage and a
+retention-decision-required signal, without choosing keep-history or purge. The
+permission hold persists across failed or partial scans and only a successful
+complete full inventory may clear it, under current matching admission and with
+both LastComplete and LastInventory strictly after the held LastAttempted.
+Incremental, not-modified and stale/replayed updates cannot recover permission.
+Store adapters enforce that transition independently of the planner. The
+persisted mirror integration retains PostgreSQL transactions/restart, authenticated
+source mapping, refresh coalescing, review population completeness, domain mapping,
+retention policy and reader rollout. These are not supplied by the kernel.
+`RetainedFrom` is optional and zero means unknown; the durable Store must derive it
+from actual retained coverage under the selected policy, never the oldest visible
+row. Trusted composition must canonicalize GitHub owner/repository case before
+constructing a Scope; this pure package does not resolve aliases.
+
+The root API and its JSON envelope stay unchanged. Later shared-library composition
+can consume the kernel without moving credentials into this package. Targeted
+kernel checks run with `go test -run '^TestMirror' ./mirror/...`.
+
+## Incremental source reads (Go API 1.2)
+
+The provider adapters add `ChangesUpdatedSince` and `IssuesUpdatedSince` over the same
+already-admitted `Access`. `adapters.UpdateQuery` carries an inclusive time bound; results
+retain provider/repository/query provenance, page count, observed update bound and an explicit
+`Incomplete` flag. `BodyKnown=false` and nil collections preserve omitted fields as unknown;
+explicit empty collections remain non-nil. A failed page supplies no successful population. These are endpoint
+observations, never complete reviews, checks or threads, and do not alter the root issues
+wire envelope. `EnvelopeSchema` stays at 1.
+
+GitHub's pulls endpoint has no server-side since parameter: its bounded update-ordered walk
+filters locally and reports `ServerSideSince=false`. Conditional validators and 304 reuse are
+not implemented; `ConditionalSupported` is false while every requested page is read in full.
+Desk-tools' `MirrorReadSource` is the concrete consumer through existing scoped backends and
+read-only wrappers. Persistent mirror integration and the later shared forge-library custody
+migration retain their separate owners.
+
+These update-descending walks use offset pages over a changing provider population.
+A concurrent update can move an item between pages; duplicate numbers and missed observations
+are possible. Later ingestion must apply records by qualified identity, poll with an overlap
+window and periodically repair from a full inventory. Only a successful, complete walk's nonzero
+`ObservedUpTo` can inform the next provider-time bound, with that overlap; it is never a wall-clock
+watermark or an atomic snapshot. Incomplete walks or walks with no source rows return zero.
+A complete filtered-empty walk can report an older provider stamp; preserve the prior bound
+instead of regressing it. Only advance the previous complete bound when the observed stamp is newer.
+
+`RequestedReviewers` describes individual user accounts only. GitHub's `requested_teams` is not
+read by this contribution, so an explicitly empty user collection does not mean no team review
+was requested. Complete reviewer assignment/approval coverage remains with mirror integration.
+`MirrorReadSource` currently has no production command caller; these operations remain inert
+until that separately qualified integration.
+
+Each operation accepts at most 8 MiB of aggregate raw JSON payload before decoding and
+retaining additional records. A page that crosses that budget ends the walk with
+`Incomplete=true`, `LimitReason=byte-limit` and a zero `ObservedUpTo`. `ResponseBytes` includes
+that fetched page and `PageCount` includes its request. The byte count measures raw JSON,
+not compressed network bytes. A page-ceiling stop uses `LimitReason=page-limit` and also clears
+the bound. This bounds accepted multi-page payload, not the existing native backend's
+single-response `io.ReadAll` allocation or total decoded-object overhead. A transport-level
+single-response limit remains required before consumer activation and belongs to the full
+mirror/shared-library integration; this contribution does not claim that limit is implemented.

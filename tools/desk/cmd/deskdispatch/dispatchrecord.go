@@ -115,6 +115,11 @@ func buildDispatchRecord(o dispatchOpts, plan dispatchPlan, ref, stamp string) d
 		tier = c
 	}
 	ms := modelStampOutcome(stamp)
+	// The digest of the role's dispatch-instruction file this kit took, never its path.
+	var rulesDigest *string
+	if plan.rules != nil {
+		rulesDigest = opt(plan.rules.sha256)
+	}
 	return deskkit.DispatchRecord{
 		Event:       deskkit.DispatchEventDispatched,
 		DispatchRef: opt(ref),
@@ -130,5 +135,7 @@ func buildDispatchRecord(o dispatchOpts, plan dispatchPlan, ref, stamp string) d
 		BriefExec:   execTier,
 		BriefEffort: effort,
 		ModelStamp:  &ms,
+
+		DispatchInstructionsSHA256: rulesDigest,
 	}
 }

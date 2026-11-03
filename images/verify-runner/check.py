@@ -100,3 +100,16 @@ print(json.dumps({'python': platform.python_version(),
                   'jsonschema': importlib.metadata.version('jsonschema'),
                   'entrypoints': list(ENTRYPOINTS),
                   'tools': tools}, sort_keys=True))
+
+# Exercise the installed exact-source owner and witness call site with local fixtures.
+import importlib.util
+from pathlib import Path
+proof_dir = Path('/usr/local/lib/verify-runner')
+for path in (proof_dir, proof_dir / 'source_proof.py', proof_dir / 'source_proof_check.py'):
+    st = path.lstat()
+    if st.st_uid or st.st_gid or st.st_mode & 0o022 or path.is_symlink():
+        raise RuntimeError('source proof installation is not root-owned and immutable to rows')
+spec = importlib.util.spec_from_file_location('proof_check', proof_dir / 'source_proof_check.py')
+probe = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(probe)
+print(probe.probe(proof_dir / 'source_proof.py', Path('/usr/local/bin/witness.sh')))

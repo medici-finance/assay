@@ -250,6 +250,7 @@ source and quality evidence in the affected implementation briefs.
 | External PR/review/issue/deployment facts | External provider, captured as attributed observations | Every read says what was covered, when, under which scope and whether complete. A page limit cannot mean an empty or complete result. |
 | In-flight attempts, claims, schedules, effects and runtime coordination | PostgreSQL operational store | Transactional during normal operation; after complete loss reconstruct obligations from canonical sources, reconcile effects and repeat safe work. Some transient history can be lost. |
 | Raw evidence, logs, receipts and durable exports | Git-stored retained artifacts and the existing governed publication path for this phase | Scratch can be disposable; canonical evidence needed for recovery must have a durable source; transient diagnostics need an explicit loss policy. A later non-Git evidence store needs an explicit migration. |
+| Optional performance observations (performance-event-v1) | A local spool under the state directory (`performance-events/`); later, a separate optional performance database, never the PostgreSQL operational store | Collection is consented and optional. With it off, every operational record works unchanged. Records confer no work, acceptance, budget or effect authority. Retired or unsent data is reported as coverage loss, never as zero, and losing the whole store loses only observations. |
 | Board, context graph, cockpit lists, reports and search indexes | Rebuildable projections | Show projection revision/watermark and source coverage. Display lag is not authority to repeat an effect. |
 
 For the revised target, use **PostgreSQL in local Docker, then CloudNativePG on Kubernetes**. PostgreSQL owns operational transactions and query indexes; Git retains canonical definitions and published evidence, while the forge owns external objects. The [storage amendment](14-storage-forge-graph.md) defines HA limits, reconstruction with permitted transient loss, the forge mirror and graph queries.
@@ -518,6 +519,14 @@ The perf-v3 service measurements also cover the planned query/cache layer: calle
 logical requests and latency, per-handler/cache/coalescing work, and actual direct/passthrough
 or background provider requests/cost. Keep these observation kinds distinct and charge shared
 refreshes once; see the [boundary contract](../../performance-attribution-spec.md#querycache-service-and-passthrough-boundaries).
+
+Collection delivery note, 1 November 2026: performance-collection/01 implements the local
+`performance-event-v1` contract, spool and offline report in the separate `perfdata` module
+([specification](../../../spec/performance-event-v1.md)). The optional performance database,
+collector and sender are later briefs of that stream and stay separate from the operational
+store. Collection owns the meaning of collection only. Measurement meanings stay with their
+existing owners. Human acceptance of the field and loss contract is pending, and no remote
+destination is active.
 
 ## Local write policy — amendment, 18 October 2026
 

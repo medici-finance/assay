@@ -1,0 +1,1 @@
+- Keep verification probe refusal fixtures offline under a probe-only argument-guard regression, with inert DNS/TCP seams and an exact-code counterexample.
