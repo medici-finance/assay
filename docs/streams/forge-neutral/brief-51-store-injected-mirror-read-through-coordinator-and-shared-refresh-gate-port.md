@@ -2,8 +2,8 @@
 brief: assay:assay:forge-neutral:51
 title: Store-injected mirror read-through coordinator and shared refresh gate port
 why: "A missing or stale shared answer should trigger one admitted refresh, while equivalent readers wait for that result. A reusable coordinator makes failures and cooldown visible without making every client poll the forge or waiting for write execution features."
-wave: 3
-depends: ["forge-neutral/46"]
+wave: 5
+depends: ["forge-neutral/46", "forge-neutral/50"]
 unblocks: []
 split-from: forge-neutral/37
 effort: M
@@ -19,6 +19,7 @@ design: DR-forge-library
 authored: 2026-11-03 by statusgen newbrief
 sources:
   - docs/streams/forge-neutral/brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md
+  - docs/streams/forge-neutral/brief-50-join-admitted-incremental-reads-to-mirror-observations.md
   - docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md
   - docs/streams/decisions/DR-forge-library.md
   - docs/library-first.md
@@ -64,7 +65,7 @@ single-point-of-failure: the shared gate's acquire/join/completion and retry-eli
 
 ## Read first and architecture pickup
 
-Read current `/37`, `/46`–`/48`, DR-forge-library, library-first and Go engineering guidance, the current read-through amendment, and the actual mapper/foundation child contracts. Record their revisions, actual APIs, source availability, and continue/adapt/hold before implementation. Add a typed dependency on the mapper child once its genuine authored contract is available; do not dispatch against an absent target. No graph-execution admission, claim, outbox or effect prerequisite is added to this offline orchestration unit.
+Read current `/37`, `/46`–`/48`, DR-forge-library, library-first and Go engineering guidance, the current read-through amendment, and the actual mapper/foundation child contracts. Record their revisions, actual APIs, source availability, and continue/adapt/hold before implementation. Mapper50 is a typed dependency, carried by genuine two-parent merge of its authoring commit; that contract is not claimed as an implementation delivery. At dispatch inspect its actual source/port availability and the supported offline preparation path; missing required capability holds rather than inventing another mapper. No graph-execution admission, claim, outbox or effect prerequisite is added to this offline orchestration unit.
 
 The real critical-path head for durable read-through is the canonical R2 foundation and shared-gate adapter, absent at the inspected main. Independent coordinator implementation can proceed with the explicit substitutes below; it cannot claim that head delivered.
 
