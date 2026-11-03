@@ -322,47 +322,59 @@ func TestMilestoneGraphUnknowns(t *testing.T) {
 		}
 	})
 
-	t.Run("a logical-key collision across roots holds every claimant, never picks a winner", func(t *testing.T) {
-		advertiseMilestones(t)
-		// Root B is the same fixture under the same cell and self alias, with
-		// brief 12's start requirement deleted and fresh uuids. Without the
-		// guard root A's row 12 receives root B's empty gate list.
-		rootA := ms05Tree(t, nil)
-		fresh := strings.NewReplacer("-000000000511", "-000000000611", "-000000000512", "-000000000612", "-000000000521", "-000000000621", "-000000000531", "-000000000631")
-		rootB := ms05Tree(t, map[string]func(string) string{
-			"build/brief-12-gated.md": func(s string) string {
-				return fresh.Replace(ms04Replace("requires-milestones: [\"stream-y:m-01@1\"]\n", "")(s))
-			},
-			"build/brief-11-independent.md": fresh.Replace,
-			"stream-y/brief-01-y-work.md":   fresh.Replace,
-			"stream-z/brief-01-z-work.md":   fresh.Replace,
-		})
-		streams := ms05Load(t, rootA, rootB)
-		_, notices := checkBriefFiles(streams, streams)
-		for _, s := range streams {
-			if s.Root != rootA || s.Name != "build" {
-				continue
+	for _, advertised := range []bool{true, false} {
+		t.Run("a logical-key collision across roots holds every claimant, never picks a winner (milestone-v1 advertised="+strconv.FormatBool(advertised)+")", func(t *testing.T) {
+			if advertised {
+				advertiseMilestones(t)
 			}
-			for _, row := range s.Briefs {
-				if row.Num != "12" {
+			// Root B is the same fixture under the same cell and self alias, with
+			// brief 12's start requirement deleted and fresh uuids. Without the
+			// guard root A's row 12 receives root B's empty gate list.
+			rootA := ms05Tree(t, nil)
+			fresh := strings.NewReplacer("-000000000511", "-000000000611", "-000000000512", "-000000000612", "-000000000521", "-000000000621", "-000000000531", "-000000000631")
+			rootB := ms05Tree(t, map[string]func(string) string{
+				"build/brief-12-gated.md": func(s string) string {
+					return fresh.Replace(ms04Replace("requires-milestones: [\"stream-y:m-01@1\"]\n", "")(s))
+				},
+				"build/brief-11-independent.md": fresh.Replace,
+				"stream-y/brief-01-y-work.md":   fresh.Replace,
+				"stream-z/brief-01-z-work.md":   fresh.Replace,
+			})
+			streams := ms05Load(t, rootA, rootB)
+			_, notices := checkBriefFiles(streams, streams)
+			found := false
+			for _, s := range streams {
+				if s.Root != rootA || s.Name != "build" {
 					continue
 				}
-				held := false
-				for _, e := range row.Gates {
-					held = held || (e.Ref == "stream-y:m-01@1" && e.Resolved == StateCouldNotCheck && strings.Contains(e.Why, "claimed by more than one scanned brief"))
-				}
-				if !held {
-					t.Fatalf("root A's brief 12 must keep its start requirement, held could-not-check naming the collision; gates %+v\n%s", row.Gates, strings.Join(notices, "\n"))
+				for _, row := range s.Briefs {
+					if row.Num != "12" {
+						continue
+					}
+					held := false
+					found = true
+					for _, e := range row.Gates {
+						held = held || (e.Ref == "stream-y:m-01@1" && e.Resolved == StateCouldNotCheck && strings.Contains(e.Why, "claimed by more than one scanned brief"))
+					}
+					if !held {
+						t.Fatalf("root A's brief 12 must keep its start requirement, held could-not-check naming the collision; gates %+v\n%s", row.Gates, strings.Join(notices, "\n"))
+					}
 				}
 			}
-		}
-		if !ms05Has(notices, "brief-12-gated.md", "held could-not-check", "assay:assay:build:b-12", "claimed by more than one scanned brief") {
-			t.Errorf("the collision must be announced; notices:\n%s", strings.Join(notices, "\n"))
-		}
-		if m3 := ms05Graph(t, streams).Milestones[ms05M3]; m3.Completion != evaluation.GraphUnknown || !ms05Has(m3.Unknowns, "declared by more than one loaded record") {
-			t.Errorf("a milestone declared in both roots must stay unknown, never pick one record; got %+v", m3)
-		}
-	})
+			if !found {
+				t.Fatal("root A's build brief 12 was not scanned")
+			}
+			if !ms05Has(notices, "brief-12-gated.md", "held could-not-check", "assay:assay:build:b-12", "claimed by more than one scanned brief") {
+				t.Errorf("the collision must be announced; notices:\n%s", strings.Join(notices, "\n"))
+			}
+			if !advertised {
+				return // records are not read while milestone-v1 is unadvertised
+			}
+			if m3 := ms05Graph(t, streams).Milestones[ms05M3]; m3.Completion != evaluation.GraphUnknown || !ms05Has(m3.Unknowns, "declared by more than one loaded record") {
+				t.Errorf("a milestone declared in both roots must stay unknown, never pick one record; got %+v", m3)
+			}
+		})
+	}
 
 	t.Run("a root whose owner cannot be established holds could-not-check", func(t *testing.T) {
 		advertiseMilestones(t)

@@ -439,7 +439,19 @@ milestone and an indirect cycle across roots, is a lint PROBLEM, and the brief's
 on that milestone is typed `cycle`. Brief-only `depends` cycles stay with the existing
 wave check.
 
-The tests `TestMilestoneMixedGraph` and `TestMilestoneGraphUnknowns` exercise this
+**Collisions.** A logical brief key claimed by more than one scanned brief (two roots
+whose registries resolve to one cell and alias, sharing a stream and number) never picks
+a winner. Every claimant is left out of the graph and the source port, and its start
+requirements hold `could-not-check`, naming the collision. A milestone version declared
+by more than one loaded record stays `unknown` for the same reason.
+
+**Bounded detail.** A milestone's transitive blockers and unknowns are qualified once,
+at the milestone they come from, and deduplicated, so a lattice of shared prerequisites
+stays linear in the records. A start gate's hold reason lists at most 20 entries and
+counts the rest.
+
+The tests `TestMilestoneMixedGraph`, `TestMilestoneGraphUnknowns` and
+`TestMilestoneLatticeStaysLinear` exercise this
 contract on the §4 example (`statusgen/testdata/milestone-support/05/`);
 `statusgen/testdata/milestone-support/05-mutations.json` holds their executable mutation
 controls. Exporting milestone nodes from `--graph`, stream and deskboard views, dispatch
