@@ -28,12 +28,15 @@ var briefSchemaFirstRelease = map[string]string{
 	briefSchemaCurrent: "v0.9.0",  // brief-v1: the earliest published release
 	briefSchemaV2:      "v1.0.0",  // brief-v2: the derived-board release boundary (versiongate.go)
 	briefSchemaV3:      "v1.0.50", // brief-v3: the withdrawn-status release
+	briefSchemaV4:      "",        // brief-v4: unreleased — the release cut fills it in
 }
 
 // isBriefV2Family reports whether a schema carries every brief-v2 rule: brief-v2
-// itself and brief-v3 (brief-v2 plus the withdrawn status keys).
+// itself, brief-v3 (brief-v2 plus the withdrawn status keys) and brief-v4
+// (brief-v3 plus the typed-reference surface, whose parse normalizes its ids to
+// the v2 compatibility forms before any v2 rule reads them).
 func isBriefV2Family(schema string) bool {
-	return schema == briefSchemaV2 || schema == briefSchemaV3
+	return schema == briefSchemaV2 || schema == briefSchemaV3 || schema == briefSchemaV4
 }
 
 // versionJSON is the `statusgen --version --json` document.

@@ -4,6 +4,7 @@ import (
 	"github.com/medici-finance/assay/deskcore/issueflow"
 	"time"
 
+	"github.com/medici-finance/assay/statusgen/readercaps"
 	"github.com/medici-finance/assay/statusgen/streamview"
 )
 
@@ -93,6 +94,19 @@ type Stream struct {
 	// into completed work still resolves (loadArchivedStreams). false for every
 	// active stream.
 	Archived bool
+	// MilestoneOptIn is true when the README's top-level reader-requirements
+	// envelope names the milestone-v1 schema (spec/milestone-v1.md, stream
+	// opt-in); MilestoneOptInErr is set when that envelope is unreadable. A
+	// legacy stream has neither, and its milestones/ directory is never read.
+	// MilestoneReqs is that envelope, assessed against this reader's
+	// advertisement before any record is read.
+	MilestoneOptIn    bool
+	MilestoneOptInErr error
+	MilestoneReqs     readercaps.Requirements
+	// Milestones is the milestone-v1 plan for an active stream that opted in or
+	// whose envelope is unreadable (coverage unknown) (milestones.go); nil for
+	// every legacy, non-opted-in or archived stream.
+	Milestones *MilestonePlan
 }
 
 type Brief struct {

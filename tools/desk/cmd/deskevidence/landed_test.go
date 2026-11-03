@@ -511,3 +511,72 @@ func TestLandedFetchRefusals(t *testing.T) {
 		})
 	}
 }
+
+// regression: #4823
+func TestLandedApprovalContext(t *testing.T) {
+	for _, target := range []string{"docs/streams/verify-outcomes/vf/01-test.json", "docs/streams/verify-outcomes.jsonl"} {
+		t.Run(filepath.Ext(target), func(t *testing.T) {
+			f, _ := setupFake(t)
+			root, _, head, _ := landedFixture(t, false)
+			const origin = "https://github.com:443/example-org/tracker.git"
+			flGit(t, root, "remote", "add", "origin", origin)
+			flGit(t, root, "config", "http.extraHeader", "fixture-secret-header")
+			f.commitSHAs = map[string]string{"main": head}
+			record := []byte("{\"brief\":\"vf/01\",\"outcome\":\"verified\"}\n")
+			landed, _, cleanup, err := landedClosureTree(root, target, nil, record, false, f, crossRepo, "main", deskkit.VerifierReceipt{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cleanup()
+			repo, err := gitcore.Open(landed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := repo.RemoteURL("origin")
+			if err != nil || got != origin {
+				t.Fatalf("closure %s lost repository authority: origin=%q err=%v", target, got, err)
+			}
+			config, err := os.ReadFile(filepath.Join(landed, ".git", "config"))
+			if err != nil || strings.Contains(string(config), "fixture-secret") {
+				t.Fatal("source credentials copied")
+			}
+		})
+	}
+}
+
+// regression: #4823 C2
+func TestLandedOriginErrors(t *testing.T) {
+	landedStatusgenOnPath(t)
+	for _, mode := range []string{"push-rewrite", "malformed"} {
+		for _, target := range []string{"docs/streams/verify-outcomes/vf/01-test.json", "docs/streams/verify-outcomes.jsonl"} {
+			t.Run(mode+filepath.Ext(target), func(t *testing.T) {
+				f, _ := setupFake(t)
+				root, _, head, files := landedFixture(t, false)
+				origin := "https://github.com:443/example-org/tracker.git"
+				if mode == "malformed" {
+					origin = "ssh://git@github.com:o/r.git"
+				}
+				flGit(t, root, "remote", "add", "origin", origin)
+				if mode == "push-rewrite" {
+					flGit(t, root, "config", "url.ssh://git@github.com:.pushInsteadOf", "https://github.com/")
+				}
+				f.commitSHAs = map[string]string{"main": head}
+				for p, b := range files {
+					f.setFile(p, b)
+				}
+				record := []byte("{\"brief\":\"vf/01\",\"outcome\":\"verified\"}\n")
+				landed, _, cleanup, err := landedClosureTree(root, target, nil, record, false, f, crossRepo, "main", deskkit.VerifierReceipt{})
+				if err != nil {
+					t.Fatalf("unrelated closure blocked by origin: %v", err)
+				}
+				defer cleanup()
+				if _, err := checkVerifiedClosure(landed, "vf/01"); err != nil {
+					t.Fatal(err)
+				}
+				if problems, err := statusgenLintAt(landed); err != nil || len(problems) > 0 {
+					t.Fatalf("unrelated closure lint=%v err=%v", problems, err)
+				}
+			})
+		}
+	}
+}
