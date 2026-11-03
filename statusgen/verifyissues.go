@@ -950,6 +950,7 @@ func unroutedHeldLine(evidence string) (bool, string) {
 	inFence := false
 	var codeScan inlineCodeScan
 	scope := heldScanScope(evidence)
+	tableDepth := 0
 	var hits []int
 	var quotes []string
 	for i, line := range strings.Split(evidence, "\n") {
@@ -962,6 +963,9 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		if inFence {
 			continue
 		}
+		// A line inside an HTML table, its own tags or not, is table text.
+		inTable := tableDepth > 0
+		tableDepth = heldHTMLTableDepth(tableDepth, line)
 		if trimmed == "" {
 			if isBlankLine(line) {
 				codeScan.blank()
@@ -1029,8 +1033,9 @@ func unroutedHeldLine(evidence string) (bool, string) {
 			// Prose that only recounts a state word — a zero tally, a mutation
 			// sentence, a past flip hold citing its tracker — is not a
 			// disposition (heldScanScope rule 6, #4721). A table line, a
-			// struck line and every other prose shape stay read.
-			if cuts == nil && !heldProseExempt(line, read) && heldRecounted(clean, h) {
+			// line inside an HTML table, a struck line and every other prose
+			// shape stay read.
+			if cuts == nil && !heldProseExempt(line, read, inTable) && heldRecounted(clean, line, h) {
 				continue
 			}
 			// A negated or zero-counted occurrence ("no could-not-check",
@@ -1085,12 +1090,13 @@ func unroutedHeldLine(evidence string) (bool, string) {
 	return false, ""
 }
 
-// heldProseExempt reports whether line is, or may render as, a table row: it
-// is read in its result cells or whole, never for rule 6's recounted prose.
-// Any pipe, even one inside a code span or escaped, keeps the line out of
-// rule 6 — the fail-closed side of where a GFM table row splits.
-func heldProseExempt(line string, read heldLineRead) bool {
-	return read.key != "" || len(read.blank) > 0 || heldTableLine(line) ||
+// heldProseExempt reports whether line is, or may render as, a table row or
+// cell: it is read in its result cells or whole, never for rule 6's recounted
+// prose. Any pipe, even one inside a code span or escaped, keeps the line out
+// of rule 6 — the fail-closed side of where a GFM table row splits — and so
+// does a line between an HTML table's open and close tags (inTable).
+func heldProseExempt(line string, read heldLineRead, inTable bool) bool {
+	return inTable || read.key != "" || len(read.blank) > 0 || heldTableLine(line) ||
 		strings.Contains(line, "|") || heldHTMLTableRe.MatchString(line)
 }
 
