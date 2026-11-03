@@ -430,6 +430,7 @@ func TestRefreshJoinedFlow(t *testing.T) {
 
 // regression: #5399
 func TestRefreshSharedGate(t *testing.T) {
+	t.Run("read-commit", checkReadCommitRace)
 	f := setup(t)
 	release := make(chan struct{})
 	f.source.fn = func(ctx context.Context, _ mirror.Admission, s mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
@@ -463,6 +464,195 @@ func TestRefreshSharedGate(t *testing.T) {
 	if f.source.calls.Load() != 1 {
 		t.Fatalf("two coordinators walked %d times", f.source.calls.Load())
 	}
+}
+
+type interceptReadStore struct {
+	mirror.Store
+	reads  atomic.Int64
+	before func(context.Context, int64) error
+	after  func(*mirror.Snapshot)
+}
+
+func (s *interceptReadStore) Read(ctx context.Context, a mirror.Admission, scope mirror.Scope) (mirror.Snapshot, error) {
+	n := s.reads.Add(1)
+	if s.before != nil {
+		if err := s.before(ctx, n); err != nil {
+			return mirror.Snapshot{}, err
+		}
+	}
+	r, err := s.Store.Read(ctx, a, scope)
+	if err == nil && s.after != nil {
+		s.after(&r)
+	}
+	return r, err
+}
+
+func commitReadFixture(t *testing.T, f *fixture) mirror.Snapshot {
+	t.Helper()
+	s, err := f.store.Read(context.Background(), f.a, f.q.Scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := mirror.PlanRefresh(s, f.clock.Now(), f.caller.Limits.Refresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	update, err := mirror.PlanScan(s, plan, f.scan(f.q.Scope, "concurrent"), f.clock.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err = f.store.Apply(context.Background(), f.a, update)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func checkReadCommitRace(t *testing.T) {
+	t.Run("initial-cohort", func(t *testing.T) {
+		f := setup(t)
+		entered, sourceRelease, allReads, readRelease := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
+		var enterOnce sync.Once
+		f.source.fn = func(ctx context.Context, _ mirror.Admission, s mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
+			enterOnce.Do(func() { close(entered) })
+			select {
+			case <-sourceRelease:
+				return f.scan(s, "committed"), nil
+			case <-ctx.Done():
+				return mirror.ScanResult{}, ctx.Err()
+			}
+		}
+		blocked := atomic.Int64{}
+		f.c[1].store = &interceptReadStore{Store: f.store, before: func(ctx context.Context, _ int64) error {
+			if blocked.Add(1) == 49 {
+				close(allReads)
+			}
+			select {
+			case <-readRelease:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}}
+		type answer struct {
+			r Result
+			e error
+		}
+		owner := make(chan answer, 1)
+		out := make(chan answer, 49)
+		go func() { r, e := f.c[0].Read(context.Background(), f.a, f.q, f.caller); owner <- answer{r, e} }()
+		await(t, entered)
+		for i := 0; i < 49; i++ {
+			go func() { r, e := f.c[1].Read(context.Background(), f.a, f.q, f.caller); out <- answer{r, e} }()
+		}
+		await(t, allReads)
+		f.clock.step(time.Second)
+		completedAt := f.clock.Now()
+		close(sourceRelease)
+		select {
+		case a := <-owner:
+			if a.e != nil || !a.r.Fulfilled {
+				t.Fatalf("owner failed: %v %+v", a.e, a.r)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("owner did not commit")
+		}
+		close(readRelease)
+		for i := 0; i < 49; i++ {
+			select {
+			case a := <-out:
+				if a.e != nil || !a.r.Fulfilled || !a.r.Snapshot.Coverage.LastComplete.Equal(completedAt) {
+					t.Fatalf("read began before commit and rejected current snapshot: %v fulfilled=%v", a.e, a.r.Fulfilled)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("cohort reader did not finish")
+			}
+		}
+		if f.source.calls.Load() != 1 {
+			t.Fatal("read/commit race created another source walk")
+		}
+	})
+	for _, tc := range []struct {
+		name        string
+		read, calls int64
+	}{{"baseline", 2, 0}, {"fill-query", 3, 0}, {"fill-baseline", 4, 1}} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := setup(t)
+			f.c[0].store = &interceptReadStore{Store: f.store, before: func(_ context.Context, n int64) error {
+				if n == tc.read {
+					f.clock.step(time.Second)
+					commitReadFixture(t, f)
+				}
+				return nil
+			}}
+			r, e := f.c[0].Read(context.Background(), f.a, f.q, f.caller)
+			if e != nil || !r.Fulfilled || !r.RetryAt.IsZero() || f.source.calls.Load() != tc.calls {
+				t.Fatalf("post-read %s used an older clock: err=%v fulfilled=%v retry=%v calls=%d", tc.name, e, r.Fulfilled, r.RetryAt, f.source.calls.Load())
+			}
+		})
+	}
+	t.Run("joined-requery", func(t *testing.T) {
+		f := setup(t)
+		entered, release := make(chan struct{}), make(chan struct{})
+		var armed atomic.Bool
+		var once sync.Once
+		var enterOnce sync.Once
+		f.source.fn = func(ctx context.Context, _ mirror.Admission, s mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
+			enterOnce.Do(func() { close(entered) })
+			select {
+			case <-release:
+				return f.scan(s, "first"), nil
+			case <-ctx.Done():
+				return mirror.ScanResult{}, ctx.Err()
+			}
+		}
+		f.c[1].gate = armAfterWait{Gate: f.gate, arm: func() { armed.Store(true) }}
+		f.c[1].store = &interceptReadStore{Store: f.store, before: func(context.Context, int64) error {
+			if armed.Load() {
+				once.Do(func() { f.clock.step(time.Second); commitReadFixture(t, f) })
+			}
+			return nil
+		}}
+		type answer struct {
+			r Result
+			e error
+		}
+		owner, joined := make(chan answer, 1), make(chan answer, 1)
+		go func() { r, e := f.c[0].Read(context.Background(), f.a, f.q, f.caller); owner <- answer{r, e} }()
+		await(t, entered)
+		go func() { r, e := f.c[1].Read(context.Background(), f.a, f.q, f.caller); joined <- answer{r, e} }()
+		await(t, f.gate.acquired)
+		await(t, f.gate.acquired)
+		close(release)
+		for _, ch := range []<-chan answer{owner, joined} {
+			select {
+			case a := <-ch:
+				if a.e != nil || !a.r.Fulfilled || !a.r.RetryAt.IsZero() {
+					t.Fatalf("joined query rejected concurrently committed coverage: %v %+v", a.e, a.r)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("joined read timed out")
+			}
+		}
+		if f.source.calls.Load() != 1 {
+			t.Fatal("joined read/commit race retried source")
+		}
+	})
+	t.Run("true-future", func(t *testing.T) {
+		f := setup(t)
+		commitReadFixture(t, f)
+		f.c[0].store = &interceptReadStore{Store: f.store, after: func(s *mirror.Snapshot) {
+			future := f.clock.Now().Add(time.Second)
+			s.Coverage.LastAttempted = future
+			s.Coverage.LastComplete = future
+			s.Coverage.LastInventory = future
+			s.Coverage.ObservedUpTo = future
+		}}
+		r, e := f.c[0].Read(context.Background(), f.a, f.q, f.caller)
+		if !errors.Is(e, mirror.ErrInvalid) || r.Fulfilled || len(r.Snapshot.Records) != 0 || f.source.calls.Load() != 0 {
+			t.Fatalf("true future coverage was accepted: %v %+v", e, r)
+		}
+	})
 }
 
 // regression: #5399

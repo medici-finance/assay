@@ -51,7 +51,7 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 		return held(q, mirror.Permission), err
 	}
 	q.Now = c.clock.Now()
-	r, err := mirror.QueryScope(ctx, c.store, a, q.Query)
+	r, err := c.queryScope(ctx, a, q)
 	if err != nil {
 		return held(q, mirror.Unknown), err
 	}
@@ -71,6 +71,7 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 	if baseline.Scope != q.Scope {
 		return held(q, mirror.Unknown), mirror.ErrInvalid
 	}
+	q.Now = c.clock.Now()
 	plan, err := mirror.PlanRefresh(baseline, q.Now, caller.Limits.Refresh)
 	if err != nil {
 		return c.release(ctx, a, q, caller, r, State{}, err)
@@ -131,7 +132,7 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 	if e := c.authority.Authorize(ctx, caller, q.Scope); e != nil {
 		return held(q, mirror.Permission), e
 	}
-	r, err = mirror.QueryScope(ctx, c.store, a, q.Query)
+	r, err = c.queryScope(ctx, a, q)
 	if err != nil {
 		return held(q, mirror.Unknown), err
 	}
@@ -163,7 +164,7 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 		return
 	}
 	q.Now = c.clock.Now()
-	current, err := mirror.QueryScope(ctx, c.store, a, q.Query)
+	current, err := c.queryScope(ctx, a, q)
 	if err != nil {
 		complete.Failure = mirror.Unknown
 		finish()
@@ -189,6 +190,7 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 		return
 	}
 	// An owner acquired after another commit must plan from that actual snapshot.
+	q.Now = c.clock.Now()
 	plan, err = mirror.PlanRefresh(baseline, q.Now, caller.Limits.Refresh)
 	if err != nil {
 		complete.Failure = mirror.Unknown
@@ -267,6 +269,22 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 		}
 	}
 	finish()
+}
+
+// queryScope chooses evaluation time after the guarded read. A concurrent commit
+// may be newer than the read's start; actual future timestamps still fail the
+// canonical evaluator. Source observation/watermark timestamps are never changed.
+func (c *Coordinator) queryScope(ctx context.Context, a mirror.Admission, q Query) (mirror.Result, error) {
+	q.Now = c.clock.Now()
+	snapshot, reason, err := mirror.ReadScopeSnapshot(ctx, c.store, a, q.Query)
+	if reason != "" {
+		return held(q, reason).Result, err
+	}
+	if err != nil {
+		return mirror.Result{}, err
+	}
+	q.Now = c.clock.Now()
+	return mirror.EvaluateSnapshot(snapshot, q.Query)
 }
 
 // release is the single return boundary for snapshots. Checks before a blocking

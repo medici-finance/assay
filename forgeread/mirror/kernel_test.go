@@ -13,6 +13,7 @@ var instant = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 
 // regression: #5399
 func TestMirrorSnapshotEvaluation(t *testing.T) {
+	t.Run("guarded-acquisition", checkGuardedAcquisition)
 	_, scope, _, snapshot := seed(t, true)
 	query := mirror.Query{Scope: scope, Now: instant, MaxAge: time.Minute}
 	result, err := mirror.EvaluateSnapshot(snapshot, query)
@@ -52,6 +53,74 @@ func TestMirrorSnapshotEvaluation(t *testing.T) {
 	query.Now = instant
 	if r, e := mirror.EvaluateSnapshot(snapshot, query); e != nil || r.Available || len(r.Snapshot.Records) != 0 || r.Snapshot.Version != "" {
 		t.Fatalf("permission-held snapshot released stored fields: %+v %v", r, e)
+	}
+}
+
+func checkGuardedAcquisition(t *testing.T) {
+	store, scope, a, snapshot := seed(t, true)
+	query := mirror.Query{Scope: scope, Now: instant, MaxAge: time.Minute}
+	future := mirror.CloneSnapshot(snapshot)
+	stamp := instant.Add(time.Second)
+	future.Coverage.LastAttempted, future.Coverage.LastComplete, future.Coverage.LastInventory, future.Coverage.ObservedUpTo = stamp, stamp, stamp, stamp
+	spy := &spyStore{Store: store, override: &future}
+	if r, err := mirror.QueryScope(context.Background(), spy, a, query); !errors.Is(err, mirror.ErrInvalid) || len(r.Snapshot.Records) != 0 {
+		t.Fatal("explicit-time QueryScope stopped refusing a future snapshot", err)
+	}
+	owned, reason, err := mirror.ReadScopeSnapshot(context.Background(), spy, a, query)
+	if err != nil || reason != "" || !owned.Coverage.LastComplete.Equal(stamp) {
+		t.Fatal("guarded acquisition evaluated or retimestamped data", reason, err)
+	}
+	query.Now = stamp
+	if r, err := mirror.EvaluateSnapshot(owned, query); err != nil || !r.Available || r.Stale {
+		t.Fatal("post-acquisition explicit time did not evaluate current data", err)
+	}
+	owned.Records[0].Labels[0] = "caller-change"
+	if future.Records[0].Labels[0] != "retained" {
+		t.Fatal("guarded acquisition leaked mutable store storage")
+	}
+	for _, mode := range []string{"admission", "permission-error", "transport-error", "cancel", "invalid-query", "foreign-scope", "missing-store"} {
+		t.Run(mode, func(t *testing.T) {
+			q := mirror.Query{Scope: scope, Now: instant, MaxAge: time.Minute}
+			spy := &spyStore{Store: store, override: &snapshot}
+			var backend mirror.Store = spy
+			admission := mirror.Admission(a)
+			ctx := context.Background()
+			wantReason, wantError := mirror.Reason(""), error(nil)
+			wantReads := 0
+			switch mode {
+			case "admission":
+				admission = &mirrortest.TestAdmission{Name: a.Name, Allowed: false}
+				wantReason = mirror.Permission
+			case "permission-error":
+				spy.failure = mirror.ErrPermission
+				wantReason = mirror.Permission
+				wantReads = 1
+			case "transport-error":
+				spy.failure = errors.New("synthetic read failure")
+				wantReason = mirror.Transport
+				wantReads = 1
+			case "cancel":
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+				wantReason, wantError = mirror.Transport, context.Canceled
+			case "invalid-query":
+				q.MaxAge = 0
+				wantError = mirror.ErrInvalid
+			case "foreign-scope":
+				foreign := mirror.CloneSnapshot(snapshot)
+				foreign.Scope.Repository.Path = "example/foreign"
+				spy.override = &foreign
+				wantError, wantReads = mirror.ErrInvalid, 1
+			case "missing-store":
+				backend = nil
+				wantReason = mirror.Transport
+			}
+			s, reason, err := mirror.ReadScopeSnapshot(ctx, backend, admission, q)
+			if reason != wantReason || !errors.Is(err, wantError) || spy.reads != wantReads || s.Scope != (mirror.Scope{}) || s.Version != "" || len(s.Records) != 0 || !s.Coverage.LastComplete.IsZero() {
+				t.Fatalf("failed acquisition leaked fields or changed refusal: reason=%s err=%v reads=%d snapshot=%+v", reason, err, spy.reads, s)
+			}
+		})
 	}
 }
 
