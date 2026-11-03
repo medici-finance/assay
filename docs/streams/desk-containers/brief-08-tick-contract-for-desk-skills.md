@@ -364,7 +364,7 @@ the boot a tick performs is the boot a window performs.
 
 Rows 1–8 and 13–14 run offline in this repo, deterministically, and each is DISCRIMINATING: it
 fails on the pre-delivery base `ef7bfc2292b5f9a6ddf438591bfd6b42d30f00b4` (the parent of the
-delivering merge `21a3e1474c617a0a87a38e8453364c792d0000d6`) and passes on the delivered tree. Each
+delivering single-parent squash `21a3e1474c617a0a87a38e8453364c792d0000d6`) and passes on the delivered tree. Each
 ends in a fixed `rowN-ok` token so a run that printed nothing, or the wrong thing, cannot pass on
 its exit status alone. Rows 8 and 14 read those two commits by full SHA, so they need a checkout
 carrying the history (not a shallow clone). Rows 9–12 need a real tick PASS, and **this repo has
