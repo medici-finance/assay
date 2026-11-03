@@ -11,6 +11,7 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "This adapter can carry private forge observations. Human acceptance covers the demonstrated admission, uncertainty and native-bound flow; no private ingestion, retention action, service or activation is authorized."
 decision-trigger: spec
+decision-issue: 5398
 issues: []
 schema: brief-v2
 version: 2
@@ -31,10 +32,11 @@ exec-tier: strong
 exec-tier-why: "Two-provider provenance, optional-field presence and incomplete watermarks must remain correct through independent admission and actual composition."
 domain: complicated
 consumers:
-  - "tools/desk/internal/deskkit/mirroringest.go and mirroringest_test.go: follow-up forge-neutral/50 (this contribution)"
-  - "tools/desk/internal/deskkit/mirrorsource.go and tests: follow-up forge-neutral/50 (reuse existing enumerated reads)"
-  - "forgeread/mirror/types.go, planner.go, scan.go, presence/baseline tests and mirrortest: follow-up forge-neutral/50 (one observation owner and synthetic joined proof)"
-  - "docs/contracts.md and forgeread/README.md: follow-up forge-neutral/50"
+  - "tools/desk/internal/deskkit/mirroringest.go and mirroringest_test.go: fixed-here"
+  - "tools/desk/internal/deskkit/mirrorsource.go and tests: out-of-scope (reuse the existing enumerated reads unchanged)"
+  - "forgeread/mirror/types.go, planner.go, scan.go and presence_test.go: fixed-here (one observation owner and synthetic joined proof)"
+  - "forgeread/mirror/mirrortest/: out-of-scope (reuse the existing synthetic reference adapter unchanged)"
+  - "docs/contracts.md and forgeread/README.md: fixed-here"
   - "workflow/store/ and persisted joined-watermark proof: follow-up forge-neutral/37"
   - "forgeclient/ composition relocation: out-of-scope (no forgeclient implementation exists here; desktools-v2/75 retains its later relocation contract)"
   - "statusgen/ and desk command callers: out-of-scope (no production consumer cutover or new online path)"
