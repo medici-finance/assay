@@ -15,6 +15,11 @@ import (
 // Leave atomically accounts for a checked post-query outcome, separately keyed by
 // the Demand's bounded Requirements. An old generation or queried snapshot version
 // cannot install or clear a newer failure. Unchecked outcomes install no failure.
+// Complete retains the canonical ReviewOnlyPartial class before query normalization,
+// bound to its qualified completed generation/version. In that class an unfulfilled
+// weaker base waiter installs no Requirements=false failure; its next admitted read
+// may perform one bounded refetch. Stronger failure and explicit source cooldown
+// remain enforced, and scope coverage/LastComplete are not upgraded by this class.
 //
 // Complete must reject a stale generation BEFORE Store.Apply, even if the expected
 // snapshot version still matches. It must bind store to its own canonical backend,

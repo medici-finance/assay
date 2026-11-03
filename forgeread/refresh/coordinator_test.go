@@ -214,15 +214,16 @@ func (s *testSource) Scan(c context.Context, a mirror.Admission, q mirror.Scope,
 }
 
 type gateEntry struct {
-	grant      mirror.AttemptGrant
-	key        FillKey
-	generation string
-	ready      chan struct{}
-	state      State
-	expiry     time.Time
-	limits     Limits
-	owner      string
-	waiters    int
+	grant             mirror.AttemptGrant
+	key               FillKey
+	generation        string
+	ready             chan struct{}
+	state             State
+	expiry            time.Time
+	limits            Limits
+	owner             string
+	waiters           int
+	reviewOnlyPartial bool
 }
 type gateWaiter struct {
 	entry        *gateEntry
@@ -413,6 +414,7 @@ func (g *fakeGate) Complete(ctx context.Context, t Ticket, s mirror.Store, a mir
 	// The same test Store is the bound backend. Real R2 must enforce this binding
 	// and use its actual SQL transaction, not this fake's mutex.
 	result, applyErr := ApplyCompletion(ctx, s, a, c)
+	e.reviewOnlyPartial = applyErr == nil && c.ReviewOnlyPartial()
 	if snapshot, readErr := s.Read(ctx, a, c.Query.Scope); readErr == nil {
 		g.versions[e.key] = snapshot.Version
 	}
@@ -448,7 +450,7 @@ func (g *fakeGate) Leave(_ context.Context, t Ticket, outcome Outcome) (State, e
 		if outcome.Checked && !w.entry.state.Pending && outcome.SnapshotVersion != "" && w.entry.generation == t.Generation && g.generations[w.entry.key] == t.Generation && g.versions[w.entry.key] == outcome.SnapshotVersion {
 			if outcome.Fulfilled {
 				delete(g.failures, key)
-			} else if w.entry.state.Reason == "" {
+			} else if w.entry.state.Reason == "" && !(w.entry.reviewOnlyPartial && !w.requirements.RequireReviews) {
 				prior, exists := g.failures[key]
 				if exists && prior.generation == t.Generation && prior.version == outcome.SnapshotVersion && outcome.Now.Before(prior.state.RetryAt) {
 					return prior.state, nil
@@ -703,6 +705,43 @@ func checkRequirementIsolation(t *testing.T) {
 	}
 }
 
+func checkStrongOwnerBaseWaiter(t *testing.T) {
+	f := setup(t)
+	f.q.Scope.Kind = mirror.Changes
+	stronger := f.q
+	stronger.RequireReviews = true
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	f.source.fn = func(ctx context.Context, _ mirror.Admission, scope mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
+		once.Do(func() { close(entered) })
+		select {
+		case <-release:
+			return mirror.ScanResult{Complete: true, ObservedUpTo: f.clock.Now(), Records: []mirror.Observation{{ID: mirror.RecordID{Repository: scope.Repository, Kind: "pull-request", Number: 1}, InInventory: true}}}, nil
+		case <-ctx.Done():
+			return mirror.ScanResult{}, ctx.Err()
+		}
+	}
+	strongOut, baseOut := make(chan Result, 1), make(chan Result, 1)
+	go func() { r, _ := f.c[0].Read(context.Background(), f.a, stronger, f.caller); strongOut <- r }()
+	await(t, entered)
+	await(t, f.gate.acquired)
+	go func() { r, _ := f.c[1].Read(context.Background(), f.a, f.q, f.caller); baseOut <- r }()
+	await(t, f.gate.acquired)
+	close(release)
+	strong, base := result(t, strongOut), result(t, baseOut)
+	if strong.Fulfilled || !strong.RetryAt.After(f.clock.Now()) || base.Fulfilled || !base.RetryAt.IsZero() {
+		t.Fatalf("strong owner caused weaker query cooldown: strong=%+v base=%+v", strong, base)
+	}
+	r, err := f.c[1].Read(context.Background(), f.a, f.q, f.caller)
+	if err != nil || !r.Fulfilled || f.source.calls.Load() != 2 {
+		t.Fatalf("joined base waiter could not perform allowed refetch: fulfilled=%v retry=%v calls=%d err=%v", r.Fulfilled, r.RetryAt, f.source.calls.Load(), err)
+	}
+	r, err = f.c[0].Read(context.Background(), f.a, stronger, f.caller)
+	if err != nil || r.Fulfilled || !r.RetryAt.After(f.clock.Now()) || f.source.calls.Load() != 2 {
+		t.Fatal("base refetch erased stronger requirement backoff or invented reviews")
+	}
+}
+
 type delayedOutcomeGate struct {
 	Gate
 	entered chan Outcome
@@ -951,7 +990,7 @@ func checkSourceObserver(t *testing.T) {
 					t.Fatalf("observer revocation released rows: %+v %v", r, err)
 				}
 			case "freshness":
-				if err != nil || r.Fulfilled || !r.Stale || !r.Snapshot.Coverage.LastComplete.Equal(f.clock.Now().Add(-2*time.Minute)) {
+				if err != nil || r.Fulfilled || !r.Stale || !r.RetryAt.After(f.clock.Now()) || !r.Snapshot.Coverage.LastComplete.Equal(f.clock.Now().Add(-2*time.Minute)) {
 					t.Fatalf("diagnostic inflated complete observation time: %+v %v", r, err)
 				}
 			case "source-refusal":
@@ -1044,6 +1083,7 @@ func checkAuthorityFreshness(t *testing.T) {
 func TestRefreshFailureBackoff(t *testing.T) {
 	t.Run("mixed-demand", checkMixedDemandBackoff)
 	t.Run("requirement-isolation", checkRequirementIsolation)
+	t.Run("strong-owner-base-waiter", checkStrongOwnerBaseWaiter)
 	checkPermissionRecovery(t)
 	checkNotModifiedReviews(t)
 	checkReviews(t)
