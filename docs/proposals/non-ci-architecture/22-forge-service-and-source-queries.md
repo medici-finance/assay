@@ -126,7 +126,7 @@ another caller's authorization.
 
 One canceled waiter cannot cancel the fill for other admitted waiters. Bound fill lifetime,
 waiter count and memory independently of any single caller. Only the shared owner may
-retry within policy. Before starting a new fill, apply the existing read owner's finite
+retry within policy. Before starting a new fill, apply the configured read owner's finite
 per-admission and stable authenticated-caller fill/concurrency/queue limits, alongside its
 global source/provider budget. Use trusted identity, not a caller-selected request id or
 diagnostic label. Schedule available capacity fairly so a flood of distinct cold keys by
