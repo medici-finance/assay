@@ -41,7 +41,7 @@ consumers:
 
 ## Context
 
-files: `tools/desk/cmd/deskdispatch/`, `tools/desk/cmd/deskboard/admission.go`, `tools/desk/internal/deskkit/admission.go`, `tools/desk/internal/loopengine/`, `tools/desk/internal/dispatchkit/` (planned), `plugins/assay/skills/worker-desk/SKILL.md`, `plugins/assay/skills/the-desk/SKILL.md`, `changelog/milestone-support-10.md` (planned), `statusgen/testdata/milestone-support/10-mutations.json` (planned). New paths and tests are planned implementation deliverables, not current artifacts.
+files: `tools/desk/cmd/deskdispatch/`, `tools/desk/cmd/deskboard/admission.go`, `tools/desk/internal/deskkit/admission.go`, `tools/desk/internal/loopengine/`, `tools/desk/internal/dispatchkit/` (planned), `plugins/assay/skills/worker-desk/SKILL.md`, `plugins/assay/skills/the-desk/SKILL.md`, `changelog/milestone-support-10.md` (planned), `statusgen/testdata/milestone-support/10-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.

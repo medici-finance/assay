@@ -10,8 +10,8 @@
     {
       "name": "GitHub HTTP failures become an empty successful answer",
       "file": "internal/deskkit/forge_github.go",
-      "old": "return nil, &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path,\n\t\t\t\tMessage: he.Message, RateLimited: ghHTTPErrorRateLimited(he)}",
-      "new": "return nil, nil"
+      "old": "resp, capture, err := g.requestJSON(method, path, in)\n\tif err != nil {\n\t\treturn nil, err\n\t}",
+      "new": "resp, capture, err := g.requestJSON(method, path, in)\n\tif err != nil {\n\t\tvar apiError *ForgeAPIError\n\t\tif errors.As(err, &apiError) {\n\t\t\treturn nil, nil\n\t\t}\n\t\treturn nil, err\n\t}"
     },
     {
       "name": "GitLab unminted read bypasses credential floor",

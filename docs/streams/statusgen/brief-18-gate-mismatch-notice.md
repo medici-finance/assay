@@ -33,8 +33,10 @@ sources:
   - "statusgen/17 — adds `risk:high` to the label set that derives `gate: human`, and the intake-desk sentence this brief extends"
   - "freshness-checked 2026-10-08 @ 979e5453f (origin/main) — `planScan` skips an existing placeholder without reading its gate; no Go file compares a stored gate with the issue's labels; statusgen/17 is `todo`, so `risk:high` is not yet in `riskGateLabels` and its skill bullet is not yet in the tree; no open PR touches `statusgen/scanissues.go`"
 consumers:
-  - "statusgen/scanissues.go: follow-up statusgen/18 (this brief; the comparison at the existing-placeholder skip and the notice it appends)"
-  - "plugins/assay/skills/intake-desk/SKILL.md: follow-up statusgen/18 (this brief; two sentences appended to the scored-triage bullet statusgen/17 adds)"
+  - "statusgen/scanissues.go: fixed-here (this brief; the comparison at the existing-placeholder skip and the notice it appends)"
+  - "plugins/assay/skills/intake-desk/SKILL.md: fixed-here (this brief; two sentences appended to the scored-triage bullet statusgen/17 adds)"
+  - ".cursor/skills/intake-desk/SKILL.md: fixed-here (canonical Cursor delivery of the intake-desk notice guidance)"
+  - ".cursor/assay-managed.json: fixed-here (canonical manifest digest for the regenerated intake-desk skill)"
   - "tools/desk/cmd/scanloop/lane.go: out-of-scope (the drain runs `statusgen --root . --scan-issues` and discards that command's output when it succeeds, so it does not show the notice; relaying it is not part of the answer on #2405 and is left open, see Context)"
   - "statusgen/transcribescan.go: out-of-scope (the same-repo transcriber has the same skip and prints its own notices under its own prefix; it ships inert and no workflow in this repo runs it, and the answer on #2405 names the scan)"
 ---
@@ -47,8 +49,9 @@ files:
 - `statusgen/scanissues.go` — in `planScan`, the comparison at the existing-placeholder skip and the notice it appends.
 - `statusgen/scanissues_test.go` — the two new tests named in Verify.
 - `plugins/assay/skills/intake-desk/SKILL.md` — two sentences appended to one bullet in the scored-triage section.
-- `docs/streams/statusgen/brief-18-gate-mismatch-notice.md` — this brief's two `follow-up` routings (Task 6).
-- `changelog/<branch-slug>.md` — the per-PR fragment this repo enforces.
+- `.cursor/skills/intake-desk/SKILL.md` and `.cursor/assay-managed.json` — canonical generated Cursor delivery of the changed skill (Task 8).
+- `docs/streams/statusgen/brief-18-gate-mismatch-notice.md` — this brief's consumer routings (Task 6).
+- `changelog/feat-assay--statusgen--18.md` — the per-PR fragment this repo enforces.
 
 single-point-of-failure: a person reading the notice and editing the placeholder. The notice
 changes no gate, by the answer on #2405. One layer sits behind it and does not depend on the
@@ -238,10 +241,14 @@ design-fit:
    statusgen/18` to `fixed-here`, keeping each site and its parenthesised note. Leave the two
    `out-of-scope` entries as they are. Verify row 7 refuses a leftover `follow-up`.
 7. Add the changelog fragment.
+8. Regenerate the Cursor skill twin and its tracked manifest with the canonical
+   `deskinstall --harness cursor --forge github --repo . --bundle plugins/assay` placement.
+   Keep the generated delivery diff to the intake-desk skill and its manifest digest, and
+   declare both as `fixed-here` consumers. Do not edit the generated files by hand.
 
 ## Verify (executable — no prose-only DoD items)
 Every row that runs a named test anchors its selector, writes the output to a file and asserts
-that test's `--- PASS:` line, so a missing or renamed test fails the row. Rows 1–6 and 8 read
+that test's `--- PASS:` line, so a missing or renamed test fails the row. Rows 1–6, 8 and 9 read
 the tree and run the same before and after merge. Row 7 reads the implementing diff and is run
 on the implementing branch before merge; its Expect says what it does on merged main.
 
@@ -253,8 +260,9 @@ on the implementing branch before merge; its Expect says what it does on merged 
 | 4 | `cd statusgen && GOWORK=off go test -count=1 -timeout 600s .` | exit 0; the whole package passes, so no existing scan test depended on a skipped placeholder producing no notice | check:ci |
 | 5 | `awk '/^## /{f=/^## Scored triage/} f{$1=$1; printf "%s ", $0}' plugins/assay/skills/intake-desk/SKILL.md > "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'in it by hand\. .statusgen --scan-issues. prints one .NOTICE. for each such item on every pass' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'naming the issue and the placeholder file, until the file reads .gate: human.' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'mechanical signal that this edit is still owed' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'scan drain does not show it; read it by running .statusgen --root \. --scan-issues --dry-run., which writes nothing\.' "${TMPDIR:-/tmp}/sg18-r5.txt"` | exit 0; the skill's scored-triage section, read with its lines joined so that re-wrapping does not matter, carries the new text directly after the sentence statusgen/17 added (the first pattern spans the two), and it says what is printed, what it names, when it stops, that the desk drain does not show it and how to read it. A `.` in a pattern stands for a backtick. Red when the text is absent, does not directly follow statusgen/17's sentence, or lacks a clause. The row does not pin that nothing follows the text in the bullet. The row reads the skill's text. Whether the scan prints what the text says is rows 2 and 3 | check:ci +dereference |
 | 6 | `cd tools/skillslint && go build -o "${TMPDIR:-/tmp}/sg18-skl" . && "${TMPDIR:-/tmp}/sg18-skl" --root ../..` | exit 0; the intake-desk skill still passes every skill check after the two-sentence edit, and no generated block drifted | check:ci |
-| 7 | `! grep -q -e '[:] follow-up statusgen/18' docs/streams/statusgen/brief-18-gate-mismatch-notice.md && cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg18c" . && cd .. && "${TMPDIR:-/tmp}/sg18c" --root . --consumers --brief statusgen/18 --base "$(git merge-base refs/remotes/origin/main HEAD)" > "${TMPDIR:-/tmp}/sg18-r7.out" 2>&1 && grep -q -F -e 'summary: 2 corroborated, 0 disproved' "${TMPDIR:-/tmp}/sg18-r7.out"` | exit 0, run on the implementing branch before merge: no `consumers:` entry still routes to this brief as a follow-up, and with the two rewritten to `fixed-here` the instrument corroborates both and disproves none. The two `out-of-scope` entries are unchanged from the base and are listed as unchecked. Red when the routings are left as authored (the first grep), and red when either `fixed-here` path is missing from the diff (the instrument reports `DISPROVED` and exits 1). On merged main the merge-base is HEAD and the brief is not in the diff, so the instrument exits 2, could-not-check, and the row does not pass there; a post-merge run checks out the delivering commit and passes its parent as `--base` | check |
+| 7 | `! grep -q -e '[:] follow-up statusgen/18' docs/streams/statusgen/brief-18-gate-mismatch-notice.md && cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg18c" . && cd .. && "${TMPDIR:-/tmp}/sg18c" --root . --consumers --brief statusgen/18 --base "$(git merge-base refs/remotes/origin/main HEAD)" > "${TMPDIR:-/tmp}/sg18-r7.out" 2>&1 && grep -q -F -e 'summary: 4 corroborated, 0 disproved' "${TMPDIR:-/tmp}/sg18-r7.out"` | exit 0, run on the implementing branch before merge: no `consumers:` entry still routes to this brief as a follow-up, and with the two source entries rewritten to `fixed-here` and both generated delivery entries declared the instrument corroborates all four and disproves none. The two `out-of-scope` entries are unchanged from the base and are listed as unchecked. Red when the routings are left as authored (the first grep), and red when any `fixed-here` path is missing from the diff (the instrument reports `DISPROVED` and exits 1). On merged main the merge-base is HEAD and the brief is not in the diff, so the instrument exits 2, could-not-check, and the row does not pass there; a post-merge run checks out the delivering commit and passes its parent as `--base` | check |
 | 8 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanRiskHighPlaceholderGate$' -v . > "${TMPDIR:-/tmp}/sg18-r8.out" 2>&1 && grep -F -e '--- PASS: TestScanRiskHighPlaceholderGate' "${TMPDIR:-/tmp}/sg18-r8.out"` | exit 0; the scan-level test statusgen/17 adds still passes: an existing `gate: model` placeholder for a `risk:high` issue is neither re-planned nor re-read as `human`. The notice was added beside the derive-once rule and did not change it. Red when that test is absent, which means statusgen/17 has not landed | check:ci +neighbour |
+| 9 | `cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check` | exit 0; the generated Cursor skill contains the same notice guidance and its manifest digest matches. Before canonical regeneration this check reports both paths as `content-differs` | check:ci +dereference |
 
 Pre-mortem — "this shipped and was wrong; what went wrong?":
 
@@ -274,6 +282,123 @@ Pre-mortem — "this shipped and was wrong; what went wrong?":
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
+### Non-implementer verifier run — 2026-10-29 — claude-opus-5-5 (strong), source 9e61aee3f8e9
+
+Verified on merged main at source 9e61aee3f8e946198214101938c0420ca37d7f6a (delivered by PR #4539, merge commit c49e6877db03). Brief frontmatter: gate model, every risk answer no, not irreversible.
+
+The check:ci rows 1-6, 8 and 9 ran inside the closed admission bracket: host open-bracket, then the verify-runner v1.0.65 image (linux/amd64) under docker run with network none, read-only root, all capabilities dropped and the receipt mounted read-only, then host close-bracket; the bracket digest reports verdict=match. Row 7 is classed check (it needs git history and the forge-free consumers instrument), so it ran on the host through verifyrun with only that row selected. Both witness blocks below are the tool's own bytes.
+
+#### Container-lane witness (rows 1-6, 8, 9)
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && GOWORK=off go build ./... && GOWORK=off go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanGateMismatchNotice$' -v . > "${TMPDIR:-/tmp}/sg18-r2.out" 2>&1 && grep -F -e '--- PASS: TestScanGateMismatchNotice' "${TMPDIR:-/tmp}/sg18-r2.out"` | pass exit=0 sandbox=container-netns | sha256:2b7f5c595340 | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanGateNoticeWritesNothing$' -v . > "${TMPDIR:-/tmp}/sg18-r3.out" 2>&1 && grep -F -e '--- PASS: TestScanGateNoticeWritesNothing' "${TMPDIR:-/tmp}/sg18-r3.out"` | pass exit=0 sandbox=container-netns | sha256:93fd5e2962cc | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && GOWORK=off go test -count=1 -timeout 600s .` | fail exit=1 sandbox=container-netns | sha256:0e25d1bbcf30 | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `awk '/^## /{f=/^## Scored triage/} f{$1=$1; printf "%s ", $0}' plugins/assay/skills/intake-desk/SKILL.md > "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'in it by hand\. .statusgen --scan-issues. prints one .NOTICE. for each such item on every pass' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'naming the issue and the placeholder file, until the file reads .gate: human.' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'mechanical signal that this edit is still owed' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'scan drain does not show it; read it by running .statusgen --root \. --scan-issues --dry-run., which writes nothing\.' "${TMPDIR:-/tmp}/sg18-r5.txt"` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/skillslint && go build -o "${TMPDIR:-/tmp}/sg18-skl" . && "${TMPDIR:-/tmp}/sg18-skl" --root ../..` | pass exit=0 sandbox=container-netns | sha256:aa57cc340c0a | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanRiskHighPlaceholderGate$' -v . > "${TMPDIR:-/tmp}/sg18-r8.out" 2>&1 && grep -F -e '--- PASS: TestScanRiskHighPlaceholderGate' "${TMPDIR:-/tmp}/sg18-r8.out"` | pass exit=0 sandbox=container-netns | sha256:d972e8243ca7 | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check` | pass exit=0 sandbox=container-netns | sha256:54208d57d196 | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:45a7cf09742c66449d44c13be973ed4b287736e750b4de6f320474fc5a2c821b
+Container-Image: sha256:1af55e60c9222ad09dab8376b629725135c54912bb3583c13591833db90f2d8f
+Verification-Attestation: medici-finance/assay#4836 run=15fd02d3a7a5083f2c4828d21ffa67644535b5d76c5d0b9a53922e19b3487728 source=9e61aee3f8e946198214101938c0420ca37d7f6a brief=docs/streams/statusgen/brief-18-gate-mismatch-notice.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=15fd02d3a7a5083f2c4828d21ffa67644535b5d76c5d0b9a53922e19b3487728 source=9e61aee3f8e946198214101938c0420ca37d7f6a tree=sha256:45a7cf09742c66449d44c13be973ed4b287736e750b4de6f320474fc5a2c821b witness=sha256:8a67081672870e0cc86f11a13dd48fb798e2c8ad54dc1f3168f3c4c4eb14fb51 opened=2026-10-29T17:51:18Z closed=2026-10-29T18:07:27Z before=receipt after=check-verifier
+
+#### Host witness (row 7)
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 7 | `! grep -q -e '[:] follow-up statusgen/18' docs/streams/statusgen/brief-18-gate-mismatch-notice.md && cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg18c" . && cd .. && "${TMPDIR:-/tmp}/sg18c" --root . --consumers --brief statusgen/18 --base "$(git merge-base refs/remotes/origin/main HEAD)" > "${TMPDIR:-/tmp}/sg18-r7.out" 2>&1 && grep -q -F -e 'summary: 4 corroborated, 0 disproved' "${TMPDIR:-/tmp}/sg18-r7.out"` | fail exit=2 | sha256:e3b0c44298fc | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4836 run=15fd02d3a7a5083f2c4828d21ffa67644535b5d76c5d0b9a53922e19b3487728 source=9e61aee3f8e946198214101938c0420ca37d7f6a brief=docs/streams/statusgen/brief-18-gate-mismatch-notice.md model=claude-opus-5-5 tier=strong
+
+#### Row accounting
+
+- Rows 1, 2, 3, 5, 6, 8 and 9 pass inside the container lane (7 of 9).
+- Row 4 is could-not-run in this environment: no test failed. The container run of the package suite stopped at the row's own 600s budget (`panic: test timed out after 10m0s`, no failing test reported; the tests still running at the deadline were unrelated to this brief). Two separate causes stand in the way, neither in this brief's delivery: (a) the host was under heavy load from other verifier containers (load average 37-58 on 16 cores), and the emulated linux/amd64 package suite needs well over 600s like that; (b) since this brief merged, the package also contains the witness skew tests TestWitnessSkewOldReader and TestWitnessV1Unchanged (statusgen/36). They fail by design when SG_OLD_BIN is unset, and CI sets it through statusgen/fetch-baseline.sh before go test. Row 4's literal command does not provide it. So at the current source, row 4 as written cannot exit 0 outside CI on any host.
+- Row 7 exits 2 on merged main. That is the consumers instrument's COULD-NOT-CHECK: once merged, the merge-base of main and HEAD is HEAD itself, so the diff is empty and the brief is "not in the diff". Nothing was disproved. The row is pinned to the pre-merge form and cannot pass on merged main.
+
+#### Supplemental host observations — no acceptance credit
+
+All of these were recorded on 2026-10-29 by the same verifier session that produced the witnesses above, at the same source unless a different commit is named.
+
+- Row 4 diagnosis: the full package suite on the darwin-arm64 host, with the budget raised to 40m, finished in 845.8s. 2959 top-level tests passed and exactly two failed: TestWitnessSkewOldReader and TestWitnessV1Unchanged, both reporting "SG_OLD_BIN is unset". Then statusgen/fetch-baseline.sh fetched the v1.0.52 baseline and checked it against that release's checksums.txt (sha256 01aed27b2b90…). With SG_OLD_BIN pointing at it, both tests pass (`--- PASS: TestWitnessSkewOldReader`, `--- PASS: TestWitnessV1Unchanged`, ok 5.254s). Every test in the package therefore passes once CI's precondition is supplied. The only remaining gap is the 600s budget under this host's load.
+- Row 7 post-merge replay, following the instrument's own recipe for a merge commit (check out M^2 and use its own merge-base). It used a scratch clone at PR head b7668886e24f, with refs/remotes/origin/main set to f2e232039c99 (the merge's first parent), so the merge-base resolves to the PR base 8663d6ae0579. Row 7's exact command was run there and exited 0: 4 corroborated, 0 disproved, 2 unchecked as out of scope (two files outside this brief's claims), 0 briefs claiming nothing.
+- Row 2 discrimination (mutations in a scratch clone at the source, reverted afterwards): removing the appended notice gives exit 1, "got 0 mismatch notices, want 3". Dropping the placeholder-gate condition gives exit 1, "got 6 … want 3". Dropping the done-status condition gives exit 1, "got 4 … want 3". The test pins each of the three conditions independently.
+
+#### Risk-bearing values
+
+Enumerated over the delivery diff 8663d6ae0579..b7668886e24f (7 paths). The literals that decide behaviour: the derived-gate comparison == "human" (statusgen/scanissues.go:499), the skip conditions ph.Status == "done" and ph.Gate != "model" (statusgen/scanissues.go:501), the notice text (statusgen/scanissues.go:508), the placeholder key repo + "#" + issue number (statusgen/scanissues.go:439 and :497), the scored-triage sentences (plugins/assay/skills/intake-desk/SKILL.md:207-211), the regenerated cursor manifest digest for intake-desk (.cursor/assay-managed.json:24), and the test's want-count 3 (statusgen/scanissues_test.go:2069). No value is irreversible: the change only detects and writes nothing, which row 3 pins. The top-ranked values are the three gate and status conditions.
+
+RISK-VALUE: "human" / "model" (statusgen/scanissues.go:499, :501) — derived: derivePlaceholderGate returns only these two values (statusgen/placeholder.go:169-176), and Task 2 names the mismatch as derived human against a file reading model. Row 2's mutations show the test fails when the gate condition is dropped.
+RISK-VALUE: "done" (statusgen/scanissues.go:501) — derived: done is the retired-placeholder status the brief excludes from the notice. Row 2's mutation shows the test fails (4 notices, not 3) when the condition is dropped.
+RISK-VALUE: placeholder key repo + "#" + number (statusgen/scanissues.go:439, :497) — derived: the key includes the repository, so the same issue number on a second repository is a different placeholder. Row 2's fixture covers the second-repository case.
+
+**VERIFY: BLOCKED** — 7 of 9 rows pass at source 9e61aee3f8e9. Row 4 is could-not-run here (600s budget exceeded under host load, plus the SG_OLD_BIN precondition added after delivery that only CI supplies; with it supplied, every package test passes). Row 7 is COULD-NOT-CHECK on merged main (pre-merge-pinned row, exit 2; the post-merge replay corroborates 4 of 4 with 0 disproved). No obligation was observed to fail.
+### Non-implementer verifier run — 2026-10-30 — claude-opus-5-5 (strong), source 40925e8233c8
+
+Re-verified on merged main at source 40925e8233c8a63d70682e77ca333e665f1f955e (delivery unchanged: PR #4539, merge commit c49e6877db03; no file of the delivery changed between the earlier run's source 9e61aee3f8e9 and this one). Brief frontmatter: gate model, every risk answer no, not irreversible.
+
+The check:ci rows 1-6, 8 and 9 ran inside the closed admission bracket: host open-bracket, then the verify-runner v1.0.66 image (native linux/arm64) under docker run with network none, read-only root, all capabilities dropped, the home and its git directory mounted read-only and the receipt mounted read-only, then host close-bracket; the bracket digest reports verdict=match. Row 7 is classed check (it needs git history and the forge-free consumers instrument), so it ran on the host through verifyrun with only that row selected. Both witness blocks below are the tool's own bytes.
+
+#### Container-lane witness (rows 1-6, 8, 9)
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && GOWORK=off go build ./... && GOWORK=off go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanGateMismatchNotice$' -v . > "${TMPDIR:-/tmp}/sg18-r2.out" 2>&1 && grep -F -e '--- PASS: TestScanGateMismatchNotice' "${TMPDIR:-/tmp}/sg18-r2.out"` | pass exit=0 sandbox=container-netns | sha256:ba918aab06aa | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanGateNoticeWritesNothing$' -v . > "${TMPDIR:-/tmp}/sg18-r3.out" 2>&1 && grep -F -e '--- PASS: TestScanGateNoticeWritesNothing' "${TMPDIR:-/tmp}/sg18-r3.out"` | pass exit=0 sandbox=container-netns | sha256:500917e72f25 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && GOWORK=off go test -count=1 -timeout 600s .` | fail exit=1 sandbox=container-netns | sha256:a9a57494acb4 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `awk '/^## /{f=/^## Scored triage/} f{$1=$1; printf "%s ", $0}' plugins/assay/skills/intake-desk/SKILL.md > "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'in it by hand\. .statusgen --scan-issues. prints one .NOTICE. for each such item on every pass' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'naming the issue and the placeholder file, until the file reads .gate: human.' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'mechanical signal that this edit is still owed' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'scan drain does not show it; read it by running .statusgen --root \. --scan-issues --dry-run., which writes nothing\.' "${TMPDIR:-/tmp}/sg18-r5.txt"` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/skillslint && go build -o "${TMPDIR:-/tmp}/sg18-skl" . && "${TMPDIR:-/tmp}/sg18-skl" --root ../..` | pass exit=0 sandbox=container-netns | sha256:aa57cc340c0a | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanRiskHighPlaceholderGate$' -v . > "${TMPDIR:-/tmp}/sg18-r8.out" 2>&1 && grep -F -e '--- PASS: TestScanRiskHighPlaceholderGate' "${TMPDIR:-/tmp}/sg18-r8.out"` | pass exit=0 sandbox=container-netns | sha256:0402bb278da5 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check` | pass exit=0 sandbox=container-netns | sha256:54208d57d196 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a661369244ed8355ed5de43fd37a5f06b998c2d984bad8d9609bf6f80f234465
+Container-Image: sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4
+Verification-Attestation: medici-finance/assay#4945 run=affdbf44e1214494bd29966c8dffca23f238bc81c241b6437c275ff5195aae48 source=40925e8233c8a63d70682e77ca333e665f1f955e brief=docs/streams/statusgen/brief-18-gate-mismatch-notice.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=affdbf44e1214494bd29966c8dffca23f238bc81c241b6437c275ff5195aae48 source=40925e8233c8a63d70682e77ca333e665f1f955e tree=sha256:a661369244ed8355ed5de43fd37a5f06b998c2d984bad8d9609bf6f80f234465 witness=sha256:d32a6595cf6ddcc83012653ef25e9d8541ff6bfc941b311338647ecad281b0be opened=2026-10-30T01:32:09Z closed=2026-10-30T01:39:00Z before=receipt after=check-verifier
+
+#### Host witness (row 7)
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 7 | `! grep -q -e '[:] follow-up statusgen/18' docs/streams/statusgen/brief-18-gate-mismatch-notice.md && cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg18c" . && cd .. && "${TMPDIR:-/tmp}/sg18c" --root . --consumers --brief statusgen/18 --base "$(git merge-base refs/remotes/origin/main HEAD)" > "${TMPDIR:-/tmp}/sg18-r7.out" 2>&1 && grep -q -F -e 'summary: 4 corroborated, 0 disproved' "${TMPDIR:-/tmp}/sg18-r7.out"` | fail exit=1 | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4945 run=affdbf44e1214494bd29966c8dffca23f238bc81c241b6437c275ff5195aae48 source=40925e8233c8a63d70682e77ca333e665f1f955e brief=docs/streams/statusgen/brief-18-gate-mismatch-notice.md model=claude-opus-5-5 tier=strong
+
+#### Row accounting
+
+- Rows 1, 2, 3, 5, 6, 8 and 9 pass inside the container lane (7 of 9).
+- Row 4 is could-not-run as written (its witness Result is fail exit=1; for the verdict it counts as could-not-run): no test of this brief and no scan test failed. The suite finished well inside the row's 600s budget on the native arm64 image, so the earlier run's timeout cause is gone. Exactly two tests failed, TestWitnessSkewOldReader and TestWitnessV1Unchanged (statusgen/36), each reporting "SG_OLD_BIN is unset". Under the ruling on medici-finance/assay#4459 these tests fail by design unless SG_OLD_BIN names the v1.0.52 baseline binary. CI exports it through statusgen/fetch-baseline.sh before go test, and row 4's literal command does not provide it. At this source the row as written cannot exit 0 outside CI on any host. That is a check-definition gap, not a delivery fault.
+- Row 7 is could-not-check on merged main (its witness Result is fail exit=1; for the verdict it counts as could-not-run): the instrument disproved nothing. The row is pinned to the pre-merge form. On merged main the merge-base of main and HEAD is HEAD itself. With this Evidence edit uncommitted in the home, the instrument also reads the brief from the working tree and reports "0 corroborated, 0 disproved, 6 unchecked", every entry "unchanged since the merge-base", so the final grep fails (exit 1). The earlier run, which had no uncommitted edit, got exit 2. Either way the row's own Expect says it does not pass on merged main.
+
+#### Supplemental observations — no acceptance credit
+
+All of these were recorded on 2026-10-30 by the same verifier session that produced the witnesses above.
+
+- **Row 4** (2026-10-30): row 4's exact command, unbracketed, in the same v1.0.66 arm64 image with network none and the home mounted read-only — expected exit 0; observed exit 1 after 304s. go test reported "FAIL ... statusgen 273.518s". The only failures were TestWitnessSkewOldReader and TestWitnessV1Unchanged, both "SG_OLD_BIN is unset".
+- **Row 4** (2026-10-30): the same command and container, with SG_OLD_BIN set to a v1.0.52 baseline built from the v1.0.52 tag commit 2718fc978b74 for linux/arm64. This follows the build steps of fetch-baseline.sh's from-source mode, because v1.0.52 ships no linux-arm64 release asset. Expected exit 0; observed exit 0, "ok github.com/medici-finance/assay/statusgen 224.721s". Every test in the package passes once CI's precondition is supplied.
+- **Row 7** (2026-10-30): row 7's exact command, run post-merge by the instrument's own recipe for a merge commit (check out M^2, use its own merge-base). It ran in a scratch clone at PR head b7668886e24f, with that clone's refs/remotes/origin/main set to f2e232039c99 (the merge's first parent), so the merge-base resolves to the PR base 8663d6ae0579. Expected exit 0 with "summary: 4 corroborated, 0 disproved". Observed exit 0, "summary: 4 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing". The two unchecked entries are the out-of-scope routings.
+- **Row 2** (2026-10-30): discrimination check. Mutations were made in a scratch clone at source 40925e8233c8 and reverted afterwards, running the row's test selector. Expected each mutation to turn the row red. Observed: replacing the appended notice with a no-op gives exit 1, "got 0 mismatch notices, want 3". Dropping the placeholder-gate condition gives exit 1, "got 6 mismatch notices, want 3". Dropping the done-status condition gives exit 1, "got 4 mismatch notices, want 3". The test pins each of the three conditions independently.
+
+#### Risk-bearing values
+
+Enumerated over the delivery diff 8663d6ae0579..b7668886e24f (7 paths), re-read at this source. None of these lines changed since the earlier run. The literals that decide behaviour:
+
+- the derived-gate comparison == "human" (statusgen/scanissues.go:499);
+- the skip conditions ph.Status == "done" and ph.Gate != "model" (statusgen/scanissues.go:501);
+- the notice text (statusgen/scanissues.go:508);
+- the placeholder key repo + "#" + issue number (statusgen/scanissues.go:439 and :497);
+- the scored-triage sentences (plugins/assay/skills/intake-desk/SKILL.md:207-211);
+- the regenerated cursor manifest digest for intake-desk, b7e2d1b2e86b… (.cursor/assay-managed.json:24);
+- the test's want-count 3 (statusgen/scanissues_test.go:2069).
+
+No value is irreversible: the change only detects and writes nothing, which row 3 pins. The top-ranked values are the three gate and status conditions and the key.
+
+RISK-VALUE: DERIVED — derived gate == "human", stored ph.Gate != "model" @ statusgen/scanissues.go:499, :501 — derivePlaceholderGate returns only "human" or "model" (statusgen/placeholder.go:169-176), and Task 2 defines the mismatch as a derived human against a file that reads model. The notice can therefore only ask for a stricter gate. The row 2 mutation shows the test fails when the gate condition is dropped.
+RISK-VALUE: DERIVED — ph.Status == "done" @ statusgen/scanissues.go:501 — done is the retired-placeholder status that Task 2 excludes from the notice. The row 2 mutation shows the test fails (4 notices, not 3) when the condition is dropped.
+RISK-VALUE: DERIVED — key = repo + "#" + strconv.Itoa(number) @ statusgen/scanissues.go:439, :497 — the key carries the repository, so the same issue number on a second repository is a different placeholder. Row 2's fixture covers that second-repository case.
+
+**VERIFY: BLOCKED** — 7 of 9 rows pass at source 40925e8233c8. Row 4 is could-not-run as written: the only failing tests are the two statusgen/36 skew tests, which need the SG_OLD_BIN precondition that only CI supplies. With it supplied, every package test passes, well inside the 600s budget. Row 7 is could-not-check on merged main: the row is pinned pre-merge, and the post-merge replay corroborates 4 of 4 with 0 disproved. No obligation was observed to fail.
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.

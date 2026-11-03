@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"github.com/medici-finance/assay/gitcore/gitstub"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,9 +36,7 @@ func TestUnsignedOutBinaryActivation(t *testing.T) {
 	// the tree's tools/desk/component.yaml, kept minimal so an unrelated manifest change
 	// cannot redden this test.
 	root := demoRoot(t)
-	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	gitstub.Repo(t, root)
 	manifest := "component: assay/desk-tools\nprovides:\n  - assay.desk.verbs\ninject:\n  required:\n    - key: assay.roster.trust\n"
 	if err := os.MkdirAll(filepath.Join(root, "tools", "desk"), 0o755); err != nil {
 		t.Fatal(err)

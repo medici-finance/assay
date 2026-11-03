@@ -392,6 +392,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		defer cleanup()
 		opts := cursorbundle.Options{BundleDir: bundle, RepoRoot: *root, Forge: *forge}
+		// The copy-skills inventory names the release its payload came from (#4775).
+		if installed, err := cursorbundle.InstalledVersion(*root); err == nil && installed != "" {
+			fmt.Fprintf(stdout, "Cursor inventory records plugin v%s; selected %s\n", installed, target)
+		}
 		if *check {
 			findings, err := cursorbundle.Check(opts)
 			if err != nil {

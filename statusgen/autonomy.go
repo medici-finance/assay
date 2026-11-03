@@ -495,8 +495,8 @@ func renderAutonomyText(rep AutonomyReport) string {
 // for the CI-proxy authorship split. ok=false on any gh failure — degrades to
 // "unmeasured", never a fabricated zero (offline discipline, matching --dora).
 var autonomyMergedAuthors = func(root string, since, until time.Time) ([]autonomyAuthor, bool) {
-	out, err := exec.Command("gh", "pr", "list", "--state", "merged",
-		"--limit", "500", "--json", "number,mergedAt,author").Output()
+	out, err := ghGuard(exec.Command("gh", "pr", "list", "--state", "merged",
+		"--limit", "500", "--json", "number,mergedAt,author")).Output()
 	if err != nil {
 		return nil, false
 	}
@@ -624,7 +624,7 @@ var autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR,
 	ctx, cancel := context.WithTimeout(context.Background(), autonomyGateDeadline)
 	defer cancel()
 	run := func(args ...string) ([]byte, error) {
-		cmd := exec.CommandContext(ctx, "gh", args...)
+		cmd := ghGuard(exec.CommandContext(ctx, "gh", args...))
 		cmd.Dir = root
 		return cmd.Output()
 	}

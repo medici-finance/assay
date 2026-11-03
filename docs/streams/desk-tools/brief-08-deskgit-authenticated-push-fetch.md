@@ -65,7 +65,7 @@ leave the child process flips the answer to yes and takes the human gate.
 files:
 - `tools/desk/cmd/deskgit/main.go` (usage, `push` dispatch)
 - `tools/desk/cmd/deskgit/deskgit.go` (`cmdPush`, the `--as` resolution shared with `cmdFetch`)
-- `tools/desk/cmd/deskgit/exec.go` (askpass supply on the scrubbed env — one added variable, added AFTER the scrub)
+- `tools/desk/cmd/deskgit/exec.go` — askpass supply on the scrubbed env — one added variable, added AFTER the scrub
 - `tools/desk/cmd/deskgit/transportexec.go` (the `receive-pack` entry's comment: deskgit now pins it rather than merely refusing it)
 - `tools/desk/cmd/deskgit/*_test.go` (fixture bare repos as local-path remotes, as the existing fetch tests do)
 - `tools/desk/internal/forgeban/allowlist.go` (register the push exec site if the ledger tracks it)

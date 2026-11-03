@@ -72,7 +72,7 @@ files:
 - `statusgen/evaluation/coverage.go`, `statusgen/evaluation/coverage_api.go` — judge a witness against its recorded read set
 - `tools/desk/cmd/deskevidence/main.go` — lands a witness row and its read-set file in one commit
 - `docs/contracts.md` — the S-evidence-coverage row names the new independent layer
-- tests: `statusgen/evaluation/readset_test.go` (planned), `statusgen/readset_test.go` (planned), `statusgen/readset_linux_test.go` (planned), `tools/desk/cmd/deskevidence/readset_test.go` (planned)
+- **tests** `statusgen/evaluation/readset_test.go` (planned), `statusgen/readset_test.go` (planned), `statusgen/readset_linux_test.go` (planned), `tools/desk/cmd/deskevidence/readset_test.go` (planned)
 
 facts:
 - Current shape. With no dependency manifest, a witness speaks for every path outside
@@ -103,8 +103,8 @@ facts:
   - A `--coverage --json` pass over all 568 briefs at the same revision released 0 briefs.
     42 claims pass only because the parser derived their inputs. 133 briefs are fully witnessed
     and held only by `wrong-revision`.
-- A derived input set for go rows (`cd <module> && go test|build|vet`, inputs = the module's
-  files plus `go list -deps -test`) does not release enough to justify itself, and it is unsound:
+- A derived input set for go rows (`cd <module> && go test|build|vet`, inputs = the module's files
+  plus `go list -deps -test`) does not release enough to justify itself, and it is unsound:
   - Yield. 25 of the 301 refused rows have that clean shape. Every one of the 36 briefs has some
     other row shape or a `+dirty` or edited witness. So 0 of 36 would release.
   - Soundness. build-less-brittle/10 row 1 (`cd tools/desk && go test ./internal/arch/`) runs
@@ -116,10 +116,10 @@ facts:
 - What `go list -deps -test` can and cannot establish:
   - It CAN list each in-graph package's Go, cgo, C/assembly, ignored, test and `//go:embed` files.
   - It CANNOT see:
-    - files a test opens at run time: fixtures, `testdata/` that is not embedded, `../` climbs,
+    - the files a test opens at run time: fixtures, `testdata/` that is not embedded, `../` climbs,
       the repository root;
     - headers a cgo `#include` pulls from outside the package directory;
-    - files whose generator `go test` does not run;
+    - the files whose generator `go test` does not run;
     - a `go.work` or `GOFLAGS` the row's environment supplies;
     - the module cache and the toolchain (environment, outside the tree);
     - anything a test reads by running `git`.

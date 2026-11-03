@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // reachBare builds a bare repository holding one commit on main and returns its path.

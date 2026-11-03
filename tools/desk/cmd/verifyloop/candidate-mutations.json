@@ -1,0 +1,41 @@
+{
+  "test": "go test ./cmd/verifyloop -run '^TestVerifyPlanParity$' -count=1 -timeout 90s",
+  "control": {
+    "name": "missing second-root repair coverage becomes idle",
+    "file": "internal/verifyflow/plan.go",
+    "old": "for _, lane := range []string{Awaiting, Repair} {",
+    "new": "for _, lane := range []string{Awaiting} {"
+  },
+  "mutations": [
+    {
+      "name": "stale candidate becomes selectable",
+      "file": "internal/verifyflow/plan.go",
+      "old": "known := fresh &&",
+      "new": "known := true &&"
+    },
+    {
+      "name": "held high-priority item becomes selected",
+      "file": "internal/verifyflow/plan.go",
+      "old": "if d.Disposition == \"deferred\" && remaining > 0 {",
+      "new": "if remaining > 0 {"
+    },
+    {
+      "name": "capacity completion reports idle",
+      "file": "internal/verifyflow/plan.go",
+      "old": "if owed {",
+      "new": "if owed && capacity > 0 {"
+    },
+    {
+      "name": "multi-root candidate loses its root revision",
+      "file": "cmd/verifyloop/plan.go",
+      "old": "Revision: firstNonEmpty(it.TargetSHA, revisions[path])}",
+      "new": "Revision: it.TargetSHA}"
+    },
+    {
+      "name": "future class reported as supported",
+      "file": "../../statusgen/verifyqueue/queue.go",
+      "old": "\treturn false\n}",
+      "new": "\treturn true\n}"
+    }
+  ]
+}

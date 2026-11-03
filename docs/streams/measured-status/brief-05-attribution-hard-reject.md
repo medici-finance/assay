@@ -136,6 +136,44 @@ Default if no answer: none — blocks until answered (this narrows a trust gate 
 
 ## Evidence
 <!-- appended at implementation time by a non-implementer -->
+### Verification — VERIFY: FAIL (row 2, check definition) — 2026-10-27
+
+Non-implementer verification on merged main 47ef38f961aa1006ff296034d118630efdc177cb, admitted by the dispatcher attestation on #4578. Delivery: squash merge of #4480 (718a1b6f781a), an ancestor of the observed source; its parent 5ec829c1fc1e is the fail-first base. Gate: human; all four risk answers no, and the witness tool selects no risk-bearing row, so every row is recorded not-selected at base. Rows ran on the host (darwin-arm64) under the witness's default pipefail row shell, offline (KUBECONFIG=/dev/null), statusgen v1.0.63; no row is check:ci, so the container lane does not apply.
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `cd statusgen && go test . -run TestAttributionIdentityCrossCheck -count=1` | pass exit=0 | sha256:24dc52478461 | 2026-10-27 | assay-verifier-app[bot] @ 47ef38f961aa (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=47ef38f961aa |
+| 2 | `cd statusgen && go test . -run 'TestAttributionIdentity' -count=1 -v 2>&1 \| grep -q 'PASS'` | fail exit=141 | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ 47ef38f961aa (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=47ef38f961aa |
+| 3 | `cd statusgen && go vet ./...` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ 47ef38f961aa (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=47ef38f961aa |
+| 4 | `cd statusgen && go test . -count=1` | pass exit=0 | sha256:c76bdc1d7799 | 2026-10-27 | assay-verifier-app[bot] @ 47ef38f961aa (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=47ef38f961aa |
+| 5 | `cd statusgen && go test . -run 'TestAttributionIdentityOverride\|TestIndependenceOverride\|TestAttributionIdentityNoOverrideStaysHard' -count=1 -v 2>&1 \| grep -c -- '--- PASS'` | pass exit=0 | sha256:9961d158a7e0 | 2026-10-27 | assay-verifier-app[bot] @ 47ef38f961aa (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=47ef38f961aa |
+| 6 | `m=$(mktemp -d)/muhar && (cd tools/desk && go build -o "$m" ./cmd/muhar) && cd statusgen && "$m" -spec attribution-mutations.json` | pass exit=0 | sha256:d84f39b97b7a | 2026-10-27 | assay-verifier-app[bot] @ 47ef38f961aa (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=47ef38f961aa |
+Verification-Attestation: medici-finance/assay#4578 run=0df8c037094cb7ce9eff3b5f1dc754e622cd53b31206b2470231e7525f01896f source=47ef38f961aa1006ff296034d118630efdc177cb brief=docs/streams/measured-status/brief-05-attribution-hard-reject.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: FAIL** — 5 of 6 rows pass; row 2 fails as written (exit 141, a check-definition defect, not an implementation defect).
+
+Observed key lines (the witness above records only an output hash; these lines come from the verifier's own reruns of the exact commands under bash -o pipefail on the same source, 2026-10-27):
+- Row 1: exit 0; "ok github.com/medici-finance/assay/statusgen".
+- Row 2: exit 141 in both witness runs. grep -q exits at its first match and go test then takes SIGPIPE writing the rest of its -v output; pipefail turns the pipeline status into 141. Supplemental, no acceptance credit: plain bash exits 0 on 2 of 2 runs and pipefail bash exits 141 on 2 of 2 runs; the same -v output carries 22 "--- PASS" lines and no "--- FAIL", including TestAttributionIdentityCrossCheckMultiIdentity and TestAttributionIdentitySingleIdentityInconclusive. The tests pass; the row as written cannot. Same class as #4170 (measured-status/01 row 4) and #2241 (measured-status/04); class tracker #3038.
+- Row 3: exit 0, no output.
+- Row 4: exit 0 (whole statusgen suite green).
+- Row 5: exit 0; prints 28 (Expect at least 10).
+- Row 6: exit 0; "Harness healthy: baseline GREEN, positive control CAUGHT."; "Totals: 21 caught, 0 NOT CAUGHT, 0 could-not-mutate."
+
+What must change: the brief's owner amends row 2 to a pipefail-safe reader, for example `cd statusgen && go test . -run 'TestAttributionIdentity' -count=1 -v 2>&1 | grep -c -- '--- PASS'` with Expect "prints a count of at least 1, exit 0"; then a non-implementer re-verifies. The lifecycle row is left unchanged here; the brief is gate: human.
+
+Risk-bearing values. Risk metadata is present and all four answers are no, including irreversible: no. Enumerated over the 718a1b6f781a diff to the statusgen Go sources (attribution.go, gitinfo.go, brieffile.go), re-located at 47ef38f961aa:
+- override postdate slack = recordedOn.AddDate(0, 0, 1) (one day) @ statusgen/attribution.go:825
+- override grammar = `^human:([0-9A-Za-z_]+)\s+(\d{4}-\d{2}-\d{2})\s+(.*)$` @ statusgen/attribution.go:721
+- override date layout = "2006-01-02" @ statusgen/attribution.go:738, 820, 821
+- recorder identity binding = git log -1 --no-use-mailmap --format=%ae%x00%cs (author email, mailmap ignored) @ statusgen/gitinfo.go:468-469
+
+Ranked: the recorder identity binding first (a wrong binding would let the excused identity self-serve its own override and reopen the trust gate this brief closes), the postdate slack second, the grammar and date layout last. All are reversible by an edit and a release; every refusal fails closed to the hard PROBLEM.
+
+RISK-VALUE: DERIVED — recorder identity = %ae with --no-use-mailmap @ statusgen/gitinfo.go:468 — the brief's Context facts require the line to be last written by a commit whose git AUTHOR email differs from the excused identity; author email (not committer, which a squash merge sets to the forge) is that field, and ignoring .mailmap stops a committed mailmap entry from aliasing the excused identity to another name.
+RISK-VALUE: DERIVED — postdate slack = AddDate(0, 0, 1) @ statusgen/attribution.go:825 — the brief's facts pin "no more than one day after that commit's committer date"; the override date is a human's local calendar date and %cs is the committer's local calendar date, which for one instant differ by at most one day whenever the two offsets are within 24 hours of each other. Only a pair at the opposite extremes of the offset range (a 26-hour span) can differ by two days, and that case fails closed.
+
+The verifier ran no code change and edited only this Evidence section.
 
 ## Review
 Gate: human (from frontmatter). Human gate is MANDATORY — this narrows a trust gate. Reviewer

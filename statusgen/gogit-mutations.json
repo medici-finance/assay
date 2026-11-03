@@ -1,0 +1,90 @@
+{
+  "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null . && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./internal/gitlaunch && (cd ../gitcore && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .)",
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=300s -run '^(TestGoGitReadParity|TestRevisionCallerFlow|TestRevisionOrdinaryNestedPrefix|TestGoGitSessionLock|TestMergeBaseExactRunMemo|TestMergeBaseMemoPerRoot)$' . && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^(TestLaunchCounter|TestInventoryPlants|TestCrossFileLaunch|TestLocalNativeSeam|TestGitCeilingOnlyDown|TestCounterTrust)$' ./internal/gitlaunch",
+  "control": {
+    "name": "CONTROL upper raw-author bytes replaced with incompatible declared encoding",
+    "file": "evidenceactor.go",
+    "old": "out, err = read.repo.RawCommit(c)",
+    "new": "out, err = read.repo.RawCommit(c)\n\t\t\tout = append([]byte(\"encoding ISO-8859-1\\n\"), out...)"
+  },
+  "mutations": [
+    {
+      "name": "raw encoded commit drops last byte",
+      "file": "../gitcore/rawread.go",
+      "old": "return data, nil",
+      "new": "if len(data) > 0 { data = data[:len(data)-1] }; return data, nil"
+    },
+    {
+      "name": "recursive tree walk drops first visible entry",
+      "file": "../gitcore/treeread.go",
+      "old": "return entries, nil",
+      "new": "if len(entries) > 0 { entries = entries[1:] }; return entries, nil"
+    },
+    {
+      "name": "unsupported empty discovery environment ignored",
+      "file": "gitcore_read.go",
+      "old": "\"GIT_CEILING_DIRECTORIES\", \"GIT_DISCOVERY_ACROSS_FILESYSTEM\"",
+      "new": "\"GIT_CEILING_DIRECTORIES_DISABLED\", \"GIT_DISCOVERY_ACROSS_FILESYSTEM\""
+    },
+    {
+      "name": "nested physical prefix erased",
+      "file": "gitcore_read.go",
+      "old": "prefix = filepath.ToSlash(prefix) + \"/\"",
+      "new": "prefix = \"\""
+    },
+    {
+      "name": "unqualified native revision expression enrolled as commit selector",
+      "file": "gitcore_read.go",
+      "old": "if nativeRevisionSyntax(rev) || strings.ContainsAny(rev, \"^~:@{}\\\\\") {\n\t\treturn true",
+      "new": "if nativeRevisionSyntax(rev) || strings.ContainsAny(rev, \"^~:@{}\\\\\") {\n\t\treturn false"
+    },
+    {
+      "name": "successful HEAD forced back to native",
+      "file": "gitcore_read.go",
+      "old": "func gitHeadOutput(root string) ([]byte, error) {\n\tread := ordinaryGitCore(root)\n\tif read.err != nil {\n\t\treturn nil, read.err\n\t}\n\tif read.native != \"\" {",
+      "new": "func gitHeadOutput(root string) ([]byte, error) {\n\tread := ordinaryGitCore(root)\n\tif read.err != nil {\n\t\treturn nil, read.err\n\t}\n\tif true {"
+    },
+    {
+      "name": "parent adapter callers escape seam inventory",
+      "file": "internal/gitlaunch/main.go",
+      "old": "\"provenanceParents\": true",
+      "new": "\"provenanceParents\": false"
+    },
+    {
+      "name": "prefix adapter callers escape seam inventory",
+      "file": "internal/gitlaunch/main.go",
+      "old": "\"provenanceRootPrefix\": true",
+      "new": "\"provenanceRootPrefix\": false"
+    },
+    {
+      "name": "mixed known and unknown executable alternative disappears",
+      "file": "internal/gitlaunch/main.go",
+      "old": "if unknown || len(bins) == 0 {",
+      "new": "if !unknown && len(bins) == 0 {"
+    },
+    {
+      "name": "new revision caller commit output loses leading object-id byte",
+      "file": "gitcore_read.go",
+      "old": "return []byte(hash.String() + \"\\n\"), nil, true",
+      "new": "return []byte(hash.String()[1:] + \"\\n\"), nil, true"
+    },
+    {
+      "name": "ordinary nested prefix disappears from new caller flow",
+      "file": "gitcore_read.go",
+      "old": "return []byte(read.prefix + \"\\n\"), nil",
+      "new": "return []byte(read.prefix[:0] + \"\\n\"), nil"
+    },
+    {
+      "name": "ordinary prefix adapter callers escape seam inventory",
+      "file": "internal/gitlaunch/main.go",
+      "old": "\"gitPrefixOutput\": true",
+      "new": "\"gitPrefixOutput\": false"
+    },
+    {
+      "name": "repository cache recursively uses the run memo lock",
+      "file": "gitcore_read.go",
+      "old": "s.coreMu.Lock()\n\tif s.core == nil {\n\t\ts.core = map[string]gitCoreRead{}\n\t}\n\tr, ok := s.core[root]\n\tif !ok {\n\t\tr = openGitCoreRead(root)\n\t\ts.core[root] = r\n\t}\n\ts.coreMu.Unlock()",
+      "new": "s.mu.Lock()\n\tif s.core == nil {\n\t\ts.core = map[string]gitCoreRead{}\n\t}\n\tr, ok := s.core[root]\n\tif !ok {\n\t\tr = openGitCoreRead(root)\n\t\ts.core[root] = r\n\t}\n\ts.mu.Unlock()"
+    }
+  ]
+}

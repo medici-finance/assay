@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 func refGit(t *testing.T, root string, args ...string) string {

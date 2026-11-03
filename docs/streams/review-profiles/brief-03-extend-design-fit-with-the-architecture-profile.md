@@ -25,7 +25,7 @@ consumers: ["tools/desk/internal/reviewprofile/architecture.go: follow-up review
 
 ## Context
 
-files: `tools/desk/internal/reviewprofile/architecture.go` (planned), `tools/desk/internal/reviewprofile/architecture_test.go` (planned), `tools/desk/cmd/deskdispatch/references/architecture-review.md` (planned), `tools/desk/internal/arch/arch_test.go`, `docs/contracts.md`. New profile, calibration and operations files are planned deliverables; existing desk owners remain controlling.
+files: `tools/desk/internal/reviewprofile/architecture.go` (planned), `tools/desk/internal/reviewprofile/architecture_test.go` (planned), `tools/desk/cmd/deskdispatch/references/architecture-review.md` (planned), `tools/desk/internal/arch/arch_test.go`, `docs/contracts.md` — New profile, calibration and operations files are planned deliverables; existing desk owners remain controlling.
 
 facts:
 - At the pinned main there are four review lanes, existing advisory design-fit and architectural fitness tests; no calibrated performance/architecture routing policy exists.

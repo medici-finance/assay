@@ -32,6 +32,7 @@ import (
 //     cells only. A row whose cell count differs from its header's (an
 //     unescaped "|" in a command) cannot be aligned and is read whole. A
 //     table of any other shape is read whole.
+//
 //  2. Exit-code prose. In an entry that holds such a results table, a line
 //     outside every table is still read, with one exception: an occurrence
 //     written as an exit-code mapping — "could-not-check → exit 6",
@@ -43,6 +44,7 @@ import (
 //     there is no result cell to fall back on, so every occurrence in its
 //     prose is read. Any other prose occurrence — a verdict-line summary
 //     "row 4 HELD", a note — is read.
+//
 //  3. Supersession. The Evidence body is split into entries at `### `
 //     headings (level exactly three, column 0) that render as live headings
 //     (heldRender); text before the first such heading is the first entry.
@@ -136,6 +138,7 @@ import (
 //     annotated row and a later bare number are one row, so a later bare "3"
 //     that ran only one sub-case covers an earlier lone "3 (negative)"; the
 //     format records no sub-case on a bare key that could tell them apart.
+//
 //  4. Observed output (#4294). An occurrence of "could-not-check" (never HELD)
 //     in a Result-type cell (heldColResult) of an aligned, keyed row is what
 //     the verified product printed, not the row's disposition, only when the
@@ -164,6 +167,14 @@ import (
 //     holds a hold or fail word (heldObserveHoldRe, a second check behind the
 //     grammar; a HELD there is read as its own occurrence). Wording the
 //     grammar does not recognise is read as a hold.
+//
+//  5. Sourced definitions (#4536). A column-zero RISK-VALUE: DERIVED
+//     record with a source path and line number may declare a quoted state
+//     literal or explain a normative state relation (heldRiskDefinition).
+//     Only the occurrence inside the recognised phrase is excluded, never
+//     the entire line, an unsourced note or a results-table cell. Unrecognised
+//     wording and any independent hold remain read. The source locator is
+//     syntax, not proof that the derivation or its claimed value is correct.
 //
 // The hygiene (fences, blockquotes, struck and inline code), the routing rule
 // and the negation rule in unroutedHeldLine apply unchanged to what is read.
@@ -1846,4 +1857,46 @@ func heldBlankRanges(s string, rs [][2]int) string {
 		}
 	}
 	return string(b)
+}
+
+// Sourced RISK-VALUE derivations describe constants and domain transitions,
+// not execution observations. The prefix alone is never an exemption: only
+// marker occurrences within these closed declaration/semantic phrases are
+// excluded. A second, unrecognised occurrence on the same line is still read.
+// No entry supersession or passing witness is needed to recognise a definition.
+// Only the declared product fact-state vocabulary is recognised. Arbitrary
+// identifiers, even in assignment syntax, may be row/run observations.
+const heldRiskStateDecl = `(?:Present = "present"|Missing = "missing"|(?:CouldNotCheck|Unavailable) = "could-not-check")`
+
+var (
+	heldRiskRecordRe  = regexp.MustCompile(`^RISK-VALUE: DERIVED — ([^@|\r\n]+) @ [a-zA-Z0-9_./-]+:[1-9][0-9]*(?:-[1-9][0-9]*)? — `)
+	heldRiskLiteralRe = regexp.MustCompile(`^` + heldRiskStateDecl + `(?:(?:, | and )` + heldRiskStateDecl + `)*$`)
+	heldRiskMeaningRe = regexp.MustCompile(`(?i)\bmissing and could-not-check cannot release assessment\b|\ba timeout maps to could-not-check, never to permitted\b|\bretirement may remain held separately\b|\bcomplete/retirement-held (?:must|to) stay distinct from complete\b`)
+)
+
+// heldRiskDefinition reports whether this occurrence is a declared literal
+// before the source locator, or part of a normative state relation after it.
+// This deliberately leaves other wording unresolved rather than treating
+// arbitrary prose carrying RISK-VALUE as a cleared acceptance obligation.
+func heldRiskDefinition(clean string, h []int) bool {
+	record := heldRiskRecordRe.FindStringSubmatchIndex(clean)
+	if record == nil {
+		return false
+	}
+	var spans [][]int
+	if h[1] <= record[3] {
+		// The whole declaration list must match: accepting a substring
+		// would hide an observation before or beside a valid constant.
+		return heldRiskLiteralRe.MatchString(clean[record[2]:record[3]])
+	} else if h[0] >= record[1] && !heldNamesRowRe.MatchString(clean[record[1]:]) {
+		for _, span := range heldRiskMeaningRe.FindAllStringIndex(clean[record[1]:], -1) {
+			spans = append(spans, []int{record[1] + span[0], record[1] + span[1]})
+		}
+	}
+	for _, span := range spans {
+		if span[0] <= h[0] && h[1] <= span[1] {
+			return true
+		}
+	}
+	return false
 }

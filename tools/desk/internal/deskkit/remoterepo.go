@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // slugSegmentRe validates ONE owner or repo path segment. It is the same charset the

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // deskprStderr is the seam for warnIfConflicting's advisory output and run()'s terminal
@@ -1299,7 +1299,9 @@ func parseRepo(raw string) (string, error) {
 // brief), `Authors: <stream>/<NN>[, …]` whose every entry resolves the same way (the PR only
 // AUTHORS those briefs — #1339), `Cross-repo-brief: <alias>:<stream>/<NN>` for a brief homed in
 // another repo (checked against --root's alias registry, never resolved to a file here —
-// medici-finance/assay#2748), or `Issue: #<N>` for issue-only work. Absence, duplicates,
+// medici-finance/assay#2748), or `Issue: #<N>` for issue-only work — or its RESOLVING form
+// `Fixes: #<N>` / `Closes: #<N>` / `Resolves: #<N>` (also `owner/repo#<N>`), the same edge
+// written as a GitHub closing keyword so merging the PR closes the issue. Absence, duplicates,
 // mixed kinds and non-resolving briefs are all constraint refusals (exit 5). There is deliberately no bypass flag — a worker-typeable
 // bypass makes the edge asserted again.
 //
@@ -1335,9 +1337,14 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 			"`Brief: <stream>/<NN>` naming the brief this PR delivers (e.g. `Brief: example-stream/02`), "+
 			"`Authors: <stream>/<NN>[, …]` naming the brief(s) a briefs-authoring PR writes, "+
 			"`Cross-repo-brief: <alias>:<stream>/<NN>` naming a brief homed in another repo, "+
-			"or `Issue: #<N>` for issue-only work")
+			"or `Issue: #<N>` for issue-only work (`Fixes: #<N>` when merging this PR should close the issue)")
 	}
 	if trs[0].Kind == deskkit.TrailerIssue {
+		// A cross-repository resolving link names an issue in ANOTHER repository, so its
+		// number is no hint about a `#N` in this repository's body.
+		if trs[0].Repo != "" {
+			return 0, nil
+		}
 		// Value is the bare digits (trailer.go guarantees `[0-9]+`); Atoi cannot fail,
 		// but treat any parse anomaly as "no number" (0) rather than admitting a
 		// negative that would read as a sentinel to the gate.

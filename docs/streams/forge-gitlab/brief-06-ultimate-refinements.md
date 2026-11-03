@@ -31,12 +31,9 @@ id: 45c382c0-2232-4c6d-bb4c-435b98cebdc8
 
 ## Context
 files:
-- `tools/create-fleet-gitlab.sh` (planned) — created by forge-gitlab/04; add the Ultimate configuration section (custom role
-  creation, external status check registration) behind a `--tier ultimate` flag.
-- `docs/adopting-assay-gitlab.md` (planned) — created by forge-gitlab/04; Ultimate section moves from "human-only checklist"
-  to scripted-with-verification.
-- `tools/desk/internal/deskkit/forge_gitlab.go` (planned) — created by forge-gitlab/02; post external status check as the
-  verdict-lane surface where the tier supports it; three-state fallback at Premium.
+- `tools/create-fleet-gitlab.sh` (planned) — created by forge-gitlab/04; add the Ultimate configuration section (custom role creation, external status check registration) behind a `--tier ultimate` flag.
+- `docs/adopting-assay-gitlab.md` (planned) — created by forge-gitlab/04; Ultimate section moves from "human-only checklist" to scripted-with-verification.
+- `tools/desk/internal/deskkit/forge_gitlab.go` (planned) — created by forge-gitlab/02; post external status check as the verdict-lane surface where the tier supports it; three-state fallback at Premium.
 
 single-point-of-failure: tier detection is the one control routing verdict posting —
 backed by the API's own 403 on the Ultimate endpoint, surfaced as could-not-check

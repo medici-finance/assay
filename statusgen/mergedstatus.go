@@ -48,6 +48,25 @@ type mergedPR struct {
 	// the brief is then unconfirmed, not assumed (mergeDelivery).
 	Delivers []string
 	Authors  []string
+	// SHA is the merge (or squash) commit on the first-parent line.
+	SHA string
+	// Repo is "" for a merge in the board's own root, and the configured
+	// <owner>/<repo> of the OTHER root a cross-root delivery merged in
+	// (crossroot.go). Its PR number is that repo's, never this one's.
+	Repo string
+}
+
+// prRef names the PR for a NOTICE or a hold label: "PR #N" in the board's own
+// repo, "PR <owner>/<repo>#N" for a cross-root delivery, "PR" when the subject
+// carried no number.
+func (p mergedPR) prRef() string {
+	switch {
+	case p.Number <= 0:
+		return "PR"
+	case p.Repo != "":
+		return fmt.Sprintf("PR %s#%d", p.Repo, p.Number)
+	}
+	return fmt.Sprintf("PR #%d", p.Number)
 }
 
 // mergeDelivery is what a merged PR is known to have done to one brief.
@@ -152,7 +171,10 @@ func briefRefsIn(subject, branch string) []string {
 // rate), shallow enough that --lint stays a sub-second offline check.
 const mergedPRLimit = 400
 
-// mergedPRsFromGit reads recent first-parent merges of the current branch.
+// mergedPRsFromGit reads recent first-parent merges of rev: "HEAD" for the
+// board's own checkout (the branch it is on), or a full object name for a
+// cross-root read (crossroot.go resolves the other root's integration branch to
+// one, so a sibling checkout's work-in-progress HEAD is never read as merged).
 //
 // --first-parent is what keeps this to the integration history: without it every merged
 // side branch's own merges appear, and a topic branch that merged main into itself would
@@ -166,8 +188,8 @@ const mergedPRLimit = 400
 // length-prefixed, so no byte inside a message can end a record early or invent one.
 // A branch read that fails is a failed read: the merges it would have confirmed are
 // not reported as trailer-less (could-not-check, never "no `Brief:` trailer").
-func mergedPRsFromGit(root string) ([]mergedPR, error) {
-	window, parents, err := revListParents(root, []string{"--first-parent", "-n", strconv.Itoa(mergedPRLimit)}, "HEAD")
+func mergedPRsFromGit(root, rev string) ([]mergedPR, error) {
+	window, parents, err := revListParents(root, []string{"--first-parent", "-n", strconv.Itoa(mergedPRLimit)}, rev)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +199,7 @@ func mergedPRsFromGit(root string) ([]mergedPR, error) {
 	// The branch commits of every merge in the window: everything reachable from HEAD
 	// that is not behind the oldest window commit's FIRST parent. Excluding only the
 	// first parent keeps the oldest merge's own branch (its second parent) in the read.
-	rangeArgs := []string{"HEAD"}
+	rangeArgs := []string{rev}
 	if p := parents[window[len(window)-1]]; len(p) > 0 {
 		rangeArgs = append(rangeArgs, "^"+p[0])
 	}
@@ -387,7 +409,7 @@ func parseMergedLog(window []string, commits map[string]gitCommit, branchBody fu
 			continue
 		}
 		sort.Strings(refs)
-		prs = append(prs, mergedPR{Number: num, Subject: subject, Briefs: refs, Delivers: delivers, Authors: authors})
+		prs = append(prs, mergedPR{Number: num, Subject: subject, Briefs: refs, Delivers: delivers, Authors: authors, SHA: sha})
 	}
 	return prs
 }
@@ -454,7 +476,7 @@ func mergedPRStatusNotices(streams []*Stream, merged []mergedPR, readErr error) 
 		h := seen[id]
 		where := "a merged PR"
 		if h.pr.Number > 0 {
-			where = fmt.Sprintf("merged PR #%d", h.pr.Number)
+			where = "merged " + h.pr.prRef()
 		}
 		confirm := ""
 		if h.pr.deliveryOf(id) != mergeDelivered {

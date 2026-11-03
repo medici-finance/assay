@@ -219,18 +219,24 @@ func renderCodexManifest(meta claudeManifest) string {
 		// AGENTS.md fragment (HP/05), installed by the adopt flow, not a hook.
 		Hooks: map[string]any{},
 	}
-	// encoding/json escapes <, >, & as \u00xx by default; the Claude manifest
-	// carries a literal `<name>` in its description, so turn HTML escaping off to
-	// reproduce the source verbatim rather than mangling it. Encoder.Encode adds
-	// its own trailing newline — the single trailing newline the file carries.
+	return encodeJSON(m)
+}
+
+// encodeJSON renders a generated manifest's exact committed bytes: 2-space
+// indent (matching the Claude manifest style) plus a single trailing newline.
+// encoding/json escapes <, >, & as \u00xx by default; the Claude manifest
+// carries a literal `<name>` in its description, so HTML escaping is off to
+// reproduce the source verbatim rather than mangling it. Encoder.Encode adds its
+// own trailing newline — the single trailing newline the file carries.
+func encodeJSON(v any) string {
 	var buf strings.Builder
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(m); err != nil {
+	if err := enc.Encode(v); err != nil {
 		// A struct of strings/slices/maps cannot fail to marshal; treat an
 		// impossible error as a programming fault.
-		panic(fmt.Sprintf("marshalling codex manifest: %v", err))
+		panic(fmt.Sprintf("marshalling generated manifest: %v", err))
 	}
 	return buf.String()
 }

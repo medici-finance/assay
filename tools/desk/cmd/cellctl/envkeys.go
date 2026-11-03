@@ -116,6 +116,8 @@ func buildEnvKeys() []envKey {
 			desc: "Age past which managed task scratch is swept, as a duration."},
 		{key: "CELL_SCRATCH_MAX_BYTES", class: envMachine, group: envGroupCache, def: "268435456",
 			desc: "Total size past which managed task scratch is swept oldest first, in bytes (256 MiB)."},
+		{key: "CELL_SCRATCH_SWEEP_INTERVAL", class: envMachine, group: envGroupCache, def: "6h",
+			desc: "How often a running desk supervisor sweeps managed task scratch, as a duration of at least 1m; 0 turns it off."},
 
 		{key: envAssayTelemetry, class: envMachine, group: envGroupHarness, def: "0",
 			desc: "Local desk-tool performance logging: exactly 1 opts in; any other value is off. No upload."},
@@ -222,6 +224,8 @@ func buildEnvKeys() []envKey {
 			why: "is one cell's session name, which `down` stops"},
 		envKey{key: "CELL_GO_CACHE_ROOT", class: envCell, desc: "The cell's managed Go cache root (default: go-cache in the cell's directory).",
 			why: "is a cache root marked for exactly one cell; a second cell is refused it"},
+		envKey{key: "CELL_KUBERNETES_CONFIG", class: envCell, desc: "K8s cells: explicit trusted compatibility profile; absent preserves the local path.",
+			why: "binds one cell to one explicit Kubernetes API, image and role-custody profile"},
 		envKey{key: "CELL_CONTAINER_CONFIG", class: envCell, desc: "Container cells: the configuration file the cell is defined in.",
 			why: "binds one cell to its container definition"},
 		envKey{key: "CELL_CONTAINER_LAUNCHER", class: envCell, desc: "Container cells: the launcher the cell is started with.",
@@ -247,6 +251,10 @@ func buildEnvKeys() []envKey {
 			unread: "written into cell.env by `cellctl new` and documented; the deskd credential now comes from the role credential path, so nothing in cellctl reads it back"},
 		envKey{key: "ORGS", class: envCell, desc: "GitHub cells: the orgs the cell's deskd reads.",
 			why: "is the set of organisations one cell mints tokens for"},
+		envKey{key: "CELL_DB_DSN", class: envCell, desc: "The cell database's libpq connection string, with no password; exported to every role window as ASSAY_CELL_DB_DSN (unset: no database).",
+			why: "is one cell's own database and role"},
+		envKey{key: "CELL_DB_PASSFILE", class: envCell, desc: "The absolute path of the cell database's pgpass file (mode 0600 or 0400); exported as PGPASSFILE when CELL_DB_DSN is set.",
+			why: "is one cell's database credential file"},
 
 		// ── not a lever: switches for one run ────────────────────────────────────────────────
 		envKey{key: "CELLS_ROOT", class: envNotLever, from: envFromRun,
