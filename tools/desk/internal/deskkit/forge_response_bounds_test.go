@@ -40,16 +40,17 @@ func (b *nativeCountBody) Read(p []byte) (int, error) {
 func (b *nativeCountBody) Close() error { b.closed = true; return nil }
 
 type nativeFixtureTransport struct {
-	payload     string
-	length      int64
-	status      int
-	encoding    string
-	invalidGzip bool
-	fault       error
-	chunked     bool
-	redirect    string
-	hits        int
-	body        *nativeCountBody
+	payload      string
+	length       int64
+	status       int
+	encoding     string
+	invalidGzip  bool
+	fault        error
+	transportErr error
+	chunked      bool
+	redirect     string
+	hits         int
+	body         *nativeCountBody
 }
 
 func (f *nativeFixtureTransport) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -86,7 +87,7 @@ func (f *nativeFixtureTransport) RoundTrip(r *http.Request) (*http.Response, err
 	if f.chunked {
 		resp.TransferEncoding = []string{"chunked"}
 	}
-	return resp, nil
+	return resp, f.transportErr
 }
 
 type nativeReadError struct{ err error }
@@ -207,6 +208,19 @@ func TestMirrorResponseBoundIsolation(t *testing.T) {
 						t.Fatalf("truncated prefix lost read failure: %v", err)
 					}
 				}
+			}
+			// A defensive response+error result must release the unread body
+			// before either SDK discards the response because of the error.
+			transportFailure := errors.New("synthetic native transport failure")
+			errRT := &nativeFixtureTransport{payload: `[]`, length: -1, status: http.StatusServiceUnavailable, transportErr: transportFailure}
+			source, err := NewMirrorReadSource(nativeBackend(provider, errRT), ForgeResolution{Kind: provider, Repo: ForgeRepo{Owner: "o", Name: "r"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := source.Read(context.Background(), MirrorIssues, adapters.UpdateQuery{})
+			var api *ForgeAPIError
+			if !errors.Is(err, transportFailure) || !errors.As(err, &api) || api.Status != http.StatusServiceUnavailable || errRT.hits != 1 || errRT.body == nil || !errRT.body.closed || errRT.body.read != 0 || len(out.Issues) != 0 || !out.ObservedUpTo.IsZero() {
+				t.Fatalf("response+error lost cause/status or unread-body cleanup: hits=%d body=%+v result=%+v err=%v", errRT.hits, errRT.body, out, err)
 			}
 			cancelRT := &nativeCancelTransport{started: make(chan struct{})}
 			ctx, cancel := context.WithCancel(context.Background())
