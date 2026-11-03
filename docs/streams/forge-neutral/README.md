@@ -253,6 +253,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 47 | [Admitted incremental forge readers for mirror ingestion](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) | 2 | M | todo | — | — |
 | 48 | [Bound native mirror response allocation before decoding](brief-48-bound-native-mirror-response-allocation-before-decoding.md) | 3 | M | todo | — | — |
 | 49 | [Retire claim-decay stored GitHub login fallback](brief-49-retire-claim-decay-stored-github-login-fallback.md) | 0 | S | todo | — | — |
+| 51 | [Store-injected mirror read-through coordinator and shared refresh gate port](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -755,3 +756,14 @@ loses two lines (one executable lookup and one possible subprocess). This retire
 neither every remaining forge read nor the parent contribution.
 Explicit token inputs and host separation remain until /77's migration. /18 remains
 partial and retains every original acceptance row and remaining read/CI obligation.
+
+### Read-through coordinator contribution — 3 November 2026
+
+[51](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md)
+authors a store-injected coordinator over the existing mirror kernel and admitted source
+ports. It separates offline fake-gate/reference-store qualification from the later
+canonical R2 PostgreSQL gate/store integration. The shared gate owns refresh acquisition,
+completion and failure eligibility; callers never install their own fallback poller.
+This contribution does not deliver full /37, its persisted row 23, retention selection,
+remote custody, reader cutover or activation. Dependency on the separately authored
+mapper is reconciled before dispatch; existing lifecycle and acceptance cells are unchanged.
