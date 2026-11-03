@@ -45,8 +45,10 @@ brief id, so the PR list shows which brief a PR delivers without opening it:
   inside `x/46`, `my-x/4` or `other:x/4`; a title that only contains such a near-miss is still
   prefixed.
 - The prefixed title is the one every later gate scans and the one sent to the forge, and
-  `--check` prints it as `check: title: <title>` before anything is created. `edit` and
-  `update` never rename an existing PR.
+  `--check` prints it as `check: title: <title>` before anything is created.
+- `update` never touches the title. `edit --title T` sets `T` verbatim and does not add the
+  brief-id prefix, so re-sending the title originally passed to `create` through `edit` removes
+  the prefix; pass the prefixed title to keep it.
 
 Rules (derived-board/02):
 

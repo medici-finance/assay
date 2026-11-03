@@ -1328,12 +1328,21 @@ func parseRepo(raw string) (string, error) {
 // self-containment scan's number hint (SelfContainOpts.NumberHint). It is NOT an input to
 // the public-repo write gate: deskkit.PublicRepoGate is repository-scoped (an explicit
 // `:public` allowed-repos entry agreeing with the live visibility) and takes no number.
+// isScanCarrierBody reports whether body is the machine-written scan carrier: the
+// deskkit.ScanBodyMarker at its head (leading whitespace aside). It is the one predicate for
+// the carve-out, shared by requireTrailer (which skips validation for it), trailerLink in
+// edit.go and briefTitleID (which read no link from it), so the three cannot disagree on
+// which body is exempt.
+func isScanCarrierBody(body []byte) bool {
+	return strings.HasPrefix(strings.TrimLeft(string(body), " \t\r\n"), deskkit.ScanBodyMarker)
+}
+
 func requireTrailer(body []byte, root, dir string) (int, error) {
 	// Head-anchored, not a whole-body substring: the emitter writes ScanBodyMarker as
 	// the FIRST line (deskkit.ScanPRBody), so the exemption matches it only at the body
 	// head. A body that merely quotes the marker somewhere in its prose is NOT exempt —
 	// this keeps the carve-out keyed to genuinely emitter-produced carrier bodies.
-	if strings.HasPrefix(strings.TrimLeft(string(body), " \t\r\n"), deskkit.ScanBodyMarker) {
+	if isScanCarrierBody(body) {
 		return 0, nil
 	}
 	trs, err := deskkit.ParseTrailers(body)

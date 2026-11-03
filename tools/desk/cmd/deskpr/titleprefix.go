@@ -46,9 +46,17 @@ func titleNamesID(title, id string) bool {
 // briefTitleID returns the id a PR body's link trailer asks the title to carry: the
 // `<stream>/<NN>` of a `Brief:` trailer, or the full value of a `Cross-repo-brief:` trailer.
 // It returns "" for every other body (no trailer, `Authors:`, `Issue:`/`Fixes:`, the scan
-// carrier). requireTrailer has already validated the trailer by the time this runs; a body it
-// cannot parse yields "" rather than a second refusal.
+// carrier). A body it cannot parse yields "" rather than a second refusal.
+//
+// The id is always rebuilt from the parsed grammar parts, never copied from the raw trailer
+// value, so only a value the trailer grammar accepts can reach the title. That holds on its
+// own, without leaning on requireTrailer having run first: requireTrailer exempts the scan
+// carrier (isScanCarrierBody) before it validates anything, so that body is excluded here by
+// the same predicate rather than read.
 func briefTitleID(body []byte) string {
+	if isScanCarrierBody(body) {
+		return ""
+	}
 	trs, err := deskkit.ParseTrailers(body)
 	if err != nil || len(trs) == 0 {
 		return ""
@@ -61,7 +69,11 @@ func briefTitleID(body []byte) string {
 		}
 		return stream + "/" + nn
 	case deskkit.TrailerCrossRepoBrief:
-		return strings.TrimSpace(trs[0].Value)
+		alias, stream, nn, ok := deskkit.SplitCrossRepoBriefTrailer(strings.TrimSpace(trs[0].Value))
+		if !ok {
+			return ""
+		}
+		return alias + ":" + stream + "/" + nn
 	}
 	return ""
 }

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -38,12 +40,69 @@ func TestPrefixTitleWithBrief(t *testing.T) {
 		{"fixes unchanged", "fix thing", "Fixes: #12", "fix thing"},
 		{"trailer in fence ignored", "add feature", "```\nBrief: fixture/04\n```\nIssue: #12", "add feature"},
 		{"no trailer unchanged", "add feature", "just prose", "add feature"},
+		{"cross-repo malformed", "scan", "Cross-repo-brief: @who [x](http://e.example) AAA", "scan"},
+		{"cross-repo no alias", "add feature", "Cross-repo-brief: fixture/05", "add feature"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := prefixTitleWithBrief(tc.title, []byte("body\n"+tc.body+"\n")); got != tc.want {
 				t.Errorf("prefixTitleWithBrief(%q, %q) = %q, want %q", tc.title, tc.body, got, tc.want)
 			}
 		})
+	}
+}
+
+// regression: #4795
+// TestScanCarrierTitleKept: the scan carrier, which requireTrailer exempts before validating
+// anything, never feeds the title, even when a hand-written one carries a trailer line.
+func TestScanCarrierTitleKept(t *testing.T) {
+	for _, tr := range []string{
+		"Cross-repo-brief: example-trk:fixture/05",
+		"Cross-repo-brief: @who [x](http://e.example) AAA",
+		"Brief: fixture/04",
+	} {
+		body := deskkit.ScanBodyMarker + "\nscan\n" + tr + "\n"
+		if got := prefixTitleWithBrief("scan", []byte(body)); got != "scan" {
+			t.Errorf("scan carrier with %q: title = %q, want %q", tr, got, "scan")
+		}
+	}
+}
+
+// regression: #4795
+// TestTitleScanSeesPrefix pins the ORDER: the secret scan reads the prefixed title, not the
+// one passed in. The brief id is a high-entropy run; with the audited override the scan
+// records one row per refused surface, and a "PR title" row whose digest is the prefixed
+// title's exists only if the prefix ran before that scan ("add feature" alone is clean).
+func TestTitleScanSeesPrefix(t *testing.T) {
+	work := newBaseFixture(t)
+	withEnv(t, work)
+	stream := "aB3dE5gH7jK9" + "mN1pQ3sT5vW7" + "yZ9bC2eF4hJ" // built, so this file holds no such run
+	root := t.TempDir()
+	briefDir := filepath.Join(root, "docs", "streams", stream)
+	if err := os.MkdirAll(briefDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(briefDir, "brief-01-x.md"), "# x\n")
+	want := stream + "/01: add feature"
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = w
+	errOut := make(chan []byte)
+	go func() { b, _ := io.ReadAll(r); errOut <- b }()
+	rc := run([]string{"create", "--title", "add feature", "--body-min", "x\nBrief: " + stream + "/01",
+		"--root", root, "--check", "--" + deskkit.ScanOverrideFlag, "fixture brief id is a planted high-entropy run"})
+	_ = w.Close()
+	os.Stderr = old
+	stderr := string(<-errOut)
+	if rc != deskkit.ExitOK {
+		t.Fatalf("create --check rc = %d, want 0; stderr:\n%s", rc, stderr)
+	}
+	row := fmt.Sprintf("surface=%q digest=%s", "PR title", deskkit.Sha256Hex([]byte(want))[:12])
+	if !strings.Contains(stderr, row) {
+		t.Fatalf("no title-scan override row for the prefixed title %q (want %q); stderr:\n%s", want, row, stderr)
 	}
 }
 
