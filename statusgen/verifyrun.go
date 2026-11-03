@@ -102,6 +102,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // ---------------------------------------------------------------------------
@@ -326,6 +328,7 @@ const (
 	witnessCellCommand = 1
 	witnessCellResult  = 2
 	witnessCellOutput  = 3
+	witnessCellDate    = 4
 	witnessCellRunner  = 5
 	witnessCellCount   = 6
 )
@@ -386,12 +389,12 @@ func witnessCommandOf(text string) string {
 	return codeSpan(cells[witnessCellCommand])
 }
 
-// witnessTreeRe lifts the tree token that follows the Runner cell's ` @ `
-// marker (witness.row() writes `<runner> @ <tree>`, optionally followed by one
-// or more parenthetical qualifiers). It stops at the first space or `(` so a
-// trailing on-behalf-of/RunnerSource parenthetical is never swallowed into the
-// tree token.
-var witnessTreeRe = regexp.MustCompile(`@\s*([^\s(]+)`)
+// The tree token follows the Runner cell's ` @ ` marker (witness.row() writes
+// `<runner> @ <tree>`, optionally followed by one or more parenthetical
+// qualifiers). evaluation.ParseRunnerCell, the one Runner-cell parser, stops it
+// at the first space or `(` so a trailing on-behalf-of/RunnerSource
+// parenthetical is never swallowed into the tree token; for a v2 cell it is the
+// schema marker `[w2]`, which no git revision resolves.
 
 // witnessTreeOf lifts the tree SHA (possibly `+dirty`/`+unknown`-suffixed, or
 // `no-git`) a witness row recorded — graph-execution/03's coverage rule reads
@@ -403,11 +406,7 @@ func witnessTreeOf(text string) string {
 	if cells == nil {
 		return ""
 	}
-	m := witnessTreeRe.FindStringSubmatch(cells[witnessCellRunner])
-	if m == nil {
-		return ""
-	}
-	return m[1]
+	return evaluation.ParseRunnerCell(cells[witnessCellRunner]).Tree
 }
 
 // ---------------------------------------------------------------------------
@@ -1266,7 +1265,7 @@ func briefTreeSHA(root, brief string) string {
 // HEAD is to brief, and brief differs from its HEAD blob only inside the
 // `## Evidence` section the brief parser bounds (evidenceSectionSpan).
 func evidenceOnlyChange(root, brief string) bool {
-	top, err := exec.Command("git", "-C", root, "rev-parse", "--show-toplevel").Output()
+	top, err := repoTopLevel(root)
 	if err != nil {
 		return false
 	}
@@ -1391,7 +1390,17 @@ type verifyRow struct {
 // values equal the ordinals must still compare equal. --rows reads that bit
 // from numberedVerifyRows' parallel slice instead (desktools-v2/74).
 func briefVerifyRows(verifySection string) []verifyRow {
-	return verifyRowsOf(verifySection, nil)
+	return verifyRowsOf(verifySection, nil, nil)
+}
+
+// briefVerifyRowsWithClassCells is briefVerifyRows plus, index for index, each
+// row's Class cell as authored (trimmed) — the text a witness-v2 record's
+// class_sha256 digests (statusgen/36). It is a parallel slice for the same
+// reason the `#` bit is: verifyRow's equality must not change.
+func briefVerifyRowsWithClassCells(verifySection string) ([]verifyRow, []string) {
+	var classCells []string
+	rows := verifyRowsOf(verifySection, nil, &classCells)
+	return rows, classCells
 }
 
 // numberedVerifyRows is briefVerifyRows plus, index for index, whether each
@@ -1399,13 +1408,14 @@ func briefVerifyRows(verifySection string) []verifyRow {
 // which --rows refuses to select by.
 func numberedVerifyRows(verifySection string) ([]verifyRow, []bool) {
 	var numbered []bool
-	rows := verifyRowsOf(verifySection, &numbered)
+	rows := verifyRowsOf(verifySection, &numbered, nil)
 	return rows, numbered
 }
 
 // verifyRowsOf parses the Verify rows; when numbered is non-nil it also
-// appends each row's `#`-cell bit to it.
-func verifyRowsOf(verifySection string, numbered *[]bool) []verifyRow {
+// appends each row's `#`-cell bit to it, and when classCells is non-nil each
+// row's trimmed Class cell.
+func verifyRowsOf(verifySection string, numbered *[]bool, classCells *[]string) []verifyRow {
 	var rows []verifyRow
 	ordinal := 0
 	verifyRowTable(verifySection, func(r verifyRowCells) {
@@ -1430,6 +1440,9 @@ func verifyRowsOf(verifySection string, numbered *[]bool) []verifyRow {
 		rows = append(rows, row)
 		if numbered != nil {
 			*numbered = append(*numbered, v != "")
+		}
+		if classCells != nil {
+			*classCells = append(*classCells, strings.TrimSpace(r.Class))
 		}
 	})
 	return rows
@@ -1981,6 +1994,13 @@ Flags:
                     write the receipt (check JSON, tree, opened, runner,
                     runner_source, runner_tree, on_behalf_of) to --out, outside
                     the home.
+  --history-out <file>  with --open-bracket, export complete admitted HEAD history
+                    to a new Git object pack outside the home. Mount it read-only in
+                    the container; no host config, hooks or credentials travel.
+  --history-pack <file>  with container-netns --fail-first, import that pack
+                    into private scratch for baseline checkouts. Its source must
+                    equal the admitted source. Head rows still run on --root.
+                    See docs/container-baseline-history.md.
   --admission-receipt <file>  the --open-bracket receipt, read-only and outside the
                     home. The container run refuses before any row unless its
                     --root digests to the receipt's tree, the receipt admits
@@ -2166,6 +2186,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	imageDigest := fs.String("container-image-digest", "", "container-netns only (required): sha256:<64 hex> digest of the image the rows run in, supplied by the host")
 	openBracket := fs.Bool("open-bracket", false, "host open step of a container run: run the admission check, digest the home and write the receipt to --out")
 	openOut := fs.String("out", "", "with --open-bracket: the receipt file to write, outside the home")
+	historyOut := fs.String("history-out", "", "with --open-bracket: export admitted HEAD history to a new Git object pack outside the home")
+	historyPack := fs.String("history-pack", "", "container-netns --fail-first: read-only admitted-source Git object pack for isolated baseline checkouts")
 	closeBracket := fs.Bool("close-bracket", false, "host close step of a container run: re-check admission and the tree digest, then append Admission-Bracket to --witness")
 	witnessFile := fs.String("witness", "", "container-netns: the new file outside the home the witness is written to; with --close-bracket or --bracket-digest: that file")
 	creditMode := fs.Bool("credit", false, "with --bracket-digest and --source: judge each bracket's credit (provenance, record, binding)")
@@ -2294,6 +2316,14 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// The container bracket (desktools-v2/71): the close step is its own mode,
 	// and a row-running container-netns invocation needs the host's receipt
 	// and image digest before anything else happens.
+	if *historyOut != "" && !*openBracket {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --history-out only applies to --open-bracket")
+		return verifyrunExitUsageError
+	}
+	if *historyPack != "" && (*sandbox != sandboxContainerNetns || !*failFirstMode || *openBracket || *closeBracket || *checkMode || *inContainer || *bracketDigestMode) {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --history-pack applies only to a container-netns --fail-first execution")
+		return verifyrunExitUsageError
+	}
 	if *openBracket || *closeBracket || *openOut != "" {
 		path := *briefPath
 		if path == "" && fs.NArg() > 0 {
@@ -2318,7 +2348,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitUsageError
 		}
 		if *openBracket {
-			return runOpenBracket(*rootDir, path, *openOut, stdout, stderr)
+			return runOpenBracket(*rootDir, path, *openOut, stdout, stderr, *historyOut)
 		}
 		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, stdout, stderr)
 	}
@@ -2353,6 +2383,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return verifyrunExitUsageError
 	}
 
+	// The stored-login decision (forgecredential.go) refuses from here until
+	// admission is established, and for the rest of an admitted run.
+	prevAdmission := verifyrunAdmission.Swap(verifyrunPending)
+	defer verifyrunAdmission.Store(prevAdmission)
 	attestation, admittedHome, containerTree := "", "", ""
 	var container containerAdmit
 	if *sandbox == sandboxContainerNetns && !*checkMode {
@@ -2379,6 +2413,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 		attestation, containerTree = container.attestation, container.tree
+		verifyrunAdmission.Store(admissionState(attestation))
 	} else if !*checkMode {
 		admissionRoot := *rootDir
 		if admissionRoot == "" {
@@ -2399,6 +2434,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 				return verifyrunExitCouldNot
 			}
 		}
+		verifyrunAdmission.Store(admissionState(attestation))
 	}
 	// rowRoot is where the Verify rows run: the admitted deliverable home for a
 	// cross-repository run, else --root, else the brief's repository toplevel.
@@ -2571,7 +2607,22 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	var ff map[string]failFirst
 	var riskyIDs map[string]bool
 	if *failFirstMode {
-		base, berr := failFirstBaseRev(root, *baseRev, path)
+		baseRoot, baseBrief := root, path
+		if *historyPack != "" {
+			binding, err := checkBinding(container.cell.Check)
+			if err != nil {
+				fmt.Fprintln(stderr, "statusgen verifyrun: --history-pack:", err)
+				return verifyrunExitCouldNot
+			}
+			var cleanup func()
+			baseRoot, baseBrief, cleanup, err = importContainerHistory(root, path, *historyPack, binding.Source)
+			if err != nil {
+				fmt.Fprintln(stderr, "statusgen verifyrun: --history-pack:", err)
+				return verifyrunExitCouldNot
+			}
+			defer cleanup()
+		}
+		base, berr := failFirstBaseRev(baseRoot, *baseRev, baseBrief)
 		if berr != nil {
 			fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first:", berr)
 			return verifyrunExitCouldNot
@@ -2591,7 +2642,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			fmt.Fprintf(stdout, "--fail-first: no risk-bearing row %s; every row is recorded not-selected at base\n", where)
 		}
 		var ferr error
-		ff, ferr = runFailFirstBase(plan, *sandbox, root, base, rows, riskyIDs, *timeout, *ci)
+		ff, ferr = runFailFirstBase(plan, *sandbox, baseRoot, base, rows, riskyIDs, *timeout, *ci)
 		if ferr != nil {
 			fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first:", ferr)
 			return verifyrunExitCouldNot
@@ -2606,12 +2657,12 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		// keeps the strict check: even an Evidence-only edit (an earlier run's
 		// uncommitted witnesses) refuses it, and a transition run records its
 		// rows on a committed tree before any container bracket is opened.
-		full, err := historyGit(root, "rev-parse", "--verify", "HEAD^{commit}").Output()
-		if err != nil || strings.Contains(executionTree, "+") || strings.Contains(treeSHA(root), "+") {
+		full, ok := (coverageRepo{root: root}).ResolveCommit("HEAD")
+		if !ok || strings.Contains(executionTree, "+") || strings.Contains(treeSHA(root), "+") {
 			fmt.Fprintln(stderr, "transition execution requires a clean immutable source")
 			return verifyrunExitCouldNot
 		}
-		executionTree = strings.TrimSpace(string(full))
+		executionTree = full
 	}
 	if netnsContainer {
 		if gaps := runModuleCacheGap(root); len(gaps) > 0 {
@@ -2644,6 +2695,9 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	table := witnessTable(ws)
 	if transitionDescriptor != "" {
 		table = transitionDescriptor + "\n\n" + table
+		if protectedExecution.Changes != "" {
+			table = "Acceptance-Changes: " + protectedExecution.Changes + "\n" + table
+		}
 	}
 	if containerTree != "" {
 		// The pre-row digest says which tree the rows started on; this one says
@@ -2844,7 +2898,7 @@ func originOwnerRepo(url string) string {
 // toplevel. A root outside any repository is not refused: its witness token
 // is `no-git`, which no comparison credits.
 func verifyrunRootBelowToplevel(root string) string {
-	out, err := exec.Command("git", "-C", root, "rev-parse", "--show-prefix").Output()
+	out, err := gitPrefixOutput(root)
 	if err != nil {
 		if gitCurrentSHA(root) != "" {
 			return fmt.Sprintf("refusing --root %s: where it sits in its git repository could not be read (git rev-parse --show-prefix failed), and a witness must be taken at the repository's toplevel", root)
@@ -2864,7 +2918,7 @@ func repoRootFor(briefPath string) string {
 	if abs, err := filepath.Abs(dir); err == nil {
 		dir = abs
 	}
-	if out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output(); err == nil {
+	if out, err := repoTopLevel(dir); err == nil {
 		if top := strings.TrimSpace(string(out)); top != "" {
 			return top
 		}

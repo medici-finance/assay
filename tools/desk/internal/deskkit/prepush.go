@@ -19,7 +19,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // PrePushHook runs one checkout's pre-push hook.

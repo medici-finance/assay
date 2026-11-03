@@ -508,7 +508,9 @@ as the planner and acts on its rows.
   same-head security APPROVE erase an at-head correctness CHANGES_REQUESTED under the one shared
   reviewer App — the 2026-08-15 laundering) **and NEVER as a plain comment** (invisible to the flip
   gate). A "security fail → correctness APPROVE" pair at one head reads as SUSPECT-APPROVAL on the
-  advisory board — fail-closed, per-lane cross-read. On a dual-tracked PR neither track files its own
+  advisory board — fail-closed, per-lane cross-read — unless the fail is marked `Blocked-On-Body:`
+  and a later same-head security pass clears it (`references/verdict-format.md`, "A security fail
+  whose ONLY basis is the PR body"). On a dual-tracked PR neither track files its own
   out-of-scope discoveries — `references/out-of-scope-filing.md` says why, and how the desk dedupes.
 - **MERGE-CURR** → no action: the head advanced but the PR's own files are unchanged since the last
   review (the board computes this; don't hand-diff). Keep-current merges are expected work, not

@@ -345,7 +345,7 @@ func productionResolveBase(root, baseRef string) (string, string, error) {
 	if strings.TrimSpace(baseRef) == "" {
 		baseRef = remoteMainRef
 	}
-	head, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+	head, err := gitHeadOutput(root)
 	if err != nil {
 		return "", "", fmt.Errorf("rev-parse HEAD: %w", err)
 	}
@@ -359,7 +359,7 @@ func productionResolveBase(root, baseRef string) (string, string, error) {
 // productionRelFromTop returns root's path relative to its git worktree top, so
 // the same subpath can be addressed inside the materialised base worktree.
 func productionRelFromTop(root string) (string, error) {
-	top, err := exec.Command("git", "-C", root, "rev-parse", "--show-toplevel").Output()
+	top, err := repoTopLevel(root)
 	if err != nil {
 		return "", fmt.Errorf("rev-parse --show-toplevel: %w", err)
 	}

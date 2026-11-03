@@ -15,7 +15,8 @@
 #   N     COULD-NOT-CHECK — a missing file, or a file whose version token is gone, exits 2 with
 #         NOTHING written, never a quiet partial stamp.
 #   G     GATE — in a throwaway git repo: a plugins/assay/ change with an unchanged manifest
-#         version is refused; the dispatch shape (--have = the version the tree will carry)
+#         version is refused; on the push path a Cursor plugin manifest lagging plugin.json is
+#         refused (#4775); the dispatch shape (--have = the version the tree will carry)
 #         passes; a stamped tree passes; tag/manifest inequality is refused even with no
 #         plugin change; no previous tag skips the diff and says so; an unfetchable previous
 #         ref is could-not-check.
@@ -88,13 +89,23 @@ fi
 expect 0 "LIVE the tree as committed carries $live_version in every file" check "v$live_version" --root "$REPO"
 expect 0 "LIVE default --root resolves to the repo root" check "v$live_version"
 n=$(printf '%s\n' "$PATHS" | grep -c .)
-if [[ "$n" -eq 7 ]]; then ok "paths lists the seven version-bearing files"; else no "paths lists the seven version-bearing files" "got $n"; fi
+if [[ "$n" -eq 8 ]]; then ok "paths lists the eight version-bearing files"; else no "paths lists the eight version-bearing files" "got $n"; fi
+if grep -qx 'plugins/assay/.cursor-plugin/plugin.json' <<<"$PATHS"; then
+  ok "paths lists the Cursor plugin manifest (#4775)"
+else
+  no "paths lists the Cursor plugin manifest (#4775)" "not in: $(printf '%s' "$PATHS" | tr '\n' ' ')"
+fi
 
 # ------------------------------------------------------------------- S stamp
 r=$(fixture s1)
 expect 0 "S1 stamp v9.9.9 exits 0" stamp v9.9.9 --root "$r"
 c=$(count_carrying "$r" 9.9.9)
-if [[ "$c" -eq 7 ]]; then ok "S1 every one of the seven files carries 9.9.9 afterwards"; else no "S1 every file carries 9.9.9" "only $c of 7 do"; fi
+if [[ "$c" -eq 8 ]]; then ok "S1 every one of the eight files carries 9.9.9 afterwards"; else no "S1 every file carries 9.9.9" "only $c of 8 do"; fi
+if grep -q '"version": "9.9.9"' "$r/plugins/assay/.cursor-plugin/plugin.json"; then
+  ok "S1 the Cursor plugin manifest carries 9.9.9 afterwards (#4775)"
+else
+  no "S1 the Cursor plugin manifest carries 9.9.9 afterwards (#4775)" "$(grep '"version"' "$r/plugins/assay/.cursor-plugin/plugin.json")"
+fi
 expect 0 "S1 check v9.9.9 passes on the stamped tree" check v9.9.9 --root "$r"
 expect 1 "S1 check for a different version fails on the stamped tree" check v9.9.8 --root "$r"
 
@@ -166,6 +177,16 @@ r=$(fixture c2)
 sed 's/"version": "[^"]*"/"version": "9.9.9"/' "$r/plugins/assay/.claude-plugin/plugin.json" > "$r/x" && mv "$r/x" "$r/plugins/assay/.claude-plugin/plugin.json"
 expect 1 "C2 plugin.json moved alone (the hand-edit shape) fails check" check v9.9.9 --root "$r"
 
+r=$(fixture c3)
+bash "$SCRIPT" stamp v9.9.9 --root "$r" >/dev/null 2>&1
+sed 's/"version": "9.9.9"/"version": "1.0.0"/' "$r/plugins/assay/.cursor-plugin/plugin.json" > "$r/x" && mv "$r/x" "$r/plugins/assay/.cursor-plugin/plugin.json"
+out=$(bash "$SCRIPT" check v9.9.9 --root "$r" 2>&1); rc=$?
+if [[ "$rc" -eq 1 ]] && grep -q -F 'FAIL plugins/assay/.cursor-plugin/plugin.json carries 1.0.0, want 9.9.9' <<<"$out"; then
+  ok "C3 a Cursor manifest left behind a stamp fails check, naming it (#4775)"
+else
+  no "C3 a Cursor manifest left behind a stamp fails check, naming it (#4775)" "rc=$rc; output: $(printf '%s' "$out" | tr '\n' '|')"
+fi
+
 # ------------------------------------------------------------------- N could-not-check
 r=$(fixture n1)
 rm "$r/.claude-plugin/marketplace.json"
@@ -187,6 +208,11 @@ expect 2 "N3 a paired-versions.yaml with no plugin: key is could-not-check" stam
 r=$(fixture n4)
 sed 's/"name": "assay"/"name": "example-renamed"/' "$r/.claude-plugin/marketplace.json" > "$r/x" && mv "$r/x" "$r/.claude-plugin/marketplace.json"
 expect 2 "N4 a catalog with no assay entry is could-not-check" stamp v9.9.9 --root "$r"
+
+r=$(fixture n5)
+rm "$r/plugins/assay/.cursor-plugin/plugin.json"
+expect 2 "N5 a missing Cursor plugin manifest is could-not-check on stamp (#4775)" stamp v9.9.9 --root "$r"
+if [[ "$(count_carrying "$r" 9.9.9 2>/dev/null)" -eq 0 ]]; then ok "N5 nothing was written"; else no "N5 nothing was written" "some file carries 9.9.9"; fi
 
 # ------------------------------------------------------------------- G gate
 if command -v git >/dev/null 2>&1; then
@@ -229,6 +255,17 @@ if command -v git >/dev/null 2>&1; then
   expect 0 "G7 no plugin change since the previous tag, re-cutting the same manifest version passes the diff check" gate --tag v1.0.1 --prev v1.0.1 --root "$g"
   expect 1 "G7 no plugin change but the tag moved past the manifest is refused (the tree must carry the tag)" gate --tag v1.0.2 --prev v1.0.1 --root "$g"
   expect 0 "G7 …and the dispatch shape, which will stamp 1.0.2, passes" gate --tag v1.0.2 --prev v1.0.1 --have 1.0.2 --root "$g"
+
+  # The push path tags the tree as-is: a Cursor manifest that lags plugin.json is refused (#4775).
+  sed 's/"version": "1.0.1"/"version": "1.0.0"/' "$g/plugins/assay/.cursor-plugin/plugin.json" > "$g/x" && mv "$g/x" "$g/plugins/assay/.cursor-plugin/plugin.json"
+  gitc commit -q -a -m 'example: Cursor manifest left behind'
+  out=$(bash "$SCRIPT" gate --tag v1.0.1 --prev v1.0.1 --root "$g" 2>&1); rc=$?
+  if [[ "$rc" -eq 1 ]] && grep -q -F 'FAIL plugins/assay/.cursor-plugin/plugin.json carries 1.0.0' <<<"$out"; then
+    ok "G8 push path: a Cursor manifest lagging plugin.json is REFUSED, naming it (#4775)"
+  else
+    no "G8 push path: a Cursor manifest lagging plugin.json is REFUSED" "rc=$rc; output: $(printf '%s' "$out" | tr '\n' '|')"
+  fi
+  expect 0 "G8 dispatch path (--have): the stamp that follows moves the Cursor manifest, so the gate defers to check" gate --tag v1.0.2 --prev v1.0.1 --have 1.0.2 --root "$g"
 else
   printf '  skip G gate cases: git not on PATH\n'
 fi

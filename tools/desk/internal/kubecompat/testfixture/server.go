@@ -51,6 +51,13 @@ type Server struct {
 	Calls                      int
 	Files                      map[string]string
 	AfterStart                 func(string)
+
+	// AwaitResize makes the synthetic attached program stay alive until it has
+	// read its first terminal-size frame (or the resize stream has ended) before
+	// it reports the exec result. client-go sends sizes from its own goroutine,
+	// so without this the program can exit, and close the connection, while the
+	// frame is still unread. Only set it for an attach whose client sends a size.
+	AwaitResize bool
 }
 
 func New(t testing.TB) *Server {
@@ -163,8 +170,9 @@ func (s *Server) serve(w http.ResponseWriter, req *http.Request) {
 			r.UID = "replacement-pod"
 			r.ContainerID = "containerd://replacement"
 		}
+		awaitResize := s.AwaitResize
 		s.mu.Unlock()
-		s.attach(w, req, role)
+		s.attach(w, req, role, awaitResize)
 		return
 	}
 	var object any
@@ -221,7 +229,7 @@ func (s *Server) serve(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(object)
 }
-func (s *Server) attach(w http.ResponseWriter, req *http.Request, role string) {
+func (s *Server) attach(w http.ResponseWriter, req *http.Request, role string, awaitResize bool) {
 	if _, e := httpstream.Handshake(req, w, []string{"v4.channel.k8s.io"}); e != nil {
 		return
 	}
@@ -260,8 +268,10 @@ func (s *Server) attach(w http.ResponseWriter, req *http.Request, role string) {
 			return
 		}
 	}
+	resized := make(chan struct{})
 	if resize := streams[core.StreamTypeResize]; resize != nil {
 		go func() {
+			defer close(resized)
 			var size kc.Size
 			if json.NewDecoder(resize).Decode(&size) == nil {
 				s.mu.Lock()
@@ -296,6 +306,14 @@ func (s *Server) attach(w http.ResponseWriter, req *http.Request, role string) {
 				s.Files[role] = frame
 			}
 			s.mu.Unlock()
+		}
+	}
+	if awaitResize {
+		// The decoder ends on the first frame, or on EOF/reset when the client
+		// closes the connection, so this wait is bounded by the client itself.
+		select {
+		case <-resized:
+		case <-conn.CloseChan():
 		}
 	}
 	if status := streams[core.StreamTypeError]; status != nil {

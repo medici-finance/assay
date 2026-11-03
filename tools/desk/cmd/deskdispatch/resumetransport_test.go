@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitcore/gittest"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gittest"
 )
 
 // regression: #3327

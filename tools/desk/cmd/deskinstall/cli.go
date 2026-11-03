@@ -48,8 +48,8 @@ this mode's own effects are inside the boundary and record no line there, but
 the path is where a later outside-effect component would, and it is what
 ` + "`deskdisable`" + ` reads when reversing one.
 
-MODE 2 — harness placement (Cursor's install mechanism IS file placement: no
-marketplace, no per-harness plugin manifest). Places the packaging roster's
+MODE 2 — harness placement (Cursor's copy-skills route: file placement that pins
+one release; Cursor's own plugin route follows a branch). Places the packaging roster's
 skills into --repo/.cursor/skills, plugins/assay/references/*.md as a SIBLING
 references/ tree so the skills' ../../references/*.md includes resolve, the
 generated .cursor/rules/assay.mdc if the bundle carries one, and writes the
@@ -57,7 +57,8 @@ shared AGENTS.md bindings fragment between stable assay:bindings delimiters
 (forge-substituted: gh on github, glab/--forge gitlab on gitlab). Idempotent —
 a second identical run changes no byte.
 
-Managed ownership is recorded in .cursor/assay-managed.json. Unrelated content is
+Managed ownership is recorded in .cursor/assay-managed.json, with the placed plugin
+version (when the source carries .claude-plugin/plugin.json). Unrelated content is
 preserved; modified managed files and unmanaged collisions refuse before writes.
 AGENTS.md content outside the bounded Assay block is preserved. --check is read-only.
 

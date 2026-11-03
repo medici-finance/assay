@@ -4,7 +4,7 @@ title: Importable fact reader SDK and first shared read
 why: "Consumers currently need a subprocess or duplicate forge handling to reuse read behavior. A narrow SDK lets commands and applications share the implementation without acquiring custody or write authority."
 wave: 1
 depends: []
-unblocks: ["forge-neutral/37"]
+unblocks: ["forge-neutral/37", "forge-neutral/46", "forge-neutral/47"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}

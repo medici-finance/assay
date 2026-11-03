@@ -1169,3 +1169,50 @@ func plantedSecondExit(out string) error { return Refused("the callout said " + 
 		t.Fatalf("the guard missed a planted leak; flagged:\n%s", strings.Join(bad, "\n"))
 	}
 }
+
+// TestCalloutInternalSendsPublic — an `:internal` target reaches the house callout as
+// `public`, the exposure class the version-1 request contract names; `internal` never goes
+// on the wire, and no Visibility value maps outside the documented three.
+//
+// regression: #4978
+func TestCalloutInternalSendsPublic(t *testing.T) {
+	const inner = "example-org/example-instance"
+	path, dir := ocStub(t, "allow")
+	ocConfigure(t, map[string]string{
+		EnvOutboundCallout: path,
+		EnvAllowedRepos:    obPublic + ":ci:public," + obPrivate + ":ci:private," + inner + ":ci:internal",
+	})
+	ocStderr(t)
+	if got := RepoVisibility(inner); got != VisibilityInternal {
+		t.Fatalf("fixture: RepoVisibility(%s) = %s, want internal", inner, got)
+	}
+	if _, err := ocFileIssue(inner, ocCleanBody); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "request.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req struct {
+		Version    int    `json:"version"`
+		Repo       string `json:"repo"`
+		Visibility string `json:"visibility"`
+	}
+	if err := json.Unmarshal(b, &req); err != nil {
+		t.Fatalf("request is not JSON: %v\n%s", err, b)
+	}
+	if req.Repo != inner || req.Visibility != "public" || req.Version != 1 {
+		t.Fatalf("an :internal target was sent as %+v, want visibility public at version 1", req)
+	}
+	for v, want := range map[Visibility]string{
+		VisibilityPublic:   "public",
+		VisibilityInternal: "public",
+		VisibilityPrivate:  "private",
+		VisibilityUnknown:  "unknown",
+		Visibility(99):     "unknown",
+	} {
+		if got := calloutVisibility(v); got != want {
+			t.Errorf("calloutVisibility(%d) = %q, want %q", int(v), got, want)
+		}
+	}
+}

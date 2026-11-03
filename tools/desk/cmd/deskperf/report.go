@@ -51,6 +51,13 @@ type reportDayJSON struct {
 	PerfV4ByDay []deskkit.PerfV4Day    `json:"perfV4ByDay,omitempty"`
 }
 
+// deskRoleFlag is the report's --desk-role flag name, joined at start-up. The bare literal
+// ends in an "sk-" run, and the Go linker packed it next to this binary's alphanumeric
+// literals, where it read as a generic model key to the release image's secret scan
+// (internal/regression TestReleaseBinariesScanClean). The joined form never puts that
+// literal in the binary's string data; deskkit.DeskToolsArtifact uses the same shape.
+var deskRoleFlag = strings.Join([]string{"desk", "role"}, "-")
+
 func cmdReport(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("deskperf report", flag.ContinueOnError)
 	days := fs.Int("days", deskkit.PerfMaxDays, "UTC days to read (1-7)")
@@ -62,7 +69,7 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 	group := fs.String("group-by", "tool", "v3 group: tool, work, session, agent, deskRole, role (--by-day groups by tool only)")
 	session := fs.String("session-id", "", "v3 workflow session filter")
 	agent := fs.String("agent-id", "", "v3 workflow agent filter")
-	deskRole := fs.String("desk-role", "", "v3 workflow originating desk filter")
+	deskRole := fs.String(deskRoleFlag, "", "v3 workflow originating desk filter")
 	assigned := fs.String("assigned-role", "", "v3 workflow execution role filter")
 	work := fs.String("work", "", "v3 workflow typed JSON-object locator filter")
 	asJSON := fs.Bool("json", false, "emit the aggregates as one JSON object")

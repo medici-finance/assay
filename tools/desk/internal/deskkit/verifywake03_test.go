@@ -91,8 +91,8 @@ func wakeTestInput() OutcomeReceiptInput {
 }
 
 // Verify row 1: a verify-fail record carries a complete receipt with one file: key per declared
-// path (every file under a declared directory; absent paths skipped) plus the brief and tool
-// keys; a verified record carries none.
+// file, one file:<dir>/ key per declared directory (absent paths skipped) plus the brief and
+// tool keys; a verified record carries none.
 // regression: #2798
 func TestOutcomeRecordWritesReceipt(t *testing.T) {
 	out, err := BuildOutcomeRecord(wakeTestRecord("verify-fail", BlockerImplementation, "#42"), wakeTestInput(), wakeTestTree())
@@ -110,9 +110,10 @@ func TestOutcomeRecordWritesReceipt(t *testing.T) {
 		t.Errorf("predicate/schema/tool_version = %q/%q/%q", r.WakePredicate, r.Schema, r.ToolVersion)
 	}
 	want := map[string]string{
-		"file:tools/a.go":           Sha256Hex([]byte("package a\n")),
-		"file:tools/pkg/one.go":     Sha256Hex([]byte("package pkg\n")),
-		"file:tools/pkg/sub/two.go": Sha256Hex([]byte("package sub\n")),
+		"file:tools/a.go": Sha256Hex([]byte("package a\n")),
+		// #4865: the declared directory is one digest over every member, not a key per member.
+		"file:tools/pkg/": Sha256Hex([]byte("tools/pkg/one.go\x00" + Sha256Hex([]byte("package pkg\n")) +
+			"\x00tools/pkg/sub/two.go\x00" + Sha256Hex([]byte("package sub\n")))),
 		"file:" + wakeTestBriefPath: Sha256Hex(wakeTestInput().LandedBrief),
 		"tool":                      "v9.9.9",
 	}

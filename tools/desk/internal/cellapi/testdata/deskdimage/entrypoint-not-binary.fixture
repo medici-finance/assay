@@ -1,0 +1,5 @@
+# Shell-form ENTRYPOINT needs /bin/sh, which the image must not have.
+want: entrypoint-not-binary
+file: Dockerfile
+replace: "ENTRYPOINT [\"/deskd\"]"
+with: "ENTRYPOINT /deskd"

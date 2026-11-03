@@ -1,6 +1,9 @@
 package main
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -267,10 +270,45 @@ func TestNoAncestryWitnessJudge(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(b), `"--is-ancestor"`) {
+		if asksCommitAncestry(b) {
 			if _, ok := allow[f]; !ok {
-				t.Errorf("%s asks git for commit ancestry (\"--is-ancestor\"); judge a witness by the content of what it speaks for (witnessTreeApplies), never by ancestry — #2026", f)
+				t.Errorf("%s asks for commit ancestry; judge a witness by the content of what it speaks for (witnessTreeApplies), never by ancestry — #2026", f)
 			}
 		}
+	}
+}
+
+func asksCommitAncestry(source []byte) bool {
+	if strings.Contains(string(source), `"--is-ancestor"`) {
+		return true
+	}
+	f, err := parser.ParseFile(token.NewFileSet(), "source.go", source, parser.SkipObjectResolution)
+	if err != nil {
+		return true
+	}
+	found := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		if s, ok := n.(*ast.SelectorExpr); ok && (s.Sel.Name == "IsAncestor" || s.Sel.Name == "IsAncestorCached") {
+			found = true
+		}
+		return true
+	})
+	return found
+}
+
+// regression: #2395
+func TestAncestryQueryPlants(t *testing.T) {
+	for _, source := range []string{
+		`package p;func f(){r.IsAncestor(a,b)}`,
+		`package p;func f(){r.IsAncestorCached(a,b)}`,
+		`package p;func f(){check:=r.IsAncestor;check(a,b)}`,
+		`package p;func f(){git("merge-base","--is-ancestor",a,b)}`,
+	} {
+		if !asksCommitAncestry([]byte(source)) {
+			t.Fatalf("ancestry plant missed: %s", source)
+		}
+	}
+	if asksCommitAncestry([]byte(`package p;const example="r.IsAncestor(a,b)"`)) {
+		t.Fatal("non-code method example counted")
 	}
 }

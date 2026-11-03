@@ -792,12 +792,15 @@ func readLabelEvents(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]desk
 //     it were a fresh verdict after a genuine push, nor is it a citing APPROVE for either
 //     exemption below.
 //
-// RULE 2 HAS EXACTLY TWO EXEMPTIONS, and both live in this function rather than in a caller
+// RULE 2 HAS EXACTLY THREE EXEMPTIONS, and all live in this function rather than in a caller
 // so the grant and the refusal cannot drift apart: the CHECK-ONLY CR (see
-// checkOnlyCRCleared) and the DOCUMENTED BODY-EDIT RE-VERIFICATION (see bodyEditCRCleared).
-// A standing CR is routed by what it DECLARES — a `Blocked-On-Body:` line goes to the
-// body-edit decision, anything else to the check-only one, whose undeclared path is rule 2's
-// refusal verbatim. runsAtHead supplies the check-run rollup at head that the check-only
+// checkOnlyCRCleared), the DOCUMENTED BODY-EDIT RE-VERIFICATION (see bodyEditCRCleared), and
+// the MARKED SECURITY FAIL cleared by a later same-head pass (see securityBodyCRCleared,
+// #5092). A standing CR is routed by its LANE first and then by what it DECLARES — a
+// `Security-Review: fail` goes to the security-lane decision whatever else it carries, a
+// `Blocked-On-Body:` line to the body-edit decision, anything else to the check-only one,
+// whose undeclared path is rule 2's refusal verbatim. Each correctness exemption is cleared
+// only by correctness-lane APPROVEs and the security one only by security-lane passes. runsAtHead supplies the check-run rollup at head that the check-only
 // exemption needs; it is a FUNCTION, not a slice, because the read is a forge round-trip that
 // the overwhelmingly common path — no standing CR at all — must not pay for. It is called at
 // most once, only when a standing CR has already DECLARED itself check-only. live is the PR
@@ -806,11 +809,20 @@ func readLabelEvents(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]desk
 func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head string, live liveBodyRead, pr int,
 	runsAtHead func() ([]deskkit.CheckRun, error)) error {
 	// Rule 2 first: a standing block at head is decisive whatever else is present.
-	for _, r := range reviews {
+	for i, r := range reviews {
 		if !deskkit.SameActor(r.User.Login, reviewerLogin) || r.CommitID != head {
 			continue
 		}
 		if r.State == "CHANGES_REQUESTED" {
+			// The security lane's fail is routed BEFORE either correctness exemption: those
+			// are cleared by correctness APPROVEs, and a correctness approval never clears a
+			// security fail (#5092).
+			if deskkit.HasSecurityReviewFail(r.Body) {
+				if err := securityBodyCRCleared(reviewerLogin, r, reviews[i+1:], reviews, head, live); err != nil {
+					return err
+				}
+				continue
+			}
 			if deskkit.BodyEditDeclared(r.Body) {
 				if err := bodyEditCRCleared(reviewerLogin, r, reviews, head, live); err != nil {
 					return err
@@ -1160,6 +1172,77 @@ func bodyEditCRCleared(reviewerLogin string, cr reviewInfo, reviews []reviewInfo
 		dec.Reason+".")
 }
 
+// securityBodyCRCleared decides rule 2's THIRD exemption for a standing CHANGES_REQUESTED at
+// head that carries `Security-Review: fail` (#5092). The decision is
+// deskkit.EvaluateSecurityBodyClearance, shared with deskboard; this function supplies what it
+// cannot get for itself — the reviewer's security-marked reviews after the fail, the live
+// body, and the forge's record of the body's last edit — and holds the lane line:
+//
+//   - an UNMARKED fail refuses with rule 2's refusal verbatim, exactly as before;
+//   - a fail declaring `Blocked-On-Check:` / `External-Prereq-Only:` refuses: those classes
+//     are cleared by correctness APPROVEs, and a correctness approval never clears a security
+//     fail;
+//   - each later review is handed over WITH its review state, so the shared decision admits a
+//     pass only in a state deskkit.SecurityPassStateStands allows (the same two states
+//     `deskpost ready`'s own list holds): a DISMISSED or PENDING pass clears nothing;
+//   - a fail or a pass whose body also carries a correctness verdict line refuses in the
+//     shared decision. Rule 1 drops every security-marked body, so clearing such a CR here
+//     would drop its correctness half unread;
+//   - a marked fail clears only when the shared decision clears it AND the security lane's
+//     standing verdict at head (securityVerdictStanding, the reduction checkSecurityVerdict
+//     reads) is a pass. The head binding comes from rule 2's head filter and the shared
+//     decision, and after a head move from condition security-verdict itself; this second
+//     check is a second layer that errs safe. When the decision clears, the reduction's last
+//     verdict is already that pass, so on unmutated code it does not fire.
+//
+// later is reviews after cr in the forge's ascending order; reviews is the whole list.
+func securityBodyCRCleared(reviewerLogin string, cr reviewInfo, later, reviews []reviewInfo, head string, live liveBodyRead) error {
+	if !deskkit.BodyEditDeclared(cr.Body) {
+		if deskkit.BlockedOnCheckName(cr.Body) != "" || deskkit.ExternalPrereqOnlyDeclared(cr.Body) {
+			return standingCRRefusal(reviewerLogin, head, "The CR is a `Security-Review: fail`; the "+
+				"check-only and external-prerequisite classes are cleared by a correctness APPROVE, which never "+
+				"clears a security fail.")
+		}
+		return standingCRRefusal(reviewerLogin, head, "")
+	}
+	var after []deskkit.SecurityVerdictReview
+	for _, r := range later {
+		if !deskkit.SameActor(r.User.Login, reviewerLogin) || !hasSecurityMarker(r.Body) {
+			continue
+		}
+		after = append(after, deskkit.SecurityVerdictReview{Body: r.Body, CommitID: r.CommitID, State: r.State,
+			SubmittedAt: r.SubmittedAt})
+	}
+	editedAt := ""
+	if live.EditedAt != nil {
+		var err error
+		if editedAt, err = live.EditedAt(); err != nil {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: a standing `Security-Review: fail` at %s declares `Blocked-On-Body:`, but the PR "+
+					"body's last-edited time could not be read (%s) — whether the body was edited after the fail "+
+					"is then could-not-check, and could-not-check never clears a rejection.",
+				condReviewerApproved, short(head), firstLine(err.Error())), err)
+		}
+	}
+	dec := deskkit.EvaluateSecurityBodyClearance(deskkit.SecurityBodyInput{
+		FailBody:        cr.Body,
+		FailSubmittedAt: cr.SubmittedAt,
+		Head:            head,
+		Later:           after,
+		LiveBody:        live.Body,
+		BodyEditedAt:    editedAt,
+	})
+	if !dec.Cleared {
+		return standingCRRefusal(reviewerLogin, head, "The CR is a `Security-Review: fail` declaring "+
+			"`Blocked-On-Body:`, but "+dec.Reason+".")
+	}
+	if securityVerdictStanding(reviews, reviewerLogin, head) != secPass {
+		return standingCRRefusal(reviewerLogin, head, "The CR is a marked `Security-Review: fail` whose "+
+			"clearance holds, but the security lane's standing verdict at head is not a pass.")
+	}
+	return nil
+}
+
 // liveBodyRead is the PR body as read at the reviewer-approved gate, plus a reader for the
 // forge's own record of when that body was last edited. The body-edit exemption needs both:
 // the body to verify the reviewer's re-read digest against, and the edit time to establish
@@ -1198,6 +1281,16 @@ func bodyEditedAtReader(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int) func() (
 // the current head, so a resync that leaves the flagged code unchanged cannot launder it.
 // The second rule is the risk-classed requirement: a PR that IS risk-classed needs an
 // affirmative pass AT THE CURRENT head, and absence is never a pass.
+//
+// ONE VERDICT FOR THE LANE (#5092). A fail and a later pass at the SAME head read here as the
+// pass, and rule 2 of checkReviewerApproved reads the same fail, as a CHANGES_REQUESTED at
+// head, through securityBodyCRCleared. That function clears it only when the shared marked
+// body-only decision holds, which needs a standing pass from the reviewer at head with no fail
+// after it; it also checks securityVerdictStanding — this condition's reduction — as a
+// second layer. So the two conditions cannot read the lane differently in the grant direction: an
+// unmarked same-head fail is refused there, and a marked one clears in both or neither. A
+// clearance binds to its head like any pass: once the head moves, the fail stands again
+// here (#361) and the clearing pass, pinned at the old head, clears nothing.
 //
 // RISK CLASSIFICATION IS UNIONED, AND EVERY TERM ONLY WIDENS (#361 item 3). A PR is
 // risk-classed if its repo visibility risk-classes it (a public repo always does — no diff

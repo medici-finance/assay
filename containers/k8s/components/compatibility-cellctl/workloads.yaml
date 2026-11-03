@@ -17,7 +17,7 @@
         "containers": [
           {
             "name": "the-desk",
-            "image": "REQUIRES_BUILT_CANDIDATE_IMAGE",
+            "image": "ghcr.io/medici-finance/assay/the-desk:v1.0.65@sha256:0be637845b9f57163d1031fccf03c7da2f690b034f6cd5055fd484c54c7a804c",
             "args": [
               "/usr/local/bin/desk-session"
             ],
@@ -78,7 +78,7 @@
         "containers": [
           {
             "name": "intake-desk",
-            "image": "REQUIRES_BUILT_CANDIDATE_IMAGE",
+            "image": "ghcr.io/medici-finance/assay/intake-desk:v1.0.65@sha256:225978781ecd663d04e7aa65fee7940f47efb255964c8c2732fea7f9a79fec53",
             "args": [
               "/usr/local/bin/desk-session"
             ],
@@ -139,7 +139,7 @@
         "containers": [
           {
             "name": "worker-desk",
-            "image": "REQUIRES_BUILT_CANDIDATE_IMAGE",
+            "image": "ghcr.io/medici-finance/assay/worker-desk:v1.0.65@sha256:7131c24a5ffc75273df319245a48be9f7e486b7491400a9eb2a13871b93310ec",
             "args": [
               "/usr/local/bin/desk-session"
             ],
@@ -200,7 +200,7 @@
         "containers": [
           {
             "name": "pr-review-desk",
-            "image": "REQUIRES_BUILT_CANDIDATE_IMAGE",
+            "image": "ghcr.io/medici-finance/assay/pr-review-desk:v1.0.65@sha256:2668f9b0a8f6ab5f164d040f34c650a549fe0d3b0f7570919ba7e718a319f493",
             "args": [
               "/usr/local/bin/desk-session"
             ],
@@ -261,7 +261,7 @@
         "containers": [
           {
             "name": "verify-desk",
-            "image": "REQUIRES_BUILT_CANDIDATE_IMAGE",
+            "image": "ghcr.io/medici-finance/assay/verify-desk:v1.0.65@sha256:333773749ec8a3f3d15d8724f734666ee02d36ae1ed026ab2ec5c46334b16ba1",
             "args": [
               "/usr/local/bin/desk-session"
             ],

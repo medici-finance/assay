@@ -55,14 +55,14 @@ consumers:
 
 ## Context
 files:
-- `containers/postgres/compose.yaml` (planned) (new — its own compose project, one `postgres` service, a named volume, a health check, the superuser password from a compose secret)
-- `containers/postgres/initdb/00-harden.sql` (planned) (new — runs once, on first init: revokes `CONNECT` and `TEMPORARY` from `PUBLIC` on `postgres` and `template1`)
-- `containers/postgres/provision-cell.sh` (planned) (new — idempotent per-cell database and role; `--disable-login` / `--enable-login`; prints the DSN and the `cellctl set` lines)
-- `containers/postgres/backup.sh` (planned) (new — `pg_dump -Fc` per cell database plus globals, with a manifest)
-- `containers/postgres/restore.sh` (planned) (new — restore one cell from one dump; the cell's role ends `NOLOGIN`)
-- `containers/postgres/drill.sh` (planned) (new — the restore drill on a throwaway compose project; the Verify flow row)
-- `containers/postgres/check-isolation.sh` (planned) (new — fails if `PUBLIC` holds `CONNECT` on any cell database or if a cell role has a forbidden attribute; brief 27 reuses it)
-- `docs/postgres.md` (planned) (new — the operator doc: start, provision a cell, credentials, backup schedule, restore, drill, upgrade limits)
+- `containers/postgres/compose.yaml` (planned) (new: its own compose project, one `postgres` service, a named volume, a health check, the superuser password from a compose secret)
+- `containers/postgres/initdb/00-harden.sql` (planned) (new: runs once, on first init: revokes `CONNECT` and `TEMPORARY` from `PUBLIC` on `postgres` and `template1`)
+- `containers/postgres/provision-cell.sh` (planned) (new: idempotent per-cell database and role; `--disable-login` / `--enable-login`; prints the DSN and the `cellctl set` lines)
+- `containers/postgres/backup.sh` (planned) (new: `pg_dump -Fc` per cell database plus globals, with a manifest)
+- `containers/postgres/restore.sh` (planned) (new: restore one cell from one dump; the cell's role ends `NOLOGIN`)
+- `containers/postgres/drill.sh` (planned) (new: the restore drill on a throwaway compose project; the Verify flow row)
+- `containers/postgres/check-isolation.sh` (planned) (new: fails if `PUBLIC` holds `CONNECT` on any cell database or if a cell role has a forbidden attribute; brief 27 reuses it)
+- `docs/postgres.md` (planned) (new: the operator doc: start, provision a cell, credentials, backup schedule, restore, drill, upgrade limits)
 - `tools/desk/cmd/cellctl/envkeys.go` — register `CELL_DB_DSN` and `CELL_DB_PASSFILE` as `envCell` levers
 - `tools/desk/cmd/cellctl/launch.go`, `tools/desk/cmd/cellctl/desk.go` — compose the two exported variables into the host launch and print them in the dry-run plan
 - `tools/desk/cmd/cellctl/env.go` — add both exported variables to `scrubbedEnvKeys`, each with a `scrubbedEnvValue` case arm

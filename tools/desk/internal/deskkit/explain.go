@@ -24,7 +24,7 @@ import (
 // the desk verbs under --explain (see MaybeExplain).
 type ScanFinding struct {
 	// Rule is the id of the arm that refused: high-entropy-run, decrypted-k8s-secret,
-	// pem-block, github-token, aws-key-id, jwt, sops-block.
+	// pem-block, github-token, aws-key-id, jwt, sops-block, url-userinfo.
 	Rule string
 	// Line is the 1-based line of the first offending span on the scanned surface.
 	Line int

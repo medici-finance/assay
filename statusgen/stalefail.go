@@ -1,8 +1,12 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -73,34 +77,93 @@ func failEvidenceDate(evidence string) (time.Time, bool) {
 // newestFailFix reads only locally available main history, never HEAD or a
 // network endpoint. An absent/shallow history cannot prove a FAIL current.
 func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
-	shallow, err := exec.Command("git", "-C", root, "rev-parse", "--is-shallow-repository").Output()
+	shallow, err := gitShallowOutput(root)
 	if err != nil || strings.TrimSpace(string(shallow)) != "false" {
 		return "", false
 	}
 	ref := ""
+	mainID := ""
 	for _, candidate := range []string{"refs/remotes/origin/main", "refs/heads/main"} {
-		if exec.Command("git", "-C", root, "rev-parse", "--verify", candidate+"^{commit}").Run() == nil {
+		resolved, err, supported := commitReadOutput(ordinaryCommitRead(root, candidate), candidate)
+		if !supported {
+			err = exec.Command("git", "-C", root, "rev-parse", "--verify", candidate+"^{commit}").Run()
+		}
+		if err == nil {
 			ref = candidate
+			if supported {
+				mainID = strings.TrimSpace(string(resolved))
+			}
 			break
 		}
 	}
 	if ref == "" {
 		return "", false
 	}
+	issues := append([]int(nil), bf.Issues...)
+	for _, m := range fixIssueRe.FindAllStringSubmatch(bf.Body, -1) {
+		n, _ := strconv.Atoi(m[1])
+		issues = append(issues, n)
+	}
+	if len(bf.DeclaredEntriesRaw) == 0 && len(issues) == 0 {
+		return "", false
+	}
+	// Ordinary native Git still owns these operations and their exact argv.
+	// The existing run owner shares successful bytes only when the repository,
+	// selected main, native config/reference namespace and environment match.
+	// Config/includes and symbolic aliases are observed by Git, not re-parsed here.
+	// An unsupported profile or failed optional observation leaves the original
+	// native reads uncached; it never changes a checked/could-not-check outcome.
+	context := ""
+	formattingNative := true
+	native := func(args ...string) ([]byte, error) {
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		if context == "" || activeGitReads == nil || len(args) == 0 || args[0] != "log" {
+			return cmd.Output()
+		}
+		bound, err := json.Marshal([]any{context, cmd.Args, cmd.Environ()})
+		if err != nil {
+			return cmd.Output()
+		}
+		key := fmt.Sprintf("%x", sha256.Sum256(bound))
+		return activeGitReads.staleFailRead(key, cmd.Output)
+	}
+	if activeGitReads != nil && mainID != "" {
+		absolute, pathErr := filepath.Abs(root)
+		physical, physicalErr := filepath.EvalSymlinks(absolute)
+		cwd, cwdErr := os.Getwd()
+		config, configErr := native("config", "--null", "--list", "--show-origin", "--show-scope")
+		refs, refsErr := staleFailReferenceOutput(root, native)
+		if configErr == nil {
+			formattingNative = logOutputConfigured(config)
+		}
+		if pathErr == nil && physicalErr == nil && cwdErr == nil && configErr == nil && refsErr == nil {
+			bound, err := json.Marshal([]any{physical, cwd, ref, mainID, config, refs})
+			if err == nil {
+				context = fmt.Sprintf("%x", sha256.Sum256(bound))
+			}
+		}
+	}
+	// Match the existing per-brief native context lifetime. Qualify the ordinary
+	// reader once after its config/ref snapshot, rather than rediscovering that
+	// same profile for every merge range examined by this one main-history query.
+	rangeRead := gitCoreRead{}
+	if !formattingNative {
+		rangeRead = ordinaryGitCore(root)
+	}
 	var newest time.Time
 	sha := ""
 	read := func(extra []string, issue *regexp.Regexp) bool {
 		// First-parent path history measures when the main tree changed, including
 		// a merge whose feature-side repair predates the failed main run.
-		args := []string{"-C", root, "log", "--first-parent", ref, "--format=%ct%x00%h%x00%B%x00%P%x00%x1e"}
+		args := []string{"log", "--first-parent", ref, "--format=%ct%x00%h%x00%B%x00%P%x00%H%x00%x1e"}
 		args = append(args, extra...)
-		out, err := exec.Command("git", args...).Output()
+		out, err := native(args...)
 		if err != nil {
 			return false
 		}
 		for _, record := range strings.Split(string(out), "\x1e") {
 			fields := strings.Split(strings.TrimSpace(record), "\x00")
-			if len(fields) < 4 {
+			if len(fields) < 5 {
 				continue
 			}
 			sec, err := strconv.ParseInt(fields[0], 10, 64)
@@ -119,7 +182,7 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 				// A merge need not repeat the issue named by the repair it
 				// introduces. Attribute those newly reachable issue references
 				// to the landing commit, without consulting unmerged branches.
-				messages, err := exec.Command("git", "-C", root, "log", parents[0]+".."+fields[1], "--format=%B").Output()
+				messages, err := staleFailRangeMessages(rangeRead, parents[0], fields[1], fields[4], formattingNative, native)
 				if err != nil {
 					return false
 				}
@@ -138,11 +201,6 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 			return "", false
 		}
 		checked = true
-	}
-	issues := append([]int(nil), bf.Issues...)
-	for _, m := range fixIssueRe.FindAllStringSubmatch(bf.Body, -1) {
-		n, _ := strconv.Atoi(m[1])
-		issues = append(issues, n)
 	}
 	if len(issues) > 0 {
 		var ids []string
@@ -185,4 +243,42 @@ func waitingBriefNotice(root, path string, bf *BriefFile, status string) string 
 		return fmt.Sprintf("%s: brief %s sign-off card missing — verify-desk lands the marker / verify-gate-open files the card", path, bf.Brief)
 	}
 	return fallback
+}
+
+// staleFailRangeMessages moves graph work, not log output formatting, into the
+// canonical Git owner. The native summary has already selected the displayed
+// abbreviation; a shadowing native ref preserves the original range command.
+// All actual object/graph errors remain could-not-check, with no native retry.
+func staleFailRangeMessages(read gitCoreRead, base, tip, fullTip string, formattingNative bool, native func(...string) ([]byte, error)) ([]byte, error) {
+	if formattingNative {
+		return native("log", base+".."+tip, "--format=%B")
+	}
+	if read.err != nil {
+		return nil, read.err
+	}
+	if read.native != "" {
+		return native("log", base+".."+tip, "--format=%B")
+	}
+	why, err := read.repo.NativeAbbreviationReason(tip)
+	if err != nil {
+		return nil, err
+	}
+	if why != "" {
+		return native("log", base+".."+tip, "--format=%B")
+	}
+	rows, err := read.repo.CommitRange(base, fullTip)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if row.NativeMessageReason != "" {
+			return native("log", base+".."+tip, "--format=%B")
+		}
+	}
+	var messages strings.Builder
+	for _, row := range rows {
+		messages.WriteString(row.Message)
+		messages.WriteByte('\n')
+	}
+	return []byte(messages.String()), nil
 }

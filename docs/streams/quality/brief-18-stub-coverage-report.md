@@ -39,14 +39,11 @@ consumers:
 ## Context
 
 files:
-- NEW `tools/regsuite/stubs.go` (planned) + `stubs_test.go` (planned) — the `stubs`
-  subcommand, in the module quality/17 creates (reuse its module discovery and
-  `testdata`-skip).
-- NEW `tools/regsuite/testdata/stubs-*.txtar` (planned) — fixture packages, materialized to a
-  temp dir at test time (same txtar rule as quality/17: never a live committed `go.mod`).
+- **add** `tools/regsuite/stubs.go` (planned) + `tools/regsuite/stubs_test.go` (planned) — the `stubs` subcommand, in the module quality/17 creates (reuse its module discovery and `testdata`-skip).
+- **add** `tools/regsuite/testdata/stubs-*.txtar` (planned) — fixture packages, materialized to a temp dir at test time (same txtar rule as quality/17: never a live committed `go.mod`).
 - `.github/workflows/regression-suite.yml` (planned) — created by quality/17; add a `stub-coverage-report` job.
 - `docs/test-policy.md` — a `### Stub-coverage rule` subsection under quality/17's `## Regression suite`.
-- `changelog/<branch-slug>.md` — the per-PR fragment.
+- **add** — `changelog/<branch-slug>.md`, the per-PR fragment.
 
 facts:
 - **Seam (the issue's definition):** a package-level `var` of func type declared in a

@@ -149,9 +149,11 @@ func lookupPin(raw []byte, path, artifact string) (tag, sha string, found bool, 
 // THIS host, most specific first: `<artifact>-<GOOS>-<GOARCH>` everywhere, preceded
 // on Windows by the `.exe` form (`statusgen-windows-amd64.exe`) that a single-binary
 // Windows asset is pinned under (docs/adopting-assay.md § Pin the Windows assets).
-// The tarball artifacts (`desk-tools-<platform>`) are pinned without the `.tar.gz`
-// suffix on every platform, which is why the bare `-<os>-<arch>` form is always in
-// the list.
+// It serves single-binary assets (statusgen), so it lists no `.tar.gz` form, and the
+// bare `-<os>-<arch>` form is always in the list. The desk-tools tarball is a different
+// case: the installer and the release manifest pin it under its full asset name,
+// `desk-tools-<platform>.tar.gz`, and DeskToolsReleasePin reads that spelling as well as
+// the suffixless `desk-tools-<platform>` one.
 func HostPlatformAssets(artifact string) []string {
 	base := artifact + "-" + runtime.GOOS + "-" + runtime.GOARCH
 	if runtime.GOOS == "windows" {

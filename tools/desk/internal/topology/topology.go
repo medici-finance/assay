@@ -46,8 +46,11 @@ const Schema = "topology-v1"
 
 // Visibility is a repo's stated GitHub visibility. The zero value is
 // VisibilityUnknown on purpose: "not stated" must never read as "private".
-// It mirrors deskkit.Visibility, which is the gate-side type; this package does
-// not import deskkit (deskkit imports THIS package).
+// It mirrors deskkit.Visibility for public and private, which is the gate-side
+// type; this package does not import deskkit (deskkit imports THIS package).
+// deskkit's third token, `internal`, deliberately has no value here: a topology
+// entry stating it reads as unknown (fail closed). Topology visibility is
+// display-only — every gate reads the allowed-repos roster through deskkit.
 type Visibility int
 
 const (

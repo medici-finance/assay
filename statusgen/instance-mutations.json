@@ -150,6 +150,18 @@
       "file": "instance.go",
       "old": "if seenDep[d.Ref] {",
       "new": "if false && seenDep[d.Ref] {"
+    },
+    {
+      "name": "graph-execution/33: schema findings hide the human-node boundary",
+      "file": "instance.go",
+      "old": "if err == nil && len(findings) > 0 {",
+      "new": "if false && err == nil && len(findings) > 0 {"
+    },
+    {
+      "name": "graph-execution/33: a desk actor on a pattern human node lacks its human-boundary finding",
+      "file": "instance.go",
+      "old": "if pn.Role == \"human\" && n.Role != \"human\" {",
+      "new": "if false && pn.Role == \"human\" && n.Role != \"human\" {"
     }
   ]
 }

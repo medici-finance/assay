@@ -48,8 +48,8 @@ id: 0bf0c155-c89f-49ef-bcb1-4fb040e2a5db
 files:
 - `tools/cellctl/testdata/cellctl-shell-oracle.sh` and `tools/cellctl/tests/` — `new`, `check`, `desk`/`up` exports.
 - `plugins/assay/skills/install/SKILL.md` — the roster-writing step.
-- `containers/` launch surfaces — the claim-store environment for container desks.
-- `changelog/<branch-slug>.md` (planned)
+- `containers/` (launch surfaces) — the claim-store environment for container desks.
+- **planned** — `changelog/<branch-slug>.md`
 
 single-point-of-failure: the scaffold's "new cell only" condition — behind it, the resolver's
 mixed-store refusal (brief 23: a switched cell beside a live forge-claim dispatcher refuses at

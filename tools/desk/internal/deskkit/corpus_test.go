@@ -200,6 +200,8 @@ func TestBodycheckCorpusCoversEveryCataloguedShape(t *testing.T) {
 		"neg-review-cites-sops-material.txt":       "#2060 — a verdict citing sops material by path:line",
 		"pos-review-quotes-sops-footer.txt":        "#2060 — a quoted footer stays refused on a review",
 		"pos-review-quotes-sops-envelope.txt":      "#2060 — a quoted short envelope stays refused",
+		"pos-url-userinfo-credential.txt":          "the url-userinfo arm — a password in URL userinfo",
+		"neg-url-userinfo-placeholders.txt":        "the url-userinfo arm — placeholders and username-only forms",
 	}
 	present := map[string]bool{}
 	for _, a := range loadCorpus(t) {

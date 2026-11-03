@@ -39,11 +39,11 @@ consumers:
 ## Context
 
 files:
-- `tools/desk/internal/credential/ (from desktools-v2/58)`
+- `tools/desk/internal/credential/` (from desktools-v2/58)
 - `tools/desk/internal/deskkit/roletoken.go`
 - `tools/desk/internal/deskkit/roletoken_memo_test.go`
 - `tools/desk/cmd/deskboard/tokenforks_test.go`
-- `tools/desk/cmd/deskflip/token-related tests`
+- `tools/desk/cmd/deskflip/*token*_test.go` — token-related tests
 - `tools/desk/README.md`
 - `changelog/credential-concurrency.md` (planned)
 

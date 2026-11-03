@@ -62,59 +62,160 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/spf13/cobra"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// stdout and stderr are the current invocation's streams; open.go writes through them too.
 var (
 	stdout io.Writer = os.Stdout
 	stderr io.Writer = os.Stderr
 )
 
-const usage = `deskrebaseline — re-baseline a provably-intact-but-stale Verify row via a one-row PR.
+// helpLong is the root help's prose. The flags are generated from the command tree
+// (desktools-v2/46); this is what the tree cannot say on its own.
+const helpLong = `deskrebaseline — re-baseline a provably-intact-but-stale Verify row via a one-row PR.
 
-USAGE:
   deskrebaseline <brief> --row K [--root DIR] [--repo owner/name] [--open]
   deskrebaseline --version
 
-<brief>   brief file path, or a <stream>/<NN> id (resolved under --root, then --repo's root).
---row K   1-based row number in the brief's ## Verify table.
---root    checkout root the row resolves against (default: git toplevel of the cwd).
---repo    owner/name for <stream>/<NN> resolution (default: derived from origin).
---open    push rebaseline/<stream>-<NN>-row-K and open a DRAFT PR via deskpr create
-          (verifier App under DESK_LOOP=verify-desk). Without --open: DRY-RUN — print the
-          classification and git evidence, create no branch, exit 0. --open refuses
-          before any write unless the brief is inside --root, HEAD is the fetched
-          refs/remotes/origin/main, and the checkout is clean.
+<brief> is a brief file path, or a <stream>/<NN> id (resolved under --root, then --repo's root).
+
+Without --open the verb is a DRY-RUN: it prints the classification and git evidence, creates
+no branch, and exits 0. --open pushes rebaseline/<stream>-<NN>-row-K and opens a DRAFT PR via
+deskpr create (verifier App under DESK_LOOP=verify-desk); it refuses before any write unless
+the brief is inside --root, HEAD is the fetched refs/remotes/origin/main, and the checkout is
+clean.
 
 The verb never merges and never lands on main; the re-baseline PR is reviewed and merged
 by a human. It fails CLOSED: a row is re-baselined only when git PROVES the work intact.`
 
 func main() {
-	os.Exit(deskkit.PerfRun("deskrebaseline", nil, os.Args[1:], func([]string) int { return run(os.Args[1:]) }))
+	os.Exit(deskkit.PerfRun("deskrebaseline", nil, os.Args[1:], func(a []string) int { return run(a) }))
 }
 
+// run is one invocation on the process streams.
 func run(args []string) int {
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
-		sha, built := deskkit.Version()
-		fmt.Fprintf(stdout, "deskrebaseline sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
-		return deskkit.ExitOK
+	return execute(args, os.Stdout, os.Stderr, func(w io.Writer) { deskkit.WarnIfUnpinned(w) })
+}
+
+// rebaselineFn is the typed handler the command tree calls; the contract tests replace it to
+// observe the values that reach it.
+var rebaselineFn = rebaseline
+
+// onResolve, when set, sees every invocation's resolved settings.
+var onResolve func(*cli.Values)
+
+// exitErr is a handler's exit code carried as an error, so cli.Run keeps it.
+type exitErr int
+
+func (e exitErr) Error() string { return "exit " + strconv.Itoa(int(e)) }
+func (e exitErr) ExitCode() int { return int(e) }
+
+func codeErr(code int) error {
+	if code == deskkit.ExitOK {
+		return nil
 	}
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintln(stderr, usage)
-		if len(args) == 0 {
-			return deskkit.ExitRefused
+	return exitErr(code)
+}
+
+// versionLine is what --version and -version print.
+func versionLine() string {
+	sha, built := deskkit.Version()
+	return fmt.Sprintf("deskrebaseline sourceSHA=%s builtAt=%s releaseTag=%s", sha, built, deskkit.ReleaseTagOrDev())
+}
+
+// bindings are every setting deskrebaseline declares: flags and defaults only, no environment
+// variable and no configuration file.
+func bindings() []cli.Binding {
+	return []cli.Binding{
+		{Key: "row", Kind: cli.Int, Flag: "row", Default: 0, Usage: "the 1-based row number `K` in the brief's ## Verify table (required)"},
+		{Key: "root", Kind: cli.String, Flag: "root", Default: "", Usage: "checkout root the row resolves against (default: git toplevel of the working directory)"},
+		{Key: "repo", Kind: cli.String, Flag: "repo", Default: "", Usage: "`owner/name` for <stream>/<NN> resolution (default: derived from origin)"},
+		{Key: "open", Kind: cli.Bool, Flag: "open", Default: false, Usage: "push the one-row branch and open a DRAFT PR via deskpr create (default: dry-run)"},
+	}
+}
+
+// execute runs one invocation against a fresh command tree. pre is the process startup (the
+// unpinned-build warning); it runs after the command line parses and never for help or version.
+func execute(args []string, out, errw io.Writer, pre func(io.Writer)) int {
+	prevOut, prevErr := stdout, stderr
+	stdout, stderr = out, errw
+	defer func() { stdout, stderr = prevOut, prevErr }()
+
+	build := func() *cobra.Command {
+		root := cli.NewRoot("deskrebaseline", "re-baseline a provably-intact-but-stale Verify row via a one-row PR")
+		root.Use = "deskrebaseline <brief> --row K"
+		root.Long = helpLong
+		set := cli.Declare(root, bindings()...)
+		// Exactly one <brief>; a second word is refused, as the hand-rolled reader refused it.
+		root.Args = func(_ *cobra.Command, args []string) error {
+			if len(args) > 1 {
+				return fmt.Errorf("unexpected extra argument %q (one <brief> only)", args[1])
+			}
+			return nil
 		}
-		return deskkit.ExitOK
+		root.RunE = func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 && cmd.Flags().NFlag() == 0 {
+				// A bare invocation prints the usage and refuses, as before.
+				cmd.SetOut(errw)
+				_ = cmd.Help()
+				return exitErr(deskkit.ExitRefused)
+			}
+			v, err := set.Resolve(cli.Inputs{})
+			if err != nil {
+				fmt.Fprintf(errw, "deskrebaseline: %v\n", err)
+				return exitErr(deskkit.ExitRefused)
+			}
+			if onResolve != nil {
+				onResolve(v)
+			}
+			o := options{root: v.String("root"), repo: v.String("repo"), open: v.Bool("open"), row: v.Int("row")}
+			if len(args) == 1 {
+				o.brief = args[0]
+			}
+			if err := checkOptions(o, v.Source("row") == cli.Flag); err != nil {
+				fmt.Fprintf(errw, "deskrebaseline: %v\nRun 'deskrebaseline --help' for usage.\n", err)
+				return exitErr(deskkit.ExitRefused)
+			}
+			if pre != nil {
+				pre(errw)
+			}
+			return codeErr(rebaselineFn(o))
+		}
+		return root
 	}
+	return cli.Run(build, args, cli.Options{
+		IO:              cli.IO{Out: out, Err: errw},
+		Version:         versionLine(),
+		VersionTemplate: "{{.Version}}\n",
+		// A command line deskrebaseline cannot parse is refused (5), as before.
+		UsageExit: deskkit.ExitRefused,
+		// -version was a legacy spelling; the single-dash long forms stay accepted.
+		GoFlagCompat: true,
+	})
+}
 
-	deskkit.WarnIfUnpinned(stderr)
-
-	opts, err := parseArgs(args)
-	if err != nil {
-		fmt.Fprintf(stderr, "deskrebaseline: %v\n\n%s\n", err, usage)
-		return deskkit.ExitRefused
+// checkOptions holds the two rules the flag parser cannot: a <brief> is required, and --row
+// must be given as a positive integer.
+func checkOptions(o options, rowGiven bool) error {
+	if o.brief == "" {
+		return fmt.Errorf("a <brief> (path or <stream>/<NN>) is required")
 	}
+	if !rowGiven {
+		return fmt.Errorf("--row K is required")
+	}
+	if o.row < 1 {
+		return fmt.Errorf("--row must be a positive integer, got %q", strconv.Itoa(o.row))
+	}
+	return nil
+}
 
+// rebaseline is one run from parsed options: resolve the brief and row, classify, print the
+// plan, and — only with --open on a safe verdict — open the one-row PR.
+func rebaseline(opts options) int {
 	root := opts.root
 	if root == "" {
 		if tl, ok := gitOutput(".", "rev-parse", "--show-toplevel"); ok {
@@ -163,66 +264,6 @@ type options struct {
 	root  string
 	repo  string
 	open  bool
-}
-
-func parseArgs(args []string) (options, error) {
-	var o options
-	haveRow := false
-	i := 0
-	for i < len(args) {
-		a := args[i]
-		switch {
-		case a == "--open":
-			o.open = true
-		case a == "--row":
-			i++
-			if i >= len(args) {
-				return o, fmt.Errorf("--row needs a value")
-			}
-			n, err := strconv.Atoi(args[i])
-			if err != nil || n < 1 {
-				return o, fmt.Errorf("--row must be a positive integer, got %q", args[i])
-			}
-			o.row, haveRow = n, true
-		case strings.HasPrefix(a, "--row="):
-			n, err := strconv.Atoi(strings.TrimPrefix(a, "--row="))
-			if err != nil || n < 1 {
-				return o, fmt.Errorf("--row must be a positive integer")
-			}
-			o.row, haveRow = n, true
-		case a == "--root":
-			i++
-			if i >= len(args) {
-				return o, fmt.Errorf("--root needs a value")
-			}
-			o.root = args[i]
-		case strings.HasPrefix(a, "--root="):
-			o.root = strings.TrimPrefix(a, "--root=")
-		case a == "--repo":
-			i++
-			if i >= len(args) {
-				return o, fmt.Errorf("--repo needs a value")
-			}
-			o.repo = args[i]
-		case strings.HasPrefix(a, "--repo="):
-			o.repo = strings.TrimPrefix(a, "--repo=")
-		case strings.HasPrefix(a, "-"):
-			return o, fmt.Errorf("unknown flag %q", a)
-		default:
-			if o.brief != "" {
-				return o, fmt.Errorf("unexpected extra argument %q (one <brief> only)", a)
-			}
-			o.brief = a
-		}
-		i++
-	}
-	if o.brief == "" {
-		return o, fmt.Errorf("a <brief> (path or <stream>/<NN>) is required")
-	}
-	if !haveRow {
-		return o, fmt.Errorf("--row K is required")
-	}
-	return o, nil
 }
 
 // deriveRepo reads owner/name from the checkout's origin remote, offline. "" when it cannot.

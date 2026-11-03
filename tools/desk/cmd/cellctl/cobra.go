@@ -895,7 +895,8 @@ func newCmd() *cobra.Command {
 			"gitlab: --group <group> [--gitlab-api-base URL] [--gitlab-token-store DIR], no App PEM and no --orgs.\n\n" +
 			"--kind house: a LOCAL cell on the operator's laptop; the desks reuse the operator's config home by symlink,\n" +
 			"no deskd is required, every role still boots in its own LOCKED worktree. --roots '<owner>/<repo>=<abs path>,...'\n" +
-			"[--roles \"<role> ...\"] [--port N].\n\n" +
+			"[--roles \"<role> ...\"] [--port N] [--forge gitlab [--group G] [--gitlab-api-base URL]] (a gitlab house cell\n" +
+			"links no gh config).\n\n" +
 			"--kind container: --repo <repo-id> with --launcher <absolute-executable> (an operator-owned launcher, no\n" +
 			"credentials copied) or --container-config <absolute JSON file> (the native Go runtime; see docs/cellctl.md).\n\n" +
 			"--kind scrubbed: --repo <checkout> --repo-slug <owner/repo> [--roots '...'] [--roles \"...\"], a host-local\n" +

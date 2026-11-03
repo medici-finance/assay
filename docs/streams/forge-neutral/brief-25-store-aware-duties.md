@@ -52,9 +52,8 @@ id: 9d0d6fdb-3db6-4e8e-87df-265bcc49ad38
 ## Context
 files:
 - `tools/desk/internal/deskkit/preflight.go` — `requiredDuties` becomes `dutiesFor(role, store)`.
-- `tools/desk/internal/deskkit/roleapp_binding_test.go` and the preflight suites.
-- `tools/desk/cmd/deskpreflight/mutations.json`; `tools/desk/README.md`;
-  `changelog/<branch-slug>.md` (planned)
+- `tools/desk/internal/deskkit/roleapp_binding_test.go` — and the preflight suites.
+- `tools/desk/cmd/deskpreflight/mutations.json`; `tools/desk/README.md` — and `changelog/<branch-slug>.md` (planned)
 
 single-point-of-failure: the duty table — behind it, the store resolver (a reviewer booted at
 repository read under the legacy resolution is refused again at dispatch, in a different

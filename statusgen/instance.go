@@ -87,6 +87,7 @@ const (
 // Rule tags. Findings (checked-failed) and refusals (could-not-check) both carry
 // one, so a reader can tell which class fired.
 const (
+	ruleInstanceHumanNode       = "instance-human-node-actor"
 	ruleInstanceSchema          = "instance-schema-violation"
 	ruleInstanceCapability      = "instance-unsupported-capability"
 	ruleInstanceProjection      = "instance-unsupported-projection"
@@ -228,7 +229,7 @@ type instanceNode struct {
 	ID       string            `json:"id"`
 	Node     string            `json:"node"`
 	Role     string            `json:"role"`
-	Actor    instanceActor     `json:"actor"`
+	Actor    *instanceActor    `json:"actor,omitempty"`
 	Effects  []instanceEffect  `json:"effects"`
 	Evidence []instanceClaim   `json:"evidence"`
 	Attempts []instanceAttempt `json:"attempts,omitempty"`
@@ -434,6 +435,15 @@ func decodeInstanceBody(raw []byte, schema *schemaNode) (inst workflowInstance, 
 	}
 	if err != nil && len(findings) == 0 {
 		findings = append(findings, instFinding(ruleInstanceSchema, "does not decode: %v", err))
+	}
+	// Report the human boundary even when its independent shape check failed.
+	// Only inspect a successfully decoded view, before the shared redaction exit.
+	if err == nil && len(findings) > 0 {
+		for _, n := range inst.Nodes {
+			if n.Role == "human" {
+				findings = append(findings, checkHumanNode(n)...)
+			}
+		}
 	}
 	return inst, findings, nil, data
 }
@@ -662,7 +672,11 @@ func canonicalInstance(in workflowInstance) workflowInstance {
 	}
 	for _, n := range in.Nodes {
 		cn := n
-		cn.Actor.Capabilities = append([]string{}, n.Actor.Capabilities...)
+		if n.Actor != nil {
+			actor := *n.Actor
+			actor.Capabilities = append([]string{}, n.Actor.Capabilities...)
+			cn.Actor = &actor
+		}
 		cn.Effects = append([]instanceEffect{}, n.Effects...)
 		cn.Evidence = append([]instanceClaim{}, n.Evidence...)
 		cn.Attempts = nil
@@ -745,6 +759,15 @@ func findingsError(prefix string, fs []instanceFinding) error {
 
 // ---- contract rules that need no repository ----
 
+// checkHumanNode owns the actorless boundary, whether human ownership comes from
+// the document or its resolved pattern. No schema result grants an exception.
+func checkHumanNode(n instanceNode) []instanceFinding {
+	if n.Actor != nil || len(n.Effects) != 0 || len(n.Attempts) != 0 {
+		return []instanceFinding{instFinding(ruleInstanceHumanNode, "node %s: human decisions MUST carry no actor, capabilities, effects or attempts", n.ID)}
+	}
+	return nil
+}
+
 // checkInstanceRules applies every rule the document alone can decide.
 func checkInstanceRules(inst workflowInstance) []instanceFinding {
 	var out []instanceFinding
@@ -806,6 +829,15 @@ func checkInstanceRules(inst workflowInstance) []instanceFinding {
 		}
 		seenNode[n.Node] = true
 		nodeIDs[n.ID] = true
+
+		if n.Role == "human" {
+			out = append(out, checkHumanNode(n)...)
+			continue
+		}
+		if n.Actor == nil {
+			out = append(out, instFinding(ruleInstanceSchema, "node %s: non-human role %q requires an actor", n.ID, n.Role))
+			continue
+		}
 
 		// One Cell: every actor acts in the instance's own Cell.
 		if n.Actor.Cell != inst.Work.Cell {
@@ -870,6 +902,9 @@ func checkInstanceAgainstPattern(inst workflowInstance, pat patternDoc) []instan
 		if !ok {
 			out = append(out, instFinding(ruleInstanceNodeMismatch, "node %s instantiates %q, which pattern %s does not declare", n.ID, n.Node, pat.Name))
 			continue
+		}
+		if pn.Role == "human" && n.Role != "human" {
+			out = append(out, checkHumanNode(n)...)
 		}
 		if n.Role != pn.Role {
 			out = append(out, instFinding(ruleInstanceNodeMismatch, "node %s binds role %q; pattern node %q declares role %q", n.ID, n.Role, pn.ID, pn.Role))
@@ -1136,7 +1171,7 @@ func instantiate(pb instancePatternBinding, b instanceBinding) (workflowInstance
 	}
 	for _, pn := range pb.Doc.Nodes {
 		actor, ok := b.Actors[pn.Role]
-		if !ok {
+		if !ok && pn.Role != "human" {
 			return workflowInstance{}, fmt.Errorf("no resolved actor for role %q (pattern node %q)", pn.Role, pn.ID)
 		}
 		caps := map[string]bool{}
@@ -1144,10 +1179,16 @@ func instantiate(pb instancePatternBinding, b instanceBinding) (workflowInstance
 			caps[c] = true
 		}
 		n := instanceNode{
-			ID:    b.ID + "." + pn.ID,
-			Node:  pn.ID,
-			Role:  pn.Role,
-			Actor: actor,
+			ID:   b.ID + "." + pn.ID,
+			Node: pn.ID,
+			Role: pn.Role,
+		}
+		if pn.Role == "human" {
+			if pn.Kind != "decision" || len(pn.Effects) != 0 {
+				return workflowInstance{}, fmt.Errorf("[%s] human pattern node %q must be an effect-free decision", ruleInstanceHumanNode, pn.ID)
+			}
+		} else {
+			n.Actor = &actor
 		}
 		for _, e := range pn.Effects {
 			if !caps[e.Kind] {

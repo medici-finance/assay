@@ -19,7 +19,8 @@ id: 78265f45-738d-4665-b212-41abc5ce32c8
 # Brief 08 — Composite AssayScore computation
 
 ## Context
-files: `statusgen/` (new `assayscore.go` (planned) beside the brief-flow metrics of statusgen/07).
+files:
+- `statusgen/` — new assayscore.go (planned) beside the brief-flow metrics of statusgen/07
 single-point-of-failure: the score is a derived summary — the SPOF is a wrong normalization silently
   skewing it; mitigated by (a) always emitting the four sub-scores + raw inputs beside the composite so
   a wrong score is visibly inconsistent with its parts, and (b) a golden-value unit test.
