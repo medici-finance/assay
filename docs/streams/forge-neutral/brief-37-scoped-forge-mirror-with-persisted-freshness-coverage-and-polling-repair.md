@@ -12,7 +12,7 @@ gate-why: "sensitive-data is yes because the mirror copies private pull request,
 issues: []
 outcome: none
 schema: brief-v2
-version: 8
+version: 9
 id: 06dc3c03-bfb0-49cf-b171-8f7d192b7aea
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
 sources:
@@ -43,6 +43,8 @@ consumers:
   - "tools/desk/internal/deskkit/forge.go, forge_github.go, forge_gitlab.go, forge_surface_deskread_test.go: follow-up forge-neutral/47 (create exactly the two enumerated methods, shared-adapter delegation and frozen surface entries)"
   - "tools/desk/internal/deskkit/mirrorsource.go and its base tests: follow-up forge-neutral/47 (admitted MirrorReadSource consuming the two incremental operations)"
   - "tools/desk/internal/deskkit/mirroringest.go and joined tests: follow-up forge-neutral/37 (assemble MirrorReadSource with the kernel; map provider observations, authenticated admissions and current authorizer to source/store ports)"
+  - "tools/desk/internal/deskkit/forge_response_bounds.go and forge_response_bounds_test.go: follow-up forge-neutral/37 (one native mirror-response byte-bound implementation and real-backend conformance; shared-library relocation later reuses this owner)"
+  - "tools/desk/internal/deskkit/forge_github.go, forge_gitlab.go, sharedread.go and mirrorsource.go: follow-up forge-neutral/37 (compose the response bound before native mirror-page buffering/decoding on both providers; preserve admitted custody and existing read/write semantics)"
   - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/47 (the two incremental-operation inventory rows)"
   - "workflow/store/ (as planned by graph-execution/19 after its R2 amendment): follow-up forge-neutral/37 (the mirror tables, their migration, the mirror.Store implementation and the graph-execution/28 fact-completeness mapping)"
   - "statusgen/testdata/regressionfloor/ (as planned by graph-execution/29): follow-up forge-neutral/37 (one frozen mirror-coverage case under 29's inventory rules)"
@@ -70,8 +72,10 @@ files:
 - `tools/desk/internal/deskkit/forge_github.go`
 - `tools/desk/internal/deskkit/forge_gitlab.go`
 - `tools/desk/internal/deskkit/sharedread.go`
-- `tools/desk/internal/deskkit/mirrorsource.go` (planned)
+- `tools/desk/internal/deskkit/mirrorsource.go`
 - `tools/desk/internal/deskkit/mirroringest.go` (planned)
+- `tools/desk/internal/deskkit/forge_response_bounds.go` (planned)
+- `tools/desk/internal/deskkit/forge_response_bounds_test.go` (planned)
 - `tools/desk/internal/deskkit/forge_surface_deskread_test.go`
 - `docs/streams/forge-gitlab/inventory.md`
 - `workflow/store/` (planned)
@@ -304,23 +308,53 @@ existing completed batching/conditional requests are baseline, not this brief's 
    "no open changes" and never reports "no reviews". The handling of already-mirrored content
    follows the recorded human decision; implement only the chosen option. Option 1's "only to
    callers whose own authorization still covers the repository" is Task 1's query-time admission
-   check. Row 16 pins whichever option is chosen.
+   check. Row 16 pins whichever option is chosen. Recovery also preserves /46’s full-inventory
+   and fresh-completeness requirement; an incremental/304 result or stale Store update cannot
+   clear the permission hold. This changes no recorded retention choice.
 7. **Persistence.** Implement `mirror.Store` in `workflow/store/` with a versioned migration. The
    watermark advance and the complete scan's rows commit in one transaction, and the store refuses
    an advance whose scan record is not complete. Reuse /46's `mirrortest` reference conformance
    suite and extend it with this brief's durable-store requirements; run the same suite against
    the in-memory reference store and the PostgreSQL store. Restart keeps rows and
    watermarks. Deleting the mirror tables and rebuilding starts every scope at `never-read` and
-   claims no earlier completeness.
-8. **Composition and floor.** Reuse /47's `tools/desk/internal/deskkit/mirrorsource.go` (planned) MirrorReadSource
+   claims no earlier completeness. The durable Store owns RetainedFrom: populate it only from
+   retained-history coverage qualified under the selected policy, validate its ordering against
+   the other coverage stamps, and leave it unknown when that history has not been qualified.
+   The pure kernel’s optional zero value is not a retained-history guarantee.
+8. **Composition and floor.** Reuse /47's `tools/desk/internal/deskkit/mirrorsource.go` MirrorReadSource
    and its two provider operations, including the lower-layer refusal of a repository outside the
    credential's scope before any request. Implement the joined assembly/observation mapper in
    `tools/desk/internal/deskkit/mirroringest.go` (planned), connecting that admitted source to /46's
-   mirror contracts and this brief's PostgreSQL store. The assembly supplies the composition-derived
+   mirror contracts and this brief's PostgreSQL store. Canonicalize GitHub owner/repository case
+   before constructing kernel scopes; use provider-qualified identities rather than aliases. The assembly supplies the composition-derived
    admission ID with each access and the query-time authorizer over the same admitted repository set
    to both library and store. It derives query admission from the authenticated caller; a
    request-supplied ID cannot select another admission (row 9). The earlier base-source proof does not
-   replace the joined mapper/admission/store evidence. Add one frozen case to
+   replace the joined mapper/admission/store evidence.
+
+   **Native response allocation bound, before activation (row 23).** This full-mirror owner closes
+   /47's explicitly deferred single-response allocation gap for both existing GitHub and GitLab
+   backends. At the admitted native mirror-page transport/read boundary, enforce at most 8 MiB of
+   response JSON bytes per response, no wider than /47's aggregate operation budget. Count the bytes
+   actually presented to JSON consumers after any supported content decoding, before unbounded
+   full-body buffering or SDK decoding; account for oversized non-2xx/error bodies too. A Content-Length
+   check alone is insufficient: absent/incorrect lengths, chunked bodies and supported compressed
+   expansion cannot evade the bound. Oversize must return a typed could-not-check/limit failure with
+   no successful population and no nonzero ObservedUpTo, never a valid truncated JSON prefix or
+   complete-empty success. Preserve the prior complete mirror watermark and unavailable/partial
+   coverage through the joined mapper; it cannot advance on this failure.
+   Implement the bound once in the existing trusted deskkit response composition and apply that
+   same implementation before either provider's buffering/decoding. Reuse admitted clients,
+   cancellation, scope, no-redirect custody and current error classification; introduce no credential
+   owner, generic transport escape hatch, network probe/default, new flag or retry loop. Scope this
+   bound to the mirror's enumerated JSON page reads (including their conditional variants), not an
+   incidental new global cap on unrelated log/archive/write operations. If /75 relocates that
+   trusted composition into the approved shared forge library, move/reuse the same implementation
+   and conformance test rather than creating another bound or treating relocation as qualification.
+   A fixture-only adapter check or /47's post-fetch aggregate accounting does not satisfy row 23;
+   source and service activation stay held until both native provider paths pass it.
+
+   Add one frozen case to
    graph-execution/29's regression
    inventory: a partial mirror coverage assesses as could-not-check, never pass. Update
    `forgeread/README.md` and add the changelog fragment.
@@ -374,6 +408,7 @@ provider transports only.
 |---|---|---|---|
 | 21 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshBurstScopeAndCallBudget$' ./mirror/... > "$out" && grep -F -- '--- PASS: TestRefreshBurstScopeAndCallBudget ' "$out")` | exit 0; named PASS; 50 equivalent requests share one paginated inventory, two admissions remain isolated and outage retries stay within the explicit fixture budget; global authorization sharing or per-client scan fallback fails |
 | 22 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorPlannerReuse$' ./... > "$o" && grep -F -- '--- PASS: TestMirrorPlannerReuse ' "$o")` | exit 0; named PASS. compatible prose/discrete consumers query the same mirror cutoff without new provider reads; one changed item refreshes affected scope, and partial/removal/access/expiry failures cannot yield complete idle. Competing caller pollers or hidden producer attempts fail; final refresh requests remain explicit. |
+| 23 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorResponseBounds$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestMirrorResponseBounds ' "$o")` | Exit 0; named PASS. Actual admitted GitHub and GitLab backend-to-source-to-mapper paths accept a useful below-bound population and an exact-bound JSON control. Every oversized control contains syntactically valid JSON, so decode failure cannot substitute for enforcing the cap. Known-length, absent/false Content-Length and chunked oversized controls, plus supported compressed expansion, refuse before native full-body accumulation/SDK decode; a counting streaming body proves no more than bound plus one sentinel byte is consumed by the guarded read. Both providers return a typed limit/could-not-check, zero successful population and zero ObservedUpTo; the assembled mirror's prior complete watermark stays unchanged. Run each real path with the upper aggregate/mapper budget bypassed so that only its native response guard can catch overflow. Independently mutate the actual GitHub and GitLab native guard composition to bypass the cap (or only trust Content-Length); the named TestMirrorResponseBounds must fail its corresponding oversized control for each bypass, while the restored production guard passes both providers. A valid JSON prefix followed by oversized whitespace must never become complete-empty. No production endpoint or deployed-capacity claim. |
 
 ## Pre-mortem
 
