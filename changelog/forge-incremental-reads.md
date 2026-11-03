@@ -1,0 +1,1 @@
+- Add admitted, bounded incremental issue and change readers for both GitHub and GitLab, with explicit incomplete results and a typed mirror-ingestion source.

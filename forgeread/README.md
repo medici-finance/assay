@@ -61,3 +61,21 @@ never retries through that path.
 ```sh
 cd forgeread && GOWORK=off go test ./...
 ```
+
+
+## Incremental source reads (Go API 1.2)
+
+The provider adapters add `ChangesUpdatedSince` and `IssuesUpdatedSince` over the same
+already-admitted `Access`. `adapters.UpdateQuery` carries an inclusive time bound; results
+retain provider/repository/query provenance, page count, observed update bound and an explicit
+`Incomplete` flag. `BodyKnown=false` and nil collections preserve omitted fields as unknown;
+explicit empty collections remain non-nil. A failed page supplies no successful population. These are endpoint
+observations, never complete reviews, checks or threads, and do not alter the root issues
+wire envelope. `EnvelopeSchema` stays at 1.
+
+GitHub's pulls endpoint has no server-side since parameter: its bounded update-ordered walk
+filters locally and reports `ServerSideSince=false`. Conditional validators and 304 reuse are
+not implemented; `ConditionalSupported` is false while every requested page is read in full.
+Desk-tools' `MirrorReadSource` is the concrete consumer through existing scoped backends and
+read-only wrappers. Persistent mirror integration and the later shared forge-library custody
+migration retain their separate owners.
