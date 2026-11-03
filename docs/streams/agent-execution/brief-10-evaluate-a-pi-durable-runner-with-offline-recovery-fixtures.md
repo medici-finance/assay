@@ -41,7 +41,7 @@ consumers:
 
 ## Context
 
-files: `loopadmin/experiments/pirunner/adapter.go` (planned), `loopadmin/experiments/pirunner/pilot_test.go` (planned), `loopadmin/experiments/pirunner/node/{package.json,package-lock.json,tsconfig.json,src/}` (planned), `loopadmin/testdata/pirunner/` (planned), `loopadmin/go.mod` (one `ignore` directive), `loopadmin/README.md`, `ci/staged-workflows/loopadmin.yml`, `docs/reports/agent-execution/pi-runner-pilot.md` (planned), `changelog/agent-execution-10-pi-runner-pilot.md` (planned). New experiment/report/fixture paths are planned deliverables, not present behavior. No live workflow file, Go core API, production profile or default adapter is changed.
+files: `loopadmin/experiments/pirunner/adapter.go` (planned), `loopadmin/experiments/pirunner/pilot_test.go` (planned), `loopadmin/experiments/pirunner/node/{package.json,package-lock.json,tsconfig.json,src/}` (planned), `loopadmin/testdata/pirunner/` (planned), `loopadmin/go.mod` (one `ignore` directive), `loopadmin/README.md`, `ci/staged-workflows/loopadmin.yml`, `docs/reports/agent-execution/pi-runner-pilot.md` (planned), `changelog/agent-execution-10-pi-runner-pilot.md` (planned) — new experiment/report/fixture paths are planned deliverables, not present behavior. No live workflow file, Go core API, production profile or default adapter is changed.
 
 single-point-of-failure: trusting a resumed tool's original authorization — backed by an independent synthetic effect executor's current-owner check; bypass the upper adapter check to prove that lower boundary refuses. These fixtures qualify an experimental integration, not production custody.
 
