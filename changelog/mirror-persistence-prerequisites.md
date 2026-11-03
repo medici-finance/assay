@@ -1,0 +1,2 @@
+- Split the native mirror response-allocation bound into an independently testable contribution while retaining joined persistence acceptance and the existing activation gates.
+- Record the requested purge-to-tombstones implementation direction and the remaining storage and tool-cutover dependency path.
