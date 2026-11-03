@@ -25,7 +25,6 @@ exec-tier-why: >-
 domain: complicated
 outcome: none
 consumers:
-  - ".github/workflows/celllaunch-windows.yml: fixed-here (native Windows amd64 execution of the three contract witnesses)"
   - "tools/desk/internal/celllaunch/: fixed-here (versioned contracts, parsers, compiled fixtures and mutation specification)"
   - "docs/cellctl-windows.md: fixed-here (handoff protocol, lifecycle semantics and capability evidence checklist)"
   - "cellctl-windows/01: follow-up cellctl-windows/01 (production runner and private store consume the launch contract)"
