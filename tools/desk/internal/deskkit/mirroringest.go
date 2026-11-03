@@ -16,16 +16,19 @@ import (
 // mirrorIngestSource joins the existing admitted native read composition to the
 // canonical observation port. It owns no credentials, storage or refresh loop.
 type mirrorIngestSource struct {
-	source     *MirrorReadSource
-	repository mirror.RepositoryID
-	now        func() time.Time
+	source      *MirrorReadSource
+	admissionID string
+	repository  mirror.RepositoryID
+	now         func() time.Time
 }
 
 // NewMirrorIngestSource accepts a previously admitted source and a trusted explicit
-// observation clock. Requests cannot choose another source, host or credential.
-func NewMirrorIngestSource(source *MirrorReadSource, now func() time.Time) (mirror.Source, error) {
-	if source == nil || source.forge == nil || now == nil {
-		return nil, Refused("mirror observation source needs an admitted reader and explicit clock")
+// observation clock. The bound admission ID is supplied alongside the reader by
+// trusted credential composition, never by a request. This consistency binding
+// does not independently prove credential-installation selection.
+func NewMirrorIngestSource(source *MirrorReadSource, admissionID string, now func() time.Time) (mirror.Source, error) {
+	if source == nil || source.forge == nil || admissionID == "" || strings.TrimSpace(admissionID) != admissionID || now == nil {
+		return nil, Refused("mirror observation source needs an admitted reader, bound admission and explicit clock")
 	}
 	path := source.repo.Slug()
 	if source.provider == ForgeGitHub {
@@ -35,7 +38,7 @@ func NewMirrorIngestSource(source *MirrorReadSource, now func() time.Time) (mirr
 	if err := repo.Validate(); err != nil {
 		return nil, err
 	}
-	return &mirrorIngestSource{source: source, repository: repo, now: now}, nil
+	return &mirrorIngestSource{source: source, admissionID: admissionID, repository: repo, now: now}, nil
 }
 
 func nilMirrorAdmission(a mirror.Admission) bool {
@@ -65,7 +68,7 @@ func (s *mirrorIngestSource) Scan(ctx context.Context, a mirror.Admission, scope
 	if err := scope.Validate(); err != nil {
 		return mirror.ScanResult{}, err
 	}
-	if scope.Repository != s.repository || nilMirrorAdmission(a) || a.ID() != scope.AdmissionID {
+	if scope.Repository != s.repository || scope.AdmissionID != s.admissionID || nilMirrorAdmission(a) || a.ID() != s.admissionID {
 		return mirror.ScanResult{}, mirror.ErrPermission
 	}
 	if err := a.Authorize(ctx, scope.Repository); err != nil {
@@ -94,6 +97,9 @@ func (s *mirrorIngestSource) Scan(ctx context.Context, a mirror.Admission, scope
 	}
 	// Current admission must still hold when observations escape the source;
 	// revocation is a caller refusal, never source failure/retention authority.
+	if scope.AdmissionID != s.admissionID || a.ID() != s.admissionID {
+		return mirror.ScanResult{}, mirror.ErrPermission
+	}
 	if err := a.Authorize(ctx, scope.Repository); err != nil {
 		return mirror.ScanResult{}, mirror.ErrPermission
 	}

@@ -78,12 +78,12 @@ func ingestFixture(t *testing.T, provider ForgeKind, kind mirror.RecordKind, rt 
 	if e != nil {
 		t.Fatal(e)
 	}
-	source, e := NewMirrorIngestSource(read, func() time.Time { return *now })
+	a := &mirrortest.TestAdmission{Name: "admission-a", Allowed: true}
+	source, e := NewMirrorIngestSource(read, a.ID(), func() time.Time { return *now })
 	if e != nil {
 		t.Fatal(e)
 	}
 	s := source.(*mirrorIngestSource)
-	a := &mirrortest.TestAdmission{Name: "admission-a", Allowed: true}
 	return s, mirror.Scope{Repository: s.repository, Kind: kind, AdmissionID: a.ID()}, a
 }
 func ingestApply(t *testing.T, store mirror.Store, s mirror.Source, a mirror.Admission, scope mirror.Scope, now time.Time, policy mirror.RefreshPolicy) mirror.Snapshot {
@@ -210,51 +210,68 @@ func testIngestCompletion(t *testing.T) {
 // regression: forge-neutral/50
 func TestMirrorSourceScope(t *testing.T) {
 	for _, provider := range []ForgeKind{ForgeGitHub, ForgeGitLab} {
-		now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
-		rt := &ingestTransport{payload: "[]"}
-		source, scope, a := ingestFixture(t, provider, mirror.Issues, rt, &now)
-		store := mirrortest.NewStore()
-		blank, _ := store.Read(context.Background(), a, scope)
-		plan, _ := mirror.PlanRefresh(blank, now, mirror.RefreshPolicy{FullInventoryInterval: time.Hour})
-		for _, change := range []func(*mirror.Scope, *mirror.ScanPlan){func(s *mirror.Scope, p *mirror.ScanPlan) { s.AdmissionID = "other" }, func(s *mirror.Scope, p *mirror.ScanPlan) { s.Repository.Host = "other.example.invalid" }, func(s *mirror.Scope, p *mirror.ScanPlan) { s.Repository.Path = "b/r" },
-			func(s *mirror.Scope, p *mirror.ScanPlan) { s.Repository.Path = "O/r"; p.Scope = *s }, func(s *mirror.Scope, p *mirror.ScanPlan) { s.Kind = "unsupported" }, func(s *mirror.Scope, p *mirror.ScanPlan) {
-				if s.Repository.Provider == mirror.GitHub {
-					s.Repository.Provider = mirror.GitLab
-				} else {
-					s.Repository.Provider = mirror.GitHub
+		t.Run(string(provider), func(t *testing.T) {
+			now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+			rt := &ingestTransport{payload: "[]"}
+			source, scope, a := ingestFixture(t, provider, mirror.Issues, rt, &now)
+			for _, badID := range []string{"", " admission-a", "admission-a "} {
+				if _, e := NewMirrorIngestSource(source.source, badID, source.now); e == nil || rt.hits != 0 {
+					t.Fatal("invalid constructor admission accepted", badID, e)
 				}
-			}, func(s *mirror.Scope, p *mirror.ScanPlan) { p.Scope.AdmissionID = "other" }, func(s *mirror.Scope, p *mirror.ScanPlan) { p.PriorObservedUpTo = now.Add(time.Hour) }, func(s *mirror.Scope, p *mirror.ScanPlan) { p.PriorObservedUpTo = now.Add(-time.Minute) }, func(s *mirror.Scope, p *mirror.ScanPlan) { p.Since = now; p.FullInventory = true }} {
-			bad, bp := scope, plan
-			change(&bad, &bp)
-			if _, e := source.Scan(context.Background(), a, bad, bp); e == nil || rt.hits != 0 {
-				t.Fatalf("invalid scope/plan sent: %+v %+v %v hits=%d", bad, bp, e, rt.hits)
 			}
-		}
-		denied := &mirrortest.TestAdmission{Name: a.ID(), Allowed: false}
-		var typedNil *mirrortest.TestAdmission
-		for _, admission := range []mirror.Admission{nil, typedNil, denied} {
-			if _, e := source.Scan(context.Background(), admission, scope, plan); !errors.Is(e, mirror.ErrPermission) || rt.hits != 0 {
-				t.Fatal("admission not independently refused", e)
+			store := mirrortest.NewStore()
+			blank, _ := store.Read(context.Background(), a, scope)
+			plan, _ := mirror.PlanRefresh(blank, now, mirror.RefreshPolicy{FullInventoryInterval: time.Hour})
+			for _, change := range []func(*mirror.Scope, *mirror.ScanPlan){func(s *mirror.Scope, p *mirror.ScanPlan) { s.AdmissionID = "other" }, func(s *mirror.Scope, p *mirror.ScanPlan) { s.Repository.Host = "other.example.invalid" }, func(s *mirror.Scope, p *mirror.ScanPlan) { s.Repository.Path = "b/r" },
+				func(s *mirror.Scope, p *mirror.ScanPlan) { s.Repository.Path = "O/r"; p.Scope = *s }, func(s *mirror.Scope, p *mirror.ScanPlan) { s.Kind = "unsupported" }, func(s *mirror.Scope, p *mirror.ScanPlan) {
+					if s.Repository.Provider == mirror.GitHub {
+						s.Repository.Provider = mirror.GitLab
+					} else {
+						s.Repository.Provider = mirror.GitHub
+					}
+				}, func(s *mirror.Scope, p *mirror.ScanPlan) { p.Scope.AdmissionID = "other" }, func(s *mirror.Scope, p *mirror.ScanPlan) { p.PriorObservedUpTo = now.Add(time.Hour) }, func(s *mirror.Scope, p *mirror.ScanPlan) { p.PriorObservedUpTo = now.Add(-time.Minute) }, func(s *mirror.Scope, p *mirror.ScanPlan) { p.Since = now; p.FullInventory = true }} {
+				bad, bp := scope, plan
+				change(&bad, &bp)
+				if _, e := source.Scan(context.Background(), a, bad, bp); e == nil || rt.hits != 0 {
+					t.Fatalf("invalid scope/plan sent: %+v %+v %v hits=%d", bad, bp, e, rt.hits)
+				}
 			}
-		}
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		if _, e := source.Scan(ctx, a, scope, plan); !errors.Is(e, context.Canceled) || rt.hits != 0 {
-			t.Fatal("canceled source sent", e)
-		}
-		if _, e := source.Scan(context.Background(), a, scope, plan); e != nil || rt.hits != 1 {
-			t.Fatal("positive scoped read failed", e)
-		}
-		rt.hits = 0
-		source.source.repo = ForgeRepo{Owner: "b", Name: "r"}
-		source.repository.Path = "b/r"
-		foreign := scope
-		foreign.Repository = source.repository
-		bp := plan
-		bp.Scope = foreign
-		if _, e := source.Scan(context.Background(), a, foreign, bp); e == nil || rt.hits != 0 {
-			t.Fatalf("native lower scope bypass: %v hits=%d", e, rt.hits)
-		}
+			rt.payload = "[" + ingestRow(provider, mirror.Issues, 1, now.Add(-time.Minute), true) + "]"
+			alternate := &mirrortest.TestAdmission{Name: "admission-b", Allowed: true}
+			otherScope := scope
+			otherScope.AdmissionID = alternate.ID()
+			otherPlan := plan
+			otherPlan.Scope = otherScope
+			if got, e := source.Scan(context.Background(), alternate, otherScope, otherPlan); !errors.Is(e, mirror.ErrPermission) || rt.hits != 0 {
+				canary := len(got.Records) > 0 && got.Records[0].Title == "private-canary"
+				t.Fatalf("source credential relabelled: error=%v requests=%d rows=%d canary=%v", e, rt.hits, len(got.Records), canary)
+			}
+			denied := &mirrortest.TestAdmission{Name: a.ID(), Allowed: false}
+			var typedNil *mirrortest.TestAdmission
+			for _, admission := range []mirror.Admission{nil, typedNil, denied} {
+				if _, e := source.Scan(context.Background(), admission, scope, plan); !errors.Is(e, mirror.ErrPermission) || rt.hits != 0 {
+					t.Fatal("admission not independently refused", e)
+				}
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			if _, e := source.Scan(ctx, a, scope, plan); !errors.Is(e, context.Canceled) || rt.hits != 0 {
+				t.Fatal("canceled source sent", e)
+			}
+			if got, e := source.Scan(context.Background(), a, scope, plan); e != nil || rt.hits != 1 || !got.Complete || len(got.Records) != 1 || got.Records[0].Title != "private-canary" {
+				t.Fatal("positive bound scoped read failed", e)
+			}
+			rt.hits = 0
+			source.source.repo = ForgeRepo{Owner: "b", Name: "r"}
+			source.repository.Path = "b/r"
+			foreign := scope
+			foreign.Repository = source.repository
+			bp := plan
+			bp.Scope = foreign
+			if _, e := source.Scan(context.Background(), a, foreign, bp); e == nil || rt.hits != 0 {
+				t.Fatalf("native lower scope bypass: %v hits=%d", e, rt.hits)
+			}
+		})
 	}
 	testIngestRecheck(t)
 }
@@ -262,7 +279,7 @@ func TestMirrorSourceScope(t *testing.T) {
 func testIngestRecheck(t *testing.T) {
 	t.Helper()
 	for _, provider := range []ForgeKind{ForgeGitHub, ForgeGitLab} {
-		for _, scenario := range []string{"revoked", "clock-regressed"} {
+		for _, scenario := range []string{"revoked", "admission-changed", "clock-regressed"} {
 			t.Run(string(provider)+"/"+scenario, func(t *testing.T) {
 				start := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 				now := start
@@ -271,6 +288,8 @@ func testIngestRecheck(t *testing.T) {
 				rt.onRead = func() {
 					if scenario == "revoked" {
 						a.Allowed = false
+					} else if scenario == "admission-changed" {
+						a.Name = "admission-b"
 					} else {
 						now = start.Add(-time.Minute)
 					}
@@ -284,7 +303,7 @@ func testIngestRecheck(t *testing.T) {
 				if e == nil || scan.Complete || len(scan.Records) != 0 || scan.Failure == mirror.Permission {
 					t.Fatalf("in-flight refusal leaked observations: complete=%v rows=%d reason=%s error=%v", scan.Complete, len(scan.Records), scan.Failure, e)
 				}
-				if scenario == "revoked" && !errors.Is(e, mirror.ErrPermission) {
+				if scenario != "clock-regressed" && !errors.Is(e, mirror.ErrPermission) {
 					t.Fatal("revocation did not remain admission refusal", e)
 				}
 			})
