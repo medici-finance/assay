@@ -11,6 +11,7 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "The new CI job executes repository source with runner and checkout-token access, and the explicit database configuration handles credentials. Human acceptance reviews this boundary after disposable-fixture evidence; no operational service or database is authorized."
 decision-trigger: spec
+decision-issue: 5405
 issues: []
 schema: brief-v2
 version: 2
@@ -29,7 +30,16 @@ exec-tier: strong
 exec-tier-why: "Migration atomicity, concurrent initialisation and schema compatibility must be checked on real PostgreSQL rather than an in-memory substitute."
 domain: complicated
 consumers:
-- "workflow/store connection, migrations and test harness: follow-up graph-execution/36 (this brief; implementation owns these paths)"
+- "workflow/store/: fixed-here"
+- "workflow/internal/pgtest/: fixed-here"
+- "workflow/go.mod: fixed-here"
+- "workflow/go.sum: fixed-here"
+- "workflow/README.md: fixed-here"
+- "workflow/testdata/compose.yaml: fixed-here"
+- "spec/coordination-store-v1.md: fixed-here"
+- "docs/contracts.md: fixed-here"
+- ".github/workflows/assay-workflow.yml: fixed-here"
+- "tools/desk/internal/deskkit/citrigger_test.go: fixed-here"
 - "workflow/store domain tables, admission, outbox and reconstruction: follow-up graph-execution/19"
 - "workflow/store mirror persistence: out-of-scope (no SQL mirror caller exists; separate /37 precursor amendment must bind this ledger before partial dispatch)"
 - "loopadmin supervisor persistence: out-of-scope (same engine, separate schema and no Go dependency on this foundation)"
@@ -70,6 +80,17 @@ single-point-of-failure: a connection opened without compatibility checks could 
 ## Dependency admission
 
 Reuse pgx/v5 v5.12.0 for PostgreSQL and Goose/v3 v3.29.0 for migration mechanics, per `docs/go-engineering.md`. The version-specific source/permissions/persistence assessment is medici-finance/assay#5396. Installation of the under-seven-day pgx release requires the driver's own bless on that issue before it proceeds; authoring may continue without installing it. Goose is older than seven days. No custom pool, protocol parser or migration runner.
+
+## Human decision
+
+The isolated PostgreSQL foundation is ready for independent review of its bounded database-credential and CI execution boundary. It provides explicit connections, compatible-schema validation and a single forward-only migration/checksum ledger, qualified using synthetic data in a disposable container. Seven named tests, a race run and eight production fault controls supply implementation evidence; they are not independent acceptance. The CI job has read-only repository permission, a pinned synthetic PostgreSQL container and checksum-verified toolchain; checkout credentials are not persisted. No production database, provider identity or executor is configured.
+
+1. Accept this bounded foundation after independent review and verification of the demonstrated credential, migration and CI boundary; retain all complete domain-store, mirror-retention, deployment and activation gates.
+2. Hold acceptance and name the specific unsupported boundary or correction.
+
+Default if no answer: none — blocks until answered
+
+This blocks acceptance. Offline contract, source and disposable-container fixture work may proceed. No production connection, live migration, role grant, service enrollment, tool cutover or activation follows from this decision. The separate dependency installation blessing, passing tests, publication and merge do not supply this acceptance. The human records the selected option in their own account; a worker relay is not a ruling.
 
 ## Ground rules
 
