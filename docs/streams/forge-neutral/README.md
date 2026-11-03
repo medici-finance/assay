@@ -256,7 +256,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 50 | [Join admitted incremental reads to mirror observations](brief-50-join-admitted-incremental-reads-to-mirror-observations.md) | 4 | M | todo | — | — |
 | 51 | [Store-injected mirror read-through coordinator and shared refresh gate port](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md) | 3 | M | todo | — | — |
 | 52 | [Canonical PostgreSQL mirror store without execution dependencies](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md) | 3 | L | todo | — | — |
-| 53 | [Qualified native mirror attempt accounting and retry metadata](brief-53-qualified-native-mirror-attempt-accounting-and-retry-metadata.md) | 5 | M | todo | — | — |
+| 53 | [Qualified native mirror attempt accounting and retry metadata](brief-53-qualified-native-mirror-attempt-accounting-and-retry-metadata.md) | 5 | L | todo | — | — |
 | 54 | [Canonical PostgreSQL refresh gate and admitted read-through integration](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md) | 6 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
@@ -820,7 +820,7 @@ brief, provider walker, local quota owner or execution prerequisite is introduce
 
 Critical path for this bounded implementation is `50 + repaired51 → 53`, then
 `36 → 52` together with `53 + repaired51 → 54`. Authoring54 can run while53 is built;
-implementation consumes53's genuine source. Typed waves/reciprocal edges are generated
+SQL implementation may consume53's actual tested immutable port/propagation source while native work continues; final joined delivery consumes completed qualified53. Typed waves/reciprocal edges are generated
 from those dependencies. A mixed stronger-query miss keeps51's single base fill and
 separate Requirements-qualified backoff; SQL design must consume its actual repaired API.
 Absent/unreadable/unknown shared usage or retry metadata holds. No default allowance is

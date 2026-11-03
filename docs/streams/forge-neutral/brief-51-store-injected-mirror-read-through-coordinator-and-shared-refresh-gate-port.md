@@ -45,14 +45,14 @@ consumers:
 ## Context
 
 files:
-- `forgeread/refresh/types.go`
-- `forgeread/refresh/gate.go`
-- `forgeread/refresh/coordinator.go`
-- `forgeread/refresh/coordinator_test.go`
-- `forgeread/refresh/boundary_test.go`
+- `forgeread/refresh/types.go` (planned)
+- `forgeread/refresh/gate.go` (planned)
+- `forgeread/refresh/coordinator.go` (planned)
+- `forgeread/refresh/coordinator_test.go` (planned)
+- `forgeread/refresh/boundary_test.go` (planned)
 - `forgeread/README.md`
 - `docs/contracts.md`
-- `changelog/mirror-read-through-coordinator.md`
+- `changelog/mirror-read-through-coordinator.md` (planned)
 - `tools/forge-import-check/check_env_imports.go`
 - `tools/forge-import-check/check_env_imports_test.go`
 - `tools/desk/internal/regression/mirrorimports_test.go`
