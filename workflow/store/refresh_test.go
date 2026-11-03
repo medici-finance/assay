@@ -355,3 +355,109 @@ func TestPGRefreshFairBudget(t *testing.T) {
 		t.Fatal("abandoned fill spent native budget")
 	}
 }
+
+// regression: F-refresh-shared-native-ceilings
+func TestPGRefreshSharedHTTPBudget(t *testing.T) {
+	t.Run("caller", func(t *testing.T) {
+		cfg := testRefreshConfig()
+		cfg.Native.CallerPerWindow = 1
+		cfg.Native.AdmissionPerWindow = 2
+		cfg.Native.SourcePerWindow = 2
+		r := sqlRefreshConfig(t, cfg)
+		_, u := mirrorInput()
+		ctx := context.Background()
+		first := acquireRefresh(t, r, r.demand(u.Scope, "caller-a"))
+		_ = knownRefreshAttempt(t, r, first)
+		other := u.Scope
+		other.Repository.Path = "example/other"
+		second := acquireRefresh(t, r, r.demand(other, "caller-a"))
+		if _, e := r.g.BeforeAttempt(ctx, second.AttemptGrant); e == nil {
+			t.Fatal("caller HTTP ceiling bypassed")
+		}
+		thirdScope := u.Scope
+		thirdScope.Repository.Path = "example/third"
+		third := acquireRefresh(t, r, r.demand(thirdScope, "caller-b"))
+		_ = knownRefreshAttempt(t, r, third)
+		var used int
+		if e := r.raw.QueryRow(`SELECT http_used FROM public.refresh_budgets WHERE source_id=$1`, []byte(r.cfg.SourceID)).Scan(&used); e != nil || used != 2 {
+			t.Fatal("caller refusal consumed another caller allowance")
+		}
+	})
+	t.Run("concurrency", func(t *testing.T) {
+		cfg := testRefreshConfig()
+		cfg.Native.Concurrent = 1
+		r := sqlRefreshConfig(t, cfg)
+		_, u := mirrorInput()
+		ctx := context.Background()
+		ticket := acquireRefresh(t, r, r.demand(u.Scope, "caller-a"))
+		first, e := r.g.BeforeAttempt(ctx, ticket.AttemptGrant)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = r.g.BeforeAttempt(ctx, ticket.AttemptGrant); e == nil {
+			t.Fatal("inflight ceiling bypassed")
+		}
+		if e = r.g.ObserveAttempt(ctx, first, mirror.AttemptObservation{HTTP: mirror.WorkCount{Value: 1, Known: true}, Status: 200, ResponseComplete: true, ObservedAt: time.Now(), Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}}); e != nil {
+			t.Fatal(e)
+		}
+		if _, e = r.g.BeforeAttempt(ctx, ticket.AttemptGrant); e != nil {
+			t.Fatal("qualified own report did not release its finite slot")
+		}
+	})
+}
+
+// regression: F-refresh-no-invented-individual-observation
+func TestPGRefreshAggregateCannotReconcile(t *testing.T) {
+	r := sqlRefresh(t)
+	a, u := mirrorInput()
+	ctx := context.Background()
+	ticket := acquireRefresh(t, r, r.demand(u.Scope, "caller-a"))
+	receipt := knownRefreshAttempt(t, r, ticket)
+	if _, e := r.g.BeforeAttempt(ctx, ticket.AttemptGrant); e != nil {
+		t.Fatal(e)
+	}
+	receipt.HTTP.Value = 2
+	c := completionRefresh(r, ticket, &u)
+	c.Attempts = receipt
+	if e := r.g.Complete(ctx, ticket, r.s, a, c); e != nil {
+		t.Fatal(e)
+	}
+	state, e := r.g.Wait(ctx, ticket)
+	if e != nil || !state.AttemptHeld {
+		t.Fatal("aggregate invented missing individual report")
+	}
+	snap := readMirror(t, r.s, a, u.Scope)
+	if snap.Version != "" || snap.Coverage.State != mirror.NeverRead {
+		t.Fatal("unknown work promoted observation coverage")
+	}
+}
+
+// regression: F-refresh-canonical-rate-floor
+func TestPGRefreshProviderRetryFloor(t *testing.T) {
+	r := sqlRefresh(t)
+	a, u := mirrorInput()
+	ctx := context.Background()
+	ticket := acquireRefresh(t, r, r.demand(u.Scope, "caller-a"))
+	res, e := r.g.BeforeAttempt(ctx, ticket.AttemptGrant)
+	if e != nil {
+		t.Fatal(e)
+	}
+	reported := time.Now().Add(-time.Hour)
+	evidence := mirror.RetryEvidence{Knowledge: mirror.RetryNotBefore, NotBefore: reported, Delay: 3 * time.Second, DelayKnown: true}
+	if e = r.g.ObserveAttempt(ctx, res, mirror.AttemptObservation{HTTP: mirror.WorkCount{Value: 1, Known: true}, Status: 429, ResponseComplete: true, ObservedAt: reported, Retry: evidence}); e != nil {
+		t.Fatal(e)
+	}
+	c := completionRefresh(r, ticket, nil)
+	c.Failure = mirror.RateLimited
+	c.Attempts = mirror.AttemptReceipt{Grant: ticket.AttemptGrant, HTTP: mirror.WorkCount{Value: 1, Known: true}, Retry: evidence}
+	if e = r.g.Complete(ctx, ticket, r.s, a, c); e != nil {
+		t.Fatal(e)
+	}
+	state, e := r.g.Wait(ctx, ticket)
+	if e != nil || state.RetryAt.Before(time.Now().Add(2*time.Second)) {
+		t.Fatal("fixed cooldown shortened canonical provider floor")
+	}
+	if _, e = r.g.Acquire(ctx, r.demand(u.Scope, "caller-b")); e == nil {
+		t.Fatal("failure retry floor ignored by another caller")
+	}
+}

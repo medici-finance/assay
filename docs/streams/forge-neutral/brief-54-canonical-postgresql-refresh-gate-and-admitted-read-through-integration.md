@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "The adapter controls durable private-observation refreshes and shared work budgets. Accept only the demonstrated synthetic PostgreSQL/native integration; retention, real policy initialization, credentials, remote exposure and activation remain separately gated."
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-11-03 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -47,7 +47,9 @@ files:
 - `workflow/store/` (planned)
 - `workflow/store/migrations/` (planned)
 - `workflow/internal/pgtest/` (planned)
+- `workflow/internal/refreshcodec/` (planned)
 - `workflow/pgtestfixture/fixture.go` (planned)
+- `workflow/pgtestfixture/fixture_test.go` (planned)
 - `workflow/README.md` (planned)
 - `workflow/go.mod` (planned)
 - `workflow/go.sum` (planned)
