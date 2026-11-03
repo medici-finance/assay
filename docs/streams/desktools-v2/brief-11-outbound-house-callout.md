@@ -38,7 +38,6 @@ gate-why: >-
   required mode, and that the callout receives text but never a credential.
 decision-trigger: start
 decision-issue: 2375
-ruling: "https://github.com/medici-finance/assay/issues/2375#issuecomment-6065679413"
 exec-tier: strong
 exec-tier-why: >-
   (c) — safety plumbing where a subtle error survives the happy path: an `allow` that reaches a
