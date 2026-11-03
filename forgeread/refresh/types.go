@@ -67,14 +67,17 @@ type Demand struct {
 	Now          time.Time
 }
 type Ticket struct {
+	AttemptGrant   mirror.AttemptGrant
 	ID, Generation string
 	Owner          bool
 	Joined         bool
 }
 type State struct {
-	Pending bool
-	Reason  mirror.Reason
-	RetryAt time.Time
+	// A native budget hold is not a provider or checked requirement failure.
+	AttemptHeld bool
+	Pending     bool
+	Reason      mirror.Reason
+	RetryAt     time.Time
 }
 
 // Outcome describes an authorized post-query observation, never query data.
@@ -94,6 +97,7 @@ type CallerAuthority interface {
 }
 
 type Completion struct {
+	Attempts mirror.AttemptReceipt
 	// AdmissionDenied is caller/admission refusal, never confirmed source loss.
 	AdmissionDenied bool
 	Authority       CallerAuthority

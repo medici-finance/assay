@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -12,6 +13,122 @@ import (
 	"github.com/medici-finance/assay/forgeread/mirror"
 	"github.com/medici-finance/assay/forgeread/mirror/mirrortest"
 )
+
+type alteredGrantGate struct {
+	*fakeGate
+	alter func(*mirror.AttemptGrant)
+}
+
+func (g alteredGrantGate) Acquire(ctx context.Context, d Demand) (Ticket, error) {
+	t, err := g.fakeGate.Acquire(ctx, d)
+	if err == nil {
+		g.alter(&t.AttemptGrant)
+	}
+	return t, err
+}
+
+// regression: F-mirror-attempt-flow
+func TestRefreshSourceReceiptFlow(t *testing.T) {
+	for _, mode := range []string{"complete", "partial", "failure", "cancelled", "admission", "caller-budget", "unknown-budget", "unknown-count"} {
+		t.Run(mode, func(t *testing.T) {
+			f := setup(t)
+			prior := f.seed(t)
+			f.clock.step(2 * time.Minute)
+			var want mirror.AttemptReceipt
+			f.source.fn = func(_ context.Context, _ mirror.Admission, scope mirror.Scope, p mirror.ScanPlan) (mirror.ScanResult, error) {
+				if p.AttemptGrant.Validate(f.clock.Now()) != nil || p.AttemptGrant.Scope != scope || p.AttemptGrant.SourceID != "issue-inventory" || p.ExpectedVersion != prior.Version || p.PriorObservedUpTo != prior.Coverage.ObservedUpTo {
+					t.Error("final re-plan did not retain the actual snapshot and trusted grant")
+				}
+				want = mirror.AttemptReceipt{Grant: p.AttemptGrant, HTTP: mirror.WorkCount{Value: 3, Known: true}, DecodedBytes: mirror.WorkCount{Value: 17, Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}}
+				scan := f.scan(scope, "fresh")
+				var err error
+				switch mode {
+				case "partial":
+					scan.Complete, scan.ObservedUpTo = false, time.Time{}
+				case "failure":
+					scan.Complete, scan.ObservedUpTo, scan.Failure = false, time.Time{}, mirror.Transport
+					err = errors.New("synthetic native failure")
+				case "cancelled":
+					scan.Complete, scan.ObservedUpTo = false, time.Time{}
+					err = context.Canceled
+				case "admission":
+					err = mirror.ErrPermission
+				case "caller-budget":
+					want.Held = mirror.AttemptCallerHeld
+					err = &mirror.AttemptError{Hold: want.Held}
+				case "unknown-budget":
+					want.Held = mirror.AttemptUnknownHeld
+					err = &mirror.AttemptError{Hold: want.Held}
+				case "unknown-count":
+					want.HTTP.Known, want.DecodedBytes.Known = false, false
+					want.Retry = mirror.RetryEvidence{Knowledge: mirror.RetryUnknown, NotBefore: f.clock.Now().Add(time.Minute), Delay: time.Minute, DelayKnown: true}
+				}
+				scan.Attempts = want
+				return scan, err
+			}
+			r, _ := f.c[0].Read(context.Background(), f.a, f.q, f.caller)
+			f.gate.mu.Lock()
+			if len(f.gate.receipts) != 1 {
+				f.gate.mu.Unlock()
+				t.Fatal("missing actual completion")
+			}
+			got := f.gate.receipts[0]
+			failures := len(f.gate.failures)
+			checked := len(f.gate.outcomes) != 0 && f.gate.outcomes[0].Checked
+			f.gate.mu.Unlock()
+			if f.source.calls.Load() != 1 || !reflect.DeepEqual(got.Attempts, want) || got.Attempts.HTTP.Value != 3 {
+				t.Fatalf("own native work changed across source/completion: got=%+v want=%+v", got.Attempts, want)
+			}
+			if mode == "caller-budget" || mode == "unknown-budget" {
+				if got.Failure != "" || got.AdmissionDenied || got.Update != nil || r.Fulfilled || failures != 0 || checked {
+					t.Fatalf("native budget denial became provider/query failure or complete data: %+v failures=%d", got, failures)
+				}
+				after, err := f.store.Read(context.Background(), f.a, f.q.Scope)
+				if err != nil || !reflect.DeepEqual(after, prior) {
+					t.Fatal("budget-held source changed stored rows or watermark")
+				}
+				if mode == "caller-budget" {
+					other := f.caller
+					other.ID = "caller-b"
+					f.auth.set(other)
+					f.source.fn = func(_ context.Context, _ mirror.Admission, s mirror.Scope, p mirror.ScanPlan) (mirror.ScanResult, error) {
+						scan := f.scan(s, "recovered")
+						scan.Attempts = mirror.AttemptReceipt{Grant: p.AttemptGrant, HTTP: mirror.WorkCount{Value: 1, Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}}
+						return scan, nil
+					}
+					if next, err := f.c[1].Read(context.Background(), f.a, f.q, other); err != nil || !next.Fulfilled || f.source.calls.Load() != 2 {
+						t.Fatalf("caller-a budget denial poisoned eligible caller-b: %+v %v", next, err)
+					}
+				}
+			}
+			if mode == "admission" && !got.AdmissionDenied {
+				t.Fatal("current admission refusal lost while retaining native receipt")
+			}
+		})
+	}
+	for name, alter := range map[string]func(*mirror.AttemptGrant){
+		"missing":    func(g *mirror.AttemptGrant) { *g = mirror.AttemptGrant{} },
+		"scope":      func(g *mirror.AttemptGrant) { g.Scope.AdmissionID = "other" },
+		"source":     func(g *mirror.AttemptGrant) { g.SourceID = "other" },
+		"generation": func(g *mirror.AttemptGrant) { g.Generation = "other" },
+		"caller":     func(g *mirror.AttemptGrant) { g.CallerID = "other" },
+		"policy":     func(g *mirror.AttemptGrant) { g.PolicyEpoch = "other" },
+		"expired":    func(g *mirror.AttemptGrant) { g.ExpiresAt = time.Time{} },
+		"unbounded":  func(g *mirror.AttemptGrant) { g.MaxHTTPAttempts = 0 },
+	} {
+		t.Run("grant-"+name, func(t *testing.T) {
+			f := setup(t)
+			f.c[0].gate = alteredGrantGate{f.gate, alter}
+			r, _ := f.c[0].Read(context.Background(), f.a, f.q, f.caller)
+			f.gate.mu.Lock()
+			got := f.gate.receipts[0]
+			f.gate.mu.Unlock()
+			if f.source.calls.Load() != 0 || got.Failure != "" || got.Update != nil || got.Attempts.Held != mirror.AttemptUnknownHeld || r.Fulfilled {
+				t.Fatalf("unbound grant reached source or became provider failure: %+v", got)
+			}
+		})
+	}
+}
 
 type testClock struct {
 	mu  sync.Mutex
@@ -74,6 +191,7 @@ func (s *testSource) Scan(c context.Context, a mirror.Admission, q mirror.Scope,
 }
 
 type gateEntry struct {
+	grant      mirror.AttemptGrant
 	key        FillKey
 	generation string
 	ready      chan struct{}
@@ -107,6 +225,8 @@ type fillCounter struct {
 	used   int
 }
 type fakeGate struct {
+	receipts        []Completion
+	outcomes        []Outcome
 	windows         map[accountKey]fillCounter
 	mu              sync.Mutex
 	entries         map[FillKey]*gateEntry
@@ -207,6 +327,7 @@ func (g *fakeGate) Acquire(ctx context.Context, d Demand) (Ticket, error) {
 		g.windows[admissionKey] = ac
 		g.serial++
 		e = &gateEntry{key: d.Key, generation: fmt.Sprint(g.serial), ready: make(chan struct{}), state: State{Pending: true}, limits: d.Limits, owner: d.CallerID}
+		e.grant = mirror.AttemptGrant{ID: "fixture-grant-" + e.generation, Scope: d.Key.Scope, SourceID: d.Key.SourceID, Generation: e.generation, CallerID: d.CallerID, AccessEpoch: d.Key.AccessEpoch, ConfigEpoch: d.Key.ConfigEpoch, PolicyClass: d.Key.PolicyClass, PolicyEpoch: d.Key.PolicyEpoch, MaxHTTPAttempts: 16, ExpiresAt: d.Now.Add(d.Limits.FillTimeout)}
 		g.entries[d.Key] = e
 		g.generations[d.Key] = e.generation
 		g.active[accountKey{d.Key.Scope.AdmissionID, d.CallerID}]++
@@ -218,7 +339,7 @@ func (g *fakeGate) Acquire(ctx context.Context, d Demand) (Ticket, error) {
 	e.waiters++
 	g.queued[accountKey{d.Key.Scope.AdmissionID, d.CallerID}]++
 	g.acquired <- struct{}{}
-	return Ticket{ID: id, Generation: e.generation, Owner: owner, Joined: !owner && e.state.Pending}, nil
+	return Ticket{ID: id, Generation: e.generation, Owner: owner, Joined: !owner && e.state.Pending, AttemptGrant: e.grant}, nil
 }
 func (g *fakeGate) Wait(ctx context.Context, t Ticket) (State, error) {
 	g.mu.Lock()
@@ -244,6 +365,7 @@ func (g *fakeGate) Wait(ctx context.Context, t Ticket) (State, error) {
 func (g *fakeGate) Complete(ctx context.Context, t Ticket, s mirror.Store, a mirror.Admission, c Completion) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.receipts = append(g.receipts, c)
 	var err error
 	defer func() { g.completions <- err }()
 	w := g.waiters[t.ID]
@@ -255,6 +377,15 @@ func (g *fakeGate) Complete(ctx context.Context, t Ticket, s mirror.Store, a mir
 	if !t.Owner || g.entries[e.key] != e || t.Generation != e.generation || !e.state.Pending {
 		err = ErrStale
 		return err
+	}
+	if c.Attempts.Held != "" {
+		// Port support only: no provider/query failure is installed. SQL budget
+		// uncertainty and per-attempt reconciliation remain the canonical owner.
+		e.state = State{Reason: mirror.Unknown, AttemptHeld: true}
+		e.expiry = c.Now
+		g.active[accountKey{e.key.Scope.AdmissionID, e.owner}]--
+		close(e.ready)
+		return nil
 	}
 	// The same test Store is the bound backend. Real R2 must enforce this binding
 	// and use its actual SQL transaction, not this fake's mutex.
@@ -282,6 +413,7 @@ func (g *fakeGate) Complete(ctx context.Context, t Ticket, s mirror.Store, a mir
 func (g *fakeGate) Leave(_ context.Context, t Ticket, outcome Outcome) (State, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.outcomes = append(g.outcomes, outcome)
 	if g.leaveDown {
 		return State{}, ErrHeld
 	}

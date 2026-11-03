@@ -232,10 +232,40 @@ independently constructed coordinators; that proves port/coordinator behavior,
 not process durability, SQL atomicity, authenticated serving or activation. Full
 forge-neutral/37 retains its joined persisted mapper/watermark criterion.
 
-The current mirror ScanResult/native budget receipt and refresh Completion do not
-carry a qualified provider retry floor. Fixture cooldown/RetryAt therefore proves
+The typed native grant/receipt now travels through mirror ScanPlan/ScanResult and
+refresh Ticket/Completion. The existing native source has not yet qualified that
+receipt or a provider retry floor. Fixture cooldown/RetryAt therefore proves
 local shared failure suppression only; it is not HTTP Retry-After compliance or
 permission to retry a real provider. Real source/gate integration remains held until
 the joined owner propagates typed qualified retry timing or an explicit unknown-retry
 hold. Do not infer it from error text, retain response bodies/headers here, or install
 a blind fixed interval as a production substitute.
+
+
+## Native attempt accounting port
+
+`mirror.AttemptAuthority` reserves a unique attempt through `BeforeAttempt` and
+accepts only that reservation's typed `AttemptObservation` through `ObserveAttempt`.
+The authority independently binds the opaque identity to canonical scope, source,
+owner generation, caller/policy epochs, finite HTTP ceiling and expiry. Grant
+validation checks shape and consistency; it grants no repository permission or quota.
+The only production authority belongs to the canonical R2 adapter.
+
+The coordinator attaches its acquired grant after its final snapshot re-plan,
+checks scope/source/generation/caller/policy consistency, and forwards the source's
+own receipt unchanged on success, partial, failure, cancellation and admission denial.
+A native accounting hold retains prior work without becoming a provider transport
+failure or a checked requirement failure. This adds no local budget implementation.
+
+`WorkCount.Known` separates measured zero from unknown, retaining any observed
+prefix. Retry knowledge is independent of the maximum observed absolute floor and
+qualified relative delay. A positive delay can be anchored to the canonical
+authority's own observation time; process clock skew cannot justify shortening it.
+An unknown later observation never erases an earlier positive floor. Consumed
+JSON bytes, response completeness and wire bytes are distinct. Final aggregates
+cannot close, refund or reconcile missing individual attempt observations.
+
+The current fixture qualifies only these shared ports and coordinator propagation.
+Native leaf instrumentation, provider-header parsing and actual lower request
+refusal remain unqualified until their production implementation and controls land.
+No SQL, cross-process or activation proof follows from the fixture.

@@ -136,7 +136,7 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 		return held(q, mirror.Unknown), err
 	}
 	result, err = c.release(ctx, a, q, caller, r, state, nil)
-	if err == nil && r.Snapshot.Version != "" && ctx.Err() == nil {
+	if err == nil && !state.AttemptHeld && r.Snapshot.Version != "" && ctx.Err() == nil {
 		outcome = Outcome{Checked: true, Fulfilled: result.Fulfilled, SnapshotVersion: r.Snapshot.Version, Reason: result.Reason, Now: c.clock.Now()}
 	}
 	return result, err
@@ -200,6 +200,15 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 		finish()
 		return
 	}
+	// Attach the trusted gate grant only after the final snapshot re-plan.
+	// Binding consistency is independent of native authority's actual debit.
+	plan.AttemptGrant = t.AttemptGrant
+	g := plan.AttemptGrant
+	if g.Validate(c.clock.Now()) != nil || g.Scope != q.Scope || g.SourceID != c.sourceID || g.Generation != t.Generation || g.CallerID != caller.ID || g.AccessEpoch != caller.AccessEpoch || g.ConfigEpoch != caller.ConfigEpoch || g.PolicyClass != caller.PolicyClass || g.PolicyEpoch != caller.PolicyEpoch {
+		complete.Attempts = mirror.AttemptReceipt{Grant: g, Held: mirror.AttemptUnknownHeld}
+		finish()
+		return
+	}
 	if err := c.authority.Authorize(ctx, caller, q.Scope); err != nil {
 		complete.AdmissionDenied = true
 		complete.Failure = mirror.Permission
@@ -214,12 +223,26 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 	}
 	scan, scanErr := c.source.Scan(ctx, a, q.Scope, plan)
 	complete.Now = c.clock.Now()
+	complete.Attempts = scan.Attempts
 	complete.Query = q
 	complete.Query.Now = complete.Now
 	c.observe(ctx, "source-attempt", "scan-call", q.Scope, t.Generation)
 	if errors.Is(scanErr, mirror.ErrPermission) {
 		complete.AdmissionDenied = true
 		complete.Failure = mirror.Permission
+		finish()
+		return
+	}
+	if errors.Is(scanErr, mirror.ErrAttemptHeld) || scan.Attempts.Held != "" {
+		var attemptErr *mirror.AttemptError
+		if complete.Attempts.Held == "" && errors.As(scanErr, &attemptErr) && attemptErr != nil {
+			complete.Attempts.Held = attemptErr.Hold
+		}
+		if !complete.Attempts.Held.Valid() {
+			complete.Attempts.Held = mirror.AttemptUnknownHeld
+		}
+		// Preserve actual pre-denial work without promoting partial coverage or
+		// fabricating a provider/source-failure cooldown.
 		finish()
 		return
 	}
