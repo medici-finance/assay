@@ -78,5 +78,6 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `tools/desk/internal/deskkit/verifyattempts.go` | reads informational fields only | validates and counts a verify-outcome record's optional `attempts` list, using `started`, `finished` and the timestamp only for ordering and windows; never a revision, tree token, record id or staleness verdict |
 | `tools/desk/internal/deskkit/verifyoutcomejoin.go` | migrates in statusgen/37 | verify-outcome record layer and join keys; adopts the witness reference in statusgen/37 |
 | `tools/desk/internal/deskkit/verifyoutcomes.go` | migrates in statusgen/37 | verify-outcome record layer and join keys; adopts the witness reference in statusgen/37 |
+| `tools/desk/internal/deskkit/verifyrowid.go` | reads informational fields only | the Verify row-identity grammar the outcome-record layer shares; parses a `#` cell (row id), never a Runner cell, record revision, tree token or marker |
 | `tools/desk/internal/deskkit/verifywake.go` | migrates in statusgen/37 | verify-outcome record layer and join keys; adopts the witness reference in statusgen/37 |
 | `tools/desk/internal/loopengine/claim.go` | reads informational fields only | matches on the word Runner for a dispatch claim owner or a launch path; not a witness Runner cell |
