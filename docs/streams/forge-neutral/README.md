@@ -253,6 +253,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 47 | [Admitted incremental forge readers for mirror ingestion](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) | 2 | M | todo | — | — |
 | 48 | [Bound native mirror response allocation before decoding](brief-48-bound-native-mirror-response-allocation-before-decoding.md) | 3 | M | todo | — | — |
 | 49 | [Retire claim-decay stored GitHub login fallback](brief-49-retire-claim-decay-stored-github-login-fallback.md) | 0 | S | todo | — | — |
+| 50 | [Join admitted incremental reads to mirror observations](brief-50-join-admitted-incremental-reads-to-mirror-observations.md) | 4 | M | todo | — | — |
 | 52 | [Canonical PostgreSQL mirror store without execution dependencies](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md) | 3 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
@@ -767,3 +768,16 @@ on this bounded path waits for execution claims, admission, effects or outbox de
 Full /19 and /37 acceptance, retention, authenticated serving and activation remain owed.
 The smallest unblocking move is the actual /36 migration and container harness, never a
 second database. Generated lifecycle cells carry no hand-authored delivery claim.
+
+### Read-only observation mapper contribution — 3 November 2026
+
+Fresh main `863c43db` contains the kernel, admitted readers and native response bound.
+[50](brief-50-join-admitted-incremental-reads-to-mirror-observations.md) joins those
+existing ports with conservative field presence and coverage, using synthetic native
+transports and the reference Store. Its wave is 4 (`46 + 47 + 48 → 50`); no SQL,
+execution or serving dependency is needed to prepare this source adapter. The
+PostgreSQL foundation and shared read-through coordination remain separate work.
+The smallest unblock is the typed mapper and its presence semantics: source inspection
+found no mirror.Source implementation, and Observation lacks the readers' BodyKnown.
+This contribution retains /37's full 23-row acceptance, including persisted row 23,
+and every existing retention, independent verification and activation gate.

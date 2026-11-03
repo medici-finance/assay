@@ -4,7 +4,7 @@ title: Bound native mirror response allocation before decoding
 why: "One native response can allocate before the existing aggregate 8 MiB guard runs. Bound admitted mirror responses before buffering or SDK decoding, once for both providers."
 wave: 3
 depends: ["forge-neutral/47"]
-unblocks: ["forge-neutral/37"]
+unblocks: ["forge-neutral/37", "forge-neutral/50"]
 split-from: forge-neutral/37
 effort: M
 gate: human
