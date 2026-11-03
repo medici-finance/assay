@@ -249,6 +249,8 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 43 | [Incremental forge indexes and dependency-aware invalidation](brief-43-incremental-forge-indexes-and-dependency-aware-invalidation.md) | 8 | M | todo | — | — |
 | 44 | [Shared Git object and fetch reuse qualification trial](brief-44-shared-git-object-and-fetch-reuse-qualification-trial.md) | 8 | M | todo | — | — |
 | 45 | [Forge service fault simulation and scoped cutover qualification](brief-45-forge-service-fault-simulation-and-scoped-cutover-qualification.md) | 9 | L | todo | — | — |
+| 46 | [Pure read-only mirror kernel and conformance](brief-46-pure-read-only-mirror-kernel-and-conformance.md) | 2 | M | todo | — | — |
+| 47 | [Admitted incremental forge readers for mirror ingestion](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -696,3 +698,22 @@ measurements stay separately named; shared upstream cost is observed once and mi
 instrumentation is a gap. These remain planned todo packages at inspected main 2e02111ed,
 not claims of deployment. Reuse /63–65's local contract/adapters without creating a new
 measurement service or making local v3 depend on the future forge service.
+
+## Read-only mirror acceleration — 3 November 2026
+
+The source at `7c62923293d0b640ec90afbf318cae2497908f28` contains the admitted read adapters
+and shared reader API, but no mirror package or workflow store. Source inspection, not the stale
+completion labels, establishes that the small kernel and provider-reader contributions can start.
+The PostgreSQL adapter, its transaction proof and the permission-loss retention decision remain the
+head of the assembled mirror's critical path.
+
+The early path is `36's shipped admitted-read capability → 46 kernel + 47 provider readers → 37
+joined persistent mirror → existing service/consumer qualification`. Briefs 46 and 47 are wave 2
+and can run independently; 37 retains its existing wave and dependencies and additionally consumes
+both. No generated lifecycle row is hand-maintained.
+
+The contribution/acceptance map is in 37's dated amendment. Existing criteria, risks, human
+decisions, completed Evidence and later rollout gates remain. The early supported outcome is a
+source-bound offline consumer, not a deployed service or a fleet-saving claim. Read-only serving
+will reuse the approved shared forge library direction; the write-through service does not become
+a prerequisite for these two pure/read-adapter contributions.

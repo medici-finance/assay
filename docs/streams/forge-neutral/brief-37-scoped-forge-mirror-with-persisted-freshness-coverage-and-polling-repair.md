@@ -3,7 +3,7 @@ brief: assay:assay:forge-neutral:37
 title: Scoped forge mirror with persisted freshness, coverage and polling repair
 why: "Every desk, status run and planning read asks the forge the same questions again, one verb at a time, and a throttled or partial read can look like an empty queue. One scoped mirror that records what it read, when, and how completely lets those readers share one answer and see when it is stale or incomplete, without each of them polling the forge."
 wave: 7
-depends: ["graph-execution/28", "graph-execution/29", "graph-execution/19", "forge-neutral/36", "forge-neutral/33", "desktools-v2/09"]
+depends: ["graph-execution/28", "graph-execution/29", "graph-execution/19", "forge-neutral/36", "forge-neutral/33", "desktools-v2/09", "forge-neutral/46", "forge-neutral/47"]
 unblocks: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43", "cell-api/02"]
 effort: L
 gate: human
@@ -12,7 +12,7 @@ gate-why: "sensitive-data is yes because the mirror copies private pull request,
 issues: []
 outcome: none
 schema: brief-v2
-version: 6
+version: 7
 id: 06dc3c03-bfb0-49cf-b171-8f7d192b7aea
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
 sources:
@@ -143,6 +143,34 @@ the read contract R7 consumes. When the R7 briefs are authored, each that reads 
 `depends: ["forge-neutral/37"]`, and `statusgen newbrief` writes the inverse `unblocks:` edge here.
 Until then `unblocks:` names only forge-neutral/38, because the lint refuses an edge to a brief that
 does not exist.
+
+## Early read-only contributions — 3 November 2026
+
+The first useful supported outcome is a fixture consumer that applies source observations and
+queries an admitted mirror scope with explicit coverage and freshness. Two independent capability
+contributions precede this joined delivery: [46](brief-46-pure-read-only-mirror-kernel-and-conformance.md)
+owns the pure mirror kernel and its reusable conformance contract;
+[47](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) owns the bounded provider
+update readers and their concrete source composition. Both reuse the already shipped admitted-read
+capability from 36; neither requires a new durable store or the write executor. Inspect source
+availability and the dependency's actual capability at pickup; lifecycle labels alone are not proof
+that an API is absent or independently accepted.
+
+This brief consumes those owners rather than implementing competing models or provider walkers.
+Every original Task and Verify criterion remains an obligation of the joined delivery. In
+particular, the two early contributions do not supply PostgreSQL persistence/transaction constraints,
+restart recovery, production permission-loss retention policy, event/controller mapping, full
+review/check coverage, conditional refresh transport, cross-process refresh coalescing, actual reader
+cutover or operational savings. Conditional requests in row 8 and coalescing in row 6 remain here;
+47's explicit unsupported/full-read baseline does not satisfy them. Passing early fixture tests does
+not satisfy rows 7, 9, 12, 13 or 15 against the assembled production adapters.
+
+The Human decision below remains unanswered; no retention default is selected, no gate is lowered,
+and this brief remains held for the existing decision and missing durable-store prerequisites.
+Early implementation does not claim this brief implemented or activate a cache. The current
+[DR-forge-library](../decisions/DR-forge-library.md) supersedes the older process-only integration
+boundary: trusted transport composition follows its shared-library owner, without moving credentials
+into the pure mirror or inventing another service. Historical source accounts remain unchanged.
 
 ## Human decision
 
