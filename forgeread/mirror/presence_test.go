@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// regression: forge-neutral/50
+// regression: F-mirror-field-presence
 func TestMirrorFieldPresence(t *testing.T) {
 	for _, known := range []bool{false, true} {
 		scope, a, row := fixture()
@@ -66,7 +66,7 @@ func TestMirrorFieldPresence(t *testing.T) {
 	}
 }
 
-// regression: forge-neutral/50
+// regression: F-mirror-plan-baseline
 func TestMirrorPlanBaseline(t *testing.T) {
 	_, scope, _, s := seed(t, true)
 	now := instant.Add(2 * time.Hour)

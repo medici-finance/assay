@@ -115,7 +115,7 @@ func ingestApply(t *testing.T, store mirror.Store, s mirror.Source, a mirror.Adm
 	return next
 }
 
-// regression: forge-neutral/50
+// regression: F-mirror-source-flow
 func TestMirrorSourceFlow(t *testing.T) {
 	for _, provider := range []ForgeKind{ForgeGitHub, ForgeGitLab} {
 		for _, kind := range []mirror.RecordKind{mirror.Issues, mirror.Changes} {
@@ -207,7 +207,7 @@ func testIngestCompletion(t *testing.T) {
 	}
 }
 
-// regression: forge-neutral/50
+// regression: F-mirror-source-scope
 func TestMirrorSourceScope(t *testing.T) {
 	for _, provider := range []ForgeKind{ForgeGitHub, ForgeGitLab} {
 		t.Run(string(provider), func(t *testing.T) {
@@ -311,7 +311,7 @@ func testIngestRecheck(t *testing.T) {
 	}
 }
 
-// regression: forge-neutral/50
+// regression: F-mirror-source-uncertainty
 func TestMirrorSourceUncertainty(t *testing.T) {
 	for _, provider := range []ForgeKind{ForgeGitHub, ForgeGitLab} {
 		for _, scenario := range []string{"page-limit", "aggregate", "native", "malformed", "duplicate", "403", "404", "429", "oversized403", "oversized404", "transport"} {
