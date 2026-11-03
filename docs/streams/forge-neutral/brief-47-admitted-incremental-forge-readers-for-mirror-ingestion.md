@@ -49,12 +49,12 @@ consumers:
 files:
 - `statusgen/forgeread_sdk_test.go`
 - `forgeread/reader.go`
-- `forgeread/adapters/updated.go` (planned)
-- `forgeread/adapters/github/updated.go` (planned)
-- `forgeread/adapters/gitlab/updated.go` (planned)
+- `forgeread/adapters/updated.go`
+- `forgeread/adapters/github/updated.go`
+- `forgeread/adapters/gitlab/updated.go`
 - `forgeread/adapters/`
-- `tools/desk/internal/deskkit/mirrorsource.go` (planned)
-- `tools/desk/internal/deskkit/mirrorsource_test.go` (planned)
+- `tools/desk/internal/deskkit/mirrorsource.go`
+- `tools/desk/internal/deskkit/mirrorsource_test.go`
 - `tools/desk/internal/deskkit/forge.go`
 - `tools/desk/internal/deskkit/forge_context.go`
 - `tools/desk/internal/deskkit/forge_github.go`
@@ -68,7 +68,7 @@ files:
 - `tools/desk/internal/deskkit/testdata/`
 - `docs/streams/forge-gitlab/inventory.md`
 - `forgeread/README.md`
-- `changelog/forge-incremental-reads.md` (planned)
+- `changelog/forge-incremental-reads.md`
 
 facts:
 - Source `7c62923293d0b640ec90afbf318cae2497908f28` contains forgeread/36's admitted Access, both provider adapters and deskkit's scopedAccess/delegating composition. Those are the only new-delivery prerequisites here.

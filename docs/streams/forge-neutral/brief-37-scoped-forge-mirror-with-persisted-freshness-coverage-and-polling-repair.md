@@ -72,7 +72,7 @@ files:
 - `tools/desk/internal/deskkit/forge_github.go`
 - `tools/desk/internal/deskkit/forge_gitlab.go`
 - `tools/desk/internal/deskkit/sharedread.go`
-- `tools/desk/internal/deskkit/mirrorsource.go` (planned)
+- `tools/desk/internal/deskkit/mirrorsource.go`
 - `tools/desk/internal/deskkit/mirroringest.go` (planned)
 - `tools/desk/internal/deskkit/forge_response_bounds.go` (planned)
 - `tools/desk/internal/deskkit/forge_response_bounds_test.go` (planned)
@@ -321,7 +321,7 @@ existing completed batching/conditional requests are baseline, not this brief's 
    retained-history coverage qualified under the selected policy, validate its ordering against
    the other coverage stamps, and leave it unknown when that history has not been qualified.
    The pure kernel’s optional zero value is not a retained-history guarantee.
-8. **Composition and floor.** Reuse /47's `tools/desk/internal/deskkit/mirrorsource.go` (planned) MirrorReadSource
+8. **Composition and floor.** Reuse /47's `tools/desk/internal/deskkit/mirrorsource.go` MirrorReadSource
    and its two provider operations, including the lower-layer refusal of a repository outside the
    credential's scope before any request. Implement the joined assembly/observation mapper in
    `tools/desk/internal/deskkit/mirroringest.go` (planned), connecting that admitted source to /46's
