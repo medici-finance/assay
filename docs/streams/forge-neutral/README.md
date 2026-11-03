@@ -251,6 +251,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 45 | [Forge service fault simulation and scoped cutover qualification](brief-45-forge-service-fault-simulation-and-scoped-cutover-qualification.md) | 9 | L | todo | — | — |
 | 46 | [Pure read-only mirror kernel and conformance](brief-46-pure-read-only-mirror-kernel-and-conformance.md) | 2 | M | todo | — | — |
 | 47 | [Admitted incremental forge readers for mirror ingestion](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) | 2 | M | todo | — | — |
+| 49 | [Retire claim-decay stored GitHub login fallback](brief-49-retire-claim-decay-stored-github-login-fallback.md) | 0 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -717,3 +718,15 @@ decisions, completed Evidence and later rollout gates remain. The early supporte
 source-bound offline consumer, not a deployed service or a fleet-saving claim. Read-only serving
 will reuse the approved shared forge library direction; the write-through service does not become
 a prerequisite for these two pure/read-adapter contributions.
+
+### Claim-decay stored-login contribution — 3 November 2026
+
+[49](brief-49-retire-claim-decay-stored-github-login-fallback.md) extracts only the
+claim-decay credential selector's CLI lookup and stored-login fallback from /18.
+The unchanged forge-ban instrument at main 678d7ea5 counts statusgen class a at 31
+and all statusgen sites at 39; after this contribution its counts are 30 and 38.
+That instrument counts the subprocess; the parent quoted-gh-line census separately
+loses two lines (one executable lookup and one possible subprocess). This retires
+neither every remaining forge read nor the parent contribution.
+Explicit token inputs and host separation remain until /77's migration. /18 remains
+partial and retains every original acceptance row and remaining read/CI obligation.
