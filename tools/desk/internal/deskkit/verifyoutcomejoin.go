@@ -355,7 +355,7 @@ func checkRunMetadataShape(f map[string]json.RawMessage) error {
 	if v, has := f["rows"]; has {
 		var rows []VerifyRowID
 		if err := json.Unmarshal(v, &rows); err != nil {
-			return Refused("refused: rows must contain positive integers or exact suffixed identities")
+			return Refused("refused: rows must contain positive integers, suffixed identities (6a) or letter-led labels (R, S1)")
 		}
 		seen := map[VerifyRowID]bool{}
 		for _, row := range rows {
@@ -394,7 +394,7 @@ func checkRunMetadataShape(f map[string]json.RawMessage) error {
 			}
 			var row VerifyRowID
 			if err := json.Unmarshal(obj["row"], &row); err != nil {
-				return Refused(fmt.Sprintf("refused: row_results[%d].row must be a positive integer or exact suffixed identity", i))
+				return Refused(fmt.Sprintf("refused: row_results[%d].row must be a positive integer, suffixed identity (6a) or letter-led label (R, S1)", i))
 			}
 			if seen[row] {
 				return Refused(fmt.Sprintf("refused: row_results[%d].row %s repeats", i, row))

@@ -1,0 +1,2 @@
+### Fixed
+- Accept letter-led Verify row identities such as `R`, `L` or `S1` in outcome records and wake receipts. `verifyrun` already ran these rows, but `deskevidence` refused the record with `rows must contain positive integers or exact suffixed identities`. The shared row-identity grammar now takes a letter followed by letters or digits as an exact, case-sensitive JSON string. Bare JSON literals (`null`, `true`) and cells such as `0`, `06` or `R-1` are still refused.
