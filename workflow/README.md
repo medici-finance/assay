@@ -139,3 +139,25 @@ failure exposes the prematurely committed version/coverage. It does not claim in
 qualification of two guards. The complete-proof fault similarly removes both SQL clauses
 that implement that one proof. Every control restores exact production bytes and rejects
 build/setup failures as invalid evidence. These are implementer controls, not acceptance.
+
+The read-only refresh adapter is constructed with `DB.Refresh` over its exact
+canonical `MirrorStore`, an explicit `RefreshConfig` and current caller authority.
+It implements the shared refresh Gate and native AttemptAuthority against the same
+pool and Goose ledger. It creates no policy or accounting: missing, unknown and
+mismatched SQL profiles hold. Only synthetic tests initialize known usage here;
+production initialization, repair and activation remain separately owned.
+
+Migration00003 separates source budgets, admission/caller usage, base fill leases,
+waiters and individual native reservations. HTTP is authorized before each actual
+base-transport entry and observed once after the bounded read. Known relative retry
+delays use database observation time; unknown/missing observations retain a hold
+without refund. The private joined Store commits observations and fenced completion
+together. Standalone Store Apply remains available without granting refresh ownership.
+Canonical lock order is admission, source budget, caller, fill, waiter/attempt, then
+mirror scope/records. Native I/O and waiting retain no SQL locks or pool connection.
+
+The Gate's profile and base identity use version1 canonical JSON over byte-array
+identity fields, preserving arbitrary opaque string bytes across processes. This
+private encoding is distinct from the existing bounded observation-fact codec.
+No retention action, execution API, endpoint, credential selection or production
+cutover is supplied by this adapter.

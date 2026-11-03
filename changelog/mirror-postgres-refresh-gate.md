@@ -1,0 +1,1 @@
+- Add the canonical PostgreSQL read-only refresh Gate and per-attempt authority, with shared generation fencing, transaction-bound observation completion, explicit finite accounting and conservative retry holds.

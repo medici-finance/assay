@@ -25,6 +25,8 @@ type MirrorLimits struct {
 type MirrorStore struct {
 	database *DB
 	limits   MirrorLimits
+	// tx is supplied only by the canonical refresh completion owner.
+	tx *sql.Tx
 }
 
 var _ mirror.Store = (*MirrorStore)(nil)
@@ -215,11 +217,13 @@ func (s *MirrorStore) Read(ctx context.Context, a mirror.Admission, scope mirror
 	if err != nil {
 		return mirror.Snapshot{}, err
 	}
-	tx, err := s.database.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, owned, err := s.mirrorTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		return mirror.Snapshot{}, mirrorFailure(ctx, "mirror-read", err)
 	}
-	defer tx.Rollback()
+	if owned {
+		defer tx.Rollback()
+	}
 	h, err := readMirrorHeader(ctx, tx, key, scope, s.limits.MaxBytes, false)
 	if err == nil {
 		err = s.readMirrorRecords(ctx, tx, key, &h)
@@ -227,8 +231,10 @@ func (s *MirrorStore) Read(ctx context.Context, a mirror.Admission, scope mirror
 	if err != nil {
 		return mirror.Snapshot{}, mirrorFailure(ctx, "mirror-read", err)
 	}
-	if err = tx.Commit(); err != nil {
-		return mirror.Snapshot{}, mirrorFailure(ctx, "mirror-read", err)
+	if owned {
+		if err = tx.Commit(); err != nil {
+			return mirror.Snapshot{}, mirrorFailure(ctx, "mirror-read", err)
+		}
 	}
 	return h.snapshot, nil
 }
@@ -274,15 +280,14 @@ func (s *MirrorStore) Apply(ctx context.Context, a mirror.Admission, u mirror.Sc
 	if err != nil {
 		return mirror.Snapshot{}, err
 	}
-	tx, err := s.database.db.BeginTx(ctx, nil)
+	tx, owned, err := s.mirrorTx(ctx, nil)
 	if err != nil {
 		return mirror.Snapshot{}, mirrorFailure(ctx, "mirror-apply", err)
 	}
-	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, "INSERT INTO public.mirror_scopes(scope_key,provider,host,repository,kind,admission) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING", key, string(u.Scope.Repository.Provider), []byte(u.Scope.Repository.Host), []byte(u.Scope.Repository.Path), string(u.Scope.Kind), []byte(u.Scope.AdmissionID)); err != nil {
-		return mirror.Snapshot{}, mirrorFailure(ctx, "mirror-apply", err)
+	if owned {
+		defer tx.Rollback()
 	}
-	old, err := readMirrorHeader(ctx, tx, key, u.Scope, s.limits.MaxBytes, true)
+	old, err := s.lockMirrorHeader(ctx, tx, key, u.Scope)
 	if err == nil {
 		err = s.readMirrorRecords(ctx, tx, key, &old)
 	}
@@ -356,8 +361,31 @@ func (s *MirrorStore) Apply(ctx context.Context, a mirror.Admission, u mirror.Sc
 	if err = admitMirror(ctx, a, u.Scope); err != nil {
 		return mirror.Snapshot{}, err
 	}
-	if err = tx.Commit(); err != nil {
-		return mirror.Snapshot{}, mirrorFailure(ctx, "mirror-apply", err)
+	if owned {
+		if err = tx.Commit(); err != nil {
+			return mirror.Snapshot{}, mirrorFailure(ctx, "mirror-apply", err)
+		}
 	}
 	return final.snapshot, nil
+}
+
+// mirrorTx never exports a SQL handle or accepts arbitrary transaction callbacks.
+// The refresh gate alone creates a tx-bound clone; standalone Read/Apply retain
+// their original transaction ownership and final admission checks.
+func (s *MirrorStore) mirrorTx(ctx context.Context, options *sql.TxOptions) (*sql.Tx, bool, error) {
+	if s.tx != nil {
+		return s.tx, false, nil
+	}
+	tx, err := s.database.db.BeginTx(ctx, options)
+	return tx, true, err
+}
+
+// lockMirrorHeader is the same canonical scope-row lock used by standalone Apply
+// and joined refresh completion. It prevents a tx-bound read from mixing an old
+// header with concurrently committed records under READ COMMITTED.
+func (s *MirrorStore) lockMirrorHeader(ctx context.Context, tx *sql.Tx, key []byte, scope mirror.Scope) (mirrorHeader, error) {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO public.mirror_scopes(scope_key,provider,host,repository,kind,admission) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING", key, string(scope.Repository.Provider), []byte(scope.Repository.Host), []byte(scope.Repository.Path), string(scope.Kind), []byte(scope.AdmissionID)); err != nil {
+		return mirrorHeader{}, err
+	}
+	return readMirrorHeader(ctx, tx, key, scope, s.limits.MaxBytes, true)
 }
