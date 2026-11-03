@@ -153,6 +153,8 @@ type Source interface {
 // Store must independently admit every Read and Apply, enforce ExpectedVersion,
 // and atomically commit rows with a complete scan's watermark. An implementation
 // must refuse incomplete watermark advancement even with the planner bypassed.
+// A persisted Permission hold survives every non-complete update; only a
+// CompleteScan with Complete coverage may clear it.
 type Store interface {
 	Read(context.Context, Admission, Scope) (Snapshot, error)
 	Apply(context.Context, Admission, ScanUpdate) (Snapshot, error)

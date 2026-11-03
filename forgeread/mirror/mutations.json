@@ -135,5 +135,27 @@
         "replace": "ok && false && ((!old.UpdatedAt.IsZero() && r.UpdatedAt.Before(old.UpdatedAt)) || (!old.ObservedAt.IsZero() && r.ObservedAt.Before(old.ObservedAt)))"
       }
     ]
+  },
+  {
+    "id": "permission-hold-planner",
+    "test": "TestMirrorPermissionHold",
+    "edits": [
+      {
+        "file": "mirror/scan.go",
+        "find": "s.Coverage.Reason == Permission && !scan.Complete",
+        "replace": "false"
+      }
+    ]
+  },
+  {
+    "id": "permission-hold-store",
+    "test": "TestMirrorStoreConformance",
+    "edits": [
+      {
+        "file": "mirror/mirrortest/store.go",
+        "find": "old.Coverage.Reason == mirror.Permission && (!u.CompleteScan || u.Coverage.State != mirror.Complete)",
+        "replace": "false"
+      }
+    ]
   }
 ]

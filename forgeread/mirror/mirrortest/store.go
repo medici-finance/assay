@@ -61,6 +61,13 @@ func (s *ReferenceStore) Apply(ctx context.Context, a mirror.Admission, u mirror
 	if u.ExpectedVersion != old.Version {
 		return mirror.Snapshot{}, mirror.ErrConflict
 	}
+	// Enforce the persisted hold independently of PlanScan. Only a confirmed
+	// complete update may replace permission-lost coverage with a readable state.
+	if old.Coverage.Reason == mirror.Permission && (!u.CompleteScan || u.Coverage.State != mirror.Complete) {
+		if u.Coverage.State != mirror.Unavailable || u.Coverage.Reason != mirror.Permission || !u.RetentionDecisionRequired || len(u.Upsert) != 0 || len(u.NotInInventory) != 0 {
+			return mirror.Snapshot{}, mirror.ErrInvalid
+		}
+	}
 	if u.Coverage.LastComplete.After(old.Coverage.LastComplete) && (!u.CompleteScan || u.Coverage.State != mirror.Complete) {
 		return mirror.Snapshot{}, mirror.ErrInvalid
 	}

@@ -327,3 +327,84 @@ func TestMirrorKernelFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// regression: sec-permission-loss-not-sticky
+func TestMirrorPermissionHold(t *testing.T) {
+	for _, failure := range []mirror.Reason{mirror.Transport, mirror.RateLimited, mirror.Unknown, mirror.Truncated, ""} {
+		name := string(failure)
+		if name == "" {
+			name = "incomplete"
+		}
+		t.Run(name, func(t *testing.T) {
+			store, scope, a, s := seed(t, true)
+			ctx := context.Background()
+			lossTime := instant.Add(time.Minute)
+			plan, err := mirror.PlanRefresh(s, lossTime, policy())
+			if err != nil {
+				t.Fatal(err)
+			}
+			loss, err := mirror.PlanScan(s, plan, mirror.ScanResult{Failure: mirror.Permission}, lossTime)
+			if err != nil {
+				t.Fatal(err)
+			}
+			held, err := store.Apply(ctx, a, loss)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertHidden := func(now time.Time) {
+				t.Helper()
+				r, err := mirror.QueryScope(ctx, store, a, mirror.Query{Scope: scope, Now: now, MaxAge: time.Hour})
+				if err != nil || r.Available || len(r.Snapshot.Records) != 0 || r.Snapshot.Coverage.Reason != mirror.Permission {
+					t.Fatalf("permission hold disclosed prior rows: %+v %v", r, err)
+				}
+			}
+			assertHidden(lossTime)
+			attemptTime := instant.Add(7 * time.Minute)
+			plan, err = mirror.PlanRefresh(held, attemptTime, policy())
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _, partialRow := fixture()
+			partialRow.ID.Number = 2
+			partialRow.ObservedAt = attemptTime
+			partialRow.UpdatedAt = attemptTime
+			incomplete, err := mirror.PlanScan(held, plan, mirror.ScanResult{Failure: failure, Records: []mirror.Observation{partialRow}}, attemptTime)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if incomplete.Coverage.State != mirror.Unavailable || incomplete.Coverage.Reason != mirror.Permission || !incomplete.RetentionDecisionRequired || len(incomplete.Upsert) != 0 || len(incomplete.NotInInventory) != 0 {
+				t.Fatalf("non-complete scan cleared permission hold: %+v", incomplete)
+			}
+			held, err = store.Apply(ctx, a, incomplete)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertHidden(attemptTime)
+			recoveryTime := instant.Add(13 * time.Minute)
+			plan, err = mirror.PlanRefresh(held, recoveryTime, policy())
+			if err != nil {
+				t.Fatal(err)
+			}
+			// An unchanged validator is not a complete observation from an unavailable baseline.
+			if _, err := mirror.PlanScan(held, plan, mirror.ScanResult{Complete: true, NotModified: true, ConditionalSupported: true, Validator: "validator-1", Revision: "revision-1"}, recoveryTime); err == nil {
+				t.Fatal("not-modified cleared permission hold")
+			}
+			_, _, row := fixture()
+			row.ObservedAt = recoveryTime
+			recovered, err := mirror.PlanScan(held, plan, mirror.ScanResult{Complete: true, Records: []mirror.Observation{row}, ObservedUpTo: recoveryTime, Revision: "recovered"}, recoveryTime)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if recovered.RetentionDecisionRequired || recovered.Coverage.Reason != "" || !recovered.CompleteScan {
+				t.Fatalf("complete recovery did not clear hold: %+v", recovered)
+			}
+			if _, err := store.Apply(ctx, a, recovered); err != nil {
+				t.Fatal(err)
+			}
+			r, err := mirror.QueryScope(ctx, store, a, mirror.Query{Scope: scope, Now: recoveryTime, MaxAge: time.Hour})
+			if err != nil || !r.Available || len(r.Snapshot.Records) != 1 || r.Snapshot.Records[0].Title != "canary" {
+				t.Fatalf("complete recovery failed: %+v %v", r, err)
+			}
+		})
+	}
+}

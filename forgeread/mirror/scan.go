@@ -47,6 +47,14 @@ func PlanScan(s Snapshot, p ScanPlan, scan ScanResult, now time.Time) (ScanUpdat
 		u.RetentionDecisionRequired = true
 		return u, nil
 	}
+	// Coverage.Reason is the persisted permission-loss hold. A failed or partial
+	// observation cannot establish that source access returned or choose a retention action.
+	if s.Coverage.Reason == Permission && !scan.Complete {
+		u.Coverage.State = Unavailable
+		u.Coverage.Reason = Permission
+		u.RetentionDecisionRequired = true
+		return u, nil
+	}
 	if scan.NotModified {
 		if !scan.Complete || scan.Failure != "" || len(scan.Records) > 0 || !scan.ConditionalSupported || s.Coverage.State != Complete || p.Validator == "" || p.Validator != s.Coverage.Validator || scan.Validator != p.Validator || p.FullInventory != s.Coverage.ValidatorFullInventory || !p.Since.Equal(s.Coverage.ValidatorSince) || (scan.Revision != "" && scan.Revision != s.Coverage.Revision) {
 			return ScanUpdate{}, invalid("not-modified lacks compatible complete baseline")

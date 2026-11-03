@@ -76,6 +76,9 @@ The package has no network, credential, filesystem, process, database or schedul
 implementation. `mirror/mirrortest` is synthetic reference-store/conformance support,
 not production persistence. Permission loss returns unavailable coverage and a
 retention-decision-required signal, without choosing keep-history or purge. The
+permission hold persists across failed or partial scans and only a successful
+complete observation may clear it; Store adapters enforce that transition
+independently of the planner. The
 persisted mirror integration retains PostgreSQL transactions/restart, authenticated
 source mapping, refresh coalescing, review population completeness, domain mapping,
 retention policy and reader rollout. These are not supplied by the kernel.
