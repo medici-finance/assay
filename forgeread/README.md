@@ -62,6 +62,37 @@ never retries through that path.
 cd forgeread && GOWORK=off go test ./...
 ```
 
+## Mirror kernel
+
+`mirror/` owns provider-qualified observations, admission-bound scopes, coverage,
+explicit-time refresh/scan plans and admitted queries over caller-supplied ports.
+`QueryScope` checks current admission before reading a Store; the Store must also
+check admission independently. Complete-empty is available only with complete,
+fresh coverage. Partial scans retain prior rows and their completeness watermark;
+full inventory absence means not-in-inventory, never closed. Full-inventory time
+is tracked separately so incremental success cannot postpone repair indefinitely.
+
+The package has no network, credential, filesystem, process, database or scheduler
+implementation. `mirror/mirrortest` is synthetic reference-store/conformance support,
+not production persistence. Permission loss returns unavailable coverage and a
+retention-decision-required signal, without choosing keep-history or purge. The
+permission hold persists across failed or partial scans and only a successful
+complete full inventory may clear it, under current matching admission and with
+both LastComplete and LastInventory strictly after the held LastAttempted.
+Incremental, not-modified and stale/replayed updates cannot recover permission.
+Store adapters enforce that transition independently of the planner. The
+persisted mirror integration retains PostgreSQL transactions/restart, authenticated
+source mapping, refresh coalescing, review population completeness, domain mapping,
+retention policy and reader rollout. These are not supplied by the kernel.
+`RetainedFrom` is optional and zero means unknown; the durable Store must derive it
+from actual retained coverage under the selected policy, never the oldest visible
+row. Trusted composition must canonicalize GitHub owner/repository case before
+constructing a Scope; this pure package does not resolve aliases.
+
+The root API and its JSON envelope stay unchanged. Later shared-library composition
+can consume the kernel without moving credentials into this package. Targeted
+kernel checks run with `go test -run '^TestMirror' ./mirror/...`.
+
 ## Incremental source reads (Go API 1.2)
 
 The provider adapters add `ChangesUpdatedSince` and `IssuesUpdatedSince` over the same
