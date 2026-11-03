@@ -65,6 +65,9 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 	context, seenContext, block, found := false, false, false, false
 	fence := ""
 	endedByBlank := false
+	// The current "- " bullet's indent, and whether its declaration reached a
+	// description a deeper-indented line may wrap; -1 and false outside one.
+	bulletIndent, described := -1, false
 	var out []string
 	seen := map[string]bool{}
 	for _, raw := range strings.Split(content, "\n") {
@@ -165,9 +168,25 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 		if !block {
 			continue
 		}
-		paths, err := declarationLine(line)
+		indent := len(raw) - len(strings.TrimLeftFunc(raw, unicode.IsSpace))
+		// A "- " bullet whose declaration reached its description (" — " or ':')
+		// may wrap that description onto deeper-indented lines (#3697). Such a
+		// line that the declaration grammar cannot read is the description's
+		// prose, exactly as it is when joined onto the bullet. One that does read
+		// as declarations is still declarations, so a wrap never drops a path the
+		// line would declare on its own; a list item or quote is never a wrap.
+		wrap := described && indent > bulletIndent && scopeListPrefix(line) == 0 && !strings.HasPrefix(line, ">")
+		paths, desc, err := declarationLine(line)
 		if err != nil {
+			if wrap && ExitCodeOf(err) == ExitRefused {
+				continue
+			}
 			return nil, err
+		}
+		if strings.HasPrefix(strings.TrimSpace(raw), "- ") {
+			bulletIndent, described = indent, desc
+		} else if !wrap {
+			bulletIndent, described = -1, false
 		}
 		for _, p := range paths {
 			expanded, err := expandDeclaration(p)
@@ -274,15 +293,17 @@ func scopeLooseContinuation(raw, line string) bool {
 		scopeListPrefix(line) != 0 || strings.HasPrefix(line, "`") || strings.HasPrefix(line, ">"))
 }
 
-func declarationLine(line string) ([]string, error) {
+// declarationLine reads one line's declarations. described reports that the line
+// ended in a description (after " — " or a ':'), which a wrapped line may continue.
+func declarationLine(line string) (paths []string, described bool, err error) {
 	for _, sep := range []string{" — "} {
 		if i := strings.Index(line, sep); i >= 0 {
-			line = line[:i]
+			line, described = line[:i], true
 		}
 	}
 	line = strings.TrimSpace(strings.TrimPrefix(line, "- "))
 	if line == "their tests," {
-		return nil, nil
+		return nil, described, nil
 	}
 	var result []string
 	for line != "" {
@@ -294,7 +315,7 @@ func declarationLine(line string) ([]string, error) {
 		if strings.HasPrefix(line, "**") {
 			end := strings.Index(line[2:], "**")
 			if end < 0 {
-				return nil, Refused("refused: unclosed Context files: action annotation")
+				return nil, false, Refused("refused: unclosed Context files: action annotation")
 			}
 			line = strings.TrimSpace(line[end+4:])
 			continue
@@ -303,7 +324,7 @@ func declarationLine(line string) ([]string, error) {
 		if strings.HasPrefix(line, "`") {
 			i := strings.IndexByte(line[1:], '`')
 			if i < 0 {
-				return nil, Refused("refused: unclosed Context files: path quote")
+				return nil, false, Refused("refused: unclosed Context files: path quote")
 			}
 			p, line = TrimScopeAnnotation(line[1:i+1]), line[i+2:]
 		} else {
@@ -325,7 +346,7 @@ func declarationLine(line string) ([]string, error) {
 			p, line = line[:i], line[i:]
 		}
 		if p == "" {
-			return nil, Refused("refused: empty Context files: path")
+			return nil, false, Refused("refused: empty Context files: path")
 		}
 		result = append(result, p)
 		line = strings.TrimSpace(line)
@@ -335,7 +356,7 @@ func declarationLine(line string) ([]string, error) {
 			for strings.HasPrefix(line, "(") {
 				i := strings.IndexByte(line, ')')
 				if i < 0 {
-					return nil, Refused("refused: unclosed Context files: annotation")
+					return nil, false, Refused("refused: unclosed Context files: annotation")
 				}
 				line = strings.TrimSpace(line[i+1:])
 			}
@@ -347,6 +368,7 @@ func declarationLine(line string) ([]string, error) {
 			line = strings.TrimSpace(rest)
 		}
 		if strings.HasPrefix(line, ":") {
+			described = true
 			break
 		} // description after a declaration and its annotations
 		if line == "" || line == "." || line == "their tests," {
@@ -360,9 +382,9 @@ func declarationLine(line string) ([]string, error) {
 			line = strings.TrimSpace(line[4:])
 			continue
 		}
-		return nil, Refused("refused: unsupported Context files: declaration tail " + line)
+		return nil, false, Refused("refused: unsupported Context files: declaration tail " + line)
 	}
-	return result, nil
+	return result, described, nil
 }
 
 // TrimScopeAnnotation drops the trailing " (…)" annotations an author wrote
