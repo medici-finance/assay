@@ -43,7 +43,13 @@ consumers:
 
 ## Context
 
-files: `forgeread/mirror/types.go` (planned), `forgeread/mirror/coverage.go` (planned), `forgeread/mirror/planner.go` (planned), `forgeread/mirror/scan.go` (planned), `forgeread/mirror/query.go` (planned), their package tests, `forgeread/mirror/mirrortest/` (planned), `forgeread/README.md`, `docs/contracts.md`, `changelog/forge-mirror-kernel.md` (planned). Reuse `tools/forge-import-check/` without copying it.
+files:
+- `forgeread/mirror/` (planned)
+- `forgeread/README.md`
+- `docs/contracts.md`
+- `changelog/forge-mirror-kernel.md` (planned)
+
+Reuse the existing source-only checker in tools/forge-import-check without copying it.
 
 facts:
 - At source `7c62923293d0b640ec90afbf318cae2497908f28`, forgeread/36's module, root offline reader and admitted adapters exist; `forgeread/mirror` and `workflow/store` do not.
