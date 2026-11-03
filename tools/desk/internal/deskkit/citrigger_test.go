@@ -200,6 +200,11 @@ func TestDeskdImageContractCI(t *testing.T) {
 	ciAssertPublicLayoutRow(t, "tools/desk/internal/cellapi/deskdimage_test.go")
 }
 
+// TestWorkflowFoundationCI keeps this contract reader live without tools.yml.
+func TestWorkflowFoundationCI(t *testing.T) {
+	ciAssertPublicLayoutRow(t, "workflow/store/foundation_test.go")
+}
+
 // ciAssertPublicLayoutRow runs one registry row's event reachability and read
 // coverage against the workflow in the public source layout, without the
 // house-only tools.yml fixture the full sweep above skips on.
@@ -336,6 +341,12 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{test: "workflow/store/foundation_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
+			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
+			reads:      []string{"spec/coordination-store-v1.md", ".github/workflows/assay-workflow.yml"},
+			runInvokes: []string{"cd workflow", "go test -count=1 -race -timeout=180s ./..."},
+			why:        "the canonical PostgreSQL foundation contract and workflow are executable inputs, not build-only documentation"},
+
 		{test: "gitcore/ackguard_test.go", module: "gitcore", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads: []string{"gitcore/", "tools/desk/"}, runInvokes: []string{`*/gitcore|gitcore) extra="GOWORK=off go test -count=1 -timeout=300s . ./gittest"`},
 			why: "the lifted Git owner retains desk and public-owner source coverage; actual source CI execution is required"},

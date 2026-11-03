@@ -29,7 +29,16 @@ exec-tier: strong
 exec-tier-why: "Migration atomicity, concurrent initialisation and schema compatibility must be checked on real PostgreSQL rather than an in-memory substitute."
 domain: complicated
 consumers:
-- "workflow/store connection, migrations and test harness: follow-up graph-execution/36 (this brief; implementation owns these paths)"
+- "workflow/store/: fixed-here"
+- "workflow/internal/pgtest/: fixed-here"
+- "workflow/go.mod: fixed-here"
+- "workflow/go.sum: fixed-here"
+- "workflow/README.md: fixed-here"
+- "workflow/testdata/compose.yaml: fixed-here"
+- "spec/coordination-store-v1.md: fixed-here"
+- "docs/contracts.md: fixed-here"
+- ".github/workflows/assay-workflow.yml: fixed-here"
+- "tools/desk/internal/deskkit/citrigger_test.go: fixed-here"
 - "workflow/store domain tables, admission, outbox and reconstruction: follow-up graph-execution/19"
 - "workflow/store mirror persistence: out-of-scope (no SQL mirror caller exists; separate /37 precursor amendment must bind this ledger before partial dispatch)"
 - "loopadmin supervisor persistence: out-of-scope (same engine, separate schema and no Go dependency on this foundation)"
