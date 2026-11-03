@@ -112,6 +112,10 @@ failure cannot poison another admission or a changed access epoch. Permission fa
 remain unavailable and retain /37's full-inventory recovery and selected retention gate;
 expiry alone cannot clear a permission hold. Authoritatively observed absence is a
 separate successful fact with explicit coverage/invalidation, not the failure cache.
+An oversized, truncated or otherwise unqualified 404 proves neither authoritative absence
+nor confirmed repository permission loss. Its cached status cannot authorize purge.
+Keep the failed read explicit and let the existing retention owner qualify permission
+loss under the selected policy; add no automatic confirmation probe or generic endpoint.
 
 The reuse key describes the actual source fill. Different projections that need the same
 base observations join /37's one scoped refresh and its failure cooldown; this must not
