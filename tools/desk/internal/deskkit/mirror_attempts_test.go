@@ -70,7 +70,7 @@ func (a *nativeAuthority) BeforeAttempt(ctx context.Context, g mirror.AttemptGra
 		r := mirror.AttemptReservation{ID: fmt.Sprintf("uncertain-%d", a.serial), Grant: g}
 		a.pending[r.ID] = r
 		a.unknown = true
-		return mirror.AttemptReservation{}, errors.New("synthetic-private-authority-detail")
+		return mirror.AttemptReservation{}, errors.New("synthetic-authority-detail")
 	}
 	if a.deny != "" {
 		return mirror.AttemptReservation{}, &mirror.AttemptError{Hold: a.deny}
@@ -103,7 +103,7 @@ func (a *nativeAuthority) ObserveAttempt(ctx context.Context, r mirror.AttemptRe
 	}
 	if a.observeErr {
 		a.unknown = true
-		return errors.New("synthetic-private-observation-detail")
+		return errors.New("synthetic-observation-detail")
 	}
 	if p, ok := a.pending[r.ID]; !ok || p.ID != r.ID || !p.Grant.Equal(r.Grant) || o.HTTP.Value < 0 || o.HTTP.Value > 1 || o.DecodedBytes.Value < 0 || o.ObservedAt.IsZero() {
 		return &mirror.AttemptError{Hold: mirror.AttemptUnknownHeld}
@@ -218,6 +218,26 @@ func (r nativeErrorReader) Read([]byte) (int, error) { return 0, r.err }
 type nativeRT func(*http.Request) (*http.Response, error)
 
 func (f nativeRT) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+func nativeErrorDetail(err error) bool {
+	pending := []error{err}
+	for n := 0; len(pending) > 0 && n < 64; n++ {
+		current := pending[0]
+		pending = pending[1:]
+		if current == nil {
+			continue
+		}
+		if strings.Contains(current.Error(), "synthetic-") {
+			return true
+		}
+		if many, ok := current.(interface{ Unwrap() []error }); ok {
+			pending = append(pending, many.Unwrap()...)
+		} else if one, ok := current.(interface{ Unwrap() error }); ok {
+			pending = append(pending, one.Unwrap())
+		}
+	}
+	return len(pending) > 0
+}
+
 func nativeResponse(status int, body string) *http.Response {
 	return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}
 }
@@ -520,7 +540,7 @@ func TestMirrorNativeAttemptGrant(t *testing.T) {
 				if !errors.Is(err, mirror.ErrAttemptHeld) || calls != 0 || f.authority.before != wantBefore || state.snapshot().HTTP.Value != wantHTTP {
 					t.Fatalf("lower native guard failed: err=%v calls=%d before=%d receipt=%+v", err, calls, f.authority.before, state.snapshot())
 				}
-				if strings.Contains(err.Error(), "synthetic-private") {
+				if nativeErrorDetail(err) {
 					t.Fatal("authority implementation detail escaped")
 				}
 				if mode == "uncertain" && (f.authority.serial != 1 || len(f.authority.pending) != 1 || !f.authority.unknown) {
@@ -578,6 +598,9 @@ func TestMirrorNativeAttemptGrant(t *testing.T) {
 			scan, err := f.source.Scan(context.Background(), f.admission, f.scope, f.plan)
 			if !errors.Is(err, mirror.ErrAttemptHeld) || scan.Complete || !scan.ObservedUpTo.IsZero() || scan.Failure != "" || scan.Attempts.HTTP != (mirror.WorkCount{Value: wantHTTP, Known: true}) || f.requests.Load() != wantHTTP {
 				t.Fatalf("budget hold became source error/complete/false work: %+v err=%v HTTP=%d", scan, err, f.requests.Load())
+			}
+			if nativeErrorDetail(err) {
+				t.Fatal("authority implementation detail escaped source error chain")
 			}
 			if mode == "ceiling" && f.authority.before != 1 {
 				t.Fatal("local ceiling did not refuse before another debit")
