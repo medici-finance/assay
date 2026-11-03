@@ -13,7 +13,7 @@ gate-why: "The new reads handle private issue/change data. The human accepts dem
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 5
+version: 6
 id: 91f28e5a-12cc-4e3d-8e9a-846bef0fd93d
 outcome: none
 design: DR-forge-library
@@ -38,7 +38,7 @@ consumers:
   - "docs/streams/forge-gitlab/inventory.md, forgeread/README.md, changelog/forge-incremental-reads.md: follow-up forge-neutral/47"
   - "forgeread/mirror/, workflow/store/, conditional validator caching and populated mirror reader integration: follow-up forge-neutral/37"
   - "forgeclient/ trusted composition migration: follow-up desktools-v2/75"
-  - "statusgen/: out-of-scope (no new link or online-read path here)"
+  - "statusgen production readers: out-of-scope (no new link or online-read path here; synthetic version fixture named separately)"
 ---
 
 # Brief 47 — Admitted incremental forge readers for mirror ingestion
@@ -108,10 +108,8 @@ Named tests are planned deliverables; require exact PASS lines so missing/skippe
 | 4 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestIncrementalReadLowerScope$' ./internal/deskkit/... > "$o" && grep -F -- '--- PASS: TestIncrementalReadLowerScope ' "$o")` | With the source caller check bypassed, A-only admitted transport refuses B before zero provider requests; valid A is a positive control for both providers. Removing the production lower scope check sends the canary request and fails. |
 | 5 | check:ci +mutation +dereference | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeSurfaceUnchangedByDeskread$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestForgeSurfaceUnchangedByDeskread ' "$o" && GOWORK=off go test -count=1 -v -run '^TestForgeGitlabCoverage$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestForgeGitlabCoverage ' "$o" && GOWORK=off go test -count=1 -v -run '^TestAmbientTokenGuardCoversForgeread$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestAmbientTokenGuardCoversForgeread ' "$o")` | All three named existing tests actually run/PASS. Frozen surface gains exactly the two methods and concrete inventory consumer. Third unregistered operation, missing inventory or adapter ambient-token plant fails. Extend existing guards if new composition files require coverage. |
 | 6 | check +dereference | `statusgen --root . --consumers --brief forge-neutral/47 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | Exit 0 on actual implementing diff; corroborate own consumers while /37 and /75 follow-up routes remain honest. No service/store/cutover acceptance is claimed. |
-
 | 7 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReadOnlyForgeRefusesEveryWriteMethod$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestReadOnlyForgeRefusesEveryWriteMethod ' "$o" && GOWORK=off go test -count=1 -v -run '^TestCITransportRefusesWriteMethods$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestCITransportRefusesWriteMethods ' "$o" && GOWORK=off go test -count=1 -v -run '^TestOutboundForgeWrapsEveryWriteMethod$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestOutboundForgeWrapsEveryWriteMethod ' "$o")` | Existing read-only and CI write fences still refuse every write and outbound classification covers the new methods; each named test runs/PASS. Removing a write fence or misclassifying an added method fails its production-path control. |
-
-| 8 | check:ci +flow | `(cd statusgen && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off GOPROXY=off go test -count=1 -v -run '^TestReaderSDKExternalConsumer$/^a_consumer_builds_against_the_published_module_with_no_workspace$' . > "$o" && grep -F -- '--- PASS: TestReaderSDKExternalConsumer ' "$o")` | The actual isolated external-consumer fixture publishes current source through its file proxy, builds without a workspace and prints the unchanged schema plus API1.2.0; no production online-reader/import change. |
+| 8 | check:ci +flow +mutation | `(cd statusgen && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off GOPROXY=off GOSUMDB=off go test -count=1 -v -run '^TestReaderSDKExternalConsumer$/^a_consumer_builds_against_the_published_module_with_no_workspace$' . > "$o" && grep -F -- '--- PASS: TestReaderSDKExternalConsumer/a_consumer_builds_against_the_published_module_with_no_workspace ' "$o" && GOWORK=off GOPROXY=off GOSUMDB=off go test -count=1 -v -run '^TestReaderSDKExternalConsumer$/^omitting_the_module_publication_fails_the_build$' . > "$o" && grep -F -- '--- PASS: TestReaderSDKExternalConsumer/omitting_the_module_publication_fails_the_build ' "$o")` | The isolated external-consumer fixture publishes current source through its file proxy, builds without a workspace and prints unchanged schema plus API1.2.0. Missing publication fails the build as a negative control; both named subtests run/PASS. No production online-reader/import change. |
 
 ## Evidence
 
