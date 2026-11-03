@@ -262,7 +262,8 @@ queried snapshot version. The canonical `Completion.ReviewOnlyPartial` class is
 persisted only after its qualified partial Apply; a weaker joined query cannot
 install a review-owner-induced failure. Strong requirements and actual source
 failures retain their backoff without upgrading LastComplete. Unchecked outcomes
-only release their waiter debit.
+only release their waiter debit. After generation replacement, Leave still releases
+the exact old ticket but never interprets its outcome against the new generation.
 
 `Complete` verifies its exact bound canonical Store, current generation/lease and
 current caller/admission before any observation write. Its private transaction-

@@ -112,8 +112,8 @@ operation, source request or credential lookup. A status-only hold retains synth
 while QueryScope withholds their content. Current authorization is checked before and after
 I/O and immediately before commit; revocation detected after a durable commit cannot undo it.
 
-Naked Apply has no shared refresh-generation fence. Future integration must check the current
-generation and join Apply plus completion/cooldown in the same canonical SQL transaction.
+Naked Apply has no shared refresh-generation fence. The shared refresh adapter below checks
+the current generation and joins Apply plus completion/cooldown in the same SQL transaction.
 Do not use this Store alone to claim a production coordinator safely fences stale workers.
 Full forge-neutral/37 joined persisted evidence, retention and activation remain owed.
 
@@ -155,6 +155,8 @@ without refund. The private joined Store commits observations and fenced complet
 together. Standalone Store Apply remains available without granting refresh ownership.
 Canonical lock order is admission, source budget, caller, fill, waiter/attempt, then
 mirror scope/records. Native I/O and waiting retain no SQL locks or pool connection.
+A superseded waiter releases its exact ticket debit without applying its checked outcome
+to the later generation; a new freshness demand can still acquire a new generation.
 
 The Gate's profile and base identity use version1 canonical JSON over byte-array
 identity fields, preserving arbitrary opaque string bytes across processes. This
