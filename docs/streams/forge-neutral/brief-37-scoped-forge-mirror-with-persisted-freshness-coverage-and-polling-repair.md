@@ -531,3 +531,16 @@ helper plus the actual authored-row input through whole-stream-root coverage. No
 stream name ships in desk source, and neither corpus nor secret guard is exempted or weakened.
 The standalone harness still reads and executes the actual two Verify commands and all
 22 compiler cases. Human retention choices and historical Evidence remain unchanged.
+
+## Read-through coordinator ownership — 3 November 2026
+
+The bounded contribution assay:assay:forge-neutral:51 supplies the store-injected
+coordinator and typed read-refresh gate port over the existing mirror kernel. This
+brief consumes that coordinator at trusted deskkit composition and implements its
+production gate through the same canonical R2 PostgreSQL store: generation-bound
+apply/completion, shared retry eligibility, finite caller/admission accounting and
+independent-process/restart controls. No second store or execution claim is added.
+The synthetic gate/reference-store profile does not discharge the real mapper,
+durable Store and preserved-watermark join in row23. Every existing Task, all23
+Class/Command pairs, retention decision, acceptance gate and historical Evidence
+remain unchanged.
