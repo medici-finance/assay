@@ -1,7 +1,6 @@
 package evaluation
 
 import (
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -287,8 +286,8 @@ func BuildMilestoneGraph(in MilestoneGraphInput) MilestoneGraph {
 			inherited.unknowns = append(inherited.unknowns, u...)
 		}
 		own.unknowns = append(own.unknowns, m.Unknowns...)
-		n.Blockers = dedupe(append(slices.Clone(own.blockers), inherited.blockers...))
-		n.Unknowns = dedupe(append(slices.Clone(own.unknowns), inherited.unknowns...))
+		n.Blockers = dedupe(append(cloneList(own.blockers), inherited.blockers...))
+		n.Unknowns = dedupe(append(cloneList(own.unknowns), inherited.unknowns...))
 		closures[ref] = closure{
 			blockers: dedupe(append(qualify(ref, own.blockers), inherited.blockers...)),
 			unknowns: dedupe(append(qualify(ref, own.unknowns), inherited.unknowns...)),
@@ -374,7 +373,7 @@ func requirement(r MilestonePin, records map[string]GraphMilestone, visiting map
 		return nil, []string{"milestone " + ref + " acceptance is not observed"}
 	}
 	c := closures[ref]
-	return slices.Clone(c.blockers), slices.Clone(c.unknowns)
+	return cloneList(c.blockers), cloneList(c.unknowns)
 }
 
 // closure is a milestone's transitive blockers and unknowns, each entry
@@ -388,6 +387,9 @@ func qualify(ref string, list []string) []string {
 	}
 	return out
 }
+
+// cloneList copies a list so a caller never aliases a stored closure.
+func cloneList(list []string) []string { return append([]string(nil), list...) }
 
 // dedupe keeps the first occurrence of each entry, in order.
 func dedupe(list []string) []string {

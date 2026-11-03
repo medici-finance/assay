@@ -158,7 +158,7 @@
     {
       "name": "lattice-requalifies-every-path",
       "target": "statusgen/evaluation/milestonegraph.go",
-      "old": "c := closures[ref]\n\treturn slices.Clone(c.blockers), slices.Clone(c.unknowns)",
+      "old": "c := closures[ref]\n\treturn cloneList(c.blockers), cloneList(c.unknowns)",
       "new": "_ = closures\n\treturn qualify(ref, n.Blockers), qualify(ref, n.Unknowns)",
       "module": "statusgen",
       "package": ".",
