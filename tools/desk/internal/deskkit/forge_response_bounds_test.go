@@ -40,27 +40,33 @@ func (b *nativeCountBody) Read(p []byte) (int, error) {
 func (b *nativeCountBody) Close() error { b.closed = true; return nil }
 
 type nativeFixtureTransport struct {
-	payload  string
-	length   int64
-	status   int
-	encoding string
-	chunked  bool
-	redirect string
-	hits     int
-	body     *nativeCountBody
+	payload     string
+	length      int64
+	status      int
+	encoding    string
+	invalidGzip bool
+	fault       error
+	chunked     bool
+	redirect    string
+	hits        int
+	body        *nativeCountBody
 }
 
 func (f *nativeFixtureTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	f.hits++
 	payload := []byte(f.payload)
-	if f.encoding == "gzip" {
+	if f.encoding == "gzip" && !f.invalidGzip {
 		var buf bytes.Buffer
 		z := gzip.NewWriter(&buf)
 		_, _ = z.Write(payload)
 		_ = z.Close()
 		payload = buf.Bytes()
 	}
-	f.body = &nativeCountBody{Reader: bytes.NewReader(payload)}
+	var reader io.Reader = bytes.NewReader(payload)
+	if f.fault != nil {
+		reader = io.MultiReader(reader, nativeReadError{f.fault})
+	}
+	f.body = &nativeCountBody{Reader: reader}
 	h := make(http.Header)
 	h.Set("Content-Type", "application/json")
 	if f.length >= 0 {
@@ -82,6 +88,10 @@ func (f *nativeFixtureTransport) RoundTrip(r *http.Request) (*http.Response, err
 	}
 	return resp, nil
 }
+
+type nativeReadError struct{ err error }
+
+func (r nativeReadError) Read([]byte) (int, error) { return 0, r.err }
 
 // nativeAccess bypasses adapter aggregate accounting but still uses the actual
 // admitted backend's mirror-specific transport and native SDK page reader.
@@ -169,6 +179,33 @@ func TestMirrorResponseBoundIsolation(t *testing.T) {
 				var api *ForgeAPIError
 				if !errors.As(err, &api) || api.Status != status || !errorsRT.body.closed {
 					t.Fatalf("ordinary error classification changed: %v", err)
+				}
+			}
+			for _, status := range []int{http.StatusForbidden, http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+				for _, mode := range []string{"truncated", "unsupported", "bad-gzip"} {
+					errRT := &nativeFixtureTransport{payload: `[]`, length: -1, status: status}
+					if mode == "truncated" {
+						errRT.fault = io.ErrUnexpectedEOF
+					}
+					if mode == "unsupported" {
+						errRT.encoding = "br"
+					}
+					if mode == "bad-gzip" {
+						errRT.encoding = "gzip"
+						errRT.invalidGzip = true
+					}
+					source, err := NewMirrorReadSource(nativeBackend(provider, errRT), ForgeResolution{Kind: provider, Repo: ForgeRepo{Owner: "o", Name: "r"}})
+					if err != nil {
+						t.Fatal(err)
+					}
+					out, err := source.Read(context.Background(), MirrorIssues, adapters.UpdateQuery{})
+					var api *ForgeAPIError
+					if err == nil || !errors.As(err, &api) || api.Status != status || api.Body != "" || api.Message != "" || len(out.Issues) != 0 || !out.ObservedUpTo.IsZero() || !errRT.body.closed {
+						t.Fatalf("%s discarded known status %d or exposed population: %+v %v", mode, status, out, err)
+					}
+					if mode == "truncated" && !errors.Is(err, io.ErrUnexpectedEOF) {
+						t.Fatalf("truncated prefix lost read failure: %v", err)
+					}
 				}
 			}
 			cancelRT := &nativeCancelTransport{started: make(chan struct{})}

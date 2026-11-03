@@ -138,8 +138,8 @@ mirror client copies reuse the admitted transport, cancellation and scope checks
 reads, logs, archives and writes keep their previous behavior. The bound reads at most one
 additional decoded byte to detect overflow, closes the original body, and returns an
 inspectable limit/could-not-check cause without a population or observed bound.
-Known HTTP error status remains available beneath that cause, without retaining response
-body, headers or endpoint metadata. Automatic
+On native guard failure, known HTTP error status remains inspectable alongside the original
+limit or read cause. The added HTTP metadata contains status only. Automatic
 HTTP gzip decoding and explicitly encoded gzip responses use the same decoded-byte cap;
 unsupported content encodings refuse. Content-Length never substitutes for counting bytes.
 This native contribution does not qualify the future mapper's preservation of persisted

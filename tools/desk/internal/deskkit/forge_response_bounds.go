@@ -14,17 +14,24 @@ import (
 
 // mirrorResponseLimitError is inspectable through the SDK/DeskError cause chain.
 // It carries no response body, header, endpoint or credential.
-type mirrorResponseLimitError struct{ api *ForgeAPIError }
+type mirrorResponseLimitError struct{}
 
 func (*mirrorResponseLimitError) Error() string {
 	return "mirror response exceeds decoded JSON byte limit"
 }
 func (*mirrorResponseLimitError) LimitBytes() int64 { return adapters.MaxUpdateBytes }
-func (e *mirrorResponseLimitError) Unwrap() error {
-	if e.api == nil {
-		return nil
-	}
-	return e.api
+
+// The native guard can reject before either SDK maps an HTTP error. Preserve
+// that known status independently of the rejection cause. Added HTTP metadata
+// contains status only. Error renders only the original cause.
+type mirrorResponseStatusError struct {
+	cause  error
+	status int
+}
+
+func (e *mirrorResponseStatusError) Error() string { return e.cause.Error() }
+func (e *mirrorResponseStatusError) Unwrap() []error {
+	return []error{e.cause, &ForgeAPIError{Status: e.status}}
 }
 
 // mirrorResponseClient copies the admitted transport. Only the two enumerated
@@ -66,10 +73,20 @@ func (g *GitLabForge) mirrorAccess(ctx context.Context) adapters.Access {
 
 type mirrorResponseTransport struct{ next http.RoundTripper }
 
-func (t mirrorResponseTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+func (t mirrorResponseTransport) RoundTrip(r *http.Request) (out *http.Response, failure error) {
 	resp, err := t.next.RoundTrip(r)
+	if resp != nil {
+		defer func() {
+			if failure != nil && resp.StatusCode != 0 && (resp.StatusCode < 200 || resp.StatusCode >= 300) {
+				failure = &mirrorResponseStatusError{cause: failure, status: resp.StatusCode}
+			}
+		}()
+	}
 	if err != nil {
-		return resp, err
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		return nil, err
 	}
 	if resp == nil || resp.Body == nil {
 		return nil, fmt.Errorf("mirror response has no body")
@@ -95,13 +112,7 @@ func (t mirrorResponseTransport) RoundTrip(r *http.Request) (*http.Response, err
 	// cap therefore measures JSON bytes, not Content-Length or compressed bytes.
 	body, err := io.ReadAll(io.LimitReader(decoded, adapters.MaxUpdateBytes+1))
 	if int64(len(body)) > adapters.MaxUpdateBytes {
-		limit := &mirrorResponseLimitError{}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			// Retain already-known status classification without allowing the
-			// SDK to read the oversized error body, or copying body/header data.
-			limit.api = &ForgeAPIError{Status: resp.StatusCode}
-		}
-		return nil, limit
+		return nil, &mirrorResponseLimitError{}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("mirror response read did not complete: %w", err)
