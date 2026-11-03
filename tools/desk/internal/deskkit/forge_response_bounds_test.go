@@ -231,7 +231,7 @@ func nativePayload(provider ForgeKind, kind MirrorRecordKind) string {
 func TestMirrorNativeResponseBounds(t *testing.T) {
 	for _, provider := range []ForgeKind{ForgeGitHub, ForgeGitLab} {
 		for _, kind := range []MirrorRecordKind{MirrorIssues, MirrorChanges} {
-			for _, mode := range []string{"small", "exact", "gzip-small", "gzip-exact", "known", "absent", "false", "chunked", "gzip", "error", "error-gzip", "prefix"} {
+			for _, mode := range []string{"small", "exact", "gzip-small", "gzip-exact", "known", "absent", "false", "chunked", "gzip", "error", "error-gzip", "error-rate", "error-rate-gzip", "error-server", "error-server-gzip", "prefix"} {
 				t.Run(string(provider)+"/"+string(kind)+"/"+mode, func(t *testing.T) {
 					payload := nativePayload(provider, kind)
 					rt := &nativeFixtureTransport{length: -1}
@@ -242,6 +242,12 @@ func TestMirrorNativeResponseBounds(t *testing.T) {
 					if strings.HasPrefix(mode, "error") {
 						payload = `{"message":"denied"}`
 						rt.status = http.StatusForbidden
+						if strings.Contains(mode, "rate") {
+							rt.status = http.StatusTooManyRequests
+						}
+						if strings.Contains(mode, "server") {
+							rt.status = http.StatusServiceUnavailable
+						}
 					}
 					if !strings.HasSuffix(mode, "small") {
 						size := nativeTestLimit
@@ -276,6 +282,14 @@ func TestMirrorNativeResponseBounds(t *testing.T) {
 						}
 						if len(got.Issues)+len(got.Changes) != 0 || !got.ObservedUpTo.IsZero() {
 							t.Fatalf("overflow exposed observations: %+v", got)
+						}
+						var api *ForgeAPIError
+						if strings.HasPrefix(mode, "error") {
+							if !errors.As(err, &api) || api.Status != rt.status || api.Body != "" || api.Message != "" || (rt.status == http.StatusForbidden && !IsForgeForbidden(err)) || (rt.status == http.StatusTooManyRequests && !IsForgeRateLimited(err)) {
+								t.Fatalf("limit lost known native error status: %v", err)
+							}
+						} else if errors.As(err, &api) {
+							t.Fatalf("successful HTTP response acquired API failure: %+v", api)
 						}
 					} else if err != nil || len(got.Issues)+len(got.Changes) != 1 || got.Incomplete || got.ObservedUpTo.IsZero() {
 						t.Fatalf("useful exact/below-bound population refused: %+v %v", got, err)

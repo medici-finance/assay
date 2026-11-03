@@ -13,13 +13,19 @@ import (
 )
 
 // mirrorResponseLimitError is inspectable through the SDK/DeskError cause chain.
-// It carries no response material, endpoint or credential.
-type mirrorResponseLimitError struct{}
+// It carries no response body, header, endpoint or credential.
+type mirrorResponseLimitError struct{ api *ForgeAPIError }
 
 func (*mirrorResponseLimitError) Error() string {
 	return "mirror response exceeds decoded JSON byte limit"
 }
 func (*mirrorResponseLimitError) LimitBytes() int64 { return adapters.MaxUpdateBytes }
+func (e *mirrorResponseLimitError) Unwrap() error {
+	if e.api == nil {
+		return nil
+	}
+	return e.api
+}
 
 // mirrorResponseClient copies the admitted transport. Only the two enumerated
 // incremental methods use this copy; ordinary reads, logs and writes keep theirs.
@@ -89,7 +95,13 @@ func (t mirrorResponseTransport) RoundTrip(r *http.Request) (*http.Response, err
 	// cap therefore measures JSON bytes, not Content-Length or compressed bytes.
 	body, err := io.ReadAll(io.LimitReader(decoded, adapters.MaxUpdateBytes+1))
 	if int64(len(body)) > adapters.MaxUpdateBytes {
-		return nil, &mirrorResponseLimitError{}
+		limit := &mirrorResponseLimitError{}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			// Retain already-known status classification without allowing the
+			// SDK to read the oversized error body, or copying body/header data.
+			limit.api = &ForgeAPIError{Status: resp.StatusCode}
+		}
+		return nil, limit
 	}
 	if err != nil {
 		return nil, fmt.Errorf("mirror response read did not complete: %w", err)
