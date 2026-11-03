@@ -12,7 +12,7 @@ gate-why: "sensitive-data is yes because the mirror copies private pull request,
 issues: []
 outcome: none
 schema: brief-v2
-version: 11
+version: 12
 decision-issue: 5380
 id: 06dc3c03-bfb0-49cf-b171-8f7d192b7aea
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
@@ -209,8 +209,9 @@ The mirror stays unactivated and the brief stays held until its human gate is sa
 ### Implementation direction — 3 November 2026
 
 The operator requested option 2 (purge copied private content; retain identity tombstones)
-in the working conversation. Prepare the implementation and synthetic fixtures for that
-policy. This bot-authored record does not ratify the human gate: the canonical decision
+in the working conversation. Prepare synthetic fixtures for that policy only; do not
+implement the retention action before the human decision is recorded, as row 16 requires.
+This bot-authored record does not ratify the human gate: the canonical decision
 record is medici-finance/assay#5380, and only the ratifying human's own recorded ruling
 satisfies it. Preserve both options in the decision section and row 16 until that ruling
 is recorded; then select the purge criterion and remove the unchosen criterion as row 16
