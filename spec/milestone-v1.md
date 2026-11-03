@@ -399,3 +399,60 @@ or private repository names behind unpublished aliases enter the plan.
 The tests `TestMilestoneRecords` and `TestMilestoneUnknownCoverage` exercise this
 contract; `statusgen/testdata/milestone-support/03-mutations.json` holds their executable
 mutation controls.
+
+## Combined graph implementation
+
+statusgen builds the §4–§5 combined graph in the pure `statusgen/evaluation` package
+(`BuildMilestoneGraph`). The function takes explicit values and returns a typed result:
+the scanned briefs with their own `depends` and `requires-milestones`, the loaded
+milestone records, and a read-only source port that observes a contributor at its own
+root's selected source snapshot. It does not fetch, claim, approve or write. The
+statusgen adapter (`statusgen/milestonegraph.go`) maps the scan onto those values after
+every root is read, so a cycle that crosses roots is visible.
+
+**Edges.** A brief points to each brief it `depends` on and to each milestone version it
+lists in `requires-milestones`. A milestone points to each contributor and to each
+prerequisite milestone version. These are the only edges. Membership is derived from
+`contributes`, keyed by the canonical brief identity, so a brief named by two spellings
+or shared by two milestones counts once. A brief gets no start gate from a milestone it
+contributes to, and no milestone is chained to another unless a record lists it.
+
+**Completion.** A milestone with known remaining work is `blocked`: a contributor that is
+not `done` (`implemented` and `verified` are unfinished), a withdrawn contributor, or a
+prerequisite with its own blockers. A contributor the source port cannot observe (an
+unloaded root, a missing brief, or a pinned revision that is not the observed one) is
+`unknown`; the port never substitutes another revision. A prerequisite that is not a
+loaded record version is `unknown`. Known blockers are kept alongside unknowns, and a
+record's own coverage unknowns are carried with it.
+
+**Start gates.** Each `requires-milestones` entry becomes an eligibility hold on that
+brief only. It is `unsatisfied` when the milestone has known remaining work or sits on a
+cycle with the brief, and `could-not-check` otherwise. Acceptance is not observed by this
+reader, so a start requirement is never satisfied: a milestone with no remaining work
+still holds as could-not-check, with that reason named. While `milestone-v1` is
+unadvertised, records are not read and every requirement is `could-not-check` with
+the reason "not a loaded record version".
+
+**Cycles.** Strongly connected components over the combined edge set are reported. A
+cycle that passes through a milestone, including a brief requiring its own containing
+milestone and an indirect cycle across roots, is a lint PROBLEM, and the brief's gate
+on that milestone is typed `cycle`. Brief-only `depends` cycles stay with the existing
+wave check.
+
+**Collisions.** A logical brief key claimed by more than one scanned brief (two roots
+whose registries resolve to one cell and alias, sharing a stream and number) never picks
+a winner. Every claimant is left out of the graph and the source port, and its start
+requirements hold `could-not-check`, naming the collision. A milestone version declared
+by more than one loaded record stays `unknown` for the same reason.
+
+**Bounded detail.** A milestone's transitive blockers and unknowns are qualified once,
+at the milestone they come from, and deduplicated, so a lattice of shared prerequisites
+stays linear in the records. A start gate's hold reason lists at most 20 entries and
+counts the rest.
+
+The tests `TestMilestoneMixedGraph`, `TestMilestoneGraphUnknowns` and
+`TestMilestoneLatticeStaysLinear` exercise this
+contract on the §4 example (`statusgen/testdata/milestone-support/05/`);
+`statusgen/testdata/milestone-support/05-mutations.json` holds their executable mutation
+controls. Exporting milestone nodes from `--graph`, stream and deskboard views, dispatch
+checks, acceptance binding and readiness are later work.

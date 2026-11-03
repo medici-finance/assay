@@ -1646,6 +1646,7 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 	// their root, so pinned selectors are collected and bound after the loop.
 	v4Snaps := map[string]briefSnapshot{}
 	var v4Pending []briefV4PendingBinding
+	var msPending []milestoneStartPending
 	// withdrawn status (withdrawn.go): successor refs and depends-on-withdrawn
 	// resolve against every stream of the run, partitioned by root.
 	withdrawRes := newWithdrawalResolver(allStreams)
@@ -1866,8 +1867,10 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				// evaluator (graph-execution/01) — brief-v2 only; nil for
 				// brief-v1/legacy briefs, exactly like Depends above.
 				row.Gates = bf.Gates
-				if held := briefV4HeldEdges(bf); len(held) > 0 {
-					row.Gates = append(append([]GraphEdge(nil), bf.Gates...), held...)
+				// requires-milestones start gates resolve over the combined
+				// milestone graph once the whole scan is in hand (milestonegraph.go).
+				if len(bf.RequiresMilestones) > 0 {
+					msPending = append(msPending, milestoneStartPending{path: path, stream: s, row: row, requires: bf.RequiresMilestones})
 				}
 				for _, sel := range bf.RefSelectors {
 					if sel.Ref.Revision != 0 {
@@ -2067,7 +2070,7 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 			if v4Snaps[s.Root] == nil {
 				v4Snaps[s.Root] = briefSnapshot{}
 			}
-			v4Snaps[s.Root][edgeID] = briefSnapshotEntry{Version: bf.Version}
+			v4Snaps[s.Root][edgeID] = briefSnapshotEntry{Version: bf.Version, ID: bf.ID}
 			for _, ref := range bf.Depends {
 				checkRef(add, path, "depends", ref, edgeID, byName)
 			}
@@ -2131,6 +2134,16 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 	// 0) until those edges are reconciled two-sided, then returns to PROBLEM.
 	// Follow-up reconciliation is tracked as a separate backlog item (below).
 	bindBriefV4Selectors(notice, v4Pending, v4Snaps)
+	// The graph spans every stream of the run; a root this scan did not lint
+	// reports its registry problem elsewhere, so its registry is read quietly
+	// here (an unreadable one leaves its briefs' requirements unknown).
+	applyMilestoneStartGates(add, notice, allStreams, msPending, v4Snaps, func(root string) *graphRepos {
+		if graphRegLoaded[root] {
+			return graphRegCache[root]
+		}
+		reg, _, _ := loadGraphRepos(root)
+		return reg
+	})
 	notices = append(notices, recip.reciprocityNotices()...)
 	problems = append(problems, withdrawnRowProblems(streams)...)
 	sort.Strings(problems)
