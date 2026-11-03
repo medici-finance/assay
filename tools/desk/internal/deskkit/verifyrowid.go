@@ -12,10 +12,12 @@ import (
 // It confers no execution, attestation or lifecycle authority.
 //
 // It is the one row-identity grammar every recorded-row reader and writer shares
-// (outcome-record writer, wake receipts, scheduling), and it accepts each `#` cell
-// shape verifyrun records: a positive integer (6), an integer with one letter
-// suffix (6a), or a letter-led ASCII label (R, S1). A label never starts with a
-// digit, so it cannot alias a numeric or suffixed identity; case stays significant.
+// (outcome-record writer, wake receipts, scheduling). It accepts three `#` cell
+// shapes: a positive integer (6), an integer with one letter suffix (6a), or a
+// letter-led ASCII label (R, S1). A label never starts with a digit, so it cannot
+// alias a numeric or suffixed identity; case stays significant. verifyrun also
+// records other cells (0, 06, R-1, prose-annotated cells); this grammar refuses
+// them, and the scheduler surfaces them as could-not-check (residue on #5013).
 type VerifyRowID string
 
 var (

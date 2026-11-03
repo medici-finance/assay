@@ -54,7 +54,8 @@ func parseVerifyRows(briefContent string) []verifyRow {
 // shared half of parseVerifyRows (exact `## Verify` heading, the runner's contract) and the
 // per-row content derivation in briefscan.go, which reads the qualifier-aware extractVerify
 // section — so both read the Command cell by the same header-named rule.
-// ID retains an exact positive number plus optional ASCII letter suffix; Num is
+// ID retains an exact positive number plus optional ASCII letter suffix, or an
+// exact letter-led label (deskkit.ParseVerifyRowID); Num is
 // populated only for the separate integer-only verdict-v1 execution contract.
 func parseVerifyRowsIn(section string) []verifyRow {
 	return parseVerifyRowsMode(section, true)

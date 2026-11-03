@@ -25,7 +25,7 @@ including suffixes, there. A `verified` producer omits `rows`. A failed or block
 producer lists only the rows whose observed result remains held, and no held row
 may also claim PASS. Whenever `rows` is non-empty, `row_results` is required for
 ALL original Verify identities and their observed results, including non-contiguous
-numeric and suffixed inventories. With an empty or omitted `rows`, exact results
+numeric, suffixed and label inventories. With an empty or omitted `rows`, exact results
 remain optional. Count-only records are legacy-compatible only when held IDs fit
 the declared contiguous `1..rows_total` inventory; new held-set producers always
 supply exact results.

@@ -415,7 +415,7 @@ func TestPartialWakeOutcomeProducerExample(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &record); err != nil {
 		t.Fatal(err)
 	}
-	if len(record.Rows) != 1 || record.Rows[0] != "2" || record.RowsTotal != 3 || record.RowsPassed != 2 || len(record.RowResults) != 3 || record.RowResults[2].Row != "6a" {
+	if len(record.Rows) != 1 || record.Rows[0] != "2" || record.RowsTotal != 4 || record.RowsPassed != 3 || len(record.RowResults) != 4 || record.RowResults[2].Row != "6a" || record.RowResults[3].Row != "R" {
 		t.Fatalf("producer lost held/covered identity distinction: %#v", record)
 	}
 	if !strings.Contains(prompt, "never list every covered row in rows") || !strings.Contains(prompt, "verified record omits rows") {
