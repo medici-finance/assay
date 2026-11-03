@@ -98,6 +98,52 @@ func TestDeliveryNoEvidence(t *testing.T) {
 	}
 }
 
+// regression: #5375
+func TestDeliveryIdentitySwapped(t *testing.T) {
+	// Each producer's follow-up routes corroborate at either delivery. That
+	// topology must not be presented as proof of which producer was delivered.
+	root := consumersFixture(t, []string{"web/fixed.go: follow-up alpha/01", "web/excluded.go: out-of-scope (unchanged reader contract)"}, map[string]string{"web/fixed.go": "before\n", "web/untouched.go": "before\n", "web/excluded.go": "before\n"})
+	p := filepath.Join(root, "docs/streams/alpha/brief-02-target.md")
+	text := readFileT(t, p)
+	text = strings.Replace(text, "sources: [\"fixture\"]\n", "sources: [\"fixture\"]\nconsumers:\n  - \"web/untouched.go: follow-up alpha/02\"\n  - \"web/excluded.go: out-of-scope (unchanged reader contract)\"\n", 1)
+	mustWrite(t, p, text)
+	mustGitInit(t, root)
+	base := mustGitOut(t, root, "rev-parse", "HEAD")
+	mustWrite(t, filepath.Join(root, "web/fixed.go"), "producer one\n")
+	mustGitCommitAll(t, root, "first producer delivery")
+	one := mustGitOut(t, root, "rev-parse", "HEAD")
+	mustWrite(t, filepath.Join(root, "web/untouched.go"), "producer two\n")
+	mustGitCommitAll(t, root, "second producer delivery")
+	two := mustGitOut(t, root, "rev-parse", "HEAD")
+	for _, tc := range []struct{ name, brief, base, delivery string }{
+		{"first-correct", "alpha/01", base, one},
+		{"second-correct", "alpha/02", one, two},
+		{"first-swapped", "alpha/01", one, two},
+		{"second-swapped", "alpha/02", base, one},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var code int
+			out := captureStdout(t, func() { code = runDeliveryConsumers(root, tc.base, tc.brief, tc.delivery) })
+			if code != 0 || !strings.Contains(out, "summary: 1 corroborated, 0 disproved, 1 unchecked") {
+				t.Fatalf("routing semantics changed: exit %d\n%s", code, out)
+			}
+			if !strings.Contains(out, "PRODUCER-DELIVERY: COULD-NOT-CHECK") || !strings.Contains(out, "follow-up routes prove target existence and reference-back only") {
+				t.Fatalf("producer identity was not separately unqualified:\n%s", out)
+			}
+		})
+	}
+}
+
+// regression: #5375
+func TestDeliveryIdentityDerived(t *testing.T) {
+	root, _, _ := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, goodMarker)
+	var code int
+	out := captureStdout(t, func() { code = runConsumersDerived(root, "alpha/01") })
+	if code != 0 || !strings.Contains(out, "summary: 1 corroborated, 0 disproved, 0 unchecked") || !strings.Contains(out, "PRODUCER-DELIVERY: COULD-NOT-CHECK") {
+		t.Fatalf("derived delivery needs the same identity limit: exit %d\n%s", code, out)
+	}
+}
+
 // regression: #1915
 func TestDeliveryCLI(t *testing.T) {
 	root, base, delivery := deliveryFixture(t, []string{"web/fixed.go: fixed-here"})

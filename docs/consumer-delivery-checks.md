@@ -16,6 +16,16 @@ archive-omitted blobs are could-not-check (exit 2). With both pins on the comman
 does not choose a historical commit for the author: identifying the actual delivery remains
 an independently reviewed claim.
 
+Every evaluated delivery prints a separate `PRODUCER-DELIVERY: COULD-NOT-CHECK`
+qualification. The routing counts and exit status concern declared consumer routes
+only. In particular, `follow-up` corroborates that a target brief exists and references
+back; it does not require that the selected diff contains the producer's implementation.
+Two different producer deliveries can therefore corroborate the same follow-up routes.
+Even `fixed-here` establishes path changes, not producer identity or implementation
+completeness. Independently inspect the actual delivery mapping and relevant changes
+before using these results as acceptance evidence. This limit also applies when the
+delivery pin is derived from committed Evidence below.
+
 ## A bare `--consumers --brief <id>` on merged main
 
 With a named `--brief` and neither `--base` nor `--delivery`, a brief the branch diff does

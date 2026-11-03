@@ -1,0 +1,1 @@
+- Historical consumer checks now report producer delivery identity as separately unqualified, so corroborated follow-up routes cannot be mistaken for implementation delivery evidence.
