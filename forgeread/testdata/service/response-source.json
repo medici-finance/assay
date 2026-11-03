@@ -1,0 +1,53 @@
+{
+  "schema": "forge-service-v1",
+  "id": "request-1",
+  "scope": {
+    "repositories": [
+      {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      }
+    ],
+    "admissionId": "fixture-admission",
+    "accessEpoch": "epoch-1",
+    "callerId": "fixture-reader",
+    "representedActor": ""
+  },
+  "repository": {
+    "Provider": "github",
+    "Host": "github.example",
+    "Path": "example/project"
+  },
+  "operation": "file-at",
+  "metadata": {
+    "state": "confirmed",
+    "reason": "",
+    "complete": true,
+    "freshness": "fresh",
+    "source": {
+      "source": "literal-source",
+      "version": "1",
+      "revision": "source-1",
+      "observedAt": "2026-11-03T12:00:00Z"
+    },
+    "observation": null,
+    "executor": null
+  },
+  "mirror": null,
+  "issues": null,
+  "source": {
+    "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "other": "",
+    "path": "readme.txt",
+    "content": "Zml4dHVyZQo=",
+    "entries": null,
+    "base": ""
+  },
+  "effect": null,
+  "review": null,
+  "projection": null,
+  "conflict": false,
+  "measurements": [],
+  "diagnostic": null
+}

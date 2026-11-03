@@ -58,6 +58,16 @@ files:
 - `docs/contracts.md`
 - `changelog/forge-service-contract.md` (planned)
 - `forgeread/service/reviewmapping_test.go` (planned)
+- `tools/forge-import-check/check_env_imports.go`
+- `tools/forge-import-check/check_env_imports_test.go`
+- `tools/desk/internal/regression/mirrorimports_test.go`
+- `tools/desk/internal/deskkit/citrigger_test.go`
+
+The existing source-import checker gains only closed service/client targets and their
+syntax fixtures; its existing mirror/events refusals and the independently authored refresh
+target remain intact when those histories merge. Extend the actual always-on reader and
+its CI cross-module registry for these inputs. No arbitrary target, duplicate checker,
+weakened assertion or workflow activation is part of this boundary reuse.
 
 Paths absent at the source pin are planned deliverables. Existing files are amended only
 at the named seam; no user-home or out-of-repo configuration is edited.
