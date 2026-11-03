@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
@@ -69,12 +70,11 @@ func newConsumerSnapshot(entries []evaluation.TreeEntry, changed map[string]bool
 	return s, nil
 }
 
-func materializeConsumerDelivery(root, delivery, dest string, entries []evaluation.TreeEntry, changed map[string]bool) error {
+func materializeConsumerDelivery(archive *exec.Cmd, dest string, entries []evaluation.TreeEntry, changed map[string]bool) error {
 	s, err := newConsumerSnapshot(entries, changed)
 	if err != nil {
 		return err
 	}
-	archive := historyGit(root, "archive", "--format=tar", delivery+"^{tree}")
 	var diagnostic bytes.Buffer
 	archive.Stderr = &diagnostic
 	stream, err := archive.StdoutPipe()
