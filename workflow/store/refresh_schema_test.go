@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"os"
 	"reflect"
 	"strings"
@@ -9,10 +10,12 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/forgeread/mirror"
+	"github.com/medici-finance/assay/forgeread/refresh"
 )
 
 // regression: F-refresh-independent-sql-schema
 func TestPGRefreshSchemaBoundary(t *testing.T) {
+	t.Run("shared-retry-policy", checkRefreshSharedRetryPolicy)
 	t.Run("raw-expired-completion", checkRawExpiredRefresh)
 	t.Run("identity-codec", checkRefreshIdentityCodec)
 	TestPGFoundationBoundary(t)
@@ -87,4 +90,26 @@ func checkRawExpiredRefresh(t *testing.T) {
 	time.Sleep(350 * time.Millisecond)
 	key, _, _ := fillIndex(r.demand(u.Scope, "caller-a").Key)
 	rawRefused(t, r.raw, key, `UPDATE public.refresh_fills SET state='done',completion_xid=pg_current_xact_id() WHERE fill_key=$1 AND generation=$2`, []byte(ticket.Generation))
+}
+
+// regression: F-refresh-one-shared-retry-authority
+func checkRefreshSharedRetryPolicy(t *testing.T) {
+	r := sqlRefresh(t)
+	for _, backoff := range []time.Duration{-time.Nanosecond, 10 * time.Second, 3 * time.Minute} {
+		config := r.cfg
+		config.Limits.Refresh.FailureBackoff = backoff
+		gate, e := r.db.Refresh(r.s, config, refreshTestAuthority{})
+		if !errors.Is(e, refresh.ErrPolicy) || gate != nil {
+			t.Fatalf("nonzero independent failure policy accepted: %s", backoff)
+		}
+	}
+	// Rejection neither normalizes the profile nor replaces the existing known one.
+	gate, e := r.db.Refresh(r.s, r.cfg, refreshTestAuthority{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, u := mirrorInput()
+	if ticket, e := gate.Acquire(context.Background(), r.demand(u.Scope, "caller-b")); e != nil || !ticket.Owner {
+		t.Fatal("explicit zero profile failed after invalid profiles", e)
+	}
 }

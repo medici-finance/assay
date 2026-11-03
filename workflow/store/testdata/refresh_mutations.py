@@ -61,6 +61,8 @@ def mutate(name):
         change(state,attempt,'if o.HTTP.Value == 0 {','if o.HTTP.Value==0 {return false}; if false {')
     elif name=='postcommit-zero-closure':
         change(state,attempt,'_ = g.ObserveAttempt(cleanup, reservation, mirror.AttemptObservation{HTTP: mirror.WorkCount{Known: true}, DecodedBytes: mirror.WorkCount{Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}, ObservedAt: time.Now().UTC()})','_ = cleanup')
+    elif name=='shared-retry-policy':
+        change(state,code,'l.Refresh.FailureBackoff == 0','l.Refresh.FailureBackoff >= 0')
     elif name=='superseded-ticket-release':
         change(state,code,'UPDATE public.refresh_waiters SET released=true WHERE ticket_id=$1 AND admission=$2 AND generation=$3 AND NOT released','UPDATE public.refresh_waiters SET released=false WHERE ticket_id=$1 AND admission=$2 AND generation=$3 AND NOT released')
     elif name=='review-owner-isolation':
@@ -106,6 +108,7 @@ controls=[
  ('joined-store-apply','TestMirrorPersistedReadThroughJoin/cohort-github'),
  ('joined-caller-ceiling','TestMirrorPersistedReadThroughJoin/lower-native-budget'),
  ('superseded-ticket-release','TestPGRefreshGateAtomicCompletion'),
+ ('shared-retry-policy','TestPGRefreshSchemaBoundary'),
 ]
 composites={'common-transaction','source-debit','aggregate-reconciliation','joined-caller-ceiling'}
 # Resume qualification after a corrected planted fault; prior controls are kept
