@@ -12,7 +12,7 @@ gate-why: "sensitive-data is yes because the mirror copies private pull request,
 issues: []
 outcome: none
 schema: brief-v2
-version: 13
+version: 14
 decision-issue: 5380
 id: 06dc3c03-bfb0-49cf-b171-8f7d192b7aea
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
@@ -254,8 +254,12 @@ GitLab case identity qualification before activation remains #5376.
   No caller outside a scope's bound admission reads its rows or receives a complete-empty answer
   for that scope (row 15). Sharing a mirror across cells needs matching access scopes and explicit
   ownership, and is a separate brief.
-- If graph-execution/19's R2 amendment has not landed, or its store has no migration and test
-  harness for an added table, stop and report NEEDS_CONTEXT. Do not build a second store.
+- Full /37 retains graph-execution/19's R2 prerequisites. Its bounded PostgreSQL Store child
+  forge-neutral/52 may instead consume an actual tested canonical migration and container
+  harness revision from graph-execution/36 before full /19 execution delivery, including
+  through a genuine owned feature-branch merge for offline work. If that actual foundation is
+  absent, stop and report NEEDS_CONTEXT. Do not build a second store. This exception grants
+  no parent acceptance, shared-refresh fencing, retention action or activation.
 - Stop at `implemented`; an independent verifier owns verified and done.
 
 ## Candidate and priority amendment — 2026-10-23
@@ -522,3 +526,12 @@ helper plus the actual authored-row input through whole-stream-root coverage. No
 stream name ships in desk source, and neither corpus nor secret guard is exempted or weakened.
 The standalone harness still reads and executes the actual two Verify commands and all
 22 compiler cases. Human retention choices and historical Evidence remain unchanged.
+
+## Bounded PostgreSQL persistence contribution — 3 November 2026
+
+[52](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md) owns
+only the real PostgreSQL Store adapter and SQL persistence checks, extending the single
+graph-execution/36 migration ledger and container fixture. This brings forward durable
+mirror storage without action admission, execution claims or outboxes. Shared refresh
+ownership/accounting and actual admitted source/coordinator joins remain here, including
+row23. All23 original Class/Command pairs and existing human gates remain unchanged.

@@ -253,6 +253,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 47 | [Admitted incremental forge readers for mirror ingestion](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) | 2 | M | todo | — | — |
 | 48 | [Bound native mirror response allocation before decoding](brief-48-bound-native-mirror-response-allocation-before-decoding.md) | 3 | M | todo | — | — |
 | 49 | [Retire claim-decay stored GitHub login fallback](brief-49-retire-claim-decay-stored-github-login-fallback.md) | 0 | S | todo | — | — |
+| 52 | [Canonical PostgreSQL mirror store without execution dependencies](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md) | 3 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -755,3 +756,14 @@ loses two lines (one executable lookup and one possible subprocess). This retire
 neither every remaining forge read nor the parent contribution.
 Explicit token inputs and host separation remain until /77's migration. /18 remains
 partial and retains every original acceptance row and remaining read/CI obligation.
+
+## Read-only PostgreSQL persistence split — 3 November 2026
+
+The durable read critical path is canonical PostgreSQL foundation graph-execution/36 →
+[mirror Store52](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md)
+→ shared refresh-gate and admitted source/coordinator joined integration under /37.
+Source mapping and store-injected coordinator fixtures proceed independently. No edge
+on this bounded path waits for execution claims, admission, effects or outbox delivery.
+Full /19 and /37 acceptance, retention, authenticated serving and activation remain owed.
+The smallest unblocking move is the actual /36 migration and container harness, never a
+second database. Generated lifecycle cells carry no hand-authored delivery claim.
