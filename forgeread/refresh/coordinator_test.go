@@ -36,6 +36,15 @@ func TestRefreshSourceReceiptFlow(t *testing.T) {
 			f.clock.step(2 * time.Minute)
 			var want mirror.AttemptReceipt
 			f.source.fn = func(_ context.Context, _ mirror.Admission, scope mirror.Scope, p mirror.ScanPlan) (mirror.ScanResult, error) {
+				roundTrip := p.AttemptGrant
+				roundTrip.ExpiresAt = roundTrip.ExpiresAt.In(time.FixedZone("alternate-utc", 0))
+				if !p.AttemptGrant.Equal(roundTrip) {
+					t.Error("same expiry instant changed grant identity")
+				}
+				roundTrip.ExpiresAt = roundTrip.ExpiresAt.Add(time.Nanosecond)
+				if p.AttemptGrant.Equal(roundTrip) {
+					t.Error("different expiry instant retained grant identity")
+				}
 				if p.AttemptGrant.Validate(f.clock.Now()) != nil || p.AttemptGrant.Scope != scope || p.AttemptGrant.SourceID != "issue-inventory" || p.ExpectedVersion != prior.Version || p.PriorObservedUpTo != prior.Coverage.ObservedUpTo {
 					t.Error("final re-plan did not retain the actual snapshot and trusted grant")
 				}
