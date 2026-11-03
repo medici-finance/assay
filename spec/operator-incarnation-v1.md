@@ -177,3 +177,10 @@ record, not a second lease: `CellJournal.Generation(item)` reads that claim, and
 both admission and the independent effect check require its exact original work,
 attempt, Cell owner and claim generation. A current Cell tuple cannot revive a
 released or transferred item claim; reevaluation identity remains separate.
+
+
+Pending-operation resolution, signed request phases and budget-clock requirements
+live in the [checkpoint contract](cell-checkpoint-v1.md#store-neutral-transaction-and-accounting-seam).
+Resolution does not obtain current authority from restored SQL or renew an old
+capability: its qualified port independently fences the old writer before
+authoritative absence can support a fresh attempt.

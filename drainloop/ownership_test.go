@@ -172,7 +172,7 @@ func cellFixture(t *testing.T) (*diskCell, *cellControl, CellAuthority) {
 		t.Fatal(e)
 	}
 	c := &cellControl{current: OperatorIncarnation{Schema: IncarnationSchema, CellID: "cell", ID: "inc-1", KeyRef: "ref:key-1"}, cutover: true}
-	return d, c, CellAuthority{Store: d, Current: c, Capabilities: c, Pacing: c}
+	return d, c, CellAuthority{Store: d, Current: c, Capabilities: c, Pacing: c, Now: cellNow}
 }
 func cellRequest(t *testing.T, d *diskCell, c *cellControl, key string, amount uint64) CellAdmission {
 	t.Helper()
@@ -184,7 +184,7 @@ func cellRequest(t *testing.T, d *diskCell, c *cellControl, key string, amount u
 	cellEdit(t, d, func(s *CellState) {
 		s.Claims = append(s.Claims, CellClaim{ItemID: "item-" + key, WorkID: p.WorkID, AttemptID: p.AttemptID, Generation: p.ClaimGeneration, Owner: p.Ownership})
 	})
-	return c.issue(CellAdmission{Permit: p, Intent: Intent{Event: Event{Kind: "EFFECT-INTENT", RunID: p.WorkID, AttemptID: p.AttemptID, Key: key, Generation: p.ClaimGeneration, ItemID: "item-" + key, Time: time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)}}, Reservations: []BudgetReservation{{ID: "reservation-" + key, WorkID: p.WorkID, AttemptID: p.AttemptID, RequestID: p.RequestID, BalanceRef: "ref:input", Amount: amount}}, ControlBoundary: "request"})
+	return c.issue(CellAdmission{Permit: p, Intent: Intent{Event: Event{Kind: "EFFECT-INTENT", RunID: p.WorkID, AttemptID: p.AttemptID, Key: key, Generation: p.ClaimGeneration, ItemID: "item-" + key, Time: time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)}}, Reservations: []BudgetReservation{{ID: "reservation-" + key, WorkID: p.WorkID, AttemptID: p.AttemptID, RequestID: p.RequestID, BalanceRef: "ref:input", Amount: amount}}, Phase: "execution", ControlBoundary: "request"})
 }
 func cellEdit(t *testing.T, d *diskCell, f func(*CellState)) {
 	t.Helper()
@@ -257,6 +257,7 @@ func cellProvider(a CellAuthority) *fakeCellProvider {
 }
 
 func TestCellOwnership(t *testing.T) {
+	t.Run("authoritative-resolution", TestCellJournalProvenAbsence)
 	ctx := context.Background()
 	d, c, a := cellFixture(t)
 	r := cellRequest(t, d, c, "one", 30)
@@ -567,3 +568,169 @@ func TestIncarnationMismatchPaused(t *testing.T) {
 func TestIncarnationSpecMatchesFields(t *testing.T) { TestIncarnationContractFields(t) }
 
 var _ TransactionalJournal = CellJournal{}
+
+func cellNow() time.Time { return time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC) }
+
+type interruptedCellEffect struct {
+	base  cellEffect
+	mode  string
+	first bool
+}
+
+func (e *interruptedCellEffect) Key() string { return e.base.Key() }
+func (e *interruptedCellEffect) Receipt(ctx context.Context, key string) (Receipt, bool, error) {
+	return e.base.Receipt(ctx, key)
+}
+func (e *interruptedCellEffect) Apply(ctx context.Context) (Receipt, error) {
+	if !e.first {
+		e.first = true
+		if e.mode == "crash" {
+			panic("crash after intent before provider")
+		}
+		return Receipt{}, EffectFailure{Err: errors.New("provider proved no effect")}
+	}
+	return e.base.Apply(ctx)
+}
+
+type resolutionFixture struct {
+	provider *fakeCellProvider
+	control  *cellControl
+	result   CellResolution
+	err      error
+}
+
+func (f resolutionFixture) ResolveCellOperation(_ context.Context, p CellPermit) (CellResolution, error) {
+	f.provider.mu.Lock()
+	defer f.provider.mu.Unlock()
+	if f.err != nil {
+		return CellResolution{}, f.err
+	}
+	if _, exists := f.provider.receipts[p.Key]; exists {
+		return CellResolution{}, errors.New("operation applied")
+	}
+	if f.result.FenceRef != "" {
+		f.control.mu.Lock()
+		delete(f.control.issued, p)
+		f.control.mu.Unlock()
+	}
+	return f.result, nil
+}
+func usageFor(p CellPermit, source, phase string) AttemptUsage {
+	return AttemptUsage{WorkID: p.WorkID, AttemptID: p.AttemptID, RequestID: p.RequestID, Phase: phase, Outcome: "failed", Account: "account", Provider: "provider", Model: "model", PricingRef: "ref:policy", SourceRef: source, Input: uintRef(0), Output: uintRef(0)}
+}
+func runCellAttempt(t *testing.T, d *diskCell, c *cellControl, a CellAuthority, r *CellAdmission, e Effect) *MemoryQueue {
+	t.Helper()
+	j := CellJournal{Authority: a, CellID: "cell", Request: func(i Intent) (CellAdmission, error) { r.Intent = i; *r = c.issue(*r); return *r, nil }}
+	q := NewMemoryQueue("cell", []Item{{ID: r.Intent.Event.ItemID, RunID: r.Permit.WorkID, AttemptID: r.Permit.AttemptID}})
+	err := Run(Config{Loop: q, Claimer: mustFileClaim(t, t.TempDir()), PoolSize: 1, StopWhenIdle: true, Journal: j, RequireHandoff: true, Effects: func(Item) ([]Effect, error) { return []Effect{e}, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return q
+}
+func TestCellJournalProvenAbsence(t *testing.T) {
+	for _, mode := range []string{"crash", "failure"} {
+		t.Run(mode, func(t *testing.T) {
+			d, c, a := cellFixture(t)
+			r := cellRequest(t, d, c, "resume-"+mode, 5)
+			provider := cellProvider(a)
+			effect := &interruptedCellEffect{base: cellEffect{p: provider, permit: &r.Permit}, mode: mode}
+			func() {
+				defer func() {
+					value := recover()
+					if mode == "crash" && value == nil {
+						t.Fatal("crash not injected")
+					}
+					if mode != "crash" && value != nil {
+						t.Fatal(value)
+					}
+				}()
+				q := runCellAttempt(t, d, c, a, &r, effect)
+				if mode == "failure" {
+					result, _ := q.Landed(r.Intent.Event.ItemID)
+					if result.Verdict != VerdictFail {
+						t.Fatal("proven failure not retained")
+					}
+				}
+			}()
+			old := r
+			state := cellRead(t, d)
+			if len(state.Pending) != 1 || len(state.Checkpoint.Budget.Reservations) != 1 || provider.applied != 0 {
+				t.Fatal("crash/failure lost intent or reservation")
+			}
+			if err := a.ResolvePending(context.Background(), old.Permit); err == nil {
+				t.Fatal("missing resolution source cleared pending")
+			}
+			charge := uintRef(0)
+			if mode == "failure" {
+				charge = uintRef(2)
+			}
+			settlement := CellSettlement{ReservationID: old.Reservations[0].ID, Charged: charge, Usage: usageFor(old.Permit, "ref:resolved-usage", "execution")}
+			proof := CellResolution{Ref: "ref:definitive-absence", FenceRef: "ref:old-writer-fenced", NotApplied: true, Settlements: []CellSettlement{settlement}}
+			unconfirmed := proof
+			unconfirmed.FenceRef = ""
+			a.Resolution = resolutionFixture{provider: provider, control: c, result: unconfirmed}
+			before := cellRead(t, d)
+			if err := a.ResolvePending(context.Background(), old.Permit); err == nil {
+				t.Fatal("unfenced absence retired")
+			}
+			if !reflect.DeepEqual(before, cellRead(t, d)) {
+				t.Fatal("unconfirmed resolution changed state")
+			}
+			unknown := proof
+			unknown.Settlements = []CellSettlement{settlement}
+			unknown.Settlements[0].Charged = nil
+			a.Resolution = resolutionFixture{provider: provider, control: c, result: unknown}
+			if err := a.ResolvePending(context.Background(), old.Permit); err == nil {
+				t.Fatal("unknown usage retired pending")
+			}
+			if !reflect.DeepEqual(before, cellRead(t, d)) {
+				t.Fatal("unknown resolution published partial settlement")
+			}
+			a.Resolution = resolutionFixture{provider: provider, control: c, result: proof}
+			if err := a.ResolvePending(context.Background(), old.Permit); err != nil {
+				t.Fatal(err)
+			}
+			state = cellRead(t, d)
+			if len(state.Pending) != 0 || len(state.Resolutions) != 1 || len(state.Checkpoint.Budget.Reservations) != 0 || *state.Checkpoint.Budget.Balances[0].Consumed != *charge {
+				t.Fatal("absence did not atomically settle/retire")
+			}
+			if _, err := provider.apply(context.Background(), old.Permit); err == nil {
+				t.Fatal("resolved old writer still applies")
+			}
+			renewed := old
+			renewed.Permit.CapabilityRef = "ref:renewed-same-lineage"
+			renewed.Permit.AdmissionDigest = CellAdmissionDigest(renewed)
+			c.mu.Lock()
+			c.issued[renewed.Permit] = true
+			c.mu.Unlock()
+			if err := a.Commit(context.Background(), renewed); err == nil {
+				t.Fatal("resolution reused the retired request/attempt lineage")
+			}
+
+			// A new physical attempt/request retains the SAME item claim generation.
+			r = old
+			r.Permit.AttemptID += "-retry"
+			r.Permit.RequestID += "-retry"
+			r.Intent.Event.AttemptID = r.Permit.AttemptID
+			r.Reservations = append([]BudgetReservation{}, old.Reservations...)
+			r.Reservations[0].ID += "-retry"
+			r.Reservations[0].AttemptID = r.Permit.AttemptID
+			r.Reservations[0].RequestID = r.Permit.RequestID
+			cellEdit(t, d, func(s *CellState) { s.Claims[0].AttemptID = r.Permit.AttemptID })
+			r = c.issue(r)
+			q := runCellAttempt(t, d, c, a, &r, effect)
+			result, _ := q.Landed(r.Intent.Event.ItemID)
+			if result.Verdict != VerdictPass || provider.applied != 1 {
+				t.Fatalf("resolved operation did not resume once: %+v applied=%d", result, provider.applied)
+			}
+			state = cellRead(t, d)
+			if len(state.Pending) != 0 || len(state.Completed) != 1 || len(state.Checkpoint.Budget.Reservations) != 1 || *state.Checkpoint.Budget.Balances[0].Consumed != *charge || state.Completed[0].Permit.ClaimGeneration != old.Permit.ClaimGeneration {
+				t.Fatal("retry double-charged, lost spend or changed claim")
+			}
+			if state.Checkpoint.Budget.Usage[0].WorkID != old.Permit.WorkID {
+				t.Fatal("failed spend left original work")
+			}
+		})
+	}
+}

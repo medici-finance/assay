@@ -348,7 +348,12 @@ No runtime consumer, activation, signing material or deployment is supplied.
 The group ownership and per-item claim generations are distinct. The existing
 claim authority retains exact work/attempt/owner bindings in `CellState.Claims`;
 admission and the separately invoked effect boundary reject stale or released item
-claims. The original eleven Verify Class/Command/Expect rows are unchanged. Their
+claims. Crash-before-apply and proven-failure retirement require authoritative absence,
+independent old-writer fencing and complete known usage through an explicit port;
+unknowns stay held. A fresh attempt/request may then resume in the same claim
+generation without losing failed spend or creating a free retry. Provider requests
+bind one signed phase, and budget-window checks use an injected authority clock.
+The original eleven Verify Class/Command/Expect rows are unchanged. Their
 implementation tests are not independent acceptance Evidence or an activation ruling.
 
 ## Evidence

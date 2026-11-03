@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 )
 
 // CellCheckpointSchema identifies the passive Cell checkpoint record contract.
@@ -199,6 +200,7 @@ type CellState struct {
 	Completed   []CellAdmission
 	Pacing      []CellPacing
 	Settlements []CellSettlement
+	Resolutions []CellResolutionRecord
 }
 
 // CellStore invokes change on an isolated copy under a cross-process atomic
@@ -235,6 +237,7 @@ type CellAdmission struct {
 	Permit                    CellPermit
 	Intent                    Intent
 	Reservations              []BudgetReservation
+	Phase                     string
 	ControlBoundary           string
 	UpperBoundRef             string
 	PacingScope, PacingWindow string
@@ -248,10 +251,12 @@ type CellAuthority struct {
 	Capabilities CellCapabilityCheck
 	Pacing       CellPacingAuthority
 	Usage        CellUsageAuthority
+	Resolution   CellResolutionAuthority
+	Now          func() time.Time
 }
 
 func (a CellAuthority) ready(ctx context.Context) error {
-	if a.Store == nil || a.Current == nil || a.Capabilities == nil {
+	if a.Store == nil || a.Current == nil || a.Capabilities == nil || a.Now == nil {
 		return errors.New("cell authority unavailable")
 	}
 	if err := ctx.Err(); err != nil {
@@ -306,10 +311,23 @@ func (a CellAuthority) Commit(ctx context.Context, r CellAdmission) error {
 				return errors.New("operation recorded; reconcile")
 			}
 		}
+
+		for _, old := range s.Resolutions {
+			if old.Admission.Permit.Key == p.Key {
+				if old.Admission.Permit.WorkID != p.WorkID || old.Admission.Permit.AttemptID == p.AttemptID || old.Admission.Permit.RequestID == p.RequestID {
+					return errors.New("resolved operation requires fresh attempt/request lineage")
+				}
+			}
+		}
+		switch r.Phase {
+		case "preparation", "summary", "execution", "fallback", "verification":
+		default:
+			return errors.New("request phase unavailable")
+		}
 		if r.ControlBoundary != "request" && (r.ControlBoundary != "launch" || r.UpperBoundRef == "") {
 			return errors.New("runner request bound unavailable")
 		}
-		if err := reserveBudget(&s.Checkpoint.Budget, r, e.Time); err != nil {
+		if err := reserveBudget(&s.Checkpoint.Budget, r, a.Now()); err != nil {
 			return err
 		}
 		if r.PacingScope != "" {
@@ -365,6 +383,9 @@ func (a CellAuthority) CheckEffect(ctx context.Context, p CellPermit) error {
 				known := false
 				for _, balance := range s.Checkpoint.Budget.Balances {
 					if balance.Ref == required.BalanceRef && balance.Consumed != nil {
+						if err := balanceWindow(balance, a.Now()); err != nil {
+							return err
+						}
 						known = true
 					}
 				}
@@ -575,97 +596,108 @@ func (a CellAuthority) Settle(ctx context.Context, p CellPermit) error {
 	if err != nil {
 		return err
 	}
-	return a.Store.Transaction(ctx, p.Ownership.CellID, s.Version, func(s *CellState) error {
-		// Reconciliation of old work is allowed while paused, but an authenticated
-		// exact recorded operation is required; it grants no new effect.
-		found := false
-		for _, r := range append(append([]CellAdmission{}, s.Pending...), s.Completed...) {
-			if r.Permit == p {
-				found = true
+	return a.Store.Transaction(ctx, p.Ownership.CellID, s.Version, func(s *CellState) error { return settleCellState(s, p, settlements) })
+}
+
+func settleCellState(s *CellState, p CellPermit, settlements []CellSettlement) error {
+	// Reconciliation of old work is allowed while paused, but an authenticated
+	// exact recorded operation is required; it grants no new effect.
+	found := false
+	phase := ""
+	admissions := append(append([]CellAdmission{}, s.Pending...), s.Completed...)
+	for _, record := range s.Resolutions {
+		admissions = append(admissions, record.Admission)
+	}
+	for _, r := range admissions {
+		if r.Permit == p {
+			found = true
+			phase = r.Phase
+		}
+	}
+	if !found {
+		return errors.New("usage has no recorded operation")
+	}
+	for _, x := range settlements {
+		u := x.Usage
+		if u.Phase != phase {
+			return errors.New("usage phase differs from signed request")
+		}
+		if u.WorkID != p.WorkID || u.AttemptID != p.AttemptID || u.RequestID != p.RequestID || u.SourceRef == "" || u.Account == "" || u.Provider == "" || u.Model == "" || u.PricingRef == "" {
+			return errors.New("usage identity/policy mismatch")
+		}
+		switch u.Phase {
+		case "preparation", "summary", "execution", "fallback", "verification":
+		default:
+			return errors.New("unknown attempt phase")
+		}
+		duplicate := false
+		for _, old := range s.Settlements {
+			if old.ReservationID == x.ReservationID && old.Usage.SourceRef == u.SourceRef && old.Usage.Phase == u.Phase {
+				if !reflect.DeepEqual(old, x) {
+					return errors.New("settlement changed after recording")
+				}
+				duplicate = true
 			}
 		}
-		if !found {
-			return errors.New("usage has no recorded operation")
+		if duplicate {
+			continue
 		}
-		for _, x := range settlements {
-			u := x.Usage
-			if u.WorkID != p.WorkID || u.AttemptID != p.AttemptID || u.RequestID != p.RequestID || u.SourceRef == "" || u.Account == "" || u.Provider == "" || u.Model == "" || u.PricingRef == "" {
-				return errors.New("usage identity/policy mismatch")
-			}
-			switch u.Phase {
-			case "preparation", "summary", "execution", "fallback", "verification":
-			default:
-				return errors.New("unknown attempt phase")
-			}
-			duplicate := false
-			for _, old := range s.Settlements {
-				if old.ReservationID == x.ReservationID && old.Usage.SourceRef == u.SourceRef && old.Usage.Phase == u.Phase {
-					if !reflect.DeepEqual(old, x) {
-						return errors.New("settlement changed after recording")
+		seenUsage := false
+		latestSource := ""
+		for _, old := range s.Checkpoint.Budget.Usage {
+			if old.WorkID == u.WorkID && old.AttemptID == u.AttemptID && old.RequestID == u.RequestID && old.Phase == u.Phase {
+				if old.SourceRef == u.SourceRef {
+					if !reflect.DeepEqual(old, u) {
+						return errors.New("usage evidence changed")
 					}
-					duplicate = true
+					seenUsage = true
 				}
+				latestSource = old.SourceRef
 			}
-			if duplicate {
-				continue
-			}
-			seenUsage := false
-			latestSource := ""
-			for _, old := range s.Checkpoint.Budget.Usage {
-				if old.WorkID == u.WorkID && old.AttemptID == u.AttemptID && old.RequestID == u.RequestID && old.Phase == u.Phase {
-					if old.SourceRef == u.SourceRef {
-						if !reflect.DeepEqual(old, u) {
-							return errors.New("usage evidence changed")
-						}
-						seenUsage = true
-					}
-					latestSource = old.SourceRef
-				}
-			}
-			if !seenUsage && latestSource != x.PreviousSourceRef {
-				return errors.New("usage reconciliation has no exact predecessor")
-			}
-			index := -1
-			for i, q := range s.Checkpoint.Budget.Reservations {
-				if q.ID == x.ReservationID && q.WorkID == p.WorkID && q.AttemptID == p.AttemptID && q.RequestID == p.RequestID {
-					index = i
-					break
-				}
-			}
-			if index < 0 {
-				return errors.New("usage reservation unavailable")
-			}
-			q := s.Checkpoint.Budget.Reservations[index]
-			if x.Charged == nil {
-				s.Checkpoint.Budget.Reservations[index].Unknown = true
-			} else {
-				balance := -1
-				for i, b := range s.Checkpoint.Budget.Balances {
-					if b.Ref == q.BalanceRef {
-						if balance >= 0 {
-							return errors.New("usage balance ambiguous")
-						}
-						balance = i
-					}
-				}
-				if balance < 0 {
-					return errors.New("usage balance unavailable")
-				}
-				b := &s.Checkpoint.Budget.Balances[balance]
-				if b.Consumed == nil || b.Account != u.Account || b.Provider != u.Provider || *x.Charged > ^uint64(0)-*b.Consumed {
-					return errors.New("usage count unavailable/overflow")
-				}
-				charged := *b.Consumed + *x.Charged
-				b.Consumed = &charged
-				s.Checkpoint.Budget.Reservations = append(s.Checkpoint.Budget.Reservations[:index], s.Checkpoint.Budget.Reservations[index+1:]...)
-			}
-			if !seenUsage {
-				s.Checkpoint.Budget.Usage = append(s.Checkpoint.Budget.Usage, u)
-			}
-			s.Settlements = append(s.Settlements, x)
 		}
-		return nil
-	})
+		if !seenUsage && latestSource != x.PreviousSourceRef {
+			return errors.New("usage reconciliation has no exact predecessor")
+		}
+		index := -1
+		for i, q := range s.Checkpoint.Budget.Reservations {
+			if q.ID == x.ReservationID && q.WorkID == p.WorkID && q.AttemptID == p.AttemptID && q.RequestID == p.RequestID {
+				index = i
+				break
+			}
+		}
+		if index < 0 {
+			return errors.New("usage reservation unavailable")
+		}
+		q := s.Checkpoint.Budget.Reservations[index]
+		if x.Charged == nil {
+			s.Checkpoint.Budget.Reservations[index].Unknown = true
+		} else {
+			balance := -1
+			for i, b := range s.Checkpoint.Budget.Balances {
+				if b.Ref == q.BalanceRef {
+					if balance >= 0 {
+						return errors.New("usage balance ambiguous")
+					}
+					balance = i
+				}
+			}
+			if balance < 0 {
+				return errors.New("usage balance unavailable")
+			}
+			b := &s.Checkpoint.Budget.Balances[balance]
+			if b.Consumed == nil || b.Account != u.Account || b.Provider != u.Provider || *x.Charged > ^uint64(0)-*b.Consumed {
+				return errors.New("usage count unavailable/overflow")
+			}
+			charged := *b.Consumed + *x.Charged
+			b.Consumed = &charged
+			s.Checkpoint.Budget.Reservations = append(s.Checkpoint.Budget.Reservations[:index], s.Checkpoint.Budget.Reservations[index+1:]...)
+		}
+		if !seenUsage {
+			s.Checkpoint.Budget.Usage = append(s.Checkpoint.Budget.Usage, u)
+		}
+		s.Settlements = append(s.Settlements, x)
+	}
+	return nil
 }
 
 // checkCellClaim is evaluated at admission AND by the separately invoked provider.
@@ -684,4 +716,98 @@ func checkCellClaim(s CellState, r CellAdmission) error {
 		return errors.New("item claim unavailable/ambiguous")
 	}
 	return nil
+}
+
+// CellResolution is returned only by a qualified authoritative resolution port.
+// NotApplied includes definitive absence/proven failure plus old-writer fencing;
+// references alone are not evidence. Every reservation needs known usage.
+type CellResolution struct {
+	Ref, FenceRef string
+	NotApplied    bool
+	Settlements   []CellSettlement
+}
+type CellResolutionRecord struct {
+	Admission     CellAdmission
+	Ref, FenceRef string
+}
+
+// CellResolutionAuthority authenticates current resolution scope, independently
+// fences the old writer/capability, then proves absence and authoritative usage.
+// A receipt lookup racing an unfenced writer is not a conforming implementation.
+type CellResolutionAuthority interface {
+	ResolveCellOperation(context.Context, CellPermit) (CellResolution, error)
+}
+
+// ResolvePending retires a definitively absent operation only after independent
+// old-writer fencing and complete known usage. Settlement and retirement commit
+// together. Unknown usage stays charged/held; no restart assumes a free attempt.
+// The existing same-generation claim may retry with a NEW attempt and request.
+func (a CellAuthority) ResolvePending(ctx context.Context, p CellPermit) error {
+	if err := a.ready(ctx); err != nil {
+		return err
+	}
+	if a.Resolution == nil {
+		return errors.New("operation resolution unavailable")
+	}
+	current, err := a.Current.CurrentIncarnation(ctx, p.Ownership.CellID)
+	if err != nil {
+		return err
+	}
+	if current.Schema != IncarnationSchema || current.CellID != p.Ownership.CellID || current.ID == "" || current.KeyRef == "" {
+		return errors.New("resolution current authority unavailable")
+	}
+	result, err := a.Resolution.ResolveCellOperation(ctx, p)
+	if err != nil {
+		return err
+	}
+	if !result.NotApplied || result.Ref == "" || result.FenceRef == "" {
+		return errors.New("absence/fencing unconfirmed")
+	}
+	s, err := a.Store.ReadCell(ctx, p.Ownership.CellID)
+	if err != nil {
+		return err
+	}
+	return a.Store.Transaction(ctx, p.Ownership.CellID, s.Version, func(s *CellState) error {
+		index := -1
+		for n, r := range s.Pending {
+			if r.Permit == p {
+				if index >= 0 {
+					return errors.New("resolution admission ambiguous")
+				}
+				index = n
+			}
+		}
+		if index < 0 {
+			return errors.New("resolution admission unavailable")
+		}
+		old := s.Pending[index]
+		if err := settleCellState(s, p, result.Settlements); err != nil {
+			return err
+		}
+		for _, q := range old.Reservations {
+			for _, held := range s.Checkpoint.Budget.Reservations {
+				if held.ID == q.ID {
+					return errors.New("unknown usage prevents retirement")
+				}
+			}
+			known := false
+			for _, x := range s.Settlements {
+				if x.ReservationID == q.ID && x.Charged != nil && x.Usage.WorkID == p.WorkID && x.Usage.AttemptID == p.AttemptID && x.Usage.RequestID == p.RequestID {
+					known = true
+				}
+			}
+			if !known {
+				return errors.New("complete usage proof unavailable")
+			}
+		}
+		s.Resolutions = append(s.Resolutions, CellResolutionRecord{Admission: old, Ref: result.Ref, FenceRef: result.FenceRef})
+		s.Pending = append(s.Pending[:index], s.Pending[index+1:]...)
+		for n, key := range s.Checkpoint.PendingEffects {
+			if key == p.Key {
+				s.Checkpoint.PendingEffects = append(s.Checkpoint.PendingEffects[:n], s.Checkpoint.PendingEffects[n+1:]...)
+				break
+			}
+		}
+		return nil
+	})
 }

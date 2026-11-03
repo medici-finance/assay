@@ -293,3 +293,14 @@ record, not a second lease: `CellJournal.Generation(item)` reads that claim, and
 both admission and the independent effect check require its exact original work,
 attempt, Cell owner and claim generation. A current Cell tuple cannot revive a
 released or transferred item claim; reevaluation identity remains separate.
+
+
+Crash-before-apply/proven-failure recovery uses `ResolvePending`, never a free
+retry. A qualified resolution port independently fences the old writer and proves
+absence plus known usage. Settlement and retirement commit together; a fresh
+attempt/request may then resume in the same claim generation while failed spend
+stays on original work. Unknowns hold. Requests bind one signed phase, and window
+checks require an explicit authority clock rather than intent provenance time.
+See the [checkpoint contract](../spec/cell-checkpoint-v1.md#store-neutral-transaction-and-accounting-seam)
+for the full resolution, phase, clock and conservative pacing contract. No
+resolution adapter or runtime clock is installed.

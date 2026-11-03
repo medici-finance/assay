@@ -96,10 +96,8 @@ func reserveBudget(b *CellBudget, r CellAdmission, now time.Time) error {
 		if found == nil || found.Consumed == nil {
 			return errors.New("brake usage unavailable")
 		}
-		start, e1 := time.Parse(time.RFC3339, found.WindowStart)
-		end, e2 := time.Parse(time.RFC3339, found.WindowEnd)
-		if e1 != nil || e2 != nil || !end.After(start) || now.Before(start) || !now.Before(end) || found.Account == "" || found.Provider == "" || found.Unit == "" {
-			return errors.New("balance scope/window unavailable")
+		if err := balanceWindow(*found, now); err != nil {
+			return err
 		}
 		used := *found.Consumed
 		add := func(v uint64) bool {
@@ -133,6 +131,8 @@ func reserveBudget(b *CellBudget, r CellAdmission, now time.Time) error {
 // Epoch 1 denotes the ONE independently recorded reset after loss. ResetKnown
 // must come from a qualified anchor outside the lost store, not restored SQL.
 // Configuration owns Cap/C, including qualification of bounded concurrency C.
+// C is qualification/reporting metadata. This conservative implementation admits
+// below Cap itself, so it is tighter than the allowed Cap+C bound; C grants no slot.
 type CellPacing struct {
 	Scope, Window, Incarnation, Class string
 	Cap, C                            uint64
@@ -176,6 +176,16 @@ func cellPacing(s CellState, scope, window, incarnation string, epoch uint64) er
 	}
 	if n >= p.Cap {
 		return errors.New("pacing exhausted")
+	}
+	return nil
+}
+
+// balanceWindow uses composition's authority clock, not the intent provenance.
+func balanceWindow(b BudgetBalance, now time.Time) error {
+	start, e1 := time.Parse(time.RFC3339, b.WindowStart)
+	end, e2 := time.Parse(time.RFC3339, b.WindowEnd)
+	if now.IsZero() || e1 != nil || e2 != nil || !end.After(start) || now.Before(start) || !now.Before(end) || b.Account == "" || b.Provider == "" || b.Unit == "" {
+		return errors.New("balance scope/window unavailable")
 	}
 	return nil
 }

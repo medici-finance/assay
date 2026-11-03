@@ -1,2 +1,3 @@
 - Add the store-neutral Cell ownership, quota reservation, effect-intent and recovery protocol, with refusing authority ports and offline concurrent/process restart qualification. Runtime PostgreSQL and consumer activation remain separately gated.
 - Keep Cell ownership generations distinct from per-item claim generations at both admission and the independent effect boundary.
+- Resolve definitively absent operations only after independent writer fencing and known-usage settlement; bind provider requests to one phase and check quota windows against an explicit authority clock.

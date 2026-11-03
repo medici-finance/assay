@@ -247,3 +247,12 @@ record, not a second lease: `CellJournal.Generation(item)` reads that claim, and
 both admission and the independent effect check require its exact original work,
 attempt, Cell owner and claim generation. A current Cell tuple cannot revive a
 released or transferred item claim; reevaluation identity remains separate.
+
+
+The added resolution port independently fences an old writer, then proves absence
+and known usage. Retirement and usage settlement commit together; unknowns hold.
+Fresh attempts retain original-work charges and cannot reuse retired request
+lineage. Signed request phase and the injected authority clock constrain admission
+and provider checks. Full semantics live in the
+[checkpoint contract](../spec/cell-checkpoint-v1.md#store-neutral-transaction-and-accounting-seam).
+The concrete resolution/profile source is not installed.

@@ -171,7 +171,7 @@ mutations += [
  ("cell-outstanding-not-charged", "budget.go", "if old.BalanceRef == q.BalanceRef {", "if false {", "TestCellBudgetConcurrentReservations"),
  ("cell-unknown-handback-released", "ownership.go", "len(s.Pending) != 0 || len(s.Checkpoint.PendingEffects) != 0", "false", "TestOwnershipBackendHandbackUnknown"),
  ("cell-incarnation-ignored", "ownership.go", "if err = MatchCellFence(current, s.Checkpoint.Activation, s.Checkpoint.Ownership, p.Ownership); err != nil {", "if err = MatchCellFence(current, s.Checkpoint.Activation, s.Checkpoint.Ownership, p.Ownership); false {", "TestIncarnationStaleRefused"),
- ("cell-restored-sql-current", "ownership.go", "current, err := a.Current.CurrentIncarnation(ctx, p.Ownership.CellID)", "current, err := OperatorIncarnation{Schema:IncarnationSchema,CellID:s.Checkpoint.Ownership.CellID,ID:s.Checkpoint.Activation.IncarnationID,KeyRef:s.Checkpoint.Activation.KeyRef}, error(nil)", "TestIncarnationMismatchPaused"),
+ ("cell-restored-sql-current", "ownership.go", "func (a CellAuthority) check(ctx context.Context, s CellState, p CellPermit) error {\n\tcurrent, err := a.Current.CurrentIncarnation(ctx, p.Ownership.CellID)", "func (a CellAuthority) check(ctx context.Context, s CellState, p CellPermit) error {\n\tcurrent, err := OperatorIncarnation{Schema:IncarnationSchema,CellID:s.Checkpoint.Ownership.CellID,ID:s.Checkpoint.Activation.IncarnationID,KeyRef:s.Checkpoint.Activation.KeyRef}, error(nil)", "TestIncarnationMismatchPaused"),
  ("cell-contract-field-drift", "../spec/operator-incarnation-v1.md", "- `KeyRef` — `key_ref`; an authorized reference", "- `OldKeyRef` — `key_ref`; an authorized reference", "TestIncarnationSpecMatchesFields"),
  ("cell-unknown-reservation-lost", "ownership.go", "s.Checkpoint.Budget.Reservations[index].Unknown = true", "s.Checkpoint.Budget.Reservations = append(s.Checkpoint.Budget.Reservations[:index], s.Checkpoint.Budget.Reservations[index+1:]...)", "TestCellBudgetRestoreAllAttempts"),
  ("cell-pacing-seed-zero", "budget.go", "n := *p.Seed", "n := uint64(0)", "TestCellPacingRestartNoMultiply"),
@@ -186,6 +186,19 @@ mutations.append(("cell-unknown-brake-zero", "budget.go", unknown_brake,
 start = budget_source.index('case "effect":')
 end = budget_source.index('case "read":', start)
 mutations.append(("cell-pacing-cached-only", "budget.go", budget_source[start:end], 'case "effect": n = p.Cached\n\t', "TestCellPacingRestartNoMultiply"))
+# GE/16 review: safe retirement is authoritative, not a free retry or usage reset.
+mutations += [
+ ("cell-resolution-not-retired", "ownership.go", "s.Pending = append(s.Pending[:index], s.Pending[index+1:]...)", "s.Pending = s.Pending", "TestCellJournalProvenAbsence"),
+ ("cell-resolution-unfenced", "ownership.go", 'result.FenceRef == ""', "false", "TestCellJournalProvenAbsence"),
+ ("cell-resolution-unknown-class", "ownership.go", [
+  ("if held.ID == q.ID {", "if false && held.ID == q.ID {"),
+  ('if !known {\n\t\t\t\treturn errors.New("complete usage proof unavailable")', 'if false && !known {\n\t\t\t\treturn errors.New("complete usage proof unavailable")')
+ ], None, "TestCellJournalProvenAbsence"),
+ ("cell-resolution-lineage-reused", "ownership.go", "old.Admission.Permit.AttemptID == p.AttemptID || old.Admission.Permit.RequestID == p.RequestID", "false", "TestCellJournalProvenAbsence"),
+ ("cell-usage-phase-unbound", "ownership.go", "if u.Phase != phase {", "if false && u.Phase != phase {", "TestCellUsagePhaseBound"),
+ ("cell-authority-clock-ignored", "ownership.go", "reserveBudget(&s.Checkpoint.Budget, r, a.Now())", "reserveBudget(&s.Checkpoint.Budget, r, e.Time)", "TestCellAuthorityWindow"),
+ ("cell-lower-window-ignored", "ownership.go", "if err := balanceWindow(balance, a.Now()); err != nil {", "if err := balanceWindow(balance, a.Now()); false {", "TestCellAuthorityWindow"),
+]
 selected = sys.argv[1:]
 if selected:
     unknown = set(selected) - {m[0] for m in mutations}

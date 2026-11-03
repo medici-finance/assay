@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestCellBudgetConcurrentReservations(t *testing.T) {
@@ -85,12 +86,15 @@ func (u usageFixture) CellUsage(context.Context, CellPermit) ([]CellSettlement, 
 	return u.rows, u.err
 }
 func TestCellBudgetRestoreAllAttempts(t *testing.T) {
+	t.Run("signed-request-phase", TestCellUsagePhaseBound)
 	d, c, a := cellFixture(t)
 	ctx := context.Background()
 	phases := []string{"preparation", "summary", "execution", "fallback", "verification"}
 	var permits []CellPermit
 	for n, phase := range phases {
 		r := cellRequest(t, d, c, phase, 10)
+		r.Phase = phase
+		r = c.issue(r)
 		if e := a.Commit(ctx, r); e != nil {
 			t.Fatal(e)
 		}
@@ -189,6 +193,7 @@ func TestCellUsageReconcileUnknown(t *testing.T) {
 }
 
 func TestCellBrakeCountUnavailableHolds(t *testing.T) {
+	t.Run("authority-clock", TestCellAuthorityWindow)
 	d, c, a := cellFixture(t)
 	r := cellRequest(t, d, c, "brake", 1)
 	cellEdit(t, d, func(s *CellState) { s.Checkpoint.Budget.Balances[0].Consumed = nil })
@@ -238,7 +243,7 @@ func TestCellPacingChild(t *testing.T) {
 		t.Fatal(e)
 	}
 	c := &cellControl{current: OperatorIncarnation{Schema: IncarnationSchema, CellID: "cell", ID: "inc-1", KeyRef: "ref:key-1"}, cutover: true}
-	a := CellAuthority{Store: d, Current: c, Capabilities: c, Pacing: resetAnchor{cellControl: c, path: os.Getenv("ASSAY_CELL_ANCHOR")}}
+	a := CellAuthority{Store: d, Current: c, Capabilities: c, Pacing: resetAnchor{cellControl: c, path: os.Getenv("ASSAY_CELL_ANCHOR")}, Now: cellNow}
 	_ = s
 	for n := 0; n < 12; n++ {
 		r := cellRequest(t, d, c, fmt.Sprintf("pid-%d-%d", os.Getpid(), n), 1)
@@ -352,4 +357,65 @@ func TestCellPacingRestartNoMultiply(t *testing.T) {
 			t.Fatal(e)
 		}
 	})
+}
+
+func TestCellUsagePhaseBound(t *testing.T) {
+	d, c, a := cellFixture(t)
+	r := cellRequest(t, d, c, "phase", 5)
+	if err := a.Commit(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	u := usageFor(r.Permit, "ref:usage", "fallback")
+	a.Usage = usageFixture{rows: []CellSettlement{{ReservationID: r.Reservations[0].ID, Charged: uintRef(2), Usage: u}}}
+	before := cellRead(t, d)
+	if err := a.Settle(context.Background(), r.Permit); err == nil {
+		t.Fatal("different phase reused signed provider request")
+	}
+	if !reflect.DeepEqual(before, cellRead(t, d)) {
+		t.Fatal("wrong phase partially charged")
+	}
+	u.Phase = "execution"
+	a.Usage = usageFixture{rows: []CellSettlement{{ReservationID: r.Reservations[0].ID, Charged: uintRef(2), Usage: u}}}
+	if err := a.Settle(context.Background(), r.Permit); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestCellAuthorityWindow(t *testing.T) {
+	for _, name := range []string{"closed-current", "zero-current", "missing-clock", "old-provenance"} {
+		t.Run(name, func(t *testing.T) {
+			d, c, a := cellFixture(t)
+			r := cellRequest(t, d, c, name, 1)
+			switch name {
+			case "closed-current":
+				a.Now = func() time.Time { return cellNow().Add(48 * time.Hour) }
+			case "zero-current":
+				a.Now = func() time.Time { return time.Time{} }
+			case "missing-clock":
+				a.Now = nil
+			case "old-provenance":
+				r.Intent.Event.Time = cellNow().Add(-48 * time.Hour)
+				r = c.issue(r)
+			}
+			err := a.Commit(context.Background(), r)
+			if name == "old-provenance" {
+				if err != nil {
+					t.Fatal("provenance time chosen as current", err)
+				}
+			} else if err == nil {
+				t.Fatal("closed/unavailable authority clock admitted")
+			}
+		})
+	}
+	d, c, a := cellFixture(t)
+	now := cellNow()
+	a.Now = func() time.Time { return now }
+	r := cellRequest(t, d, c, "window-boundary", 1)
+	if err := a.Commit(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(48 * time.Hour)
+	provider := cellProvider(a)
+	if _, err := provider.apply(context.Background(), r.Permit); err == nil || provider.applied != 0 {
+		t.Fatal("provider bypassed closed authority window")
+	}
 }

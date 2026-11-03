@@ -113,3 +113,28 @@ record, not a second lease: `CellJournal.Generation(item)` reads that claim, and
 both admission and the independent effect check require its exact original work,
 attempt, Cell owner and claim generation. A current Cell tuple cannot revive a
 released or transferred item claim; reevaluation identity remains separate.
+
+
+A crash before apply or a provider-proven failure leaves its admission pending.
+Blind retry cannot turn that into free quota. `ResolvePending` uses the explicit
+`CellResolutionAuthority`: it independently fences the old writer/capability and
+proves the operation was not applied, with authoritative usage for every held
+reservation. Known settlement and retirement commit together and retain the old
+admission, source/fence references and original-work charges. Unknown outcome,
+fencing or usage holds. After resolution a new attempt and request may resume the
+same stable operation under the same current item claim generation; retired
+request/attempt identities cannot be reused. A receipt lookup racing an unfenced
+writer is not definitive absence. The resolution port is not installed here.
+
+Each authenticated provider request binds exactly one execution phase. Preparation,
+summary, execution, fallback and verification use distinct request identities while
+charging original work; they cannot be appended as new phases after a request's
+reservation is settled. Mismatched phases refuse atomically, rather than silently
+leaving a fallback uncharged. Unknown-to-known observations of the same phase keep
+their existing exact predecessor/source lineage.
+
+Budget windows at admission and the independent provider check use the explicitly
+injected authority clock (`CellAuthority.Now`), never the historical intent's
+`Event.Time`. A missing/zero clock refuses; capability expiry remains independently
+required. `CellPacing.C` is configuration/qualification metadata: this seam enforces
+the stricter Cap, within the Cap+C bound, and grants no extra slots from C.
