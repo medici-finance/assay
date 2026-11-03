@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -321,6 +322,48 @@ func TestMilestoneGraphUnknowns(t *testing.T) {
 		}
 	})
 
+	t.Run("a logical-key collision across roots holds every claimant, never picks a winner", func(t *testing.T) {
+		advertiseMilestones(t)
+		// Root B is the same fixture under the same cell and self alias, with
+		// brief 12's start requirement deleted and fresh uuids. Without the
+		// guard root A's row 12 receives root B's empty gate list.
+		rootA := ms05Tree(t, nil)
+		fresh := strings.NewReplacer("-000000000511", "-000000000611", "-000000000512", "-000000000612", "-000000000521", "-000000000621", "-000000000531", "-000000000631")
+		rootB := ms05Tree(t, map[string]func(string) string{
+			"build/brief-12-gated.md": func(s string) string {
+				return fresh.Replace(ms04Replace("requires-milestones: [\"stream-y:m-01@1\"]\n", "")(s))
+			},
+			"build/brief-11-independent.md": fresh.Replace,
+			"stream-y/brief-01-y-work.md":   fresh.Replace,
+			"stream-z/brief-01-z-work.md":   fresh.Replace,
+		})
+		streams := ms05Load(t, rootA, rootB)
+		_, notices := checkBriefFiles(streams, streams)
+		for _, s := range streams {
+			if s.Root != rootA || s.Name != "build" {
+				continue
+			}
+			for _, row := range s.Briefs {
+				if row.Num != "12" {
+					continue
+				}
+				held := false
+				for _, e := range row.Gates {
+					held = held || (e.Ref == "stream-y:m-01@1" && e.Resolved == StateCouldNotCheck && strings.Contains(e.Why, "claimed by more than one scanned brief"))
+				}
+				if !held {
+					t.Fatalf("root A's brief 12 must keep its start requirement, held could-not-check naming the collision; gates %+v\n%s", row.Gates, strings.Join(notices, "\n"))
+				}
+			}
+		}
+		if !ms05Has(notices, "brief-12-gated.md", "held could-not-check", "assay:assay:build:b-12", "claimed by more than one scanned brief") {
+			t.Errorf("the collision must be announced; notices:\n%s", strings.Join(notices, "\n"))
+		}
+		if m3 := ms05Graph(t, streams).Milestones[ms05M3]; m3.Completion != evaluation.GraphUnknown || !ms05Has(m3.Unknowns, "declared by more than one loaded record") {
+			t.Errorf("a milestone declared in both roots must stay unknown, never pick one record; got %+v", m3)
+		}
+	})
+
 	t.Run("a root whose owner cannot be established holds could-not-check", func(t *testing.T) {
 		advertiseMilestones(t)
 		root := ms05Tree(t, nil)
@@ -333,4 +376,37 @@ func TestMilestoneGraphUnknowns(t *testing.T) {
 			t.Fatalf("an unresolvable owning root must hold could-not-check; got %+v\n%s", e, strings.Join(notices, "\n"))
 		}
 	})
+}
+
+// regression: milestone-support/05
+func TestMilestoneLatticeStaysLinear(t *testing.T) {
+	// A diamond lattice: every milestone in layer i requires both milestones of
+	// layer i+1, and each milestone has one unfinished contributor of its own.
+	// Re-qualifying a prerequisite's detail on every path doubles it per layer
+	// (2^depth); the closure must carry each blocker once.
+	const depth = 16
+	ref := func(i int, side string) string { return "assay:assay:lat:m-" + side + strconv.Itoa(i) }
+	var in evaluation.MilestoneGraphInput
+	for i := 0; i < depth; i++ {
+		for _, side := range []string{"a", "b"} {
+			m := evaluation.GraphMilestone{Key: ref(i, side), Version: 1, Contributes: []evaluation.WorkPin{{Key: "assay:assay:lat:b-" + side + strconv.Itoa(i)}}}
+			if i+1 < depth {
+				m.Requires = []evaluation.MilestonePin{{Key: ref(i+1, "a"), Version: 1}, {Key: ref(i+1, "b"), Version: 1}}
+			}
+			in.Milestones = append(in.Milestones, m)
+		}
+	}
+	in.Briefs = []evaluation.GraphBrief{{Key: "assay:assay:lat:b-start", Status: "planned", Requires: []evaluation.MilestonePin{{Key: ref(0, "a"), Version: 1, Spelling: "lat:m-a0@1"}}}}
+	in.Lookup = func(pin evaluation.WorkPin) evaluation.PinObservation {
+		return evaluation.PinObservation{Found: true, Brief: evaluation.GraphBrief{Key: pin.Key, Status: "in-progress"}}
+	}
+	g := evaluation.BuildMilestoneGraph(in)
+	top := g.Milestones[ref(0, "a")+"@1"]
+	if want := 1 + 2*(depth-1); top.Completion != evaluation.GraphBlocked || len(top.Blockers) != want {
+		t.Fatalf("the top of a %d-layer lattice must carry each of its %d reachable blockers once; got %s with %d", depth, want, top.Completion, len(top.Blockers))
+	}
+	gate := g.Briefs["assay:assay:lat:b-start"].Gates[0]
+	if gate.State != evaluation.GraphBlocked || len(gate.Blockers) != 21 || !strings.HasPrefix(gate.Blockers[20], "… and 11 more blockers") {
+		t.Fatalf("a start gate's hold detail must be bounded; got %s with %d blockers, last %q", gate.State, len(gate.Blockers), gate.Blockers[len(gate.Blockers)-1])
+	}
 }

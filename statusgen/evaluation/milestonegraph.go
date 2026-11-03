@@ -1,6 +1,7 @@
 package evaluation
 
 import (
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -243,7 +244,12 @@ func BuildMilestoneGraph(in MilestoneGraphInput) MilestoneGraph {
 	}
 	sort.Slice(g.Cycles, func(i, j int) bool { return strings.Join(g.Cycles[i], ",") < strings.Join(g.Cycles[j], ",") })
 
-	// Milestone completion, derived recursively over prerequisites.
+	// Milestone completion, derived recursively over prerequisites. Each node's
+	// own blockers and unknowns are qualified once by that node's ref; a
+	// prerequisite contributes its already-qualified closure, deduplicated, so a
+	// lattice of shared prerequisites stays linear in the authored records
+	// instead of copying every path through it.
+	closures := map[string]closure{}
 	var complete func(ref string, visiting map[string]bool) MilestoneNode
 	complete = func(ref string, visiting map[string]bool) MilestoneNode {
 		if n, ok := g.Milestones[ref]; ok {
@@ -251,9 +257,10 @@ func BuildMilestoneGraph(in MilestoneGraphInput) MilestoneGraph {
 		}
 		m := records[ref]
 		n := MilestoneNode{Ref: ref}
+		var own, inherited closure
 		if onCycle[milestoneNode(ref)] {
 			n.Completion = GraphCycle
-			n.Blockers = append(n.Blockers, "milestone "+ref+" is on a dependency cycle")
+			own.blockers = append(own.blockers, "milestone "+ref+" is on a dependency cycle")
 		}
 		visiting[ref] = true
 		seen := map[string]bool{}
@@ -266,20 +273,26 @@ func BuildMilestoneGraph(in MilestoneGraphInput) MilestoneGraph {
 			obs := contributor[ref+"\x00"+pin.Key]
 			switch {
 			case !obs.Found:
-				n.Unknowns = append(n.Unknowns, "contributor "+pinSpelling(pin)+" is unknown: "+obs.Why)
+				own.unknowns = append(own.unknowns, "contributor "+pinSpelling(pin)+" is unknown: "+obs.Why)
 			case obs.Brief.Status == "withdrawn":
-				n.Blockers = append(n.Blockers, "contributor "+pin.Key+" is withdrawn; withdrawn work never satisfies a contribution")
+				own.blockers = append(own.blockers, "contributor "+pin.Key+" is withdrawn; withdrawn work never satisfies a contribution")
 			case obs.Brief.Status != "done":
-				n.Blockers = append(n.Blockers, "contributor "+pin.Key+" is "+statusOrUnset(obs.Brief.Status))
+				own.blockers = append(own.blockers, "contributor "+pin.Key+" is "+statusOrUnset(obs.Brief.Status))
 			}
 		}
 		for _, r := range m.Requires {
 			n.Prerequisites = append(n.Prerequisites, r.Ref())
-			b, u := requirement(r, records, visiting, complete)
-			n.Blockers = append(n.Blockers, b...)
-			n.Unknowns = append(n.Unknowns, u...)
+			b, u := requirement(r, records, visiting, complete, closures)
+			inherited.blockers = append(inherited.blockers, b...)
+			inherited.unknowns = append(inherited.unknowns, u...)
 		}
-		n.Unknowns = append(n.Unknowns, m.Unknowns...)
+		own.unknowns = append(own.unknowns, m.Unknowns...)
+		n.Blockers = dedupe(append(slices.Clone(own.blockers), inherited.blockers...))
+		n.Unknowns = dedupe(append(slices.Clone(own.unknowns), inherited.unknowns...))
+		closures[ref] = closure{
+			blockers: dedupe(append(qualify(ref, own.blockers), inherited.blockers...)),
+			unknowns: dedupe(append(qualify(ref, own.unknowns), inherited.unknowns...)),
+		}
 		delete(visiting, ref)
 		switch {
 		case n.Completion == GraphCycle:
@@ -321,7 +334,8 @@ func BuildMilestoneGraph(in MilestoneGraphInput) MilestoneGraph {
 				s.Gates = append(s.Gates, gate)
 				continue
 			}
-			gate.Blockers, gate.Unknowns = requirement(r, records, map[string]bool{}, complete)
+			gate.Blockers, gate.Unknowns = requirement(r, records, map[string]bool{}, complete, closures)
+			gate.Blockers, gate.Unknowns = capDetail(gate.Blockers, "blockers"), capDetail(gate.Unknowns, "unknowns")
 			switch {
 			case len(gate.Blockers) > 0:
 				gate.State = GraphBlocked
@@ -341,7 +355,7 @@ func BuildMilestoneGraph(in MilestoneGraphInput) MilestoneGraph {
 // requirement resolves one required milestone (a prerequisite or a start
 // requirement) into known blockers and unknowns. Completion is not acceptance:
 // a complete prerequisite still leaves its acceptance unknown.
-func requirement(r MilestonePin, records map[string]GraphMilestone, visiting map[string]bool, complete func(string, map[string]bool) MilestoneNode) (blockers, unknowns []string) {
+func requirement(r MilestonePin, records map[string]GraphMilestone, visiting map[string]bool, complete func(string, map[string]bool) MilestoneNode, closures map[string]closure) (blockers, unknowns []string) {
 	if r.Key == "" {
 		return nil, []string{"milestone " + r.Spelling + " does not resolve: " + r.Why}
 	}
@@ -359,13 +373,44 @@ func requirement(r MilestonePin, records map[string]GraphMilestone, visiting map
 	case GraphComplete:
 		return nil, []string{"milestone " + ref + " acceptance is not observed"}
 	}
-	for _, b := range n.Blockers {
-		blockers = append(blockers, ref+": "+b)
+	c := closures[ref]
+	return slices.Clone(c.blockers), slices.Clone(c.unknowns)
+}
+
+// closure is a milestone's transitive blockers and unknowns, each entry
+// qualified once by the milestone it originates at.
+type closure struct{ blockers, unknowns []string }
+
+func qualify(ref string, list []string) []string {
+	out := make([]string, 0, len(list))
+	for _, s := range list {
+		out = append(out, ref+": "+s)
 	}
-	for _, u := range n.Unknowns {
-		unknowns = append(unknowns, ref+": "+u)
+	return out
+}
+
+// dedupe keeps the first occurrence of each entry, in order.
+func dedupe(list []string) []string {
+	seen := make(map[string]bool, len(list))
+	out := list[:0:0]
+	for _, s := range list {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
 	}
-	return blockers, unknowns
+	return out
+}
+
+// maxGateDetail bounds the detail one start gate carries into a hold reason;
+// the milestone node keeps the full (linear) list.
+const maxGateDetail = 20
+
+func capDetail(list []string, what string) []string {
+	if len(list) <= maxGateDetail {
+		return list
+	}
+	return append(list[:maxGateDetail:maxGateDetail], "… and "+strconv.Itoa(len(list)-maxGateDetail)+" more "+what)
 }
 
 func pinSpelling(p WorkPin) string {

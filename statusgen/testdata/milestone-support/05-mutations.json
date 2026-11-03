@@ -136,6 +136,51 @@
       "module": "statusgen",
       "package": ".",
       "test": "TestMilestoneGraphUnknowns"
+    },
+    {
+      "name": "key-collision-picks-a-winner",
+      "target": "statusgen/milestonegraph.go",
+      "old": "if why := collision(key); why != \"\" {",
+      "new": "if why := collision(key); false && why != \"\" {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneGraphUnknowns"
+    },
+    {
+      "name": "record-collision-picks-one",
+      "target": "statusgen/milestonegraph.go",
+      "old": "if why := recordCollision(m.Ref()); why != \"\" {",
+      "new": "if why := recordCollision(m.Ref()); false && why != \"\" {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneGraphUnknowns"
+    },
+    {
+      "name": "lattice-requalifies-every-path",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "c := closures[ref]\n\treturn slices.Clone(c.blockers), slices.Clone(c.unknowns)",
+      "new": "_ = closures\n\treturn qualify(ref, n.Blockers), qualify(ref, n.Unknowns)",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneLatticeStaysLinear"
+    },
+    {
+      "name": "closure-not-deduplicated",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "blockers: dedupe(append(qualify(ref, own.blockers), inherited.blockers...)),",
+      "new": "blockers: append(qualify(ref, own.blockers), inherited.blockers...),",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneLatticeStaysLinear"
+    },
+    {
+      "name": "gate-detail-uncapped",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "gate.Blockers, gate.Unknowns = capDetail(gate.Blockers, \"blockers\"), capDetail(gate.Unknowns, \"unknowns\")",
+      "new": "_ = capDetail",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneLatticeStaysLinear"
     }
   ]
 }

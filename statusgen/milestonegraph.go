@@ -20,6 +20,7 @@ package main
 // named. Nothing here reads the network, mints a key or changes a status.
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/medici-finance/assay/statusgen/evaluation"
@@ -43,9 +44,15 @@ type milestoneRootOwner struct {
 }
 
 // milestoneGraphInput maps the scan onto the pure graph's input. It returns the
-// input and each scanned row's logical key ("" when the row's owning root could
-// not be established).
-func milestoneGraphInput(streams []*Stream, pending []milestoneStartPending, snaps map[string]briefSnapshot, regFor func(string) *graphRepos) (evaluation.MilestoneGraphInput, map[*Brief]string, map[*Brief]milestoneRootOwner) {
+// input, each scanned row's logical key, and — for a row with no usable key —
+// why its start requirements must be held could-not-check instead.
+//
+// A row has no usable key when its owning root could not be established, or
+// when its logical key is claimed by more than one scanned row (two roots whose
+// registries resolve to one cell and self alias, sharing a stream and number).
+// A collision never picks a winner: every claimant is left out of the graph and
+// the source port, so no row can receive another row's gates or status.
+func milestoneGraphInput(streams []*Stream, pending []milestoneStartPending, snaps map[string]briefSnapshot, regFor func(string) *graphRepos) (evaluation.MilestoneGraphInput, map[*Brief]string, map[*Brief]string) {
 	owners := map[string]milestoneRootOwner{}
 	ownerOf := func(root string) milestoneRootOwner {
 		if o, ok := owners[root]; ok {
@@ -61,21 +68,63 @@ func milestoneGraphInput(streams []*Stream, pending []milestoneStartPending, sna
 		requiresOf[p.row] = p.requires
 	}
 
+	// Every claimant of each logical key, before any row is admitted.
+	claims := map[string][]string{}
+	for _, s := range streams {
+		if o := ownerOf(s.Root); o.ctx != nil {
+			for _, row := range s.Briefs {
+				k, at := briefGraphKey(o.ctx, s.Name, row.Num), s.Root+" "+s.Name+"/"+row.Num
+				if !slices.Contains(claims[k], at) { // one row seen twice is one claimant
+					claims[k] = append(claims[k], at)
+				}
+			}
+		}
+	}
+	collision := func(k string) string {
+		if len(claims[k]) < 2 {
+			return ""
+		}
+		return "logical key " + k + " is claimed by more than one scanned brief (" + strings.Join(claims[k], ", ") + "); no claimant is chosen"
+	}
+	records := map[string][]string{}
+	for _, s := range streams {
+		if s.Milestones == nil {
+			continue
+		}
+		for _, rec := range s.Milestones.Records {
+			ref, at := (evaluation.GraphMilestone{Key: rec.Key, Version: rec.ContractVersion}).Ref(), s.Root+" "+s.Name+" "+rec.Path
+			if !slices.Contains(records[ref], at) {
+				records[ref] = append(records[ref], at)
+			}
+		}
+	}
+	recordCollision := func(ref string) string {
+		if len(records[ref]) < 2 {
+			return ""
+		}
+		return "milestone " + ref + " is declared by more than one loaded record (" + strings.Join(records[ref], ", ") + "); no record is chosen"
+	}
+
 	var in evaluation.MilestoneGraphInput
 	keyOf := map[*Brief]string{}
-	ownerByRow := map[*Brief]milestoneRootOwner{}
+	heldWhy := map[*Brief]string{}
 	index := map[string]evaluation.GraphBrief{}
 	for _, s := range streams {
 		o := ownerOf(s.Root)
 		for i := range s.Briefs {
 			row := &s.Briefs[i]
-			ownerByRow[row] = o
 			if o.ctx == nil {
+				heldWhy[row] = "the owning root could not be established: " + o.why
+				continue
+			}
+			key := briefGraphKey(o.ctx, s.Name, row.Num)
+			if why := collision(key); why != "" {
+				heldWhy[row] = why
 				continue
 			}
 			snap := snaps[s.Root][s.Name+"/"+row.Num]
 			b := evaluation.GraphBrief{
-				Key:      briefGraphKey(o.ctx, s.Name, row.Num),
+				Key:      key,
 				Root:     s.Root,
 				ID:       snap.ID,
 				Status:   row.Status,
@@ -105,6 +154,15 @@ func milestoneGraphInput(streams []*Stream, pending []milestoneStartPending, sna
 		}
 		for _, rec := range s.Milestones.Records {
 			m := evaluation.GraphMilestone{Key: rec.Key, Version: rec.ContractVersion}
+			if why := recordCollision(m.Ref()); why != "" {
+				// The same class as a brief key collision: no record is chosen,
+				// so every gate on this version stays unknown.
+				if !slices.ContainsFunc(in.Milestones, func(x evaluation.GraphMilestone) bool { return x.Ref() == m.Ref() }) {
+					m.Unknowns = []string{why}
+					in.Milestones = append(in.Milestones, m)
+				}
+				continue
+			}
 			for _, c := range rec.Contributes {
 				m.Contributes = append(m.Contributes, evaluation.WorkPin{Key: c.LogicalKey, Revision: c.Revision, Spelling: c.Spelling})
 			}
@@ -125,6 +183,9 @@ func milestoneGraphInput(streams []*Stream, pending []milestoneStartPending, sna
 	in.Lookup = func(pin evaluation.WorkPin) evaluation.PinObservation {
 		b, ok := index[pin.Key]
 		if !ok {
+			if why := collision(pin.Key); why != "" {
+				return evaluation.PinObservation{Why: why}
+			}
 			return evaluation.PinObservation{Why: "brief " + pin.Key + " is not in a loaded root's source snapshot"}
 		}
 		bound := bindBriefSelector(BriefRefSelector{Key: pin.Key, Ref: workref.Reference{Revision: pin.Revision}}, briefSnapshot{pin.Key: {Version: int(b.Revision), ID: b.ID}})
@@ -133,7 +194,7 @@ func milestoneGraphInput(streams []*Stream, pending []milestoneStartPending, sna
 		}
 		return evaluation.PinObservation{Found: true, Brief: b}
 	}
-	return in, keyOf, ownerByRow
+	return in, keyOf, heldWhy
 }
 
 func briefGraphKey(ctx *workref.Context, stream, num string) string {
@@ -148,7 +209,7 @@ func applyMilestoneStartGates(add, notice func(string, ...any), streams []*Strea
 	if len(pending) == 0 && !anyMilestoneRecords(streams) {
 		return
 	}
-	in, keyOf, owners := milestoneGraphInput(streams, pending, snaps, regFor)
+	in, keyOf, heldWhy := milestoneGraphInput(streams, pending, snaps, regFor)
 	g := evaluation.BuildMilestoneGraph(in)
 	for _, c := range g.Cycles {
 		if milestoneCycle(c) {
@@ -159,8 +220,10 @@ func applyMilestoneStartGates(add, notice func(string, ...any), streams []*Strea
 		row := p.row
 		gates := append([]GraphEdge(nil), row.Gates...)
 		key := keyOf[row]
-		if key == "" {
-			why := "the owning root could not be established: " + owners[row].why
+		if why := heldWhy[row]; why != "" || key == "" {
+			if why == "" {
+				why = "the row has no logical key in the combined graph"
+			}
 			for _, m := range p.requires {
 				gates = append(gates, GraphEdge{Ref: m, Type: "behavioural-gate", Reason: "requires-milestones", Resolved: StateCouldNotCheck, Why: why})
 				notice("%s: requires-milestones %s — held could-not-check: %s", p.path, m, why)
