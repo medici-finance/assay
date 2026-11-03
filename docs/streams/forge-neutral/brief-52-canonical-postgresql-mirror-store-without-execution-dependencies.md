@@ -40,7 +40,18 @@ consumers:
 
 ## Context
 
-files: `workflow/go.mod`, `workflow/go.sum`, `workflow/store/`, `workflow/store/migrations/`, `workflow/internal/pgtest/`, `workflow/README.md`, `spec/coordination-store-v1.md`, `.github/workflows/assay-workflow.yml`, `docs/contracts.md`, `changelog/mirror-postgres-store.md`. Extend actual /36 delivery paths, never create a second foundation.
+files:
+- `workflow/go.mod`
+- `workflow/go.sum`
+- `workflow/store/`
+- `workflow/internal/pgtest/`
+- `workflow/README.md`
+- `spec/coordination-store-v1.md`
+- `.github/workflows/assay-workflow.yml`
+- `tools/desk/internal/deskkit/citrigger_test.go`
+- `docs/contracts.md`
+- `changelog/mirror-postgres-store.md`
+
 
 facts:
 - The R2 foundation child graph-execution/36 supplies the only PostgreSQL driver, Goose migration ledger and explicitly provisioned container fixture. Implementation genuinely merged tested source `4d028e05913d66067ad7ee8518422b3390790c8f` at `faf039c706a683e622f53763261a145790a895b0`; its publication remains held for a separate workflow-permission act. It also genuinely merged /50 presence source `64a470c33ecf021cd53bdf5a04948da221a77d4f` at `3aaf730cb`, preserving that owner. Missing canonical migration/harness input still requires stopping. A genuine feature-branch merge may supply that canonical source for offline implementation; a stack supplies no mainline delivery or acceptance credit.
