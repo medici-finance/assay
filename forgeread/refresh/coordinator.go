@@ -212,8 +212,11 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 		finish()
 		return
 	}
-	c.observe(ctx, "source-attempt", "scan-call", q.Scope, t.Generation)
 	scan, scanErr := c.source.Scan(ctx, a, q.Scope, plan)
+	complete.Now = c.clock.Now()
+	complete.Query = q
+	complete.Query.Now = complete.Now
+	c.observe(ctx, "source-attempt", "scan-call", q.Scope, t.Generation)
 	if errors.Is(scanErr, mirror.ErrPermission) {
 		complete.AdmissionDenied = true
 		complete.Failure = mirror.Permission
@@ -247,9 +250,6 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 			}
 		}
 	}
-	complete.Now = c.clock.Now()
-	complete.Query = q
-	complete.Query.Now = complete.Now
 	update, err := mirror.PlanScan(baseline, plan, scan, complete.Now)
 	if err != nil {
 		complete.Failure = mirror.Unknown

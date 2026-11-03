@@ -171,10 +171,12 @@ cooldown or confirmed permission-loss record. Source-confirmed permission covera
 remains a separate kernel outcome, with retention still human-gated. Current caller
 and repository admission are checked after store I/O before releasing any rows.
 The same checks and caller deadline apply after gate cleanup I/O.
-After the last observer/cleanup callback, release uses the mirror owner's pure
-`EvaluateSnapshot` with trusted current time, then checks current permission and
-deadline. The evaluator reuses canonical validation/freshness, performs no I/O and
+After the last observer/cleanup callback, release checks current permission and
+deadline, then uses the mirror owner's pure `EvaluateSnapshot` with trusted current
+time and no later callback or I/O. The evaluator reuses canonical validation/freshness, performs no I/O and
 grants no authorization; holders of its typed snapshot must still authorize release.
+Scan-call diagnostics follow the actual invocation; completion time is captured at
+Scan return before diagnostics, so a slow observer cannot inflate complete freshness.
 
 Base fill identity stays separate from bounded observation `Requirements` (currently
 complete existing reviews). `Demand` carries that requirement class; no request id,

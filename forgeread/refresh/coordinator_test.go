@@ -738,6 +738,76 @@ type authorityHook struct {
 	after func()
 }
 
+type sourceObserver struct{ after func(Observation) }
+
+func (o sourceObserver) Observe(_ context.Context, event Observation) error {
+	if event.Kind == "source-attempt" {
+		o.after(event)
+	}
+	return nil
+}
+func checkSourceObserver(t *testing.T) {
+	for _, mode := range []string{"positive", "revocation", "freshness", "source-refusal", "before-source-refusal"} {
+		t.Run(mode, func(t *testing.T) {
+			f := setup(t)
+			var events atomic.Int64
+			var premature, unadmitted atomic.Bool
+			f.c[0].observer = sourceObserver{after: func(event Observation) {
+				events.Add(1)
+				if f.source.calls.Load() != 1 || event.Unit != "scan-call" || event.Count != 1 || !event.Known {
+					premature.Store(true)
+				}
+				if mode == "revocation" {
+					f.auth.revoke(f.caller.ID)
+				}
+				if mode == "freshness" {
+					f.clock.step(2 * time.Minute)
+				}
+			}}
+			f.source.fn = func(ctx context.Context, _ mirror.Admission, scope mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
+				if f.auth.Authorize(ctx, f.caller, scope) != nil {
+					unadmitted.Store(true)
+				}
+				if mode == "source-refusal" {
+					return mirror.ScanResult{}, mirror.ErrPermission
+				}
+				return f.scan(scope, "observed"), nil
+			}
+			if mode == "before-source-refusal" {
+				f.auth.revoke(f.caller.ID)
+			}
+			r, err := f.c[0].Read(context.Background(), f.a, f.q, f.caller)
+			if mode == "before-source-refusal" {
+				if err == nil || f.source.calls.Load() != 0 || events.Load() != 0 {
+					t.Fatal("pre-source refusal fabricated a measured scan")
+				}
+				return
+			}
+			if unadmitted.Load() || premature.Load() || f.source.calls.Load() != 1 || events.Load() != 1 {
+				t.Fatalf("diagnostic preceded authorized actual scan: calls=%d events=%d unauthorized=%v premature=%v", f.source.calls.Load(), events.Load(), unadmitted.Load(), premature.Load())
+			}
+			switch mode {
+			case "positive":
+				if err != nil || !r.Fulfilled {
+					t.Fatalf("positive scan: %+v %v", r, err)
+				}
+			case "revocation":
+				if err == nil || r.Fulfilled || len(r.Snapshot.Records) != 0 {
+					t.Fatalf("observer revocation released rows: %+v %v", r, err)
+				}
+			case "freshness":
+				if err != nil || r.Fulfilled || !r.Stale || !r.Snapshot.Coverage.LastComplete.Equal(f.clock.Now().Add(-2*time.Minute)) {
+					t.Fatalf("diagnostic inflated complete observation time: %+v %v", r, err)
+				}
+			case "source-refusal":
+				if err != nil || r.Fulfilled {
+					t.Fatalf("typed source refusal: %+v %v", r, err)
+				}
+			}
+		})
+	}
+}
+
 func (a authorityHook) Authorize(ctx context.Context, caller Caller, scope mirror.Scope) error {
 	err := a.CallerAuthority.Authorize(ctx, caller, scope)
 	a.after()
@@ -1089,6 +1159,7 @@ func TestRefreshReleaseAuthority(t *testing.T) {
 	t.Run("after-leave", checkReleaseAfterLeave)
 	t.Run("hit-observer", checkHitObserverRelease)
 	t.Run("authority-age", checkAuthorityFreshness)
+	t.Run("source-observer", checkSourceObserver)
 	t.Run("store-age", func(t *testing.T) {
 		f := setup(t)
 		f.seed(t)
