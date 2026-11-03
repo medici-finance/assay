@@ -16,8 +16,9 @@ archive-omitted blobs are could-not-check (exit 2). With both pins on the comman
 does not choose a historical commit for the author: identifying the actual delivery remains
 an independently reviewed claim.
 
-Every evaluated delivery prints a separate `PRODUCER-DELIVERY: COULD-NOT-CHECK`
-qualification. The routing counts and exit status concern declared consumer routes
+Every evaluated delivery writes a separate `PRODUCER-DELIVERY: COULD-NOT-CHECK`
+qualification to stderr. The stdout report stays byte-identical, preserving its header
+and pinned report hashes. The routing counts on stdout and exit status concern declared consumer routes
 only. In particular, `follow-up` corroborates that a target brief exists and references
 back; it does not require that the selected diff contains the producer's implementation.
 Two different producer deliveries can therefore corroborate the same follow-up routes.

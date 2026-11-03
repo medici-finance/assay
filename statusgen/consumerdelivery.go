@@ -115,7 +115,7 @@ func runDeliveryConsumers(root, base, brief, delivery string) int {
 	// Both explicit and Evidence-derived pins reach this one historical path.
 	// A bounded snapshot authenticates the inputs, not the caller's assertion
 	// that this commit implements the producer. Keep that separate from routing.
-	fmt.Println("PRODUCER-DELIVERY: COULD-NOT-CHECK — producer identity and implementation completeness are not evaluated; follow-up routes prove target existence and reference-back only. Independently establish the actual producer delivery. Routing counts and exit status below concern declared consumer routes only.")
+	fmt.Fprintln(os.Stderr, "PRODUCER-DELIVERY: COULD-NOT-CHECK — producer identity and implementation completeness are not evaluated; follow-up routes prove target existence and reference-back only. Independently establish the actual producer delivery. Routing counts on stdout and the exit status concern declared consumer routes only.")
 	return emitConsumers(base+".."+delivery+" (immutable delivered snapshot)", 1, verdicts, nil, true)
 }
 

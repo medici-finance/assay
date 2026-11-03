@@ -123,12 +123,15 @@ func TestDeliveryIdentitySwapped(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var code int
-			out := captureStdout(t, func() { code = runDeliveryConsumers(root, tc.base, tc.brief, tc.delivery) })
+			var out string
+			diagnostic := captureStderr(t, func() {
+				out = captureStdout(t, func() { code = runDeliveryConsumers(root, tc.base, tc.brief, tc.delivery) })
+			})
 			if code != 0 || !strings.Contains(out, "summary: 1 corroborated, 0 disproved, 1 unchecked") {
 				t.Fatalf("routing semantics changed: exit %d\n%s", code, out)
 			}
-			if !strings.Contains(out, "PRODUCER-DELIVERY: COULD-NOT-CHECK") || !strings.Contains(out, "follow-up routes prove target existence and reference-back only") {
-				t.Fatalf("producer identity was not separately unqualified:\n%s", out)
+			if strings.Contains(out, "PRODUCER-DELIVERY:") || !strings.Contains(diagnostic, "PRODUCER-DELIVERY: COULD-NOT-CHECK") || !strings.Contains(diagnostic, "follow-up routes prove target existence and reference-back only") {
+				t.Fatalf("producer identity needs stderr qualification without changing stdout:\nstdout: %s\nstderr: %s", out, diagnostic)
 			}
 		})
 	}
@@ -138,9 +141,29 @@ func TestDeliveryIdentitySwapped(t *testing.T) {
 func TestDeliveryIdentityDerived(t *testing.T) {
 	root, _, _ := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, goodMarker)
 	var code int
-	out := captureStdout(t, func() { code = runConsumersDerived(root, "alpha/01") })
-	if code != 0 || !strings.Contains(out, "summary: 1 corroborated, 0 disproved, 0 unchecked") || !strings.Contains(out, "PRODUCER-DELIVERY: COULD-NOT-CHECK") {
-		t.Fatalf("derived delivery needs the same identity limit: exit %d\n%s", code, out)
+	var out string
+	diagnostic := captureStderr(t, func() {
+		out = captureStdout(t, func() { code = runConsumersDerived(root, "alpha/01") })
+	})
+	if code != 0 || !strings.Contains(out, "summary: 1 corroborated, 0 disproved, 0 unchecked") || strings.Contains(out, "PRODUCER-DELIVERY:") || !strings.Contains(diagnostic, "PRODUCER-DELIVERY: COULD-NOT-CHECK") {
+		t.Fatalf("derived delivery needs the same stderr identity limit: exit %d\nstdout: %s\nstderr: %s", code, out, diagnostic)
+	}
+}
+
+// regression: #5375 F1
+func TestDeliveryStdoutStable(t *testing.T) {
+	root, base, delivery := deliveryFixture(t, []string{"web/fixed.go: fixed-here"})
+	var code int
+	var out string
+	_ = captureStderr(t, func() {
+		out = captureStdout(t, func() { code = runDeliveryConsumers(root, base, "alpha/01", delivery) })
+	})
+	want := "consumers corroboration — base " + base + ".." + delivery + " (immutable delivered snapshot), 1 brief(s)\n" +
+		"\nalpha/01\n  CORROBORATED  web/fixed.go: fixed-here\n" +
+		"\nsummary: 1 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing\n" +
+		"LIMIT: only the entries written above were judged — an OMITTED consumer is invisible to this gate.\n"
+	if code != 0 || out != want {
+		t.Fatalf("historical routing stdout changed: exit %d\ngot: %q\nwant: %q", code, out, want)
 	}
 }
 
