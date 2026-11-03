@@ -28,7 +28,7 @@ exec-tier: strong
 exec-tier-why: re-arms a fail-closed routing backstop on live inbound; an error here either strands safe messages at tier:human or lets a risk-shaped message reach a session-tier action unattended
 domain: complicated
 value: high
-version: 2
+version: 3
 id: 3134b1cd-e373-43bd-a44e-dc48da4cb05b
 ---
 
@@ -88,6 +88,16 @@ facts:
      Row 5 is pinned to the delivering change, so it has a diff to read after the merge.
      Historical locations: the `consumers:` entry and the Evidence section below name
      `tools/desk/internal/comms/envelope.go`, the pre-#3061 location, and are left as recorded.
+   - **Re-baseline (version 3, follow-up to #4064):** every row now fails at the parent of the
+     delivering change and passes on the delivered tree. Under Option 2, rows 1 to 4 read the
+     `// Derivation:` comment block only when it runs unbroken down to the retained literal, and
+     require it to name, respectively, `DisallowUnknownFields` (row 1), `Native` (row 2), and at
+     least seven numbered classes plus #1722 (row 4); row 3 requires `loop.go` to exist. Each
+     test-backed row requires the test's own anchored `--- PASS:` line, so a renamed or skipped
+     test fails the row, and row 2 also runs the compiled-table source-diff test. Row 5 resolves
+     the delivering change from the checked-out `HEAD` with no merge-base fallback, and clones
+     under `$TMPDIR`. Every Evidence section recorded before this re-baseline ran the version-2
+     commands, so none of it witnesses version 3; a verifier re-runs this table on merged main.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
