@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5399
 issues: []
 schema: brief-v2
-version: 3
+version: 4
 outcome: none
 design: DR-forge-library
 authored: 2026-11-03 by statusgen newbrief
@@ -46,7 +46,21 @@ consumers:
 
 ## Context
 
-files: `forgeread/refresh/types.go`, `forgeread/refresh/gate.go`, `forgeread/refresh/coordinator.go`, `forgeread/refresh/coordinator_test.go`, `forgeread/refresh/boundary_test.go`, `forgeread/README.md`, `docs/contracts.md`, `changelog/mirror-read-through-coordinator.md`. Boundary reuse also edits existing `tools/forge-import-check/check_env_imports.go`, `tools/forge-import-check/check_env_imports_test.go`, `tools/desk/internal/regression/mirrorimports_test.go` and `tools/desk/internal/deskkit/citrigger_test.go`; no workflow edit.
+files:
+- `forgeread/refresh/types.go`
+- `forgeread/refresh/gate.go`
+- `forgeread/refresh/coordinator.go`
+- `forgeread/refresh/coordinator_test.go`
+- `forgeread/refresh/boundary_test.go`
+- `forgeread/README.md`
+- `docs/contracts.md`
+- `changelog/mirror-read-through-coordinator.md`
+- `tools/forge-import-check/check_env_imports.go`
+- `tools/forge-import-check/check_env_imports_test.go`
+- `tools/desk/internal/regression/mirrorimports_test.go`
+- `tools/desk/internal/deskkit/citrigger_test.go`
+
+Boundary reuse edits the listed existing checker and CI reader; no workflow edit.
 
 facts:
 - At the pinned main, `forgeread/mirror` exports `QueryScope`, `PlanRefresh`, `Source.Scan`, `PlanScan` and `Store.Read/Apply`. `PlanRefresh.NotBefore` is advisory; it neither schedules nor provides cross-process ownership. The reference store is synthetic conformance support, not runtime persistence.
