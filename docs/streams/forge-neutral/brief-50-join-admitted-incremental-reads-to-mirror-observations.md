@@ -45,18 +45,18 @@ consumers:
 ## Context
 
 files:
-- `tools/desk/internal/deskkit/mirroringest.go`
-- `tools/desk/internal/deskkit/mirroringest_test.go`
+- `tools/desk/internal/deskkit/mirroringest.go` (planned)
+- `tools/desk/internal/deskkit/mirroringest_test.go` (planned)
 - `tools/desk/internal/deskkit/mirrorsource.go`
 - `tools/desk/internal/deskkit/mirrorsource_test.go`
 - `forgeread/mirror/types.go`
 - `forgeread/mirror/planner.go`
 - `forgeread/mirror/scan.go`
-- `forgeread/mirror/presence_test.go`
+- `forgeread/mirror/presence_test.go` (planned)
 - `forgeread/mirror/mirrortest/`
 - `docs/contracts.md`
 - `forgeread/README.md`
-- `changelog/mirror-observation-source.md`
+- `changelog/mirror-observation-source.md` (planned)
 
 facts:
 - Inspected main 863c43db contains /46, /47 and /48; no workflow module, mirror.Source implementation or populated production mirror caller exists.
