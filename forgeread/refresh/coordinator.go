@@ -277,7 +277,7 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 		}
 	}
 	observedAt := complete.Now
-	if scan.Attempts.Grant.ID != "" && (scan.Complete || scan.NotModified) && (scan.Attempts.ObservedAt.IsZero() || scan.Attempts.ObservedAt.After(complete.Now) || !scan.Attempts.HTTP.Known || scan.Attempts.HTTP.Value < 1 || !scan.Attempts.Grant.Equal(t.AttemptGrant)) {
+	if scan.Attempts.Grant.ID != "" && qualifiedPopulation && (scan.Attempts.ObservedAt.IsZero() || scan.Attempts.ObservedAt.After(complete.Now) || !scan.Attempts.HTTP.Known || scan.Attempts.HTTP.Value < 1 || !scan.Attempts.Grant.Equal(t.AttemptGrant)) {
 		complete.Failure = mirror.Unknown
 		finish()
 		return
