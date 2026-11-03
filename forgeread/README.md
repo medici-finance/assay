@@ -222,6 +222,11 @@ checking current ticket generation and queried snapshot version. Unchecked
 cancellation, deadline, admission or epoch refusals install no failure. Repeated
 cached outcomes cannot slide the original cooldown, and a late older observation
 cannot poison a later qualified recovery. This remains a canonical R2 obligation.
+`Completion.ReviewOnlyPartial` preserves the owner's requirement-only downgrade
+before a backend normalizes its query. Persist that qualified class with generation
+and applied version: a joined weaker base waiter may perform the existing bounded
+refetch, and cannot poison itself with the stronger owner's review-only failure.
+Actual partial-source cooldown and LastComplete preservation remain unchanged.
 
 The R2 implementation must bind the injected store to its canonical PostgreSQL
 backend and atomically check refresh generation, apply/query through
