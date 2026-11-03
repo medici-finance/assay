@@ -53,7 +53,7 @@ func TestScratchAbandonedBuild(t *testing.T) {
 	p := DefaultPolicy()
 	old := scratchRun(t, s)
 	plantBuild(t, old)
-	for _, name := range []string{"go-builder/main.go", "go-build-notes", "cellctl-bin-/x"} {
+	for _, name := range []string{"go-builder/main.go", "go-build-notes", "cellctl-bin-/x", "-bin-x/y", "tool-bin/x"} {
 		path := filepath.Join(old.Work(), name)
 		must(t, os.MkdirAll(filepath.Dir(path), 0700))
 		must(t, os.WriteFile(path, []byte("ordinary work"), 0600))
@@ -87,15 +87,15 @@ func TestScratchAbandonedBuild(t *testing.T) {
 		t.Fatalf("dry run did not plan or did delete abandoned build output: %+v", dry)
 	}
 	got := sweep(t, s, p, true)
-	if got.Reclaimed != 1500 || got.Partial {
+	if got.Reclaimed != 2200 || got.Partial {
 		t.Fatalf("abandoned build reclaim=%d partial=%v: %+v", got.Reclaimed, got.Partial, got)
 	}
-	for _, gone := range []string{"go-build1", "cellctl-bin-2"} {
+	for _, gone := range []string{"go-build1", "cellctl-bin-2", "deskpins-bin-3"} {
 		if exists(t, filepath.Join(old.Work(), gone)) {
 			t.Fatal("abandoned build output retained", gone)
 		}
 	}
-	for _, kept := range []string{filepath.Join(old.Work(), "build"), filepath.Join(old.Work(), "deskpins-bin-3"), filepath.Join(old.Work(), "go-builder"), filepath.Join(old.Work(), "go-build-notes"), filepath.Join(old.Work(), "cellctl-bin-"), filepath.Join(s.Path, old.Record.ID, "record.json"), filepath.Join(s.Path, old.Record.ID, "diagnostic.txt")} {
+	for _, kept := range []string{filepath.Join(old.Work(), "build"), filepath.Join(old.Work(), "go-builder"), filepath.Join(old.Work(), "go-build-notes"), filepath.Join(old.Work(), "cellctl-bin-"), filepath.Join(old.Work(), "-bin-x"), filepath.Join(old.Work(), "tool-bin"), filepath.Join(s.Path, old.Record.ID, "record.json"), filepath.Join(s.Path, old.Record.ID, "diagnostic.txt")} {
 		if !exists(t, kept) {
 			t.Fatal("abandoned task lost more than build output", kept)
 		}
@@ -105,8 +105,10 @@ func TestScratchAbandonedBuild(t *testing.T) {
 		t.Fatalf("abandoned record rewritten: %+v %v", after, err)
 	}
 	for name, r := range map[string]*Run{"fresh": fresh, "live": live, "unreaped": running} {
-		if !exists(t, filepath.Join(r.Work(), "go-build1")) || !exists(t, filepath.Join(r.Work(), "cellctl-bin-2")) {
-			t.Fatal("build output reclaimed from a protected task:", name)
+		for _, kept := range []string{"go-build1", "cellctl-bin-2", "deskpins-bin-3"} {
+			if !exists(t, filepath.Join(r.Work(), kept)) {
+				t.Fatal("build output reclaimed from a protected task:", name, kept)
+			}
 		}
 	}
 	if again := sweep(t, s, p, true); again.Reclaimed != 0 {
@@ -164,10 +166,13 @@ func TestScratchSweepStops(t *testing.T) {
 	if exists(t, filepath.Join(s.Path, maintenanceStampName)) {
 		t.Fatal("stopped sweep stamped the interval as done")
 	}
+	if exists(t, filepath.Join(s.Path, maintenanceStampName+".attempt")) {
+		t.Fatal("stopped sweep recorded a failed attempt that delays the next supervisor")
+	}
 }
 
 // Only a finished sweep stamps the interval, and only after its work: a partial pass
-// must not hold sibling supervisors off for a whole interval.
+// must not hold sibling supervisors off for a whole interval, only for the retry delay.
 //
 // regression: #5353
 func TestScratchSweepIfDueStampsCompletion(t *testing.T) {
@@ -185,6 +190,10 @@ func TestScratchSweepIfDueStampsCompletion(t *testing.T) {
 	if exists(t, stamp) {
 		t.Fatal("partial sweep stamped the interval as done")
 	}
+	if _, ran, err = s.SweepIfDue(DefaultPolicy(), time.Hour, true); ran || err != nil {
+		t.Fatal("sibling retried at once instead of after the retry delay", ran, err)
+	}
+	backdateAttempt(t, s, 11*time.Minute)
 	stampedEarly := false
 	s.remove = func(path string) error {
 		stampedEarly = stampedEarly || exists(t, stamp)
@@ -194,8 +203,8 @@ func TestScratchSweepIfDueStampsCompletion(t *testing.T) {
 	if !ran || err != nil || rep.Partial || rep.Reclaimed == 0 {
 		t.Fatalf("sibling retry after a partial sweep did not run: ran=%v err=%v %+v", ran, err, rep)
 	}
-	if stampedEarly || !exists(t, stamp) {
-		t.Fatalf("stamp not written after the finished sweep: early=%v", stampedEarly)
+	if stampedEarly || !exists(t, stamp) || exists(t, stamp+".attempt") {
+		t.Fatalf("stamp not written (or failed attempt kept) after the finished sweep: early=%v", stampedEarly)
 	}
 	if _, ran, err = s.SweepIfDue(DefaultPolicy(), time.Hour, true); ran || err != nil {
 		t.Fatal("finished sweep did not hold siblings off", ran, err)
@@ -275,7 +284,7 @@ func TestScratchAbandonedBuildLink(t *testing.T) {
 			t.Fatal("reclaimed through a linked workspace", got)
 		}
 	}
-	for _, kept := range []string{"go-build1", "cellctl-bin-2"} {
+	for _, kept := range []string{"go-build1", "cellctl-bin-2", "deskpins-bin-3"} {
 		if !exists(t, filepath.Join(live.Work(), kept)) {
 			t.Fatal("live task lost build output through a sibling's link", kept)
 		}
@@ -317,7 +326,7 @@ func TestScratchAbandonedBuildLinkAtDeletion(t *testing.T) {
 	if row := rows[swapped.Record.ID]; row.Action != "keep" || row.Reason != "workspace is not a real directory at deletion" {
 		t.Fatal("workspace swapped to a link was not caught at deletion", row)
 	}
-	for _, kept := range []string{"go-build1", "cellctl-bin-2"} {
+	for _, kept := range []string{"go-build1", "cellctl-bin-2", "deskpins-bin-3"} {
 		if !exists(t, filepath.Join(live.Work(), kept)) {
 			t.Fatal("live task lost build output through a swapped link", kept)
 		}

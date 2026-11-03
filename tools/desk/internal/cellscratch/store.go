@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,9 +66,19 @@ type Store struct {
 const sweepLockName = "sweep.lock"
 const maintenanceLockName = "maintenance.lock"
 
-// maintenanceStampName records when periodic maintenance last started, so the
-// supervisors of every role sharing one root coalesce onto one sweep per interval.
+// maintenanceStampName records when periodic maintenance last finished cleanly, so
+// the supervisors of every role sharing one root coalesce onto one sweep per interval.
 const maintenanceStampName = "maintenance.stamp"
+
+// maintenanceAttemptName records the last periodic sweep that ran but failed or ended
+// partial, and how many did so in a row, so siblings also coalesce onto one retry.
+// Its name shares the stamp's prefix, which keeps it out of the inventory.
+const maintenanceAttemptName = maintenanceStampName + ".attempt"
+
+// MaintenanceRetry is the delay before a failed or partial periodic sweep is retried
+// by any supervisor on the root. Each further failure in a row doubles it, up to the
+// sweep interval.
+var MaintenanceRetry = 10 * time.Minute
 
 // SweepLockWait bounds how long one launch waits for a sibling launch's scratch
 // metadata transaction. Recursive maintenance never holds this lock.
@@ -119,7 +130,7 @@ func Open(path string, opts ...openOption) (*Store, error) {
 	for _, opt := range opts {
 		opt(s)
 	}
-	s.remove = r.RemoveAll
+	s.remove = s.removeConfined
 	lock, err := s.sweepLock()
 	if err != nil {
 		r.Close()
@@ -443,10 +454,11 @@ type Report struct {
 }
 
 // SweepIfDue is the periodic form of Sweep. It skips, reporting ran=false, when a
-// sibling holds the maintenance lease or finished a sweep less than interval ago;
-// otherwise it sweeps exactly as Sweep does and, only when that sweep completes
-// without error or partial accounting, stamps its end under the same lease.
-// A zero interval never sweeps.
+// sibling holds the maintenance lease, finished a sweep less than interval ago, or
+// ran one that failed less than its retry delay ago (retryDelay); otherwise it sweeps
+// exactly as Sweep does. Under the same lease, a sweep that completes without error
+// or partial accounting stamps its end; one that fails or ends partial, and was not
+// stopped, records the failed attempt instead. A zero interval never sweeps.
 func (s *Store) SweepIfDue(p Policy, interval time.Duration, apply bool) (Report, bool, error) {
 	if interval <= 0 {
 		return Report{Apply: apply, Entries: []Entry{}}, false, nil
@@ -469,8 +481,35 @@ func (s *Store) lastSweep() (time.Time, error) {
 	return time.Parse(time.RFC3339Nano, string(b))
 }
 
+// lastAttempt reads the failed-sweep record: when the last one ran and how many failed
+// in a row. A missing or damaged record reads as no failure.
+func (s *Store) lastAttempt() (time.Time, int, error) {
+	b, err := s.read(maintenanceAttemptName, 64)
+	if err != nil {
+		return time.Time{}, 0, err
+	}
+	stamp, count, _ := strings.Cut(string(b), " ")
+	n, err := strconv.Atoi(count)
+	if err != nil || n < 1 {
+		return time.Time{}, 0, errors.New("damaged maintenance attempt record")
+	}
+	at, err := time.Parse(time.RFC3339Nano, stamp)
+	return at, n, err
+}
+
+// retryDelay is how long every supervisor waits after the nth failed sweep in a row:
+// MaintenanceRetry, doubled for each failure after the first, never above interval.
+func retryDelay(n int, interval time.Duration) time.Duration {
+	wait := MaintenanceRetry
+	for i := 1; i < n && wait < interval; i++ {
+		wait *= 2
+	}
+	return min(wait, interval)
+}
+
 // Sweep holds a root lease and each candidate's execution lease across inspection and
-// deletion. OpenRoot confines destructive operations even if a path becomes a symlink.
+// deletion. OpenRoot confines destructive operations to the scratch root, and
+// removeConfined to the directory the sweep checked, even if a path becomes a symlink.
 // Age is retention policy, NEVER liveness proof. Missing child enrollment fails closed.
 func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 	rep = Report{Apply: apply, Entries: []Entry{}}
@@ -494,16 +533,33 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 	}
 	defer maintenance.Close()
 	if s.due > 0 {
-		if last, err := s.lastSweep(); err == nil && !last.After(time.Now()) && time.Since(last) < s.due {
+		last, lastErr := s.lastSweep()
+		if lastErr == nil && !last.After(time.Now()) && time.Since(last) < s.due {
 			return rep, nil
 		}
+		// A failed attempt older than the last finished sweep is stale: the stamp
+		// supersedes it even if its removal below did not complete.
+		failures := 0
+		if at, n, attemptErr := s.lastAttempt(); attemptErr == nil && !at.After(time.Now()) && (lastErr != nil || at.After(last)) {
+			if time.Since(at) < retryDelay(n, s.due) {
+				return rep, nil
+			}
+			failures = n
+		}
 		s.ran = true
-		// The stamp records a finished sweep, written under the same lease. A
-		// stopped, failed or partial sweep leaves the previous stamp, so a sibling
-		// supervisor does not wait a whole interval behind an incomplete pass.
+		// The stamp records a finished sweep, written under the same lease. A failed
+		// or partial sweep leaves the previous stamp and records the attempt instead,
+		// so siblings retry once after a growing delay, never a whole interval later
+		// and never all at once. A stopped sweep records nothing: stopping is not a
+		// failure of the tree, and the next supervisor's check simply finds it due.
 		defer func() {
+			now := time.Now().UTC().Format(time.RFC3339Nano)
 			if err == nil && !rep.Partial {
-				err = s.atomic(maintenanceStampName, []byte(time.Now().UTC().Format(time.RFC3339Nano)))
+				if err = s.atomic(maintenanceStampName, []byte(now)); err == nil {
+					_ = s.root.Remove(maintenanceAttemptName)
+				}
+			} else if s.stopped() == nil {
+				err = errors.Join(err, s.atomic(maintenanceAttemptName, []byte(now+" "+strconv.Itoa(failures+1))))
 			}
 		}()
 	}
@@ -563,11 +619,15 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 					}
 				}
 				_, receiptErr := s.receipt(e.Name())
+				// An abandoned task's Git data is judged per work entry by
+				// abandonedBuild, so build output beside a worktree can go while
+				// the worktree stays; every other task keeps its whole tree.
+				abandoned := receiptErr != nil && r.State != "resumable"
 				switch {
 				case sizeErr != nil || walkErr != nil:
 					row.Reason = "could-not-check tree"
 					errs = append(errs, errors.Join(sizeErr, walkErr))
-				case git || allGit:
+				case (git || allGit) && !abandoned:
 					row.Reason = "possible Git data present; retained for its owner"
 				case r.State == "resumable":
 					row.Reason = "resumable task"
@@ -674,8 +734,19 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 			continue
 		}
 		// Revalidate Git retention under the task lease, outside admission's
-		// root lock. No legitimate writer can acquire this task meanwhile.
-		_, git, checkErr := s.measure(c.r.ID)
+		// root lock. No legitimate writer can acquire this task meanwhile. An
+		// abandoned task is rechecked per planned entry, as it was planned; any
+		// planned entry now holding Git data, or uninspectable, keeps the task.
+		recheck := []string{c.r.ID}
+		if build {
+			recheck = c.build
+		}
+		var git bool
+		var checkErr error
+		for _, next := range recheck {
+			_, found, e := s.measure(next)
+			git, checkErr = git || found, errors.Join(checkErr, e)
+		}
 		if checkErr != nil || git {
 			row.Action, row.Reason = "keep", "Git retention or unknown tree at deletion"
 			if checkErr != nil {
@@ -703,7 +774,10 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 		}
 		// Every directory above a deletion target must still be real: a task whose
 		// work became a link to a sibling's work would otherwise delete the sibling's
-		// files under this task's lease. Checked before any record write or removal.
+		// files under this task's lease. Checked before any record write or removal,
+		// so such a task is kept with a reason. The lock is released before removal;
+		// removeConfined repeats the proof on the handles it deletes through, so a
+		// link swapped in after this check fails the removal instead of redirecting it.
 		targets := []string{c.r.ID + "/work"}
 		if entire {
 			targets = append(targets, target)
@@ -817,11 +891,12 @@ func (s *Store) measure(name string) (int64, bool, error) {
 // abandonedBuild names the disposable build output of a task that never reached an
 // evidence receipt and can no longer get one. The caller already holds the task's
 // execution lease, so its owner is dead; the child group must be reaped or proved
-// empty, and its last activity older than the retention age. Only the temporary
-// directory shapes go-build<digits> and cellctl-bin-<digits> directly under work/
-// qualify. The record, the output tail
-// and every other work file stay for the owner's handoff; Git anywhere in the task
-// already kept the whole tree before this is asked.
+// empty, and its last activity older than the retention age. Only entries directly
+// under work/ whose name buildOutput accepts qualify, and each one only when nothing
+// inside it is Git data: build output beside a worktree goes, the worktree and any
+// build-named entry holding Git data stay. An entry that cannot be inspected fails
+// the whole plan closed. The record, the output tail and every other work file stay
+// for the owner's handoff.
 func (s *Store) abandonedBuild(r Record, p Policy) ([]string, int64, error) {
 	last := r.Created
 	if r.Finished.After(last) {
@@ -867,7 +942,7 @@ func (s *Store) abandonedBuild(r Record, p Policy) ([]string, int64, error) {
 			return nil, 0, err
 		}
 		if git {
-			return nil, 0, nil
+			continue
 		}
 		build = append(build, r.ID+"/work/"+e.Name())
 		total += n
@@ -880,7 +955,8 @@ var errNotRealDir = errors.New("scratch path crosses a link or non-directory")
 // realDir proves dir and every directory above it inside the scratch root is a real
 // directory, one Lstat per component. os.Root confines a path to the root but follows
 // a link that stays inside it, so without this one task's path can name a sibling's
-// files. Abandoned-build planning and every deletion target's parent pass through it.
+// files. Abandoned-build planning and every deletion target's parent pass through it
+// under the sweep lock; removeConfined repeats the proof on open handles after it.
 func (s *Store) realDir(dir string) error {
 	if dir == "." {
 		return nil
@@ -898,18 +974,37 @@ func (s *Store) realDir(dir string) error {
 	return nil
 }
 
-// buildOutput is the closed set of compiler and test-binary output names an
-// abandoned task may lose. Widening it needs its own retention decision.
-// Both are temporary directories whose name is the prefix plus decimal digits (the Go
-// toolchain's work directory and os.MkdirTemp's random suffix); go-builder/ or
-// go-build-notes/ is ordinary work and stays.
+// buildOutput is the closed set of compiler and binary output names an abandoned task
+// may lose. Widening it needs its own retention decision. It is the Go toolchain's
+// work directory, go-build plus decimal digits, and any <tool>-bin-<suffix> name with
+// both parts non-empty, the shape of an os.MkdirTemp("", "<tool>-bin-") directory for
+// built test or tool binaries. go-builder/, go-build-notes/, cellctl-bin-/ and
+// -bin-x/ are ordinary work and stay. Git data inside a matching entry still keeps it.
 func buildOutput(name string) bool {
-	for _, prefix := range []string{"go-build", "cellctl-bin-"} {
-		if digits, ok := strings.CutPrefix(name, prefix); ok && digits != "" && strings.Trim(digits, "0123456789") == "" {
-			return true
-		}
+	if digits, ok := strings.CutPrefix(name, "go-build"); ok && digits != "" && strings.Trim(digits, "0123456789") == "" {
+		return true
 	}
-	return false
+	tool, suffix, ok := strings.Cut(name, "-bin-")
+	return ok && tool != "" && suffix != ""
+}
+
+// removeConfined is the single destruction boundary. It reaches target's parent one
+// proved directory at a time from the scratch root (descend) and removes the last
+// component relative to that open directory, so it holds after the sweep lock is
+// released: a component renamed or swapped for a link after the sweep's own checks
+// fails the removal instead of redirecting it, and a link in the last place is
+// removed itself, never followed.
+func (s *Store) removeConfined(target string) error {
+	r, err := s.root.OpenRoot(".")
+	if err != nil {
+		return err
+	}
+	parts := strings.Split(filepath.ToSlash(filepath.Clean(target)), "/")
+	if r, err = descend(r, parts[:len(parts)-1]); err != nil {
+		return err
+	}
+	defer r.Close()
+	return r.RemoveAll(parts[len(parts)-1])
 }
 
 // gitMarker is a conservative filesystem classifier, not repository admission.

@@ -18,6 +18,38 @@ func metadataPath(path string) bool {
 	return false
 }
 
+// descend walks from current through dirs, one literal directory at a time, holding
+// each directory open once it is proved: a component must be a real directory (never a
+// link, even one that stays inside the root) and keep its identity when opened. It owns
+// current: it returns the last directory opened (current itself for no dirs) and
+// closes every handle on failure. A later rename or link swap of any walked name cannot
+// move the returned handle.
+func descend(current *os.Root, dirs []string) (*os.Root, error) {
+	for _, part := range dirs {
+		before, err := current.Lstat(part)
+		if err != nil {
+			current.Close()
+			return nil, err
+		}
+		if !before.IsDir() {
+			current.Close()
+			return nil, errNotRealDir
+		}
+		next, err := current.OpenRoot(part)
+		current.Close()
+		if err != nil {
+			return nil, err
+		}
+		after, err := next.Stat(".")
+		if err != nil || !os.SameFile(before, after) {
+			next.Close()
+			return nil, errors.New("directory identity changed while opening it")
+		}
+		current = next
+	}
+	return current, nil
+}
+
 // openInput holds directory handles throughout traversal. Every component must
 // be literal and retain its identity when opened; the leaf must be regular.
 func openInput(source *os.Root, path string) (*os.File, os.FileInfo, error) {
@@ -25,28 +57,11 @@ func openInput(source *os.Root, path string) (*os.File, os.FileInfo, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	defer func() { current.Close() }()
 	parts := strings.Split(filepath.ToSlash(filepath.Clean(path)), "/")
-	for _, part := range parts[:len(parts)-1] {
-		before, err := current.Lstat(part)
-		if err != nil {
-			return nil, nil, err
-		}
-		if !before.IsDir() {
-			return nil, nil, errors.New("input parents must be literal directories")
-		}
-		next, err := current.OpenRoot(part)
-		if err != nil {
-			return nil, nil, err
-		}
-		after, err := next.Stat(".")
-		if err != nil || !os.SameFile(before, after) {
-			next.Close()
-			return nil, nil, errors.New("input directory identity changed")
-		}
-		current.Close()
-		current = next
+	if current, err = descend(current, parts[:len(parts)-1]); err != nil {
+		return nil, nil, err
 	}
+	defer current.Close()
 	leaf := parts[len(parts)-1]
 	before, err := current.Lstat(leaf)
 	if err != nil {

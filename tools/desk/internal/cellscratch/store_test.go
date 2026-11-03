@@ -147,6 +147,10 @@ func TestScratchProtection(t *testing.T) {
 				r.Record.ChildGroup = 0
 				s.save(r.Record)
 			}
+			// The plan must keep it too: a later deletion recheck is not the only guard.
+			if dry := sweep(t, s, Policy{}, false); dry.Entries[0].Action != "keep" {
+				t.Fatal(kind, "planned for reclaim", dry)
+			}
 			got := sweep(t, s, Policy{}, true)
 			if got.Entries[0].Action != "keep" || !exists(t, sentinel) || !exists(t, filepath.Join(s.Path, r.Record.ID)) {
 				t.Fatal(kind, got)

@@ -22,8 +22,8 @@
     {
       "name": "delete Git worktrees",
       "file": "internal/cellscratch/store.go",
-      "old": "case git || allGit:",
-      "new": "case false && (git || allGit):"
+      "old": "case (git || allGit) && !abandoned:",
+      "new": "case false && (git || allGit) && !abandoned:"
     },
     {
       "name": "accept foreign owner",
@@ -184,8 +184,8 @@
     {
       "name": "ignore Git data outside work",
       "file": "internal/cellscratch/store.go",
-      "old": "case git || allGit:",
-      "new": "case git:"
+      "old": "case (git || allGit) && !abandoned:",
+      "new": "case git && !abandoned:"
     },
     {
       "name": "preserve ordinary HEAD output",
@@ -220,14 +220,14 @@
     {
       "name": "widen abandoned build names",
       "file": "internal/cellscratch/store.go",
-      "old": "if digits, ok := strings.CutPrefix(name, prefix); ok && digits != \"\" && strings.Trim(digits, \"0123456789\") == \"\" {",
-      "new": "if prefix != \"\" {"
+      "old": "return ok && tool != \"\" && suffix != \"\"",
+      "new": "return tool != \"\" || suffix != \"\""
     },
     {
       "name": "accept any name after a build prefix",
       "file": "internal/cellscratch/store.go",
-      "old": "if digits, ok := strings.CutPrefix(name, prefix); ok && digits != \"\" && strings.Trim(digits, \"0123456789\") == \"\" {",
-      "new": "if _, ok := strings.CutPrefix(name, prefix); ok {"
+      "old": "if digits, ok := strings.CutPrefix(name, \"go-build\"); ok && digits != \"\" && strings.Trim(digits, \"0123456789\") == \"\" {",
+      "new": "if _, ok := strings.CutPrefix(name, \"go-build\"); ok {"
     },
     {
       "name": "skip abandoned child proof",
@@ -312,6 +312,90 @@
       "file": "cmd/cellctl/scratch_maintain.go",
       "old": "return func() { cancel(); <-done }",
       "new": "return func() { _, _ = cancel, done }"
+    },
+    {
+      "name": "drop wider bin rule",
+      "file": "internal/cellscratch/store.go",
+      "old": "return ok && tool != \"\" && suffix != \"\"",
+      "new": "return false && ok && tool != \"\" && suffix != \"\""
+    },
+    {
+      "name": "accept empty bin suffix",
+      "file": "internal/cellscratch/store.go",
+      "old": "return ok && tool != \"\" && suffix != \"\"",
+      "new": "return ok && tool != \"\""
+    },
+    {
+      "name": "accept empty bin prefix",
+      "file": "internal/cellscratch/store.go",
+      "old": "return ok && tool != \"\" && suffix != \"\"",
+      "new": "return ok && suffix != \"\""
+    },
+    {
+      "name": "plan Git per task again",
+      "file": "internal/cellscratch/store.go",
+      "old": "case (git || allGit) && !abandoned:",
+      "new": "case git || allGit:"
+    },
+    {
+      "name": "drop per-entry Git check",
+      "file": "internal/cellscratch/store.go",
+      "old": "\t\tif git {\n\t\t\tcontinue",
+      "new": "\t\tif false {\n\t\t\tcontinue"
+    },
+    {
+      "name": "recheck abandoned task whole",
+      "file": "internal/cellscratch/store.go",
+      "old": "recheck = c.build",
+      "new": "_ = c.build"
+    },
+    {
+      "name": "drop deletion Git recheck",
+      "file": "internal/cellscratch/store.go",
+      "old": "git, checkErr = git || found, errors.Join(checkErr, e)",
+      "new": "git, checkErr = git, errors.Join(checkErr, e); _ = found"
+    },
+    {
+      "name": "fail open on uninspectable entry",
+      "file": "internal/cellscratch/store.go",
+      "old": "git, checkErr = git || found, errors.Join(checkErr, e)",
+      "new": "git, checkErr = git || found, checkErr; _ = e"
+    },
+    {
+      "name": "remove along the joined path",
+      "file": "internal/cellscratch/store.go",
+      "old": "parts := strings.Split(filepath.ToSlash(filepath.Clean(target)), \"/\")",
+      "new": "parts := []string{target}"
+    },
+    {
+      "name": "ignore sibling failed attempt",
+      "file": "internal/cellscratch/store.go",
+      "old": "if time.Since(at) < retryDelay(n, s.due) {",
+      "new": "if time.Since(at) < 0 {"
+    },
+    {
+      "name": "retry at a fixed delay",
+      "file": "internal/cellscratch/store.go",
+      "old": "wait *= 2",
+      "new": "wait *= 1"
+    },
+    {
+      "name": "uncapped retry delay",
+      "file": "internal/cellscratch/store.go",
+      "old": "return min(wait, interval)",
+      "new": "return wait"
+    },
+    {
+      "name": "forget failed attempts",
+      "file": "internal/cellscratch/store.go",
+      "old": "failures = n",
+      "new": "failures = 0"
+    },
+    {
+      "name": "record a stopped sweep as failed",
+      "file": "internal/cellscratch/store.go",
+      "old": "} else if s.stopped() == nil {",
+      "new": "} else {"
     }
   ]
 }
