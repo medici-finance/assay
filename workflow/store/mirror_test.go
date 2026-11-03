@@ -123,6 +123,13 @@ func TestPGMirrorAtomicCoverage(t *testing.T) {
 		t.Fatal("partial scan inserted an absence")
 	}
 	tx.Rollback()
+	// A never-complete permission hold cannot recover with an SQL NULL inventory proof.
+	hold := mirror.ScanUpdate{Scope: u.Scope, Coverage: mirror.Coverage{State: mirror.Unavailable, Reason: mirror.Permission, LastAttempted: u.Coverage.LastAttempted}, RetentionDecisionRequired: true}
+	hold.Scope.AdmissionID = "empty-hold"
+	ha := &mirrortest.TestAdmission{Name: hold.Scope.AdmissionID, Allowed: true}
+	applyMirror(t, r.s, ha, hold)
+	hk, _ := scopeIndex(hold.Scope, 1<<20)
+	rawRefused(t, r.raw, hk, "UPDATE public.mirror_scopes SET version=version+1,state='complete',reason='',retention_required=false,complete_scan=true,full_inventory=true,last_attempted=last_attempted+1,last_complete=last_attempted+1 WHERE scope_key=$1")
 	// A failure after the first upsert must roll back its row and the coverage CAS.
 	_, err = r.raw.Exec(`CREATE FUNCTION public.fixture_fail_second() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.number=2 THEN RAISE EXCEPTION 'synthetic row failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER fixture_fail_second BEFORE INSERT OR UPDATE ON public.mirror_records FOR EACH ROW EXECUTE FUNCTION public.fixture_fail_second()`)
 	if err != nil {
