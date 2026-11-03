@@ -1,0 +1,1 @@
+- Add the canonical PostgreSQL migration foundation so read-only persistence can advance independently of workflow execution, with explicit connections and real disposable-container qualification.
