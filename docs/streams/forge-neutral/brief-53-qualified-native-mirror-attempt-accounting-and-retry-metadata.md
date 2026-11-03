@@ -28,7 +28,7 @@ sources:
 - docs/library-first.md
 - docs/go-engineering.md
 - docs/performance-attribution-spec.md
-- "freshness-checked 2026-11-03 against worker-App-fetched main214b4c8308b3cc57beed91feccf45e6a03f2eecd; mapper2677323c9bdf81aad1a1e3b4ad4407e0703ee25c and coordinator18009487a85e7c1cde48778cdb2e3e265c0e0e54 are published; the later mixed-demand/Leave repair must be consumed before implementation"
+- "freshness-checked 2026-11-03 against worker-App-fetched main 214b4c8308b3cc57beed91feccf45e6a03f2eecd; mapper 2677323c9bdf81aad1a1e3b4ad4407e0703ee25c and coordinator 18009487a85e7c1cde48778cdb2e3e265c0e0e54 are published; the later mixed-demand/Leave repair must be consumed before implementation"
 - https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api
 - https://docs.gitlab.com/administration/settings/user_and_ip_rate_limits/
 consumers:

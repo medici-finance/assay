@@ -28,7 +28,7 @@ sources:
 - spec/coordination-store-v1.md
 - docs/library-first.md
 - docs/go-engineering.md
-- "freshness-checked 2026-11-03 main214b4c8308b3cc57beed91feccf45e6a03f2eecd; foundation4d028e05913d66067ad7ee8518422b3390790c8f, Store52 e7738328b614d8616cef35c8a91e822b16844d64, mapper2677323c9bdf81aad1a1e3b4ad4407e0703ee25c; final repaired51 and actual53 must be consumed at pickup"
+- "freshness-checked 2026-11-03 main 214b4c8308b3cc57beed91feccf45e6a03f2eecd; foundation 4d028e05913d66067ad7ee8518422b3390790c8f, Store52 e7738328b614d8616cef35c8a91e822b16844d64, mapper 2677323c9bdf81aad1a1e3b4ad4407e0703ee25c; final repaired51 and actual53 must be consumed at pickup"
 consumers:
 - "workflow/store and its canonical numbered Goose migrations: follow-up forge-neutral/54 (implementation owner) (Gate, AttemptAuthority and transaction-bound Store adapter)"
 - "workflow/internal/pgtest and workflow/pgtestfixture: follow-up forge-neutral/54 (implementation owner) (single canonical harness; thin test-support export only)"
