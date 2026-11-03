@@ -210,6 +210,13 @@ func cmdCreate(args []string) (err error) {
 	if terr != nil {
 		return terr
 	}
+	// #4795: a delivery trailer's brief id leads the PR title unless the title already names
+	// it. Done once the trailer has parsed and resolved, so every later gate (the secret and
+	// self-containment scans, the create itself) reads the title that will actually be used.
+	if pt := prefixTitleWithBrief(*title, body); pt != *title {
+		*title = pt
+		fmt.Fprintf(deskprStderr, "deskpr: PR title prefixed with its brief id: %s\n", pt)
+	}
 	// Decision-gate banner (lifecycle-v1 §4.5): a PR delivering a gate: human brief
 	// carries a fixed banner naming its decision issue and whether it is ruled. Inserted
 	// when missing; it informs and never refuses. Its text is fixed apart from the
@@ -309,6 +316,7 @@ func cmdCreate(args []string) (err error) {
 	if *check {
 		ac.successResult = deskkit.ResultDryRun
 		ac.detail = "check: every local gate passed"
+		fmt.Printf("check: title: %s\n", *title)
 		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
 			"Not checked (needs the forge, not run here): an existing open PR on this branch, " +
 			"the outward-write rate limit, the public-repo authorization gate, and the publish-identity range against the live destination branch.")
@@ -1320,12 +1328,21 @@ func parseRepo(raw string) (string, error) {
 // self-containment scan's number hint (SelfContainOpts.NumberHint). It is NOT an input to
 // the public-repo write gate: deskkit.PublicRepoGate is repository-scoped (an explicit
 // `:public` allowed-repos entry agreeing with the live visibility) and takes no number.
+// isScanCarrierBody reports whether body is the machine-written scan carrier: the
+// deskkit.ScanBodyMarker at its head (leading whitespace aside). It is the one predicate for
+// the carve-out, shared by requireTrailer (which skips validation for it), trailerLink in
+// edit.go and briefTitleID (which read no link from it), so the three cannot disagree on
+// which body is exempt.
+func isScanCarrierBody(body []byte) bool {
+	return strings.HasPrefix(strings.TrimLeft(string(body), " \t\r\n"), deskkit.ScanBodyMarker)
+}
+
 func requireTrailer(body []byte, root, dir string) (int, error) {
 	// Head-anchored, not a whole-body substring: the emitter writes ScanBodyMarker as
 	// the FIRST line (deskkit.ScanPRBody), so the exemption matches it only at the body
 	// head. A body that merely quotes the marker somewhere in its prose is NOT exempt —
 	// this keeps the carve-out keyed to genuinely emitter-produced carrier bodies.
-	if strings.HasPrefix(strings.TrimLeft(string(body), " \t\r\n"), deskkit.ScanBodyMarker) {
+	if isScanCarrierBody(body) {
 		return 0, nil
 	}
 	trs, err := deskkit.ParseTrailers(body)
