@@ -1,0 +1,1 @@
+- Allow immutable consumer checks to resolve unchanged in-tree symlinks after bounded archive validation, retaining changed-link, containment, board-input, submodule and incomplete-snapshot refusals.

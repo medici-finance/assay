@@ -11,10 +11,28 @@ its full first-parent SHA. Both pins belong in the authored Verify command. The 
 requires complete local history and delivery ancestry, reads the delivered tree and routes,
 and evaluates inherited claims against that delivery's own diff. It runs no old binary,
 executes no snapshot code and opens no network connection. Missing history, an ambiguous
-brief, a noncommit/moving delivery spelling, an invalid parent range, links/submodules or
+brief, a noncommit/moving delivery spelling, an invalid parent range, unsafe links/submodules or
 archive-omitted blobs are could-not-check (exit 2). With both pins on the command line it
 does not choose a historical commit for the author: identifying the actual delivery remains
 an independently reviewed claim.
+
+## Unchanged links inside the delivered tree
+
+An unrelated symlink no longer makes every historical consumer check unreadable.
+Only an unchanged link whose complete target chain names existing entries inside
+that same immutable snapshot may resolve. Changed links, absolute or escaping
+links, broken or cyclic chains, submodules, and links on board inputs (`docs`,
+`docs/streams/**` and `docs/archive/**`) remain could-not-check. Link targets come
+from the delivered archive, never the current checkout or a file outside it.
+
+The bounded archive reader writes regular files exclusively before creating any
+links. It checks the complete entry roster, rejects special or duplicate archive
+entries and missing blobs (including `export-ignore` omissions), and resolves path
+components in order so a parent step after a directory alias cannot hide an escape.
+Only after every chain is proved in-tree are links created and their filesystem
+resolution compared with the immutable result. A host unable to materialize those
+checked links remains could-not-check; there is no skip or borrowed-file fallback.
+The command's SHA bounds, routing counts and acceptance limits are unchanged.
 
 ## A bare `--consumers --brief <id>` on merged main
 
