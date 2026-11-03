@@ -40,7 +40,7 @@ func TestStatusgenCapsTruth(t *testing.T) {
 		if err := v.ReaderCapabilities.Validate(); err != nil {
 			t.Fatal(err)
 		}
-		if len(v.ReaderCapabilities.Operations) != 2 || !reflect.DeepEqual(v.ReaderCapabilities.Operations[0].Schemas, []string{"brief-v1", "brief-v2", "brief-v3"}) {
+		if len(v.ReaderCapabilities.Operations) != 2 || !reflect.DeepEqual(v.ReaderCapabilities.Operations[0].Schemas, []string{"brief-v1", "brief-v2", "brief-v3", "brief-v4"}) {
 			t.Fatalf("unsupported advertisement: %s", out)
 		}
 		for _, op := range []string{"assessment", "dispatch", "acceptance", "author"} {

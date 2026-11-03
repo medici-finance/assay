@@ -62,7 +62,7 @@ BACKSTOP_TEST = (
     '\tif err != nil {\n'
     '\t\tt.Fatal(err)\n'
     '\t}\n'
-    '\tctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)\n'
+    '\tctx, cancel := context.WithTimeout(context.Background(), shellBudget)\n'
     '\tdefer cancel()\n'
     + BACKSTOP_RUN +
     '\tcmd.Dir = root\n'
