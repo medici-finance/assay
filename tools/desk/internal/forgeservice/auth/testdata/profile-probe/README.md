@@ -34,3 +34,14 @@ The fixed 45-second server and 5-second peer windows bound this disposable probe
 they are fixture timings, not proposed authority lease/revocation defaults. Any
 unavailable image, architecture, volume ownership, channel or resource observation
 is retained as could-not-check/failure. Do not infer auth/custody from this helper.
+
+
+Observed prerequisite result: the exact source-bound linux/arm64 probe succeeded
+through the explicitly selected same-daemon BuildKit docker driver. Two classic
+builder attempts timed out and remain unqualified. A third attempt correctly
+held on an image environment assertion: although the Dockerfile has no ENV, the
+engine inserts its standard PATH. The successful primitive run pinned exactly
+that observed baseline, not arbitrary image environment, and changed no legacy
+validator or actual authority profile. The namespace/volume/socket observations
+and complete owned-resource cleanup are summarized in the canonical Task1 spec.
+No signing/caller/current-state/auth-custody or Ubuntu CI credit follows.

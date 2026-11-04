@@ -103,6 +103,55 @@ source profile, and issues only the predetermined mirror-query grant. Neither
 request headers/environment nor a caller-supplied repository/admission selects it.
 A failed or uncertain ownership observation registers nothing.
 
+### Actual56 native-source composition remains independent
+
+The credential-free query-verifier role below is the 57 qualification fixture and
+R3-key isolation surface. It is NOT a claim that the actual56 service may hold no
+provider read credential. An authenticated read-through service can directly
+compose already-admitted native access, including its separately qualified real
+read token, while never receiving the 57 issuer/operator signing key or writer.
+There is no new remote source proxy or full40 executor dependency.
+
+Actual source inspection distinguishes these owners. At the published mapper/wire
+pickup, deskkit.NewMirrorReadSource(Forge, ForgeResolution) retains the already
+admitted backend (including its explicit read-only fence), and resolves no
+credential. ResolveForge/custody belongs to the existing trusted credential owner;
+a request cannot supply that role, endpoint or installation. In the later native/
+SQL composition inspected at qualified LOCAL source
+`a39325183bea2fbedb92d18700cc539343c155ef`, NewMirrorIngestSource additionally
+binds admission ID, source ID, trusted clock and the canonical AttemptAuthority.
+DB.Refresh takes MirrorStore, RefreshConfig and CallerAuthority and supplies the
+shared gate/attempt authority; it initializes nothing and chooses no credential.
+55's ProvisionRefresh/role SQL prepare known operator DB profiles only. There is
+NO service Factory or Admission issuer in that source. This inspection is not a
+claim that the local55 delivery is published or that custody is accepted.
+
+The later56 owner must supply actual trusted native/custody composition using
+those existing constructors, derive exact source/admission from server-side
+profile selection and retain independent current admission at each source read.
+The joined native/SQL test currently uses synthetic tokens and TLS fixtures; it
+does not prove real installation selection or caller authentication. Native
+credential selection/refresh and production acceptance remain their existing
+owners. 57 must not silently mount those credentials into its closed fixture or
+claim their absence forces a new broker;56 must not mount the R3 private key into
+its data-plane service. Provider access stays inside the shared cache service;
+clients keep zero source/credential fallback.
+
+The same distinction applies to network none: it is the pure57 qualification
+fixture setting, not a restriction that makes actual56 native/SQL composition
+impossible. The served56 fixture/profile must explicitly combine the actual
+credential/admission and SQL/native-source connectivity it needs with the R3 key/
+control-volume exclusions. It requires a separately supported bounded test/service
+egress profile and real combined-isolation qualification; no network setting,
+listener or production target is selected here. Do not relax the closed57 fixture
+silently or force a new source proxy to satisfy its fixture-only restrictions.
+
+Actual56 served-flow qualification must place client, service verifier and current
+channel in a proven same-engine/container arrangement, plus owned SQL/provider
+fixture connectivity. Neither the primitive result nor macOS Go tests prove that
+host-process AF_UNIX access to Linux named volumes works. That unqualified bridge
+cannot become a hidden handler prerequisite or a mocked authentication pass.
+
 ### Exact claim and current-state inventory
 
 A grant binds issuer, audience equal to one cell, stable caller, represented actor,
@@ -219,8 +268,31 @@ A current read linearizes when the producer holds that serialized gate and copie
 the exact registry tuple and revocation state for the fresh challenge. A control
 update linearizes under the same gate; reads after it must see the new state.
 
-For each final authorization, the verifier records its own monotonic request-start
-before generating/sending the challenge. Release must occur before the earliest
+For each final authorization, the verifier privately captures stdlib time.Now()
+before generating/sending the challenge and retains that value's monotonic
+component. It measures elapsed time with time.Since(start), not with arbitrary
+refresh.Clock.Now values, serialized timestamps or a UTC-normalized start.
+refresh.Clock supplies trusted WALL expiry/provenance checks only; its actual API
+is just Now() time.Time and does not promise a monotonic value. No clock callback,
+clock policy default or second global clock owner is introduced.
+
+The producer similarly retains a process-local monotonic grant deadline at fresh
+registration, so a backward wall-clock jump cannot renew an expired grant for a
+new current read. The verifier converts the conservative remaining grant window
+at initial validation into a private local monotonic deadline as an additional
+cap; it still rejects newly observed wall-clock expiry/uncertainty. Neither local
+monotonic value is signed, marshaled, normalized or restored. Restart discards it
+and invalidates the registry, rather than reconstructing a lease from disk.
+The active-host/clock behavior is part of the actual supported profile; no bound
+is claimed across the explicitly unsupported host/VM rollback case.
+
+Tests must independently step a wall-only clock backwards while the local lease
+expires, exercise forward expiry and a delayed final release, and prove that no
+serialization or response-arrival path restarts the lease. Pure timing tests may
+use the supported standard testing facilities; real channel/process qualification
+remains separate and cannot be replaced by a fake authority.
+
+Release must occur before the earliest
 of request-start plus the explicitly selected current-read lease, the conservatively
 verified grant expiry and the caller deadline. The finite current-read lease may
 not exceed the selected maximum revocation bound. It is never renewed at response
@@ -324,7 +396,7 @@ transport, ambient credential, engine discovery or provider operation is accepte
 | `ProducerConfig` | Issuer/cell, fixed primitive/profile version, explicit leases/skew/revocation and frame/registry/I/O bounds. Pure validation precedes key, endpoint or engine contact. |
 | `ProducerBinding` | Exact engine identity, producer immutable container identity, live instance and disjoint private/channel/bootstrap volume identities established by trusted launcher observations. No request-decoded binding. |
 | `LaunchBinding` | Existing independently permitted LaunchSpec and actual observed SessionRecord identity, stable caller/actor/role and the exact operator-approved grant scope. A passive record alone cannot construct it. |
-| `GrantScope` | Canonical mirror.Scope (repository, issue/change kind and admission) plus source/composition, mirror-query only, caller/actor/role/cell and policy/config/access references. Repository validation reuses mirror's public owner; no alias normalization. |
+| `GrantScope` | Canonical mirror.Scope (repository, issue/change kind and admission) plus source/composition, mirror-query only, caller/actor/role/cell and policy/config/access references. Repository/scope validation reuses actual mirror.Scope.Validate; no alias normalization. |
 | `GrantClaims` | GrantScope plus issuer/audience, grant ID, incarnation/key reference/generation, issued-at and expiry. No caller-selected algorithm, key, quota values or write operation. |
 | `Controller` | Concrete serialized live registry, signer and gate owner in the producer. Construct uninitialized; fresh initialization and every mutation require its private operator path. No query-side constructor can discover an operational key. |
 | `ControlCommand` | Closed union: fresh initialize, register exact launch, revoke exact grant, advance current epochs, rotate/fence, or stop. Expected current version binds each mutation; conflicts/unknown outcomes hold, without blindly retrying or adding an R2 claim. |
@@ -341,8 +413,9 @@ transport, ambient credential, engine discovery or provider operation is accepte
 Proposed signatures (not shipped source) make the constructor/control/current
 boundary explicit. `ProducerResources` contains only already-bound producer
 private/channel roots and gate resources; `CurrentClient` is concrete, not an
-arbitrary caller-authority implementation. The existing refresh.Clock is trusted
-composition input, never decoded from a request.
+arbitrary caller-authority implementation. The existing refresh.Clock is trusted wall-clock
+composition input only, never decoded from a request. Process-local lease elapsed
+time uses the separate actual stdlib monotonic mechanism described above.
 
 ```go
 func CheckConfig(ProducerConfig) error
@@ -419,6 +492,41 @@ The engine is a launch/qualification dependency, not a per-query authorization
 probe. Request-time currentness uses the actual isolated producer/channel; it
 never runs Docker, gh, git or a source fallback. Engine/process observation errors
 during launch hold registration and do not turn a saved identity into authority.
+
+## Observed primitive qualification and limits
+
+A source-bound FROMscratch helper at source
+`82e67d42798fdc92dcee456e275c254020aecbe8` was built with the actual existing
+Go1.27.2 darwin/arm64 toolchain, targeting CGO-disabled linux/arm64. Binary digest:
+`sha256:3eaea922669988061fb2c699b68e670566bc09fe1bf923d0522f992bf5efd5a7`.
+The exact recipe and helper are under
+`tools/desk/internal/forgeservice/auth/testdata/profile-probe/`.
+
+The actual local daemon's explicitly selected BuildKit docker driver built image
+`sha256:5c46e042f47cc0edb68224905e981b8cd3af7ac6153469c8c4ccb258764eb106`.
+It had linux/arm64, UID/GID501:501, the fixed helper entrypoint and no VOLUME.
+The Dockerfile declared no ENV. The engine inserted exactly its standard PATH
+baseline; the primitive proof pinned that one observed value and rejected any
+other environment entry. This is not a change to legacy validation or an accepted
+operational authority environment policy.
+
+Actual separate producer/client/sibling containers proved image-owned directory
+copy-up to fresh named volumes at UID501, producer marker write/read and AF_UNIX
+listen, client private-marker exclusion plus EROFS on a RO channel-directory write
+and a successful socket roundtrip, and sibling exclusion from both private and
+channel resources. Runtime inspections checked read-only rootfs, drop-ALL,
+no-new-privileges, network none,32pids,64MiB and0.5CPU, no host binds/engine socket.
+All three containers, two named volumes and the image were ownership-checked and
+removed. Evidence receipt digest:
+`sha256:f9b8492e5c5779ed4e084052ee9eb3a42f615d8a853d621f6474614edf325b90`.
+
+Two classic-builder timeout attempts and one strict image-ENV assertion failure
+remain retained as unqualified; the successful observation does not erase them.
+No signing, grant, live current writer, actual caller authority, production profile,
+provider credential, Ubuntu/amd64 or CI acceptance was tested by this helper. The
+PG image was not relabeled as an auth image: its actual metadata showed a PG
+entrypoint/default data volume and no UID501 channel proof. Actual production
+producer/profile and independently enforced CI qualification are still 57 work.
 
 ## Independent qualification and handoff
 

@@ -9,11 +9,11 @@ split-from: forge-neutral/40
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
-gate-why: "Accept the demonstrated local producer, current-state and custody boundary only after its concrete supported mechanism/profile and independent negative controls exist. No issuer, credential, entitlement value, operational profile or activation is selected by this authoring."
+gate-why: "Approve the concrete Task1 local producer/current-state/custody design and bounded profile before implementing that newly selected mechanism. Actual authentication and custody remain unqualified until the existing implementation, negative-control and independent-verification obligations are met. Approving the library mechanism assigns no operational issuer identity, credential, entitlement, lease value or deployment authority."
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -84,7 +84,7 @@ If an actual requirement remains unresolved, record NEEDS_CONTEXT with the exact
 
 ## Acceptance preparation
 
-The decision-trigger is spec. The executor authors the self-contained Human decision section only after Task1 supplies the concrete compatible local mechanism/profile, claims, current-state source and custody/revocation design. It must ask accept versus a named correction to that demonstrated boundary and retain separate operational credential/profile/deployment gates. Report DECISION-BLOCK READY at that point so the canonical helper can file the actual decision. Before that packet exists, dispatch must report the spec decision deferred; no generic accept-versus-hold issue or implied issuer/crypto/TTL choice is authorized.
+The decision-trigger is spec. After Task1 supplies the supported mechanism/profile, claims, current-source/custody/revocation design and actual prerequisite evidence/limits, the executor authors a self-contained Human decision asking approval of that design for bounded offline implementation or a named design correction. Primitive/channel evidence is not demonstrated caller authentication. This single spec-stage ruling does not satisfy Tasks2-7, any Verify/Evidence row, implemented authentication/custody proof or production provisioning/activation. Existing56 acceptance and operational credential/profile/deployment gates remain unchanged. Report DECISION-BLOCK READY only with that concrete self-contained design choice so the canonical helper can file it; until then keep the spec decision deferred. No generic accept-versus-hold issue, implied operational issuer/credential or copied TTL default is authorized.
 
 ## Ground rules
 
