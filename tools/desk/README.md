@@ -7547,7 +7547,8 @@ class, and the checkable condition that must change before re-running is worth a
 `plan`, `classifyItem` reads the evaluated state (`deskkit.WakeReceipt.EvaluateWake`, computed at
 scan time in `briefscan.go` against an already-authorized, offline, probe-free reader): a complete
 unchanged receipt is a visible **`wait`** bucket (naming its blocker + next actor), excluded from
-dispatch; a changed relevant input / tool / Verify definition / completed action wakes it; an
+dispatch; a changed relevant input / Verify definition / completed action wakes it (a tool-version
+change on its own holds, #2310 — the tool alone does not move a blocker); an
 unreadable declared input is **could-not-check**, never rounded up to unchanged; a legacy or
 incomplete receipt stays dispatchable for one classification pass. A partial hold dispatches the
 newly-runnable rows while recording the held rows as explicitly unrun, and no partial result flips

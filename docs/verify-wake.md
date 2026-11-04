@@ -33,7 +33,9 @@ predicates retain their existing contracts.
 makes two independent reads, and each one can return could-not-check:
 
 - **Inputs.** Every declared input is hashed again at the current tree and compared with the
-  receipt.
+  receipt. When the tool version is the only input that differs, the inputs read as unchanged
+  (#2310): a tool release by itself does not move a blocker. A tool change together with any
+  other changed input still reads as changed.
 - **Blocker issue.** The issue named by `blocker_ref` is read through the forge as the verifier
   App. A bare `#N` is read in the record's `repo`, or, when the record has none, in the plan
   root's own repository (its `origin` remote). The read is could-not-check, never "closed", in

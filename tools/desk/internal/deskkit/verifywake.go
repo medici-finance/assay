@@ -325,6 +325,7 @@ func (r WakeReceipt) EvaluateWake(reader WakeInputs, now time.Time) WakeDecision
 	switch r.WakePredicate {
 	case WakeRelevantInputChanged:
 		var changed, unreadable []string
+		var toolNow string
 		if scope, ok := reader.(receiptScopeReader); ok {
 			if err := scope.CheckReceiptScope(r); err != nil {
 				unreadable = append(unreadable, "declared scope: "+err.Error())
@@ -338,15 +339,22 @@ func (r WakeReceipt) EvaluateWake(reader WakeInputs, now time.Time) WakeDecision
 			}
 			if cur != r.Inputs[in] {
 				changed = append(changed, in)
+				if in == inputKeyTool {
+					toolNow = cur
+				}
 			}
 		}
-		if len(changed) > 0 {
+		toolOnly := toolOnlyChange(changed)
+		if len(changed) > 0 && !toolOnly {
 			return WakeDecision{State: WakeFire, Changed: changed,
 				Reason: base + " — woke: changed input(s): " + strings.Join(changed, ", ")}
 		}
 		if len(unreadable) > 0 {
 			return WakeDecision{State: WakeCouldNotCheck, Unreadable: unreadable,
 				Reason: base + " — could-not-check: unreadable declared input(s): " + strings.Join(unreadable, ", ")}
+		}
+		if toolOnly {
+			return WakeDecision{State: WakeHold, Reason: base + " — " + toolOnlyReason(r.Inputs[inputKeyTool], toolNow)}
 		}
 		return WakeDecision{State: WakeHold, Reason: base + " — all " + strconv.Itoa(len(r.Inputs)) + " declared input(s) unchanged"}
 
@@ -379,6 +387,21 @@ func (r WakeReceipt) EvaluateWake(reader WakeInputs, now time.Time) WakeDecision
 	}
 	// Unreachable: Complete() already rejected an unknown predicate.
 	return WakeDecision{State: WakeUnclassified, Reason: base + " — unknown predicate"}
+}
+
+// toolOnlyChange reports whether the ONLY declared input that changed is the tool version
+// (#2310). changed must hold raw input KEYS, never display labels: a file input whose path is
+// "tool" has the label "tool" and is not the tool input. Both comparators (EvaluateWake and Unchanged) route through it, so a tool-only
+// change holds on every path. A tool release by itself does not move a blocker: the receipt
+// still records the tool truthfully, and a tool change together with any other change still
+// wakes. A verifier who believes a release fixed the blocker uses an explicit recheck, or a
+// referenced-action blocker naming the fixing change.
+func toolOnlyChange(changed []string) bool {
+	return len(changed) == 1 && changed[0] == inputKeyTool
+}
+
+func toolOnlyReason(was, now string) string {
+	return "tool-only change (" + was + " -> " + now + "); blocker unmoved"
 }
 
 func refSuffix(ref string) string {
@@ -625,7 +648,11 @@ func Unchanged(r WakeReceipt, tree WakeInputs) (InputsState, string) {
 	if len(r.Inputs) == 0 {
 		return InputsCouldNotCheck, "could-not-check the receipt declares no inputs"
 	}
-	var changed, unreadable []string
+	// changedKeys carries the raw input keys and decides tool-only; changed carries the
+	// display labels for the reason only. A file named "tool" has the label "tool" but is a
+	// file input, so the decision must never be taken on labels (#2310).
+	var changed, changedKeys, unreadable []string
+	var toolNow string
 	if scope, ok := tree.(receiptScopeReader); ok {
 		if err := scope.CheckReceiptScope(r); err != nil {
 			unreadable = append(unreadable, "declared scope: "+err.Error())
@@ -638,13 +665,22 @@ func Unchanged(r WakeReceipt, tree WakeInputs) (InputsState, string) {
 			unreadable = append(unreadable, inputLabel(in))
 		case !strings.EqualFold(strings.TrimSpace(cur), strings.TrimSpace(r.Inputs[in])):
 			changed = append(changed, inputLabel(in))
+			changedKeys = append(changedKeys, in)
+			if in == inputKeyTool {
+				toolNow = cur
+			}
 		}
 	}
-	if len(changed) > 0 {
+	toolOnly := toolOnlyChange(changedKeys)
+	if len(changed) > 0 && !toolOnly {
 		return InputsChanged, "changed " + strings.Join(changed, ", ")
 	}
 	if len(unreadable) > 0 {
 		return InputsCouldNotCheck, "could-not-check unreadable input(s): " + strings.Join(unreadable, ", ")
+	}
+	if toolOnly {
+		// #2310: a tool-only change is not a change to the blocker's inputs.
+		return InputsUnchanged, "unchanged (" + toolOnlyReason(r.Inputs[inputKeyTool], toolNow) + ")"
 	}
 	return InputsUnchanged, "unchanged"
 }

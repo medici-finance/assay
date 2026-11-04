@@ -22,6 +22,25 @@ id: "e20812d4-f859-41a4-b597-072d5a89d413"
 
 # Brief 16 — Verification wake conditions — stop repeating unchanged blocked checks
 
+## Amendment (#2310, 2026-11-04, brief stays `done`)
+
+**Why.** As landed, a change to the `tool` input alone woke every held receipt. Across four
+releases every such wake re-surfaced a blocker that had not moved, and no re-run changed a
+verdict, so each release cost one fleet-wide re-dispatch and nothing else.
+
+**What changes.** A tool-only change now holds; the reason names it. A tool change together
+with any other changed input still wakes, and unreadable inputs stay could-not-check. The
+receipt still records the tool version. See
+[verify-wake-v1](verify-wake-v1.md) ("A tool-only change holds").
+
+**Verify row 2.** Its Expect text lists "tool" among the changes that wake work. From this
+amendment `TestVerifyWakeRelevantChange` instead pins that a tool-only change holds, while the
+changed file, Verify definition and completed action still wake. The landed Evidence below is
+unchanged and records what was verified at the time.
+
+**Verify row 5.** New with this amendment: a `muhar` run that breaks each tool-only check in
+turn and shows the tests above go red. It has no Evidence yet; independent verification owns it.
+
 ## Context
 
 Home: medici-finance/assay.
@@ -85,6 +104,7 @@ All named tests below are planned deliverables. The verifier must observe each n
 | 2 | check:ci | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakeRelevantChange$ -v -count=1` | exit 0; named PASS for TestVerifyWakeRelevantChange; changed relevant file, Verify definition, tool or completed action wakes the affected work; an unrelated commit does not |
 | 3 | check:ci | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakeUnknownAndLegacy$ -v -count=1` | exit 0; named PASS for TestVerifyWakeUnknownAndLegacy; unreadable dependencies and legacy records are distinct from empty/pass; no fabricated unchanged claim |
 | 4 | check:ci +flow | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakePartialRows$ -v -count=1` | exit 0; named PASS for TestVerifyWakePartialRows; one newly runnable row executes without repeating held rows; no partial result closes the whole brief |
+| 5 | check +mutation | `m=$(mktemp -d)/muhar && (cd tools/desk && GOWORK=off go build -o "$m" ./cmd/muhar) && cd tools/desk && GOWORK=off "$m" -spec cmd/verifyloop/tool-only-wake-mutations.json` | exit 0; "Harness healthy: baseline GREEN, positive control CAUGHT."; every tool-only-wake mutation CAUGHT, "0 NOT CAUGHT, 0 could-not-mutate" (added by the #2310 amendment) |
 
 Pre-mortem → detection: False suppression hides executable work: rows 2 and 3. Restart loses the hold: row 1. A partial pass closes a brief: row 4. Judgment over the declared deliverable scope remains review-owned.
 
