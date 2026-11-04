@@ -252,7 +252,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 46 | [Pure read-only mirror kernel and conformance](brief-46-pure-read-only-mirror-kernel-and-conformance.md) | 2 | M | todo | — | — |
 | 47 | [Admitted incremental forge readers for mirror ingestion](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) | 2 | M | todo | — | — |
 | 48 | [Bound native mirror response allocation before decoding](brief-48-bound-native-mirror-response-allocation-before-decoding.md) | 3 | M | todo | — | — |
-| 49 | [Retire claim-decay stored GitHub login fallback](brief-49-retire-claim-decay-stored-github-login-fallback.md) | 0 | S | todo | — | — |
+| 49 | [Retire claim-decay stored GitHub login fallback](brief-49-retire-claim-decay-stored-github-login-fallback.md) | 0 | S | implemented | — | — |
 | 50 | [Join admitted incremental reads to mirror observations](brief-50-join-admitted-incremental-reads-to-mirror-observations.md) | 4 | M | todo | — | — |
 | 51 | [Store-injected mirror read-through coordinator and shared refresh gate port](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
@@ -784,3 +784,13 @@ Mapper50 is a compatible Source implementation for later real-source integration
 not a prerequisite for synthetic coordinator fixtures. Real R2 gate/store and joined
 mapper qualification remain later acceptance requirements. Existing lifecycle and
 acceptance cells are unchanged.
+
+## Shared-cache read-through — 3 November 2026
+
+Cold or insufficient admitted queries fill inside the shared read owner; clients need no
+provider fallback. Equivalent misses and failures coalesce. Bounded failure-cache cooldown
+returns explicit unavailable or permitted stale coverage, then one eligible retry can
+recover. The [architecture contract](../../proposals/non-ci-architecture/22-forge-service-and-source-queries.md)
+and /37, /39, /40, /42, /43 and /45 carry the source, client, authorization and served-fault
+acceptance. Every prior Class/Command pair remains; no persistent service or activation is
+claimed by this requirements amendment.

@@ -85,8 +85,12 @@ upstream bug — tracked elsewhere — was fixed; that bug was the true head and
 Before you finalize the order: for each "smallest unblocking move," **verify it actually works** —
 check the code/config/bug tracker, don't assume. If a proposed first step depends on something
 unproven, that something is the real head. Say so explicitly.
-State the head and how you established it in one passage: what you read to confirm it, or that it
-is unproven and is the head for that reason.
+The requester's stated edges are a claim to check, never the evidence for the head, and the check
+is done now, while you author — never left to brief 01's Task. State the head in one passage, in
+your own prose, that names it and gives the check in one of two forms:
+"I verified <X> is the real head by reading <what>; it showed <what>", or
+"<X> is unproven, so it is the real head: brief 01 settles it". "That makes 01 the head" or
+"established from the stated edges" states no check.
 
 ## Carry quality obligations into execution
 
@@ -419,8 +423,11 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
    fixed.** Read the target site on fresh `origin/main` (`git fetch origin && git log
    origin/main --oneline -- <path>` + read the code) and record the check in the brief's
    `sources:` as `freshness-checked <YYYY-MM-DD> @ <short-sha>`. If the deliverable is already
-   satisfied, the brief is NOT authored — resolve or re-scope the finding/issue instead. The
-   check is light; the waste it prevents (re-writing a fix that already landed, claiming a vuln
+   satisfied, the brief is NOT authored — resolve or re-scope the finding/issue instead. That
+   is the only reason to withhold it: a read stated to you as done counts as done (stamp its
+   sha), and a result you cannot fully see is no reason to hold — author the brief, with a first
+   Task step that re-checks. The output is the brief or a "do not author — already fixed"
+   determination, never a held draft or "not authored yet". The check is light; the waste it prevents (re-writing a fix that already landed, claiming a vuln
    closed that was never open) is heavy.
 9. **exec-tier: complexity signals a minimum execution-model tier.** `exec-tier` is DERIVED,
    not chosen (mirror of the gate/risk rule). The author answers four complexity questions;
