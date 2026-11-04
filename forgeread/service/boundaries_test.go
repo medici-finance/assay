@@ -141,7 +141,9 @@ func TestServicePackageBoundaries(t *testing.T) {
 			writeFile(t, filepath.Join(root, target, "entry.go"), "package fixture\nimport _ \"fixture.invalid/boundary/"+target+"/helper\"\n")
 			// The forbidden source is transitive, compiler-valid and escaped. No
 			// environment-read function is executed by this fixture.
-			writeFile(t, filepath.Join(root, target, "helper", "helper.go"), "package helper\nimport _ \"\\x6f\\x73\"\n")
+			writeFile(t, filepath.Join(root, target, "helper", "helper.go"), `package helper
+import _ "\x6f\x73"
+`)
 			if b, err := goCommand(t, root, "test", "-run", "^$", "-timeout=20s", "./"+target); err != nil {
 				t.Fatalf("planted source is not compiler-valid: %v\n%s", err, b)
 			}

@@ -173,7 +173,7 @@ func TestForgeServiceClientFlow(t *testing.T) {
 		var calls atomic.Int64
 		rt := trip(func(*http.Request) (*http.Response, error) {
 			calls.Add(1)
-			return nil, errors.New("transport-private-canary")
+			return nil, errors.New("transport-sensitive-canary")
 		})
 		for _, endpoint := range []string{"http://service.example/forge", "https://service.example/forge?credential=fixture", "https://service.example/forge#fragment", "https://service.example/%2fforge"} {
 			if _, err := client.New(client.Config{Endpoint: endpoint, Transport: rt, Scope: q.Scope, Timeout: time.Second}); err == nil {
@@ -253,10 +253,10 @@ func TestForgeServiceClientFlow(t *testing.T) {
 		q, _, wire := literal(t)
 		var closed atomic.Int64
 		c := configured(t, q, "https://service.example/forge", trip(func(*http.Request) (*http.Response, error) {
-			return &http.Response{StatusCode: 200, Body: &closeBody{Reader: bytes.NewReader(wire), close: func() { closed.Add(1) }}}, errors.New("transport-private-canary")
+			return &http.Response{StatusCode: 200, Body: &closeBody{Reader: bytes.NewReader(wire), close: func() { closed.Add(1) }}}, errors.New("transport-sensitive-canary")
 		}), false)
 		out, report, err := c.Do(context.Background(), q)
-		if err == nil || !noData(out) || closed.Load() != 1 || report.TransportAttempts != 1 || strings.Contains(err.Error(), "transport-private") {
+		if err == nil || !noData(out) || closed.Load() != 1 || report.TransportAttempts != 1 || strings.Contains(err.Error(), "transport-sensitive") {
 			t.Fatal("response/error branch leaked or lost resource close", err)
 		}
 	})
