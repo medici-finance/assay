@@ -47,7 +47,7 @@ func TestHeldScopeAnnotatedKey(t *testing.T) {
 	rowHdr := "| Row | Command | Exit | Result |\n|---|---|---|---|\n"
 	planted := "### Run 1\n\n" + rowHdr + "| 2 (verify 2) | `x` | — | HELD — runner offline |\n\n" +
 		"### Run 2\n\n" + rowHdr + "| 2 | `x` | 0 | ok |\n\n**VERIFY: PASS**\n"
-	runHeldLayerCases(t, []heldScanCase{
+	runHeldRowCases(t, []heldScanCase{
 		{"annotated held row re-ran bare", annHeld("3 (Verify 3, negative)") + annLater, false},
 		{"annotation with no number", annHeld("3 (negative)") + annLater, false},
 		{"bold annotated key", annHeld("**3 (Verify 3, negative)**") + annLater, false},

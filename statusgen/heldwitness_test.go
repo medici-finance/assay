@@ -303,7 +303,7 @@ func witAttestV2(t *testing.T) string {
 func TestHeldScopeWitnessForms(t *testing.T) {
 	cnr := witRow3(stateCouldNotRun, -1, witCNR)
 	v2 := witAttestV2(t)
-	runHeldLayerCases(t, []heldScanCase{
+	runHeldRowCases(t, []heldScanCase{
 		// The fail-first header passes its trailer over as witnessHeader does.
 		{"fail-first witness, earlier",
 			witEntry("Run 1", witTableFF(4, sandboxUnshare, cnr, witAttest), witBullet, "VERIFY: BLOCKED") + witLatest(witPass), false},

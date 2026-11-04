@@ -298,7 +298,7 @@
     {
       "name": "S1-r3: an unaligned row in the last entry is skipped",
       "file": "heldscope.go",
-      "old": "\t\t\t\treturn nil // a row that cannot be aligned (fail closed)",
+      "old": "\t\t\t\treturn nil, nil, false // a row that cannot be aligned (fail closed)",
       "new": "\t\t\t\tcontinue // a row that cannot be aligned (fail closed)"
     },
     {
