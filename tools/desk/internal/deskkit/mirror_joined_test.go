@@ -32,6 +32,10 @@ type persistedMirrorFixture struct {
 	gate         *store.RefreshGate
 	config       store.RefreshConfig
 	fixture      *pgtestfixture.Fixture
+	connection   store.Config
+	operator     *store.DB
+	initial      *store.RefreshProvision
+	roles        *pgtestfixture.RoleConnections
 }
 
 func persistedMirrorConfig(admission, source string) store.RefreshConfig {
@@ -39,11 +43,47 @@ func persistedMirrorConfig(admission, source string) store.RefreshConfig {
 }
 func newPersistedMirrorFixture(t *testing.T, c store.RefreshConfig, authority refresh.CallerAuthority, callers []string) persistedMirrorFixture {
 	t.Helper()
+	return newPersistedMirrorSQL(t, c, authority, callers, false)
+}
+
+func newPersistedMirrorSQL(t *testing.T, c store.RefreshConfig, authority refresh.CallerAuthority, callers []string, provisioned bool) persistedMirrorFixture {
+	t.Helper()
 	f := pgtestfixture.New(t)
 	cfg := f.Config
 	connection := store.Config{Host: cfg.Host, Port: cfg.Port, User: cfg.User, Password: cfg.Password, Database: cfg.Database, Timeout: 5 * time.Second}
 	if e := store.Migrate(context.Background(), connection); e != nil {
 		t.Fatal(e)
+	}
+	var operator *store.DB
+	var initial *store.RefreshProvision
+	var roles *pgtestfixture.RoleConnections
+	if provisioned {
+		owned := pgtestfixture.NewRefreshRoles(t, f)
+		roles = &owned
+		connection.User, connection.Password = owned.Operator.User, owned.Operator.Password
+		var e error
+		operator, e = store.Open(context.Background(), connection)
+		if e != nil {
+			t.Fatal(e)
+		}
+		t.Cleanup(func() { operator.Close() })
+		metadata, e := f.ConnectOwned(context.Background())
+		if e != nil {
+			t.Fatal(e)
+		}
+		var now time.Time
+		e = metadata.QueryRow(`SELECT clock_timestamp()`).Scan(&now)
+		metadata.Close()
+		if e != nil {
+			t.Fatal(e)
+		}
+		usage := store.RefreshInitialUsage{Known: true, WindowAt: now.UTC().Truncate(time.Microsecond), Provenance: "synthetic-provisioned-baseline"}
+		request := store.RefreshProvision{Config: c, Source: store.RefreshInitialSource{Usage: usage, RetryKnown: true}, Admission: usage}
+		for _, id := range callers {
+			request.Callers = append(request.Callers, store.RefreshInitialCaller{ID: id, Usage: usage})
+		}
+		initial = &request
+		connection.User, connection.Password = owned.Runtime.User, owned.Runtime.Password
 	}
 	db, e := store.Open(context.Background(), connection)
 	if e != nil {
@@ -58,8 +98,10 @@ func newPersistedMirrorFixture(t *testing.T, c store.RefreshConfig, authority re
 	if e != nil {
 		t.Fatal(e)
 	}
-	pgtestfixture.SeedRefresh(t, f, c, callers...)
-	return persistedMirrorFixture{db, observations, gate, c, f}
+	if !provisioned {
+		pgtestfixture.SeedRefresh(t, f, c, callers...)
+	}
+	return persistedMirrorFixture{db: db, observations: observations, gate: gate, config: c, fixture: f, connection: connection, operator: operator, initial: initial, roles: roles}
 }
 
 type persistedClock struct{}
@@ -110,6 +152,11 @@ func persistedCaller(c store.RefreshConfig, id string) refresh.Caller {
 }
 func newPersistedNative(t *testing.T, provider ForgeKind, kind mirror.RecordKind, handler http.HandlerFunc, callers []string, options ...func(*store.RefreshConfig)) persistedNative {
 	t.Helper()
+	return newPersistedNativeSQL(t, provider, kind, handler, callers, false, options...)
+}
+
+func newPersistedNativeSQL(t *testing.T, provider ForgeKind, kind mirror.RecordKind, handler http.HandlerFunc, callers []string, provisioned bool, options ...func(*store.RefreshConfig)) persistedNative {
+	t.Helper()
 	requests := &atomic.Int64{}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
@@ -127,7 +174,12 @@ func newPersistedNative(t *testing.T, provider ForgeKind, kind mirror.RecordKind
 		option(&profile)
 	}
 	authority := &persistedCallerAuthority{config: profile}
-	sql := newPersistedMirrorFixture(t, profile, authority, callers)
+	var sql persistedMirrorFixture
+	if provisioned {
+		sql = newPersistedMirrorSQL(t, profile, authority, callers, true)
+	} else {
+		sql = newPersistedMirrorFixture(t, profile, authority, callers)
+	}
 	var forge Forge
 	if provider == ForgeGitHub {
 		forge = &GitHubForge{Token: ciFixtureToken, BaseURL: server.URL, Client: client, onlyRepo: "o/r"}
@@ -156,6 +208,149 @@ func newPersistedNative(t *testing.T, provider ForgeKind, kind mirror.RecordKind
 func joinedRead(t *testing.T, f persistedNative, id string, maxAge time.Duration) (refresh.Result, error) {
 	t.Helper()
 	return f.coordinator.Read(context.Background(), f.admission, refresh.Query{Query: mirror.Query{Scope: f.scope, MaxAge: maxAge}}, persistedCaller(f.config, id))
+}
+
+// regression: F-provisioned-native-read-through
+func TestMirrorProvisionedReadThrough(t *testing.T) {
+	if os.Getenv("ASSAY_TEST_POSTGRES_DSN") == "" {
+		t.Skip("explicit disposable container required; ordinary skip is not provisioned integration proof")
+	}
+	for _, provider := range []ForgeKind{ForgeGitHub, ForgeGitLab} {
+		t.Run(string(provider), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			started, release := make(chan struct{}), make(chan struct{})
+			var once, releaseOnce sync.Once
+			unblock := func() { releaseOnce.Do(func() { close(release) }) }
+			stamp := time.Now().UTC().Add(-time.Minute)
+			f := newPersistedNativeSQL(t, provider, mirror.Issues, func(w http.ResponseWriter, r *http.Request) {
+				once.Do(func() { close(started) })
+				select {
+				case <-release:
+				case <-r.Context().Done():
+					return
+				}
+				number := 1
+				if page := r.URL.Query().Get("page"); page == "" || page == "1" {
+					if provider == ForgeGitHub {
+						w.Header().Set("Link", fmt.Sprintf(`<https://%s/repos/o/r/issues?page=2>; rel="next"`, r.Host))
+					} else {
+						w.Header().Set("X-Next-Page", "2")
+					}
+				} else {
+					number = 2
+				}
+				_, _ = io.WriteString(w, "["+ingestRow(provider, mirror.Issues, number, stamp, number == 1)+"]")
+			}, []string{"caller-a", "caller-b"}, true)
+			t.Cleanup(unblock)
+			metadata, e := f.fixture.ConnectOwned(ctx)
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer metadata.Close()
+			assertUninitialized := func() {
+				t.Helper()
+				var count int
+				if e := metadata.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM public.refresh_initializations)+(SELECT count(*) FROM public.refresh_budgets)+(SELECT count(*) FROM public.refresh_admissions)+(SELECT count(*) FROM public.refresh_callers)`).Scan(&count); e != nil || count != 0 {
+					t.Fatal("runtime or fixture invented initial accounting", e, count)
+				}
+			}
+			assertUninitialized()
+			missing, _ := joinedRead(t, f, "caller-a", time.Hour)
+			if missing.Fulfilled || missing.Available || f.requests.Load() != 0 || f.observer.scans.Load() != 0 {
+				t.Fatal("uninitialized runtime reached a provider or invented an answer")
+			}
+			assertUninitialized()
+			if f.operator == nil || f.initial == nil || f.roles == nil || f.connection.User != f.roles.Runtime.User || f.connection.User == f.fixture.Config.User {
+				t.Fatal("provisioned join did not use independent operator/runtime roles")
+			}
+			if _, e := f.db.ProvisionRefresh(ctx, *f.initial); e == nil {
+				t.Fatal("runtime connection invoked operator provisioning")
+			}
+			bad := *f.initial
+			bad.Source.Usage.Known = false
+			if _, e := f.operator.ProvisionRefresh(ctx, bad); e == nil {
+				t.Fatal("operator accepted unknown initial baseline")
+			}
+			assertUninitialized()
+			firstReceipt, e := f.operator.ProvisionRefresh(ctx, *f.initial)
+			if e != nil || firstReceipt.Records != 4 {
+				t.Fatal("known production operator provisioning failed", e)
+			}
+			rawRuntime, e := f.fixture.ConnectRuntime(ctx, *f.roles)
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer rawRuntime.Close()
+			var sessionUser, currentUser string
+			if e = rawRuntime.QueryRowContext(ctx, `SELECT session_user,current_user`).Scan(&sessionUser, &currentUser); e != nil || sessionUser != f.roles.Runtime.User || currentUser != f.roles.Runtime.User {
+				t.Fatal("native joined proof did not use its genuine restricted login", e)
+			}
+			type answer struct {
+				result refresh.Result
+				err    error
+			}
+			answers := make(chan answer, 2)
+			go func() { r, e := joinedRead(t, f, "caller-a", time.Hour); answers <- answer{r, e} }()
+			select {
+			case <-started:
+			case <-ctx.Done():
+				t.Fatal("provisioned native owner did not start")
+			}
+			go func() { r, e := joinedRead(t, f, "caller-b", time.Hour); answers <- answer{r, e} }()
+			for {
+				var waiters int
+				if e = metadata.QueryRowContext(ctx, `SELECT count(*) FROM public.refresh_waiters WHERE NOT released`).Scan(&waiters); e != nil {
+					t.Fatal(e)
+				}
+				if waiters == 2 {
+					break
+				}
+				select {
+				case <-ctx.Done():
+					t.Fatal("provisioned callers did not join durably")
+				case <-time.After(time.Millisecond):
+				}
+			}
+			unblock()
+			for range 2 {
+				a := <-answers
+				if a.err != nil || !a.result.Fulfilled || !a.result.Available || len(a.result.Snapshot.Records) != 2 {
+					t.Fatal("actual provisioned native/SQL join failed", a.err)
+				}
+				rows := a.result.Snapshot.Records
+				if !rows[0].BodyKnown || rows[0].Labels == nil || rows[1].BodyKnown || rows[1].Labels != nil {
+					t.Fatal("provisioned native/SQL join flattened field presence")
+				}
+			}
+			if f.requests.Load() != 2 || f.observer.scans.Load() != 1 {
+				t.Fatal("provisioned coalesced fill repeated native work")
+			}
+			if replay, e := f.operator.ProvisionRefresh(ctx, *f.initial); e != nil || replay != firstReceipt {
+				t.Fatal("operator replay after real HTTP lost immutable provenance", e)
+			}
+			other, observer := independentPersistedCoordinator(t, f)
+			warm, e := other.Read(ctx, f.admission, refresh.Query{Query: mirror.Query{Scope: f.scope, MaxAge: time.Hour}}, persistedCaller(f.config, "caller-b"))
+			if e != nil || !warm.Fulfilled || f.requests.Load() != 2 || observer.scans.Load() != 0 {
+				t.Fatal("independent restricted coordinator lost persistent warm data", e)
+			}
+			var charged, measured int64
+			if e = metadata.QueryRowContext(ctx, `SELECT (SELECT http_used FROM public.refresh_budgets),(SELECT coalesce(sum(http_count),0) FROM public.refresh_attempts WHERE observed AND http_known)`).Scan(&charged, &measured); e != nil || charged != 2 || measured != 2 {
+				t.Fatal("provisioned real native accounting changed on replay", e)
+			}
+			if _, e = metadata.ExecContext(ctx, `UPDATE public.refresh_budgets SET known=false`); e != nil {
+				t.Fatal(e)
+			}
+			unknown, _ := joinedRead(t, f, "caller-a", time.Nanosecond)
+			if unknown.Fulfilled || unknown.Available || f.requests.Load() != 2 || f.observer.scans.Load() != 1 {
+				t.Fatal("unknown accounting triggered provider fallback")
+			}
+			if _, e := f.operator.ProvisionRefresh(ctx, *f.initial); e == nil {
+				t.Fatal("operator replay repaired unknown existing accounting")
+			}
+			t.Log("PROVISIONED_RUNTIME: genuine restricted login; actual SDK/mapper/coordinator/SQL; no SeedRefresh positive")
+		})
+	}
 }
 
 // regression: F-persisted-native-read-through
@@ -253,8 +448,7 @@ func TestMirrorPersistedReadThroughJoin(t *testing.T) {
 
 func independentPersistedCoordinator(t *testing.T, f persistedNative) (*refresh.Coordinator, *persistedObserver) {
 	t.Helper()
-	c := f.fixture.Config
-	db, e := store.Open(context.Background(), store.Config{Host: c.Host, Port: c.Port, User: c.User, Password: c.Password, Database: c.Database, Timeout: 5 * time.Second})
+	db, e := store.Open(context.Background(), f.connection)
 	if e != nil {
 		t.Fatal(e)
 	}

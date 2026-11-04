@@ -384,9 +384,9 @@ func ciCrossModuleRegistry() []ciEntry {
 	registry := []ciEntry{
 		{test: "workflow/store/refresh_provision_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
 			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
-			reads: []string{"spec/coordination-store-v1.md", "forgeread/mirror/", "forgeread/refresh/"},
+			reads:      []string{"spec/coordination-store-v1.md", "forgeread/mirror/", "forgeread/refresh/"},
 			runInvokes: []string{"cd workflow", "go test -count=1 -race -timeout=180s ./..."},
-			why: "operator initialization catalog/known-state controls read the canonical schema and existing refresh/kernel owners"},
+			why:        "operator initialization catalog/known-state controls read the canonical schema and existing refresh/kernel owners"},
 
 		{test: "workflow/store/refresh_schema_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
 			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},

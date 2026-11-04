@@ -91,6 +91,20 @@ func provisionCounts(t *testing.T, r mirrorRig) [4]int64 {
 // regression: F-provision-known-baseline
 func TestPGRefreshProvision(t *testing.T) {
 	ctx := context.Background()
+	t.Run("eviction", checkProvisionEviction)
+	t.Run("atomic", func(t *testing.T) {
+		r := sqlMirror(t)
+		p := provisionInput(t, r)
+		if _, e := r.raw.Exec(`CREATE FUNCTION public.fixture_initialization_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic initialization failure'; END $$; CREATE TRIGGER fixture_initialization_failure BEFORE INSERT ON public.refresh_callers FOR EACH ROW EXECUTE FUNCTION public.fixture_initialization_failure()`); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := r.db.ProvisionRefresh(ctx, p); !errors.Is(e, refresh.ErrHeld) {
+			t.Fatal("injected initialization failure was not held", e)
+		}
+		if got := provisionCounts(t, r); got != [4]int64{} {
+			t.Fatal("failed initialization retained a staged prefix", got)
+		}
+	})
 	t.Run("live-fill-delete", func(t *testing.T) {
 		r := sqlMirror(t)
 		p := provisionInput(t, r)
@@ -202,8 +216,143 @@ func TestPGRefreshProvision(t *testing.T) {
 	}
 }
 
+func checkProvisionEviction(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	for _, name := range []string{"held", "unobserved", "unknown", "waiter", "retention", "retry", "base-retry", "review-retry", "current-generation"} {
+		t.Run(name, func(t *testing.T) {
+			r := sqlMirror(t)
+			p := provisionInput(t, r)
+			if _, e := r.db.ProvisionRefresh(ctx, p); e != nil {
+				t.Fatal(e)
+			}
+			g, e := r.db.Refresh(r.s, p.Config, refreshTestAuthority{})
+			if e != nil {
+				t.Fatal(e)
+			}
+			rig := refreshRig{r, g, p.Config}
+			a, u := mirrorInput()
+			demand := rig.demand(u.Scope, "caller-a")
+			owner := acquireRefresh(t, rig, demand)
+			if name == "waiter" {
+				acquireRefresh(t, rig, rig.demand(u.Scope, "caller-b"))
+			}
+			completion := completionRefresh(rig, owner, nil)
+			if name == "unobserved" || name == "unknown" {
+				reservation, e := g.BeforeAttempt(ctx, owner.AttemptGrant)
+				if e != nil {
+					t.Fatal(e)
+				}
+				if name == "unknown" {
+					if e = g.ObserveAttempt(ctx, reservation, mirror.AttemptObservation{ObservedAt: time.Now()}); !errors.Is(e, mirror.ErrAttemptHeld) {
+						t.Fatal("unknown individual observation did not retain its hold", e)
+					}
+				}
+				// The canonical per-caller denial path can finish a generation
+				// without reconciling individual reservations. It cannot refund them.
+				completion.AdmissionDenied = true
+			} else if name == "held" {
+				completion.Attempts.Held = mirror.AttemptSourceHeld
+			}
+			if e = g.Complete(ctx, owner, r.s, a, completion); e != nil {
+				t.Fatal(e)
+			}
+			if name != "waiter" {
+				if _, e = g.Leave(ctx, owner, refresh.Outcome{}); e != nil {
+					t.Fatal(e)
+				}
+			}
+			key, _, _ := fillIndex(demand.Key)
+			if name != "retention" {
+				if _, e = r.raw.ExecContext(ctx, `UPDATE public.refresh_fills SET retire_at=clock_timestamp()-interval '1 second' WHERE fill_key=$1`, key); e != nil {
+					t.Fatal(e)
+				}
+			}
+			column := map[string]string{"retry": "retry_at", "base-retry": "base_retry_at", "review-retry": "review_retry_at"}[name]
+			if column != "" {
+				if _, e = r.raw.ExecContext(ctx, `UPDATE public.refresh_fills SET `+column+`=clock_timestamp()+interval '1 hour' WHERE fill_key=$1`, key); e != nil {
+					t.Fatal(e)
+				}
+			}
+			if name == "current-generation" {
+				start := make(chan struct{})
+				deleted := make(chan error, 1)
+				go func() {
+					<-start
+					_, e := r.raw.ExecContext(ctx, `DELETE FROM public.refresh_fills WHERE fill_key=$1`, key)
+					deleted <- e
+				}()
+				close(start)
+				next, e := g.Acquire(ctx, demand)
+				<-deleted // Either the old terminal row is deleted, or the new pending row refuses it.
+				if e != nil || !next.Owner || next.Generation == owner.Generation {
+					t.Fatal("eligible eviction raced away the current generation", e)
+				}
+				if _, e = g.BeforeAttempt(ctx, owner.AttemptGrant); !errors.Is(e, mirror.ErrAttemptHeld) {
+					t.Fatal("obsolete generation retained attempt authority", e)
+				}
+				if _, e = g.BeforeAttempt(ctx, next.AttemptGrant); e != nil {
+					t.Fatal("current generation lost its accounted authority", e)
+				}
+				var charged int64
+				if e = r.raw.QueryRowContext(ctx, `SELECT http_used FROM public.refresh_budgets`).Scan(&charged); e != nil || charged != 1 {
+					t.Fatal("eviction race reset the source allowance", e, charged)
+				}
+				return
+			}
+			tx, e := r.raw.BeginTx(ctx, nil)
+			if e != nil {
+				t.Fatal(e)
+			}
+			_, e = tx.ExecContext(ctx, `DELETE FROM public.refresh_fills WHERE fill_key=$1`, key)
+			tx.Rollback()
+			if e == nil {
+				t.Fatal("direct SQL evicted protected accounting", name)
+			}
+		})
+	}
+}
+
 // regression: F-provision-immutable-replay
 func TestPGRefreshProvisionReplay(t *testing.T) {
+	t.Run("runtime-window-roll", func(t *testing.T) {
+		r := sqlMirror(t)
+		p := provisionInput(t, r)
+		p.Config.Limits.FillWindow = 250 * time.Millisecond
+		p.Config.Native.Window = p.Config.Limits.FillWindow
+		ctx := context.Background()
+		first, e := r.db.ProvisionRefresh(ctx, p)
+		if e != nil {
+			t.Fatal(e)
+		}
+		g, e := r.db.Refresh(r.s, p.Config, refreshTestAuthority{})
+		if e != nil {
+			t.Fatal(e)
+		}
+		rig := refreshRig{r, g, p.Config}
+		_, u := mirrorInput()
+		ticket := acquireRefresh(t, rig, rig.demand(u.Scope, "caller-a"))
+		rsv, e := g.BeforeAttempt(ctx, ticket.AttemptGrant)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = g.ObserveAttempt(ctx, rsv, mirror.AttemptObservation{HTTP: mirror.WorkCount{Known: true}, DecodedBytes: mirror.WorkCount{Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}, ObservedAt: time.Now()}); e != nil {
+			t.Fatal(e)
+		}
+		time.Sleep(300 * time.Millisecond)
+		acquireRefresh(t, rig, rig.demand(u.Scope, "caller-b"))
+		var before, after time.Time
+		var charged int64
+		if e = r.raw.QueryRow(`SELECT window_at,http_used FROM public.refresh_budgets`).Scan(&before, &charged); e != nil || charged != 0 || !before.After(p.Source.Usage.WindowAt) {
+			t.Fatal("actual runtime window did not advance independently", e)
+		}
+		if got, e := r.db.ProvisionRefresh(ctx, p); e != nil || got != first {
+			t.Fatal("original immutable replay refused after legitimate window rollover", e)
+		}
+		if e = r.raw.QueryRow(`SELECT window_at,http_used FROM public.refresh_budgets`).Scan(&after, &charged); e != nil || charged != 0 || !after.Equal(before) {
+			t.Fatal("initialization replay rewound the current runtime window", e)
+		}
+	})
 	r := sqlMirror(t)
 	p := provisionInput(t, r)
 	ctx := context.Background()
@@ -268,6 +417,33 @@ func TestPGRefreshProvisionReplay(t *testing.T) {
 	}
 	if e = r.raw.QueryRow(`SELECT retry_at,http_used FROM public.refresh_budgets`).Scan(&after, &sourceUsed); e != nil || !after.Equal(before) || sourceUsed != 2 {
 		t.Fatal("new admission reset shared source", e)
+	}
+	countsBefore := provisionCounts(t, r)
+	if _, e = r.raw.Exec(`CREATE FUNCTION public.fixture_provision_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.caller_id=convert_to('caller-d','UTF8') THEN RAISE EXCEPTION 'synthetic staged initialization failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER fixture_provision_failure BEFORE INSERT ON public.refresh_callers FOR EACH ROW EXECUTE FUNCTION public.fixture_provision_failure()`); e != nil {
+		t.Fatal(e)
+	}
+	enroll := p
+	enroll.Callers = []RefreshInitialCaller{{ID: "caller-c", Usage: p.Admission}, {ID: "caller-d", Usage: p.Admission}}
+	if _, e = r.db.ProvisionRefresh(ctx, enroll); !errors.Is(e, refresh.ErrHeld) {
+		t.Fatal("synthetic staged enrollment failure did not refuse", e)
+	}
+	if got := provisionCounts(t, r); got != countsBefore {
+		t.Fatal("failed enrollment left partially initialized rows", got, countsBefore)
+	}
+	if _, e = r.raw.Exec(`DROP TRIGGER fixture_provision_failure ON public.refresh_callers; DROP FUNCTION public.fixture_provision_failure()`); e != nil {
+		t.Fatal(e)
+	}
+	if got, e := r.db.ProvisionRefresh(ctx, p); e != nil || got != first {
+		t.Fatal("failed enrollment damaged prior complete initialization", e)
+	}
+	if e = r.raw.QueryRow(`SELECT retry_at,http_used FROM public.refresh_budgets`).Scan(&after, &sourceUsed); e != nil || !after.Equal(before) || sourceUsed != 2 {
+		t.Fatal("rollback reset previously charged work or retry floor", e)
+	}
+	if _, e = r.raw.Exec(`UPDATE public.refresh_budgets SET unknown_hold=true`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = r.db.ProvisionRefresh(ctx, p); !errors.Is(e, refresh.ErrHeld) {
+		t.Fatal("existing unknown retry state was reconciled by initialization", e)
 	}
 	if _, e = r.raw.Exec(`UPDATE public.refresh_budgets SET known=false`); e != nil {
 		t.Fatal(e)
