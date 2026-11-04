@@ -61,6 +61,7 @@ func TestForgeServiceContractCompatibility(t *testing.T) {
 	t.Run("progress-shape", checkProgressShape)
 	t.Run("schema-source", checkSchemaSource)
 	t.Run("canonical-repository", checkCanonicalRepository)
+	t.Run("cached-read-advice", checkCachedReadAdvice)
 	q := literalRequest(t)
 	if q.Operation != service.FileAt || q.Repository.Provider != mirror.GitHub || q.Repository.Host != "github.example" || q.Repository.Path != "example/project" || q.Source.Revision != strings.Repeat("a", 40) || q.Source.Path != "readme.txt" {
 		t.Fatal("literal request identity/source changed")

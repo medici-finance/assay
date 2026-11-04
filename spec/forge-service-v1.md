@@ -74,6 +74,8 @@ Observation progress is never effect, claim or permission authority. Tokens must
 canonical repository in the scope; scope-wide review/projection replies have no
 selected-repository progress token.
 
+The outer reason `permission` is allowed only with state `permission`; it cannot
+be relabeled as an older observation while retaining provenance or progress.
 Permission results omit bodies, counts, provenance, executor identity,
 diagnostic links, observation tokens and all retry/cache advice. They cannot disclose
 whether a private fill is running. Plain unavailable results likewise carry no

@@ -24,3 +24,25 @@ The client requires an already-admitted transport and an explicitly supplied tru
 `forgeread` cannot import `tools/desk/internal`: the compiler refusal is qualified in a disposable fixture. The public DTO layer maps the existing wire/data contract; it neither imports a giant internal interface nor copies evaluation. The separately imported HTTP client makes one RoundTrip and follows no redirect. Server-handler, logical-client-call and transport-attempt measurements retain different units, and diagnostic links require trusted consent at both ends.
 
 A later read-only handler must derive authenticated caller/admission/epochs independently of these request claims and compose the canonical refresh/store/source owners. No client-side source fallback is supplied. The current base mirror source does not establish complete review/check populations; review-dependent serving and full tool-cutover parity remain held until their actual qualified enrichment and existing gates. Root OpenIssues consumers also require CreatedAt/URL values absent from the present mirror model; no zero values are manufactured to claim parity.
+
+## Read-through metadata
+
+Unfulfilled reads and receipt lookups can carry explicit nullable retry advice from
+the shared owner's qualified floor. The SDK preserves that timestamp and makes no
+automatic retry or provider call. Null is unknown advice, not immediate eligibility.
+Create effects, fulfilled results and permission holds carry no retry/cache advice.
+
+An authorized original mirror snapshot can supply data-free cached coverage, its
+evaluation instant, elapsed whole milliseconds since LastComplete (or explicit null
+when unknown/unrepresentable), and original source provenance when known. The
+pure mirror evaluator from the genuinely consumed published coordinator head
+`836f586e72e2d161a83d94d52d2845b08d4c2bbd` checks coverage/freshness consistency;
+transport neither stamps a new observation time nor grants current authorization.
+Minimum-token failure remains independent of age, so older progress can have fresh
+cached coverage. A permission reason requires the stripped permission state.
+
+Loopback fixtures cover a healthy cold fill, shared fixture cooldown across two
+clients, original cached age/provenance, cold source failure, unavailable service,
+permission stripping and recovery. These are wire/client proofs. Actual shared
+gate ownership, SQL persistence, provider pacing and authenticated serving remain
+with their existing owners.

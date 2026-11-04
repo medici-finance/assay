@@ -167,6 +167,42 @@ func ValidateRequest(r Request) error {
 func provenance(p *Provenance) bool {
 	return p != nil && text(p.Source, 256, false) && text(p.Version, 256, false) && text(p.Revision, 512, false) && !p.ObservedAt.IsZero()
 }
+
+// cachedFreshness checks only the received wire's internal consistency. The
+// serving owner must establish current authorization and original snapshot custody.
+func cachedFreshness(c *CachedObservation, q Request, source *Provenance) (string, error) {
+	if q.Operation != MirrorQuery || q.Mirror == nil || c.EvaluatedAt.IsZero() || c.Coverage.Reason == mirror.Permission {
+		return "", invalid()
+	}
+	selected := mirror.Scope{Repository: q.Repository, Kind: q.Mirror.Kind, AdmissionID: q.Scope.AdmissionID}
+	evaluated, err := mirror.EvaluateSnapshot(mirror.Snapshot{Scope: selected, Coverage: c.Coverage}, mirror.Query{Scope: selected, Now: c.EvaluatedAt, MaxAge: time.Duration(q.Mirror.MaxAgeMS) * time.Millisecond})
+	if err != nil {
+		return "", invalid()
+	}
+	if source != nil && (!provenance(source) || source.ObservedAt.After(c.EvaluatedAt)) {
+		return "", invalid()
+	}
+	if c.Coverage.LastComplete.IsZero() {
+		if c.AgeMS != nil {
+			return "", invalid()
+		}
+	} else {
+		elapsed := c.EvaluatedAt.Sub(c.Coverage.LastComplete)
+		if !c.Coverage.LastComplete.Add(elapsed).Equal(c.EvaluatedAt) {
+			// time.Sub saturates outside its duration representation. Unknown is explicit.
+			if c.AgeMS != nil {
+				return "", invalid()
+			}
+		} else if c.AgeMS == nil || *c.AgeMS < 0 || *c.AgeMS != elapsed.Milliseconds() {
+			return "", invalid()
+		}
+	}
+	if evaluated.Available {
+		return "fresh", nil
+	}
+	return "stale", nil
+}
+
 func payloadCount(r Response) int {
 	n := 0
 	for _, p := range []bool{r.Mirror != nil, r.Issues != nil, r.Source != nil, r.Effect != nil, r.Review != nil, r.Projection != nil} {
@@ -205,17 +241,53 @@ func ValidateResponse(r Response, q Request) error {
 	default:
 		return ErrSchema
 	}
-	switch m.State {
-	case Permission, Unavailable:
-		if payloadCount(r) != 0 || r.Conflict || m.Source != nil || m.Observation != nil || m.Executor != nil || m.Complete != nil || m.Freshness != "unknown" || r.Diagnostic != nil || len(r.Measurements) != 0 {
+	if m.Reason == mirror.Permission && m.State != Permission {
+		return invalid()
+	}
+	if m.RetryAt != nil && (m.RetryAt.IsZero() || (m.State != Older && m.State != Unavailable) || q.Operation == CreateIssue || q.Operation == CreateComment) {
+		return invalid()
+	}
+	cachedStatus := ""
+	if m.Cached != nil {
+		if m.State != Older && m.State != Unavailable {
 			return invalid()
 		}
-		if (m.State == Permission && m.Reason != mirror.Permission) || (m.State == Unavailable && m.Reason != mirror.Transport && m.Reason != mirror.RateLimited && m.Reason != mirror.Truncated && m.Reason != mirror.Unknown) {
+		var err error
+		cachedStatus, err = cachedFreshness(m.Cached, q, m.Source)
+		if err != nil {
+			return err
+		}
+	}
+	switch m.State {
+	case Permission:
+		if payloadCount(r) != 0 || r.Conflict || m.Source != nil || m.Observation != nil || m.Executor != nil || m.Complete != nil || m.Freshness != "unknown" || m.RetryAt != nil || m.Cached != nil || r.Diagnostic != nil || len(r.Measurements) != 0 || m.Reason != mirror.Permission {
+			return invalid()
+		}
+		return nil
+	case Unavailable:
+		if payloadCount(r) != 0 || r.Conflict || m.Observation != nil || m.Executor != nil || r.Diagnostic != nil || len(r.Measurements) != 0 {
+			return invalid()
+		}
+		if m.Reason != mirror.Transport && m.Reason != mirror.RateLimited && m.Reason != mirror.Truncated && m.Reason != mirror.Unknown {
+			return invalid()
+		}
+		if m.Cached == nil {
+			if m.Source != nil || m.Complete != nil || m.Freshness != "unknown" {
+				return invalid()
+			}
+		} else if m.Complete == nil || *m.Complete || m.Freshness != cachedStatus {
 			return invalid()
 		}
 		return nil
 	case Older:
-		if payloadCount(r) != 0 || r.Conflict || m.Complete == nil || *m.Complete || m.Freshness != "stale" || !provenance(m.Source) {
+		if payloadCount(r) != 0 || r.Conflict || m.Complete == nil || *m.Complete {
+			return invalid()
+		}
+		if m.Cached == nil {
+			if m.Freshness != "stale" || !provenance(m.Source) {
+				return invalid()
+			}
+		} else if m.Freshness != cachedStatus {
 			return invalid()
 		}
 	case Confirmed, Newer:

@@ -876,6 +876,24 @@
     },
     "service_Metadata": {
       "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "const": "permission"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "state": {
+                "const": "permission"
+              }
+            }
+          }
+        }
+      ],
       "properties": {
         "cached": {
           "anyOf": [

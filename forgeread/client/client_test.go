@@ -58,6 +58,7 @@ func noData(r service.Response) bool {
 
 // regression: class service-client
 func TestForgeServiceClientFlow(t *testing.T) {
+	t.Run("server-cache-advice", checkServerCacheAdvice)
 	t.Run("actual-http", func(t *testing.T) {
 		q, r, _ := literal(t)
 		one := int64(1)
