@@ -653,7 +653,7 @@ func TestMirrorNativeRetryReceipt(t *testing.T) {
 		{"delta", mirror.GitHub, 429, http.Header{"Retry-After": {"60"}}, mirror.RetryNotBefore, now.Add(time.Minute), time.Minute, true},
 		{"zero", mirror.GitLab, 429, http.Header{"Retry-After": {"0"}}, mirror.RetryNotBefore, now, 0, true},
 		{"past-date", mirror.GitLab, 429, http.Header{"Retry-After": {now.Add(-time.Minute).Format(http.TimeFormat)}}, mirror.RetryUnknown, now.Add(-time.Minute), 0, false},
-		{"signed-reset", mirror.GitHub, 429, http.Header{"X-Ratelimit-Remaining": {"0"}, "X-Ratelimit-Reset": {"+1793707380"}}, mirror.RetryUnknown, time.Time{}, 0, false},
+		{"signed-reset", mirror.GitHub, 429, http.Header{"X-Ratelimit-Remaining": {"0"}, "X-Ratelimit-Reset": {fmt.Sprintf("%+d", now.Add(3*time.Minute).Unix())}}, mirror.RetryUnknown, time.Time{}, 0, false},
 		{"date", mirror.GitLab, 429, http.Header{"Retry-After": {now.Add(2 * time.Minute).Format(http.TimeFormat)}}, mirror.RetryNotBefore, now.Add(2 * time.Minute), 0, false},
 		{"primary", mirror.GitHub, 403, http.Header{"X-Ratelimit-Remaining": {"0"}, "X-Ratelimit-Reset": {fmt.Sprint(now.Add(3 * time.Minute).Unix())}}, mirror.RetryNotBefore, now.Add(3 * time.Minute), 0, false},
 		{"maximum", mirror.GitHub, 429, http.Header{"Retry-After": {"60"}, "X-Ratelimit-Remaining": {"0"}, "X-Ratelimit-Reset": {fmt.Sprint(now.Add(3 * time.Minute).Unix())}}, mirror.RetryNotBefore, now.Add(3 * time.Minute), time.Minute, true},
