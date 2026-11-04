@@ -2,7 +2,6 @@ package service_test
 
 import (
 	"encoding/json"
-	"reflect"
 	"testing"
 	"time"
 
@@ -37,14 +36,30 @@ func cachedRead(t *testing.T, age time.Duration, state service.State) (service.R
 
 func cacheRoundTrip(t *testing.T, q service.Request, r service.Response) {
 	t.Helper()
+	// Own expected bytes before codec execution: a shallow DTO copy would share
+	// provenance/cache pointers and could hide a mutation of both sides.
+	expected, err := json.Marshal(r.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
 	wire, err := service.EncodeResponse(r, q)
 	if err != nil {
 		t.Fatal("qualified cache/advice refused", err)
 	}
 	out, err := service.DecodeResponse(wire, q)
-	if err != nil || !reflect.DeepEqual(out.Metadata, r.Metadata) {
-		t.Fatalf("original cache/advice changed: err=%v got=%+v want=%+v", err, out.Metadata, r.Metadata)
+	if err != nil {
+		t.Fatal("qualified cache/advice did not decode", err)
 	}
+	actual, err := json.Marshal(out.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameJSON(t, expected, actual)
+	caller, err := json.Marshal(r.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameJSON(t, expected, caller)
 }
 
 func cacheRefusal(t *testing.T, q service.Request, r service.Response) {
