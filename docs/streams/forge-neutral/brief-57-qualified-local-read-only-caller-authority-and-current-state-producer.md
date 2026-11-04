@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5428
 issues: []
 schema: brief-v2
-version: 7
+version: 8
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -58,6 +58,7 @@ files:
 - `tools/desk/internal/arch/markers.txt`
 - `tools/desk/internal/deskkit/citrigger_test.go`
 - `.github/workflows/ci.yml`
+- `.github/workflows/assay-workflow.yml`
 - `spec/forge-local-authority-v1.md` (planned)
 - `docs/forge-local-authority.md` (planned)
 - `docs/contracts.md`

@@ -338,19 +338,34 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Install the declared Go toolchain
+        env:
+          GO_VERSION: "1.27.3"
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
           echo "fetching $url"
           curl -fsSL "$url" -o "${RUNNER_TEMP}/authority-go.tar.gz"
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/authority-go.tar.gz" | sha256sum -c -
           mkdir -p "${RUNNER_TEMP}/authority-go"
           tar -C "${RUNNER_TEMP}/authority-go" -xzf "${RUNNER_TEMP}/authority-go.tar.gz"
           echo "${RUNNER_TEMP}/authority-go/go/bin" >> "$GITHUB_PATH"
       - name: Prepare pinned module dependencies
+        env:
+          GOENV: "off"
+          GOAUTH: "off"
+          GOPROXY: "https://proxy.golang.org"
+          GOSUMDB: "sum.golang.org"
+          GOPRIVATE: ""
+          GONOPROXY: ""
+          GONOSUMDB: ""
         run: |
           set -euo pipefail
+          echo "Pinned dependency source: ${GOPROXY}; checksums: ${GOSUMDB}"
           GOWORK=off GOTOOLCHAIN=local go -C tools/desk mod download
+          GOWORK=off GOTOOLCHAIN=local go -C tools/desk list -mod=readonly -deps -test ./internal/forgeservice/auth ./internal/forgeservice/auth/testfixture >/dev/null
       - name: Require actual isolated flow and compiling production controls
         run: |
           set -euo pipefail

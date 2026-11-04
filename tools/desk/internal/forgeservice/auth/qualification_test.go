@@ -46,7 +46,7 @@ func TestForgeLocalAuthorityCompatibility(t *testing.T) {
 }
 
 func TestForgeLocalAuthorityCI(t *testing.T) {
-	var workflow struct {
+	type workflowDoc struct {
 		On          map[string]any    `yaml:"on"`
 		Permissions map[string]string `yaml:"permissions"`
 		Jobs        map[string]struct {
@@ -55,11 +55,14 @@ func TestForgeLocalAuthorityCI(t *testing.T) {
 			Needs  any               `yaml:"needs"`
 			Env    map[string]string `yaml:"env"`
 			Steps  []struct {
-				Run string            `yaml:"run"`
-				Env map[string]string `yaml:"env"`
+				Uses string            `yaml:"uses"`
+				With map[string]any    `yaml:"with"`
+				Run  string            `yaml:"run"`
+				Env  map[string]string `yaml:"env"`
 			} `yaml:"steps"`
 		} `yaml:"jobs"`
 	}
+	var workflow workflowDoc
 	raw := authorityRepoText(t, ".github/workflows/ci.yml")
 	if yaml.Unmarshal([]byte(raw), &workflow) != nil {
 		t.Fatal("actual CI YAML invalid")
@@ -73,6 +76,45 @@ func TestForgeLocalAuthorityCI(t *testing.T) {
 	job, ok := workflow.Jobs["forge-local-authority"]
 	if !ok || job.Runner != "ubuntu-24.04" || job.If != "" || workflow.Permissions["contents"] != "read" {
 		t.Fatal("qualified hosted fixture job missing/gated/permissions changed")
+	}
+	var reference workflowDoc
+	if yaml.Unmarshal([]byte(authorityRepoText(t, ".github/workflows/assay-workflow.yml")), &reference) != nil {
+		t.Fatal("canonical pinned workflow source invalid")
+	}
+	var pin map[string]string
+	for _, step := range reference.Jobs["test"].Steps {
+		if step.Env["GO_SHA256"] != "" {
+			if pin != nil {
+				t.Fatal("ambiguous canonical toolchain pin")
+			}
+			pin = step.Env
+		}
+	}
+	if pin == nil || pin["GO_VERSION"] == "" || len(pin["GO_SHA256"]) != 64 {
+		t.Fatal("canonical toolchain pin absent")
+	}
+	checkoutSafe, installSafe := false, false
+	closureSafe := false
+	for _, step := range job.Steps {
+		if strings.HasPrefix(step.Uses, "actions/checkout@") {
+			checkoutSafe = step.With["persist-credentials"] == false
+		}
+		if step.Env["GO_SHA256"] != "" {
+			checksum, extract := strings.Index(step.Run, "sha256sum -c -"), strings.Index(step.Run, "tar -C")
+			installSafe = step.Env["GO_VERSION"] == pin["GO_VERSION"] && step.Env["GO_SHA256"] == pin["GO_SHA256"] && checksum >= 0 && extract > checksum && strings.Contains(step.Run, "set -euo pipefail")
+		}
+		if strings.Contains(step.Run, "list -mod=readonly -deps -test ./internal/forgeservice/auth ./internal/forgeservice/auth/testfixture") {
+			closureSafe = step.Env["GOAUTH"] == "off" && step.Env["GOPROXY"] == "https://proxy.golang.org" && step.Env["GOSUMDB"] == "sum.golang.org"
+		}
+	}
+	if !checkoutSafe {
+		t.Fatal("new authority checkout persists credentials")
+	}
+	if !installSafe {
+		t.Fatal("new authority toolchain checksum pin omitted or used after extraction")
+	}
+	if !closureSafe {
+		t.Fatal("new hosted offline test closure not prepared from pinned public dependencies")
 	}
 	var script string
 	for _, step := range job.Steps {

@@ -509,7 +509,7 @@ func ciCrossModuleRegistry() []ciEntry {
 		{
 			test: "tools/desk/internal/forgeservice/auth/qualification_test.go", module: "tools/desk",
 			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
-			reads:      []string{"docs/proposals/non-ci-architecture/21-cell-operator-surface.md", "docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md", "spec/operator-incarnation-v1.md", "spec/forge-local-authority-v1.md", ".github/workflows/ci.yml", "tools/desk/internal/forgeservice/auth/testdata/qualify_fixture.py"},
+			reads:      []string{"docs/proposals/non-ci-architecture/21-cell-operator-surface.md", "docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md", "spec/operator-incarnation-v1.md", "spec/forge-local-authority-v1.md", ".github/workflows/ci.yml", ".github/workflows/assay-workflow.yml", "tools/desk/internal/forgeservice/auth/testdata/qualify_fixture.py"},
 			runInvokes: deskShardInvokes,
 			why:        "the unconditional Go floor checks controlling local/external/restore requirements and the actual required source-bound custody workflow; ordinary Dockerless skips remain explicitly unqualified",
 		},
