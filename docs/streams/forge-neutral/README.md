@@ -260,6 +260,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 54 | [Canonical PostgreSQL refresh gate and admitted read-through integration](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md) | 6 | L | todo | — | — |
 | 55 | [Operator provisioning of known read-only refresh profiles](brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md) | 7 | L | todo | — | — |
 | 56 | [Read-only forge serving behind qualified caller authority](brief-56-read-only-forge-serving-behind-qualified-caller-authority.md) | 8 | L | todo | — | — |
+| 57 | [Qualified local read-only caller authority and current-state producer](brief-57-qualified-local-read-only-caller-authority-and-current-state-producer.md) | 4 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -880,3 +881,7 @@ No selected issuer, implementation or approval is fabricated to make this graph 
 Source50 lacks facts needed by existing desk-read/review projections and complete review
 coverage, so these units do not qualify full45 tool cutover, retention purge or full37 acceptance.
 
+
+### Earlier local authority producer
+
+[57](brief-57-qualified-local-read-only-caller-authority-and-current-state-producer.md) owns the missing canonical R3 local producer/current-state/custody qualification. Its actual source/profile precedes56; full40 consumes56 afterward, so no producer is hidden behind the downstream executor.55 remains independently implementable. Retained21 external caller requirements,22's local launcher capability and R7 remote login have distinct scope;57 must demonstrate concrete local compatibility and custody rather than invent a crypto/issuer/TTL choice. Missing producer/profile remains NEEDS_CONTEXT and unqualified, with no premature acceptance fork.
