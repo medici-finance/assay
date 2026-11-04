@@ -5637,8 +5637,18 @@ and worktree included) applied. For fetch it is the single origin URL the gate a
 origin repo, have a host of exactly `github.com` (no lookalike, subdomain, trailing dot,
 userinfo trick or self-hosted instance), and not be cleartext `http://`. If any URL fails, the
 verb is refused (exit 5) and nothing is minted. A repo the roster maps to another forge
-(`ASSAY_REPO_FORGES`) is refused the same way. A **local-path origin is refused** under `--as`:
+(`ASSAY_REPO_FORGES`) is refused the same way for push. A **local-path origin is refused** under `--as`:
 it has no host to bind a GitHub token to. Plain `deskgit fetch` (no `--as`) is unaffected.
+
+**`fetch --as` on a GitLab-served repo (#5028).** When the forge map (`ASSAY_REPO_FORGES`, then
+the origin host through the well-known table) resolves the repo to GitLab, `fetch --as <role>`
+takes the GitLab arm instead of refusing: `deskkit.CheckoutGitRead` checks the session role,
+requires exactly one plain `https` origin on the configured instance's host and port
+(`GITLAB_API_BASE`; unset is exit 6, never a gitlab.com default), and reads the role's
+provisioned GitLab custody token through `deskkit.ResolveRoleCredential` (never minted). The
+token rides the in-memory hand-off as `oauth2` basic auth, to the gated origin URL only. A
+forge nothing resolves stays on the GitHub arm and is refused (exit 5) unless its origin is on
+github.com. GitHub behaviour is unchanged. `push --as` still speaks only GitHub.
 
 *Layer 2, the answer point.* The credential is bound where it is answered, not only where
 destinations are listed. For **fetch** that is the in-memory hand-off itself: the token is
