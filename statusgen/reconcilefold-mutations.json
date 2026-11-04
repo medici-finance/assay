@@ -22,7 +22,7 @@
     {
       "name": "held-row refusal",
       "file": "reconcilefold.go",
-      "old": "if closeVerifyHeldRefusal(d.ident.ID, \"implemented\", d.evidence) != nil ||\n\t\tcloseVerifyFailRefusal",
+      "old": "if flipHeldRefusal(d.ident.ID, \"implemented\", d.evidence) != nil ||\n\t\tcloseVerifyFailRefusal",
       "new": "if closeVerifyFailRefusal"
     },
     {

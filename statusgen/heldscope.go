@@ -2,6 +2,7 @@ package main
 
 import (
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -139,6 +140,37 @@ import (
 //     that ran only one sub-case covers an earlier lone "3 (negative)"; the
 //     format records no sub-case on a bare key that could tell them apart.
 //
+//     (c) The latest run only (#4294, the maintainer's scope ruling): when
+//     the last entry is a PASS run, nothing before its heading is read. A
+//     PASS run here is a last entry that carries the live strict marker
+//     heldEntryPass requires AND records Date/Runner rows (flipDateRunnerRows,
+//     outside fenced code, comments removed) every one of which has both a
+//     Date and a Runner cell (flipRowDated): a run with a missing Date or
+//     Runner cell is not a PASS run, and an undated last entry leaves (a) and
+//     (b) as the only ways. Every keyed results row of the last entry must
+//     re-run clean as (a) reads it (heldLatestClean), with at least one such
+//     row and no table in the entry the scan cannot key: a run whose own row
+//     failed, could not run or records no outcome answers nothing before it.
+//     Whether the run re-ran EVERY Verify row is not this scan's question:
+//     verifyflip asks it of the run it credits (closureRunWitnesses), so 3c
+//     applies only where that check runs. Only verifyflip and the reconcile
+//     fold read it (flipHeldRefusal, latestRun true); close-verify, the
+//     verify-gate card, the sign-off act and autoflip run no witness check
+//     and read rules 3a and 3b alone. And 3c needs every Date/Runner row of
+//     the run verifyflip credits to lie after the last entry heading
+//     (heldWitnessInLatest), so the run it stops reading at is the run the
+//     witness check reads. The last
+//     entry's heading must be one the page surely draws (heldBoundaryDoubt,
+//     local to that heading): no column-0 level-three heading in the entry
+//     that the scan does not render live outside fenced code and HTML
+//     comments, and, before the heading, no HTML block or tag left open
+//     (heldHTMLUnclosed), no fence in a container (heldContainerFence) and
+//     no element left open that strikes, hides or swallows what follows it
+//     (heldCarryElement); any of those leaves (a) and (b) as the only ways.
+//     A hold inside the last entry is read as always, and an earlier entry is
+//     never edited or annotated to get here: it is accurate history, and the
+//     scan simply does not read it.
+//
 //  4. Observed output (#4294). An occurrence of "could-not-check" (never HELD)
 //     in a Result-type cell (heldColResult) of an aligned, keyed row is what
 //     the verified product printed, not the row's disposition, only when the
@@ -196,6 +228,7 @@ type heldScope struct {
 	from    int             // the first line of the superseding last entry, or -1
 	covered map[string]bool // the row keys the superseding entry re-ran
 	whole   bool            // the superseding entry re-ran every row key of every earlier entry (rule 3b)
+	latest  bool            // the superseding entry is a dated PASS run on a sure boundary: nothing before it is read (rule 3c)
 }
 
 // supersedes reports whether the held occurrences found on the given lines
@@ -207,6 +240,9 @@ type heldScope struct {
 func (s heldScope) supersedes(hits []int) bool {
 	if s.from < 0 {
 		return false
+	}
+	if s.latest {
+		return true // rule 3c: only the last entry is read
 	}
 	for _, i := range hits {
 		if i >= s.from {
@@ -1437,8 +1473,9 @@ func heldWitnessTrailerEnd(lines []string, inFence []bool, header, j, hi int) in
 }
 
 // heldScanScope returns what the held scan reads of evidence (split on "\n"),
-// under the rules documented above.
-func heldScanScope(evidence string) heldScope {
+// under the rules documented above. Rule 3c is read only when latestRun is
+// true, which only the flip-side callers pass (flipHeldRefusal).
+func heldScanScope(evidence string, latestRun bool) heldScope {
 	lines := strings.Split(evidence, "\n")
 	out := make([]heldLineRead, len(lines))
 	live := heldRender(lines)
@@ -1556,6 +1593,11 @@ func heldScanScope(evidence string) heldScope {
 	if len(starts) > 1 {
 		last := starts[len(starts)-1]
 		if heldEntryPass(lines, live, last, len(lines)) {
+			if latestRun && heldLatestRule && aligned[len(starts)-1] && heldLatestClean(lines, live, out, tables, last) &&
+				heldRunDated(lines[last:], inFence[last:]) && !heldBoundaryDoubt(lines, live, inFence, html, last, last, len(lines)) &&
+				heldWitnessInLatest(evidence) {
+				scope.from, scope.latest = last, true
+			}
 			if covered := heldCovered(lines, live, out, tables, last); len(covered) > 0 {
 				scope.from, scope.covered = last, covered
 				scope.whole = heldWholeCovered(keys[:len(starts)-1], aligned[:len(starts)-1], covered) &&
@@ -1565,6 +1607,280 @@ func heldScanScope(evidence string) heldScope {
 		}
 	}
 	return scope
+}
+
+// heldWitnessInLatest reports whether every Date/Runner row of the run
+// verifyflip credits for the latest PASS (flipLatestPass, the very selector
+// the flip, the reconcile fold and the witness check read) lies after the
+// last entry heading of that run. Rule 3c stops reading holds at the last
+// entry heading, so it may do so only when no witness the flip counts comes
+// from a line before it: a run that shares its date and sha with an earlier
+// BLOCKED entry, or one run split under two headings with no verdict between
+// them, keeps 3c off and is read by rules 3a and 3b. A refused selection
+// keeps 3c off too. Every line that reads as an entry heading counts, live or
+// not, fenced or not, indented or quoted, so a context the run text alone
+// cannot see can only move the heading later and keep 3c off (fail closed).
+//
+// The gate reads with the readers it stands in for, never with narrower
+// copies of them. p.Run is comment-stripped while 3c reads the rendered
+// text, so a stripped span whose markers sit in code the page renders
+// literally could hide 3c's heading (or its PASS) from p.Run: a stripped
+// line 3c reads as live keeps 3c off (heldStripHidesLive). And the rows
+// above the heading are tested with the witness check's own row reader
+// (heldCreditedAbove), so a table the check credits on a looser header than
+// Date and Runner keeps 3c off too.
+// It is a variable only so TestHeldLatestScope can read 3c's other conditions
+// with this one held true; the binary never reassigns it.
+var heldWitnessInLatest = func(evidence string) bool {
+	if heldStripHidesLive(evidence) {
+		return false
+	}
+	p, err := flipLatestPass(evidence)
+	if err != nil {
+		return false
+	}
+	// The witness check strips the run's comments again (parseEvidenceRows).
+	// When that strip would change the run, a first strip left a new comment
+	// that can join text across the heading, so the gate cannot read the
+	// prefix the way the witness check reads the run.
+	if s, _ := stripRowComments(p.Run); s != p.Run {
+		return false
+	}
+	run := strings.Split(p.Run, "\n")
+	h := -1
+	for i, l := range run {
+		if heldEntryHeading(strings.TrimLeft(l, " \t>")) {
+			h = i
+		}
+	}
+	if h < 0 {
+		return true
+	}
+	return !heldCreditedAbove(run[:h], evidence)
+}
+
+// heldStripHidesLive reports whether stripping the Evidence's comments
+// (stripRowComments, the run reader's first step) removes text from a line
+// the held scan reads as live: a span spread over lines whose markers the
+// page does not read as a comment. An entry heading or a PASS can leave the
+// run only that way, since a span on one line never holds a line start. A
+// complete comment the page hides, such as the section template's note,
+// touches no live line and changes nothing.
+func heldStripHidesLive(evidence string) bool {
+	lines := strings.Split(evidence, "\n")
+	live := heldRender(lines)
+	starts := make([]int, len(lines))
+	for i, off := 1, 0; i < len(lines); i++ {
+		off += len(lines[i-1]) + 1
+		starts[i] = off
+	}
+	lineAt := func(off int) int {
+		return sort.Search(len(starts), func(i int) bool { return starts[i] > off }) - 1
+	}
+	for _, span := range htmlCommentClosedRe.FindAllStringIndex(evidence, -1) {
+		first, last := lineAt(span[0]), lineAt(span[1]-1)
+		if first == last {
+			continue
+		}
+		for i := first; i <= last; i++ {
+			if live[i] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// heldCreditedAbove reports whether the lines above the run's last entry
+// heading hold any row a witness reader the flip runs could credit: a
+// Date/Runner row (flipDateRunnerRows), or any Evidence row the witness
+// check reads as a witness (parseEvidenceRows, isWitnessRow), whatever its
+// table's header says. A protected-table marker anywhere makes the witness
+// check read the full history (closureRunWitnesses), so it counts too.
+func heldCreditedAbove(above []string, evidence string) bool {
+	if hasProtectedTableMarker(evidence) {
+		return true
+	}
+	if rows, _ := flipDateRunnerRows(above); len(rows) > 0 {
+		return true
+	}
+	for _, rows := range parseEvidenceRows(strings.Join(above, "\n")) {
+		for _, r := range rows {
+			if isWitnessRow(r.Text) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// heldLatestRule turns rule 3c on. It is always true in the binary; it is a
+// variable only so the tests of rules 3a and 3b can read those rules alone, as
+// they still decide every Evidence whose last entry 3c does not admit.
+var heldLatestRule = true
+
+// heldFenced reports, for each line, whether the scan reads it as fenced code:
+// a fence toggle line (heldFenceToggle) or a line between two of them.
+func heldFenced(lines []string) []bool {
+	in := make([]bool, len(lines))
+	fence := false
+	for i, l := range lines {
+		if heldFenceToggle(l) {
+			fence = !fence
+			in[i] = true
+			continue
+		}
+		in[i] = fence
+	}
+	return in
+}
+
+// heldRunDated reports whether the run lines (one Evidence entry) record at
+// least one Date/Runner row and every such row carries both cells
+// (flipRowDated, the predicate verifyflip's run reader applies): a run with a
+// missing Date or Runner cell is not a PASS run (rule 3c). Fenced code is not
+// read, HTML comments are removed first, and an unterminated comment reads as
+// undated.
+func heldRunDated(lines []string, inFence []bool) bool {
+	keep := make([]string, len(lines))
+	for i, l := range lines {
+		if !inFence[i] {
+			keep[i] = l
+		}
+	}
+	text, open := stripRowComments(strings.Join(keep, "\n"))
+	if open >= 0 {
+		return false
+	}
+	rows, _ := flipDateRunnerRows(strings.Split(text, "\n"))
+	if len(rows) == 0 {
+		return false
+	}
+	for _, r := range rows {
+		if !flipRowDated(r) {
+			return false
+		}
+	}
+	return true
+}
+
+// heldBoundaryDoubt reports whether the entry heading on line at, a heading
+// the scan renders live, may not start an entry on the page (rule 3c), with
+// lines [lo, hi) the run that heading is to bound. It is local to that one
+// heading: a column-0 level-three heading in [lo, hi) outside fenced code and
+// HTML comments that the scan does not render live (a carriage return before
+// it, an HTML block around it, a fence the scan and the page disagree on), or,
+// in the lines before at, an HTML block or tag left open (heldHTMLUnclosed) or
+// a fence inside a container (heldContainerFence), either of which may end
+// where the scan does not and so swallow the heading. A column-0 heading is
+// never a continuation of a list item or a blockquote, so it ends any
+// container, and any HTML block inside one, before it: a tag start in a
+// container (the rest of heldContainerDoubt) cannot reach it. Before at,
+// an element that can strike, hide or swallow what follows it across blocks
+// (heldCarryElement) must also be closed. Any other element left open
+// earlier (the rest of heldElementDoubt) only nests the heading in the page's
+// tree, where it still renders as a heading, so it is not read here.
+func heldBoundaryDoubt(lines []string, live, inFence []bool, html []int, at, lo, hi int) bool {
+	if at <= 0 || at >= len(lines) || !live[at] {
+		return true
+	}
+	for i := max(lo, 1); i < hi && i < len(lines); i++ {
+		if !live[i] && !inFence[i] && html[i] != heldHTMLComment && heldEntryHeading(lines[i]) {
+			return true
+		}
+	}
+	return heldHTMLUnclosed(lines[:at], inFence[:at]) || heldContainerFence(lines[:at]) ||
+		heldCarryElement(lines[:at], inFence[:at])
+}
+
+// heldCarryTags are the elements whose effect the page carries past the block
+// that opens them: the formatting elements an HTML parser reopens in every
+// later block while they stay open (an unclosed <s> strikes everything after
+// it, a PASS included), and the elements that collapse or drop their content.
+var heldCarryTags = map[string]bool{}
+
+func init() {
+	for _, t := range strings.Fields(`a b big code em font i nobr s small strike
+		strong tt u del ins details template`) {
+		heldCarryTags[t] = true
+	}
+}
+
+// heldCarryElement reports whether lines, outside top-level fenced code, open
+// a heldCarryTags or heldRawTags element more often than they close it. An
+// opener counts wherever it appears (in a code span or a comment too), so
+// this over-refuses by design; a placeholder such as <name> names no such
+// element and is not read.
+func heldCarryElement(lines []string, inFence []bool) bool {
+	open := map[string]int{}
+	for i, l := range lines {
+		if inFence[i] {
+			continue
+		}
+		for p := 0; p+1 < len(l); p++ {
+			if l[p] != '<' {
+				continue
+			}
+			if isASCIILetter(l[p+1]) {
+				if n := heldElementName(l[p+1:]); heldCarryTags[n] || heldRawTags[n] {
+					open[n]++
+				}
+				continue
+			}
+			if n, ok := heldCloseTag(l[p:]); ok && open[n] > 0 {
+				open[n]--
+			}
+		}
+	}
+	for _, c := range open {
+		if c > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// heldContainerFence reports whether any line that carries a blockquote or
+// list-item marker or leading whitespace (heldContainerStrip) has a fence
+// after them: the page ends such a fence with its container, where the scan's
+// fence reading (heldFenced) may not, so the two may disagree on every fence
+// after it.
+func heldContainerFence(lines []string) bool {
+	for _, l := range lines {
+		if t := heldContainerStrip(l); t != l && heldFenceToggle(t) {
+			return true
+		}
+	}
+	return false
+}
+
+// heldRunFrom returns the first line of the run a verdict on line at closes,
+// given lo, the first line after the verdict before it (verifyflip's run
+// boundary): the latest live entry heading in [lo, at), so that an earlier
+// entry's tail is never read as part of the latest run, or lo when no entry
+// heading lies there. ok is false when a heading lies there but the boundary
+// is ambiguous (heldBoundaryDoubt): the caller refuses rather than guess.
+func heldRunFrom(lines []string, lo, at int) (from int, ok bool) {
+	live := heldRender(lines)
+	inFence := heldFenced(lines)
+	html := heldHTMLLines(lines, inFence)
+	from, inside, found := lo, false, false
+	for i := max(lo, 1); i < at && i < len(lines); i++ {
+		if inFence[i] || html[i] == heldHTMLComment || !heldEntryHeading(lines[i]) {
+			continue
+		}
+		inside = true
+		if live[i] {
+			from, found = i, true
+		}
+	}
+	if !inside {
+		return lo, true
+	}
+	if !found || heldBoundaryDoubt(lines, live, inFence, html, from, lo, at) {
+		return 0, false
+	}
+	return from, true
 }
 
 // heldCovered returns the row keys the last entry (from line last on)
@@ -1585,7 +1901,50 @@ func heldScanScope(evidence string) heldScope {
 // the outcome. Any other result column must be empty: a note, a check name or
 // any text the cover cannot classify keeps the row from covering.
 func heldCovered(lines []string, live []bool, out []heldLineRead, tables []heldTable, last int) map[string]bool {
-	clean, bad := map[string]bool{}, map[string]bool{}
+	clean, bad, ok := heldCoverRows(lines, live, out, tables, last)
+	if !ok {
+		return nil
+	}
+	covered := map[string]bool{}
+	for k := range clean {
+		if !bad[k] {
+			covered[k] = true
+		}
+	}
+	return covered
+}
+
+// heldLatestClean reports whether every keyed results row of the last entry
+// (from line last on) reads clean by heldCovered's reading and there is at
+// least one: a latest run with a row the cover cannot read as a pass, or a
+// row it cannot align, is not a run that answers everything before it
+// (rule 3c).
+func heldLatestClean(lines []string, live []bool, out []heldLineRead, tables []heldTable, last int) bool {
+	clean, bad, ok := heldCoverRows(lines, live, out, tables, last)
+	if !ok || len(clean) == 0 || len(bad) > 0 {
+		return false
+	}
+	// The scan never reads a key cell, so a hold written into one ("3 (HELD)",
+	// "3 (positive not run)") would go unseen once nothing before the entry
+	// is read. Such a key keeps 3c off; it decides nothing else.
+	for k := range clean {
+		if heldLatestKeyHoldRe.MatchString(k) || heldObserveHoldRe.MatchString(k) {
+			return false
+		}
+	}
+	return true
+}
+
+// heldLatestKeyHoldRe is a hold word in a row key of the last entry
+// (heldLatestClean), beside heldObserveHoldRe's words. It only turns rule 3c
+// off, never refuses on its own, so it is not a held-scan site.
+var heldLatestKeyHoldRe = regexp.MustCompile(`(?i)\b(?:held|hold\w*|could-not-\w+|deferr\w*)\b`)
+
+// heldCoverRows sorts the keyed results rows of the last entry's tables into
+// the keys that re-ran clean and the keys some row of which did not
+// (heldCovered). ok is false when a row cannot be aligned.
+func heldCoverRows(lines []string, live []bool, out []heldLineRead, tables []heldTable, last int) (clean, bad map[string]bool, ok bool) {
+	clean, bad = map[string]bool{}, map[string]bool{}
 	for _, tb := range tables {
 		if tb.header <= last {
 			continue
@@ -1600,7 +1959,7 @@ func heldCovered(lines []string, live []bool, out []heldLineRead, tables []heldT
 		header := heldCellRanges(lines[tb.header])
 		for r := tb.header + 2; r < tb.end; r++ {
 			if out[r].key == "" {
-				return nil // a row that cannot be aligned (fail closed)
+				return nil, nil, false // a row that cannot be aligned (fail closed)
 			}
 			cells := heldCellRanges(lines[r])
 			ran, other := false, false
@@ -1633,13 +1992,7 @@ func heldCovered(lines []string, live []bool, out []heldLineRead, tables []heldT
 			}
 		}
 	}
-	covered := map[string]bool{}
-	for k := range clean {
-		if !bad[k] {
-			covered[k] = true
-		}
-	}
-	return covered
+	return clean, bad, true
 }
 
 // heldColRole is what a result column of a covering table holds

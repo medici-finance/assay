@@ -13,7 +13,7 @@ gate-why: "Accept only the demonstrated caller/current-authority binding and pri
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -21,9 +21,11 @@ exec-tier: strong
 exec-tier-why: "Authenticated identity, current admission, shared negative caching, wire metadata and final response release must agree across independently enforced boundaries."
 domain: complicated
 sources:
+- docs/streams/forge-neutral/brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md
 - docs/streams/forge-neutral/brief-39-typed-forge-service-contract-and-scoped-client-sdk.md
 - docs/streams/forge-neutral/brief-40-authenticated-forge-serving-and-role-executor-custody.md
 - docs/streams/forge-neutral/brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md
+- docs/streams/forge-neutral/brief-57-qualified-local-read-only-caller-authority-and-current-state-producer.md
 - docs/streams/cell-api/brief-03-qualify-mounted-cell-api-authorization-and-privacy.md
 - spec/operator-incarnation-v1.md
 - spec/forge-service-v1.md
@@ -51,6 +53,7 @@ consumers:
 
 files:
 - `tools/desk/internal/forgeservice/server/` (planned)
+- `tools/desk/internal/forgeservice/server/testdata/read_mutations.py` (planned)
 - `tools/desk/cmd/forgeserve/` (planned)
 - `docs/forge-service.md` (planned)
 - `docs/enforcement-model.md`
@@ -69,7 +72,7 @@ facts:
 - The actual39 wire supports MirrorQuery with Kind, MaxAgeMS and a scope-bound optional Minimum token. Scope fields are claims; the client takes an already admitted transport and explicit endpoint. Neither supplies authentication or credentials.
 - Metadata.RetryAt is nullable. Cached is nullable CachedObservation containing original Coverage, EvaluatedAt and nullable AgeMS, with no rows. Permission responses carry neither retry advice nor cache metadata. The selected39 checkpoint is not yet a qualified delivery; implementation must consume its completed owner source.
 - Full40 already names the planned read-only query entrypoint `tools/desk/cmd/forgeserve`; this contribution owns that launch path while the parent retains its separate executor entrypoint. It uses the existing CLI framework and adds no default listener or probe.
-- The existing refresh coordinator and R2 Gate own source fills, native budgets, failures and retry eligibility. Clients make no provider fallback, automatic cooldown sleep or second refresh loop. The runtime connection cannot initialize the operator-owned profile from /55.
+- The canonical forge-neutral/54 R2 Gate and existing refresh coordinator own source fills, native budgets, failures and retry eligibility. Gate-owned shared failure and retry state reaches only callers currently authorized for that exact source, admission and repository scope. Clients make no provider fallback, automatic cooldown sleep or second refresh loop. The runtime connection cannot initialize the operator-owned profile from /55.
 - At the inspected source, the forge auth/server implementations are absent. The current-incarnation contract explicitly has no live authority source or key provisioning. Passive records, matching scope strings, SQL generations and celllaunch.Permit do not authenticate a remote caller.
 - The comms signed-envelope/mTLS primitive does not by itself bind all required forge repository/source/admission/access/configuration/policy/current-incarnation claims or qualify their custody. The canonical earlier57 producer must distinguish retained21 external machine/light-client requirements from22's local launcher capability and R7 remote login scope, qualifying actual local claims/custody rather than assuming those caller classes contradict.
 - Source50 does not provide full review enrichment or all facts required by current desk-read/review projections. This contribution serves the existing mirror-query only; it is not tool parity or full45 cutover.
