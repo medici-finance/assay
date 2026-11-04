@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "The new receipt crosses the admitted native transport and refresh boundary. Accept its demonstrated scope binding, safe metadata and bounded attempt semantics; it grants no credential, service exposure or shared-budget activation."
 issues: []
 schema: brief-v2
-version: 3
+version: 4
 authored: 2026-11-03 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -21,6 +21,7 @@ exec-tier: strong
 domain: complicated
 exec-tier-why: "SDK retries, native response errors and independent budget/source checks must retain one truthful attempt boundary across adapters."
 sources:
+- "authoritative contract source: commit 9febd828b10a4a12bea41eb05ae66c0b2b7689bb; this authoring adoption carries no runtime implementation or acceptance claim"
 - docs/streams/forge-neutral/brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md
 - docs/streams/forge-neutral/brief-48-bound-native-mirror-response-allocation-before-decoding.md
 - docs/streams/forge-neutral/brief-50-join-admitted-incremental-reads-to-mirror-observations.md
@@ -154,7 +155,7 @@ Named tests are prospective. Missing packages, test selectors or required fixtur
 | 6 | check +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorNativeObservationBoundary$' ./internal/deskkit > "$out" && grep -F -- '--- PASS: TestMirrorNativeObservationBoundary ' "$out")` | Named PASS; BeforeAttempt returns a unique reservation and each native outcome reports only its own typed evidence. Concurrent authority fixtures distinguish pre-publication in-flight reservations from later authorizations; observed floor/unknown holds later work. Duplicate/foreign/out-of-order/uncertain reports cannot close another slot or synthesize completion. Removing report propagation or replay/floor refusal fails; SQL proof remains54. |
 | 7 | check +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorNativeFreshnessBoundary$' ./internal/deskkit > "$out" && grep -F -- '--- PASS: TestMirrorNativeFreshnessBoundary ' "$out")` | Named PASS; stale legacy-cache replay/unknown transport coverage with0 HTTP cannot promote source completeness/watermarks; fresh supported admitted native pages remain positive. Actual empty inventory that ages during authority I/O retains its pre-callback completion time and cannot become freshly fulfilled; a missing production native bound holds. Preserve explicit TLS/header custody and ordinary transport behavior. Removing freshness proof or replacing custom composition with DefaultTransport fails. |
 | 8 | check | `cd forgeread && GOWORK=off go vet ./... && GOWORK=off go test -race -count=1 ./refresh` | Exit0; bounded synthetic lifetime; no provider contact. |
-| 9 | check +dereference | `statusgen --root . --consumers --brief forge-neutral/53 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | Actual pre-merge delivery corroborates fixed-here paths; downstream routing grants no implementation. Post-merge use independent immutable delivery bounds. |
+| 9 | check +dereference | `statusgen --root . --consumers --brief forge-neutral/53 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | Actual pre-merge delivery corroborates follow-up forge-neutral/53 paths; downstream routing grants no implementation. Post-merge use independent immutable delivery bounds. |
 
 ## Evidence
 

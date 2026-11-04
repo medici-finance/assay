@@ -14,11 +14,12 @@ decision-trigger: spec
 decision-issue: 5384
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 outcome: none
 id: 894ac034-2261-4f1c-945e-7d18d83ff68b
 authored: 2026-11-03 by statusgen newbrief
 sources:
+  - "freshness-checked 2026-11-03 @ 438310c23194b20a5cb1ceba998fb6b42b30bf0f; F-mapper-owner routing repair from PR #5397 and implementation PR #5406"
   - docs/streams/forge-neutral/brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md
   - docs/streams/forge-neutral/brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md
   - docs/streams/decisions/DR-forge-library.md
@@ -33,7 +34,8 @@ consumers:
   - "tools/desk/internal/deskkit/forge_github.go, forge_gitlab.go, sharedread.go: out-of-scope (reuse existing SDK page readers and lower scope checks unchanged; bound their private upstream transports)"
   - "forgeread/README.md: fixed-here"
   - "docs/contracts.md: fixed-here (register the native response bound and its weight)"
-  - "workflow/store/, mirroringest.go and persisted watermark failure flow: follow-up forge-neutral/37"
+  - "tools/desk/internal/deskkit/mirroringest.go and source-only native-bound failure mapping: follow-up forge-neutral/50"
+  - "workflow/store/ and persisted joined-watermark failure flow: follow-up forge-neutral/37 (consume /50 mapper and this native bound; retain joined PostgreSQL proof)"
   - "forgeclient/: follow-up desktools-v2/75 (relocate this implementation if present)"
   - "statusgen/: out-of-scope (no reader cutover or import change)"
 ---

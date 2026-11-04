@@ -10,7 +10,9 @@ The schema contract is [coordination-store-v1](../spec/coordination-store-v1.md)
 Call `store.Migrate(ctx, explicitConfig)` for an explicitly authorized migration operation.
 Call `store.Open(ctx, explicitConfig)` to validate an already compatible schema; Close the
 returned handle. Open performs no DDL. Production calls never read a DSN or select an
-ambient connection/credential. Nonempty PostgreSQL environment settings are refused.
+ambient connection/credential. Every nonempty environment variable whose name starts with
+`PG` is refused, including image metadata such as `PG_MAJOR`, `PG_VERSION` and `PGDATA`;
+callers must remove those variables before using this deliberately strict configuration.
 No default endpoint, alternate backend, migration-down/reset API or secret-bearing error.
 The database role owns migration DDL only when that operation is explicitly authorized;
 provisioning, restricted application roles and activation remain operator-owned.
@@ -69,7 +71,9 @@ GOWORK=off go vet ./...
 The harness accepts a `postgresql://user:synthetic-password@127.0.0.1:port/postgres?sslmode=disable`
 URI (an explicit IPv6 loopback is also supported). Missing input fails rather than skipping.
 Every test uses a unique database with an owner marker; it does not reset the admin database.
-The standalone CI job supplies its own disposable container and executes the complete suite.
+The standalone CI job uses the GitHub-hosted Ubuntu Docker host, supplies its own pinned
+disposable container and executes the complete suite, including the race detector. The
+regular repository builder has no Docker daemon and cannot host that service.
 No provider, cluster or production contact is part of these tests.
 
 Schema/migration changes are forward-only additions to `store/migrations`; do not modify
@@ -78,7 +82,13 @@ recorded SQL checksums. Add future domain tables there, never in a competing led
 `TestPGFoundationConcurrent` launches two independent test processes against the same
 explicit fixture; local goroutines alone do not qualify cross-process migration locking.
 
-For repeatable production fault controls in an owned clean linked worktree:
+Migration annotation policy follows the pinned Goose comment normalization, including
+no-space and repeated-dash spellings and case-insensitive commands. Only forward `Up`,
+`StatementBegin` and `StatementEnd` annotations are admitted; transaction disabling,
+environment substitution and every other annotation refuse before connecting.
+
+For repeatable production fault controls in an owned clean linked worktree on an owned
+feature branch (not `main`, `master` or detached HEAD):
 
 ```sh
 test -n "$ASSAY_TEST_POSTGRES_DSN"

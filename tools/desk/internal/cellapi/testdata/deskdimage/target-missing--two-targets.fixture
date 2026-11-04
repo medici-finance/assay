@@ -1,0 +1,6 @@
+# regression: #4769
+# A second rule naming deskd-image first among two targets still overrides its recipe.
+want: target-missing
+file: Makefile
+replace: "\n## skillslint: validate"
+with: "\ndeskd-image deskd-noop:\n\t@echo \"skipped\"\n\n## skillslint: validate"

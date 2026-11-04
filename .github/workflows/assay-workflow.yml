@@ -31,7 +31,9 @@ permissions:
   contents: read
 jobs:
   test:
-    runs-on: medici-builder-public
+    # Service containers need Docker; the regular builder has no daemon.
+    # https://docs.github.com/en/actions/tutorials/use-containerized-services/create-postgresql-service-containers
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
       postgres:
