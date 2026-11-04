@@ -23,7 +23,10 @@ def main():
     work = Path(args.work).resolve()
     go = Path(args.go).resolve(strict=True)
     python = Path(args.python).resolve(strict=True)
-    docker = Path(args.docker).resolve(strict=True)
+    # Preserve a selected CLI's invocation name (multicall binaries may dispatch
+    # on argv0). Hash/read its resolved target, but never execute a renamed target.
+    docker = Path(os.path.abspath(args.docker))
+    docker_real = docker.resolve(strict=True)
     if not (source / ".git").is_file() or work.exists() or not args.endpoint.startswith("unix:///") or args.platform not in ["linux/amd64", "linux/arm64"]:
         raise SystemExit("UNQUALIFIED: isolated source/work/local endpoint/platform required")
     socket = Path(args.endpoint.removeprefix("unix://"))
@@ -63,7 +66,7 @@ def main():
     context.mkdir()
     shutil.copyfile(recipe / "Dockerfile", context / "Dockerfile")
     shutil.copytree(recipe / "seeds", context / "seeds")
-    declared = {"source": head, "owner": owner, "endpoint": args.endpoint, "platform": args.platform, "go_sha256": digest(go), "python_sha256":digest(python), "docker_sha256": digest(docker), "recipe_sha256": digest(context / "Dockerfile"), "state": "DECLARED_NO_ENGINE_EFFECTS"}
+    declared = {"source": head, "owner": owner, "endpoint": args.endpoint, "platform": args.platform, "go_sha256": digest(go), "python_sha256":digest(python), "docker_invocation":str(docker), "docker_realpath":str(docker_real), "docker_sha256": digest(docker_real), "recipe_sha256": digest(context / "Dockerfile"), "state": "DECLARED_NO_ENGINE_EFFECTS"}
     (work / "DECLARATION.json").write_text(json.dumps(declared, indent=2) + "\n")
     print("Owned fixture target: " + args.endpoint, flush=True)
     env.update(CGO_ENABLED="0", GOOS="linux", GOARCH=args.platform.split("/")[1])
