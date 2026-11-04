@@ -47,6 +47,8 @@ type ProbeResult struct {
 	CurrentReadOnly, BootstrapReadOnly, GrantReadOnly                bool
 	OtherGrantDenied, CurrentControlDenied, GrantControlDenied       bool
 	BootstrapAbsent, CurrentAbsent, GrantAbsent                      bool
+	ControlSocketPresent, CurrentSocketPresent, GatePresent          bool
+	FixtureStage                                                     string
 }
 
 func read(in io.Reader, dst any) error {
@@ -163,10 +165,20 @@ func producer(ctx context.Context, in io.Reader) error {
 		}
 		grants[g.LaunchID] = r
 	}
+	stage := func(value string) {
+		f, e := private.OpenFile("fixture-stage", os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+		if e == nil {
+			f.Write([]byte(value))
+			f.Close()
+		}
+	}
+	stage("starting")
 	c, e := auth.NewController(s.Config, auth.ProducerResources{Private: private, Current: current, Bootstrap: bootstrap, Grants: grants, Binding: s.Binding}, wall{})
 	if e != nil {
+		stage("constructor-held")
 		return e
 	}
+	stage("gate-acquired")
 	defer c.Close()
 	// A real producer-only witness distinguishes mount leakage from an empty
 	// image directory. It contains no key or identity and is never authority.
@@ -198,6 +210,11 @@ func producer(ctx context.Context, in io.Reader) error {
 	}
 	cancel()
 	wg.Wait()
+	if result != nil {
+		stage("serve-held")
+	} else {
+		stage("stopped")
+	}
 	return result
 }
 
@@ -276,6 +293,13 @@ func probe(ctx context.Context, p ProbeCall) ProbeResult {
 		if e == nil {
 			f.Close()
 		}
+	}
+	socket := func(path string) bool { st, e := os.Lstat(path); return e == nil && st.Mode()&os.ModeSocket != 0 }
+	r.ControlSocketPresent = socket("/authority-private/control.sock")
+	r.CurrentSocketPresent = socket("/authority-current/current.sock")
+	r.GatePresent = !absent("/authority-private/live.lock")
+	if b, e := os.ReadFile("/authority-private/fixture-stage"); e == nil && len(b) < 32 {
+		r.FixtureStage = string(b)
 	}
 	return r
 }

@@ -267,6 +267,10 @@ func TestForgeLocalAuthorityCustody(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
+			raw, _ := json.Marshal(testfixture.ProbeCall{OtherSlot: 1})
+			if diagnostic, e := p.runtime.Probe(ctx, restarted, raw); e == nil {
+				t.Logf("actual restarted producer fixture diagnostic: %s", diagnostic)
+			}
 			t.Fatal("retained-volume restart private channel unavailable")
 		}
 		time.Sleep(20 * time.Millisecond)
