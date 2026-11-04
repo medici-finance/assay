@@ -36,7 +36,8 @@ consumers:
 - "tools/desk/internal/deskkit admitted source/coordinator integration fixture: follow-up forge-neutral/54 (implementation owner)"
 - "forgeread/refresh Gate/Requirements/Outcome and mirror semantics: follow-up forge-neutral/51 (consume its repaired API; no competing kernel)"
 - "spec/coordination-store-v1.md, docs/contracts.md, workflow/README.md and actual CI registry/workflows: follow-up forge-neutral/54 (implementation owner)"
-- "retention, scheduler, authenticated serving, caller cutover and full joined acceptance: follow-up forge-neutral/37"
+- "authenticated serving: follow-up forge-neutral/40 (consume the canonical shared Gate and admitted read owner)"
+- "retention, scheduler, caller cutover and full joined acceptance: follow-up forge-neutral/37"
 - "workflow execution/admission/claims/outbox and global reconstruction: out-of-scope (remain graph-execution/19)"
 ---
 
