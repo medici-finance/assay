@@ -188,6 +188,7 @@ func TestForgeServiceClientFlow(t *testing.T) {
 		}
 		c := configured(t, q, "https://service.example/forge", rt, false)
 		q.Scope.Repositories[0].Path = "other/private"
+		q.Repository = q.Scope.Repositories[0]
 		out, report, err := c.Do(context.Background(), q)
 		if !errors.Is(err, service.ErrScope) || !noData(out) || calls.Load() != 0 || report.TransportAttempts != 0 {
 			t.Fatal("caller mutation widened constructor binding", err)

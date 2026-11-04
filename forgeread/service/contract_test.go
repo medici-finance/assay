@@ -291,6 +291,15 @@ func checkLiteralOperations(t *testing.T) {
 			}
 			sameJSON(t, encoded, tc.Response)
 			if q.Effect != nil {
+				foreign := r
+				object := *r.Effect.Object
+				effect := *r.Effect
+				object.Repository.Host = "other.example"
+				effect.Object = &object
+				foreign.Effect = &effect
+				if _, e := service.EncodeResponse(foreign, q); e == nil {
+					t.Fatal("foreign confirmed object accepted")
+				}
 				r.Effect.ID.PayloadDigest = strings.Repeat("f", 64)
 				if _, err := service.EncodeResponse(r, q); !errors.Is(err, service.ErrConflict) {
 					t.Fatal("changed payload masqueraded as same operation", err)
