@@ -3,7 +3,7 @@ brief: assay:assay:forge-neutral:37
 title: Scoped forge mirror with persisted freshness, coverage and polling repair
 why: "Every desk, status run and planning read asks the forge the same questions again, one verb at a time, and a throttled or partial read can look like an empty queue. One scoped mirror that records what it read, when, and how completely lets those readers share one answer and see when it is stale or incomplete, without each of them polling the forge."
 wave: 7
-depends: ["graph-execution/28", "graph-execution/29", "graph-execution/19", "forge-neutral/36", "forge-neutral/33", "desktools-v2/09", "forge-neutral/46", "forge-neutral/47", "forge-neutral/48"]
+depends: ["graph-execution/28", "graph-execution/29", "graph-execution/19", "forge-neutral/36", "forge-neutral/33", "desktools-v2/09", "forge-neutral/46", "forge-neutral/47", "forge-neutral/48", "forge-neutral/54"]
 unblocks: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43", "cell-api/02"]
 effort: L
 gate: human
@@ -257,6 +257,17 @@ The forge-neutral/51 Requirements/checked-Outcome repair must be genuinely consu
 fulfilment or post-hoc request counts cannot qualify the durable join. Unknown state
 holds. Every existing Task, dependency, risk/gate and all23 Class/Command pairs here
 remain; these contributions do not satisfy the rest of full joined row23 by inference.
+
+## Precursor ownership and pickup ordering
+
+The typed dependency on forge-neutral/54 orders full37 after the bounded50–54
+source/coordinator/persistence contributions. Existing Context paths remain later
+integration touchpoints, not permission to implement their already-owned source mapper,
+Gate or Store concurrently. Consume50/53's admitted mapper/native boundary,51's
+coordinator contract,52's Store and54's canonical SQL Gate before extending the
+remaining retention/scheduler/fact-mapping/complete-acceptance obligations. Preserve every
+original Task, Verify row, gate and Evidence entry. This dependency adds ordering; it
+neither accepts a precursor nor removes full37's other prerequisites.
 
 ## Ground rules
 

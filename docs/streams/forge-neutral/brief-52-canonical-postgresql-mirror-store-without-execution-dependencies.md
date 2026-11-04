@@ -13,7 +13,7 @@ split-from: forge-neutral/37
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 outcome: none
 id: d356d914-92e7-43b0-ae37-17016f7993bc
 authored: 2026-11-03 by statusgen newbrief
@@ -48,7 +48,7 @@ files:
 - `workflow/README.md` (planned)
 - `spec/coordination-store-v1.md` (planned)
 - `.github/workflows/assay-workflow.yml` (planned)
-- `docs/contracts.md` (planned)
+- `docs/contracts.md`
 - `changelog/mirror-postgres-store.md` (planned)
 
 facts:
