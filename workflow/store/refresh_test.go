@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/forgeread/mirror"
+	"github.com/medici-finance/assay/forgeread/mirror/mirrortest"
 	"github.com/medici-finance/assay/forgeread/refresh"
 )
 
@@ -867,4 +868,56 @@ func checkRefreshSupersededTicketRelease(t *testing.T) {
 	if e := r.raw.QueryRow(`SELECT generation,base_retry_at,review_retry_at FROM public.refresh_fills`).Scan(&generation, &base, &reviews); e != nil || string(generation) != next.Generation || base != nil || reviews != nil {
 		t.Fatal("superseded outcome poisoned the current generation", e)
 	}
+}
+
+// regression: F-refresh-absence-proof
+// Reuse the canonical nine-case Store witness through actual Gate.Complete, not
+// just direct Apply: a tx-bound Store must retain the same no-op absence guard.
+func TestPGRefreshGateAbsence(t *testing.T) {
+	r := sqlMirror(t)
+	adapter := &refreshAbsenceStore{rig: r, t: t, gates: map[string]*RefreshGate{}}
+	mirrortest.CheckPartialAbsence(t, func() mirror.Store { return adapter })
+}
+
+type refreshAbsenceStore struct {
+	rig   mirrorRig
+	t     *testing.T
+	gates map[string]*RefreshGate
+}
+
+func (s *refreshAbsenceStore) Read(ctx context.Context, a mirror.Admission, scope mirror.Scope) (mirror.Snapshot, error) {
+	return s.rig.s.Read(ctx, a, scope)
+}
+func (s *refreshAbsenceStore) Apply(ctx context.Context, a mirror.Admission, u mirror.ScanUpdate) (mirror.Snapshot, error) {
+	g := s.gates[u.Scope.AdmissionID]
+	if g == nil {
+		cfg := testRefreshConfig()
+		cfg.AdmissionID = u.Scope.AdmissionID
+		var err error
+		g, err = s.rig.db.Refresh(s.rig.s, cfg, refreshTestAuthority{})
+		if err != nil {
+			return mirror.Snapshot{}, err
+		}
+		seedRefresh(s.t, s.rig.raw, g, "caller-a")
+		s.gates[u.Scope.AdmissionID] = g
+	}
+	r := refreshRig{mirrorRig: s.rig, g: g, cfg: g.config}
+	ticket, err := g.Acquire(ctx, r.demand(u.Scope, "caller-a"))
+	if err != nil {
+		return mirror.Snapshot{}, err
+	}
+	if !ticket.Owner {
+		return mirror.Snapshot{}, refresh.ErrHeld
+	}
+	defer func() {
+		if _, err := g.Leave(context.Background(), ticket, refresh.Outcome{}); err != nil {
+			s.t.Errorf("owned absence ticket cleanup: %v", err)
+		}
+	}()
+	c := completionRefresh(r, ticket, &u)
+	c.Attempts = knownRefreshAttempt(s.t, r, ticket)
+	if err = g.Complete(ctx, ticket, s.rig.s, a, c); err != nil {
+		return mirror.Snapshot{}, err
+	}
+	return s.rig.s.Read(ctx, a, u.Scope)
 }

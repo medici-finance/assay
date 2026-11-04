@@ -260,6 +260,10 @@ func (s *MirrorStore) Apply(ctx context.Context, a mirror.Admission, u mirror.Sc
 	if !u.Coverage.RetainedFrom.IsZero() || u.RetentionDecisionRequired && (len(u.Upsert) != 0 || len(u.NotInInventory) != 0 || u.Coverage.State != mirror.Unavailable || u.Coverage.Reason != mirror.Permission) {
 		return mirror.Snapshot{}, mirror.ErrInvalid
 	}
+	// Absence needs full inventory proof even when SQL would update no row.
+	if len(u.NotInInventory) > 0 && (!u.CompleteScan || !u.FullInventory) {
+		return mirror.Snapshot{}, mirror.ErrInvalid
+	}
 	if len(u.Upsert) > s.limits.MaxRecords || len(u.NotInInventory) > s.limits.MaxRecords {
 		return mirror.Snapshot{}, mirror.ErrInvalid
 	}

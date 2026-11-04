@@ -16,7 +16,7 @@ top = pathlib.Path(subprocess.check_output(['git','rev-parse','--show-toplevel']
 branch = subprocess.check_output(['git','branch','--show-current'],cwd=module,text=True).strip()
 if not (top/'.git').is_file() or not branch.startswith('codex/'):
     raise SystemExit('owned linked feature worktree required')
-paths=['store/refresh.go','store/refresh_attempt.go','store/migrations/00003_refresh.sql']
+paths=['store/mirror.go','store/refresh.go','store/refresh_attempt.go','store/migrations/00003_refresh.sql']
 subprocess.run(['git','diff','--exit-code','HEAD','--',*paths],cwd=module,check=True,stdout=subprocess.DEVNULL)
 original={p:(module/p).read_bytes() for p in paths}
 env=dict(os.environ,GOWORK='off',GOPROXY='off',GOTOOLCHAIN='local')
@@ -61,6 +61,8 @@ def mutate(name):
         change(state,attempt,'if o.HTTP.Value == 0 {','if o.HTTP.Value==0 {return false}; if false {')
     elif name=='postcommit-zero-closure':
         change(state,attempt,'_ = g.ObserveAttempt(cleanup, reservation, mirror.AttemptObservation{HTTP: mirror.WorkCount{Known: true}, DecodedBytes: mirror.WorkCount{Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}, ObservedAt: time.Now().UTC()})','_ = cleanup')
+    elif name=='joined-absence-proof':
+        change(state,'store/mirror.go','if len(u.NotInInventory) > 0 && (!u.CompleteScan || !u.FullInventory) {','if false {')
     elif name=='shared-retry-policy':
         change(state,code,'l.Refresh.FailureBackoff == 0','l.Refresh.FailureBackoff >= 0')
     elif name=='superseded-ticket-release':
@@ -109,6 +111,7 @@ controls=[
  ('joined-caller-ceiling','TestMirrorPersistedReadThroughJoin/lower-native-budget'),
  ('superseded-ticket-release','TestPGRefreshGateAtomicCompletion'),
  ('shared-retry-policy','TestPGRefreshSchemaBoundary'),
+ ('joined-absence-proof','TestPGRefreshGateAbsence'),
 ]
 composites={'common-transaction','source-debit','aggregate-reconciliation','joined-caller-ceiling'}
 # Resume qualification after a corrected planted fault; prior controls are kept
