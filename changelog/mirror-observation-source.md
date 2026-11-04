@@ -1,0 +1,1 @@
+- Add an admitted read-only source for mirror ingestion, preserving unknown fields and failed-scan watermarks through the existing native readers without waiting for execution or serving.

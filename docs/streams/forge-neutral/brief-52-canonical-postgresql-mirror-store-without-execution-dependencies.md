@@ -11,6 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "The shared mirror needs durable scoped rows and honest coverage before execution features exist. Extend the canonical PostgreSQL owner instead of introducing a mirror database or waiting for workflow admission and outboxes."
 split-from: forge-neutral/37
 decision-trigger: spec
+decision-issue: 5401
 issues: []
 schema: brief-v2
 version: 2
@@ -40,19 +41,20 @@ consumers:
 ## Context
 
 files:
-- `workflow/go.mod` (planned)
-- `workflow/go.sum` (planned)
-- `workflow/store/` (planned)
-- `workflow/store/migrations/` (planned)
-- `workflow/internal/pgtest/` (planned)
-- `workflow/README.md` (planned)
-- `spec/coordination-store-v1.md` (planned)
-- `.github/workflows/assay-workflow.yml` (planned)
+- `workflow/go.mod`
+- `workflow/go.sum`
+- `workflow/store/`
+- `workflow/internal/pgtest/`
+- `workflow/README.md`
+- `spec/coordination-store-v1.md`
+- `.github/workflows/assay-workflow.yml`
+- `tools/desk/internal/deskkit/citrigger_test.go`
 - `docs/contracts.md`
-- `changelog/mirror-postgres-store.md` (planned)
+- `changelog/mirror-postgres-store.md`
+
 
 facts:
-- The R2 foundation child graph-execution/36 supplies the only PostgreSQL driver, Goose migration ledger and explicitly provisioned container fixture. Its delivery is in progress at authoring; implementation must consume a genuine tested source revision and stop if its migration/harness is unavailable. A genuine feature-branch merge may supply that canonical source for offline implementation; a stack supplies no mainline delivery or acceptance credit.
+- The R2 foundation child graph-execution/36 supplies the only PostgreSQL driver, Goose migration ledger and explicitly provisioned container fixture. Implementation genuinely merged tested source `4d028e05913d66067ad7ee8518422b3390790c8f` at `faf039c706a683e622f53763261a145790a895b0`; its publication remains held for a separate workflow-permission act. It also genuinely merged /50 presence source `64a470c33ecf021cd53bdf5a04948da221a77d4f` at `3aaf730cb`, preserving that owner. Missing canonical migration/harness input still requires stopping. A genuine feature-branch merge may supply that canonical source for offline implementation; a stack supplies no mainline delivery or acceptance credit.
 - `forgeread/mirror` already exports Admission, Scope, Snapshot, ScanUpdate and Store.Read/Apply. `mirrortest.Check` exercises the Store directly without QueryScope/PlanScan. ReferenceStore is synthetic, not persistence or a retention policy.
 - Full /37 retains 23 Verify Class/Command pairs and its persisted joined row23. Full graph-execution/19 retains its 13 rows and execution/reconstruction obligations. This contribution satisfies neither complete parent.
 - The operator selected purge-to-tombstones, but the separate human issue record and full retention implementation remain /37 obligations. This contribution uses synthetic observations only and implements no purge/retain action or private-data exposure.
