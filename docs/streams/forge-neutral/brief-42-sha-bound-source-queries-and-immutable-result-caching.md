@@ -2,7 +2,7 @@
 brief: assay:assay:forge-neutral:42
 title: "SHA-bound source queries and immutable result caching"
 why: "Reviewers and inspection jobs currently need local repository setup or repeated provider reads to answer exact-source questions. A bounded source-query API can reuse immutable answers by SHA while keeping changing PR heads and private access distinct."
-wave: 7
+wave: 10
 depends: ["forge-neutral/39", "forge-neutral/40"]
 unblocks: ["forge-neutral/43", "forge-neutral/44"]
 effort: L
@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 7
+version: 8
 id: 702efe9f-7a6c-4079-95cd-0ef3c82f9e69
 authored: 2026-10-14 by forge-service authoring
 sources:

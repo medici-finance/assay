@@ -48,6 +48,7 @@ consumers:
 
 files:
 - `tools/desk/internal/forgeservice/auth/` (planned)
+- `tools/desk/internal/forgeservice/auth/testdata/local_authority_mutations.py` (planned)
 - `tools/desk/internal/celllaunch/`
 - `tools/desk/internal/cellcontainer/`
 - `tools/desk/internal/deskkit/citrigger_test.go`

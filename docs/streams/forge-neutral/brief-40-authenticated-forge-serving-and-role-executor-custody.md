@@ -13,10 +13,11 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 8
+version: 9
 id: 2b089f0c-6ce5-4e2f-a5bf-d62842845b29
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - docs/streams/forge-neutral/brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md
   - "Requested shared read-through and failure-cache behavior, 2026-11-03; no activation grant"
   - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
@@ -32,10 +33,10 @@ exec-tier-why: Cross-component identity, privacy, concurrency and failure semant
 domain: complicated
 consumers:
   - "tools/desk/internal/credential/: follow-up forge-neutral/40 (consume /58\u201359 inside the role executor; no second minter/cache)"
-  - "tools/desk/internal/forgeservice/auth/: follow-up forge-neutral/40"
-  - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/40"
+  - "tools/desk/internal/forgeservice/auth/: follow-up forge-neutral/40 (consume57 local read-only producer; remaining write/executor custody only)"
+  - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/40 (consume56 mirror-query handler; remaining executor/effect routes only)"
   - "tools/desk/internal/forgeexecutor/: follow-up forge-neutral/40"
-  - "tools/desk/cmd/forgeserve/: follow-up forge-neutral/40"
+  - "tools/desk/cmd/forgeserve/: follow-up forge-neutral/40 (consume56 read-only query entrypoint; no duplicate query launcher)"
   - "tools/desk/cmd/forge-executor/: follow-up forge-neutral/40"
   - "tools/desk/internal/deskkit/forgeresolve.go: follow-up forge-neutral/40"
   - "tools/desk/internal/deskkit/outboundforge.go: follow-up forge-neutral/40"
@@ -56,6 +57,7 @@ consumers:
 files: `tools/desk/internal/forgeservice/auth/` (planned), `tools/desk/internal/forgeservice/server/` (planned), `tools/desk/internal/forgeexecutor/` (planned), `tools/desk/cmd/forgeserve/` (planned), `tools/desk/cmd/forge-executor/` (planned), `tools/desk/internal/deskkit/forgeresolve.go`, `tools/desk/internal/deskkit/outboundforge.go`, `tools/desk/go.mod`, `tools/desk/go.sum`, `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `changelog/forge-service-auth.md` (planned), `tools/desk/internal/forgeservice/auth/reviewcustody_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
+- forge-neutral/54 owns the canonical shared Gate, AttemptAuthority and admitted read-through join. This authenticated-serving consumer reuses that owner and adds no second refresh implementation.
 - ForgeFor resolves provider from operator repository configuration and hands its backend an already-admitted role credential. It refuses ambient fallback.
 - graph-execution/16 owns incarnation/ownership restoration. This brief consumes that contract, not a second key/lease authority.
 - The initial query process must not hold publisher keys. Per-role executor process isolation is required before a managed agent can receive a write capability.
@@ -104,6 +106,8 @@ that read-only owner rather than implementing a second handler concurrently. It 
 all existing prerequisites, complete Tasks, seven Verify Class/Command pairs, Evidence
 and gates, and adds its remaining executor/custody/effect obligations later. No edge from56
 back to this full parent,41 or GE19 is introduced.
+
+The canonical shared Gate and AttemptAuthority remain owned by forge-neutral/54. This parent consumes that boundary through56 and adds no refresh owner.
 
 The actual R3 caller/current-state/custody producer must be qualified independently of
 this parent’s write/executor implementation. Passive records and client Scope fields do

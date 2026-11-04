@@ -31,7 +31,8 @@ consumers:
 - "workflow/store mirror adapter and canonical migration set: follow-up forge-neutral/52 (implementation owner)"
 - "workflow/internal/pgtest and .github/workflows/assay-workflow.yml: follow-up forge-neutral/52 (reuse graph-execution/36 fixtures and extend actual trigger inputs)"
 - "forgeread/mirror Store contract: follow-up forge-neutral/52 (consume unchanged port, no kernel SQL dependency)"
-- "shared refresh gate, admitted source join and full mirror acceptance: follow-up forge-neutral/37"
+- "shared refresh gate and admitted source join: follow-up forge-neutral/54 (canonical implementation owner)"
+- "full mirror acceptance: follow-up forge-neutral/37 (consume canonical Store/Gate/join; persisted parent qualification remains)"
 - "workflow execution, admission, claims and outbox: out-of-scope (remain graph-execution/19)"
 ---
 
