@@ -17,7 +17,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// The per-role surface receipt (desk-containers/18): what `up` launched for one role, so a
+// The per-role surface receipt: what `up` launched for one role, so a
 // per-role `down <cell> <role...>` can close exactly that one window, tab or terminal and never
 // a sibling's or another cell's. It is a work-safety check against a stale receipt closing the
 // wrong window. A process under the same account could close any window directly, so it is not

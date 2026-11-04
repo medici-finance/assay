@@ -16,11 +16,11 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// The runner-lifecycle transitions behind `pause`, `resume`, `drain` and the per-role `down`
-// (desk-containers/18). The VOCABULARY here is the design: the role states, the transitions and
+// The runner-lifecycle transitions behind `pause`, `resume`, `drain` and the per-role `down`.
+// The VOCABULARY here is the design: the role states, the transitions and
 // their invariants are amendment 21's (docs/proposals/non-ci-architecture/21-cell-operator-surface.md
 // §Lifecycle states and transitions). The MECHANISM behind the lifecycle interface is INTERIM:
-// today's cell-scoped stop flag (desk-containers/16), the cadence checkpoint, the per-role
+// today's cell-scoped stop flag (the cadence guard's), the cadence checkpoint, the per-role
 // surface receipt and a handoff file under the cell. When the runner lifecycle contract ships,
 // interimLifecycle is replaced by an implementation over it and the verbs do not change.
 
@@ -187,7 +187,7 @@ type cadenceReading struct {
 
 // interimLifecycle is the INTERIM mechanism (amendment 21 §Interim mapping):
 //   - pause / resume: the cell-scoped stop flag STOP.cell.<cell>[.<role>] in the cell's config
-//     home (desk-containers/16), with every flag pause created recorded in
+//     home (the flag the cadence guard reads), with every flag pause created recorded in
 //     run/lifecycle/pause-record.json;
 //   - drain: pause, then the idle signal per mode (the cadence checkpoint; the role's claims and
 //     its harness's children);
@@ -643,7 +643,7 @@ func handoffClaims(claims []roleClaim, abandoned bool) string {
 }
 
 func appendAbandoned(p string, claims []roleClaim) error {
-	f, err := os.OpenFile(p, os.O_WRONLY|os.O_APPEND, 0)
+	f, err := os.OpenFile(p, os.O_WRONLY|os.O_APPEND|oNoFollow, 0)
 	if err != nil {
 		return err
 	}

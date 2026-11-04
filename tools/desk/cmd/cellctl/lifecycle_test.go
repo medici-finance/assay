@@ -16,7 +16,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// The lifecycle rows of desk-containers/18, driven in process against the one transition
+// The lifecycle verify rows, driven in process against the one transition
 // interface with fake probes: claims, cadence readings, the process table and stub cockpit CLIs
 // (tmux, herdr, orca) whose argv is recorded. Nothing here names the interim mechanism's own
 // paths; TestInterimMappingPinned is the one test that does.
@@ -778,7 +778,7 @@ func TestInterimMappingPinned(t *testing.T) {
 	if _, err := os.Stat(w.lc.pauseRecordPath()); err != nil {
 		t.Fatal(err)
 	}
-	// The flag pause sets is the one the cadence guard reads (desk-containers/16).
+	// The flag pause sets is the one the cadence guard reads.
 	if err := w.c.cadenceGuard("worker-desk"); !errors.Is(err, errStoppedByFlag) {
 		t.Fatalf("the cadence guard does not read pause's flag: %v", err)
 	}
@@ -858,5 +858,82 @@ func TestDrainEmitsCellOpV1(t *testing.T) {
 	res := upDoc(t, run.Stdout)
 	if res.Verb != "drain" || run.Code != res.ExitCode() {
 		t.Fatalf("drain --json: exit %d, verb %s\n%s", run.Code, res.Verb, run.Stdout)
+	}
+}
+
+// --- review regressions ----------------------------------------------------------------------
+
+// regression: drain-apply-lift-scope
+// The stops lifted after an applied stop come from the result's own ok stop actions, never from
+// the apply invocation's arguments: a plan for one role applied as `drain <cell> --apply <id>`
+// lifts that role's stop only, and the cell-wide pause stays while other roles are up.
+func TestLiftAfterStopUsesAppliedStops(t *testing.T) {
+	r := cellop.NewResult("drain", "sample", time.Now())
+	r.Actions = []cellop.ActionResult{
+		actionResult("sample", "pause", cellop.ActionOK, ""),
+		actionResult("sample", "stop:worker-desk", cellop.ActionOK, ""),
+		actionResult("sample", "stop:pr-review-desk", cellop.ActionFailed, ""),
+		actionResult("sample", "stop-now:verify-desk", cellop.ActionOK, ""),
+		actionResult("sample", "abandon:k1", cellop.ActionOK, ""),
+	}
+	if got := strings.Join(stoppedRoles(&r), ","); got != "worker-desk,verify-desk" {
+		t.Fatalf("stoppedRoles = %s, want worker-desk,verify-desk", got)
+	}
+
+	w := newLCWorld(t)
+	for _, role := range knownRoles {
+		w.cadenceRole(role, "tmux")
+	}
+	if _, err := w.lc.Pause(nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.lc.Pause([]string{"worker-desk"}); err != nil {
+		t.Fatal(err)
+	}
+	before := w.stopFiles()
+	w.lc.liftAfterStop(nil)
+	if after := w.stopFiles(); strings.Join(after, ",") != strings.Join(before, ",") {
+		t.Fatalf("an empty stopped set lifted stops: %v -> %v", before, after)
+	}
+	one := cellop.NewResult("drain", "sample", time.Now())
+	one.Actions = []cellop.ActionResult{actionResult("sample", "stop:worker-desk", cellop.ActionOK, "")}
+	w.lc.liftAfterStop(stoppedRoles(&one))
+	if after := w.stopFiles(); len(after) != len(before)-1 {
+		t.Fatalf("lifting after one stopped role: %v -> %v, want exactly that role's stop lifted", before, after)
+	}
+	for _, role := range knownRoles {
+		if paused, err := w.lc.Paused(role); err != nil || !paused {
+			t.Fatalf("%s: paused=%v (%v); the cell-wide pause must stay while other roles are up", role, paused, err)
+		}
+	}
+}
+
+// regression: plan-action-role-checked
+// A stored plan's action id is re-checked against the known roles before any path is built from
+// it, and a cell-wide pause has its own id, so a cell named like a role cannot blur the two.
+func TestPlanActionRoleChecked(t *testing.T) {
+	w := newLCWorld(t)
+	for _, id := range []string{"stop:../x", "stop-now:sample", "pause:sample", "pause:../../x"} {
+		if _, err := w.lc.runAction(cellop.Action{ID: id, Cell: "sample"}); err == nil {
+			t.Errorf("runAction(%s) ran; want refused", id)
+		}
+		if _, err := w.lc.measureAction(cellop.Action{ID: id, Cell: "sample"}); err == nil {
+			t.Errorf("measureAction(%s) measured; want refused", id)
+		}
+	}
+	if len(w.stopFiles()) != 0 {
+		t.Fatalf("a refused action created stops: %v", w.stopFiles())
+	}
+	if _, err := w.lc.runAction(cellop.Action{ID: "pause:worker-desk", Cell: "sample"}); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := w.lc.Paused("pr-review-desk"); p {
+		t.Fatal("pause:worker-desk paused a sibling role")
+	}
+	if _, err := w.lc.runAction(cellop.Action{ID: "pause", Cell: "sample"}); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := w.lc.Paused("pr-review-desk"); !p {
+		t.Fatal("the bare pause id did not pause the cell")
 	}
 }

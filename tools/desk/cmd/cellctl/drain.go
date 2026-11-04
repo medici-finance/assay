@@ -15,8 +15,8 @@ import (
 )
 
 // The `pause`, `resume` and `drain` verbs and the per-role `down <cell> <role...>`
-// (desk-containers/18): adapters over the lifecycle interface (lifecycle.go) that adopt the
-// desk-containers/15 result and plan contract (spec/cell-op-v1.md). They name states and
+// are adapters over the lifecycle interface (lifecycle.go) that adopt the
+// cell-op v1 result and plan contract (spec/cell-op-v1.md). They name states and
 // transitions; the interim mechanism behind them is lifecycle.go's alone.
 
 const (
@@ -209,7 +209,7 @@ func (l *interimLifecycle) drain(o drainOpts) drainReport {
 		return rep
 	}
 	if len(rep.Confirm) == 0 {
-		l.liftAfterStop(o.Roles)
+		l.liftAfterStop(stoppedRoles(&r))
 	}
 	r.Finish(cellop.OK, "", "", l.now())
 	rep.Result = r
@@ -306,9 +306,32 @@ func claimKeys(cs []roleClaim) string {
 	return strings.Join(ks, ",")
 }
 
+// actionRole checks the role a stored plan's action id names before any path is built from it:
+// a role-bearing action must name one of knownRoles. The CLI entry points already check their
+// arguments (checkRoles); this repeats it for an id read back from the plan store, which any
+// same-account process can write.
+func actionRole(kind, arg string) error {
+	switch kind {
+	case "pause":
+		if arg == "" || valueIn(arg, knownRoles) {
+			return nil
+		}
+	case "stop", "stop-now":
+		if valueIn(arg, knownRoles) {
+			return nil
+		}
+	default:
+		return nil
+	}
+	return fmt.Errorf("lifecycle action %s:%s names no known role", kind, arg)
+}
+
 // measureAction re-measures one planned lifecycle action's preconditions.
 func (l *interimLifecycle) measureAction(a cellop.Action) ([]cellop.Precondition, error) {
 	kind, arg, _ := strings.Cut(a.ID, ":")
+	if err := actionRole(kind, arg); err != nil {
+		return nil, err
+	}
 	switch kind {
 	case "pause", "resume":
 		return nil, nil
@@ -347,10 +370,13 @@ func (l *interimLifecycle) measureAction(a cellop.Action) ([]cellop.Precondition
 // runAction runs one applied lifecycle action.
 func (l *interimLifecycle) runAction(a cellop.Action) (string, error) {
 	kind, arg, _ := strings.Cut(a.ID, ":")
+	if err := actionRole(kind, arg); err != nil {
+		return "", err
+	}
 	switch kind {
 	case "pause":
 		var roles []string
-		if arg != l.c.Name {
+		if arg != "" {
 			roles = []string{arg}
 		}
 		created, err := l.Pause(roles)
@@ -400,12 +426,29 @@ func resumeDetail(lifted, kept []string) string {
 	return d
 }
 
+// stoppedRoles is the set of roles an applied result actually stopped: the roles of its stop and
+// stop-now actions whose outcome is ok. It is read from the applied result, never from the apply
+// invocation's arguments, because `--apply <id>` does not tie those arguments to the stored plan.
+func stoppedRoles(r *cellop.Result) []string {
+	var out []string
+	for _, a := range r.Actions {
+		kind, role, _ := strings.Cut(a.ID, ":")
+		if (kind == "stop" || kind == "stop-now") && a.Outcome == cellop.ActionOK && !valueIn(role, out) {
+			out = append(out, role)
+		}
+	}
+	return out
+}
+
 // liftAfterStop lifts the stops pause set for roles now stopped, so a following `up` starts
-// them: a stopped role is held by its closed surface, not by a flag. The cell-wide stop is lifted
-// only when no role of the cell outside the stopped set is still up (a role just closed may
-// still read held for a moment while its supervisor exits, so the stopped set is not re-probed).
-func (l *interimLifecycle) liftAfterStop(roles []string) {
-	stopped := lifecycleTargets(roles)
+// them: a stopped role is held by its closed surface, not by a flag. stopped is exactly the roles
+// stopped (stoppedRoles); an empty set lifts nothing. The cell-wide stop is lifted only when no
+// role of the cell outside the stopped set is still up (a role just closed may still read held
+// for a moment while its supervisor exits, so the stopped set is not re-probed).
+func (l *interimLifecycle) liftAfterStop(stopped []string) {
+	if len(stopped) == 0 {
+		return
+	}
 	allowed := map[string]bool{}
 	for _, role := range stopped {
 		allowed[l.pauseFlag(role)] = true
@@ -494,9 +537,15 @@ func pauseCmd() *cobra.Command {
 		if len(targets) == 0 {
 			targets = []string{c.Name}
 		}
+		// A cell-wide pause is the bare id "pause" and a role pause is "pause:<role>", so the two
+		// can never be confused, even for a cell whose name is also a role name.
 		var actions []cellop.Action
 		for _, t := range targets {
-			actions = append(actions, cellop.Action{ID: "pause:" + t, Cell: c.Name, Summary: "pause " + t + ": no new work from the next iteration boundary"})
+			id := "pause"
+			if len(roles) > 0 {
+				id = "pause:" + t
+			}
+			actions = append(actions, cellop.Action{ID: id, Cell: c.Name, Summary: "pause " + t + ": no new work from the next iteration boundary"})
 		}
 		switch {
 		case v.Bool("plan"):
@@ -614,7 +663,7 @@ func drainCmd() *cobra.Command {
 		if cmd.Flags().Changed("apply") {
 			lifecycleApply(cmd, c, "drain", v.String("apply"), func(c *Cell, r *cellop.Result) {
 				if r.Outcome == cellop.OK {
-					lc.liftAfterStop(roles)
+					lc.liftAfterStop(stoppedRoles(r))
 				}
 			})
 			return nil
@@ -659,7 +708,7 @@ func drainCmd() *cobra.Command {
 			}
 			planAndApply(cmd, c, "drain", actions, nil, func(c *Cell, r *cellop.Result) {
 				if r.Outcome == cellop.OK {
-					lc.liftAfterStop(roles)
+					lc.liftAfterStop(stoppedRoles(r))
 				}
 			})
 			return nil
@@ -672,7 +721,7 @@ func drainCmd() *cobra.Command {
 		planAndApply(cmd, c, "drain", rep.Confirm, earlier, func(c *Cell, r *cellop.Result) {
 			r.Roles = drained
 			if r.Outcome == cellop.OK {
-				lc.liftAfterStop(roles)
+				lc.liftAfterStop(stoppedRoles(r))
 			}
 		})
 		return nil
@@ -680,10 +729,13 @@ func drainCmd() *cobra.Command {
 	return cmd
 }
 
-// cmdDownRoles is `down <cell> <role...>`: the per-role interim stop. Each named role is paused,
-// then stopped through a plan the operator confirms on this terminal (pause → re-measure → stop,
-// in lifecycle.Stop). It never closes the session, a sibling or another cell's role. Cell-wide
-// `down` is not a state-changing invocation in the desk-containers/15 sense and stays as it was;
+// cmdDownRoles is `down <cell> <role...>`: the per-role interim stop. Each named role must
+// already be paused or drained; a role that is not is refused role-busy before anything is
+// planned or changed, so this verb never pauses a role itself and a declined confirm leaves the
+// cell exactly as it was. The stop goes through a plan the operator confirms on this terminal
+// (re-measure → stop, in lifecycle.Stop). It never closes the session, a sibling or another
+// cell's role. Cell-wide
+// `down` is not a state-changing invocation in the cell-op v1 sense and stays as it was;
 // only this role form is, so the annotation is set on the invocation that takes it.
 func cmdDownRoles(cmd *cobra.Command, c *Cell, roles []string) {
 	checkRoles("down", roles)
@@ -695,14 +747,22 @@ func cmdDownRoles(cmd *cobra.Command, c *Cell, roles []string) {
 	lc := c.lifecycle()
 	var actions []cellop.Action
 	for _, role := range roles {
-		if _, err := lc.Pause([]string{role}); err != nil {
-			die("down %s: pausing: %v", role, err)
+		paused, err := lc.Paused(role)
+		if err != nil {
+			err = refuseWith(cellop.ReasonUnmeasured, "%s: reading its stop: %v", role, err)
+		} else if !paused {
+			err = refuseWith(cellop.ReasonRoleBusy, "%s is not paused or drained; run `cellctl pause %s %s` or `cellctl drain %s %s` first", role, c.Name, role, c.Name, role)
+		}
+		if err != nil {
+			r := cellop.NewResult("down", c.Name, time.Now())
+			finishErr(&r, err, time.Now())
+			emitAndExit(cmd, r)
 		}
 		actions = append(actions, stopAction(c.Name, role, lc.Idle(role)))
 	}
 	planAndApply(cmd, c, "down", actions, nil, func(c *Cell, r *cellop.Result) {
 		if r.Outcome == cellop.OK {
-			lc.liftAfterStop(roles)
+			lc.liftAfterStop(stoppedRoles(r))
 		}
 	})
 }

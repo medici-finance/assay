@@ -21,4 +21,3 @@ func fileIdentity(path string) (uint64, string, error) {
 	}
 	return uint64(st.Ino), fmt.Sprintf("%d.%09d", st.Ctim.Sec, st.Ctim.Nsec), nil
 }
-
