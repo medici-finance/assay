@@ -315,6 +315,7 @@ func checkReviewSchemaVocabulary(t *testing.T, q service.Request, baseline []byt
 		name string
 		set  func(*service.ReviewEnvelope)
 	}{
+		{"unknown-evaluator", func(o *service.ReviewEnvelope) { v := "UNSUPPORTED-EVALUATOR"; o.Inputs.Evaluator = &v }},
 		{"negative-population", func(o *service.ReviewEnvelope) { v := -1; o.Inputs.Population[0].Count = &v }},
 		{"empty-provenance", func(o *service.ReviewEnvelope) { v := ""; o.Inputs.Population[0].Input.Version = &v }},
 		{"negative-total", func(o *service.ReviewEnvelope) { v := -1; o.Result.Depths.Total = &v }},
