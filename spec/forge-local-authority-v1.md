@@ -763,3 +763,10 @@ individual attempts cannot renew that deadline. Production fixed-channel,
 exclusive-lock/root/inode checks and all negative ownership/path assertions stay
 unchanged. This is a correction to the positive test witness, not authority from
 socket presence and not a wider timeout or stale-owner recovery mechanism.
+
+The shared host fixture likewise waits for actual successful control readback,
+grant delivery and verified current proof through the existing canonical clients
+within one finite startup deadline. This proves each server has passed its live
+gate before a test may cancel its context. File presence or a successful dial is
+insufficient. Cleanup still requires all three servers to stop without errors;
+production startup cancellation and conservative held outcomes are unchanged.

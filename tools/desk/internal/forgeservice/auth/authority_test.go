@@ -130,18 +130,6 @@ func newAuthorityFixture(t *testing.T, change func(*ProducerConfig)) *authorityF
 			}
 		}
 	})
-	for _, p := range []string{filepath.Join(r.Private.Name(), "control.sock"), filepath.Join(r.Current.Name(), "current.sock"), filepath.Join(r.Grants[cfg.Launches[0].ID].Name(), "grant.sock")} {
-		deadline := time.Now().Add(2 * time.Second)
-		for {
-			if _, e := os.Lstat(p); e == nil {
-				break
-			}
-			if time.Now().After(deadline) {
-				t.Fatal("listener unavailable")
-			}
-			time.Sleep(time.Millisecond)
-		}
-	}
 	boot, e := LoadBootstrap(r.Bootstrap, cfg.MaxFrameBytes)
 	if e != nil {
 		t.Fatal("bootstrap", e)
@@ -155,11 +143,46 @@ func newAuthorityFixture(t *testing.T, change func(*ProducerConfig)) *authorityF
 	if e != nil {
 		t.Fatal("verifier", e)
 	}
-	g, e := ReadGrant(ctx, filepath.Join(r.Grants[cfg.Launches[0].ID].Name(), "grant.sock"), cfg.MaxFrameBytes, cfg.IOTimeout)
-	if e != nil {
-		t.Fatal("grant channel", e)
+	// One startup budget spans all three real framed reads. Socket presence or
+	// a successful dial does not prove a server has passed its live-gate check.
+	ready, stopReady := context.WithTimeout(ctx, 2*time.Second)
+	defer stopReady()
+	var state ControlReceipt
+	waitAuthorityRead(t, ready, "control", func(call context.Context) error {
+		state, e = RequestControl(call, filepath.Join(r.Private.Name(), "control.sock"), cfg.MaxFrameBytes, cfg.IOTimeout, nil)
+		return e
+	})
+	if state.Version != registered.Version {
+		t.Fatal("control readiness changed registry version")
 	}
+	var g SignedGrant
+	waitAuthorityRead(t, ready, "grant", func(call context.Context) error {
+		g, e = ReadGrant(call, filepath.Join(r.Grants[cfg.Launches[0].ID].Name(), "grant.sock"), cfg.MaxFrameBytes, cfg.IOTimeout)
+		return e
+	})
+	waitAuthorityRead(t, ready, "current", func(call context.Context) error {
+		_, e := v.Authorize(call, g, cfg.Launches[0].Scope.Scope)
+		return e
+	})
 	return &authorityFixture{controller: c, config: cfg, resources: r, clock: wall, grant: g, verifier: v, verifierConfig: vc, client: client, version: registered.Version}
+}
+
+// Only fixture startup reads retry, under the same absolute context deadline.
+// The canonical clients own the channel framing, bounds and cancellation.
+func waitAuthorityRead(t *testing.T, ctx context.Context, channel string, read func(context.Context) error) {
+	t.Helper()
+	for {
+		if e := read(ctx); e == nil {
+			return
+		} else if ctx.Err() != nil {
+			t.Fatalf("%s channel did not complete a framed startup read: %v", channel, e)
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("%s channel startup deadline: %v", channel, ctx.Err())
+		case <-time.After(time.Millisecond):
+		}
+	}
 }
 
 func assertHeld(t *testing.T, r VerifiedRead, e error) {

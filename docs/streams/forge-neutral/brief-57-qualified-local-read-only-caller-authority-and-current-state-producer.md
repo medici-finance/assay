@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5428
 issues: []
 schema: brief-v2
-version: 12
+version: 13
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -116,6 +116,19 @@ No deadline is renewed and a connection alone is insufficient. All production
 serve/auth code and the negative root, gate, ownership, active-owner, duplicate,
 regular-file and symlink assertions remain unchanged. Compiling rebind/reply
 controls qualify this replacement witness; no authority or custody gate changes.
+
+## Shared fixture startup qualification
+
+The host protocol fixture must wait for successful framed responses on all three
+actual channels before returning: canonical protected control readback, grant
+delivery and a verified signed current proof. Socket presence or connection
+acceptance alone does not establish that the server has passed its live gate.
+Reuse RequestControl, ReadGrant and Verifier.Authorize with one absolute finite
+startup deadline; retries are confined to these fixture reads. Keep the existing
+cleanup assertion that every started server stops without an error. Production
+startup cancellation remains conservatively held, and no production serve,
+authorization, ownership, deadline or custody predicate changes. Preserve all
+original Task, Verify, Evidence and human decision obligations.
 
 ## Actual-source and mechanism prerequisite
 
