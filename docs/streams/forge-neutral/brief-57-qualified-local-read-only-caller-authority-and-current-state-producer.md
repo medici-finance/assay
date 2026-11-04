@@ -13,7 +13,7 @@ gate-why: "Accept the demonstrated local producer, current-state and custody bou
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -34,6 +34,7 @@ sources:
 consumers:
 - "tools/desk/internal/forgeservice/auth/: follow-up forge-neutral/57 (canonical local grant verifier/producer and current-state composition)"
 - "tools/desk/internal/celllaunch/: follow-up forge-neutral/57 (bounded existing launcher integration; no lifecycle execution)"
+- "tools/desk/internal/cellcontainer/: follow-up forge-neutral/57 (closed producer/query/caller profile extension and actual named-volume isolation qualification; no arbitrary mount builder)"
 - "spec/forge-local-authority-v1.md, docs/forge-local-authority.md and docs/contracts.md: follow-up forge-neutral/57 (concrete claims/custody/current-state qualification)"
 - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/56 (consume the actual qualified producer; no handler issuer)"
 - "full executor/custody acceptance: follow-up forge-neutral/40 (reuse this local read-only boundary; write authority remains separate)"
@@ -48,6 +49,7 @@ consumers:
 files:
 - `tools/desk/internal/forgeservice/auth/` (planned)
 - `tools/desk/internal/celllaunch/`
+- `tools/desk/internal/cellcontainer/`
 - `tools/desk/internal/deskkit/citrigger_test.go`
 - `.github/workflows/ci.yml`
 - `spec/forge-local-authority-v1.md` (planned)
@@ -73,6 +75,8 @@ design-fit:
   why-add: "The required producer is absent; naming its source and qualification obligation removes a hidden semantic dependency on downstream full40."
 
 ## Actual-source and mechanism prerequisite
+
+The concrete Task1 proposal is [forge-local-authority-v1](../../../spec/forge-local-authority-v1.md). It is a draft assessment, not a selected operational profile or accepted custody mechanism. It names the actual cellcontainer source/consumer seam before any runtime edit. All original Task and Verify obligations remain.
 
 Before runtime pickup, inspect the immutable current launcher, comms and incarnation owners and configured code roots. Produce a concrete compatibility packet: selected existing primitive/source, exact local caller class, all bound claims, independently current-state source, key/control custody, protected process/channel profile, revocation/expiry semantics and operator inputs. Explain compliance with retained21 external requirements and22's distinct local mechanism. Do not copy a primitive's default TTL, issuer or audience as policy.
 

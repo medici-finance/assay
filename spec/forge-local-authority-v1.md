@@ -62,8 +62,10 @@ until the profile/current-source and fixture issues below are resolved.
 
 ## Proposed mechanism for review
 
-The preferred candidate is one operator-owned controller in the trusted launcher/
-modular Cell application, outside all query and untrusted role containers. It owns
+The preferred assessment candidate puts the operator-owned controller in a dedicated
+trusted producer container, alongside separate query and sibling containers on the
+SAME explicitly selected Linux engine. The trusted launcher/modular Cell application
+supervises this component outside every query/untrusted role container. It owns
 live current state and the signing handle. It has no default listener or startup
 provisioning. Embedding must explicitly select and supervise it; this library is
 not a new standalone daemon or general credential broker.
@@ -127,7 +129,10 @@ The local-container candidate separates two narrow per-launch channels:
    operator action in its protocol. Verification binds its response to the exact
    request, live producer instance and deadline; no cached read becomes authority.
 
-Their Unix endpoints live in the operator-owned live-instance resource directory.
+Their Unix endpoints live in separate per-channel named volumes on that Linux engine,
+not in a presumed macOS-host socket bind. The producer creates the instance's socket
+resources in those volumes. The producer's key and writable control resources have
+an additional producer-only volume, with no query/sibling mount.
 The proposed server bootstrap pins that instance's public verification key and
 key reference in its explicit read-only launch profile; a grant cannot replace
 that trust input. A current-read request carries a fresh cryptographic challenge.
@@ -139,13 +144,37 @@ replacing a socket peer or returning a new public key cannot establish authority
 Rotation makes an old bootstrap hold until explicit trusted re-bootstrap.
 Only the explicitly corresponding container receives the required endpoint mount.
 Neither query nor sibling containers mount the signing location, writer channel,
-operator home, engine socket or arbitrary host directories. The host operator
-is outside the untrusted-role threat boundary. Socket modes are defense in depth;
+operator home, engine socket or arbitrary host directories. The engine administrator, trusted producer and launcher
+are outside the untrusted-role threat boundary. Socket modes are defense in depth;
 actual namespace/mount isolation and signed/current tuple checks establish the
 boundary. A same-UID host harness is explicitly unqualified.
 
 Existing `cellcontainer` mount/runtime validation must be reused for the entire
-profile. Its current general role plan also mounts a role App key and has no
+profile. The same-engine volume view is proposed as follows:
+
+| Resource | Producer | Query verifier | Its intended caller | Sibling |
+|---|---|---|---|---|
+| Private key and control writer volume | Read/write | Absent | Absent | Absent |
+| Current-read channel volume | Read/write | Read-only mount | Absent | Absent |
+| Verification bootstrap volume | Read/write | Read-only mount | Absent | Absent |
+| One launch's grant channel volume | Read/write | Absent | Read-only mount | Absent |
+
+A read-only socket-directory mount does not make RPC operations read-only. The
+current channel implements only its closed read/challenge operation; the grant
+channel only returns the prebound launch grant. Neither accepts a control write
+or arbitrary signing input. Actual fixtures must prove socket connectivity,
+filesystem write denial, mount exclusion and wrong-channel refusal separately.
+No container receives the engine socket, host PID namespace or a privileged/
+capability-bearing runtime profile. A channel volume is never the key volume.
+
+[OrbStack's architecture](https://docs.orbstack.dev/architecture) places its engine
+in the Linux VM; [its volume documentation](https://docs.orbstack.dev/docker/file-sharing)
+says named-volume data is Linux-side. [Docker's volume contract](https://docs.docker.com/engine/storage/volumes/)
+supports different read-only/read-write views. These facts motivate the candidate;
+they do not prove AF_UNIX socket or role-isolation behavior. Arbitrary host-socket
+forwarding across macOS/Linux is an unqualified portability assumption, not a
+proven unsupported feature. The real fixture must test the selected engine/profile.
+ Its current general role plan also mounts a role App key and has no
 read-only authority-channel profile; it cannot silently be reused as this profile.
 A narrowly closed profile/composition extension is therefore required, with source
 scope and actual consumers amended before implementation. It must omit provider
@@ -174,8 +203,8 @@ release boundary, with cancellation/deadline checks after current-source I/O.
 The chosen linearization point and maximum revocation/entitlement lease must be
 explicitly qualified; already returned bytes cannot be recalled.
 
-A live-instance anchor consists of the independently supervised operator process
-identity, exclusive ownership of its control resource, a fresh instance identity
+A live-instance anchor consists of the independently supervised producer container
+and process identities, exclusive ownership of its control resource, a fresh instance identity
 and current signing/incarnation state. Starting from disk records alone cannot
 construct current authority. On producer restart the proposed conservative mode
 invalidates all old grants, obtains a fresh incarnation and signing key, creates
@@ -193,10 +222,12 @@ Restored filesystem records are ignored as current authority and cannot revive a
 live instance. The fixture must restore matching old control/SQL provenance and
 prove a new producer still refuses it. Whole-host or VM memory snapshot rollback
 can restore a process, key and kernel lock together; a local lock alone cannot
-qualify that case. It requires an independently non-restored operator anchor and
-rotation procedure, or a precisely restricted profile that forbids such snapshots
-and cannot auto-resume authority after them. That limitation remains unresolved;
-no claim of universal restore protection or external anchor availability is made.
+qualify that case. It is UNSUPPORTED by this first candidate unless an independently
+non-restored operator anchor and real rotation/fencing procedure are qualified.
+No lock detects arbitrary rollback. This boundary does not weaken custody1A:
+restored operator state still must rotate identity AND key before any authority
+is reopened, and this profile never automatically resumes restored authority.
+No universal restore protection or available external anchor is claimed.
 
 ## Supported alternatives and hard prerequisites
 
@@ -226,11 +257,27 @@ composition are new R3 code; deskkit file locking, existing signing, container
 runtime validation and celllaunch observations are reused unchanged where their
 actual APIs fit. An API/scope mismatch is amended at its existing owner before
 code; neither an arbitrary callback nor a copied implementation is a substitute.
-The current regular Go CI workflow explicitly has no Docker daemon. Passing unit
-CI cannot qualify the proposed containment profile. A separately authorized,
-disposable containment execution environment and actual enforced entrypoint are
-needed; no engine socket/privilege or workflow grant is inferred. Missing profile
-execution remains could-not-check, never SKIP-as-PASS or mock custody.
+The regular Go builder explicitly has no Docker daemon. There is also an actual
+Ubuntu/Docker PostgreSQL qualification pattern in assay-workflow.yml, inspected at
+source `1ddfb16e68ebb7be54d4dc5a606a07e74e2a7259`; it uses a pinned checkout,
+explicit Go artifact/version/checksum and disposable resources. Propose a separate
+pinned containment job using that existing pattern, not a Docker grant to the
+regular builder. Workflow publication remains a separate human act.
+
+The proposed fixture image is a source-bound minimal image containing only the
+compiled production package plus its explicit test helper, built from a declared
+recipe/toolchain and addressed by its resulting immutable image identity. This is
+a proposal to avoid a guessed runtime/base image; exact recipe, identity and
+platform are still reviewed inputs before execution. Fixture names/volumes and
+all engine commands must remain confined to their exact owned resource set; no
+ambient engine discovery, broad listing/prune or operational material is allowed.
+
+Normal unit-only CI cannot certify containment. The separate job must opt into an
+explicit disposable fixture profile and assert each required named PASS, refusing
+missing profile, skipped custody, setup failure or an unavailable engine. Any
+ordinary run without the profile remains explicitly unqualified; its green unit
+results do not discharge this brief's actual containment Verify rows. No engine
+socket/privilege, fixture image, threshold or workflow grant is inferred.
 
 ## Independent qualification and handoff
 
