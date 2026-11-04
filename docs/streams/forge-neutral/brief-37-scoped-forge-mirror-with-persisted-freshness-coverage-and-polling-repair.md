@@ -3,7 +3,7 @@ brief: assay:assay:forge-neutral:37
 title: Scoped forge mirror with persisted freshness, coverage and polling repair
 why: "Every desk, status run and planning read asks the forge the same questions again, one verb at a time, and a throttled or partial read can look like an empty queue. One scoped mirror that records what it read, when, and how completely lets those readers share one answer and see when it is stale or incomplete, without each of them polling the forge."
 wave: 7
-depends: ["graph-execution/28", "graph-execution/29", "graph-execution/19", "forge-neutral/36", "forge-neutral/33", "desktools-v2/09", "forge-neutral/46", "forge-neutral/47", "forge-neutral/48"]
+depends: ["graph-execution/28", "graph-execution/29", "graph-execution/19", "forge-neutral/36", "forge-neutral/33", "desktools-v2/09", "forge-neutral/46", "forge-neutral/47", "forge-neutral/48", "forge-neutral/50"]
 unblocks: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43", "cell-api/02"]
 effort: L
 gate: human
@@ -12,11 +12,13 @@ gate-why: "sensitive-data is yes because the mirror copies private pull request,
 issues: []
 outcome: none
 schema: brief-v2
-version: 17
+version: 18
 decision-issue: 5380
 id: 06dc3c03-bfb0-49cf-b171-8f7d192b7aea
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
 sources:
+  - "freshness-checked 2026-11-04 @ b45a44e4b0e962d52d7d18d1b6aaea9379a71503; genuine main merge preserves read-through and mapper ownership contracts"
+  - "freshness-checked 2026-11-03 @ 438310c23194b20a5cb1ceba998fb6b42b30bf0f; F-mapper-owner routing repair from PR #5397 and implementation PR #5406"
   - "Requested shared read-through and failure-cache behavior, 2026-11-03; no activation grant"
   - "Planning amendment 2026-10-23; source checked on App-fetched main 9c4307a19a190964db084104ecc1f7bd62cba433; candidate-plus-priority parity and GH-call audit"
   - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
@@ -44,7 +46,8 @@ consumers:
   - "forgeread/adapters/access.go, forgeread/adapters/github/, forgeread/adapters/gitlab/, tools/desk/internal/deskkit/sharedread.go: follow-up forge-neutral/37 (optional conditional page access and actual mirror integration; no second incremental walker)"
   - "tools/desk/internal/deskkit/forge.go, forge_github.go, forge_gitlab.go, forge_surface_deskread_test.go: follow-up forge-neutral/47 (create exactly the two enumerated methods, shared-adapter delegation and frozen surface entries)"
   - "tools/desk/internal/deskkit/mirrorsource.go and its base tests: follow-up forge-neutral/47 (admitted MirrorReadSource consuming the two incremental operations)"
-  - "tools/desk/internal/deskkit/mirroringest.go and joined tests: follow-up forge-neutral/37 (assemble MirrorReadSource with the kernel; map provider observations, authenticated admissions and current authorizer to source/store ports)"
+  - "tools/desk/internal/deskkit/mirroringest.go and source-only tests: follow-up forge-neutral/50 (admitted MirrorReadSource to mirror.Source.Scan observation mapper)"
+  - "trusted desk-tools composition and joined PostgreSQL tests: follow-up forge-neutral/37 (consume /50 source observations; supply authenticated admission and current authorizer to the joined source/store ports without a second mapper)"
   - "tools/desk/internal/deskkit/forge_response_bounds.go and forge_response_bounds_test.go: follow-up forge-neutral/48 (one native mirror-response bound and real-backend conformance; shared-library relocation reuses this owner)"
   - "tools/desk/internal/deskkit/forge_github.go, forge_gitlab.go, sharedread.go and mirrorsource.go: follow-up forge-neutral/48 (native bound composition before buffering/decoding; admitted custody and existing operation semantics)"
   - "tools/desk/internal/deskkit/forge_response_bounds.go, forge_github.go, forge_gitlab.go, sharedread.go and mirrorsource.go: follow-up forge-neutral/37 (consume /48's native bound in joined mapper/store failure flow; no second implementation)"
@@ -86,6 +89,7 @@ files:
 - `changelog/forge-mirror-polling.md` (planned)
 
 facts (4696d598e, 2026-10-13):
+- Ownership check (2026-11-03): main `438310c23194b20a5cb1ceba998fb6b42b30bf0f` still assigns the mapper to /37, while authoring #5397 at `be2e142fd` and implementation #5406 at `2677323c9` assign the source-only mapper to /50. This split routes that owner explicitly: the `mirroringest.go` path above is a consumed composition input, not a second mapper deliverable; /37 retains joined PostgreSQL assembly and integration evidence.
 - `forgeread/` exists (forge-neutral/36, implemented). Its root package is offline and frozen only;
   authenticated adapters live under `forgeread/adapters/` and read through `adapters.Access`, which
   the desk-tools composition supplies after resolving the credential and checking the repository.
@@ -109,7 +113,7 @@ facts (4696d598e, 2026-10-13):
 layering: `forgeread/mirror` is a library with no network client, no process launch and no credential.
 It plans refreshes, applies observations and answers queries against a `Store` interface. The source of
 observations is supplied by trusted composition in desk-tools: `tools/desk/internal/deskkit/mirrorsource.go` from /47 owns the
-admitted incremental reader, while `tools/desk/internal/deskkit/mirroringest.go` (planned) maps its observations into /46's
+admitted incremental reader, while forge-neutral/50 owns `tools/desk/internal/deskkit/mirroringest.go` (planned), which maps its observations into /46's
 kernel/source/store contracts. Reuse those owners rather than creating competing walkers or models.
 PostgreSQL persistence implements `Store` inside the R2 store. Rows 2, 10, 11 and 18 hold the split.
 The mirror defines its own repository and change identities. The graph-execution/28 mapping lives
@@ -235,6 +239,15 @@ service or per-tool polling fallback. The shared-library cutover remains desktoo
 and /77 under DR-forge-library. Independent /46 and /47 re-derivation is tracked by #5377;
 GitLab case identity qualification before activation remains #5376.
 
+## Source-only mapper contribution — 3 November 2026
+
+forge-neutral/50 owns the admitted incremental-source to mirror.Source.Scan adapter,
+including conservative field presence and incomplete-scan mapping. It may prepare
+synthetic native-to-reference-Store evidence independently of PostgreSQL, execution
+and serving. It does not discharge this brief's persisted joined row 23, choose
+retention, qualify shared refresh ownership or authorize private ingestion/activation.
+All 23 existing acceptance rows, joined composition obligations and gates remain owed here. Task 8 consumes /50's mapper and adds the PostgreSQL assembly and joined evidence; /50 does not satisfy those remaining obligations.
+
 ## Ground rules
 
 - Offline fixtures and fake provider transports only; real PostgreSQL only in the disposable test
@@ -358,9 +371,10 @@ existing completed batching/conditional requests are baseline, not this brief's 
    The pure kernel’s optional zero value is not a retained-history guarantee.
 8. **Composition and floor.** Reuse /47's `tools/desk/internal/deskkit/mirrorsource.go` MirrorReadSource
    and its two provider operations, including the lower-layer refusal of a repository outside the
-   credential's scope before any request. Implement the joined assembly/observation mapper in
+   credential's scope before any request. Consume /50's observation mapper in
    `tools/desk/internal/deskkit/mirroringest.go` (planned), connecting that admitted source to /46's
-   mirror contracts and this brief's PostgreSQL store. Canonicalize GitHub owner/repository case
+   mirror contracts and this brief's PostgreSQL store. Add only the joined PostgreSQL assembly
+   and integration tests here; do not reimplement /50's source-only mapping. Canonicalize GitHub owner/repository case
    before constructing kernel scopes; use provider-qualified identities rather than aliases. The assembly supplies the composition-derived
    admission ID with each access and the query-time authorizer over the same admitted repository set
    to both library and store. It derives query admission from the authenticated caller; a
