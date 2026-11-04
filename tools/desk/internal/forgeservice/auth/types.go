@@ -164,9 +164,10 @@ type ControlCommand struct {
 	Policy          *GrantScope
 }
 type ControlReceipt struct {
-	Version     uint64
-	Ready       bool
-	TupleDigest string
+	Version         uint64
+	Ready           bool
+	TupleDigest     string
+	OperationDigest string
 }
 type GrantChannel struct{ LaunchID string }
 type CurrentChannel struct{}

@@ -25,7 +25,7 @@ type OperatorCommand struct {
 }
 
 func (c *Controller) ServeControl(ctx context.Context) error {
-	return c.serve(ctx, c.resources.Private, "control.sock", func(ctx context.Context, q wireRequest) wireResponse {
+	return c.serve(ctx, c.resources.Private, "control.sock", c.controlSlots, func(ctx context.Context, q wireRequest) wireResponse {
 		if q.Schema != Schema || q.Operation != "control" || q.Probe != nil || ((q.Readback && q.Control != nil) || (!q.Readback && q.Control == nil)) {
 			return heldResponse()
 		}
@@ -105,6 +105,36 @@ type VerifierConfigs struct {
 	Entries map[string]VerifierConfig
 }
 
+// LoadVerifierConfig reads public policy only from an independently qualified
+// bootstrap view. The returned record does not establish current authority.
+func LoadVerifierConfig(root *os.Root, id string, max int) (VerifierConfig, error) {
+	if root == nil || !name(id) || max <= 0 || max > celllaunch.MaxRecordBytes {
+		return VerifierConfig{}, ErrConfig
+	}
+	st, e := root.Lstat("verifiers.json")
+	if e != nil || !st.Mode().IsRegular() {
+		return VerifierConfig{}, ErrHeld
+	}
+	f, e := root.Open("verifiers.json")
+	if e != nil {
+		return VerifierConfig{}, ErrHeld
+	}
+	defer f.Close()
+	opened, e := f.Stat()
+	if e != nil || !os.SameFile(st, opened) {
+		return VerifierConfig{}, ErrHeld
+	}
+	var all VerifierConfigs
+	if readFrame(f, max, &all) != nil || all.Schema != Schema {
+		return VerifierConfig{}, ErrHeld
+	}
+	c, ok := all.Entries[id]
+	if !ok {
+		return VerifierConfig{}, ErrHeld
+	}
+	return c, nil
+}
+
 func (c *Controller) verifierConfigs(boot Bootstrap) VerifierConfigs {
 	m := VerifierConfigs{Schema: Schema, Entries: map[string]VerifierConfig{}}
 	for id, p := range c.policies {
@@ -135,4 +165,18 @@ func (c *Controller) publishVerifierConfigs(boot Bootstrap) error {
 		return ErrHeld
 	}
 	return nil
+}
+
+func operationDigest(x OperatorCommand) string {
+	b, _ := encode(x, celllaunch.MaxRecordBytes)
+	return digest(b)
+}
+func controlCommandDigest(c ControlCommand) string {
+	x := OperatorCommand{Operation: c.Operation, ExpectedVersion: c.ExpectedVersion, GrantID: c.GrantID, Lease: c.Lease, Policy: c.Policy}
+	if c.Launch != nil {
+		x.LaunchID = c.Launch.ID
+		o := c.Launch.Observation
+		x.Observation = &o
+	}
+	return operationDigest(x)
 }

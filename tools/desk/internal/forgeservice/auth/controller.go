@@ -37,10 +37,13 @@ type Controller struct {
 	bootstrap           Bootstrap
 	signer              contract.Ed25519Signer
 	version, generation uint64
+	lastOperation       string
 	ready, closed       bool
 	entries             map[string]*registration
 	byLaunch            map[string]string
 	policies            map[string]LaunchPolicy
+	dataSlots           chan struct{}
+	controlSlots        chan struct{}
 }
 
 func NewController(cfg ProducerConfig, r ProducerResources, wall refresh.Clock) (*Controller, error) {
@@ -113,7 +116,7 @@ func NewController(cfg ProducerConfig, r ProducerResources, wall refresh.Clock) 
 		return nil, ErrHeld
 	}
 	r.Grants = grantRoots
-	c := &Controller{config: owned, resources: r, clock: wall, gate: h, gateInfo: st, rootInfo: infos, roots: roots, entries: map[string]*registration{}, byLaunch: map[string]string{}, policies: policies}
+	c := &Controller{config: owned, resources: r, clock: wall, gate: h, gateInfo: st, rootInfo: infos, roots: roots, entries: map[string]*registration{}, byLaunch: map[string]string{}, policies: policies, dataSlots: make(chan struct{}, owned.MaxConnections), controlSlots: make(chan struct{}, 1)}
 	if !c.liveGate() {
 		c.Close()
 		return nil, ErrHeld
@@ -157,7 +160,7 @@ func (c *Controller) receipt() ControlReceipt {
 		Ready               bool
 		Instance            string
 	}{c.version, c.generation, c.ready, c.bootstrap.Instance})
-	return ControlReceipt{Version: c.version, Ready: c.ready, TupleDigest: digest(b)}
+	return ControlReceipt{Version: c.version, Ready: c.ready, TupleDigest: digest(b), OperationDigest: c.lastOperation}
 }
 
 // ControlState is an operator read-back only. It returns no grant or signing key.
@@ -317,6 +320,7 @@ func (c *Controller) ApplyControl(ctx context.Context, cmd ControlCommand) (Cont
 	default:
 		return ControlReceipt{}, ErrConfig
 	}
+	c.lastOperation = controlCommandDigest(cmd)
 	return c.receipt(), nil
 }
 

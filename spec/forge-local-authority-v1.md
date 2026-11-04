@@ -648,3 +648,14 @@ operations. No arbitrary command/path, role-selected engine or external listener
 is added. The actual57 query/caller fixture remains network none; a later56
 SQL/native served-flow composition needs its own combined connectivity/isolation
 qualification and private listener under its existing owner.
+
+`NewLauncher` is the concrete operator assembly over sealed AuthorityRuntime /
+AuthorityHandle inputs. It validates all operator policy before engine/key/listener
+contact, derives launch identities from those handles and fresh real observations,
+and only then forms ProducerStart. It accepts no caller-provided Allowed flag or
+saved observed record. Explicit Run starts the controller; Initialize/Register/
+Revoke/Advance/Rotate/Stop use the private control channel. Failed control replies
+leave the writer held until read-back confirms the exact version and operation
+digest; it never blindly retries. The single private control connection is reserved
+separately from the bounded shared data-channel capacity so a slow read cannot
+consume the operator writer's slot.

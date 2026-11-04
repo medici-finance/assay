@@ -48,7 +48,7 @@ func (c *CurrentClient) probe(ctx context.Context, p CurrentProbe) (SignedProof,
 }
 
 func (c *Controller) ServeCurrent(ctx context.Context, _ CurrentChannel) error {
-	return c.serve(ctx, c.resources.Current, "current.sock", func(ctx context.Context, q wireRequest) wireResponse {
+	return c.serve(ctx, c.resources.Current, "current.sock", c.dataSlots, func(ctx context.Context, q wireRequest) wireResponse {
 		if q.Schema != Schema || q.Operation != "current" || q.Probe == nil || q.Control != nil || q.Readback {
 			return heldResponse()
 		}
@@ -64,7 +64,7 @@ func (c *Controller) ServeGrant(ctx context.Context, ch GrantChannel) error {
 	if r == nil || !name(ch.LaunchID) {
 		return ErrConfig
 	}
-	return c.serve(ctx, r, "grant.sock", func(ctx context.Context, q wireRequest) wireResponse {
+	return c.serve(ctx, r, "grant.sock", c.dataSlots, func(ctx context.Context, q wireRequest) wireResponse {
 		if q.Schema != Schema || q.Operation != "grant" || q.Probe != nil || q.Control != nil || q.Readback {
 			return heldResponse()
 		}
@@ -77,7 +77,7 @@ func (c *Controller) ServeGrant(ctx context.Context, ch GrantChannel) error {
 }
 func heldResponse() wireResponse { return wireResponse{Schema: Schema, Error: "held"} }
 
-func (c *Controller) serve(ctx context.Context, root *os.Root, name string, handle func(context.Context, wireRequest) wireResponse) error {
+func (c *Controller) serve(ctx context.Context, root *os.Root, name string, slots chan struct{}, handle func(context.Context, wireRequest) wireResponse) error {
 	if ctx == nil || ctx.Err() != nil {
 		return ErrHeld
 	}
@@ -106,7 +106,6 @@ func (c *Controller) serve(ctx context.Context, root *os.Root, name string, hand
 	}()
 	stop := context.AfterFunc(ctx, func() { listener.Close() })
 	defer stop()
-	slots := make(chan struct{}, c.config.MaxConnections)
 	var active sync.WaitGroup
 	defer active.Wait()
 	for {
