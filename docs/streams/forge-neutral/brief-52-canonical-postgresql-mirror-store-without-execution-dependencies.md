@@ -11,9 +11,10 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "The shared mirror needs durable scoped rows and honest coverage before execution features exist. Extend the canonical PostgreSQL owner instead of introducing a mirror database or waiting for workflow admission and outboxes."
 split-from: forge-neutral/37
 decision-trigger: spec
+decision-issue: 5401
 issues: []
 schema: brief-v2
-version: 1
+version: 3
 outcome: none
 id: d356d914-92e7-43b0-ae37-17016f7993bc
 authored: 2026-11-03 by statusgen newbrief
@@ -31,7 +32,8 @@ consumers:
 - "workflow/store mirror adapter and canonical migration set: follow-up forge-neutral/52 (implementation owner)"
 - "workflow/internal/pgtest and .github/workflows/assay-workflow.yml: follow-up forge-neutral/52 (reuse graph-execution/36 fixtures and extend actual trigger inputs)"
 - "forgeread/mirror Store contract: follow-up forge-neutral/52 (consume unchanged port, no kernel SQL dependency)"
-- "shared refresh gate, admitted source join and full mirror acceptance: follow-up forge-neutral/37"
+- "shared refresh gate and admitted source join: follow-up forge-neutral/54 (canonical implementation owner)"
+- "full mirror acceptance: follow-up forge-neutral/37 (consume canonical Store/Gate/join; persisted parent qualification remains)"
 - "workflow execution, admission, claims and outbox: out-of-scope (remain graph-execution/19)"
 ---
 
@@ -40,19 +42,20 @@ consumers:
 ## Context
 
 files:
-- `workflow/go.mod` (planned)
-- `workflow/go.sum` (planned)
-- `workflow/store/` (planned)
-- `workflow/store/migrations/` (planned)
-- `workflow/internal/pgtest/` (planned)
-- `workflow/README.md` (planned)
-- `spec/coordination-store-v1.md` (planned)
-- `.github/workflows/assay-workflow.yml` (planned)
-- `docs/contracts.md` (planned)
-- `changelog/mirror-postgres-store.md` (planned)
+- `workflow/go.mod`
+- `workflow/go.sum`
+- `workflow/store/`
+- `workflow/store/migrations/`
+- `workflow/internal/pgtest/`
+- `workflow/README.md`
+- `spec/coordination-store-v1.md`
+- `.github/workflows/assay-workflow.yml`
+- `tools/desk/internal/deskkit/citrigger_test.go`
+- `docs/contracts.md`
+- `changelog/mirror-postgres-store.md`
 
 facts:
-- The R2 foundation child graph-execution/36 supplies the only PostgreSQL driver, Goose migration ledger and explicitly provisioned container fixture. Its delivery is in progress at authoring; implementation must consume a genuine tested source revision and stop if its migration/harness is unavailable. A genuine feature-branch merge may supply that canonical source for offline implementation; a stack supplies no mainline delivery or acceptance credit.
+- The R2 foundation child graph-execution/36 supplies the only PostgreSQL driver, Goose migration ledger and explicitly provisioned container fixture. The Store genuinely merged its tested source before publication and now consumes its mainline delivery through main `077f19e6afb71169f79295486a223896cab94913`. The admitted mapper and pure kernel are also on that actual main revision. Missing canonical migration/harness input still requires stopping; source pickup supplies no independent verification or full parent acceptance credit.
 - `forgeread/mirror` already exports Admission, Scope, Snapshot, ScanUpdate and Store.Read/Apply. `mirrortest.Check` exercises the Store directly without QueryScope/PlanScan. ReferenceStore is synthetic, not persistence or a retention policy.
 - Full /37 retains 23 Verify Class/Command pairs and its persisted joined row23. Full graph-execution/19 retains its 13 rows and execution/reconstruction obligations. This contribution satisfies neither complete parent.
 - The operator selected purge-to-tombstones, but the separate human issue record and full retention implementation remain /37 obligations. This contribution uses synthetic observations only and implements no purge/retain action or private-data exposure.

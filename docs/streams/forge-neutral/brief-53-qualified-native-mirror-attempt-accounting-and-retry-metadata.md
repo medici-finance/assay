@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "The new receipt crosses the admitted native transport and refresh boundary. Accept its demonstrated scope binding, safe metadata and bounded attempt semantics; it grants no credential, service exposure or shared-budget activation."
 issues: []
 schema: brief-v2
-version: 3
+version: 4
 authored: 2026-11-03 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -21,6 +21,7 @@ exec-tier: strong
 domain: complicated
 exec-tier-why: "SDK retries, native response errors and independent budget/source checks must retain one truthful attempt boundary across adapters."
 sources:
+- "authoritative contract source: commit 9febd828b10a4a12bea41eb05ae66c0b2b7689bb; this authoring adoption carries no runtime implementation or acceptance claim"
 - docs/streams/forge-neutral/brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md
 - docs/streams/forge-neutral/brief-48-bound-native-mirror-response-allocation-before-decoding.md
 - docs/streams/forge-neutral/brief-50-join-admitted-incremental-reads-to-mirror-observations.md

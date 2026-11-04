@@ -32,23 +32,29 @@ func TestEnvImportRows(t *testing.T) {
 		{"test_excluded", quote + "os" + quote, "", "", "_test.go", "os.Getenv(\"BOUNDARY_FIXTURE\")", "0"},
 		{"clean", "\"sort\"", "", "", ".go", "sort.IntsAreSorted(nil)", "0"},
 	}
-	for _, row := range []struct{ brief, number string }{
-		{"brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md", "18"},
-		{"brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md", "13"},
-		{"brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md", "12"},
+	for _, row := range []struct{ brief, number, target string }{
+		{"brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md", "18", ""},
+		{"brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md", "13", ""},
+		{"", "service", "forgeread/service"},
+		{"", "client", "forgeread/client"},
+		{"brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md", "12", ""},
 	} {
-		data, err := os.ReadFile(filepath.Join("..", "..", "docs", "streams", "forge-neutral", row.brief))
-		if err != nil {
-			t.Fatal(err)
-		}
 		var command string
-		for _, line := range strings.Split(string(data), "\n") {
-			if strings.HasPrefix(line, "| "+row.number+" |") {
-				parts := strings.Split(line, quote)
-				if len(parts) < 3 {
-					t.Fatal("row has no command")
+		if row.target != "" {
+			command = "GOWORK=off GOPROXY=off GOTOOLCHAIN=local go run tools/forge-import-check/check_env_imports.go " + row.target
+		} else {
+			data, err := os.ReadFile(filepath.Join("..", "..", "docs", "streams", "forge-neutral", row.brief))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, line := range strings.Split(string(data), "\n") {
+				if strings.HasPrefix(line, "| "+row.number+" |") {
+					parts := strings.Split(line, quote)
+					if len(parts) < 3 {
+						t.Fatal("row has no command")
+					}
+					command = parts[1]
 				}
-				command = parts[1]
 			}
 		}
 		fields := strings.Fields(command)
@@ -108,6 +114,9 @@ func TestEnvImportFailures(t *testing.T) {
 		}
 	}
 	run("../escape", 2)
+	run("forgeread/service", 2)
+	run("forgeread/client", 2)
+	run("forgeread/service/../client", 2)
 	run("forgeread/mirror", 2)
 	if err := os.MkdirAll("forgeread/mirror", 0o755); err != nil {
 		t.Fatal(err)
