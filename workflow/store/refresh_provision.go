@@ -116,7 +116,12 @@ func prepareRefreshProvision(p RefreshProvision) ([]refreshInitialRecord, Refres
 // ProvisionRefresh is an explicit operator operation over this already-open R2
 // connection. It creates absent known records only. The declared runtime role
 // cannot execute its INSERTs; constructors and runtime queries never call it.
-func (d *DB) ProvisionRefresh(ctx context.Context, p RefreshProvision) (RefreshProvisionReceipt, error) {
+func (d *DB) ProvisionRefresh(ctx context.Context, p RefreshProvision) (out RefreshProvisionReceipt, err error) {
+	defer func() {
+		if err != nil && ctx != nil && ctx.Err() != nil {
+			err = errors.Join(err, ctx.Err())
+		}
+	}()
 	records, receipt, e := prepareRefreshProvision(p)
 	if e != nil || d == nil || d.db == nil || ctx == nil {
 		return RefreshProvisionReceipt{}, refresh.ErrPolicy
@@ -161,14 +166,15 @@ func provisionRefreshRecord(ctx context.Context, tx *sql.Tx, p RefreshProvision,
 	}
 	var known bool
 	var profile []byte
+	var limits [4]int64
 	var rowErr error
 	switch r.kind {
 	case "source":
-		rowErr = tx.QueryRowContext(ctx, `SELECT known,profile FROM public.refresh_budgets WHERE source_id=$1 FOR UPDATE`, []byte(r.id)).Scan(&known, &profile)
+		rowErr = tx.QueryRowContext(ctx, `SELECT known AND NOT unknown_hold AND NOT EXISTS(SELECT 1 FROM public.refresh_attempts WHERE source_id=$1 AND (unknown_hold OR NOT observed AND expires_at<=clock_timestamp())),profile FROM public.refresh_budgets WHERE source_id=$1 FOR UPDATE`, []byte(r.id)).Scan(&known, &profile)
 	case "admission":
 		rowErr = tx.QueryRowContext(ctx, `SELECT known,profile FROM public.refresh_admissions WHERE admission=$1 FOR UPDATE`, []byte(r.id)).Scan(&known, &profile)
 	case "caller":
-		rowErr = tx.QueryRowContext(ctx, `SELECT known FROM public.refresh_callers WHERE admission=$1 AND caller_id=$2 FOR UPDATE`, []byte(p.Config.AdmissionID), []byte(r.id)).Scan(&known)
+		rowErr = tx.QueryRowContext(ctx, `SELECT known,fill_limit,http_limit,active_limit,waiter_limit FROM public.refresh_callers WHERE admission=$1 AND caller_id=$2 FOR UPDATE`, []byte(p.Config.AdmissionID), []byte(r.id)).Scan(&known, &limits[0], &limits[1], &limits[2], &limits[3])
 	default:
 		return refresh.ErrPolicy
 	}
@@ -176,11 +182,21 @@ func provisionRefreshRecord(ctx context.Context, tx *sql.Tx, p RefreshProvision,
 		if !known || receiptErr != nil {
 			return refresh.ErrHeld
 		}
+		expected, e := refreshBytes(p.Config)
+		if r.kind == "source" {
+			expected, e = refreshBytes(p.Config.Native)
+		}
+		if e != nil || r.kind != "caller" && !bytes.Equal(profile, expected) || r.kind == "caller" && limits != [4]int64{int64(p.Config.Limits.CallerFillsPerWindow), p.Config.Native.CallerPerWindow, int64(p.Config.Limits.ActiveFills), int64(p.Config.Limits.QueuedCallers)} {
+			return refresh.ErrHeld
+		}
 		// Full initial profile/baseline equality is independently retained in data.
 		// Current counters, holds and windows are intentionally never rewritten.
 		return nil
 	}
 	if !errors.Is(rowErr, sql.ErrNoRows) || receiptErr == nil || now.Before(r.usage.WindowAt) || !now.Before(r.usage.WindowAt.Add(p.Config.Native.Window)) {
+		return refresh.ErrHeld
+	}
+	if !initialParentAccounting(ctx, tx, p.Config, r) {
 		return refresh.ErrHeld
 	}
 	if _, e := tx.ExecContext(ctx, `INSERT INTO public.refresh_initializations(kind,identity_hash,identity,baseline) VALUES($1,$2,$3,$4)`, r.kind, h[:], r.identity, r.data); e != nil {
@@ -206,4 +222,38 @@ func provisionRefreshRecord(ctx context.Context, tx *sql.Tx, p RefreshProvision,
 		return refresh.ErrHeld
 	}
 	return nil
+}
+
+// Initial positive usage must already fit the parent's charged accounting in
+// the same window. An independently aged parent window cannot justify a new
+// positive child baseline. Explicit known zero is safe and creates no parent
+// allowance; only the existing runtime rollover owner may move that window.
+func initialParentAccounting(ctx context.Context, tx *sql.Tx, c RefreshConfig, r refreshInitialRecord) bool {
+	if r.kind == "source" {
+		return true
+	}
+	var window time.Time
+	var charged, fills, childrenCharged, childrenFills int64
+	if r.kind == "admission" {
+		if tx.QueryRowContext(ctx, `SELECT window_at,http_used FROM public.refresh_budgets WHERE source_id=$1`, []byte(c.SourceID)).Scan(&window, &charged) != nil {
+			return false
+		}
+		if !window.Equal(r.usage.WindowAt) {
+			return r.usage.ChargedAttempts == 0
+		}
+		if tx.QueryRowContext(ctx, `SELECT COALESCE(sum(http_used),0) FROM public.refresh_admissions WHERE source_id=$1 AND window_at=$2`, []byte(c.SourceID), window).Scan(&childrenCharged) != nil {
+			return false
+		}
+		return childrenCharged <= charged && r.usage.ChargedAttempts <= charged-childrenCharged
+	}
+	if tx.QueryRowContext(ctx, `SELECT window_at,http_used,fills_used FROM public.refresh_admissions WHERE admission=$1`, []byte(c.AdmissionID)).Scan(&window, &charged, &fills) != nil {
+		return false
+	}
+	if !window.Equal(r.usage.WindowAt) {
+		return r.usage.ChargedAttempts == 0 && r.usage.Fills == 0
+	}
+	if tx.QueryRowContext(ctx, `SELECT COALESCE(sum(http_used),0),COALESCE(sum(fills_used),0) FROM public.refresh_callers WHERE admission=$1 AND window_at=$2`, []byte(c.AdmissionID), window).Scan(&childrenCharged, &childrenFills) != nil {
+		return false
+	}
+	return childrenCharged <= charged && childrenFills <= fills && r.usage.ChargedAttempts <= charged-childrenCharged && r.usage.Fills <= fills-childrenFills
 }
