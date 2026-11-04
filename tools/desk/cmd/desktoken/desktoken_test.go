@@ -875,7 +875,7 @@ func TestTTLWithCache(t *testing.T) {
 func TestTTLRefusesSymlinkedCache(t *testing.T) {
 	dir := t.TempDir()
 	elsewhere := filepath.Join(dir, "elsewhere", "planted")
-	writeTokenCache(t, elsewhere, "ghs_example_placeholder")
+	writeTokenCache(t, elsewhere, "example-placeholder")
 	tokenPath := filepath.Join(dir, "reviewer-token-100000004")
 	if err := os.Symlink(elsewhere, tokenPath); err != nil {
 		t.Skipf("symlinks unavailable here: %v", err)
