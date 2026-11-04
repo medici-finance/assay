@@ -26,7 +26,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-11-03 |  |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 4/64 | 2026-11-04 | 15 withdrawn |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-11-03 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/52 | 2026-11-04 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/55 | 2026-11-04 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 3/36 | 2026-11-04 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-11-02 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-11-01 |  |
@@ -112,18 +112,17 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **DRIVE NOT APPLIED.** drive manifest(s) rejected: build-less-brittle, desktools-v2. The board generated normally with **zero** drive boost — a malformed, expired, or over-concurrent drive manifest is fail-neutral by design and can never freeze the board (see `--lint` WARN lines).
 
-> **Already delivered, flip held by the reconcile's lint hold — held out of dispatch (3):** desk-containers/26 → already-merged-unflipped (merged PR #3001, Brief: trailer; flip held: desk-containers/brief-26: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/desk-containers/README.md: decision-gate hold (lifecycle-v1 §4.5): desk-containers/26 is gate: human and this change moves it to implemented (it was todo at the base), but no decision issue is recorded (frontmatter decision-issue: is absent) — no decision issue at all is a refusal, not a pass; file the brief's decision issue, record its number in decision-issue:, and record the ruling once given. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.), desktools-v2/73 → already-merged-unflipped (merged PR #4102, Brief: trailer; flip held: desktools-v2/brief-73: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/desktools-v2/README.md: decision-gate hold (lifecycle-v1 §4.5): desktools-v2/73 is gate: human and this change moves it to implemented (it was todo at the base), but decision issue #4070 has no recorded ruling (frontmatter ruling: is absent) — once a human rules on #4070, link the ruling comment in ruling:. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.), forge-neutral/48 → already-merged-unflipped (merged PR #5387, Brief: trailer; flip held: forge-neutral/brief-48: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/forge-neutral/README.md: decision-gate hold (lifecycle-v1 §4.5): forge-neutral/48 is gate: human and this change moves it to implemented (it was todo at the base), but decision issue #5384 has no recorded ruling (frontmatter ruling: is absent) — once a human rules on #5384, link the ruling comment in ruling:. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.). Fix: the reconcile's lint hold refuses to write this row, so reconciling cannot clear it — clear the problem the hold names: cite the approved design-decision record in the brief's `design:` (lifecycle-v1 §4.4), or record the human ruling in `ruling:` (lifecycle-v1 §4.5); the next reconcile then writes the row. Do not re-dispatch it.
+> **Already delivered, flip held by the reconcile's lint hold — held out of dispatch (4):** desk-containers/26 → already-merged-unflipped (merged PR #3001, Brief: trailer; flip held: desk-containers/brief-26: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/desk-containers/README.md: decision-gate hold (lifecycle-v1 §4.5): desk-containers/26 is gate: human and this change moves it to implemented (it was todo at the base), but no decision issue is recorded (frontmatter decision-issue: is absent) — no decision issue at all is a refusal, not a pass; file the brief's decision issue, record its number in decision-issue:, and record the ruling once given. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.), desktools-v2/73 → already-merged-unflipped (merged PR #4102, Brief: trailer; flip held: desktools-v2/brief-73: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/desktools-v2/README.md: decision-gate hold (lifecycle-v1 §4.5): desktools-v2/73 is gate: human and this change moves it to implemented (it was todo at the base), but decision issue #4070 has no recorded ruling (frontmatter ruling: is absent) — once a human rules on #4070, link the ruling comment in ruling:. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.), forge-neutral/48 → already-merged-unflipped (merged PR #5387, Brief: trailer; flip held: forge-neutral/brief-48: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/forge-neutral/README.md: decision-gate hold (lifecycle-v1 §4.5): forge-neutral/48 is gate: human and this change moves it to implemented (it was todo at the base), but decision issue #5384 has no recorded ruling (frontmatter ruling: is absent) — once a human rules on #5384, link the ruling comment in ruling:. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.), graph-execution/36 → already-merged-unflipped (merged PR #5418, Brief: trailer; flip held: graph-execution/brief-36: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/graph-execution/README.md: decision-gate hold (lifecycle-v1 §4.5): graph-execution/36 is gate: human and this change moves it to implemented (it was todo at the base), but decision issue #5405 has no recorded ruling (frontmatter ruling: is absent) — once a human rules on #5405, link the ruling comment in ruling:. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.). Fix: the reconcile's lint hold refuses to write this row, so reconciling cannot clear it — clear the problem the hold names: cite the approved design-decision record in the brief's `design:` (lifecycle-v1 §4.4), or record the human ruling in `ruling:` (lifecycle-v1 §4.5); the next reconcile then writes the row. Do not re-dispatch it.
 
-_Next-up: 20 of 47 eligible — 27 held back (24 by per-stream caps, 3 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 19 of 46 eligible — 27 held back (per-stream caps; span-of-control cap 20 not reached). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
-_Held by per-stream caps: 24 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (13), desk-tools (11). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 27 brief(s) across 3 stream(s) — top: desktools-v2. By stream: desktools-v2 (13), desk-tools (11), statusgen (3). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| graph-execution | 36 — Canonical PostgreSQL foundation for read-only consumers [exec:strong] | 0 | 19000 |
-| desk-tools | 39 — Extract shared review observation and pure planning contracts [exec:strong] | 2 | 16010 |
-| forge-neutral | 46 — Pure read-only mirror kernel and conformance [exec:strong] | 2 | 15000 |
-| forge-neutral | 47 — Admitted incremental forge readers for mirror ingestion [exec:strong] | 2 | 12000 |
+| desk-tools | 39 — Extract shared review observation and pure planning contracts [exec:strong] | 2 | 17010 |
+| forge-neutral | 46 — Pure read-only mirror kernel and conformance [exec:strong] | 2 | 16500 |
+| forge-neutral | 47 — Admitted incremental forge readers for mirror ingestion [exec:strong] | 2 | 14500 |
 | desktools-v2 | 58 — Extract the role credential provider and retire internal desktoken callouts [exec:strong] | 1 | 11000 |
 | desk-tools | 49 — Deduplicate verifier filings by their canonical work identity [exec:strong] | 1 | 8510 |
 | desk-tools | 42 — Narrow issue discovery projections before enrichment [exec:strong] | 3 | 7010 |
@@ -156,8 +155,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
 | desktools-v2 | 16 [exec:strong] | implemented | 29000 | 56 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite #2240 | — | — |
-| desk-tools | 37 [exec:strong] | verified | 17510 | 33 | — | driver | human action, cite #4599 | 2026-11-01 assay-verifier-app[bot] @ ab6803d9f65c (claude-opus-5-5) | — |
-| forge-neutral | 36 [exec:strong] | implemented | 16500 | 29 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3662 | — | — |
+| desk-tools | 37 [exec:strong] | verified | 18510 | 35 | — | driver | human action, cite #4599 | 2026-11-01 assay-verifier-app[bot] @ ab6803d9f65c (claude-opus-5-5) | — |
+| forge-neutral | 36 [exec:strong] | implemented | 18000 | 32 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3662 | — | — |
 | graph-execution | 31 [exec:strong] | implemented | 15500 | 27 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 | forge-neutral | 01 [exec:strong] | implemented | 9500 | 15 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#1800 | — | — |
 | desk-containers | 02 | implemented | 9000 | 16 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#900 | — | — |
@@ -743,7 +742,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 16 The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls — todo (wave 5)
 - 18 Rotate the board-push credential in one process — the new value never reaches a shell, a transcript, a log or argv — todo (wave 5)
 
-### forge-neutral (47 open)
+### forge-neutral (50 open)
 
 - 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
@@ -777,12 +776,12 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 37 Scoped forge mirror with persisted freshness, coverage and polling repair — todo (wave 7)
 - 38 Forge event adapter, feedback observations and durable reevaluation demand — todo (wave 8)
 - 39 Typed forge service contract and scoped client SDK — todo (wave 3)
-- 40 Authenticated forge serving and role executor custody — todo (wave 6)
-- 41 Write-through forge receipts and read-after-write projection — todo (wave 8)
-- 42 SHA-bound source queries and immutable result caching — todo (wave 7)
-- 43 Incremental forge indexes and dependency-aware invalidation — todo (wave 8)
-- 44 Shared Git object and fetch reuse qualification trial — todo (wave 8)
-- 45 Forge service fault simulation and scoped cutover qualification — todo (wave 9)
+- 40 Authenticated forge serving and role executor custody — todo (wave 9)
+- 41 Write-through forge receipts and read-after-write projection — todo (wave 10)
+- 42 SHA-bound source queries and immutable result caching — todo (wave 10)
+- 43 Incremental forge indexes and dependency-aware invalidation — todo (wave 11)
+- 44 Shared Git object and fetch reuse qualification trial — todo (wave 11)
+- 45 Forge service fault simulation and scoped cutover qualification — todo (wave 12)
 - 46 Pure read-only mirror kernel and conformance — todo (wave 2)
 - 47 Admitted incremental forge readers for mirror ingestion — todo (wave 2)
 - 48 Bound native mirror response allocation before decoding — todo (wave 3)
@@ -792,6 +791,9 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 52 Canonical PostgreSQL mirror store without execution dependencies — todo (wave 3)
 - 53 Qualified native mirror attempt accounting and retry metadata — todo (wave 5)
 - 54 Canonical PostgreSQL refresh gate and admitted read-through integration — todo (wave 6)
+- 55 Operator provisioning of known read-only refresh profiles — todo (wave 7)
+- 56 Read-only forge serving behind qualified caller authority — todo (wave 8)
+- 57 Qualified local read-only caller authority and current-state producer — todo (wave 4)
 
 ### fresh-views (6 open)
 
@@ -1180,4 +1182,4 @@ _Terminal: retired by a later decision or merged into a successor. Not counted i
 
 ## Totals
 
-**36** streams (**26** active, **0** paused, **10** parked) · **115/582** briefs done · **15** withdrawn · completed initiatives: see `docs/archive/`
+**36** streams (**26** active, **0** paused, **10** parked) · **115/585** briefs done · **15** withdrawn · completed initiatives: see `docs/archive/`
