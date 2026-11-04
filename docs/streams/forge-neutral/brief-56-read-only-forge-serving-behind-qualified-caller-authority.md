@@ -34,6 +34,8 @@ sources:
 - "Inspected actual service39 checkpoint 0dffd00706be92a2a6e785f1235c72e35f23035b: API/schema source is available for authoring, but final owner qualification/publication remains owed. It is not an auth producer."
 consumers:
 - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/56 (bounded mirror-query handler only)"
+- "tools/desk/cmd/forgeserve/: follow-up forge-neutral/56 (existing planned read-only query entrypoint moved forward from full40)"
+- "docs/forge-service.md and docs/enforcement-model.md: follow-up forge-neutral/56 (actual launch/custody bounds; no activation)"
 - "tools/desk/internal/deskkit/mirror_serving_test.go: follow-up forge-neutral/56 (actual source/coordinator/SQL/client composition)"
 - "forgeread/service and forgeread/client: follow-up forge-neutral/56 (consume actual39 DTO/codec/client; no second wire schema or client retry engine)"
 - "canonical qualified R3 caller/current-state/custody producer: out-of-scope (required actual source/profile; absence blocks production pickup)"
@@ -49,6 +51,9 @@ consumers:
 
 files:
 - `tools/desk/internal/forgeservice/server/` (planned)
+- `tools/desk/cmd/forgeserve/` (planned)
+- `docs/forge-service.md` (planned)
+- `docs/enforcement-model.md`
 - `tools/desk/internal/deskkit/mirror_serving_test.go` (planned)
 - `tools/desk/internal/deskkit/citrigger_test.go`
 - `.github/workflows/assay-workflow.yml` (planned)
@@ -63,6 +68,7 @@ files:
 facts:
 - The actual39 wire supports MirrorQuery with Kind, MaxAgeMS and a scope-bound optional Minimum token. Scope fields are claims; the client takes an already admitted transport and explicit endpoint. Neither supplies authentication or credentials.
 - Metadata.RetryAt is nullable. Cached is nullable CachedObservation containing original Coverage, EvaluatedAt and nullable AgeMS, with no rows. Permission responses carry neither retry advice nor cache metadata. The selected39 checkpoint is not yet a qualified delivery; implementation must consume its completed owner source.
+- Full40 already names the planned read-only query entrypoint `tools/desk/cmd/forgeserve`; this contribution owns that launch path while the parent retains its separate executor entrypoint. It uses the existing CLI framework and adds no default listener or probe.
 - The existing refresh coordinator and R2 Gate own source fills, native budgets, failures and retry eligibility. Clients make no provider fallback, automatic cooldown sleep or second refresh loop. The runtime connection cannot initialize the operator-owned profile from /55.
 - At the inspected source, the forge auth/server implementations are absent. The current-incarnation contract explicitly has no live authority source or key provisioning. Passive records, matching scope strings, SQL generations and celllaunch.Permit do not authenticate a remote caller.
 - The comms signed-envelope/mTLS primitive does not by itself bind all required forge repository/source/admission/access/configuration/policy/current-incarnation claims or qualify their custody. cell-api/03 explicitly requires resolving the ratified mechanism inconsistency at the canonical R3 owner before implementing a later issuer branch.
@@ -74,7 +80,7 @@ design-fit:
   owner: bounded read-only forgeservice/server adapter
   contract: actual39 forge-service-v1 and existing R3/admission/coordinator/R2 owners
   retires: []
-  weight: "No new CLI verb, login scheme, provider walker, cache backend, quota owner or runtime process. Record actual implementation counts."
+  weight: "One already-planned read-only query entrypoint moves forward from full40; no extra executor, issuer, provider walker, cache backend or quota owner. Record actual implementation counts."
   why-add: "The existing wire and shared read owner need one bounded consumer; current auth/custody must come from its actual qualified owner rather than a new handler issuer."
 
 single-point-of-failure: a decoded request or cached scope can be mistaken for a current caller grant. Recheck actual authority at final release and retain independent Store admission/native source checks; authentication absence or uncertainty releases no rows, counts, tokens or cached coverage.
@@ -97,30 +103,30 @@ Options:
 
 Default if no answer: none — blocks until answered
 
-This gates acceptance. Qualified source availability remains independently required. No operational listener, credential, profile, client cutover or activation is authorized by authoring, source tests or this future acceptance.
+This gates acceptance. Qualified source availability remains independently required. No operational listener launch, credential, profile, client cutover or activation is authorized by authoring, source tests or this future acceptance.
 
 ## Ground rules
 
 - Owned isolated branch/draft only; no main push/merge, release, workflow dispatch, production endpoint or cluster contact. Only explicitly owned loopback listeners and the verified disposable PostgreSQL container may run in tests.
 - No login scheme, signer/key custody, current-authority source or default entitlement lease is added here. Unknown/unreadable/stale identity or policy holds; /55 does not authenticate a caller.
-- No write executor, effect route, source-query endpoint, generic proxy, admin verb, role switch or production initializer. In particular FileAt/Diff/MergeBase, effects, projections and review operations remain refused by this slice.
+- No write executor, effect route, source-query endpoint, generic proxy, admin verb, role switch or production initializer. Query composition holds no signer or publisher key and uses only its already qualified admitted read access. In particular FileAt/Diff/MergeBase, effects, projections and review operations remain refused by this slice.
 - Preserve the actual39 schema/codec and protocol caps. No truncation disguised as complete, inferred missing facts, global progress token or SQL/provider ordering from opaque token text.
 - Preserve full40's complete Tasks, seven Verify Class/Command pairs, gate and Evidence; its typed dependency on this contribution orders later reuse, not acceptance. Full37 and full45 remain owed.
 
 ## Task
 
 1. Establish and record the actual-source prerequisite above. Bind the handler's trusted construction to the independently qualified producer/profile, its current CallerAuthority/admission and preinitialized restricted R2 connection. Derive stable caller, represented actor, cell/audience, repository/source/admission, access/configuration/policy epochs and expiry server-side; compare request claims against that current binding. Never turn a role, Scope, token, TLS peer label or profile string supplied by the caller into authority. Missing producer/profile is NEEDS_CONTEXT; fixture-only prep remains unqualified.
-2. Add a bounded handler for only service.MirrorQuery using the actual39 strict request/response codec and existing client transport contract. Reject unsupported operations, malformed/oversized/duplicate/foreign payloads and unauthorized scope before lower reads. Reuse existing protocol limits, explicit timeout/profile and canonical read-only composition; do not add a server process, mount, daemon or default listener. Authentication and transport configuration remain the qualified profile's responsibility.
+2. Add a bounded handler for only service.MirrorQuery using the actual39 strict request/response codec and existing client transport contract. Reject unsupported operations, malformed/oversized/duplicate/foreign payloads and unauthorized scope before lower reads. Reuse existing protocol limits, explicit timeout/profile and canonical read-only composition. Implement the already planned `cmd/forgeserve` query entrypoint using the existing CLI framework, consuming the actual qualified producer and restricted runtime configuration. No configuration, malformed/unknown profile or missing authority must refuse before database contact or listener creation. Start only an explicit operator-selected private channel; print the nonsecret target before contact and never probe an ambient endpoint. No remote ingress/login, default listener, signer/publisher key or executor launch is added. The command is built/tested here; operational startup remains a separate operator act.
 3. Compose the existing source/coordinator/R2 Gate/Store, with /55's explicit operator provisioning performed separately. Cold, missing, expired or insufficient cache data invokes the shared server-side fill; warm permitted reads avoid provider work. Failure suppression and eligibility come from the Gate, shared across independently constructed handlers/coordinators, not a handler map or client retry. Preserve source-versus-caller denial, native attempt ceilings, unknown holds and current generation fencing.
 4. Recheck current caller/profile/admission/epochs/deadline after all read, observer and coordination I/O, and immediately before releasing the detached encoded response. Sample trusted time at the correct post-I/O boundary. Independent Store/native checks remain even with upper ingress checks bypassed. Permission/uncertain authorization responses contain no rows, totals, progress/source metadata, RetryAt or Cached coverage; no error or diagnostic path leaks provider bodies or credential/header material.
 5. Map only actual qualified mirror results to the existing39 states, closed reasons and nullable metadata. Retain original coverage and data time for authorized unfulfilled cached observations; descriptive age is not a freshness grant. Gate retry advice is service-owned; the client neither sleeps nor retries the source. Preserve null/unknown versus measured zero, scope/repository/kind-bound minimum-token equality and protocol bounds. Do not claim provider ordering or invent a scopewide/global SQL progress token.
 6. Build an actual client → handler → qualified authority → coordinator → admitted native source → canonical SQL fixture, using the production operator API and restricted runtime role. Use the actual qualified R3 producer's synthetic profile, not a local allow-all auth replacement. Independently exercise cold/warm/stale/partial/empty/failure/cooldown recovery, two handlers sharing negative state and current revocation. No browser or production provider is contacted. Source review/fact gaps remain explicit; no desk command or projection consumer is cut over.
 7. Plant production faults for trusting request claims, skipping final authorization/deadline/time checks, bypassing lower admission, leaking Cached/RetryAt on Permission, client fallback and unshared failure suppression. Each must compile and fail an independent runtime expectation with its baseline passing. Keep a bounded rerunnable control manifest/script and exact source restoration. Distinguish qualified auth/served flow from unqualified fixture/codec preparation.
-8. Register the read-only semantic owner and update docs/changelog. Extend the actual dedicated PostgreSQL CI/reader registry so all cross-module inputs trigger and real served tests require explicit DSN and exact named PASS. Preserve current foundation, Store, Gate and provisioned-join qualification and every publication/acceptance gate. Full40 later consumes this owner and adds its remaining executor/custody/effect obligations; it must not duplicate the handler.
+8. Register the read-only semantic owner and update docs/changelog. Extend the actual dedicated PostgreSQL CI/reader registry so all cross-module inputs trigger and real served tests require explicit DSN and exact named PASS. Preserve current foundation, Store, Gate and provisioned-join qualification and every publication/acceptance gate. Full40 later consumes this owner and adds its remaining executor/custody/effect obligations; it must not duplicate the handler or query launch entrypoint.
 
 ## Interface contract
 
-A trusted constructor receives actual qualified authority/current-state and transport/profile composition, an existing read coordinator and the restricted R2 runtime connection. The request carries only existing39 claims/query data. The handler emits only a bounded validated mirror-query response or explicit refusal; it grants no credential, role, source operation, provisioning or retry authority. Missing qualified producer/profile means NEEDS_CONTEXT, not an implicit mock-backed server.
+A trusted constructor receives actual qualified authority/current-state and transport/profile composition, an existing read coordinator and the restricted R2 runtime connection. The existing planned forgeserve command composes those owners only after explicit configuration validation; it creates no default endpoint or authority. The request carries only existing39 claims/query data. The handler emits only a bounded validated mirror-query response or explicit refusal; it grants no credential, role, source operation, provisioning or retry authority. Missing qualified producer/profile means NEEDS_CONTEXT, not an implicit mock-backed server.
 
 ## Verify
 
@@ -136,6 +142,7 @@ These are prospective delivery tests. Every auth/served row requires the actual 
 | 6 | check +mutation | `(cd tools/desk && test -n "$ASSAY_TEST_POSTGRES_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && python3 internal/forgeservice/server/testdata/read_mutations.py > "$o" && cat "$o" && grep -F -- 'PASS: read-serving production controls killed; exact bytes restored' "$o")` | In an owned clean linked feature worktree, each named production guard fault compiles and fails its independent baseline-passing witness; fixture/setup failures are invalid. Exact bytes restore. Mocks cannot qualify actual producer controls. |
 | 7 | check:ci +flow | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestWorkflowReadServingCI$' ./internal/deskkit > "$o" && grep -F -- '--- PASS: TestWorkflowReadServingCI ' "$o")` | Named PASS; actual CI reaches every wire/auth/SQL input, requires explicit DSN/qualified producer fixture and exact served-test PASS. No ordinary no-DSN skip, fake auth replacement or absent package is credited. |
 | 8 | check +dereference | `GOWORK=off go -C statusgen run . --root .. --consumers --brief forge-neutral/56 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | Actual producer/codec/coordinator/R2 edges are corroborated or explicitly held. Before post-merge verification bind immutable actual delivery/base; routing, primitive presence and offline prep are not authentication, deployment, parent acceptance or tool parity. Any forge lookup uses the verifier's explicit managed identity. |
+| 9 | check +flow +mutation +neighbour | `(cd tools/desk && test -n "$ASSAY_TEST_POSTGRES_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeReadOnlyLaunch$' ./cmd/forgeserve > "$o" && grep -F -- '--- PASS: TestForgeReadOnlyLaunch ' "$o")` | Named PASS through the actual planned query command and existing CLI framework. Missing/malformed configuration or unavailable authority opens no listener/database/provider contact; a qualified explicit owned private-channel fixture serves only mirror-query. Ambient/default endpoint, signer/publisher key custody and executor/effect route regressions fail. No operational startup is performed. |
 
 ## Evidence
 <!-- A NON-implementer supplies independent evidence. Authoring and unqualified prep pass no served/auth row. -->

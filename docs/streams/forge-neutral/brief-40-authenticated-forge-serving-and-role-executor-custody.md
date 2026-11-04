@@ -98,7 +98,8 @@ webhook payload decisions are not answered by this section.
 ## Bounded read-only contribution and later consumption
 
 forge-neutral/55 owns explicit known R2 profile/accounting provisioning; forge-neutral/56
-owns only the qualified mirror-query handler. This full parent depends on56 so it consumes
+owns the qualified mirror-query handler and the existing planned read-only forgeserve
+query entrypoint. This full parent depends on56 so it consumes
 that read-only owner rather than implementing a second handler concurrently. It retains
 all existing prerequisites, complete Tasks, seven Verify Class/Command pairs, Evidence
 and gates, and adds its remaining executor/custody/effect obligations later. No edge from56
