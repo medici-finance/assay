@@ -5648,7 +5648,10 @@ requires exactly one plain `https` origin on the configured instance's host and 
 provisioned GitLab custody token through `deskkit.ResolveRoleCredential` (never minted). The
 token rides the in-memory hand-off as `oauth2` basic auth, to the gated origin URL only. A
 forge nothing resolves stays on the GitHub arm and is refused (exit 5) unless its origin is on
-github.com. GitHub behaviour is unchanged. `push --as` still speaks only GitHub.
+github.com. GitHub behaviour is unchanged. `push --as` still speaks only GitHub. The identity
+binding above holds on the GitLab arm too, and is checked again inside `CheckoutGitRead`: `--as`
+must equal the role `$DESK_LOOP` binds, so a cross-role `--as` exits 5 before any custody file
+is read.
 
 *Layer 2, the answer point.* The credential is bound where it is answered, not only where
 destinations are listed. For **fetch** that is the in-memory hand-off itself: the token is
