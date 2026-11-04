@@ -1,0 +1,7 @@
+# regression: #4769
+# After an assignment no rule is open, so make reads a tab-led line as a
+# makefile line: here a .RECIPEPREFIX setting that hides a second recipe.
+want: step-not-fatal
+file: Makefile
+replace: "\n## skillslint: validate"
+with: "\nZZX := 1\n\t.RECIPEPREFIX := >\ndeskd-image:\n>@echo \"skipped\"\nZZX := 2\n\t.RECIPEPREFIX :=\n\n## skillslint: validate"

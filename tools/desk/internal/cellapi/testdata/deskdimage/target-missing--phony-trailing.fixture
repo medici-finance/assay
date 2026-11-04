@@ -1,0 +1,6 @@
+# regression: #4769
+# Names after a # on the .PHONY line are a comment, not phony targets.
+want: target-missing
+file: Makefile
+replace: "deskd-build deskd-image skillslint"
+with: "skillslint # deskd-build deskd-image"
