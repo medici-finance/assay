@@ -35,6 +35,7 @@ func TestEnvImportRows(t *testing.T) {
 	for _, row := range []struct{ brief, number string }{
 		{"brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md", "18"},
 		{"brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md", "13"},
+		{"brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md", "12"},
 	} {
 		data, err := os.ReadFile(filepath.Join("..", "..", "docs", "streams", "forge-neutral", row.brief))
 		if err != nil {
