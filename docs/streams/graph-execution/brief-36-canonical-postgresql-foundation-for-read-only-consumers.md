@@ -4,7 +4,7 @@ title: Canonical PostgreSQL foundation for read-only consumers
 why: "Read-only mirror persistence needs the canonical PostgreSQL migration and test substrate, but not workflow execution. Deliver that substrate first so shared reads do not wait for admission, outbox or executor integration."
 wave: 0
 depends: []
-unblocks: ["graph-execution/19"]
+unblocks: ["graph-execution/19", "forge-neutral/52"]
 split-from: graph-execution/19
 effort: L
 gate: human

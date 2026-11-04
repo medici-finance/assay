@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 6
+version: 8
 id: 2b089f0c-6ce5-4e2f-a5bf-d62842845b29
 authored: 2026-10-14 by forge-service authoring
 sources:
@@ -56,6 +56,7 @@ consumers:
 files: `tools/desk/internal/forgeservice/auth/` (planned), `tools/desk/internal/forgeservice/server/` (planned), `tools/desk/internal/forgeexecutor/` (planned), `tools/desk/cmd/forgeserve/` (planned), `tools/desk/cmd/forge-executor/` (planned), `tools/desk/internal/deskkit/forgeresolve.go`, `tools/desk/internal/deskkit/outboundforge.go`, `tools/desk/go.mod`, `tools/desk/go.sum`, `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `changelog/forge-service-auth.md` (planned), `tools/desk/internal/forgeservice/auth/reviewcustody_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
+- forge-neutral/54 owns the canonical shared Gate, AttemptAuthority and admitted read-through join. This authenticated-serving consumer reuses that owner and adds no second refresh implementation.
 - ForgeFor resolves provider from operator repository configuration and hands its backend an already-admitted role credential. It refuses ambient fallback.
 - graph-execution/16 owns incarnation/ownership restoration. This brief consumes that contract, not a second key/lease authority.
 - The initial query process must not hold publisher keys. Per-role executor process isolation is required before a managed agent can receive a write capability.
