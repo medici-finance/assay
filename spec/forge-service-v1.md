@@ -110,8 +110,10 @@ validation owns coverage and freshness; transport does not implement another pla
 A qualified cached unavailable reply has `complete: false`, original fresh/stale
 status and original provenance when known. Token-progress `older` still requires a
 scoped minimum and a distinct response token. Its cached observation may independently
-be fresh or stale by age; freshness never satisfies a newer minimum token. Without
-cache metadata, the original older stale profile is retained. Fulfilled
+be fresh or stale by age; freshness never satisfies a newer minimum token. A qualified cached older reply may also carry `source: null` when original
+provenance is unknown; it must not invent a source or observation time. Without
+cache metadata, the original older stale profile and non-null provenance requirement
+are retained. Fulfilled
 confirmed/newer replies retain their complete result and carry no retry/cache hold
 metadata. Unknown completeness is never converted to false or complete-empty merely
 because a service or provider is down.

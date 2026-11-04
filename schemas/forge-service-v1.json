@@ -1884,14 +1884,10 @@
                       "fresh",
                       "stale"
                     ]
-                  },
-                  "source": {
-                    "$ref": "#/$defs/service_Provenance"
                   }
                 },
                 "required": [
-                  "complete",
-                  "source"
+                  "complete"
                 ]
               },
               "mirror": {
@@ -2907,6 +2903,9 @@
                 "properties": {
                   "freshness": {
                     "const": "stale"
+                  },
+                  "source": {
+                    "$ref": "#/$defs/service_Provenance"
                   }
                 }
               }
