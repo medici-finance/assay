@@ -4,7 +4,7 @@ title: Store-injected mirror read-through coordinator and shared refresh gate po
 why: "A missing or stale shared answer should trigger one admitted refresh, while equivalent readers wait for that result. A reusable coordinator makes failures and cooldown visible without making every client poll the forge or waiting for write execution features."
 wave: 3
 depends: ["forge-neutral/46"]
-unblocks: []
+unblocks: ["forge-neutral/53", "forge-neutral/54"]
 split-from: forge-neutral/37
 effort: M
 gate: human
@@ -14,11 +14,12 @@ decision-trigger: spec
 decision-issue: 5399
 issues: []
 schema: brief-v2
-version: 10
+version: 11
 outcome: none
 design: DR-forge-library
 authored: 2026-11-03 by statusgen newbrief
 sources:
+  - "authoritative contract source: commit a1ffbc0e47708dcea430b59ccb89c466c71e7aee; this authoring adoption carries no runtime implementation or acceptance claim"
   - docs/streams/forge-neutral/brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md
   - docs/streams/forge-neutral/brief-50-join-admitted-incremental-reads-to-mirror-observations.md
   - docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md
@@ -36,8 +37,8 @@ consumers:
   - "forgeread/mirror/query.go, forgeread/mirror/kernel_test.go: fixed-here (canonical guarded snapshot acquisition and explicit-time evaluation; no transport or custody)"
   - "forgeread/README.md, docs/contracts.md, changelog/mirror-read-through-coordinator.md: fixed-here"
   - "tools/forge-import-check/, tools/desk/internal/regression/mirrorimports_test.go, tools/desk/internal/deskkit/citrigger_test.go: fixed-here (closed-target checker reuse and existing CI reader)"
-  - "workflow/store/: follow-up forge-neutral/37 (one R2-owned production refresh-gate adapter and persistence integration; no implementation here)"
-  - "tools/desk/internal/deskkit/: follow-up forge-neutral/37 (joined mapper, admitted composition and durable flow; source-only mapper contribution remains separate)"
+  - "workflow/store/: follow-up forge-neutral/54 (one R2-owned production refresh-gate adapter and persistence integration; no implementation here)"
+  - "tools/desk/internal/deskkit/: follow-up forge-neutral/54 (joined mapper, admitted composition and durable flow; source-only mapper contribution remains separate)"
   - "forgeread/service/, forgeread/client/: follow-up forge-neutral/39 (wire contract stays separate)"
   - "tools/desk/internal/forgeservice/: follow-up forge-neutral/40 (authentication, remote serving and executor custody stay separate)"
   - "statusgen/: out-of-scope (no subpackage import, evaluator change or caller cutover)"
