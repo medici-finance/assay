@@ -4,7 +4,7 @@ package main
 // shape.
 //
 // deskrestamp mints the SESSION-ROLE App installation token (DESK_LOOP-selected, checked
-// against the dispatcher roles BEFORE any forge call) via desktoken and reaches the forge
+// against the dispatcher roles BEFORE any forge call) read in process (deskkit.WriteVerbRoleCredential, #5457) and reaches the forge
 // through the resolved deskkit.Forge under that App's custody. The role is the same value
 // the dispatcher check keyed on (mintedRole, set from roleFn before any forge call), so
 // the identity that WRITES the re-stamp is the identity that was ENTITLED to — there is no
@@ -14,10 +14,7 @@ package main
 // the custody step, and an unresolvable role refuses before the mint is even attempted.
 
 import (
-	"bytes"
 	"errors"
-	"fmt"
-	"os"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -61,14 +58,15 @@ func githubCustodyMint(role string, repo deskkit.ForgeRepo) (token, baseURL stri
 }
 
 // mintTokenFn mints the session-role token for a repo and sets ghToken. Package var so a
-// test can inject a token without shelling desktoken; production binds it to
+// test can inject a token without a real credential read; production binds it to
 // mintSessionToken.
 var mintTokenFn = mintSessionToken
 
-// mintSessionToken calls `desktoken <role> --repo <slug>` for the role cmdReStamp already
-// resolved (mintedRole; resolved here only if a caller reached the forge first) and sets
-// ghToken. --repo is not optional: an App installed on more than one account mints for the
-// wrong installation when it is omitted.
+// mintSessionToken reads the credential of the role cmdReStamp already resolved (mintedRole;
+// resolved here only if a caller reached the forge first) READ-ONLY through
+// deskkit.WriteVerbRoleCredential (never the desktoken binary, so never its rotation path —
+// #5457) and sets ghToken. The repo is not optional: an App installed on more than one account
+// resolves the wrong installation when the owner is omitted.
 func mintSessionToken(repoSlug string) error {
 	if mintedRole == "" {
 		role, rerr := roleFn()
@@ -77,24 +75,11 @@ func mintSessionToken(repoSlug string) error {
 		}
 		mintedRole = role
 	}
-	role := mintedRole
-	cmd := execCommand("desktoken", role, "--repo", repoSlug)
-	var out, errb bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errb
-	if err := cmd.Run(); err != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("desktoken %s --repo %s: %v (%s)",
-			role, repoSlug, err, strings.TrimSpace(errb.String())), err)
+	cred, err := deskkit.WriteVerbRoleCredential("deskrestamp", mintedRole, repoSlug)
+	if err != nil {
+		return err
 	}
-	tokenPath := strings.TrimSpace(out.String())
-	b, rerr := os.ReadFile(tokenPath)
-	if rerr != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("read %s token from %s", role, tokenPath), rerr)
-	}
-	ghToken = strings.TrimSpace(string(b))
-	if ghToken == "" {
-		return deskkit.Unverifiable(fmt.Sprintf("%s token at %s is empty", role, tokenPath), nil)
-	}
+	ghToken = cred.Token
 	return nil
 }
 

@@ -133,8 +133,8 @@ func flowSetup(t *testing.T) *flowForge {
 	t.Setenv("ASSAY_DESKFILE_NEW_RATE", "50")
 	ff := &flowForge{dfForge: curForge, store: map[string][]*flowIssue{}}
 	prev := forgeForFn
-	forgeForFn = func(repo string, ro bool) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
-		_, fr, kind, err := prev(repo, ro)
+	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
+		_, fr, kind, err := prev(repo)
 		return deskkit.OutboundChecked(ff, "worker"), fr, kind, err
 	}
 	t.Cleanup(func() { forgeForFn = prev })

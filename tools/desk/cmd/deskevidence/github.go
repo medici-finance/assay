@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -15,11 +12,11 @@ import (
 //
 // SINCE THE FORGE MIGRATION deskevidence no longer builds net/http against a hardcoded
 // api.github.com, no longer signs an App JWT, and no longer performs the
-// installation-token exchange itself. All of that is the identity layer: the verifier App
-// installation token is minted by `desktoken verifier --repo <repo>` (mintVerifierToken
-// below), and every forge read and write goes through the resolved deskkit.Forge, under the
-// verifier App's custody. This is the same shape deskreply uses for its worker token — the
-// tool holds the already-minted token and hands it to the resolver, which never mints twice
+// installation-token exchange itself. All of that is the identity layer: the verifier role's
+// credential is read in process through deskkit.WriteVerbRoleCredential (mintVerifierToken
+// below — never a `desktoken` fork, #5457), and every forge read and write goes through the
+// resolved deskkit.Forge, under the verifier App's custody.
+// This is the same shape deskreply uses for its worker token — the tool holds the already-minted token and hands it to the resolver, which never mints twice
 // and never falls back to an ambient CLI identity.
 
 // ghToken holds the verifier App installation token minted for the target repo. deskevidence
@@ -75,7 +72,7 @@ func forgeFor(owner, name string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 }
 
 // mintTokenFn mints the verifier token for a repo and sets ghToken. It is a package var so a
-// test can inject a token without shelling desktoken; production binds it to mintVerifierToken.
+// test can inject a token without a real credential read; production binds it to mintVerifierToken.
 var mintTokenFn = mintVerifierToken
 
 // publishIdentityGateFn is the seam for deskkit.PublishIdentityMatchesRole. setupFake stubs
@@ -117,35 +114,19 @@ func publishEvidenceIdentityGate(dir string, receipt deskkit.VerifierReceipt) er
 	})
 }
 
-// execCommand is the single seam through which deskevidence starts a child process — only
-// `desktoken` (the identity layer) reaches it. Tests replace it.
-var execCommand = exec.Command
-
-// mintVerifierToken calls `desktoken verifier --repo <owner/repo>` to mint (or reuse) the
-// verifier App installation token scoped to the repo's owner, then sets it as ghToken so every
-// subsequent forge call authenticates as the verifier App.
+// mintVerifierToken reads the verifier role's credential for the repo's owner READ-ONLY through
+// deskkit.WriteVerbRoleCredential (never the desktoken binary, so never its rotation path —
+// #5457), then sets it as ghToken so every subsequent forge call authenticates as the verifier.
 //
-// --repo is not optional (mirrors deskreply/#562): an App installed on more than one account
-// mints for the wrong installation when --repo is omitted — a token with no access to the
+// The repo is not optional (mirrors deskreply/#562): an App installed on more than one account
+// resolves the wrong installation when the owner is omitted — a token with no access to the
 // target repo. The repo deskevidence passes is the one it just validated against its repo set.
 func mintVerifierToken(repoSlug string) error {
-	cmd := execCommand("desktoken", "verifier", "--repo", repoSlug)
-	var out, errb bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errb
-	if err := cmd.Run(); err != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("desktoken verifier --repo %s: %v (%s)",
-			repoSlug, err, strings.TrimSpace(errb.String())), err)
+	cred, err := deskkit.WriteVerbRoleCredential("deskevidence", "verifier", repoSlug)
+	if err != nil {
+		return err
 	}
-	tokenPath := strings.TrimSpace(out.String())
-	b, rerr := os.ReadFile(tokenPath)
-	if rerr != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("read verifier token from %s", tokenPath), rerr)
-	}
-	ghToken = strings.TrimSpace(string(b))
-	if ghToken == "" {
-		return deskkit.Unverifiable(fmt.Sprintf("verifier token at %s is empty", tokenPath), nil)
-	}
+	ghToken = cred.Token
 	return nil
 }
 

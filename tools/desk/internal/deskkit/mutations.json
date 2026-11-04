@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance|TestDirectProvider|TestPerfProcessCoverage|TestGitHubMinter|TestDesktokenExec|TestGitLabCred'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance|TestDirectProvider|TestPerfProcessCoverage|TestGitHubMinter|TestDesktokenExec|TestGitLabCred|TestWriteVerb'",
   "schemata": true,
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
@@ -859,10 +859,41 @@
       "file": "cmd/repohardenguard/forge.go",
       "old": "\ttok, _, err := githubRoleTokenFn(\"auditor\", repoSlug)",
       "new": "\ttok, _, err := githubRoleTokenFn(\"auditor\", repoSlug)\n\t_ = []string{\"desktoken\", \"auditor\", \"--repo\", repoSlug}"
+    },
+    {
+      "name": "#5457: a write verb forks the desktoken program again (deskreply names the binary beside its credential read)",
+      "file": "cmd/deskreply/exec.go",
+      "old": "\tcred, err := deskkit.WriteVerbRoleCredential(\"deskreply\", \"worker\", repo)\n",
+      "new": "\tcred, err := deskkit.WriteVerbRoleCredential(\"deskreply\", \"worker\", repo)\n\t_ = \"desktoken\"\n"
+    },
+    {
+      "name": "#5457: a write-verb site bypasses the choke point (deskclose resolves the credential directly, no verb-scoped read)",
+      "file": "cmd/deskclose/forge.go",
+      "old": "\tcred, err := deskkit.WriteVerbRoleCredential(\"deskclose\", role, repoSlug)\n",
+      "new": "\tcred, err := deskkit.ResolveRoleCredential(role, deskkit.ForgeRepo{Owner: deskkit.OwnerOf(repoSlug)}, \"\")\n"
+    },
+    {
+      "name": "#5457: the helper mangles the repo name, so the roster's GitLab binding is missed and a GitLab write verb mints a GitHub App credential",
+      "file": "internal/deskkit/writeverbcred.go",
+      "old": "ResolveRoleCredential(role, ForgeRepo{Owner: owner, Name: name}, \"\")",
+      "new": "ResolveRoleCredential(role, ForgeRepo{Owner: owner, Name: name + \"-x\"}, \"\")"
+    },
+    {
+      "name": "#5457: the helper flattens the GitLab custody refusal (exit 5) to could-not-check (exit 6)",
+      "file": "internal/deskkit/writeverbcred.go",
+      "old": "\t\t\tCode: ExitCodeOf(err),\n",
+      "new": "\t\t\tCode: ExitUnverifiable,\n"
+    },
+    {
+      "name": "#5457: the helper's refusal stops naming the verb, so an operator cannot tell which write verb failed its read",
+      "file": "internal/deskkit/writeverbcred.go",
+      "old": "Msg:  fmt.Sprintf(\"%s: read the %s role credential for %s\", verb, role, slug),",
+      "new": "Msg:  fmt.Sprintf(\"read the %s role credential for %s\", role, slug),"
     }
   ],
   "_not_mutated": {
     "coveredBy full-containment": "Weakening coveredBy to accept PARTIAL overlap (lo >= sp.lo && lo < sp.hi) was tried and is NOT CATCHABLE by any test, so it is deliberately absent rather than left surviving in the report. The reason is structural: reBase64ish's charset excludes newline, and every structured span this file computes either ends at a line boundary (a go.sum digest, the sops metadata block) or is delimited by a character outside the charset (the comma after an ENC payload, the quote after an SRI payload). So no run can begin inside an exempt span and continue past its end, and the two spellings are equivalent on every input the scan can be handed. The strict form is kept because it is the correct statement of intent for a future format whose fields are not line-delimited; a mutation report claiming it is unguarded would be noise, and a surviving mutant nobody can act on trains readers to ignore the report.",
-    "#2022 equivalent conditions": "Four conditions of the brief-id exemption have no mutant here because deleting each is EQUIVALENT: no input reaches a different verdict. (1) `source == \"\"` in briefIDExemptLine: an empty source splits to one empty line, which fails the first-line fence test, so the result is 0 either way. (2) `len(src) < 3`: a source with fewer than three lines cannot hold an opening fence, a line between and a closing fence, so the closing-fence search or the key count returns 0 either way. (3) the `closeAt < 0` early return: with no closing fence the key loop `for i := 1; i < closeAt` runs zero times, so idx stays -1 and the result is 0 either way (the mutant that DOES widen this, an unterminated frontmatter running to end of file, is in the list). (4) the push path's `rerr == nil` guard on reading the head blob: a failed read returns an empty string, which is case (1). Each is kept as the explicit statement of the fail-closed intent; the missing-source and unterminated cases are still pinned by TestBriefIDOutsideShapeRefused."
+    "#2022 equivalent conditions": "Four conditions of the brief-id exemption have no mutant here because deleting each is EQUIVALENT: no input reaches a different verdict. (1) `source == \"\"` in briefIDExemptLine: an empty source splits to one empty line, which fails the first-line fence test, so the result is 0 either way. (2) `len(src) < 3`: a source with fewer than three lines cannot hold an opening fence, a line between and a closing fence, so the closing-fence search or the key count returns 0 either way. (3) the `closeAt < 0` early return: with no closing fence the key loop `for i := 1; i < closeAt` runs zero times, so idx stays -1 and the result is 0 either way (the mutant that DOES widen this, an unterminated frontmatter running to end of file, is in the list). (4) the push path's `rerr == nil` guard on reading the head blob: a failed read returns an empty string, which is case (1). Each is kept as the explicit statement of the fail-closed intent; the missing-source and unterminated cases are still pinned by TestBriefIDOutsideShapeRefused.",
+    "#5457 unreachable blank-credential refusal": "WriteVerbRoleCredential's blank-credential refusal (#5457) has no mutant because it is unreachable today: both arms of ResolveRoleCredential already refuse a blank value before it returns (the GitHub arm via RoleTokenForOwner's empty-file refusal, the GitLab arm via the custody read), so `if false && strings.TrimSpace(cred.Token) == \"\"` was tried and stayed green while TestWriteVerbCredEmptyRefused and TestWriteVerbCredEmptyGitLab both passed. It is kept as the explicit fail-closed statement at the write-verb choke point, so a future resolver arm that returns a blank value still never hands one to a write verb."
   }
 }
