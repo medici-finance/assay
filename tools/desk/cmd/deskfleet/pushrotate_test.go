@@ -26,7 +26,7 @@ func (f *ptFake) issuedValues() []string {
 	defer f.mu.Unlock()
 	var out []string
 	for _, t := range f.toks {
-		if t.id != ptOldID {
+		if t.id != ptOldID && t.value != "" { // history records carry no value
 			out = append(out, t.value)
 		}
 	}

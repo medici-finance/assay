@@ -133,6 +133,33 @@ type pushTokenRecord struct {
 	ExpiresAt   string   `json:"expires_at"`
 }
 
+// decodeTokenRecord decodes one token record and refuses any that cannot be judged: JSON null,
+// a non-object, an id that is absent or not positive, an absent or empty name, or an absent
+// active or revoked flag. A zero-value record would otherwise read as "some other, inactive
+// token" (and an id 0 as "nothing to rotate"), which is how a malformed list let --create, or
+// plain rotate, mint a second live credential. why names the first failing field.
+func decodeTokenRecord(raw json.RawMessage) (t pushTokenRecord, why string) {
+	var keys map[string]json.RawMessage
+	if json.Unmarshal(raw, &keys) != nil || keys == nil {
+		return t, "not an object"
+	}
+	for _, k := range []string{"id", "name", "active", "revoked"} {
+		if v, ok := keys[k]; !ok || string(v) == "null" {
+			return t, "field " + k + " absent"
+		}
+	}
+	if json.Unmarshal(raw, &t) != nil {
+		return t, "undecodable"
+	}
+	switch {
+	case t.ID <= 0:
+		return t, "field id not positive"
+	case t.Name == "":
+		return t, "field name empty"
+	}
+	return t, ""
+}
+
 // pushIssued is a rotate or create response: the new id and the value, once.
 type pushIssued struct {
 	ID        int64      `json:"id"`
@@ -430,7 +457,7 @@ func (r *pushRun) activeByName() ([]pushTokenRecord, int) {
 		if code != exitOK {
 			return nil, code
 		}
-		var recs []pushTokenRecord
+		var recs []json.RawMessage
 		if resp.Status != 200 || json.Unmarshal(resp.Body, &recs) != nil {
 			r.errf("could-not-check: access-token list page %d answered HTTP %d or could not be decoded — nothing "+
 				"written", page, resp.Status)
@@ -443,7 +470,13 @@ func (r *pushRun) activeByName() ([]pushTokenRecord, int) {
 			r.errf("could-not-check: access-token list page %d answered null, not a list — nothing written", page)
 			return nil, exitUnverifiable
 		}
-		for _, t := range recs {
+		for i, raw := range recs {
+			t, why := decodeTokenRecord(raw)
+			if why != "" {
+				r.errf("could-not-check: access-token list page %d record %d cannot be judged (%s) — nothing "+
+					"written", page, i+1, why)
+				return nil, exitUnverifiable
+			}
 			if seen[t.ID] {
 				r.errf("could-not-check: access-token list page %d repeats id %d (pagination not honoured) — "+
 					"nothing written", page, t.ID)
@@ -506,8 +539,17 @@ func (r *pushRun) issue() int {
 		verb = "rotate"
 		want = 200
 	)
-	if r.oldID == 0 {
+	switch {
+	case r.oldID > 0:
+	case !r.o.create:
+		// Preflight only leaves oldID unset on the --create path; anything else is a bug, and a
+		// create here would bypass the operator's --create choice.
+		r.errf("could-not-check: no token id to rotate and --create was not given — nothing written")
+		return exitUnverifiable
+	default:
 		verb, want = "create", 201
+	}
+	if verb == "create" {
 		resp, err = r.gl.do("POST", r.pp+"/access_tokens", map[string]any{"name": r.o.tokenName,
 			"scopes": []string{pushTokenScope}, "access_level": pushTokenAccessLevel, "expires_at": expires})
 	} else {
@@ -647,12 +689,17 @@ func (r *pushRun) contain(field, what string) int {
 		return r.containFailed(what, "revoke "+statusOnly(resp, err))
 	}
 	resp, err = r.gl.do("GET", r.pp+"/access_tokens/"+id, nil)
-	var rec pushTokenRecord
+	// The confirming read must be this token's own, complete record: a null or empty body would
+	// otherwise decode as "inactive" and report a live token as dead.
+	rec, why := pushTokenRecord{}, "not read"
+	if err == nil && resp.Status == 200 {
+		rec, why = decodeTokenRecord(resp.Body)
+	}
 	switch {
 	case err != nil:
 		return r.containFailed(what, "confirming read "+statusOnly(resp, err))
 	case resp.Status == 404:
-	case resp.Status == 200 && json.Unmarshal(resp.Body, &rec) == nil && (rec.Revoked || !rec.Active):
+	case resp.Status == 200 && why == "" && rec.ID == r.newID && (rec.Revoked || !rec.Active):
 	default:
 		return r.containFailed(what, "confirming read did not show the token dead ("+statusOnly(resp, err)+")")
 	}

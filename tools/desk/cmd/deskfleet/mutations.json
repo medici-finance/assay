@@ -354,6 +354,36 @@
       "file": "cmd/deskfleet/pushrotate.go",
       "old": "\t\tif recs == nil {\n",
       "new": "\t\tif false && recs == nil {\n"
+    },
+    {
+      "name": "M27, review — an unjudgeable token-list record ([null], [{}], id 0, no name) is skipped or matched instead of refused",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\t\t\tif why != \"\" {\n",
+      "new": "\t\t\tif false && why != \"\" {\n"
+    },
+    {
+      "name": "M28, review — issue() creates on a zero token id without --create (plain rotate mints a second credential)",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\tcase !r.o.create:\n",
+      "new": "\tcase false && !r.o.create:\n"
+    },
+    {
+      "name": "M29, review — a token record missing id, name, active or revoked decodes as zero values instead of being refused",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "if v, ok := keys[k]; !ok || string(v) == \"null\" {",
+      "new": "if v, ok := keys[k]; false && (!ok || string(v) == \"null\") {"
+    },
+    {
+      "name": "M30, review — a token record with id 0 is accepted as a token to rotate",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "case t.ID <= 0:",
+      "new": "case t.ID < 0:"
+    },
+    {
+      "name": "M31, review — the containment confirming read accepts an empty or another token's record as proof the new token is dead",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "why == \"\" && rec.ID == r.newID && ",
+      "new": "(why == \"\" || true) && "
     }
   ]
 }

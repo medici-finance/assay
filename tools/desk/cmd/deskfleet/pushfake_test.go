@@ -87,6 +87,8 @@ type ptFake struct {
 	// faults
 	listStatus    int
 	listNull      bool   // the list answers 200 with a JSON null body (on listFailPage when set)
+	listRaw       string // a raw JSON element appended to list page listRawPage
+	listRawPage   int
 	listFailPage  int    // non-zero: that list page answers listStatus (default 500), earlier pages answer
 	ignorePage    bool   // the list ignores the page parameter (every page is page 1)
 	endlessPages  bool   // the list answers a full page of fresh unrelated records on every page
@@ -94,6 +96,10 @@ type ptFake struct {
 	readBackFault string // after a variable write: a read answers "502", "drop" or "garbage"
 	readNoValue   bool   // a read of an unhidden variable omits its value
 	byIDStatus    int    // non-zero: a by-id read of any id but the predecessor answers it
+	deadRaw       string // non-empty: a by-id read of a revoked new token answers 200 with this body
+	byIDAll       bool   // byIDStatus also applies to the predecessor (check mode)
+	varPreStatus  int    // non-zero: a variable read before any write answers it
+	pushDrop      bool   // the receive-pack probe drops the connection
 	rotateStatus  int
 	dropRotate    bool // perform the rotate, then drop the connection
 	writeStatuses []int
@@ -323,7 +329,8 @@ func (f *ptFake) handleList(w http.ResponseWriter, r *http.Request) {
 	out := []map[string]any{}
 	if f.endlessPages {
 		for i := 0; i < per; i++ {
-			out = append(out, map[string]any{"id": 100000 + page*per + i, "name": "example-other", "active": true})
+			out = append(out, map[string]any{"id": 100000 + page*per + i, "name": "example-other", "active": true,
+				"revoked": false})
 		}
 		ptJSON(w, 200, out)
 		return
@@ -334,13 +341,17 @@ func (f *ptFake) handleList(w http.ResponseWriter, r *http.Request) {
 			recs = append(recs, t)
 		}
 	}
+	got := []any{}
 	for i := (page - 1) * per; i < len(recs) && i < page*per; i++ {
-		out = append(out, ptRecord(recs[i]))
+		got = append(got, ptRecord(recs[i]))
+	}
+	if f.listRaw != "" && f.listRawPage == page {
+		got = append(got, json.RawMessage(f.listRaw))
 	}
 	if page*per < len(recs) {
 		w.Header().Set("X-Next-Page", strconv.Itoa(page+1))
 	}
-	ptJSON(w, 200, out)
+	ptJSON(w, 200, got)
 }
 
 func num(v any) float64 {
@@ -350,6 +361,10 @@ func num(v any) float64 {
 
 func (f *ptFake) handleVar(w http.ResponseWriter, r *http.Request, req ptReq, writer bool) {
 	if r.Method == "GET" {
+		if !f.varWritten && f.varPreStatus != 0 {
+			ptJSON(w, f.varPreStatus, map[string]any{"message": "403 Forbidden"})
+			return
+		}
 		if f.varWritten && f.readBackFault != "" {
 			switch f.readBackFault {
 			case "drop":
@@ -429,12 +444,18 @@ func (f *ptFake) handleTok(w http.ResponseWriter, r *http.Request, req ptReq, re
 	t := f.tok(id)
 	switch {
 	case r.Method == "GET" && action == "":
-		if f.byIDStatus != 0 && id != ptOldID {
+		if f.byIDStatus != 0 && (id != ptOldID || f.byIDAll) {
 			ptJSON(w, f.byIDStatus, map[string]any{"message": "boom"})
 			return
 		}
 		if t == nil {
 			ptJSON(w, 404, map[string]any{"message": "404 Not Found"})
+			return
+		}
+		if f.deadRaw != "" && t.revoked && id != ptOldID {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(f.deadRaw))
 			return
 		}
 		rec := ptRecord(t)
@@ -515,6 +536,10 @@ func (f *ptFake) handlePush(w http.ResponseWriter, r *http.Request, req ptReq) {
 	defer f.mu.Unlock()
 	if r.URL.Query().Get("service") != "git-receive-pack" {
 		w.WriteHeader(400)
+		return
+	}
+	if f.pushDrop {
+		ptDrop(w)
 		return
 	}
 	if f.pushStatus != 0 {
