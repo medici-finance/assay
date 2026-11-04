@@ -2,7 +2,7 @@
 brief: assay:assay:forge-neutral:43
 title: "Incremental forge indexes and dependency-aware invalidation"
 why: "A shared mirror saves provider reads but can still recompute every query after every event. Dependency-aware derived indexes allow selective work while proving that new objects, time expiry and permission changes cannot leave a stale answer looking current."
-wave: 8
+wave: 11
 depends: ["forge-neutral/37", "forge-neutral/42"]
 unblocks: ["forge-neutral/45"]
 effort: M
@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 6
+version: 7
 id: dd9e0da4-b348-4311-a31c-83605c8a6522
 authored: 2026-10-14 by forge-service authoring
 sources:
