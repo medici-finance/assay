@@ -3,7 +3,7 @@ brief: assay:assay:forge-neutral:37
 title: Scoped forge mirror with persisted freshness, coverage and polling repair
 why: "Every desk, status run and planning read asks the forge the same questions again, one verb at a time, and a throttled or partial read can look like an empty queue. One scoped mirror that records what it read, when, and how completely lets those readers share one answer and see when it is stale or incomplete, without each of them polling the forge."
 wave: 7
-depends: ["graph-execution/28", "graph-execution/29", "graph-execution/19", "forge-neutral/36", "forge-neutral/33", "desktools-v2/09", "forge-neutral/46", "forge-neutral/47", "forge-neutral/48", "forge-neutral/50"]
+depends: ["graph-execution/28", "graph-execution/29", "graph-execution/19", "forge-neutral/36", "forge-neutral/33", "desktools-v2/09", "forge-neutral/46", "forge-neutral/47", "forge-neutral/48", "forge-neutral/50", "forge-neutral/54"]
 unblocks: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43", "cell-api/02"]
 effort: L
 gate: human
@@ -12,7 +12,7 @@ gate-why: "sensitive-data is yes because the mirror copies private pull request,
 issues: []
 outcome: none
 schema: brief-v2
-version: 18
+version: 19
 decision-issue: 5380
 id: 06dc3c03-bfb0-49cf-b171-8f7d192b7aea
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
@@ -248,6 +248,31 @@ and serving. It does not discharge this brief's persisted joined row 23, choose
 retention, qualify shared refresh ownership or authorize private ingestion/activation.
 All 23 existing acceptance rows, joined composition obligations and gates remain owed here. Task 8 consumes /50's mapper and adds the PostgreSQL assembly and joined evidence; /50 does not satisfy those remaining obligations.
 
+## Bounded durable refresh contributions — 3 November 2026
+
+[53](brief-53-qualified-native-mirror-attempt-accounting-and-retry-metadata.md) supplies
+safe typed native attempt/retry evidence and the pre-request authority seam;
+[54](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md)
+implements the canonical SQL Gate/attempt authority and real admitted source/coordinator/
+Store fixture. The forge-neutral/53 and forge-neutral/54 contributions are bounded precursors to this complete joined delivery, not a new
+retention, service, policy or activation owner. Offline pickup uses their explicitly
+qualified immutable source contracts, without waiting for workflow execution features.
+The forge-neutral/51 Requirements/checked-Outcome repair must be genuinely consumed; owner-only
+fulfilment or post-hoc request counts cannot qualify the durable join. Unknown state
+holds. Every existing Task, dependency, risk/gate and all23 Class/Command pairs here
+remain; these contributions do not satisfy the rest of full joined row23 by inference.
+
+## Precursor ownership and pickup ordering
+
+The typed dependency on forge-neutral/54 orders full37 after the bounded50–54
+source/coordinator/persistence contributions. Existing Context paths remain later
+integration touchpoints, not permission to implement their already-owned source mapper,
+Gate or Store concurrently. Consume50/53's admitted mapper/native boundary,51's
+coordinator contract,52's Store and54's canonical SQL Gate before extending the
+remaining retention/scheduler/fact-mapping/complete-acceptance obligations. Preserve every
+original Task, Verify row, gate and Evidence entry. This dependency adds ordering; it
+neither accepts a precursor nor removes full37's other prerequisites.
+
 ## Ground rules
 
 - Offline fixtures and fake provider transports only; real PostgreSQL only in the disposable test
@@ -268,8 +293,12 @@ All 23 existing acceptance rows, joined composition obligations and gates remain
   No caller outside a scope's bound admission reads its rows or receives a complete-empty answer
   for that scope (row 15). Sharing a mirror across cells needs matching access scopes and explicit
   ownership, and is a separate brief.
-- If graph-execution/19's R2 amendment has not landed, or its store has no migration and test
-  harness for an added table, stop and report NEEDS_CONTEXT. Do not build a second store.
+- Full /37 retains graph-execution/19's R2 prerequisites. Its bounded PostgreSQL Store child
+  forge-neutral/52 may instead consume an actual tested canonical migration and container
+  harness revision from graph-execution/36 before full /19 execution delivery, including
+  through a genuine owned feature-branch merge for offline work. If that actual foundation is
+  absent, stop and report NEEDS_CONTEXT. Do not build a second store. This exception grants
+  no parent acceptance, shared-refresh fencing, retention action or activation.
 - Stop at `implemented`; an independent verifier owns verified and done.
 
 ## Read-through and failure-cache amendment — 3 November 2026
@@ -541,6 +570,15 @@ helper plus the actual authored-row input through whole-stream-root coverage. No
 stream name ships in desk source, and neither corpus nor secret guard is exempted or weakened.
 The standalone harness still reads and executes the actual two Verify commands and all
 22 compiler cases. Human retention choices and historical Evidence remain unchanged.
+
+## Bounded PostgreSQL persistence contribution — 3 November 2026
+
+[52](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md) owns
+only the real PostgreSQL Store adapter and SQL persistence checks, extending the single
+graph-execution/36 migration ledger and container fixture. This brings forward durable
+mirror storage without action admission, execution claims or outboxes. Shared refresh
+ownership/accounting and actual admitted source/coordinator joins remain here, including
+row23. All23 original Class/Command pairs and existing human gates remain unchanged.
 
 ## Read-through coordinator ownership — 3 November 2026
 

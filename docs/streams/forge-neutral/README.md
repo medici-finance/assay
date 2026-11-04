@@ -243,7 +243,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 37 | [Scoped forge mirror with persisted freshness, coverage and polling repair](brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md) | 7 | L | todo | — | — |
 | 38 | [Forge event adapter, feedback observations and durable reevaluation demand](brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md) | 8 | L | todo | — | — |
 | 39 | [Typed forge service contract and scoped client SDK](brief-39-typed-forge-service-contract-and-scoped-client-sdk.md) | 3 | M | todo | — | — |
-| 40 | [Authenticated forge serving and role executor custody](brief-40-authenticated-forge-serving-and-role-executor-custody.md) | 6 | L | todo | — | — |
+| 40 | [Authenticated forge serving and role executor custody](brief-40-authenticated-forge-serving-and-role-executor-custody.md) | 9 | L | todo | — | — |
 | 41 | [Write-through forge receipts and read-after-write projection](brief-41-write-through-forge-receipts-and-read-after-write-projection.md) | 8 | L | todo | — | — |
 | 42 | [SHA-bound source queries and immutable result caching](brief-42-sha-bound-source-queries-and-immutable-result-caching.md) | 7 | L | todo | — | — |
 | 43 | [Incremental forge indexes and dependency-aware invalidation](brief-43-incremental-forge-indexes-and-dependency-aware-invalidation.md) | 8 | M | todo | — | — |
@@ -255,6 +255,12 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 49 | [Retire claim-decay stored GitHub login fallback](brief-49-retire-claim-decay-stored-github-login-fallback.md) | 0 | S | implemented | — | — |
 | 50 | [Join admitted incremental reads to mirror observations](brief-50-join-admitted-incremental-reads-to-mirror-observations.md) | 4 | M | todo | — | — |
 | 51 | [Store-injected mirror read-through coordinator and shared refresh gate port](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md) | 3 | M | todo | — | — |
+| 52 | [Canonical PostgreSQL mirror store without execution dependencies](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md) | 3 | L | todo | — | — |
+| 53 | [Qualified native mirror attempt accounting and retry metadata](brief-53-qualified-native-mirror-attempt-accounting-and-retry-metadata.md) | 5 | L | todo | — | — |
+| 54 | [Canonical PostgreSQL refresh gate and admitted read-through integration](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md) | 6 | L | todo | — | — |
+| 55 | [Operator provisioning of known read-only refresh profiles](brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md) | 7 | L | todo | — | — |
+| 56 | [Read-only forge serving behind qualified caller authority](brief-56-read-only-forge-serving-behind-qualified-caller-authority.md) | 8 | L | todo | — | — |
+| 57 | [Qualified local read-only caller authority and current-state producer](brief-57-qualified-local-read-only-caller-authority-and-current-state-producer.md) | 4 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -758,6 +764,17 @@ neither every remaining forge read nor the parent contribution.
 Explicit token inputs and host separation remain until /77's migration. /18 remains
 partial and retains every original acceptance row and remaining read/CI obligation.
 
+## Read-only PostgreSQL persistence split — 3 November 2026
+
+The durable read critical path is canonical PostgreSQL foundation graph-execution/36 →
+[mirror Store52](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md)
+→ shared refresh-gate and admitted source/coordinator joined integration under /37.
+Source mapping and store-injected coordinator fixtures proceed independently. No edge
+on this bounded path waits for execution claims, admission, effects or outbox delivery.
+Full /19 and /37 acceptance, retention, authenticated serving and activation remain owed.
+The smallest unblocking move is the actual /36 migration and container harness, never a
+second database. Generated lifecycle cells carry no hand-authored delivery claim.
+
 ### Read-only observation mapper contribution — 3 November 2026
 
 Fresh main `863c43db` contains the kernel, admitted readers and native response bound.
@@ -785,6 +802,35 @@ not a prerequisite for synthetic coordinator fixtures. Real R2 gate/store and jo
 mapper qualification remain later acceptance requirements. Existing lifecycle and
 acceptance cells are unchanged.
 
+
+## Durable read-through continuation — 3 November 2026
+
+Fresh main214b4c830 has no canonical workflow implementation. Tested feature source now
+exists for foundation36, Store52, mapper50 and coordinator51; feature availability is not
+mainline delivery, independent acceptance or activation. The true remaining API head is
+[53](brief-53-qualified-native-mirror-attempt-accounting-and-retry-metadata.md): safe native
+attempt grants/receipts and retry knowledge, including a lower pre-request authority seam.
+[54](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md)
+then implements that authority and the shared Gate in the single R2 database and joins
+actual admitted source, coordinator and Store with synthetic transports. No new join-only
+brief, provider walker, local quota owner or execution prerequisite is introduced.
+
+| Read-only wave | Work | Pickup condition | Evidence boundary |
+|---|---|---|---|
+| 5 | 53 native attempt/retry metadata | Genuine published50 and repaired51 APIs; no invented working-tree port | Actual native leaf and typed flow; stateful test authority only |
+| 6 | 54 canonical SQL Gate and joined fixture | Actual53 plus52 and repaired51, using36's same ledger/harness | Real PostgreSQL generations/budgets/atomic completion and synthetic native requests |
+| Parent | Full37 acceptance and existing service/cutover path | Its complete dependency/risk graph plus the explicit54 precursor ordering | Retention, remaining joined row23 conditions, authenticated serving and activation remain owed |
+
+Critical path for this bounded implementation is `50 + repaired51 → 53`, then
+`36 → 52` together with `53 + repaired51 → 54`. Authoring54 can run while53 is built;
+SQL implementation may consume53's actual tested immutable port/propagation source while native work continues; final joined delivery consumes completed qualified53. Typed waves/reciprocal edges are generated
+from those dependencies. A mixed stronger-query miss keeps51's single base fill and
+separate Requirements-qualified backoff; SQL design must consume its actual repaired API.
+Absent/unreadable/unknown shared usage or retry metadata holds. No default allowance is
+created on restart, and no source-response total can retroactively bound HTTP work.
+All original23 full37 and13 fullGE19 Verify Class/Command pairs and gates remain intact.
+
+
 ## Shared-cache read-through — 3 November 2026
 
 Cold or insufficient admitted queries fill inside the shared read owner; clients need no
@@ -794,3 +840,48 @@ recover. The [architecture contract](../../proposals/non-ci-architecture/22-forg
 and /37, /39, /40, /42, /43 and /45 carry the source, client, authorization and served-fault
 acceptance. Every prior Class/Command pair remains; no persistent service or activation is
 claimed by this requirements amendment.
+
+### Authoring review reconciliation — 4 November 2026
+
+Current main includes the read-through requirements amendment and the generated49
+implementation witness. The current51,53 and54 contract texts are adopted from their
+qualified feature revisions; adoption does not place runtime code or acceptance on main.
+The explicit `54 → 37` dependency now orders the full parent behind the bounded source,
+coordinator, Store and Gate contributions, preserving every other parent prerequisite.
+Later full37 integration consumes those owners rather than dispatching a second mapper
+or SQL Gate concurrently.
+
+The ordinary PostgreSQL-less desk shards may report only an explicitly unqualified
+outer joined-test skip when no DSN is supplied. Qualifying54 evidence remains in the
+declared PostgreSQL workflow: nonempty explicit DSN, strict canonical fixture and exact
+named joined-test PASS are required. Missing, malformed, unreachable or skipped qualifying
+fixtures fail; this does not relax foundation/Store qualification.
+
+
+## Read-only profile and serving continuation — 4 November 2026
+
+The durable read owner deliberately has no production initializer. [55](brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md)
+extends that same R2 owner with explicit known operator inputs and actual SQL role separation.
+It does not wait for a caller issuer or a write executor. [56](brief-56-read-only-forge-serving-behind-qualified-caller-authority.md)
+then consumes the actual39 wire/client and qualified shared read owner for mirror-query only.
+Its actual authentication/current-authority producer and custody profile are still missing;
+that is a real production pickup blocker, not a port that authoring may assume exists.
+Offline handler/fixture preparation is unqualified and supplies no authenticated-serving credit.
+
+| Read-only wave | Work | Actual prerequisite | Remaining boundary |
+|---|---|---|---|
+| 7 | 55 operator known-profile/accounting provisioning | Qualified54 and the same migration/codec/fixture owner | No production GRANT, credential or policy value selected |
+| 8 | 56 bounded mirror-query handler | Qualified39+55 and an actual independently qualified R3 producer/profile | Missing producer holds; no issuer, TTL or authentication inferred |
+| 9 | Full40 consumes56 | Every original custody/executor prerequisite remains | Full parent Tasks, seven Verify rows and gates remain owed |
+
+The bounded path is `36 → 52`, `50 + 51 → 53`, then `52 + 53 + 51 → 54 → 55`.
+Read serving additionally requires `39 + actual qualified R3 producer/profile → 56`;
+full40 consumes56 afterward. Neither55 nor56 depends on the full write/execution delivery.
+No selected issuer, implementation or approval is fabricated to make this graph ready.
+Source50 lacks facts needed by existing desk-read/review projections and complete review
+coverage, so these units do not qualify full45 tool cutover, retention purge or full37 acceptance.
+
+
+### Earlier local authority producer
+
+[57](brief-57-qualified-local-read-only-caller-authority-and-current-state-producer.md) owns the missing canonical R3 local producer/current-state/custody qualification. Its actual source/profile precedes56; full40 consumes56 afterward, so no producer is hidden behind the downstream executor.55 remains independently implementable. Retained21 external caller requirements,22's local launcher capability and R7 remote login have distinct scope;57 must demonstrate concrete local compatibility and custody rather than invent a crypto/issuer/TTL choice. Missing producer/profile remains NEEDS_CONTEXT and unqualified, with no premature acceptance fork.
