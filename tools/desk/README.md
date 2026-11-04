@@ -1075,6 +1075,15 @@ budget, push or PR creation. It refuses unknown, divergent or unreadable remote
 state and new foreign authors or committers. The two check modes are mutually
 exclusive; ordinary `--check` still opens no connection and judges the whole range.
 
+`--check-remote` is also the preflight for the public-repo write gate. Offline
+`--check` cannot read live visibility, so it reports that gate as not checked and
+names `--check-remote` as the mode that runs it. `--check-remote` runs the real gate
+and refuses with the same text and exit code (5) as the live create. A GitLab
+`internal` project still listed `:public` therefore shows up here, before any push.
+That refusal names the `:internal` replacement entry and says the `:public` entry
+predates the `:internal` token. The operator edits `ASSAY_ALLOWED_REPOS`. No verb
+rewrites it from a live read, because it is an authorization control.
+
 A successful remote check is a snapshot, not permission to ignore a later refusal.
 Run ordinary create from the same owned branch with a fresh body file; it rechecks
 all gates and pins the observed destination tip during its plain push. If either
@@ -3979,6 +3988,13 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
     stale roster claiming `:public` for a repo the forge reports otherwise never authorizes
     on the stale claim (the live read disagrees). A live read that fails or returns an
     unrecognised value is **unverifiable** (exit 6, fail closed) — never guessed private.
+  - **A `:public` entry on a live-internal repo predates the `:internal` token.** Earlier
+    versions had no `:internal` token, so `:public` was the tag such a repo got. It now
+    refuses like any mismatch, and the refusal says the entry predates the token and names
+    the `owner/name:internal` replacement. Nothing migrates the entry: the operator edits
+    it. `deskpr create --check-remote` surfaces the mismatch before a live create.
+    `deskroster` has no check that reads repo visibility from the forge, so it does not
+    report this mismatch.
   - **Migration from the retired sentinel.** The former standing-per-repo authorization —
     a human-maintained opt-out list file under `~/.config/assay/` (respectively
     `$XDG_CONFIG_HOME/assay/`) — is gone: its reader has been removed, so the file no longer
