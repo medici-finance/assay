@@ -174,7 +174,8 @@ use their JSON tags, while imported mirror structs retain their exact exported
 field names. Do not case-fold or silently discard a field.
 All nested wire strings and map keys must be valid UTF-8 before encoding; invalid
 text is refused rather than replaced. Valid Unicode, including literal U+FFFD,
-is preserved. Source content bytes remain opaque base64 data.
+is preserved. Source content bytes remain opaque base64 data. Dynamic map keys use the
+same nonempty, control-character and general-text byte limits on encode and decode.
 
 The protocol ceilings are 1 MiB of encoded UTF-8 per message, 256 KiB for bounded
 content, 256 collection entries, 4,096 bytes for fields using the general-text cap, and 32 levels of

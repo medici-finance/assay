@@ -84,7 +84,7 @@ func wireUTF8(v reflect.Value) bool {
 	case reflect.Map:
 		entries := v.MapRange()
 		for entries.Next() {
-			if !wireUTF8(entries.Key()) || !wireUTF8(entries.Value()) {
+			if entries.Key().Kind() != reflect.String || !text(entries.Key().String(), MaxTextBytes, false) || !wireUTF8(entries.Value()) {
 				return false
 			}
 		}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,9 +117,24 @@ func checkWireUTF8(t *testing.T) {
 			t.Fatal("producer review refused", err)
 		}
 		count := 0
-		observation.Result.Depths.Actions[bad] = &count
-		if b, err := service.EncodeResponse(r, q); err == nil || len(b) != 0 {
-			t.Fatal("invalid map key silently encoded")
+		observation.Result.Depths.Actions[unicode] = &count
+		wire, err := service.EncodeResponse(r, q)
+		if err != nil {
+			t.Fatal("valid Unicode map key refused", err)
+		}
+		out, err := service.DecodeResponse(wire, q)
+		if err != nil || out.Review.Result.Depths.Actions[unicode] == nil {
+			t.Fatal("valid map key changed", err)
+		}
+		delete(observation.Result.Depths.Actions, unicode)
+		for name, key := range map[string]string{"utf8": bad, "empty": "", "nul": "\x00", "control": "\x01", "carriage-return": "\r", "blank": " ", "oversized": strings.Repeat("k", service.MaxTextBytes+1)} {
+			t.Run(name, func(t *testing.T) {
+				observation.Result.Depths.Actions[key] = &count
+				defer delete(observation.Result.Depths.Actions, key)
+				if b, err := service.EncodeResponse(r, q); err == nil || len(b) != 0 {
+					t.Fatal("invalid map key silently encoded")
+				}
+			})
 		}
 	})
 }
