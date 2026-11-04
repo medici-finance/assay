@@ -64,6 +64,9 @@ func cmdEdit(args []string) (err error) {
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	decided := fs.String("decided", "", "path to a file declaring desk-taken decisions (decision:/alternative:/cost: triples, one item per numbered line) — writes/replaces the `## Desk-decided` block in the replacement body and applies the desk-decided label")
 	prNum := fs.Int("pr", 0, "edit THIS open PR instead of the one whose head branch is this worktree's branch: admitted when this checkout is the PR's own (its branch is the PR's head branch, or its HEAD commit is exactly the PR's head commit — #1901), or, from any other feature branch or detached HEAD, when the PR's head branch is in this repository and its current body already carries a link trailer (#2085)")
+	relinkFrom := fs.Int("relink-from", 0, "correct the PR's Issue:/Fixes: link: the issue number its CURRENT trailer names (with --relink-to and --relink-reason, all three or none — #5020)")
+	relinkTo := fs.Int("relink-to", 0, "correct the PR's Issue:/Fixes: link: the issue number the replacement body's trailer names; that issue must exist, be open, pass the trust gate and carry no human or decision gate")
+	relinkReason := fs.String("relink-reason", "", "correct the PR's Issue:/Fixes: link: one line saying why, recorded in an audit comment posted on the PR before the body edit")
 	check := fs.Bool("check", false, "run every LOCAL gate (flags, the secret scan, the replacement body's Brief:/Authors:/Issue: trailer grammar, branch state) and stop BEFORE minting a token or opening any connection; the trailer-IMMUTABILITY compare and the self-containment scan's bare-#N hint both need the PR's CURRENT body from the forge and are reported not checked, by name")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
@@ -95,6 +98,12 @@ func cmdEdit(args []string) (err error) {
 	if *bodyFile == "" {
 		return deskkit.Refused("refused: --body-file is required — `deskpr edit` replaces the PR body with the contents of that file")
 	}
+	// #5020: the link-correction flags are all-or-none, validated before the body is even read
+	// and long before any forge call.
+	rl, rlerr := parseRelink(*relinkFrom, *relinkTo, *relinkReason)
+	if rlerr != nil {
+		return rlerr
+	}
 	body, berr := readBody(*bodyFile, "")
 	if berr != nil {
 		return berr
@@ -117,6 +126,15 @@ func cmdEdit(args []string) (err error) {
 			Tool: "deskpr", Verb: "edit", Reason: *scanOverride,
 			Surface: "PR title", Content: []byte(*title),
 		}, deskkit.ScanSurface("PR title", []byte(*title))); serr != nil {
+			return serr
+		}
+	}
+	// The relink reason is published verbatim in the audit comment, so it faces the same scan.
+	if rl != nil {
+		if serr := deskkit.HandleScanRefusal(deskkit.ScanOverride{
+			Tool: "deskpr", Verb: "edit", Reason: *scanOverride,
+			Surface: "relink reason", Content: []byte(rl.reason),
+		}, deskkit.ScanSurface("relink reason", []byte(rl.reason))); serr != nil {
 			return serr
 		}
 	}
@@ -153,6 +171,11 @@ func cmdEdit(args []string) (err error) {
 		return perr
 	}
 	ac.repo, ac.head = facts.repo, facts.head
+	if rl != nil {
+		if rerr := rl.checkBody(body, facts.repo); rerr != nil {
+			return rerr
+		}
+	}
 
 	// --check stops HERE, before the token mint and before any forge call. Every gate
 	// above it is local: flags, the secret scan of the replacement body/title, the
@@ -171,6 +194,10 @@ func cmdEdit(args []string) (err error) {
 		prCheck := "whether an open PR exists for this branch"
 		if *prNum > 0 {
 			prCheck = fmt.Sprintf("PR #%d's state, head, repository and current link trailer (whether this checkout may edit it)", *prNum)
+		}
+		if rl != nil {
+			prCheck += fmt.Sprintf(", --relink-from #%d against the PR's current trailer, issue #%d's existence, "+
+				"state, trust and gates (--relink-to)", rl.from, rl.to)
 		}
 		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
 			"Not checked (needs the forge, not run here): trailer-immutability against the existing " +
@@ -199,7 +226,17 @@ func cmdEdit(args []string) (err error) {
 	// exactly once, at create time, and revocable silently forever after.
 	oldLink, hadLink := trailerLink([]byte(cur.Body))
 	newLink, _ := trailerLink(body)
-	if hadLink && oldLink != newLink {
+	if rl != nil {
+		// #5020: the one sanctioned link change. The flag must name the link the PR carries
+		// now, and the new issue must pass the gates before anything is written.
+		var aerr error
+		if oldLink, newLink, aerr = rl.admit([]byte(cur.Body), body, facts.repo); aerr != nil {
+			return aerr
+		}
+		if gerr := relinkIssueGate(fg, fr, rl.to); gerr != nil {
+			return gerr
+		}
+	} else if hadLink && oldLink != newLink {
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: the replacement body changes the PR's link trailer (%s → %s) — a work item link is not "+
 				"editable after the fact. Keep `%s` in the body and re-run; a PR that genuinely delivers different "+
@@ -220,6 +257,7 @@ func cmdEdit(args []string) (err error) {
 	}{
 		{"PR body", body},
 		{"PR title", []byte(*title)},
+		{"relink reason", relinkReasonBytes(rl)},
 	} {
 		if len(sc.content) == 0 {
 			continue // --title omitted: nothing is published on that surface
@@ -301,10 +339,26 @@ func cmdEdit(args []string) (err error) {
 		changed = append(changed, "title")
 	}
 	ac.writeAttempted = true
+	// #5020: the audit record is posted BEFORE the edit. A failed post stops here with nothing
+	// edited, so a landed relink always has its record; the reverse (a record for an edit that
+	// then failed) is named in the record itself and in the error below.
+	if rl != nil {
+		if _, aErr := fg.PostComment(fr, pr.Number, relinkAudit(oldLink, newLink, rl.reason)); aErr != nil {
+			return deskkit.Unverifiable("the link-correction audit comment could not be posted, so the body was NOT edited — "+
+				"re-run once the forge is reachable", aErr)
+		}
+	}
 	if eErr := fg.EditChange(fr, pr.Number, editIn); eErr != nil {
+		if rl != nil {
+			return deskkit.Unverifiable("edit change failed after the link-correction audit comment was posted — the PR "+
+				"still carries "+oldLink+"; re-run to land the correction", eErr)
+		}
 		return deskkit.Unverifiable("edit change failed", eErr)
 	}
 	ac.detail = "edited " + strings.Join(changed, "+") + " of " + pr.URL
+	if rl != nil {
+		ac.detail += " (link " + oldLink + " -> " + newLink + ")"
+	}
 
 	// The announcement. A body/title edit moves no head SHA, so a head-keyed review monitor
 	// records no event for it and the correction is invisible to the loop that must act on
@@ -497,4 +551,13 @@ func requireLinkedSameRepoPR(cur *deskkit.PullRequest, prNum int) error {
 			"(the link then cannot change). Run it from a checkout of the PR's head, or check the PR number")
 	}
 	return nil
+}
+
+// relinkReasonBytes is the reason surface for the self-containment loop; nil (skipped) without
+// --relink-*.
+func relinkReasonBytes(rl *relinkReq) []byte {
+	if rl == nil {
+		return nil
+	}
+	return []byte(rl.reason)
 }
