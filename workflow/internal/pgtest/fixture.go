@@ -186,3 +186,16 @@ func (f *Fixture) Close() error {
 	}
 	return closeErr
 }
+
+// ConnectOwned returns a test-only SQL connection after rechecking this fixture's
+// exact generated database and ownership marker. It never opens an ambient DB.
+func (f *Fixture) ConnectOwned(ctx context.Context) (*sql.DB, error) {
+	if f == nil || !f.owned || !f.ready || !strings.HasPrefix(f.Config.Database, "assay_pg_") {
+		return nil, errors.New("unowned fixture database")
+	}
+	var marker string
+	if err := f.Admin.QueryRowContext(ctx, "SELECT coalesce(shobj_description(oid,'pg_database'),'') FROM pg_database WHERE datname=$1 AND datdba=(SELECT oid FROM pg_roles WHERE rolname=current_user)", f.Config.Database).Scan(&marker); err != nil || marker != f.marker {
+		return nil, errors.New("fixture ownership mismatch")
+	}
+	return dial(ctx, f.Config)
+}
