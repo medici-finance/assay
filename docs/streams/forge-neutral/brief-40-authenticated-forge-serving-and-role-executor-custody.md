@@ -106,6 +106,8 @@ all existing prerequisites, complete Tasks, seven Verify Class/Command pairs, Ev
 and gates, and adds its remaining executor/custody/effect obligations later. No edge from56
 back to this full parent,41 or GE19 is introduced.
 
+The canonical shared Gate and AttemptAuthority remain owned by forge-neutral/54. This parent consumes that boundary through56 and adds no refresh owner.
+
 The actual R3 caller/current-state/custody producer must be qualified independently of
 this parent’s write/executor implementation. Passive records and client Scope fields do
 not satisfy that prerequisite. Missing producer/profile is NEEDS_CONTEXT; resolve the
