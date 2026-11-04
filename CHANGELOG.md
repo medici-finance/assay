@@ -23,6 +23,36 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.72 — 2026-11-03
+
+### Fixed
+- Bound each admitted incremental mirror response before GitHub or GitLab SDK decoding, including compressed and error responses, while preserving the separate aggregate budget and ordinary forge operations.
+- The brief Context `files:` parser now reads a bullet whose description wraps onto deeper-indented lines, such as a continuation that starts with "(". It reads it the same way as the bullet joined onto one line. A continuation line that reads as declarations still declares, and every other wrapped shape is still refused (#3697).
+- The windows-port/12 Verify table now runs deterministically offline: each row asserts a named passing test or a tree-built binary instead of a vacuous `go test -run`, cross-compiles for Windows rather than executing a foreign binary, and the rows that need a native Windows host or a live forge identity are marked production-only.
+- `author-brief` now requires the critical-path head to be checked while the plan is authored and stated in one explicit form ("I verified … by reading …; it showed …" or "… is unproven, so it is the real head"), never taken from the requester's stated edges or left to brief 01's Task; and its freshness rule now withholds a fix brief only when the site is shown already fixed, so a stated read yields the brief with its `freshness-checked` stamp instead of a held draft.
+
+### Changed
+- Add the store-neutral Cell ownership, quota reservation, effect-intent and recovery protocol, with refusing authority ports and offline concurrent/process restart qualification. Runtime PostgreSQL and consumer activation remain separately gated.
+- Claim decay now requires an explicitly supplied token for its current host and reports unavailable without launching a stored-login credential subprocess when that token is missing.
+- Historical consumer checks now report producer delivery identity as separately unqualified on stderr while preserving stdout report bytes, so corroborated follow-up routes cannot be mistaken for implementation delivery evidence.
+- Keep Cell ownership generations distinct from per-item claim generations at both admission and the independent effect boundary.
+- Record the requested purge-to-tombstones implementation direction and the remaining storage and tool-cutover dependency path.
+- Resolve definitively absent operations only after independent writer fencing and known-usage settlement; bind provider requests to one phase and check quota windows against an explicit authority clock.
+- Split the native mirror response-allocation bound into an independently testable contribution while retaining joined persistence acceptance and the existing activation gates.
+- The CI jobs that needed a native Windows runner are retired (#4106): the Windows CI leg
+  (desk suite, `statusgen --lint`/`--version` smoke, bootstrap hash-check smoke, the held arm64
+  smoke and the in-container witness job), the native cellctl launch-contract workflow, the
+  Windows git-maintenance workflow and the bootstrap hash-check smoke script. No CI job now runs
+  anything on native Windows, including the bootstrap's runtime sha256 refusal of a tampered
+  download. The Windows release cross-compiles, `scripts/bootstrap-windows.ps1`,
+  `scripts/build-windows.ps1` and the Linux-side Windows build checks are unchanged.
+- The desktools-v2/10 brief's frontmatter now records a `ruling:` link to the human ruling comment on its decision issue that names `desktools-v2/10`. The decision gate accepts that link, so the brief's next status move is no longer held for a missing ruling.
+- The evidence coverage brief's Review now records the maintainer's accepted residual for the board-bookkeeping exemption: in the conservative scope, `STATUS.md` and paths under `docs/streams/` do not stale a witness. Declaring an artifact in `files:` restores invalidation only for a `docs/streams/` artifact that verify and regen do not necessarily write; an edit to `STATUS.md`, a stream `README.md`, a brief file or the verify outcome log never stales a witness, declared or not, so a lint row is not protected by a declaration. No code changes.
+- Two briefs no longer name the native-Windows CI files retired by #4106 as live: desktools-v2/35
+  drops the bootstrap hash-check smoke script as a port target and both copies of the Windows CI
+  leg as consumers, and its Windows vet row now says native Windows execution is no longer
+  CI-proven; cellctl-windows/00 drops the retired launch-contract workflow from its consumers.
+
 ## v1.0.71 — 2026-11-03
 
 ### Added

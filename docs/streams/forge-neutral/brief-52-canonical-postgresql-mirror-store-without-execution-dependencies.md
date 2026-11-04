@@ -4,7 +4,7 @@ title: Canonical PostgreSQL mirror store without execution dependencies
 why: "The shared mirror needs durable scoped rows and honest coverage before execution features exist. Extend the canonical PostgreSQL owner instead of introducing a mirror database or waiting for workflow admission and outboxes."
 wave: 3
 depends: ["graph-execution/36", "forge-neutral/46"]
-unblocks: []
+unblocks: ["forge-neutral/54"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}

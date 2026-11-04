@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 4
+version: 5
 id: a2814dbf-4d0c-4cef-bfc6-aceaf50dd255
 authored: 2026-10-14 by forge-service authoring
 sources:
@@ -191,3 +191,12 @@ exit, named result, positive and failing control, and date. No result is asserte
 Gate: human. Inspect actual dependency/import and credential reachability, private data and
 count isolation, current authority and unknown outcomes. Tests cannot authorize provisioning
 credentials, switching a managed writer, answering a human decision or changing a merge policy.
+
+## Read-through coordinator ownership — 3 November 2026
+
+This brief's future typed query/client mapping consumes the bounded orchestration
+contract assay:assay:forge-neutral:51, preserving fulfilment, partial/unavailable
+coverage, current admission and retry eligibility. Compatible projections may join
+one underlying fill; the client never receives a provider fallback or a gate as
+authority. That offline coordinator profile supplies no served protocol, credential
+or activation. All existing Task/Verify obligations and human gates remain.

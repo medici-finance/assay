@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 4
+version: 5
 id: 2b089f0c-6ce5-4e2f-a5bf-d62842845b29
 authored: 2026-10-14 by forge-service authoring
 sources:
@@ -218,3 +218,13 @@ exit, named result, positive and failing control, and date. No result is asserte
 Gate: human. Inspect actual dependency/import and credential reachability, private data and
 count isolation, current authority and unknown outcomes. Tests cannot authorize provisioning
 credentials, switching a managed writer, answering a human decision or changing a merge policy.
+
+## Read-through coordinator ownership — 3 November 2026
+
+This brief's future authenticated serving composition consumes
+assay:assay:forge-neutral:51 through currently admitted source/store ports and the
+canonical R2 refresh-gate adapter. Trusted caller identity, access/configuration
+epochs and finite policy come from this existing custody boundary, never a request.
+The coordinator's fake-gate profile proves neither cross-process durability nor
+authenticated remote access. Production serving and executor custody stay held
+behind every existing Task/Verify obligation and human gate.

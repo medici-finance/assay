@@ -129,6 +129,7 @@ type Query struct {
 }
 type RefreshPolicy struct{ Overlap, FullInventoryInterval, FailureBackoff time.Duration }
 type ScanPlan struct {
+	AttemptGrant    AttemptGrant
 	Scope           Scope
 	ExpectedVersion string
 	// PriorObservedUpTo is the selected snapshot watermark, not new coverage.
@@ -139,6 +140,7 @@ type ScanPlan struct {
 	Validator         string
 }
 type ScanResult struct {
+	Attempts                                    AttemptReceipt
 	Validator                                   string
 	Records                                     []Observation
 	Complete, NotModified, ConditionalSupported bool
@@ -153,6 +155,120 @@ type ScanUpdate struct {
 	Upsert                                                 []Observation
 	NotInInventory                                         []RecordID
 	CompleteScan, FullInventory, RetentionDecisionRequired bool
+}
+
+// AttemptGrant contains opaque identity and claims independently bound by the
+// canonical authority. Copying it grants neither access nor budget; trusted
+// refresh composition supplies it, never query text.
+type AttemptGrant struct {
+	ID, SourceID, Generation, CallerID                 string
+	AccessEpoch, ConfigEpoch, PolicyClass, PolicyEpoch string
+	Scope                                              Scope
+	MaxHTTPAttempts                                    int64
+	ExpiresAt                                          time.Time
+}
+
+func (g AttemptGrant) Validate(now time.Time) error {
+	if err := g.Scope.Validate(); err != nil {
+		return err
+	}
+	if g.ID == "" || g.SourceID == "" || g.Generation == "" || g.CallerID == "" || g.AccessEpoch == "" || g.ConfigEpoch == "" || g.PolicyClass == "" || g.PolicyEpoch == "" || g.MaxHTTPAttempts <= 0 || now.IsZero() || !now.Before(g.ExpiresAt) {
+		return invalid("missing, expired or unbounded native attempt grant")
+	}
+	return nil
+}
+
+// Equal compares expiry instants without requiring process-local monotonic or
+// location metadata to survive a canonical database round trip.
+func (g AttemptGrant) Equal(other AttemptGrant) bool {
+	expires, otherExpires := g.ExpiresAt, other.ExpiresAt
+	g.ExpiresAt, other.ExpiresAt = time.Time{}, time.Time{}
+	return g == other && expires.Equal(otherExpires)
+}
+
+// A reservation is one canonical BeforeAttempt result, not an HTTP send. An
+// uncertain call cannot be closed or refunded from an aggregate receipt.
+type AttemptReservation struct {
+	ID    string
+	Grant AttemptGrant
+}
+
+// Value is the observed count/prefix. Known=false never qualifies it as a
+// complete total, and is distinct from an observed zero.
+type WorkCount struct {
+	Value int64
+	Known bool
+}
+
+type RetryKnowledge string
+
+const (
+	RetryUnknown      RetryKnowledge = "unknown"
+	RetryNotBefore    RetryKnowledge = "not-before"
+	RetryNoConstraint RetryKnowledge = "no-observed-constraint"
+	RetryNoResponse   RetryKnowledge = "qualified-no-response"
+)
+
+// Unknown knowledge retains any prior positive maximum floor. NoConstraint is
+// a fully covered observation, never a universal provider allowance.
+type RetryEvidence struct {
+	Knowledge RetryKnowledge
+	NotBefore time.Time
+	// A qualified relative hint remains separate from the source clock's
+	// absolute floor. The canonical authority also anchors it to its own
+	// observation time, so process clock skew cannot shorten the delay.
+	Delay      time.Duration
+	DelayKnown bool
+}
+
+type AttemptHold string
+
+const (
+	AttemptCallerHeld    AttemptHold = "caller"
+	AttemptAdmissionHeld AttemptHold = "admission"
+	AttemptSourceHeld    AttemptHold = "source"
+	AttemptUnknownHeld   AttemptHold = "unknown"
+)
+
+func (h AttemptHold) Valid() bool {
+	return h == AttemptCallerHeld || h == AttemptAdmissionHeld || h == AttemptSourceHeld || h == AttemptUnknownHeld
+}
+
+var ErrAttemptHeld = errors.New("mirror: native attempt accounting held")
+
+// AttemptError is a bounded accounting classification, never a provider error
+// or confirmed source permission loss.
+type AttemptError struct{ Hold AttemptHold }
+
+func (e *AttemptError) Error() string { return ErrAttemptHeld.Error() }
+func (e *AttemptError) Unwrap() error { return ErrAttemptHeld }
+
+// Safe evidence for exactly one reservation. Status zero is unqualified, not
+// success. DecodedBytes counts consumed JSON (including a rejected prefix), not
+// wire bytes or a claimed total body length.
+type AttemptObservation struct {
+	HTTP, DecodedBytes WorkCount
+	Status             int
+	ResponseComplete   bool
+	Retry              RetryEvidence
+	ObservedAt         time.Time
+}
+
+type AttemptAuthority interface {
+	BeforeAttempt(context.Context, AttemptGrant) (AttemptReservation, error)
+	ObserveAttempt(context.Context, AttemptReservation, AttemptObservation) error
+}
+
+// This invocation's own work only. The aggregate never closes/refunds individual
+// reservations or invents missing reports.
+type AttemptReceipt struct {
+	Grant AttemptGrant
+	// Qualified decoded-data completion before authority observation I/O.
+	// Zero is unknown; this is never quota, lease or callback-completion time.
+	ObservedAt         time.Time
+	HTTP, DecodedBytes WorkCount
+	Retry              RetryEvidence
+	Held               AttemptHold
 }
 
 // Source is a future composition seam, not a source implementation or permission

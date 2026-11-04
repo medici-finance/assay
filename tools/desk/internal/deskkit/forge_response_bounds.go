@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
 	"github.com/medici-finance/assay/forgeread/adapters"
+	"github.com/medici-finance/assay/forgeread/mirror"
 )
 
 // mirrorResponseLimitError is inspectable through the SDK/DeskError cause chain.
@@ -49,13 +51,25 @@ func mirrorResponseClient(base *http.Client) *http.Client {
 	// read. Otherwise overflow would be reported as zero response bytes after
 	// this adapter had already consumed the detection prefix. Preserve an
 	// existing counted leaf rather than hiding it behind the context wrapper.
+	var attempt *mirrorAttemptState
 	if contextual, ok := next.(forgeContextTransport); ok {
-		contextual.next = countRoundTrips(contextual.next)
-		next = contextual
+		attempt = mirrorAttemptContext(contextual.ctx)
+		if attempt != nil {
+			leaf, covered := mirrorAttemptLeaf(contextual.next, attempt)
+			if !covered {
+				next = mirrorAttemptRefusal{attempt}
+			} else {
+				contextual.next = leaf
+				next = contextual
+			}
+		} else {
+			contextual.next = countRoundTrips(contextual.next)
+			next = contextual
+		}
 	} else {
 		next = countRoundTrips(next)
 	}
-	c.Transport = countedTransport{next: mirrorResponseTransport{next: next}}
+	c.Transport = countedTransport{next: mirrorResponseTransport{next: next, attempt: attempt}}
 	return c
 }
 
@@ -71,17 +85,47 @@ func (g *GitLabForge) mirrorAccess(ctx context.Context) adapters.Access {
 	return cp.sharedAccess()
 }
 
-type mirrorResponseTransport struct{ next http.RoundTripper }
+type mirrorAttemptRefusal struct{ state *mirrorAttemptState }
+
+func (t mirrorAttemptRefusal) RoundTrip(*http.Request) (*http.Response, error) {
+	t.state.mu.Lock()
+	defer t.state.mu.Unlock()
+	return nil, t.state.hold(mirror.AttemptUnknownHeld)
+}
+
+type mirrorResponseTransport struct {
+	next    http.RoundTripper
+	attempt *mirrorAttemptState
+}
 
 func (t mirrorResponseTransport) RoundTrip(r *http.Request) (out *http.Response, failure error) {
-	resp, err := t.next.RoundTrip(r)
-	if resp != nil {
+	var resp *http.Response
+	// Run after every later stage, including a failed accounting observation.
+	// A known non-success status survives even when the SDK never sees the body.
+	defer func() {
+		if failure != nil && resp != nil && resp.StatusCode != 0 && (resp.StatusCode < 200 || resp.StatusCode >= 300) {
+			failure = &mirrorResponseStatusError{cause: failure, status: resp.StatusCode}
+		}
+	}()
+	var consumed int64
+	complete := false
+	if t.attempt != nil {
 		defer func() {
-			if failure != nil && resp.StatusCode != 0 && (resp.StatusCode < 200 || resp.StatusCode >= 300) {
-				failure = &mirrorResponseStatusError{cause: failure, status: resp.StatusCode}
+			ctx := context.Background()
+			if r != nil {
+				ctx = r.Context()
+			}
+			if err := t.attempt.finish(ctx, consumed, true, complete); err != nil {
+				if out != nil && out.Body != nil {
+					_ = out.Body.Close()
+				}
+				out = nil
+				failure = errors.Join(failure, err)
 			}
 		}()
 	}
+	var err error
+	resp, err = t.next.RoundTrip(r)
 	if err != nil {
 		if resp != nil && resp.Body != nil {
 			_ = resp.Body.Close()
@@ -90,6 +134,21 @@ func (t mirrorResponseTransport) RoundTrip(r *http.Request) (out *http.Response,
 	}
 	if resp == nil || resp.Body == nil {
 		return nil, fmt.Errorf("mirror response has no body")
+	}
+	if t.attempt != nil && resp.Header == nil {
+		// Lost pagination metadata cannot qualify a complete provider inventory.
+		_ = resp.Body.Close()
+		t.attempt.mu.Lock()
+		err := t.attempt.hold(mirror.AttemptUnknownHeld)
+		t.attempt.mu.Unlock()
+		return nil, err
+	}
+	if t.attempt != nil && resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		_ = resp.Body.Close()
+		t.attempt.mu.Lock()
+		err := t.attempt.hold(mirror.AttemptUnknownHeld)
+		t.attempt.mu.Unlock()
+		return nil, err
 	}
 	// Finish a bounded read before handing either a success or error response to
 	// an SDK. A streaming decoder may accept a short JSON prefix and drain the
@@ -111,12 +170,14 @@ func (t mirrorResponseTransport) RoundTrip(r *http.Request) (out *http.Response,
 	// response; explicit gzip from an injected transport is decoded above. The
 	// cap therefore measures JSON bytes, not Content-Length or compressed bytes.
 	body, err := io.ReadAll(io.LimitReader(decoded, adapters.MaxUpdateBytes+1))
+	consumed = int64(len(body))
 	if int64(len(body)) > adapters.MaxUpdateBytes {
 		return nil, &mirrorResponseLimitError{}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("mirror response read did not complete: %w", err)
 	}
+	complete = true
 	cp := *resp
 	cp.Header = resp.Header.Clone()
 	cp.Header.Del("Content-Encoding")

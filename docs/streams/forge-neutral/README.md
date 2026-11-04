@@ -254,7 +254,10 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 48 | [Bound native mirror response allocation before decoding](brief-48-bound-native-mirror-response-allocation-before-decoding.md) | 3 | M | todo | — | — |
 | 49 | [Retire claim-decay stored GitHub login fallback](brief-49-retire-claim-decay-stored-github-login-fallback.md) | 0 | S | todo | — | — |
 | 50 | [Join admitted incremental reads to mirror observations](brief-50-join-admitted-incremental-reads-to-mirror-observations.md) | 4 | M | todo | — | — |
+| 51 | [Store-injected mirror read-through coordinator and shared refresh gate port](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md) | 3 | M | todo | — | — |
 | 52 | [Canonical PostgreSQL mirror store without execution dependencies](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md) | 3 | L | todo | — | — |
+| 53 | [Qualified native mirror attempt accounting and retry metadata](brief-53-qualified-native-mirror-attempt-accounting-and-retry-metadata.md) | 5 | L | todo | — | — |
+| 54 | [Canonical PostgreSQL refresh gate and admitted read-through integration](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md) | 6 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -781,3 +784,45 @@ The smallest unblock is the typed mapper and its presence semantics: source insp
 found no mirror.Source implementation, and Observation lacks the readers' BodyKnown.
 This contribution retains /37's full 23-row acceptance, including persisted row 23,
 and every existing retention, independent verification and activation gate.
+
+### Read-through coordinator contribution — 3 November 2026
+
+[51](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md)
+authors a store-injected coordinator over the existing mirror kernel and admitted source
+ports. It separates offline fake-gate/reference-store qualification from the later
+canonical R2 PostgreSQL gate/store integration. The shared gate owns refresh acquisition,
+completion and failure eligibility; callers never install their own fallback poller.
+This contribution does not deliver full /37, its persisted row 23, retention selection,
+remote custody, reader cutover or activation. Its typed offline start prerequisite is the existing kernel (`46 → 51`, wave3).
+Mapper50 is a compatible Source implementation for later real-source integration,
+not a prerequisite for synthetic coordinator fixtures. Real R2 gate/store and joined
+mapper qualification remain later acceptance requirements. Existing lifecycle and
+acceptance cells are unchanged.
+
+
+## Durable read-through continuation — 3 November 2026
+
+Fresh main214b4c830 has no canonical workflow implementation. Tested feature source now
+exists for foundation36, Store52, mapper50 and coordinator51; feature availability is not
+mainline delivery, independent acceptance or activation. The true remaining API head is
+[53](brief-53-qualified-native-mirror-attempt-accounting-and-retry-metadata.md): safe native
+attempt grants/receipts and retry knowledge, including a lower pre-request authority seam.
+[54](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md)
+then implements that authority and the shared Gate in the single R2 database and joins
+actual admitted source, coordinator and Store with synthetic transports. No new join-only
+brief, provider walker, local quota owner or execution prerequisite is introduced.
+
+| Read-only wave | Work | Pickup condition | Evidence boundary |
+|---|---|---|---|
+| 5 | 53 native attempt/retry metadata | Genuine published50 and repaired51 APIs; no invented working-tree port | Actual native leaf and typed flow; stateful test authority only |
+| 6 | 54 canonical SQL Gate and joined fixture | Actual53 plus52 and repaired51, using36's same ledger/harness | Real PostgreSQL generations/budgets/atomic completion and synthetic native requests |
+| Parent | Full37 acceptance and existing service/cutover path | Its unchanged complete dependency/risk graph | Retention, remaining joined row23 conditions, authenticated serving and activation remain owed |
+
+Critical path for this bounded implementation is `50 + repaired51 → 53`, then
+`36 → 52` together with `53 + repaired51 → 54`. Authoring54 can run while53 is built;
+SQL implementation may consume53's actual tested immutable port/propagation source while native work continues; final joined delivery consumes completed qualified53. Typed waves/reciprocal edges are generated
+from those dependencies. A mixed stronger-query miss keeps51's single base fill and
+separate Requirements-qualified backoff; SQL design must consume its actual repaired API.
+Absent/unreadable/unknown shared usage or retry metadata holds. No default allowance is
+created on restart, and no source-response total can retroactively bound HTTP work.
+All original23 full37 and13 fullGE19 Verify Class/Command pairs and gates remain intact.
