@@ -1,6 +1,6 @@
 # coordination-store-v1
 
-Status: foundation implementation; full R2 domain schema remains planned.
+Status: foundation and bounded mirror Store implementation; full R2 domain schema remains planned.
 Owner: `workflow/store` (graph-execution/36 substrate; graph-execution/19 domain delivery).
 
 ## Implemented foundation schema
@@ -35,8 +35,10 @@ and normalization, including no-space, repeated-dash and case-insensitive spelli
 Only `Up`, `StatementBegin` and `StatementEnd` are allowed. Transaction disabling,
 environment substitution and all other directives refuse before database connection.
 
-The foundation contains no domain table. A later adapter extends this exact migration set
-and independently validates the schema floor and its admission/version/completeness rules.
+The bounded mirror adapter extends this exact migration set. Production requires the
+checksummed ledger floor and enforces admission/version/completeness rules. The schema
+boundary test checks actual table/column/trigger shape; Open does not probe that catalog
+shape or detect administrative tampering beyond the ledger.
 One current foundation handle grants no claim, execution, acceptance or effect authority.
 
 ## Connection and fixture boundary
@@ -58,6 +60,77 @@ A failed setup also retains the owned-creation receipt for bounded cleanup. Miss
 fails tests; no skip is a qualification pass. Local server binaries and ambient Docker or
 Kubernetes discovery are excluded. CI supplies its own disposable PostgreSQL container.
 
+## Implemented mirror schema
+
+Migration `00002_mirror.sql` adds these tables in the same Goose ledger. Only the
+six scope timestamp columns and two record timestamp columns are nullable; NULL is
+unknown. Timestamps are exact numeric(30,0) Unix nanoseconds, not rounded SQL timestamps.
+
+| Table | Column | PostgreSQL type |
+|---|---|---|
+| mirror_scopes | scope_key | bytea |
+| mirror_scopes | provider | text |
+| mirror_scopes | host | bytea |
+| mirror_scopes | repository | bytea |
+| mirror_scopes | kind | text |
+| mirror_scopes | admission | bytea |
+| mirror_scopes | version | bigint |
+| mirror_scopes | state | text |
+| mirror_scopes | reason | text |
+| mirror_scopes | last_attempted | numeric |
+| mirror_scopes | last_complete | numeric |
+| mirror_scopes | last_inventory | numeric |
+| mirror_scopes | observed_up_to | numeric |
+| mirror_scopes | retained_from | numeric |
+| mirror_scopes | validator_since | numeric |
+| mirror_scopes | validator | bytea |
+| mirror_scopes | revision | bytea |
+| mirror_scopes | validator_full | boolean |
+| mirror_scopes | complete_scan | boolean |
+| mirror_scopes | full_inventory | boolean |
+| mirror_scopes | retention_required | boolean |
+| mirror_scopes | write_xid | xid8 |
+| mirror_records | scope_key | bytea |
+| mirror_records | record_kind | text |
+| mirror_records | number | bigint |
+| mirror_records | payload | bytea |
+| mirror_records | in_inventory | boolean |
+| mirror_records | updated_at | numeric |
+| mirror_records | observed_at | numeric |
+
+The scope key is a length-prefixed SHA-256 index over provider, host, canonical repository,
+kind and admission. Full identity is stored and independently matched before disclosure;
+a hash or admission string is never authorization. The record primary key is
+(scope_key, record_kind, number), with a foreign key to the scope. Positive IDs, provider/kind
+provenance, current-transaction scope transition and monotonic stamps are SQL checked.
+
+A scope starts version0/never-read. Each transition advances exactly one version, using
+an SQL ExpectedVersion predicate. Rows and coverage share its transaction. Triggers reject
+incomplete completeness/observed/inventory advances, regressions, partial absences and
+unqualified permission-hold recovery even when Go validation is bypassed. A new observed
+row must be in inventory; only an existing row under complete full-inventory proof can be
+marked absent. RetainedFrom is constrained NULL; no qualified history or retention action
+is implemented. Row deletes refuse; TRUNCATE is not protected by these row triggers.
+These guards assume a role that cannot truncate, disable triggers or alter schema; a
+database owner is not an untrusted application client. Apply also refuses absence IDs
+without complete full-inventory proof when an ID is missing or already absent, where a
+row trigger would see no inventory transition.
+
+Payload bytea uses private codec version1: bounded gob facts plus explicit collection
+presence bits. NUL and arbitrary string bytes, BodyKnown, nil versus known-empty slices,
+review provenance and nanosecond instants survive. SQL identity/inventory are excluded
+from the payload and reconstructed from checked columns. A record has exactly one codec
+frame; unsupported versions or corruption refuse. Configured finite record/byte budgets
+bound complete snapshots and target writes before row staging. This is a private storage
+format, not a public request protocol; semantic changes require migration/codec review.
+
+Current capability checks bracket database I/O and occur immediately before commit.
+A revocation discovered after an acknowledged commit returns permission failure without
+rows; it cannot retroactively undo a durable commit. No SQL trigger can authenticate an
+external capability. Future shared-refresh integration must bind generation validation,
+Store.Apply and completion in one transaction before production coordinator use. Naked
+Apply supplies CAS and durability, not stale refresh-owner fencing.
+
 ## Planned domain schema
 
 **Not implemented by the foundation:** canonical workflow instances/nodes/attempts and
@@ -68,8 +141,7 @@ bindings, stale-generation restore and brake/pacing accounting. Full graph-execu
 retains all its original Tasks and 13 Verify rows. Its full schema-match obligation is not
 satisfied by checking only this implemented foundation section.
 
-**Read-only mirror follow-up:** its observations, coverage, admission epochs, retention and
-transactional watermarks extend this same manifest after explicit consumer routing. No
-mirror Store, refresh gate, ingestion daemon, served API, provider credential custody or
-cutover is delivered by the foundation. All forge-neutral/37 acceptance and retention gates
+**Read-only mirror follow-up:** the bounded Store is implemented above. Shared refresh
+generation/completion, admission epochs, retention policy, ingestion daemon, served API,
+provider credential custody and cutover remain future contributions. All forge-neutral/37 acceptance and retention gates
 remain. A completed foundation is neither full R2 nor service activation.
