@@ -245,13 +245,13 @@ not process durability, SQL atomicity, authenticated serving or activation. Full
 forge-neutral/37 retains its joined persisted mapper/watermark criterion.
 
 The typed native grant/receipt now travels through mirror ScanPlan/ScanResult and
-refresh Ticket/Completion. The existing native source has not yet qualified that
-receipt or a provider retry floor. Fixture cooldown/RetryAt therefore proves
-local shared failure suppression only; it is not HTTP Retry-After compliance or
-permission to retry a real provider. Real source/gate integration remains held until
-the joined owner propagates typed qualified retry timing or an explicit unknown-retry
-hold. Do not infer it from error text, retain response bodies/headers here, or install
-a blind fixed interval as a production substitute.
+refresh Ticket/Completion. The native source qualifies its own attempts and retry
+evidence at the boundary described below. This package's fake-gate cooldown/RetryAt
+cases prove local shared failure suppression only; canonical SQL and real joined
+source/gate integration remain the separate owner's qualification. They must
+propagate typed qualified retry timing or an explicit unknown-retry hold. Do not
+infer it from error text, retain response bodies/headers here, or install a blind
+fixed interval as a production substitute.
 
 
 ## Native attempt accounting port
