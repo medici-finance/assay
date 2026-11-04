@@ -505,10 +505,29 @@ func ciCrossModuleRegistry() []ciEntry {
 			reads: []string{
 				"tools/forge-import-check/check_env_imports.go",
 				"tools/forge-import-check/check_env_imports_test.go",
-				"docs/streams",
+				"forgeread/refresh", "docs/streams", "forgeread", "schemas",
 			},
 			runInvokes: deskShardInvokes,
 			why:        "the unconditional build-test floor executes both authored import-check commands against compiler-valid syntax fixtures",
+		},
+		{
+			test: "forgeread/service/reviewmapping_test.go", module: "forgeread",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads: []string{"schemas"}, runInvokes: deskShardInvokes,
+			why: "the existing unconditional regression reader invokes the complete review-mapping suite, including canonical schema vocabulary and scalar-bound controls",
+		},
+		{
+			test: "forgeread/service/contract_test.go", module: "forgeread",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads: []string{"schemas"}, runInvokes: deskShardInvokes,
+			why: "the existing unconditional regression reader invokes the named contract suite, including committed schema field/tag conformance",
+		},
+		{
+			test: "forgeread/service/boundaries_test.go", module: "forgeread",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{"forgeread", "tools/forge-import-check"},
+			runInvokes: deskShardInvokes,
+			why:        "the unconditional desk regression reader executes the actual named service/client suites, including this source-checker and dependency-closure consumer; it asserts every named PASS",
 		},
 		{
 			test: "tools/desk/internal/regression/releasecache_test.go", module: "tools/desk",
@@ -2440,6 +2459,7 @@ func globToRegexp(g string) (*regexp.Regexp, error) {
 // gone, or that the scanner no longer flags, is a hard failure — so the list
 // cannot rot into a blanket suppression.
 var ciRegistryOptOut = map[string]string{
+	"forgeread/refresh/boundary_test.go":                          "reads only its own module source and dependency graph; command Dir parent is the forgeread module root, not a cross-module source read; shared checker is exercised by the registered mirrorimports regression reader",
 	"tools/desk/internal/reviewtest/perf_test.go":                 `moduleRoot is tools/desk; command probe binaries, own-module legacy perf fixtures, and disposable homes only. No source from another module is read; CI runs the desk module on every PR`,
 	"tools/desk/internal/reviewtest/observation_contract_test.go": `Own-module production source overlays, fixtures and command probes only; all other reads are disposable fixtures. No sibling-module source is read.`,
 	"tools/desk/internal/reviewtest/qualification_test.go":        `filepath.Join("..", "..") from internal/reviewtest resolves to tools/desk, its own module. The test compiles command test binaries and reads its own testdata; all other files are disposable fixtures. It reads Git revision/status metadata but no sibling-module source. ci.yml runs go test ./... for tools/desk on every PR`,
@@ -2810,12 +2830,17 @@ runs:
 // public entries must not inherit that skip.
 // regression: #2686
 func TestRegressionCIEntrypoints(t *testing.T) {
-	count := 0
+	count, serviceCount := 0, 0
 	for _, e := range ciCrossModuleRegistry() {
-		if !strings.HasPrefix(e.test, "tools/desk/internal/regression/") {
+		serviceEntry := e.test == "forgeread/service/boundaries_test.go" || e.test == "forgeread/service/contract_test.go" || e.test == "forgeread/service/reviewmapping_test.go"
+		if !strings.HasPrefix(e.test, "tools/desk/internal/regression/") && !serviceEntry {
 			continue
 		}
-		count++
+		if serviceEntry {
+			serviceCount++
+		} else {
+			count++
+		}
 		raw, err := os.ReadFile(filepath.Join("../../../..", e.workflow))
 		if err != nil {
 			t.Fatal(err)
@@ -2840,6 +2865,9 @@ func TestRegressionCIEntrypoints(t *testing.T) {
 	}
 	if count != 6 {
 		t.Fatalf("floor has %d CI registry entries, want 6 (manifest, shell, Evidence, changelog, mirror import and release cache suites)", count)
+	}
+	if serviceCount != 3 {
+		t.Fatalf("service schema/boundary CI entry count=%d, want 3", serviceCount)
 	}
 }
 
