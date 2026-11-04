@@ -1,1 +1,0 @@
-- Historical consumer checks now report producer delivery identity as separately unqualified on stderr while preserving stdout report bytes, so corroborated follow-up routes cannot be mistaken for implementation delivery evidence.
