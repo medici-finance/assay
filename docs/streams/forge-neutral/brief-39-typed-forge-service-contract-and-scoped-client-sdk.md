@@ -13,10 +13,11 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 4
+version: 5
 id: a2814dbf-4d0c-4cef-bfc6-aceaf50dd255
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "Requested shared read-through and failure-cache behavior, 2026-11-03; no activation grant"
   - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
@@ -125,6 +126,10 @@ This is an amendment to unfinished implementation acceptance. Preserve every pri
 obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
 authoring change claims no implementation or operational adoption.
 
+## Read-through and failure-cache amendment — 3 November 2026
+
+Carry the read-through/failure-cache contract from the [architecture amendment](../../proposals/non-ci-architecture/22-forge-service-and-source-queries.md) through the typed client/envelopes. A supported miss is filled inside the shared service; the client never discovers credentials, calls the provider, clones a repository or starts a fallback poller. Carry bounded typed failure, original stale coverage/age and retry eligibility without exposing another admission's failure details. Retry metadata is advice, never authorization. Distinguish authoritative absent facts from failed reads. Extend row 2 so healthy cold requests succeed through a source fill, cooldown replies are explicitly unavailable/stale, and a down service causes zero client-side source attempts. No generic request, role or source endpoint port is added.
+
 ## Interface contract
 
 Use forge-service-v1 from 39, mirror admission/freshness from 37, event hints/demand from 38,
@@ -144,7 +149,7 @@ boundary and independent expectation, not another implementation of the same che
 | # | Class | Command | Expect |
 |---|---|---|---|
 | 1 | check:ci +flow +mutation | `(cd forgeread && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeServiceContractCompatibility$' ./service/... > "$r" && grep -F -- '--- PASS: TestForgeServiceContractCompatibility ' "$r")` | exit 0; named PASS. Literal schema/example fixtures traverse the production encoder/decoder and retain provider provenance, null/unknown states, old OpenIssues behavior and exact candidate references. A schema-valid wrong observation token fails the independent expected fixture. |
-| 2 | check:ci +flow +mutation | `(cd forgeread && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeServiceClientFlow$' ./client/... > "$r" && grep -F -- '--- PASS: TestForgeServiceClientFlow ' "$r")` | exit 0; named PASS. Real fixture HTTP server -> client -> typed reader exposes confirmed/newer/pending correctly; unauthorized object existence is not exposed. No arbitrary host, redirect or role can widen the admitted transport. |
+| 2 | check:ci +flow +mutation | `(cd forgeread && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeServiceClientFlow$' ./client/... > "$r" && grep -F -- '--- PASS: TestForgeServiceClientFlow ' "$r")` | exit 0; named PASS. Real fixture HTTP server -> client -> typed reader exposes confirmed/newer/pending correctly; unauthorized object existence is not exposed. No arbitrary host, redirect or role can widen the admitted transport. Cold misses fill server-side; typed cooldown/unavailable/stale responses retain coverage and retry eligibility. With service/provider unavailable, client provider-call and credential-discovery sentinels stay zero. |
 | 3 | check:ci +flow +mutation | `(cd forgeread && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestServicePackageBoundaries$' ./... > "$r" && grep -F -- '--- PASS: TestServicePackageBoundaries ' "$r")` | exit 0; named PASS. Dependency closure keeps root/offline free of service HTTP/database/custody and forbids environment discovery in the new packages; positive stdlib-only closure passes and the planted transitive ambient-credential variant fails. |
 | 4 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/39` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
 | 5 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewServiceMapping$' ./service/... > "$o" && grep -F -- '--- PASS: TestReviewServiceMapping ' "$o")` | exit 0; named PASS. Independent review-observation/projection fixtures roundtrip through public encoder/client with exact scope/head/depth and null semantics; malformed schema or cmd/internal import is rejected. |
@@ -191,3 +196,12 @@ exit, named result, positive and failing control, and date. No result is asserte
 Gate: human. Inspect actual dependency/import and credential reachability, private data and
 count isolation, current authority and unknown outcomes. Tests cannot authorize provisioning
 credentials, switching a managed writer, answering a human decision or changing a merge policy.
+
+## Read-through coordinator ownership — 3 November 2026
+
+This brief's future typed query/client mapping consumes the bounded orchestration
+contract assay:assay:forge-neutral:51, preserving fulfilment, partial/unavailable
+coverage, current admission and retry eligibility. Compatible projections may join
+one underlying fill; the client never receives a provider fallback or a gate as
+authority. That offline coordinator profile supplies no served protocol, credential
+or activation. All existing Task/Verify obligations and human gates remain.

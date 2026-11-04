@@ -96,7 +96,7 @@ or removing any human gate (spec §5 states the divergence).
 | 13 | [Deterministic admission over facts and bounded probabilistic advice](brief-13-agentic-admission.md) | 1 | M | implemented | — | — |
 | 14 | [Bind admission and graph eligibility at the dispatch boundary](brief-14-admission-dispatch-binding.md) | 6 | M | todo | — | — |
 | 15 | [Control profiles and complete scoped evidence exports](brief-15-control-evidence.md) | 10 | L | todo | — | — |
-| 16 | [Cell ownership, cumulative budgets and restoration fencing](brief-16-cell-ownership-budgets.md) | 5 | L | todo | — | — |
+| 16 | [Cell ownership, cumulative budgets and restoration fencing](brief-16-cell-ownership-budgets.md) | 5 | L | implemented | — | — |
 | 17 | [Graph-linked release and outcome records without new authority](brief-17-lifecycle-links.md) | 10 | M | todo | — | — |
 | 18 | [Offline graph, advice and assurance integration proof](brief-18-assurance-experiment.md) | 12 | M | todo | — | — |
 | 19 | [Durable instance store and production coverage binding](brief-19-durable-instance-store.md) | 6 | L | todo | — | — |
@@ -113,7 +113,7 @@ or removing any human gate (spec §5 states the divergence).
 | 30 | [Derived evaluation context and bounded validity](brief-30-derived-evaluation-context-and-bounded-validity.md) | 3 | M | verified | 2026-10-29 assay-verifier-app[bot] @ 5729430698d4 (forge-identity) | — |
 | 31 | [Accountable principal and assurance provenance](brief-31-accountable-principal-and-assurance-provenance.md) | 3 | M | implemented | — | — |
 | 32 | [Investigate criterion-level evidence freshness](brief-32-investigate-criterion-level-evidence-freshness.md) | 0 | M | verified | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
-| 33 | [Merge as a human decision node, and a derived risk-input mapping](brief-33-merge-decision-node-and-risk-input.md) | 0 | L | implemented | — | — |
+| 33 | [Merge as a human decision node, and a derived risk-input mapping](brief-33-merge-decision-node-and-risk-input.md) | 0 | L | done | 2026-11-01 assay-verifier-app[bot] @ 65a4deb064cb (on-behalf-of human:ian) (forge-identity) | 2026-11-03 human:reviewer |
 | 34 | [Signal input, signal classes and decision options in the workflow-pattern schema](brief-34-signal-input-and-signal-classes.md) | 1 | L | implemented | — | — |
 | 35 | [Runtime gate for signal patterns - admission refusal, class routes and the liveness hold](brief-35-signal-pattern-runtime.md) | 2 | M | todo | — | — |
 | 36 | [Canonical PostgreSQL foundation for read-only consumers](brief-36-canonical-postgresql-foundation-for-read-only-consumers.md) | 0 | L | todo | — | — |

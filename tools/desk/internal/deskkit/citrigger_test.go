@@ -498,6 +498,7 @@ func ciCrossModuleRegistry() []ciEntry {
 			reads: []string{
 				"tools/forge-import-check/check_env_imports.go",
 				"tools/forge-import-check/check_env_imports_test.go",
+				"forgeread/refresh",
 				"docs/streams",
 			},
 			runInvokes: deskShardInvokes,
@@ -2433,6 +2434,7 @@ func globToRegexp(g string) (*regexp.Regexp, error) {
 // gone, or that the scanner no longer flags, is a hard failure — so the list
 // cannot rot into a blanket suppression.
 var ciRegistryOptOut = map[string]string{
+	"forgeread/refresh/boundary_test.go":                          "reads only its own module source and dependency graph; command Dir parent is the forgeread module root, not a cross-module source read; shared checker is exercised by the registered mirrorimports regression reader",
 	"tools/desk/internal/reviewtest/perf_test.go":                 `moduleRoot is tools/desk; command probe binaries, own-module legacy perf fixtures, and disposable homes only. No source from another module is read; CI runs the desk module on every PR`,
 	"tools/desk/internal/reviewtest/observation_contract_test.go": `Own-module production source overlays, fixtures and command probes only; all other reads are disposable fixtures. No sibling-module source is read.`,
 	"tools/desk/internal/reviewtest/qualification_test.go":        `filepath.Join("..", "..") from internal/reviewtest resolves to tools/desk, its own module. The test compiles command test binaries and reads its own testdata; all other files are disposable fixtures. It reads Git revision/status metadata but no sibling-module source. ci.yml runs go test ./... for tools/desk on every PR`,
