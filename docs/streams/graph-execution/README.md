@@ -96,7 +96,7 @@ or removing any human gate (spec §5 states the divergence).
 | 13 | [Deterministic admission over facts and bounded probabilistic advice](brief-13-agentic-admission.md) | 1 | M | implemented | — | — |
 | 14 | [Bind admission and graph eligibility at the dispatch boundary](brief-14-admission-dispatch-binding.md) | 6 | M | todo | — | — |
 | 15 | [Control profiles and complete scoped evidence exports](brief-15-control-evidence.md) | 10 | L | todo | — | — |
-| 16 | [Cell ownership, cumulative budgets and restoration fencing](brief-16-cell-ownership-budgets.md) | 5 | L | todo | — | — |
+| 16 | [Cell ownership, cumulative budgets and restoration fencing](brief-16-cell-ownership-budgets.md) | 5 | L | implemented | — | — |
 | 17 | [Graph-linked release and outcome records without new authority](brief-17-lifecycle-links.md) | 10 | M | todo | — | — |
 | 18 | [Offline graph, advice and assurance integration proof](brief-18-assurance-experiment.md) | 12 | M | todo | — | — |
 | 19 | [Durable instance store and production coverage binding](brief-19-durable-instance-store.md) | 6 | L | todo | — | — |

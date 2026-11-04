@@ -86,11 +86,17 @@ Before you finalize the order: for each "smallest unblocking move," **verify it 
 check the code/config/bug tracker, don't assume. If a proposed first step depends on something
 unproven, that something is the real head. Say so explicitly.
 The requester's stated edges are a claim to check, never the evidence for the head, and the check
-is done now, while you author — never left to brief 01's Task. State the head in one passage, in
-your own prose, that names it and gives the check in one of two forms:
-"I verified <X> is the real head by reading <what>; it showed <what>", or
-"<X> is unproven, so it is the real head: brief 01 settles it". "That makes 01 the head" or
-"established from the stated edges" states no check.
+is done now, while you author — never left to brief 01's Task. Do it against what you can read in
+this session: the code, config or tracker when you have them, and always the requester's own words
+and the material you were handed. Test each stated edge there: does the step it puts first rest on
+anything that text does not establish? A run without repo access still has that text, so "I could
+not read the repo" names what you did not look at; it is never the check.
+State the head in one passage, in your own prose, that names it, quotes the line the check rests
+on with where it came from, and says what that line showed, in one of two forms:
+"I verified <X> is the real head by reading <source>: '<line>'; it showed <what>", or
+"<source> says '<line>', which does not establish <what>. <X> is unproven, so it is the real
+head: brief 01 settles it". "That makes 01 the head", "established from the stated edges", and an
+"unproven" with no line read and quoted state no check.
 
 ## Carry quality obligations into execution
 

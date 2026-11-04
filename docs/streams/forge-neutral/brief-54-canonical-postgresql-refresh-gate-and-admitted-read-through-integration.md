@@ -4,14 +4,14 @@ title: Canonical PostgreSQL refresh gate and admitted read-through integration
 why: "Read-through needs one durable refresh owner across processes, with native attempts bounded before they happen and observations committed only by the current generation. Joining the existing source, coordinator and PostgreSQL Store closes this gap without waiting for workflow execution."
 wave: 6
 depends: ["forge-neutral/53", "forge-neutral/52", "forge-neutral/51"]
-unblocks: ["forge-neutral/37"]
+unblocks: ["forge-neutral/37", "forge-neutral/55"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "The adapter controls durable private-observation refreshes and shared work budgets. Accept only the demonstrated synthetic PostgreSQL/native integration; retention, real policy initialization, credentials, remote exposure and activation remain separately gated."
 issues: []
 schema: brief-v2
-version: 5
+version: 7
 authored: 2026-11-03 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -36,7 +36,9 @@ consumers:
 - "tools/desk/internal/deskkit admitted source/coordinator integration fixture: follow-up forge-neutral/54 (implementation owner)"
 - "forgeread/refresh Gate/Requirements/Outcome and mirror semantics: follow-up forge-neutral/51 (consume its repaired API; no competing kernel)"
 - "spec/coordination-store-v1.md, docs/contracts.md, workflow/README.md and actual CI registry/workflows: follow-up forge-neutral/54 (implementation owner)"
-- "retention, scheduler, authenticated serving, caller cutover and full joined acceptance: follow-up forge-neutral/37"
+- "authenticated read-only serving: follow-up forge-neutral/56 (consume canonical Gate, no second refresh owner)"
+- "remaining authenticated executor/effect serving: follow-up forge-neutral/40 (consume56 read-only handler and57 producer)"
+- "retention, scheduler, caller cutover and full joined acceptance: follow-up forge-neutral/37"
 - "workflow execution/admission/claims/outbox and global reconstruction: out-of-scope (remain graph-execution/19)"
 ---
 
