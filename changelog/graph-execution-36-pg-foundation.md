@@ -1,2 +1,0 @@
-- Add the canonical PostgreSQL migration foundation so read-only persistence can advance independently of workflow execution, with explicit connections and real disposable-container qualification.
-- Run PostgreSQL service qualification on a Docker-capable Ubuntu runner and enforce forward-only policy across Goose annotation spellings.

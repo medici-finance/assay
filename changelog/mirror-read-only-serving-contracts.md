@@ -1,1 +1,0 @@
-- Split read-only cache profile provisioning, local caller-authority qualification and mirror-query serving into independent contracts so they can advance without write executors or workflow execution.

@@ -1,1 +1,0 @@
-- Add a store-injected mirror read-through coordinator with shared refresh-gate ports, bounded trusted demand, truthful partial/failure outcomes and current authorization checks at result release. PostgreSQL gate/store implementation, real source integration, custody and activation remain separately gated.
