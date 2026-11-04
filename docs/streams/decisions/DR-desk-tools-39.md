@@ -25,8 +25,10 @@ record/brief names and issue marker require native corroboration; the public
 `decided-by` placeholder supplies no independent identity proof. Implementation
 verification and final lifecycle acceptance remain pending, as the ruling states.
 
-The original reviewflow extraction shipped in #3593. The candidate-plus-priority
-amendment shipped in #4235 after planning #4218. This record retains the approved
+The original reviewflow extraction and deskboard/reviewloop adapters shipped in
+#3570 (`8c2f9706c9d5b26b14ad3a8123878563896e27fd`). The observation contract
+followed in #3593 (`790003516`), and the candidate-plus-priority amendment shipped
+in #4235 after planning #4218. This record retains the approved
 bounded internal pure library and its existing semantic owners. It grants no
 collection, caller adoption, dispatch/ready authority or operational activation.
 
