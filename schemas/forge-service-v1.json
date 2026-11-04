@@ -1,5 +1,5 @@
 {
-  "$comment": "Canonical JSON encoding profile. Raw encoded UTF-8 message size, byte-based field caps, duplicate members, request equality, minimum-token relation, domain conclusions and current authorization require the production codec and owners; JSON Schema alone is insufficient.",
+  "$comment": "Canonical JSON encoding profile. Raw encoded UTF-8 message size, byte-based field caps, duplicate members, request equality, minimum-token relation, domain conclusions and current authorization require the production codec and owners; JSON Schema alone is insufficient. Retry/cache fields are advisory, currently authorized original observations only; elapsed-time arithmetic, producer provenance and current access cannot be established by schema alone.",
   "$defs": {
     "EmptyRepository": {
       "additionalProperties": false,
@@ -201,7 +201,7 @@
           "type": "string"
         },
         "State": {
-          "const": "complete"
+          "$ref": "#/$defs/mirror_CoverageState"
         },
         "Validator": {
           "type": "string"
@@ -520,7 +520,18 @@
       "additionalProperties": false,
       "properties": {
         "Coverage": {
-          "$ref": "#/$defs/mirror_Coverage"
+          "allOf": [
+            {
+              "$ref": "#/$defs/mirror_Coverage"
+            },
+            {
+              "properties": {
+                "State": {
+                  "const": "complete"
+                }
+              }
+            }
+          ]
         },
         "Records": {
           "items": {
@@ -541,6 +552,52 @@
         "Coverage",
         "Records",
         "Version"
+      ],
+      "type": "object"
+    },
+    "service_CachedObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "ageMs": {
+          "anyOf": [
+            {
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coverage": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/mirror_Coverage"
+            },
+            {
+              "properties": {
+                "Reason": {
+                  "not": {
+                    "const": "permission"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "evaluatedAt": {
+          "format": "date-time",
+          "not": {
+            "const": "0001-01-01T00:00:00Z"
+          },
+          "type": "string"
+        }
+      },
+      "required": [
+        "coverage",
+        "evaluatedAt",
+        "ageMs"
       ],
       "type": "object"
     },
@@ -820,6 +877,16 @@
     "service_Metadata": {
       "additionalProperties": false,
       "properties": {
+        "cached": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_CachedObservation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "complete": {
           "anyOf": [
             {
@@ -861,6 +928,20 @@
         "reason": {
           "$ref": "#/$defs/mirror_Reason"
         },
+        "retryAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "not": {
+                "const": "0001-01-01T00:00:00Z"
+              },
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "source": {
           "anyOf": [
             {
@@ -882,7 +963,9 @@
         "freshness",
         "source",
         "observation",
-        "executor"
+        "executor",
+        "retryAt",
+        "cached"
       ],
       "type": "object"
     },
@@ -1653,19 +1736,10 @@
               },
               "metadata": {
                 "properties": {
-                  "complete": {
-                    "type": "null"
-                  },
                   "executor": {
                     "type": "null"
                   },
-                  "freshness": {
-                    "const": "unknown"
-                  },
                   "observation": {
-                    "type": "null"
-                  },
-                  "source": {
                     "type": "null"
                   }
                 }
@@ -1701,8 +1775,23 @@
             "properties": {
               "metadata": {
                 "properties": {
+                  "cached": {
+                    "type": "null"
+                  },
+                  "complete": {
+                    "type": "null"
+                  },
+                  "freshness": {
+                    "const": "unknown"
+                  },
                   "reason": {
                     "const": "permission"
+                  },
+                  "retryAt": {
+                    "type": "null"
+                  },
+                  "source": {
+                    "type": "null"
                   }
                 },
                 "required": [
@@ -1773,7 +1862,10 @@
                     "const": false
                   },
                   "freshness": {
-                    "const": "stale"
+                    "enum": [
+                      "fresh",
+                      "stale"
+                    ]
                   },
                   "source": {
                     "$ref": "#/$defs/service_Provenance"
@@ -2772,6 +2864,199 @@
                 "required": [
                   "observation"
                 ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "cached": {
+                    "type": "null"
+                  },
+                  "state": {
+                    "const": "older"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "freshness": {
+                    "const": "stale"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "cached": {
+                    "type": "null"
+                  },
+                  "state": {
+                    "const": "unavailable"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "complete": {
+                    "type": "null"
+                  },
+                  "freshness": {
+                    "const": "unknown"
+                  },
+                  "source": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "cached": {
+                    "type": "object"
+                  },
+                  "state": {
+                    "const": "unavailable"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "complete": {
+                    "const": false
+                  },
+                  "freshness": {
+                    "enum": [
+                      "fresh",
+                      "stale"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "cached": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "older",
+                      "unavailable"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "mirror-query"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "retryAt": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "older",
+                      "unavailable"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "enum": [
+                  "mirror-query",
+                  "file-at",
+                  "diff",
+                  "merge-base",
+                  "lookup-operation",
+                  "read-observation",
+                  "review-observation",
+                  "issue-projection"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer",
+                      "projection-pending"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "cached": {
+                    "type": "null"
+                  },
+                  "retryAt": {
+                    "type": "null"
+                  }
+                }
               }
             }
           }

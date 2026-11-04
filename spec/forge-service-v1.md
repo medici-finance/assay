@@ -59,7 +59,7 @@ progress remain separate fields.
 
 | State | Meaning |
 |---|---|
-| `older` | The supplied observation cannot meet the scoped minimum; stale metadata and no result payload |
+| `older` | The supplied observation cannot meet the scoped minimum; no result payload; cached age/freshness is separately described |
 | `confirmed` | The permitted observation satisfies the request; a supplied minimum is confirmed by its exact token |
 | `newer` | The observation owner supplies a distinct scoped token relative to the request's minimum |
 | `projection-pending` | Provider outcome and local projection availability have not become one complete current observation |
@@ -74,11 +74,45 @@ Observation progress is never effect, claim or permission authority. Tokens must
 canonical repository in the scope; scope-wide review/projection replies have no
 selected-repository progress token.
 
-Permission/unavailable results omit bodies, counts, provenance, executor identity,
-diagnostic links and observation tokens. Unknown completeness is `null`, not
-`false` or complete-empty. Such results cannot disclose whether a private fill is
-running. Retry handling stays with the shared owner; the client does not interpret
-an outage as permission to read the provider directly.
+Permission results omit bodies, counts, provenance, executor identity,
+diagnostic links, observation tokens and all retry/cache advice. They cannot disclose
+whether a private fill is running. Plain unavailable results likewise carry no
+result data or source provenance, unknown freshness and `complete: null`. A currently
+authorized original cached observation can instead qualify a mirror-query unavailable
+reply as described below; it still supplies no result payload or complete answer.
+
+`metadata.retryAt` is an explicit nullable timestamp. A non-null value is service-owned
+retry advice for an unfulfilled read or receipt lookup; it never permits a create
+effect, provider request, replay or client fallback. It copies the shared owner's
+nonzero retry floor, rather than inventing a client timer. Null means no qualified
+advice, not immediate eligibility. Every later service request rechecks current
+admission and budgets. The SDK makes no automatic retry, sleeps or source calls.
+
+`metadata.cached` is an explicit nullable `CachedObservation` with original `coverage`,
+trusted `evaluatedAt` and nullable `ageMs`. It is limited to an authorized owned
+snapshot for this exact mirror query in `older` or `unavailable` state. It contains
+no rows, counts or authority and never appears on permission or fulfilled replies.
+A synthesized hold is not an original cached observation. Cached permission-hold
+coverage is refused even when the outer reply says unavailable; a state label must
+not reveal previously held metadata. Current admission and
+original snapshot qualification are the serving owner's responsibility.
+
+Age is elapsed whole milliseconds since original `coverage.LastComplete` at the
+trusted evaluation instant; it is null when that complete time is unknown or the
+elapsed representation is unavailable. Negative or future timestamps are refused.
+Evaluation must not advance any coverage time, overwrite original provenance or
+make an incomplete population complete. When supplied, `metadata.source` retains
+original source/version/revision and its observation time. Canonical mirror
+validation owns coverage and freshness; transport does not implement another planner.
+
+A qualified cached unavailable reply has `complete: false`, original fresh/stale
+status and original provenance when known. Token-progress `older` still requires a
+scoped minimum and a distinct response token. Its cached observation may independently
+be fresh or stale by age; freshness never satisfies a newer minimum token. Without
+cache metadata, the original older stale profile is retained. Fulfilled
+confirmed/newer replies retain their complete result and carry no retry/cache hold
+metadata. Unknown completeness is never converted to false or complete-empty merely
+because a service or provider is down.
 
 Effect outcomes are `succeeded`, `failed` or `unknown`; projection state is
 `current`, `pending` or `unavailable`. A successful provider outcome can coexist
@@ -172,9 +206,19 @@ server count into client attempts or sum process-local counts as provider work.
 Diagnostic parent/link identifiers require explicit consent at both transport
 ends. The client sends no automatic diagnostic headers. A permitted response can
 only echo the admitted request link; a link is not a credential, role or raw
-work/session locator. Permission/unavailable responses carry none.
+work/session locator. Permission/unavailable responses carry no diagnostic links.
 
 Authenticated serving, trusted profile/accounting provisioning, retention purge,
 provider qualification and tool cutover retain their independent implementation
 and acceptance gates. A contract/codec test is not evidence that those services
 are deployed or that missing producer facts have become complete.
+
+## Read-through fixture scope
+
+The client flow fixtures exercise cold server-side fill, shared failure cooldown,
+original cached coverage/age and retry advice, then recovery without client source
+or credential discovery. Those fixture HTTP handlers qualify the wire/client
+boundary only. They are not the authenticated production ingress, persistent SQL
+integration or an operator-selected policy profile; those remain with their own
+owners and qualification. No deployed service or tool cutover follows from this
+schema/codec amendment.
