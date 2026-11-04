@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -68,11 +69,14 @@ type ReviewObservations struct {
 type Observation struct {
 	ID                                              RecordID
 	State, ClosureReason, HeadRevision, Title, Body string
-	Labels                                          []string
-	Author                                          Actor
-	RequestedReviewers                              []Actor
-	UpdatedAt, ObservedAt                           time.Time
-	Reviews                                         ReviewObservations
+	// BodyKnown distinguishes an omitted body from an explicitly empty body.
+	BodyKnown bool
+	// Nil collections are unknown; non-nil empty collections were observed empty.
+	Labels                []string
+	Author                Actor
+	RequestedReviewers    []Actor
+	UpdatedAt, ObservedAt time.Time
+	Reviews               ReviewObservations
 	// InInventory=false means absent from a complete inventory, never closed.
 	InInventory bool
 }
@@ -125,11 +129,14 @@ type Query struct {
 }
 type RefreshPolicy struct{ Overlap, FullInventoryInterval, FailureBackoff time.Duration }
 type ScanPlan struct {
-	Scope            Scope
-	ExpectedVersion  string
-	FullInventory    bool
-	Since, NotBefore time.Time
-	Validator        string
+	Scope           Scope
+	ExpectedVersion string
+	// PriorObservedUpTo is the selected snapshot watermark, not new coverage.
+	// PlanScan binds it independently to the same scope and expected version.
+	PriorObservedUpTo time.Time
+	FullInventory     bool
+	Since, NotBefore  time.Time
+	Validator         string
 }
 type ScanResult struct {
 	Validator                                   string
@@ -209,10 +216,10 @@ func cloneRecords(in []Observation) []Observation {
 	out := make([]Observation, len(in))
 	copy(out, in)
 	for i := range out {
-		out[i].Labels = append([]string(nil), in[i].Labels...)
-		out[i].RequestedReviewers = append([]Actor(nil), in[i].RequestedReviewers...)
-		out[i].Reviews.GitHub = append([]GitHubReview(nil), in[i].Reviews.GitHub...)
-		out[i].Reviews.GitLab = append([]GitLabApproval(nil), in[i].Reviews.GitLab...)
+		out[i].Labels = slices.Clone(in[i].Labels)
+		out[i].RequestedReviewers = slices.Clone(in[i].RequestedReviewers)
+		out[i].Reviews.GitHub = slices.Clone(in[i].Reviews.GitHub)
+		out[i].Reviews.GitLab = slices.Clone(in[i].Reviews.GitLab)
 	}
 	return out
 }
