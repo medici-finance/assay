@@ -93,6 +93,42 @@ func forgeFor(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 	return fg, fr, nil
 }
 
+// forgeForFn is the seam cmdReply resolves its forge through; tests swap in a forge whose
+// issue and merge-request sequences collide.
+var forgeForFn = forgeFor
+
+// replyKind parses --kind (#5020) with the shared deskkit.ParseTargetKind, so a bad value
+// is refused in the same words as the sibling verbs. An empty flag yields "" — the
+// untyped path, byte-identical to the verb before the flag. issue is a valid kind but not
+// one this verb can act on: deskreply verifies the number as YOUR OWN open change
+// (GetPullRequest + CheckOwnPR), so a note posted on an issue at the same number would
+// land on an object the own-PR check never read.
+func replyKind(flagVal string) (deskkit.TargetKind, error) {
+	if flagVal == "" {
+		return "", nil
+	}
+	kind, err := deskkit.ParseTargetKind(flagVal)
+	if err != nil {
+		return "", err
+	}
+	if kind == deskkit.TargetIssue {
+		return "", deskkit.Refused("refused: --kind issue: deskreply only replies on your own " +
+			"pull/merge request — to comment on an issue use deskfile attach --kind issue")
+	}
+	return kind, nil
+}
+
+// postReply is the ONE write both reply paths make. With no --kind it is the untyped
+// PostComment (which resolves the kind itself and refuses a colliding number); with a kind
+// it is PostCommentTyped, which routes on the stated kind alone and never reads or writes
+// the other object at that number.
+func postReply(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int, kind deskkit.TargetKind, body string) (*deskkit.CommentRef, error) {
+	if kind == "" {
+		return fg.PostComment(fr, pr, body)
+	}
+	return fg.PostCommentTyped(fr, pr, kind, body)
+}
+
 // runCmd executes name+args in dir and returns trimmed stdout. Commands are ALWAYS
 // built from an explicit argv slice — never a shell string and never a caller-supplied
 // flag. deskreply forwards NO caller flag into a child process: the only external values
