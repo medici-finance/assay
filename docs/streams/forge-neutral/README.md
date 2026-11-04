@@ -816,7 +816,7 @@ brief, provider walker, local quota owner or execution prerequisite is introduce
 |---|---|---|---|
 | 5 | 53 native attempt/retry metadata | Genuine published50 and repaired51 APIs; no invented working-tree port | Actual native leaf and typed flow; stateful test authority only |
 | 6 | 54 canonical SQL Gate and joined fixture | Actual53 plus52 and repaired51, using36's same ledger/harness | Real PostgreSQL generations/budgets/atomic completion and synthetic native requests |
-| Parent | Full37 acceptance and existing service/cutover path | Its unchanged complete dependency/risk graph | Retention, remaining joined row23 conditions, authenticated serving and activation remain owed |
+| Parent | Full37 acceptance and existing service/cutover path | Its complete dependency/risk graph plus the explicit54 precursor ordering | Retention, remaining joined row23 conditions, authenticated serving and activation remain owed |
 
 Critical path for this bounded implementation is `50 + repaired51 → 53`, then
 `36 → 52` together with `53 + repaired51 → 54`. Authoring54 can run while53 is built;
@@ -836,3 +836,19 @@ recover. The [architecture contract](../../proposals/non-ci-architecture/22-forg
 and /37, /39, /40, /42, /43 and /45 carry the source, client, authorization and served-fault
 acceptance. Every prior Class/Command pair remains; no persistent service or activation is
 claimed by this requirements amendment.
+
+### Authoring review reconciliation — 4 November 2026
+
+Current main includes the read-through requirements amendment and the generated49
+implementation witness. The current51,53 and54 contract texts are adopted from their
+qualified feature revisions; adoption does not place runtime code or acceptance on main.
+The explicit `54 → 37` dependency now orders the full parent behind the bounded source,
+coordinator, Store and Gate contributions, preserving every other parent prerequisite.
+Later full37 integration consumes those owners rather than dispatching a second mapper
+or SQL Gate concurrently.
+
+The ordinary PostgreSQL-less desk shards may report only an explicitly unqualified
+outer joined-test skip when no DSN is supplied. Qualifying54 evidence remains in the
+declared PostgreSQL workflow: nonempty explicit DSN, strict canonical fixture and exact
+named joined-test PASS are required. Missing, malformed, unreachable or skipped qualifying
+fixtures fail; this does not relax foundation/Store qualification.
