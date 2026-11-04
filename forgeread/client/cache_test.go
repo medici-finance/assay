@@ -162,8 +162,11 @@ func checkServerCacheAdvice(t *testing.T) {
 	}
 	floor := *out.Metadata.RetryAt
 	for i := 0; i < 8; i++ {
+		mu.Lock()
+		now = start.Add(2*time.Minute + time.Duration(i+1)*time.Second)
+		mu.Unlock()
 		out, err = read(i % 2)
-		if !errors.Is(err, service.ErrInvalid) || !noData(out) || out.Metadata.Cached == nil || out.Metadata.RetryAt == nil || !out.Metadata.RetryAt.Equal(floor) || out.Metadata.Cached.AgeMS == nil || *out.Metadata.Cached.AgeMS != 120000 || !out.Metadata.Cached.Coverage.LastComplete.Equal(original) || out.Metadata.Source == nil || !out.Metadata.Source.ObservedAt.Equal(original) || sourceCalls.Load() != 2 {
+		if !errors.Is(err, service.ErrInvalid) || !noData(out) || out.Metadata.Cached == nil || out.Metadata.RetryAt == nil || !out.Metadata.RetryAt.Equal(floor) || out.Metadata.Cached.AgeMS == nil || *out.Metadata.Cached.AgeMS != int64(120+i+1)*1000 || !out.Metadata.Cached.Coverage.LastComplete.Equal(original) || out.Metadata.Source == nil || !out.Metadata.Source.ObservedAt.Equal(original) || sourceCalls.Load() != 2 {
 			t.Fatal("shared fixture cooldown changed original observation or attempted source", err, out.Metadata)
 		}
 	}
