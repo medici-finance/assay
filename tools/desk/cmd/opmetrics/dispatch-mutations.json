@@ -1,0 +1,125 @@
+{
+  "test": "go test ./cmd/opmetrics -count=1 -timeout=120s",
+  "control": {
+    "name": "rename the rung-3 key the ladder reads",
+    "file": "cmd/opmetrics/emit.go",
+    "old": "`json:\"loop_initiated\"`",
+    "new": "`json:\"loop_started\"`"
+  },
+  "mutations": [
+    {
+      "name": "rename the rung-4 key the ladder reads (planted second instance)",
+      "file": "cmd/opmetrics/emit.go",
+      "old": "`json:\"noop_dispatches\"`",
+      "new": "`json:\"noop_runs\"`"
+    },
+    {
+      "name": "fold unattributed dispatches into loop",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "s.tally.Unattributed++",
+      "new": "s.tally.Loop++"
+    },
+    {
+      "name": "drop the origin-unrecorded refusal",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if d.Total > 0 && d.Loop+d.Operator == 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "dispatch block reports counts when transcripts are blind",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if blind != ReasonNone {\n\t\treturn DispatchBlock",
+      "new": "if false {\n\t\treturn DispatchBlock"
+    },
+    {
+      "name": "token block reports counts when transcripts are blind",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if blind != ReasonNone {\n\t\tb.Status, b.Reason = StatusCouldNotCheck, blind",
+      "new": "if false {\n\t\tb.Status, b.Reason = StatusCouldNotCheck, blind"
+    },
+    {
+      "name": "subagent file keyed on the parent session id",
+      "file": "cmd/opmetrics/transcripts.go",
+      "old": "fsr.SessionKey = r.SessionID + \"#agent-\" + r.AgentID",
+      "new": "fsr.SessionKey = r.SessionID"
+    },
+    {
+      "name": "subagent file contributes a session span",
+      "file": "cmd/opmetrics/transcripts.go",
+      "old": "!span.First.IsZero() && !fsr.AgentFile",
+      "new": "!span.First.IsZero()"
+    },
+    {
+      "name": "streamed copies of one message counted twice",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "} else if n > acc.usage[m.ID] {\n\t\t\tacc.usage[m.ID] = n",
+      "new": "} else {\n\t\t\tacc.usage[m.ID] += n"
+    },
+    {
+      "name": "no-op classifier reads past the first paragraph",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if i := strings.Index(head, \"\\n\\n\"); i >= 0 {",
+      "new": "if i := -1; i >= 0 {"
+    },
+    {
+      "name": "no-op classifier reads past the head bound",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "len(r) > reportHeadRunes",
+      "new": "false && len(r) > reportHeadRunes"
+    },
+    {
+      "name": "origin on a meta prompt record ignored",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "case r.TurnOrigin != \"\" || kind != \"\":",
+      "new": "case (r.IsMeta == nil || !*r.IsMeta) && (r.TurnOrigin != \"\" || kind != \"\"):"
+    },
+    {
+      "name": "a tool result resets the turn origin",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "\t\tif p.Type == \"tool_result\" {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true",
+      "new": "\t\tif p.Type == \"tool_result\" && false {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true"
+    },
+    {
+      "name": "sidechain records counted as main-session dispatches",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if sidechain {\n\t\tif r.AgentID",
+      "new": "if sidechain && false {\n\t\tif r.AgentID"
+    },
+    {
+      "name": "a run that started the day before counted",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if !s.onDay(acc.first) {",
+      "new": "if false {"
+    },
+    {
+      "name": "a dispatch on another day counted",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if !s.onDay(ts) {\n\t\t\treturn\n\t\t}",
+      "new": "if false {\n\t\t\treturn\n\t\t}"
+    },
+    {
+      "name": "a reportless run not counted unread",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if !r.HasReport {",
+      "new": "if false {"
+    },
+    {
+      "name": "the handback report ignored",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "report := acc.handback",
+      "new": "report := \"\""
+    },
+    {
+      "name": "the older Task tool name not a dispatch",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "name == \"Agent\" || name == \"Task\"",
+      "new": "name == \"Agent\""
+    },
+    {
+      "name": "merged count dropped from the token block",
+      "file": "cmd/opmetrics/main.go",
+      "old": "mergedPRs = iptr(lr.MergedOnDate)",
+      "new": "mergedPRs = nil"
+    }
+  ]
+}
