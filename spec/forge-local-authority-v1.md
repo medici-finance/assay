@@ -198,10 +198,26 @@ lock file therefore makes the old producer hold, rather than allowing two live
 controllers over different inodes. Uncertain identity/ownership refuses.
 Revocation or an epoch change
 invalidates the old tuple; no refresh/verification operation extends its lease.
-The server performs current validation after protected data I/O and at the final
-release boundary, with cancellation/deadline checks after current-source I/O.
-The chosen linearization point and maximum revocation/entitlement lease must be
-explicitly qualified; already returned bytes cannot be recalled.
+A current read linearizes when the producer holds that serialized gate and copies
+the exact registry tuple and revocation state for the fresh challenge. A control
+update linearizes under the same gate; reads after it must see the new state.
+
+For each final authorization, the verifier records its own monotonic request-start
+before generating/sending the challenge. Release must occur before the earliest
+of request-start plus the explicitly selected current-read lease, the conservatively
+verified grant expiry and the caller deadline. The finite current-read lease may
+not exceed the selected maximum revocation bound. It is never renewed at response
+arrival or by an observer/cache operation. Thus a read linearized just before
+revocation can release only within that declared bound; instantaneous distributed
+revocation is not claimed. Clock-skew/expiry policy remains explicit and tested,
+not copied from comms defaults.
+
+The server obtains fresh current validation after protected data I/O and checks
+cancellation/deadline after current-source I/O. After all other blocking operations,
+encoding and callbacks, its last local release check enforces that same receipt's
+remaining monotonic lease, grant expiry and request deadline before the first
+protected byte is handed to transport. A new query or cache hit cannot reuse an
+earlier request's receipt. Already returned bytes cannot be recalled.
 
 A live-instance anchor consists of the independently supervised producer container
 and process identities, exclusive ownership of its control resource, a fresh instance identity
@@ -278,6 +294,26 @@ missing profile, skipped custody, setup failure or an unavailable engine. Any
 ordinary run without the profile remains explicitly unqualified; its green unit
 results do not discharge this brief's actual containment Verify rows. No engine
 socket/privilege, fixture image, threshold or workflow grant is inferred.
+
+## Required explicit operator inputs
+
+| Input | Source and refusal rule |
+|---|---|
+| Local engine endpoint and platform | Explicit trusted launcher configuration; no ambient endpoint/context discovery. Only exact owned fixture resources may be contacted during qualification. |
+| Immutable producer/query/sibling images | Declared recipe, source/toolchain and resulting digest. Fixture selection grants no operational image approval. No floating pull or image default. |
+| Issuer and one-cell audience | Operator-owned identity/profile, never learned from a grant. Missing or inconsistent identity refuses. |
+| Stable caller, represented actor and role | Protected launcher mapping plus actual independently observed launch/container identity; not request/header/environment claims. |
+| Repository, source/composition/admission binding | Exact trusted profile identities supplied to R3; native admission/permissions and later R2 source/budget composition remain independent ceilings. |
+| Incarnation, key reference, generation and all epochs | Live operator writer state; no restored SQL/config record may supply currentness. Restart requires fresh trusted initialization and re-registration. |
+| Private and per-channel volume identities | Exact closed profile, disjoint resources and expected RO/RW views. No key/control writer or engine socket in any consumer/sibling mount. |
+| Grant lease, clock skew, current-read lease and maximum revocation bound | Explicit finite validated values, with current-read lease no greater than the revocation bound and no post-arrival renewal. No comms default or invented production number. |
+| Registry, frame/count/byte and I/O limits | Explicit finite bounds. Exhaustion holds without forgetting a live revocation or weakening another caller's grant. |
+| Restore and restart procedure | Fresh registration/identity/key after restart or restore; no automatic replay. Whole-host/VM memory rollback is unsupported until an independent anchor and real rotation are proved. |
+
+The engine is a launch/qualification dependency, not a per-query authorization
+probe. Request-time currentness uses the actual isolated producer/channel; it
+never runs Docker, gh, git or a source fallback. Engine/process observation errors
+during launch hold registration and do not turn a saved identity into authority.
 
 ## Independent qualification and handoff
 
