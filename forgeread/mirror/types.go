@@ -211,6 +211,8 @@ const (
 
 // Unknown knowledge retains any prior positive maximum floor. NoConstraint is
 // a fully covered observation, never a universal provider allowance.
+// With known zero HTTP attempts, it covers only the absence of an attempt:
+// no provider response was observed and no prior retry floor may be cleared.
 type RetryEvidence struct {
 	Knowledge RetryKnowledge
 	NotBefore time.Time
