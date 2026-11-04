@@ -1,10 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -26,7 +23,7 @@ import (
 
 // ghToken holds the auditor App installation token minted for the target repo's owner. It is
 // read lazily by githubCustodyMint on the first GitHub custody call, so a repo that resolves to
-// GitLab never triggers a `desktoken auditor` invocation at all. An empty value after minting is
+// GitLab never mints the auditor App token at all. An empty value after minting is
 // a hard REFUSAL, never a fallback to any ambient identity.
 var ghToken string
 
@@ -40,7 +37,7 @@ func init() {
 
 // githubCustodyMint is the GitHub custody step deskkit.ForgeFor's resolver calls. It mints the
 // auditor token ON FIRST USE (mintTokenFn) rather than eagerly at startup, so a repo that
-// resolves to GitLab never shells `desktoken auditor` at all — only a GitHub-resolved repo
+// resolves to GitLab never mints the auditor App token at all — only a GitHub-resolved repo
 // reaches this function.
 func githubCustodyMint(role string, repo deskkit.ForgeRepo) (token, baseURL string, err error) {
 	if ghToken == "" {
@@ -78,33 +75,27 @@ func forgeFor(repo string) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeResol
 }
 
 // mintTokenFn mints the auditor token for a repo and sets ghToken. Package var so a test
-// injects a token without shelling desktoken; production binds it to mintAuditorToken.
+// injects a token without reaching the minter; production binds it to mintAuditorToken.
 var mintTokenFn = mintAuditorToken
 
-// execCommand is the single seam through which repohardenguard starts a child process — only
-// `desktoken` (the identity layer) reaches it. Tests replace it.
-var execCommand = exec.Command
+// githubRoleTokenFn is the in-process GitHub App minter: deskkit.GitHubRoleToken, which runs
+// the same provider, cache, custody checks and audit row `desktoken auditor --repo` runs, as a
+// function call instead of a child process (#1573). Package var so a test can observe it.
+var githubRoleTokenFn = deskkit.GitHubRoleToken
 
-// mintAuditorToken calls `desktoken auditor --repo <owner/repo>` to mint (or reuse) the auditor
-// App installation token scoped to the repo's owner, then sets it as ghToken so every
-// subsequent forge call authenticates as the auditor App.
+// mintAuditorToken mints (or reuses) the auditor App installation token scoped to the repo's
+// owner, then sets it as ghToken so every subsequent forge call authenticates as the auditor
+// App. It is reached only from githubCustodyMint, after the resolver chose GitHub, so the
+// GitHub-only in-process minter is the right one; it no longer forks whatever `desktoken` is
+// first on PATH.
 func mintAuditorToken(repoSlug string) error {
-	cmd := execCommand("desktoken", "auditor", "--repo", repoSlug)
-	var out, errb bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errb
-	if err := cmd.Run(); err != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("desktoken auditor --repo %s: %v (%s)",
-			repoSlug, err, strings.TrimSpace(errb.String())), err)
+	tok, _, err := githubRoleTokenFn("auditor", repoSlug)
+	if err != nil {
+		return err
 	}
-	tokenPath := strings.TrimSpace(out.String())
-	b, rerr := os.ReadFile(tokenPath)
-	if rerr != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("read auditor token from %s", tokenPath), rerr)
-	}
-	ghToken = strings.TrimSpace(string(b))
+	ghToken = strings.TrimSpace(tok)
 	if ghToken == "" {
-		return deskkit.Unverifiable(fmt.Sprintf("auditor token at %s is empty", tokenPath), nil)
+		return deskkit.Unverifiable(fmt.Sprintf("auditor token minted for %s is empty", repoSlug), nil)
 	}
 	return nil
 }

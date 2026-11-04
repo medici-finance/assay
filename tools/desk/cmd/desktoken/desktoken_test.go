@@ -871,6 +871,38 @@ func TestTTLWithCache(t *testing.T) {
 	}
 }
 
+// regression: #1573
+func TestTTLRefusesSymlinkedCache(t *testing.T) {
+	dir := t.TempDir()
+	elsewhere := filepath.Join(dir, "elsewhere", "planted")
+	writeTokenCache(t, elsewhere, "ghs_example_placeholder")
+	tokenPath := filepath.Join(dir, "reviewer-token-100000004")
+	if err := os.Symlink(elsewhere, tokenPath); err != nil {
+		t.Skipf("symlinks unavailable here: %v", err)
+	}
+	err := printTTL(tokenPath)
+	if err == nil {
+		t.Fatal("printTTL reported a TTL for a symlinked cache; want a refusal")
+	}
+	if rc := deskkit.ExitCodeOf(err); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("printTTL symlink rc = %d, want %d (%v)", rc, deskkit.ExitUnverifiable, err)
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("refusal does not name the link: %v", err)
+	}
+}
+
+// regression: #1573
+func TestTTLRefusesNonRegularCache(t *testing.T) {
+	tokenPath := filepath.Join(t.TempDir(), "reviewer-token-100000004")
+	if err := os.Mkdir(tokenPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := printTTL(tokenPath); deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
+		t.Fatalf("printTTL on a directory = %v, want an unverifiable refusal", err)
+	}
+}
+
 // --- mint-path: exercise the HTTP exchange (Blocker 4) ---------------------------
 
 func TestMintPathExampleOrg(t *testing.T) {
