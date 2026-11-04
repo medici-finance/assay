@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -244,6 +246,60 @@ func TestForgeLocalAuthorityClaims(t *testing.T) {
 }
 
 func TestForgeLocalAuthorityCurrent(t *testing.T) {
+	t.Run("challenge-replay", func(t *testing.T) {
+		f := newAuthorityFixture(t, nil)
+		original := bytes.Repeat([]byte{1}, 32)
+		proof, e := f.client.probe(context.Background(), CurrentProbe{Schema: Schema, Instance: f.verifierConfig.Bootstrap.Instance, Challenge: original, Grant: f.grant})
+		if e != nil {
+			t.Fatal("actual signed current proof", e)
+		}
+		v := currentFixtureProxy(t, f, func(q CurrentProbe) (SignedProof, error) {
+			if bytes.Equal(q.Challenge, original) {
+				t.Error("new request reused original challenge")
+			}
+			return proof, nil
+		})
+		r, e := v.Authorize(context.Background(), f.grant, f.config.Launches[0].Scope.Scope)
+		assertHeld(t, r, e)
+	})
+	t.Run("delayed-current", func(t *testing.T) {
+		f := newAuthorityFixture(t, func(c *ProducerConfig) {
+			c.CurrentReadLease = 100 * time.Millisecond
+			c.MaxRevocationBound = c.CurrentReadLease
+		})
+		v := currentFixtureProxy(t, f, func(q CurrentProbe) (SignedProof, error) {
+			proof, e := f.controller.current(context.Background(), q)
+			if e != nil {
+				return proof, e
+			}
+			f.clock.move(-time.Second / 2)
+			time.Sleep(150 * time.Millisecond)
+			return proof, nil
+		})
+		r, e := v.Authorize(context.Background(), f.grant, f.config.Launches[0].Scope.Scope)
+		assertHeld(t, r, e)
+	})
+	t.Run("producer-monotonic-expiry", func(t *testing.T) {
+		f := newAuthorityFixture(t, func(c *ProducerConfig) {
+			c.MaxGrantLease = 500 * time.Millisecond
+			c.ClockSkew = 100 * time.Millisecond
+			c.CurrentReadLease = 100 * time.Millisecond
+			c.MaxRevocationBound = c.CurrentReadLease
+		})
+		// The fixture wall remains frozen before ExpiresAt. Only the actual
+		// producer's private elapsed deadline can expire this registration.
+		time.Sleep(600 * time.Millisecond)
+		r, e := f.verifier.Authorize(context.Background(), f.grant, f.config.Launches[0].Scope.Scope)
+		assertHeld(t, r, e)
+	})
+	t.Run("unavailable-current", func(t *testing.T) {
+		f := newAuthorityFixture(t, nil)
+		if e := f.controller.Close(); e != nil {
+			t.Fatal(e)
+		}
+		r, e := f.verifier.Authorize(context.Background(), f.grant, f.config.Launches[0].Scope.Scope)
+		assertHeld(t, r, e)
+	})
 	t.Run("revoke", func(t *testing.T) {
 		f := newAuthorityFixture(t, nil)
 		claims, e := decodeClaims(f.grant, f.config.MaxFrameBytes)
@@ -320,6 +376,57 @@ func TestForgeLocalAuthorityCurrent(t *testing.T) {
 		r, e := f.verifier.Authorize(context.Background(), f.grant, f.config.Launches[0].Scope.Scope)
 		assertHeld(t, r, e)
 	})
+}
+
+// The proxy replays or delays a proof issued by the actual controller. It is a
+// fault-injection transport, never a substitute source/signing authority.
+func currentFixtureProxy(t *testing.T, f *authorityFixture, reply func(CurrentProbe) (SignedProof, error)) *Verifier {
+	t.Helper()
+	path := filepath.Join(f.resources.Current.Name(), "fault.sock")
+	l, e := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, e := l.AcceptUnix()
+		if e != nil {
+			return
+		}
+		defer conn.Close()
+		conn.SetDeadline(time.Now().Add(2 * time.Second))
+		var q wireRequest
+		if readFrame(conn, f.config.MaxFrameBytes, &q) != nil || q.Probe == nil {
+			return
+		}
+		p, e := reply(*q.Probe)
+		if e != nil {
+			return
+		}
+		b, e := encode(wireResponse{Schema: Schema, Proof: &p}, f.config.MaxFrameBytes)
+		if e != nil {
+			return
+		}
+		conn.Write(b)
+	}()
+	t.Cleanup(func() {
+		l.Close()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Error("fault transport did not stop")
+		}
+	})
+	client, e := NewCurrentClient(CurrentConfig{Path: path, Bootstrap: f.verifierConfig.Bootstrap, MaxFrameBytes: f.config.MaxFrameBytes, IOTimeout: time.Second}, f.clock)
+	if e != nil {
+		t.Fatal(e)
+	}
+	v, e := NewVerifier(f.verifierConfig, client, f.clock)
+	if e != nil {
+		t.Fatal(e)
+	}
+	return v
 }
 
 func TestForgeLocalAuthorityLaunch(t *testing.T) {

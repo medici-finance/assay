@@ -230,5 +230,57 @@ func TestForgeLocalAuthorityCustody(t *testing.T) {
 		t.Fatal("protected stop failed")
 	}
 	held(verify("caller-a", fresh, scope("caller-a").Scope, 0))
+	// A real producer process/container restart keeps the exact owned channel
+	// volumes. Records and sockets on those volumes must not restore authority.
+	stop()
+	if p.runtime.CloseOwned(ctx, p.handle) != nil {
+		t.Fatal("actual old producer removal failed")
+	}
+	all[0].handle = nil
+	restarted, e := p.runtime.Create(ctx)
+	all = append(all, instance{p.runtime, restarted})
+	if e != nil {
+		t.Fatal("actual producer restart failed")
+	}
+	launcher2, e := auth.NewLauncher(ctx, p.runtime, restarted, cfg, []auth.LauncherRoute{{Runtime: a.runtime, Handle: a.handle, Scope: scope("caller-a")}, {Runtime: bCaller.runtime, Handle: bCaller.handle, Scope: scope("caller-b")}})
+	if e != nil {
+		t.Fatal("restarted protected launcher failed")
+	}
+	run2, stop2 := context.WithCancel(ctx)
+	done2 := make(chan error, 1)
+	go func() { done2 <- launcher2.Run(run2) }()
+	t.Cleanup(func() {
+		stop2()
+		select {
+		case <-done2:
+		case <-time.After(3 * time.Second):
+			t.Error("restarted producer exec did not stop")
+		}
+	})
+	deadline = time.Now().Add(10 * time.Second)
+	for {
+		r, e := launcher2.ReadControl(ctx)
+		if e == nil {
+			if r.Version != 0 || r.Ready {
+				t.Fatal("retained records restored producer authority")
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("retained-volume restart private channel unavailable")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	held(verify("caller-a", fresh, scope("caller-a").Scope, 0))
+	if _, e = launcher2.Initialize(ctx); e != nil {
+		t.Fatal("fresh restart incarnation initialization failed")
+	}
+	held(verify("caller-a", fresh, scope("caller-a").Scope, 0))
+	if _, e = launcher2.Register(ctx, "caller-a", time.Minute); e != nil {
+		t.Fatal("fresh restart registration failed")
+	}
+	if !verify("caller-a", grant(a), scope("caller-a").Scope, 0).Allowed {
+		t.Fatal("fresh restart positive failed")
+	}
 	t.Log("ACTUAL independent producer/query/two-caller/sibling custody and current-proof matrix PASS; offline fixture only")
 }
