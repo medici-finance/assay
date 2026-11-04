@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -301,7 +302,8 @@ func installFakeForge(t *testing.T) *envForge {
 }
 
 // GetIssueTyped answers `edit --relink-to`'s read of the NEW issue (#5020) from FAKEGH_ISSUE_*:
-// MISSING=1 is a 404, READ_FAIL=1 an HTTP 502, NIL=1 a (nil, nil) answer, PR=1 a pull request,
+// MISSING=1 is a 404, READ_FAIL=1 an HTTP 502, SPLIT_FAIL a failed issue read with a change at
+// the same number (below), NIL=1 a (nil, nil) answer, PR=1 a pull request,
 // STATE (default open), AUTHOR login:id (default the fixture's trusted ada:2001), LABELS
 // (comma-separated), TITLE and BODY.
 //
@@ -316,6 +318,33 @@ func (f *envForge) GetIssueTyped(repo deskkit.ForgeRepo, number int, kind deskki
 	}
 	if os.Getenv("FAKEGH_ISSUE_READ_FAIL") == "1" {
 		return nil, deskkit.Unverifiable("HTTP 502: Bad Gateway", nil)
+	}
+	// FAKEGH_ISSUE_SPLIT_FAIL models a forge with SEPARATE issue and change sequences
+	// (GitLab's #N and !N) whose ISSUE read fails while a change exists at the same number:
+	// a status (e.g. 503, 403) fails it the way GitLabForge.mapErr does, with a ForgeAPIError
+	// cause ("503-echo" adds the mismatch wording to that answer's text); "transport" fails it
+	// with no status but a transport cause. The change read
+	// answers an open change at the number.
+	if sf := os.Getenv("FAKEGH_ISSUE_SPLIT_FAIL"); sf != "" {
+		if kind == deskkit.TargetChange {
+			return &deskkit.Issue{Number: number, State: "open", IsPullRequest: true,
+				Author: deskkit.Account{Login: "ada", ID: 2001}}, nil
+		}
+		path := fmt.Sprintf("/projects/%s/issues/%d", repo.Slug(), number)
+		if sf == "transport" {
+			return nil, deskkit.Unverifiable("could-not-check: GET "+path+" did not complete: connection reset",
+				errors.New("connection reset"))
+		}
+		// "echo" is a 503 whose forge-supplied body text happens to carry the single-sequence
+		// kind-mismatch wording: a status-bearing failure is a failure whatever it says.
+		msg := ""
+		if strings.HasSuffix(sf, "-echo") {
+			sf = strings.TrimSuffix(sf, "-echo")
+			msg = ": #" + strconv.Itoa(number) + " is a pull request, not an issue"
+		}
+		st, _ := strconv.Atoi(sf)
+		return nil, deskkit.Unverifiable(fmt.Sprintf("could-not-check: GET %s — HTTP %d%s", path, st, msg),
+			&deskkit.ForgeAPIError{Status: st, Method: "GET", Path: path, Body: msg})
 	}
 	if os.Getenv("FAKEGH_ISSUE_NIL") == "1" {
 		return nil, nil

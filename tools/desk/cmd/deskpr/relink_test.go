@@ -59,6 +59,12 @@ func TestRelinkPartialRefuses(t *testing.T) {
 		{"backtick", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a ` b"}, "a backtick"},
 		{"line separator", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a\u2028b"}, "U+2028"},
 		{"next line", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a\u0085b"}, "U+0085"},
+		{"paragraph separator", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a\u2029b"}, "U+2029"},
+		{"bidi override", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a\u202eb"}, "format character U+202E"},
+		{"bidi isolate", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a\u2066b"}, "format character U+2066"},
+		{"zero-width space", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a\u200bb"}, "format character U+200B"},
+		{"zero-width joiner", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a\u200db"}, "format character U+200D"},
+		{"byte order mark", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a\ufeffb"}, "format character U+FEFF"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bodyPath := relinkSetup(t, "Issue: #77", "Issue: #78")
@@ -226,6 +232,22 @@ func TestRelinkGatedRefuses(t *testing.T) {
 }
 
 // regression: #5020
+func TestRelinkSameNumGated(t *testing.T) {
+	for _, label := range []string{"needs-decision", "human-only", "security", "gate:human"} {
+		t.Run(label, func(t *testing.T) {
+			bodyPath := relinkSetup(t, "Issue: #77", "Fixes: #77")
+			t.Setenv("FAKEGH_ISSUE_LABELS", label)
+			err := cmdEdit([]string{"--body-file", bodyPath,
+				"--relink-from", "77", "--relink-to", "77", "--relink-reason", "x"})
+			if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "gated (label "+label+")") {
+				t.Fatalf("err = %v, want exit 5: Issue: -> Fixes: on the same gated number passes the same gate", err)
+			}
+			assertNoWrites(t)
+		})
+	}
+}
+
+// regression: #5020
 func TestRelinkAuditFailNoEdit(t *testing.T) {
 	bodyPath := relinkSetup(t, "Issue: #77", "Issue: #78")
 	t.Setenv("FAKEGH_COMMENT_FAIL", "1")
@@ -366,6 +388,28 @@ func TestRelinkPRNumberRefuses(t *testing.T) {
 		t.Fatalf("reads = %v, want %v (the issue read, then one change read to classify it)", curForge.issueKinds, want)
 	}
 	assertNoWrites(t)
+}
+
+// regression: #5020
+func TestRelinkSplitReadFail(t *testing.T) {
+	for _, mode := range []string{"503", "403", "503-echo", "transport"} {
+		t.Run(mode, func(t *testing.T) {
+			bodyPath := relinkSetup(t, "Issue: #77", "Issue: #78")
+			t.Setenv("FAKEGH_ISSUE_SPLIT_FAIL", mode)
+			err := cmdEdit([]string{"--body-file", bodyPath,
+				"--relink-from", "77", "--relink-to", "78", "--relink-reason", "x"})
+			if deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable ||
+				strings.Contains(err.Error(), "refused: --relink-to #78 is a pull request") {
+				t.Fatalf("err = %v, want exit 6: a failed issue read is could-not-check, and a change "+
+					"at the same number in a separate sequence does not make #78 a pull request", err)
+			}
+			want := []deskkit.TargetKind{deskkit.TargetIssue}
+			if !slices.Equal(curForge.issueKinds, want) {
+				t.Fatalf("reads = %v, want %v (no change read after a plain read failure)", curForge.issueKinds, want)
+			}
+			assertNoWrites(t)
+		})
+	}
 }
 
 // regression: #5020

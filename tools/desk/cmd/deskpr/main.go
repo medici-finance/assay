@@ -163,14 +163,16 @@ and is refused; Fixes: -> Closes: on the same issue is not.
 The one exception is an explicit link correction (#5020): --relink-from N --relink-to M
 --relink-reason TEXT, all three or none (a partial set, a blank reason given alone
 included, a non-positive number, or a reason that is empty, multi-line, over 500 bytes, or
-carries a backtick, "<!--" or a control or line-separator character refuses, exit 5, before
+carries a backtick, "<!--", a control or line-separator character, or an invisible
+format character (bidi control, zero-width character, BOM) refuses, exit 5, before
 any forge call). It runs only from the PR's own checkout (its head branch, or HEAD at its
 head commit); --pr N from any other checkout refuses it. It moves only an Issue:/Fixes:
 link to an issue in this repository, never a Brief:, Authors:, Cross-repo-brief: or
 owner/repo#N link. N must be the number the PR's current trailer carries and the
 replacement body's trailer must carry M; Issue: #N -> Fixes: #N on the same number goes
 through the same flags. Issue M must exist, be an open issue (a pull request number refuses,
-exit 5; any other unreadable read is exit 6), have a trusted author or a complete record of
+exit 5, recognised only from the forge's own issue-versus-pull-request answer; any other
+unreadable read is exit 6, with no second read), have a trusted author or a complete record of
 a current blessing (an unreadable trust record is exit 6), and carry no human
 gate (gate:human / human-only / security label, [HUMAN GATE] title, "Gate: human" line)
 and no decision gate (needs-decision label, decision-gate marker). The reason is

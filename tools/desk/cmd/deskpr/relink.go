@@ -25,6 +25,7 @@ package main
 //     body edit, so no landed edit lacks its record.
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -92,6 +93,9 @@ func relinkReasonGarble(reason string) string {
 	for _, r := range reason {
 		if r == '\u2028' || r == '\u2029' || unicode.IsControl(r) {
 			return fmt.Sprintf("the control or separator character U+%04X", r)
+		}
+		if unicode.Is(unicode.Cf, r) {
+			return fmt.Sprintf("the invisible format character U+%04X", r)
 		}
 	}
 	return ""
@@ -165,15 +169,20 @@ func (r *relinkReq) admit(curBody, body []byte, repo string) (oldLink, newLink s
 // human gate or decision gate. Unreadable is exit 6, never a pass.
 //
 // GitHub numbers issues and pull requests in one sequence, and its typed issue read answers a
-// pull-request number with a could-not-check error rather than a record. So a failed issue
-// read is followed by ONE change-typed read of the same number: only a record that read
-// positively reports as a pull request turns the failure into the exit-5 "is a pull request"
-// refusal. Every other outcome keeps the original read's exit 6.
+// pull-request number with a could-not-check error rather than a record. So that one error,
+// the kind mismatch, is followed by ONE change-typed read of the same number: only a record
+// that read positively reports as a pull request turns it into the exit-5 "is a pull request"
+// refusal. Any other failure of the issue read (a 5xx, a 403, a transport error) keeps its
+// exit 6 with no second read: on a forge with separate issue and change sequences (GitLab's
+// #N and !N), a change at the same number says nothing about the issue that could not be read.
 func relinkIssueGate(fg deskkit.Forge, fr deskkit.ForgeRepo, n int) error {
 	is, err := fg.GetIssueTyped(fr, n, deskkit.TargetIssue)
 	if err != nil {
 		if deskkit.IsForgeNotFound(err) {
 			return deskkit.Refused(fmt.Sprintf("refused: --relink-to #%d does not exist in %s", n, fr.Slug()))
+		}
+		if !relinkKindMismatch(err) {
+			return deskkit.Unverifiable(fmt.Sprintf("cannot read issue #%d (--relink-to)", n), err)
 		}
 		if ch, cerr := fg.GetIssueTyped(fr, n, deskkit.TargetChange); cerr == nil && ch != nil && ch.IsPullRequest {
 			return deskkit.Refused(fmt.Sprintf("refused: --relink-to #%d is a pull request, not an issue", n))
@@ -204,6 +213,21 @@ func relinkIssueGate(fg deskkit.Forge, fr deskkit.ForgeRepo, n int) error {
 			"work waiting on a human", n, why))
 	}
 	return nil
+}
+
+// relinkKindMismatchText is the phrase the GitHub backend's typed issue read puts in the
+// could-not-check error it returns for a pull-request number (deskkit.GitHubForge.GetIssueTyped).
+const relinkKindMismatchText = "is a pull request, not an issue"
+
+// relinkKindMismatch reports whether a failed typed issue read is the single-sequence
+// backend's kind mismatch and nothing else: an exit-6 error with NO underlying cause (a forge
+// answer that carried an HTTP status, or a transport failure, always has one) whose message
+// names the mismatch. Anything it does not recognise is a plain read failure, so a change in
+// that wording fails closed (exit 6), never open.
+func relinkKindMismatch(err error) bool {
+	var de *deskkit.DeskError
+	return errors.As(err, &de) && de.Code == deskkit.ExitUnverifiable && de.Err == nil &&
+		strings.Contains(de.Msg, relinkKindMismatchText)
 }
 
 // relinkGated reports whether an issue declares a human gate or a decision gate.

@@ -258,6 +258,30 @@
       "file": "cmd/deskpr/relink.go",
       "old": "\"Reason: `%s`\\n\\n\"+",
       "new": "\"Reason: %s\\n\\n\"+"
+    },
+    {
+      "name": "a plain issue-read failure is classified by a change read (separate sequences)",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\t\tif !relinkKindMismatch(err) {",
+      "new": "\t\tif false && !relinkKindMismatch(err) {"
+    },
+    {
+      "name": "a kind-mismatch error carrying a cause still counts as one",
+      "file": "cmd/deskpr/relink.go",
+      "old": "de.Code == deskkit.ExitUnverifiable && de.Err == nil &&",
+      "new": "de.Code == deskkit.ExitUnverifiable &&"
+    },
+    {
+      "name": "Issue: -> Fixes: on the same number skips the new-issue gate",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\t\tif gerr := relinkIssueGate(fg, fr, rl.to); gerr != nil {",
+      "new": "\t\tif gerr := relinkIssueGate(fg, fr, rl.to); rl.from != rl.to && gerr != nil {"
+    },
+    {
+      "name": "an invisible format character in the reason is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\t\tif unicode.Is(unicode.Cf, r) {",
+      "new": "\t\tif false {"
     }
   ]
 }
