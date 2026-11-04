@@ -87,6 +87,15 @@ The verifier obtains the current public key from the protected current-source
 binding, never from the presented grant. Exact encoding/signature rules must be
 pinned before code; cryptographic primitive reuse is not issuer/custody acceptance.
 
+The proposed operator writer is a closed management operation executed only through
+the trusted launcher's exact producer-container handle. Its in-container helper
+connects to a separate operator-control socket in the producer-only private volume;
+no consumer/sibling mounts it and none receives engine access. The operation takes
+bounded typed control data, not shell text or a role-selected endpoint. The helper
+calls the actual production controller, rather than being a fake fixture authority.
+Its embedding/entrypoint is declared with launcher composition; this adds no public
+operator verb or remotely reachable management listener.
+
 The operator-only control writer registers a launch only after independent Permit
 and live resource ownership checks. It derives stable caller/represented actor,
 role and cell from trusted launcher policy, binds the exact observed launch and
@@ -166,6 +175,14 @@ or arbitrary signing input. Actual fixtures must prove socket connectivity,
 filesystem write denial, mount exclusion and wrong-channel refusal separately.
 No container receives the engine socket, host PID namespace or a privileged/
 capability-bearing runtime profile. A channel volume is never the key volume.
+The launcher permits one canonical producer container identity for a cell on the
+selected engine. It reuses actual Engine inspection/validation and full immutable
+container identity, rather than trusting a name/label or a file lock in a cloned
+volume. A second volume or differently named producer cannot establish another
+current authority for that cell. Existing/unknown producer state holds bootstrap;
+replacement requires independently confirmed fencing of the exact old producer.
+Changing engine or multi-engine failover is outside this first profile unless
+old authority is independently invalidated and the new binding is qualified.
 
 [OrbStack's architecture](https://docs.orbstack.dev/architecture) places its engine
 in the Linux VM; [its volume documentation](https://docs.orbstack.dev/docker/file-sharing)
