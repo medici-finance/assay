@@ -12,7 +12,6 @@ import (
 
 var (
 	hostName = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$`)
-	repoPart = regexp.MustCompile(`^[a-z0-9_.-]+$`)
 	oid      = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 	digest   = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	linkID   = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
@@ -31,20 +30,10 @@ func text(s string, limit int, empty bool) bool {
 	return true
 }
 func repository(r mirror.RepositoryID) bool {
-	if (r.Provider != mirror.GitHub && r.Provider != mirror.GitLab) || !hostName.MatchString(r.Host) || strings.Contains(r.Host, "..") || len(r.Host) > 253 || len(r.Path) > 512 {
-		return false
-	}
-	parts := strings.Split(r.Path, "/")
-	if len(parts) < 2 {
-		return false
-	}
-	for _, p := range parts {
-		if !repoPart.MatchString(p) || p == "." || p == ".." {
-			return false
-		}
-	}
-	return true
+	// Provider/path identity belongs to mirror; this boundary only adds wire caps.
+	return r.Validate() == nil && hostName.MatchString(r.Host) && !strings.Contains(r.Host, "..") && len(r.Host) <= 253 && text(r.Path, 512, false)
 }
+
 func scope(s Scope) bool {
 	if len(s.Repositories) == 0 || len(s.Repositories) > MaxItems || !text(s.AdmissionID, 256, false) || !text(s.AccessEpoch, 256, false) || !text(s.CallerID, 256, false) || !text(s.RepresentedActor, 256, true) {
 		return false

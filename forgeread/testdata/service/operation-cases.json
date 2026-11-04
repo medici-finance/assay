@@ -99,9 +99,9 @@
       "scope": {
         "repositories": [
           {
-            "Provider": "github",
-            "Host": "github.example",
-            "Path": "example/project"
+            "Provider": "gitlab",
+            "Host": "gitlab.example",
+            "Path": "ExampleGroup/Subgroup/Project"
           }
         ],
         "admissionId": "fixture-admission",
@@ -110,9 +110,9 @@
         "representedActor": ""
       },
       "repository": {
-        "Provider": "github",
-        "Host": "github.example",
-        "Path": "example/project"
+        "Provider": "gitlab",
+        "Host": "gitlab.example",
+        "Path": "ExampleGroup/Subgroup/Project"
       },
       "operation": "diff",
       "mirror": null,
@@ -132,9 +132,9 @@
       "scope": {
         "repositories": [
           {
-            "Provider": "github",
-            "Host": "github.example",
-            "Path": "example/project"
+            "Provider": "gitlab",
+            "Host": "gitlab.example",
+            "Path": "ExampleGroup/Subgroup/Project"
           }
         ],
         "admissionId": "fixture-admission",
@@ -143,9 +143,9 @@
         "representedActor": ""
       },
       "repository": {
-        "Provider": "github",
-        "Host": "github.example",
-        "Path": "example/project"
+        "Provider": "gitlab",
+        "Host": "gitlab.example",
+        "Path": "ExampleGroup/Subgroup/Project"
       },
       "operation": "diff",
       "metadata": {

@@ -23,7 +23,9 @@ original owned request; matching a request ID alone is insufficient.
 Scope contains the explicit repository set, `admissionId`, `accessEpoch`, stable
 `callerId`, and represented-actor text (empty when not represented). Repository identity is the typed
 `Provider`/`Host`/`Path` triple used by the mirror. The set comparison neither
-resolves aliases nor discovers repositories. The service independently establishes
+resolves aliases nor discovers repositories. Provider/path validation reuses
+`mirror.RepositoryID.Validate`; case-preserving identities are carried unchanged, with
+additional wire byte/control/host bounds. The service independently establishes
 current caller authority, admission and epochs; caller-supplied scope is a binding
 claim, not a grant. The ingestion identity does not establish caller visibility.
 

@@ -59,6 +59,7 @@ func TestForgeServiceContractCompatibility(t *testing.T) {
 	t.Run("literal-operations", checkLiteralOperations)
 	t.Run("response-refusals", checkResponseRefusals)
 	t.Run("schema-source", checkSchemaSource)
+	t.Run("canonical-repository", checkCanonicalRepository)
 	q := literalRequest(t)
 	if q.Operation != service.FileAt || q.Repository.Provider != mirror.GitHub || q.Repository.Host != "github.example" || q.Repository.Path != "example/project" || q.Source.Revision != strings.Repeat("a", 40) || q.Source.Path != "readme.txt" {
 		t.Fatal("literal request identity/source changed")
@@ -447,5 +448,29 @@ func checkSchemaSource(t *testing.T) {
 	visit(reflect.TypeFor[service.Response]())
 	if len(seen) < 25 {
 		t.Fatal("schema conformance reader did not inspect reachable DTOs")
+	}
+}
+
+func checkCanonicalRepository(t *testing.T) {
+	q := literalRequest(t)
+	q.Repository = mirror.RepositoryID{Provider: mirror.GitLab, Host: "gitlab.example", Path: "ExampleGroup/Subgroup/Project"}
+	q.Scope.Repositories = []mirror.RepositoryID{q.Repository}
+	if e := q.Repository.Validate(); e != nil {
+		t.Fatal("canonical positive fixture invalid", e)
+	}
+	if _, e := service.EncodeRequest(q); e != nil {
+		t.Error("canonical case-preserving repository refused", e)
+	}
+	q.Repository.Provider = mirror.GitHub
+	q.Scope.Repositories = []mirror.RepositoryID{q.Repository}
+	if e := q.Repository.Validate(); e == nil {
+		t.Fatal("canonical negative fixture valid")
+	}
+	// Lowercase retains the old transport's character class: only the actual
+	// provider's canonical segment rule distinguishes this invalid identity.
+	q.Repository.Path = "example/subgroup/project"
+	q.Scope.Repositories = []mirror.RepositoryID{q.Repository}
+	if _, e := service.EncodeRequest(q); e == nil {
+		t.Fatal("noncanonical provider repository accepted")
 	}
 }
