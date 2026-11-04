@@ -32,33 +32,30 @@ func rowreadFakeToken(tag string) string {
 // rowreadTokenShape is the shape scan run over everything a row could see.
 var rowreadTokenShape = regexp.MustCompile(`(ghs|ghp|gho|ghu|ghr)_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}`)
 
-var rowreadBin struct {
-	once sync.Once
-	path string
-	err  error
-	out  []byte
-}
-
-// rowreadStatusgen builds this package once, so a Verify row can run the real
-// `statusgen rowread` from PATH.
+// rowreadStatusgen builds this package into the test's own temp dir, so a
+// Verify row can run the real `statusgen rowread` from PATH and nothing is
+// left behind when the test ends.
 func rowreadStatusgen(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go toolchain unavailable")
 	}
-	rowreadBin.once.Do(func() {
-		dir, err := os.MkdirTemp("", "rowread-bin-")
-		if err != nil {
-			rowreadBin.err = err
-			return
-		}
-		rowreadBin.path = filepath.Join(dir, "statusgen")
-		rowreadBin.out, rowreadBin.err = goquiet.Cmd(exec.Command("go", "build", "-o", rowreadBin.path, ".")).CombinedOutput()
-	})
-	if rowreadBin.err != nil {
-		t.Fatalf("build statusgen: %v\n%s", rowreadBin.err, rowreadBin.out)
+	path := filepath.Join(t.TempDir(), "statusgen")
+	if out, err := goquiet.Cmd(exec.Command("go", "build", "-o", path, ".")).CombinedOutput(); err != nil {
+		t.Fatalf("build statusgen: %v\n%s", err, out)
 	}
-	return rowreadBin.path
+	return path
+}
+
+// rowreadStub puts a stub `deskread` running script on PATH. The stub answers
+// from the script alone; it reaches no forge.
+func rowreadStub(t *testing.T, script string) {
+	t.Helper()
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "deskread"), []byte("#!/bin/sh\n"+script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 // rowreadForge is a fake forge plus a stub `deskread` that stands in for the
@@ -202,8 +199,9 @@ func TestRowreadHoldsNoToken(t *testing.T) {
 }
 
 // regression: #4700
-// TestRowreadRefusesNonRead: a write verb, another read kind, a CI-token flag
-// and a flag smuggled into the target are refused before any reader starts.
+// TestRowreadRefusesNonRead: a write verb, another read kind, a CI-token flag,
+// a flag smuggled into the target and a stray trailing argument are refused
+// before any reader starts.
 func TestRowreadRefusesNonRead(t *testing.T) {
 	sg := rowreadStatusgen(t)
 	f := newRowreadForge(t, `"x"`)
@@ -215,6 +213,7 @@ func TestRowreadRefusesNonRead(t *testing.T) {
 		{"comments", "--issue", "example-org/one#7", "--ci-workflow-token"},
 		{"comments", "--issue", "--repo=example-org/one#7"},
 		{"comments", "--issue", "example-org/one#0"},
+		{"comments", "--issue", "example-org/one#7", "extra"},
 		{"comments"},
 		{},
 	} {
@@ -237,15 +236,49 @@ func TestRowreadRefusesNonRead(t *testing.T) {
 // could-not-check exit, never an empty answer a row would read as "absent".
 func TestRowreadUnreadFailsClosed(t *testing.T) {
 	sg := rowreadStatusgen(t)
-	bin := t.TempDir()
-	script := "#!/bin/sh\necho '{\"schema\":1,\"kind\":\"comments\",\"items\":[],\"partial\":[{\"repo\":\"example-org/one\",\"number\":7,\"reason\":\"unreadable\"}]}'\n"
-	if err := os.WriteFile(filepath.Join(bin, "deskread"), []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	rowreadStub(t, "echo '{\"schema\":1,\"kind\":\"comments\",\"items\":[],\"partial\":[{\"repo\":\"example-org/one\",\"number\":7,\"reason\":\"unreadable\"}]}'\n")
 	out, err := exec.Command(sg, "rowread", "comments", "--issue", "example-org/one#7").Output()
 	ee, ok := err.(*exec.ExitError)
 	if !ok || ee.ExitCode() != rowreadWantCouldNot || len(out) != 0 {
 		t.Fatalf("partial read: %v, stdout %q; want exit %d and nothing printed", err, out, rowreadWantCouldNot)
+	}
+}
+
+// regression: #4700
+// TestRowreadLaterUnreadPrintsNothing: with several --issue targets, an
+// unread issue after a read one that matched leaves stdout empty. A row that
+// tests "any output?" without pipefail would otherwise read the earlier
+// issue's line as a pass.
+func TestRowreadLaterUnreadPrintsNothing(t *testing.T) {
+	sg := rowreadStatusgen(t)
+	rowreadStub(t, `case "$*" in
+*one#8*) echo '{"schema":1,"kind":"comments","items":[],"partial":[{"repo":"example-org/one","number":8,"reason":"unreadable"}]}' ;;
+*) echo '{"schema":1,"kind":"comments","items":[{"repo":"example-org/one","number":7,"comments":[{"authorLogin":"example-bot","authorId":1,"createdAt":"2026-11-03T00:00:00Z","body":"marker"}]}],"partial":[]}' ;;
+esac
+`)
+	out, err := exec.Command(sg, "rowread", "comments", "--issue", "example-org/one#7", "--issue", "example-org/one#8", "--body-contains", "marker").Output()
+	ee, ok := err.(*exec.ExitError)
+	if !ok || ee.ExitCode() != rowreadWantCouldNot || len(out) != 0 {
+		t.Fatalf("read #7 then unread #8: %v, stdout %q; want exit %d and nothing printed", err, out, rowreadWantCouldNot)
+	}
+}
+
+// regression: #4700
+// TestRowreadBodyContainsFilters: --body-contains names only the comments
+// whose body holds the text. Row 13's marker check and its control both rest
+// on this: an unfiltered read would pass on any issue with any comment.
+func TestRowreadBodyContainsFilters(t *testing.T) {
+	sg := rowreadStatusgen(t)
+	rowreadStub(t, `echo '{"schema":1,"kind":"comments","items":[{"repo":"example-org/one","number":7,"comments":[`+
+		`{"authorLogin":"example-other","authorId":2,"createdAt":"2026-11-02T00:00:00Z","body":"unrelated note"},`+
+		`{"authorLogin":"example-bot","authorId":1,"createdAt":"2026-11-03T00:00:00Z","body":"triage done (fixture triage)"}]}],"partial":[]}'
+`)
+	out, err := exec.Command(sg, "rowread", "comments", "--issue", "example-org/one#7", "--body-contains", "(fixture triage)").Output()
+	if err != nil {
+		t.Fatalf("rowread: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) != 1 || !strings.Contains(lines[0], `"authorLogin":"example-bot"`) {
+		t.Fatalf("rowread --body-contains printed %q; want exactly the one matching comment", out)
 	}
 }

@@ -23,12 +23,14 @@ package main
 //   - target validation, so a row cannot smuggle a flag into deskread's argv:
 //     the target is rebuilt from a parsed owner/name and a positive number.
 //   - a fail-closed answer. Any issue deskread did not read exits
-//     could-not-check (6), never an empty answer, because an empty answer is
-//     exactly what the row's "is the marker present?" test would misread.
+//     could-not-check (6) and prints nothing, not even the matches of issues
+//     read before it, because an empty or partial answer is exactly what the
+//     row's "is the marker present?" test would misread.
 //   - an output that carries no comment body: one JSON line per matching
 //     comment naming the issue, the author and the time.
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -112,7 +114,12 @@ func runRowread(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "statusgen rowread: name at least one --issue\n%s\n", usage)
 		return rowreadExitUsage
 	}
-	enc := json.NewEncoder(stdout)
+	// Every match is held until every issue has been read. A later unread
+	// issue must leave stdout empty, not holding the earlier issues' lines:
+	// a row that tests "any output?" without pipefail would read a partial
+	// answer as a pass.
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
 	reader := newDeskreadReader()
 	for _, is := range issues {
 		cs, err := reader.IssueComments(is.repo, is.number)
@@ -125,10 +132,14 @@ func runRowread(args []string, stdout, stderr io.Writer) int {
 				continue
 			}
 			if err := enc.Encode(rowreadMatch{Repo: is.repo, Number: is.number, AuthorLogin: c.User.Login, CreatedAt: c.CreatedAt}); err != nil {
-				fmt.Fprintln(stderr, "statusgen rowread: writing output:", err)
+				fmt.Fprintln(stderr, "statusgen rowread: encoding output:", err)
 				return rowreadExitCouldNot
 			}
 		}
+	}
+	if _, err := stdout.Write(buf.Bytes()); err != nil {
+		fmt.Fprintln(stderr, "statusgen rowread: writing output:", err)
+		return rowreadExitCouldNot
 	}
 	return rowreadExitOK
 }

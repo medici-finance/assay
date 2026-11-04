@@ -30,6 +30,24 @@
       "file": "rowread.go",
       "old": "`^([A-Za-z0-9][A-Za-z0-9-]*)/",
       "new": "`^([A-Za-z0-9=-][A-Za-z0-9=-]*)/"
+    },
+    {
+      "name": "matches of issues read before an unread one reach stdout",
+      "file": "rowread.go",
+      "old": "\tenc := json.NewEncoder(&buf)\n",
+      "new": "\tenc := json.NewEncoder(stdout)\n"
+    },
+    {
+      "name": "--body-contains filter disabled, every comment printed",
+      "file": "rowread.go",
+      "old": "\t\t\tif *contains != \"\" && !strings.Contains(c.Body, *contains) {\n",
+      "new": "\t\t\tif false && *contains != \"\" && !strings.Contains(c.Body, *contains) {\n"
+    },
+    {
+      "name": "a stray trailing argument is accepted",
+      "file": "rowread.go",
+      "old": "\tif fs.NArg() != 0 {\n",
+      "new": "\tif false && fs.NArg() != 0 {\n"
     }
   ]
 }
