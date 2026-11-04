@@ -24,6 +24,8 @@ def fault(name, file, before, after, test, witness):
     return (name, [(file, before, after)], test, witness)
 
 FAULTS = [
+    fault("construction-policy", "controller.go", "if CheckConfig(cfg) != nil || !clockPresent(wall)", "if !clockPresent(wall)", "Launch/policy", "malformed configuration accepted"),
+    ("observed-launch", [("controller.go", "p.Launch.Match(cmd.Launch.Observation) != nil", "false", 2)], "Launch", "foreign resource observation accepted"),
     fault("issuer", "verifier.go", "claims.Issuer != v.config.Issuer || ", "", "Claims/issuer", "refusal released trusted fields"),
     fault("audience", "verifier.go", "claims.Audience != v.config.Audience || ", "", "Claims/audience", "refusal released trusted fields"),
     ("cell", [("verifier.go", "cfg.Policy.Cell != cfg.Bootstrap.Binding.Cell || ", ""), ("verifier.go", "cfg.Launch.Cell != cfg.Policy.Cell || ", "")], "Claims/constructor-cell", "foreign cell configuration accepted"),

@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5428
 issues: []
 schema: brief-v2
-version: 6
+version: 7
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -51,6 +51,7 @@ consumers:
 files:
 - `tools/desk/internal/forgeservice/auth/` (planned)
 - `tools/desk/internal/forgeservice/auth/testdata/local_authority_mutations.py` (planned)
+- `tools/desk/internal/forgeservice/auth/testdata/qualify_fixture.py` (planned)
 - `tools/desk/internal/celllaunch/`
 - `tools/desk/internal/cellcontainer/`
 - `forgeread/refresh/types.go`

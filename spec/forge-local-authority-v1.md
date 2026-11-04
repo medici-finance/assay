@@ -107,8 +107,12 @@ Observed existing components:
 Both comms and forgeread are existing direct desk-module requirements with local
 module replacements. Their public packages are importable here; their internal
 packages are not. No new dependency version or generic JWT/auth framework is
-proposed. Disposition: continue bounded design; hold runtime mechanism selection
-until the profile/current-source and fixture issues below are resolved.
+proposed. The Task1 assessment held runtime mechanism selection until its design
+and fixture prerequisites were concrete. The subsequent human ruling authorizes
+bounded offline implementation; operational inputs and restore acceptance remain
+held under the unchanged controlling requirements.
+
+Design ruling: https://github.com/medici-finance/assay/issues/5428#issuecomment-6631318014
 
 ## Proposed mechanism for review
 

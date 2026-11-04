@@ -275,6 +275,13 @@ func TestForgeLocalAuthorityCurrent(t *testing.T) {
 		if e != nil {
 			t.Fatal("actual signed current proof", e)
 		}
+		claims, e := decodeClaims(f.grant, f.config.MaxFrameBytes)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = f.controller.ApplyControl(context.Background(), ControlCommand{Operation: Revoke, ExpectedVersion: f.version, GrantID: claims.GrantID}); e != nil {
+			t.Fatal(e)
+		}
 		v := currentFixtureProxy(t, f, func(q CurrentProbe) (SignedProof, error) {
 			if bytes.Equal(q.Challenge, original) {
 				t.Error("new request reused original challenge")
