@@ -243,12 +243,12 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 37 | [Scoped forge mirror with persisted freshness, coverage and polling repair](brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md) | 7 | L | todo | — | — |
 | 38 | [Forge event adapter, feedback observations and durable reevaluation demand](brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md) | 8 | L | todo | — | — |
 | 39 | [Typed forge service contract and scoped client SDK](brief-39-typed-forge-service-contract-and-scoped-client-sdk.md) | 3 | M | todo | — | — |
-| 40 | [Authenticated forge serving and role executor custody](brief-40-authenticated-forge-serving-and-role-executor-custody.md) | 6 | L | todo | — | — |
-| 41 | [Write-through forge receipts and read-after-write projection](brief-41-write-through-forge-receipts-and-read-after-write-projection.md) | 8 | L | todo | — | — |
-| 42 | [SHA-bound source queries and immutable result caching](brief-42-sha-bound-source-queries-and-immutable-result-caching.md) | 7 | L | todo | — | — |
-| 43 | [Incremental forge indexes and dependency-aware invalidation](brief-43-incremental-forge-indexes-and-dependency-aware-invalidation.md) | 8 | M | todo | — | — |
-| 44 | [Shared Git object and fetch reuse qualification trial](brief-44-shared-git-object-and-fetch-reuse-qualification-trial.md) | 8 | M | todo | — | — |
-| 45 | [Forge service fault simulation and scoped cutover qualification](brief-45-forge-service-fault-simulation-and-scoped-cutover-qualification.md) | 9 | L | todo | — | — |
+| 40 | [Authenticated forge serving and role executor custody](brief-40-authenticated-forge-serving-and-role-executor-custody.md) | 9 | L | todo | — | — |
+| 41 | [Write-through forge receipts and read-after-write projection](brief-41-write-through-forge-receipts-and-read-after-write-projection.md) | 10 | L | todo | — | — |
+| 42 | [SHA-bound source queries and immutable result caching](brief-42-sha-bound-source-queries-and-immutable-result-caching.md) | 10 | L | todo | — | — |
+| 43 | [Incremental forge indexes and dependency-aware invalidation](brief-43-incremental-forge-indexes-and-dependency-aware-invalidation.md) | 11 | M | todo | — | — |
+| 44 | [Shared Git object and fetch reuse qualification trial](brief-44-shared-git-object-and-fetch-reuse-qualification-trial.md) | 11 | M | todo | — | — |
+| 45 | [Forge service fault simulation and scoped cutover qualification](brief-45-forge-service-fault-simulation-and-scoped-cutover-qualification.md) | 12 | L | todo | — | — |
 | 46 | [Pure read-only mirror kernel and conformance](brief-46-pure-read-only-mirror-kernel-and-conformance.md) | 2 | M | todo | — | — |
 | 47 | [Admitted incremental forge readers for mirror ingestion](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) | 2 | M | todo | — | — |
 | 48 | [Bound native mirror response allocation before decoding](brief-48-bound-native-mirror-response-allocation-before-decoding.md) | 3 | M | todo | — | — |
@@ -258,6 +258,9 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 52 | [Canonical PostgreSQL mirror store without execution dependencies](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md) | 3 | L | todo | — | — |
 | 53 | [Qualified native mirror attempt accounting and retry metadata](brief-53-qualified-native-mirror-attempt-accounting-and-retry-metadata.md) | 5 | L | todo | — | — |
 | 54 | [Canonical PostgreSQL refresh gate and admitted read-through integration](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md) | 6 | L | todo | — | — |
+| 55 | [Operator provisioning of known read-only refresh profiles](brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md) | 7 | L | todo | — | — |
+| 56 | [Read-only forge serving behind qualified caller authority](brief-56-read-only-forge-serving-behind-qualified-caller-authority.md) | 8 | L | todo | — | — |
+| 57 | [Qualified local read-only caller authority and current-state producer](brief-57-qualified-local-read-only-caller-authority-and-current-state-producer.md) | 4 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -661,7 +664,7 @@ a source-query fixture needs no live forge, cell deployment or newly provisioned
 The real managed-service blockers are qualified R1/R2 and R3/R4 custody, not a shared-cache
 performance experiment. The trial may complete with a no-go result.
 
-**Waves:** 39 at 1; 40 at 6; 37 and 42 at 7; 38, 41, 43 and 44 at 8; 45 at 9. These numbers
+**Waves:** 39 at 3; 57 at 4; 37 and 55 at 7; 38 and 56 at 8; 40 at 9; 41 and 42 at 10; 43 and 44 at 11; 45 at 12. These numbers
 follow current cross-stream dependencies; workers refresh them at dispatch. No new capacity
 allocation is requested here, and in-progress forge-neutral/18 remains unchanged. The new
 local surface is a narrow R6/R4 capability; full remote OIDC ingress/cockpit remains R7.
@@ -853,3 +856,32 @@ outer joined-test skip when no DSN is supplied. Qualifying54 evidence remains in
 declared PostgreSQL workflow: nonempty explicit DSN, strict canonical fixture and exact
 named joined-test PASS are required. Missing, malformed, unreachable or skipped qualifying
 fixtures fail; this does not relax foundation/Store qualification.
+
+## Read-only profile and serving continuation — 4 November 2026
+
+The durable read owner deliberately has no production initializer. [55](brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md)
+extends that same R2 owner with explicit known operator inputs and actual SQL role separation.
+It does not wait for a caller issuer or a write executor. [56](brief-56-read-only-forge-serving-behind-qualified-caller-authority.md)
+then consumes the actual39 wire/client and qualified shared read owner for mirror-query only.
+Its actual authentication/current-authority producer and custody profile are still missing;
+that is a real production pickup blocker, not a port that authoring may assume exists.
+Offline handler/fixture preparation is unqualified and supplies no authenticated-serving credit.
+
+| Read-only wave | Work | Actual prerequisite | Remaining boundary |
+|---|---|---|---|
+| 4 | 57 local caller/current-state producer | Qualified39 and actual supported claims/custody/current-state source | Concrete producer/profile qualification required; no inferred issuer or entitlement |
+| 7 | 55 operator known-profile/accounting provisioning | Qualified54 and the same migration/codec/fixture owner | No production GRANT, credential or policy value selected |
+| 8 | 56 bounded mirror-query handler | Qualified39+55 and an actual independently qualified R3 producer/profile | Missing producer holds; no issuer, TTL or authentication inferred |
+| 9 | Full40 consumes56 | Every original custody/executor prerequisite remains | Full parent Tasks, seven Verify rows and gates remain owed |
+
+The bounded path is `36 → 52`, `50 + 51 → 53`, then `52 + 53 + 51 → 54 → 55`.
+Read serving additionally requires `39 → 57`, then `57 + 55 → 56`;
+full40 consumes56 afterward. Neither55 nor56 depends on the full write/execution delivery.
+No selected issuer, implementation or approval is fabricated to make this graph ready.
+Source50 lacks facts needed by existing desk-read/review projections and complete review
+coverage, so these units do not qualify full45 tool cutover, retention purge or full37 acceptance.
+
+
+### Earlier local authority producer
+
+[57](brief-57-qualified-local-read-only-caller-authority-and-current-state-producer.md) owns the missing canonical R3 local producer/current-state/custody qualification. Its actual source/profile precedes56; full40 consumes56 afterward, so no producer is hidden behind the downstream executor.55 remains independently implementable. Retained21 external caller requirements,22's local launcher capability and R7 remote login have distinct scope;57 must demonstrate concrete local compatibility and custody rather than invent a crypto/issuer/TTL choice. Missing producer/profile remains NEEDS_CONTEXT and unqualified, with no premature acceptance fork.

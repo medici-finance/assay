@@ -2,8 +2,8 @@
 brief: assay:assay:forge-neutral:40
 title: "Authenticated forge serving and role executor custody"
 why: "A shared cache increases the number of callers that can reach private forge data and write paths. Caller authentication, source admission and a separate role executor must be enforced at actual served boundaries so a cached answer or agent-supplied role cannot become authority."
-wave: 6
-depends: ["forge-neutral/39", "graph-execution/16", "desktools-v2/58", "desktools-v2/59"]
+wave: 9
+depends: ["forge-neutral/39", "graph-execution/16", "desktools-v2/58", "desktools-v2/59", "forge-neutral/56"]
 unblocks: ["forge-neutral/41", "forge-neutral/42", "cell-api/03"]
 effort: L
 gate: human
@@ -13,10 +13,11 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 8
+version: 9
 id: 2b089f0c-6ce5-4e2f-a5bf-d62842845b29
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - docs/streams/forge-neutral/brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md
   - "Requested shared read-through and failure-cache behavior, 2026-11-03; no activation grant"
   - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
@@ -32,10 +33,10 @@ exec-tier-why: Cross-component identity, privacy, concurrency and failure semant
 domain: complicated
 consumers:
   - "tools/desk/internal/credential/: follow-up forge-neutral/40 (consume /58\u201359 inside the role executor; no second minter/cache)"
-  - "tools/desk/internal/forgeservice/auth/: follow-up forge-neutral/40"
-  - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/40"
+  - "tools/desk/internal/forgeservice/auth/: follow-up forge-neutral/40 (consume57 local read-only producer; remaining write/executor custody only)"
+  - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/40 (consume56 mirror-query handler; remaining executor/effect routes only)"
   - "tools/desk/internal/forgeexecutor/: follow-up forge-neutral/40"
-  - "tools/desk/cmd/forgeserve/: follow-up forge-neutral/40"
+  - "tools/desk/cmd/forgeserve/: follow-up forge-neutral/40 (consume56 read-only query entrypoint; no duplicate query launcher)"
   - "tools/desk/cmd/forge-executor/: follow-up forge-neutral/40"
   - "tools/desk/internal/deskkit/forgeresolve.go: follow-up forge-neutral/40"
   - "tools/desk/internal/deskkit/outboundforge.go: follow-up forge-neutral/40"
@@ -95,6 +96,25 @@ Default if no answer: none — blocks until answered.
 Acceptance remains pending. This implementation-evidence decision
 does not prevent authoring or independent offline fixture work. Existing mirror retention and
 webhook payload decisions are not answered by this section.
+
+## Bounded read-only contribution and later consumption
+
+forge-neutral/55 owns explicit known R2 profile/accounting provisioning; forge-neutral/56
+owns the qualified mirror-query handler and the existing planned read-only forgeserve
+query entrypoint. This full parent depends on56 so it consumes
+that read-only owner rather than implementing a second handler concurrently. It retains
+all existing prerequisites, complete Tasks, seven Verify Class/Command pairs, Evidence
+and gates, and adds its remaining executor/custody/effect obligations later. No edge from56
+back to this full parent,41 or GE19 is introduced.
+
+The canonical shared Gate and AttemptAuthority remain owned by forge-neutral/54. This parent consumes that boundary through56 and adds no refresh owner.
+
+The actual R3 caller/current-state/custody producer must be qualified independently of
+this parent’s write/executor implementation. Passive records and client Scope fields do
+not satisfy that prerequisite. Missing producer/profile is NEEDS_CONTEXT; resolve the
+ratified mechanism inconsistency at its canonical owner without inventing an issuer.
+
+The canonical earlier local R3 caller/current-state/custody producer is `forge-neutral/57`. Consume its actual qualified read-only source/profile through56; this parent does not supply that prerequisite and retains its distinct write/executor authority and complete acceptance.
 
 ## Ground rules
 
