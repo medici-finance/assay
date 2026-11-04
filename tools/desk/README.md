@@ -5443,7 +5443,7 @@ this tool does. Same structural argument as `deskrelease`.
 ```bash
 deskgit fetch                 # refs/remotes/origin/* only (no tags)
 deskgit fetch --prune         # + drop stale remote-tracking refs (never a symbolic one)
-deskgit fetch --pr <N>        # pull/<N>/head -> local branch pr<N>   (N digits only)
+deskgit fetch --pr <N>        # pull/<N>/head -> local branch pr<N>   (N digits only; GitLab: merge-requests/<N>/head)
 deskgit fetch --branch <B>    # origin's <B> -> local branch <B>      (see --branch guards)
 deskgit fetch --as <role>     # any fetch mode above, authenticated from <role>'s token file
 deskgit push --as <role>      # push the CURRENT branch to origin, authenticated
@@ -5462,6 +5462,13 @@ closed). The same shape was later reproduced on `--pr` — a differently-cased l
 replaced by an unrelated commit at exit 0 — which is why the check is keyed on the destination
 ref rather than the flag. An **exact**-spelling destination on an existing branch is unaffected
 and still subject to git's normal fast-forward rules.
+
+**`--pr` asks the forge for its own ref (#5448).** GitHub serves a pull request's head at
+`refs/pull/<N>/head`; GitLab serves a merge request's head at `refs/merge-requests/<iid>/head`.
+The forge is resolved once from the gated origin (`ASSAY_REPO_FORGES`, then the origin host
+through the well-known table), and that one answer picks both the `--pr` source ref and the
+`--as` credential arm, with or without `--as`. Anything not resolved to GitLab keeps
+`refs/pull/<N>/head`, so GitHub behaviour is unchanged. Either way the local branch is `pr<N>`.
 
 **fetch runs in-process — no git child.** The old shape of this verb was a fixed `git fetch`
 argv plus a stack of pins against what argv cannot close (config- and environment-supplied
