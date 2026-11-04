@@ -54,7 +54,7 @@ consumers:
   - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/47 (the two incremental-operation inventory rows)"
   - "workflow/store/: follow-up forge-neutral/52 (canonical mirror tables, numbered migration and mirror.Store adapter; this parent consumes that owner)"
   - "workflow/store/: follow-up forge-neutral/54 (canonical refresh Gate and AttemptAuthority; this parent consumes them at trusted deskkit composition)"
-  - "graph-execution/28 fact-completeness mapping at trusted composition: follow-up forge-neutral/37 (full-parent fact integration remains; no duplicate Store or Gate implementation)"
+  - "workflow/store/ (graph-execution/28 fact-completeness mapping): follow-up forge-neutral/37 (full-parent fact integration remains; no duplicate Store or Gate implementation)"
   - "statusgen/testdata/regressionfloor/ (as planned by graph-execution/29): follow-up forge-neutral/37 (one frozen mirror-coverage case under 29's inventory rules)"
   - "statusgen/: out-of-scope (forge-neutral/18 owns statusgen's forge reads; this brief adds no statusgen link and no deskread kind)"
   - "comments, check and status observations, event delivery and reevaluation demand: follow-up forge-neutral/38"
