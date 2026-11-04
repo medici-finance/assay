@@ -455,6 +455,12 @@ const (
 	InputKeyRepoSourcePrefix = "repo-source:"
 	inputKeyTool             = "tool"
 	inputKeyFilePrefix       = "file:"
+	// InputKeyDeclaredPrefix records a ../<sibling>/ declaration that a
+	// single-repository run holds no source commit for (#5097). Its only value
+	// is DeclaredUnbound. No reader resolves it, so a receipt carrying one is
+	// never read as unchanged.
+	InputKeyDeclaredPrefix = "declared:"
+	DeclaredUnbound        = "unbound"
 )
 
 // Revision content-hashes a declared input against the local tree. A "tool" key returns the
@@ -470,6 +476,10 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 			return "", false
 		}
 		return rr.ToolVersion, true
+	case strings.HasPrefix(input, InputKeyDeclaredPrefix):
+		// An unbound sibling declaration (#5097) has no tree this reader may
+		// read: always could-not-check, so it never establishes unchangedness.
+		return "", false
 	case strings.HasPrefix(input, InputKeyRepoSourcePrefix):
 		repo := strings.TrimPrefix(input, InputKeyRepoSourcePrefix)
 		root := RootForRepo(repo)

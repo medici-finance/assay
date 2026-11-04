@@ -1,0 +1,71 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -timeout=180s -run '^(TestCtx[A-Za-z]+|TestSiblingEscapeRefused|TestDeclaredRefusesAmbiguity)$'",
+  "control": {
+    "name": "CONTROL \u2014 a trailing /** matches nothing below its directory, so the recursive glob selects no file",
+    "file": "internal/deskkit/declaredscope.go",
+    "old": "pattern = dir + \"/*\"",
+    "new": "pattern = dir + \"/x\""
+  },
+  "mutations": [
+    {
+      "name": "a line after the trailing sentence is read instead of refused (prose inside the list passes)",
+      "file": "internal/deskkit/declaredscope.go",
+      "old": "if annotated {",
+      "new": "if false && annotated {"
+    },
+    {
+      "name": "the sentence no longer has to follow a closed list (an open comma list ends in prose)",
+      "file": "internal/deskkit/declaredscope.go",
+      "old": "columnZero && listClosed && scopeAnnotation(line, out)",
+      "new": "columnZero && (listClosed || true) && scopeAnnotation(line, out)"
+    },
+    {
+      "name": "a path in the sentence no longer has to be declared already (a hidden path is dropped silently)",
+      "file": "internal/deskkit/declaredscope.go",
+      "old": "if !covered {",
+      "new": "if false && !covered {"
+    },
+    {
+      "name": "declaration and glob characters no longer disqualify the sentence",
+      "file": "internal/deskkit/declaredscope.go",
+      "old": "strings.ContainsAny(line, \"`*_{}[]<>|\\\\,;+():\\\"#?!=$&@%~\")",
+      "new": "false"
+    },
+    {
+      "name": "a sentence of fewer than four words is an annotation",
+      "file": "internal/deskkit/declaredscope.go",
+      "old": "len(words) < 4 ||",
+      "new": "len(words) < 1 ||"
+    },
+    {
+      "name": "a glob before the final /** is admitted",
+      "file": "internal/deskkit/declaredscope.go",
+      "old": "if !recursive || dir == \"\" || strings.ContainsAny(dir, \"*?[\") {",
+      "new": "if !recursive || dir == \"\" {"
+    },
+    {
+      "name": "a sibling's bare ../<name>/** is admitted",
+      "file": "internal/deskkit/declaredscope.go",
+      "old": "strings.HasPrefix(dir, \"../\") && (!ok || rel == \"\")",
+      "new": "strings.HasPrefix(dir, \"../\") && (!ok || rel == \"\") && false"
+    },
+    {
+      "name": "an unbound marker stands beside a repo-source pin",
+      "file": "internal/deskkit/declaredscope.go",
+      "old": "isMarker && (crossRepo ||",
+      "new": "isMarker && (false ||"
+    },
+    {
+      "name": "a marker for an undeclared path is accepted",
+      "file": "internal/deskkit/declaredscope.go",
+      "old": "v != DeclaredUnbound || !declared[decl])",
+      "new": "v != DeclaredUnbound || !declared[decl] && false)"
+    },
+    {
+      "name": "the planner reads an unbound sibling marker as unchanged",
+      "file": "internal/deskkit/verifywake.go",
+      "old": "return \"\", false\n\tcase strings.HasPrefix(input, InputKeyRepoSourcePrefix):",
+      "new": "return DeclaredUnbound, true\n\tcase strings.HasPrefix(input, InputKeyRepoSourcePrefix):"
+    }
+  ]
+}
