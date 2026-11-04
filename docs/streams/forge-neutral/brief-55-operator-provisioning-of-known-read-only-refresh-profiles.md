@@ -36,7 +36,7 @@ consumers:
 - "tools/desk/internal/deskkit/mirror_joined_test.go: follow-up forge-neutral/55 (actual provisioned read-through fixture)"
 - "workflow/README.md, spec/coordination-store-v1.md, docs/contracts.md and existing PostgreSQL CI: follow-up forge-neutral/55"
 - "authenticated caller mapping and read-only handlers: follow-up forge-neutral/56 (qualified R3 producer remains required)"
-- "retention, complete mirror acceptance and tool migration: follow-up forge-neutral/37"
+- "retention, complete mirror acceptance and tool migration: out-of-scope (already owned by full37; this contribution delivers none of them)"
 - "workflow claims, execution, outbox and reconstruction: out-of-scope (no dependency on their delivery)"
 ---
 
@@ -72,6 +72,13 @@ facts:
 - Typed service Scope and profile identity strings do not authenticate a caller or grant repository access. This contribution is independent of selecting a qualified caller issuer or R3 control profile.
 
 layering: extend the existing R2 owner. An operator supplies an explicitly authorized database connection and known inputs; the restricted runtime connection consumes initialized state. No default endpoint, second store, quota owner, issuer, daemon or automatic initializer.
+
+design-fit:
+  owner: canonical R2 workflow/store
+  contract: S-coordination-store; same profile codec, pool and migration ledger
+  retires: []
+  weight: "No new CLI verb, flag, backend, driver or ledger; one operator-only typed path and declarative role profile. Record actual implementation counts."
+  why-add: "Runtime cannot infer a known baseline. One explicit operator path prevents each serving consumer from promoting the test seed or inventing its own initializer."
 
 single-point-of-failure: confusing a missing accounting row with known zero would create new allowance after restart or uncertain work. Independent SQL privileges, immutable initialization provenance and actual runtime-bypass controls must hold even if an upper operator check is removed.
 

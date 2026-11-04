@@ -39,7 +39,7 @@ consumers:
 - "canonical qualified R3 caller/current-state/custody producer: out-of-scope (required actual source/profile; absence blocks production pickup)"
 - "workflow/store and explicit operator profile: follow-up forge-neutral/55 (consume existing restricted runtime connection, never provision on reads)"
 - "remaining executor/custody and full serving qualification: follow-up forge-neutral/40 (consume this read-only owner)"
-- "retention, source/query enrichment, tool parity and full mirror acceptance: follow-up forge-neutral/37"
+- "retention, source/query enrichment, tool parity and full mirror acceptance: out-of-scope (already owned by full37; this contribution delivers none of them)"
 - "forge effects, role executor, generic apply, scheduler and activation: out-of-scope (not prerequisites for this read-only contribution)"
 ---
 
@@ -69,6 +69,13 @@ facts:
 - Source50 does not provide full review enrichment or all facts required by current desk-read/review projections. This contribution serves the existing mirror-query only; it is not tool parity or full45 cutover.
 
 layering: the handler consumes the actual39 contract, the canonical read-through owner and an independently qualified R3 caller/current-authority producer. It owns no issuer, key store, source walker, local cache backend or quota policy. Runtime serving uses /55's restricted connection; it holds no operator initialization credential.
+
+design-fit:
+  owner: bounded read-only forgeservice/server adapter
+  contract: actual39 forge-service-v1 and existing R3/admission/coordinator/R2 owners
+  retires: []
+  weight: "No new CLI verb, login scheme, provider walker, cache backend, quota owner or runtime process. Record actual implementation counts."
+  why-add: "The existing wire and shared read owner need one bounded consumer; current auth/custody must come from its actual qualified owner rather than a new handler issuer."
 
 single-point-of-failure: a decoded request or cached scope can be mistaken for a current caller grant. Recheck actual authority at final release and retain independent Store admission/native source checks; authentication absence or uncertainty releases no rows, counts, tokens or cached coverage.
 
