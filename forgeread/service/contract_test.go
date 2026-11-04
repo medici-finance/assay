@@ -58,6 +58,7 @@ func TestForgeServiceContractCompatibility(t *testing.T) {
 	t.Run("canonical-mirror-kinds", checkCanonicalMirrorKinds)
 	t.Run("literal-operations", checkLiteralOperations)
 	t.Run("response-refusals", checkResponseRefusals)
+	t.Run("schema-source", checkSchemaSource)
 	q := literalRequest(t)
 	if q.Operation != service.FileAt || q.Repository.Provider != mirror.GitHub || q.Repository.Host != "github.example" || q.Repository.Path != "example/project" || q.Source.Revision != strings.Repeat("a", 40) || q.Source.Path != "readme.txt" {
 		t.Fatal("literal request identity/source changed")
@@ -349,5 +350,102 @@ func checkResponseRefusals(t *testing.T) {
 	q.Source.Path = "../escape"
 	if _, err := service.EncodeRequest(q); err == nil {
 		t.Fatal("source path escaped repository")
+	}
+}
+
+// This is a field/tag conformance reader, not a JSON Schema evaluator. Standard
+// Draft2020 validation is independently qualified with its existing external tool.
+type schemaShape struct {
+	Ref        string                     `json:"$ref"`
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+	Defs       map[string]schemaShape     `json:"$defs"`
+}
+
+func checkSchemaSource(t *testing.T) {
+	read := func(name string) schemaShape {
+		t.Helper()
+		b, e := os.ReadFile(filepath.Join("..", "..", "schemas", name))
+		if e != nil {
+			t.Fatal(e)
+		}
+		var x schemaShape
+		if e = json.Unmarshal(b, &x); e != nil {
+			t.Fatal(e)
+		}
+		return x
+	}
+	schema, review := read("forge-service-v1.json"), read("review-observation-v1.json")
+	seen := map[reflect.Type]bool{}
+	var visit func(reflect.Type)
+	visit = func(typ reflect.Type) {
+		for typ.Kind() == reflect.Pointer || typ.Kind() == reflect.Slice || typ.Kind() == reflect.Array || typ.Kind() == reflect.Map {
+			typ = typ.Elem()
+		}
+		if typ == reflect.TypeFor[time.Time]() || typ.Kind() != reflect.Struct || seen[typ] {
+			return
+		}
+		seen[typ] = true
+		external := typ == reflect.TypeFor[service.ReviewEnvelope]()
+		shape := review
+		if external {
+			if review.Ref != "#/$defs/Observation" {
+				t.Fatal("external review root contract changed")
+			}
+			shape = review.Defs["Observation"]
+		}
+		if !external {
+			parts := strings.Split(typ.PkgPath(), "/")
+			key := parts[len(parts)-1] + "_" + typ.Name()
+			var ok bool
+			shape, ok = schema.Defs[key]
+			if !ok {
+				t.Fatalf("missing committed schema type %s", key)
+			}
+		}
+		required := map[string]bool{}
+		for _, name := range shape.Required {
+			if required[name] {
+				t.Fatal("duplicate required schema member", name)
+			}
+			required[name] = true
+		}
+		fields := 0
+		for i := 0; i < typ.NumField(); i++ {
+			f := typ.Field(i)
+			if f.PkgPath != "" {
+				continue
+			}
+			tags := strings.Split(f.Tag.Get("json"), ",")
+			name := tags[0]
+			if name == "-" {
+				continue
+			}
+			if name == "" {
+				name = f.Name
+			}
+			fields++
+			if _, ok := shape.Properties[name]; !ok {
+				t.Fatalf("schema lost %s.%s", typ.Name(), name)
+			}
+			optional := false
+			for _, tag := range tags[1:] {
+				optional = optional || tag == "omitempty"
+			}
+			if required[name] == optional {
+				t.Fatalf("schema required set drift for %s.%s", typ.Name(), name)
+			}
+			if !external {
+				visit(f.Type)
+			}
+		}
+		if len(shape.Properties) != fields {
+			t.Fatalf("schema properties differ from actual %s fields", typ.Name())
+		}
+	}
+	visit(reflect.TypeFor[service.Request]())
+	visit(reflect.TypeFor[service.Response]())
+	if len(seen) < 25 {
+		t.Fatal("schema conformance reader did not inspect reachable DTOs")
 	}
 }

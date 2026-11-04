@@ -478,10 +478,16 @@ func ciCrossModuleRegistry() []ciEntry {
 			reads: []string{
 				"tools/forge-import-check/check_env_imports.go",
 				"tools/forge-import-check/check_env_imports_test.go",
-				"docs/streams", "forgeread",
+				"docs/streams", "forgeread", "schemas",
 			},
 			runInvokes: deskShardInvokes,
 			why:        "the unconditional build-test floor executes both authored import-check commands against compiler-valid syntax fixtures",
+		},
+		{
+			test: "forgeread/service/contract_test.go", module: "forgeread",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads: []string{"schemas"}, runInvokes: deskShardInvokes,
+			why: "the existing unconditional regression reader invokes the named contract suite, including committed schema field/tag conformance",
 		},
 		{
 			test: "forgeread/service/boundaries_test.go", module: "forgeread",
@@ -2792,7 +2798,7 @@ runs:
 func TestRegressionCIEntrypoints(t *testing.T) {
 	count, serviceCount := 0, 0
 	for _, e := range ciCrossModuleRegistry() {
-		serviceEntry := e.test == "forgeread/service/boundaries_test.go"
+		serviceEntry := e.test == "forgeread/service/boundaries_test.go" || e.test == "forgeread/service/contract_test.go"
 		if !strings.HasPrefix(e.test, "tools/desk/internal/regression/") && !serviceEntry {
 			continue
 		}
@@ -2826,8 +2832,8 @@ func TestRegressionCIEntrypoints(t *testing.T) {
 	if count != 6 {
 		t.Fatalf("floor has %d CI registry entries, want 6 (manifest, shell, Evidence, changelog, mirror import and release cache suites)", count)
 	}
-	if serviceCount != 1 {
-		t.Fatalf("service boundary CI entry count=%d, want 1", serviceCount)
+	if serviceCount != 2 {
+		t.Fatalf("service schema/boundary CI entry count=%d, want 2", serviceCount)
 	}
 }
 
