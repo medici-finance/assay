@@ -246,7 +246,8 @@ func cmdReply(args []string) (err error) {
 	}
 
 	// Public-repo gate: refuse an outward write unless the repo is authorized
-	// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
+	// (private, or a listed allowed-repos entry tagged :public or :internal to match the
+	// live visibility — see deskkit.PublicRepoGate).
 	// The gate's visibility read goes through the SAME forge backend already resolved
 	// above (fg) — never a second, hardcoded GitHub-only client (assay#1054): a
 	// GitLab-resolved repo must have its visibility answered by GitLab's own API, not

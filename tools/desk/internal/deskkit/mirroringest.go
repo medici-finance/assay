@@ -2,6 +2,7 @@ package deskkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -20,15 +21,17 @@ type mirrorIngestSource struct {
 	admissionID string
 	repository  mirror.RepositoryID
 	now         func() time.Time
+	sourceID    string
+	authority   mirror.AttemptAuthority
 }
 
 // NewMirrorIngestSource accepts a previously admitted source and a trusted explicit
 // observation clock. The bound admission ID is supplied alongside the reader by
 // trusted credential composition, never by a request. This consistency binding
 // does not independently prove credential-installation selection.
-func NewMirrorIngestSource(source *MirrorReadSource, admissionID string, now func() time.Time) (mirror.Source, error) {
-	if source == nil || source.forge == nil || admissionID == "" || strings.TrimSpace(admissionID) != admissionID || now == nil {
-		return nil, Refused("mirror observation source needs an admitted reader, bound admission and explicit clock")
+func NewMirrorIngestSource(source *MirrorReadSource, admissionID, sourceID string, now func() time.Time, authority mirror.AttemptAuthority) (mirror.Source, error) {
+	if source == nil || source.forge == nil || admissionID == "" || strings.TrimSpace(admissionID) != admissionID || sourceID == "" || strings.TrimSpace(sourceID) != sourceID || now == nil || nilMirrorInput(authority) {
+		return nil, Refused("mirror observation source needs an admitted reader, bound admission/source, explicit clock and attempt authority")
 	}
 	path := source.repo.Slug()
 	if source.provider == ForgeGitHub {
@@ -38,10 +41,10 @@ func NewMirrorIngestSource(source *MirrorReadSource, admissionID string, now fun
 	if err := repo.Validate(); err != nil {
 		return nil, err
 	}
-	return &mirrorIngestSource{source: source, admissionID: admissionID, repository: repo, now: now}, nil
+	return &mirrorIngestSource{source: source, admissionID: admissionID, repository: repo, now: now, sourceID: sourceID, authority: authority}, nil
 }
 
-func nilMirrorAdmission(a mirror.Admission) bool {
+func nilMirrorInput(a any) bool {
 	if a == nil {
 		return true
 	}
@@ -55,7 +58,18 @@ func nilMirrorAdmission(a mirror.Admission) bool {
 
 // Scan independently admits each invocation before using the already-bound
 // source. A caller refusal or HTTP status alone is never retention authority.
-func (s *mirrorIngestSource) Scan(ctx context.Context, a mirror.Admission, scope mirror.Scope, plan mirror.ScanPlan) (mirror.ScanResult, error) {
+func (s *mirrorIngestSource) Scan(ctx context.Context, a mirror.Admission, scope mirror.Scope, plan mirror.ScanPlan) (outcome mirror.ScanResult, failure error) {
+	var attempt *mirrorAttemptState
+	defer func() {
+		held := outcome.Attempts.Held
+		outcome.Attempts = mirror.AttemptReceipt{Grant: plan.AttemptGrant, HTTP: mirror.WorkCount{Known: true}, DecodedBytes: mirror.WorkCount{Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}, Held: held}
+		if attempt != nil {
+			outcome.Attempts = attempt.snapshot()
+		}
+		if errors.Is(failure, mirror.ErrAttemptHeld) && outcome.Attempts.Held == "" {
+			outcome.Attempts.Held = mirror.AttemptUnknownHeld
+		}
+	}()
 	if ctx == nil {
 		return mirror.ScanResult{}, fmt.Errorf("%w: missing scan context", mirror.ErrInvalid)
 	}
@@ -68,7 +82,7 @@ func (s *mirrorIngestSource) Scan(ctx context.Context, a mirror.Admission, scope
 	if err := scope.Validate(); err != nil {
 		return mirror.ScanResult{}, err
 	}
-	if scope.Repository != s.repository || scope.AdmissionID != s.admissionID || nilMirrorAdmission(a) || a.ID() != s.admissionID {
+	if scope.Repository != s.repository || scope.AdmissionID != s.admissionID || nilMirrorInput(a) || a.ID() != s.admissionID {
 		return mirror.ScanResult{}, mirror.ErrPermission
 	}
 	if err := a.Authorize(ctx, scope.Repository); err != nil {
@@ -78,12 +92,24 @@ func (s *mirrorIngestSource) Scan(ctx context.Context, a mirror.Admission, scope
 	if now.IsZero() || plan.Scope != scope || (plan.FullInventory && !plan.Since.IsZero()) || plan.Since.After(now) || plan.NotBefore.After(now) || plan.PriorObservedUpTo.After(now) || (!plan.PriorObservedUpTo.IsZero() && plan.ExpectedVersion == "") {
 		return mirror.ScanResult{}, fmt.Errorf("%w: incompatible scan plan or clock", mirror.ErrInvalid)
 	}
+	if plan.AttemptGrant.Validate(now) != nil || plan.AttemptGrant.Scope != scope || plan.AttemptGrant.SourceID != s.sourceID || s.authority == nil {
+		return mirror.ScanResult{Attempts: mirror.AttemptReceipt{Held: mirror.AttemptUnknownHeld}}, &mirror.AttemptError{Hold: mirror.AttemptUnknownHeld}
+	}
+	var setupErr error
+	attempt, setupErr = newMirrorAttempt(ctx, s, a, scope, plan)
+	if setupErr != nil {
+		return mirror.ScanResult{}, setupErr
+	}
+	ctx = context.WithValue(ctx, mirrorAttemptKey{}, attempt)
 	kind := MirrorIssues
 	if scope.Kind == mirror.Changes {
 		kind = MirrorChanges
 	}
 	r, err := s.source.Read(ctx, kind, adapters.UpdateQuery{Since: plan.Since})
 	if err != nil {
+		if errors.Is(err, mirror.ErrAttemptHeld) || errors.Is(err, mirror.ErrPermission) {
+			return mirror.ScanResult{}, err
+		}
 		// Do not turn an unqualified 403/404, body cap or transport failure into
 		// Permission. The retention owner must independently qualify access loss.
 		failure := mirror.Transport
@@ -107,7 +133,11 @@ func (s *mirrorIngestSource) Scan(ctx context.Context, a mirror.Admission, scope
 	if completed.IsZero() || completed.Before(now) {
 		return mirror.ScanResult{Failure: mirror.Unknown}, fmt.Errorf("%w: observation clock regressed", mirror.ErrInvalid)
 	}
-	now = completed
+	dataAt := attempt.snapshot().ObservedAt
+	if dataAt.IsZero() || dataAt.Before(now) || dataAt.After(completed) {
+		return mirror.ScanResult{Failure: mirror.Unknown}, fmt.Errorf("%w: native data completion time is unavailable", mirror.ErrInvalid)
+	}
+	now = dataAt
 	validRepo := r.Repository == s.source.repo.Slug()
 	if s.source.provider == ForgeGitHub {
 		validRepo = strings.EqualFold(r.Repository, s.source.repo.Slug())
