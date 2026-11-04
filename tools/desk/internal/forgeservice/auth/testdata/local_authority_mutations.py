@@ -26,12 +26,13 @@ def fault(name, file, before, after, test, witness):
 FAULTS = [
     fault("issuer", "verifier.go", "claims.Issuer != v.config.Issuer || ", "", "Claims/issuer", "refusal released trusted fields"),
     fault("audience", "verifier.go", "claims.Audience != v.config.Audience || ", "", "Claims/audience", "refusal released trusted fields"),
-    fault("cell", "verifier.go", "cfg.Policy.Cell != cfg.Bootstrap.Binding.Cell || ", "", "Claims/constructor-cell", "foreign cell configuration accepted"),
+    ("cell", [("verifier.go", "cfg.Policy.Cell != cfg.Bootstrap.Binding.Cell || ", ""), ("verifier.go", "cfg.Launch.Cell != cfg.Policy.Cell || ", "")], "Claims/constructor-cell", "foreign cell configuration accepted"),
     fault("repository-kind-admission", "verifier.go", " || claims.Scope.Scope != scope", "", "Claims/query-(repository|kind|admission)", "refusal released trusted fields"),
     fault("actor-source-composition-epochs-limits", "verifier.go", " || !same(claims.Scope, v.config.Policy)", "", "Claims/(actor|source|composition|access-epoch|config-epoch|policy-epoch|policy-class|limits)", "refusal released trusted fields"),
     ("role-intent", [("verifier.go", " || !same(claims.Scope, v.config.Policy)", ""), ("verifier.go", " || claims.LaunchDigest != launchDigest(v.config.Launch)", "")], "Claims/role", "refusal released trusted fields"),
     fault("closed-operation", "codec.go", "c.Operation != Operation || ", "", "ClosedCodec", "effect operation accepted"),
     fault("revocation", "controller.go", "r == nil || r.revoked || ", "r == nil || ", "Current/revoke", "refusal released trusted fields"),
+    ("signature-key", [("verifier.go", "if !ed25519.Verify(b.PublicKey,", "if false && !ed25519.Verify(b.PublicKey,", 2)], "Claims/verification-key", "refusal released trusted fields"),
     fault("current-challenge", "verifier.go", " || !bytes.Equal(p.Challenge, challenge)", "", "Current/challenge-replay", "refusal released trusted fields"),
     fault("request-start", "verifier.go", "until := began.Add(v.config.CurrentReadLease)", "until := time.Now().Add(v.config.CurrentReadLease)", "Current/delayed-current", "refusal released trusted fields"),
     fault("during-current-wall-expiry", "verifier.go", " || !now.Before(claims.ExpiresAt)", "", "Current/during-current-expiry", "refusal released trusted fields"),
@@ -42,6 +43,7 @@ FAULTS = [
     fault("single-release", "verifier.go", "if !r.lease.used.CompareAndSwap(false, true) {", "if false {", "Claims", "receipt reused"),
     ("channel-type", [("channels.go", "if e != nil || st.Mode()&os.ModeSocket == 0 {", "if e != nil {"), ("channels.go", "again.Mode()&os.ModeSocket == 0 || ", "")], "ChannelRestart/(regular|symlink)", "non-socket channel"),
     fault("reserved-control-capacity", "control.go", '"control.sock", c.controlSlots,', '"control.sock", c.dataSlots,', "ControlCapacity", "slow data slots blocked private revocation"),
+    ("channel-live-gate", [("channels.go", "if ctx.Err() != nil || !c.liveGate() {", "if ctx.Err() != nil {"), ("channels.go", " || !c.liveGate() {", " {")], "ChannelRestart/changed-gate", "changed gate unlinked retained channel"),
     fault("channel-duplicate", "channels.go", "if c.channels[key] {", "if false {", "ChannelRestart/duplicate", "duplicate"),
     fault("private-volume-leak", "../../cellcontainer/authority_profile.go", 'mounts = []Mount{{"volume", c.Volumes.Current, "/authority-current", true}, {"volume", c.Volumes.Bootstrap, "/authority-bootstrap", true}}', 'mounts = []Mount{{"volume", c.Volumes.Current, "/authority-current", true}, {"volume", c.Volumes.Bootstrap, "/authority-bootstrap", true}, {"volume", c.Volumes.Private, "/authority-private", true}}', "Custody", "independent role escaped signer/control/other-launch containment"),
 ]
@@ -55,6 +57,7 @@ def main():
     head = command(["git", "rev-parse", "HEAD"])
     archive = subprocess.check_output(["git", "archive", head], cwd=ROOT)
     out = Path(tempfile.mkdtemp(prefix="authority-controls-")).resolve()
+    print("Private receipts: " + str(out), flush=True)
     source = out / "source"
     source.mkdir()
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
@@ -75,13 +78,15 @@ def main():
             raise SystemExit("UNQUALIFIED baseline: " + name)
         originals = {}
         try:
-            for file, before, after in edits:
+            for edit in edits:
+                file, before, after, *counts = edit
+                expected = counts[0] if counts else 1
                 path = (module / OWNER / file).resolve()
                 if not path.is_relative_to(module):
                     raise RuntimeError("fault escaped fixed module")
                 originals.setdefault(path, path.read_bytes())
                 text = path.read_text()
-                if text.count(before) != 1:
+                if text.count(before) != expected:
                     raise RuntimeError("fault anchor drift: " + name)
                 path.write_text(text.replace(before, after))
             code, mutated = run(test, name + "-mutant")
