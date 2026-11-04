@@ -11,6 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "The shared mirror needs durable scoped rows and honest coverage before execution features exist. Extend the canonical PostgreSQL owner instead of introducing a mirror database or waiting for workflow admission and outboxes."
 split-from: forge-neutral/37
 decision-trigger: spec
+decision-issue: 5401
 issues: []
 schema: brief-v2
 version: 3
