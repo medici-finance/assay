@@ -391,8 +391,8 @@ func (r WakeReceipt) EvaluateWake(reader WakeInputs, now time.Time) WakeDecision
 
 // toolOnlyChange reports whether the ONLY declared input that changed is the tool version
 // (#2310). changed must hold raw input KEYS, never display labels: a file input whose path is
-// "tool" has the label "tool" and is not the tool input. Both comparators (EvaluateWake and Unchanged) route through it, so a tool-only
-// change holds on every path. A tool release by itself does not move a blocker: the receipt
+// "tool" has the label "tool" and is not the tool input. Both comparators (EvaluateWake and
+// Unchanged) route through it, so a tool-only change holds on every path. A tool release by itself does not move a blocker: the receipt
 // still records the tool truthfully, and a tool change together with any other change still
 // wakes. A verifier who believes a release fixed the blocker uses an explicit recheck, or a
 // referenced-action blocker naming the fixing change.
@@ -630,14 +630,17 @@ var _ WakeInputs = (*RootRevisionReader)(nil)
 type InputsState int
 
 const (
-	InputsUnchanged     InputsState = iota // every declared input read, every revision equal
+	InputsUnchanged     InputsState = iota // every declared input read; all equal, or only the tool differs (#2310)
 	InputsChanged                          // at least one declared input read with a different revision
 	InputsCouldNotCheck                    // no change observed, but some input could not be read
 )
 
 // Unchanged hashes every declared input of r at the current tree and compares it with the
 // revision the receipt recorded. It returns the state and a reason: "unchanged",
-// "changed <path>[, <path>…]" or "could-not-check <why>". An observed change wins over an
+// "unchanged (tool-only change (<was> -> <now>); blocker unmoved)" when the tool version is the
+// only input that differs (#2310), "changed <path>[, <path>…]" or "could-not-check <why>". A
+// label two changed inputs share (a file named "tool" beside the tool input) is shown as its
+// key instead, so the reason never lists one name twice. An observed change wins over an
 // unreadable sibling (a change is enough to wake); otherwise one unreadable input makes the
 // whole read could-not-check, because unchangedness cannot be established on a partial scope.
 // An empty scope, or no tree reader, is could-not-check too.
@@ -673,7 +676,7 @@ func Unchanged(r WakeReceipt, tree WakeInputs) (InputsState, string) {
 	}
 	toolOnly := toolOnlyChange(changedKeys)
 	if len(changed) > 0 && !toolOnly {
-		return InputsChanged, "changed " + strings.Join(changed, ", ")
+		return InputsChanged, "changed " + strings.Join(distinctLabels(changed, changedKeys), ", ")
 	}
 	if len(unreadable) > 0 {
 		return InputsCouldNotCheck, "could-not-check unreadable input(s): " + strings.Join(unreadable, ", ")
@@ -688,6 +691,24 @@ func Unchanged(r WakeReceipt, tree WakeInputs) (InputsState, string) {
 // inputLabel is the human-facing name of an input key: the path of a file: key, else the key.
 func inputLabel(in string) string {
 	return strings.TrimPrefix(in, inputKeyFilePrefix)
+}
+
+// distinctLabels returns labels with every label that occurs more than once replaced by its
+// key (labels[i] is the label of keys[i]): a file named "tool" and the tool input both changing
+// read "file:tool, tool", never "tool, tool". It changes the reason text only, never a decision.
+func distinctLabels(labels, keys []string) []string {
+	seen := make(map[string]int, len(labels))
+	for _, l := range labels {
+		seen[l]++
+	}
+	out := make([]string, len(labels))
+	for i, l := range labels {
+		out[i] = l
+		if seen[l] > 1 {
+			out[i] = keys[i]
+		}
+	}
+	return out
 }
 
 // BlockerState is ReadBlocker's three-state verdict on the issue a receipt's blocker_ref names.

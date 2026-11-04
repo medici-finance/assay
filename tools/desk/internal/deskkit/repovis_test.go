@@ -339,7 +339,7 @@ func TestGateInternalToken(t *testing.T) {
 			if msg := err.Error(); !strings.Contains(msg, "example-org/"+repo+":internal") || !strings.Contains(msg, EnvAllowedRepos) {
 				t.Fatalf("%s: refusal does not name the :internal remedy: %v", repo, err)
 			}
-			// #5436: ONLY a `:public` entry on a live-internal repo predates the token, so
+			// #5436: ONLY a `:public` entry on a live-internal repo can predate the token, so
 			// only that refusal carries the history clause.
 			if got, want := strings.Contains(err.Error(), internalTokenHistory), repo == "pubrepo"; got != want {
 				t.Fatalf("%s, live internal: history clause present = %v, want %v: %v", repo, got, want, err)

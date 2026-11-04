@@ -64,10 +64,12 @@ func FetchRepoVisibility(fetcher RepoInfoFetcher, owner, repo string) (string, e
 // internalTokenHistory is the one clause the gate's refusal gains when a live-internal repo
 // is listed `:public` (#5436). Earlier versions of the allowed-repos grammar had no
 // `:internal` token, so `:public` was the only non-private tag an operator could give an
-// internal repo; such an entry is stale, not a widening attempt. The clause names that
-// history and nothing else — the remedy is the same `:internal` entry, edited by the
-// operator. No verb rewrites the entry: the allowed-repos set is an authorization control.
-const internalTokenHistory = " Earlier versions had no :internal token, so this :public entry predates it."
+// internal repo. The gate cannot tell that case from a repo listed `:public` while it was
+// public and later changed to internal: both read configured `:public`, live `internal`.
+// So the clause states the history conditionally and nothing else — the remedy is the same
+// `:internal` entry, edited by the operator. No verb rewrites the entry: the allowed-repos
+// set is an authorization control.
+const internalTokenHistory = " Earlier versions had no :internal token: if this :public entry was written before it existed, it predates it."
 
 // PublicRepoGate enforces the public-repo write gate.
 //
@@ -100,8 +102,9 @@ const internalTokenHistory = " Earlier versions had no :internal token, so this 
 //     one) — return Refused (exit 5) naming the repo, what was read live, what the set
 //     says, and the exact remedy. This is why BOTH reads are load-bearing at once: the
 //     live read AND the configured claim must AGREE. A `:public` entry on a live-internal
-//     repo additionally names its history (internalTokenHistory): it predates the
-//     `:internal` token. It still refuses; the operator edits the entry.
+//     repo additionally names its possible history (internalTokenHistory): if it was
+//     written before the `:internal` token existed, it predates it. It still refuses; the
+//     operator edits the entry.
 //
 // `internal` is instance-visible, not private — the gate's premise is untrusted eyes, so
 // it is gated exactly like `public`, not treated as a pass, and VisibilityInternal is not
