@@ -161,8 +161,12 @@ func (s *mirrorAttemptState) hold(h mirror.AttemptHold) error {
 	if !h.Valid() {
 		h = mirror.AttemptUnknownHeld
 	}
-	s.receipt.Held = h
-	return &mirror.AttemptError{Hold: h}
+	// Later refused entries do no new work and cannot widen the original
+	// caller-specific denial into a source-wide or uncertain accounting hold.
+	if s.receipt.Held == "" {
+		s.receipt.Held = h
+	}
+	return &mirror.AttemptError{Hold: s.receipt.Held}
 }
 
 // Called only by the existing native counting leaf, immediately before its base
