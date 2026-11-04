@@ -81,7 +81,7 @@ const internalTokenHistory = " Earlier versions had no :internal token: if this 
 // list following it (#5436).
 var PublicRepoGateVerbs = []string{"deskpr", "deskpost", "deskreply", "deskevidence", "deskrelease"}
 
-// publicRepoGateUngated is the tracker-write command the refusal names as one the gate
+// publicRepoGateUngated is the issue-tracker command the refusal names as one the gate
 // does not cover. It must never appear in PublicRepoGateVerbs (TestGateRefusalNamesGatedVerbs).
 const publicRepoGateUngated = "deskfile"
 
