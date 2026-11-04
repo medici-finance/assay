@@ -4,7 +4,7 @@ title: Pure read-only mirror kernel and conformance
 why: "Repeated readers need one reusable answer whose scope, age and completeness cannot be mistaken for a fresh empty queue. A pure kernel establishes these semantics before the durable store exists, without choosing private-data retention or adding another poller."
 wave: 2
 depends: ["forge-neutral/36"]
-unblocks: ["forge-neutral/37"]
+unblocks: ["forge-neutral/37", "forge-neutral/50"]
 split-from: forge-neutral/37
 effort: M
 gate: human
