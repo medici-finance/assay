@@ -11,6 +11,7 @@ package deskkit
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -56,6 +57,72 @@ func TestEvaluateWake_UnreadableIsCouldNotCheck(t *testing.T) {
 	got := r.EvaluateWake(stubReader{unread: map[string]bool{"file:a": true}}, time.Now())
 	if got.State != WakeCouldNotCheck {
 		t.Fatalf("state = %v; want could-not-check — an unreadable input must never round up to unchanged", got.State)
+	}
+}
+
+// regression: #2310
+func TestWakeToolOnlyHolds(t *testing.T) {
+	r := recRIC(map[string]string{"file:a": "rev1", "tool": "tool-v1"})
+	got := r.EvaluateWake(stubReader{rev: map[string]string{"file:a": "rev1", "tool": "tool-v2"}}, time.Now())
+	if got.State != WakeHold {
+		t.Fatalf("state = %v (%q); want hold — a tool-only change does not move the blocker", got.State, got.Reason)
+	}
+	if !strings.Contains(got.Reason, "tool-only change (tool-v1 -> tool-v2); blocker unmoved") {
+		t.Fatalf("reason %q does not name the tool-only change", got.Reason)
+	}
+}
+
+// regression: #2310
+func TestWakeToolAndFileFires(t *testing.T) {
+	r := recRIC(map[string]string{"file:a": "rev1", "tool": "tool-v1"})
+	got := r.EvaluateWake(stubReader{rev: map[string]string{"file:a": "rev2", "tool": "tool-v2"}}, time.Now())
+	if got.State != WakeFire || strings.Join(got.Changed, ",") != "file:a,tool" {
+		t.Fatalf("state = %v changed=%v; want fire listing file:a and tool", got.State, got.Changed)
+	}
+}
+
+// regression: #2310
+func TestWakeFileOnlyFires(t *testing.T) {
+	r := recRIC(map[string]string{"file:a": "rev1", "tool": "tool-v1"})
+	got := r.EvaluateWake(stubReader{rev: map[string]string{"file:a": "rev2", "tool": "tool-v1"}}, time.Now())
+	if got.State != WakeFire || strings.Join(got.Changed, ",") != "file:a" {
+		t.Fatalf("state = %v changed=%v; want fire listing file:a only", got.State, got.Changed)
+	}
+}
+
+// regression: #2310
+func TestWakeToolOnlyUnreadableCNC(t *testing.T) {
+	r := recRIC(map[string]string{"file:a": "rev1", "tool": "tool-v1"})
+	got := r.EvaluateWake(stubReader{rev: map[string]string{"tool": "tool-v2"},
+		unread: map[string]bool{"file:a": true}}, time.Now())
+	if got.State != WakeCouldNotCheck || strings.Join(got.Unreadable, ",") != "file:a" {
+		t.Fatalf("state = %v unreadable=%v; want could-not-check naming file:a", got.State, got.Unreadable)
+	}
+}
+
+// regression: #2310 — the planner's input read (Unchanged) applies the same tool-only rule.
+func TestUnchangedToolOnly(t *testing.T) {
+	r := recRIC(map[string]string{"file:a": "rev1", "tool": "tool-v1"})
+	cases := []struct {
+		name   string
+		reader stubReader
+		want   InputsState
+		why    string
+	}{
+		{"tool only", stubReader{rev: map[string]string{"file:a": "rev1", "tool": "tool-v2"}},
+			InputsUnchanged, "unchanged (tool-only change (tool-v1 -> tool-v2); blocker unmoved)"},
+		{"tool and file", stubReader{rev: map[string]string{"file:a": "rev2", "tool": "tool-v2"}},
+			InputsChanged, "changed a, tool"},
+		{"file only", stubReader{rev: map[string]string{"file:a": "rev2", "tool": "tool-v1"}},
+			InputsChanged, "changed a"},
+		{"tool only, file unreadable", stubReader{rev: map[string]string{"tool": "tool-v2"},
+			unread: map[string]bool{"file:a": true}}, InputsCouldNotCheck, "could-not-check unreadable input(s): a"},
+	}
+	for _, c := range cases {
+		st, why := Unchanged(r, c.reader)
+		if st != c.want || why != c.why {
+			t.Errorf("%s: Unchanged = (%v, %q); want (%v, %q)", c.name, st, why, c.want, c.why)
+		}
 	}
 }
 

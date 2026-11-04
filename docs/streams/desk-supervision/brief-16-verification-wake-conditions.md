@@ -22,6 +22,22 @@ id: "e20812d4-f859-41a4-b597-072d5a89d413"
 
 # Brief 16 — Verification wake conditions — stop repeating unchanged blocked checks
 
+## Amendment (#2310, 2026-11-04, brief stays `done`)
+
+**Why.** As landed, a change to the `tool` input alone woke every held receipt. Across four
+releases every such wake re-surfaced a blocker that had not moved, and no re-run changed a
+verdict, so each release cost one fleet-wide re-dispatch and nothing else.
+
+**What changes.** A tool-only change now holds; the reason names it. A tool change together
+with any other changed input still wakes, and unreadable inputs stay could-not-check. The
+receipt still records the tool version. See
+[verify-wake-v1](verify-wake-v1.md) ("A tool-only change holds").
+
+**Verify row 2.** Its Expect text lists "tool" among the changes that wake work. From this
+amendment `TestVerifyWakeRelevantChange` instead pins that a tool-only change holds, while the
+changed file, Verify definition and completed action still wake. The landed Evidence below is
+unchanged and records what was verified at the time.
+
 ## Context
 
 Home: medici-finance/assay.
