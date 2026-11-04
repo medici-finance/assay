@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/cellctl -count=1 -timeout 300s -run '^(TestCycleWaitsForClaim|TestCycleTimeoutLeavesRunning|TestCycleForceAfterTimeout|TestCycleSyncFailLeavesDown|TestCycleUncheckedNotOK|TestCycleNeedsFreshBeat|TestCycleSkipsDownRole|TestCycleAllAtOnce|TestClaudeSyncToPin|TestClaudeSyncStaysStale|TestCursorSyncChecks)$'",
+  "test": "go test ./cmd/cellctl -count=1 -timeout 300s -run '^(TestCycleWaitsForClaim|TestCycleTimeoutLeavesRunning|TestCycleForceAfterTimeout|TestCycleSyncFailLeavesDown|TestCycleUncheckedNotOK|TestCycleNeedsFreshBeat|TestCycleSkipsDownRole|TestCycleAllAtOnce|TestCycleAllAtOnceTimeoutStopped|TestCycleTimeoutKeepsOperatorPause|TestClaudeSyncToPin|TestClaudeSyncStaysStale|TestCursorSyncChecks)$'",
   "control": {
     "name": "invert the restart-count assertion",
     "file": "cmd/cellctl/cycle_test.go",
@@ -16,8 +16,8 @@
     {
       "name": "cycle-timeout-no-force: the cycle's own stops are kept",
       "file": "cmd/cellctl/cycle.go",
-      "old": "\t\t\tallowed[l.pauseFlag(role)] = true\n\t\t}\n\t\tif _, _, err := l.resumeOnly(allowed)",
-      "new": "\t\t\tallowed[l.pauseFlag(role)] = false\n\t\t}\n\t\tif _, _, err := l.resumeOnly(allowed)"
+      "old": "\t\tallowed[p] = true\n\t}\n\tif _, _, err := l.resumeOnly(allowed)",
+      "new": "\t\tallowed[p] = false\n\t}\n\tif _, _, err := l.resumeOnly(allowed)"
     },
     {
       "name": "cycle-timeout-no-force: the held claims are not named",
@@ -28,8 +28,8 @@
     {
       "name": "cycle-force-after-timeout: force ignored",
       "file": "cmd/cellctl/cycle.go",
-      "old": "\tif !o.Force {\n\t\tallowed",
-      "new": "\tif true {\n\t\tallowed"
+      "old": "\tif !o.Force {\n\t\tres.Actions = append(res.Actions, l.liftOwnStops",
+      "new": "\tif true {\n\t\tres.Actions = append(res.Actions, l.liftOwnStops"
     },
     {
       "name": "cycle-sync-fail-down: a failed check still restarts",
@@ -60,6 +60,18 @@
       "file": "cmd/cellctl/cycle.go",
       "old": "\tif o.AllAtOnce {\n\t\tgroups",
       "new": "\tif false {\n\t\tgroups"
+    },
+    {
+      "name": "cycle-all-at-once-timeout: a role the drain stopped reads running",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\t\t\t\tif stoppedIn(res, role) {\n\t\t\t\t\tstopped = append(stopped, role)",
+      "new": "\t\t\t\tif false && stoppedIn(res, role) {\n\t\t\t\t\tstopped = append(stopped, role)"
+    },
+    {
+      "name": "cycle-timeout-keeps-operator-pause: a pause in place before the cycle is lifted",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\t\tif pre[p] {\n\t\t\tkept = append(kept, role)",
+      "new": "\t\tif false && pre[p] {\n\t\t\tkept = append(kept, role)"
     },
     {
       "name": "cycle-claude-sync: settings not restored",

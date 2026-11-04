@@ -238,6 +238,20 @@ var UnresolvedArgv = []Allowance{
 			"compiled local fixture. It launches no model session and is not a forge CLI.",
 	},
 	{
+		Key: "cmd/cellctl/cycle.go::Cell.cycleRestart::<unresolved>",
+		Reason: "`cellctl cycle` re-executes cellctl itself (os.Executable()) as `up <cell> --role <role> " +
+			"--no-attach --json` to reopen a role window the way up does. argv[0] is this binary's own " +
+			"path, not a forge CLI; the child inherits the caller's environment and mints nothing beyond " +
+			"what `up` does. It registers the blind spot and grants no forge permit.",
+	},
+	{
+		Key: "cmd/cellctl/cycle.go::deskinstallCursor::<unresolved>",
+		Reason: "`cellctl cycle`'s Cursor placement sync runs the cell's own desk-tools deskinstall " +
+			"(<DESK_TOOLS_BIN>/deskinstall, as liveClaims reaches desksupervise) with --harness cursor " +
+			"--release v<pin> and its --check. argv[0] is that operator-installed desk binary, not a forge " +
+			"CLI. It registers the blind spot and grants no forge permit.",
+	},
+	{
 		Key: "cmd/cellctl/deskd.go::cmdDeskd::<unresolved>",
 		Reason: "runs the cell's OWN deskd binary at <cell>/bin/deskd (a read daemon, not a forge CLI). " +
 			"Attended-only, and the credentials it is handed come from deskkit.RoleTokenForRepo.",

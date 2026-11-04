@@ -810,22 +810,28 @@ so a bad pin never takes down more than one role. `--all-at-once` drains every t
 1. **Stop new work and drain.** This is `drain` itself, bounded by `--drain-timeout` (default 30m).
    An interactive role's stop needs the operator's confirm, as it does under `drain`. On timeout the
    role is not restarted. The cycle lifts its own stops so the role keeps running, names each claim
-   still held, and exits non-zero. With `--force-after-timeout` it plans the stop the way
+   still held, and exits non-zero. A pause that was already in place before the cycle (an
+   operator's own `cellctl pause`) is kept. Under `--all-at-once`, a role the drain had already
+   stopped before the timeout is reported down, its stop is lifted, and `Next` names
+   `cellctl up <cell> --role <role>` to bring it back. With `--force-after-timeout` it plans the stop the way
    `drain --now` does, listing each held claim as abandoned, and applies it only on the confirm.
 2. **Sync and check.** The role's harness placement is brought to the marketplace pin
    (`extraKnownMarketplaces.assay.source.ref` in the role worktree's `.claude/settings.json`):
    - **claude:** `claude plugin update assay@assay -s project` in the worktree, with the settings
      bytes restored afterwards. The worktree's project record is then read back and compared with
-     the pin. A record still behind the pin fails the check and names the uninstall → install
-     remedy. The cycle never uninstalls.
-   - **cursor:** `deskinstall --harness cursor --release v<pin> --check`, placing on drift and
-     checking again.
+     the pin. A record still behind the pin fails the check and names the remedy: re-point the
+     marketplace to the pin, then uninstall → install. The cycle never uninstalls.
+   - **cursor:** the cell's own desk-tools `deskinstall` (under `DESK_TOOLS_BIN`, never the first
+     one on `PATH`), run as `deskinstall --harness cursor --forge <CELL_FORGE> --release v<pin> --check`,
+     placing on drift and checking again.
    - **codex:** no placement mode exists, so the check is could-not-check.
 
    A failed check leaves the role down and says why. A could-not-check one restarts the role, and the
    cycle's outcome is could-not-check, never ok.
 3. **Restart.** The window reopens as `up <cell> --role <role> --no-attach` does, and its cadence is
-   resumed.
+   resumed. That child `up` has no terminal on stdin, so unless `CELL_ATTENDED=1` is already set it
+   runs unattended even when `cycle` is on a terminal: a deskd that is down is not stood. Run
+   `cellctl up <cell>` on a terminal to stand it.
 4. **Heartbeat.** The cycle waits up to `--heartbeat-wait` for a heartbeat in the role's cadence
    checkpoint that is newer than the restart.
 

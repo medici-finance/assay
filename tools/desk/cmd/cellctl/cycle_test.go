@@ -242,6 +242,67 @@ func TestCycleAllAtOnce(t *testing.T) {
 	}
 }
 
+// Under --all-at-once a drain timeout may already have stopped the roles that reached idle. Those
+// are reported down with their own stops lifted and `up` named, never "left running".
+// regression: cycle-all-at-once-timeout
+func TestCycleAllAtOnceTimeoutStopped(t *testing.T) {
+	w := newLCWorld(t)
+	w.cadenceRole("worker-desk", "tmux")
+	w.cadenceRole("pr-review-desk", "tmux")
+	w.receipt("pr-review-desk", "tmux", "@9")
+	w.procs.kids[92] = []int{harnessPID}
+	w.claim("pr-review-desk", "example--brief-4")
+	f := newCycleFakes(w)
+	o := cycleOptsFor("worker-desk", "pr-review-desk")
+	o.AllAtOnce = true
+	r := w.lc.cycle(o, f.ops())
+	if r.Outcome != cellop.Partial || r.ExitCode() == 0 || len(f.restarts) != 0 {
+		t.Fatalf("outcome %s exit %d restarts %v", r.Outcome, r.ExitCode(), f.restarts)
+	}
+	if len(w.stops) != 1 || w.stops[0] != "worker-desk" {
+		t.Fatalf("the fixture did not stop exactly the idle role: stops=%v", w.stops)
+	}
+	if p, _ := w.lc.Paused("worker-desk"); p {
+		t.Error("the stopped role kept the cycle's stop, so a later up meets a paused role")
+	}
+	if p, _ := w.lc.Paused("pr-review-desk"); p {
+		t.Error("the timed-out role was left paused, not running")
+	}
+	if line := reportLine(t, r, "worker-desk"); !strings.Contains(line, "left down") || strings.Contains(line, "left running") {
+		t.Errorf("the stopped role reads %q", line)
+	}
+	if line := reportLine(t, r, "pr-review-desk"); !strings.Contains(line, "left running") {
+		t.Errorf("the timed-out role reads %q", line)
+	}
+	if !valueIn("cellctl up "+w.c.Name+" --role worker-desk", r.Next) {
+		t.Errorf("Next does not bring the stopped role back: %v", r.Next)
+	}
+	for _, e := range r.Roles {
+		if e.Role == "worker-desk" && (e.State == nil || *e.State != string(stateStopped)) {
+			t.Errorf("the stopped role's entry reads %v", deref(e.State))
+		}
+	}
+}
+
+// A pause the operator set before the cycle is not the cycle's to lift on a timeout.
+// regression: cycle-timeout-keeps-operator-pause
+func TestCycleTimeoutKeepsOperatorPause(t *testing.T) {
+	w := newLCWorld(t)
+	w.cadenceRole("worker-desk", "tmux")
+	w.claim("worker-desk", "example--brief-5")
+	if _, err := w.lc.Pause([]string{"worker-desk"}); err != nil {
+		t.Fatal(err)
+	}
+	f := newCycleFakes(w)
+	r := w.lc.cycle(cycleOptsFor("worker-desk"), f.ops())
+	if r.Outcome != cellop.Partial {
+		t.Fatalf("outcome %s", r.Outcome)
+	}
+	if p, _ := w.lc.Paused("worker-desk"); !p {
+		t.Error("the timeout lifted the operator's own earlier pause")
+	}
+}
+
 // --- the claude and cursor syncs ---------------------------------------------------------------
 
 func pinnedWorktree(t *testing.T, ref string) string {

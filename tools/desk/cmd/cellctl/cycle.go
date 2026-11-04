@@ -156,12 +156,43 @@ func (l *interimLifecycle) cycle(o cycleOpts, ops cycleOps) cellop.Result {
 		if len(live) == 0 {
 			continue
 		}
-		drained, res, ok := l.cycleDrain(live, o, ops)
+		pre := l.preexistingPauses(live)
+		drained, res, ok := l.cycleDrain(live, o, ops, pre)
 		r.Actions = append(r.Actions, res.Actions...)
 		if !ok {
+			// A drain that did not finish may still have stopped some roles of the group (under
+			// --all-at-once, every role that reached idle first). Those are down, not running: their
+			// own stops are lifted so `up` can start them, and Next names it.
+			var stopped, next []string
 			for _, role := range live {
-				rows = append(rows, cycleRole{role: role, state: stateRunning, drained: "not drained", note: "left running"})
+				if stoppedIn(res, role) {
+					stopped = append(stopped, role)
+				}
 			}
+			if len(stopped) > 0 {
+				lifted := l.liftOwnStops(stopped, pre)
+				r.Actions = append(r.Actions, lifted)
+			}
+			for _, role := range live {
+				if valueIn(role, stopped) {
+					rows = append(rows, cycleRole{role: role, state: stateStopped, drained: "drained", note: "left down: stopped by the drain before it ended; not restarted"})
+					next = append(next, "cellctl up "+cell+" --role "+role)
+					continue
+				}
+				note := "left running"
+				if p, perr := l.Paused(role); perr != nil {
+					note = "left running; whether it is paused could not be read: " + perr.Error()
+				} else if p {
+					note = "left running, paused"
+				}
+				rows = append(rows, cycleRole{role: role, state: stateRunning, drained: "not drained", note: note})
+			}
+			for _, n := range res.Next {
+				if !valueIn(n, next) {
+					next = append(next, n)
+				}
+			}
+			next = append(next, cycleRemaining(cell, groups[gi+1:])...)
 			reason := ""
 			if res.Reason != nil {
 				reason = *res.Reason
@@ -170,7 +201,7 @@ func (l *interimLifecycle) cycle(o cycleOpts, ops cycleOps) cellop.Result {
 			if res.Detail != nil {
 				detail = *res.Detail
 			}
-			return finish(res.Outcome, reason, detail, cycleRemaining(cell, groups[gi+1:])...)
+			return finish(res.Outcome, reason, detail, next...)
 		}
 		for _, role := range live {
 			cr := cycleRole{role: role, state: stateStopped, drained: drained}
@@ -233,8 +264,9 @@ func cycleRemaining(cell string, groups [][]string) []string {
 // cycleDrain is drain over roles, plus what cycle decides at its edges: interactive stops go to
 // the operator's confirm; on timeout without force the cycle's own stops are lifted so the roles
 // keep running, and with force the held claims are planned abandoned for the confirm. ok is true
-// when every role is stopped and its stops lifted.
-func (l *interimLifecycle) cycleDrain(roles []string, o cycleOpts, ops cycleOps) (string, cellop.Result, bool) {
+// when every role is stopped and its stops lifted. pre is the stop flags that were in place before
+// this cycle (an operator's own pause): a timeout never lifts one of those.
+func (l *interimLifecycle) cycleDrain(roles []string, o cycleOpts, ops cycleOps, pre map[string]bool) (string, cellop.Result, bool) {
 	rep := l.drain(drainOpts{Roles: roles, Timeout: o.DrainTimeout, HandoffWait: o.HandoffWait})
 	res := rep.Result
 	timedOut := res.Outcome == cellop.Partial && res.Reason != nil && *res.Reason == cellop.ReasonRoleBusy
@@ -272,16 +304,9 @@ func (l *interimLifecycle) cycleDrain(roles []string, o cycleOpts, ops cycleOps)
 		heldText = "no claim is held; the harness is still busy"
 	}
 	if !o.Force {
-		allowed := map[string]bool{}
-		for _, role := range left {
-			allowed[l.pauseFlag(role)] = true
-		}
-		if _, _, err := l.resumeOnly(allowed); err != nil {
-			res.Actions = append(res.Actions, actionResult(l.c.Name, "resume", cellop.ActionFailed, err.Error()))
-		} else {
-			res.Actions = append(res.Actions, actionResult(l.c.Name, "resume", cellop.ActionOK, "lifted the cycle's own stops of "+strings.Join(left, ", ")+"; left running"))
-		}
+		res.Actions = append(res.Actions, l.liftOwnStops(left, pre))
 		res.Finish(cellop.Partial, cellop.ReasonRoleBusy, fmt.Sprintf("the drain timed out after %s; not restarted, left running: %s", o.DrainTimeout, heldText), l.now())
+		res.Next = nil // drain's own Next (drain --now, resume) is not what a cycle timeout leaves
 		return "", res, false
 	}
 	actions, err := l.drainNowPlan(left, l.now(), o.HandoffWait)
@@ -297,6 +322,43 @@ func (l *interimLifecycle) cycleDrain(roles []string, o cycleOpts, ops cycleOps)
 	l.liftAfterStop(roles)
 	res.Actions = append(res.Actions, actionResult(l.c.Name, "force:"+strings.Join(left, ","), cellop.ActionOK, "stopped after the timeout: "+heldText))
 	return "forced", res, true
+}
+
+// preexistingPauses is the set of roles' stop flags already in place before the cycle pauses
+// them. The pause record cannot say which invocation created a flag, so the cycle remembers what
+// it found and never lifts those.
+func (l *interimLifecycle) preexistingPauses(roles []string) map[string]bool {
+	pre := map[string]bool{}
+	for _, role := range roles {
+		p := l.pauseFlag(role)
+		if _, err := os.Lstat(p); !errors.Is(err, os.ErrNotExist) {
+			pre[p] = true // present, or unreadable: either way not provably the cycle's own
+		}
+	}
+	return pre
+}
+
+// liftOwnStops lifts the per-role stops this cycle created for roles, never one in pre, and
+// reports what it did as one action.
+func (l *interimLifecycle) liftOwnStops(roles []string, pre map[string]bool) cellop.ActionResult {
+	allowed := map[string]bool{}
+	var kept []string
+	for _, role := range roles {
+		p := l.pauseFlag(role)
+		if pre[p] {
+			kept = append(kept, role)
+			continue
+		}
+		allowed[p] = true
+	}
+	if _, _, err := l.resumeOnly(allowed); err != nil {
+		return actionResult(l.c.Name, "resume", cellop.ActionFailed, err.Error())
+	}
+	detail := "lifted the cycle's own stops of " + strings.Join(roles, ", ")
+	if len(kept) > 0 {
+		detail = "lifted the cycle's own stops; kept the pause that was in place before the cycle for " + strings.Join(kept, ", ")
+	}
+	return actionResult(l.c.Name, "resume", cellop.ActionOK, detail)
 }
 
 func stoppedIn(r cellop.Result, role string) bool {
@@ -368,27 +430,17 @@ func (c *Cell) liveCycleOps(cmd *cobra.Command) cycleOps {
 }
 
 // cycleConfirm stores the planned stops and applies them on this terminal, through the one
-// apply session, returning the result instead of exiting.
+// apply session (cellopApplyResult, which holds every gate cellopApply does), returning the
+// result instead of exiting.
 func (c *Cell) cycleConfirm(cmd *cobra.Command, actions []cellop.Action) cellop.Result {
-	if !stateChangingInvocation(cmd) {
-		die("cycle: an apply was reached from an invocation not annotated %s", stateChanging)
-	}
 	p := cellopNewPlan(c, "cycle", actions)
 	lc := c.lifecycle()
-	sess := cellop.Session{
-		Store:       cellop.StoreFor(c.Dir),
-		Cell:        c.Name,
-		Verb:        "cycle",
-		Interactive: interactive(),
-		DeskMarkers: deskMarkers(),
-		Confirm: func(p cellop.Plan, children []cellop.Plan) (string, error) {
-			return cellop.ReadConfirm(os.Stdin, os.Stderr, cellop.Render(p, children))
-		},
-		Measure: func(a cellop.Action) ([]cellop.Precondition, error) { return lc.measureAction(a) },
-		Run:     func(a cellop.Action) (string, error) { return lc.runAction(a) },
-		Now:     time.Now,
+	v := cellopVerb{
+		Verb:    "cycle",
+		Measure: func(_ *Cell, a cellop.Action) ([]cellop.Precondition, error) { return lc.measureAction(a) },
+		Run:     func(_ *Cell, a cellop.Action) (string, error) { return lc.runAction(a) },
 	}
-	return sess.Apply(p.ID)
+	return cellopApplyResult(cmd, c, v, p.ID)
 }
 
 // cycleHarness is the harness role runs under: the model policy's route when one is set, else
@@ -429,7 +481,7 @@ func (c *Cell) cycleSync(role string) syncReport {
 		if err != nil {
 			return syncReport{Harness: harness, Outcome: syncCouldNotCheck, Detail: err.Error()}
 		}
-		return cursorSync(wt, pin, deskinstallCursor)
+		return cursorSync(wt, pin, deskinstallCursor(filepath.Join(deskToolsBin(c.Env), "deskinstall"), c.Forge))
 	}
 	return syncReport{Harness: harness, Outcome: syncCouldNotCheck, Detail: harness + " has no placement mode to check against the pin"}
 }
@@ -443,7 +495,8 @@ func marketplacePin(wt string) (string, error) {
 	}
 	var s struct {
 		Markets map[string]struct {
-			Source struct {
+			// Src, not Source: a selector named Source reads as an Env reader to the env-key guard.
+			Src struct {
 				Ref string `json:"ref"`
 			} `json:"source"`
 		} `json:"extraKnownMarketplaces"`
@@ -451,7 +504,7 @@ func marketplacePin(wt string) (string, error) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return "", fmt.Errorf("the marketplace pin could not be read: %v", err)
 	}
-	ref := strings.TrimPrefix(strings.TrimSpace(s.Markets["assay"].Source.Ref), "v")
+	ref := strings.TrimPrefix(strings.TrimSpace(s.Markets["assay"].Src.Ref), "v")
 	if ref == "" {
 		return "", errors.New("the project settings name no assay marketplace pin (extraKnownMarketplaces.assay.source.ref)")
 	}
@@ -553,28 +606,38 @@ func claudeSync(wt string, cli pluginCLI) syncReport {
 	if uerr != nil {
 		s.Detail += fmt.Sprintf(" (the update failed: %v)", uerr)
 	}
-	s.Detail += "; remedy, in the role worktree: claude plugin uninstall assay@assay -s project --keep-data && claude plugin install assay@assay -s project"
+	s.Detail += "; remedy, in the role worktree: re-point the marketplace to the pin first (claude plugin marketplace add medici-finance/assay@v" + pin + ", as upgrade-assay prints it), then claude plugin uninstall assay@assay -s project --keep-data && claude plugin install assay@assay -s project"
 	return s
 }
 
-// deskinstallCursor runs deskinstall's Cursor placement against wt; check is its --check.
-// It returns deskinstall's exit code (0 clean or placed, 1 drift, 2 could-not-check).
-func deskinstallCursor(wt, pin string, check bool) (int, string) {
-	args := []string{"--harness", "cursor", "--repo", wt, "--release", "v" + pin}
+// deskinstallCursor runs deskinstall's Cursor placement against wt; check is its --check. bin is
+// the cell's own desk-tools deskinstall (deskToolsBin, as liveClaims reaches desksupervise), never
+// the first one on PATH, so the bundle's sha256 and attestation are checked by the pinned build.
+// forge is the cell's CELL_FORGE, which deskinstall requires. The run returns deskinstall's exit
+// code (0 clean or placed, 1 drift, anything else could-not-check).
+func deskinstallCursor(bin, forge string) func(wt, pin string, check bool) (int, string) {
+	return func(wt, pin string, check bool) (int, string) {
+		args := deskinstallCursorArgs(forge, wt, pin, check)
+		cmd := exec.Command(bin, args...)
+		out, err := cmd.CombinedOutput()
+		last := lastLine(out)
+		var ee *exec.ExitError
+		switch {
+		case err == nil:
+			return 0, last
+		case errors.As(err, &ee):
+			return ee.ExitCode(), last
+		}
+		return 2, err.Error()
+	}
+}
+
+func deskinstallCursorArgs(forge, wt, pin string, check bool) []string {
+	args := []string{"--harness", "cursor", "--forge", forge, "--repo", wt, "--release", "v" + pin}
 	if check {
 		args = append(args, "--check")
 	}
-	cmd := exec.Command("deskinstall", args...)
-	out, err := cmd.CombinedOutput()
-	last := lastLine(out)
-	var ee *exec.ExitError
-	switch {
-	case err == nil:
-		return 0, last
-	case errors.As(err, &ee):
-		return ee.ExitCode(), last
-	}
-	return 2, err.Error()
+	return args
 }
 
 func lastLine(b []byte) string {
@@ -611,7 +674,11 @@ func cursorSync(wt, pin string, run func(wt, pin string, check bool) (int, strin
 	return s
 }
 
-// cycleRestart reopens role's window the way `up --role` does, and returns up's verdict.
+// cycleRestart reopens role's window the way `up --role` does, and returns up's verdict. The child
+// `up` runs with no stdin, so unless CELL_ATTENDED=1 is already in the environment it runs as an
+// unattended `up` does even when cycle itself is on a terminal: the role window reopens, and a
+// deskd that is down is not stood (standing it needs the operator's own attended `cellctl up`).
+// cycle does not carry an affirmation it was not given into the child.
 func (c *Cell) cycleRestart(role string) error {
 	self, err := os.Executable()
 	if err != nil {
