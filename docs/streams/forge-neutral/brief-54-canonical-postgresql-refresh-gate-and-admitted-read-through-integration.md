@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "The adapter controls durable private-observation refreshes and shared work budgets. Accept only the demonstrated synthetic PostgreSQL/native integration; retention, real policy initialization, credentials, remote exposure and activation remain separately gated."
 issues: []
 schema: brief-v2
-version: 8
+version: 9
 authored: 2026-11-03 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -50,6 +50,7 @@ files:
 - `workflow/store/` (planned)
 - `workflow/store/migrations/` (planned)
 - `workflow/internal/pgtest/` (planned)
+- `workflow/internal/pgtest/fixture_error_test.go` (planned)
 - `workflow/internal/refreshcodec/` (planned)
 - `workflow/pgtestfixture/fixture.go` (planned)
 - `workflow/pgtestfixture/fixture_test.go` (planned)
@@ -68,6 +69,7 @@ files:
 single-point-of-failure: the canonical SQL transaction binding the current refresh generation, Store update and completion — independent SQL version/coverage constraints reject malformed observations, while the native pre-request authority/closed-operation guard bounds provider work even when coordination planning is bypassed. No gate ownership grants data permission.
 
 facts:
+- The canonical disposable fixture uses a finite 30-second Close-only cleanup budget so a forced PostgreSQL checkpoint can finish after strict ownership validation. Startup remains bounded to 10 seconds; Reset retains its explicit caller context. Exact generated name, database owner, marker and forced DROP checks remain unchanged, with no retry, fallback or ignored cleanup failure. Safe SQLSTATE/context diagnostics disclose no raw PostgreSQL message or connection value. This is test-harness completion time, not an R2/auth/lease policy.
 - Store52 uses the canonical private DB pool, one Goose ledger and migration00002. Its public Apply owns its transaction and explicitly supplies no generation fence. Refactor private helpers in that owner; do not wrap naked Apply in an unrelated gate transaction.
 - Required51 pickup supplies bounded observation Requirements on Demand and a checked post-requery Leave Outcome bound to actual snapshot version. Base FillKey remains projection-independent. Owner-only completion cannot classify a stronger joined query. Consume the actual published repair before implementation; no current working API is assumed delivered.
 - Source53 supplies scoped grant/BeforeAttempt/ObserveAttempt and typed receipt semantics. Existing page/byte counts or post-hoc HTTP totals cannot prevent an overspend. The canonical authority must validate/debit before every native base RoundTrip, including SDK retries.
