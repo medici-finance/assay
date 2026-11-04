@@ -13,7 +13,7 @@ gate-why: "Accept the demonstrated local producer, current-state and custody bou
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -47,6 +47,7 @@ consumers:
 
 files:
 - `tools/desk/internal/forgeservice/auth/` (planned)
+- `tools/desk/internal/forgeservice/auth/testdata/local_authority_mutations.py` (planned)
 - `tools/desk/internal/celllaunch/`
 - `tools/desk/internal/deskkit/citrigger_test.go`
 - `.github/workflows/ci.yml`

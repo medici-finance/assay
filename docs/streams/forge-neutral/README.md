@@ -244,11 +244,11 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 38 | [Forge event adapter, feedback observations and durable reevaluation demand](brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md) | 8 | L | todo | — | — |
 | 39 | [Typed forge service contract and scoped client SDK](brief-39-typed-forge-service-contract-and-scoped-client-sdk.md) | 3 | M | todo | — | — |
 | 40 | [Authenticated forge serving and role executor custody](brief-40-authenticated-forge-serving-and-role-executor-custody.md) | 9 | L | todo | — | — |
-| 41 | [Write-through forge receipts and read-after-write projection](brief-41-write-through-forge-receipts-and-read-after-write-projection.md) | 8 | L | todo | — | — |
-| 42 | [SHA-bound source queries and immutable result caching](brief-42-sha-bound-source-queries-and-immutable-result-caching.md) | 7 | L | todo | — | — |
-| 43 | [Incremental forge indexes and dependency-aware invalidation](brief-43-incremental-forge-indexes-and-dependency-aware-invalidation.md) | 8 | M | todo | — | — |
-| 44 | [Shared Git object and fetch reuse qualification trial](brief-44-shared-git-object-and-fetch-reuse-qualification-trial.md) | 8 | M | todo | — | — |
-| 45 | [Forge service fault simulation and scoped cutover qualification](brief-45-forge-service-fault-simulation-and-scoped-cutover-qualification.md) | 9 | L | todo | — | — |
+| 41 | [Write-through forge receipts and read-after-write projection](brief-41-write-through-forge-receipts-and-read-after-write-projection.md) | 10 | L | todo | — | — |
+| 42 | [SHA-bound source queries and immutable result caching](brief-42-sha-bound-source-queries-and-immutable-result-caching.md) | 10 | L | todo | — | — |
+| 43 | [Incremental forge indexes and dependency-aware invalidation](brief-43-incremental-forge-indexes-and-dependency-aware-invalidation.md) | 11 | M | todo | — | — |
+| 44 | [Shared Git object and fetch reuse qualification trial](brief-44-shared-git-object-and-fetch-reuse-qualification-trial.md) | 11 | M | todo | — | — |
+| 45 | [Forge service fault simulation and scoped cutover qualification](brief-45-forge-service-fault-simulation-and-scoped-cutover-qualification.md) | 12 | L | todo | — | — |
 | 46 | [Pure read-only mirror kernel and conformance](brief-46-pure-read-only-mirror-kernel-and-conformance.md) | 2 | M | todo | — | — |
 | 47 | [Admitted incremental forge readers for mirror ingestion](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) | 2 | M | todo | — | — |
 | 48 | [Bound native mirror response allocation before decoding](brief-48-bound-native-mirror-response-allocation-before-decoding.md) | 3 | M | todo | — | — |
@@ -664,7 +664,7 @@ a source-query fixture needs no live forge, cell deployment or newly provisioned
 The real managed-service blockers are qualified R1/R2 and R3/R4 custody, not a shared-cache
 performance experiment. The trial may complete with a no-go result.
 
-**Waves:** 39 at 1; 40 at 6; 37 and 42 at 7; 38, 41, 43 and 44 at 8; 45 at 9. These numbers
+**Waves:** 39 at 3; 57 at 4; 37 and 55 at 7; 38 and 56 at 8; 40 at 9; 41 and 42 at 10; 43 and 44 at 11; 45 at 12. These numbers
 follow current cross-stream dependencies; workers refresh them at dispatch. No new capacity
 allocation is requested here, and in-progress forge-neutral/18 remains unchanged. The new
 local surface is a narrow R6/R4 capability; full remote OIDC ingress/cockpit remains R7.
@@ -869,12 +869,13 @@ Offline handler/fixture preparation is unqualified and supplies no authenticated
 
 | Read-only wave | Work | Actual prerequisite | Remaining boundary |
 |---|---|---|---|
+| 4 | 57 local caller/current-state producer | Qualified39 and actual supported claims/custody/current-state source | Concrete producer/profile qualification required; no inferred issuer or entitlement |
 | 7 | 55 operator known-profile/accounting provisioning | Qualified54 and the same migration/codec/fixture owner | No production GRANT, credential or policy value selected |
 | 8 | 56 bounded mirror-query handler | Qualified39+55 and an actual independently qualified R3 producer/profile | Missing producer holds; no issuer, TTL or authentication inferred |
 | 9 | Full40 consumes56 | Every original custody/executor prerequisite remains | Full parent Tasks, seven Verify rows and gates remain owed |
 
 The bounded path is `36 → 52`, `50 + 51 → 53`, then `52 + 53 + 51 → 54 → 55`.
-Read serving additionally requires `39 + actual qualified R3 producer/profile → 56`;
+Read serving additionally requires `39 → 57`, then `57 + 55 → 56`;
 full40 consumes56 afterward. Neither55 nor56 depends on the full write/execution delivery.
 No selected issuer, implementation or approval is fabricated to make this graph ready.
 Source50 lacks facts needed by existing desk-read/review projections and complete review

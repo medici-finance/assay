@@ -2,7 +2,7 @@
 brief: assay:assay:forge-neutral:45
 title: "Forge service fault simulation and scoped cutover qualification"
 why: "The service crosses caller, executor, provider, database and cache boundaries. A complete disposable journey with lost replies, revocation and reconstruction is needed before routing real desk writes through it or retiring any direct publisher."
-wave: 9
+wave: 12
 depends: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43", "forge-neutral/44", "desk-tools/43", "desk-tools/44", "desktools-v2/62"]
 unblocks: ["cell-api/07"]
 effort: L
@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 7
+version: 8
 id: 5306ce94-4e21-44af-82e4-d552eaca0ff5
 authored: 2026-10-14 by forge-service authoring
 sources:
