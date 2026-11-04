@@ -38,6 +38,9 @@ amendment `TestVerifyWakeRelevantChange` instead pins that a tool-only change ho
 changed file, Verify definition and completed action still wake. The landed Evidence below is
 unchanged and records what was verified at the time.
 
+**Verify row 5.** New with this amendment: a `muhar` run that breaks each tool-only check in
+turn and shows the tests above go red. It has no Evidence yet; independent verification owns it.
+
 ## Context
 
 Home: medici-finance/assay.
@@ -101,6 +104,7 @@ All named tests below are planned deliverables. The verifier must observe each n
 | 2 | check:ci | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakeRelevantChange$ -v -count=1` | exit 0; named PASS for TestVerifyWakeRelevantChange; changed relevant file, Verify definition, tool or completed action wakes the affected work; an unrelated commit does not |
 | 3 | check:ci | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakeUnknownAndLegacy$ -v -count=1` | exit 0; named PASS for TestVerifyWakeUnknownAndLegacy; unreadable dependencies and legacy records are distinct from empty/pass; no fabricated unchanged claim |
 | 4 | check:ci +flow | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakePartialRows$ -v -count=1` | exit 0; named PASS for TestVerifyWakePartialRows; one newly runnable row executes without repeating held rows; no partial result closes the whole brief |
+| 5 | check +mutation | `m=$(mktemp -d)/muhar && (cd tools/desk && GOWORK=off go build -o "$m" ./cmd/muhar) && cd tools/desk && GOWORK=off "$m" -spec cmd/verifyloop/tool-only-wake-mutations.json` | exit 0; "Harness healthy: baseline GREEN, positive control CAUGHT."; every tool-only-wake mutation CAUGHT, "0 NOT CAUGHT, 0 could-not-mutate" (added by the #2310 amendment) |
 
 Pre-mortem → detection: False suppression hides executable work: rows 2 and 3. Restart loses the hold: row 1. A partial pass closes a brief: row 4. Judgment over the declared deliverable scope remains review-owned.
 
