@@ -3970,9 +3970,11 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
   an `internal` repo an explicit `:internal` one** — the public-repo write gate
   (`PublicRepoGate`). The authorization is REPOSITORY-scoped, decided once by a human
   out-of-band: a public repo listed as `owner/name:public` (an internal repo listed as
-  `owner/name:internal`) is a place the desk may write, and every write verb passes on it
-  (create / review / ready / reply / evidence / release — `PublicRepoGate` is the single
-  choke point). A repo that is absent, matched only by an `owner/*` pattern (patterns carry
+  `owner/name:internal`) is a place the desk may write, and every gated write passes on it.
+  The gate runs in `deskpr` (create / update / edit), `deskpost` (comment / ready / review),
+  `deskreply`, `deskevidence` and `deskrelease cut` — the commands
+  `deskkit.PublicRepoGateVerbs` lists and the refusal names. Tracker writes such as
+  `deskfile` do not run it. A repo that is absent, matched only by an `owner/*` pattern (patterns carry
   no visibility policy), tagged `:private`, carrying no visibility token, or tagged with the
   other non-private token (`:internal` on a live-public repo, `:public` on a live-internal
   one) **refuses** (exit 5) with the remedy in the message. `internal` is visible to every
