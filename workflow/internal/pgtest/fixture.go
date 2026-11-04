@@ -102,6 +102,85 @@ type Fixture struct {
 	marker string
 	owned  bool
 	ready  bool
+	roles  []ownedRole
+}
+
+type ownedRole struct {
+	name, marker string
+	ack, removed bool
+}
+
+// RoleConnections contains only credentials created for this exact disposable
+// fixture. There is no arbitrary role name, grant text or setup callback input.
+type RoleConnections struct{ Operator, Runtime Connection }
+
+func (RoleConnections) String() string { return "owned disposable role connections (redacted)" }
+
+func (f *Fixture) NewRoles(t testing.TB) RoleConnections {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	checked, e := f.ConnectOwned(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	checked.Close()
+	if len(f.roles) != 0 {
+		t.Fatal("fixture role capability already used")
+	}
+	var result RoleConnections
+	for i, purpose := range []string{"operator", "runtime"} {
+		var nonce [16]byte
+		var password [32]byte
+		if _, e = rand.Read(nonce[:]); e != nil {
+			t.Fatal("fixture role identity unavailable")
+		}
+		if _, e = rand.Read(password[:]); e != nil {
+			t.Fatal("fixture role credential unavailable")
+		}
+		id := hex.EncodeToString(nonce[:])
+		name, credential := "assay_role_"+id+"_"+purpose, hex.EncodeToString(password[:])
+		f.roles = append(f.roles, ownedRole{name: name, marker: f.marker + ":role:" + id})
+		role := &f.roles[len(f.roles)-1]
+		// The identifier uses pgx quoting; the password is freshly generated hex.
+		// Driver text is never returned because it may include credential material.
+		if _, e = f.Admin.ExecContext(ctx, "CREATE ROLE "+pgx.Identifier{name}.Sanitize()+" LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '"+credential+"'"); e != nil {
+			t.Fatal("fixture role creation uncertain; role retained: " + name)
+		}
+		role.ack = true
+		if _, e = f.Admin.ExecContext(ctx, "COMMENT ON ROLE "+pgx.Identifier{name}.Sanitize()+" IS '"+role.marker+"'"); e != nil {
+			t.Fatal("fixture role marker uncertain; role retained: " + name)
+		}
+		connection := f.Config
+		connection.User, connection.Password = name, credential
+		if i == 0 {
+			result.Operator = connection
+		} else {
+			result.Runtime = connection
+		}
+	}
+	return result
+}
+
+func (f *Fixture) dropRoles(ctx context.Context) error {
+	var problems []error
+	for i := len(f.roles) - 1; i >= 0; i-- {
+		role := &f.roles[i]
+		if role.removed {
+			continue
+		}
+		var marker string
+		if !role.ack || !strings.HasPrefix(role.name, "assay_role_") || f.Admin.QueryRowContext(ctx, "SELECT coalesce(shobj_description(oid,'pg_authid'),'') FROM pg_roles WHERE rolname=$1", role.name).Scan(&marker) != nil || marker != role.marker {
+			problems = append(problems, errors.New("fixture role ownership uncertain; retained: "+role.name))
+			continue
+		}
+		if _, e := f.Admin.ExecContext(ctx, "DROP ROLE "+pgx.Identifier{role.name}.Sanitize()); e != nil {
+			problems = append(problems, errors.New("owned fixture role cleanup failed; retained: "+role.name))
+			continue
+		}
+		role.removed = true
+	}
+	return errors.Join(problems...)
 }
 
 func New(t testing.TB) *Fixture {
@@ -174,15 +253,61 @@ func (f *Fixture) Reset(ctx context.Context) error {
 	return f.create(ctx)
 }
 func (f *Fixture) Close() error {
-	if !f.owned {
-		return f.Admin.Close()
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	if !f.owned {
+		return errors.Join(f.dropRoles(ctx), f.Admin.Close())
+	}
 	err := f.drop(ctx)
+	if err == nil {
+		err = f.dropRoles(ctx)
+	}
 	closeErr := f.Admin.Close()
 	if err != nil {
 		return err
 	}
 	return closeErr
+}
+
+// CheckRoles verifies both this exact owned database and the roles created by
+// its single testing capability. It grants nothing and accepts no foreign role.
+func (f *Fixture) CheckRoles(ctx context.Context, roles RoleConnections) error {
+	checked, e := f.ConnectOwned(ctx)
+	if e != nil {
+		return e
+	}
+	checked.Close()
+	if len(f.roles) != 2 {
+		return errors.New("fixture role capability missing")
+	}
+	for i, connection := range []Connection{roles.Operator, roles.Runtime} {
+		role := f.roles[i]
+		var marker string
+		if !role.ack || role.removed || connection.User != role.name || connection.Database != f.Config.Database || connection.Host != f.Config.Host || connection.Port != f.Config.Port || f.Admin.QueryRowContext(ctx, "SELECT coalesce(shobj_description(oid,'pg_authid'),'') FROM pg_roles WHERE rolname=$1", role.name).Scan(&marker) != nil || marker != role.marker {
+			return errors.New("fixture role ownership mismatch")
+		}
+	}
+	return nil
+}
+
+// ConnectRuntime exposes only the restricted synthetic role whose exact marker
+// this testing capability owns. It accepts no arbitrary connection or role.
+func (f *Fixture) ConnectRuntime(ctx context.Context, roles RoleConnections) (*sql.DB, error) {
+	if e := f.CheckRoles(ctx, roles); e != nil {
+		return nil, e
+	}
+	return dial(ctx, roles.Runtime)
+}
+
+// ConnectOwned returns a test-only SQL connection after rechecking this fixture's
+// exact generated database and ownership marker. It never opens an ambient DB.
+func (f *Fixture) ConnectOwned(ctx context.Context) (*sql.DB, error) {
+	if f == nil || !f.owned || !f.ready || !strings.HasPrefix(f.Config.Database, "assay_pg_") {
+		return nil, errors.New("unowned fixture database")
+	}
+	var marker string
+	if err := f.Admin.QueryRowContext(ctx, "SELECT coalesce(shobj_description(oid,'pg_database'),'') FROM pg_database WHERE datname=$1 AND datdba=(SELECT oid FROM pg_roles WHERE rolname=current_user)", f.Config.Database).Scan(&marker); err != nil || marker != f.marker {
+		return nil, errors.New("fixture ownership mismatch")
+	}
+	return dial(ctx, f.Config)
 }
