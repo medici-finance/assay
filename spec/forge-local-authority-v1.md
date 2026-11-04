@@ -700,3 +700,36 @@ absolute executable cannot be certified as Docker or forge-free by the static
 scanner. The register grants no forge permit, and every unregistered unresolved
 site, resolved forge invocation and stale register row retains its existing
 refusal. The permit inventory, ceiling and scanner assertions remain unchanged.
+
+## Canonical local endpoint and CI workspace pickup
+
+Raw host-local endpoints belong to `internal/commstransport`. Authority serving
+reuses its existing `Listen`: absolute path, real owner-only parent owned by the
+current user, and0600 socket creation. The existing authority root/inode and
+original exclusive-gate claim remains outside that primitive; the returned Unix
+listener has automatic unlink disabled and exact owner-held cleanup remains at
+the caller. Source-bound image seed directories become0700 for this existing
+transport boundary, with UID501 copy-up; no runtime chmod or privileged initializer
+is introduced. Legacy comms listener/dial/stale-recovery predicates remain intact.
+
+The existing `Dial` has no context parameter. Add only
+`DialUnixContext(context.Context, string, time.Duration) (net.Conn, error)` at the
+canonical transport owner: nonnil uncancelled context and positive finite timeout
+are required before filesystem contact; existing absolute-path, owner-only parent,
+socket-type and current-user ownership checks precede the actual original-context
+Unix dial. Windows explicitly refuses this Unix-only primitive, without changing
+its named-pipe API or providing a fallback. Current grant/probe/control clients
+reuse this primitive; existing bounded framing, challenge, cancellation/deadline
+and final-release rules are unchanged. The endpoint-site reader recognizes the
+actual inline `net.Dialer.DialContext` Unix call and permits only its checked
+canonical owner site, with planted outside-site and missing-owner controls.
+
+The required hosted qualification job needs a clean linked checkout of its exact
+source for compiling production fault controls. It is a disposable GitHub runner
+job outside a cell, not an interactive agent workspace or an allocation authority.
+The existing workspace caller census routes only `.github/workflows/ci.yml`,
+symbol `-`, effect `recipe`, as temporary compatibility under WS-10; the route
+retires when that step supplies the required CI fixture checkout adapter, or the
+recipe is removed. Existing census assertions still reject every unrouted caller
+and stale route. No Git/workspace effect, allocator capability or cleanup right
+is added by the census entry.

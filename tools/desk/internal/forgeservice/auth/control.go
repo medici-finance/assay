@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/celllaunch"
+	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
 )
 
 // OperatorCommand is accepted only on the operator-only control channel. It cannot
@@ -69,7 +70,7 @@ func RequestControl(ctx context.Context, path string, max int, timeout time.Dura
 	}
 	call, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	conn, e := (&net.Dialer{Timeout: timeout}).DialContext(call, "unix", path)
+	conn, e := commstransport.DialUnixContext(call, path, timeout)
 	if e != nil {
 		return ControlReceipt{}, ErrHeld
 	}

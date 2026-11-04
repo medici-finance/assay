@@ -161,7 +161,7 @@ var UnresolvedArgv = []Allowance{
 		Key: "internal/cellcontainer/authority_runtime.go::AuthorityRuntime.command::<unresolved>",
 		Reason: "the existing closed local-authority container adapter runs the trusted operator's " +
 			"explicit absolute DockerBinary with an empty CLI configuration, explicit local engine, " +
-			"original bounded context and finite protocol I/O. The scanner cannot certify the selected " +
+			"original caller context and finite protocol I/O. The scanner cannot certify the selected " +
 			"executable as Docker or forge-free: retain could-not-check, not a forge permit. This row " +
 			"registers only that existing exec site; resolved forge calls and other unresolved sites " +
 			"retain their independent refusals.",

@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -20,6 +19,7 @@ import (
 	"github.com/medici-finance/assay/forgeread/mirror"
 	"github.com/medici-finance/assay/tools/desk/internal/cellcontainer"
 	"github.com/medici-finance/assay/tools/desk/internal/celllaunch"
+	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
 	"github.com/medici-finance/assay/tools/desk/internal/forgeservice/auth"
 )
 
@@ -281,7 +281,7 @@ func deniedSocket(ctx context.Context, path string) bool {
 func probe(ctx context.Context, p ProbeCall) ProbeResult {
 	r := ProbeResult{PrivateAbsent: absent("/authority-control/producer-present"), ControlDenied: deniedSocket(ctx, "/authority-control/control.sock"), EngineAbsent: absent("/var/run/docker.sock") && absent("/run/docker.sock"), CurrentReadOnly: readonly("/authority-current"), BootstrapReadOnly: readonly("/authority-bootstrap"), GrantReadOnly: readonly("/authority-grant"), OtherGrantDenied: true, CurrentControlDenied: deniedSocket(ctx, "/authority-current/current.sock"), GrantControlDenied: deniedSocket(ctx, "/authority-grant/grant.sock"), BootstrapAbsent: absent("/authority-bootstrap/bootstrap.json"), CurrentAbsent: absent("/authority-current/current.sock"), GrantAbsent: absent("/authority-grant/grant.sock")}
 	if p.OtherSlot >= 0 && p.OtherSlot < cellcontainer.AuthorityGrantSlots {
-		conn, e := (&net.Dialer{Timeout: 250 * time.Millisecond}).DialContext(ctx, "unix", filepath.Join(cellcontainer.AuthorityGrantTarget(p.OtherSlot), "grant.sock"))
+		conn, e := commstransport.DialUnixContext(ctx, filepath.Join(cellcontainer.AuthorityGrantTarget(p.OtherSlot), "grant.sock"), 250*time.Millisecond)
 		r.OtherGrantDenied = e != nil
 		if e == nil {
 			conn.Close()

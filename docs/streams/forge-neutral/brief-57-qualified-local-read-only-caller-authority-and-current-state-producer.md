@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5428
 issues: []
 schema: brief-v2
-version: 9
+version: 10
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -38,6 +38,8 @@ consumers:
 - "tools/desk/internal/cellcontainer/: follow-up forge-neutral/57 (closed producer/query/caller profile extension and actual named-volume isolation qualification; no arbitrary mount builder)"
 - "forgeread/refresh/types.go: follow-up forge-neutral/57 (additive Limits.Validate delegates the existing canonical policy predicate; auth construction reuses it before key/listener contact)"
 - "tools/desk/internal/forgeban/allowlist.go: follow-up forge-neutral/57 (exact existing AuthorityRuntime.command unresolved-argv ledger entry; no forge permit or scanner relaxation)"
+- "tools/desk/internal/commstransport/: follow-up forge-neutral/57 (canonical checked Unix listener and additive cancellable Unix dial; no new authority or remote transport)"
+- "docs/workspace-callers.md: follow-up forge-neutral/57 (exact non-cell CI qualification recipe census route; no allocator or cleanup authority)"
 - "spec/forge-local-authority-v1.md, docs/forge-local-authority.md and docs/contracts.md: follow-up forge-neutral/57 (concrete claims/custody/current-state qualification)"
 - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/56 (consume the actual qualified producer; no handler issuer)"
 - "full executor/custody acceptance: follow-up forge-neutral/40 (reuse this local read-only boundary; write authority remains separate)"
@@ -59,6 +61,8 @@ files:
 - `tools/desk/internal/arch/markers.txt`
 - `tools/desk/internal/deskkit/citrigger_test.go`
 - `tools/desk/internal/forgeban/allowlist.go`
+- `tools/desk/internal/commstransport/`
+- `docs/workspace-callers.md`
 - `.github/workflows/ci.yml`
 - `.github/workflows/assay-workflow.yml`
 - `spec/forge-local-authority-v1.md` (planned)
@@ -122,6 +126,8 @@ A ruling must name forge-neutral/57 and the selected design option explicitly. N
 
 - Work only in an owned branch/draft. No cluster/production probe, main push/merge, live key read, grant, role change, deployment or activation. Fixture keys are ephemeral synthetic material in owned temporary resources; never load operational signing material to qualify tests.
 - Keep the existing closed authority Docker adapter: legacy Docker(host) uses ambient PATH/HOME/TERM, background timeout, unbounded combined output and interactive foreground, so it cannot replace the required explicit binary/empty configuration/original context/bounded I/O. The existing forgeban unresolved-argv ledger records that exact adapter as could-not-check; it grants no forge permit and does not certify an operator-selected executable as forge-free.
+- Host-local endpoints reuse the canonical commstransport owner checks. Its existing Listen supplies owner-only parent and0600; the authority adapter keeps original exclusive-gate/root/inode claims, disables automatic socket unlink and owns exact cleanup. An additive Unix-only cancellable dial preserves the original context and positive finite timeout after existing owner/type checks. Image-owned channel seeds tighten to0700; no runtime chmod/root initializer or legacy transport relaxation. The existing endpoint reader recognizes the actual inline Dialer Unix call and requires its canonical owner check.
+- Route the exact disposable GitHub CI qualification checkout recipe as non-cell temporary compatibility under WS-10 in the existing census, with its retirement condition. No workspace allocator/lifecycle API, new checkout effect, broad exemption or scanner change is introduced.
 - No dependency on full40/41, workflow claims/execution/outbox or live reconstruction. Full40 later reuses this local read-only boundary and retains every write/executor/custody obligation.
 - No remote OIDC/mTLS platform replacement, generic token minting endpoint or default entitlement/profile/TTL. Missing, unreadable, stale or uncertain current state refuses before protected data release.
 - Socket permissions, request claims, passive records, saved checkpoints and authenticated transport peers alone cannot substitute for the exact current caller grant. Preserve independent lower admission/native checks in the later handler.

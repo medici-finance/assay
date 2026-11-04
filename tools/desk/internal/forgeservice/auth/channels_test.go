@@ -54,6 +54,7 @@ func TestForgeLocalAuthorityChannelRestart(t *testing.T) {
 			}
 		})
 		deadline := time.Now().Add(time.Second)
+		started := time.Now()
 		for {
 			select {
 			case e := <-done:
@@ -66,7 +67,21 @@ func TestForgeLocalAuthorityChannelRestart(t *testing.T) {
 				break
 			}
 			if time.Now().After(deadline) {
-				t.Fatal("retained channel never rebound")
+				// The failure was already decided by the original condition and
+				// deadline. Collect evidence only here, without adding a new pass
+				// criterion or changing positive-path scheduling with probe dials.
+				elapsed := time.Since(started)
+				path := filepath.Join(r.Current.Name(), "current.sock")
+				current, statErr := r.Current.Lstat("current.sock")
+				var stat any
+				if current != nil {
+					stat = current.Sys()
+				}
+				probe, dialErr := net.DialTimeout("unix", path, 25*time.Millisecond)
+				if probe != nil {
+					probe.Close()
+				}
+				t.Fatalf("retained channel never rebound: elapsed=%s path=%s old_stat=%#v current_stat=%#v stat_error=%v dial_error=%v diagnostic_elapsed=%s", elapsed, path, old.Sys(), stat, statErr, dialErr, time.Since(started))
 			}
 			time.Sleep(time.Millisecond)
 		}

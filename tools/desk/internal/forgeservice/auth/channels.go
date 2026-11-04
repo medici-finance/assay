@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
 )
 
 func (c *CurrentClient) probe(ctx context.Context, p CurrentProbe) (SignedProof, error) {
@@ -22,7 +24,7 @@ func (c *CurrentClient) probe(ctx context.Context, p CurrentProbe) (SignedProof,
 	}
 	call, cancel := context.WithTimeout(ctx, c.config.IOTimeout)
 	defer cancel()
-	conn, e := (&net.Dialer{Timeout: c.config.IOTimeout}).DialContext(call, "unix", c.config.Path)
+	conn, e := commstransport.DialUnixContext(call, c.config.Path, c.config.IOTimeout)
 	if e != nil {
 		return zero, ErrHeld
 	}
@@ -131,8 +133,13 @@ func (c *Controller) serve(ctx context.Context, root *os.Root, name string, slot
 		return ErrHeld
 	}
 	path := filepath.Join(root.Name(), name)
-	listener, e := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	endpoint, e := commstransport.Listen(path)
 	if e != nil {
+		return ErrHeld
+	}
+	listener, ok := endpoint.(*net.UnixListener)
+	if !ok || listener == nil {
+		endpoint.Close()
 		return ErrHeld
 	}
 	listener.SetUnlinkOnClose(false)
@@ -208,7 +215,7 @@ func ReadGrant(ctx context.Context, path string, max int, timeout time.Duration)
 	}
 	call, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	conn, e := (&net.Dialer{Timeout: timeout}).DialContext(call, "unix", path)
+	conn, e := commstransport.DialUnixContext(call, path, timeout)
 	if e != nil {
 		return SignedGrant{}, ErrHeld
 	}
