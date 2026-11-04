@@ -1080,8 +1080,9 @@ exclusive; ordinary `--check` still opens no connection and judges the whole ran
 names `--check-remote` as the mode that runs it. `--check-remote` runs the real gate
 and refuses with the same text and exit code (5) as the live create. A GitLab
 `internal` project still listed `:public` therefore shows up here, before any push.
-That refusal names the `:internal` replacement entry and says the `:public` entry
-predates the `:internal` token. The operator edits `ASSAY_ALLOWED_REPOS`. No verb
+That refusal names the `:internal` replacement entry and says that, if the `:public`
+entry was written before the `:internal` token existed, it predates the token. The gate
+cannot know that: a repo listed `:public` that later became internal reads the same. The operator edits `ASSAY_ALLOWED_REPOS`. No verb
 rewrites it from a live read, because it is an authorization control.
 
 A successful remote check is a snapshot, not permission to ignore a later refusal.
@@ -3988,10 +3989,12 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
     stale roster claiming `:public` for a repo the forge reports otherwise never authorizes
     on the stale claim (the live read disagrees). A live read that fails or returns an
     unrecognised value is **unverifiable** (exit 6, fail closed) — never guessed private.
-  - **A `:public` entry on a live-internal repo predates the `:internal` token.** Earlier
-    versions had no `:internal` token, so `:public` was the tag such a repo got. It now
-    refuses like any mismatch, and the refusal says the entry predates the token and names
-    the `owner/name:internal` replacement. Nothing migrates the entry: the operator edits
+  - **A `:public` entry on a live-internal repo may predate the `:internal` token.** Earlier
+    versions had no `:internal` token, so `:public` was the tag such a repo got. The gate
+    cannot tell that entry from one written while the repo was public, before it became
+    internal. It refuses like any mismatch. The refusal says that, if the entry was
+    written before the token existed, it predates it, and it names the
+    `owner/name:internal` replacement. Nothing migrates the entry: the operator edits
     it. `deskpr create --check-remote` surfaces the mismatch before a live create.
     `deskroster` has no check that reads repo visibility from the forge, so it does not
     report this mismatch.
