@@ -731,7 +731,9 @@ torn down whichever cockpit resolves, and what a non-tmux cockpit opened is clos
 cockpit offers a verb for it and **named for you to close by hand where it does not**.
 
 `cellctl down <cell> <role>` closes **one** role. It applies only to a role that is already paused
-or drained. It stops that role's cadence alone, re-measures the role idle, re-verifies the role's
+or drained: a role that is not is refused `role-busy` before any plan is shown, and `down` never
+pauses it for you, so declining the confirm leaves the cell exactly as it was. Run
+`cellctl pause <cell> <role>` (or `drain`) first. It stops that role's cadence alone, re-measures the role idle, re-verifies the role's
 surface identity against the live cockpit, and issues exactly one single-surface close
 (`tmux kill-window -t <id>`, `herdr tab close <tab>`, `orca terminal close --terminal <h>`). It never
 closes a session, a workspace, a sibling's window or another cell's. A role with no surface receipt,
@@ -775,6 +777,13 @@ it says nothing about idleness. cellctl measures the claims and the harness's ex
 reports the harness turn itself as **could-not-check**, which is never treated as idle. As a result,
 an interactive role is stopped only through the operator's terminal confirm, on a plan stating that
 harness idleness was not measured.
+
+**Expect `drain --now` for an interactive role.** The harness's long-lived helpers are recorded
+once, when its lease confirms. Any process the harness starts after that, such as a tool server
+it keeps open, counts as an extra child for the rest of the session. A timed drain of such a role
+therefore usually ends at `--timeout` with `partial`/`role-busy`. That is the safe direction: it
+never reads a busy harness as idle. Check the role yourself and finish with `drain <cell> <role>
+--now`.
 
 **Every state change needs a terminal** on stdin and stdout. Off a terminal, each of these verbs is
 refused `not-interactive` and changes nothing, and `--plan` prints what would be done. A transition

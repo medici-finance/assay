@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/cellctl -count=1 -timeout 300s -run '^(TestLifecycleTransitions|TestResumeLeavesForeignStops|TestRecordedResumeNotExecuted|TestPerRoleDownClosesOneSurface|TestIdleSignalPerMode|TestDrainWaitsForInFlight|TestDrainTimeoutDoesNotStop|TestInterimMappingPinned|TestDrainEmitsCellOpV1|TestPauseResumeDrainRefuseOffTTY|TestDrainNowInteractiveOnly)$'",
+  "test": "go test ./cmd/cellctl -count=1 -timeout 300s -run '^(TestLifecycleTransitions|TestResumeLeavesForeignStops|TestRecordedResumeNotExecuted|TestPerRoleDownClosesOneSurface|TestIdleSignalPerMode|TestDrainWaitsForInFlight|TestDrainTimeoutDoesNotStop|TestInterimMappingPinned|TestDrainEmitsCellOpV1|TestPauseResumeDrainRefuseOffTTY|TestDrainNowInteractiveOnly|TestPerRoleDownRefusesUnpausedRole|TestLiftAfterStopUsesAppliedStops|TestPlanActionRoleChecked)$'",
   "control": {
     "name": "invert the one-close assertion",
     "file": "cmd/cellctl/lifecycle_test.go",
@@ -126,6 +126,24 @@
       "file": "cmd/cellctl/drain.go",
       "old": "r.Finish(cellop.CouldNotCheck, cellop.ReasonUnmeasured, fmt.Sprintf(\"%s: idle could not be measured: %v\"",
       "new": "r.Finish(cellop.CouldNotCheck, \"idle-unreadable\", fmt.Sprintf(\"%s: idle could not be measured: %v\""
+    },
+    {
+      "name": "9a down-role-needs-pause: down pauses the role itself",
+      "file": "cmd/cellctl/drain.go",
+      "old": "\t\t} else if !paused {\n\t\t\terr = refuseWith(cellop.ReasonRoleBusy, \"%s is not paused or drained;",
+      "new": "\t\t} else if !paused && false {\n\t\t\terr = refuseWith(cellop.ReasonRoleBusy, \"%s is not paused or drained;"
+    },
+    {
+      "name": "9b drain-apply-lift-scope: an empty stopped set means every role",
+      "file": "cmd/cellctl/drain.go",
+      "old": "\tif len(stopped) == 0 {\n\t\treturn\n\t}",
+      "new": "\tif len(stopped) == 0 {\n\t\tstopped = knownRoles\n\t}"
+    },
+    {
+      "name": "9c plan-action-role-checked: a stored action's role is believed",
+      "file": "cmd/cellctl/drain.go",
+      "old": "\tcase \"stop\", \"stop-now\":\n\t\tif valueIn(arg, knownRoles) {",
+      "new": "\tcase \"stop\", \"stop-now\":\n\t\tif true {"
     }
   ]
 }

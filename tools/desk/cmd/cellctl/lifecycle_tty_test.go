@@ -131,3 +131,38 @@ func TestDrainNowInteractiveOnly(t *testing.T) {
 		t.Fatalf("drain --now on a terminal must name the abandoned claim and its unknown outcome:\n%s", out)
 	}
 }
+
+// regression: down-role-needs-pause
+// The per-role down applies only to a role already paused or drained. A running role is refused
+// role-busy before any plan is shown, and the refusal adds no stop: down never pauses a role
+// itself, so a declined or never-reached confirm cannot leave a role paused behind it.
+func TestPerRoleDownRefusesUnpausedRole(t *testing.T) {
+	w := newCLIWorld(t, "")
+	before := w.stopFlags(t)
+	code, out := kubeTTY(t, w, 60*time.Second, "down", "example", "worker-desk")
+	if code == 0 || !strings.Contains(out, cellop.ReasonRoleBusy) || !strings.Contains(out, "not paused or drained") {
+		t.Fatalf("down of a running role: exit %d, want a %s refusal\n%s", code, cellop.ReasonRoleBusy, out)
+	}
+	if strings.Contains(out, "Type the confirm code") {
+		t.Fatalf("down of a running role reached the confirm:\n%s", out)
+	}
+	if after := w.stopFlags(t); after != before {
+		t.Fatalf("a refused per-role down changed the stops:\nbefore: %s\nafter:  %s", before, after)
+	}
+}
+
+// stopFlags lists the stop-flag files in the cell's config home.
+func (w *cliWorld) stopFlags(t *testing.T) string {
+	t.Helper()
+	ents, err := os.ReadDir(w.cfgDir)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range ents {
+		if n := e.Name(); n == "DISABLED" || strings.HasPrefix(n, "STOP") {
+			names = append(names, n)
+		}
+	}
+	return strings.Join(names, ",")
+}

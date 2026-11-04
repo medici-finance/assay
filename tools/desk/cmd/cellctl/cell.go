@@ -331,9 +331,9 @@ type Cell struct {
 	// pendingSurfaces is each role's surface as its cockpit opened it, bound into the role's
 	// surface receipt once the role's lease confirms the start (role_surface.go).
 	pendingSurfaces map[string]surfaceReceipt
-	Cadence       *cadenceOptions
-	cadenceLease  *cellcadence.Lease
-	Env           *Env
+	Cadence         *cadenceOptions
+	cadenceLease    *cellcadence.Lease
+	Env             *Env
 
 	Name string
 	Dir  string
