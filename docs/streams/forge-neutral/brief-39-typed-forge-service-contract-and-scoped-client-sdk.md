@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 5
+version: 6
 id: a2814dbf-4d0c-4cef-bfc6-aceaf50dd255
 authored: 2026-10-14 by forge-service authoring
 sources:

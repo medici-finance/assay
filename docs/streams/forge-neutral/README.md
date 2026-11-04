@@ -255,6 +255,9 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 49 | [Retire claim-decay stored GitHub login fallback](brief-49-retire-claim-decay-stored-github-login-fallback.md) | 0 | S | implemented | — | — |
 | 50 | [Join admitted incremental reads to mirror observations](brief-50-join-admitted-incremental-reads-to-mirror-observations.md) | 4 | M | todo | — | — |
 | 51 | [Store-injected mirror read-through coordinator and shared refresh gate port](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md) | 3 | M | todo | — | — |
+| 52 | [Canonical PostgreSQL mirror store without execution dependencies](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md) | 3 | L | todo | — | — |
+| 53 | [Qualified native mirror attempt accounting and retry metadata](brief-53-qualified-native-mirror-attempt-accounting-and-retry-metadata.md) | 5 | L | todo | — | — |
+| 54 | [Canonical PostgreSQL refresh gate and admitted read-through integration](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md) | 6 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -758,6 +761,19 @@ neither every remaining forge read nor the parent contribution.
 Explicit token inputs and host separation remain until /77's migration. /18 remains
 partial and retains every original acceptance row and remaining read/CI obligation.
 
+## Read-only PostgreSQL persistence split — 3 November 2026
+
+The durable read critical path is canonical PostgreSQL foundation graph-execution/36 →
+[mirror Store52](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md)
+→ [canonical shared Gate /54](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md)
+and its admitted source/coordinator SQL join. Full /37 consumes those owners at trusted
+deskkit composition and retains its independent persisted acceptance. Source mapping
+and store-injected coordinator fixtures proceed independently. No edge
+on this bounded path waits for execution claims, admission, effects or outbox delivery.
+Full /19 and /37 acceptance, retention, authenticated serving and activation remain owed.
+The smallest unblocking move is the actual /36 migration and container harness, never a
+second database. Generated lifecycle cells carry no hand-authored delivery claim.
+
 ### Read-only observation mapper contribution — 3 November 2026
 
 Fresh main `863c43db` contains the kernel, admitted readers and native response bound.
@@ -785,6 +801,33 @@ not a prerequisite for synthetic coordinator fixtures. Real R2 gate/store and jo
 mapper qualification remain later acceptance requirements. Existing lifecycle and
 acceptance cells are unchanged.
 
+## Durable read-through continuation — 3 November 2026
+
+Fresh main214b4c830 has no canonical workflow implementation. Tested feature source now
+exists for foundation36, Store52, mapper50 and coordinator51; feature availability is not
+mainline delivery, independent acceptance or activation. The true remaining API head is
+[53](brief-53-qualified-native-mirror-attempt-accounting-and-retry-metadata.md): safe native
+attempt grants/receipts and retry knowledge, including a lower pre-request authority seam.
+[54](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md)
+then implements that authority and the shared Gate in the single R2 database and joins
+actual admitted source, coordinator and Store with synthetic transports. No new join-only
+brief, provider walker, local quota owner or execution prerequisite is introduced.
+
+| Read-only wave | Work | Pickup condition | Evidence boundary |
+|---|---|---|---|
+| 5 | 53 native attempt/retry metadata | Genuine published50 and repaired51 APIs; no invented working-tree port | Actual native leaf and typed flow; stateful test authority only |
+| 6 | 54 canonical SQL Gate and joined fixture | Actual53 plus52 and repaired51, using36's same ledger/harness | Real PostgreSQL generations/budgets/atomic completion and synthetic native requests |
+| Parent | Full37 acceptance and existing service/cutover path | Its complete dependency/risk graph plus the explicit54 precursor ordering | Retention, remaining joined row23 conditions, authenticated serving and activation remain owed |
+
+Critical path for this bounded implementation is `50 + repaired51 → 53`, then
+`36 → 52` together with `53 + repaired51 → 54`. Authoring54 can run while53 is built;
+SQL implementation may consume53's actual tested immutable port/propagation source while native work continues; final joined delivery consumes completed qualified53. Typed waves/reciprocal edges are generated
+from those dependencies. A mixed stronger-query miss keeps51's single base fill and
+separate Requirements-qualified backoff; SQL design must consume its actual repaired API.
+Absent/unreadable/unknown shared usage or retry metadata holds. No default allowance is
+created on restart, and no source-response total can retroactively bound HTTP work.
+All original23 full37 and13 fullGE19 Verify Class/Command pairs and gates remain intact.
+
 ## Shared-cache read-through — 3 November 2026
 
 Cold or insufficient admitted queries fill inside the shared read owner; clients need no
@@ -794,3 +837,19 @@ recover. The [architecture contract](../../proposals/non-ci-architecture/22-forg
 and /37, /39, /40, /42, /43 and /45 carry the source, client, authorization and served-fault
 acceptance. Every prior Class/Command pair remains; no persistent service or activation is
 claimed by this requirements amendment.
+
+### Authoring review reconciliation — 4 November 2026
+
+Current main includes the read-through requirements amendment and the generated49
+implementation witness. The current51,53 and54 contract texts are adopted from their
+qualified feature revisions; adoption does not place runtime code or acceptance on main.
+The explicit `54 → 37` dependency now orders the full parent behind the bounded source,
+coordinator, Store and Gate contributions, preserving every other parent prerequisite.
+Later full37 integration consumes those owners rather than dispatching a second mapper
+or SQL Gate concurrently.
+
+The ordinary PostgreSQL-less desk shards may report only an explicitly unqualified
+outer joined-test skip when no DSN is supplied. Qualifying54 evidence remains in the
+declared PostgreSQL workflow: nonempty explicit DSN, strict canonical fixture and exact
+named joined-test PASS are required. Missing, malformed, unreachable or skipped qualifying
+fixtures fail; this does not relax foundation/Store qualification.
