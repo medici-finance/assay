@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/cellctl -count=1 -timeout 300s -run '^(TestCycleWaitsForClaim|TestCycleTimeoutLeavesRunning|TestCycleForceAfterTimeout|TestCycleSyncFailLeavesDown|TestCycleUncheckedNotOK|TestCycleNeedsFreshBeat|TestCycleSkipsDownRole|TestCycleAllAtOnce|TestCycleAllAtOnceTimeoutStopped|TestCycleTimeoutKeepsOperatorPause|TestClaudeSyncToPin|TestClaudeSyncStaysStale|TestCursorSyncChecks)$'",
+  "test": "go test ./cmd/cellctl -count=1 -timeout 300s -run '^(TestCycleWaitsForClaim|TestCycleTimeoutLeavesRunning|TestCycleForceAfterTimeout|TestCycleSyncFailLeavesDown|TestCycleUncheckedNotOK|TestCycleNeedsFreshBeat|TestCycleSkipsDownRole|TestCycleAllAtOnce|TestCycleAllAtOnceTimeoutStopped|TestCycleTimeoutKeepsOperatorPause|TestCycleKeepsPauseSetDuringDrain|TestCycleSuccessKeepsOperatorPause|TestCycleDeclinedConfirmLifts|TestMarketplacePinStrict|TestClaudeSyncToPin|TestClaudeSyncStaysStale|TestCursorSyncChecks)$'",
   "control": {
     "name": "invert the restart-count assertion",
     "file": "cmd/cellctl/cycle_test.go",
@@ -10,14 +10,14 @@
     {
       "name": "cycle-waits-claim: restart before the drain is idle",
       "file": "cmd/cellctl/cycle.go",
-      "old": "\tcase res.Outcome == cellop.OK && len(rep.Confirm) == 0:\n\t\treturn \"drained\", res, true",
-      "new": "\tcase len(rep.Confirm) == 0:\n\t\treturn \"drained\", res, true"
+      "old": "\tcase res.Outcome == cellop.OK && len(rep.Confirm) == 0:\n",
+      "new": "\tcase len(rep.Confirm) == 0:\n"
     },
     {
       "name": "cycle-timeout-no-force: the cycle's own stops are kept",
       "file": "cmd/cellctl/cycle.go",
-      "old": "\t\tallowed[p] = true\n\t}\n\tif _, _, err := l.resumeOnly(allowed)",
-      "new": "\t\tallowed[p] = false\n\t}\n\tif _, _, err := l.resumeOnly(allowed)"
+      "old": "\tif _, _, err := l.resumeWhere(func(f createdFlag) bool { return owner",
+      "new": "\tif _, _, err := l.resumeWhere(func(f createdFlag) bool { return false && owner"
     },
     {
       "name": "cycle-timeout-no-force: the held claims are not named",
@@ -68,10 +68,10 @@
       "new": "\t\t\t\tif false && stoppedIn(res, role) {\n\t\t\t\t\tstopped = append(stopped, role)"
     },
     {
-      "name": "cycle-timeout-keeps-operator-pause: a pause in place before the cycle is lifted",
+      "name": "cycle-timeout-keeps-operator-pause: a stop the cycle did not create is lifted",
       "file": "cmd/cellctl/cycle.go",
-      "old": "\t\tif pre[p] {\n\t\t\tkept = append(kept, role)",
-      "new": "\t\tif false && pre[p] {\n\t\t\tkept = append(kept, role)"
+      "old": "return owner != \"\" && f.By == owner && paths[f.Path]",
+      "new": "return paths[f.Path]"
     },
     {
       "name": "cycle-claude-sync: settings not restored",
@@ -108,6 +108,36 @@
       "file": "cmd/cellctl/cycle.go",
       "old": "\t\ts.New, s.Outcome, s.Detail = \"drift\", syncFailed,",
       "new": "\t\ts.New, s.Outcome, s.Detail = \"drift\", syncOK,"
+    },
+    {
+      "name": "cycle-keeps-pause-set-during-drain: the cycle's flags carry no invocation id",
+      "file": "cmd/cellctl/lifecycle.go",
+      "old": "Created: cellop.Stamp(l.now()), By: by})",
+      "new": "Created: cellop.Stamp(l.now()), By: \"\"})"
+    },
+    {
+      "name": "cycle-success-keeps-operator-pause: the drain lifts every recorded stop of a stopped role",
+      "file": "cmd/cellctl/drain.go",
+      "old": "if len(rep.Confirm) == 0 && o.Owner == \"\" {",
+      "new": "if len(rep.Confirm) == 0 {"
+    },
+    {
+      "name": "cycle-success-keeps-operator-pause: the success lift is drain's liftAfterStop",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\tcase res.Outcome == cellop.OK && len(rep.Confirm) == 0:\n\t\tres.Actions = append(res.Actions, l.liftOwnStops(stoppedRoles(&res), owner))",
+      "new": "\tcase res.Outcome == cellop.OK && len(rep.Confirm) == 0:\n\t\tl.liftAfterStop(stoppedRoles(&res))"
+    },
+    {
+      "name": "cycle-declined-confirm-lifts: a declined confirm keeps the cycle's stop",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\tif len(running) > 0 {",
+      "new": "\tif false && len(running) > 0 {"
+    },
+    {
+      "name": "cycle-pin-strict: any pin is accepted",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\tif !pinVersion.MatchString(ref) {",
+      "new": "\tif false && !pinVersion.MatchString(ref) {"
     }
   ]
 }

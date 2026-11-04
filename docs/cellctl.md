@@ -817,15 +817,21 @@ sync, check and restart, one role at a time. The first role that does not come b
 so a bad pin never takes down more than one role. `--all-at-once` drains every targeted role together.
 
 1. **Stop new work and drain.** This is `drain` itself, bounded by `--drain-timeout` (default 30m).
-   An interactive role's stop needs the operator's confirm, as it does under `drain`. On timeout the
+   An interactive role's stop needs the operator's confirm, as it does under `drain`; a declined
+   confirm stops nothing, and the cycle lifts its own stop so the role keeps running. On timeout the
    role is not restarted. The cycle lifts its own stops so the role keeps running, names each claim
-   still held, and exits non-zero. A pause that was already in place before the cycle (an
-   operator's own `cellctl pause`) is kept. Under `--all-at-once`, a role the drain had already
+   still held, and exits non-zero. The cycle stamps each stop flag it creates with its own
+   invocation id in the pause record, and every lift it makes, on success, decline or timeout, lifts
+   only those. A pause it did not create is kept on every path: one the operator set before the
+   cycle, or set while the cycle waited. A role restarted under such a pause comes back paused, as
+   the operator left it. Under `--all-at-once`, a role the drain had already
    stopped before the timeout is reported down, its stop is lifted, and `Next` names
    `cellctl up <cell> --role <role>` to bring it back. With `--force-after-timeout` it plans the stop the way
    `drain --now` does, listing each held claim as abandoned, and applies it only on the confirm.
 2. **Sync and check.** The role's harness placement is brought to the marketplace pin
-   (`extraKnownMarketplaces.assay.source.ref` in the role worktree's `.claude/settings.json`):
+   (`extraKnownMarketplaces.assay.source.ref` in the role worktree's `.claude/settings.json`). The
+   pin must be a strict release version, `X.Y.Z` with an optional leading `v`. Any other value is
+   could-not-check, and it is never compared or printed into a remedy:
    - **claude:** `claude plugin update assay@assay -s project` in the worktree, with the settings
      bytes restored afterwards. The worktree's project record is then read back and compared with
      the pin. A record still behind the pin fails the check and names the remedy: re-point the

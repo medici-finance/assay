@@ -303,6 +303,100 @@ func TestCycleTimeoutKeepsOperatorPause(t *testing.T) {
 	}
 }
 
+// A pause the operator sets while the cycle waits is not the cycle's either, even though the flag
+// path is the one the cycle paused: the operator lifted the cycle's stop and paused the role again.
+// Only a flag recorded with the cycle's own invocation id is lifted.
+// regression: cycle-keeps-pause-set-during-drain
+func TestCycleKeepsPauseSetDuringDrain(t *testing.T) {
+	w := newLCWorld(t)
+	w.cadenceRole("worker-desk", "tmux")
+	w.claim("worker-desk", "example--brief-6")
+	w.onSleep = func(n int) {
+		if n != 1 {
+			return
+		}
+		if _, _, err := w.lc.Resume(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.lc.Pause([]string{"worker-desk"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f := newCycleFakes(w)
+	r := w.lc.cycle(cycleOptsFor("worker-desk"), f.ops())
+	if r.Outcome != cellop.Partial {
+		t.Fatalf("outcome %s", r.Outcome)
+	}
+	if p, _ := w.lc.Paused("worker-desk"); !p {
+		t.Error("the timeout lifted a pause the operator set while the cycle waited")
+	}
+}
+
+// A completed cycle restarts the role but keeps a pause that was in place before it: the role
+// comes back paused, as the operator left it.
+// regression: cycle-success-keeps-operator-pause
+func TestCycleSuccessKeepsOperatorPause(t *testing.T) {
+	w := newLCWorld(t)
+	w.cadenceRole("worker-desk", "tmux")
+	if _, err := w.lc.Pause([]string{"worker-desk"}); err != nil {
+		t.Fatal(err)
+	}
+	f := newCycleFakes(w)
+	r := w.lc.cycle(cycleOptsFor("worker-desk"), f.ops())
+	if r.Outcome != cellop.OK || len(f.restarts) != 1 {
+		t.Fatalf("outcome %s restarts %v: %v", r.Outcome, f.restarts, deref(r.Detail))
+	}
+	if p, _ := w.lc.Paused("worker-desk"); !p {
+		t.Error("a completed cycle lifted the operator's own earlier pause")
+	}
+}
+
+// A declined confirm stops nothing, so the role keeps running: the cycle's own stop is lifted, not
+// left behind with nothing in Next to undo it.
+// regression: cycle-declined-confirm-lifts
+func TestCycleDeclinedConfirmLifts(t *testing.T) {
+	w := newLCWorld(t)
+	w.interactiveRole("worker-desk", "tmux")
+	f := newCycleFakes(w)
+	ops := f.ops()
+	ops.confirm = func([]cellop.Action) cellop.Result {
+		f.confirms++
+		r := cellop.NewResult("cycle", w.c.Name, w.clock)
+		r.Finish(cellop.Refused, cellop.ReasonConfirmMismatch, "the operator declined", w.clock)
+		return r
+	}
+	r := w.lc.cycle(cycleOptsFor("worker-desk"), ops)
+	if f.confirms != 1 || r.Outcome == cellop.OK || len(f.restarts) != 0 || len(w.stops) != 0 {
+		t.Fatalf("confirms=%d outcome %s restarts %v stops %v", f.confirms, r.Outcome, f.restarts, w.stops)
+	}
+	if p, _ := w.lc.Paused("worker-desk"); p {
+		t.Error("a declined confirm left the cycle's own stop on a running role")
+	}
+	if line := reportLine(t, r, "worker-desk"); !strings.Contains(line, "left running") || strings.Contains(line, "paused") {
+		t.Errorf("the declined role reads %q", line)
+	}
+}
+
+// The pin is read from a worktree the role's session can write and goes into a shell remedy, so
+// only a strict release version passes.
+// regression: cycle-pin-strict
+func TestMarketplacePinStrict(t *testing.T) {
+	for _, ref := range []string{"1.0.45; touch x", "1.0.45 && id", "$(id)", "1.0", "1.0.45-rc1", "01.0.45", "main"} {
+		if pin, err := marketplacePin(pinnedWorktree(t, ref)); err == nil {
+			t.Errorf("pin %q accepted as %q", ref, pin)
+		}
+	}
+	for ref, want := range map[string]string{"v1.0.45": "1.0.45", "0.13.0": "0.13.0"} {
+		if pin, err := marketplacePin(pinnedWorktree(t, ref)); err != nil || pin != want {
+			t.Errorf("pin %q read %q, %v", ref, pin, err)
+		}
+	}
+	s := claudeSync(pinnedWorktree(t, "1.0.45`id`"), pluginCLI{list: func() ([]byte, error) { return nil, errors.New("not reached") }})
+	if s.Outcome != syncCouldNotCheck || strings.Contains(s.Detail, "remedy") {
+		t.Errorf("an invalid pin reached the sync: %+v", s)
+	}
+}
+
 // --- the claude and cursor syncs ---------------------------------------------------------------
 
 func pinnedWorktree(t *testing.T, ref string) string {

@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -130,6 +133,7 @@ func (l *interimLifecycle) cycle(o cycleOpts, ops cycleOps) cellop.Result {
 	}
 	var rows []cycleRole
 	unchecked := false
+	owner := newCycleOwner()
 	finish := func(out cellop.Outcome, reason, detail string, next ...string) cellop.Result {
 		for _, cr := range rows {
 			r.Roles = append(r.Roles, cr.entry())
@@ -156,8 +160,7 @@ func (l *interimLifecycle) cycle(o cycleOpts, ops cycleOps) cellop.Result {
 		if len(live) == 0 {
 			continue
 		}
-		pre := l.preexistingPauses(live)
-		drained, res, ok := l.cycleDrain(live, o, ops, pre)
+		drained, res, ok := l.cycleDrain(live, o, ops, owner)
 		r.Actions = append(r.Actions, res.Actions...)
 		if !ok {
 			// A drain that did not finish may still have stopped some roles of the group (under
@@ -170,7 +173,7 @@ func (l *interimLifecycle) cycle(o cycleOpts, ops cycleOps) cellop.Result {
 				}
 			}
 			if len(stopped) > 0 {
-				lifted := l.liftOwnStops(stopped, pre)
+				lifted := l.liftOwnStops(stopped, owner)
 				r.Actions = append(r.Actions, lifted)
 			}
 			for _, role := range live {
@@ -264,22 +267,25 @@ func cycleRemaining(cell string, groups [][]string) []string {
 // cycleDrain is drain over roles, plus what cycle decides at its edges: interactive stops go to
 // the operator's confirm; on timeout without force the cycle's own stops are lifted so the roles
 // keep running, and with force the held claims are planned abandoned for the confirm. ok is true
-// when every role is stopped and its stops lifted. pre is the stop flags that were in place before
-// this cycle (an operator's own pause): a timeout never lifts one of those.
-func (l *interimLifecycle) cycleDrain(roles []string, o cycleOpts, ops cycleOps, pre map[string]bool) (string, cellop.Result, bool) {
-	rep := l.drain(drainOpts{Roles: roles, Timeout: o.DrainTimeout, HandoffWait: o.HandoffWait})
+// when every role is stopped and its stops lifted. owner is this invocation's id: drain stamps the
+// pause flags it creates with it, and every lift here (success, decline, timeout) lifts only
+// those, so a stop the cycle did not create (an operator's own pause, set before the cycle or
+// while it waits) is never lifted. Roles stopped are read from the applied result (stoppedRoles).
+func (l *interimLifecycle) cycleDrain(roles []string, o cycleOpts, ops cycleOps, owner string) (string, cellop.Result, bool) {
+	rep := l.drain(drainOpts{Roles: roles, Timeout: o.DrainTimeout, HandoffWait: o.HandoffWait, Owner: owner})
 	res := rep.Result
 	timedOut := res.Outcome == cellop.Partial && res.Reason != nil && *res.Reason == cellop.ReasonRoleBusy
 	switch {
 	case res.Outcome == cellop.OK && len(rep.Confirm) == 0:
+		res.Actions = append(res.Actions, l.liftOwnStops(stoppedRoles(&res), owner))
 		return "drained", res, true
 	case res.Outcome == cellop.OK:
 		c := ops.confirm(rep.Confirm)
 		res.Actions = append(res.Actions, c.Actions...)
 		if c.Outcome != cellop.OK {
-			return "", foldInto(res, c), false
+			return "", l.cycleDeclined(res, c, roles, owner), false
 		}
-		l.liftAfterStop(roles)
+		res.Actions = append(res.Actions, l.liftOwnStops(stoppedRoles(&res), owner))
 		return "drained", res, true
 	case !timedOut:
 		return "", res, false
@@ -304,12 +310,12 @@ func (l *interimLifecycle) cycleDrain(roles []string, o cycleOpts, ops cycleOps,
 		heldText = "no claim is held; the harness is still busy"
 	}
 	if !o.Force {
-		res.Actions = append(res.Actions, l.liftOwnStops(left, pre))
+		res.Actions = append(res.Actions, l.liftOwnStops(left, owner))
 		res.Finish(cellop.Partial, cellop.ReasonRoleBusy, fmt.Sprintf("the drain timed out after %s; not restarted, left running: %s", o.DrainTimeout, heldText), l.now())
 		res.Next = nil // drain's own Next (drain --now, resume) is not what a cycle timeout leaves
 		return "", res, false
 	}
-	actions, err := l.drainNowPlan(left, l.now(), o.HandoffWait)
+	actions, err := l.drainNowPlan(left, l.now(), o.HandoffWait, owner)
 	if err != nil {
 		finishErr(&res, err, l.now())
 		return "", res, false
@@ -317,48 +323,65 @@ func (l *interimLifecycle) cycleDrain(roles []string, o cycleOpts, ops cycleOps,
 	c := ops.confirm(actions)
 	res.Actions = append(res.Actions, c.Actions...)
 	if c.Outcome != cellop.OK {
-		return "", foldInto(res, c), false
+		return "", l.cycleDeclined(res, c, roles, owner), false
 	}
-	l.liftAfterStop(roles)
+	res.Actions = append(res.Actions, l.liftOwnStops(stoppedRoles(&res), owner))
 	res.Actions = append(res.Actions, actionResult(l.c.Name, "force:"+strings.Join(left, ","), cellop.ActionOK, "stopped after the timeout: "+heldText))
 	return "forced", res, true
 }
 
-// preexistingPauses is the set of roles' stop flags already in place before the cycle pauses
-// them. The pause record cannot say which invocation created a flag, so the cycle remembers what
-// it found and never lifts those.
-func (l *interimLifecycle) preexistingPauses(roles []string) map[string]bool {
-	pre := map[string]bool{}
+// cycleDeclined is a confirm that did not apply (declined, refused or failed): the roles it did
+// not stop keep running, so the cycle's own stops of those are lifted here, and the verdict is
+// the confirm's. The roles it did stop are lifted by the caller, which reports them down.
+func (l *interimLifecycle) cycleDeclined(res, c cellop.Result, roles []string, owner string) cellop.Result {
+	var running []string
 	for _, role := range roles {
-		p := l.pauseFlag(role)
-		if _, err := os.Lstat(p); !errors.Is(err, os.ErrNotExist) {
-			pre[p] = true // present, or unreadable: either way not provably the cycle's own
+		if !stoppedIn(res, role) {
+			running = append(running, role)
 		}
 	}
-	return pre
+	if len(running) > 0 {
+		res.Actions = append(res.Actions, l.liftOwnStops(running, owner))
+	}
+	return foldInto(res, c)
 }
 
-// liftOwnStops lifts the per-role stops this cycle created for roles, never one in pre, and
-// reports what it did as one action.
-func (l *interimLifecycle) liftOwnStops(roles []string, pre map[string]bool) cellop.ActionResult {
-	allowed := map[string]bool{}
+// newCycleOwner is a per-invocation id the cycle stamps on the pause flags it creates. The id
+// only has to differ from every other invocation's on this host; it is not a secret.
+func newCycleOwner() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("cycle-%d-%d", os.Getpid(), time.Now().UnixNano())
+	}
+	return "cycle-" + hex.EncodeToString(b[:])
+}
+
+// liftOwnStops lifts the per-role stops of roles that this invocation (owner) created, and
+// reports what it did as one action. A stop flag of one of those roles that some other pause
+// created (an operator's, before the cycle or during it) is left in place and named.
+func (l *interimLifecycle) liftOwnStops(roles []string, owner string) cellop.ActionResult {
+	id := "resume:" + strings.Join(roles, ",")
+	if len(roles) == 0 {
+		return actionResult(l.c.Name, id, cellop.ActionOK, "no stop of the cycle's to lift")
+	}
+	paths := map[string]bool{}
+	for _, role := range roles {
+		paths[l.pauseFlag(role)] = true
+	}
+	if _, _, err := l.resumeWhere(func(f createdFlag) bool { return owner != "" && f.By == owner && paths[f.Path] }); err != nil {
+		return actionResult(l.c.Name, id, cellop.ActionFailed, err.Error())
+	}
 	var kept []string
 	for _, role := range roles {
-		p := l.pauseFlag(role)
-		if pre[p] {
-			kept = append(kept, role)
-			continue
+		if _, err := os.Lstat(l.pauseFlag(role)); !errors.Is(err, os.ErrNotExist) {
+			kept = append(kept, role) // present, or unreadable: either way not provably lifted
 		}
-		allowed[p] = true
-	}
-	if _, _, err := l.resumeOnly(allowed); err != nil {
-		return actionResult(l.c.Name, "resume", cellop.ActionFailed, err.Error())
 	}
 	detail := "lifted the cycle's own stops of " + strings.Join(roles, ", ")
 	if len(kept) > 0 {
-		detail = "lifted the cycle's own stops; kept the pause that was in place before the cycle for " + strings.Join(kept, ", ")
+		detail = "lifted the cycle's own stops; kept a pause the cycle did not create for " + strings.Join(kept, ", ")
 	}
-	return actionResult(l.c.Name, "resume", cellop.ActionOK, detail)
+	return actionResult(l.c.Name, id, cellop.ActionOK, detail)
 }
 
 func stoppedIn(r cellop.Result, role string) bool {
@@ -486,8 +509,14 @@ func (c *Cell) cycleSync(role string) syncReport {
 	return syncReport{Harness: harness, Outcome: syncCouldNotCheck, Detail: harness + " has no placement mode to check against the pin"}
 }
 
+// pinVersion is the only pin form the sync accepts: a strict X.Y.Z, the form deskinstall's
+// --release takes (with its v). The pin is read from the role worktree, which the role's own
+// session can write, and it is spliced into a remedy the operator is told to run in a shell, so
+// anything else is refused before it reaches a comparison or that text.
+var pinVersion = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+
 // marketplacePin is the plugin pin a role worktree's project settings name:
-// extraKnownMarketplaces.assay.source.ref, without a leading v.
+// extraKnownMarketplaces.assay.source.ref, without a leading v, validated against pinVersion.
 func marketplacePin(wt string) (string, error) {
 	raw, err := os.ReadFile(filepath.Join(wt, ".claude", "settings.json"))
 	if err != nil {
@@ -507,6 +536,9 @@ func marketplacePin(wt string) (string, error) {
 	ref := strings.TrimPrefix(strings.TrimSpace(s.Markets["assay"].Src.Ref), "v")
 	if ref == "" {
 		return "", errors.New("the project settings name no assay marketplace pin (extraKnownMarketplaces.assay.source.ref)")
+	}
+	if !pinVersion.MatchString(ref) {
+		return "", fmt.Errorf("the assay marketplace pin %q is not a release version (vX.Y.Z), so it is not checked or printed", ref)
 	}
 	return ref, nil
 }
