@@ -163,6 +163,44 @@ func TestMigrateAnchorsKeepRest(t *testing.T) {
 	}
 }
 
+// TestMigrateAnchorsSymlink: a .gitlab-ci.yml that is a symbolic link is
+// refused (exit 5, one line naming it) under --dry-run and apply alike, and
+// the file it points at is neither rewritten nor replaced.
+//
+// regression: #5004
+func TestMigrateAnchorsSymlink(t *testing.T) {
+	dir, _, stale := staleGitlabScaffold(t)
+	ciPath := filepath.Join(dir, ".gitlab-ci.yml")
+	target := filepath.Join(t.TempDir(), "outside.yml")
+	if err := os.WriteFile(target, []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(ciPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, ciPath); err != nil {
+		t.Skipf("cannot create a symbolic link here: %v", err)
+	}
+	for _, args := range [][]string{
+		{"gitlab-anchors", "--root", dir, "--dry-run"},
+		{"gitlab-anchors", "--root", dir},
+	} {
+		var out, errb bytes.Buffer
+		if code := runMigrate(args, &out, &errb); code != migrateExitRefused {
+			t.Errorf("%v: exit %d, want %d:\n%s%s", args, code, migrateExitRefused, out.String(), errb.String())
+		}
+		if !strings.Contains(errb.String(), "not a regular file (a symbolic link)") {
+			t.Errorf("%v: no refusal line naming the link:\n%s", args, errb.String())
+		}
+		if got, _ := os.ReadFile(target); string(got) != stale {
+			t.Fatalf("%v: the link's target was rewritten", args)
+		}
+		if fi, err := os.Lstat(ciPath); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("%v: the link was replaced (%v, %v)", args, fi, err)
+		}
+	}
+}
+
 // TestLintGitlabAnchorDrift: statusgen --lint names a stale embedded anchor
 // with the refresh command, and says nothing once it is refreshed.
 //
@@ -185,6 +223,61 @@ func TestLintGitlabAnchorDrift(t *testing.T) {
 	}
 	if got := lint(); strings.Contains(got, "anchor differs") {
 		t.Errorf("lint reported drift on a current scaffold:\n%s", got)
+	}
+}
+
+// TestLintGitlabDriftWording: the drift NOTICE and the init STALE line say the
+// anchor DIFFERS and name the running statusgen's version; they no longer
+// claim the file's copy is older, which a plain comparison cannot know.
+func TestLintGitlabDriftWording(t *testing.T) {
+	dir, _, _ := staleGitlabScaffold(t)
+	notices := gitlabAnchorDriftNotices(dir)
+	if len(notices) != 1 {
+		t.Fatalf("notices = %q, want one", notices)
+	}
+	initOut := captureStdout(t, func() { reportGitlabAnchorDrift(dir, ".gitlab-ci.yml") })
+	want := "this statusgen's (" + statusgenVersion + ") copy"
+	for where, got := range map[string]string{"lint": notices[0], "init": initOut} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%s line does not name the running version (%q):\n%s", where, want, got)
+		}
+		if strings.Contains(got, "older") {
+			t.Errorf("%s line still claims the file's copy is older:\n%s", where, got)
+		}
+	}
+}
+
+// TestLintGitlabPreAnchor: a .gitlab-ci.yml from before the anchors existed
+// (the regen job present, neither anchor key) gets one NOTICE naming the
+// re-scaffold remedy; a current scaffold and a file without the job get none.
+//
+// regression: #5004
+func TestLintGitlabPreAnchor(t *testing.T) {
+	const pre = "stages: [statusgen]\n\n.statusgen-install: &statusgen-install\n  - echo install\n\n" +
+		"statusgen-regen:\n  script:\n    - *statusgen-install\n    - git push \"$url\" HEAD:main\n"
+	for _, tc := range []struct {
+		name, body string
+		want       bool
+	}{
+		{"pre-anchor", pre, true},
+		{"pre-anchor-crlf", strings.ReplaceAll(pre, "\n", "\r\n"), true},
+		{"current", initGitlabCI, false},
+		{"no-job", "stages: [build]\nbuild:\n  script:\n    - make\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, ".gitlab-ci.yml"), []byte(tc.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got := strings.Join(gitlabAnchorDriftNotices(dir), "\n")
+			has := strings.Contains(got, "scaffolded before the anchors existed")
+			if has != tc.want {
+				t.Fatalf("pre-anchor NOTICE present=%v, want %v:\n%s", has, tc.want, got)
+			}
+			if tc.want && !strings.Contains(got, "statusgen init --forge gitlab") {
+				t.Errorf("NOTICE does not name the re-scaffold remedy:\n%s", got)
+			}
+		})
 	}
 }
 

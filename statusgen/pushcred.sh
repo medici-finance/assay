@@ -171,14 +171,20 @@ EOF
     # userinfo, a pushInsteadOf for this one push sends it to the same URL
     # without the userinfo, so the helper answers; git applies pushInsteadOf
     # to a push URL in place of insteadOf. A rewrite with no credential in it
-    # is left alone. xtrace is paused while the resolved URL is held, and
-    # neither it nor the rewrite's key (whose name holds the credential) is
-    # printed. A destination given as a remote name cannot be pinned this
-    # way, so a credential in its push URL is a NOTICE.
+    # is left alone. The pin is applied only when the resolved URL keeps the
+    # destination's scheme and host (port included, compared exactly): a
+    # rewrite that points at a different host is never pinned, because the
+    # pin would hand the board credential to that host. That push goes out
+    # as the rewrite says and fails closed, with a NOTICE. xtrace is paused
+    # while the resolved URL is held, and neither it nor the rewrite's key
+    # (whose name holds the credential) is printed. A destination given as a
+    # remote name cannot be pinned this way, so a credential in its push URL
+    # is a NOTICE.
     _pc_xt=
     case $- in *x*) _pc_xt=1 ; set +x ;; esac
     _pc_pin=
     _pc_cred=0
+    _pc_xhost=0
     case $_pc_dest in
       *://*) _pc_rw=$(git ls-remote --get-url "$_pc_dest" 2>/dev/null) || _pc_rw= ;;
       *) _pc_rw=$(git remote get-url --push "${_pc_dest:-origin}" 2>/dev/null) || _pc_rw= ;;
@@ -191,7 +197,16 @@ EOF
           *@*)
             _pc_cred=1
             case $_pc_dest in
-              *://*) _pc_pin="url.${_pc_rw%%://*}://${_pc_auth##*@}${_pc_rest#"$_pc_auth"}.pushInsteadOf=$_pc_dest" ;;
+              *://*)
+                _pc_dhost=${_pc_dest#*://}
+                _pc_dhost=${_pc_dhost%%/*}
+                if [ "${_pc_rw%%://*}://${_pc_auth##*@}" = "${_pc_dest%%://*}://${_pc_dhost##*@}" ]; then
+                  _pc_pin="url.${_pc_rw%%://*}://${_pc_auth##*@}${_pc_rest#"$_pc_auth"}.pushInsteadOf=$_pc_dest"
+                else
+                  _pc_xhost=1
+                fi
+                _pc_dhost=
+                ;;
             esac
             ;;
         esac
@@ -204,6 +219,8 @@ EOF
     if [ -n "$_pc_pin" ]; then
       set -- -c "$_pc_pin" "$@"
       echo "pushcred: the push URL resolves through a url.*.insteadOf rewrite that carries a URL credential; pushing to the same URL without it, so the board credential is the one git sends." >&2
+    elif [ "$_pc_xhost" = 1 ]; then
+      echo "NOTICE: pushcred: the push URL resolves through a url.*.insteadOf rewrite that carries a URL credential and points at a different scheme or host than the destination; not pinning it, so the board credential is not sent there and the push goes out as the rewrite says." >&2
     elif [ "$_pc_cred" = 1 ]; then
       echo "NOTICE: pushcred: the push URL of remote ${_pc_dest:-origin} carries a URL credential, which git sends instead of the board credential; pass the destination as a URL." >&2
     fi
