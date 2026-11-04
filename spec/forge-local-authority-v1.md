@@ -750,3 +750,16 @@ retires when that step supplies the required CI fixture checkout adapter, or the
 recipe is removed. Existing census assertions still reject every unrouted caller
 and stale route. No Git/workspace effect, allocator capability or cleanup right
 is added by the census entry.
+
+
+## Retained-channel liveness qualification
+
+A socket inode may be reused after unlink and successful rebinding. Numeric inode
+inequality is not a restart-generation witness. The positive retained-channel
+fixture proves an actual bounded canonical current request/reply exchange; the
+fresh uninitialized controller must return typed held with no grant/proof/receipt
+within the original absolute deadline. A connection alone is insufficient, and
+individual attempts cannot renew that deadline. Production fixed-channel,
+exclusive-lock/root/inode checks and all negative ownership/path assertions stay
+unchanged. This is a correction to the positive test witness, not authority from
+socket presence and not a wider timeout or stale-owner recovery mechanism.

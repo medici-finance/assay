@@ -47,6 +47,8 @@ FAULTS = [
     fault("original-cancellation", "verifier.go", " || r.lease.original.Err() != nil", "", "Current/cancel-release", "new context revived canceled receipt"),
     fault("single-release", "verifier.go", "if !r.lease.used.CompareAndSwap(false, true) {", "if false {", "Claims", "receipt reused"),
     ("channel-type", [("channels.go", "if e != nil || st.Mode()&os.ModeSocket == 0 {", "if e != nil {"), ("channels.go", "again.Mode()&os.ModeSocket == 0 || ", "")], "ChannelRestart/(regular|symlink)", "non-socket channel"),
+    fault("retained-channel-rebind", "channels.go", "if c.claimChannel(ctx, root, name) != nil {", "if false {", "ChannelRestart/retained-socket", "retained fixed channel refused after exclusive owner acquisition"),
+    fault("retained-channel-framed-reply", "channels.go", 'func heldResponse() wireResponse { return wireResponse{Schema: Schema, Error: "held"} }', 'func heldResponse() wireResponse { return wireResponse{Schema: Schema} }', "ChannelRestart/retained-socket", "rebound current channel did not return typed held"),
     fault("reserved-control-capacity", "control.go", '"control.sock", c.controlSlots,', '"control.sock", c.dataSlots,', "ControlCapacity", "slow data slots blocked private revocation"),
     ("channel-live-gate", [("channels.go", "if ctx.Err() != nil || !c.liveGate() {", "if ctx.Err() != nil {"), ("channels.go", " || !c.liveGate() {", " {")], "ChannelRestart/changed-gate", "changed gate unlinked retained channel"),
     fault("channel-duplicate", "channels.go", "if c.channels[key] {", "if false {", "ChannelRestart/duplicate", "duplicate"),

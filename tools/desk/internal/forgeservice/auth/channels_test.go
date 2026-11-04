@@ -1,13 +1,18 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
 )
 
 func retainedSocket(t *testing.T, r *os.Root) os.FileInfo {
@@ -42,6 +47,14 @@ func TestForgeLocalAuthorityChannelRestart(t *testing.T) {
 	t.Run("retained-socket", func(t *testing.T) {
 		c, r := newChannelController(t)
 		old := retainedSocket(t, r.Current)
+		path := filepath.Join(r.Current.Name(), "current.sock")
+		prior, priorErr := commstransport.DialUnixContext(context.Background(), path, 25*time.Millisecond)
+		if prior != nil {
+			prior.Close()
+		}
+		if !errors.Is(priorErr, syscall.ECONNREFUSED) {
+			t.Fatal("retained fixture is not a closed listener", priorErr)
+		}
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
 		go func() { done <- c.ServeCurrent(ctx, CurrentChannel{}) }()
@@ -53,8 +66,12 @@ func TestForgeLocalAuthorityChannelRestart(t *testing.T) {
 				t.Error("restarted channel did not stop")
 			}
 		})
+		// One absolute budget spans connection, request and response. An inode
+		// can be reused; a closed old socket cannot return this framed reply.
 		deadline := time.Now().Add(time.Second)
 		started := time.Now()
+		probeCtx, stopProbe := context.WithDeadline(context.Background(), deadline)
+		defer stopProbe()
 		for {
 			select {
 			case e := <-done:
@@ -62,34 +79,51 @@ func TestForgeLocalAuthorityChannelRestart(t *testing.T) {
 				t.Fatal("retained fixed channel refused after exclusive owner acquisition", e)
 			default:
 			}
-			st, e := r.Current.Lstat("current.sock")
-			if e == nil && !os.SameFile(st, old) {
+			conn, dialErr := commstransport.DialUnixContext(probeCtx, path, time.Until(deadline))
+			if dialErr == nil {
+				if e := conn.SetDeadline(deadline); e != nil {
+					conn.Close()
+					t.Fatal(e)
+				}
+				request, e := encode(wireRequest{Schema: Schema, Operation: "current", Probe: &CurrentProbe{Schema: Schema}}, c.config.MaxFrameBytes)
+				if e != nil {
+					conn.Close()
+					t.Fatal(e)
+				}
+				if _, e = io.Copy(conn, bytes.NewReader(request)); e != nil {
+					conn.Close()
+					t.Fatal("rebound current request", e)
+				}
+				u, ok := conn.(*net.UnixConn)
+				if !ok || u.CloseWrite() != nil {
+					conn.Close()
+					t.Fatal("rebound current request not framed")
+				}
+				var response wireResponse
+				e = readFrame(conn, c.config.MaxFrameBytes, &response)
+				conn.Close()
+				if e != nil || response.Schema != Schema || response.Error != "held" || response.Grant != nil || response.Proof != nil || response.Receipt != nil {
+					t.Fatal("rebound current channel did not return typed held", e)
+				}
+				st, e := r.Current.Lstat("current.sock")
+				if e != nil || st.Mode()&os.ModeSocket == 0 || st.Mode().Perm() != 0600 || probeCtx.Err() != nil || !time.Now().Before(deadline) {
+					t.Fatal("rebound current reply was not owner-only and within the absolute deadline", e)
+				}
 				break
 			}
 			if time.Now().After(deadline) {
-				// The failure was already decided by the original condition and
-				// deadline. Collect evidence only here, without adding a new pass
-				// criterion or changing positive-path scheduling with probe dials.
-				elapsed := time.Since(started)
-				path := filepath.Join(r.Current.Name(), "current.sock")
 				current, statErr := r.Current.Lstat("current.sock")
 				var stat any
 				if current != nil {
 					stat = current.Sys()
 				}
-				probe, dialErr := net.DialTimeout("unix", path, 25*time.Millisecond)
-				if probe != nil {
-					probe.Close()
-				}
-				t.Fatalf("retained channel never rebound: elapsed=%s path=%s old_stat=%#v current_stat=%#v stat_error=%v dial_error=%v diagnostic_elapsed=%s", elapsed, path, old.Sys(), stat, statErr, dialErr, time.Since(started))
+				t.Fatalf("retained channel never replied by deadline: elapsed=%s path=%s old_stat=%#v current_stat=%#v stat_error=%v dial_error=%v", time.Since(started), path, old.Sys(), stat, statErr, dialErr)
+			}
+			if !errors.Is(dialErr, os.ErrNotExist) && !errors.Is(dialErr, syscall.ECONNREFUSED) {
+				t.Fatal("rebound current dial", dialErr)
 			}
 			time.Sleep(time.Millisecond)
 		}
-		conn, e := net.DialTimeout("unix", filepath.Join(r.Current.Name(), "current.sock"), time.Second)
-		if e != nil {
-			t.Fatal("rebound actual channel unavailable")
-		}
-		conn.Close()
 	})
 	for _, kind := range []string{"regular", "symlink"} {
 		t.Run(kind, func(t *testing.T) {

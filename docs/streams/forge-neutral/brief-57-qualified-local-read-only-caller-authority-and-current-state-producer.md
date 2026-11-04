@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5428
 issues: []
 schema: brief-v2
-version: 11
+version: 12
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -103,6 +103,19 @@ and expired entries; exhaustion returns ErrCapacity. Neither refusal changes the
 version, drops history or revives authority. The control wire keeps its uniform
 held response. These bounded error/documentation repairs preserve all original
 Task, Verify, Evidence and human design obligations.
+
+## Retained-channel qualification correction
+
+The current hosted failure demonstrates socket inode reuse after successful
+rebinding: identical device/inode, new owner-only mode/timestamps and a live
+connection. Inode inequality therefore cannot prove a new listener. The positive
+restart fixture instead requires an actual canonical framed current request and
+typed held reply from the fresh, uninitialized controller within the original
+absolute one-second deadline. A closed retained socket cannot produce that reply.
+No deadline is renewed and a connection alone is insufficient. All production
+serve/auth code and the negative root, gate, ownership, active-owner, duplicate,
+regular-file and symlink assertions remain unchanged. Compiling rebind/reply
+controls qualify this replacement witness; no authority or custody gate changes.
 
 ## Actual-source and mechanism prerequisite
 
