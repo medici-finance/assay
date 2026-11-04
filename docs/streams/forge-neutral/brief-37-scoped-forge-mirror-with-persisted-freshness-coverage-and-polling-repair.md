@@ -580,7 +580,7 @@ only the real PostgreSQL Store adapter and SQL persistence checks, extending the
 graph-execution/36 migration ledger and container fixture. This brings forward durable
 mirror storage without action admission, execution claims or outboxes. The canonical
 shared refresh Gate, AttemptAuthority and admitted source/coordinator SQL join belong
-to54. This parent consumes those owners at trusted deskkit composition and retains
+to /54. This parent consumes those owners at trusted deskkit composition and retains
 its independent persisted acceptance in row23. All23 original Class/Command pairs
 and existing human gates remain unchanged.
 
@@ -588,8 +588,8 @@ and existing human gates remain unchanged.
 
 The bounded contribution assay:assay:forge-neutral:51 supplies the store-injected
 coordinator and typed read-refresh gate port over the existing mirror kernel. This
-brief consumes that coordinator with54's canonical R2 PostgreSQL Gate and
-AttemptAuthority and52's mirror.Store at trusted deskkit composition. Those owners
+brief consumes that coordinator with /54's canonical R2 PostgreSQL Gate and
+AttemptAuthority and /52's mirror.Store at trusted deskkit composition. Those owners
 supply generation-bound apply/completion, shared retry eligibility, finite
 caller/admission accounting and independent-process/restart controls. This parent
 reuses their implementations; it adds no second Gate, quota owner, Store or execution

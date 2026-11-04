@@ -765,8 +765,8 @@ partial and retains every original acceptance row and remaining read/CI obligati
 
 The durable read critical path is canonical PostgreSQL foundation graph-execution/36 →
 [mirror Store52](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md)
-→ [canonical shared Gate54](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md)
-and its admitted source/coordinator SQL join. Full37 consumes those owners at trusted
+→ [canonical shared Gate /54](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md)
+and its admitted source/coordinator SQL join. Full /37 consumes those owners at trusted
 deskkit composition and retains its independent persisted acceptance. Source mapping
 and store-injected coordinator fixtures proceed independently. No edge
 on this bounded path waits for execution claims, admission, effects or outbox delivery.
