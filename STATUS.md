@@ -26,7 +26,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-11-03 |  |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 4/64 | 2026-11-04 | 15 withdrawn |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-11-03 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/48 | 2026-11-04 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/49 | 2026-11-04 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 3/35 | 2026-11-03 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-11-02 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-11-01 |  |
@@ -123,8 +123,8 @@ _Held by per-stream caps: 24 brief(s) across 2 stream(s) — top: desktools-v2. 
 | graph-execution | 16 — Cell ownership, cumulative budgets and restoration fencing [exec:strong] | 5 | 24500 |
 | desk-tools | 39 — Extract shared review observation and pure planning contracts [exec:strong] | 2 | 16010 |
 | desktools-v2 | 58 — Extract the role credential provider and retire internal desktoken callouts [exec:strong] | 1 | 11000 |
+| forge-neutral | 46 — Pure read-only mirror kernel and conformance [exec:strong] | 2 | 11000 |
 | forge-neutral | 47 — Admitted incremental forge readers for mirror ingestion [exec:strong] | 2 | 11000 |
-| forge-neutral | 46 — Pure read-only mirror kernel and conformance [exec:strong] | 2 | 10500 |
 | desk-tools | 49 — Deduplicate verifier filings by their canonical work identity [exec:strong] | 1 | 8510 |
 | desk-tools | 42 — Narrow issue discovery projections before enrichment [exec:strong] | 3 | 7010 |
 | desk-tools | 50 — Bind verifier environment evidence to the run admission [exec:strong] | 1 | 6510 |
@@ -158,7 +158,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 16 [exec:strong] | implemented | 29000 | 56 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite #2240 | — | — |
 | desk-tools | 37 [exec:strong] | verified | 17510 | 33 | — | driver | human action, cite #4599 | 2026-11-01 assay-verifier-app[bot] @ ab6803d9f65c (claude-opus-5-5) | — |
 | graph-execution | 31 [exec:strong] | implemented | 15500 | 27 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
-| forge-neutral | 36 [exec:strong] | implemented | 12000 | 20 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3662 | — | — |
+| forge-neutral | 36 [exec:strong] | implemented | 12500 | 21 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3662 | — | — |
 | forge-neutral | 01 [exec:strong] | implemented | 9500 | 15 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#1800 | — | — |
 | desk-containers | 02 | implemented | 9000 | 16 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#900 | — | — |
 | desktools-v2 | 63 [exec:strong] | implemented | 8000 | 14 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
@@ -741,7 +741,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 16 The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls — todo (wave 5)
 - 18 Rotate the board-push credential in one process — the new value never reaches a shell, a transcript, a log or argv — todo (wave 5)
 
-### forge-neutral (43 open)
+### forge-neutral (44 open)
 
 - 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
@@ -786,6 +786,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 48 Bound native mirror response allocation before decoding — todo (wave 3)
 - 49 Retire claim-decay stored GitHub login fallback — implemented (wave 0)
 - 50 Join admitted incremental reads to mirror observations — todo (wave 4)
+- 51 Store-injected mirror read-through coordinator and shared refresh gate port — todo (wave 3)
 
 ### fresh-views (6 open)
 
@@ -1173,4 +1174,4 @@ _Terminal: retired by a later decision or merged into a successor. Not counted i
 
 ## Totals
 
-**36** streams (**26** active, **0** paused, **10** parked) · **115/577** briefs done · **15** withdrawn · completed initiatives: see `docs/archive/`
+**36** streams (**26** active, **0** paused, **10** parked) · **115/578** briefs done · **15** withdrawn · completed initiatives: see `docs/archive/`
