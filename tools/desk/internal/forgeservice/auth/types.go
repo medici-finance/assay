@@ -27,9 +27,11 @@ const maxRegistryEntries = 1024
 const maxChannelConnections = 64
 
 var (
-	ErrConfig   = errors.New("local authority: invalid trusted configuration")
-	ErrHeld     = errors.New("local authority: current authority unavailable")
-	ErrConflict = errors.New("local authority: control version conflict")
+	ErrConfig                  = errors.New("local authority: invalid trusted configuration")
+	ErrHeld                    = errors.New("local authority: current authority unavailable")
+	ErrConflict                = errors.New("local authority: control version conflict")
+	ErrRegistrationNeedsRevoke = errors.New("local authority: registration requires explicit revoke")
+	ErrCapacity                = errors.New("local authority: registration capacity exhausted")
 )
 
 // ProducerBinding is independently observed by the protected launcher. An

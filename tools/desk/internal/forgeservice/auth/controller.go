@@ -245,15 +245,20 @@ func (c *Controller) ApplyControl(ctx context.Context, cmd ControlCommand) (Cont
 		c.byLaunch = map[string]string{}
 		c.ready = true
 	case Register:
-		if !c.ready || cmd.Launch == nil || cmd.GrantID != "" || cmd.Policy != nil || cmd.Lease <= 0 || cmd.Lease > c.config.MaxGrantLease || len(c.entries) >= c.config.MaxGrants {
+		if !c.ready || cmd.Launch == nil || cmd.GrantID != "" || cmd.Policy != nil || cmd.Lease <= 0 || cmd.Lease > c.config.MaxGrantLease {
 			return ControlReceipt{}, ErrConfig
 		}
 		p, ok := c.policies[cmd.Launch.ID]
 		if !ok || (cmd.Launch.Permit.Check(p.Launch) != nil || p.Launch.Match(cmd.Launch.Observation) != nil) {
 			return ControlReceipt{}, ErrHeld
 		}
+		// Keep history until explicit rotation; expiry alone never replaces an
+		// entry, including if the trusted wall clock later moves backward.
 		if id := c.byLaunch[p.ID]; id != "" && !c.entries[id].revoked {
-			return ControlReceipt{}, ErrConflict
+			return ControlReceipt{}, ErrRegistrationNeedsRevoke
+		}
+		if len(c.entries) >= c.config.MaxGrants {
+			return ControlReceipt{}, ErrCapacity
 		}
 		began := time.Now()
 		now := c.clock.Now().UTC()

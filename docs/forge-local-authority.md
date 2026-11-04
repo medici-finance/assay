@@ -15,6 +15,15 @@ create the signing identity and finite caller grants. Revocation, epoch changes,
 rotation and stop remain serialized private operations. Unknown control replies
 hold the writer until exact version/operation read-back; no blind retry occurs.
 
+ApplyControl distinguishes a stale ExpectedVersion (ErrConflict), a launch with
+an existing non-revoked registration (ErrRegistrationNeedsRevoke), and exhausted
+registration capacity (ErrCapacity). An expired grant still requires explicit
+Revoke before registering that launch again. MaxGrants counts every registration
+in the current generation, including revoked and expired entries; only Rotate
+reclaims capacity, with a new instance/key. Refusals neither mutate version nor
+evict current/revocation history. The control wire retains uniform held errors.
+
+
 The controller reuses `comms/contract.Ed25519Signer` and the existing exclusive
 `deskkit.HeldLock`. Its key stays in the producer's memory. There is no key import,
 export, generic signing endpoint, SQL authority store or handler issuer. Public

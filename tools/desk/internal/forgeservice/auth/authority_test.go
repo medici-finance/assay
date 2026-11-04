@@ -3,6 +3,8 @@ package auth
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"net"
@@ -268,6 +270,55 @@ func TestForgeLocalAuthorityClaims(t *testing.T) {
 }
 
 func TestForgeLocalAuthorityCurrent(t *testing.T) {
+	t.Run("forged-proof-after-revoke", func(t *testing.T) {
+		f := newAuthorityFixture(t, nil)
+		ctx := context.Background()
+		claims, e := decodeClaims(f.grant, f.config.MaxFrameBytes)
+		if e != nil {
+			t.Fatal(e)
+		}
+		boot := f.verifierConfig.Bootstrap
+		if !ed25519.Verify(boot.PublicKey, append([]byte("forge-local-grant-v1\n"), f.grant.Payload...), f.grant.Signature) {
+			t.Fatal("fixture grant signature is not valid")
+		}
+		revoked, e := f.controller.ApplyControl(ctx, ControlCommand{Operation: Revoke, ExpectedVersion: f.version, GrantID: claims.GrantID})
+		if e != nil {
+			t.Fatal(e)
+		}
+		r, e := f.verifier.Authorize(ctx, f.grant, claims.Scope.Scope)
+		assertHeld(t, r, e)
+		_, otherKey, e := ed25519.GenerateKey(rand.Reader)
+		if e != nil {
+			t.Fatal(e)
+		}
+		answered := make(chan bool, 1)
+		v := currentFixtureProxy(t, f, func(q CurrentProbe) (SignedProof, error) {
+			if !same(q.Grant, f.grant) || q.Instance != boot.Instance || len(q.Challenge) != 32 {
+				t.Error("forged proof request did not bind original grant/challenge")
+			}
+			d, e := grantDigest(q.Grant, f.config.MaxFrameBytes)
+			if e != nil {
+				return SignedProof{}, e
+			}
+			payload, e := encode(CurrentProof{Schema: Schema, Instance: boot.Instance, GrantDigest: d, Challenge: q.Challenge, Claims: claims, Version: revoked.Version, Remaining: f.config.MaxGrantLease, CapturedAt: f.clock.Now()}, f.config.MaxFrameBytes)
+			if e != nil {
+				return SignedProof{}, e
+			}
+			sig := ed25519.Sign(otherKey, append([]byte("forge-local-current-v1\n"), payload...))
+			answered <- !ed25519.Verify(boot.PublicKey, append([]byte("forge-local-current-v1\n"), payload...), sig)
+			return SignedProof{Payload: payload, Signature: sig}, nil
+		})
+		r, e = v.Authorize(ctx, f.grant, claims.Scope.Scope)
+		select {
+		case invalid := <-answered:
+			if !invalid {
+				t.Fatal("forged proof unexpectedly signed by trusted key")
+			}
+		default:
+			t.Fatal("forged current channel was not reached")
+		}
+		assertHeld(t, r, e)
+	})
 	t.Run("challenge-replay", func(t *testing.T) {
 		f := newAuthorityFixture(t, nil)
 		original := bytes.Repeat([]byte{1}, 32)
@@ -428,7 +479,7 @@ func TestForgeLocalAuthorityCurrent(t *testing.T) {
 	})
 }
 
-// The proxy replays or delays a proof issued by the actual controller. It is a
+// The proxy replays, delays or forges a negative proof. It is an adversarial
 // fault-injection transport, never a substitute source/signing authority.
 func currentFixtureProxy(t *testing.T, f *authorityFixture, reply func(CurrentProbe) (SignedProof, error)) *Verifier {
 	t.Helper()
@@ -599,4 +650,97 @@ func TestLocalAuthorityPrivateControlProtocol(t *testing.T) {
 	}
 	r, e := f.verifier.Authorize(ctx, f.grant, claims.Scope.Scope)
 	assertHeld(t, r, e)
+}
+
+// regression: F-local-authority-registration
+func TestForgeLocalAuthorityRegistrationBudget(t *testing.T) {
+	for _, expired := range []bool{false, true} {
+		name := "live"
+		if expired {
+			name = "expired"
+		}
+		t.Run(name, func(t *testing.T) {
+			f := newAuthorityFixture(t, nil)
+			if expired {
+				f.clock.move(2 * f.config.MaxGrantLease)
+			}
+			ctx := context.Background()
+			cmd := ControlCommand{Operation: Register, ExpectedVersion: f.version, Launch: launchBinding(t, f.config.Launches[0]), Lease: f.config.MaxGrantLease}
+			if _, e := f.controller.ApplyControl(ctx, cmd); e == nil || e.Error() != "local authority: registration requires explicit revoke" {
+				t.Fatalf("existing registration refusal class: %v", e)
+			}
+			state, e := f.controller.ControlState(ctx)
+			if e != nil || state.Version != f.version {
+				t.Fatal("refusal changed control version")
+			}
+			claims, e := decodeClaims(f.grant, f.config.MaxFrameBytes)
+			if e != nil {
+				t.Fatal(e)
+			}
+			r, e := f.controller.ApplyControl(ctx, ControlCommand{Operation: Revoke, ExpectedVersion: state.Version, GrantID: claims.GrantID})
+			if e != nil {
+				t.Fatal(e)
+			}
+			cmd.ExpectedVersion = r.Version
+			if _, e = f.controller.ApplyControl(ctx, cmd); e != nil {
+				t.Fatal("explicit revoke did not permit registration", e)
+			}
+			if expired {
+				f.clock.move(-2 * f.config.MaxGrantLease)
+			}
+			got, e := f.verifier.Authorize(ctx, f.grant, claims.Scope.Scope)
+			assertHeld(t, got, e)
+		})
+	}
+	t.Run("lifetime-capacity", func(t *testing.T) {
+		f := newAuthorityFixture(t, func(c *ProducerConfig) { c.MaxGrants = 2 })
+		ctx := context.Background()
+		old := f.grant
+		version := f.version
+		for range 2 {
+			claims, e := decodeClaims(old, f.config.MaxFrameBytes)
+			if e != nil {
+				t.Fatal(e)
+			}
+			r, e := f.controller.ApplyControl(ctx, ControlCommand{Operation: Revoke, ExpectedVersion: version, GrantID: claims.GrantID})
+			if e != nil {
+				t.Fatal(e)
+			}
+			version = r.Version
+			if len(f.controller.entries) == 2 {
+				break
+			}
+			r, e = f.controller.ApplyControl(ctx, ControlCommand{Operation: Register, ExpectedVersion: version, Launch: launchBinding(t, f.config.Launches[0]), Lease: f.config.MaxGrantLease})
+			if e != nil {
+				t.Fatal(e)
+			}
+			version = r.Version
+			old, e = f.controller.grant(ctx, f.config.Launches[0].ID)
+			if e != nil {
+				t.Fatal(e)
+			}
+		}
+		f.clock.move(2 * f.config.MaxGrantLease)
+		cmd := ControlCommand{Operation: Register, ExpectedVersion: version, Launch: launchBinding(t, f.config.Launches[0]), Lease: f.config.MaxGrantLease}
+		if _, e := f.controller.ApplyControl(ctx, cmd); e == nil || e.Error() != "local authority: registration capacity exhausted" {
+			t.Fatalf("capacity refusal class: %v", e)
+		}
+		if len(f.controller.entries) != 2 || f.controller.version != version {
+			t.Fatal("capacity refusal evicted history or changed version")
+		}
+		r, e := f.controller.ApplyControl(ctx, ControlCommand{Operation: Rotate, ExpectedVersion: version})
+		if e != nil {
+			t.Fatal(e)
+		}
+		if len(f.controller.entries) != 0 || f.controller.bootstrap.Instance == f.verifierConfig.Bootstrap.Instance || bytes.Equal(f.controller.bootstrap.PublicKey, f.verifierConfig.Bootstrap.PublicKey) {
+			t.Fatal("rotation did not fence history with new instance/key")
+		}
+		cmd.ExpectedVersion = r.Version
+		if _, e = f.controller.ApplyControl(ctx, cmd); e != nil {
+			t.Fatal("rotation did not restore capacity", e)
+		}
+		f.clock.move(-2 * f.config.MaxGrantLease)
+		got, e := f.verifier.Authorize(ctx, f.grant, f.config.Launches[0].Scope.Scope)
+		assertHeld(t, got, e)
+	})
 }

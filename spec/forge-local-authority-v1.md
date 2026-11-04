@@ -620,6 +620,23 @@ leases, skew and profiles remain required explicit inputs. Frame size is bounded
 by the existing celllaunch.MaxRecordBytes ceiling and the explicitly lower
 configured frame limit. Registry exhaustion refuses without dropping revocations.
 
+MaxGrants is a lifetime registration budget for the current producer generation:
+expired and revoked entries still consume capacity. Only explicit Rotate clears
+that history while changing instance and signing key. ApplyControl returns
+ErrCapacity on exhaustion, not ErrConfig; it never evicts an entry. Before any
+new registration for a launch, an existing non-revoked entry requires explicit
+Revoke, even after wall or elapsed expiry. This conservative rule prevents a
+clock rollback or ambiguous expiry from implicitly replacing current state.
+ErrRegistrationNeedsRevoke names this refusal; ErrConflict is reserved for an
+ExpectedVersion mismatch. Both refusals leave version and entries unchanged.
+The protected control wire deliberately returns only its existing uniform held
+response; these distinctions are for the trusted in-process operator API.
+
+The current-proof signature is qualified independently from the grant signature:
+a valid but revoked grant plus a fresh, otherwise matching current reply signed
+under another key remains held. Its production control disables only proof
+signature verification, leaving grant verification intact.
+
 The first S-forge-local-authority marker registers Verifier.Authorize as the
 canonical consumer evaluator. This is a first-owner design-fit registration for
 the previously absent producer boundary; no existing ceiling or owner is widened.

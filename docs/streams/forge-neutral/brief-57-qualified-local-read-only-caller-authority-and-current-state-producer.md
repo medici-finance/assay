@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5428
 issues: []
 schema: brief-v2
-version: 10
+version: 11
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -86,6 +86,23 @@ design-fit:
   retires: []
   weight: "No new operator CLI verb, default listener or executor. Prefer existing signing/transport primitives; record actual packages/refusals after the concrete profile is selected under the retained requirements."
   why-add: "The required producer is absent; naming its source and qualification obligation removes a hidden semantic dependency on downstream full40."
+
+## Review-driven protocol qualification
+
+The current-proof signature must have its own adversarial transport witness: a
+valid, revoked grant with an otherwise matching fresh proof signed by another
+key remains held. A compiling production control removes only current-proof
+signature verification, preserving grant verification. This changes no issuer,
+custody, channel or lease mechanism.
+
+Registration retains every entry until explicit Rotate. An existing non-revoked
+entry, including an expired one, requires explicit Revoke before registration;
+ApplyControl returns ErrRegistrationNeedsRevoke rather than a version conflict.
+MaxGrants is a per-generation lifetime registration budget, including revoked
+and expired entries; exhaustion returns ErrCapacity. Neither refusal changes the
+version, drops history or revives authority. The control wire keeps its uniform
+held response. These bounded error/documentation repairs preserve all original
+Task, Verify, Evidence and human design obligations.
 
 ## Actual-source and mechanism prerequisite
 
