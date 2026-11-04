@@ -1,0 +1,7 @@
+# regression: #4769
+# A substitution reference holds a colon and =, inside the expansion; make
+# reads the line as a rule naming the variable's value.
+want: target-missing
+file: Makefile
+replace: "\n## skillslint: validate"
+with: "\nZZT := deskd-image\n$(ZZT:=):\n\t@echo \"skipped\"\n\n## skillslint: validate"

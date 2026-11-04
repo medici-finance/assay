@@ -1,0 +1,2 @@
+### Fixed
+- The measured-status/03 Verify table now fails at the tree before the commsloop risk derivation was delivered and passes on the delivered tree: each row reads the `// Derivation:` block directly above the retained `const risk = false` literal, every test-backed row requires the test's own `--- PASS:` line, and the consumers row resolves the delivering change from the checked-out history and clones it under `$TMPDIR`.
