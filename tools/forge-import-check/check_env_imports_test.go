@@ -37,6 +37,7 @@ func TestEnvImportRows(t *testing.T) {
 		{"brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md", "13", ""},
 		{"", "service", "forgeread/service"},
 		{"", "client", "forgeread/client"},
+		{"brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md", "12", ""},
 	} {
 		var command string
 		if row.target != "" {

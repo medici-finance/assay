@@ -20,8 +20,8 @@ func main() {
 }
 
 func check(args []string, out, errs io.Writer) int {
-	if len(args) != 1 || (args[0] != "forgeread/mirror" && args[0] != "forgeread/events" && args[0] != "forgeread/service" && args[0] != "forgeread/client") {
-		fmt.Fprintln(errs, "could-not-check: expected forgeread/mirror, forgeread/events, forgeread/service or forgeread/client")
+	if len(args) != 1 || (args[0] != "forgeread/mirror" && args[0] != "forgeread/events" && args[0] != "forgeread/refresh" && args[0] != "forgeread/service" && args[0] != "forgeread/client") {
+		fmt.Fprintln(errs, "could-not-check: expected forgeread/mirror, forgeread/events, forgeread/refresh, forgeread/service or forgeread/client")
 		return 2
 	}
 	// Reject links in the target and its ancestors before walking. The walker

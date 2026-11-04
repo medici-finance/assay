@@ -36,3 +36,14 @@ func TestMirrorImportRows(t *testing.T) {
 		}
 	}
 }
+
+// regression: #5399
+func TestRefreshImportBoundary(t *testing.T) {
+	cmd := exec.Command("go", "run", "tools/forge-import-check/check_env_imports.go", "forgeread/refresh")
+	cmd.Dir = "../../../.."
+	cmd.Env = FixtureEnv("GOWORK=off", "GOPROXY=off", "GOTOOLCHAIN=local", "GOSUMDB=off")
+	out, err := goquiet.Cmd(cmd).CombinedOutput()
+	if err != nil || string(out) != "0\n" {
+		t.Fatalf("actual refresh source boundary: %v %s", err, out)
+	}
+}
