@@ -21,6 +21,7 @@ exec-tier: strong
 exec-tier-why: "Authenticated identity, current admission, shared negative caching, wire metadata and final response release must agree across independently enforced boundaries."
 domain: complicated
 sources:
+- docs/streams/forge-neutral/brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md
 - docs/streams/forge-neutral/brief-39-typed-forge-service-contract-and-scoped-client-sdk.md
 - docs/streams/forge-neutral/brief-40-authenticated-forge-serving-and-role-executor-custody.md
 - docs/streams/forge-neutral/brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md
