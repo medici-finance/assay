@@ -312,6 +312,94 @@ ordinary run without the profile remains explicitly unqualified; its green unit
 results do not discharge this brief's actual containment Verify rows. No engine
 socket/privilege, fixture image, threshold or workflow grant is inferred.
 
+## Proposed typed API and protocol inventory
+
+These are concrete proposed responsibilities/types, not delivered APIs. Freeze
+exact signatures/encoding after this Task1 assessment, before caller-producer code.
+All constructors are typed explicit composition; no arbitrary callback, default
+transport, ambient credential, engine discovery or provider operation is accepted.
+
+| Type or entrypoint | Contract |
+|---|---|
+| `ProducerConfig` | Issuer/cell, fixed primitive/profile version, explicit leases/skew/revocation and frame/registry/I/O bounds. Pure validation precedes key, endpoint or engine contact. |
+| `ProducerBinding` | Exact engine identity, producer immutable container identity, live instance and disjoint private/channel/bootstrap volume identities established by trusted launcher observations. No request-decoded binding. |
+| `LaunchBinding` | Existing independently permitted LaunchSpec and actual observed SessionRecord identity, stable caller/actor/role and the exact operator-approved grant scope. A passive record alone cannot construct it. |
+| `GrantScope` | Canonical mirror.Scope (repository, issue/change kind and admission) plus source/composition, mirror-query only, caller/actor/role/cell and policy/config/access references. Repository validation reuses mirror's public owner; no alias normalization. |
+| `GrantClaims` | GrantScope plus issuer/audience, grant ID, incarnation/key reference/generation, issued-at and expiry. No caller-selected algorithm, key, quota values or write operation. |
+| `Controller` | Concrete serialized live registry, signer and gate owner in the producer. Construct uninitialized; fresh initialization and every mutation require its private operator path. No query-side constructor can discover an operational key. |
+| `ControlCommand` | Closed union: fresh initialize, register exact launch, revoke exact grant, advance current epochs, rotate/fence, or stop. Expected current version binds each mutation; conflicts/unknown outcomes hold, without blindly retrying or adding an R2 claim. |
+| `ControlReceipt` | Bounded applied/current version and tuple digest for the private operator. No signing material or token. Read-back resolves uncertain control results before authority resumes. |
+| `SignedGrant` | Opaque exact typed payload bytes and signature, delivered only by the prebound launch channel. Reusable for reads only while current and within the original lease. No arbitrary mint payload. |
+| `CurrentProbe` | Fresh verifier-generated challenge, exact grant digest and expected producer/channel instance. The query cannot choose a role, source or current-state record. |
+| `CurrentProof` | The same challenge/digest/instance, current tuple/revocation, current policy snapshot and bounded capture/deadline data, signed by the pinned current key. It cannot replace the verifier's trust bootstrap. |
+| `VerifierConfig` | Explicit read-only bootstrap key/key reference, producer/channel binding and the trusted caller/source policy selected by composition. Unknown/unreadable binding refuses. |
+| `CurrentClient` | Concrete bounded AF_UNIX client to that protected current channel; no generic authority callback or local-current fallback. Cancellation and post-I/O deadline/lease checks are mandatory. |
+| `VerifiedRead` | Detached trusted identity/policy plus opaque request-bound release lease. No signer/writer handle; a zero/fabricated value refuses. It is not reusable proof for another request. |
+| `Verifier.Authorize` | Verify the exact signed grant, request scope and fresh current proof; return VerifiedRead or a sanitized held result. It cannot infer authentication from body Scope. |
+| `Verifier.CheckRelease` | Final local monotonic-lease/expiry/deadline check after encoding, callbacks and other I/O. It cannot renew a receipt or fetch a source. |
+
+Proposed signatures (not shipped source) make the constructor/control/current
+boundary explicit. `ProducerResources` contains only already-bound producer
+private/channel roots and gate resources; `CurrentClient` is concrete, not an
+arbitrary caller-authority implementation. The existing refresh.Clock is trusted
+composition input, never decoded from a request.
+
+```go
+func CheckConfig(ProducerConfig) error
+func NewController(ProducerConfig, ProducerResources, refresh.Clock) (*Controller, error)
+func (c *Controller) ApplyControl(context.Context, ControlCommand) (ControlReceipt, error)
+func (c *Controller) ServeGrant(context.Context, GrantChannel) error
+func (c *Controller) ServeCurrent(context.Context, CurrentChannel) error
+func NewCurrentClient(CurrentConfig, refresh.Clock) (*CurrentClient, error)
+func NewVerifier(VerifierConfig, *CurrentClient, refresh.Clock) (*Verifier, error)
+func (v *Verifier) Authorize(context.Context, SignedGrant, mirror.Scope) (VerifiedRead, error)
+func (v *Verifier) CheckRelease(context.Context, VerifiedRead) error
+func (v *Verifier) BindRefresh(SignedGrant) (refresh.CallerAuthority, error)
+```
+
+No exported constructor returns a private key or signer. Fresh initialization
+uses the existing concrete signing primitive inside the producer; it cannot load
+an operational key chosen by a query or replace it with a fake-signing callback.
+Grant/current channels are established from the closed launcher profile, not
+arbitrary per-request listener/path/role arguments.
+
+The eventual refresh adapter implements the ACTUAL existing
+`refresh.CallerAuthority.Authorize(context.Context, refresh.Caller, mirror.Scope)`.
+It binds a request's signed grant and concrete verifier, compares caller ID,
+admission, policy class/epoch, config/access epochs and the exact trusted policy
+snapshot (including refresh.Limits), and obtains current authority on each call.
+Limits retain the existing R2/refresh owner and are never taken from request text
+or interpreted as permission to contact a provider. This uses the existing51 API;
+it creates no compile dependency on unimplemented55 or a write executor.
+
+The two data-plane protocols have exactly grant-read or current-challenge messages.
+The private operator protocol alone accepts the closed ControlCommand union.
+Version, operation and all required fields are exact; unknown/duplicate/noncanonical
+or oversized material refuses before allocation/contact. Typed JSON/canonical byte
+checks use the selected standard library and one domain-specific codec, not a
+parallel generic parser/JWT framework. The entire canonical payload is signed
+under distinct grant/current-response domains; fields cannot ride unsigned.
+Authentication bytes and raw protocol errors never enter service observations,
+cache keys, ordinary diagnostics or performance exports.
+
+### Closed cellcontainer source delta
+
+Add one typed authority-profile builder for producer, query verifier and sibling/
+caller fixture roles. It owns exact images/platform, fixed entrypoint/role argv,
+UID, noninteractive settings, finite runtime limits, no published network ports
+and the explicit volume-view matrix. No caller supplies arbitrary mounts, shell
+text, entrypoint, environment or engine endpoint through a query. Reuse common
+runtime/mount/ownership validation inside the existing package; preserve the
+legacy Plan/Config API and EVERY existing refusal/assertion unchanged.
+
+Actual current Plan.Validate requires its original image entrypoint, interactive
+TTY/stdin, role App-key/config/work mounts and exact mount count. Those are real
+API mismatches for this credential-free component; do not add an unchecked boolean
+or relax legacy validation. The new closed profile must independently check every
+common isolation property and its exact own entrypoint/argv/mount set. The bounded
+operator-control execution path targets only the frozen producer identity and
+fixed helper, with typed size-capped input; it is not arbitrary Docker exec.
+
 ## Required explicit operator inputs
 
 | Input | Source and refusal rule |
