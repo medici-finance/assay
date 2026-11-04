@@ -18,6 +18,8 @@ depends: ["forge-gitlab/15"]
 unblocks: []
 effort: M
 gate: human
+decision-issue: 2912
+ruling: "https://github.com/medici-finance/assay/issues/2912#issuecomment-6640161913"
 design: DR-forge-gitlab-18
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: >-
