@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5428
 issues: []
 schema: brief-v2
-version: 5
+version: 6
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -36,6 +36,7 @@ consumers:
 - "tools/desk/internal/forgeservice/auth/: follow-up forge-neutral/57 (canonical local grant verifier/producer and current-state composition)"
 - "tools/desk/internal/celllaunch/: follow-up forge-neutral/57 (bounded existing launcher integration; no lifecycle execution)"
 - "tools/desk/internal/cellcontainer/: follow-up forge-neutral/57 (closed producer/query/caller profile extension and actual named-volume isolation qualification; no arbitrary mount builder)"
+- "forgeread/refresh/types.go: follow-up forge-neutral/57 (additive Limits.Validate delegates the existing canonical policy predicate; auth construction reuses it before key/listener contact)"
 - "spec/forge-local-authority-v1.md, docs/forge-local-authority.md and docs/contracts.md: follow-up forge-neutral/57 (concrete claims/custody/current-state qualification)"
 - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/56 (consume the actual qualified producer; no handler issuer)"
 - "full executor/custody acceptance: follow-up forge-neutral/40 (reuse this local read-only boundary; write authority remains separate)"
@@ -52,6 +53,8 @@ files:
 - `tools/desk/internal/forgeservice/auth/testdata/local_authority_mutations.py` (planned)
 - `tools/desk/internal/celllaunch/`
 - `tools/desk/internal/cellcontainer/`
+- `forgeread/refresh/types.go`
+- `tools/desk/internal/arch/markers.txt`
 - `tools/desk/internal/deskkit/citrigger_test.go`
 - `.github/workflows/ci.yml`
 - `spec/forge-local-authority-v1.md` (planned)

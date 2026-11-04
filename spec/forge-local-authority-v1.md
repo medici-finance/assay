@@ -1,9 +1,11 @@
-# Local forge caller authority — Task1 design proposal
+# Local forge caller authority — offline implementation contract
 
-Status: draft proposal under forge-neutral/57. This document selects no operational
-issuer, credential, endpoint, image, lifetime, policy value or deployment. Runtime
-pickup waits for review of this concrete mechanism proposal and its actual fixture
-prerequisites. A proposal or signature roundtrip grants no caller/custody acceptance.
+Status: the concrete mechanism is approved for bounded OFFLINE implementation and
+fixture qualification under forge-neutral/57. Operational issuer, credential,
+endpoint, image, lifetime, policy values and deployment remain unselected. Actual
+producer, caller/custody and containment qualification remains owed.
+
+Design ruling: https://github.com/medici-finance/assay/issues/5428#issuecomment-6631318014
 
 ## Outcome and retained boundaries
 
@@ -27,6 +29,54 @@ ownership transfer rotate both incarnation and key reference. A read grant does
 not relax any write/executor or reconstruction requirement.
 
 ## Architecture pickup
+
+### Offline implementation pickup
+
+The original owner continues Tasks2-7 after the exact own-human option1 ruling.
+Current owned source `98f956f9ff35a378c6c3b2eab0832e519d15b0e9` contains the
+qualified published contract successor `d0224e4645b96df61bd84c10e588a6dd05fe89c3`
+and corrected wire source `45095639f7ecf97e91b3a92b5d89597047e0ecf5` through
+two-parent merges. The wire source has merged; acceptance and independent
+verification are separate. The original Task/Verify/Evidence and the reviewed
+HumanDecision bytes are preserved.
+
+Disposition: **continue** the approved offline controller, live registry, closed
+AF_UNIX protocols, verifier and launcher/profile composition. **Adapt** only the
+existing refresh owner with additive `Limits.Validate() error`, delegating its
+existing private policy predicate and ErrPolicy. Auth constructors call that
+owner before private-key/listener I/O; no predicate, quota or default is copied.
+The source and consumer edge are declared before the additive API implementation.
+
+The actual existing signing primitive is `comms/contract.Ed25519Signer.Sign`;
+the forge-specific payload does not reuse Assertion or its default TTL/skew.
+Existing `deskkit.AcquireHeld` supplies the named nonblocking gate with stale
+recovery disabled. Opened root/file identities are independently checked before
+issuance/current reads. `encoding/json` owns encoding; one fixed typed canonical
+round-trip decoder rejects unknown, duplicate, missing or noncanonical fields.
+No general parser, signer callback or current-authority callback is introduced.
+
+The protected process/channel boundary is retained because query code must not
+receive the signer or operator writer. The new closed cellcontainer profile
+reuses the existing runtime/mount validation owner and preserves legacy Plan
+refusals. The actual primitive receipt qualifies only image/platform/volume/socket
+mechanics. Actual producer/signature/current-state/custody tests remain required.
+Whole-VM rollback and production restoration remain held for the required
+independent anchor and real identity/key rotation. No operational input or numeric
+policy default is selected by this continuation.
+
+The actual legacy LaunchSpec is a console/harness contract and a ready
+SessionRecord requires a console handle. The noninteractive authority components
+therefore use additive `celllaunch.AuthorityLaunch` and `AuthorityPermit` over the
+existing immutable ContainerIdentity/ContainerObservation. Closed component kinds
+are producer, query, caller and sibling; logical caller roles remain existing
+launcher policy. The adapter preserves every legacy predicate and grants no
+caller authority by itself. The actual cellcontainer profile independently
+observes owned/running resources, then the private operator writer binds that
+observation to independently permitted intent. No synthetic console, saved-record
+fallback or caller-supplied Allowed flag is used. This is a faithful integration
+adaptation within the selected mechanism, checkpointed before adapter code.
+
+### Initial Task1 source assessment (history)
 
 Inspected actual main source `c2a42d69402f96ec7a1812f4996197452e57344c`, the current
 57 contract, and the actually published [wire source](https://github.com/medici-finance/assay/pull/5425)
@@ -556,3 +606,16 @@ qualified actual public API/profile and keeps request parsing, admitted Store/
 refresh composition and final row-release checks. 55 owns operator source/budget
 profiles; full40 retains executor/write custody. No acceptance of those parents,
 production activation, or complete tool cutover follows from this design.
+
+## Protocol allocation ceilings
+
+The closed implementation refuses configured registry capacities above1024 and
+concurrent channel capacities above64 before resource contact. These are absolute
+allocation ceilings, not selected operator quotas or defaults. Actual budgets,
+leases, skew and profiles remain required explicit inputs. Frame size is bounded
+by the existing celllaunch.MaxRecordBytes ceiling and the explicitly lower
+configured frame limit. Registry exhaustion refuses without dropping revocations.
+
+The first S-forge-local-authority marker registers Verifier.Authorize as the
+canonical consumer evaluator. This is a first-owner design-fit registration for
+the previously absent producer boundary; no existing ceiling or owner is widened.
