@@ -1532,10 +1532,10 @@
       "new": "if err != nil {\n\t\treturn true\n\t}\n\trun := strings.Split(p.Run"
     },
     {
-      "name": "#4294 3c: a witness above the last heading is ignored",
+      "name": "#4294 3c: a Date/Runner row above the last heading is ignored",
       "file": "heldscope.go",
-      "old": "return len(rows) == 0",
-      "new": "return len(rows) >= 0"
+      "old": "\tif rows, _ := flipDateRunnerRows(above); len(rows) > 0 {",
+      "new": "\tif rows, _ := flipDateRunnerRows(above); len(rows) < 0 {"
     },
     {
       "name": "#4294 3c: the scope ignores latestRun",
@@ -1560,6 +1560,36 @@
       "file": "verifyissues.go",
       "old": "return heldRefusal(briefID, status, evidence, true)",
       "new": "return heldRefusal(briefID, status, evidence, false)"
+    },
+    {
+      "name": "#4294 3c: a stripped span over live lines no longer keeps 3c off",
+      "file": "heldscope.go",
+      "old": "\tif heldStripHidesLive(evidence) {\n\t\treturn false\n\t}\n\tp, err := flipLatestPass(evidence)",
+      "new": "\tp, err := flipLatestPass(evidence)"
+    },
+    {
+      "name": "#4294 3c: the strip check reads every spread span as hidden",
+      "file": "heldscope.go",
+      "old": "\t\tfor i := first; i <= last; i++ {\n\t\t\tif live[i] {\n\t\t\t\treturn true\n\t\t\t}\n\t\t}",
+      "new": "\t\tfor i := first; i <= last; i++ {\n\t\t\tif live[i] || !live[i] {\n\t\t\t\treturn true\n\t\t\t}\n\t\t}"
+    },
+    {
+      "name": "#4294 3c: the strip check skips the live lines a span crosses",
+      "file": "heldscope.go",
+      "old": "\t\tfor i := first; i <= last; i++ {\n\t\t\tif live[i] {",
+      "new": "\t\tfor i := first; i < first; i++ {\n\t\t\tif live[i] {"
+    },
+    {
+      "name": "#4294 3c: the witness check's own row reader is not read above the heading",
+      "file": "heldscope.go",
+      "old": "\t\t\tif isWitnessRow(r.Text) {\n\t\t\t\treturn true",
+      "new": "\t\t\tif isWitnessRow(r.Text) && false {\n\t\t\t\treturn true"
+    },
+    {
+      "name": "#4294 3c: a protected-table marker no longer keeps 3c off",
+      "file": "heldscope.go",
+      "old": "\tif hasProtectedTableMarker(evidence) {\n\t\treturn true\n\t}\n\tif rows, _ := flipDateRunnerRows(above)",
+      "new": "\tif rows, _ := flipDateRunnerRows(above)"
     }
   ]
 }

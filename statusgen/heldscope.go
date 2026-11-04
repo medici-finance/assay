@@ -2,6 +2,7 @@ package main
 
 import (
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -1619,9 +1620,21 @@ func heldScanScope(evidence string, latestRun bool) heldScope {
 // keeps 3c off too. Every line that reads as an entry heading counts, live or
 // not, fenced or not, indented or quoted, so a context the run text alone
 // cannot see can only move the heading later and keep 3c off (fail closed).
+//
+// The gate reads with the readers it stands in for, never with narrower
+// copies of them. p.Run is comment-stripped while 3c reads the rendered
+// text, so a stripped span whose markers sit in code the page renders
+// literally could hide 3c's heading (or its PASS) from p.Run: a stripped
+// line 3c reads as live keeps 3c off (heldStripHidesLive). And the rows
+// above the heading are tested with the witness check's own row reader
+// (heldCreditedAbove), so a table the check credits on a looser header than
+// Date and Runner keeps 3c off too.
 // It is a variable only so TestHeldLatestScope can read 3c's other conditions
 // with this one held true; the binary never reassigns it.
 var heldWitnessInLatest = func(evidence string) bool {
+	if heldStripHidesLive(evidence) {
+		return false
+	}
 	p, err := flipLatestPass(evidence)
 	if err != nil {
 		return false
@@ -1636,8 +1649,62 @@ var heldWitnessInLatest = func(evidence string) bool {
 	if h < 0 {
 		return true
 	}
-	rows, _ := flipDateRunnerRows(run[:h])
-	return len(rows) == 0
+	return !heldCreditedAbove(run[:h], evidence)
+}
+
+// heldStripHidesLive reports whether stripping the Evidence's comments
+// (stripRowComments, the run reader's first step) removes text from a line
+// the held scan reads as live: a span spread over lines whose markers the
+// page does not read as a comment. An entry heading or a PASS can leave the
+// run only that way, since a span on one line never holds a line start. A
+// complete comment the page hides, such as the section template's note,
+// touches no live line and changes nothing.
+func heldStripHidesLive(evidence string) bool {
+	lines := strings.Split(evidence, "\n")
+	live := heldRender(lines)
+	starts := make([]int, len(lines))
+	for i, off := 1, 0; i < len(lines); i++ {
+		off += len(lines[i-1]) + 1
+		starts[i] = off
+	}
+	lineAt := func(off int) int {
+		return sort.Search(len(starts), func(i int) bool { return starts[i] > off }) - 1
+	}
+	for _, span := range htmlCommentClosedRe.FindAllStringIndex(evidence, -1) {
+		first, last := lineAt(span[0]), lineAt(span[1]-1)
+		if first == last {
+			continue
+		}
+		for i := first; i <= last; i++ {
+			if live[i] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// heldCreditedAbove reports whether the lines above the run's last entry
+// heading hold any row a witness reader the flip runs could credit: a
+// Date/Runner row (flipDateRunnerRows), or any Evidence row the witness
+// check reads as a witness (parseEvidenceRows, isWitnessRow), whatever its
+// table's header says. A protected-table marker anywhere makes the witness
+// check read the full history (closureRunWitnesses), so it counts too.
+func heldCreditedAbove(above []string, evidence string) bool {
+	if hasProtectedTableMarker(evidence) {
+		return true
+	}
+	if rows, _ := flipDateRunnerRows(above); len(rows) > 0 {
+		return true
+	}
+	for _, rows := range parseEvidenceRows(strings.Join(above, "\n")) {
+		for _, r := range rows {
+			if isWitnessRow(r.Text) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // heldLatestRule turns rule 3c on. It is always true in the binary; it is a
