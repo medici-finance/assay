@@ -87,7 +87,13 @@ func run(args []string) int {
 
 	switch args[0] {
 	case "plan":
-		return loopengine.ExitCodeOf(cmdPlan(args[1:]))
+		// cmdPlan RETURNS its refusal (renderPlan wraps it, e.g. "cannot read the Next-up queue")
+		// and prints none of it; the exit code alone never says why (#5029). Print it here, once.
+		err := cmdPlan(args[1:])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+		}
+		return loopengine.ExitCodeOf(err)
 	default:
 		fmt.Fprintf(os.Stderr, "fanoutloop: unknown subcommand %q\n\n%s", args[0], usage)
 		return deskkit.ExitRefused
