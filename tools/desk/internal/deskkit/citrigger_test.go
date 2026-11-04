@@ -203,6 +203,15 @@ func TestDeskdImageContractCI(t *testing.T) {
 // TestWorkflowFoundationCI keeps this contract reader live without tools.yml.
 func TestWorkflowFoundationCI(t *testing.T) {
 	ciAssertPublicLayoutRow(t, "workflow/store/foundation_test.go")
+	const name = ".github/workflows/assay-workflow.yml"
+	raw, err := os.ReadFile(filepath.Join("../../../..", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, found := ciWorkflowJobLines(t, string(raw), name, "test")
+	if !found || !regexp.MustCompile(`(?m)^    runs-on: ubuntu-latest[ \t]*$`).MatchString(strings.Join(job, "\n")) {
+		t.Fatal(name + ": PostgreSQL service qualification requires the admitted Ubuntu Docker host; the regular builder has no Docker daemon")
+	}
 }
 
 // ciAssertPublicLayoutRow runs one registry row's event reachability and read
