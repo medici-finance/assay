@@ -4,7 +4,7 @@ title: "Typed forge service contract and scoped client SDK"
 why: "The mirror and the desk write paths lack a shared caller contract for scoped queries, operation receipts and read-after-write visibility. A small typed contract lets both clients use the same meanings without importing credentials or the entire desk module."
 wave: 3
 depends: ["desk-tools/39"]
-unblocks: ["forge-neutral/40", "forge-neutral/42", "cell-api/01"]
+unblocks: ["forge-neutral/40", "forge-neutral/42", "cell-api/01", "forge-neutral/56"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}

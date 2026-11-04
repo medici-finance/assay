@@ -258,6 +258,8 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 52 | [Canonical PostgreSQL mirror store without execution dependencies](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md) | 3 | L | todo | — | — |
 | 53 | [Qualified native mirror attempt accounting and retry metadata](brief-53-qualified-native-mirror-attempt-accounting-and-retry-metadata.md) | 5 | L | todo | — | — |
 | 54 | [Canonical PostgreSQL refresh gate and admitted read-through integration](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md) | 6 | L | todo | — | — |
+| 55 | [Operator provisioning of known read-only refresh profiles](brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md) | 7 | L | todo | — | — |
+| 56 | [Read-only forge serving behind qualified caller authority](brief-56-read-only-forge-serving-behind-qualified-caller-authority.md) | 8 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -836,3 +838,26 @@ separate Requirements-qualified backoff; SQL design must consume its actual repa
 Absent/unreadable/unknown shared usage or retry metadata holds. No default allowance is
 created on restart, and no source-response total can retroactively bound HTTP work.
 All original23 full37 and13 fullGE19 Verify Class/Command pairs and gates remain intact.
+
+## Read-only profile and serving continuation — 4 November 2026
+
+The durable read owner deliberately has no production initializer. [55](brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md)
+extends that same R2 owner with explicit known operator inputs and actual SQL role separation.
+It does not wait for a caller issuer or a write executor. [56](brief-56-read-only-forge-serving-behind-qualified-caller-authority.md)
+then consumes the actual39 wire/client and qualified shared read owner for mirror-query only.
+Its actual authentication/current-authority producer and custody profile are still missing;
+that is a real production pickup blocker, not a port that authoring may assume exists.
+Offline handler/fixture preparation is unqualified and supplies no authenticated-serving credit.
+
+| Read-only wave | Work | Actual prerequisite | Remaining boundary |
+|---|---|---|---|
+| 7 | 55 operator known-profile/accounting provisioning | Qualified54 and the same migration/codec/fixture owner | No production GRANT, credential or policy value selected |
+| 8 | 56 bounded mirror-query handler | Qualified39+55 and an actual independently qualified R3 producer/profile | Missing producer holds; no issuer, TTL or authentication inferred |
+| 9 | Full40 consumes56 | Every original custody/executor prerequisite remains | Full parent Tasks, seven Verify rows and gates remain owed |
+
+The bounded path is `36 → 52`, `50 + 51 → 53`, then `52 + 53 + 51 → 54 → 55`.
+Read serving additionally requires `39 + actual qualified R3 producer/profile → 56`;
+full40 consumes56 afterward. Neither55 nor56 depends on the full write/execution delivery.
+No selected issuer, implementation or approval is fabricated to make this graph ready.
+Source50 lacks facts needed by existing desk-read/review projections and complete review
+coverage, so these units do not qualify full45 tool cutover, retention purge or full37 acceptance.

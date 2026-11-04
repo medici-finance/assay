@@ -4,7 +4,7 @@ title: Canonical PostgreSQL refresh gate and admitted read-through integration
 why: "Read-through needs one durable refresh owner across processes, with native attempts bounded before they happen and observations committed only by the current generation. Joining the existing source, coordinator and PostgreSQL Store closes this gap without waiting for workflow execution."
 wave: 6
 depends: ["forge-neutral/53", "forge-neutral/52", "forge-neutral/51"]
-unblocks: []
+unblocks: ["forge-neutral/55"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
