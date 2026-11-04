@@ -71,7 +71,7 @@ jobs:
           cd workflow
           go vet ./...
           go test -count=1 -race -timeout=180s ./...
-      - name: Qualify admitted persisted read-through
+      - name: Qualify admitted persisted and provisioned read-through
         env:
           ASSAY_TEST_POSTGRES_DSN: postgresql://fixture_admin:fixture_only@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres?sslmode=disable
         run: |
@@ -79,7 +79,11 @@ jobs:
           test -n "$ASSAY_TEST_POSTGRES_DSN"
           cd tools/desk
           out="$(mktemp)"
-          trap 'rm -f "$out"' EXIT
+          provisioned="$(mktemp)"
+          trap 'rm -f "$out" "$provisioned"' EXIT
           go test -count=1 -race -timeout=180s -v -run '^TestMirrorPersistedReadThroughJoin$' ./internal/deskkit > "$out"
           cat "$out"
           grep -F -- '--- PASS: TestMirrorPersistedReadThroughJoin ' "$out"
+          go test -count=1 -race -timeout=180s -v -run '^TestMirrorProvisionedReadThrough$' ./internal/deskkit > "$provisioned"
+          cat "$provisioned"
+          grep -F -- '--- PASS: TestMirrorProvisionedReadThrough ' "$provisioned"

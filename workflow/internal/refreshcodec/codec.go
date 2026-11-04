@@ -43,6 +43,35 @@ func Profile(identity [6]string, limits refresh.Limits, native Native, poll time
 	return encode('P', profileWire{Identity: fields, Limits: limits, Native: native, PollInterval: poll})
 }
 func Budget(native Native) ([]byte, error) { return encode('B', native) }
+
+// Initialization is private immutable operator provenance. Counts use charged
+// accounting units; it is neither a provider observation nor a wire request.
+type Initialization struct {
+	Kind                 string
+	Identity             [][]byte
+	Profile              []byte
+	Known                bool
+	WindowMicros         int64
+	Fills, Attempts      int64
+	Provenance           []byte
+	RetryKnown, HasRetry bool
+	RetryMicros          int64
+}
+
+func Initial(v Initialization) ([]byte, []byte, error) {
+	if v.Kind != "source" && v.Kind != "admission" && v.Kind != "caller" {
+		return nil, nil, refresh.ErrPolicy
+	}
+	identity, e := encode('I', v.Identity)
+	if e != nil {
+		return nil, nil, e
+	}
+	data, e := encode('O', v)
+	return identity, data, e
+}
+
+func InitialSet(records [][]byte) ([]byte, error) { return encode('S', records) }
+
 func Key(v refresh.FillKey) ([]byte, error) {
 	s := v.Scope
 	return encode('K', [][]byte{[]byte(s.Repository.Provider), []byte(s.Repository.Host), []byte(s.Repository.Path), []byte(s.Kind), []byte(s.AdmissionID), []byte(v.SourceID), []byte(v.AccessEpoch), []byte(v.ConfigEpoch), []byte(v.PolicyClass), []byte(v.PolicyEpoch)})
