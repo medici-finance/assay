@@ -49,7 +49,7 @@ func foldTrackingFixture(t *testing.T, mode string) (reconcileFoldData, string, 
 	}
 	att := fmt.Sprintf("Verification-Attestation: example-org/tracker#7 run=%s source-repo=example-org/agents source=%s tracking-source=%s brief=%s model=fixture-model tier=strong", strings.Repeat("a", 64), sourceSHA, trackingSHA, trackingFixtureRel)
 	switch mode {
-	case "legacy":
+	case "legacy", "legacy note":
 		sourceSHA = trackingSHA
 		att = fmt.Sprintf("Verification-Attestation: example-org/tracker#7 run=%s source=%s brief=%s model=fixture-model tier=strong", strings.Repeat("a", 64), sourceSHA, trackingFixtureRel)
 	case "mixed":
@@ -78,6 +78,9 @@ func foldTrackingFixture(t *testing.T, mode string) (reconcileFoldData, string, 
 		att = "```text\n" + att + "\n```"
 	case "foreign homed source missing":
 		att = ""
+	}
+	if mode == "legacy note" {
+		att = "Verification-Attestation: unavailable on this legacy host"
 	}
 	ev := strings.ReplaceAll(foldPassEv, "{SHA}", sourceSHA[:12])
 	ev = strings.Replace(ev, "**VERIFY: PASS**", att+"\n\n**VERIFY: PASS**", 1)
@@ -109,7 +112,7 @@ func foldTrackingGitLine(t *testing.T, root string, args ...string) string {
 
 // regression: #5475
 func TestFoldTrackingRevision(t *testing.T) {
-	for _, mode := range []string{"current", "duplicate", "stale", "legacy"} {
+	for _, mode := range []string{"current", "duplicate", "stale", "legacy", "legacy note"} {
 		t.Run(mode, func(t *testing.T) {
 			d, sourceSHA, _ := foldTrackingFixture(t, mode)
 			w, ok, why := foldVerified(d, map[string]Coverage{d.key: {Released: true}})

@@ -18,16 +18,23 @@ func briefVersionForPass(path string, p flipPass) (int, error) {
 	// marker scanner without normalizing comments a second time or reading an
 	// older run's attestation.
 	for _, m := range protectedMarkersNamed(normalizedProtectedEvidence(p.Run), strings.TrimSpace(attestationPrefix)) {
-		if !m.literal {
-			return 0, fmt.Errorf("attestation must be literal run metadata")
-		}
 		a, ok := parseContainerAttestation(m.text)
-		if !ok {
-			return 0, fmt.Errorf("malformed run attestation")
+		cross := false
+		for _, field := range strings.Fields(m.text) {
+			cross = cross || strings.HasPrefix(field, "source-repo=") || strings.HasPrefix(field, "tracking-source=")
 		}
-		if a.version == 1 {
-			legacy = true
+		if !cross {
+			// The old source-revision reader ignored optional v1 metadata,
+			// including unstructured historical notes. Keep that acceptance
+			// set; only a structured v1 line conflicts with a selected v2 run.
+			legacy = legacy || (m.literal && ok && a.version == 1)
 			continue
+		}
+		if !m.literal {
+			return 0, fmt.Errorf("cross-repository attestation must be literal run metadata")
+		}
+		if !ok || a.version != 2 {
+			return 0, fmt.Errorf("malformed cross-repository run attestation")
 		}
 		if !hex64Re.MatchString(a.run) || !hex40Re.MatchString(a.source) || !hex40Re.MatchString(a.trackingSource) {
 			return 0, fmt.Errorf("cross-repository attestation needs full run, source and tracking-source identifiers")
@@ -48,18 +55,18 @@ func briefVersionForPass(path string, p flipPass) (int, error) {
 		return 0, fmt.Errorf("selected run mixes same-repository and cross-repository attestations")
 	}
 	dir := filepath.Dir(path)
-	origin, err := coverageGit(dir, "remote", "get-url", "origin").Output()
-	if err != nil || remoteHost(strings.TrimSpace(string(origin))) != "github.com" {
-		return 0, fmt.Errorf("cannot bind the tracking repository to a github.com origin")
+	repo, err := attestationTrackingRepo(dir)
+	if err != nil {
+		return 0, err
 	}
-	if !strings.EqualFold(originOwnerRepo(strings.TrimSpace(string(origin))), binding.repo) {
+	if !strings.EqualFold(repo, binding.repo) {
 		return 0, fmt.Errorf("attestation tracking repository %s is not the brief's repository", binding.repo)
 	}
-	prefix, err := coverageGit(dir, "rev-parse", "--show-prefix").Output()
-	if err != nil {
-		return 0, fmt.Errorf("cannot resolve the tracking brief's repository-relative path: %w", err)
+	prefix, ok := (coverageRepo{root: dir}).RootPrefix()
+	if !ok {
+		return 0, fmt.Errorf("cannot resolve the tracking brief's repository-relative path")
 	}
-	rel := strings.TrimSpace(string(prefix)) + filepath.Base(path)
+	rel := prefix + filepath.Base(path)
 	if binding.brief != rel {
 		return 0, fmt.Errorf("attestation names brief %s, not %s", binding.brief, rel)
 	}
