@@ -1,0 +1,6 @@
+# regression: #4769
+# A second deskd-image rule with a blank before the colon still overrides the recipe.
+want: target-missing
+file: Makefile
+replace: "\n## skillslint: validate"
+with: "\ndeskd-image :\n\t@echo \"skipped\"\n\n## skillslint: validate"
