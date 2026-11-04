@@ -5,6 +5,7 @@ package pgtestfixture
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -15,8 +16,51 @@ import (
 
 type Fixture = pgtest.Fixture
 type Connection = pgtest.Connection
+type RoleConnections = pgtest.RoleConnections
 
 func New(t testing.TB) *Fixture { t.Helper(); return pgtest.New(t) }
+
+// NewRefreshRoles applies only the production-declared role manifest, only to
+// identities this exact disposable fixture created and marked. It is test
+// support, not an operational grant/role installer or profile initializer.
+func NewRefreshRoles(t testing.TB, f *Fixture) RoleConnections {
+	t.Helper()
+	roles := f.NewRoles(t)
+	if e := ApplyRefreshRoles(t, f, roles); e != nil {
+		t.Fatal(e)
+	}
+	return roles
+}
+
+// ApplyRefreshRoles rechecks and reapplies only that same bounded declaration to
+// this fixture's marked roles. It exposes no arbitrary grant text or SQL callback.
+func ApplyRefreshRoles(t testing.TB, f *Fixture, roles RoleConnections) error {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if e := f.CheckRoles(ctx, roles); e != nil {
+		return e
+	}
+	manifest, e := (store.RefreshRoleProfile{Database: f.Config.Database, Operator: roles.Operator.User, Runtime: roles.Runtime.User}).SQL()
+	if e != nil {
+		return e
+	}
+	db, e := f.ConnectOwned(ctx)
+	if e != nil {
+		return e
+	}
+	defer db.Close()
+	connection, e := db.Conn(ctx)
+	if e != nil {
+		return errors.New("owned role manifest connection unavailable")
+	}
+	defer connection.Close()
+	if _, e = connection.ExecContext(ctx, manifest); e != nil {
+		connection.ExecContext(ctx, "ROLLBACK")
+		return errors.New("declared fixture role manifest refused")
+	}
+	return nil
+}
 
 // SeedRefresh is explicitly synthetic test support. It verifies the existing
 // fixture's exact owned database and never replaces an existing usage profile.

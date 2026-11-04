@@ -231,6 +231,11 @@ an allowance. Only the disposable test fixture seeds known profiles.
 | refresh_attempts | reported_retry_at | numeric |
 | refresh_attempts | retry_delay_ns | bigint |
 | refresh_attempts | delay_known | boolean |
+| refresh_initializations | kind | text |
+| refresh_initializations | identity_hash | bytea |
+| refresh_initializations | identity | bytea |
+| refresh_initializations | baseline | bytea |
+| refresh_initializations | initialized_at | timestamp with time zone |
 
 Every mutation locks admission, then source budget, caller usage, fill, waiter or
 individual attempt, then observation scope/records. Identity-only lookups before
@@ -301,3 +306,41 @@ satisfied by checking only this implemented foundation section.
 **Read-only mirror follow-up:** the bounded Store is implemented above. The bounded read-only shared refresh adapter is implemented above. Retention policy, ingestion daemon, served API,
 provider credential custody and cutover remain future contributions. All forge-neutral/37 acceptance and retention gates
 remain. A completed foundation is neither full R2 nor service activation.
+
+## Explicit read-only profile provisioning
+
+Migration00004 adds immutable per-source/admission/caller initialization provenance
+in the same ledger. The key is a SHA-256 index plus independently compared full
+canonical identity. Baseline bytes use the same private refreshcodec owner and bind
+profile, explicitly known charged accounting, window, provenance and source retry
+knowledge. They are not provider HTTP measurements or caller authorization.
+
+`DB.ProvisionRefresh` is an explicit operator operation on an already authorized
+connection. It atomically creates absent known records only; missing provenance,
+unknown existing accounting, conflicting baselines and orphaned receipt/data refuse.
+Exact replay compares the immutable original baseline while retaining every current
+counter, window, retry floor, hold and unresolved slot. A new admission shares its
+existing source budget. Positive initial child usage must fit charged parent usage
+in the same window; a different parent window cannot justify positive new child
+usage. Explicit known zero creates no parent allowance or administrative reset.
+Runtime constructors, queries and window rollover never call provisioning.
+
+`RefreshRoleProfile.SQL` only renders a transactional declaration for separately
+authorized application to explicit existing roles/database. It creates no role and
+executes no grants. The declared runtime has only existing Store/Gate columns and
+eligible-terminal fill deletion; no profile/accounting INSERT, known-state update,
+provenance access, administrative DDL, TRUNCATE, grant option or accounting deletion.
+Existing SQL guards independently restrict allowed runtime counter/window updates.
+Operator UPDATE(known) exists solely because PostgreSQL row locking requires an
+UPDATE privilege; unknown-to-known transitions remain independently SQL refused.
+Effective ownership, membership, administrative role flags and callable user
+SECURITY DEFINER paths refuse the complete declaration. Quoted identifiers and
+transaction-local selected-database data remain outside procedural source.
+
+A lower deletion trigger independently limits the runtime's required fill-cache
+DELETE to the canonical done/retired/all-retry-floors-elapsed state, with no live
+waiter or unresolved/unknown individual attempt. It neither refunds a charge nor
+clears source-wide retry/unknown state. Initialization receipts reject UPDATE and
+DELETE; their original database timestamp is not a source observation time.
+These are library/schema contracts, not evidence of operator grants, authenticated
+serving, credential selection, retention, deployed use or parent acceptance.

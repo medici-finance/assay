@@ -231,6 +231,21 @@ func TestWorkflowRefreshCI(t *testing.T) {
 	}
 }
 
+// regression: F-provision-ci-execution-proof
+func TestWorkflowRefreshProvisionCI(t *testing.T) {
+	ciAssertPublicLayoutRow(t, "workflow/store/refresh_provision_test.go")
+	ciAssertPublicLayoutRow(t, "tools/desk/internal/deskkit/mirror_joined_test.go")
+	raw, e := os.ReadFile("../../../../.github/workflows/assay-workflow.yml")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, required := range []string{`test -n "$ASSAY_TEST_POSTGRES_DSN"`, "go test -count=1 -race -timeout=180s -v -run '^TestMirrorProvisionedReadThrough$' ./internal/deskkit", `grep -F -- '--- PASS: TestMirrorProvisionedReadThrough ' "$provisioned"`} {
+		if !strings.Contains(string(raw), required) {
+			t.Fatal("dedicated provisioned-role join lacks required execution proof", required)
+		}
+	}
+}
+
 // ciAssertPublicLayoutRow runs one registry row's event reachability and read
 // coverage against the workflow in the public source layout, without the
 // house-only tools.yml fixture the full sweep above skips on.
@@ -367,6 +382,11 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{test: "workflow/store/refresh_provision_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
+			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
+			reads: []string{"spec/coordination-store-v1.md", "forgeread/mirror/", "forgeread/refresh/"},
+			runInvokes: []string{"cd workflow", "go test -count=1 -race -timeout=180s ./..."},
+			why: "operator initialization catalog/known-state controls read the canonical schema and existing refresh/kernel owners"},
 
 		{test: "workflow/store/refresh_schema_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
 			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
@@ -376,7 +396,7 @@ func ciCrossModuleRegistry() []ciEntry {
 		{test: "tools/desk/internal/deskkit/mirror_joined_test.go", module: "tools/desk", workflow: ".github/workflows/assay-workflow.yml",
 			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
 			reads:      []string{"workflow/", "forgeread/", "tools/desk/", ".github/workflows/assay-workflow.yml"},
-			runInvokes: []string{"cd tools/desk", "go test -count=1 -race -timeout=180s -v -run '^TestMirrorPersistedReadThroughJoin$' ./internal/deskkit", "grep -F -- '--- PASS: TestMirrorPersistedReadThroughJoin '"},
+			runInvokes: []string{"cd tools/desk", "go test -count=1 -race -timeout=180s -v -run '^TestMirrorPersistedReadThroughJoin$' ./internal/deskkit", "grep -F -- '--- PASS: TestMirrorPersistedReadThroughJoin '", "go test -count=1 -race -timeout=180s -v -run '^TestMirrorProvisionedReadThrough$' ./internal/deskkit", "grep -F -- '--- PASS: TestMirrorProvisionedReadThrough '"},
 			why:        "actual native SDK/source/coordinator/SQL Store join requires the selected PostgreSQL service and named PASS; a missing fixture or skipped test is not evidence"},
 		{test: "workflow/store/mirror_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
 			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},

@@ -176,3 +176,32 @@ identity fields, preserving arbitrary opaque string bytes across processes. This
 private encoding is distinct from the existing bounded observation-fact codec.
 No retention action, execution API, endpoint, credential selection or production
 cutover is supplied by this adapter.
+
+## Explicit operator profile provisioning
+
+After explicit migration/open, an already authorized operator connection can call
+`DB.ProvisionRefresh` with `RefreshProvision`: the exact current RefreshConfig,
+explicitly known source/admission/caller baseline usage and provenance, and known
+source retry state. Baselines use charged fill/attempt slots, not scan counts or
+measured HTTP. Every initial window is explicit and checked against database time.
+Unknown, contradictory, expired-new and conflicting replay inputs refuse; an exact
+retry retains original provenance while current usage, windows and retry holds
+remain unchanged. Existing profiles without initialization provenance are not
+promoted from the synthetic test seed. There is no unknown-accounting repair API.
+
+`RefreshRoleProfile.SQL` renders the one bounded operator/runtime column-privilege
+manifest for explicit existing database and role identifiers. It does not execute
+SQL or create roles. Applying it is a separate operator act. Migration authority
+remains separate; roles must already be nonadministrative LOGIN NOINHERIT identities
+without memberships or ownership. The manifest checks effective privileges and
+callable user SECURITY DEFINER paths; it refuses the transaction on mismatch.
+The runtime cannot invoke provisioning or insert/known-upgrade/reset profiles,
+change provenance, TRUNCATE accounting or perform administrative DDL. Its existing
+counter/window updates and eligible-terminal cache eviction keep their independent
+SQL guards. No source allowance is created by deleting an eligible cached fill.
+
+Disposable role tests use the existing owned fixture's testing capability and
+actual database/role markers. Their uniquely created roles receive the exact
+production-declared manifest, and cleanup affects only those owned resources.
+Uncertain ownership is retained and reported. This test support is not an
+operational role installer and does not promote SeedRefresh into runtime startup.

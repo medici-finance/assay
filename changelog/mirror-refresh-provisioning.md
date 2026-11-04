@@ -1,0 +1,1 @@
+- Add explicit operator initialization and replay of known read-only refresh accounting, with a declarative restricted runtime SQL role profile.

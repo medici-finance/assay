@@ -3,12 +3,69 @@ package store
 import (
 	"context"
 	"errors"
+	"os"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/medici-finance/assay/forgeread/mirror"
 	"github.com/medici-finance/assay/forgeread/refresh"
 )
+
+// regression: F-provision-schema-role-contract
+func TestPGRefreshProvisionSchema(t *testing.T) {
+	r := sqlMirror(t)
+	ctx := context.Background()
+	raw, e := os.ReadFile("../../spec/coordination-store-v1.md")
+	if e != nil {
+		t.Fatal(e)
+	}
+	want := contractColumns(string(raw))
+	got, e := schemaColumns(ctx, r.raw)
+	if e != nil || !reflect.DeepEqual(want, got) {
+		t.Fatal("provisioning schema/catalog mismatch", e, want, got)
+	}
+	for _, table := range refreshRoleTables {
+		var columns string
+		if e = r.raw.QueryRow(`SELECT string_agg(attname::text,' ' ORDER BY attnum) FROM pg_attribute WHERE attrelid=to_regclass($1) AND attnum>0 AND NOT attisdropped`, "public."+table.name).Scan(&columns); e != nil || columns != table.columns {
+			t.Fatal("declared role column profile differs from its actual table", table.name, e)
+		}
+	}
+	// Immutable initialization provenance has an independent SQL boundary.
+	p := provisionInput(t, r)
+	if _, e = r.db.ProvisionRefresh(ctx, p); e != nil {
+		t.Fatal(e)
+	}
+	for _, statement := range []string{`UPDATE public.refresh_initializations SET baseline='changed'`, `DELETE FROM public.refresh_initializations`} {
+		tx, e := r.raw.Begin()
+		if e != nil {
+			t.Fatal(e)
+		}
+		_, e = tx.Exec(statement)
+		tx.Rollback()
+		if e == nil {
+			t.Fatal("raw SQL rewrote immutable initialization provenance")
+		}
+	}
+	if _, e = r.raw.Exec(`ALTER TABLE public.refresh_initializations DROP COLUMN baseline`); e != nil {
+		t.Fatal(e)
+	}
+	changed, e := schemaColumns(ctx, r.raw)
+	if e != nil || reflect.DeepEqual(want, changed) {
+		t.Fatal("missing initialization provenance was invisible", e)
+	}
+	if _, e = r.db.ProvisionRefresh(ctx, p); e == nil {
+		t.Fatal("missing initialization provenance became runtime bootstrap")
+	}
+	for _, role := range []RefreshRoleProfile{
+		{}, {Database: "db", Operator: "same", Runtime: "same"}, {Database: "db", Operator: strings.Repeat("x", 64), Runtime: "runtime"}, {Database: "db", Operator: "operator", Runtime: "nul\x00role"},
+	} {
+		if _, e := role.SQL(); !errors.Is(e, refresh.ErrPolicy) {
+			t.Fatal("unqualified SQL role identity accepted", e)
+		}
+	}
+}
 
 func provisionInput(t *testing.T, r mirrorRig) RefreshProvision {
 	t.Helper()
