@@ -77,7 +77,12 @@ single-point-of-failure: confusing a missing accounting row with known zero woul
 
 ## Read first and pickup
 
-Read actual /36, /52 and /54 source, the canonical schema, native attempt accounting, library-first and Go engineering. Genuinely consume the qualified source and record immutable revisions before coding. Recheck migration numbering and current claims; append to the same manifest. Missing canonical source is NEEDS_CONTEXT, never permission to copy SeedRefresh or create a second initializer. No full40,41 or workflow-execution prerequisite is introduced.
+Read actual /36, /52 and /54 source, the canonical schema, native attempt accounting, library-first and Go engineering. Genuinely consume the qualified source and record immutable revisions before coding. Recheck migration numbering and current claims; append to the same manifest. Missing canonical source is NEEDS_CONTEXT, never permission to copy SeedRefresh or create a second initializer. No full40,41 or workflow-execution prerequisite is introduced. A supported canonical
+pickup may genuinely consume qualified immutable54 feature source before its mainline
+merge or acceptance; it must contain the actual current migrations, codec, constructor
+and guards, not an authoring-only port. Core R2 provisioning can then proceed locally.
+Final joined delivery consumes the completed qualified native/SQL owners and retains all
+publication, independent verification and activation gates.
 
 ## Human decision
 

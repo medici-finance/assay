@@ -243,7 +243,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 37 | [Scoped forge mirror with persisted freshness, coverage and polling repair](brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md) | 7 | L | todo | — | — |
 | 38 | [Forge event adapter, feedback observations and durable reevaluation demand](brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md) | 8 | L | todo | — | — |
 | 39 | [Typed forge service contract and scoped client SDK](brief-39-typed-forge-service-contract-and-scoped-client-sdk.md) | 3 | M | todo | — | — |
-| 40 | [Authenticated forge serving and role executor custody](brief-40-authenticated-forge-serving-and-role-executor-custody.md) | 6 | L | todo | — | — |
+| 40 | [Authenticated forge serving and role executor custody](brief-40-authenticated-forge-serving-and-role-executor-custody.md) | 9 | L | todo | — | — |
 | 41 | [Write-through forge receipts and read-after-write projection](brief-41-write-through-forge-receipts-and-read-after-write-projection.md) | 8 | L | todo | — | — |
 | 42 | [SHA-bound source queries and immutable result caching](brief-42-sha-bound-source-queries-and-immutable-result-caching.md) | 7 | L | todo | — | — |
 | 43 | [Incremental forge indexes and dependency-aware invalidation](brief-43-incremental-forge-indexes-and-dependency-aware-invalidation.md) | 8 | M | todo | — | — |
@@ -763,16 +763,6 @@ neither every remaining forge read nor the parent contribution.
 Explicit token inputs and host separation remain until /77's migration. /18 remains
 partial and retains every original acceptance row and remaining read/CI obligation.
 
-## Shared-cache read-through — 3 November 2026
-
-Cold or insufficient admitted queries fill inside the shared read owner; clients need no
-provider fallback. Equivalent misses and failures coalesce. Bounded failure-cache cooldown
-returns explicit unavailable or permitted stale coverage, then one eligible retry can
-recover. The [architecture contract](../../proposals/non-ci-architecture/22-forge-service-and-source-queries.md)
-and /37, /39, /40, /42, /43 and /45 carry the source, client, authorization and served-fault
-acceptance. Every prior Class/Command pair remains; no persistent service or activation is
-claimed by this requirements amendment.
-
 ## Read-only PostgreSQL persistence split — 3 November 2026
 
 The durable read critical path is canonical PostgreSQL foundation graph-execution/36 →
@@ -828,7 +818,7 @@ brief, provider walker, local quota owner or execution prerequisite is introduce
 |---|---|---|---|
 | 5 | 53 native attempt/retry metadata | Genuine published50 and repaired51 APIs; no invented working-tree port | Actual native leaf and typed flow; stateful test authority only |
 | 6 | 54 canonical SQL Gate and joined fixture | Actual53 plus52 and repaired51, using36's same ledger/harness | Real PostgreSQL generations/budgets/atomic completion and synthetic native requests |
-| Parent | Full37 acceptance and existing service/cutover path | Its unchanged complete dependency/risk graph | Retention, remaining joined row23 conditions, authenticated serving and activation remain owed |
+| Parent | Full37 acceptance and existing service/cutover path | Its complete dependency/risk graph plus the explicit54 precursor ordering | Retention, remaining joined row23 conditions, authenticated serving and activation remain owed |
 
 Critical path for this bounded implementation is `50 + repaired51 → 53`, then
 `36 → 52` together with `53 + repaired51 → 54`. Authoring54 can run while53 is built;
@@ -838,6 +828,33 @@ separate Requirements-qualified backoff; SQL design must consume its actual repa
 Absent/unreadable/unknown shared usage or retry metadata holds. No default allowance is
 created on restart, and no source-response total can retroactively bound HTTP work.
 All original23 full37 and13 fullGE19 Verify Class/Command pairs and gates remain intact.
+
+## Shared-cache read-through — 3 November 2026
+
+Cold or insufficient admitted queries fill inside the shared read owner; clients need no
+provider fallback. Equivalent misses and failures coalesce. Bounded failure-cache cooldown
+returns explicit unavailable or permitted stale coverage, then one eligible retry can
+recover. The [architecture contract](../../proposals/non-ci-architecture/22-forge-service-and-source-queries.md)
+and /37, /39, /40, /42, /43 and /45 carry the source, client, authorization and served-fault
+acceptance. Every prior Class/Command pair remains; no persistent service or activation is
+claimed by this requirements amendment.
+
+### Authoring review reconciliation — 4 November 2026
+
+Current main includes the read-through requirements amendment and the generated49
+implementation witness. The current51,53 and54 contract texts are adopted from their
+qualified feature revisions; adoption does not place runtime code or acceptance on main.
+The explicit `54 → 37` dependency now orders the full parent behind the bounded source,
+coordinator, Store and Gate contributions, preserving every other parent prerequisite.
+Later full37 integration consumes those owners rather than dispatching a second mapper
+or SQL Gate concurrently.
+
+The ordinary PostgreSQL-less desk shards may report only an explicitly unqualified
+outer joined-test skip when no DSN is supplied. Qualifying54 evidence remains in the
+declared PostgreSQL workflow: nonempty explicit DSN, strict canonical fixture and exact
+named joined-test PASS are required. Missing, malformed, unreachable or skipped qualifying
+fixtures fail; this does not relax foundation/Store qualification.
+
 
 ## Read-only profile and serving continuation — 4 November 2026
 
