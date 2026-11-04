@@ -215,6 +215,22 @@ func validateProjection(r Response, q Request) error {
 	if *p.Schema != "issue-projection-v1" || !reviewScope(p.Requested, p.Admitted, q.Scope) {
 		return ErrScope
 	}
+	if p.Collection.Start.IsZero() || p.Collection.End.IsZero() || p.Collection.Start.After(*p.Collection.End) || !text(*p.To, 256, true) {
+		return invalid()
+	}
+	populations := map[mirror.RepositoryID]bool{}
+	for _, input := range p.Inputs {
+		repo := reviewRepository(input.Repository)
+		if !member(q.Scope, repo) || *input.Count < 0 || !reviewProvenance(input.Input, p.Collection) {
+			return invalid()
+		}
+		populations[repo] = true
+	}
+	// Projection rows can be selected and include positive closed reads. Their
+	// counts are not a second computation of the source population's count.
+	if len(populations) != len(q.Scope.Repositories) {
+		return invalid()
+	}
 	switch *p.Projection {
 	case "full", "work-ready", "intake", "inbox":
 	default:

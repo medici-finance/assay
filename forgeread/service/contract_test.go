@@ -78,14 +78,19 @@ func TestForgeServiceContractCompatibility(t *testing.T) {
 	t.Run("closed", func(t *testing.T) {
 		raw := string(fixture(t, "request-source.json"))
 		for name, bad := range map[string]string{
-			"schema":    strings.Replace(raw, "forge-service-v1", "forge-service-v9", 1),
-			"operation": strings.Replace(raw, "file-at", "arbitrary-command", 1),
-			"role":      strings.Replace(raw, `"operation":`, `"role":"admin","operation":`, 1),
-			"url":       strings.Replace(raw, `"operation":`, `"url":"https://other.example/","operation":`, 1),
-			"duplicate": strings.Replace(raw, `"id":`, `"id":"other","id":`, 1),
-			"case":      strings.Replace(raw, `"schema":`, `"Schema":`, 1),
-			"trailing":  raw + "{}",
-			"bound":     strings.Repeat(" ", service.MaxMessageBytes) + raw,
+			"missing-default-scalar": strings.Replace(raw, `,
+    "representedActor": ""`, "", 1),
+			"missing-nullable":     strings.Replace(raw, `"effect": null,`, "", 1),
+			"null-default-scalar":  strings.Replace(raw, `"representedActor": ""`, `"representedActor": null`, 1),
+			"null-optional-source": strings.Replace(raw, `"other": ""`, `"other": null`, 1),
+			"schema":               strings.Replace(raw, "forge-service-v1", "forge-service-v9", 1),
+			"operation":            strings.Replace(raw, "file-at", "arbitrary-command", 1),
+			"role":                 strings.Replace(raw, `"operation":`, `"role":"admin","operation":`, 1),
+			"url":                  strings.Replace(raw, `"operation":`, `"url":"https://other.example/","operation":`, 1),
+			"duplicate":            strings.Replace(raw, `"id":`, `"id":"other","id":`, 1),
+			"case":                 strings.Replace(raw, `"schema":`, `"Schema":`, 1),
+			"trailing":             raw + "{}",
+			"bound":                strings.Repeat(" ", service.MaxMessageBytes) + raw,
 		} {
 			t.Run(name, func(t *testing.T) {
 				if _, err := service.DecodeRequest([]byte(bad)); err == nil {
@@ -123,6 +128,22 @@ func TestForgeServiceContractCompatibility(t *testing.T) {
 		frozen, err := forgeread.NewFrozenReader(res).OpenIssues(context.Background(), []string{"example/project", "example/missing"})
 		if err != nil || len(frozen.Issues) != 1 || len(frozen.Unavailable) != 1 || frozen.Unavailable[0].Class != forgeread.ClassMissing {
 			t.Fatal("legacy frozen missing became empty", err)
+		}
+		q := literalRequest(t)
+		r := literalResponse(t, q)
+		q.Operation = service.MirrorQuery
+		q.Source = nil
+		q.Mirror = &service.MirrorRequest{Kind: mirror.Issues, MaxAgeMS: 60000}
+		r.Operation = q.Operation
+		r.Source = nil
+		r.Issues = &forgeread.IssuesEnvelope{Schema: forgeread.EnvelopeSchema, Kind: forgeread.IssuesKind, Partial: []forgeread.Unavailable{}, Repos: []forgeread.RepoIssues{{Repo: q.Repository.Path, Issues: []forgeread.Issue{{Number: 1, State: "open"}}}}}
+		wire, e := service.EncodeResponse(r, q)
+		if e != nil {
+			t.Fatal("minimal legacy row refused", e)
+		}
+		got, e := service.DecodeResponse(wire, q)
+		if e != nil || got.Issues.Repos[0].Issues[0].Number != 1 || got.Issues.Repos[0].Issues[0].AuthorLogin != "" {
+			t.Fatal("legacy omitempty behavior changed", e)
 		}
 		if _, err := forgeread.ParseIssuesEnvelope([]byte(`{"schema":999,"kind":"issues","repos":[],"partial":[]}`), nil); !errors.Is(err, forgeread.ErrUnsupportedSchema) {
 			t.Fatal("unknown legacy schema accepted")
@@ -199,6 +220,21 @@ func checkCanonicalMirrorKinds(t *testing.T) {
 						t.Fatalf("canonical mirror transport changed: %v", err)
 					}
 					if !empty {
+						if decoded.Mirror.Records[0].BodyKnown || decoded.Mirror.Records[0].Labels != nil {
+							t.Fatal("unknown body/collection became known empty")
+						}
+						known := mirror.CloneSnapshot(snapshot)
+						known.Records[0].BodyKnown = true
+						known.Records[0].Labels = []string{}
+						r.Mirror = &known
+						wire, e := service.EncodeResponse(r, q)
+						if e != nil {
+							t.Fatal(e)
+						}
+						withEmpty, e := service.DecodeResponse(wire, q)
+						if e != nil || !withEmpty.Mirror.Records[0].BodyKnown || withEmpty.Mirror.Records[0].Body != "" || withEmpty.Mirror.Records[0].Labels == nil || len(withEmpty.Mirror.Records[0].Labels) != 0 {
+							t.Fatal("known-empty body/collection lost", e)
+						}
 						for _, badKind := range []string{"change", "issue", "pull-request", "merge-request"} {
 							if badKind == rowKind {
 								continue

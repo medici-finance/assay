@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 4
+version: 5
 id: a2814dbf-4d0c-4cef-bfc6-aceaf50dd255
 authored: 2026-10-14 by forge-service authoring
 sources:
@@ -29,18 +29,18 @@ exec-tier: strong
 exec-tier-why: Cross-component identity, privacy, concurrency and failure semantics require design judgment and negative controls.
 domain: complicated
 consumers:
-  - "forgeread/service/: follow-up forge-neutral/39"
-  - "forgeread/client/: follow-up forge-neutral/39"
-  - "forgeread/testdata/service/: follow-up forge-neutral/39"
+  - "forgeread/service/: fixed-here (pure transport DTOs and validation)"
+  - "forgeread/client/: fixed-here (explicit admitted transport only)"
+  - "forgeread/testdata/service/: fixed-here (independent literals and qualified producer captures)"
   - "spec/forge-service-v1.md: follow-up forge-neutral/39"
   - "schemas/forge-service-v1.json: follow-up forge-neutral/39"
-  - "docs/forge-service.md: follow-up forge-neutral/39"
-  - "docs/library-first.md: follow-up forge-neutral/39"
-  - "docs/contracts.md: follow-up forge-neutral/39"
-  - "changelog/forge-service-contract.md: follow-up forge-neutral/39"
+  - "docs/forge-service.md: fixed-here"
+  - "docs/library-first.md: fixed-here"
+  - "docs/contracts.md: fixed-here"
+  - "changelog/forge-service-contract.md: fixed-here"
   - "statusgen/evaluation/: out-of-scope (existing domain evaluation meaning preserved)"
   - "plugins/assay/skills/: out-of-scope (no caller wired to an unshipped service)"
-  - "forgeread/service/reviewmapping_test.go: follow-up forge-neutral/39"
+  - "forgeread/service/reviewmapping_test.go: fixed-here"
 ---
 
 # Brief 39 — Typed forge service contract and scoped client SDK
@@ -75,6 +75,7 @@ at the named seam; no user-home or out-of-repo configuration is edited.
 facts:
 - forgeread is a dependency-free module. Its root OpenIssues/Result and OfflineReader remain the supported current surface; service packages are new deliverables.
 - Source pickup checked 2026-11-03 at main `214b4c8308b3cc57beed91feccf45e6a03f2eecd`. The existing mirror identity is provider, host, repository path and object kind/number; a PR and MR are not interchangeable. Service/client packages remain absent at this pin.
+- Mirror producer pickup: actual published mapper PR 5406 at `2677323c9bdf81aad1a1e3b4ad4407e0703ee25c`, genuinely merged through `442a1145a5a04cb2b80b8764106bb77f80904ca3`. Its existing mirror DTOs preserve BodyKnown and nil-versus-known-empty collections; the service imports those actual types. This source pickup grants no predecessor lifecycle acceptance, serving or activation.
 - The review-observation predecessor has delivered source: [merged contract PR 3593](https://github.com/medici-finance/assay/pull/3593), merge `790003516c1fb4ea99d0a6d5eb6e67e9123b3c2a`. Current definitions are `tools/desk/internal/reviewflow/observation.go`, `tools/desk/internal/reviewflow/selection.go` and `spec/review-observation-v1.md` at the main pin above; the current files, including subsequent amendments, govern pickup.
 - The predecessor's [own-login named design approval](https://github.com/medici-finance/assay/issues/4521#issuecomment-6615602021) approves DR-desk-tools-39 only. Independent implementation verification and lifecycle acceptance remain pending. Source availability and this design ruling do not assert those transitions or satisfy this brief's separate wire/privacy acceptance. No dependency, gate, Task or Verify obligation is removed.
 - deskkit is internal to tools/desk. Exporting a giant interface or importing it from a separate module is not a reuse solution.

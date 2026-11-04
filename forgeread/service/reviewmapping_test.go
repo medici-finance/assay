@@ -18,6 +18,7 @@ import (
 
 // regression: class service-review-wire
 func TestReviewServiceMapping(t *testing.T) {
+	t.Run("issue-projection", checkIssueProjectionMapping)
 	var cases []struct {
 		Case        string          `json:"case"`
 		Observation json.RawMessage `json:"observation"`
@@ -115,4 +116,72 @@ func TestReviewServiceMapping(t *testing.T) {
 			})
 		}
 	})
+}
+
+func checkIssueProjectionMapping(t *testing.T) {
+	var literal operationCase
+	for _, tc := range operationCases(t) {
+		if tc.Case == "issue-projection" {
+			literal = tc
+		}
+	}
+	q, err := service.DecodeRequest(literal.Request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		b, _ := io.ReadAll(io.LimitReader(req.Body, service.MaxMessageBytes+1))
+		got, e := service.DecodeRequest(b)
+		if e != nil || got.Operation != service.IssueProjection || !service.SameScope(got.Scope, q.Scope) {
+			w.WriteHeader(403)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(literal.Response)
+	}))
+	defer server.Close()
+	c, err := client.New(client.Config{Endpoint: server.URL, Transport: server.Client().Transport, Scope: q.Scope, Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, report, err := c.Do(context.Background(), q)
+	if err != nil || out.Projection == nil || len(out.Projection.Rows) != 6 || len(out.Projection.Quarantined) != 1 || report.TransportAttempts != 1 {
+		t.Fatal("literal projection client flow lost", err)
+	}
+	encoded, err := service.EncodeResponse(out, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameJSON(t, encoded, literal.Response)
+	for _, tc := range []struct {
+		name   string
+		mutate func(*service.IssueProjectionEnvelope)
+	}{
+		{"incomplete", func(p *service.IssueProjectionEnvelope) { *p.Inputs[0].Input.Complete = false }},
+		{"missing-population", func(p *service.IssueProjectionEnvelope) { p.Inputs = []service.ReviewPopulation{} }},
+		{"negative-population", func(p *service.IssueProjectionEnvelope) { *p.Inputs[0].Count = -1 }},
+		{"stale-input", func(p *service.IssueProjectionEnvelope) { *p.Inputs[0].Input.Freshness = "stale" }},
+		{"foreign-input", func(p *service.IssueProjectionEnvelope) { *p.Inputs[0].Repository.Host = "other.example" }},
+		{"backward-collection", func(p *service.IssueProjectionEnvelope) { *p.Collection.End = p.Collection.Start.Add(-time.Second) }},
+		{"future-input", func(p *service.IssueProjectionEnvelope) {
+			*p.Inputs[0].Input.ObservedAt = p.Collection.End.Add(time.Second)
+		}},
+		{"missing-false", func(p *service.IssueProjectionEnvelope) { p.Rows[0].EscalationUnverifiable = nil }},
+		{"duplicate-row", func(p *service.IssueProjectionEnvelope) { p.Rows[1].Number = p.Rows[0].Number }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var bad service.Response
+			if err := json.Unmarshal(literal.Response, &bad); err != nil {
+				t.Fatal(err)
+			}
+			tc.mutate(bad.Projection)
+			raw, err := json.Marshal(bad)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := service.DecodeResponse(raw, q); err == nil {
+				t.Fatal("unqualified projection accepted")
+			}
+		})
+	}
 }

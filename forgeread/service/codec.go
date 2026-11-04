@@ -69,17 +69,31 @@ func decode(data []byte, target any) error {
 	}
 	return nil
 }
+func wireField(f reflect.StructField) (name string, required, ok bool) {
+	if f.PkgPath != "" {
+		return "", false, false
+	}
+	parts := strings.Split(f.Tag.Get("json"), ",")
+	name = parts[0]
+	if name == "-" {
+		return "", false, false
+	}
+	if name == "" {
+		name = f.Name
+	}
+	required = true
+	for _, option := range parts[1:] {
+		if option == "omitempty" {
+			required = false
+		}
+	}
+	return name, required, true
+}
 func fieldType(t reflect.Type, name string) (reflect.Type, bool) {
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if f.PkgPath != "" {
-			continue
-		}
-		wire := strings.Split(f.Tag.Get("json"), ",")[0]
-		if wire == "" {
-			wire = f.Name
-		}
-		if wire != "-" && name == wire {
+		wire, _, ok := wireField(f)
+		if ok && name == wire {
 			return f.Type, true
 		}
 	}
@@ -89,6 +103,7 @@ func closedTokens(d *json.Decoder, t reflect.Type, depth int) error {
 	if depth > 32 {
 		return ErrInvalid
 	}
+	nullable := t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Map || t.Kind() == reflect.Interface
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
@@ -98,6 +113,9 @@ func closedTokens(d *json.Decoder, t reflect.Type, depth int) error {
 	}
 	delim, aggregate := v.(json.Delim)
 	if !aggregate {
+		if v == nil && !nullable {
+			return ErrInvalid
+		}
 		return nil // The standard typed decoder checks the scalar's actual type.
 	}
 	if t == reflect.TypeFor[time.Time]() {
@@ -130,6 +148,14 @@ func closedTokens(d *json.Decoder, t reflect.Type, depth int) error {
 			}
 			if err := closedTokens(d, child, depth+1); err != nil {
 				return err
+			}
+		}
+		if t.Kind() == reflect.Struct {
+			for i := 0; i < t.NumField(); i++ {
+				name, required, ok := wireField(t.Field(i))
+				if ok && required && !seen[name] {
+					return ErrInvalid
+				}
 			}
 		}
 	case '[':

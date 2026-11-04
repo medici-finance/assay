@@ -1,0 +1,1 @@
+- Add bounded forge-service-v1 data envelopes and a separately imported scoped HTTP client over an explicitly admitted transport. Preserve review/projection producer meanings, source identity, unknown states and distinct effect/projection outcomes; serving and activation remain separately gated.
