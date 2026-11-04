@@ -18,13 +18,14 @@ func runCapturingStderr(t *testing.T, fn func() int) (int, string) {
 	}
 	old := os.Stderr
 	os.Stderr = w
+	// Restored by defer, so a panic in fn never leaves stderr redirected for later tests.
+	defer func() { os.Stderr = old }()
 	done := make(chan string, 1)
 	go func() {
 		b, _ := io.ReadAll(r)
 		done <- string(b)
 	}()
 	code := fn()
-	os.Stderr = old
 	_ = w.Close()
 	return code, <-done
 }

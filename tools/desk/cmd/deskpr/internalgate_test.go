@@ -33,7 +33,6 @@ func captureStdoutPR(t *testing.T, fn func()) string {
 	defer func() { os.Stdout = old }()
 	fn()
 	_ = w.Close()
-	os.Stdout = old
 	return <-done
 }
 
@@ -103,7 +102,7 @@ func TestRemoteCheckStalePublicEntry(t *testing.T) {
 			if wantErr == nil || !strings.Contains(stderr, wantErr.Error()) {
 				t.Fatalf("--check-remote refusal is not the gate's own text\nwant: %v\ngot:  %s", wantErr, stderr)
 			}
-			if !strings.Contains(stderr, repo+":internal") || !strings.Contains(stderr, "had no :internal token") {
+			if !strings.Contains(stderr, repo+":internal") || !strings.Contains(stderr, "if this :public entry was written before it existed") {
 				t.Fatalf("refusal must name the :internal replacement and the entry's history; got:\n%s", stderr)
 			}
 

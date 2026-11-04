@@ -120,6 +120,9 @@ func TestUnchangedToolOnly(t *testing.T) {
 		// The file "tool" has the label "tool" but is a file input: it must fire, not hold.
 		{"file named tool only", stubReader{rev: map[string]string{"file:tool": "rev2", "tool": "tool-v1"}},
 			InputsChanged, "changed tool"},
+		// Both change: the shared label is shown as each key, never "tool, tool".
+		{"file named tool and tool", stubReader{rev: map[string]string{"file:tool": "rev2", "tool": "tool-v2"}},
+			InputsChanged, "changed file:tool, tool"},
 	}
 	fileNamedTool := recRIC(map[string]string{"file:tool": "rev1", "tool": "tool-v1"})
 	for _, c := range cases {
