@@ -32,7 +32,9 @@
       "observedAt": "2026-11-03T12:00:00Z"
     },
     "observation": null,
-    "executor": null
+    "executor": null,
+    "retryAt": null,
+    "cached": null
   },
   "mirror": null,
   "issues": null,

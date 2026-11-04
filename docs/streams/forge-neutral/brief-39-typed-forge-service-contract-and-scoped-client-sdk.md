@@ -3,7 +3,7 @@ brief: assay:assay:forge-neutral:39
 title: "Typed forge service contract and scoped client SDK"
 why: "The mirror and the desk write paths lack a shared caller contract for scoped queries, operation receipts and read-after-write visibility. A small typed contract lets both clients use the same meanings without importing credentials or the entire desk module."
 wave: 3
-depends: ["desk-tools/39"]
+depends: ["desk-tools/39", "forge-neutral/51"]
 unblocks: ["forge-neutral/40", "forge-neutral/42", "cell-api/01"]
 effort: M
 gate: human
@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 5
+version: 6
 id: a2814dbf-4d0c-4cef-bfc6-aceaf50dd255
 authored: 2026-10-14 by forge-service authoring
 sources:
@@ -167,6 +167,31 @@ no private consumer is a prerequisite.
 This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
 obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
 authoring change claims no implementation or operational adoption.
+
+## Cache-advice wire pickup — 4 November 2026
+
+Consume the actually published canonical mirror evaluator from forge-neutral/51 before
+final qualification; no alternate planner, snapshot store or validation callback is added.
+Source availability permits bounded offline implementation independently of predecessor
+lifecycle/acceptance, with every existing gate retained. This is an actual pure API source
+prerequisite, not a dependency on write execution or an activated cache.
+
+Metadata gains explicit nullable retryAt and cached fields. Retry advice copies only a
+qualified gate-owned retry time and never causes SDK retry, provider access or replay.
+CachedObservation contains original mirror.Coverage, trusted EvaluatedAt and nullable
+AgeMS: floor elapsed milliseconds since original LastComplete when known/representable.
+Preserve original coverage/provenance; evaluation does not advance or re-stamp it.
+Only selected MirrorQuery Older/Unavailable may carry cached metadata, without rows.
+Older remains a failed minimum-token comparison; cached freshness is independent.
+Plain unavailable remains unknown/null; qualified cached unavailable is unfulfilled with
+original qualified freshness/source when available. Permission carries no retry, cached,
+provenance, tokens, counts or diagnostic data; complete success carries no hold metadata.
+Retry advice is limited to unfulfilled reads/receipt lookup, never create effects.
+
+The existing HTTP fixture flow additionally qualifies server-side cold fill, explicit
+cooldown/unknown-age metadata, and zero client source/credential fallback. Fixture server
+state is wire/client support only: actual R2 SQL/authenticated serving belongs to its later
+owners and full parent qualification. All original Task and Verify Class/Commands remain.
 
 ## Interface contract
 

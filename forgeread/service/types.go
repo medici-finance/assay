@@ -123,14 +123,24 @@ type Provenance struct {
 	Revision   string    `json:"revision"`
 	ObservedAt time.Time `json:"observedAt"`
 }
+
+// CachedObservation carries original owned-snapshot coverage and descriptive age.
+// It grants no freshness, permission or retry authority and contains no rows.
+type CachedObservation struct {
+	Coverage    mirror.Coverage `json:"coverage"`
+	EvaluatedAt time.Time       `json:"evaluatedAt"`
+	AgeMS       *int64          `json:"ageMs"`
+}
 type Metadata struct {
-	State       State         `json:"state"`
-	Reason      mirror.Reason `json:"reason"`
-	Complete    *bool         `json:"complete"`
-	Freshness   string        `json:"freshness"`
-	Source      *Provenance   `json:"source"`
-	Observation *Token        `json:"observation"`
-	Executor    *mirror.Actor `json:"executor"`
+	State       State              `json:"state"`
+	Reason      mirror.Reason      `json:"reason"`
+	Complete    *bool              `json:"complete"`
+	Freshness   string             `json:"freshness"`
+	RetryAt     *time.Time         `json:"retryAt"`
+	Cached      *CachedObservation `json:"cached"`
+	Source      *Provenance        `json:"source"`
+	Observation *Token             `json:"observation"`
+	Executor    *mirror.Actor      `json:"executor"`
 }
 
 type ProviderOutcome string
