@@ -156,7 +156,8 @@ var getwd = os.Getwd
 // role's App installation token for the effective origin slug. Production binds it to
 // deskkit.GitHubRoleTokenForDestinations (per-OWNER installation tokens, read from the 0600 file
 // the role already owns): the credential helper (credentialSupply) answers the GitHub App-token
-// username, so this transport speaks only GitHub, and the resolver REFUSES — before any token is
+// username, so this transport speaks only GitHub (a GitLab-served `fetch --as` never reaches it:
+// it takes checkoutGitRead below, #5028), and the resolver REFUSES — before any token is
 // minted or read — a repo whose roster entry names another forge, rather than minting a GitHub App
 // token and offering it to that forge's host (#1573).
 //
@@ -176,6 +177,23 @@ var getwd = os.Getwd
 // it was read from, and an error — and the token value is never placed in that error, exactly
 // as the real resolver guarantees.
 var roleTokenForRepo = deskkit.GitHubRoleTokenForDestinations
+
+// checkoutGitRead is the seam for `fetch --as` on a GitLab-served repo (#5028). Production binds
+// it to deskkit.CheckoutGitRead: the session-role check, the forge agreement check, the GitLab
+// instance host/port binding, and the credential itself through deskkit.ResolveRoleCredential —
+// the role's provisioned gitlab-<role>.token, never minted, never a GitHub App token.
+var checkoutGitRead = deskkit.CheckoutGitRead
+
+// servedByGitLab reports whether the forge map resolves repo to GitLab: ASSAY_REPO_FORGES first,
+// then the origin host through the unambiguous well-known table (deskkit.ForgeKindForRepoRemote).
+// Only a positive GitLab answer takes fetch's GitLab arm. GitHub, and a forge nothing resolves,
+// keep the GitHub arm, whose host binding still refuses any origin not on github.com — so a forge
+// nobody recognises is refused (exit 5) exactly as before.
+func servedByGitLab(repo, originURL string) bool {
+	owner, name, _ := strings.Cut(repo, "/")
+	res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, originURL)
+	return err == nil && res.Kind == deskkit.ForgeGitLab
+}
 
 // transportDestinations returns every URL `git fetch origin` (push=false) or `git push origin`
 // (push=true) uses for origin, AS GIT ITSELF RESOLVES THEM: `git remote get-url [--push] --all
@@ -511,7 +529,23 @@ func cmdFetch(args []string) (err error) {
 	// argv or the audit line. fetch is not an outward WRITE (it takes no rate limit), so --as
 	// only adds the credential.
 	var auth transport.AuthMethod
-	if *asRole != "" {
+	if *asRole != "" && servedByGitLab(repo, originURL) {
+		// GitLab arm (#5028): the forge map says GitLab, so the credential is the role's
+		// provisioned GitLab custody token, read through deskkit.ResolveRoleCredential by
+		// CheckoutGitRead. That binding also refuses, before any token is read, an origin that is
+		// not plain https on the configured GitLab instance's host and port (GITLAB_API_BASE),
+		// and could-not-checks an unconfigured instance rather than defaulting to gitlab.com. It
+		// pairs the token with GitLab's git username ("oauth2"). The URL it bound is the same
+		// remote.origin.url the gate above decided on; a disagreement is refused, never fetched.
+		endpoint, gerr := checkoutGitRead(dir, repo, *asRole)
+		if gerr != nil {
+			return gerr
+		}
+		if endpoint.URL != originURL {
+			return deskkit.Refused("refused: the GitLab credential was bound to a different origin URL than the one the repo gate decided on")
+		}
+		auth = endpoint.Auth
+	} else if *asRole != "" {
 		token, _, terr := roleTokenForRepo(*asRole, repo, []string{originURL})
 		if terr != nil {
 			return terr // Unverifiable (exit 6), naming the path searched, never the token
