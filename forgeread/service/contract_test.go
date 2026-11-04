@@ -56,6 +56,7 @@ func sameJSON(t *testing.T, a, b []byte) {
 // regression: class service-wire
 func TestForgeServiceContractCompatibility(t *testing.T) {
 	t.Run("canonical-mirror-kinds", checkCanonicalMirrorKinds)
+	t.Run("wire-utf8", checkWireUTF8)
 	t.Run("literal-operations", checkLiteralOperations)
 	t.Run("response-refusals", checkResponseRefusals)
 	t.Run("progress-shape", checkProgressShape)

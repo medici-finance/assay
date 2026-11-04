@@ -43,12 +43,55 @@ func DecodeResponse(data []byte, q Request) (Response, error) {
 	return r, nil
 }
 func encode(v any) ([]byte, error) {
+	// encoding/json replaces invalid UTF-8 in strings. Refuse before marshaling
+	// so provider facts are never silently changed; byte content stays opaque.
+	if !wireUTF8(reflect.ValueOf(v)) {
+		return nil, ErrInvalid
+	}
 	b, err := json.Marshal(v)
 	if err != nil || len(b) > MaxMessageBytes {
 		return nil, ErrInvalid
 	}
 	return b, nil
 }
+
+// wireUTF8 checks exported wire text only. It neither normalizes domain values
+// nor changes nil/known-empty collections or binary content.
+func wireUTF8(v reflect.Value) bool {
+	if !v.IsValid() {
+		return true
+	}
+	switch v.Kind() {
+	case reflect.String:
+		return utf8.ValidString(v.String())
+	case reflect.Pointer, reflect.Interface:
+		return v.IsNil() || wireUTF8(v.Elem())
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			if _, _, ok := wireField(v.Type().Field(i)); ok && !wireUTF8(v.Field(i)) {
+				return false
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		if v.Type().Elem().Kind() == reflect.Uint8 {
+			return true
+		}
+		for i := 0; i < v.Len(); i++ {
+			if !wireUTF8(v.Index(i)) {
+				return false
+			}
+		}
+	case reflect.Map:
+		entries := v.MapRange()
+		for entries.Next() {
+			if !wireUTF8(entries.Key()) || !wireUTF8(entries.Value()) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func decode(data []byte, target any) error {
 	if len(data) == 0 || len(data) > MaxMessageBytes || !utf8.Valid(data) {
 		return ErrInvalid
