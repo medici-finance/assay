@@ -33,12 +33,12 @@ exec-tier: strong
 exec-tier-why: "Concurrency, cancellation, admission epochs and a partial nil-error source result cross independent boundaries; a process-local coalescer can appear correct while separate coordinators stampede."
 domain: complicated
 consumers:
-  - "forgeread/refresh/: follow-up forge-neutral/51 (coordinator and typed gate port only)"
-  - "forgeread/mirror/query.go, forgeread/mirror/kernel_test.go: follow-up forge-neutral/51 (canonical guarded snapshot acquisition and explicit-time evaluation; no transport or custody)"
-  - "forgeread/README.md, docs/contracts.md, changelog/mirror-read-through-coordinator.md: follow-up forge-neutral/51"
-  - "tools/forge-import-check/, tools/desk/internal/regression/mirrorimports_test.go, tools/desk/internal/deskkit/citrigger_test.go: follow-up forge-neutral/51 (closed-target checker reuse and existing CI reader)"
-  - "workflow/store/: follow-up forge-neutral/54 (canonical R2 refresh-gate adapter; no implementation here)"
-  - "tools/desk/internal/deskkit/: follow-up forge-neutral/54 (durable joined fixture; source-only mapper remains50/53)"
+  - "forgeread/refresh/: fixed-here (coordinator and typed gate port only)"
+  - "forgeread/mirror/query.go, forgeread/mirror/kernel_test.go: fixed-here (canonical guarded snapshot acquisition and explicit-time evaluation; no transport or custody)"
+  - "forgeread/README.md, docs/contracts.md, changelog/mirror-read-through-coordinator.md: fixed-here"
+  - "tools/forge-import-check/, tools/desk/internal/regression/mirrorimports_test.go, tools/desk/internal/deskkit/citrigger_test.go: fixed-here (closed-target checker reuse and existing CI reader)"
+  - "workflow/store/: follow-up forge-neutral/54 (one R2-owned production refresh-gate adapter and persistence integration; no implementation here)"
+  - "tools/desk/internal/deskkit/: follow-up forge-neutral/54 (joined mapper, admitted composition and durable flow; source-only mapper contribution remains separate)"
   - "forgeread/service/, forgeread/client/: follow-up forge-neutral/39 (wire contract stays separate)"
   - "tools/desk/internal/forgeservice/: follow-up forge-neutral/40 (authentication, remote serving and executor custody stay separate)"
   - "statusgen/: out-of-scope (no subpackage import, evaluator change or caller cutover)"
@@ -51,14 +51,14 @@ consumers:
 files:
 - `forgeread/mirror/query.go`
 - `forgeread/mirror/kernel_test.go`
-- `forgeread/refresh/types.go` (planned)
-- `forgeread/refresh/gate.go` (planned)
-- `forgeread/refresh/coordinator.go` (planned)
-- `forgeread/refresh/coordinator_test.go` (planned)
-- `forgeread/refresh/boundary_test.go` (planned)
+- `forgeread/refresh/types.go`
+- `forgeread/refresh/gate.go`
+- `forgeread/refresh/coordinator.go`
+- `forgeread/refresh/coordinator_test.go`
+- `forgeread/refresh/boundary_test.go`
 - `forgeread/README.md`
 - `docs/contracts.md`
-- `changelog/mirror-read-through-coordinator.md` (planned)
+- `changelog/mirror-read-through-coordinator.md`
 - `tools/forge-import-check/check_env_imports.go`
 - `tools/forge-import-check/check_env_imports_test.go`
 - `tools/desk/internal/regression/mirrorimports_test.go`
@@ -190,7 +190,7 @@ Named tests exercise the delivered coordinator and kernel through explicit synth
 | 7 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshGateFence$' ./refresh/... > "$out" && grep -F -- '--- PASS: TestRefreshGateFence ' "$out")` | named PASS; missing/unreachable gate causes held/unavailable and zero Source calls, with no local fallback. Fixture takeover rejects stale owner's Apply/completion even with unchanged snapshot version; unknown completion re-queries rather than replaying blindly. Mutate production bypass of gate ownership or fallback; named test fails. Late same-fill waiters cannot poison recovered generation/version; independent generation and actual snapshot-version controls refuse stale outcomes. Real SQL atomicity is explicitly not credited. |
 | 8 | check:ci +dereference +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshBoundary$' ./refresh/... > "$out" && grep -F -- '--- PASS: TestRefreshBoundary ' "$out" && GOWORK=off go test -count=1 ./...)` | named PASS and module suite PASS; actual production dependency closure has no HTTP, SQL, process, credential or external-module access, and row12 independently reuses the shared environment-import checker for direct decoded os/syscall imports; root imports no subpackage and pure mirror never imports refresh. A planted forbidden import is rejected; useful injected gate/source controls remain. Rows 2 and 7 independently reject a process-local production gate/fallback. |
 | 9 | check:ci | `cd forgeread && GOWORK=off go test -race -count=1 ./refresh/...` | exit 0; all named coordinator cases pass under race; no owned work/blocked waiter leaks at teardown. |
-| 10 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/51 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | Pre-merge on the implementing branch: exit 0; actual follow-up forge-neutral/51 edits corroborate, deferred routing proves no producer use, and unchecked remains unchecked. Before post-merge verification, bind this row to the independently established immutable mainline delivery and its first parent with --delivery and --base. A branch-relative check on merged main is never a pass. Authoring claims no implementation delivery. |
+| 10 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/51 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | Pre-merge on the implementing branch: exit 0; actual fixed-here edits corroborate, deferred routing proves no producer use, and unchecked remains unchecked. Before post-merge verification, bind this row to the independently established immutable mainline delivery and its first parent with --delivery and --base. A branch-relative check on merged main is never a pass. Authoring claims no implementation delivery. |
 | 11 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshReleaseAuthority$' ./refresh/... > "$out" && grep -F -- '--- PASS: TestRefreshReleaseAuthority ' "$out")` | named PASS; deterministic Store.Read revokes caller, repository admission or access epoch after the initial check. Fresh, joined and completion returns expose zero rows. Gate Leave then independently revokes admission/caller/epoch or expires the deadline; final release still returns zero rows. Observer/Leave callbacks that advance trusted time past MaxAge cannot remain fulfilled; canonical pure evaluation validates/ages detached snapshots without I/O or authorization. Mutate post-I/O release checks independently and the named controls fail. |
 | 12 | check:ci +dereference +mutation | `GOWORK=off GOPROXY=off GOTOOLCHAIN=local go run tools/forge-import-check/check_env_imports.go forgeread/refresh` | exit 0; output is 0; the existing closed-target checker scans refresh. Existing mirror/events and arbitrary-target refusals remain; compiler-valid raw/escaped forbidden imports planted independently in refresh are rejected by the actual always-on checker fixture suite. No arbitrary target or environment access is admitted. |
 
