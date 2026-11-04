@@ -94,7 +94,7 @@ func Run(ctx context.Context, op string, in io.Reader, out io.Writer) error {
 		if e != nil {
 			return e
 		}
-		r, e := auth.RequestControl(ctx, "/authority-private/control.sock", c.MaxFrameBytes, c.IOTimeout, c.Command)
+		r, e := auth.RequestControl(ctx, "/authority-control/control.sock", c.MaxFrameBytes, c.IOTimeout, c.Command)
 		if e != nil {
 			return e
 		}
@@ -145,7 +145,7 @@ func producer(ctx context.Context, in io.Reader) error {
 		}
 		return r, e
 	}
-	private, e := open("/authority-private")
+	private, e := open("/authority-control")
 	if e != nil {
 		return e
 	}
@@ -279,7 +279,7 @@ func deniedSocket(ctx context.Context, path string) bool {
 	return e != nil && r.Version == 0 && r.TupleDigest == ""
 }
 func probe(ctx context.Context, p ProbeCall) ProbeResult {
-	r := ProbeResult{PrivateAbsent: absent("/authority-private/producer-present"), ControlDenied: deniedSocket(ctx, "/authority-private/control.sock"), EngineAbsent: absent("/var/run/docker.sock") && absent("/run/docker.sock"), CurrentReadOnly: readonly("/authority-current"), BootstrapReadOnly: readonly("/authority-bootstrap"), GrantReadOnly: readonly("/authority-grant"), OtherGrantDenied: true, CurrentControlDenied: deniedSocket(ctx, "/authority-current/current.sock"), GrantControlDenied: deniedSocket(ctx, "/authority-grant/grant.sock"), BootstrapAbsent: absent("/authority-bootstrap/bootstrap.json"), CurrentAbsent: absent("/authority-current/current.sock"), GrantAbsent: absent("/authority-grant/grant.sock")}
+	r := ProbeResult{PrivateAbsent: absent("/authority-control/producer-present"), ControlDenied: deniedSocket(ctx, "/authority-control/control.sock"), EngineAbsent: absent("/var/run/docker.sock") && absent("/run/docker.sock"), CurrentReadOnly: readonly("/authority-current"), BootstrapReadOnly: readonly("/authority-bootstrap"), GrantReadOnly: readonly("/authority-grant"), OtherGrantDenied: true, CurrentControlDenied: deniedSocket(ctx, "/authority-current/current.sock"), GrantControlDenied: deniedSocket(ctx, "/authority-grant/grant.sock"), BootstrapAbsent: absent("/authority-bootstrap/bootstrap.json"), CurrentAbsent: absent("/authority-current/current.sock"), GrantAbsent: absent("/authority-grant/grant.sock")}
 	if p.OtherSlot >= 0 && p.OtherSlot < cellcontainer.AuthorityGrantSlots {
 		conn, e := (&net.Dialer{Timeout: 250 * time.Millisecond}).DialContext(ctx, "unix", filepath.Join(cellcontainer.AuthorityGrantTarget(p.OtherSlot), "grant.sock"))
 		r.OtherGrantDenied = e != nil
@@ -295,10 +295,10 @@ func probe(ctx context.Context, p ProbeCall) ProbeResult {
 		}
 	}
 	socket := func(path string) bool { st, e := os.Lstat(path); return e == nil && st.Mode()&os.ModeSocket != 0 }
-	r.ControlSocketPresent = socket("/authority-private/control.sock")
+	r.ControlSocketPresent = socket("/authority-control/control.sock")
 	r.CurrentSocketPresent = socket("/authority-current/current.sock")
-	r.GatePresent = !absent("/authority-private/live.lock")
-	if b, e := os.ReadFile("/authority-private/fixture-stage"); e == nil && len(b) < 32 {
+	r.GatePresent = !absent("/authority-control/live.lock")
+	if b, e := os.ReadFile("/authority-control/fixture-stage"); e == nil && len(b) < 32 {
 		r.FixtureStage = string(b)
 	}
 	return r

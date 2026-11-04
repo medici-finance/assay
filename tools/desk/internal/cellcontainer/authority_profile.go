@@ -89,7 +89,7 @@ func NewAuthorityPlan(c AuthorityConfig) (*AuthorityPlan, error) {
 	var mounts []Mount
 	switch c.Kind {
 	case celllaunch.AuthorityProducer:
-		mounts = []Mount{{"volume", c.Volumes.Private, "/authority-private", false}, {"volume", c.Volumes.Current, "/authority-current", false}, {"volume", c.Volumes.Bootstrap, "/authority-bootstrap", false}}
+		mounts = []Mount{{"volume", c.Volumes.Private, "/authority-control", false}, {"volume", c.Volumes.Current, "/authority-current", false}, {"volume", c.Volumes.Bootstrap, "/authority-bootstrap", false}}
 	case celllaunch.AuthorityQuery:
 		mounts = []Mount{{"volume", c.Volumes.Current, "/authority-current", true}, {"volume", c.Volumes.Bootstrap, "/authority-bootstrap", true}}
 	case celllaunch.AuthorityCaller, celllaunch.AuthoritySibling:

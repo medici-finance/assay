@@ -14,7 +14,7 @@ func authorityConfig(kind celllaunch.AuthorityKind) AuthorityConfig {
 	if kind == celllaunch.AuthorityProducer {
 		role = ""
 	}
-	return AuthorityConfig{Schema: AuthorityProfileSchema, Host: "unix:///fixture-owned.sock", Engine: "fixture-engine", DockerBinary: "/fixture/docker", DockerConfig: "/fixture/empty-cli", Image: "sha256:" + strings.Repeat("a", 64), Platform: "linux/arm64", Owner: "fixture-owner", Cell: "fixture-cell", LaunchID: "caller-a", Role: role, Kind: kind, Volumes: AuthorityVolumes{Private: "fixture-private", Current: "fixture-current", Bootstrap: "fixture-bootstrap", Grants: []AuthorityGrantVolume{{LaunchID: "caller-a", Volume: "fixture-grant-a", Slot: 0}, {LaunchID: "caller-b", Volume: "fixture-grant-b", Slot: 1}}}, Limits: AuthorityRuntimeLimits{Pids: 32, Memory: 64 * 1024 * 1024, NanoCPUs: 500_000_000, TmpfsBytes: 8 * 1024 * 1024, CommandTimeout: 20 * time.Second, StopGrace: 2 * time.Second}}
+	return AuthorityConfig{Schema: AuthorityProfileSchema, Host: "unix:///fixture-owned.sock", Engine: "fixture-engine", DockerBinary: "/fixture/docker", DockerConfig: "/fixture/empty-cli", Image: "sha256:" + strings.Repeat("a", 64), Platform: "linux/arm64", Owner: "fixture-owner", Cell: "fixture-cell", LaunchID: "caller-a", Role: role, Kind: kind, Volumes: AuthorityVolumes{Private: "fixture-control", Current: "fixture-current", Bootstrap: "fixture-bootstrap", Grants: []AuthorityGrantVolume{{LaunchID: "caller-a", Volume: "fixture-grant-a", Slot: 0}, {LaunchID: "caller-b", Volume: "fixture-grant-b", Slot: 1}}}, Limits: AuthorityRuntimeLimits{Pids: 32, Memory: 64 * 1024 * 1024, NanoCPUs: 500_000_000, TmpfsBytes: 8 * 1024 * 1024, CommandTimeout: 20 * time.Second, StopGrace: 2 * time.Second}}
 }
 
 // This is a runtime-validator fixture, not a real engine or custody witness.
@@ -58,7 +58,7 @@ func TestAuthorityProfileMountMatrix(t *testing.T) {
 			want := map[string]bool{}
 			switch kind {
 			case celllaunch.AuthorityProducer:
-				want = map[string]bool{"/authority-private": false, "/authority-current": false, "/authority-bootstrap": false, "/authority-grants/slot-0": false, "/authority-grants/slot-1": false}
+				want = map[string]bool{"/authority-control": false, "/authority-current": false, "/authority-bootstrap": false, "/authority-grants/slot-0": false, "/authority-grants/slot-1": false}
 			case celllaunch.AuthorityQuery:
 				want = map[string]bool{"/authority-current": true, "/authority-bootstrap": true}
 			case celllaunch.AuthorityCaller:
@@ -103,9 +103,9 @@ func TestAuthorityProfileRefusals(t *testing.T) {
 		{"network", func(s *Inspection) { s.HostConfig.NetworkMode = "host" }},
 		{"capability", func(s *Inspection) { s.HostConfig.CapAdd = []string{"SYS_ADMIN"} }},
 		{"pid-sharing", func(s *Inspection) { s.HostConfig.PidMode = "host" }},
-		{"extra-private-mount", func(s *Inspection) {
+		{"extra-control-mount", func(s *Inspection) {
 			s.Mounts = append(s.Mounts, s.Mounts[0])
-			s.Mounts[len(s.Mounts)-1].Destination = "/authority-private"
+			s.Mounts[len(s.Mounts)-1].Destination = "/authority-control"
 		}},
 		{"writable-current", func(s *Inspection) { s.Mounts[0].RW = true }},
 	} {

@@ -12,7 +12,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/celllaunch"
 )
 
-// OperatorCommand is accepted only on the producer-private channel. It cannot
+// OperatorCommand is accepted only on the operator-only control channel. It cannot
 // carry signing material, an arbitrary mint payload, a role or a source selector.
 // Registration observations must be freshly obtained by the protected launcher.
 type OperatorCommand struct {

@@ -38,7 +38,7 @@ func TestForgeLocalAuthorityCustody(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	volumes := cellcontainer.AuthorityVolumes{Private: input.Owner + "-private", Current: input.Owner + "-current", Bootstrap: input.Owner + "-bootstrap", Grants: []cellcontainer.AuthorityGrantVolume{{LaunchID: "caller-a", Volume: input.Owner + "-grant-a", Slot: 0}, {LaunchID: "caller-b", Volume: input.Owner + "-grant-b", Slot: 1}}}
+	volumes := cellcontainer.AuthorityVolumes{Private: input.Owner + "-control", Current: input.Owner + "-current", Bootstrap: input.Owner + "-bootstrap", Grants: []cellcontainer.AuthorityGrantVolume{{LaunchID: "caller-a", Volume: input.Owner + "-grant-a", Slot: 0}, {LaunchID: "caller-b", Volume: input.Owner + "-grant-b", Slot: 1}}}
 	limits := cellcontainer.AuthorityRuntimeLimits{Pids: 32, Memory: 64 * 1024 * 1024, NanoCPUs: 500000000, TmpfsBytes: 8 * 1024 * 1024, CommandTimeout: 20 * time.Second, StopGrace: 2 * time.Second}
 	type instance struct {
 		runtime *cellcontainer.AuthorityRuntime

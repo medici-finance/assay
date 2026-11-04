@@ -673,3 +673,11 @@ or concurrent startup before touching an existing listener. No old process is
 signalled, no stale-holder recovery is enabled, and no saved bootstrap/registry
 becomes current. Re-established channels start with no ready authority; explicit
 fresh initialization, rotation and caller registration remain required.
+
+The fixed protected-control mount is `/authority-control`. This public component
+name describes its purpose; `Private`/`PrivateVolume` remain semantic API fields
+for the producer-only resource. Source-bound image seeds, producer/control paths,
+profile mount checks and cleanup use this exact namespace together. Fixture volume
+names use the corresponding control suffix. This is an actual namespace change,
+not an alternate representation of another identifier; every isolation and leaked
+control-volume refusal remains required and must be requalified on the new image.

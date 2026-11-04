@@ -116,7 +116,7 @@ def main():
         if current.stdout.decode().strip()!=engine["ID"]:raise RuntimeError("HOLD: selected engine changed")
         if packet:
             resources=[("container","assay-authority-"+packet["Cell"]+"-"+suffix) for suffix in ["producer","caller-caller-a","caller-caller-b","query-query","sibling-sibling"]]
-            resources += [("volume",packet["Owner"]+"-"+suffix) for suffix in ["private","current","bootstrap","grant-a","grant-b"]]
+            resources += [("volume",packet["Owner"]+"-"+suffix) for suffix in ["control","current","bootstrap","grant-a","grant-b"]]
             for index,(kind,name) in enumerate(resources):
                 absent=dc("cleanup-resource-"+str(index),[kind,"inspect",name],accept=True)
                 if absent.returncode==0 or b"no such" not in absent.stderr.lower():raise RuntimeError("HOLD: exact owned fixture residue or uncertain absence")

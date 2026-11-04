@@ -47,7 +47,7 @@ FAULTS = [
     fault("reserved-control-capacity", "control.go", '"control.sock", c.controlSlots,', '"control.sock", c.dataSlots,', "ControlCapacity", "slow data slots blocked private revocation"),
     ("channel-live-gate", [("channels.go", "if ctx.Err() != nil || !c.liveGate() {", "if ctx.Err() != nil {"), ("channels.go", " || !c.liveGate() {", " {")], "ChannelRestart/changed-gate", "changed gate unlinked retained channel"),
     fault("channel-duplicate", "channels.go", "if c.channels[key] {", "if false {", "ChannelRestart/duplicate", "duplicate"),
-    fault("private-volume-leak", "../../cellcontainer/authority_profile.go", 'mounts = []Mount{{"volume", c.Volumes.Current, "/authority-current", true}, {"volume", c.Volumes.Bootstrap, "/authority-bootstrap", true}}', 'mounts = []Mount{{"volume", c.Volumes.Current, "/authority-current", true}, {"volume", c.Volumes.Bootstrap, "/authority-bootstrap", true}, {"volume", c.Volumes.Private, "/authority-private", true}}', "Custody", "independent role escaped signer/control/other-launch containment"),
+    fault("private-volume-leak", "../../cellcontainer/authority_profile.go", 'mounts = []Mount{{"volume", c.Volumes.Current, "/authority-current", true}, {"volume", c.Volumes.Bootstrap, "/authority-bootstrap", true}}', 'mounts = []Mount{{"volume", c.Volumes.Current, "/authority-current", true}, {"volume", c.Volumes.Bootstrap, "/authority-bootstrap", true}, {"volume", c.Volumes.Private, "/authority-control", true}}', "Custody", "independent role escaped signer/control/other-launch containment"),
 ]
 
 def main():
