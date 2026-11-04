@@ -65,9 +65,10 @@ type envForge struct {
 
 	// issueNums / trustNums record the `edit --relink-to` issue reads (#5020); ops records the
 	// order of the two PR writes ("comment", "edit") so the audit-before-edit rule is assertable.
-	issueNums []int
-	trustNums []int
-	ops       []string
+	issueNums  []int
+	issueKinds []deskkit.TargetKind
+	trustNums  []int
+	ops        []string
 }
 
 // synthGH renders the forge ops this fake recorded as canonical gh-shaped pseudo-argvs, so the
@@ -300,12 +301,39 @@ func installFakeForge(t *testing.T) *envForge {
 }
 
 // GetIssueTyped answers `edit --relink-to`'s read of the NEW issue (#5020) from FAKEGH_ISSUE_*:
-// MISSING=1 is a 404, PR=1 a pull request, STATE (default open), AUTHOR login:id (default the
-// fixture's trusted ada:2001), LABELS (comma-separated), TITLE and BODY.
+// MISSING=1 is a 404, READ_FAIL=1 an HTTP 502, NIL=1 a (nil, nil) answer, PR=1 a pull request,
+// STATE (default open), AUTHOR login:id (default the fixture's trusted ada:2001), LABELS
+// (comma-separated), TITLE and BODY.
+//
+// The kind mismatch matches deskkit.GitHubForge.GetIssueTyped exactly: GitHub numbers issues
+// and PRs in one sequence, and its typed read answers a PR number read as an issue (or an
+// issue number read as a change) with a could-not-check error, never a record.
 func (f *envForge) GetIssueTyped(repo deskkit.ForgeRepo, number int, kind deskkit.TargetKind) (*deskkit.Issue, error) {
 	f.issueNums = append(f.issueNums, number)
+	f.issueKinds = append(f.issueKinds, kind)
 	if os.Getenv("FAKEGH_ISSUE_MISSING") == "1" {
 		return nil, &deskkit.ForgeAPIError{Status: 404}
+	}
+	if os.Getenv("FAKEGH_ISSUE_READ_FAIL") == "1" {
+		return nil, deskkit.Unverifiable("HTTP 502: Bad Gateway", nil)
+	}
+	if os.Getenv("FAKEGH_ISSUE_NIL") == "1" {
+		return nil, nil
+	}
+	isPR := os.Getenv("FAKEGH_ISSUE_PR") == "1"
+	// FAKEGH_ISSUE_UNTYPED=1 models a backend whose issue read does not refuse a pull
+	// request number but returns the record flagged IsPullRequest (the GitHub backend
+	// refuses it, as above); it pins the gate's own IsPullRequest check.
+	untyped := os.Getenv("FAKEGH_ISSUE_UNTYPED") == "1"
+	if isPR && kind == deskkit.TargetIssue && !untyped {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d is a pull request, not an issue — state the kind you mean (--kind pr)",
+			repo.Slug(), number), nil)
+	}
+	if !isPR && kind == deskkit.TargetChange {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d is an issue, not a pull request — state the kind you mean (--kind issue)",
+			repo.Slug(), number), nil)
 	}
 	state := os.Getenv("FAKEGH_ISSUE_STATE")
 	if state == "" {
@@ -325,7 +353,7 @@ func (f *envForge) GetIssueTyped(repo deskkit.ForgeRepo, number int, kind deskki
 		Number:        number,
 		State:         state,
 		Author:        deskkit.Account{Login: login, ID: id},
-		IsPullRequest: os.Getenv("FAKEGH_ISSUE_PR") == "1",
+		IsPullRequest: isPR,
 		Title:         os.Getenv("FAKEGH_ISSUE_TITLE"),
 		Body:          os.Getenv("FAKEGH_ISSUE_BODY"),
 		Labels:        labels,
@@ -334,14 +362,14 @@ func (f *envForge) GetIssueTyped(repo deskkit.ForgeRepo, number int, kind deskki
 
 // IssueTrustEvents answers the trust gate's read: FAKEGH_ISSUE_BLESSED=1 serves a blessing
 // comment from the fixture's blessing authority after the last body edit; TRUST_FAIL=1 an
-// unreadable record.
+// unreadable record; TRUST_INCOMPLETE=1 a record the forge could not page to the end.
 func (f *envForge) IssueTrustEvents(repo deskkit.ForgeRepo, number int) (*deskkit.TrustPayload, error) {
 	f.trustNums = append(f.trustNums, number)
 	if os.Getenv("FAKEGH_ISSUE_TRUST_FAIL") == "1" {
 		return nil, deskkit.Unverifiable("HTTP 502: Bad Gateway", nil)
 	}
 	edited := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	tp := &deskkit.TrustPayload{BodyEdited: edited, Complete: true}
+	tp := &deskkit.TrustPayload{BodyEdited: edited, Complete: os.Getenv("FAKEGH_ISSUE_TRUST_INCOMPLETE") != "1"}
 	if os.Getenv("FAKEGH_ISSUE_BLESSED") == "1" {
 		tp.Events = []deskkit.ContentEvent{{Author: "ada", AuthorID: 2001, CreatedAt: edited.Add(time.Hour)}}
 	}

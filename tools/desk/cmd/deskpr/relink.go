@@ -7,14 +7,18 @@ package main
 // current one is refused. The relink flags are the explicit, audited exception the ruling on
 // #5020 (option A) asked for, and they are deliberately narrow:
 //
-//   - all three flags are given together or not at all; a partial set, a non-positive number,
-//     or an empty or multi-line reason refuses (exit 5) before any forge call;
+//   - all three flags are given together or not at all; a partial set (a blank reason given
+//     alone included), a non-positive number, or an empty, multi-line, over-long or
+//     render-garbling reason refuses (exit 5) before any forge call;
+//   - the PR must be this checkout's own (on its head branch, or HEAD at its head commit): the
+//     other-checkout admission for `--pr N` rests on the link being fixed, so it never relinks;
 //   - only an Issue-kind link in this repository moves (`Issue: #N` / `Fixes: #N`), never a
 //     Brief:, Authors:, Cross-repo-brief: or owner/repo#N link;
 //   - --relink-from must be the number the PR's CURRENT trailer carries, and the replacement
 //     body's trailer must carry --relink-to, so the flag names exactly the edge that moves;
 //   - `Issue: #N` -> `Fixes: #N` (or back) on the same number goes through the same flag;
-//   - the NEW issue must exist, be an open issue (not a PR), pass the trust gate (a trusted
+//   - the NEW issue must exist, be an open issue (a pull request number refuses, exit 5), pass
+//     the trust gate (a trusted
 //     author or a current blessing; an unreadable trust record is exit 6), and carry no human
 //     gate or decision gate — so the flag cannot re-point a PR at work the desk may not act on;
 //   - the change and its reason are recorded in an audit comment on the PR, posted BEFORE the
@@ -24,6 +28,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/reviewflow"
@@ -38,13 +43,15 @@ type relinkReq struct {
 	reason   string
 }
 
-// parseRelink validates the three --relink-* flags offline. It returns (nil, nil) when none was
-// given, so an edit without the flag runs exactly as before.
-func parseRelink(from, to int, reason string) (*relinkReq, error) {
-	reason = strings.TrimSpace(reason)
-	if from == 0 && to == 0 && reason == "" {
+// parseRelink validates the three --relink-* flags offline. given reports whether any of them
+// appeared on the command line; when none did it returns (nil, nil), so an edit without the
+// flag runs exactly as before. A flag given with a blank value is a partial set, not an
+// absent one.
+func parseRelink(given bool, from, to int, reason string) (*relinkReq, error) {
+	if !given {
 		return nil, nil
 	}
+	reason = strings.TrimSpace(reason)
 	var missing []string
 	if from <= 0 {
 		missing = append(missing, "--relink-from N (the issue number the PR's trailer names now)")
@@ -62,10 +69,32 @@ func parseRelink(from, to int, reason string) (*relinkReq, error) {
 	if strings.ContainsAny(reason, "\r\n") {
 		return nil, deskkit.Refused("refused: --relink-reason must be one line — it is recorded verbatim in the audit comment")
 	}
+	if bad := relinkReasonGarble(reason); bad != "" {
+		return nil, deskkit.Refused("refused: --relink-reason carries " + bad + ", which would garble the audit comment " +
+			"it is recorded in — write it as plain text")
+	}
 	if len(reason) > relinkMaxReason {
 		return nil, deskkit.Refused(fmt.Sprintf("refused: --relink-reason is %d bytes; keep it to %d", len(reason), relinkMaxReason))
 	}
 	return &relinkReq{from: from, to: to, reason: reason}, nil
+}
+
+// relinkReasonGarble names the first thing in a reason that could hide or break the rest of
+// the audit comment when rendered: an HTML comment opener, a backtick (the reason renders in a
+// code span), or a control or Unicode line/paragraph separator. "" when the reason is plain.
+func relinkReasonGarble(reason string) string {
+	if strings.Contains(reason, "<!--") {
+		return "an HTML comment opener (<!--)"
+	}
+	if strings.Contains(reason, "`") {
+		return "a backtick"
+	}
+	for _, r := range reason {
+		if r == '\u2028' || r == '\u2029' || unicode.IsControl(r) {
+			return fmt.Sprintf("the control or separator character U+%04X", r)
+		}
+	}
+	return ""
 }
 
 // sameRepoIssue returns the body's trailer when it is an Issue-kind link to an issue in repo.
@@ -111,8 +140,15 @@ func (r *relinkReq) admit(curBody, body []byte, repo string) (oldLink, newLink s
 			"only an Issue: or Fixes: link to an issue in this repository can be corrected", r.from, l))
 	}
 	if cur.Value != strconv.Itoa(r.from) {
-		return "", "", deskkit.Refused(fmt.Sprintf("refused: --relink-from #%d does not match the PR's current trailer `%s` — "+
-			"name the number the PR links now", r.from, cur.IssueLink()))
+		hint := "name the number the PR links now"
+		if nt, ok := sameRepoIssue(body, repo); ok && cur.IssueLink() == nt.IssueLink() {
+			// A re-run after an edit that landed (say its re-review notice failed): the PR
+			// already carries the target link, so the correction is done.
+			hint = "the PR already carries the replacement body's link, so the correction has landed; " +
+				"re-run without --relink-* if the rest of the body still needs editing"
+		}
+		return "", "", deskkit.Refused(fmt.Sprintf("refused: --relink-from #%d does not match the PR's current trailer `%s` — %s",
+			r.from, cur.IssueLink(), hint))
 	}
 	nt, _ := sameRepoIssue(body, repo)
 	oldLink, newLink = cur.IssueLink(), nt.IssueLink()
@@ -127,11 +163,20 @@ func (r *relinkReq) admit(curBody, body []byte, repo string) (oldLink, newLink s
 // it is an open issue (not a PR), its author is trusted or it carries a current blessing (the
 // same trust gate deskpost applies, built from the same deskkit primitives), and it declares no
 // human gate or decision gate. Unreadable is exit 6, never a pass.
+//
+// GitHub numbers issues and pull requests in one sequence, and its typed issue read answers a
+// pull-request number with a could-not-check error rather than a record. So a failed issue
+// read is followed by ONE change-typed read of the same number: only a record that read
+// positively reports as a pull request turns the failure into the exit-5 "is a pull request"
+// refusal. Every other outcome keeps the original read's exit 6.
 func relinkIssueGate(fg deskkit.Forge, fr deskkit.ForgeRepo, n int) error {
 	is, err := fg.GetIssueTyped(fr, n, deskkit.TargetIssue)
 	if err != nil {
 		if deskkit.IsForgeNotFound(err) {
 			return deskkit.Refused(fmt.Sprintf("refused: --relink-to #%d does not exist in %s", n, fr.Slug()))
+		}
+		if ch, cerr := fg.GetIssueTyped(fr, n, deskkit.TargetChange); cerr == nil && ch != nil && ch.IsPullRequest {
+			return deskkit.Refused(fmt.Sprintf("refused: --relink-to #%d is a pull request, not an issue", n))
 		}
 		return deskkit.Unverifiable(fmt.Sprintf("cannot read issue #%d (--relink-to)", n), err)
 	}
@@ -184,11 +229,12 @@ func relinkGated(is *deskkit.Issue) (bool, string) {
 }
 
 // relinkAudit is the audit comment. Its only caller-supplied text is the reason, which has
-// already been through the secret scan and the self-containment scan.
+// already been through the secret scan and the self-containment scan, carries no backtick,
+// HTML comment opener or control character, and renders inside a code span.
 func relinkAudit(oldLink, newLink, reason string) string {
 	return fmt.Sprintf(
 		"Link trailer correction by %s: `%s` → `%s`.\n\n"+
-			"Reason: %s\n\n"+
+			"Reason: `%s`\n\n"+
 			"Posted by `deskpr edit --relink-from/--relink-to/--relink-reason` BEFORE the body edit, so the record "+
 			"exists for every edit that lands. If the PR body still carries `%s`, the edit did not land. The new "+
 			"issue passed the existence, open-state, trust and gate checks.\n",

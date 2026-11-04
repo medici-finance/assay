@@ -53,6 +53,12 @@ func TestRelinkPartialRefuses(t *testing.T) {
 		{"negative from", []string{"--relink-from", "-1", "--relink-to", "78", "--relink-reason", "x"}, "--relink-from N"},
 		{"multi-line reason", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a\nb"}, "must be one line"},
 		{"long reason", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", strings.Repeat("r", 501)}, "keep it to 500"},
+		{"blank reason alone", []string{"--relink-reason", "  "}, "--relink-from N"},
+		{"carriage return", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a\rb"}, "must be one line"},
+		{"comment opener", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a <!-- b"}, "an HTML comment opener"},
+		{"backtick", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a ` b"}, "a backtick"},
+		{"line separator", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a\u2028b"}, "U+2028"},
+		{"next line", []string{"--relink-from", "77", "--relink-to", "78", "--relink-reason", "a\u0085b"}, "U+0085"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bodyPath := relinkSetup(t, "Issue: #77", "Issue: #78")
@@ -82,7 +88,7 @@ func TestRelinkIssueToFixes(t *testing.T) {
 		t.Fatalf("write order = %v, want %v (audit comment, edit, re-review notice)", curForge.ops, want)
 	}
 	audit := curForge.comments[0]
-	for _, want := range []string{"`Issue: #77` → `Fixes: #77`", "Reason: this PR resolves the issue", "BEFORE the body edit"} {
+	for _, want := range []string{"`Issue: #77` → `Fixes: #77`", "Reason: `this PR resolves the issue`", "BEFORE the body edit"} {
 		if !strings.Contains(audit, want) {
 			t.Fatalf("audit comment lacks %q:\n%s", want, audit)
 		}
@@ -102,6 +108,11 @@ func TestRelinkToNewNumber(t *testing.T) {
 	}
 	if !slices.Equal(curForge.issueNums, []int{78}) {
 		t.Fatalf("the gate read issue %v, want the NEW issue [78]", curForge.issueNums)
+	}
+	// The audit comment (and the notice) go to the PR, never to the --relink-to issue.
+	if len(curForge.commentNums) != 2 || curForge.commentNums[0] != curForge.editedNum ||
+		curForge.commentNums[1] != curForge.editedNum {
+		t.Fatalf("comments went to %v, want both on the edited PR #%d", curForge.commentNums, curForge.editedNum)
 	}
 	if curForge.edited == nil || !strings.Contains(curForge.edited.Body, "Fixes: #78") {
 		t.Fatalf("the edit did not land the new link: %+v", curForge.edited)
@@ -193,6 +204,7 @@ func TestRelinkGatedRefuses(t *testing.T) {
 		{"needs-decision", "FAKEGH_ISSUE_LABELS", "bug,needs-decision", "gated (label needs-decision)"},
 		{"gate label", "FAKEGH_ISSUE_LABELS", "gate:human", "gated (label gate:human)"},
 		{"human-only", "FAKEGH_ISSUE_LABELS", "human-only", "gated (label human-only)"},
+		{"security label", "FAKEGH_ISSUE_LABELS", "security", "gated (label security)"},
 		{"title marker", "FAKEGH_ISSUE_TITLE", "[HUMAN GATE] rotate", "gated (title marker"},
 		{"gate line", "FAKEGH_ISSUE_BODY", "text\nGate: human\n", "gated (body line"},
 		{"decision marker", "FAKEGH_ISSUE_BODY", "<!-- decision-gate: s/01 -->", "gated (a decision-gate marker)"},
@@ -275,6 +287,140 @@ func TestRelinkNoChangeRefuses(t *testing.T) {
 		"--relink-from", "77", "--relink-to", "77", "--relink-reason", "x"})
 	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "nothing for --relink-* to correct") {
 		t.Fatalf("err = %v, want exit 5: the flags name no change", err)
+	}
+	assertNoWrites(t)
+}
+
+// regression: #5020
+func TestRelinkEditFailAfterAudit(t *testing.T) {
+	bodyPath := relinkSetup(t, "Issue: #77", "Issue: #78")
+	t.Setenv("FAKEGH_EDIT_FAIL", "1")
+	err := cmdEdit([]string{"--body-file", bodyPath,
+		"--relink-from", "77", "--relink-to", "78", "--relink-reason", "x"})
+	if deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable ||
+		!strings.Contains(err.Error(), "may still carry Issue: #77; check the PR body") {
+		t.Fatalf("err = %v, want exit 6 telling the caller to check which link the PR carries", err)
+	}
+	if want := []string{"comment", "edit"}; !slices.Equal(curForge.ops, want) {
+		t.Fatalf("write order = %v, want %v (the audit, then the failed edit, no notice)", curForge.ops, want)
+	}
+}
+
+// regression: #5020
+func TestRelinkReasonSelfContain(t *testing.T) {
+	work := newPublicFixture(t)
+	withEnv(t, work)
+	t.Setenv("FAKEGH_LIST_HAS_PR", "1")
+	t.Setenv("FAKEGH_PR_BODY", "the original body\nIssue: #77\n")
+	bodyPath := writeTempFile(t, "the corrected body\nIssue: #78\n")
+	err := cmdEdit([]string{"--body-file", bodyPath, "--relink-from", "77", "--relink-to", "78",
+		"--relink-reason", "session fbf250ed-be0d-4832-9ebb-2bff546eebbf found it"})
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "relink reason") {
+		t.Fatalf("err = %v, want the self-containment scan to refuse the relink reason", err)
+	}
+	assertNoWrites(t)
+}
+
+// regression: #5020
+func TestRelinkTrustIncomplete(t *testing.T) {
+	bodyPath := relinkSetup(t, "Issue: #77", "Issue: #78")
+	t.Setenv("FAKEGH_ISSUE_AUTHOR", "mallory:9")
+	t.Setenv("FAKEGH_ISSUE_BLESSED", "1")
+	t.Setenv("FAKEGH_ISSUE_TRUST_INCOMPLETE", "1")
+	err := cmdEdit([]string{"--body-file", bodyPath,
+		"--relink-from", "77", "--relink-to", "78", "--relink-reason", "x"})
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "trust gate") {
+		t.Fatalf("err = %v, want exit 5: a blessing on an incomplete record does not count", err)
+	}
+	assertNoWrites(t)
+}
+
+// regression: #5020
+func TestRelinkIssueUnreadable(t *testing.T) {
+	for _, key := range []string{"FAKEGH_ISSUE_READ_FAIL", "FAKEGH_ISSUE_NIL"} {
+		t.Run(key, func(t *testing.T) {
+			bodyPath := relinkSetup(t, "Issue: #77", "Issue: #78")
+			t.Setenv(key, "1")
+			err := cmdEdit([]string{"--body-file", bodyPath,
+				"--relink-from", "77", "--relink-to", "78", "--relink-reason", "x"})
+			if deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable || !strings.Contains(err.Error(), "#78") {
+				t.Fatalf("err = %v, want exit 6 for an unreadable new issue", err)
+			}
+			assertNoWrites(t)
+		})
+	}
+}
+
+// regression: #5020
+func TestRelinkPRNumberRefuses(t *testing.T) {
+	bodyPath := relinkSetup(t, "Issue: #77", "Issue: #78")
+	t.Setenv("FAKEGH_ISSUE_PR", "1")
+	err := cmdEdit([]string{"--body-file", bodyPath,
+		"--relink-from", "77", "--relink-to", "78", "--relink-reason", "x"})
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "#78 is a pull request") ||
+		strings.Contains(err.Error(), "--kind") {
+		t.Fatalf("err = %v, want exit 5 naming the PR, with no --kind hint deskpr edit cannot take", err)
+	}
+	want := []deskkit.TargetKind{deskkit.TargetIssue, deskkit.TargetChange}
+	if !slices.Equal(curForge.issueKinds, want) {
+		t.Fatalf("reads = %v, want %v (the issue read, then one change read to classify it)", curForge.issueKinds, want)
+	}
+	assertNoWrites(t)
+}
+
+// regression: #5020
+func TestRelinkAuditRowDetail(t *testing.T) {
+	bodyPath := relinkSetup(t, "Issue: #77", "Fixes: #78")
+	if rc := run([]string{"edit", "--body-file", bodyPath,
+		"--relink-from", "77", "--relink-to", "78", "--relink-reason", "x"}); rc != deskkit.ExitOK {
+		t.Fatalf("rc = %d, want 0", rc)
+	}
+	audit := string(auditBytes(t))
+	if !strings.Contains(audit, "(link Issue: #77 -") || !strings.Contains(audit, " Fixes: #78)") {
+		t.Fatalf("the audit row does not record the link change:\n%s", audit)
+	}
+}
+
+// regression: #5020
+func TestRelinkRerunAfterLanding(t *testing.T) {
+	bodyPath := relinkSetup(t, "Fixes: #78", "Fixes: #78")
+	err := cmdEdit([]string{"--body-file", bodyPath,
+		"--relink-from", "77", "--relink-to", "78", "--relink-reason", "x"})
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "the correction has landed") {
+		t.Fatalf("err = %v, want exit 5 saying the correction already landed", err)
+	}
+	assertNoWrites(t)
+}
+
+// regression: #5020
+func TestRelinkOtherCheckout(t *testing.T) {
+	work := newBaseFixture(t)
+	mustGit(t, work, "checkout", "-b", "desk-window", "refs/remotes/origin/main")
+	withEnv(t, work)
+	t.Setenv("FAKEGH_PR_OID", "1111111111111111111111111111111111111111")
+	t.Setenv("FAKEGH_PR_HEAD", "feature/held-elsewhere")
+	t.Setenv("FAKEGH_PR_BODY", "someone else's PR\nIssue: #77\n")
+	bodyPath := writeTempFile(t, "the corrected body\nIssue: #78\n")
+	err := cmdEdit([]string{"--pr", "42", "--body-file", bodyPath,
+		"--relink-from", "77", "--relink-to", "78", "--relink-reason", "x"})
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "only from the PR's own checkout") {
+		t.Fatalf("err = %v, want exit 5: a relink runs only from the PR's own checkout", err)
+	}
+	if len(curForge.issueNums) != 0 {
+		t.Fatalf("the new issue was read before the checkout was admitted: %v", curForge.issueNums)
+	}
+	assertNoWrites(t)
+}
+
+// regression: #5020
+func TestRelinkUntypedPRRecord(t *testing.T) {
+	bodyPath := relinkSetup(t, "Issue: #77", "Issue: #78")
+	t.Setenv("FAKEGH_ISSUE_PR", "1")
+	t.Setenv("FAKEGH_ISSUE_UNTYPED", "1")
+	err := cmdEdit([]string{"--body-file", bodyPath,
+		"--relink-from", "77", "--relink-to", "78", "--relink-reason", "x"})
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "#78 is a pull request") {
+		t.Fatalf("err = %v, want exit 5 when the issue read returns a pull-request record", err)
 	}
 	assertNoWrites(t)
 }

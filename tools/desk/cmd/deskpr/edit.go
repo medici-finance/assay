@@ -100,7 +100,13 @@ func cmdEdit(args []string) (err error) {
 	}
 	// #5020: the link-correction flags are all-or-none, validated before the body is even read
 	// and long before any forge call.
-	rl, rlerr := parseRelink(*relinkFrom, *relinkTo, *relinkReason)
+	relinkGiven := false
+	fs.Visit(func(fl *flag.Flag) {
+		if strings.HasPrefix(fl.Name, "relink-") {
+			relinkGiven = true
+		}
+	})
+	rl, rlerr := parseRelink(relinkGiven, *relinkFrom, *relinkTo, *relinkReason)
 	if rlerr != nil {
 		return rlerr
 	}
@@ -215,7 +221,7 @@ func cmdEdit(args []string) (err error) {
 		return ferr
 	}
 
-	pr, cur, ferr2 := findEditTarget(fg, fr, facts, *prNum)
+	pr, cur, ferr2 := findEditTarget(fg, fr, facts, *prNum, rl != nil)
 	if ferr2 != nil {
 		return ferr2
 	}
@@ -351,7 +357,8 @@ func cmdEdit(args []string) (err error) {
 	if eErr := fg.EditChange(fr, pr.Number, editIn); eErr != nil {
 		if rl != nil {
 			return deskkit.Unverifiable("edit change failed after the link-correction audit comment was posted — the PR "+
-				"still carries "+oldLink+"; re-run to land the correction", eErr)
+				"may still carry "+oldLink+"; check the PR body: if it still carries "+oldLink+", re-run this verb to land "+
+				"the correction; if it already carries "+newLink+", the edit landed and nothing is left to do", eErr)
 		}
 		return deskkit.Unverifiable("edit change failed", eErr)
 	}
@@ -479,7 +486,11 @@ func editActor() string {
 //     immutability then holds fixed — so a desk window can correct a worker's PR, but a
 //     trailer-less PR (a human's, a pre-trailer one) or a fork PR is editable only from its own
 //     checkout.
-func findEditTarget(fg deskkit.Forge, fr deskkit.ForgeRepo, facts *gitFacts, prNum int) (pr, cur *deskkit.PullRequest, err error) {
+//
+// relink (#5020) is true when --relink-* asks to change the link. Rule 2 rests on the link
+// being fixed, so a relink is admitted by rule 1 alone: only the PR's own checkout may move its
+// link.
+func findEditTarget(fg deskkit.Forge, fr deskkit.ForgeRepo, facts *gitFacts, prNum int, relink bool) (pr, cur *deskkit.PullRequest, err error) {
 	if prNum > 0 {
 		cur, terr := fg.GetPullRequest(fr, prNum)
 		if terr != nil {
@@ -498,6 +509,12 @@ func findEditTarget(fg deskkit.Forge, fr deskkit.ForgeRepo, facts *gitFacts, prN
 			deskkit.OwnPRRemote{Number: prNum, State: cur.State, HeadRef: cur.HeadRef, HeadOid: cur.HeadSHA},
 		); oerr == nil {
 			return cur, cur, nil
+		}
+		if relink {
+			return nil, nil, deskkit.Refused(fmt.Sprintf("refused: this worktree is not PR #%d's own (its branch is not "+
+				"the PR's head branch and its HEAD is not the PR's head commit) — --relink-* changes a PR's link, so it "+
+				"runs only from the PR's own checkout, never through the other-checkout admission that rests on the "+
+				"link staying fixed", prNum))
 		}
 		// Rule 2 (#2085): from any other checkout (a desk window, a worktree on a neutral branch
 		// with no commits ahead), the PR must be bound to its work item already — its head branch

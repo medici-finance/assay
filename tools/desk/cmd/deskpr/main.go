@@ -161,18 +161,23 @@ migration deskpr update tells you to perform. Issue: -> Fixes: (or back) is a li
 and is refused; Fixes: -> Closes: on the same issue is not.
 
 The one exception is an explicit link correction (#5020): --relink-from N --relink-to M
---relink-reason TEXT, all three or none (a partial set, a non-positive number, or an empty
-or multi-line reason refuses, exit 5, before any forge call). It moves only an Issue:/Fixes:
+--relink-reason TEXT, all three or none (a partial set, a blank reason given alone
+included, a non-positive number, or a reason that is empty, multi-line, over 500 bytes, or
+carries a backtick, "<!--" or a control or line-separator character refuses, exit 5, before
+any forge call). It runs only from the PR's own checkout (its head branch, or HEAD at its
+head commit); --pr N from any other checkout refuses it. It moves only an Issue:/Fixes:
 link to an issue in this repository, never a Brief:, Authors:, Cross-repo-brief: or
 owner/repo#N link. N must be the number the PR's current trailer carries and the
 replacement body's trailer must carry M; Issue: #N -> Fixes: #N on the same number goes
-through the same flags. Issue M must exist, be an open issue (not a PR), have a trusted
-author or a current blessing (an unreadable trust record is exit 6), and carry no human
+through the same flags. Issue M must exist, be an open issue (a pull request number refuses,
+exit 5; any other unreadable read is exit 6), have a trusted author or a complete record of
+a current blessing (an unreadable trust record is exit 6), and carry no human
 gate (gate:human / human-only / security label, [HUMAN GATE] title, "Gate: human" line)
 and no decision gate (needs-decision label, decision-gate marker). The reason is
 secret- and self-containment-scanned, then recorded with the old and new links in an
 audit comment posted on the PR BEFORE the body edit; if that comment cannot be posted,
-the body is not edited. Because a body edit moves no head SHA,
+the body is not edited, and if the edit fails after it, exit 6 says to check whether the
+PR body carries the old or the new link before re-running. Because a body edit moves no head SHA,
 edit also posts one short comment naming what changed, so a head-keyed review monitor
 has an event to see.
 

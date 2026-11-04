@@ -174,6 +174,90 @@
       "file": "cmd/deskpr/edit.go",
       "old": "\t} else if hadLink && oldLink != newLink {",
       "new": "\t} else if hadLink && false {"
+    },
+    {
+      "name": "a failed edit after the audit gives the generic error, not the which-link advice",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\t\tif rl != nil {\n\t\t\treturn deskkit.Unverifiable(\"edit change failed after",
+      "new": "\t\tif false {\n\t\t\treturn deskkit.Unverifiable(\"edit change failed after"
+    },
+    {
+      "name": "the relink reason skips the self-containment scan",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\tif rl != nil {\n\t\tif serr := deskkit.HandleScanRefusal(",
+      "new": "\tif false {\n\t\tif serr := deskkit.HandleScanRefusal("
+    },
+    {
+      "name": "a blessing on an incomplete trust record counts",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\t\tif tp == nil || !tp.Complete || !deskkit.Blessed(",
+      "new": "\t\tif tp == nil || !deskkit.Blessed("
+    },
+    {
+      "name": "a nil issue record is not refused as unverifiable",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif is == nil {\n\t\treturn deskkit.Unverifiable(",
+      "new": "\tif false {\n\t\treturn deskkit.Unverifiable("
+    },
+    {
+      "name": "the audit-ledger row omits the link change",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\tif rl != nil {\n\t\tac.detail += \" (link \"",
+      "new": "\tif false {\n\t\tac.detail += \" (link \""
+    },
+    {
+      "name": "a pull-request number reads as unverifiable, not refused",
+      "file": "cmd/deskpr/relink.go",
+      "old": "cerr == nil && ch != nil && ch.IsPullRequest {",
+      "new": "false && cerr == nil && ch != nil && ch.IsPullRequest {"
+    },
+    {
+      "name": "a garbling reason is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif bad := relinkReasonGarble(reason); bad != \"\" {",
+      "new": "\tif bad := relinkReasonGarble(reason); false && bad != \"\" {"
+    },
+    {
+      "name": "an HTML comment opener in the reason is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "if strings.Contains(reason, \"<!--\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "a backtick in the reason is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "if strings.Contains(reason, \"`\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "a line or paragraph separator in the reason is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "r == '\\u2028' || r == '\\u2029' || unicode.IsControl(r)",
+      "new": "unicode.IsControl(r)"
+    },
+    {
+      "name": "a relink from another checkout is admitted through rule 2",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\t\tif relink {\n",
+      "new": "\t\tif false {\n"
+    },
+    {
+      "name": "a blank --relink-reason alone is silently ignored",
+      "file": "cmd/deskpr/edit.go",
+      "old": "if strings.HasPrefix(fl.Name, \"relink-\") {",
+      "new": "if strings.HasPrefix(fl.Name, \"relink-\") && fl.Name != \"relink-reason\" {"
+    },
+    {
+      "name": "a re-run after a landed correction is not told it landed",
+      "file": "cmd/deskpr/relink.go",
+      "old": "cur.IssueLink() == nt.IssueLink() {",
+      "new": "false && cur.IssueLink() == nt.IssueLink() {"
+    },
+    {
+      "name": "the reason is not rendered in a code span",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\"Reason: `%s`\\n\\n\"+",
+      "new": "\"Reason: %s\\n\\n\"+"
     }
   ]
 }
