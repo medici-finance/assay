@@ -77,7 +77,7 @@ func TestHeldScopeAnnotatedKeyRefuses(t *testing.T) {
 	rowHdr = strings.Replace(rowHdr, "\n\n**VERIFY", "\n"+annRow("3 (Verify 3)", "—", "HELD — no runner online")+"\n**VERIFY", 1)
 	lastSub := annHeld("3 (Verify 3, negative)") + annEntry("Verification — 2026-10-20", "**VERIFY: PASS**",
 		annRow("1", "0", "ok"), annRow("2", "0", "ok"), annRow("3 (Verify 3, positive)", "0", "ok"))
-	runHeldLayerCases(t, []heldScanCase{
+	runHeldRowCases(t, []heldScanCase{
 		{"annotation names another row", annHeld("3 (Verify 4)") + annLater, true},
 		{"annotation names a date", annHeld("3 (2026-10-07)") + annLater, true},
 		{"two numbers, one other", annHeld("3 (Verify 3, row 4)") + annLater, true},
@@ -97,7 +97,14 @@ func TestHeldScopeAnnotatedKeyRefuses(t *testing.T) {
 			annEntry("Verification — 2026-10-21", "**VERIFY: PASS**", annRow("3 (Verify 3, negative)", "—", "HELD — no runner online")), true},
 		{"exact #4294 id, later bare row held", annHeld("3 (Verify 3, negative)") + strings.Replace(annLater, "| 0 | PASS |", "| — | HELD — no runner online |", 1), true},
 		{"exact #4294 id, row by row only, later not clean", annHeldMisaligned + strings.Replace(annLater, "| 0 | PASS |", "| 0 | same as Run 1 |", 1), true},
-	})
+	},
+		// The hold is only in an earlier entry under a clean, dated last PASS.
+		"annotation names another row", "annotation names a date", "two numbers, one other",
+		"sub-rows of one key in an entry", "bare and annotated in one entry", "two annotations across entries",
+		"lettered sub-row", "nested parentheses", "text after the annotation", "no leading number",
+		"Row header against #", "last entry annotates differently",
+		// verifyflip still refuses this one: row 3 has no witness in the run.
+		"exact #4294 id, later run skipped row 3")
 }
 
 // annObs is a single strict-PASS entry whose row 3 has the given Exit and
@@ -200,7 +207,7 @@ func TestHeldScopeCoverKeyDirection(t *testing.T) {
 		return annEntry("Verification — 2026-10-20", "**VERIFY: PASS**",
 			annRow("1", "0", "ok"), annRow("2", "0", "ok"), annRow(key, "0", "PASS"))
 	}
-	runHeldLayerCases(t, []heldScanCase{
+	runHeldRowCases(t, []heldScanCase{
 		{"later key annotated with a word", annHeld("3") + lastKeyed("3 (negative)"), true},
 		{"later key annotated with several words", annHeld("3") + lastKeyed("3 (positive not run)"), true},
 		{"later key annotated with a hold word", annHeld("3") + lastKeyed("3 (HELD)"), true},
@@ -214,7 +221,10 @@ func TestHeldScopeCoverKeyDirection(t *testing.T) {
 		{"same annotated key, row by row only", annHeldMisaligned + lastKeyed("3 (Verify 3, negative)"), false},
 		{"same annotated key, later row not clean", annHeld("3 (negative)") + strings.Replace(lastKeyed("3 (negative)"),
 			"| 0 | PASS |", "| 0 | PASS (no re-run) |", 1), true},
-	})
+	},
+		// A hold word in the key ("3 (positive not run)", "3 (HELD)") keeps
+		// 3c off, so those two still refuse.
+		"later key annotated with a word", "later key annotated with its own number")
 }
 
 // TestHeldScopeObservedOutputSubject: the words of the Result cell before

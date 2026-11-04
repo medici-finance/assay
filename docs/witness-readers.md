@@ -32,6 +32,7 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `statusgen/evidenceactor.go` | reads informational fields only | identity token and Result cell for attribution and the verifier floor; takes the whole token, never splits on the marker |
 | `statusgen/evidenceshape.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record |
 | `statusgen/failfirst.go` | reads informational fields only | reads the Result, Command or state cells of a witness row through witnessCells, never the revision or marker |
+| `statusgen/heldscope.go` | reads informational fields only | the latest-run held scope (rule 3c) asks only whether each Date/Runner row has a Date and a Runner cell, through verifyflip's flipRowDated; never reads the revision or marker |
 | `statusgen/briefdoc/registers.go` | reads informational fields only | shared reserved-register name declaration, moved from load.go; reads no record, cell or revision and performs no file I/O |
 | `statusgen/main.go` | judges through the library | hands the Runner cell and the record reader to the library; judges nothing itself |
 | `statusgen/outcomessplit.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record |
