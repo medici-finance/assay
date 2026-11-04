@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 8
+version: 9
 id: 2b089f0c-6ce5-4e2f-a5bf-d62842845b29
 authored: 2026-10-14 by forge-service authoring
 sources:
@@ -32,10 +32,10 @@ exec-tier-why: Cross-component identity, privacy, concurrency and failure semant
 domain: complicated
 consumers:
   - "tools/desk/internal/credential/: follow-up forge-neutral/40 (consume /58\u201359 inside the role executor; no second minter/cache)"
-  - "tools/desk/internal/forgeservice/auth/: follow-up forge-neutral/40"
-  - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/40"
+  - "tools/desk/internal/forgeservice/auth/: follow-up forge-neutral/40 (consume57 local read-only producer; remaining write/executor custody only)"
+  - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/40 (consume56 mirror-query handler; remaining executor/effect routes only)"
   - "tools/desk/internal/forgeexecutor/: follow-up forge-neutral/40"
-  - "tools/desk/cmd/forgeserve/: follow-up forge-neutral/40"
+  - "tools/desk/cmd/forgeserve/: follow-up forge-neutral/40 (consume56 read-only query entrypoint; no duplicate query launcher)"
   - "tools/desk/cmd/forge-executor/: follow-up forge-neutral/40"
   - "tools/desk/internal/deskkit/forgeresolve.go: follow-up forge-neutral/40"
   - "tools/desk/internal/deskkit/outboundforge.go: follow-up forge-neutral/40"
