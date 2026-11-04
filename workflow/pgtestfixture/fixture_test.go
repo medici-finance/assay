@@ -10,6 +10,10 @@ import (
 	"github.com/medici-finance/assay/workflow/store"
 )
 
+type seedClock struct{}
+
+func (seedClock) Now() time.Time { return time.Now().UTC() }
+
 type seedAuthority struct{}
 
 func (seedAuthority) Authorize(ctx context.Context, c refresh.Caller, s mirror.Scope) error {
@@ -35,7 +39,7 @@ func TestOwnedRefreshSeed(t *testing.T) {
 		t.Fatal(e)
 	}
 	profile := store.RefreshConfig{SourceID: "source", AdmissionID: "admission-a", AccessEpoch: "access", ConfigEpoch: "config", PolicyClass: "synthetic", PolicyEpoch: "policy", Limits: refresh.Limits{CallerFillsPerWindow: 10, AdmissionFillsPerWindow: 100, FillWindow: time.Hour, MinFreshness: time.Millisecond, MaxFreshness: time.Hour, ActiveFills: 2, QueuedCallers: 10, AdmissionFills: 10, AdmissionWaiters: 100, FailureEntries: 100, WaitTimeout: time.Second, FillTimeout: time.Second, Cooldown: time.Second, FailureTTL: time.Minute, Refresh: mirror.RefreshPolicy{FullInventoryInterval: time.Hour}}, Native: store.NativeLimits{CallerPerWindow: 10, AdmissionPerWindow: 100, SourcePerWindow: 100, PerFill: 10, Concurrent: 5, Reservations: 100, Window: time.Hour}, PollInterval: time.Millisecond}
-	gate, e := db.Refresh(s, profile, seedAuthority{})
+	gate, e := db.Refresh(s, profile, seedAuthority{}, seedClock{})
 	if e != nil {
 		t.Fatal(e)
 	}

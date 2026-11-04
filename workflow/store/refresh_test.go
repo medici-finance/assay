@@ -16,6 +16,10 @@ import (
 	"github.com/medici-finance/assay/forgeread/refresh"
 )
 
+type refreshTestClock struct{}
+
+func (refreshTestClock) Now() time.Time { return time.Now().UTC() }
+
 type refreshTestAuthority struct{}
 
 func (refreshTestAuthority) Authorize(ctx context.Context, c refresh.Caller, s mirror.Scope) error {
@@ -61,7 +65,7 @@ func sqlRefresh(t *testing.T) refreshRig { return sqlRefreshConfig(t, testRefres
 func sqlRefreshConfig(t *testing.T, c RefreshConfig) refreshRig {
 	t.Helper()
 	r := sqlMirror(t)
-	g, e := r.db.Refresh(r.s, c, refreshTestAuthority{})
+	g, e := r.db.Refresh(r.s, c, refreshTestAuthority{}, refreshTestClock{})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -301,7 +305,7 @@ func TestPGRefreshCapacityCancellation(t *testing.T) {
 	s, _ := reopened.Mirror(r.s.limits)
 	cfg := r.cfg
 	cfg.PolicyEpoch = "new-policy"
-	g, _ := reopened.Refresh(s, cfg, refreshTestAuthority{})
+	g, _ := reopened.Refresh(s, cfg, refreshTestAuthority{}, refreshTestClock{})
 	d := r.demand(u.Scope, "caller-b")
 	d.Key.PolicyEpoch = cfg.PolicyEpoch
 	if _, e = g.Acquire(ctx, d); e == nil {
@@ -764,7 +768,7 @@ func checkRefreshCrossAdmissionLock(t *testing.T) {
 	}
 	t.Cleanup(func() { otherDB.Close() })
 	otherStore, _ := otherDB.Mirror(r.s.limits)
-	other, e := otherDB.Refresh(otherStore, bcfg, refreshTestAuthority{})
+	other, e := otherDB.Refresh(otherStore, bcfg, refreshTestAuthority{}, refreshTestClock{})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -894,7 +898,7 @@ func (s *refreshAbsenceStore) Apply(ctx context.Context, a mirror.Admission, u m
 		cfg := testRefreshConfig()
 		cfg.AdmissionID = u.Scope.AdmissionID
 		var err error
-		g, err = s.rig.db.Refresh(s.rig.s, cfg, refreshTestAuthority{})
+		g, err = s.rig.db.Refresh(s.rig.s, cfg, refreshTestAuthority{}, refreshTestClock{})
 		if err != nil {
 			return mirror.Snapshot{}, err
 		}

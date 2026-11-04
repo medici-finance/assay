@@ -388,8 +388,19 @@ func (s *MirrorStore) mirrorTx(ctx context.Context, options *sql.TxOptions) (*sq
 // and joined refresh completion. It prevents a tx-bound read from mixing an old
 // header with concurrently committed records under READ COMMITTED.
 func (s *MirrorStore) lockMirrorHeader(ctx context.Context, tx *sql.Tx, key []byte, scope mirror.Scope) (mirrorHeader, error) {
-	if _, err := tx.ExecContext(ctx, "INSERT INTO public.mirror_scopes(scope_key,provider,host,repository,kind,admission) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING", key, string(scope.Repository.Provider), []byte(scope.Repository.Host), []byte(scope.Repository.Path), string(scope.Kind), []byte(scope.AdmissionID)); err != nil {
+	if _, err := s.lockMirrorVersion(ctx, tx, key, scope); err != nil {
 		return mirrorHeader{}, err
 	}
 	return readMirrorHeader(ctx, tx, key, scope, s.limits.MaxBytes, true)
+}
+
+// lockMirrorVersion acquires only the scope identity/version fence. Held refresh
+// completion uses it without decoding observations or private coverage fields.
+func (s *MirrorStore) lockMirrorVersion(ctx context.Context, tx *sql.Tx, key []byte, scope mirror.Scope) (int64, error) {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO public.mirror_scopes(scope_key,provider,host,repository,kind,admission) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING", key, string(scope.Repository.Provider), []byte(scope.Repository.Host), []byte(scope.Repository.Path), string(scope.Kind), []byte(scope.AdmissionID)); err != nil {
+		return 0, err
+	}
+	var version int64
+	err := tx.QueryRowContext(ctx, `SELECT version FROM public.mirror_scopes WHERE scope_key=$1 FOR UPDATE`, key).Scan(&version)
+	return version, err
 }
