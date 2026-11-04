@@ -57,6 +57,7 @@ func sameJSON(t *testing.T, a, b []byte) {
 func TestForgeServiceContractCompatibility(t *testing.T) {
 	t.Run("canonical-mirror-kinds", checkCanonicalMirrorKinds)
 	t.Run("literal-operations", checkLiteralOperations)
+	t.Run("response-refusals", checkResponseRefusals)
 	q := literalRequest(t)
 	if q.Operation != service.FileAt || q.Repository.Provider != mirror.GitHub || q.Repository.Host != "github.example" || q.Repository.Path != "example/project" || q.Source.Revision != strings.Repeat("a", 40) || q.Source.Path != "readme.txt" {
 		t.Fatal("literal request identity/source changed")
@@ -296,5 +297,48 @@ func checkLiteralOperations(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func checkResponseRefusals(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*service.Response)
+	}{
+		{"source-revision", func(r *service.Response) { r.Source.Revision = strings.Repeat("b", 40) }},
+		{"source-path", func(r *service.Response) { r.Source.Path = "other.txt" }},
+		{"request-id", func(r *service.Response) { r.ID = "other-request" }},
+		{"access-epoch", func(r *service.Response) { r.Scope.AccessEpoch = "other-epoch" }},
+		{"permission-payload", func(r *service.Response) {
+			r.Metadata.State = service.Permission
+			r.Metadata.Reason = mirror.Permission
+		}},
+		{"false-complete", func(r *service.Response) { f := false; r.Metadata.Complete = &f }},
+		{"descendant-call-count", func(r *service.Response) {
+			one := int64(1)
+			r.Measurements = []service.Measurement{{Boundary: "client", Unit: "call", Count: &one}}
+		}},
+		{"unsolicited-link", func(r *service.Response) { r.Diagnostic = &service.DiagnosticLink{Parent: "parent", Link: "link"} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q := literalRequest(t)
+			var r service.Response
+			if e := json.Unmarshal(fixture(t, "response-source.json"), &r); e != nil {
+				t.Fatal(e)
+			}
+			tc.mutate(&r)
+			raw, e := json.Marshal(r)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e := service.DecodeResponse(raw, q); e == nil {
+				t.Fatal("response contract refusal missing")
+			}
+		})
+	}
+	q := literalRequest(t)
+	q.Source.Path = "../escape"
+	if _, err := service.EncodeRequest(q); err == nil {
+		t.Fatal("source path escaped repository")
 	}
 }
