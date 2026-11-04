@@ -54,7 +54,7 @@ def main():
         raise SystemExit("UNQUALIFIED: clean owned linked source worktree required")
     head = command(["git", "rev-parse", "HEAD"])
     archive = subprocess.check_output(["git", "archive", head], cwd=ROOT)
-    out = Path(tempfile.mkdtemp(prefix="authority-controls-"))
+    out = Path(tempfile.mkdtemp(prefix="authority-controls-")).resolve()
     source = out / "source"
     source.mkdir()
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
