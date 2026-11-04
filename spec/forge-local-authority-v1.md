@@ -128,6 +128,15 @@ The local-container candidate separates two narrow per-launch channels:
    request, live producer instance and deadline; no cached read becomes authority.
 
 Their Unix endpoints live in the operator-owned live-instance resource directory.
+The proposed server bootstrap pins that instance's public verification key and
+key reference in its explicit read-only launch profile; a grant cannot replace
+that trust input. A current-read request carries a fresh cryptographic challenge.
+The producer signs a separate domain-specific response binding that challenge,
+the exact presented-grant digest, its live instance, current tuple/revocation
+state and response time/deadline. The verifier checks the pinned key, challenge,
+tuple and explicit current-read lease after I/O. Replaying an earlier response,
+replacing a socket peer or returning a new public key cannot establish authority.
+Rotation makes an old bootstrap hold until explicit trusted re-bootstrap.
 Only the explicitly corresponding container receives the required endpoint mount.
 Neither query nor sibling containers mount the signing location, writer channel,
 operator home, engine socket or arbitrary host directories. The host operator
@@ -150,7 +159,15 @@ no operational launch during implementation qualification.
 
 ## Revocation, rotation, restart and restore
 
-The controller serializes updates and current reads. Revocation or an epoch change
+The controller serializes updates and current reads. It reuses deskkit's existing
+nonblocking exclusive file-lock primitive over a bound protected control-root
+file; lock-holder records are diagnostic only and automatic stale-holder signaling
+is disabled. The descriptor is not inherited by role processes. Before minting or
+answering a current challenge, it must still own the gate and the configured
+root/path must name the same opened filesystem identity. Replacing/restoring the
+lock file therefore makes the old producer hold, rather than allowing two live
+controllers over different inodes. Uncertain identity/ownership refuses.
+Revocation or an epoch change
 invalidates the old tuple; no refresh/verification operation extends its lease.
 The server performs current validation after protected data I/O and at the final
 release boundary, with cancellation/deadline checks after current-source I/O.
@@ -201,9 +218,14 @@ its existing owners. It is not a substitute for local role isolation. A passive
 file/current-source port, a signature roundtrip, socket ownership alone or a fake
 authority is not an eligible alternative.
 
-Hard prerequisites before runtime selection: settle the non-restored live-anchor
-scope, the exact protected channel/current-read authenticity and fencing method,
-the closed existing-container profile extension and supported fixture platform.
+Hard prerequisites before runtime selection: review the proposed live gate,
+pinned bootstrap and challenge-response current-source design; settle the
+non-restored anchor/snapshot scope, the closed existing-container profile
+extension and supported fixture platform. The gate, channel response and launch
+composition are new R3 code; deskkit file locking, existing signing, container
+runtime validation and celllaunch observations are reused unchanged where their
+actual APIs fit. An API/scope mismatch is amended at its existing owner before
+code; neither an arbitrary callback nor a copied implementation is a substitute.
 The current regular Go CI workflow explicitly has no Docker daemon. Passing unit
 CI cannot qualify the proposed containment profile. A separately authorized,
 disposable containment execution environment and actual enforced entrypoint are
