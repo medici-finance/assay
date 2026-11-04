@@ -1354,6 +1354,12 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
 		exitProcess(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
 	}
+	// `statusgen rowread` — the read-only forge lane a Verify row reads through
+	// (rowread.go, #4700): a closed set of read kinds over deskread, which holds
+	// the credential in its own process. Read-only, own flag namespace.
+	if len(os.Args) > 1 && os.Args[1] == "rowread" {
+		exitProcess(runRowread(os.Args[2:], os.Stdout, os.Stderr))
+	}
 
 	// `statusgen verifyclosure` — the READ-ONLY board question "does this tree
 	// present a lint-valid `verified` closure for one brief?" (verifyclosure.go).
