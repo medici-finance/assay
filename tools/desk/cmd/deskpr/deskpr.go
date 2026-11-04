@@ -351,8 +351,8 @@ func cmdCreate(args []string) (err error) {
 	}
 
 	// Public-repo gate: refuse an outward write unless the repo is authorized.
-	// The authorization is repository-scoped (a listed `:public` allowed-repos entry,
-	// or private) — see deskkit.PublicRepoGate. A create no longer needs an issue/PR
+	// The authorization is repository-scoped (a listed `:public` or `:internal`
+	// allowed-repos entry matching the live visibility, or private) — see deskkit.PublicRepoGate. A create no longer needs an issue/PR
 	// number: the former per-item `+1` on `trailerIssue` is gone, which is exactly what
 	// makes the FIRST pull request on a listed public repo openable (a brief-carrying
 	// create has no issue number and used to fail closed here). `trailerIssue` is still
@@ -764,7 +764,8 @@ func cmdUpdate(args []string) (err error) {
 	}
 
 	// Public-repo gate: refuse an outward write unless the repo is authorized
-	// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
+	// (private, or a listed allowed-repos entry tagged :public or :internal to match the
+	// live visibility — see deskkit.PublicRepoGate).
 	owner, name := splitOwnerRepo(facts.repo)
 	// The gate's visibility read goes through the SAME forge backend already resolved above
 	// (forgeForFn's fg) — never a second, hardcoded GitHub-only client (assay#1054): a
@@ -1328,7 +1329,8 @@ func parseRepo(raw string) (string, error) {
 // issue) — and 0 for the exempt scan carrier likewise. The create path uses it only as the
 // self-containment scan's number hint (SelfContainOpts.NumberHint). It is NOT an input to
 // the public-repo write gate: deskkit.PublicRepoGate is repository-scoped (an explicit
-// `:public` allowed-repos entry agreeing with the live visibility) and takes no number.
+// `:public` or `:internal` allowed-repos entry agreeing with the live visibility) and
+// takes no number.
 // isScanCarrierBody reports whether body is the machine-written scan carrier: the
 // deskkit.ScanBodyMarker at its head (leading whitespace aside). It is the one predicate for
 // the carve-out, shared by requireTrailer (which skips validation for it), trailerLink in
