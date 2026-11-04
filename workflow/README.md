@@ -140,9 +140,9 @@ Run the mirror controls separately with the same explicit fixture:
 python3 store/testdata/mirror_mutations.py
 ```
 
-The sixteen faults cover current authorization, post-I/O and precommit revocation,
+The seventeen faults cover current authorization, post-I/O and precommit revocation,
 admission partitioning, SQL CAS, complete/inventory/observed/monotonic guards, hold recovery
-including NULL proof, new-row absence, rebuild completeness, codec framing and derived
+including NULL proof, partial/incremental absence refusal, new-row absence, rebuild completeness, codec framing and derived
 history. The split-transaction fault is one composite execution error: it commits the
 header early and disables the matching same-transaction row guard so the injected second-row
 failure exposes the prematurely committed version/coverage. It does not claim independent

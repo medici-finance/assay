@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5401
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 outcome: none
 id: d356d914-92e7-43b0-ae37-17016f7993bc
 authored: 2026-11-03 by statusgen newbrief
@@ -45,6 +45,7 @@ files:
 - `workflow/go.mod`
 - `workflow/go.sum`
 - `workflow/store/`
+- `workflow/store/migrations/`
 - `workflow/internal/pgtest/`
 - `workflow/README.md`
 - `spec/coordination-store-v1.md`
@@ -53,9 +54,8 @@ files:
 - `docs/contracts.md`
 - `changelog/mirror-postgres-store.md`
 
-
 facts:
-- The R2 foundation child graph-execution/36 supplies the only PostgreSQL driver, Goose migration ledger and explicitly provisioned container fixture. Implementation genuinely merged tested source `4d028e05913d66067ad7ee8518422b3390790c8f` at `faf039c706a683e622f53763261a145790a895b0`; its publication remains held for a separate workflow-permission act. It also genuinely merged /50 presence source `64a470c33ecf021cd53bdf5a04948da221a77d4f` at `3aaf730cb`, preserving that owner. Missing canonical migration/harness input still requires stopping. A genuine feature-branch merge may supply that canonical source for offline implementation; a stack supplies no mainline delivery or acceptance credit.
+- The R2 foundation child graph-execution/36 supplies the only PostgreSQL driver, Goose migration ledger and explicitly provisioned container fixture. The Store genuinely merged its tested source before publication and now consumes its mainline delivery through main `077f19e6afb71169f79295486a223896cab94913`. The admitted mapper and pure kernel are also on that actual main revision. Missing canonical migration/harness input still requires stopping; source pickup supplies no independent verification or full parent acceptance credit.
 - `forgeread/mirror` already exports Admission, Scope, Snapshot, ScanUpdate and Store.Read/Apply. `mirrortest.Check` exercises the Store directly without QueryScope/PlanScan. ReferenceStore is synthetic, not persistence or a retention policy.
 - Full /37 retains 23 Verify Class/Command pairs and its persisted joined row23. Full graph-execution/19 retains its 13 rows and execution/reconstruction obligations. This contribution satisfies neither complete parent.
 - The operator selected purge-to-tombstones, but the separate human issue record and full retention implementation remain /37 obligations. This contribution uses synthetic observations only and implements no purge/retain action or private-data exposure.

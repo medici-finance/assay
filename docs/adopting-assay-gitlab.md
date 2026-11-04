@@ -712,6 +712,39 @@ the job's other git calls still use the runner's credential, and no header value
 printed. If git cannot list the keys, the job prints a could-not-check NOTICE and pushes
 anyway; a refused push is then classified as above.
 
+**The runner's job-token rewrite.** A runner can also put the job token in a
+`url.<scheme>://gitlab-ci-token:<token>@<host>/.insteadOf` rewrite, so that other projects
+on the same instance clone with it. git applies that rewrite to the board remote, which the
+job builds without userinfo, and URL userinfo is used before any credential helper is
+asked. The board push would again go out as the job token and get a 403, and the extraheader
+reset above prints nothing because no header is involved. For each board push (the dry run
+included) the job asks git where the URL resolves. If the result carries userinfo, it pushes
+with a `url.*.pushInsteadOf` pin back to the same URL without it, and says so. The pin is
+applied only when the resolved URL keeps the destination's scheme and host (port included): a
+rewrite that points the board remote at a different host is not pinned, because the pin would
+send the board credential there. That push goes out as the rewrite says and fails, and the job
+prints a NOTICE. Neither URL is printed. A push to a remote NAME whose push URL carries userinfo cannot be pinned this way,
+so the job prints a NOTICE asking for a URL instead. A credential helper the runner scopes to
+the instance URL is already covered: the job's empty `credential.helper=` reset clears
+URL-scoped helpers too.
+
+**An older embedded copy.** `.gitlab-ci.yml` carries `statusgen/pushcred.sh` and
+`statusgen/boardadd.sh` embedded as the `.statusgen-pushcred` and `.statusgen-boardadd`
+anchors, and `statusgen init` never overwrites an existing file. Upgrading the pinned
+statusgen therefore does not update the anchors, and the pipeline keeps the older board-push
+behaviour. `statusgen --lint` and a re-run of `statusgen init` name each anchor that differs
+from the running statusgen's copy. Refresh them with
+`statusgen migrate gitlab-anchors --root .` (add `--dry-run` first to see which would change),
+then review `git diff .gitlab-ci.yml` and commit it. Only the two anchor blocks change. The
+command reads and writes only a regular file: a `.gitlab-ci.yml` that is a symbolic link is
+refused (exit 5) and nothing is written. A file scaffolded before the anchors existed (its
+`statusgen-regen` job carries the board push inline, with neither anchor key) has nothing to
+refresh; `statusgen --lint` names it with a NOTICE, and the remedy is the regeneration below. The
+upgrade migration that ships with this fix runs the same command. Before a release carries the
+`gitlab-anchors` target, a `.gitlab-ci.yml` still in its unmodified scaffolded form can be
+regenerated instead: remove it, run `statusgen init --forge gitlab` (it writes only the
+missing file), then review the diff and commit.
+
 The runners section above used to send the reader to the per-role fleet credential section
 by a wrong number — the section that actually holds the per-role rotation rules is §5, and
 its subject is a different credential entirely. Read `STATUSGEN_PUSH_TOKEN` from this

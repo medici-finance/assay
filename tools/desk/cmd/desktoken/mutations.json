@@ -264,6 +264,12 @@
       "file": "internal/credential/github.go",
       "old": "\t_ = WriteTokenCache(PermsPath(tokenPath), b.String(), nil)",
       "new": "\t_ = os.WriteFile(PermsPath(tokenPath), []byte(b.String()), 0o600)"
+    },
+    {
+      "name": "stat the --ttl cache through a link again (a symlink at the cache path reports the TTL and age of whatever it points at, #1573)",
+      "file": "cmd/desktoken/desktoken.go",
+      "old": "\t_, fi, err := deskkit.LstatCustody(tokenPath, deskkit.CustodyNoLinks)",
+      "new": "\tfi, err := os.Stat(tokenPath)"
     }
   ]
 }

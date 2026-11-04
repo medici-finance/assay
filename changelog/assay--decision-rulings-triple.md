@@ -1,2 +1,0 @@
-### Changed
-- Three human-gated briefs now record their decision issue: solo identity mode (apps-installer/08), the outbound-write house callout (desktools-v2/11) and the fetch-hardening retirement (desktools-go-git/05). The fetch-hardening retirement also records the ruling that answered it. The other two record no ruling yet, because the human comments on their decision issues do not name the brief, so the decision-gate hold would not accept them. Frontmatter only; no brief body, status or tool changes.
