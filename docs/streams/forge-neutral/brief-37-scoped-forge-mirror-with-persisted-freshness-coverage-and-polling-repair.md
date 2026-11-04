@@ -52,7 +52,9 @@ consumers:
   - "tools/desk/internal/deskkit/forge_github.go, forge_gitlab.go, sharedread.go and mirrorsource.go: follow-up forge-neutral/48 (native bound composition before buffering/decoding; admitted custody and existing operation semantics)"
   - "tools/desk/internal/deskkit/forge_response_bounds.go, forge_github.go, forge_gitlab.go, sharedread.go and mirrorsource.go: follow-up forge-neutral/37 (consume /48's native bound in joined mapper/store failure flow; no second implementation)"
   - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/47 (the two incremental-operation inventory rows)"
-  - "workflow/store/ (as planned by graph-execution/19 after its R2 amendment): follow-up forge-neutral/37 (the mirror tables, their migration, the mirror.Store implementation and the graph-execution/28 fact-completeness mapping)"
+  - "workflow/store/: follow-up forge-neutral/52 (canonical mirror tables, numbered migration and mirror.Store adapter; this parent consumes that owner)"
+  - "workflow/store/: follow-up forge-neutral/54 (canonical refresh Gate and AttemptAuthority; this parent consumes them at trusted deskkit composition)"
+  - "graph-execution/28 fact-completeness mapping at trusted composition: follow-up forge-neutral/37 (full-parent fact integration remains; no duplicate Store or Gate implementation)"
   - "statusgen/testdata/regressionfloor/ (as planned by graph-execution/29): follow-up forge-neutral/37 (one frozen mirror-coverage case under 29's inventory rules)"
   - "statusgen/: out-of-scope (forge-neutral/18 owns statusgen's forge reads; this brief adds no statusgen link and no deskread kind)"
   - "comments, check and status observations, event delivery and reevaluation demand: follow-up forge-neutral/38"
@@ -576,18 +578,22 @@ The standalone harness still reads and executes the actual two Verify commands a
 [52](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md) owns
 only the real PostgreSQL Store adapter and SQL persistence checks, extending the single
 graph-execution/36 migration ledger and container fixture. This brings forward durable
-mirror storage without action admission, execution claims or outboxes. Shared refresh
-ownership/accounting and actual admitted source/coordinator joins remain here, including
-row23. All23 original Class/Command pairs and existing human gates remain unchanged.
+mirror storage without action admission, execution claims or outboxes. The canonical
+shared refresh Gate, AttemptAuthority and admitted source/coordinator SQL join belong
+to /54. This parent consumes those owners at trusted deskkit composition and retains
+its independent persisted acceptance in row23. All23 original Class/Command pairs
+and existing human gates remain unchanged.
 
 ## Read-through coordinator ownership — 3 November 2026
 
 The bounded contribution assay:assay:forge-neutral:51 supplies the store-injected
 coordinator and typed read-refresh gate port over the existing mirror kernel. This
-brief consumes that coordinator at trusted deskkit composition and implements its
-production gate through the same canonical R2 PostgreSQL store: generation-bound
-apply/completion, shared retry eligibility, finite caller/admission accounting and
-independent-process/restart controls. No second store or execution claim is added.
+brief consumes that coordinator with /54's canonical R2 PostgreSQL Gate and
+AttemptAuthority and /52's mirror.Store at trusted deskkit composition. Those owners
+supply generation-bound apply/completion, shared retry eligibility, finite
+caller/admission accounting and independent-process/restart controls. This parent
+reuses their implementations; it adds no second Gate, quota owner, Store or execution
+claim.
 The synthetic gate/reference-store profile does not discharge the real mapper,
 durable Store and preserved-watermark join in row23. Every existing Task, all23
 Class/Command pairs, retention decision, acceptance gate and historical Evidence

@@ -78,17 +78,9 @@ Before runtime pickup, inspect the immutable current launcher, comms and incarna
 
 If an actual requirement remains unresolved, record NEEDS_CONTEXT with the exact incompatible requirements and bounded supported alternatives at the canonical R3 owner. A human cannot approve an absent producer into existence. No speculative accept-versus-hold issue is filed before this packet is reviewable. Offline contract/primitive investigation may continue, but a port, mock authority or signature round-trip provides no qualified caller/custody credit.
 
-## Human decision
+## Acceptance preparation
 
-After the concrete local producer/profile and its independent controls are demonstrated, accept or hold the evidenced caller/current-state/custody boundary. The packet must identify the exact supported primitive and claims, current-state source, protected process/channel profile, revocation and key/control reachability.
-
-Options:
-1. Accept the demonstrated local read-only producer, retaining its explicit qualified profile and separate operational provisioning/deployment gates.
-2. Hold for a named compatibility, claim-binding, current-state or custody correction.
-
-Default if no answer: none — blocks until answered
-
-This gates acceptance, not operational key creation, role provisioning, profile activation, a remote listener or write authority. No new production credential, policy duration or issuer choice is authorized by authoring or synthetic tests.
+The decision-trigger is spec. The executor authors the self-contained Human decision section only after Task1 supplies the concrete compatible local mechanism/profile, claims, current-state source and custody/revocation design. It must ask accept versus a named correction to that demonstrated boundary and retain separate operational credential/profile/deployment gates. Report DECISION-BLOCK READY at that point so the canonical helper can file the actual decision. Before that packet exists, dispatch must report the spec decision deferred; no generic accept-versus-hold issue or implied issuer/crypto/TTL choice is authorized.
 
 ## Ground rules
 
