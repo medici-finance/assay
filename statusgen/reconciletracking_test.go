@@ -13,14 +13,20 @@ const trackingFixtureRel = "docs/streams/fx/brief-01-fixture.md"
 // Separate object stores reproduce a tracking brief whose run SHA exists only
 // in the deliverable repository. The tracking snapshot is v2, independently
 // committed before the new verifier Evidence; v1 is retained for stale tests.
+//
+// A mode ending in sourcePresent also fetches a deliverable commit carrying a
+// v2 brief at the same path into the tracking store, so a read that falls back
+// to the source revision succeeds instead of failing for a missing object.
 func foldTrackingFixture(t *testing.T, mode string) (reconcileFoldData, string, string) {
 	t.Helper()
+	foreign := mode == "missing tracking but source present" || strings.HasSuffix(mode, sourcePresent)
+	mode = strings.TrimSuffix(mode, sourcePresent)
 	source := t.TempDir()
 	foldGit(t, source, foldMailWorker, "init", "-q")
 	if err := os.WriteFile(filepath.Join(source, "implementation.txt"), []byte("source repository\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if mode == "missing tracking but source present" {
+	if foreign {
 		foreignPath := filepath.Join(source, filepath.FromSlash(trackingFixtureRel))
 		if err := os.MkdirAll(filepath.Dir(foreignPath), 0700); err != nil {
 			t.Fatal(err)
@@ -44,7 +50,7 @@ func foldTrackingFixture(t *testing.T, mode string) (reconcileFoldData, string, 
 	if mode == "missing history" || mode == "missing tracking but source present" {
 		trackingSHA = strings.Repeat("f", 40)
 	}
-	if mode == "missing tracking but source present" {
+	if foreign {
 		foldGit(t, root, foldMailWorker, "fetch", "-q", "--no-tags", source, sourceSHA)
 	}
 	att := fmt.Sprintf("Verification-Attestation: example-org/tracker#7 run=%s source-repo=example-org/agents source=%s tracking-source=%s brief=%s model=fixture-model tier=strong", strings.Repeat("a", 64), sourceSHA, trackingSHA, trackingFixtureRel)
@@ -76,6 +82,18 @@ func foldTrackingFixture(t *testing.T, mode string) (reconcileFoldData, string, 
 		att += "\n" + strings.Replace(att, "tracking-source="+trackingSHA, "tracking-source="+foldTrackingGitLine(t, root, "rev-parse", "HEAD^"), 1)
 	case "fenced":
 		att = "```text\n" + att + "\n```"
+	case "blockquoted":
+		att = "> " + att
+	case "indented":
+		att = "  " + att
+	case "unparseable":
+		att = strings.Replace(att, " tier=strong", "", 1)
+	case "tracking-source only":
+		att = strings.Replace(att, " source-repo=example-org/agents", "", 1)
+	case "non-github origin":
+		foldGit(t, root, foldMailWorker, "remote", "set-url", "origin", "https://gitlab.example/example-org/tracker.git")
+	case "quoted v1 beside v2":
+		att += "\n`quoted`" + fmt.Sprintf("Verification-Attestation: example-org/tracker#7 run=%s source=%s brief=%s model=fixture-model tier=strong", strings.Repeat("a", 64), sourceSHA, trackingFixtureRel)
 	case "foreign homed source missing":
 		att = ""
 	}
@@ -100,6 +118,9 @@ func foldTrackingFixture(t *testing.T, mode string) (reconcileFoldData, string, 
 	return data[0], sourceSHA, trackingSHA
 }
 
+// sourcePresent marks a fixture mode whose deliverable object is local.
+const sourcePresent = " (source present)"
+
 // foldTrackingGitLine returns one fixture Git line; it never contacts a forge.
 func foldTrackingGitLine(t *testing.T, root string, args ...string) string {
 	t.Helper()
@@ -112,7 +133,7 @@ func foldTrackingGitLine(t *testing.T, root string, args ...string) string {
 
 // regression: #5475
 func TestFoldTrackingRevision(t *testing.T) {
-	for _, mode := range []string{"current", "duplicate", "stale", "legacy", "legacy note"} {
+	for _, mode := range []string{"current", "duplicate", "stale", "legacy", "legacy note", "quoted v1 beside v2"} {
 		t.Run(mode, func(t *testing.T) {
 			d, sourceSHA, _ := foldTrackingFixture(t, mode)
 			w, ok, why := foldVerified(d, map[string]Coverage{d.key: {Released: true}})
@@ -143,6 +164,32 @@ func TestFoldTrackingRevisionRefusals(t *testing.T) {
 			w, ok, why := foldVerified(d, map[string]Coverage{d.key: {Released: true}})
 			if ok || w.Passed || !strings.Contains(why, "could-not-check the brief version") {
 				t.Fatalf("w=%+v ok=%v why=%q", w, ok, why)
+			}
+		})
+	}
+}
+
+// regression: #5475 — each case fetches the deliverable commit, with a v2
+// brief at the same path, into the tracking store. A selector that skips the
+// cross-repository line and reads at the source revision would then pass, so
+// these cases fail on the selector itself, not on a missing object. The
+// reason names which check refused, so a different refusal does not mask a
+// skipped one.
+func TestFoldTrackingRevisionRefusalsSourcePresent(t *testing.T) {
+	for mode, reason := range map[string]string{
+		"fenced":               "not bound by literal selected-run metadata",
+		"prior run only":       "not bound by literal selected-run metadata",
+		"blockquoted":          "not bound by literal selected-run metadata",
+		"indented":             "not bound by literal selected-run metadata",
+		"unparseable":          "malformed cross-repository run attestation",
+		"tracking-source only": "malformed cross-repository run attestation",
+		"non-github origin":    "needs a github.com origin",
+	} {
+		t.Run(mode, func(t *testing.T) {
+			d, _, _ := foldTrackingFixture(t, mode+sourcePresent)
+			w, ok, why := foldVerified(d, map[string]Coverage{d.key: {Released: true}})
+			if ok || w.Passed || !strings.Contains(why, "could-not-check the brief version") || !strings.Contains(why, reason) {
+				t.Fatalf("w=%+v ok=%v why=%q; want could-not-check naming %q", w, ok, why, reason)
 			}
 		})
 	}

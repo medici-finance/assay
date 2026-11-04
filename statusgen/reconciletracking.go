@@ -11,7 +11,10 @@ import (
 // credit or authority. A v2 attestation separates deliverable source from the
 // tracking snapshot that actually contains the brief. Legacy runs keep their
 // original source-revision read; neither path falls back to the current file.
-func briefVersionForPass(path string, p flipPass) (int, error) {
+// evidence is the brief's whole raw Evidence section: once it records a
+// cross-repository line anywhere, a run with no literal binding refuses
+// rather than taking the source-revision read.
+func briefVersionForPass(path, evidence string, p flipPass) (int, error) {
 	var binding *containerAttestation
 	legacy := false
 	// p.Run is the selected, already comment-normalized run. Reuse the literal
@@ -42,6 +45,9 @@ func briefVersionForPass(path string, p flipPass) (int, error) {
 		if !flipSHAAgree(p.SHA, a.source) {
 			return 0, fmt.Errorf("attested source %s does not bind the run's source %s", a.source, p.SHA)
 		}
+		// The whole parsed line is compared, run=, model= and tier= included:
+		// two brackets from separate invocations in one run refuse even when
+		// they bind one tracking-source. That fails closed by intent.
 		if binding != nil && *binding != a {
 			return 0, fmt.Errorf("conflicting cross-repository attestations in the selected run")
 		}
@@ -49,6 +55,9 @@ func briefVersionForPass(path string, p flipPass) (int, error) {
 		binding = &candidate
 	}
 	if binding == nil {
+		if unboundCrossAttestation(evidence) {
+			return 0, fmt.Errorf("a cross-repository attestation in Evidence is not bound by literal selected-run metadata")
+		}
 		return briefVersionAt(path, p.SHA)
 	}
 	if legacy {
@@ -75,4 +84,20 @@ func briefVersionForPass(path string, p flipPass) (int, error) {
 		return 0, fmt.Errorf("tracking-source %s: %w", binding.trackingSource, err)
 	}
 	return version, nil
+}
+
+// unboundCrossAttestation reports whether any raw Evidence line, in any
+// position (fenced, quoted, indented, commented, inline-code-prefixed or in an
+// earlier run), is an attestation line carrying a v2 field. Only called when
+// the literal scan bound nothing, so every such line is one it did not bind.
+// The match is deliberately looser than the parser: a deliverable-revision
+// read is correct only for a brief with no cross-repository record at all.
+func unboundCrossAttestation(evidence string) bool {
+	for _, line := range strings.Split(strings.ToLower(evidence), "\n") {
+		if strings.Contains(line, "verification-attestation:") &&
+			(strings.Contains(line, "source-repo=") || strings.Contains(line, "tracking-source=")) {
+			return true
+		}
+	}
+	return false
 }

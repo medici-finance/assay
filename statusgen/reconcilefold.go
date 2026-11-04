@@ -187,7 +187,7 @@ func foldVerified(d reconcileFoldData, coverage map[string]Coverage) (w WitnessI
 		}
 		return WitnessInfo{}, false, "could-not-check provenance: " + err.Error()
 	}
-	version, verr := briefVersionForPass(d.path, p)
+	version, verr := briefVersionForPass(d.path, d.evidence, p)
 	if verr != nil {
 		return WitnessInfo{}, false, fmt.Sprintf("could-not-check the brief version for run source %s: %v", p.SHA, verr)
 	}

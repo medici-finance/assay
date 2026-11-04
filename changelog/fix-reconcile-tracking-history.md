@@ -1,1 +1,0 @@
-- Read a cross-repository verification run’s brief version from its bound tracking revision, keeping the deliverable SHA as witness identity and retaining unknown for missing or conflicting bindings.
