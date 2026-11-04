@@ -32,9 +32,9 @@
       "new": "if err := error(nil); err != nil {"
     },
     {
-      "name": "version read at the run's sha",
+      "name": "version read at the selected run's tracking revision",
       "file": "reconcilefold.go",
-      "old": "version, verr := briefVersionAt(d.path, p.SHA)",
+      "old": "version, verr := briefVersionForPass(d.path, p)",
       "new": "version, verr := d.ident.Version, error(nil)"
     },
     {
@@ -136,7 +136,7 @@
     {
       "name": "version read failure is a could-not-check (reconcilefold.go:187)",
       "file": "reconcilefold.go",
-      "old": "return WitnessInfo{}, false, fmt.Sprintf(\"could-not-check the brief version at the run's sha %s: %v\", p.SHA, verr)",
+      "old": "return WitnessInfo{}, false, fmt.Sprintf(\"could-not-check the brief version for run source %s: %v\", p.SHA, verr)",
       "new": "return WitnessInfo{}, false, \"\""
     },
     {
