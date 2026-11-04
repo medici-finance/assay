@@ -94,6 +94,8 @@ func TestReviewServiceMapping(t *testing.T) {
 	}
 	t.Run("malformed", func(t *testing.T) {
 		q, raw := requests[0], string(responses[0])
+		at := strings.Index(raw, `"review":`)
+		partial := raw[:at] + strings.Replace(raw[at:], `"complete":true`, `"complete":false`, 1)
 		for name, bad := range map[string]string{
 			"schema":           strings.Replace(raw, "review-observation-v1", "review-observation-v9", 1),
 			"missing-false":    strings.Replace(raw, `"AtHead":false,`, "", 1),
@@ -101,7 +103,7 @@ func TestReviewServiceMapping(t *testing.T) {
 			"unknown-required": strings.Replace(raw, `"schema":"review-observation-v1"`, `"schema":"review-observation-v1","internalImport":true`, 1),
 			"body-revision":    strings.Replace(raw, `"body":"set-1"`, `"body":"wrong-revision"`, 1),
 			"depth":            strings.Replace(raw, `"total":1`, `"total":0`, 1),
-			"partial":          strings.Replace(raw, `"complete":true`, `"complete":false`, -1),
+			"partial":          partial,
 		} {
 			t.Run(name, func(t *testing.T) {
 				if bad == raw {

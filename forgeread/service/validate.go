@@ -249,6 +249,9 @@ func ValidateResponse(r Response, q Request) error {
 	if minimum != nil && (m.Observation == nil || (m.State == Confirmed && m.Observation.Value != minimum.Value)) {
 		return ErrScope
 	}
+	if (m.State == Older || m.State == Newer) && (minimum == nil || m.Observation == nil || m.Observation.Value == minimum.Value) {
+		return ErrScope
+	}
 	if m.State == Older {
 		return nil
 	}

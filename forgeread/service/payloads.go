@@ -13,12 +13,15 @@ func validateMirror(r Response, q Request) error {
 		if s.Scope.Repository != q.Repository || s.Scope.AdmissionID != q.Scope.AdmissionID || s.Scope.Kind != q.Mirror.Kind || s.Records == nil || len(s.Records) > MaxItems || s.Coverage.State != mirror.Complete {
 			return ErrScope
 		}
-		seen := map[mirror.RecordID]bool{}
+		// Reuse the mirror owner's structural record/scope/coverage validation.
+		// This is no apply, freshness decision, or authority grant.
+		if err := (mirror.ScanUpdate{Scope: s.Scope, Coverage: s.Coverage, Upsert: s.Records}).Validate(); err != nil {
+			return invalid()
+		}
 		for _, row := range s.Records {
-			if row.ID.Repository != q.Repository || row.ID.Kind != string(q.Mirror.Kind) || row.ID.Number < 1 || seen[row.ID] || !text(row.Title, MaxTextBytes, true) || !text(row.Body, MaxContentBytes, true) || len(row.Labels) > MaxItems || len(row.RequestedReviewers) > MaxItems || len(row.Reviews.GitHub) > MaxItems || len(row.Reviews.GitLab) > MaxItems {
+			if !text(row.Title, MaxTextBytes, true) || !text(row.Body, MaxContentBytes, true) || len(row.Labels) > MaxItems || len(row.RequestedReviewers) > MaxItems || len(row.Reviews.GitHub) > MaxItems || len(row.Reviews.GitLab) > MaxItems {
 				return invalid()
 			}
-			seen[row.ID] = true
 		}
 		return nil
 	}

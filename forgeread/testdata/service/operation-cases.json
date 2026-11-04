@@ -1,0 +1,931 @@
+[
+  {
+    "case": "mirror-complete-empty",
+    "request": {
+      "schema": "forge-service-v1",
+      "id": "mirror-complete-empty",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      },
+      "operation": "mirror-query",
+      "mirror": {
+        "kind": "issue",
+        "maxAgeMs": 60000,
+        "minimum": null
+      },
+      "source": null,
+      "effect": null,
+      "lookup": null,
+      "minimum": null,
+      "diagnostic": null
+    },
+    "response": {
+      "schema": "forge-service-v1",
+      "id": "mirror-complete-empty",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      },
+      "operation": "mirror-query",
+      "metadata": {
+        "state": "confirmed",
+        "reason": "",
+        "complete": true,
+        "freshness": "fresh",
+        "source": {
+          "source": "literal-source",
+          "version": "1",
+          "revision": "source-1",
+          "observedAt": "2026-11-03T12:00:00Z"
+        },
+        "observation": null,
+        "executor": null
+      },
+      "mirror": null,
+      "issues": {
+        "schema": 1,
+        "kind": "issues",
+        "repos": [
+          {
+            "repo": "example/project",
+            "issues": []
+          }
+        ],
+        "partial": []
+      },
+      "source": null,
+      "effect": null,
+      "review": null,
+      "projection": null,
+      "conflict": false,
+      "measurements": [],
+      "diagnostic": null
+    }
+  },
+  {
+    "case": "diff",
+    "request": {
+      "schema": "forge-service-v1",
+      "id": "diff",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      },
+      "operation": "diff",
+      "mirror": null,
+      "source": {
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "other": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "path": ""
+      },
+      "effect": null,
+      "lookup": null,
+      "minimum": null,
+      "diagnostic": null
+    },
+    "response": {
+      "schema": "forge-service-v1",
+      "id": "diff",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      },
+      "operation": "diff",
+      "metadata": {
+        "state": "confirmed",
+        "reason": "",
+        "complete": true,
+        "freshness": "fresh",
+        "source": {
+          "source": "literal-source",
+          "version": "1",
+          "revision": "source-1",
+          "observedAt": "2026-11-03T12:00:00Z"
+        },
+        "observation": null,
+        "executor": null
+      },
+      "mirror": null,
+      "issues": null,
+      "source": {
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "other": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "path": "",
+        "content": "ZGlmZgo=",
+        "entries": [
+          {
+            "path": "readme.txt",
+            "status": "modified",
+            "before": "cccccccccccccccccccccccccccccccccccccccc",
+            "after": "dddddddddddddddddddddddddddddddddddddddd"
+          }
+        ],
+        "base": ""
+      },
+      "effect": null,
+      "review": null,
+      "projection": null,
+      "conflict": false,
+      "measurements": [],
+      "diagnostic": null
+    }
+  },
+  {
+    "case": "merge-base",
+    "request": {
+      "schema": "forge-service-v1",
+      "id": "merge-base",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      },
+      "operation": "merge-base",
+      "mirror": null,
+      "source": {
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "other": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "path": ""
+      },
+      "effect": null,
+      "lookup": null,
+      "minimum": null,
+      "diagnostic": null
+    },
+    "response": {
+      "schema": "forge-service-v1",
+      "id": "merge-base",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      },
+      "operation": "merge-base",
+      "metadata": {
+        "state": "confirmed",
+        "reason": "",
+        "complete": true,
+        "freshness": "fresh",
+        "source": {
+          "source": "literal-source",
+          "version": "1",
+          "revision": "source-1",
+          "observedAt": "2026-11-03T12:00:00Z"
+        },
+        "observation": null,
+        "executor": null
+      },
+      "mirror": null,
+      "issues": null,
+      "source": {
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "other": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "path": "",
+        "content": null,
+        "entries": null,
+        "base": "cccccccccccccccccccccccccccccccccccccccc"
+      },
+      "effect": null,
+      "review": null,
+      "projection": null,
+      "conflict": false,
+      "measurements": [],
+      "diagnostic": null
+    }
+  },
+  {
+    "case": "create-issue",
+    "request": {
+      "schema": "forge-service-v1",
+      "id": "create-issue",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      },
+      "operation": "create-issue",
+      "mirror": null,
+      "source": null,
+      "effect": {
+        "id": {
+          "key": "existing-operation-create-issue",
+          "payloadDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "number": 0,
+        "title": "literal issue",
+        "body": "literal body"
+      },
+      "lookup": null,
+      "minimum": null,
+      "diagnostic": null
+    },
+    "response": {
+      "schema": "forge-service-v1",
+      "id": "create-issue",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      },
+      "operation": "create-issue",
+      "metadata": {
+        "state": "confirmed",
+        "reason": "",
+        "complete": true,
+        "freshness": "fresh",
+        "source": {
+          "source": "literal-source",
+          "version": "1",
+          "revision": "source-1",
+          "observedAt": "2026-11-03T12:00:00Z"
+        },
+        "observation": null,
+        "executor": null
+      },
+      "mirror": null,
+      "issues": null,
+      "source": null,
+      "effect": {
+        "id": {
+          "key": "existing-operation-create-issue",
+          "payloadDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "outcome": "succeeded",
+        "projection": "current",
+        "object": {
+          "repository": {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          },
+          "kind": "issue",
+          "providerId": "create-issue-object",
+          "number": 21,
+          "parent": null
+        },
+        "provenance": {
+          "source": "literal-source",
+          "version": "1",
+          "revision": "source-1",
+          "observedAt": "2026-11-03T12:00:00Z"
+        }
+      },
+      "review": null,
+      "projection": null,
+      "conflict": false,
+      "measurements": [],
+      "diagnostic": null
+    }
+  },
+  {
+    "case": "create-comment",
+    "request": {
+      "schema": "forge-service-v1",
+      "id": "create-comment",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      },
+      "operation": "create-change-comment",
+      "mirror": null,
+      "source": null,
+      "effect": {
+        "id": {
+          "key": "existing-operation-create-comment",
+          "payloadDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "number": 11,
+        "title": "",
+        "body": "literal body"
+      },
+      "lookup": null,
+      "minimum": null,
+      "diagnostic": null
+    },
+    "response": {
+      "schema": "forge-service-v1",
+      "id": "create-comment",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      },
+      "operation": "create-change-comment",
+      "metadata": {
+        "state": "confirmed",
+        "reason": "",
+        "complete": true,
+        "freshness": "fresh",
+        "source": {
+          "source": "literal-source",
+          "version": "1",
+          "revision": "source-1",
+          "observedAt": "2026-11-03T12:00:00Z"
+        },
+        "observation": null,
+        "executor": null
+      },
+      "mirror": null,
+      "issues": null,
+      "source": null,
+      "effect": {
+        "id": {
+          "key": "existing-operation-create-comment",
+          "payloadDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "outcome": "succeeded",
+        "projection": "current",
+        "object": {
+          "repository": {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          },
+          "kind": "change-comment",
+          "providerId": "create-comment-object",
+          "number": 31,
+          "parent": 11
+        },
+        "provenance": {
+          "source": "literal-source",
+          "version": "1",
+          "revision": "source-1",
+          "observedAt": "2026-11-03T12:00:00Z"
+        }
+      },
+      "review": null,
+      "projection": null,
+      "conflict": false,
+      "measurements": [],
+      "diagnostic": null
+    }
+  },
+  {
+    "case": "lookup-unknown",
+    "request": {
+      "schema": "forge-service-v1",
+      "id": "lookup-unknown",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      },
+      "operation": "lookup-operation",
+      "mirror": null,
+      "source": null,
+      "effect": null,
+      "lookup": {
+        "key": "existing-operation-unknown",
+        "payloadDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "minimum": null,
+      "diagnostic": null
+    },
+    "response": {
+      "schema": "forge-service-v1",
+      "id": "lookup-unknown",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      },
+      "operation": "lookup-operation",
+      "metadata": {
+        "state": "confirmed",
+        "reason": "",
+        "complete": true,
+        "freshness": "fresh",
+        "source": {
+          "source": "literal-source",
+          "version": "1",
+          "revision": "source-1",
+          "observedAt": "2026-11-03T12:00:00Z"
+        },
+        "observation": null,
+        "executor": null
+      },
+      "mirror": null,
+      "issues": null,
+      "source": null,
+      "effect": {
+        "id": {
+          "key": "existing-operation-unknown",
+          "payloadDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "outcome": "unknown",
+        "projection": "unavailable",
+        "object": null,
+        "provenance": null
+      },
+      "review": null,
+      "projection": null,
+      "conflict": false,
+      "measurements": [],
+      "diagnostic": null
+    }
+  },
+  {
+    "case": "observation-confirmed",
+    "request": {
+      "schema": "forge-service-v1",
+      "id": "observation-confirmed",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      },
+      "operation": "read-observation",
+      "mirror": null,
+      "source": null,
+      "effect": null,
+      "lookup": null,
+      "minimum": {
+        "scope": {
+          "repositories": [
+            {
+              "Provider": "github",
+              "Host": "github.example",
+              "Path": "example/project"
+            }
+          ],
+          "admissionId": "fixture-admission",
+          "accessEpoch": "epoch-1",
+          "callerId": "fixture-reader",
+          "representedActor": ""
+        },
+        "repository": {
+          "Provider": "github",
+          "Host": "github.example",
+          "Path": "example/project"
+        },
+        "kind": "issue",
+        "value": "scope-local-progress"
+      },
+      "diagnostic": null
+    },
+    "response": {
+      "schema": "forge-service-v1",
+      "id": "observation-confirmed",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      },
+      "operation": "read-observation",
+      "metadata": {
+        "state": "confirmed",
+        "reason": "",
+        "complete": true,
+        "freshness": "fresh",
+        "source": {
+          "source": "literal-source",
+          "version": "1",
+          "revision": "source-1",
+          "observedAt": "2026-11-03T12:00:00Z"
+        },
+        "observation": {
+          "scope": {
+            "repositories": [
+              {
+                "Provider": "github",
+                "Host": "github.example",
+                "Path": "example/project"
+              }
+            ],
+            "admissionId": "fixture-admission",
+            "accessEpoch": "epoch-1",
+            "callerId": "fixture-reader",
+            "representedActor": ""
+          },
+          "repository": {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          },
+          "kind": "issue",
+          "value": "scope-local-progress"
+        },
+        "executor": null
+      },
+      "mirror": null,
+      "issues": null,
+      "source": null,
+      "effect": null,
+      "review": null,
+      "projection": null,
+      "conflict": false,
+      "measurements": [],
+      "diagnostic": null
+    }
+  },
+  {
+    "case": "issue-projection",
+    "request": {
+      "schema": "forge-service-v1",
+      "id": "issue-projection",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "",
+        "Host": "",
+        "Path": ""
+      },
+      "operation": "issue-projection",
+      "mirror": null,
+      "source": null,
+      "effect": null,
+      "lookup": null,
+      "minimum": null,
+      "diagnostic": null
+    },
+    "response": {
+      "schema": "forge-service-v1",
+      "id": "issue-projection",
+      "scope": {
+        "repositories": [
+          {
+            "Provider": "github",
+            "Host": "github.example",
+            "Path": "example/project"
+          }
+        ],
+        "admissionId": "fixture-admission",
+        "accessEpoch": "epoch-1",
+        "callerId": "fixture-reader",
+        "representedActor": ""
+      },
+      "repository": {
+        "Provider": "",
+        "Host": "",
+        "Path": ""
+      },
+      "operation": "issue-projection",
+      "metadata": {
+        "state": "confirmed",
+        "reason": "",
+        "complete": true,
+        "freshness": "fresh",
+        "source": {
+          "source": "literal-source",
+          "version": "1",
+          "revision": "source-1",
+          "observedAt": "2026-11-03T12:00:00Z"
+        },
+        "observation": null,
+        "executor": null
+      },
+      "mirror": null,
+      "issues": null,
+      "source": null,
+      "effect": null,
+      "review": null,
+      "projection": {
+        "schema": "issue-projection-v1",
+        "projection": "full",
+        "to": "",
+        "requested": [
+          {
+            "provider": "github",
+            "host": "github.example",
+            "repository": "example/project"
+          }
+        ],
+        "admitted": [
+          {
+            "provider": "github",
+            "host": "github.example",
+            "repository": "example/project"
+          }
+        ],
+        "collection": {
+          "start": "2026-11-03T11:59:59Z",
+          "end": "2026-11-03T12:00:00Z"
+        },
+        "inputs": [
+          {
+            "repository": {
+              "provider": "github",
+              "host": "github.example",
+              "repository": "example/project"
+            },
+            "input": {
+              "source": "literal-open-population",
+              "version": "1",
+              "revision": "population-1",
+              "observedAt": "2026-11-03T12:00:00Z",
+              "freshness": "fresh",
+              "complete": true
+            },
+            "count": 7
+          }
+        ],
+        "rows": [
+          {
+            "repository": {
+              "provider": "github",
+              "host": "github.example",
+              "repository": "example/project"
+            },
+            "number": 1,
+            "title": "literal-ESCALATE",
+            "action": "ESCALATE",
+            "ageDays": -1,
+            "addrRole": "",
+            "escalationUnverifiable": true,
+            "historyHold": "",
+            "historyUnverifiable": false
+          },
+          {
+            "repository": {
+              "provider": "github",
+              "host": "github.example",
+              "repository": "example/project"
+            },
+            "number": 2,
+            "title": "literal-ADDRESSED",
+            "action": "ADDRESSED",
+            "ageDays": 0,
+            "addrRole": "worker",
+            "escalationUnverifiable": false,
+            "historyHold": "",
+            "historyUnverifiable": false
+          },
+          {
+            "repository": {
+              "provider": "github",
+              "host": "github.example",
+              "repository": "example/project"
+            },
+            "number": 3,
+            "title": "literal-CREATE-PLACEHOLDER",
+            "action": "CREATE-PLACEHOLDER",
+            "ageDays": 0,
+            "addrRole": "",
+            "escalationUnverifiable": false,
+            "historyHold": "",
+            "historyUnverifiable": false
+          },
+          {
+            "repository": {
+              "provider": "github",
+              "host": "github.example",
+              "repository": "example/project"
+            },
+            "number": 4,
+            "title": "literal-RETIRE",
+            "action": "RETIRE",
+            "ageDays": 0,
+            "addrRole": "",
+            "escalationUnverifiable": false,
+            "historyHold": "",
+            "historyUnverifiable": false
+          },
+          {
+            "repository": {
+              "provider": "github",
+              "host": "github.example",
+              "repository": "example/project"
+            },
+            "number": 5,
+            "title": "literal-AWAIT",
+            "action": "AWAIT",
+            "ageDays": 0,
+            "addrRole": "",
+            "escalationUnverifiable": false,
+            "historyHold": "could-not-check",
+            "historyUnverifiable": true
+          },
+          {
+            "repository": {
+              "provider": "github",
+              "host": "github.example",
+              "repository": "example/project"
+            },
+            "number": 6,
+            "title": "literal-NONE",
+            "action": "NONE",
+            "ageDays": 0,
+            "addrRole": "",
+            "escalationUnverifiable": false,
+            "historyHold": "",
+            "historyUnverifiable": false
+          }
+        ],
+        "quarantined": [
+          {
+            "repository": {
+              "provider": "github",
+              "host": "github.example",
+              "repository": "example/project"
+            },
+            "number": 7,
+            "title": "literal-unblessed",
+            "author": "external-fixture"
+          }
+        ]
+      },
+      "conflict": false,
+      "measurements": [],
+      "diagnostic": null
+    }
+  }
+]

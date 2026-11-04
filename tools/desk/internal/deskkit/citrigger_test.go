@@ -478,10 +478,17 @@ func ciCrossModuleRegistry() []ciEntry {
 			reads: []string{
 				"tools/forge-import-check/check_env_imports.go",
 				"tools/forge-import-check/check_env_imports_test.go",
-				"docs/streams",
+				"docs/streams", "forgeread",
 			},
 			runInvokes: deskShardInvokes,
 			why:        "the unconditional build-test floor executes both authored import-check commands against compiler-valid syntax fixtures",
+		},
+		{
+			test: "forgeread/service/boundaries_test.go", module: "forgeread",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{"forgeread", "tools/forge-import-check"},
+			runInvokes: deskShardInvokes,
+			why:        "the unconditional desk regression reader executes the actual named service/client suites, including this source-checker and dependency-closure consumer; it asserts every named PASS",
 		},
 		{
 			test: "tools/desk/internal/regression/releasecache_test.go", module: "tools/desk",
@@ -2783,12 +2790,17 @@ runs:
 // public entries must not inherit that skip.
 // regression: #2686
 func TestRegressionCIEntrypoints(t *testing.T) {
-	count := 0
+	count, serviceCount := 0, 0
 	for _, e := range ciCrossModuleRegistry() {
-		if !strings.HasPrefix(e.test, "tools/desk/internal/regression/") {
+		serviceEntry := e.test == "forgeread/service/boundaries_test.go"
+		if !strings.HasPrefix(e.test, "tools/desk/internal/regression/") && !serviceEntry {
 			continue
 		}
-		count++
+		if serviceEntry {
+			serviceCount++
+		} else {
+			count++
+		}
 		raw, err := os.ReadFile(filepath.Join("../../../..", e.workflow))
 		if err != nil {
 			t.Fatal(err)
@@ -2813,6 +2825,9 @@ func TestRegressionCIEntrypoints(t *testing.T) {
 	}
 	if count != 6 {
 		t.Fatalf("floor has %d CI registry entries, want 6 (manifest, shell, Evidence, changelog, mirror import and release cache suites)", count)
+	}
+	if serviceCount != 1 {
+		t.Fatalf("service boundary CI entry count=%d, want 1", serviceCount)
 	}
 }
 

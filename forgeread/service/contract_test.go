@@ -10,9 +10,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/forgeread"
 	"github.com/medici-finance/assay/forgeread/mirror"
+	"github.com/medici-finance/assay/forgeread/mirror/mirrortest"
 	"github.com/medici-finance/assay/forgeread/service"
 )
 
@@ -53,6 +55,8 @@ func sameJSON(t *testing.T, a, b []byte) {
 
 // regression: class service-wire
 func TestForgeServiceContractCompatibility(t *testing.T) {
+	t.Run("canonical-mirror-kinds", checkCanonicalMirrorKinds)
+	t.Run("literal-operations", checkLiteralOperations)
 	q := literalRequest(t)
 	if q.Operation != service.FileAt || q.Repository.Provider != mirror.GitHub || q.Repository.Host != "github.example" || q.Repository.Path != "example/project" || q.Source.Revision != strings.Repeat("a", 40) || q.Source.Path != "readme.txt" {
 		t.Fatal("literal request identity/source changed")
@@ -137,4 +141,124 @@ func TestForgeServiceContractCompatibility(t *testing.T) {
 			}
 		}
 	})
+}
+
+type wireAdmission struct{ name string }
+
+func (a wireAdmission) ID() string                                           { return a.name }
+func (a wireAdmission) Authorize(context.Context, mirror.RepositoryID) error { return nil }
+func checkCanonicalMirrorKinds(t *testing.T) {
+	for _, provider := range []mirror.Provider{mirror.GitHub, mirror.GitLab} {
+		for _, kind := range []mirror.RecordKind{mirror.Issues, mirror.Changes} {
+			for _, empty := range []bool{false, true} {
+				t.Run(string(provider)+"/"+string(kind)+"/"+map[bool]string{false: "nonempty", true: "empty"}[empty], func(t *testing.T) {
+					q := literalRequest(t)
+					r := literalResponse(t, q)
+					q.Operation = service.MirrorQuery
+					q.Source = nil
+					q.Repository.Provider = provider
+					q.Scope.Repositories = []mirror.RepositoryID{q.Repository}
+					q.Mirror = &service.MirrorRequest{Kind: kind, MaxAgeMS: 60000}
+					scope := mirror.Scope{Repository: q.Repository, Kind: kind, AdmissionID: q.Scope.AdmissionID}
+					now := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
+					rowKind := "issue"
+					if kind == mirror.Changes {
+						if provider == mirror.GitHub {
+							rowKind = "pull-request"
+						} else {
+							rowKind = "merge-request"
+						}
+					}
+					records := []mirror.Observation{}
+					if !empty {
+						records = append(records, mirror.Observation{ID: mirror.RecordID{Repository: q.Repository, Kind: rowKind, Number: 1}, Title: "canonical", InInventory: true})
+					}
+					plan, err := mirror.PlanRefresh(mirror.Snapshot{Scope: scope, Coverage: mirror.Coverage{State: mirror.NeverRead}}, now, mirror.RefreshPolicy{FullInventoryInterval: time.Hour})
+					if err != nil {
+						t.Fatal(err)
+					}
+					update, err := mirror.PlanScan(mirror.Snapshot{Scope: scope, Coverage: mirror.Coverage{State: mirror.NeverRead}}, plan, mirror.ScanResult{Complete: true, ObservedUpTo: now, Records: records}, now)
+					if err != nil {
+						t.Fatal(err)
+					}
+					snapshot, err := mirrortest.NewStore().Apply(context.Background(), wireAdmission{q.Scope.AdmissionID}, update)
+					if err != nil {
+						t.Fatal(err)
+					}
+					r.Operation = q.Operation
+					r.Scope = q.Scope
+					r.Repository = q.Repository
+					r.Source = nil
+					r.Mirror = &snapshot
+					encoded, err := service.EncodeResponse(r, q)
+					if err != nil {
+						t.Fatalf("canonical producer snapshot rejected: %v", err)
+					}
+					decoded, err := service.DecodeResponse(encoded, q)
+					if err != nil || !reflect.DeepEqual(decoded.Mirror, &snapshot) {
+						t.Fatalf("canonical mirror transport changed: %v", err)
+					}
+					if !empty {
+						for _, badKind := range []string{"change", "issue", "pull-request", "merge-request"} {
+							if badKind == rowKind {
+								continue
+							}
+							bad := snapshot
+							bad.Records = append([]mirror.Observation(nil), snapshot.Records...)
+							bad.Records[0].ID.Kind = badKind
+							r.Mirror = &bad
+							if _, err := service.EncodeResponse(r, q); err == nil {
+								t.Fatalf("foreign provider/object kind accepted: %s", badKind)
+							}
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+type operationCase struct {
+	Case     string          `json:"case"`
+	Request  json.RawMessage `json:"request"`
+	Response json.RawMessage `json:"response"`
+}
+
+func operationCases(t *testing.T) []operationCase {
+	t.Helper()
+	var cases []operationCase
+	if err := json.Unmarshal(fixture(t, "operation-cases.json"), &cases); err != nil || len(cases) != 8 {
+		t.Fatal("independent operation literals missing", err)
+	}
+	return cases
+}
+func checkLiteralOperations(t *testing.T) {
+	for _, tc := range operationCases(t) {
+		t.Run(tc.Case, func(t *testing.T) {
+			q, err := service.DecodeRequest(tc.Request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded, err := service.EncodeRequest(q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sameJSON(t, encoded, tc.Request)
+			r, err := service.DecodeResponse(tc.Response, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded, err = service.EncodeResponse(r, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sameJSON(t, encoded, tc.Response)
+			if q.Effect != nil {
+				r.Effect.ID.PayloadDigest = strings.Repeat("f", 64)
+				if _, err := service.EncodeResponse(r, q); !errors.Is(err, service.ErrConflict) {
+					t.Fatal("changed payload masqueraded as same operation", err)
+				}
+			}
+		})
+	}
 }
