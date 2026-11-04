@@ -1,0 +1,1 @@
+- Author a bounded read-through coordinator contribution over existing mirror ports, with shared-gate, cancellation, fairness and failure-cooldown fixture obligations. Durable PostgreSQL integration and service activation retain their separate gates.

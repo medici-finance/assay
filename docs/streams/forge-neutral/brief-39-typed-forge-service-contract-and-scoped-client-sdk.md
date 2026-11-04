@@ -196,3 +196,8 @@ exit, named result, positive and failing control, and date. No result is asserte
 Gate: human. Inspect actual dependency/import and credential reachability, private data and
 count isolation, current authority and unknown outcomes. Tests cannot authorize provisioning
 credentials, switching a managed writer, answering a human decision or changing a merge policy.
+
+
+## Read-through coordinator routing
+
+The bounded coordinator contribution `forge-neutral/51` routes its wire/client contract consumer here. Consume that existing typed boundary under this brief's complete dependencies, gates and source obligations; this inverse reference grants no implementation, credential, serving or activation authority.
