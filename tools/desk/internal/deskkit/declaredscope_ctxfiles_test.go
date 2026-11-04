@@ -85,7 +85,7 @@ func TestCtxGlobResolves(t *testing.T) {
 func TestCtxAnnotationAccepted(t *testing.T) {
 	for _, tc := range []struct{ list, note string }{
 		{"files:\n- `tools/runner/a.sh`\n- `tools/runner/b.sh`", "The short paths above are relative to the runner."},
-		{"files: tools/runner/a.sh, b.sh, c.sh,\nd.sh (new); docs/notes.md.", "The abbreviated runner paths above are relative to tools/runner/."},
+		{"files: `tools/runner/a.sh`, `tools/runner/b.sh`,\n`docs/notes.md`.", "The runner paths above are listed in full."},
 		{"files:\n- `tools/a.go` — the reader\n- `docs/guide/**`", "Everything under docs/guide/ is regenerated."},
 		{"files:\n- `../one/x.go`", "The sibling path names the deliverable checkout."},
 	} {
@@ -107,7 +107,14 @@ func TestCtxAnnotationAccepted(t *testing.T) {
 func TestCtxAnnotationRefused(t *testing.T) {
 	const list = "files:\n- `tools/a.go`\n- `tools/b.go`"
 	for name, files := range map[string]string{
-		"prose inside list":     "files:\n- `tools/a.go`\nThe next item is also part of the list.\n- `tools/b.go`",
+		"prose inside list": "files:\n- `tools/a.go`\nThe next item is also part of the list.\n- `tools/b.go`",
+		// F1 (#5097 round 1): a sentence must not bless a short name or a
+		// dot-corrupted inline tail; either would bind the wrong path.
+		"short names inline":    "files: tools/runner/a.sh, b.sh, c.sh,\nd.sh (new); docs/notes.md.\nThe abbreviated runner paths above are relative to tools/runner/.",
+		"short names bulleted":  "files:\n- `tools/runner/a.sh`\n- `b.sh`\n- `c.sh`\nThe short paths above are relative to tools/runner/.",
+		"short names in words":  "files:\n- `tools/runner/a.sh`\n- `b.sh`\nThe short paths above are relative to the runner directory.",
+		"root name with note":   "files:\n- `tools/a.go`\n- `Makefile`\nThe build file is listed by its short name.",
+		"dot on inline tail":    "files: tools/a.go, docs/notes.md.\nThe docs path above is the deliverable page.",
 		"second prose line":     list + "\nThe short paths are relative here.\nAnd this line continues it.",
 		"list still open":       "files: tools/a.go, tools/b.go,\nThe rest are relative to tools/.",
 		"files line empty":      "files:\nThe paths are listed somewhere else.",

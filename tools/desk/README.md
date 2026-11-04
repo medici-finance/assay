@@ -6477,7 +6477,9 @@ refuse the outcome record. This narrows a refusal; everything else stays refused
   a plain sentence: printable ASCII, at least four words, a capitalised first word of
   letters, one final `.`, no list or quote marker, none of
   `` ` * _ { } [ ] < > | \ , ; + ( ) : " # ? ! = $ & @ % ~ `` and no `..`. A word holding
-  `/` or `.` must name a declared path or a directory above one. The sentence declares
+  `/` or `.` must name a declared path or a directory above one, and every declared path
+must hold a `/` and must not end in `.` (a short name, or an unbackticked inline tail that
+kept the closing full stop, refuses the block). The sentence declares
   nothing. Any further line in the same block refuses, as does a sentence the rules do not
   fit.
 

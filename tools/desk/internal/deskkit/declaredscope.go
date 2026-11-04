@@ -322,7 +322,10 @@ var scopeAnnotationWord = regexp.MustCompile(`^[A-Z][a-z]+$`)
 //     and no " — ", "..", "#", "?", "!", "=", "$", "&", "@", "%", "~" or '"';
 //   - every word holding "/" or "." names a path the list already declares, or
 //     a directory above one, so the sentence can neither add a path nor hide
-//     one the list leaves out.
+//     one the list leaves out;
+//   - every declared path holds a "/" and none ends in ".", so a sentence never
+//     blesses a short name it explains as relative, nor an inline tail that kept
+//     the closing full stop.
 //
 // The caller adds the positional rules: column zero, after a list that ended,
 // and the block's last line.
@@ -339,6 +342,15 @@ func scopeAnnotation(line string, declared []string) bool {
 	words := strings.Fields(strings.TrimSuffix(line, "."))
 	if len(words) < 4 || !scopeAnnotationWord.MatchString(words[0]) {
 		return false
+	}
+	// A sentence may only follow a list of full paths. A short name (no '/') is the
+	// shape a "relative to" sentence explains, and would bind at the repository root;
+	// a declared path ending in '.' is an unbackticked inline tail that kept the
+	// sentence-closing full stop. Either way the record would bind the wrong path.
+	for _, d := range declared {
+		if !strings.Contains(d, "/") || strings.HasSuffix(d, ".") {
+			return false
+		}
 	}
 	for _, w := range words {
 		if !strings.ContainsAny(w, "/.") {

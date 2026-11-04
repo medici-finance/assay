@@ -66,6 +66,18 @@
       "file": "internal/deskkit/verifywake.go",
       "old": "return \"\", false\n\tcase strings.HasPrefix(input, InputKeyRepoSourcePrefix):",
       "new": "return DeclaredUnbound, true\n\tcase strings.HasPrefix(input, InputKeyRepoSourcePrefix):"
+    },
+    {
+      "name": "a sentence may follow a list holding a short name (bound at the root)",
+      "file": "internal/deskkit/declaredscope.go",
+      "old": "if !strings.Contains(d, \"/\") || strings.HasSuffix(d, \".\") {",
+      "new": "if strings.HasSuffix(d, \".\") {"
+    },
+    {
+      "name": "a sentence may follow an inline tail that kept the closing full stop",
+      "file": "internal/deskkit/declaredscope.go",
+      "old": "if !strings.Contains(d, \"/\") || strings.HasSuffix(d, \".\") {",
+      "new": "if !strings.Contains(d, \"/\") {"
     }
   ]
 }
