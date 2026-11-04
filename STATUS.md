@@ -223,8 +223,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | graph-execution | 34 [exec:strong] | implemented | 4500 | 5 | — | worker | fix, cite medici-finance/assay#4560 | — | — |
 | build-less-brittle | 12 [exec:strong] | implemented | 3520 | 1 | — | worker | fix, cite #4169 | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | worker | fix, cite medici-finance/assay#1281 | — | — |
+| cell-api | 08 [exec:strong] | implemented | 3020 | 4 | — | worker | fix, cite medici-finance/assay#1857 | — | — |
 | apps-installer | 10 | implemented | 3010 | 2 | — | worker | fix, cite #4560 | — | — |
-| cell-api | 08 [exec:strong] | implemented | 3010 | 4 | — | worker | fix, cite medici-finance/assay#1857 | — | — |
 | desk-containers | 08 [exec:strong] | implemented | 2500 | 3 | — | worker | fix, cite #1920 | — | — |
 | desk-containers | 09 [exec:strong] | implemented | 2500 | 3 | — | worker | fix, cite #4317 | — | — |
 | measured-status | 03 [exec:strong] | verified | 2210 | 0 | — | worker | fix, cite #1915 | 2026-10-22 assay-verifier-app[bot] @ 05dc9fbc88f2 (claude-opus-5-5) | — |
