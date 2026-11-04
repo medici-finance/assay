@@ -13,7 +13,7 @@ gate-why: "Review the demonstrated separation between operator profile initializ
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -29,6 +29,7 @@ sources:
 - docs/library-first.md
 - docs/go-engineering.md
 - "Inspected foundation36 1ddfb16e68ebb7be54d4dc5a606a07e74e2a7259, Store52 e7b084ba2f10e90feee8470ebab8c52942f05233 and Gate54 d114102a6e4c7de0d78c235dcbca2801676c4a4c; feature availability is not mainline delivery or acceptance."
+- "Implementation genuinely consumes qualified local Gate54 30d838267e055397a35b07b0fe264a16302f8e41, containing published native53 622bec858f5ba7c7e9fc3ab91ff780e7d368e7d1 and corrected Store52 bfea138c74ae784ecc034f273076bd5866f4dddd. Gate54 publication and acceptance remain separately gated."
 consumers:
 - "workflow/store and its canonical numbered Goose migration: follow-up forge-neutral/55 (operator-only initialization, replay and SQL role contract)"
 - "workflow/internal/refreshcodec: follow-up forge-neutral/55 (reuse its canonical profile encoding; no second encoding)"
@@ -91,6 +92,17 @@ merge or acceptance; it must contain the actual current migrations, codec, const
 and guards, not an authoring-only port. Core R2 provisioning can then proceed locally.
 Final joined delivery consumes the completed qualified native/SQL owners and retains all
 publication, independent verification and activation gates.
+
+The implementation reuses the canonical private DB pool, refreshcodec and Goose
+ledger. Its additive initialization migration also guards the runtime's existing
+eligible-terminal fill deletion below direct SQL. The role manifest is rendered
+only; actual grants and ephemeral LOGIN credentials are confined to the marked
+disposable fixture during qualification. The joined native fixture uses that
+restricted login, the operator API and the existing admitted SDK/mapper/coordinator
+path; its positive path uses no SeedRefresh initialization. The committed bounded
+production controls cover known inputs, replay, atomicity, two-process source
+fencing, declared runtime grants, effective role escapes, owned cleanup and the
+dedicated joined CI proof. Author-side checks do not supply independent Evidence.
 
 ## Human decision
 
