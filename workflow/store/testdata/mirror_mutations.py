@@ -52,6 +52,8 @@ def mutate(name):
         change(state,code,'WHERE scope_key=$1 AND version=$2 RETURNING version','WHERE scope_key=$1 AND ($2::bigint>=0) RETURNING version')
     elif name=="admission-partition":
         change(state,code,'string(scope.Kind), scope.AdmissionID}','string(scope.Kind), ""}')
+    elif name=="partial-absence":
+        change(state,code,'if len(u.NotInInventory) > 0 && (!u.CompleteScan || !u.FullInventory) {','if false {')
     elif name=="complete-proof":
         change(state,sql,"IF NEW.state='complete' AND NOT NEW.complete_scan THEN", "IF false THEN")
         change(state,sql,"IF coalesce(NEW.last_complete,zero_stamp)>coalesce(OLD.last_complete,zero_stamp) AND (NOT NEW.complete_scan OR NEW.state<>'complete') THEN","IF false THEN")
@@ -84,7 +86,7 @@ def mutate(name):
         raise RuntimeError("unknown fault")
     for p,text in state.items(): (module/p).write_text(text)
 
-controls=[("authorization","TestPGMirrorConformance"),("post-io-authorization","TestPGMirrorScopeIsolation"),("precommit-authorization","TestPGMirrorScopeIsolation"),("admission-partition","TestPGMirrorScopeIsolation"),("cas","TestPGMirrorConcurrentCAS"),("complete-proof","TestPGMirrorAtomicCoverage"),("inventory-proof","TestPGMirrorAtomicCoverage"),("observed-proof","TestPGMirrorAtomicCoverage"),("monotonicity","TestPGMirrorAtomicCoverage"),("hold-recovery","TestPGMirrorConformance"),("null-recovery-proof","TestPGMirrorAtomicCoverage"),("new-absence","TestPGMirrorAtomicCoverage"),("rebuild-completeness","TestPGMirrorRestartRebuild"),("codec-frame","TestPGMirrorPresenceHistory"),("derived-history","TestPGMirrorPresenceHistory"),("split-transaction","TestPGMirrorAtomicCoverage")]
+controls=[("authorization","TestPGMirrorConformance"),("post-io-authorization","TestPGMirrorScopeIsolation"),("precommit-authorization","TestPGMirrorScopeIsolation"),("admission-partition","TestPGMirrorScopeIsolation"),("partial-absence","TestPGMirrorConformance"),("cas","TestPGMirrorConcurrentCAS"),("complete-proof","TestPGMirrorAtomicCoverage"),("inventory-proof","TestPGMirrorAtomicCoverage"),("observed-proof","TestPGMirrorAtomicCoverage"),("monotonicity","TestPGMirrorAtomicCoverage"),("hold-recovery","TestPGMirrorConformance"),("null-recovery-proof","TestPGMirrorAtomicCoverage"),("new-absence","TestPGMirrorAtomicCoverage"),("rebuild-completeness","TestPGMirrorRestartRebuild"),("codec-frame","TestPGMirrorPresenceHistory"),("derived-history","TestPGMirrorPresenceHistory"),("split-transaction","TestPGMirrorAtomicCoverage")]
 signal.signal(signal.SIGTERM,lambda *_:sys.exit(143))
 try:
     baseline=run("TestPGMirror(Conformance|AtomicCoverage|ConcurrentCAS|RestartRebuild|ScopeIsolation|PresenceHistory|SchemaBoundary)")
@@ -99,6 +101,6 @@ try:
         if "--- FAIL: "+test not in result.stdout:
             print(result.stdout);raise SystemExit("INVALID named failure absent: "+name)
         print("KILLED: "+name+" -> "+test,flush=True)
-    print("PASS: all16 production-path faults killed; exact source restored",flush=True)
+    print("PASS: all17 production-path faults killed; exact source restored",flush=True)
 finally:
     for p,b in original.items(): (module/p).write_bytes(b)
