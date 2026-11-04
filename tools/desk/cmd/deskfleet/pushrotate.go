@@ -436,6 +436,13 @@ func (r *pushRun) activeByName() ([]pushTokenRecord, int) {
 				"written", page, resp.Status)
 			return nil, exitUnverifiable
 		}
+		// A JSON null decodes without error into a nil slice. Read as a short last page it
+		// would report zero active, and --create would mint a second live credential. An
+		// empty list is `[]`, which decodes non-nil.
+		if recs == nil {
+			r.errf("could-not-check: access-token list page %d answered null, not a list — nothing written", page)
+			return nil, exitUnverifiable
+		}
 		for _, t := range recs {
 			if seen[t.ID] {
 				r.errf("could-not-check: access-token list page %d repeats id %d (pagination not honoured) — "+

@@ -72,9 +72,18 @@ func TestPushTokenPagedList(t *testing.T) {
 		{"page parameter ignored", "pagination not honoured", func(f *ptFake) { ptHistory(f, 150); f.ignorePage = true }},
 		{"endless pages", "runs past", func(f *ptFake) { f.endlessPages = true }},
 		{"page 2 answers 500", "could-not-check", func(f *ptFake) { ptHistory(f, 150); f.listFailPage = 2 }},
+		{"page 2 answers 404", "page 2 answered HTTP 404", func(f *ptFake) {
+			ptHistory(f, 150)
+			f.listStatus, f.listFailPage = 404, 2
+		}},
 		{"list 500", "could-not-check", func(f *ptFake) { f.listStatus = 500 }},
 		{"list 403", "could-not-check", func(f *ptFake) { f.listStatus = 403 }},
 		{"list not an array", "could-not-check", func(f *ptFake) { f.listStatus = 200 }},
+		{"list 200 null", "answered null", func(f *ptFake) { f.listNull = true }},
+		{"page 2 answers 200 null", "page 2 answered null", func(f *ptFake) {
+			ptHistory(f, 150)
+			f.listNull, f.listFailPage = true, 2
+		}},
 	}
 	for _, c := range faults {
 		t.Run(c.name, func(t *testing.T) {

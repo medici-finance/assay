@@ -348,6 +348,12 @@
       "file": "cmd/deskfleet/pushrotate.go",
       "old": "\tif field, left := byIDVerdict(t, r.today, r.want, r.o.minDays); field != \"\" {\n\t\tr.errf(\"self: FAIL",
       "new": "\tif field, left := \"\", 0; field != \"\" {\n\t\tr.errf(\"self: FAIL"
+    },
+    {
+      "name": "M26, review — a 200 null token-list page reads as an empty last page (--create mints a second credential)",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\t\tif recs == nil {\n",
+      "new": "\t\tif false && recs == nil {\n"
     }
   ]
 }

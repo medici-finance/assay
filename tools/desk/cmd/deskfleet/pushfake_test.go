@@ -86,6 +86,7 @@ type ptFake struct {
 
 	// faults
 	listStatus    int
+	listNull      bool   // the list answers 200 with a JSON null body (on listFailPage when set)
 	listFailPage  int    // non-zero: that list page answers listStatus (default 500), earlier pages answer
 	ignorePage    bool   // the list ignores the page parameter (every page is page 1)
 	endlessPages  bool   // the list answers a full page of fresh unrelated records on every page
@@ -297,6 +298,12 @@ func (f *ptFake) handleList(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(q.Get("page"))
 	if page < 1 || f.ignorePage {
 		page = 1
+	}
+	if f.listNull && (f.listFailPage == 0 || f.listFailPage == page) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte("null"))
+		return
 	}
 	if f.listStatus != 0 && (f.listFailPage == 0 || f.listFailPage == page) {
 		ptJSON(w, f.listStatus, map[string]any{"message": "boom"})
