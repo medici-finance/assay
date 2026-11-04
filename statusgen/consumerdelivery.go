@@ -78,23 +78,60 @@ func runDeliveryConsumers(root, base, brief, delivery string) int {
 	// Reuse the existing Git archive pipeline. No historical source is run,
 	// no refs/worktree metadata are mutated, and local edits cannot replace inputs.
 	// A tree archive has no commit context for export-subst. Check the complete
-	// entry roster before extraction, so no symlink or submodule can escape the
-	// snapshot or make an input silently disappear. export-ignore is detected below.
+	// entry roster before extraction, so no submodule or escaping symlink can
+	// leave the snapshot or make an input silently disappear. export-ignore is
+	// detected below. A symlink whose target stays inside the snapshot root is
+	// recorded with its mode and target text and is never followed; every other
+	// link, and every submodule, is refused (escapingDeliveryLink).
 	entries, ok := repo.TreeModes(delivery)
 	if !ok || len(entries) == 0 {
 		return fail("cannot enumerate delivered tree entries")
 	}
+	links := map[string]string{}
 	for _, entry := range entries {
-		if entry.Mode != "100644" && entry.Mode != "100755" {
+		switch entry.Mode {
+		case "100644", "100755":
+		case "120000":
+			target, err := historyGit(root, "cat-file", "blob", delivery+":"+entry.Path).Output()
+			if err != nil {
+				return fail("cannot read the target of delivered symlink: " + entry.Path)
+			}
+			links[entry.Path] = string(target)
+		default:
 			return fail("delivery snapshot contains a symlink or submodule: " + entry.Path)
 		}
+	}
+	if p := escapingDeliveryLink(links); p != "" {
+		return fail("delivery snapshot contains a symlink or submodule: " + p)
 	}
 	archive := historyGit(root, "archive", "--format=tar", delivery+"^{tree}")
 	if err := materializeCommands(delivery, archive, exec.Command("tar", "-x", "-C", snapshot)); err != nil {
 		return fail(err)
 	}
 	for _, entry := range entries {
-		info, err := os.Lstat(filepath.Join(snapshot, filepath.FromSlash(entry.Path)))
+		p := filepath.Join(snapshot, filepath.FromSlash(entry.Path))
+		info, err := os.Lstat(p)
+		if target, isLink := links[entry.Path]; isLink {
+			// The archive must reproduce the recorded link exactly. Then the link
+			// is replaced by an empty placeholder: the routing and consumer checks
+			// see that the path exists and whether the diff names it, and nothing
+			// they read can pass through it to the target's content.
+			got, rerr := os.Readlink(p)
+			if err != nil || info.Mode()&os.ModeSymlink == 0 || rerr != nil || got != target {
+				return fail("delivery archive did not reproduce a tracked symlink: " + entry.Path)
+			}
+			if err := os.Remove(p); err != nil {
+				return fail(err)
+			}
+			placeholder, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+			if err != nil {
+				return fail(err)
+			}
+			if err := placeholder.Close(); err != nil {
+				return fail(err)
+			}
+			continue
+		}
 		if err != nil || !info.Mode().IsRegular() {
 			return fail("delivery archive omitted a tracked blob (for example export-ignore): " + entry.Path)
 		}

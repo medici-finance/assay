@@ -1,0 +1,2 @@
+### Fixed
+- `statusgen --consumers --delivery` no longer refuses every delivery whose tree carries a symlink. A symlink whose target stays inside the delivered tree is recorded and never followed, so the consumers check runs to a verdict. A link with an absolute or non-portable target, one that `..`-escapes the root, one that reaches outside through another link, a link loop, and a submodule are still refused with the same message and exit 2.
