@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5405
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 outcome: none
 id: d632866d-1170-4aff-bb14-2344b2f786c1
 authored: 2026-11-03 by statusgen newbrief
@@ -83,7 +83,7 @@ Reuse pgx/v5 v5.12.0 for PostgreSQL and Goose/v3 v3.29.0 for migration mechanics
 
 ## Human decision
 
-The isolated PostgreSQL foundation is ready for independent review of its bounded database-credential and CI execution boundary. It provides explicit connections, compatible-schema validation and a single forward-only migration/checksum ledger, qualified using synthetic data in a disposable container. Seven named tests, a race run and eight production fault controls supply implementation evidence; they are not independent acceptance. The CI job has read-only repository permission, a pinned synthetic PostgreSQL container and checksum-verified toolchain; checkout credentials are not persisted. No production database, provider identity or executor is configured.
+The isolated PostgreSQL foundation is ready for independent review of its bounded database-credential and CI execution boundary. It provides explicit connections, compatible-schema validation and a single forward-only migration/checksum ledger, qualified using synthetic data in a disposable container. Eight named tests, a race run and eight production fault controls supply implementation evidence; they are not independent acceptance. The CI job has read-only repository permission, a pinned synthetic PostgreSQL container and checksum-verified toolchain; checkout credentials are not persisted. No production database, provider identity or executor is configured.
 
 1. Accept this bounded foundation after independent review and verification of the demonstrated credential, migration and CI boundary; retain all complete domain-store, mirror-retention, deployment and activation gates.
 2. Hold acceptance and name the specific unsupported boundary or correction.
@@ -126,6 +126,8 @@ Callers supply explicit PostgreSQL configuration and context; they receive a com
 | 7 | check:ci +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGFoundationBoundary$" ./store/... > "$o" && grep -F -- "--- PASS: TestPGFoundationBoundary " "$o")` | exit 0; named PASS; Module imports no embedded/alternate engine and exposes no execution, claim, admission or outbox domain API. Adding an embedded runtime import fails. CI trigger inputs cover every out-of-module fixture/contract actually read; the check does not treat future parent domain semantics as implemented. |
 | 8 | check | `(cd workflow && GOWORK=off go vet ./... && GOWORK=off go test -count=1 -race ./...)` | exit 0 against explicit disposable PostgreSQL; no skipped integration test is credited. |
 | 9 | check +dereference | `statusgen --root . --consumers --brief graph-execution/36 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | Before merge, actual implementation edits corroborate fixed-here consumers; follow-up rows prove routing only. Before post-merge verification use independently established immutable --delivery and --base bounds. Routing alone never proves producer identity or full parent delivery. |
+| 10 | check +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && python3 store/testdata/mutations.py > "$o" && cat "$o" && grep -F -- "PASS: all8 production-path fault controls killed; original bytes restored" "$o")` | Run in an owned clean linked worktree on an owned feature branch, not main, master or detached HEAD. Exit 0; all eight named production fault controls print KILLED, compile/setup-only failures are refused and exact original source bytes are restored. This row executes all eight production fault controls; a baseline-only run cannot supply mutation evidence. |
+| 11 | check +flow | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGFoundationDirectivePolicy$" ./store/... > "$o" && grep -F -- "--- PASS: TestPGFoundationDirectivePolicy " "$o")` | Exit 0; named PASS. No-space, repeated-dash and case-insensitive transaction-disabling, environment-substitution, Down, duplicate-Up and unknown annotations refuse before connection. A normalized allowed forward migration executes through Goose on the disposable PostgreSQL fixture. |
 
 The real PostgreSQL rows are explicitly environment-bound (`check`), so the independent verifier uses the selected disposable-container profile rather than an isolated namespace that cannot reach its fixture. The dedicated CI job still runs them with its own disposable service. No original /19 Class/Command is changed.
 

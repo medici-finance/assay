@@ -47,16 +47,20 @@ func loadManifest(source fs.FS) (map[int64]string, error) {
 		}
 		up := false
 		for _, line := range strings.Split(string(body), "\n") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 && fields[0] == "--" && fields[1] == "+goose" {
-				directive := strings.Join(fields[2:], " ")
+			// Match the pinned Goose parser's annotation detection and
+			// normalization, including no-space and repeated-dash comments.
+			if strings.HasPrefix(strings.TrimSpace(line), "--") && strings.Contains(line, "+goose") {
+				if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+					return nil, errors.New("indented migration directive")
+				}
+				directive := strings.ToUpper(strings.TrimSpace(strings.Replace(strings.ReplaceAll(line, "--", ""), "+goose", "", 1)))
 				switch directive {
-				case "Up":
+				case "UP":
 					if up {
 						return nil, errors.New("duplicate Up")
 					}
 					up = true
-				case "StatementBegin", "StatementEnd":
+				case "STATEMENTBEGIN", "STATEMENTEND":
 				default:
 					return nil, errors.New("non-forward or ambient migration directive")
 				}

@@ -30,6 +30,11 @@ The session lock serializes the complete Goose operation across independent proc
 is released on the operation's completion or connection loss. No application memory mutex
 substitutes for that database lock.
 
+The manifest recognizes annotation comments using the pinned Goose parser's detection
+and normalization, including no-space, repeated-dash and case-insensitive spellings.
+Only `Up`, `StatementBegin` and `StatementEnd` are allowed. Transaction disabling,
+environment substitution and all other directives refuse before database connection.
+
 The foundation contains no domain table. A later adapter extends this exact migration set
 and independently validates the schema floor and its admission/version/completeness rules.
 One current foundation handle grants no claim, execution, acceptance or effect authority.
