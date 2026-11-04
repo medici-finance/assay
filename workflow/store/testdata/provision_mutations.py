@@ -41,10 +41,14 @@ def main():
     role = "workflow/store/refresh_role_profile.go"
     migration = "workflow/store/migrations/00004_refresh_initialization.sql"
     ci = ".github/workflows/assay-workflow.yml"
+    fixture = "workflow/internal/pgtest/fixture.go"
     faults = [
         ("known-baseline", core, "return u.Known && initialInstant", "return initialInstant",
          "workflow", "./store", "^TestPGRefreshProvision$/unknown-source$",
          "unqualified initial accounting accepted"),
+        ("known-baseline-native", core, "return u.Known && initialInstant", "return initialInstant",
+         "tools/desk", "./internal/deskkit", "^TestMirrorProvisionedReadThrough$",
+         "operator accepted unknown initial baseline"),
         ("immutable-replay", core, "!bytes.Equal(data, r.data)", "false",
          "workflow", "./store", "^TestPGRefreshProvisionReplay$",
          "conflicting immutable baseline accepted"),
@@ -53,6 +57,12 @@ def main():
          "if e = provisionRefreshRecord(ctx, tx, p, record, now); e != nil {\n\t\t\treturn RefreshProvisionReceipt{}, e\n\t\t}\n\t\tif record.kind == \"source\" { if tx.Commit() != nil { return RefreshProvisionReceipt{}, refresh.ErrHeld } }",
          "workflow", "./store", "^TestPGRefreshProvision$/atomic$",
          "failed initialization retained a staged prefix"),
+        ("cross-process-source-fence", core, "SELECT pg_advisory_xact_lock($1)", "SELECT 1 WHERE $1::bigint IS NOT NULL",
+         "workflow", "./store", "^TestPGRefreshProvisionProcesses$",
+         "operator child initialization failed"),
+        ("unknown-retry-replay", core, "SELECT known AND NOT unknown_hold AND NOT EXISTS", "SELECT known AND NOT EXISTS",
+         "workflow", "./store", "^TestPGRefreshProvisionReplay$",
+         "existing unknown retry state was reconciled by initialization"),
         ("runtime-profile-insert", role,
          'operatorInsert: "source_id profile known window_at window_ns http_used http_limit inflight_limit reservation_limit retry_at", operatorUpdate: "known", runtimeUpdate:',
          'operatorInsert: "source_id profile known window_at window_ns http_used http_limit inflight_limit reservation_limit retry_at", operatorUpdate: "known", runtimeInsert: "source_id profile known window_at window_ns http_used http_limit inflight_limit reservation_limit", runtimeUpdate:',
@@ -73,8 +83,23 @@ def main():
          "unsafe effective role was accepted security-definer"),
         ("lower-eviction", migration,
          "CREATE TRIGGER refresh_eviction_guard BEFORE DELETE ON public.refresh_fills FOR EACH ROW EXECUTE FUNCTION public.guard_refresh_eviction();", "",
-         "workflow", "./store", "^TestPGRefreshProvision$/live-fill-delete$",
+         "workflow", "./store", "^TestPGRefreshProvision$/(live-fill-delete|eviction)",
          "direct SQL deleted a live accounted fill"),
+        ("owned-role-binding", fixture,
+         "func (f *Fixture) CheckRoles(ctx context.Context, roles RoleConnections) error {",
+         "func (f *Fixture) CheckRoles(ctx context.Context, roles RoleConnections) error {\n return nil",
+         "workflow", "./internal/pgtest", "^TestOwnedRefreshRoles$/binding$",
+         "foreign fixture role binding accepted"),
+        ("owned-role-marker", fixture,
+         "!= nil || marker != role.marker {\n\t\t\tproblems",
+         "!= nil || false {\n\t\t\tproblems",
+         "workflow", "./internal/pgtest", "^TestOwnedRefreshRoles$/cleanup-marker$",
+         "uncertain role ownership was silently pruned"),
+        ("owned-role-creation-ack", fixture,
+         '!role.ack || !strings.HasPrefix(role.name, "assay_role_")',
+         '!strings.HasPrefix(role.name, "assay_role_")',
+         "workflow", "./internal/pgtest", "^TestOwnedRefreshRoles$/cleanup-ack$",
+         "unacknowledged creation was silently pruned"),
         ("provenance-immutability", migration,
          "CREATE TRIGGER refresh_initialization_guard BEFORE UPDATE OR DELETE ON public.refresh_initializations FOR EACH ROW EXECUTE FUNCTION public.guard_refresh_initialization();", "",
          "workflow", "./store", "^TestPGRefreshProvisionSchema$",
@@ -88,6 +113,9 @@ def main():
     # A qualifying baseline must run the same assertions successfully first.
     baselines = [
         ("workflow", "./store", "^TestPGRefresh(Provision|ProvisionReplay|ProvisionSchema|RuntimePrivileges)$"),
+        ("workflow", "./store", "^TestPGRefreshProvisionProcesses$"),
+        ("workflow", "./internal/pgtest", "^TestOwnedRefreshRoles$"),
+        ("tools/desk", "./internal/deskkit", "^TestMirrorProvisionedReadThrough$"),
         ("tools/desk", "./internal/deskkit", "^TestWorkflowRefreshProvisionCI$"),
     ]
     scratch = Path(tempfile.mkdtemp(prefix="provision-controls-"))

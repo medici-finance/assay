@@ -93,6 +93,25 @@ func TestPGRefreshProvisionProcesses(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer admin.Close()
+	// Hold the first actual source INSERT while both independent processes have
+	// entered initialization. With the production source fence intact, one waits
+	// here and one waits at that fence; without it both have read source absence.
+	barrier, e := admin.Conn(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer barrier.Close()
+	if _, e = barrier.ExecContext(ctx, `SELECT pg_advisory_lock(hashtext(current_database()),55)`); e != nil {
+		t.Fatal("owned SQL initialization barrier unavailable")
+	}
+	defer func() {
+		cleanup, finish := context.WithTimeout(context.Background(), 5*time.Second)
+		defer finish()
+		barrier.ExecContext(cleanup, `SELECT pg_advisory_unlock(hashtext(current_database()),55)`)
+	}()
+	if _, e = admin.ExecContext(ctx, `CREATE FUNCTION public.fixture_process_barrier() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='source' THEN PERFORM pg_advisory_xact_lock(hashtext(current_database()),55); END IF; RETURN NEW; END $$; CREATE TRIGGER fixture_process_barrier BEFORE INSERT ON public.refresh_initializations FOR EACH ROW EXECUTE FUNCTION public.fixture_process_barrier()`); e != nil {
+		t.Fatal("owned SQL process barrier unavailable")
+	}
 	var now time.Time
 	if e = admin.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&now); e != nil {
 		t.Fatal(e)
@@ -141,6 +160,25 @@ func TestPGRefreshProvisionProcesses(t *testing.T) {
 	}
 	if e = os.WriteFile(start, nil, 0600); e != nil {
 		t.Fatal("shared process release unavailable")
+	}
+	poll := time.NewTicker(5 * time.Millisecond)
+	defer poll.Stop()
+	for {
+		var waiting int
+		if e = admin.QueryRowContext(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND usename=$1 AND wait_event_type='Lock' AND wait_event='advisory'`, roles.Operator.User).Scan(&waiting); e != nil {
+			t.Fatal("independent operator SQL waiters unavailable")
+		}
+		if waiting == 2 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("two independent operators did not reach the SQL barrier")
+		case <-poll.C:
+		}
+	}
+	if _, e = barrier.ExecContext(ctx, `SELECT pg_advisory_unlock(hashtext(current_database()),55)`); e != nil {
+		t.Fatal("owned SQL process barrier release unavailable")
 	}
 	for i, command := range commands {
 		if e = command.Wait(); e != nil {
