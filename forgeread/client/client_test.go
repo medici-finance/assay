@@ -117,7 +117,7 @@ func TestForgeServiceClientFlow(t *testing.T) {
 				}
 				if state == service.ProjectionPending {
 					q.Operation, q.Source = service.CreateIssue, nil
-					q.Effect = &service.EffectRequest{ID: service.OperationID{Key: "existing-operation-1", PayloadDigest: strings.Repeat("a", 64)}, Title: "fixture", Body: "fixture"}
+					q.Effect = &service.EffectRequest{ID: service.OperationID{Key: "fixture", PayloadDigest: strings.Repeat("a", 64)}, Title: "fixture", Body: "fixture"}
 					r.Operation, r.Source = q.Operation, nil
 					f := false
 					r.Metadata.Complete = &f
