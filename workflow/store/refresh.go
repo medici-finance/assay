@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -16,7 +17,9 @@ import (
 )
 
 // NativeLimits bounds authorized base-transport entries, not provider points or
-// scan calls. Values come from trusted composition; there are no runtime defaults.
+// scan calls. Reservations is the lifetime retained-ledger cap, including observed
+// entries; it is not reset by window rollover. Values come from trusted composition;
+// there are no runtime defaults.
 type NativeLimits struct {
 	CallerPerWindow, AdmissionPerWindow, SourcePerWindow int64
 	PerFill, Concurrent, Reservations                    int64
@@ -37,6 +40,7 @@ type RefreshGate struct {
 	store                  *MirrorStore
 	config                 RefreshConfig
 	authority              refresh.CallerAuthority
+	dataClock              refresh.Clock
 	profile, budgetProfile []byte
 }
 
@@ -54,8 +58,24 @@ func validRefreshConfig(c RefreshConfig) bool {
 	l, n := c.Limits, c.Native
 	return c.SourceID != "" && c.AdmissionID != "" && c.AccessEpoch != "" && c.ConfigEpoch != "" && c.PolicyClass != "" && c.PolicyEpoch != "" && l.CallerFillsPerWindow > 0 && l.AdmissionFillsPerWindow >= l.CallerFillsPerWindow && l.FillWindow > 0 && l.MinFreshness > 0 && l.MaxFreshness >= l.MinFreshness && l.ActiveFills > 0 && l.QueuedCallers > 0 && l.AdmissionFills >= l.ActiveFills && l.AdmissionWaiters >= l.QueuedCallers && l.FailureEntries > 0 && l.WaitTimeout > 0 && l.FillTimeout > 0 && l.Cooldown > 0 && l.FailureTTL >= l.Cooldown && l.Refresh.Overlap >= 0 && l.Refresh.FullInventoryInterval > 0 && l.Refresh.FailureBackoff == 0 && n.CallerPerWindow > 0 && n.AdmissionPerWindow >= n.CallerPerWindow && n.SourcePerWindow >= n.AdmissionPerWindow && n.PerFill > 0 && n.Concurrent > 0 && n.Reservations >= n.Concurrent && n.Window > 0 && n.Window == l.FillWindow && c.PollInterval > 0 && c.PollInterval <= l.WaitTimeout
 }
-func (d *DB) Refresh(s *MirrorStore, c RefreshConfig, a refresh.CallerAuthority) (*RefreshGate, error) {
-	if d == nil || d.db == nil || s == nil || s.database != d || s.tx != nil || a == nil || !validRefreshConfig(c) {
+func validDataClock(clock refresh.Clock) bool {
+	if clock == nil {
+		return false
+	}
+	v := reflect.ValueOf(clock)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		if v.IsNil() {
+			return false
+		}
+	}
+	return !clock.Now().IsZero()
+}
+
+// Refresh requires a trusted application data clock shared with the source and
+// coordinator. SQL time independently owns all leases, windows and retry floors.
+func (d *DB) Refresh(s *MirrorStore, c RefreshConfig, a refresh.CallerAuthority, clock refresh.Clock) (*RefreshGate, error) {
+	if d == nil || d.db == nil || s == nil || s.database != d || s.tx != nil || a == nil || !validRefreshConfig(c) || !validDataClock(clock) {
 		return nil, refresh.ErrPolicy
 	}
 	profile, e := refreshBytes(c)
@@ -66,7 +86,7 @@ func (d *DB) Refresh(s *MirrorStore, c RefreshConfig, a refresh.CallerAuthority)
 	if e != nil {
 		return nil, e
 	}
-	return &RefreshGate{store: s, config: c, authority: a, profile: profile, budgetProfile: bp}, nil
+	return &RefreshGate{store: s, config: c, authority: a, dataClock: clock, profile: profile, budgetProfile: bp}, nil
 }
 func (g *RefreshGate) caller(id string) refresh.Caller {
 	c := g.config
@@ -369,6 +389,10 @@ func (g *RefreshGate) Complete(ctx context.Context, t refresh.Ticket, s mirror.S
 	if s != g.store || !t.Owner {
 		return refresh.ErrStale
 	}
+	dataNow := g.dataClock.Now()
+	if dataNow.IsZero() {
+		return refresh.ErrHeld
+	}
 	tx, now, e := g.start(ctx)
 	if e != nil {
 		return e
@@ -408,6 +432,11 @@ func (g *RefreshGate) Complete(ctx context.Context, t refresh.Ticket, s mirror.S
 		return refresh.ErrHeld
 	}
 	receipt := c.Attempts
+	afterIO := g.dataClock.Now()
+	if afterIO.IsZero() || afterIO.Before(dataNow) {
+		return refresh.ErrHeld
+	}
+	dataNow = afterIO
 	held := receipt.Held != "" || count != observed || unknown > 0
 	if c.Update != nil && (measuredHTTP == 0 || c.Update.CompleteScan && incomplete > 0) {
 		held = true
@@ -416,7 +445,7 @@ func (g *RefreshGate) Complete(ctx context.Context, t refresh.Ticket, s mirror.S
 	// It is data age only; canonical lease/window/floor time remains the DB clock.
 	if c.Update != nil && c.Failure == "" && (c.Update.CompleteScan || len(c.Update.Upsert) > 0) {
 		bound := receipt.ObservedAt
-		if bound.IsZero() || bound.After(now) {
+		if bound.IsZero() || bound.After(dataNow) {
 			held = true
 		} else {
 			if c.Update.CompleteScan && (c.Update.Coverage.LastComplete.After(bound) || c.Update.Coverage.LastInventory.After(bound)) {
@@ -442,7 +471,7 @@ func (g *RefreshGate) Complete(ctx context.Context, t refresh.Ticket, s mirror.S
 	}
 	reviewOnlyPartial := c.ReviewOnlyPartial()
 	c.Authority = g.authority
-	c.Now = now
+	c.Now = dataNow
 	c.Query.RequireReviews = false
 	state := "done"
 	reason := c.Failure
@@ -452,6 +481,18 @@ func (g *RefreshGate) Complete(ctx context.Context, t refresh.Ticket, s mirror.S
 			state = "held"
 		}
 		reason = ""
+		if state == "done" {
+			// Closing a denied owner still needs the actual scope-version fence.
+			// Acquire may predate that observation (or begin on a populated scope).
+			// Lock only identity/version; no private data or coverage is decoded.
+			baseline, err := g.store.lockMirrorVersion(ctx, tx, f.scope, k.Scope)
+			if err != nil {
+				return refresh.ErrHeld
+			}
+			if _, err = tx.ExecContext(ctx, `UPDATE public.refresh_fills SET snapshot_version=$3 WHERE fill_key=$1 AND generation=$2 AND state='pending' AND expires_at>clock_timestamp()`, f.key, f.generation, baseline); err != nil {
+				return refresh.ErrHeld
+			}
+		}
 	} else {
 		bound := &MirrorStore{database: g.store.database, limits: g.store.limits, tx: tx}
 		header, err := bound.lockMirrorHeader(ctx, tx, f.scope, k.Scope)
@@ -476,6 +517,11 @@ func (g *RefreshGate) Complete(ctx context.Context, t refresh.Ticket, s mirror.S
 		if n != 1 {
 			return refresh.ErrStale
 		}
+		c.Now = g.dataClock.Now()
+		if c.Now.IsZero() || c.Now.Before(dataNow) {
+			return refresh.ErrHeld
+		}
+		dataNow = c.Now
 		_, err = refresh.ApplyCompletion(ctx, bound, a, c)
 		if err != nil {
 			return err
@@ -511,6 +557,10 @@ func (g *RefreshGate) Complete(ctx context.Context, t refresh.Ticket, s mirror.S
 	}
 	if e = ctx.Err(); e != nil {
 		return e
+	}
+	finalDataNow := g.dataClock.Now()
+	if finalDataNow.IsZero() || finalDataNow.Before(dataNow) {
+		return refresh.ErrHeld
 	}
 	if e = tx.Commit(); e != nil {
 		return refresh.ErrHeld

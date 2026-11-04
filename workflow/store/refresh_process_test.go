@@ -41,7 +41,7 @@ func TestPGRefreshProcess(t *testing.T) {
 	}
 	defer db.Close()
 	s, _ := db.Mirror(MirrorLimits{128, 1 << 20})
-	g, e := db.Refresh(s, p.Profile, refreshTestAuthority{})
+	g, e := db.Refresh(s, p.Profile, refreshTestAuthority{}, refreshTestClock{})
 	if e != nil {
 		t.Fatal(e)
 	}

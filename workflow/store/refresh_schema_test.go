@@ -98,13 +98,13 @@ func checkRefreshSharedRetryPolicy(t *testing.T) {
 	for _, backoff := range []time.Duration{-time.Nanosecond, 10 * time.Second, 3 * time.Minute} {
 		config := r.cfg
 		config.Limits.Refresh.FailureBackoff = backoff
-		gate, e := r.db.Refresh(r.s, config, refreshTestAuthority{})
+		gate, e := r.db.Refresh(r.s, config, refreshTestAuthority{}, refreshTestClock{})
 		if !errors.Is(e, refresh.ErrPolicy) || gate != nil {
 			t.Fatalf("nonzero independent failure policy accepted: %s", backoff)
 		}
 	}
 	// Rejection neither normalizes the profile nor replaces the existing known one.
-	gate, e := r.db.Refresh(r.s, r.cfg, refreshTestAuthority{})
+	gate, e := r.db.Refresh(r.s, r.cfg, refreshTestAuthority{}, refreshTestClock{})
 	if e != nil {
 		t.Fatal(e)
 	}

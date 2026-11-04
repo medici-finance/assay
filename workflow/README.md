@@ -151,7 +151,12 @@ that implement that one proof. Every control restores exact production bytes and
 build/setup failures as invalid evidence. These are implementer controls, not acceptance.
 
 The read-only refresh adapter is constructed with `DB.Refresh` over its exact
-canonical `MirrorStore`, an explicit `RefreshConfig` and current caller authority.
+canonical `MirrorStore`, an explicit `RefreshConfig`, current caller authority and
+a required trusted `refresh.Clock` shared with its source/coordinator. This clock
+validates data age and supplies completion-query time; it is never a lease, window
+or retry authority. Nil/typed-nil/zero clocks refuse before SQL I/O, and later
+samples are checked after I/O and before commit. No clock default or skew tolerance
+is selected, and original source observations are not restamped.
 It implements the shared refresh Gate and native AttemptAuthority against the same
 pool and Goose ledger. It creates no policy or accounting: missing, unknown and
 mismatched SQL profiles hold. Only synthetic tests initialize known usage here;
@@ -166,10 +171,24 @@ base-transport entry and observed once after the bounded read. Known relative re
 delays use database observation time; unknown/missing observations retain a hold
 without refund. The private joined Store commits observations and fenced completion
 together. Standalone Store Apply remains available without granting refresh ownership.
+`NativeLimits.Reservations` is the lifetime retained reservation count for the
+source identity, including fully observed attempts. Reaching the cap holds new work
+even after a window rollover or process restart; runtime has no pruning/reset/repair
+API. This storage bound is distinct from per-window usage and concurrent attempts.
+Future archival/reconstruction requires a separate canonical accounting contract.
+Held/done bookkeeping fences the scope version without decoding observations.
 Canonical lock order is admission, source budget, caller, fill, waiter/attempt, then
 mirror scope/records. Native I/O and waiting retain no SQL locks or pool connection.
 A superseded waiter releases its exact ticket debit without applying its checked outcome
 to the later generation; a new freshness demand can still acquire a new generation.
+
+The deskkit test-support import adds the local workflow module to the desk module
+graph. Go minimal version selection therefore also raises selected production
+transitives: go-winio0.6.2→0.6.3, logr1.4.3→1.4.4, isatty0.0.20→0.0.24,
+multierr1.9.0→1.11.0, yaml/v3 3.0.4→3.0.5 and the protobuf pseudo-version
+→1.36.12. These assessed selections are part of the Gate contribution even though
+the workflow import is in test support. The later four-checksum repair changes no
+selected version; that narrower statement does not describe the whole contribution.
 
 The Gate's profile and base identity use version1 canonical JSON over byte-array
 identity fields, preserving arbitrary opaque string bytes across processes. This
