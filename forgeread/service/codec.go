@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 func EncodeRequest(q Request) ([]byte, error) {
@@ -49,7 +50,7 @@ func encode(v any) ([]byte, error) {
 	return b, nil
 }
 func decode(data []byte, target any) error {
-	if len(data) == 0 || len(data) > MaxMessageBytes {
+	if len(data) == 0 || len(data) > MaxMessageBytes || !utf8.Valid(data) {
 		return ErrInvalid
 	}
 	// encoding/json owns syntax and typed decoding. Its token API additionally

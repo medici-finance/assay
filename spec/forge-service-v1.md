@@ -70,7 +70,9 @@ A token binds scope, repository, record kind and an opaque value. Equality is
 supported; lexicographic token ordering, a local SQL sequence or provider-global
 ordering is not. `older`/`newer` require the request's scoped minimum and a distinct
 response token; runtime request-bound validation enforces those relationships.
-Observation progress is never effect, claim or permission authority.
+Observation progress is never effect, claim or permission authority. Tokens must name a
+canonical repository in the scope; scope-wide review/projection replies have no
+selected-repository progress token.
 
 Permission/unavailable results omit bodies, counts, provenance, executor identity,
 diagnostic links and observation tokens. Unknown completeness is `null`, not

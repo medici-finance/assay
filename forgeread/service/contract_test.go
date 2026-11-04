@@ -58,6 +58,7 @@ func TestForgeServiceContractCompatibility(t *testing.T) {
 	t.Run("canonical-mirror-kinds", checkCanonicalMirrorKinds)
 	t.Run("literal-operations", checkLiteralOperations)
 	t.Run("response-refusals", checkResponseRefusals)
+	t.Run("progress-shape", checkProgressShape)
 	t.Run("schema-source", checkSchemaSource)
 	t.Run("canonical-repository", checkCanonicalRepository)
 	q := literalRequest(t)
@@ -78,9 +79,33 @@ func TestForgeServiceContractCompatibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	sameJSON(t, b, fixture(t, "response-source.json"))
+	t.Run("valid-utf8-and-binary", func(t *testing.T) {
+		q := literalRequest(t)
+		r := literalResponse(t, q)
+		q.Source.Path = "café.txt"
+		r.Source.Path = q.Source.Path
+		r.Source.Content = []byte{255, 0, 128}
+		wire, e := service.EncodeRequest(q)
+		if e != nil {
+			t.Fatal(e)
+		}
+		got, e := service.DecodeRequest(wire)
+		if e != nil || got.Source.Path != q.Source.Path {
+			t.Fatal("valid UTF8 path changed", e)
+		}
+		wire, e = service.EncodeResponse(r, q)
+		if e != nil {
+			t.Fatal(e)
+		}
+		out, e := service.DecodeResponse(wire, q)
+		if e != nil || !bytes.Equal(out.Source.Content, r.Source.Content) {
+			t.Fatal("binary file bytes changed", e)
+		}
+	})
 	t.Run("closed", func(t *testing.T) {
 		raw := string(fixture(t, "request-source.json"))
 		for name, bad := range map[string]string{
+			"invalid-utf8": strings.Replace(raw, "readme.txt", "readme."+string([]byte{255})+"txt", 1),
 			"missing-default-scalar": strings.Replace(raw, `,
     "representedActor": ""`, "", 1),
 			"missing-nullable":     strings.Replace(raw, `"effect": null,`, "", 1),
@@ -473,4 +498,55 @@ func checkCanonicalRepository(t *testing.T) {
 	if _, e := service.EncodeRequest(q); e == nil {
 		t.Fatal("noncanonical provider repository accepted")
 	}
+}
+
+func checkProgressShape(t *testing.T) {
+	t.Run("scopewide-zero-repository-token", func(t *testing.T) {
+		for _, tc := range operationCases(t) {
+			if tc.Case != "issue-projection" {
+				continue
+			}
+			q, e := service.DecodeRequest(tc.Request)
+			if e != nil {
+				t.Fatal(e)
+			}
+			var r service.Response
+			if e = json.Unmarshal(tc.Response, &r); e != nil {
+				t.Fatal(e)
+			}
+			r.Metadata.Observation = &service.Token{Scope: q.Scope, Repository: mirror.RepositoryID{}, Kind: mirror.Issues, Value: "invalid-global-token"}
+			if _, e := service.EncodeResponse(r, q); e == nil {
+				t.Error("nonmember repository token accepted")
+			}
+			wire, _ := json.Marshal(r)
+			if _, e := service.DecodeResponse(wire, q); e == nil {
+				t.Error("nonmember repository token decoded")
+			}
+		}
+	})
+	t.Run("older-unknown-reason", func(t *testing.T) {
+		q := literalRequest(t)
+		r := literalResponse(t, q)
+		q.Operation = service.ReadObservation
+		q.Source = nil
+		q.Minimum = &service.Token{Scope: q.Scope, Repository: q.Repository, Kind: mirror.Issues, Value: "required"}
+		r.Operation = q.Operation
+		r.Source = nil
+		r.Metadata.Observation = &service.Token{Scope: q.Scope, Repository: q.Repository, Kind: mirror.Issues, Value: "older"}
+		r.Metadata.State = service.Older
+		r.Metadata.Freshness = "stale"
+		f := false
+		r.Metadata.Complete = &f
+		if _, e := service.EncodeResponse(r, q); e != nil {
+			t.Fatal("valid older baseline refused", e)
+		}
+		r.Metadata.Reason = mirror.Reason("UNSUPPORTED-REASON")
+		if _, e := service.EncodeResponse(r, q); e == nil {
+			t.Error("unknown older reason accepted")
+		}
+		wire, _ := json.Marshal(r)
+		if _, e := service.DecodeResponse(wire, q); e == nil {
+			t.Error("unknown older reason decoded")
+		}
+	})
 }

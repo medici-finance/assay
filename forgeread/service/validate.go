@@ -71,7 +71,7 @@ func SameScope(a, b Scope) bool {
 	return true
 }
 func token(t *Token, s Scope, r mirror.RepositoryID, kind mirror.RecordKind) bool {
-	return (kind == mirror.Issues || kind == mirror.Changes) && t != nil && SameScope(t.Scope, s) && t.Repository == r && t.Kind == kind && text(t.Value, 512, false)
+	return repository(r) && member(s, r) && (kind == mirror.Issues || kind == mirror.Changes) && t != nil && SameScope(t.Scope, s) && t.Repository == r && t.Kind == kind && text(t.Value, 512, false)
 }
 func path(p string) bool {
 	if !text(p, MaxTextBytes, false) || strings.HasPrefix(p, "/") || strings.ContainsAny(p, "\\\n\r\t:") {
@@ -200,6 +200,11 @@ func ValidateResponse(r Response, q Request) error {
 		seen[m.Boundary] = true
 	}
 	m := r.Metadata
+	switch m.Reason {
+	case "", mirror.Permission, mirror.Transport, mirror.RateLimited, mirror.Truncated, mirror.Unknown:
+	default:
+		return ErrSchema
+	}
 	switch m.State {
 	case Permission, Unavailable:
 		if payloadCount(r) != 0 || r.Conflict || m.Source != nil || m.Observation != nil || m.Executor != nil || m.Complete != nil || m.Freshness != "unknown" || r.Diagnostic != nil || len(r.Measurements) != 0 {
