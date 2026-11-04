@@ -755,3 +755,13 @@ loses two lines (one executable lookup and one possible subprocess). This retire
 neither every remaining forge read nor the parent contribution.
 Explicit token inputs and host separation remain until /77's migration. /18 remains
 partial and retains every original acceptance row and remaining read/CI obligation.
+
+## Shared-cache read-through — 3 November 2026
+
+Cold or insufficient admitted queries fill inside the shared read owner; clients need no
+provider fallback. Equivalent misses and failures coalesce. Bounded failure-cache cooldown
+returns explicit unavailable or permitted stale coverage, then one eligible retry can
+recover. The [architecture contract](../../proposals/non-ci-architecture/22-forge-service-and-source-queries.md)
+and /37, /39, /40, /42, /43 and /45 carry the source, client, authorization and served-fault
+acceptance. Every prior Class/Command pair remains; no persistent service or activation is
+claimed by this requirements amendment.
