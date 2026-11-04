@@ -619,3 +619,32 @@ configured frame limit. Registry exhaustion refuses without dropping revocations
 The first S-forge-local-authority marker registers Verifier.Authorize as the
 canonical consumer evaluator. This is a first-owner design-fit registration for
 the previously absent producer boundary; no existing ceiling or owner is widened.
+
+## Closed fixture profile implementation
+
+The additive cellcontainer profile has four fixed component kinds and a fixed
+helper entrypoint. It shares the legacy isolation/mount evaluator, preserving
+every legacy value and refusal. The authority profile requires explicit lower
+resource limits, fixed UID501, no TTY/stdin, read-only rootfs, drop-ALL,
+no-new-privileges, private process namespaces, network none and no host binds or
+engine socket. Image metadata must match the source-bound helper with no VOLUME
+or CMD and the exactly observed engine PATH baseline.
+
+A profile manifest may name all nonsecret channel volumes. Names are metadata,
+not mount authority: the kind determines an unconditional closed mount matrix.
+Producer has private/current/bootstrap and selected grant slots RW; query has
+only current/bootstrap RO; a caller has only its predetermined grant volume RO;
+sibling has none. Knowing another volume name grants no access. Eight fixed
+image-owned grant-slot directories provide qualified UID ownership through named
+volume copy-up without root initialization or broad chmod. The operator explicitly
+selects the actual subset; there is no channel-count or resource-budget default.
+
+The fixed PID1 standby entrypoint holds no authority. The protected launcher
+observes the actual container ID before explicitly starting the production
+controller via the fixed helper with bounded typed stdin. No saved configuration
+or registry automatically starts a producer. Private control, grant read, current
+challenge, query verification and isolation probes have separate closed helper
+operations. No arbitrary command/path, role-selected engine or external listener
+is added. The actual57 query/caller fixture remains network none; a later56
+SQL/native served-flow composition needs its own combined connectivity/isolation
+qualification and private listener under its existing owner.

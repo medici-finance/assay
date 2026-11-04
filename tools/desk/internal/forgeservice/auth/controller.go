@@ -70,6 +70,9 @@ func NewController(cfg ProducerConfig, r ProducerResources, wall refresh.Clock) 
 		grantRoots[p.ID] = r.Grants[p.ID]
 		roots = append(roots, r.Grants[p.ID])
 	}
+	if checkFrames(owned, r.Binding, policies) != nil {
+		return nil, ErrConfig
+	}
 	// All shape/policy validation above precedes filesystem, key and listener I/O.
 	infos := make([]os.FileInfo, 0, len(roots))
 	for _, root := range roots {
@@ -154,7 +157,7 @@ func (c *Controller) receipt() ControlReceipt {
 		Ready               bool
 		Instance            string
 	}{c.version, c.generation, c.ready, c.bootstrap.Instance})
-	return ControlReceipt{Version: c.version, TupleDigest: digest(b)}
+	return ControlReceipt{Version: c.version, Ready: c.ready, TupleDigest: digest(b)}
 }
 
 // ControlState is an operator read-back only. It returns no grant or signing key.
@@ -220,6 +223,9 @@ func (c *Controller) ApplyControl(ctx context.Context, cmd ControlCommand) (Cont
 		if c.resources.Bootstrap.Rename(name, "bootstrap.json") != nil {
 			c.resources.Bootstrap.Remove(name)
 			return ControlReceipt{}, ErrHeld
+		}
+		if e = c.publishVerifierConfigs(boot); e != nil {
+			return ControlReceipt{}, e
 		}
 		clear(c.signer.Key)
 		c.signer = contract.Ed25519Signer{Key: key}
@@ -298,6 +304,10 @@ func (c *Controller) ApplyControl(ctx context.Context, cmd ControlCommand) (Cont
 		p.Scope = next
 		c.policies[p.ID] = p
 		c.version++
+		if e := c.publishVerifierConfigs(c.bootstrap); e != nil {
+			c.ready = false
+			return ControlReceipt{}, ErrHeld
+		}
 	case Stop:
 		if cmd.Launch != nil || cmd.Policy != nil || cmd.GrantID != "" || cmd.Lease != 0 {
 			return ControlReceipt{}, ErrConfig

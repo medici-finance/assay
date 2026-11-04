@@ -41,7 +41,7 @@ func (c *CurrentClient) probe(ctx context.Context, p CurrentProbe) (SignedProof,
 		return zero, ErrHeld
 	}
 	var response wireResponse
-	if readFrame(conn, c.config.MaxFrameBytes, &response) != nil || response.Schema != Schema || response.Error != "" || response.Proof == nil || response.Grant != nil || call.Err() != nil {
+	if readFrame(conn, c.config.MaxFrameBytes, &response) != nil || response.Schema != Schema || response.Error != "" || response.Proof == nil || response.Grant != nil || response.Receipt != nil || call.Err() != nil {
 		return zero, ErrHeld
 	}
 	return *response.Proof, nil
@@ -49,7 +49,7 @@ func (c *CurrentClient) probe(ctx context.Context, p CurrentProbe) (SignedProof,
 
 func (c *Controller) ServeCurrent(ctx context.Context, _ CurrentChannel) error {
 	return c.serve(ctx, c.resources.Current, "current.sock", func(ctx context.Context, q wireRequest) wireResponse {
-		if q.Schema != Schema || q.Operation != "current" || q.Probe == nil {
+		if q.Schema != Schema || q.Operation != "current" || q.Probe == nil || q.Control != nil || q.Readback {
 			return heldResponse()
 		}
 		p, e := c.current(ctx, *q.Probe)
@@ -65,7 +65,7 @@ func (c *Controller) ServeGrant(ctx context.Context, ch GrantChannel) error {
 		return ErrConfig
 	}
 	return c.serve(ctx, r, "grant.sock", func(ctx context.Context, q wireRequest) wireResponse {
-		if q.Schema != Schema || q.Operation != "grant" || q.Probe != nil {
+		if q.Schema != Schema || q.Operation != "grant" || q.Probe != nil || q.Control != nil || q.Readback {
 			return heldResponse()
 		}
 		g, e := c.grant(ctx, ch.LaunchID)
@@ -183,7 +183,7 @@ func ReadGrant(ctx context.Context, path string, max int, timeout time.Duration)
 		return SignedGrant{}, ErrHeld
 	}
 	var r wireResponse
-	if readFrame(conn, max, &r) != nil || r.Schema != Schema || r.Error != "" || r.Grant == nil || r.Proof != nil || call.Err() != nil {
+	if readFrame(conn, max, &r) != nil || r.Schema != Schema || r.Error != "" || r.Grant == nil || r.Proof != nil || r.Receipt != nil || call.Err() != nil {
 		return SignedGrant{}, ErrHeld
 	}
 	return *r.Grant, nil

@@ -7,6 +7,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"math"
+	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/medici-finance/assay/tools/desk/internal/celllaunch"
@@ -77,11 +80,14 @@ func decodeClaims(g SignedGrant, max int) (GrantClaims, error) {
 type wireRequest struct {
 	Schema, Operation string
 	Probe             *CurrentProbe
+	Control           *OperatorCommand
+	Readback          bool
 }
 type wireResponse struct {
 	Schema, Error string
 	Grant         *SignedGrant
 	Proof         *SignedProof
+	Receipt       *ControlReceipt
 }
 
 func readFrame(r io.Reader, max int, dst any) error {
@@ -93,3 +99,34 @@ func readFrame(r io.Reader, max int, dst any) error {
 }
 
 func launchDigest(s celllaunch.AuthorityLaunch) string { b, _ := json.Marshal(s); return digest(b) }
+
+// checkFrames validates complete closed envelope shapes without creating a key
+// or opening resources. These placeholders are never signed or authorized.
+func checkFrames(cfg ProducerConfig, binding ProducerBinding, policies map[string]LaunchPolicy) error {
+	id := strings.Repeat("0", 64)
+	boot := Bootstrap{Schema: Schema, Binding: binding, Instance: id, Incarnation: id, KeyRef: id, PublicKey: make([]byte, ed25519.PublicKeySize)}
+	prototype := Controller{config: cfg, policies: policies}
+	if _, e := encode(prototype.verifierConfigs(boot), cfg.MaxFrameBytes); e != nil {
+		return ErrConfig
+	}
+	stamp := time.Date(9000, 1, 1, 1, 1, 1, 999999999, time.UTC)
+	for _, p := range policies {
+		claims := GrantClaims{Schema: Schema, Operation: Operation, Issuer: cfg.Issuer, Audience: cfg.Audience, Binding: binding, Instance: id, Incarnation: id, KeyRef: id, GrantID: id, LaunchID: p.ID, LaunchDigest: id, Generation: math.MaxUint64, Scope: p.Scope, IssuedAt: stamp, ExpiresAt: stamp.Add(cfg.MaxGrantLease)}
+		payload, e := encode(claims, cfg.MaxFrameBytes)
+		if e != nil {
+			return ErrConfig
+		}
+		g := SignedGrant{Payload: payload, Signature: make([]byte, ed25519.SignatureSize)}
+		proof, e := encode(CurrentProof{Schema: Schema, Instance: id, GrantDigest: id, Challenge: make([]byte, 32), Claims: claims, Version: math.MaxUint64, Remaining: cfg.MaxGrantLease, CapturedAt: stamp}, cfg.MaxFrameBytes)
+		if e != nil {
+			return ErrConfig
+		}
+		signed := SignedProof{Payload: proof, Signature: make([]byte, ed25519.SignatureSize)}
+		for _, value := range []any{wireRequest{Schema: Schema, Operation: "current", Probe: &CurrentProbe{Schema: Schema, Instance: id, Challenge: make([]byte, 32), Grant: g}}, wireResponse{Schema: Schema, Grant: &g}, wireResponse{Schema: Schema, Proof: &signed}} {
+			if _, e := encode(value, cfg.MaxFrameBytes); e != nil {
+				return ErrConfig
+			}
+		}
+	}
+	return nil
+}

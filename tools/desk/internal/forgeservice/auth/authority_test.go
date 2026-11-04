@@ -51,7 +51,7 @@ func fixtureConfig() (ProducerConfig, ProducerBinding) {
 
 func fixtureResources(t *testing.T, b ProducerBinding) ProducerResources {
 	t.Helper()
-	base, e := os.MkdirTemp("/private/tmp", "a57-")
+	base, e := os.MkdirTemp("/tmp", "a57-")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -109,12 +109,13 @@ func newAuthorityFixture(t *testing.T, change func(*ProducerConfig)) *authorityF
 	if e != nil {
 		t.Fatal("register", e)
 	}
-	done := make(chan error, 2)
+	done := make(chan error, 3)
+	go func() { done <- c.ServeControl(ctx) }()
 	go func() { done <- c.ServeCurrent(ctx, CurrentChannel{}) }()
 	go func() { done <- c.ServeGrant(ctx, GrantChannel{LaunchID: cfg.Launches[0].ID}) }()
 	t.Cleanup(func() {
 		cancel()
-		for range 2 {
+		for range 3 {
 			select {
 			case e := <-done:
 				if e != nil {
@@ -125,7 +126,7 @@ func newAuthorityFixture(t *testing.T, change func(*ProducerConfig)) *authorityF
 			}
 		}
 	})
-	for _, p := range []string{filepath.Join(r.Current.Name(), "current.sock"), filepath.Join(r.Grants[cfg.Launches[0].ID].Name(), "grant.sock")} {
+	for _, p := range []string{filepath.Join(r.Private.Name(), "control.sock"), filepath.Join(r.Current.Name(), "current.sock"), filepath.Join(r.Grants[cfg.Launches[0].ID].Name(), "grant.sock")} {
 		deadline := time.Now().Add(2 * time.Second)
 		for {
 			if _, e := os.Lstat(p); e == nil {
@@ -357,6 +358,15 @@ func TestForgeLocalAuthorityLaunch(t *testing.T) {
 		})
 	}
 	f := newAuthorityFixture(t, nil)
+	claims, e := decodeClaims(f.grant, f.config.MaxFrameBytes)
+	if e != nil {
+		t.Fatal(e)
+	}
+	revoked, e := f.controller.ApplyControl(context.Background(), ControlCommand{Operation: Revoke, ExpectedVersion: f.version, GrantID: claims.GrantID})
+	if e != nil {
+		t.Fatal(e)
+	}
+	f.version = revoked.Version
 	binding := launchBinding(t, f.config.Launches[0])
 	binding.Observation.Identity.ID = strings.Repeat("f", 64)
 	if _, e := f.controller.ApplyControl(context.Background(), ControlCommand{Operation: Register, ExpectedVersion: f.version, Launch: binding, Lease: time.Second}); e == nil {
@@ -397,4 +407,39 @@ func TestLocalAuthorityClosedCodec(t *testing.T) {
 	if _, e := decodeClaims(SignedGrant{Payload: payload, Signature: f.grant.Signature}, f.config.MaxFrameBytes); e == nil {
 		t.Fatal("effect operation accepted")
 	}
+}
+
+func TestLocalAuthorityPrivateControlProtocol(t *testing.T) {
+	f := newAuthorityFixture(t, nil)
+	ctx := context.Background()
+	path := filepath.Join(f.resources.Private.Name(), "control.sock")
+	state, e := RequestControl(ctx, path, f.config.MaxFrameBytes, f.config.IOTimeout, nil)
+	if e != nil || !state.Ready || state.Version != f.version {
+		t.Fatal("private readback", e)
+	}
+	currentPath := filepath.Join(f.resources.Current.Name(), "current.sock")
+	if _, e = RequestControl(ctx, currentPath, f.config.MaxFrameBytes, f.config.IOTimeout, nil); e == nil {
+		t.Fatal("current channel exposed control")
+	}
+	grantPath := filepath.Join(f.resources.Grants[f.config.Launches[0].ID].Name(), "grant.sock")
+	if _, e = RequestControl(ctx, grantPath, f.config.MaxFrameBytes, f.config.IOTimeout, nil); e == nil {
+		t.Fatal("grant channel exposed control")
+	}
+	after, e := RequestControl(ctx, path, f.config.MaxFrameBytes, f.config.IOTimeout, nil)
+	if e != nil || !same(state, after) {
+		t.Fatal("data channel modified authority")
+	}
+	if _, e = RequestControl(ctx, path, f.config.MaxFrameBytes, f.config.IOTimeout, &OperatorCommand{Operation: "sign", ExpectedVersion: state.Version}); e == nil {
+		t.Fatal("generic sign operation exposed")
+	}
+	claims, e := decodeClaims(f.grant, f.config.MaxFrameBytes)
+	if e != nil {
+		t.Fatal(e)
+	}
+	result, e := RequestControl(ctx, path, f.config.MaxFrameBytes, f.config.IOTimeout, &OperatorCommand{Operation: Revoke, ExpectedVersion: state.Version, GrantID: claims.GrantID})
+	if e != nil || result.Version != state.Version+1 {
+		t.Fatal("operator revoke", e)
+	}
+	r, e := f.verifier.Authorize(ctx, f.grant, claims.Scope.Scope)
+	assertHeld(t, r, e)
 }

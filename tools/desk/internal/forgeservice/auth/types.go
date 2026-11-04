@@ -165,6 +165,7 @@ type ControlCommand struct {
 }
 type ControlReceipt struct {
 	Version     uint64
+	Ready       bool
 	TupleDigest string
 }
 type GrantChannel struct{ LaunchID string }
