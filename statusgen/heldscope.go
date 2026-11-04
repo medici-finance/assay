@@ -150,8 +150,15 @@ import (
 //     re-run clean as (a) reads it (heldLatestClean), with at least one such
 //     row and no table in the entry the scan cannot key: a run whose own row
 //     failed, could not run or records no outcome answers nothing before it.
-//     Whether the run re-ran EVERY Verify row is not this scan's question;
-//     verifyflip asks it of the same run (closureRunWitnesses). The last
+//     Whether the run re-ran EVERY Verify row is not this scan's question:
+//     verifyflip asks it of the run it credits (closureRunWitnesses), so 3c
+//     applies only where that check runs. Only verifyflip and the reconcile
+//     fold read it (flipHeldRefusal, latestRun true); close-verify, the
+//     verify-gate card, the sign-off act and autoflip run no witness check
+//     and read rules 3a and 3b alone. And 3c needs every Date/Runner row of
+//     the run verifyflip credits to lie after the last entry heading
+//     (heldWitnessInLatest), so the run it stops reading at is the run the
+//     witness check reads. The last
 //     entry's heading must be one the page surely draws (heldBoundaryDoubt,
 //     local to that heading): no column-0 level-three heading in the entry
 //     that the scan does not render live outside fenced code and HTML
@@ -1465,8 +1472,9 @@ func heldWitnessTrailerEnd(lines []string, inFence []bool, header, j, hi int) in
 }
 
 // heldScanScope returns what the held scan reads of evidence (split on "\n"),
-// under the rules documented above.
-func heldScanScope(evidence string) heldScope {
+// under the rules documented above. Rule 3c is read only when latestRun is
+// true, which only the flip-side callers pass (flipHeldRefusal).
+func heldScanScope(evidence string, latestRun bool) heldScope {
 	lines := strings.Split(evidence, "\n")
 	out := make([]heldLineRead, len(lines))
 	live := heldRender(lines)
@@ -1584,8 +1592,9 @@ func heldScanScope(evidence string) heldScope {
 	if len(starts) > 1 {
 		last := starts[len(starts)-1]
 		if heldEntryPass(lines, live, last, len(lines)) {
-			if heldLatestRule && aligned[len(starts)-1] && heldLatestClean(lines, live, out, tables, last) &&
-				heldRunDated(lines[last:], inFence[last:]) && !heldBoundaryDoubt(lines, live, inFence, html, last, last, len(lines)) {
+			if latestRun && heldLatestRule && aligned[len(starts)-1] && heldLatestClean(lines, live, out, tables, last) &&
+				heldRunDated(lines[last:], inFence[last:]) && !heldBoundaryDoubt(lines, live, inFence, html, last, last, len(lines)) &&
+				heldWitnessInLatest(evidence) {
 				scope.from, scope.latest = last, true
 			}
 			if covered := heldCovered(lines, live, out, tables, last); len(covered) > 0 {
@@ -1597,6 +1606,38 @@ func heldScanScope(evidence string) heldScope {
 		}
 	}
 	return scope
+}
+
+// heldWitnessInLatest reports whether every Date/Runner row of the run
+// verifyflip credits for the latest PASS (flipLatestPass, the very selector
+// the flip, the reconcile fold and the witness check read) lies after the
+// last entry heading of that run. Rule 3c stops reading holds at the last
+// entry heading, so it may do so only when no witness the flip counts comes
+// from a line before it: a run that shares its date and sha with an earlier
+// BLOCKED entry, or one run split under two headings with no verdict between
+// them, keeps 3c off and is read by rules 3a and 3b. A refused selection
+// keeps 3c off too. Every line that reads as an entry heading counts, live or
+// not, fenced or not, indented or quoted, so a context the run text alone
+// cannot see can only move the heading later and keep 3c off (fail closed).
+// It is a variable only so TestHeldLatestScope can read 3c's other conditions
+// with this one held true; the binary never reassigns it.
+var heldWitnessInLatest = func(evidence string) bool {
+	p, err := flipLatestPass(evidence)
+	if err != nil {
+		return false
+	}
+	run := strings.Split(p.Run, "\n")
+	h := -1
+	for i, l := range run {
+		if heldEntryHeading(strings.TrimLeft(l, " \t>")) {
+			h = i
+		}
+	}
+	if h < 0 {
+		return true
+	}
+	rows, _ := flipDateRunnerRows(run[:h])
+	return len(rows) == 0
 }
 
 // heldLatestRule turns rule 3c on. It is always true in the binary; it is a

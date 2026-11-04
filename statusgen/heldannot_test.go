@@ -54,10 +54,10 @@ func TestHeldScopeAnnotatedKey(t *testing.T) {
 		{"planted second instance, Row header", planted, false},
 		{"row by row only (an earlier row cannot be aligned)", annHeldMisaligned + annLater, false},
 	})
-	if s := heldScanScope(annHeld("3 (Verify 3, negative)") + annLater); !s.whole {
+	if s := heldScanScope(annHeld("3 (Verify 3, negative)")+annLater, false); !s.whole {
 		t.Errorf("annotated key: whole=%v, want the last entry to cover every earlier row", s.whole)
 	}
-	if s := heldScanScope(annHeldMisaligned + annLater); s.whole || s.from < 0 {
+	if s := heldScanScope(annHeldMisaligned+annLater, false); s.whole || s.from < 0 {
 		t.Errorf("misaligned earlier row: whole=%v from=%d, want row-by-row supersession only", s.whole, s.from)
 	}
 }
@@ -97,14 +97,11 @@ func TestHeldScopeAnnotatedKeyRefuses(t *testing.T) {
 			annEntry("Verification — 2026-10-21", "**VERIFY: PASS**", annRow("3 (Verify 3, negative)", "—", "HELD — no runner online")), true},
 		{"exact #4294 id, later bare row held", annHeld("3 (Verify 3, negative)") + strings.Replace(annLater, "| 0 | PASS |", "| — | HELD — no runner online |", 1), true},
 		{"exact #4294 id, row by row only, later not clean", annHeldMisaligned + strings.Replace(annLater, "| 0 | PASS |", "| 0 | same as Run 1 |", 1), true},
-	},
-		// The hold is only in an earlier entry under a clean, dated last PASS.
-		"annotation names another row", "annotation names a date", "two numbers, one other",
-		"sub-rows of one key in an entry", "bare and annotated in one entry", "two annotations across entries",
-		"lettered sub-row", "nested parentheses", "text after the annotation", "no leading number",
-		"Row header against #", "last entry annotates differently",
-		// verifyflip still refuses this one: row 3 has no witness in the run.
-		"exact #4294 id, later run skipped row 3")
+	})
+	// No case here is one 3c admits: their runner cells do not read
+	// <login> @ <sha>, so verifyflip selects no latest run from them and 3c,
+	// which reads only the run verifyflip credits (heldWitnessInLatest), stays
+	// off.
 }
 
 // annObs is a single strict-PASS entry whose row 3 has the given Exit and
@@ -221,10 +218,9 @@ func TestHeldScopeCoverKeyDirection(t *testing.T) {
 		{"same annotated key, row by row only", annHeldMisaligned + lastKeyed("3 (Verify 3, negative)"), false},
 		{"same annotated key, later row not clean", annHeld("3 (negative)") + strings.Replace(lastKeyed("3 (negative)"),
 			"| 0 | PASS |", "| 0 | PASS (no re-run) |", 1), true},
-	},
-		// A hold word in the key ("3 (positive not run)", "3 (HELD)") keeps
-		// 3c off, so those two still refuse.
-		"later key annotated with a word", "later key annotated with its own number")
+	})
+	// 3c admits none of these: their runner cells do not read <login> @ <sha>,
+	// so verifyflip selects no latest run (heldWitnessInLatest).
 }
 
 // TestHeldScopeObservedOutputSubject: the words of the Result cell before

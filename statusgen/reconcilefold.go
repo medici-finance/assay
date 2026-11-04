@@ -170,7 +170,7 @@ func foldVerified(d reconcileFoldData, coverage map[string]Coverage) (w WitnessI
 		}
 		return WitnessInfo{}, false, "could-not-check the Evidence read: " + err.Error()
 	}
-	if closeVerifyHeldRefusal(d.ident.ID, "implemented", d.evidence) != nil ||
+	if flipHeldRefusal(d.ident.ID, "implemented", d.evidence) != nil ||
 		closeVerifyFailRefusal(d.ident.ID, "implemented", d.evidence) != nil {
 		return WitnessInfo{}, false, ""
 	}

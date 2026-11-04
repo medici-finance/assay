@@ -169,6 +169,49 @@ func TestVerifyflipLatestRunSkippedRow(t *testing.T) {
 	vfRefuses(t, o, "passing execution witness")
 }
 
+// TestVerifyflipSameRunBlockedRefuses: an earlier BLOCKED entry at the same
+// date and sha as the latest run is read by verifyflip as part of that run, so
+// its rows would count as the latest run's witnesses. Rule 3c must then not
+// drop its hold: the latest run re-ran row 1 only, and the flip refuses.
+// regression: #4294
+func TestVerifyflipSameRunBlockedRefuses(t *testing.T) {
+	cases := []struct{ name, ev, want string }{
+		{"verdict-first BLOCKED heading", "### Non-implementer run — VERIFY: BLOCKED — 2026-08-13\n\n" +
+			witnessTableFor(vfRow1, vlRow2) + "\n\n" + vlBlockedBullet + "\n\n" +
+			vlLatest + witnessTableFor(vfRow1) + "\n\n" + vfPass, "could-not-check"},
+		{"verdict-last BLOCKED line", "### Non-implementer run — 2026-08-13\n\n" + witnessTableFor(vfRow1, vlRow2) +
+			"\n\n" + vlBlockedBullet + "\n\n**VERIFY: BLOCKED** — env.\n\n" +
+			vlLatest + witnessTableFor(vfRow1) + "\n\n" + vfPass, "passing execution witness"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			o := vlOpts()
+			o.evidence = c.ev
+			vfRefuses(t, o, c.want)
+		})
+	}
+}
+
+// TestVerifyflipSplitRunHoldRefuses: one run written under two level-3
+// headings with no verdict between them is one latest-PASS run to verifyflip,
+// so a hold under its first heading is a hold inside the latest PASS run and
+// still refuses.
+// regression: #4294
+func TestVerifyflipSplitRunHoldRefuses(t *testing.T) {
+	part1 := "### Non-implementer run part 1 — 2026-08-13\n\n" + witnessTableFor(vfRow1, vlRow2) + "\n\n"
+	part2 := "### Non-implementer run part 2 — 2026-08-13\n\n" + witnessTableFor(vfRow1) + "\n\n" + vfPass
+	for name, hold := range map[string]string{
+		"prose held row": "Row 2 is HELD: its pass above is from a stub, the real endpoint could not be reached.\n\n",
+		"blocked bullet": vlBlockedBullet + "\n\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			o := vlOpts()
+			o.evidence = part1 + hold + part2
+			vfRefuses(t, o, "could-not-check")
+		})
+	}
+}
+
 // TestVerifyflipAmbiguousBoundaryRefuses: an element left open before the
 // latest heading (one the page may carry across it) makes the boundary
 // uncertain, so neither the held scan nor the run reader narrows to it and

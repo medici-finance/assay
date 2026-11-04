@@ -172,8 +172,12 @@ func TestHeldScopeWitnessLive(t *testing.T) {
 		{"fence straight after the trailer", blank(witAttest+"\n```\nlog\n```") + witLatest(witPass), true},
 	},
 		// The hold is only under an earlier witness, and the latest entry is a
-		// clean dated witness PASS. A latest run that skipped row 3 is refused
-		// by verifyflip's witness read (TestVerifyflipLatestRunSkippedRow).
+		// clean dated witness PASS. 3c admits only when every witness the flip
+		// credits lies in that entry (heldWitnessInLatest), so a latest run
+		// that skipped row 3 is refused by verifyflip's witness read
+		// (TestVerifyflipLatestRunSkippedRow; with an earlier entry at the
+		// same date and sha, TestVerifyflipSameRunBlockedRefuses). Only the
+		// flip-side read admits these; close-verify and the card still refuse.
 		"(b) latest skipped row 3", "prose straight after the trailer", "prose straight after the table",
 		"trailer with a note appended", "trailer under a hand table", "fence straight after the trailer")
 }

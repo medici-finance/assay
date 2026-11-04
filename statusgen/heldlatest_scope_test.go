@@ -33,15 +33,42 @@ func TestHeldLatestScope(t *testing.T) {
 		{"closed strike", vlOldHeld() + "<s>old</s>\n\n" + vlLatestRun(), true},
 		{"open comment", vlOldHeld() + "<!-- note\n\n" + vlLatestRun(), false},
 		{"fence in quote", vlOldHeld() + "> ```\n\n" + vlLatestRun(), false},
+		{"same-run BLOCKED heading", "### Non-implementer run — VERIFY: BLOCKED — 2026-08-13\n\n" +
+			witnessTableFor(vfRow1, vlRow2) + "\n\n" + vlBlockedBullet + "\n\n" + vlLatest + witnessTableFor(vfRow1) + "\n\n" + vfPass, false},
+		// The BLOCKED line bounds the run verifyflip credits, so 3c may stop
+		// at the heading; the flip then refuses on row 2's missing witness
+		// (TestVerifyflipSameRunBlockedRefuses).
+		{"same-run BLOCKED line", "### Non-implementer run — 2026-08-13\n\n" + witnessTableFor(vfRow1, vlRow2) + "\n\n" +
+			vlBlockedBullet + "\n\n**VERIFY: BLOCKED** — env.\n\n" + vlLatest + witnessTableFor(vfRow1) + "\n\n" + vfPass, true},
+		{"split run", "### Non-implementer run part 1 — 2026-08-13\n\n" + witnessTableFor(vfRow1, vlRow2) + "\n\n" +
+			vlBlockedBullet + "\n\n### Non-implementer run part 2 — 2026-08-13\n\n" + witnessTableFor(vfRow1) + "\n\n" + vfPass, false},
+		{"skipped row, own run", vlOldHeld() + vlLatest + witnessTableFor(vfRow1) + "\n\n" + vfPass, true},
 		{"unrendered heading", vlOldHeld() + vlLatest + witnessTableFor(vfRow1, vlRow2) + "\n\n<div>\n### Aside\n</div>\n\n" + vfPass, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := heldScanScope(c.ev).latest; got != c.want {
+			if got := heldScanScope(c.ev, true).latest; got != c.want {
 				t.Fatalf("latest = %v, want %v\n%s", got, c.want, c.ev)
+			}
+			if heldScanScope(c.ev, false).latest {
+				t.Fatal("latest = true on the read close-verify and the card use, which never reads rule 3c")
 			}
 		})
 	}
+	// With the witness gate held true, every other condition must still
+	// decide each case on its own, so none of them is masked by the gate. The
+	// cases the gate alone refuses must then admit: the gate is what holds them.
+	gateOnly := map[string]bool{"same-run BLOCKED heading": true, "split run": true}
+	t.Run("witness gate held true", func(t *testing.T) {
+		defer func(f func(string) bool) { heldWitnessInLatest = f }(heldWitnessInLatest)
+		heldWitnessInLatest = func(string) bool { return true }
+		for _, c := range cases {
+			want := c.want || gateOnly[c.name]
+			if got := heldScanScope(c.ev, true).latest; got != want {
+				t.Errorf("%s: latest = %v, want %v", c.name, got, want)
+			}
+		}
+	})
 }
 
 // TestHeldCarryElement: an element the page carries across blocks, left

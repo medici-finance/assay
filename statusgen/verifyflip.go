@@ -269,7 +269,7 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 	if err != nil {
 		return verifyFlipPlan{}, err
 	}
-	if err := closeVerifyHeldRefusal(key, row.Status, bf.Evidence); err != nil {
+	if err := flipHeldRefusal(key, row.Status, bf.Evidence); err != nil {
 		return verifyFlipPlan{}, &flipRefusal{err.Error()}
 	}
 	if err := closeVerifyFailRefusal(key, row.Status, bf.Evidence); err != nil {

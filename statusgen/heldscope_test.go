@@ -543,10 +543,9 @@ func TestHeldScopeWholeSuperseded(t *testing.T) {
 			two("\t<!-- row 3 HELD runner offline -->") + rerun2, true},
 		{"--!> mid-block, hold after",
 			two("<!--\nnote --!>\nrow 3 HELD runner offline\n-->") + rerun2, true},
-	},
-		// The last entry is passRun: a clean, dated strict PASS.
-		"earlier misaligned row", "earlier empty key", "no earlier keyed row",
-		"hold in an earlier table of another shape")
+	})
+	// 3c admits none of these: the run verifyflip would credit either is not
+	// selected or reaches above the last entry heading (heldWitnessInLatest).
 }
 
 // TestHeldScopeContainerDoubt: an HTML opener in a container (a blockquote,
@@ -604,11 +603,16 @@ func TestHeldScopeContainerDoubt(t *testing.T) {
 // one of them.
 func runHeldLayerCases(t *testing.T, cases []heldScanCase) {
 	t.Helper()
-	runHeldScanCasesOnce(t, cases)
+	runHeldLayerCasesFlip(t, cases, nil)
+}
+
+func runHeldLayerCasesFlip(t *testing.T, cases []heldScanCase, flipAdmits map[string]bool) {
+	t.Helper()
+	runHeldScanCasesFlip(t, cases, flipAdmits)
 	t.Run("element rule off", func(t *testing.T) {
 		defer func(f func([]string, []bool, []int) bool) { heldElementCheck = f }(heldElementCheck)
 		heldElementCheck = func([]string, []bool, []int) bool { return false }
-		runHeldScanCasesOnce(t, cases)
+		runHeldScanCasesFlip(t, cases, flipAdmits)
 	})
 }
 
@@ -616,8 +620,10 @@ func runHeldLayerCases(t *testing.T, cases []heldScanCase) {
 // latest-run rule (3c) off, where each case must decide as written, then with
 // it on, where the cases named in latest are the ones the maintainer's scope
 // ruling (#4294) changes: their every hold lies before a last entry that is a
-// clean, dated strict PASS on a sure boundary, so they do not refuse. Every
-// other case must still decide as written with 3c on.
+// clean, dated strict PASS on a sure boundary, so the flip-side read
+// (flipHeldRefusal) does not refuse them. The card and close-verify reads
+// still refuse them, as 3c is not theirs; every other case must decide as
+// written at every read with 3c on.
 func runHeldRowCases(t *testing.T, cases []heldScanCase, latest ...string) {
 	t.Helper()
 	flips := map[string]bool{}
@@ -629,21 +635,21 @@ func runHeldRowCases(t *testing.T, cases []heldScanCase, latest ...string) {
 		heldLatestRule = false
 		runHeldLayerCases(t, cases)
 	})
-	on := make([]heldScanCase, 0, len(cases))
+	seen := map[string]bool{}
 	for _, c := range cases {
 		if flips[c.name] {
 			if !c.wantHeld {
 				t.Fatalf("case %q is named as one 3c changes but already admits", c.name)
 			}
-			delete(flips, c.name)
-			c.wantHeld = false
+			seen[c.name] = true
 		}
-		on = append(on, c)
 	}
 	for n := range flips {
-		t.Fatalf("no case named %q", n)
+		if !seen[n] {
+			t.Fatalf("no case named %q", n)
+		}
 	}
-	t.Run("with the latest-run rule", func(t *testing.T) { runHeldLayerCases(t, on) })
+	t.Run("with the latest-run rule", func(t *testing.T) { runHeldLayerCasesFlip(t, cases, flips) })
 }
 
 // runHeldScanCasesOnce is runHeldScanCases under the name the layered runner
@@ -900,11 +906,9 @@ func TestHeldScopeFailClosed(t *testing.T) {
 			"**VERIFY: PASS** — exit codes: could-not-check → exit 6.\n", true},
 		{"longer header name is a result",
 			"**VERIFY: PASS**\n\n| # | Command | Exit | Runner verdict |\n|---|---|---|---|\n| 2 | `probe` | 0 | HELD — offline |\n", true},
-	},
-		// The last entry is a clean, dated strict PASS; verifyflip's witness
-		// read, not this scan, asks whether it re-ran every Verify row.
-		"later entry re-ran row 1 only", "earlier hold in prose, last entry re-ran row 2 only",
-		"earlier held row misaligned")
+	})
+	// 3c admits none of these: the run verifyflip would credit either is not
+	// selected or reaches above the last entry heading (heldWitnessInLatest).
 }
 
 // TestHeldScopeExitProse: prose beside a results table that says what an

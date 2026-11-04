@@ -1438,8 +1438,8 @@
     {
       "name": "#4294 3c: the latest entry need not be aligned",
       "file": "heldscope.go",
-      "old": "if heldLatestRule && aligned[len(starts)-1] && heldLatestClean(",
-      "new": "if heldLatestRule && heldLatestClean("
+      "old": "if latestRun && heldLatestRule && aligned[len(starts)-1] && heldLatestClean(",
+      "new": "if latestRun && heldLatestRule && heldLatestClean("
     },
     {
       "name": "#4294 3c: the latest entry need not read a clean outcome",
@@ -1456,8 +1456,8 @@
     {
       "name": "#4294 3c: an uncertain latest heading still narrows the scan",
       "file": "heldscope.go",
-      "old": " && !heldBoundaryDoubt(lines, live, inFence, html, last, last, len(lines)) {",
-      "new": " {"
+      "old": " && !heldBoundaryDoubt(lines, live, inFence, html, last, last, len(lines)) &&\n\t\t\t\theldWitnessInLatest(evidence) {",
+      "new": " &&\n\t\t\t\theldWitnessInLatest(evidence) {"
     },
     {
       "name": "#4294 3c: an unrendered entry heading inside the run is not boundary doubt",
@@ -1518,6 +1518,48 @@
       "file": "verifyflip.go",
       "old": "if !ok || from == start {",
       "new": "if true || !ok || from == start {"
+    },
+    {
+      "name": "#4294 3c: the witness-in-latest gate is dropped",
+      "file": "heldscope.go",
+      "old": " &&\n\t\t\t\theldWitnessInLatest(evidence) {",
+      "new": " {"
+    },
+    {
+      "name": "#4294 3c: a refused run selection keeps 3c on",
+      "file": "heldscope.go",
+      "old": "if err != nil {\n\t\treturn false\n\t}\n\trun := strings.Split(p.Run",
+      "new": "if err != nil {\n\t\treturn true\n\t}\n\trun := strings.Split(p.Run"
+    },
+    {
+      "name": "#4294 3c: a witness above the last heading is ignored",
+      "file": "heldscope.go",
+      "old": "return len(rows) == 0",
+      "new": "return len(rows) >= 0"
+    },
+    {
+      "name": "#4294 3c: the scope ignores latestRun",
+      "file": "heldscope.go",
+      "old": "if latestRun && heldLatestRule &&",
+      "new": "if heldLatestRule &&"
+    },
+    {
+      "name": "#4294 3c: close-verify reads the latest-run rule",
+      "file": "verifyissues.go",
+      "old": "return heldRefusal(briefID, status, evidence, false)",
+      "new": "return heldRefusal(briefID, status, evidence, true)"
+    },
+    {
+      "name": "#4294 3c: the card read reads the latest-run rule",
+      "file": "verifyissues.go",
+      "old": "return unroutedHeldLine(evidence, false)",
+      "new": "return unroutedHeldLine(evidence, true)"
+    },
+    {
+      "name": "#4294 3c: the flip read drops the latest-run rule",
+      "file": "verifyissues.go",
+      "old": "return heldRefusal(briefID, status, evidence, true)",
+      "new": "return heldRefusal(briefID, status, evidence, false)"
     }
   ]
 }
