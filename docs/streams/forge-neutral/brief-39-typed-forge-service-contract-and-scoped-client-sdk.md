@@ -197,7 +197,11 @@ Gate: human. Inspect actual dependency/import and credential reachability, priva
 count isolation, current authority and unknown outcomes. Tests cannot authorize provisioning
 credentials, switching a managed writer, answering a human decision or changing a merge policy.
 
+## Read-through coordinator ownership — 3 November 2026
 
-## Read-through coordinator routing
-
-The bounded coordinator contribution `forge-neutral/51` routes its wire/client contract consumer here. Consume that existing typed boundary under this brief's complete dependencies, gates and source obligations; this inverse reference grants no implementation, credential, serving or activation authority.
+This brief's future typed query/client mapping consumes the bounded orchestration
+contract assay:assay:forge-neutral:51, preserving fulfilment, partial/unavailable
+coverage, current admission and retry eligibility. Compatible projections may join
+one underlying fill; the client never receives a provider fallback or a gate as
+authority. That offline coordinator profile supplies no served protocol, credential
+or activation. All existing Task/Verify obligations and human gates remain.
