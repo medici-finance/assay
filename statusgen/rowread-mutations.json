@@ -1,0 +1,35 @@
+{
+  "test": "go test . -run '^TestRowread' -count=1 -timeout 300s",
+  "control": {
+    "name": "admitted rows inherit the forge credential variables again",
+    "file": "verifieradmission.go",
+    "old": "\t\tcase admittedRowForgeToken(key):\n",
+    "new": "\t\tcase false && admittedRowForgeToken(key):\n"
+  },
+  "mutations": [
+    {
+      "name": "rowread accepts any kind, write verbs included",
+      "file": "rowread.go",
+      "old": "\tif !rowreadKinds[kind] {\n",
+      "new": "\tif kind == \"\" {\n"
+    },
+    {
+      "name": "an unread issue reads as no matching comment",
+      "file": "rowread.go",
+      "old": "\t\t\tfmt.Fprintf(stderr, \"statusgen rowread: %s#%d: could-not-check: %v\\n\", is.repo, is.number, err)\n\t\t\treturn rowreadExitCouldNot\n",
+      "new": "\t\t\tfmt.Fprintf(stderr, \"statusgen rowread: %s#%d: could-not-check: %v\\n\", is.repo, is.number, err)\n\t\t\tcontinue\n"
+    },
+    {
+      "name": "rowread prints the comment body",
+      "file": "rowread.go",
+      "old": "AuthorLogin: c.User.Login, CreatedAt: c.CreatedAt}",
+      "new": "AuthorLogin: c.User.Login, CreatedAt: c.Body}"
+    },
+    {
+      "name": "rowread lets a flag ride in as a target",
+      "file": "rowread.go",
+      "old": "`^([A-Za-z0-9][A-Za-z0-9-]*)/",
+      "new": "`^([A-Za-z0-9=-][A-Za-z0-9=-]*)/"
+    }
+  ]
+}
