@@ -59,6 +59,12 @@ owned test database, and requires its own name, database owner and marker before
 A failed setup also retains the owned-creation receipt for bounded cleanup. Missing input
 fails tests; no skip is a qualification pass. Local server binaries and ambient Docker or
 Kubernetes discovery are excluded. CI supplies its own disposable PostgreSQL container.
+Fixture startup uses a finite 10-second context. Fixture.Close alone allows 30 seconds
+for ownership checks and the exact forced DROP, including PostgreSQL checkpoint completion;
+Reset keeps its explicit caller context. Cleanup never retries, ignores an error or relaxes
+name/owner/marker validation. A cleanup error may expose only validated SQLSTATE and context
+enums, plus safe cancellation sentinels; never raw server text or connection data. This local
+test teardown budget does not set an application, authorization, lease or retry deadline.
 
 ## Implemented mirror schema
 

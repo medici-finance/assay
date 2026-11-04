@@ -102,6 +102,11 @@ and forces the wrong upstream execution mode, so the real failed-DDL rollback as
 must fail; this is one composite execution fault, not three independently qualified guards.
 Cleanup after an acknowledged fixture creation is bounded. An uncertain creation whose
 ownership cannot be established is retained and reported, never deleted speculatively.
+Fixture.Close gives the existing name/owner/marker checks and exact forced DROP a finite
+30-second cleanup budget, allowing a forced checkpoint to complete. Startup stays at 10 seconds
+and Reset keeps its caller context. Cleanup still fails strictly, with no retry or fallback.
+Only validated SQLSTATE/context enums and safe cancellation sentinels are inspectable; raw
+server text and connection values remain hidden. This changes no R2 or authorization deadline.
 
 
 ## Bounded mirror Store
