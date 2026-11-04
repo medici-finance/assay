@@ -4,7 +4,7 @@ title: Join admitted incremental reads to mirror observations
 why: "The delivered incremental readers and mirror kernel have no connecting source. A bounded mapper lets read-only ingestion qualify independently of the PostgreSQL store, execution and serving, while preserving incomplete data as unknown."
 wave: 4
 depends: ["forge-neutral/46", "forge-neutral/47", "forge-neutral/48"]
-unblocks: []
+unblocks: ["forge-neutral/37"]
 split-from: forge-neutral/37
 effort: M
 gate: human
@@ -20,6 +20,7 @@ outcome: none
 design: DR-forge-library
 authored: 2026-11-03 by statusgen newbrief
 sources:
+  - "freshness-checked 2026-11-03 @ 438310c23194b20a5cb1ceba998fb6b42b30bf0f; F-mapper-owner routing repair from PR #5397 and implementation PR #5406"
   - docs/streams/forge-neutral/brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md
   - docs/streams/forge-neutral/brief-46-pure-read-only-mirror-kernel-and-conformance.md
   - docs/streams/forge-neutral/brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md
