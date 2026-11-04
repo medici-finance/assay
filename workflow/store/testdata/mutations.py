@@ -64,7 +64,7 @@ func prematureUp(ctx context.Context,db *sql.DB,source fs.FS,manifest map[int64]
     elif which == "nontransactional":
         replace(state,"store/migrate.go",'"context"','"context"\n "testing/fstest"')
         replace(state,"store/migrate.go",'manifest, err := loadManifest(source)','source=withoutTransactions(source)\n manifest, err := loadManifest(source)')
-        replace(state,"store/migrate.go",'case "StatementBegin", "StatementEnd":','case "StatementBegin", "StatementEnd", "NO TRANSACTION":')
+        replace(state,"store/migrate.go",'case "STATEMENTBEGIN", "STATEMENTEND":','case "STATEMENTBEGIN", "STATEMENTEND", "NO TRANSACTION":')
         replace(state,"store/ledger.go",'if _, ok := db.(*sql.Tx); !ok {','if _, ok := db.(*sql.Tx); !ok && false {')
         state["store/migrate.go"] += '''
 func withoutTransactions(source fs.FS) fs.FS {
