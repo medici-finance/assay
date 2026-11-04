@@ -13,7 +13,7 @@ gate-why: "Review the demonstrated separation between operator profile initializ
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -30,6 +30,7 @@ sources:
 - docs/go-engineering.md
 - "Inspected foundation36 1ddfb16e68ebb7be54d4dc5a606a07e74e2a7259, Store52 e7b084ba2f10e90feee8470ebab8c52942f05233 and Gate54 d114102a6e4c7de0d78c235dcbca2801676c4a4c; feature availability is not mainline delivery or acceptance."
 - "Implementation genuinely consumes qualified local Gate54 30d838267e055397a35b07b0fe264a16302f8e41, containing published native53 622bec858f5ba7c7e9fc3ab91ff780e7d368e7d1 and corrected Store52 bfea138c74ae784ecc034f273076bd5866f4dddd. Gate54 publication and acceptance remain separately gated."
+- "Qualified staging pickup consumes canonical Gate54 36e150d39ea494742c256b56df9fe6706e313aaa, the helper-qualified descendant of 7e141264a28e928d9a74eb6d0bbcd05dfb7efc3d with identical runtime. Its explicit trusted refresh.Clock binds source/coordinator data evaluation only; database time independently owns leases, accounting windows and retry floors. Publication and acceptance remain separately held."
 consumers:
 - "workflow/store/refresh_provision.go: fixed-here (operator-only initialization and immutable replay)"
 - "workflow/store/refresh_role_profile.go: fixed-here (declarative operator and restricted-runtime SQL profile)"
@@ -72,7 +73,7 @@ files:
 - `changelog/mirror-refresh-provisioning.md` (planned)
 
 facts:
-- The actual /54 constructor `DB.Refresh` takes its existing MirrorStore, explicit RefreshConfig and CallerAuthority. It creates no profile or usage record. Every operation holds on missing, unreadable, mismatched or unknown admission/source/caller accounting.
+- The actual /54 constructor `DB.Refresh` takes its existing MirrorStore, explicit RefreshConfig, CallerAuthority and trusted refresh.Clock shared with the source/coordinator. That data clock does not enter profile encoding or operator provisioning; database time independently owns leases, accounting windows and retry floors. It creates no profile or usage record. Every operation holds on missing, unreadable, mismatched or unknown admission/source/caller accounting.
 - RefreshConfig binds SourceID, AdmissionID, access/configuration/policy epochs, refresh Limits, NativeLimits and PollInterval. Values are supplied by trusted composition. Shared profiles require kernel FailureBackoff zero; the Gate alone owns shared retry eligibility.
 - Native budget usage counts charged/reserved attempt slots, not scan calls, measured HTTP entries or provider quota points. A known zero HTTP result can still retain a charged slot; operator baselines must preserve those distinct units.
 - Source, admission and caller usage already share R2 PostgreSQL, the private pool, one Goose manifest and canonical refreshcodec profile bytes. Existing runtime window rollover is not permission to initialize or reconcile unknown accounting.

@@ -1,1 +1,2 @@
 - Add explicit operator initialization and replay of known read-only refresh accounting, with a declarative restricted runtime SQL role profile.
+- Bind runtime fixture completion to the canonical explicit data clock and qualify populated-scope denial cleanup through the restricted PostgreSQL login without decoding observations or widening role grants.

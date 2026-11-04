@@ -111,7 +111,7 @@ func TestPGRefreshProvision(t *testing.T) {
 		if _, e := r.db.ProvisionRefresh(ctx, p); e != nil {
 			t.Fatal(e)
 		}
-		g, e := r.db.Refresh(r.s, p.Config, refreshTestAuthority{})
+		g, e := r.db.Refresh(r.s, p.Config, refreshTestAuthority{}, refreshTestClock{})
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -180,7 +180,7 @@ func TestPGRefreshProvision(t *testing.T) {
 	}
 	r := sqlMirror(t)
 	p := provisionInput(t, r)
-	g, e := r.db.Refresh(r.s, p.Config, refreshTestAuthority{})
+	g, e := r.db.Refresh(r.s, p.Config, refreshTestAuthority{}, refreshTestClock{})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -226,7 +226,7 @@ func checkProvisionEviction(t *testing.T) {
 			if _, e := r.db.ProvisionRefresh(ctx, p); e != nil {
 				t.Fatal(e)
 			}
-			g, e := r.db.Refresh(r.s, p.Config, refreshTestAuthority{})
+			g, e := r.db.Refresh(r.s, p.Config, refreshTestAuthority{}, refreshTestClock{})
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -325,7 +325,7 @@ func TestPGRefreshProvisionReplay(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		g, e := r.db.Refresh(r.s, p.Config, refreshTestAuthority{})
+		g, e := r.db.Refresh(r.s, p.Config, refreshTestAuthority{}, refreshTestClock{})
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -360,7 +360,7 @@ func TestPGRefreshProvisionReplay(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	g, e := r.db.Refresh(r.s, p.Config, refreshTestAuthority{})
+	g, e := r.db.Refresh(r.s, p.Config, refreshTestAuthority{}, refreshTestClock{})
 	if e != nil {
 		t.Fatal(e)
 	}

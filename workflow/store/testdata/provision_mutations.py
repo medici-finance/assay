@@ -43,6 +43,17 @@ def main():
     ci = ".github/workflows/assay-workflow.yml"
     fixture = "workflow/internal/pgtest/fixture.go"
     faults = [
+        ("runtime-data-clock", "workflow/store/refresh.go", "bound.After(dataNow)", "bound.After(now)",
+         "workflow", "./store", "^TestPGRefreshRuntimeDataClock$",
+         "restricted runtime data clock dropped qualified observation"),
+        ("runtime-held-version", "workflow/store/refresh.go", 'if state == "done" {', "if false {",
+         "workflow", "./store", "^TestPGRefreshRuntimeHeldCompletion$",
+         "restricted held completion could not fence populated scope"),
+        ("runtime-held-no-decode", "workflow/store/refresh.go",
+         "baseline, err := g.store.lockMirrorVersion(ctx, tx, f.scope, k.Scope)",
+         "baseline, err := func() (int64, error) { header, err := g.store.lockMirrorHeader(ctx, tx, f.scope, k.Scope); if err != nil { return 0, err }; return strconv.ParseInt(header.snapshot.Version, 10, 64) }()",
+         "workflow", "./store", "^TestPGRefreshRuntimeHeldCompletion$",
+         "restricted held completion could not fence populated scope"),
         ("known-baseline", core, "return u.Known && initialInstant", "return initialInstant",
          "workflow", "./store", "^TestPGRefreshProvision$/unknown-source$",
          "unqualified initial accounting accepted"),
@@ -112,7 +123,7 @@ def main():
     snapshots = {name: (REPO / name).read_bytes() for name in {f[1] for f in faults}}
     # A qualifying baseline must run the same assertions successfully first.
     baselines = [
-        ("workflow", "./store", "^TestPGRefresh(Provision|ProvisionReplay|ProvisionSchema|RuntimePrivileges)$"),
+        ("workflow", "./store", "^TestPGRefresh(Provision|ProvisionReplay|ProvisionSchema|RuntimePrivileges|RuntimeHeldCompletion|RuntimeDataClock)$"),
         ("workflow", "./store", "^TestPGRefreshProvisionProcesses$"),
         ("workflow", "./internal/pgtest", "^TestOwnedRefreshRoles$"),
         ("tools/desk", "./internal/deskkit", "^TestMirrorProvisionedReadThrough$"),

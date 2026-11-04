@@ -2,11 +2,13 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -219,6 +221,10 @@ func roleProvisionInput(now time.Time) store.RefreshProvision {
 
 type roleAuthority struct{}
 
+type roleClock func() time.Time
+
+func (c roleClock) Now() time.Time { return c() }
+
 func (roleAuthority) Authorize(ctx context.Context, c refresh.Caller, s mirror.Scope) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -371,7 +377,7 @@ func TestPGRefreshRuntimePrivileges(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	g, e := runtime.Refresh(s, p.Config, roleAuthority{})
+	g, e := runtime.Refresh(s, p.Config, roleAuthority{}, roleClock(func() time.Time { return time.Now().UTC() }))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -417,5 +423,212 @@ func TestPGRefreshRuntimePrivileges(t *testing.T) {
 	}
 	if e = admin.QueryRowContext(ctx, `SELECT http_used FROM public.refresh_budgets`).Scan(&charged); e != nil || charged != 1 {
 		t.Fatal("eligible cache eviction reset source accounting", e, charged)
+	}
+}
+
+type provisionedCompletionRig struct {
+	db    *store.DB
+	store *store.MirrorStore
+	gate  *store.RefreshGate
+	raw   *sql.DB
+	cfg   store.RefreshConfig
+	scope mirror.Scope
+	a     *mirrortest.TestAdmission
+}
+
+func newProvisionedCompletionRig(t *testing.T, clock refresh.Clock) provisionedCompletionRig {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	f := pgtestfixture.New(t)
+	if err := store.Migrate(ctx, ownedRoleConfig(f.Config)); err != nil {
+		t.Fatal(err)
+	}
+	roles := pgtestfixture.NewRefreshRoles(t, f)
+	operator, err := store.Open(ctx, ownedRoleConfig(roles.Operator))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { operator.Close() })
+	admin, err := f.ConnectOwned(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+	var databaseNow time.Time
+	if err = admin.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&databaseNow); err != nil {
+		t.Fatal(err)
+	}
+	p := roleProvisionInput(databaseNow)
+	p.Callers = append(p.Callers, store.RefreshInitialCaller{ID: "caller-b", Usage: p.Admission})
+	if _, err = operator.ProvisionRefresh(ctx, p); err != nil {
+		t.Fatal("restricted operator could not initialize completion fixture", err)
+	}
+	// Each connection really logs in as its declared identity. The runtime does
+	// not inherit an administrator session capable of RESET ROLE escalation.
+	raw, err := f.ConnectRuntime(ctx, roles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { raw.Close() })
+	var session, current string
+	if err = raw.QueryRowContext(ctx, `SELECT session_user,current_user`).Scan(&session, &current); err != nil || session != roles.Runtime.User || current != roles.Runtime.User || session == f.Config.User {
+		t.Fatal("completion proof did not use genuine restricted runtime LOGIN", err)
+	}
+	t.Log("RUNTIME_LOGIN: session_user=current_user=exact_owned_runtime; fixture_admin=false")
+	runtime, err := store.Open(ctx, ownedRoleConfig(roles.Runtime))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { runtime.Close() })
+	s, err := runtime.Mirror(store.MirrorLimits{MaxRecords: 128, MaxBytes: 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := runtime.Refresh(s, p.Config, roleAuthority{}, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := mirror.Scope{Repository: mirror.RepositoryID{Provider: mirror.GitHub, Host: "forge.example", Path: "synthetic/project"}, Kind: mirror.Issues, AdmissionID: p.Config.AdmissionID}
+	return provisionedCompletionRig{runtime, s, g, raw, p.Config, scope, &mirrortest.TestAdmission{Name: p.Config.AdmissionID, Allowed: true}}
+}
+
+func (r provisionedCompletionRig) demand(caller string, now time.Time) refresh.Demand {
+	c := r.cfg
+	return refresh.Demand{Key: refresh.FillKey{Scope: r.scope, SourceID: c.SourceID, AccessEpoch: c.AccessEpoch, ConfigEpoch: c.ConfigEpoch, PolicyClass: c.PolicyClass, PolicyEpoch: c.PolicyEpoch}, CallerID: caller, Limits: c.Limits, Now: now}
+}
+
+func (r provisionedCompletionRig) completion(now time.Time) refresh.Completion {
+	c := r.cfg
+	return refresh.Completion{Caller: refresh.Caller{ID: "caller-a", AdmissionID: c.AdmissionID, AccessEpoch: c.AccessEpoch, ConfigEpoch: c.ConfigEpoch, PolicyClass: c.PolicyClass, PolicyEpoch: c.PolicyEpoch, Limits: c.Limits}, Authority: roleAuthority{}, Query: refresh.Query{Query: mirror.Query{Scope: r.scope, MaxAge: time.Hour, Now: now}}, Now: now}
+}
+
+func (r provisionedCompletionRig) update(at time.Time) mirror.ScanUpdate {
+	return mirror.ScanUpdate{Scope: r.scope, CompleteScan: true, FullInventory: true, Coverage: mirror.Coverage{State: mirror.Complete, LastAttempted: at, LastComplete: at, LastInventory: at, ObservedUpTo: at}, Upsert: []mirror.Observation{{ID: mirror.RecordID{Repository: r.scope.Repository, Kind: "issue", Number: 1}, Title: "synthetic-populated-runtime", UpdatedAt: at, ObservedAt: at, InInventory: true}}}
+}
+
+// regression: F-provision-held-populated-runtime
+func TestPGRefreshRuntimeHeldCompletion(t *testing.T) {
+	for _, previous := range []bool{false, true} {
+		for _, hold := range []mirror.AttemptHold{"", mirror.AttemptCallerHeld, mirror.AttemptAdmissionHeld} {
+			name := string(hold)
+			if name == "" {
+				name = "admission-denied"
+			}
+			t.Run(fmt.Sprintf("%s/previous=%t", name, previous), func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+				defer cancel()
+				clock := roleClock(func() time.Time { return time.Now().UTC() })
+				r := newProvisionedCompletionRig(t, clock)
+				update := r.update(clock.Now().Truncate(time.Microsecond))
+				before, err := r.store.Apply(ctx, r.a, update)
+				if err != nil {
+					t.Fatal(err)
+				}
+				owner, err := r.gate.Acquire(ctx, r.demand("caller-a", clock.Now()))
+				if err != nil || !owner.Owner {
+					t.Fatal("restricted runtime could not acquire populated scope", err)
+				}
+				if previous {
+					if err = r.gate.Complete(ctx, owner, r.store, r.a, r.completion(clock.Now())); err != nil {
+						t.Fatal("previous runtime completion refused", err)
+					}
+					if _, err = r.gate.Leave(ctx, owner, refresh.Outcome{}); err != nil {
+						t.Fatal(err)
+					}
+					owner, err = r.gate.Acquire(ctx, r.demand("caller-a", clock.Now()))
+					if err != nil || !owner.Owner {
+						t.Fatal("next runtime generation refused", err)
+					}
+					update.ExpectedVersion = before.Version
+					update.Upsert[0].Title = "synthetic-independently-committed-runtime"
+					before, err = r.store.Apply(ctx, r.a, update)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				// This store cannot decode even the existing observation. Closing a
+				// denied owner must require only the canonical identity/version fence.
+				bounded, err := r.db.Mirror(store.MirrorLimits{MaxRecords: 1, MaxBytes: 1})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err = bounded.Read(ctx, r.a, r.scope); err == nil {
+					t.Fatal("observation-decode negative control was not exercised")
+				}
+				gate, err := r.db.Refresh(bounded, r.cfg, roleAuthority{}, clock)
+				if err != nil {
+					t.Fatal(err)
+				}
+				completion := r.completion(clock.Now())
+				completion.AdmissionDenied, completion.Attempts.Held = hold == "", hold
+				if err = gate.Complete(ctx, owner, bounded, r.a, completion); err != nil {
+					t.Fatal("restricted held completion could not fence populated scope", err)
+				}
+				state, err := gate.Wait(ctx, owner)
+				if err != nil || state.Pending || !state.AttemptHeld || state.Reason != "" || !state.RetryAt.IsZero() {
+					t.Fatal("held owner remained pending or poisoned shared failure", state, err)
+				}
+				after, err := r.store.Read(ctx, r.a, r.scope)
+				if err != nil || !reflect.DeepEqual(before, after) {
+					t.Fatal("held owner read/restamped or modified observation", err)
+				}
+				if _, err = gate.Leave(ctx, owner, refresh.Outcome{}); err != nil {
+					t.Fatal(err)
+				}
+				next, err := r.gate.Acquire(ctx, r.demand("caller-b", clock.Now()))
+				if err != nil || !next.Owner {
+					t.Fatal("held owner denied another eligible runtime caller", err)
+				}
+				var charged, attempts int64
+				if err = r.raw.QueryRowContext(ctx, `SELECT http_used,(SELECT count(*) FROM public.refresh_attempts) FROM public.refresh_budgets`).Scan(&charged, &attempts); err != nil || charged != 0 || attempts != 0 {
+					t.Fatal("non-attempt completion changed native accounting", err)
+				}
+			})
+		}
+	}
+}
+
+// regression: F-provision-runtime-data-clock
+func TestPGRefreshRuntimeDataClock(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	// A controlled application offset is data evidence, never a lease tolerance.
+	clock := roleClock(func() time.Time { return time.Now().UTC().Add(500 * time.Millisecond) })
+	r := newProvisionedCompletionRig(t, clock)
+	owner, err := r.gate.Acquire(ctx, r.demand("caller-a", clock.Now()))
+	if err != nil || !owner.Owner {
+		t.Fatal(err)
+	}
+	reservation, err := r.gate.BeforeAttempt(ctx, owner.AttemptGrant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataAt := clock.Now().Truncate(time.Microsecond)
+	update := r.update(dataAt)
+	if err = r.gate.ObserveAttempt(ctx, reservation, mirror.AttemptObservation{HTTP: mirror.WorkCount{Value: 1, Known: true}, DecodedBytes: mirror.WorkCount{Known: true}, Status: 200, ResponseComplete: true, ObservedAt: dataAt, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}}); err != nil {
+		t.Fatal(err)
+	}
+	var databaseNow time.Time
+	if err = r.raw.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&databaseNow); err != nil || !dataAt.After(databaseNow) {
+		t.Fatal("runtime fixture did not establish application data-clock skew", err)
+	}
+	completion := r.completion(clock.Now())
+	completion.Update = &update
+	completion.Attempts = mirror.AttemptReceipt{Grant: owner.AttemptGrant, ObservedAt: dataAt, HTTP: mirror.WorkCount{Value: 1, Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}}
+	if err = r.gate.Complete(ctx, owner, r.store, r.a, completion); err != nil {
+		t.Fatal(err)
+	}
+	state, err := r.gate.Wait(ctx, owner)
+	if err != nil || state.Pending || state.AttemptHeld {
+		t.Fatal("restricted runtime data clock dropped qualified observation", state, err)
+	}
+	result, err := mirror.QueryScope(ctx, r.store, r.a, mirror.Query{Scope: r.scope, MaxAge: time.Hour, Now: clock.Now()})
+	if err != nil || !result.Available || result.Stale || result.Snapshot.Coverage.State != mirror.Complete || result.Snapshot.Version != "1" || !result.Snapshot.Coverage.LastComplete.Equal(dataAt) {
+		t.Fatal("qualified runtime observation was dropped or restamped", err)
+	}
+	var charged int64
+	if err = r.raw.QueryRowContext(ctx, `SELECT http_used FROM public.refresh_budgets`).Scan(&charged); err != nil || charged != 1 {
+		t.Fatal("runtime data clock changed canonical charged usage", err, charged)
 	}
 }
