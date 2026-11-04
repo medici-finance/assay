@@ -1,0 +1,1 @@
+- Split the admitted read-to-mirror mapper into an independent read-only contribution, with field-presence and incomplete-scan controls before persistent ingestion.
