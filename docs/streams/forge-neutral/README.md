@@ -768,8 +768,10 @@ partial and retains every original acceptance row and remaining read/CI obligati
 
 The durable read critical path is canonical PostgreSQL foundation graph-execution/36 →
 [mirror Store52](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md)
-→ shared refresh-gate and admitted source/coordinator joined integration under /37.
-Source mapping and store-injected coordinator fixtures proceed independently. No edge
+→ [canonical shared Gate /54](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md)
+and its admitted source/coordinator SQL join. Full /37 consumes those owners at trusted
+deskkit composition and retains its independent persisted acceptance. Source mapping
+and store-injected coordinator fixtures proceed independently. No edge
 on this bounded path waits for execution claims, admission, effects or outbox delivery.
 Full /19 and /37 acceptance, retention, authenticated serving and activation remain owed.
 The smallest unblocking move is the actual /36 migration and container harness, never a
@@ -801,7 +803,6 @@ Mapper50 is a compatible Source implementation for later real-source integration
 not a prerequisite for synthetic coordinator fixtures. Real R2 gate/store and joined
 mapper qualification remain later acceptance requirements. Existing lifecycle and
 acceptance cells are unchanged.
-
 
 ## Durable read-through continuation — 3 November 2026
 
@@ -856,7 +857,6 @@ outer joined-test skip when no DSN is supplied. Qualifying54 evidence remains in
 declared PostgreSQL workflow: nonempty explicit DSN, strict canonical fixture and exact
 named joined-test PASS are required. Missing, malformed, unreachable or skipped qualifying
 fixtures fail; this does not relax foundation/Store qualification.
-
 
 ## Read-only profile and serving continuation — 4 November 2026
 
