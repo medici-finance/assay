@@ -11,10 +11,12 @@ import (
 )
 
 var (
-	hostName = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$`)
-	oid      = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
-	digest   = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	linkID   = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+	// The unchanged review-observation-v1 profile is narrower than source identity.
+	reviewPathProfile = regexp.MustCompile("^[a-z0-9_.-]+(/[a-z0-9_.-]+)+$")
+	hostName          = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$`)
+	oid               = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
+	digest            = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	linkID            = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 )
 
 func invalid() error { return ErrInvalid }

@@ -1,11 +1,15 @@
 package service_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -93,6 +97,7 @@ func TestReviewServiceMapping(t *testing.T) {
 	if !seenWait || !seenSurface || !seenNoOp || !seenFull || !seenEmpty || !seenHosts || !seenProviders {
 		t.Fatal("full producer population/action/scope/empty coverage lost")
 	}
+	t.Run("schema-vocabulary", func(t *testing.T) { checkReviewSchemaVocabulary(t, requests[0], responses[0]) })
 	t.Run("malformed", func(t *testing.T) {
 		q, raw := requests[0], string(responses[0])
 		at := strings.Index(raw, `"review":`)
@@ -184,4 +189,166 @@ func checkIssueProjectionMapping(t *testing.T) {
 			}
 		})
 	}
+}
+
+type reviewFixtureTrip func(*http.Request) (*http.Response, error)
+
+func (f reviewFixtureTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+func checkReviewSchemaVocabulary(t *testing.T, q service.Request, baseline []byte) {
+	var schema struct {
+		Defs map[string]struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		} `json:"$defs"`
+	}
+	raw, e := os.ReadFile(filepath.Join("..", "..", "schemas", "review-observation-v1.json"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = json.Unmarshal(raw, &schema); e != nil {
+		t.Fatal(e)
+	}
+	type constraint struct {
+		Enum     []string `json:"enum"`
+		Minimum  *int     `json:"minimum"`
+		MinItems *int     `json:"minItems"`
+		MaxItems *int     `json:"maxItems"`
+		Pattern  string   `json:"pattern"`
+	}
+	get := func(def, field string) constraint {
+		t.Helper()
+		var c constraint
+		b := schema.Defs[def].Properties[field]
+		if len(b) == 0 {
+			t.Fatal("canonical constraint missing", def, field)
+		}
+		if e := json.Unmarshal(b, &c); e != nil {
+			t.Fatal(e)
+		}
+		return c
+	}
+	clone := func() service.Response {
+		t.Helper()
+		var r service.Response
+		if e := json.Unmarshal(baseline, &r); e != nil {
+			t.Fatal(e)
+		}
+		return r
+	}
+	attempt := func(t *testing.T, query service.Request, r service.Response, valid bool) {
+		t.Helper()
+		_, enc := service.EncodeResponse(r, query)
+		wire, e := json.Marshal(r)
+		if e != nil {
+			t.Fatal(e)
+		}
+		_, dec := service.DecodeResponse(wire, query)
+		c, e := client.New(client.Config{Endpoint: "https://fixture.example/forge", Scope: query.Scope, Timeout: time.Second, Transport: reviewFixtureTrip(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(wire))}, nil
+		})})
+		if e != nil {
+			t.Fatal(e)
+		}
+		out, report, ce := c.Do(context.Background(), query)
+		if valid {
+			if enc != nil || dec != nil || ce != nil || out.Review == nil {
+				t.Fatalf("canonical structural value refused: encode=%v decode=%v client=%v", enc, dec, ce)
+			}
+		} else if enc == nil || dec == nil || ce == nil || out.Review != nil {
+			t.Fatalf("schema-invalid review escaped: encode=%v decode=%v client=%v", enc, dec, ce)
+		}
+		if report.TransportAttempts != 1 {
+			t.Fatal("fixture attempt count changed")
+		}
+	}
+	for _, tc := range []struct {
+		name, def, field string
+		set              func(*service.ReviewEnvelope, string)
+	}{
+		{"action", "ObservationRow", "action", func(o *service.ReviewEnvelope, v string) { o.Result.Rows[0].Action = &v }},
+		{"disposition", "ObservationRow", "disposition", func(o *service.ReviewEnvelope, v string) { o.Result.Rows[0].Disposition = &v }},
+		{"lane-name", "LaneConclusion", "name", func(o *service.ReviewEnvelope, v string) { o.Inputs.Changes[0].Lanes[0].Name = &v }},
+		{"lane-state", "LaneConclusion", "state", func(o *service.ReviewEnvelope, v string) { o.Inputs.Changes[0].Lanes[0].State = &v }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			values := get(tc.def, tc.field).Enum
+			if len(values) == 0 {
+				t.Fatal("canonical enum instrument did not look")
+			}
+			for _, v := range values {
+				t.Run(v, func(t *testing.T) { r := clone(); tc.set(r.Review, v); attempt(t, q, r, true) })
+			}
+			t.Run("unsupported", func(t *testing.T) { r := clone(); tc.set(r.Review, "UNSUPPORTED-WIRE-VALUE"); attempt(t, q, r, false) })
+		})
+	}
+	rank := get("ObservationRow", "rank").Minimum
+	if rank == nil {
+		t.Fatal("canonical rank minimum missing")
+	}
+	for _, valid := range []bool{true, false} {
+		t.Run("rank-"+strconv.FormatBool(valid), func(t *testing.T) {
+			r := clone()
+			n := *rank
+			if !valid {
+				n--
+			}
+			r.Review.Result.Rows[0].Rank = &n
+			attempt(t, q, r, valid)
+		})
+	}
+	lanes := get("ObservedChange", "lanes")
+	if lanes.MinItems == nil || lanes.MaxItems == nil {
+		t.Fatal("canonical lane bounds missing")
+	}
+	for _, n := range []int{*lanes.MinItems - 1, *lanes.MinItems, *lanes.MaxItems + 1} {
+		t.Run("lanes-"+strconv.Itoa(n), func(t *testing.T) {
+			r := clone()
+			prior := r.Review.Inputs.Changes[0].Lanes
+			rows := make([]service.ReviewLaneConclusion, n)
+			for i := range rows {
+				rows[i] = prior[i%len(prior)]
+			}
+			r.Review.Inputs.Changes[0].Lanes = rows
+			attempt(t, q, r, n >= *lanes.MinItems && n <= *lanes.MaxItems)
+		})
+	}
+	for _, tc := range []struct {
+		name string
+		set  func(*service.ReviewEnvelope)
+	}{
+		{"negative-population", func(o *service.ReviewEnvelope) { v := -1; o.Inputs.Population[0].Count = &v }},
+		{"empty-provenance", func(o *service.ReviewEnvelope) { v := ""; o.Inputs.Population[0].Input.Version = &v }},
+		{"negative-total", func(o *service.ReviewEnvelope) { v := -1; o.Result.Depths.Total = &v }},
+		{"absent-rank", func(o *service.ReviewEnvelope) { o.Result.Rows[0].Rank = nil }},
+	} {
+		t.Run(tc.name, func(t *testing.T) { r := clone(); tc.set(r.Review); attempt(t, q, r, false) })
+	}
+	t.Run("legacy-repository-pattern", func(t *testing.T) {
+		pattern := get("Repository", "repository").Pattern
+		re, e := regexp.Compile(pattern)
+		if e != nil || pattern == "" || re.MatchString("Example/project") {
+			t.Fatal("canonical pattern control invalid", e)
+		}
+		r := clone()
+		query := q
+		query.Scope.Repositories = append([]mirror.RepositoryID(nil), q.Scope.Repositories...)
+		query.Scope.Repositories[0].Path = "Example/project"
+		r.Scope = query.Scope
+		set := func(repo *service.ReviewRepository) { v := "Example/project"; repo.Repository = &v }
+		for i := range r.Review.Inputs.Requested {
+			set(&r.Review.Inputs.Requested[i])
+		}
+		for i := range r.Review.Inputs.Admitted {
+			set(&r.Review.Inputs.Admitted[i])
+		}
+		for i := range r.Review.Inputs.Population {
+			set(&r.Review.Inputs.Population[i].Repository)
+		}
+		for i := range r.Review.Inputs.Changes {
+			set(&r.Review.Inputs.Changes[i].Identity.Repository)
+		}
+		for i := range r.Review.Result.Rows {
+			set(&r.Review.Result.Rows[i].Identity.Repository)
+		}
+		attempt(t, query, r, false)
+	})
 }

@@ -139,6 +139,9 @@ func validateReview(r Response, q Request) error {
 		return invalid()
 	}
 	o := r.Review
+	if !reviewWireShape(o) {
+		return invalid()
+	}
 	if *o.Schema != "review-observation-v1" || !reviewScope(o.Inputs.Requested, o.Inputs.Admitted, q.Scope) || len(o.Result.Rows) != len(o.Inputs.Changes) || *o.Result.Depths.Total != len(o.Result.Rows) {
 		return ErrScope
 	}
@@ -258,4 +261,85 @@ func validateProjection(r Response, q Request) error {
 		seen[id] = true
 	}
 	return nil
+}
+
+// reviewWireShape enforces the declared review-observation-v1 wire vocabulary,
+// scalar minimum and lane cardinality. It never computes action legality,
+// disposition, rank order, lane satisfaction or domain authority. Tests read the
+// unchanged schema declarations and exercise every admitted enum value.
+func reviewWireShape(o *ReviewEnvelope) bool {
+	for _, repo := range o.Inputs.Requested {
+		if !reviewPathProfile.MatchString(*repo.Repository) {
+			return false
+		}
+	}
+	for _, change := range o.Inputs.Changes {
+		if len(change.Lanes) != 2 {
+			return false
+		}
+		for _, lane := range change.Lanes {
+			if !reviewWireChoice(*lane.Name,
+				"correctness",
+				"security",
+			) {
+				return false
+			}
+			if !reviewWireChoice(*lane.State,
+				"approved",
+				"blocked",
+				"missing",
+				"stale",
+				"unknown",
+			) {
+				return false
+			}
+		}
+	}
+	for _, row := range o.Result.Rows {
+		if *row.Rank < 1 {
+			return false
+		}
+		if !reviewWireChoice(*row.Action,
+			"BLOCKED",
+			"CHECK",
+			"CI-NEVER-RAN",
+			"CI-RED",
+			"CI-UNKNOWN",
+			"CI-UNVERIFIED",
+			"CONFLICT",
+			"EXTERNAL-PREREQ-REVIEW",
+			"FLIP",
+			"HUMAN-GATE",
+			"MERGE-BEHIND",
+			"MERGE-CURR",
+			"MERGE-NOW",
+			"MERGE-STATE-UNKNOWN",
+			"NEEDS-REVIEW",
+			"RE-REVIEW",
+			"READY",
+			"SECURITY-REVIEW-REQUIRED",
+			"SUSPECT-APPROVAL",
+			"WAIT-CI",
+		) {
+			return false
+		}
+		if !reviewWireChoice(*row.Disposition,
+			"DISPATCH",
+			"FLIP-VERB",
+			"SURFACE",
+			"WAIT",
+			"NO-OP",
+		) {
+			return false
+		}
+	}
+	return true
+}
+func reviewWireChoice(value string, allowed ...string) bool {
+	for _, candidate := range allowed {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
