@@ -145,6 +145,20 @@ RISK-VALUE: DERIVED — maxGateDetail = 20 @ statusgen/evaluation/milestonegraph
 RISK-VALUE: DERIVED — EvaluatorVersion = "statusgen-evaluation/5" @ statusgen/evaluation/identity.go:13 — bumped from /4 because edges now carry a pre-resolved milestone start-gate state.
 
 **VERIFY: PASS** — both Verify rows exit 0 with their named PASS lines (TestMilestoneMixedGraph, TestMilestoneGraphUnknowns) at source 7f61cff94b18 in the closed container bracket; all 20 declared mutations turned their named test red (supplemental, no acceptance credit). Risk fields are all no and gate is model, so the README row flips implemented → verified.
+### Non-implementer verifier run, flip-ready re-run — 2026-11-04 assay-verifier-app (verify-desk, strong tier, gate:model) — **VERIFY: PASS**
+
+Re-run of the two owed rows on the same source as the run above, with no supplemental rows, so that every Runner cell in the latest PASS reads `<login> @ <sha>`. Admitted home at assay 7f61cff94b18 (detached, equal to origin/main), attestation medici-finance/assay#5490. statusgen v1.0.73 on the host and in the verify-runner image. Both rows ran in the network-off container lane inside a closed admission bracket (`--bracket-digest` verdict=match, span-lines tree-digest:1, container-image:1, attestation:1). `deskdispatch --check-verifier` exited 0 before and after the run.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestMilestoneMixedGraph$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestMilestoneMixedGraph ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ 7f61cff94b18 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestMilestoneGraphUnknowns$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestMilestoneGraphUnknowns ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ 7f61cff94b18 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:f1f8a0ebeb8be2206d08a9df4679ec424311c242db143bd6d6ee22b616bfdac1
+Container-Image: sha256:100dde7f1f3a8be53ae45e9c1ff21fcd9fc82760595c91c422670db36c25d8d9
+Verification-Attestation: medici-finance/assay#5490 run=21c7008a99dfcc1f95b9f1aa5e1fd9525c678383e476504d5f597fe0eac72fa5 source=7f61cff94b188d46b4e38e6259798d85bb5d4510 brief=docs/streams/milestone-support/brief-05-build-the-combined-milestone-and-brief-dependency-graph.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=21c7008a99dfcc1f95b9f1aa5e1fd9525c678383e476504d5f597fe0eac72fa5 source=7f61cff94b188d46b4e38e6259798d85bb5d4510 tree=sha256:f1f8a0ebeb8be2206d08a9df4679ec424311c242db143bd6d6ee22b616bfdac1 witness=sha256:da0b14646cf491d71f46782be552dce34b4fc5f7215337950570a26df0cfdbae opened=2026-11-04T23:43:46Z closed=2026-11-04T23:45:33Z before=receipt after=check-verifier
+
+**VERIFY: PASS** — both Verify rows exit 0 with their named PASS lines (TestMilestoneMixedGraph, TestMilestoneGraphUnknowns) at source 7f61cff94b18 in the closed container bracket. Risk fields are all no and gate is model, so the README row flips implemented → verified.
 
 ## Review
 
