@@ -681,3 +681,22 @@ profile mount checks and cleanup use this exact namespace together. Fixture volu
 names use the corresponding control suffix. This is an actual namespace change,
 not an alternate representation of another identifier; every isolation and leaked
 control-volume refusal remains required and must be requalified on the new image.
+
+## Existing Docker adapter and forge exec registration
+
+The existing `cellcontainer.Docker(host)` helper resolves a literal Docker name
+through PATH, carries HOME/PATH/TERM, uses a background timeout with combined
+output, and exposes interactive foreground execution. It does not supply this
+profile's explicit absolute operator executable, empty CLI configuration, original
+caller context, finite typed stdin or bounded sanitized stdout. Reusing that helper
+as-is would change the approved custody/I/O boundary. The closed
+`AuthorityRuntime.command` adapter remains the sole authority-profile exec site;
+its inspection and isolation/mount evaluation reuse the existing cellcontainer
+owner. This correction adds no constructor or execution path.
+
+The exact existing site is declared in canonical forgeban `UnresolvedArgv`. This
+is a could-not-check register, not `AllowedInvocations`: an operator-selected
+absolute executable cannot be certified as Docker or forge-free by the static
+scanner. The register grants no forge permit, and every unregistered unresolved
+site, resolved forge invocation and stale register row retains its existing
+refusal. The permit inventory, ceiling and scanner assertions remain unchanged.
