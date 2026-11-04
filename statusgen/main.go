@@ -223,6 +223,9 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// serves: coverage — a stream with no product tag can never be scoped;
 	// NOTICE it so the taxonomy stays complete as streams are added.
 	notices = append(notices, servesCoverageNotices(streams)...)
+	// GitLab CI half: an embedded pushcred/boardadd anchor older than this
+	// statusgen keeps the pipeline on an older board-push script (#5004).
+	notices = append(notices, gitlabAnchorDriftNotices(root)...)
 	// checkStreams drives WHICH briefs are validated (product-scoped under
 	// --changed/--scope); `edgeStreams` (the full house set plus archived streams)
 	// resolves cross-stream depends:/unblocks: refs so a valid dependency on an
