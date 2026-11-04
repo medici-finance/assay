@@ -102,7 +102,10 @@ change together with any other changed input still fires, and the changed list n
 key, `tool` included. An unreadable input still makes the read could-not-check. A verifier who
 believes a release fixed the blocker uses `explicit-recheck-with-reason`, or a
 `referenced-action-completed` blocker that names the fixing change. Nobody re-declares a
-receipt's tool version to force a hold.
+receipt's tool version to force a hold. Verify rows that passed under the earlier tool
+version are carried forward as passed after a tool-only change; they are not re-run under the
+new tool. The test is on the input **key**: a declared file whose path is `tool` (key
+`file:tool`) is a file input, and its change wakes.
 
 ### Blocker kinds (closed set) → next actor
 

@@ -390,7 +390,8 @@ func (r WakeReceipt) EvaluateWake(reader WakeInputs, now time.Time) WakeDecision
 }
 
 // toolOnlyChange reports whether the ONLY declared input that changed is the tool version
-// (#2310). Both comparators (EvaluateWake and Unchanged) route through it, so a tool-only
+// (#2310). changed must hold raw input KEYS, never display labels: a file input whose path is
+// "tool" has the label "tool" and is not the tool input. Both comparators (EvaluateWake and Unchanged) route through it, so a tool-only
 // change holds on every path. A tool release by itself does not move a blocker: the receipt
 // still records the tool truthfully, and a tool change together with any other change still
 // wakes. A verifier who believes a release fixed the blocker uses an explicit recheck, or a
@@ -647,7 +648,10 @@ func Unchanged(r WakeReceipt, tree WakeInputs) (InputsState, string) {
 	if len(r.Inputs) == 0 {
 		return InputsCouldNotCheck, "could-not-check the receipt declares no inputs"
 	}
-	var changed, unreadable []string
+	// changedKeys carries the raw input keys and decides tool-only; changed carries the
+	// display labels for the reason only. A file named "tool" has the label "tool" but is a
+	// file input, so the decision must never be taken on labels (#2310).
+	var changed, changedKeys, unreadable []string
 	var toolNow string
 	if scope, ok := tree.(receiptScopeReader); ok {
 		if err := scope.CheckReceiptScope(r); err != nil {
@@ -661,12 +665,13 @@ func Unchanged(r WakeReceipt, tree WakeInputs) (InputsState, string) {
 			unreadable = append(unreadable, inputLabel(in))
 		case !strings.EqualFold(strings.TrimSpace(cur), strings.TrimSpace(r.Inputs[in])):
 			changed = append(changed, inputLabel(in))
+			changedKeys = append(changedKeys, in)
 			if in == inputKeyTool {
 				toolNow = cur
 			}
 		}
 	}
-	toolOnly := toolOnlyChange(changed)
+	toolOnly := toolOnlyChange(changedKeys)
 	if len(changed) > 0 && !toolOnly {
 		return InputsChanged, "changed " + strings.Join(changed, ", ")
 	}

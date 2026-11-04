@@ -1,6 +1,6 @@
 {
   "root": ".",
-  "test": "go test ./cmd/verifyloop ./internal/deskkit -run '^Test(VerifyWakeRelevantChange|WakeToolOnly|WakeToolAndFileFires|WakeFileOnlyFires|UnchangedToolOnly)' -count=1 -timeout 120s",
+  "test": "go test ./cmd/verifyloop ./internal/deskkit -run '^Test(VerifyWakeRelevantChange|WakeToolOnly|WakeToolAndFileFires|WakeFileOnlyFires|UnchangedToolOnly|FileNamedToolFires)' -count=1 -timeout 120s",
   "control": {
     "name": "CONTROL: tool-only change never recognised",
     "file": "internal/deskkit/verifywake.go",
@@ -17,7 +17,7 @@
     {
       "name": "unchanged-tool-only-reads-changed",
       "file": "internal/deskkit/verifywake.go",
-      "old": "\n\ttoolOnly := toolOnlyChange(changed)",
+      "old": "\n\ttoolOnly := toolOnlyChange(changedKeys)",
       "new": "\n\ttoolOnly := false"
     },
     {
@@ -25,6 +25,12 @@
       "file": "internal/deskkit/verifywake.go",
       "old": "return len(changed) == 1 && changed[0] == inputKeyTool",
       "new": "for _, c := range changed { if c == inputKeyTool { return true } }; return false"
+    },
+    {
+      "name": "unchanged-tool-only-on-labels",
+      "file": "internal/deskkit/verifywake.go",
+      "old": "toolOnly := toolOnlyChange(changedKeys)",
+      "new": "toolOnly := toolOnlyChange(changed)"
     }
   ]
 }
