@@ -59,6 +59,7 @@ func noData(r service.Response) bool {
 // regression: class service-client
 func TestForgeServiceClientFlow(t *testing.T) {
 	t.Run("server-cache-advice", checkServerCacheAdvice)
+	t.Run("kind-mismatch", checkKindMismatch)
 	t.Run("actual-http", func(t *testing.T) {
 		q, r, _ := literal(t)
 		one := int64(1)
@@ -284,3 +285,53 @@ type closeBody struct {
 }
 
 func (b *closeBody) Close() error { b.close(); return nil }
+
+// The malformed server body is independent of the production response encoder.
+func checkKindMismatch(t *testing.T) {
+	for _, kind := range []mirror.RecordKind{mirror.Issues, mirror.Changes} {
+		for _, state := range []service.State{service.Confirmed, service.Newer, service.Older} {
+			t.Run(string(kind)+"/"+string(state), func(t *testing.T) {
+				q, r, _ := literal(t)
+				q.Operation, q.Source = service.ReadObservation, nil
+				q.Minimum = &service.Token{Scope: q.Scope, Repository: q.Repository, Kind: kind, Value: "want"}
+				r.Operation, r.Source = q.Operation, nil
+				r.Metadata.State = state
+				value := "want"
+				if state != service.Confirmed {
+					value = "have"
+				}
+				r.Metadata.Observation = &service.Token{Scope: q.Scope, Repository: q.Repository, Kind: kind, Value: value}
+				if state == service.Older {
+					no := false
+					r.Metadata.Complete = &no
+					r.Metadata.Freshness = "stale"
+				}
+				wire, err := service.EncodeResponse(r, q)
+				if err != nil {
+					t.Fatal("valid kind baseline refused", err)
+				}
+				var calls atomic.Int64
+				c := configured(t, q, "https://service.example/forge", trip(func(*http.Request) (*http.Response, error) {
+					calls.Add(1)
+					return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(wire))}, nil
+				}), false)
+				if out, report, err := c.Do(context.Background(), q); err != nil || out.Metadata.State != state || report.TransportAttempts != 1 || calls.Load() != 1 {
+					t.Fatal("valid kind client baseline changed", err)
+				}
+				other := mirror.Changes
+				if kind == mirror.Changes {
+					other = mirror.Issues
+				}
+				r.Metadata.Observation.Kind = other
+				wire, err = json.Marshal(r)
+				if err != nil {
+					t.Fatal(err)
+				}
+				out, report, err := c.Do(context.Background(), q)
+				if err == nil || !noData(out) || out.Metadata.Source != nil || out.Metadata.Observation != nil || report.TransportAttempts != 1 || calls.Load() != 2 {
+					t.Fatal("client accepted foreign observation kind", err, report)
+				}
+			})
+		}
+	}
+}

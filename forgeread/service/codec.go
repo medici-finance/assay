@@ -45,7 +45,7 @@ func DecodeResponse(data []byte, q Request) (Response, error) {
 func encode(v any) ([]byte, error) {
 	// encoding/json replaces invalid UTF-8 in strings. Refuse before marshaling
 	// so provider facts are never silently changed; byte content stays opaque.
-	if !wireUTF8(reflect.ValueOf(v)) {
+	if !wireValues(reflect.ValueOf(v)) {
 		return nil, ErrInvalid
 	}
 	b, err := json.Marshal(v)
@@ -55,36 +55,42 @@ func encode(v any) ([]byte, error) {
 	return b, nil
 }
 
-// wireUTF8 checks exported wire text only. It neither normalizes domain values
-// nor changes nil/known-empty collections or binary content.
-func wireUTF8(v reflect.Value) bool {
+// wireValues checks exported wire text and the decoder's shared collection cap.
+// It neither normalizes domain values nor changes nil/known-empty or binary data.
+func wireValues(v reflect.Value) bool {
 	if !v.IsValid() {
 		return true
 	}
-	switch v.Kind() {
+	kind := v.Kind()
+	// A byte slice is one base64 scalar, not a JSON collection.
+	binary := kind == reflect.Slice && v.Type().Elem().Kind() == reflect.Uint8
+	if (kind == reflect.Slice || kind == reflect.Array || kind == reflect.Map) && !binary && v.Len() > MaxItems {
+		return false
+	}
+	switch kind {
 	case reflect.String:
 		return utf8.ValidString(v.String())
 	case reflect.Pointer, reflect.Interface:
-		return v.IsNil() || wireUTF8(v.Elem())
+		return v.IsNil() || wireValues(v.Elem())
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
-			if _, _, ok := wireField(v.Type().Field(i)); ok && !wireUTF8(v.Field(i)) {
+			if _, _, ok := wireField(v.Type().Field(i)); ok && !wireValues(v.Field(i)) {
 				return false
 			}
 		}
 	case reflect.Slice, reflect.Array:
-		if v.Type().Elem().Kind() == reflect.Uint8 {
+		if binary {
 			return true
 		}
 		for i := 0; i < v.Len(); i++ {
-			if !wireUTF8(v.Index(i)) {
+			if !wireValues(v.Index(i)) {
 				return false
 			}
 		}
 	case reflect.Map:
 		entries := v.MapRange()
 		for entries.Next() {
-			if entries.Key().Kind() != reflect.String || !text(entries.Key().String(), MaxTextBytes, false) || !wireUTF8(entries.Value()) {
+			if entries.Key().Kind() != reflect.String || !text(entries.Key().String(), MaxTextBytes, false) || !wireValues(entries.Value()) {
 				return false
 			}
 		}
