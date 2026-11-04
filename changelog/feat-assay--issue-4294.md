@@ -1,2 +1,0 @@
-### Fixed
-- `statusgen verifyflip` reads only the latest PASS run when that run is a strict, dated, clean re-run under an entry heading the page surely draws: an older, superseded entry's could-not-check row or BLOCKED bullet no longer blocks the flip, and an earlier entry's trailing rows are no longer read as the latest run's. A hold inside the latest run, a non-strict or undated latest run, and an uncertain run boundary still refuse (#4294).

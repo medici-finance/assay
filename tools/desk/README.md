@@ -5190,7 +5190,9 @@ bouncing Evidence PRs for:
 - `inputs` must name every backticked path the brief's `## Context` `files:` block declares —
   read from the brief AT the record's own `sha`, never the working tree — with one `file:<path>`
   key per declared file (or one nested under a declared directory); a path absent at that sha (a
-  `(planned)` deliverable) is not required.
+  `(planned)` deliverable) is not required. A `../<sibling>/` declaration is covered by its
+  `repo-source:` pin, or in a single-repository run by its `declared:<decl>` = `unbound` marker
+  (see **Context `files:` shapes a verifier home records** below).
 - `blocker_ref` must be an actual reference — `#<N>`, `<owner>/<repo>#<N>`, or a forge issue/PR/run
   URL, parsed and read through the configured forge API — never free text or an `action: …`
   sentence.
@@ -6453,8 +6455,38 @@ record carries one `repo-source:<owner/name>` key per bound sibling. Each siblin
 declared paths are covered only by that sibling's own key; delivery PRs in a bound sibling
 must be ancestors of that sibling's commit. A sibling without a single configured root at
 its fetched `origin/main`, or one a public tracking repository may not name, stays
-unbound, and its paths still refuse the record; prepare prints one `NOTICE` per unbound
-sibling naming it and why.
+unbound, and in a cross-repository run its paths still refuse the record; prepare prints
+one `NOTICE` per unbound sibling naming it and why.
+
+**Context `files:` shapes a verifier home records (#5097).** Three shapes no longer
+refuse the outcome record. This narrows a refusal; everything else stays refused.
+
+- **A sibling path in a single-repository run.** When the run binds no repository at all
+  (no `repo-source:` key), each `../<sibling>/<path>` declaration is recorded as
+  `declared:<decl>` = `unbound`. It is never resolved against the home tree. No wake
+  reader resolves that key, so the receipt is could-not-check, never unchanged, until a
+  local input changes. A marker beside any `repo-source:` key, a marker for a path the
+  brief does not declare as a sibling, or any other value refuses. A cross-repository run
+  with an unbound sibling still refuses.
+- **A trailing `**` glob.** `<dir>/**` (one final segment, after a literal directory
+  with no other glob character) selects every file below `<dir>` at any depth, keyed
+  `scope:<dir>/**`. Mid-path `**`, `**` glued to a name, a bare `**` and a sibling's
+  bare `../<name>/**` still refuse. `../<name>/<dir>/**` is a sibling declaration.
+- **One trailing sentence.** A single line at column zero, after a list whose last line
+  was a `- ` bullet or ended in `.`, and the block's last line, is an annotation when it is
+  a plain sentence: printable ASCII, at least four words, a capitalised first word of
+  letters, one final `.`, no list or quote marker, none of
+  `` ` * _ { } [ ] < > | \ , ; + ( ) : " # ? ! = $ & @ % ~ `` and no `..`. A word holding
+  `/` or `.` must name a declared path or a directory above one, and every declared path
+must hold a `/` and must not end in `.` (a short name, or an unbackticked inline tail that
+kept the closing full stop, refuses the block). The sentence declares
+  nothing. Any further line in the same block refuses, as does a sentence the rules do not
+  fit.
+
+Malformed entries inside the list still refuse: an empty path, an absolute path, any `..`
+other than the exact `../<sibling>/<path>` form, a `.git` segment, whitespace or control
+characters, `\ : < >`, `...`, an unclosed quote, annotation or brace, an unsupported tail,
+and every fence, HTML and heading ambiguity.
 
 Fetch every declared sibling root (and check out its `origin/main`) before prepare: a
 sibling bound at a stale `origin/main` makes a later Evidence landing refuse any of that
