@@ -24,8 +24,9 @@ risk:
   sensitive-data: no
 gate-why: Ownership and restore behavior constrain external effects; the owner confirms stale writers cannot retain independent authority.
 decision-trigger: spec
+design: DR-graph-exec-16
 decision-issue: 5111
-ruling: "https://github.com/medici-finance/assay/issues/5111#issuecomment-6561259515"
+ruling: "https://github.com/medici-finance/assay/issues/5111#issuecomment-6612666889"
 issues: []
 schema: brief-v2
 authored: 2026-09-19 by Codex (author-brief)
@@ -367,3 +368,32 @@ must be rejected or replaced with an authorized reference, while numeric usage-t
 counts survive unchanged. Check the WI-1 source-trust binding referenced by WI-4.
 
 Gate: human. Confirm scope, consumer routing, negative-path independence and exact-subject evidence; a confidence score cannot enlarge permission.
+
+## Delivery reconciliation — 2026-11-03
+
+Source inspection on main `3342a32ab90440ce7f2f6bf8957b83de626d70dd` confirms the
+actual implementation delivery is merged PR #5386, commit
+`9ec2680d0d242abd0fc13584feddb1459ddbd634`. PR #5113 remains the earlier schema/test
+preparation, not the implementation witness. Its historical remaining-work statement
+describes that preparation checkpoint.
+
+| Original obligation | Delivered source to assess independently |
+|---|---|
+| Task 1: durable ownership/reservations, cumulative budgets and stop retention | `drainloop/ownership.go`: `CellStore`, `CellAuthority.Commit`, `CellJournal`; `drainloop/budget.go` reservation/balance/pacing owners |
+| Task 2: separate effect-boundary fencing and unknown outcomes | `CellAuthority.CheckEffect`, capability/current-authority ports and `ResolvePending`; real provider credential cutover remains profile qualification |
+| Task 3: concurrency/crash/restore fixtures | `drainloop/ownership_test.go`, `budget_test.go`, `restore_test.go` and the test-only filesystem/provider adapters; these are source witnesses, not independent PASS evidence |
+| Task 4: qualified hold/reconciliation limits | `drainloop/README.md`, `docs/enforcement-model.md`, authoritative resolution and settlement ports; no production backend or exactly-once guarantee |
+| Task 5: current incarnation and restore authority | `spec/operator-incarnation-v1.md`, `drainloop/incarnation.go` and current-incarnation checks at admission/effect boundaries; concrete custody/signature/consumer qualification remains separate |
+
+The record-specific human binding is now recorded in `DR-graph-exec-16` and the
+frontmatter `design:`/`ruling:` fields. It preserves the earlier bounded design
+and both custody restrictions:
+https://github.com/medici-finance/assay/issues/5111#issuecomment-6612666889
+
+No board row is hand-edited here. After this metadata lands, use native
+`statusgen reconcile` to judge the implemented transition against the actual
+#5386 delivery. Independent verification, final human acceptance and activation
+remain subsequent distinct acts.
+
+This reconciliation changes no Task, original Verify definition, Evidence, dependency
+or accepted policy. It installs no runtime/backend and claims no test execution.
