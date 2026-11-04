@@ -315,6 +315,10 @@ jobs:
           python3 -B .github/scripts/go-test-shard.py --self-test
           list="${RUNNER_TEMP}/desk-packages.txt"
           mine="${RUNNER_TEMP}/desk-shard.txt"
+          # Offline child tests can compile a package assigned to another shard.
+          # Prepare its test-only imports before those children disable downloads;
+          # keep the production package list below as the shard partition input.
+          (cd tools/desk && go list -mod=readonly -deps -test ./... >/dev/null)
           (cd tools/desk && go list ./...) > "$list"
           python3 -B .github/scripts/go-test-shard.py --shards "$shards" --index "$JOB_INDEX" < "$list" > "$mine"
           mapfile -t pkgs < "$mine"
