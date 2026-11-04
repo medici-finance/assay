@@ -48,11 +48,26 @@ consumers:
 
 ## Context
 
-files: `forgeread/service/` (planned), `forgeread/client/` (planned), `forgeread/testdata/service/` (planned), `spec/forge-service-v1.md` (planned), `schemas/forge-service-v1.json` (planned), `docs/forge-service.md` (planned), `docs/library-first.md`, `docs/contracts.md`, `changelog/forge-service-contract.md` (planned), `forgeread/service/reviewmapping_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
+files:
+- `forgeread/service/` (planned)
+- `forgeread/client/` (planned)
+- `forgeread/testdata/service/` (planned)
+- `spec/forge-service-v1.md` (planned)
+- `schemas/forge-service-v1.json` (planned)
+- `docs/forge-service.md` (planned)
+- `docs/library-first.md`
+- `docs/contracts.md`
+- `changelog/forge-service-contract.md` (planned)
+- `forgeread/service/reviewmapping_test.go` (planned)
+
+Paths absent at the source pin are planned deliverables. Existing files are amended only
+at the named seam; no user-home or out-of-repo configuration is edited.
 
 facts:
 - forgeread is a dependency-free module. Its root OpenIssues/Result and OfflineReader remain the supported current surface; service packages are new deliverables.
-- The mirror/event briefs are pending draft contracts. Mirror identity is provider, host, repository path and object kind/number; a PR and MR are not interchangeable.
+- Source pickup checked 2026-11-03 at main `214b4c8308b3cc57beed91feccf45e6a03f2eecd`. The existing mirror identity is provider, host, repository path and object kind/number; a PR and MR are not interchangeable. Service/client packages remain absent at this pin.
+- The review-observation predecessor has delivered source: [merged contract PR 3593](https://github.com/medici-finance/assay/pull/3593), merge `790003516c1fb4ea99d0a6d5eb6e67e9123b3c2a`. Current definitions are `tools/desk/internal/reviewflow/observation.go`, `tools/desk/internal/reviewflow/selection.go` and `spec/review-observation-v1.md` at the main pin above; the current files, including subsequent amendments, govern pickup.
+- The predecessor's [own-login named design approval](https://github.com/medici-finance/assay/issues/4521#issuecomment-6615602021) approves DR-desk-tools-39 only. Independent implementation verification and lifecycle acceptance remain pending. Source availability and this design ruling do not assert those transitions or satisfy this brief's separate wire/privacy acceptance. No dependency, gate, Task or Verify obligation is removed.
 - deskkit is internal to tools/desk. Exporting a giant interface or importing it from a separate module is not a reuse solution.
 
 layering: forgeread service envelopes; domain identities and effect authority remain with their existing owners. Pure typed requests and source facts stay independent of
@@ -75,6 +90,22 @@ section, and each dependency brief's current contract. All load-bearing requirem
 brief are restated here. The architecture draft is not activation approval; refresh its revision,
 source paths, active claims and existing decisions before dispatch. Missing required contracts
 mean NEEDS_CONTEXT, not an invented substitute or a narrowed acceptance test.
+
+For this pickup, read the main-pinned reviewflow source and review-observation-v1 specification
+named in Context before defining public DTOs. `tools/desk/internal` is not importable from
+forgeread: preserve its semantic owner through the existing explicit legal extraction/mapping
+obligation and independent literal fixtures. Public envelopes carry scope, provenance, exact
+head/base and applicability, same-population depth, every action row and null/unknown states;
+they do not reimplement candidate selection, policy approval or effect authority.
+
+Offline contract implementation uses these actual delivered definitions. The existing Tasks
+also require pure effect-result/operation DTOs and validation; those types require no executor,
+credential issuer, PostgreSQL runtime, listener or activation. The existing Human decision
+allows independent offline fixtures while acceptance is pending. Keep all existing Tasks and
+five Verify commands, old schema fixtures, root OpenIssues/OfflineReader compatibility and
+stdlib-only module boundaries. Source-code tests corroborate pickup availability only; they
+are not independent Verify/Evidence or an acceptance ruling. Lifecycle and dispatch guards
+remain authoritative and must report any unresolved transition rather than be bypassed.
 
 ## Human decision
 
