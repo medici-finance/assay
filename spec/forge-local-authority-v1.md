@@ -332,6 +332,10 @@ non-restored operator anchor and real rotation/fencing procedure are qualified.
 No lock detects arbitrary rollback. This boundary does not weaken custody1A:
 restored operator state still must rotate identity AND key before any authority
 is reopened, and this profile never automatically resumes restored authority.
+Production restoration remains HELD until a trustworthy anchor outside the
+restored volume and actual identity/key rotation are qualified under the existing
+incarnation/custody ruling. Neither offline implementation nor this primitive
+proof waives that requirement. No snapshot/backup restore becomes current.
 No universal restore protection or available external anchor is claimed.
 
 ## Supported alternatives and hard prerequisites
@@ -340,8 +344,11 @@ The existing restricted local-container profile is the preferred candidate becau
 its actual mount/process boundary can separate same-host roles without changing
 R7 or requiring an operational write executor. Its prerequisites are an explicit
 owned local engine, an admitted immutable fixture image/platform, exact channel
-mount/profile support and actual independent-process tests. None has been probed
-or selected by this document.
+mount/profile support and actual independent-process tests. The source-bound
+primitive probe described below now qualifies limited local image/platform, volume
+views and Unix-channel mechanics. It does not qualify the closed R3 profile,
+producer/current writer, signing, caller authentication or custody. The design
+mechanism remains unselected pending the spec-stage ruling.
 
 A distinct-OS-principal host profile is a bounded alternative only if the existing
 launcher supplies a qualified principal transition, protected current-source
