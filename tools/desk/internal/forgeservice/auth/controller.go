@@ -23,6 +23,11 @@ type registration struct {
 	revoked bool
 }
 
+type channelKey struct {
+	root *os.Root
+	name string
+}
+
 // Controller is a live operator-owned registry. It never imports a signing key
 // or resumes authority from a saved record. Query roles receive no Controller.
 type Controller struct {
@@ -44,6 +49,7 @@ type Controller struct {
 	policies            map[string]LaunchPolicy
 	dataSlots           chan struct{}
 	controlSlots        chan struct{}
+	channels            map[channelKey]bool
 }
 
 func NewController(cfg ProducerConfig, r ProducerResources, wall refresh.Clock) (*Controller, error) {

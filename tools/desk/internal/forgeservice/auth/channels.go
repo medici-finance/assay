@@ -77,14 +77,57 @@ func (c *Controller) ServeGrant(ctx context.Context, ch GrantChannel) error {
 }
 func heldResponse() wireResponse { return wireResponse{Schema: Schema, Error: "held"} }
 
+// claimChannel runs only for the owner's fixed channel paths, under the
+// original exclusive gate. An active or uncertain holder is never recovered.
+func (c *Controller) claimChannel(ctx context.Context, root *os.Root, name string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ctx.Err() != nil || !c.liveGate() {
+		return ErrHeld
+	}
+	known := (root == c.resources.Private && name == "control.sock") || (root == c.resources.Current && name == "current.sock")
+	if name == "grant.sock" {
+		for _, r := range c.resources.Grants {
+			known = known || root == r
+		}
+	}
+	if !known {
+		return ErrHeld
+	}
+	key := channelKey{root, name}
+	if c.channels[key] {
+		return ErrHeld
+	}
+	if c.channels == nil {
+		c.channels = map[channelKey]bool{}
+	}
+	c.channels[key] = true
+	st, e := root.Lstat(name)
+	if os.IsNotExist(e) {
+		return nil
+	}
+	if e != nil || st.Mode()&os.ModeSocket == 0 {
+		return ErrHeld
+	}
+	at, e := os.Lstat(filepath.Join(root.Name(), name))
+	if e != nil || !os.SameFile(st, at) {
+		return ErrHeld
+	}
+	again, e := root.Lstat(name)
+	if e != nil || again.Mode()&os.ModeSocket == 0 || !os.SameFile(st, again) || ctx.Err() != nil || !c.liveGate() {
+		return ErrHeld
+	}
+	if root.Remove(name) != nil {
+		return ErrHeld
+	}
+	return nil
+}
+
 func (c *Controller) serve(ctx context.Context, root *os.Root, name string, slots chan struct{}, handle func(context.Context, wireRequest) wireResponse) error {
 	if ctx == nil || ctx.Err() != nil {
 		return ErrHeld
 	}
-	c.mu.Lock()
-	live := c.liveGate()
-	c.mu.Unlock()
-	if !live {
+	if c.claimChannel(ctx, root, name) != nil {
 		return ErrHeld
 	}
 	path := filepath.Join(root.Name(), name)
@@ -94,16 +137,22 @@ func (c *Controller) serve(ctx context.Context, root *os.Root, name string, slot
 	}
 	listener.SetUnlinkOnClose(false)
 	info, e := root.Lstat(name)
-	if e != nil || os.Chmod(path, 0600) != nil {
+	if e != nil || info.Mode()&os.ModeSocket == 0 {
 		listener.Close()
 		return ErrHeld
 	}
 	defer func() {
 		listener.Close()
-		if st, e := root.Lstat(name); e == nil && os.SameFile(st, info) {
+		if st, e := root.Lstat(name); e == nil && st.Mode()&os.ModeSocket != 0 && os.SameFile(st, info) {
 			root.Remove(name)
 		}
 	}()
+	c.mu.Lock()
+	live := ctx.Err() == nil && c.liveGate()
+	c.mu.Unlock()
+	if !live || root.Chmod(name, 0600) != nil {
+		return ErrHeld
+	}
 	stop := context.AfterFunc(ctx, func() { listener.Close() })
 	defer stop()
 	var active sync.WaitGroup

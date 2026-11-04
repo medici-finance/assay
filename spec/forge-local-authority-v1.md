@@ -659,3 +659,13 @@ leave the writer held until read-back confirms the exact version and operation
 digest; it never blindly retries. The single private control connection is reserved
 separately from the bounded shared data-channel capacity so a slow read cannot
 consume the operator writer's slot.
+
+After a verified old producer has stopped, a new explicitly launched controller
+must acquire the original exclusive private HeldLock before reclaiming a retained
+fixed-channel socket. The protected roots and exact socket inode/type must still
+match. It never removes a non-socket, symlink, unrelated path or anything while
+the lock/root identity is uncertain. Per-controller channel claims reject duplicate
+or concurrent startup before touching an existing listener. No old process is
+signalled, no stale-holder recovery is enabled, and no saved bootstrap/registry
+becomes current. Re-established channels start with no ready authority; explicit
+fresh initialization, rotation and caller registration remain required.
