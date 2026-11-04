@@ -157,6 +157,25 @@ func checkCachedReadAdvice(t *testing.T) {
 		r.Metadata.RetryAt = &retry
 		cacheRefusal(t, q, r)
 	})
+	t.Run("fulfilled-mirror-cache", func(t *testing.T) {
+		q, r := cachedRead(t, 30*time.Second, service.Unavailable)
+		yes := true
+		r.Metadata.State = service.Confirmed
+		r.Metadata.Reason = ""
+		r.Metadata.Complete = &yes
+		r.Mirror = &mirror.Snapshot{Scope: mirror.Scope{Repository: q.Repository, Kind: q.Mirror.Kind, AdmissionID: q.Scope.AdmissionID}, Coverage: r.Metadata.Cached.Coverage, Records: []mirror.Observation{}, Version: "fixture-version"}
+		cacheRefusal(t, q, r)
+	})
+	t.Run("overflow-age-is-not-saturated", func(t *testing.T) {
+		q, r := cachedRead(t, 2*time.Minute, service.Unavailable)
+		start := time.Date(100, 1, 1, 0, 0, 0, 0, time.UTC)
+		end := time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
+		r.Metadata.Cached.Coverage = mirror.Coverage{State: mirror.Complete, LastAttempted: start, LastComplete: start}
+		r.Metadata.Cached.EvaluatedAt = end
+		n := end.Sub(start).Milliseconds()
+		r.Metadata.Cached.AgeMS = &n
+		cacheRefusal(t, q, r)
+	})
 	t.Run("fulfilled-advice", func(t *testing.T) {
 		q := literalRequest(t)
 		r := literalResponse(t, q)
