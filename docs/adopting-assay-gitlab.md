@@ -620,9 +620,8 @@ by those two flags. The value is never printed or written to disk. The step:
   admits no role, so on a provisioned project this NOTICE is the expected state on every run,
   not a fault. Widening that rule is a human decision;
 - does not renew the token. It expires after `--pat-expiry-days` (default 7, at most 365), after
-  which the regen push fails, and a re-run is a no-op while the variable exists. To rotate:
-  revoke the old token under **Settings > Access tokens**, delete the variable under **Settings
-  > CI/CD > Variables**, and re-run, or do this section by hand. A longer lifetime for this token
+  which the regen push fails, and a re-run is a no-op while the variable exists. To rotate, use
+  `deskfleet push-token rotate` ("Rotating it" below). A longer lifetime for this token
   is a larger `--pat-expiry-days` on the run that mints it; that flag also sets the expiry of any
   role tokens the same run mints.
 
@@ -749,6 +748,83 @@ The runners section above used to send the reader to the per-role fleet credenti
 by a wrong number — the section that actually holds the per-role rotation rules is §5, and
 its subject is a different credential entirely. Read `STATUSGEN_PUSH_TOKEN` from this
 subsection instead.
+
+### Rotating it — `deskfleet push-token`
+
+`deskfleet push-token` rotates this credential in one process and checks it between rotations.
+The new value lives only in the forge and in that process's memory: it is never printed,
+logged, put in a command's argv, an environment variable or a file, and no flag takes a value.
+
+```
+deskfleet push-token rotate --project <path-or-id> --rotator-token-file <file> --token-name <name> [--days N] [--min-days N] [--create] [--dry-run]
+deskfleet push-token check  --project <path-or-id> --reader-token-file <file> --token-name <name> [--min-days N]
+```
+
+**Scope.** The verb handles a **project-level** variable and a **project access token** only. A
+group-level `STATUSGEN_PUSH_TOKEN`, or a group access token, which this section also allows, is
+out of its scope: rotate those by hand.
+
+**Who runs it.** `rotate` runs as the person who holds the rotator credential: a personal
+token at Maintainer with `api` scope, in an owner-only file named by `--rotator-token-file` (the
+same custody check as §5's token files). It is not a desk or CI identity. `rotate` refuses while
+the desk loop's session marker `DESK_LOOP` is set; that check is advisory, because the marker is
+self-declared. `GITLAB_API_BASE` must be set and must end in `/api/v4`.
+
+**Defaults.** These follow the recorded decision (`docs/streams/decisions/DR-forge-gitlab-18.md`):
+
+- the new token lives 30 days (`--days`, at most 90);
+- the proof needs at least `--min-days` (default 7) left, and an expiry no earlier than one
+  day before the requested date;
+- a variable created by `--create` is created masked and hidden where the instance supports
+  hidden variables, and masked and protected otherwise;
+- when the new token's own self-introspection answers 403 for insufficient scope, the by-id read
+  and the push probe below stand as the proof. Any other self-introspection failure fails.
+
+**The procedure.** Run `rotate --dry-run` first: it names every step and makes no request. A
+real run then:
+
+1. reads the project, its protected default branch, the project-level variable (it must be
+   masked, protected and scoped `*`) and the one active token named `--token-name` (scopes
+   exactly `[write_repository]`, Maintainer). Any failed check refuses with exit 5 and writes
+   nothing; a read that fails exits 6;
+2. rotates that token. GitLab revokes the predecessor in the same call;
+3. writes the new value into the variable, sending masked, protected and scope `*` on every
+   write, because GitLab resets any flag a write omits. A transport error or a 5xx is retried twice;
+4. reads the variable back and compares every flag, the hidden state and (when the variable is
+   not hidden) the value;
+5. proves the new token three ways: its record by id (active, not revoked, exact scopes, the
+   expiry above), its own self-introspection, and a receive-pack advertisement
+   (`<web root>/<project path>.git/info/refs?service=git-receive-pack`) on the API host, with the
+   credential in the `Authorization` header. A clone URL from a response is never used, and a
+   redirect is a failure.
+
+Exit 0 means rotated and proven by all three probes. The outcomes that are not 0:
+
+| Line | Exit | What happened | What to do |
+|---|---|---|---|
+| `refused: …` | 5 | a precondition failed; nothing was written | fix what the line names, re-run |
+| `rotate-refused` | 1 | the forge refused the rotate; nothing was written. A second `rotate` running at the same time ends here | `push-token check` confirms the other run's install |
+| `rotate-response-lost` | 1 | the rotate was sent but its answer was lost: the predecessor may be revoked and the new value is unrecoverable | re-run `rotate`; it finds the one active token by name and rotates it again |
+| `rotated-not-installed` | 1 | the variable write failed after three attempts; the variable still holds the revoked predecessor | re-run `rotate` |
+| `contained: revoked <id>` | 1 | the read-back disagreed on the field named; the new token was revoked at once and the revoke confirmed, so the variable holds a dead value | fix the variable's flags, then `rotate --create` |
+| `containment-failed: revoke <id> by hand` | 6 | the read-back disagreed and the revoke could not be confirmed: the variable may hold a LIVE token with wrong flags | revoke that id under **Settings > Access tokens** now, fix the flags, then `rotate --create` |
+| `by-id`, `self` or `push: FAIL field …` | 1 | a proof probe failed on the field named | read the field; re-run `rotate` once it is fixed |
+
+**After an expiry or a containment.** An expired or revoked token is no longer active, so a plain
+`rotate` refuses with zero active tokens. `rotate --create` creates the token (and, if it is
+missing, the variable) instead, and then installs and proves it the same way.
+
+**A pipeline already running.** A `statusgen-regen` job that started before the rotation holds
+the old value; its push fails with a credential class from the table above, and the next run on
+the default branch picks up the new value.
+
+**`check` between rotations.** `check` reads only: no POST, PUT or DELETE. It runs under a
+separate reader credential (a read-only API scope at Maintainer is enough) in an owner-only
+file named by `--reader-token-file`, finds the one active token by name and runs the by-id probe
+against `--min-days`. Exit 0 healthy; 1 below the threshold, revoked, inactive or wrongly scoped
+(`no-active-token` when there is none, the count when there are several); 6 when a read fails.
+It shares the by-id comparator with `rotate`, so it is an out-of-band monitor, not an independent
+check of that comparator.
 
 ## 2d. Source-pin lane — GitLab + native Windows (channel D)
 
@@ -1173,6 +1249,8 @@ Carried verbatim in spirit from spec.md §5 — this doc does not relax any of i
   written before the command prints the path, so the verb's own read after its own rotation
   cannot return the pre-rotation token. A rotation that finds the link gone after its write
   fails at mint time rather than leaving a layout that reads stale later. (#1112)
+- **The board-push credential is not a role PAT.** `STATUSGEN_PUSH_TOKEN` rotates through
+  `deskfleet push-token` (§2c, "Rotating it"), never through the role-PAT path above or §2g.
 - **Audit events** (Premium+) should be reviewed periodically for rotation/use anomalies.
 
 ## 5a. Hardening checklist — `repohardenguard` on GitLab

@@ -198,6 +198,72 @@
       "file": "cmd/deskfleet/provision.go",
       "old": "\tif o.noAvatars && (o.avatarsOnly || o.avatarsDir != \"\") {",
       "new": "\tif false && o.noAvatars && (o.avatarsOnly || o.avatarsDir != \"\") {"
+    },
+    {
+      "name": "M1, row 2 — a debug line prints the secret's raw bytes after rotate",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\tr.newID, r.secret = got.ID, got.Token\n",
+      "new": "\tr.newID, r.secret = got.ID, got.Token\n\tr.errf(\"debug: %s\", r.secret.reveal())\n"
+    },
+    {
+      "name": "M2, row 4 — String on the secret type returns the raw value",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "func (s pushSecret) String() string                { return redactedText }",
+      "new": "func (s pushSecret) String() string                { return string(s.b) }"
+    },
+    {
+      "name": "M3, row 7 — the variable-write body omits protected (reset-on-omit drops it)",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\"masked\": true, \"protected\": true, \"environment_scope\": \"*\"}",
+      "new": "\"masked\": true, \"environment_scope\": \"*\"}"
+    },
+    {
+      "name": "M4, row 8 — the read-back flag comparison is deleted",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\tcase !v.Masked:\n\t\tfield = \"masked\"\n\tcase !v.Protected:\n\t\tfield = \"protected\"\n\tcase v.Scope != \"*\":\n\t\tfield = \"environment_scope\"\n\tcase v.Hidden != r.hidden:\n\t\tfield = \"hidden\"\n",
+      "new": ""
+    },
+    {
+      "name": "M5, rows 9 and 13 — the --min-days comparison in the shared by-id comparator is deleted",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\tif left < minDays {\n\t\treturn \"expires_at\", left\n\t}\n",
+      "new": ""
+    },
+    {
+      "name": "M6, row 11 — the push probe URL is taken from the project record's clone URL",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\treq, err := http.NewRequest(\"GET\", r.pushProbeURL(), nil)\n",
+      "new": "\tpj, _ := r.gl.do(\"GET\", r.pp, nil)\n\tvar pr struct {\n\t\tU string `json:\"http_url_to_repo\"`\n\t}\n\t_ = json.Unmarshal(pj.Body, &pr)\n\treq, err := http.NewRequest(\"GET\", strings.TrimSuffix(pr.U, \".git\")+\".git/info/refs?service=git-receive-pack\", nil)\n"
+    },
+    {
+      "name": "M7, row 6 — the preflight scope check accepts a list that merely contains write_repository",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\treturn len(s) == 1 && s[0] == pushTokenScope\n",
+      "new": "\tfor _, x := range s {\n\t\tif x == pushTokenScope {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n"
+    },
+    {
+      "name": "M8, row 8 — the containment revoke is deleted",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\tresp, err := r.gl.do(\"DELETE\", r.pp+\"/access_tokens/\"+id, nil)\n\tif err != nil || resp.Status < 200 || resp.Status >= 300 {\n\t\treturn r.containFailed(field, \"revoke \"+statusOnly(resp, err))\n\t}\n\tresp, err = r.gl.do(\"GET\"",
+      "new": "\tresp, err := r.gl.do(\"GET\""
+    },
+    {
+      "name": "M9, row 8 — containment prints contained: revoked and exits 1 without checking the revoke",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\tid := strconv.FormatInt(r.newID, 10)\n\tresp, err := r.gl.do(\"DELETE\"",
+      "new": "\tid := strconv.FormatInt(r.newID, 10)\n\tif true {\n\t\tr.errf(\"contained: revoked %d — %s\", r.newID, field)\n\t\treturn exitFailed\n\t}\n\tresp, err := r.gl.do(\"DELETE\""
+    },
+    {
+      "name": "M10, row 6 — the variable's value field becomes a plain string and a preflight refusal formats the struct",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\tvar v pushVariable\n\tif json.Unmarshal(resp.Body, &v) != nil {\n\t\treturn r.refuse(\"variable: %s response could not be decoded\", pushTokenVariable)\n\t}\n\tdefer v.Value.wipe()\n\tif !v.Masked {\n\t\treturn r.refuse(\"variable: %s is not masked (field masked)\", pushTokenVariable)\n\t}\n",
+      "new": "\tvar v struct {\n\t\tpushVariable\n\t\tValue string `json:\"value\"`\n\t}\n\tif json.Unmarshal(resp.Body, &v) != nil {\n\t\treturn r.refuse(\"variable: %s response could not be decoded\", pushTokenVariable)\n\t}\n\tif !v.Masked {\n\t\treturn r.refuse(\"variable: %s is not masked (field masked) %+v\", pushTokenVariable, v)\n\t}\n"
+    },
+    {
+      "name": "M11, row 2 — the variable-write error path appends the forge's message to its error line",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "statusOnly(resp, err), pushTokenVariable, r.o.tokenName, r.newID)",
+      "new": "statusOnly(resp, err)+\" \"+forgeMessage(resp.Body), pushTokenVariable, r.o.tokenName, r.newID)"
     }
   ]
 }
