@@ -82,7 +82,7 @@ both LastComplete and LastInventory strictly after the held LastAttempted.
 Incremental, not-modified and stale/replayed updates cannot recover permission.
 Store adapters enforce that transition independently of the planner. The
 persisted mirror integration retains PostgreSQL transactions/restart, authenticated
-source mapping, refresh coalescing, review population completeness, domain mapping,
+source-to-SQL integration, refresh coalescing, review population completeness, domain mapping,
 retention policy and reader rollout. These are not supplied by the kernel.
 `RetainedFrom` is optional and zero means unknown; the durable Store must derive it
 from actual retained coverage under the selected policy, never the oldest visible
@@ -146,6 +146,41 @@ This native contribution does not qualify the future mapper's preservation of pe
 watermarks, PostgreSQL, scheduling, coalescing, retention or reader cutover. Those remain
 with the joined mirror delivery, including its row-23 production-flow acceptance. The
 shared-library migration reuses this native composition rather than adding a second bound.
+
+## Admitted observation mapping
+
+Desk-tools provides `NewMirrorIngestSource` over its existing `MirrorReadSource`,
+implementing `mirror.Source.Scan` with a trusted bound source-admission ID and
+explicit observation clock. Composition derives that ID alongside the source from
+the canonical credential owner; requests do not select it. Each call matches both
+Scope.AdmissionID and current Admission.ID to the bound value before and after
+the independently scoped native read, rechecking authorization before returning
+observations. This validates binding consistency, not independent proof of actual
+credential-installation selection; that real joined composition remains /37. No command, source credential discovery, listener,
+polling loop or alternate page walker is added. The adapter currently has no
+production command caller; fixtures exercise its actual native-to-reference-Store flow.
+
+`Observation.BodyKnown` distinguishes omitted and known-empty bodies. Nil and
+non-nil empty collections remain distinct through mapping, planning and detached
+Store/query copies. Individual reviewer lists do not establish team, approval,
+check or comment coverage; unfetched reviews remain never-read. These additions
+are in the mirror subpackage; the frozen root package and envelope are unchanged.
+
+Canonical `PlanRefresh` carries `PriorObservedUpTo` from its selected snapshot,
+with the admission-bound scope and expected version. `PlanScan` independently
+requires that exact baseline. A qualified complete walk can preserve the maximum
+already observed when a former newest item disappears or an incremental result
+is filtered empty; this carried bound is neither a new source stamp nor fresh
+coverage. Incomplete walks report zero and preserve prior LastComplete. The
+existing raw regression, permission-hold and Store constraints remain independent.
+Malformed/duplicate/foreign observations refuse conservatively. Raw 403/404,
+including oversized bodies, never authorizes absence or private-content purge.
+The original typed status/limit/transport cause remains available to the caller;
+qualified rate limits use the existing classifier. No error cache stores raw errors here.
+
+This source contribution does not qualify PostgreSQL transactions/restart,
+shared coalescing, retention selection, served access or consumer cutover.
+The joined persisted mirror acceptance remains with forge-neutral/37.
 
 ## Store-injected read-through coordination
 
