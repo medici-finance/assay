@@ -2,7 +2,7 @@
 brief: assay:assay:forge-neutral:44
 title: "Shared Git object and fetch reuse qualification trial"
 why: "Shared Git objects and fetches could reduce repeated work across agents, but a new daemon would also add cache, permission and maintenance duties. A bounded comparison of our existing common-store/worktree paths can establish whether another mechanism earns its cost."
-wave: 8
+wave: 11
 depends: ["forge-neutral/42"]
 unblocks: ["forge-neutral/45"]
 effort: M
@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 5
+version: 6
 id: 1cb50a0e-129b-4009-a1e1-bf9fe498f765
 authored: 2026-10-14 by forge-service authoring
 sources:

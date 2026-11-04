@@ -71,7 +71,12 @@ offline (chiefly a bare #N reference, which needs a number from the forge to com
 against) is reported as NOT CHECKED, by name, rather than passing silently — update's
 --check cannot check the trailer (it lives on the EXISTING PR's forge-held body) and
 edit's cannot check trailer-immutability or the self-containment scan's bare-#N hint (both
-need the existing PR's body/number); each names what it skipped.
+need the existing PR's body/number); each names what it skipped. create --check also
+reports the public-repo authorization gate as not checked (it needs the live visibility
+read) and names create --check-remote as the read-only preflight that runs it — the way
+to see, before a live create, that an allowed-repos entry no longer matches the forge
+(for example a GitLab internal project still listed :public, which refuses until the
+operator changes the entry to :internal; no verb rewrites the allowed-repos set).
 
 A live create confirms the destination branch through its credentialed push endpoint,
 checks only commits beyond its confirmed tip, and pins that tip during the plain push.

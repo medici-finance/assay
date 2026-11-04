@@ -12,7 +12,7 @@ func PlanRefresh(s Snapshot, now time.Time, p RefreshPolicy) (ScanPlan, error) {
 	if p.Overlap < 0 || p.FullInventoryInterval <= 0 || p.FailureBackoff < 0 {
 		return ScanPlan{}, invalid("refresh policy")
 	}
-	plan := ScanPlan{Scope: s.Scope, ExpectedVersion: s.Version}
+	plan := ScanPlan{Scope: s.Scope, ExpectedVersion: s.Version, PriorObservedUpTo: s.Coverage.ObservedUpTo}
 	c := s.Coverage
 	plan.FullInventory = c.Reason == Permission || c.State == NeverRead || c.LastComplete.IsZero() || c.ObservedUpTo.IsZero() || c.LastInventory.IsZero() || now.Sub(c.LastInventory) >= p.FullInventoryInterval
 	if !plan.FullInventory {

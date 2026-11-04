@@ -278,6 +278,10 @@ func (c *Cell) convergeRoles(probes []upProbe, reconciled map[string]bool, gate 
 				rows = append(rows, upRow{Role: p.Role, State: upStateFailed, Detail: firstOutLine(err.Error())})
 				continue
 			}
+			if sched == "" && c.Kind == "house" {
+				// The lease holder now running in the window completes the role's surface receipt.
+				c.bindSurface(p.Role)
+			}
 			if sched == "" {
 				confirmed++
 				if confirmed == 1 {

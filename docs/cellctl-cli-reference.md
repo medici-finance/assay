@@ -90,13 +90,26 @@ stand the cell's persistent deskd
   (no flags)
 ```
 
-## `cellctl down <cell>`
+## `cellctl down <cell> [role...]`
 
-tear a cell's session down
+tear a cell's session down, or stop only the named roles
 
 ```
   --cockpit                  string   cockpit surface (auto|tmux|herdr|orca)
   --keep-deskd                        leave the cell's deskd running
+```
+
+## `cellctl drain <cell> [role...]`
+
+pause, wait for in-flight work to finish, hand off, then stop each targeted role
+
+```
+  --apply                    string   apply a stored plan of this verb on this terminal
+  --handoff-wait             duration how long to wait for each desk's own handoff record
+  --json                              print the cell-op-v1 document and nothing else on stdout
+  --now                               do not wait for idle: plan the stop, listing every abandoned claim (interactive confirm only)
+  --plan                              write a cell-op plan for this transition and change nothing else (works anywhere)
+  --timeout                  duration how long to wait for in-flight work before giving up (the roles stay up)
 ```
 
 ## `cellctl hotfix install|status|clear`
@@ -146,6 +159,16 @@ scaffold a cell
   --roots                    string   the DESK_ROOTS map: '<owner>/<repo>=<abs path>,...'
 ```
 
+## `cellctl pause <cell> [role...]`
+
+stop new work in the cell (or the named roles) from each loop's next iteration boundary
+
+```
+  --apply                    string   apply a stored plan of this verb on this terminal
+  --json                              print the cell-op-v1 document and nothing else on stdout
+  --plan                              write a cell-op plan for this transition and change nothing else (works anywhere)
+```
+
 ## `cellctl providers init`
 
 create the shared providers.json
@@ -160,6 +183,17 @@ stop and reset a cell; hard also refreshes configured repositories
 
 ```
   --hard                              discard messages, all linked worktrees and local branches; refresh every CELL_ROOTS repository
+```
+
+## `cellctl resume <cell>`
+
+lift the stops pause set, and no other
+
+```
+  --apply                    string   apply a stored plan of this verb on this terminal
+  --foreign                  string   lift this one stop flag that pause did not set (plan + interactive confirm)
+  --json                              print the cell-op-v1 document and nothing else on stdout
+  --plan                              write a cell-op plan for this transition and change nothing else (works anywhere)
 ```
 
 ## `cellctl scratch <cell> run|ack|sweep|inventory [flags] [-- command [args]]`
