@@ -35,8 +35,10 @@ and normalization, including no-space, repeated-dash and case-insensitive spelli
 Only `Up`, `StatementBegin` and `StatementEnd` are allowed. Transaction disabling,
 environment substitution and all other directives refuse before database connection.
 
-The bounded mirror adapter extends this exact migration set and independently validates
-the schema floor and its admission/version/completeness rules.
+The bounded mirror adapter extends this exact migration set. Production requires the
+checksummed ledger floor and enforces admission/version/completeness rules. The schema
+boundary test checks actual table/column/trigger shape; Open does not probe that catalog
+shape or detect administrative tampering beyond the ledger.
 One current foundation handle grants no claim, execution, acceptance or effect authority.
 
 ## Connection and fixture boundary
@@ -108,8 +110,11 @@ incomplete completeness/observed/inventory advances, regressions, partial absenc
 unqualified permission-hold recovery even when Go validation is bypassed. A new observed
 row must be in inventory; only an existing row under complete full-inventory proof can be
 marked absent. RetainedFrom is constrained NULL; no qualified history or retention action
-is implemented. Deletes refuse. These guards assume a role that cannot disable triggers
-or alter schema; a database owner is not an untrusted application client.
+is implemented. Row deletes refuse; TRUNCATE is not protected by these row triggers.
+These guards assume a role that cannot truncate, disable triggers or alter schema; a
+database owner is not an untrusted application client. Apply also refuses absence IDs
+without complete full-inventory proof when an ID is missing or already absent, where a
+row trigger would see no inventory transition.
 
 Payload bytea uses private codec version1: bounded gob facts plus explicit collection
 presence bits. NUL and arbitrary string bytes, BodyKnown, nil versus known-empty slices,

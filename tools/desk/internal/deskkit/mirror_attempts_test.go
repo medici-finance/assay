@@ -879,6 +879,37 @@ func TestMirrorNativeFreshnessBoundary(t *testing.T) {
 
 // regression: F-mirror-native-observation
 func TestMirrorNativeObservationBoundary(t *testing.T) {
+	for _, mode := range []string{"repeat", "foreign-target", "expired-grant", "invalid-page"} {
+		t.Run("caller-hold-"+mode, func(t *testing.T) {
+			f := newNativeFixture(t, ForgeGitHub, mirror.Issues, func(http.ResponseWriter, *http.Request) { t.Error("unexpected server call") })
+			f.authority.deny = mirror.AttemptCallerHeld
+			calls := 0
+			state, tr, req := nativeComposed(t, f, nativeRT(func(*http.Request) (*http.Response, error) { calls++; return nativeResponse(200, "[]"), nil }))
+			check := func() {
+				t.Helper()
+				r, err := tr.RoundTrip(req)
+				if r != nil {
+					r.Body.Close()
+					t.Fatal("caller hold returned a response")
+				}
+				var held *mirror.AttemptError
+				if !errors.As(err, &held) || held.Hold != mirror.AttemptCallerHeld || state.snapshot().Held != mirror.AttemptCallerHeld || state.snapshot().HTTP != (mirror.WorkCount{Known: true}) || calls != 0 || f.authority.before != 1 || f.authority.observed != 0 || len(f.authority.pending) != 0 {
+					t.Fatalf("caller hold widened after refusal: receipt=%+v error=%v base=%d before=%d observed=%d", state.snapshot(), err, calls, f.authority.before, f.authority.observed)
+				}
+			}
+			check()
+			switch mode {
+			case "foreign-target":
+				req.URL.Host = "other.invalid"
+			case "expired-grant":
+				f.clock.add(2 * time.Hour)
+			case "invalid-page":
+				state.page = 0
+			}
+			check()
+		})
+	}
+
 	t.Run("lower-replayed-reservation", func(t *testing.T) {
 		f := newNativeFixture(t, ForgeGitHub, mirror.Issues, func(http.ResponseWriter, *http.Request) { t.Error("unexpected server call") })
 		f.source.authority = nativeReplayedReservation{f.authority}
