@@ -89,6 +89,12 @@ func validateEffect(r Response, q Request) error {
 	if e.Outcome != Succeeded && e.Outcome != Failed && e.Outcome != Unknown {
 		return ErrSchema
 	}
+	// Pending projection never masquerades as a confirmed current result,
+	// including failed/unknown provider outcomes. Unknown/no-projection retains
+	// its existing incomplete ProjectionPending transport profile.
+	if e.Projection == Pending && r.Metadata.State != ProjectionPending {
+		return invalid()
+	}
 	if e.Outcome != Succeeded {
 		if e.Object != nil || e.Provenance != nil || e.Projection == Current {
 			return invalid()

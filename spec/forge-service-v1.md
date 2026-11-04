@@ -49,7 +49,9 @@ identity, with no per-repository selector.
 Unknown operations and schema versions are refused. Revision-based requests use
 explicit lowercase 40- or 64-hex object IDs. Relative paths cannot escape their
 repository. These fields do not permit an arbitrary URL, clone, executable or SQL
-operation. Capability absence remains unavailable.
+operation. Repository host is an identity claim, never a dial target; serving
+resolves endpoints only from its independently admitted configuration. Capability
+absence remains unavailable.
 
 ## Result states and progress
 
@@ -69,7 +71,9 @@ progress remain separate fields.
 A token binds scope, repository, record kind and an opaque value. Equality is
 supported; lexicographic token ordering, a local SQL sequence or provider-global
 ordering is not. `older`/`newer` require the request's scoped minimum and a distinct
-response token; runtime request-bound validation enforces those relationships.
+response token; runtime request-bound validation enforces those relationships. The
+response kind is checked against the requested minimum for every progress state,
+including read-observation; an equal value from another record kind cannot confirm it.
 Observation progress is never effect, claim or permission authority. Tokens must name a
 canonical repository in the scope; scope-wide review/projection replies have no
 selected-repository progress token.
@@ -121,10 +125,21 @@ because a service or provider is down.
 Effect outcomes are `succeeded`, `failed` or `unknown`; projection state is
 `current`, `pending` or `unavailable`. A successful provider outcome can coexist
 with a pending local projection. Canonical operation keys and payload digests are
-supplied by the existing effect owner. The wire neither manufactures a new key
+supplied by the existing effect owner. Serving recomputes the canonical payload
+digest through that owner and compares it with the supplied value; the wire hash
+alone cannot prove idempotent replay. The wire neither manufactures a new key
 namespace nor authorizes replay. A typed payload conflict is `ErrConflict`, never
 a successful receipt. Returned issue/change-comment identities retain the provider
 ID and, for a comment, its distinct parent number.
+
+A pending projection always uses metadata state projection-pending, including
+unknown or failed provider outcomes. The retained unknown/no-projection result
+may also use projection-pending metadata when no complete current observation is
+available; that is not a confirmed effect or fabricated projection. For succeeded
+outcomes the existing pending-projection/state equivalence remains. Optional
+executor metadata is provider attribution when known, including on an older
+progress read; it is never requester identity or authority. Permission and plain
+unavailable replies continue to strip it.
 
 ## Presence, coverage and existing projections
 

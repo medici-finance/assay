@@ -301,18 +301,21 @@ func ValidateResponse(r Response, q Request) error {
 	default:
 		return ErrSchema
 	}
+	minimum := q.Minimum
+	if q.Mirror != nil {
+		minimum = q.Mirror.Minimum
+	}
 	if m.Observation != nil {
 		kind := m.Observation.Kind
+		if minimum != nil {
+			kind = minimum.Kind
+		}
 		if q.Mirror != nil {
 			kind = q.Mirror.Kind
 		}
 		if !token(m.Observation, q.Scope, q.Repository, kind) {
 			return ErrScope
 		}
-	}
-	minimum := q.Minimum
-	if q.Mirror != nil {
-		minimum = q.Mirror.Minimum
 	}
 	if minimum != nil && (m.Observation == nil || (m.State == Confirmed && m.Observation.Value != minimum.Value)) {
 		return ErrScope
