@@ -1,10 +1,13 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -89,6 +92,82 @@ func TestPushcredRunnerShapes(t *testing.T) {
 				assertNoHeaderValue(t, sh+" "+shape, out)
 			})
 		}
+	}
+}
+
+// decoyForge starts a second loopback forge, on another host:port, that
+// challenges an unauthenticated request and records which credential every
+// authenticated one carried. It never serves a push. It returns the base URL
+// and a func listing what it saw.
+func decoyForge(t *testing.T) (string, func() []string) {
+	t.Helper()
+	var mu sync.Mutex
+	var seen []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		who := "other"
+		switch req.Header.Get("Authorization") {
+		case "":
+			who = "none"
+		case jobAuth:
+			who = "job"
+		case boardAuth:
+			who = "board"
+		}
+		mu.Lock()
+		seen = append(seen, who)
+		mu.Unlock()
+		if who == "none" {
+			w.Header().Set("WWW-Authenticate", `Basic realm="decoy"`)
+			http.Error(w, "HTTP Basic: Access denied", http.StatusUnauthorized)
+			return
+		}
+		http.Error(w, "You are not allowed to push code to this project.", http.StatusForbidden)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string{}, seen...)
+	}
+}
+
+// TestPushcredRunnerOtherHost: a url.*.insteadOf rewrite that carries a URL
+// credential but points the board remote at a DIFFERENT host is never pinned,
+// since the pin would send the board credential to that host. The push fails
+// closed, the decoy host never sees the board credential, the board forge
+// sees nothing, and no form of either value reaches the output.
+//
+// regression: #5004
+func TestPushcredRunnerOtherHost(t *testing.T) {
+	for _, sh := range []string{"bash", "sh"} {
+		t.Run(sh, func(t *testing.T) {
+			r := newHdrRig(t)
+			decoy, decoySeen := decoyForge(t)
+			u, err := url.Parse(r.url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			d, err := url.Parse(decoy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			withTok := d.Scheme + "://gitlab-ci-token:" + jobHeaderSentinel + "@" + d.Host
+			r.git(r.ws, "config", "url."+withTok+"/.insteadOf", u.Scheme+"://"+u.Host+"/")
+			rc, out := r.push(sh, "set -x; PUSHCRED_TOKEN_VAR="+boardTokenVar+"; ",
+				boardTokenVar+"="+boardTokenSentinel)
+			for _, who := range decoySeen() {
+				if who == "board" {
+					t.Fatalf("the decoy host saw the board credential (%v):\n%s", decoySeen(), out)
+				}
+			}
+			if rc == 0 || len(r.seenSet()) != 0 || r.remoteMain() != "" {
+				t.Errorf("rc=%d, board forge saw %v; want a failed push that never reached it:\n%s", rc, r.seen, out)
+			}
+			if !strings.Contains(out, "points at a different scheme or host") {
+				t.Errorf("no NOTICE for a rewrite to another host:\n%s", out)
+			}
+			assertNoHeaderValue(t, sh, out)
+		})
 	}
 }
 
