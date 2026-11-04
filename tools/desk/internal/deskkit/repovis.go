@@ -61,6 +61,14 @@ func FetchRepoVisibility(fetcher RepoInfoFetcher, owner, repo string) (string, e
 	return v, nil
 }
 
+// internalTokenHistory is the one clause the gate's refusal gains when a live-internal repo
+// is listed `:public` (#5436). Earlier versions of the allowed-repos grammar had no
+// `:internal` token, so `:public` was the only non-private tag an operator could give an
+// internal repo; such an entry is stale, not a widening attempt. The clause names that
+// history and nothing else — the remedy is the same `:internal` entry, edited by the
+// operator. No verb rewrites the entry: the allowed-repos set is an authorization control.
+const internalTokenHistory = " Earlier versions had no :internal token, so this :public entry predates it."
+
 // PublicRepoGate enforces the public-repo write gate.
 //
 // It is called before ANY write-capable desk tool acts on a repo. The authorization
@@ -91,7 +99,9 @@ func FetchRepoVisibility(fetcher RepoInfoFetcher, owner, repo string) (string, e
 //     non-private token (`:internal` on a live-public repo, `:public` on a live-internal
 //     one) — return Refused (exit 5) naming the repo, what was read live, what the set
 //     says, and the exact remedy. This is why BOTH reads are load-bearing at once: the
-//     live read AND the configured claim must AGREE.
+//     live read AND the configured claim must AGREE. A `:public` entry on a live-internal
+//     repo additionally names its history (internalTokenHistory): it predates the
+//     `:internal` token. It still refuses; the operator edits the entry.
 //
 // `internal` is instance-visible, not private — the gate's premise is untrusted eyes, so
 // it is gated exactly like `public`, not treated as a pass, and VisibilityInternal is not
@@ -133,11 +143,15 @@ func PublicRepoGate(fetcher RepoInfoFetcher, owner, repo string) error {
 		if configured == want {
 			return nil
 		}
+		history := ""
+		if want == VisibilityInternal && configured == VisibilityPublic {
+			history = internalTokenHistory
+		}
 		return Refused(fmt.Sprintf(
 			"public-repo gate: %s/%s reads live-%s but the allowed-repos set does not authorize outward writes to it "+
 				"(configured visibility: %s, not :%s). Add %s/%s:%s to the allowed-repos configuration (%s) — "+
-				"the authorization is repository-scoped and covers every write verb; merge remains the human's.",
-			owner, repo, live, configured.String(), live, owner, repo, live, EnvAllowedRepos))
+				"the authorization is repository-scoped and covers every write verb; merge remains the human's.%s",
+			owner, repo, live, configured.String(), live, owner, repo, live, EnvAllowedRepos, history))
 	default:
 		return Unverifiable(fmt.Sprintf("public-repo gate: repo %s/%s returned unrecognised visibility %q — refusing rather than treating it as private", owner, repo, visibility), nil)
 	}

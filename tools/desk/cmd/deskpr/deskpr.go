@@ -319,7 +319,8 @@ func cmdCreate(args []string) (err error) {
 		fmt.Printf("check: title: %s\n", *title)
 		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
 			"Not checked (needs the forge, not run here): an existing open PR on this branch, " +
-			"the outward-write rate limit, the public-repo authorization gate, and the publish-identity range against the live destination branch.")
+			"the outward-write rate limit, the public-repo authorization gate (--check-remote runs it, read-only), " +
+			"and the publish-identity range against the live destination branch.")
 		return nil
 	}
 
