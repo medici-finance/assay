@@ -263,12 +263,28 @@ returning no permit; uncertain bookkeeping retains its hold. Explicit
 finite source concurrency permits already-authorized in-flight work; a published
 floor applies to every later reservation. Missing/unknown timing is a hold.
 
+`DB.Refresh` takes a required explicit trusted `refresh.Clock` for data validation
+and `ApplyCompletion` evaluation, shared with the admitted native source and
+coordinator. Constructor nil/typed-nil/zero samples refuse before database I/O;
+after-I/O and final samples must remain valid. Native decoded-data bounds are
+validated in this application clock domain, never compared to database wall time
+or replaced by report/commit time. Missing/future data bounds still hold. The clock
+is not serialized in the known profile and grants no budget, generation or identity.
+Held/done completion takes only the scope identity/version lock and establishes its
+actual baseline before the existing fenced terminal transition; no observations or
+coverage are decoded/applied for that bookkeeping.
+
 PostgreSQL time owns windows, expiry and retry eligibility. A relative retry delay
 is anchored to database observation time and combined with the reported absolute
 floor using the maximum; lower bounds round upwards to SQL microseconds. The
 observation Store's separate nanosecond watermark codec stays exact. Window reset
 requires elapsed canonical time and no unresolved individual observations. Row
-limits on retained reservations and failures are finite explicit trusted inputs;
+limits on retained reservations and failures are finite explicit trusted inputs.
+`NativeLimits.Reservations` counts every retained source reservation, including
+observed entries, over the source identity's lifetime; it is not a window allowance
+or just the in-flight count. At capacity new attempts hold across window rollover
+and restart. Runtime does not delete this history, reset its profile or repair the
+cap. Future archival/reconstruction requires an explicit accounting contract;
 unexpired failures/unknown holds cannot be evicted into allowance.
 
 The full base-fill identity is bounded version1 canonical JSON over byte-array

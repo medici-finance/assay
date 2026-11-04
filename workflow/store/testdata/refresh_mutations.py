@@ -55,6 +55,18 @@ def mutate(name):
         change(state,code,'receipt.HTTP.Value != measuredHTTP','receipt.HTTP.Value != count')
     elif name=='data-bound':
         change(state,code,'if c.Update != nil && c.Failure == "" && (c.Update.CompleteScan || len(c.Update.Upsert) > 0) {','if false {')
+    elif name=='data-clock-domain':
+        change(state,code,'bound.After(dataNow)','bound.After(now)')
+    elif name=='held-version-fence':
+        change(state,code,'if state == "done" {','if false {')
+    elif name=='data-clock-required':
+        change(state,code,' || !validDataClock(clock)',' || clock == nil')
+    elif name=='data-clock-before-io':
+        change(state,code,'if dataNow.IsZero() {','if false {')
+    elif name=='data-clock-after-io':
+        change(state,code,'if afterIO.IsZero() || afterIO.Before(dataNow) {','if false {')
+    elif name=='data-clock-final':
+        change(state,code,'if finalDataNow.IsZero() || finalDataNow.Before(dataNow) {','if false && (finalDataNow.IsZero() || finalDataNow.Before(dataNow)) {')
     elif name=='decoded-prefix':
         change(state,attempt,'func validAttemptObservation(o mirror.AttemptObservation) bool {','func validAttemptObservation(o mirror.AttemptObservation) bool { if !o.DecodedBytes.Known && o.DecodedBytes.Value>0 { return false }')
     elif name=='zero-entry':
@@ -112,6 +124,12 @@ controls=[
  ('superseded-ticket-release','TestPGRefreshGateAtomicCompletion'),
  ('shared-retry-policy','TestPGRefreshSchemaBoundary'),
  ('joined-absence-proof','TestPGRefreshGateAbsence'),
+ ('data-clock-domain','TestPGRefreshCompletionDataClock'),
+ ('held-version-fence','TestPGRefreshHeldCompletionPopulatedScope'),
+ ('data-clock-required','TestPGRefreshCompletionClockRefusal'),
+ ('data-clock-before-io','TestPGRefreshCompletionClockRefusal'),
+ ('data-clock-after-io','TestPGRefreshCompletionClockRefusal'),
+ ('data-clock-final','TestPGRefreshCompletionClockRefusal'),
 ]
 composites={'common-transaction','source-debit','aggregate-reconciliation','joined-caller-ceiling'}
 # Resume qualification after a corrected planted fault; prior controls are kept
@@ -125,7 +143,7 @@ if len(sys.argv)==2:
 
 signal.signal(signal.SIGTERM,lambda *_:sys.exit(143))
 try:
-    baseline=run('TestPGRefresh(GateAtomicCompletion|GateProcesses|AttemptAuthority|RequirementBackoff|CapacityCancellation|SchemaBoundary)')
+    baseline=run('TestPGRefresh(GateAtomicCompletion|GateProcesses|AttemptAuthority|RequirementBackoff|CapacityCancellation|SchemaBoundary|CompletionDataClock|HeldCompletionPopulatedScope|CompletionClockRefusal)')
     if baseline.returncode: print(baseline.stdout);raise SystemExit('baseline failed')
     for name,test in controls:
         for p,b in original.items(): (module/p).write_bytes(b)

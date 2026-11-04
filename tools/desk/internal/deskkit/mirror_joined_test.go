@@ -94,7 +94,7 @@ func newPersistedMirrorSQL(t *testing.T, c store.RefreshConfig, authority refres
 	if e != nil {
 		t.Fatal(e)
 	}
-	gate, e := db.Refresh(observations, c, authority)
+	gate, e := db.Refresh(observations, c, authority, persistedClock{})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -458,7 +458,7 @@ func independentPersistedCoordinator(t *testing.T, f persistedNative) (*refresh.
 		t.Fatal(e)
 	}
 	authority := &persistedCallerAuthority{config: f.config, repository: f.scope.Repository}
-	gate, e := db.Refresh(observations, f.config, authority)
+	gate, e := db.Refresh(observations, f.config, authority, persistedClock{})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -747,7 +747,7 @@ func checkPersistedAdmissionIsolation(t *testing.T) {
 	profile.AdmissionID = admission.ID()
 	pgtestfixture.SeedRefresh(t, f.fixture, profile, "caller-b")
 	authority := &persistedCallerAuthority{config: profile, repository: f.scope.Repository}
-	gate, e := f.db.Refresh(f.observations, profile, authority)
+	gate, e := f.db.Refresh(f.observations, profile, authority, persistedClock{})
 	if e != nil {
 		t.Fatal(e)
 	}
