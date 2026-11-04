@@ -13,7 +13,7 @@ gate-why: "Approve the concrete Task1 local producer/current-state/custody desig
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 3
+version: 4
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -85,6 +85,29 @@ If an actual requirement remains unresolved, record NEEDS_CONTEXT with the exact
 ## Acceptance preparation
 
 The decision-trigger is spec. After Task1 supplies the supported mechanism/profile, claims, current-source/custody/revocation design and actual prerequisite evidence/limits, the executor authors a self-contained Human decision asking approval of that design for bounded offline implementation or a named design correction. Primitive/channel evidence is not demonstrated caller authentication. This single spec-stage ruling does not satisfy Tasks2-7, any Verify/Evidence row, implemented authentication/custody proof or production provisioning/activation. Existing56 acceptance and operational credential/profile/deployment gates remain unchanged. Report DECISION-BLOCK READY only with that concrete self-contained design choice so the canonical helper can file it; until then keep the spec decision deferred. No generic accept-versus-hold issue, implied operational issuer/credential or copied TTL default is authorized.
+
+## Human decision
+
+Question: Approve the concrete local caller-authority design for bounded offline implementation and fixture qualification now, or implement and qualify the independently non-restored anchor first as an additional prerequisite?
+
+The decision is the library mechanism/profile, not acceptance of an implemented authentication boundary. The producer/current registry does not exist yet. Existing primitive evidence establishes only that an explicitly owned Linux engine can run the source-bound helper at UID501 with separate named-volume views: producer private/channel write and socket creation, client private exclusion plus read-only-directory write refusal and successful Unix-socket roundtrip, and sibling exclusion. All owned resources were removed. It proves no signing, caller authentication, live current writer, production credential custody or Ubuntu CI.
+
+The proposed design adds one canonical R3 operator-only controller/current registry and verifier under the existing launcher. A dedicated producer container holds the signing key and private control writer, outside query and sibling containers on the same explicitly selected Linux engine. Closed per-channel named volumes provide grant delivery and read-only current-state requests; neither consumer receives the key, writer or engine socket. Existing signing and lock primitives are reused, while legacy container refusals remain unchanged. No generic mint endpoint or arbitrary mount/command builder is introduced.
+
+Grants bind issuer/audience, stable caller/represented actor, cell/role, canonical repository and issue/change kind, exact source/composition/admission, mirror-query only, incarnation/generation, policy/config/access epochs, grant/key reference and finite expiry. A pinned verifier bootstrap checks fresh challenge-bound signed current replies. The live operator gate and exact producer identity serialize updates/current reads; an old token, socket or restored record cannot establish currentness. Request-start and grant leases use private process-local monotonic elapsed time, with explicit wall expiry and final release checks; a wall-only clock cannot renew them. All lease/skew/resource limits remain required explicit operator inputs, with no adopted production values.
+
+Restart invalidates old grants, rotates identity/key and requires trusted re-registration. Whole-host/VM-memory rollback cannot be detected by a local lock or operator boolean/file. Production restore and whole-VM rollback remain UNQUALIFIED and HELD until the existing requirement for a trustworthy anchor outside the restored volume and actual identity-and-key rotation is met. No snapshot/backup restore may establish currentness. Both options retain that custody requirement; neither approves an absent anchor, a supported production restore profile or an exception to rotation. No operational issuer identity, key, credential, policy/entitlement value, endpoint, network target or deployment is selected.
+
+The credential-free/network-none query-verifier is a 57 fixture. Actual56 serving must separately compose its admitted native read credential, SQL/provider connectivity and combined isolation, without the R3 signer/control key. No new source proxy, full40 write executor dependency or client source fallback follows. Actual producer/current-state/custody negative controls, independent verification, existing56 acceptance and operational/workflow publication gates remain owed.
+
+### Options
+
+1. (Recommended) Approve this bounded same-engine local design for OFFLINE implementation and fixture qualification now. Production restore and whole-VM rollback remain UNQUALIFIED and HELD until the required independent anchor and real rotation are qualified; every later proof and operational gate remains.
+2. Implement and qualify the independently non-restored anchor FIRST as an additional critical-path prerequisite. Return Task1 for its concrete source, rotation design and qualification before producer implementation. This changes implementation order, does not approve an absent anchor and authorizes no live probe.
+
+Default if no answer: none — blocks until answered
+
+A ruling must name forge-neutral/57 and the selected design option explicitly. No answer or primitive pass authorizes producer-mechanism selection.
 
 ## Ground rules
 
