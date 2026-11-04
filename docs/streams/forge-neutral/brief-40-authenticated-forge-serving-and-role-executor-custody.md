@@ -110,6 +110,8 @@ this parent’s write/executor implementation. Passive records and client Scope 
 not satisfy that prerequisite. Missing producer/profile is NEEDS_CONTEXT; resolve the
 ratified mechanism inconsistency at its canonical owner without inventing an issuer.
 
+The canonical earlier local R3 caller/current-state/custody producer is `forge-neutral/57`. Consume its actual qualified read-only source/profile through56; this parent does not supply that prerequisite and retains its distinct write/executor authority and complete acceptance.
+
 ## Ground rules
 
 - CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
