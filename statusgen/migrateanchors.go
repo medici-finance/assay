@@ -13,7 +13,9 @@ package main
 // contract: OFFLINE (reads and writes only <root>/.gitlab-ci.yml), IDEMPOTENT (a
 // second run finds every anchor current and exits 0 writing nothing), and
 // dry-runnable. No .gitlab-ci.yml, or a file that carries neither anchor, is a
-// clean no-op that says so.
+// clean no-op that says so. A .gitlab-ci.yml that is not a regular file (a
+// symbolic link, say) is refused before it is read and again before it is
+// written, so the refresh never follows a link out of the tree.
 
 import (
 	"fmt"
@@ -32,11 +34,14 @@ func migrateGitlabAnchors(root string, dryRun bool, stdout, stderr io.Writer) in
 	}
 	fmt.Fprintf(stdout, "statusgen migrate gitlab-anchors (%s) — root %s\n", mode, root)
 	path := filepath.Join(root, ".gitlab-ci.yml")
-	raw, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
+	if _, err := os.Lstat(path); os.IsNotExist(err) {
 		fmt.Fprintln(stdout, "  no .gitlab-ci.yml — nothing to refresh")
 		return migrateExitOK
 	}
+	if _, ok := gitlabCIRegular(path, stderr); !ok {
+		return migrateExitRefused
+	}
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Fprintf(stderr, "statusgen migrate: %v\n", err)
 		return migrateExitRefused
@@ -49,9 +54,8 @@ func migrateGitlabAnchors(root string, dryRun bool, stdout, stderr io.Writer) in
 	if dryRun {
 		return migrateExitOK
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		fmt.Fprintf(stderr, "statusgen migrate: %v\n", err)
+	info, ok := gitlabCIRegular(path, stderr)
+	if !ok {
 		return migrateExitRefused
 	}
 	if err := os.WriteFile(path, []byte(body), info.Mode().Perm()); err != nil {
@@ -60,6 +64,35 @@ func migrateGitlabAnchors(root string, dryRun bool, stdout, stderr io.Writer) in
 	}
 	fmt.Fprintln(stdout, "  wrote .gitlab-ci.yml — commit it so the pipeline runs the refreshed anchors")
 	return migrateExitOK
+}
+
+// gitlabCIRegular checks, without following a symbolic link, that path is a
+// regular file, so the refresh never reads or writes through a link (or any
+// other special file) to a file outside the tree. On a refusal it prints one
+// line to stderr and returns false.
+func gitlabCIRegular(path string, stderr io.Writer) (os.FileInfo, bool) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		fmt.Fprintf(stderr, "statusgen migrate: %v\n", err)
+		return nil, false
+	}
+	if !info.Mode().IsRegular() {
+		fmt.Fprintf(stderr, "statusgen migrate: refusing %s: it is not a regular file (%s), and gitlab-anchors reads and writes only a regular file\n", path, fileKind(info.Mode()))
+		return nil, false
+	}
+	return info, true
+}
+
+// fileKind names a non-regular file mode for a refusal line.
+func fileKind(m os.FileMode) string {
+	switch {
+	case m&os.ModeSymlink != 0:
+		return "a symbolic link"
+	case m.IsDir():
+		return "a directory"
+	default:
+		return "a special file"
+	}
 }
 
 // refreshGitlabAnchors returns body with every stale embedded anchor replaced

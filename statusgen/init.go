@@ -1012,10 +1012,10 @@ func reportGitlabAnchorDrift(root, path string) {
 		return
 	}
 	for _, name := range gitlabAnchorDrift(string(body)) {
-		fmt.Printf("  STALE    %s: its embedded %s anchor differs from this statusgen's copy. init never\n"+
-			"           overwrites the file, so the pipeline still runs the older script and later\n"+
-			"           board-push fixes do not reach it. Refresh it with\n"+
-			"           `%s`.\n", path, name, gitlabAnchorRefreshCmd)
+		fmt.Printf("  STALE    %s: its embedded %s anchor differs from this statusgen's (%s) copy.\n"+
+			"           init never overwrites the file, so the pipeline runs the script the file\n"+
+			"           holds, not this release's, and its board-push fixes do not reach it.\n"+
+			"           Refresh it with `%s`.\n", path, name, statusgenVersion, gitlabAnchorRefreshCmd)
 	}
 }
 
@@ -1055,8 +1055,9 @@ func gitlabAnchorDrift(body string) []string {
 
 // gitlabAnchorDriftNotices is the --lint half of the drift check: one NOTICE
 // per stale embedded anchor in <root>/.gitlab-ci.yml, naming the refresh
-// command. No file, or an unreadable one, adds nothing: a repo without the
-// GitLab CI half has no anchor to drift.
+// command, and one NOTICE for a scaffold that predates the anchors (see
+// gitlabPreAnchorScaffold). No file, or an unreadable one, adds nothing: a
+// repo without the GitLab CI half has no anchor to drift.
 func gitlabAnchorDriftNotices(root string) []string {
 	body, err := os.ReadFile(filepath.Join(root, ".gitlab-ci.yml"))
 	if err != nil {
@@ -1064,9 +1065,39 @@ func gitlabAnchorDriftNotices(root string) []string {
 	}
 	var out []string
 	for _, name := range gitlabAnchorDrift(string(body)) {
-		out = append(out, fmt.Sprintf(".gitlab-ci.yml: the embedded %s anchor differs from this statusgen's copy, so the pipeline still runs an older board-push script (a pin bump does not refresh it; #5004). Refresh it with `%s` and commit the file.", name, gitlabAnchorRefreshCmd))
+		out = append(out, fmt.Sprintf(".gitlab-ci.yml: the embedded %s anchor differs from this statusgen's (%s) copy, so the pipeline runs the board-push script the file holds, not this release's (a pin bump does not refresh it; #5004). Refresh it with `%s` and commit the file.", name, statusgenVersion, gitlabAnchorRefreshCmd))
+	}
+	if gitlabPreAnchorScaffold(string(body)) {
+		out = append(out, fmt.Sprintf(".gitlab-ci.yml: it carries the %s job but neither the .statusgen-pushcred nor the .statusgen-boardadd anchor, so it was scaffolded before the anchors existed and its board push is inline in the job; `%s` has nothing to refresh there and later board-push fixes do not reach it (#5004). Move it aside, run `statusgen init --forge gitlab` to write a current one, re-apply your own edits, and commit the file.", gitlabRegenJob, gitlabAnchorRefreshCmd))
 	}
 	return out
+}
+
+// gitlabRegenJob is the top-level job key every GitLab scaffold carries.
+const gitlabRegenJob = "statusgen-regen"
+
+// gitlabPreAnchorScaffold reports whether a .gitlab-ci.yml body carries the
+// scaffolded statusgen regen job but neither embedded script anchor: the shape
+// a release before the anchors existed scaffolded, which gitlabAnchorDrift
+// cannot see. A file with the anchors, or without the job, is not one.
+func gitlabPreAnchorScaffold(body string) bool {
+	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	job := false
+	for _, l := range lines {
+		if strings.HasPrefix(l, gitlabRegenJob+":") {
+			job = true
+			break
+		}
+	}
+	if !job {
+		return false
+	}
+	for _, a := range gitlabAnchors {
+		if _, _, ok := yamlAnchorSpan(lines, a.name); ok {
+			return false
+		}
+	}
+	return true
 }
 
 // yamlAnchorBlock returns the top-level ".<name>:" line and every following
