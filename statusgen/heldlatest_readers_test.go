@@ -99,3 +99,31 @@ func TestHeldLatestCreditedAboveProtected(t *testing.T) {
 		t.Errorf("a Date/Runner row above the heading does not keep 3c off")
 	}
 }
+
+// TestVerifyflipRestrippedCommentRefuses: the run reader strips comments once,
+// and the witness check strips the run again. A raw `<!<!--x-->--` leaves a new
+// `<!--` after the first strip, which the second pairs with a `-->` below the
+// latest heading, so a witness row starts above that heading. Rule 3c must stay
+// off whenever the witness check's own strip would change the run, and the hold
+// above the heading still refuses.
+// regression: #4294
+func TestVerifyflipRestrippedCommentRefuses(t *testing.T) {
+	head := vlPart1 + vlHeldProse +
+		"| # | Command | Result | Output | Date (UTC) | Runner |\n|---|---------|--------|--------|------------|--------|\n" +
+		"| 2 | `true` | pass exit=0 <!<!--x-->--\n\n" + vlPart2
+	tail := "--> | sha256:aa11bb22cc33 | 2026-08-13 | " + vfRunner + " @ " + vfSHA + " |\n"
+	cases := map[string]string{
+		"split run":             head + tail + "\n" + witnessTableFor(vfRow1) + "\n\n" + vfPass,
+		"split run, fenced end": head + "```\n" + tail + "```\n\n" + witnessTableFor(vfRow1) + "\n\n" + vfPass,
+	}
+	for name, ev := range cases {
+		t.Run(name, func(t *testing.T) {
+			o := vlOpts()
+			o.evidence = ev
+			if s := heldScanScope(ev, true); s.latest {
+				t.Errorf("rule 3c is on for a run the witness check strips again")
+			}
+			vfRefuses(t, o, "could-not-check")
+		})
+	}
+}

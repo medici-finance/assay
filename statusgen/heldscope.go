@@ -1639,6 +1639,13 @@ var heldWitnessInLatest = func(evidence string) bool {
 	if err != nil {
 		return false
 	}
+	// The witness check strips the run's comments again (parseEvidenceRows).
+	// When that strip would change the run, a first strip left a new comment
+	// that can join text across the heading, so the gate cannot read the
+	// prefix the way the witness check reads the run.
+	if s, _ := stripRowComments(p.Run); s != p.Run {
+		return false
+	}
 	run := strings.Split(p.Run, "\n")
 	h := -1
 	for i, l := range run {

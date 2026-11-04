@@ -1,7 +1,7 @@
 {
   "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarryElement|TestHeldContainerFence|TestVerifyflip' -count=1 -timeout 300s",
   "control": {
-    "name": "CONTROL \u2014 supersession drops every earlier hold (the S1 defect)",
+    "name": "CONTROL — supersession drops every earlier hold (the S1 defect)",
     "file": "heldscope.go",
     "old": "\tif s.from < 0 {\n\t\treturn false\n\t}",
     "new": "\tif s.from < 0 {\n\t\treturn false\n\t}\n\treturn true"
@@ -1528,8 +1528,8 @@
     {
       "name": "#4294 3c: a refused run selection keeps 3c on",
       "file": "heldscope.go",
-      "old": "if err != nil {\n\t\treturn false\n\t}\n\trun := strings.Split(p.Run",
-      "new": "if err != nil {\n\t\treturn true\n\t}\n\trun := strings.Split(p.Run"
+      "old": "if err != nil {\n\t\treturn false\n\t}\n\t// The witness check strips",
+      "new": "if err != nil {\n\t\treturn true\n\t}\n\t// The witness check strips"
     },
     {
       "name": "#4294 3c: a Date/Runner row above the last heading is ignored",
@@ -1590,6 +1590,12 @@
       "file": "heldscope.go",
       "old": "\tif hasProtectedTableMarker(evidence) {\n\t\treturn true\n\t}\n\tif rows, _ := flipDateRunnerRows(above)",
       "new": "\tif rows, _ := flipDateRunnerRows(above)"
+    },
+    {
+      "name": "#4294 3c: a run the witness check strips again no longer keeps 3c off",
+      "file": "heldscope.go",
+      "old": "\tif s, _ := stripRowComments(p.Run); s != p.Run {",
+      "new": "\tif s, _ := stripRowComments(p.Run); s != p.Run && false {"
     }
   ]
 }
