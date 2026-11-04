@@ -654,6 +654,12 @@ Keep the verdict, Evidence prose, row accounting and outcome record consistent:
 | No obligation failed, but required evidence is unavailable or incomplete | Exact `**VERIFY: BLOCKED**`; `blocked` | Name every uncovered row and the capability, definition or provenance needed to run it |
 | Every required obligation has current admissible evidence and closure gates allow advancement | Strict `**VERIFY: PASS**`; `verified` only after the closure lands | Follow the landing and closure checks below |
 
+Write the one verdict marker you reached and no other `VERIFY:` token in this run's Evidence or
+deliverable: not negated, not in inline code, not as "no PASS marker". The readers are lexical.
+The strict gate matches `**VERIFY: PASS**` inside backticks, and the board reader takes the last
+token it sees, so "No strict `**VERIFY: PASS**` marker" under a FAIL reads as a PASS to both.
+Say what the verdict is not in words that carry no token ("this is not a pass").
+
 For BLOCKED, retain command → could-not-run → reason for each uncovered obligation, file the
 blocker and land the available Evidence without a lifecycle flip. Use the same admitted
 Evidence-first outcome path below with `outcome: blocked` and a complete wake receipt. If the
@@ -676,7 +682,9 @@ sets and the PR shape.
 
 Otherwise the brief does NOT advance. File a `bug` immediately (`deskfile new -R <owner/repo> --raised-by verifier
 --label bug`) with the failing command and its real output, then **continue the drain** — the filed issue
-IS the report. **In addition** write one outcome record and land it with `deskevidence --outcome-record` (since
+IS the report. The body carries each failed row in the Evidence form, one line per row:
+`` `<command>` → exit <N> → <verbatim output> ``. That is the triple the fixer re-runs and compares
+against, so never split it into prose ("its exit code, 6") or drop the exit code. **In addition** write one outcome record and land it with `deskevidence --outcome-record` (since
 #882: one NEW file per outcome, landed under `docs/streams/verify-outcomes/<stream>/`, single-writer = this
 desk; the `VERIFY FAIL` commit-subject convention is grep-fragile, so bounce-back rate is not
 computable from prose). Write the record to the dispatcher-named outcome path from your prompt —
