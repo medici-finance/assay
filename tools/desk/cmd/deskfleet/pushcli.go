@@ -1,6 +1,6 @@
 package main
 
-// pushcli.go — the `push-token` command tree (forge-gitlab/18): two modes, each with its own
+// pushcli.go — the `push-token` command tree (#2910 part B): two modes, each with its own
 // credential-file flag and no flag that takes a credential VALUE. The only environment sources
 // are GITLAB_API_BASE (a URL) and, for rotate, the desk loop's session marker (the advisory
 // refusal); neither is a credential.

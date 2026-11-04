@@ -1,6 +1,6 @@
 package main
 
-// pushrotate_test.go — `push-token rotate|check` (forge-gitlab/18) against the stateful fake in
+// pushrotate_test.go — `push-token rotate|check` (#2910 part B) against the stateful fake in
 // pushfake_test.go. Each test is one row of the brief's Verify table. Every value is an
 // obviously fake placeholder; nothing contacts a real forge.
 
@@ -220,7 +220,7 @@ func planted() {
 // regression: #2910
 func TestPushTokenRedacts(t *testing.T) {
 	const sentinel = "example-redact-sentinel"
-	s := pushSecret{b: []byte(sentinel)}
+	s := newPushSecret(sentinel)
 	wrap := struct {
 		Name string
 		V    pushSecret
@@ -467,6 +467,7 @@ func TestPushTokenReadbackCatches(t *testing.T) {
 	}{
 		{field: "protected", store: func(v *ptVar) { v.protected = false }},
 		{field: "masked", store: func(v *ptVar) { v.masked = false }},
+		{field: "environment_scope", store: func(v *ptVar) { v.scope = "production" }},
 		{field: "hidden", hidden: true, store: func(v *ptVar) { v.hidden = false }},
 		{field: "value", read: "example-push-different"},
 	}
@@ -487,6 +488,7 @@ func TestPushTokenReadbackCatches(t *testing.T) {
 			if n := len(f.activeByName()); n != 0 {
 				t.Errorf("%d active tokens by name afterwards, want 0", n)
 			}
+			ptNoProof(t, h, f)
 		})
 	}
 	faults := map[string]func(f *ptFake){
@@ -507,7 +509,20 @@ func TestPushTokenReadbackCatches(t *testing.T) {
 			if strings.Contains(h.text(), "contained:") {
 				t.Errorf("printed a contained: line on a failed containment:\n%s", h.text())
 			}
+			ptNoProof(t, h, f)
 		})
+	}
+}
+
+// ptNoProof checks a contained (or containment-failed) run stopped there: no proof probe ran
+// after the containment, so its exit code is containment's own and never a later probe's.
+func ptNoProof(t *testing.T, h *ptHarness, f *ptFake) {
+	t.Helper()
+	if strings.Contains(h.text(), "by-id:") || strings.Contains(h.text(), "outcome:") {
+		t.Errorf("a proof step ran after containment:\n%s", h.text())
+	}
+	if n := f.count("GET", "/personal_access_tokens/self") + f.count("GET", ".git/info/refs"); n != 0 {
+		t.Errorf("%d self/push probes after containment, want 0", n)
 	}
 }
 
@@ -548,6 +563,9 @@ func TestPushTokenProvesLiveness(t *testing.T) {
 		{"by-id 5 days early", "by-id: FAIL field expires_at", nil,
 			byID(func(m map[string]any) { m["expires_at"] = ptDate(25) })},
 		{"self is predecessor", "self: FAIL field id", nil, func(f *ptFake) { f.selfID = ptOldID }},
+		{"self scopes widened", "self: FAIL field scopes", nil, func(f *ptFake) {
+			f.selfMutate = func(m map[string]any) { m["scopes"] = []string{"write_repository", "api"} }
+		}},
 		{"push 401", "push: FAIL field status", nil, func(f *ptFake) { f.pushStatus = 401 }},
 		{"push 403", "push: FAIL field status", nil, func(f *ptFake) { f.pushStatus = 403 }},
 	}

@@ -209,7 +209,7 @@
       "name": "M2, row 4 — String on the secret type returns the raw value",
       "file": "cmd/deskfleet/pushrotate.go",
       "old": "func (s pushSecret) String() string                { return redactedText }",
-      "new": "func (s pushSecret) String() string                { return string(s.b) }"
+      "new": "func (s pushSecret) String() string                { return string(s.b()) }"
     },
     {
       "name": "M3, row 7 — the variable-write body omits protected (reset-on-omit drops it)",
@@ -244,7 +244,7 @@
     {
       "name": "M8, row 8 — the containment revoke is deleted",
       "file": "cmd/deskfleet/pushrotate.go",
-      "old": "\tresp, err := r.gl.do(\"DELETE\", r.pp+\"/access_tokens/\"+id, nil)\n\tif err != nil || resp.Status < 200 || resp.Status >= 300 {\n\t\treturn r.containFailed(field, \"revoke \"+statusOnly(resp, err))\n\t}\n\tresp, err = r.gl.do(\"GET\"",
+      "old": "\tresp, err := r.gl.do(\"DELETE\", r.pp+\"/access_tokens/\"+id, nil)\n\tif err != nil || resp.Status < 200 || resp.Status >= 300 {\n\t\treturn r.containFailed(what, \"revoke \"+statusOnly(resp, err))\n\t}\n\tresp, err = r.gl.do(\"GET\"",
       "new": "\tresp, err := r.gl.do(\"GET\""
     },
     {
@@ -262,8 +262,92 @@
     {
       "name": "M11, row 2 — the variable-write error path appends the forge's message to its error line",
       "file": "cmd/deskfleet/pushrotate.go",
-      "old": "statusOnly(resp, err), pushTokenVariable, r.o.tokenName, r.newID)",
-      "new": "statusOnly(resp, err)+\" \"+forgeMessage(resp.Body), pushTokenVariable, r.o.tokenName, r.newID)"
+      "old": "statusOnly(resp, err),\n\t\t\tr.notInstalledRecovery(",
+      "new": "statusOnly(resp, err)+\" \"+forgeMessage(resp.Body),\n\t\t\tr.notInstalledRecovery("
+    },
+    {
+      "name": "M12, review — the access-token list reads one page only (a live token past page one reads as zero active)",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\t\tif len(recs) < pushListPerPage {\n\t\t\treturn hits, exitOK\n\t\t}\n",
+      "new": "\t\tif true {\n\t\t\treturn hits, exitOK\n\t\t}\n"
+    },
+    {
+      "name": "M13, review — the access-token list stops asking for active records only",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "/access_tokens?state=active&per_page=",
+      "new": "/access_tokens?per_page="
+    },
+    {
+      "name": "M14, review — a page repeating an id is accepted (a forge ignoring the page parameter)",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\t\t\tif seen[t.ID] {\n",
+      "new": "\t\t\tif false && seen[t.ID] {\n"
+    },
+    {
+      "name": "M15, review — the list counts an active record that is also revoked",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "t.Name == r.o.tokenName && t.Active && !t.Revoked",
+      "new": "t.Name == r.o.tokenName && t.Active"
+    },
+    {
+      "name": "M16, review — an unhidden variable that omits its value passes the read-back",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\tcase !v.Value.present() && !v.Hidden:\n",
+      "new": "\tcase false:\n"
+    },
+    {
+      "name": "M17, review — an unreadable read-back exits could-not-check without containing the new token",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\t\treturn r.contain(\"\", \"the read-back could not be read (\"+statusOnly(resp, err)+\")\")\n",
+      "new": "\t\tr.errf(\"read-back: could-not-check (%s)\", statusOnly(resp, err))\n\t\treturn exitUnverifiable\n"
+    },
+    {
+      "name": "M18, review — containment exits 0 (the run continues into the proof probes)",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\t\tr.newID, what, pushTokenVariable, fix)\n\treturn exitFailed\n",
+      "new": "\t\tr.newID, what, pushTokenVariable, fix)\n\treturn exitOK\n"
+    },
+    {
+      "name": "M19, review — the by-id expiry has no upper bound (a longer-lived token than requested passes)",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": " || exp.After(want.AddDate(0, 0, 1))",
+      "new": ""
+    },
+    {
+      "name": "M20, review — a by-id could-not-check inside the rotate proof exits 6, not 1",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\t\tif code == exitUnverifiable {\n\t\t\treturn exitFailed\n\t\t}\n",
+      "new": ""
+    },
+    {
+      "name": "M21, review — a create whose earlier answer was lost is reported as a plain absent variable",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "r.notInstalledRecovery(lost && err == nil && resp.Status < 500)",
+      "new": "r.notInstalledRecovery(lost && false)"
+    },
+    {
+      "name": "M22, review — the create path's recovery line names plain rotate, which then refuses",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "so re-run `push-token rotate --create`\", pushTokenVariable, tok)",
+      "new": "so re-run `push-token rotate`\", pushTokenVariable, tok)"
+    },
+    {
+      "name": "M23, review — the create path assumes hidden instead of reading the instance's answer",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\t\tr.hidden = v.Hidden\n\t}\n\tr.outf(\"install:",
+      "new": "\t\tr.hidden = true\n\t}\n\tr.outf(\"install:"
+    },
+    {
+      "name": "M24, review — a project path with a . or .. segment is accepted",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\t\tif seg == \".\" || seg == \"..\" {\n",
+      "new": "\t\tif false && seg == \"..\" {\n"
+    },
+    {
+      "name": "M25, review — the self-introspection record is not checked after its id matches",
+      "file": "cmd/deskfleet/pushrotate.go",
+      "old": "\tif field, left := byIDVerdict(t, r.today, r.want, r.o.minDays); field != \"\" {\n\t\tr.errf(\"self: FAIL",
+      "new": "\tif field, left := \"\", 0; field != \"\" {\n\t\tr.errf(\"self: FAIL"
     }
   ]
 }

@@ -17,7 +17,7 @@ accepted:
   - "Choice 4: 30-day tokens by default, at most 90; the proof needs at least 7 days left and an expiry no earlier than one day before the requested date; check mode alarms below 7 days."
   - "Choice 5: hidden through the create path where the instance supports it; otherwise masked and protected, the existing floor."
   - "Choice 6A: a 403 insufficient-scope answer from self-introspection is accepted beside the rotator-side by-id read and the live push probe; any other self-introspection failure still fails."
-  - "The brief's recommended order of replacement, rotate-first (choice 7A), is the implemented order: at most one valid push credential at any moment, and any failure between the rotate and a proven install is reported with a re-run instruction."
+  - "Choice 7A (decided by the driver's own ruling comment, https://github.com/medici-finance/assay/issues/2912#issuecomment-6641917816): rotate-first, the implemented order: at most one valid push credential at any moment, and any failure between the rotate and a proven install is reported with a re-run instruction."
 ---
 
 **Ruling recorded: APPROVED as briefed — all six recommended defaults.** The driver
@@ -32,7 +32,7 @@ one active project access token by name, and refuses before any write when one o
 check. It then rotates the token, writes the new value into the variable with masked, protected
 and scope `*` sent on every write, reads the variable back, and proves the new token by its
 record by id, its own self-introspection, and a receive-pack advertisement on the API host. A
-read-back that disagrees revokes the new token and confirms the revoke. `check` is the read-only
+read-back that disagrees, or cannot be read, revokes the new token and confirms the revoke. `check` is the read-only
 monitor between rotations, under a separate reader credential.
 
 **The constraint behind it.** The value is a repository-write credential for the default
@@ -40,6 +40,8 @@ branch. It must never reach a shell, a transcript, a log, argv, the environment 
 person holding the rotator credential runs the command, because the command cannot tell that
 person from an automated session running as the same operating-system user.
 
-**Choice 7.** The ruling's wording names six defaults; the brief listed seven choices. The
-seventh, rotate-first, is the brief's recommended default and the implemented order, and the
-implementing pull request declares it as its own decision for review.
+**Choice 7.** The first ruling's wording names six defaults; the brief listed seven choices. The
+seventh, rotate-first, is decided as option A by the driver's own
+[second ruling comment](https://github.com/medici-finance/assay/issues/2912#issuecomment-6641917816)
+on the same issue. It is the brief's recommended default and the implemented order; no code
+changed for it.

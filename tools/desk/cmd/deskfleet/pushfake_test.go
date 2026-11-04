@@ -1,6 +1,6 @@
 package main
 
-// pushfake_test.go — a stateful in-process fake GitLab for `push-token` (forge-gitlab/18). It
+// pushfake_test.go — a stateful in-process fake GitLab for `push-token` (#2910 part B). It
 // is separate from fake_test.go's provisioning fake because rotation needs state the
 // provisioning routes never model: tokens that rotate, revoke and expire, a variable whose
 // update RESETS any flag the request omits, and the receive-pack advertisement. It encodes the
@@ -82,8 +82,17 @@ type ptFake struct {
 	nextID          int64
 	supportsHidden  bool
 
+	pathOverride string // non-empty: the project record's path_with_namespace
+
 	// faults
 	listStatus    int
+	listFailPage  int    // non-zero: that list page answers listStatus (default 500), earlier pages answer
+	ignorePage    bool   // the list ignores the page parameter (every page is page 1)
+	endlessPages  bool   // the list answers a full page of fresh unrelated records on every page
+	landThenFail  int    // the next N variable writes are STORED, then answered 500 (a lost response)
+	readBackFault string // after a variable write: a read answers "502", "drop" or "garbage"
+	readNoValue   bool   // a read of an unhidden variable omits its value
+	byIDStatus    int    // non-zero: a by-id read of any id but the predecessor answers it
 	rotateStatus  int
 	dropRotate    bool // perform the rotate, then drop the connection
 	writeStatuses []int
@@ -97,9 +106,11 @@ type ptFake struct {
 	selfStatus    int
 	selfBody      string
 	selfID        int64
+	selfMutate    func(m map[string]any) // applied to every self-introspection answer
 	pushStatus    int
 	pushLocation  string
 	requestsLog   []ptReq
+	varWritten    bool // a variable write has been stored
 }
 
 func newPTFake(t *testing.T) *ptFake {
@@ -189,6 +200,8 @@ func (f *ptFake) varJSON() map[string]any {
 	switch {
 	case f.v.hidden:
 		m["value"] = nil
+	case f.readNoValue:
+		delete(m, "value")
 	case f.readValue != "":
 		m["value"] = f.readValue
 	default:
@@ -236,7 +249,11 @@ func (f *ptFake) handle(w http.ResponseWriter, r *http.Request) {
 	pp := "/projects/" + strconv.Itoa(ptProjectID)
 	switch {
 	case r.Method == "GET" && (p == "/projects/"+strings.ReplaceAll(fakeProject, "/", "%2F") || p == pp):
-		ptJSON(w, 200, map[string]any{"id": ptProjectID, "path_with_namespace": fakeProject,
+		path := fakeProject
+		if f.pathOverride != "" {
+			path = f.pathOverride
+		}
+		ptJSON(w, 200, map[string]any{"id": ptProjectID, "path_with_namespace": path,
 			"default_branch": "main", "http_url_to_repo": f.cloneHost + "/" + fakeProject + ".git"})
 	case r.Method == "GET" && p == pp+"/protected_branches/main":
 		if f.branchProtected {
@@ -249,15 +266,7 @@ func (f *ptFake) handle(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "POST" && p == pp+"/variables":
 		f.handleVar(w, r, req, writer)
 	case r.Method == "GET" && p == pp+"/access_tokens":
-		if f.listStatus != 0 {
-			ptJSON(w, f.listStatus, map[string]any{"message": "boom"})
-			return
-		}
-		out := []map[string]any{}
-		for _, t := range f.toks {
-			out = append(out, ptRecord(t))
-		}
-		ptJSON(w, 200, out)
+		f.handleList(w, r)
 	case r.Method == "POST" && p == pp+"/access_tokens" && writer:
 		t := &ptTok{id: f.nextID, name: fmt.Sprint(req.Body["name"]), active: true, level: int(num(req.Body["access_level"])),
 			expires: fmt.Sprint(req.Body["expires_at"])}
@@ -278,6 +287,55 @@ func (f *ptFake) handle(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleList is GitLab's offset-paginated list: per_page (default 20, at most 100) and page
+// (default 1), and state=active keeping records whose active field is set (the verb's own
+// revoked filter is then still exercised by a record that is active AND revoked). The fake
+// keeps revoked records, as the forge does, so a project rotated many times holds more records
+// than one page.
+func (f *ptFake) handleList(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page < 1 || f.ignorePage {
+		page = 1
+	}
+	if f.listStatus != 0 && (f.listFailPage == 0 || f.listFailPage == page) {
+		ptJSON(w, f.listStatus, map[string]any{"message": "boom"})
+		return
+	}
+	if f.listFailPage == page {
+		ptJSON(w, 500, map[string]any{"message": "boom"})
+		return
+	}
+	per, _ := strconv.Atoi(q.Get("per_page"))
+	if per < 1 {
+		per = 20
+	}
+	if per > 100 {
+		per = 100
+	}
+	out := []map[string]any{}
+	if f.endlessPages {
+		for i := 0; i < per; i++ {
+			out = append(out, map[string]any{"id": 100000 + page*per + i, "name": "example-other", "active": true})
+		}
+		ptJSON(w, 200, out)
+		return
+	}
+	var recs []*ptTok
+	for _, t := range f.toks {
+		if q.Get("state") != "active" || t.active {
+			recs = append(recs, t)
+		}
+	}
+	for i := (page - 1) * per; i < len(recs) && i < page*per; i++ {
+		out = append(out, ptRecord(recs[i]))
+	}
+	if page*per < len(recs) {
+		w.Header().Set("X-Next-Page", strconv.Itoa(page+1))
+	}
+	ptJSON(w, 200, out)
+}
+
 func num(v any) float64 {
 	n, _ := v.(float64)
 	return n
@@ -285,6 +343,20 @@ func num(v any) float64 {
 
 func (f *ptFake) handleVar(w http.ResponseWriter, r *http.Request, req ptReq, writer bool) {
 	if r.Method == "GET" {
+		if f.varWritten && f.readBackFault != "" {
+			switch f.readBackFault {
+			case "drop":
+				ptDrop(w)
+			case "garbage":
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(200)
+				_, _ = io.WriteString(w, "{not json")
+			default:
+				st, _ := strconv.Atoi(f.readBackFault)
+				ptJSON(w, st, map[string]any{"message": "boom"})
+			}
+			return
+		}
 		if !f.v.exists {
 			ptJSON(w, 404, map[string]any{"message": "404 Variable Not Found"})
 			return
@@ -327,6 +399,12 @@ func (f *ptFake) handleVar(w http.ResponseWriter, r *http.Request, req ptReq, wr
 	if f.storeOverride != nil {
 		f.storeOverride(&f.v)
 	}
+	f.varWritten = true
+	if f.landThenFail > 0 {
+		f.landThenFail--
+		ptJSON(w, 500, map[string]any{"message": "boom"})
+		return
+	}
 	m := f.varJSON()
 	if !f.v.hidden {
 		m["value"] = f.v.value // the write response echoes the value
@@ -344,6 +422,10 @@ func (f *ptFake) handleTok(w http.ResponseWriter, r *http.Request, req ptReq, re
 	t := f.tok(id)
 	switch {
 	case r.Method == "GET" && action == "":
+		if f.byIDStatus != 0 && id != ptOldID {
+			ptJSON(w, f.byIDStatus, map[string]any{"message": "boom"})
+			return
+		}
 		if t == nil {
 			ptJSON(w, 404, map[string]any{"message": "404 Not Found"})
 			return
@@ -410,6 +492,9 @@ func (f *ptFake) handleSelf(w http.ResponseWriter, req ptReq) {
 			rec := ptRecord(t)
 			if f.selfID != 0 {
 				rec["id"] = f.selfID
+			}
+			if f.selfMutate != nil {
+				f.selfMutate(rec)
 			}
 			ptJSON(w, 200, rec)
 			return

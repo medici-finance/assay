@@ -805,10 +805,12 @@ Exit 0 means rotated and proven by all three probes. The outcomes that are not 0
 | `refused: …` | 5 | a precondition failed; nothing was written | fix what the line names, re-run |
 | `rotate-refused` | 1 | the forge refused the rotate; nothing was written. A second `rotate` running at the same time ends here | `push-token check` confirms the other run's install |
 | `rotate-response-lost` | 1 | the rotate was sent but its answer was lost: the predecessor may be revoked and the new value is unrecoverable | re-run `rotate`; it finds the one active token by name and rotates it again |
-| `rotated-not-installed` | 1 | the variable write failed after three attempts; the variable still holds the revoked predecessor | re-run `rotate` |
-| `contained: revoked <id>` | 1 | the read-back disagreed on the field named; the new token was revoked at once and the revoke confirmed, so the variable holds a dead value | fix the variable's flags, then `rotate --create` |
-| `containment-failed: revoke <id> by hand` | 6 | the read-back disagreed and the revoke could not be confirmed: the variable may hold a LIVE token with wrong flags | revoke that id under **Settings > Access tokens** now, fix the flags, then `rotate --create` |
-| `by-id`, `self` or `push: FAIL field …` | 1 | a proof probe failed on the field named | read the field; re-run `rotate` once it is fixed |
+| `could-not-check: …` | 6 | a preflight read (the project, the branch, the variable, or any page of the access-token list) failed or was cut short; nothing was written | re-run once the forge answers |
+| `rotated-not-installed` | 1 | the variable write failed after three attempts. The line says which state it left: the variable holds the revoked predecessor, the variable does not exist, or an earlier create attempt's answer was lost and the variable may now exist | re-run what the line names: `rotate`, or `rotate --create` when the variable does not exist |
+| `contained: revoked <id>` | 1 | the read-back disagreed on the field named, or could not be read at all; the new token was revoked at once and the revoke confirmed, so the variable holds a dead value | fix (or confirm) the variable's flags, then `rotate --create` |
+| `containment-failed: revoke <id> by hand` | 6 | the read-back disagreed or could not be read, and the revoke could not be confirmed: the variable may hold a LIVE token with unverified flags | revoke that id under **Settings > Access tokens** now, fix the flags, then `rotate --create` |
+| `by-id`, `self` or `push: FAIL field …` | 1 | a proof probe failed on the field named (an expiry more than one day either side of the requested date fails `expires_at`) | read the field; re-run `rotate` once it is fixed |
+| `by-id: could-not-check` | 1 | the new token's record could not be read inside the proof; the rotate is not proven | `push-token check` once the forge answers |
 
 **After an expiry or a containment.** An expired or revoked token is no longer active, so a plain
 `rotate` refuses with zero active tokens. `rotate --create` creates the token (and, if it is

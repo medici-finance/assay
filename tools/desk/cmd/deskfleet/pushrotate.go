@@ -1,6 +1,6 @@
 package main
 
-// pushrotate.go — `deskfleet push-token rotate|check` (forge-gitlab/18; #2910 part B): the
+// pushrotate.go — `deskfleet push-token rotate|check` (#2910 part B): the
 // board-push credential STATUSGEN_PUSH_TOKEN rotated in ONE process. The new value lives only
 // in the forge and in this process's memory: it is never printed, logged, put in argv, the
 // environment or a file. pushtoken.go provisions the token the first time; this file replaces
@@ -12,7 +12,8 @@ package main
 // expiry no earlier than one day before the requested date (4); hidden through the create path
 // where the instance sets it, else masked and protected (5); a 403 insufficient-scope answer
 // from self-introspection is accepted beside the rotator-side by-id read and the live push
-// probe (6A). Rotate-first (7A) is the briefed order.
+// probe (6A). The replacement order, rotate-first with at most one valid push credential (7A),
+// is the driver's separate ruling on the same issue.
 //
 // rotate: refusals (exit 5, zero requests) → preflight reads (exit 5 on a precondition, 6 on a
 // read that fails) → rotate or create → install (retried twice) → read back → contain on a
@@ -45,6 +46,8 @@ const (
 	pushRotateMaxDays     = 90 // ruling choice 4
 	pushDefaultMinDays    = 7  // ruling choice 4
 	pushRetries           = 2  // install retries after the first attempt (Task 4.2)
+	pushListPerPage       = 100
+	pushListMaxPages      = 50 // 5000 records: past that the list is could-not-check
 	pushAPISuffix         = "/api/v4"
 	// pushProbeUser is the HTTP Basic user name of the push probe; GitLab accepts any
 	// non-blank name beside an access token, and the credential is the password.
@@ -56,15 +59,23 @@ const (
 )
 
 // pushSecret holds a token value. Every rendering is [redacted]; reveal is the only reader.
-type pushSecret struct{ b []byte }
+// The bytes sit behind a closure so that a struct holding a pushSecret in an UNEXPORTED field
+// (where fmt cannot call the redacting methods and walks the fields itself, dereferencing a
+// pointer-to-slice under a bad verb) renders a func address, never the bytes.
+type pushSecret struct{ b func() []byte }
 
 func (s pushSecret) String() string                { return redactedText }
 func (s pushSecret) GoString() string              { return redactedText }
 func (s pushSecret) Format(f fmt.State, _ rune)    { _, _ = io.WriteString(f, redactedText) }
 func (s pushSecret) MarshalJSON() ([]byte, error)  { return []byte(`"` + redactedText + `"`), nil }
 func (s pushSecret) MarshalText() ([]byte, error)  { return []byte(redactedText), nil }
-func (s pushSecret) present() bool                 { return len(s.b) > 0 }
+func (s pushSecret) present() bool                 { return s.b != nil && len(s.b()) > 0 }
 func (s *pushSecret) UnmarshalJSON(b []byte) error { return s.decode(b) }
+
+func newPushSecret(v string) pushSecret {
+	b := []byte(v)
+	return pushSecret{b: func() []byte { return b }}
+}
 
 func (s *pushSecret) decode(b []byte) error {
 	var v *string
@@ -72,13 +83,18 @@ func (s *pushSecret) decode(b []byte) error {
 		return err
 	}
 	if v != nil {
-		s.b = []byte(*v)
+		*s = newPushSecret(*v)
 	}
 	return nil
 }
 
 // reveal is the one way to the bytes (see the file comment for its three consumers).
-func (s pushSecret) reveal() string { return string(s.b) }
+func (s pushSecret) reveal() string {
+	if s.b == nil {
+		return ""
+	}
+	return string(s.b())
+}
 
 // sameAs compares two values in constant time without rendering either.
 func (s pushSecret) sameAs(o pushSecret) bool {
@@ -87,8 +103,11 @@ func (s pushSecret) sameAs(o pushSecret) bool {
 
 // wipe zeroes the bytes: best-effort hygiene, not a control (Threat model).
 func (s *pushSecret) wipe() {
-	for i := range s.b {
-		s.b[i] = 0
+	if s.b != nil {
+		b := s.b()
+		for i := range b {
+			b[i] = 0
+		}
 	}
 	s.b = nil
 }
@@ -155,6 +174,20 @@ type pushRun struct {
 }
 
 var pushPathRE = regexp.MustCompile(`^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$`)
+
+// plainProjectPath is true for a namespace path of plain segments: the character set above and
+// no "." or ".." segment anywhere (a leading "./" included).
+func plainProjectPath(p string) bool {
+	if !pushPathRE.MatchString(p) {
+		return false
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
+}
 
 func (r *pushRun) outf(format string, a ...any) { fmt.Fprintf(r.e.stdout, format+"\n", a...) }
 func (r *pushRun) errf(format string, a ...any) { fmt.Fprintf(r.e.stderr, format+"\n", a...) }
@@ -242,7 +275,7 @@ func (r *pushRun) dryRunSteps() {
 		"rotate (or create): new token, expires_at " + r.want.Format("2006-01-02"),
 		"install: write " + pushTokenVariable + " with masked, protected and scope * sent explicitly (retry a transport error or 5xx twice)",
 		"read-back: masked, protected, scope *, the recorded hidden state, and the value (constant-time) — a mismatch revokes the new token and confirms the revoke",
-		fmt.Sprintf("proof by-id: active, not revoked, scopes [%s], expires_at >= requested-1d and >= %d days away", pushTokenScope, r.o.minDays),
+		fmt.Sprintf("proof by-id: active, not revoked, scopes [%s], expires_at within one day of the requested date and >= %d days away", pushTokenScope, r.o.minDays),
 		"proof self: GET /personal_access_tokens/self under the new token; id equals the new id",
 		"proof push: GET <web root>/<project path>.git/info/refs?service=git-receive-pack under the new token answers 200",
 	}
@@ -267,7 +300,7 @@ func (r *pushRun) rotate() int {
 	if code := r.issue(); code != exitOK {
 		return code
 	}
-	r.outf("token: %s id %d expires_at %s", r.o.tokenName, r.newID, r.newExp)
+	r.outf("token: %s id %d expires_at %q", r.o.tokenName, r.newID, r.newExp)
 	if code := r.install(); code != exitOK {
 		return code
 	}
@@ -277,7 +310,7 @@ func (r *pushRun) rotate() int {
 	if code := r.prove(); code != exitOK {
 		return code
 	}
-	r.outf("outcome: rotated — %s holds token %s id %d (expires_at %s), proven by-id, self and push",
+	r.outf("outcome: rotated — %s holds token %s id %d (expires_at %q), proven by-id, self and push",
 		pushTokenVariable, r.o.tokenName, r.newID, r.newExp)
 	return exitOK
 }
@@ -317,21 +350,21 @@ func (r *pushRun) preflight() int {
 	if json.Unmarshal(resp.Body, &pr) != nil || pr.ID == 0 {
 		return r.refuse("project %s: the response carries no id", r.o.project)
 	}
-	if !pushPathRE.MatchString(pr.Path) || strings.Contains("/"+pr.Path+"/", "/../") || strings.Contains(pr.Path, "/./") {
+	if !plainProjectPath(pr.Path) {
 		return r.refuse("project %s: path_with_namespace is not a plain project path", r.o.project)
 	}
 	if pr.DefaultBranch == "" {
 		return r.refuse("project %s: no default branch", r.o.project)
 	}
 	r.pp, r.path = "/projects/"+strconv.FormatInt(pr.ID, 10), pr.Path
-	r.outf("project: %s (id %d) default branch %s", pr.Path, pr.ID, pr.DefaultBranch)
+	r.outf("project: %s (id %d) default branch %q", pr.Path, pr.ID, pr.DefaultBranch)
 
 	resp, code = r.read("protected branch", r.pp+"/protected_branches/"+url.PathEscape(pr.DefaultBranch))
 	if code != exitOK {
 		return code
 	}
 	if resp.Status != 200 {
-		return r.refuse("branch: default branch %s is not protected (HTTP %d) — a protected variable never reaches "+
+		return r.refuse("branch: default branch %q is not protected (HTTP %d) — a protected variable never reaches "+
 			"the regen job there", pr.DefaultBranch, resp.Status)
 	}
 
@@ -382,24 +415,45 @@ func (r *pushRun) preflightVariable() int {
 }
 
 // activeByName lists the project's access tokens and keeps the active, unrevoked ones named
-// --token-name.
+// --token-name. It asks the forge for active records only and still filters itself, and it
+// reads EVERY page: each rotation leaves a revoked record behind, so the live token can sit
+// past the first page, and a short read would report "zero active" and lead --create into
+// minting a second live credential. The next page is read while a page comes back full. A
+// list longer than pushListMaxPages pages, or a page that repeats an id already seen (a forge
+// ignoring the page parameter), is could-not-check, never a short answer.
 func (r *pushRun) activeByName() ([]pushTokenRecord, int) {
-	resp, code := r.read("access-token list", r.pp+"/access_tokens?per_page=100")
-	if code != exitOK {
-		return nil, code
-	}
-	var all []pushTokenRecord
-	if resp.Status != 200 || json.Unmarshal(resp.Body, &all) != nil {
-		r.errf("could-not-check: access-token list answered HTTP %d or could not be decoded — nothing written", resp.Status)
-		return nil, exitUnverifiable
-	}
 	var hits []pushTokenRecord
-	for _, t := range all {
-		if t.Name == r.o.tokenName && t.Active && !t.Revoked {
-			hits = append(hits, t)
+	seen := map[int64]bool{}
+	for page := 1; page <= pushListMaxPages; page++ {
+		resp, code := r.read("access-token list", fmt.Sprintf("%s/access_tokens?state=active&per_page=%d&page=%d",
+			r.pp, pushListPerPage, page))
+		if code != exitOK {
+			return nil, code
+		}
+		var recs []pushTokenRecord
+		if resp.Status != 200 || json.Unmarshal(resp.Body, &recs) != nil {
+			r.errf("could-not-check: access-token list page %d answered HTTP %d or could not be decoded — nothing "+
+				"written", page, resp.Status)
+			return nil, exitUnverifiable
+		}
+		for _, t := range recs {
+			if seen[t.ID] {
+				r.errf("could-not-check: access-token list page %d repeats id %d (pagination not honoured) — "+
+					"nothing written", page, t.ID)
+				return nil, exitUnverifiable
+			}
+			seen[t.ID] = true
+			if t.Name == r.o.tokenName && t.Active && !t.Revoked {
+				hits = append(hits, t)
+			}
+		}
+		if len(recs) < pushListPerPage {
+			return hits, exitOK
 		}
 	}
-	return hits, exitOK
+	r.errf("could-not-check: access-token list runs past %d pages of %d — nothing written", pushListMaxPages,
+		pushListPerPage)
+	return nil, exitUnverifiable
 }
 
 // scopesExact is true only for a scope list that EQUALS [write_repository].
@@ -492,18 +546,19 @@ func (r *pushRun) install() int {
 	var (
 		resp apiResponse
 		err  error
+		lost bool // an earlier attempt's outcome is unknown (transport error or 5xx)
 	)
 	for attempt := 0; attempt <= pushRetries; attempt++ {
 		resp, err = r.gl.do(method, path, body)
 		if err == nil && resp.Status < 500 {
 			break
 		}
+		lost = true
 	}
 	delete(body, "value")
 	if err != nil || resp.Status != want {
-		r.errf("rotated-not-installed: the variable write failed (%s) — %s still holds the revoked predecessor "+
-			"(or does not exist); token %s id %d is active and found by name, so re-run `push-token rotate`",
-			statusOnly(resp, err), pushTokenVariable, r.o.tokenName, r.newID)
+		r.errf("rotated-not-installed: the variable write failed (%s) — %s", statusOnly(resp, err),
+			r.notInstalledRecovery(lost && err == nil && resp.Status < 500))
 		return exitFailed
 	}
 	if !r.varSeen {
@@ -516,12 +571,33 @@ func (r *pushRun) install() int {
 	return exitOK
 }
 
-// readBack re-reads the variable; any disagreement is contained.
+// notInstalledRecovery is the rotated-not-installed line's state and re-run instruction.
+// createAfterLost is a variable create whose final attempt was refused after an earlier
+// attempt's answer was lost: that earlier create may have landed.
+func (r *pushRun) notInstalledRecovery(createAfterLost bool) string {
+	tok := fmt.Sprintf("token %s id %d is active and found by name", r.o.tokenName, r.newID)
+	switch {
+	case r.varSeen:
+		return fmt.Sprintf("%s still holds the revoked predecessor; %s, so re-run `push-token rotate`",
+			pushTokenVariable, tok)
+	case createAfterLost:
+		return fmt.Sprintf("an earlier create attempt's answer was lost, so %s may now exist; %s: re-run "+
+			"`push-token rotate` (if the variable is still absent it refuses and names `--create`)", pushTokenVariable, tok)
+	default:
+		return fmt.Sprintf("%s does not exist; %s, so re-run `push-token rotate --create`", pushTokenVariable, tok)
+	}
+}
+
+// readBack re-reads the variable; any disagreement is contained. A read-back that cannot be
+// read at all (transport error, non-200, undecodable body) is contained too: the variable's
+// flags are then unverified while it may hold the live new value, and under rotate-first the
+// revoke costs a --create re-run, never a second live credential (a desk-decided default,
+// declared on the implementing pull request).
 func (r *pushRun) readBack() int {
 	resp, err := r.gl.do("GET", r.varPath(), nil)
 	var v pushVariable
 	if err != nil || resp.Status != 200 || json.Unmarshal(resp.Body, &v) != nil {
-		return r.contain("read-back (" + statusOnly(resp, err) + ")")
+		return r.contain("", "the read-back could not be read ("+statusOnly(resp, err)+")")
 	}
 	defer v.Value.wipe()
 	field := ""
@@ -534,11 +610,14 @@ func (r *pushRun) readBack() int {
 		field = "environment_scope"
 	case v.Hidden != r.hidden:
 		field = "hidden"
+	case !v.Value.present() && !v.Hidden:
+		// only a hidden variable may withhold its value; an unhidden one that omits it is unverified.
+		field = "value"
 	case v.Value.present() && !v.Value.sameAs(r.secret):
 		field = "value"
 	}
 	if field != "" {
-		return r.contain(field)
+		return r.contain(field, "the read-back disagreed on "+field)
 	}
 	r.outf("read-back: %s masked=true protected=true scope=* hidden=%t value=%s", pushTokenVariable, r.hidden,
 		valueCheck(v.Value.present()))
@@ -552,31 +631,36 @@ func valueCheck(returned bool) string {
 	return "not returned (hidden)"
 }
 
-// contain revokes the new token at once and confirms the revoke by a by-id read.
-func (r *pushRun) contain(field string) int {
+// contain revokes the new token at once and confirms the revoke by a by-id read. field is the
+// disagreeing flag ("" when the read-back could not be read); what says which happened.
+func (r *pushRun) contain(field, what string) int {
 	id := strconv.FormatInt(r.newID, 10)
 	resp, err := r.gl.do("DELETE", r.pp+"/access_tokens/"+id, nil)
 	if err != nil || resp.Status < 200 || resp.Status >= 300 {
-		return r.containFailed(field, "revoke "+statusOnly(resp, err))
+		return r.containFailed(what, "revoke "+statusOnly(resp, err))
 	}
 	resp, err = r.gl.do("GET", r.pp+"/access_tokens/"+id, nil)
 	var rec pushTokenRecord
 	switch {
 	case err != nil:
-		return r.containFailed(field, "confirming read "+statusOnly(resp, err))
+		return r.containFailed(what, "confirming read "+statusOnly(resp, err))
 	case resp.Status == 404:
 	case resp.Status == 200 && json.Unmarshal(resp.Body, &rec) == nil && (rec.Revoked || !rec.Active):
 	default:
-		return r.containFailed(field, "confirming read did not show the token dead ("+statusOnly(resp, err)+")")
+		return r.containFailed(what, "confirming read did not show the token dead ("+statusOnly(resp, err)+")")
 	}
-	r.errf("contained: revoked %d — the read-back disagreed on %s; %s now holds a dead value: fix the variable's "+
-		"flags and re-run `push-token rotate --create`", r.newID, field, pushTokenVariable)
+	fix := "fix the variable's flags and "
+	if field == "" {
+		fix = "confirm the variable's flags and "
+	}
+	r.errf("contained: revoked %d — %s; %s now holds a dead value: %sre-run `push-token rotate --create`",
+		r.newID, what, pushTokenVariable, fix)
 	return exitFailed
 }
 
-func (r *pushRun) containFailed(field, why string) int {
-	r.errf("containment-failed: revoke %d by hand — the read-back disagreed on %s and the token's death could not "+
-		"be verified (%s); %s may hold a LIVE token with wrong flags", r.newID, field, why, pushTokenVariable)
+func (r *pushRun) containFailed(what, why string) int {
+	r.errf("containment-failed: revoke %d by hand — %s and the token's death could not be verified (%s); %s may "+
+		"hold a LIVE token with unverified flags", r.newID, what, why, pushTokenVariable)
 	return exitUnverifiable
 }
 
@@ -597,7 +681,8 @@ func byIDVerdict(t pushTokenRecord, today, want time.Time, minDays int) (string,
 		return "expires_at", 0
 	}
 	left := int(exp.Sub(today).Hours() / 24)
-	if !want.IsZero() && exp.Before(want.AddDate(0, 0, -1)) {
+	if !want.IsZero() && (exp.Before(want.AddDate(0, 0, -1)) || exp.After(want.AddDate(0, 0, 1))) {
+		// a forge that ignored the requested date: too short, or longer-lived than asked for.
 		return "expires_at", left
 	}
 	if left < minDays {
@@ -615,11 +700,11 @@ func (r *pushRun) byID(gl *apiClient, id int64, want time.Time) int {
 	}
 	field, left := byIDVerdict(t, r.today, want, r.o.minDays)
 	if field != "" {
-		r.errf("by-id: FAIL field %s — id %d active=%t revoked=%t scopes ok=%t expires_at=%s (%d days left, "+
+		r.errf("by-id: FAIL field %s — id %d active=%t revoked=%t scopes ok=%t expires_at=%q (%d days left, "+
 			"--min-days %d)", field, id, t.Active, t.Revoked, scopesExact(t.Scopes), t.ExpiresAt, left, r.o.minDays)
 		return exitFailed
 	}
-	r.outf("by-id: ok — id %d active=true revoked=false scopes=[%s] expires_at=%s (%d days left, --min-days %d)",
+	r.outf("by-id: ok — id %d active=true revoked=false scopes=[%s] expires_at=%q (%d days left, --min-days %d)",
 		id, pushTokenScope, t.ExpiresAt, left, r.o.minDays)
 	return exitOK
 }
@@ -659,7 +744,7 @@ func (r *pushRun) proveSelf() int {
 		r.errf("self: FAIL field %s — id %d (%d days left)", field, t.ID, left)
 		return exitFailed
 	}
-	r.outf("self: ok — id %d equals the new id; active=true revoked=false scopes=[%s] expires_at=%s",
+	r.outf("self: ok — id %d equals the new id; active=true revoked=false scopes=[%s] expires_at=%q",
 		t.ID, pushTokenScope, t.ExpiresAt)
 	return exitOK
 }
@@ -686,10 +771,6 @@ func (r *pushRun) provePush() int {
 	req, err := http.NewRequest("GET", r.pushProbeURL(), nil)
 	if err != nil {
 		r.errf("push: FAIL — the probe request could not be built")
-		return exitFailed
-	}
-	if req.URL.Host != r.web.Host {
-		r.errf("push: FAIL — the probe URL left the configured host")
 		return exitFailed
 	}
 	req.SetBasicAuth(pushProbeUser, r.secret.reveal())
