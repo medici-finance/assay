@@ -193,6 +193,7 @@ func TestForgeLocalAuthorityClaims(t *testing.T) {
 		{"issuer", func(c *VerifierConfig) { c.Issuer = "other-issuer" }},
 		{"audience", func(c *VerifierConfig) { c.Audience = "other-audience" }},
 		{"actor", func(c *VerifierConfig) { c.Policy.Actor = "other-actor" }},
+		{"role", func(c *VerifierConfig) { c.Policy.Role = "reviewer"; c.Launch.Role = "reviewer" }},
 		{"source", func(c *VerifierConfig) { c.Policy.SourceID = "other-source" }},
 		{"composition", func(c *VerifierConfig) { c.Policy.CompositionID = "other-composition" }},
 		{"access-epoch", func(c *VerifierConfig) { c.Policy.Caller.AccessEpoch = "other-access" }},
@@ -212,6 +213,27 @@ func TestForgeLocalAuthorityClaims(t *testing.T) {
 			assertHeld(t, r, e)
 		})
 	}
+	t.Run("constructor-cell", func(t *testing.T) {
+		cfg := f.verifierConfig
+		cfg.Policy.Cell = "foreign-cell"
+		if v, e := NewVerifier(cfg, f.client, f.clock); v != nil || !errors.Is(e, ErrConfig) {
+			t.Fatal("foreign cell configuration accepted")
+		}
+	})
+	t.Run("verification-key", func(t *testing.T) {
+		cfg := f.verifierConfig
+		cfg.Bootstrap.PublicKey = bytes.Repeat([]byte{2}, 32)
+		client, e := NewCurrentClient(CurrentConfig{Path: f.client.config.Path, Bootstrap: cfg.Bootstrap, MaxFrameBytes: cfg.MaxFrameBytes, IOTimeout: f.config.IOTimeout}, f.clock)
+		if e != nil {
+			t.Fatal(e)
+		}
+		v, e := NewVerifier(cfg, client, f.clock)
+		if e != nil {
+			t.Fatal(e)
+		}
+		r, e := v.Authorize(ctx, f.grant, scope)
+		assertHeld(t, r, e)
+	})
 	for _, kind := range []string{"repository", "kind", "admission"} {
 		t.Run("query-"+kind, func(t *testing.T) {
 			q := scope
@@ -278,6 +300,27 @@ func TestForgeLocalAuthorityCurrent(t *testing.T) {
 		})
 		r, e := v.Authorize(context.Background(), f.grant, f.config.Launches[0].Scope.Scope)
 		assertHeld(t, r, e)
+	})
+	t.Run("during-current-expiry", func(t *testing.T) {
+		f := newAuthorityFixture(t, nil)
+		v := currentFixtureProxy(t, f, func(q CurrentProbe) (SignedProof, error) {
+			p, e := f.controller.current(context.Background(), q)
+			f.clock.move(2 * time.Minute)
+			return p, e
+		})
+		r, e := v.Authorize(context.Background(), f.grant, f.config.Launches[0].Scope.Scope)
+		assertHeld(t, r, e)
+	})
+	t.Run("wall-release", func(t *testing.T) {
+		f := newAuthorityFixture(t, nil)
+		r, e := f.verifier.Authorize(context.Background(), f.grant, f.config.Launches[0].Scope.Scope)
+		if e != nil {
+			t.Fatal(e)
+		}
+		f.clock.move(2 * time.Minute)
+		if f.verifier.CheckRelease(context.Background(), r) == nil {
+			t.Fatal("expired wall receipt released")
+		}
 	})
 	t.Run("producer-monotonic-expiry", func(t *testing.T) {
 		f := newAuthorityFixture(t, func(c *ProducerConfig) {
@@ -491,7 +534,7 @@ func TestForgeLocalAuthorityLaunch(t *testing.T) {
 	}
 }
 
-func TestLocalAuthorityClosedCodec(t *testing.T) {
+func TestForgeLocalAuthorityClosedCodec(t *testing.T) {
 	f := newAuthorityFixture(t, nil)
 	b, e := EncodeGrant(f.grant, f.config.MaxFrameBytes)
 	if e != nil {

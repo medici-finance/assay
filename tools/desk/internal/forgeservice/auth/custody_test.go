@@ -226,6 +226,10 @@ func TestForgeLocalAuthorityCustody(t *testing.T) {
 		t.Fatal("post-rotation current proof failed")
 	}
 	fresh := grant(a)
+	var priorClaims auth.GrantClaims
+	if json.Unmarshal(fresh.Payload, &priorClaims) != nil {
+		t.Fatal("prior actual grant invalid")
+	}
 	if _, e = launcher.Stop(ctx); e != nil {
 		t.Fatal("protected stop failed")
 	}
@@ -283,7 +287,12 @@ func TestForgeLocalAuthorityCustody(t *testing.T) {
 	if _, e = launcher2.Register(ctx, "caller-a", time.Minute); e != nil {
 		t.Fatal("fresh restart registration failed")
 	}
-	if !verify("caller-a", grant(a), scope("caller-a").Scope, 0).Allowed {
+	restartedGrant := grant(a)
+	var nextClaims auth.GrantClaims
+	if json.Unmarshal(restartedGrant.Payload, &nextClaims) != nil || nextClaims.KeyRef == priorClaims.KeyRef || nextClaims.Instance == priorClaims.Instance || nextClaims.Incarnation == priorClaims.Incarnation || nextClaims.Binding.ContainerID == priorClaims.Binding.ContainerID {
+		t.Fatal("actual restart reused identity/key/container binding")
+	}
+	if !verify("caller-a", restartedGrant, scope("caller-a").Scope, 0).Allowed {
 		t.Fatal("fresh restart positive failed")
 	}
 	t.Log("ACTUAL independent producer/query/two-caller/sibling custody and current-proof matrix PASS; offline fixture only")

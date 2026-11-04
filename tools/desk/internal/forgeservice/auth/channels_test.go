@@ -189,3 +189,40 @@ func TestForgeLocalAuthorityChannelRestart(t *testing.T) {
 		}
 	})
 }
+
+func TestForgeLocalAuthorityControlCapacity(t *testing.T) {
+	f := newAuthorityFixture(t, nil)
+	var connections []net.Conn
+	t.Cleanup(func() {
+		for _, conn := range connections {
+			conn.Close()
+		}
+	})
+	for range f.config.MaxConnections {
+		conn, e := net.DialTimeout("unix", filepath.Join(f.resources.Current.Name(), "current.sock"), time.Second)
+		if e != nil {
+			t.Fatal(e)
+		}
+		connections = append(connections, conn)
+	}
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for len(f.controller.dataSlots) != f.config.MaxConnections {
+		if time.Now().After(deadline) {
+			t.Fatal("actual slow data slots not occupied")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	claims, e := decodeClaims(f.grant, f.config.MaxFrameBytes)
+	if e != nil {
+		t.Fatal(e)
+	}
+	r, e := RequestControl(context.Background(), filepath.Join(f.resources.Private.Name(), "control.sock"), f.config.MaxFrameBytes, f.config.IOTimeout, &OperatorCommand{Operation: Revoke, ExpectedVersion: f.version, GrantID: claims.GrantID})
+	if e != nil || r.Version != f.version+1 {
+		t.Fatal("slow data slots blocked private revocation")
+	}
+	for _, conn := range connections {
+		conn.Close()
+	}
+	read, e := f.verifier.Authorize(context.Background(), f.grant, claims.Scope.Scope)
+	assertHeld(t, read, e)
+}
