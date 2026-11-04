@@ -87,12 +87,12 @@ func staleGitlabScaffold(t *testing.T) (dir, cur, stale string) {
 	return dir, cur, stale
 }
 
-// TestMigrateGitlabAnchorsRefreshes: `statusgen migrate gitlab-anchors`
+// TestMigrateAnchorsRefresh: `statusgen migrate gitlab-anchors`
 // previews under --dry-run without writing, then rewrites the stale anchor so
 // the file is byte-identical to a fresh scaffold, and a second run is a no-op.
 //
 // regression: #5004
-func TestMigrateGitlabAnchorsRefreshes(t *testing.T) {
+func TestMigrateAnchorsRefresh(t *testing.T) {
 	for _, crlf := range []bool{false, true} {
 		name := "lf"
 		if crlf {
@@ -133,10 +133,10 @@ func TestMigrateGitlabAnchorsRefreshes(t *testing.T) {
 	}
 }
 
-// TestMigrateGitlabAnchorsKeepsTheRest: only the anchor block changes; an
+// TestMigrateAnchorsKeepRest: only the anchor block changes; an
 // adopter's own comment above it and a job after it survive, and a tree with
 // no .gitlab-ci.yml is a clean no-op.
-func TestMigrateGitlabAnchorsKeepsTheRest(t *testing.T) {
+func TestMigrateAnchorsKeepRest(t *testing.T) {
 	dir, _, stale := staleGitlabScaffold(t)
 	ciPath := filepath.Join(dir, ".gitlab-ci.yml")
 	edited := strings.Replace(stale, ".statusgen-pushcred: &", "# adopter note\n.statusgen-pushcred: &", 1) + "\nmy-job:\n  script:\n    - echo mine\n"
@@ -188,9 +188,9 @@ func TestLintGitlabAnchorDrift(t *testing.T) {
 	}
 }
 
-// TestInitGitlabCurrentAnchorQuiet: a re-run over a current scaffold, and over
+// TestInitGitlabAnchorQuiet: a re-run over a current scaffold, and over
 // a file with no embedded anchors at all, says nothing about drift.
-func TestInitGitlabCurrentAnchorQuiet(t *testing.T) {
+func TestInitGitlabAnchorQuiet(t *testing.T) {
 	for _, tc := range []struct{ name, body string }{
 		{"current", ""},
 		{"no-anchors", "stages: [build]\n"},
