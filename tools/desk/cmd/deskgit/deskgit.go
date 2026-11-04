@@ -195,6 +195,20 @@ func servedByGitLab(repo, originURL string) bool {
 	return err == nil && res.Kind == deskkit.ForgeGitLab
 }
 
+// prRefspec builds the --pr refspec and its audit detail for the forge the origin resolves to
+// (#5448). GitHub serves a pull request's head at refs/pull/<N>/head; GitLab serves a merge
+// request's head at refs/merge-requests/<iid>/head. Either way the local destination is
+// refs/heads/pr<N>. gitlab is servedByGitLab's answer, the same one the --as arm uses, so a
+// fetch never asks one forge for the other's ref. prNum has already matched prNumRe.
+func prRefspec(prNum string, gitlab bool) (refspec, detail string) {
+	if gitlab {
+		return "refs/merge-requests/" + prNum + "/head:refs/heads/pr" + prNum,
+			"fetched merge-requests/" + prNum + "/head -> pr" + prNum
+	}
+	return "refs/pull/" + prNum + "/head:refs/heads/pr" + prNum,
+		"fetched pull/" + prNum + "/head -> pr" + prNum
+}
+
 // transportDestinations returns every URL `git fetch origin` (push=false) or `git push origin`
 // (push=true) uses for origin, AS GIT ITSELF RESOLVES THEM: `git remote get-url [--push] --all
 // origin` applies pushurl, multi-valued url, insteadOf and pushInsteadOf from every config scope
@@ -354,7 +368,8 @@ func (a *auditCtx) finalize(err error) {
 // caller flag and no arbitrary refspec can reach the transport:
 //
 //	(bare)        [--prune]  +refs/heads/*:refs/remotes/origin/*
-//	--pr <N>      refs/pull/<N>/head:refs/heads/pr<N>      (N digits-only)
+//	--pr <N>      refs/pull/<N>/head:refs/heads/pr<N>      (N digits-only; GitHub)
+//	              refs/merge-requests/<N>/head:refs/heads/pr<N>  (GitLab; see prRefspec)
 //	--branch <B>  refs/heads/<B>:refs/heads/<B>           (B ref-ish; not main/master in ANY case)
 //
 // BOTH ref-writing modes additionally refuse a destination that differs only by CASE from
@@ -417,8 +432,8 @@ func cmdFetch(args []string) (err error) {
 		if !prNumRe.MatchString(*prNum) {
 			return deskkit.Refused("refused: --pr must be digits only, got " + *prNum)
 		}
-		refSpecs = []string{"refs/pull/" + *prNum + "/head:refs/heads/pr" + *prNum}
-		detail = "fetched pull/" + *prNum + "/head -> pr" + *prNum
+		// The source ref depends on the forge, resolved from the gated origin below, where
+		// prRefspec builds it.
 	}
 	if *branch != "" {
 		modes++
@@ -528,8 +543,17 @@ func cmdFetch(args []string) (err error) {
 	// Go value. The token is never written to a file, an environment variable, a URL, an
 	// argv or the audit line. fetch is not an outward WRITE (it takes no rate limit), so --as
 	// only adds the credential.
+	//
+	// The forge is resolved ONCE, here, from the origin the gate decided on, and that one answer
+	// picks both the --pr source ref and the --as credential arm (#5448).
+	gitlab := servedByGitLab(repo, originURL)
+	if *prNum != "" {
+		spec, d := prRefspec(*prNum, gitlab)
+		refSpecs = []string{spec}
+		detail = d
+	}
 	var auth transport.AuthMethod
-	if *asRole != "" && servedByGitLab(repo, originURL) {
+	if *asRole != "" && gitlab {
 		// GitLab arm (#5028): the forge map says GitLab, so the credential is the role's
 		// provisioned GitLab custody token, read through deskkit.ResolveRoleCredential by
 		// CheckoutGitRead. That binding also refuses, before any token is read, an origin that is
