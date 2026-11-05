@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^Test(FlipShaFormAgree|TransitionMixedForms|TransitionWitnessTree|EvidenceOnlyTreeClean|EvidenceOnlyNeedsEvidence|EvidenceConflictDirty|TransitionThenBracket|VerifyrunRowsTransitionSplitRunsDoNotClose|VerifyrunRowsMixedAssembly|MixedTransitionProductionFlow)$' -count=1 -timeout 300s",
+  "test": "go test . -run '^Test(FlipShaFormAgree|TransitionMixedForms|TransitionWitnessTree|EvidenceOnlyTreeClean|EvidenceOnlyNeedsEvidence|EvidenceConflictDirty|TransitionThenBracket|VerifyrunRowsTransitionSplitRunsDoNotClose|VerifyrunRowsMixedAssembly|MixedTransitionProductionFlow|FlipSourceTagOneRunner|FlipSourceTagNearMiss|VflipSourceTagMixed)$' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — the pre-#4299 sha check (every row must name the first row's sha exactly)",
     "file": "verifyflip.go",
@@ -34,14 +34,14 @@
     {
       "name": "the qualifier tail after the sha is no longer compared (+dirty, on-behalf-of, source)",
       "file": "verifyflip.go",
-      "old": "\t\tif m[3] != m0[3] || !flipSHAAgree(m[2], sha) {",
+      "old": "\t\tif flipRunnerTail(m[3]) != flipRunnerTail(m0[3]) || !flipSHAAgree(m[2], sha) {",
       "new": "\t\tif !flipSHAAgree(m[2], sha) {"
     },
     {
       "name": "the exact-case sha comparison dropped (an upper-cased prefix agrees)",
       "file": "verifyflip.go",
-      "old": "\t\tif m[3] != m0[3] || !flipSHAAgree(m[2], sha) {",
-      "new": "\t\tif m[3] != m0[3] {"
+      "old": "\t\tif flipRunnerTail(m[3]) != flipRunnerTail(m0[3]) || !flipSHAAgree(m[2], sha) {",
+      "new": "\t\tif flipRunnerTail(m[3]) != flipRunnerTail(m0[3]) {"
     },
     {
       "name": "the run's sha is the first row's, not its longest form",
@@ -52,7 +52,7 @@
     {
       "name": "the stamp keeps the first row's sha form",
       "file": "verifyflip.go",
-      "old": "\tp.Stamp, p.StampErr = flipStamp(date, []string{m0[0], m0[1], sha, m0[3]})",
+      "old": "\tp.Stamp, p.StampErr = flipStamp(date, []string{m0[0], m0[1], sha, tail})",
       "new": "\tp.Stamp, p.StampErr = flipStamp(date, m0)"
     },
     {
@@ -126,6 +126,48 @@
       "file": "containerbracket.go",
       "old": "\tr.RunnerTree = briefTreeSHA(home, brief)",
       "new": "\tr.RunnerTree = treeSHA(home)"
+    },
+    {
+      "name": "#5530 reverted: the whole qualifier tail is compared again (a source-tag-only difference refuses)",
+      "file": "verifyflip.go",
+      "old": "\t\tif flipRunnerTail(m[3]) != flipRunnerTail(m0[3]) || !flipSHAAgree(m[2], sha) {",
+      "new": "\t\tif m[3] != m0[3] || !flipSHAAgree(m[2], sha) {"
+    },
+    {
+      "name": "every clean qualifier is dropped, not only the closed set of source tags (a different principal or an unknown tag agrees)",
+      "file": "verifyflip.go",
+      "old": "\t\tif !flipSourceTags[q[1]] {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "the source tag is matched case-insensitively",
+      "file": "verifyflip.go",
+      "old": "\t\tif !flipSourceTags[q[1]] {",
+      "new": "\t\tif !flipSourceTags[strings.ToLower(q[1])] {"
+    },
+    {
+      "name": "the source tag is matched after trimming its padding",
+      "file": "verifyflip.go",
+      "old": "\t\tif !flipSourceTags[q[1]] {",
+      "new": "\t\tif !flipSourceTags[strings.TrimSpace(q[1])] {"
+    },
+    {
+      "name": "the ci-env source joins the closed set",
+      "file": "verifyflip.go",
+      "old": "\trunnerSourceGitConfig: true,\n",
+      "new": "\trunnerSourceGitConfig: true,\n\trunnerSourceCIEnv:     true,\n"
+    },
+    {
+      "name": "text after the qualifier list is dropped (+dirty agrees)",
+      "file": "verifyflip.go",
+      "old": "\t\t\treturn kept + tail\n",
+      "new": "\t\t\treturn kept\n"
+    },
+    {
+      "name": "the stamp keeps the first row's source tag when the rows' tags differ",
+      "file": "verifyflip.go",
+      "old": "\t\tif m[3] != tail {",
+      "new": "\t\tif false {"
     }
   ]
 }
