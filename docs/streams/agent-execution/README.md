@@ -186,5 +186,5 @@ graph-execution/20 -> 10 Pi baseline -> 11 World-host evaluation (wave 2)
 The final arrow is advisory, not a new hard dependency of core runtime work. Local World
 feasibility, incremental simplification and managed portability have separate verdicts.
 Postgres/hosted behavior is source-classified only; a local result grants no runtime-store,
-Kubernetes, Sandbox or profile adoption. The stream remains parked and existing approval,
-verification and activation owners are unchanged.
+Kubernetes, Sandbox or profile adoption. Stream admission under amendment 27 activates no
+runtime or profile, and existing approval, verification and activation owners are unchanged.
