@@ -175,6 +175,14 @@ var lintRuleRegistry = []LintRule{
 	{rulePatternJoinNotCheck, "a pattern's `join` names a node whose kind is not `check` — the pattern has no independent integration check", StatusFatal},
 	{rulePatternRiskInputMissing, "a pattern's `risk-input` omits one of the four risk-class verdicts (low/standard/elevated/human) — an instance of that risk class has no declared mandatory gates", StatusFatal},
 	{rulePatternEffectTargetUnowned, "a non-effect-kind pattern node declares an effect whose target is not among its own outputs — a node claiming a consequence outside its own declared output boundary", StatusFatal},
+	{rulePatternSignalInput, "a signal pattern whose signal input is malformed or off an entry node, whose input classes differ from the declared signal classes, that has a node unreachable from the signal input, or whose class names a missing exit or an incomplete gate-red record — a class could escape the rules that range over the input", StatusFatal},
+	{rulePatternReplayMandatory, "a signal pattern with no node producing the reserved `replay-fixture` artifact, or a producer that owes it under no mandatory command claim — a fix could land with no reproduction of the failure", StatusFatal},
+	{rulePatternAdmissionOpen, "a signal class admitting a trigger outside schedule/push, push from a ref other than refs/heads/main, or no admission at all while any node in the pattern declares effects — a run of unchecked provenance could reach an automated effect", StatusFatal},
+	{rulePatternRemedySetOpen, "a signal class listing a remedy outside the closed remedy set, a mechanical exit with no remedy or not kind effect, or no `.github/` refused-path while any node declares effects — an automated fix could touch gate configuration", StatusFatal},
+	{rulePatternJudgementDefault, "a signal class whose judgement exit is not a human decision with options and a default among them — the person closing the decision gets no recommended next step", StatusFatal},
+	{rulePatternCulpritRecord, "a culprit record whose fields are not the fixed six, or whose default or withheld class is not judgement, or whose withheld file is not null — a withheld or unresolved culprit could route to the mechanical exit", StatusFatal},
+	{rulePatternDecisionOptions, "`options`, `default` or `containment` on a node that is not a decision, a default outside the node's options, or a duplicate option — a non-decision node would carry a person's choice", StatusFatal},
+	{rulePatternContainmentSet, "a containment list that is not exactly the five containment values, on a node that is not an effect-free human decision, with a pre-selected default, or a signal pattern without exactly one containment node — containment could become an automated act", StatusFatal},
 
 	// Runtime resource record lint (sdlc/24, runtimeresource.go,
 	// docs/runtime-adapters.md). Enforced by the separate `statusgen

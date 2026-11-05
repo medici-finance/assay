@@ -1,0 +1,29 @@
+{
+  "test": "go test ./cmd/deskpathguard/... -count=1",
+  "control": {
+    "name": "CONTROL — a failed label write no longer exits non-zero (the state line alone claims the label landed)",
+    "file": "cmd/deskpathguard/check.go",
+    "old": "\tif _, werr := fg.ApplyLabels(fr, req.number, change); werr != nil {",
+    "new": "\tif _, werr := fg.ApplyLabels(fr, req.number, change); false && werr != nil {"
+  },
+  "mutations": [
+    {
+      "name": "--kind mr reads the ISSUE at the same number (the flag evaluates the wrong object)",
+      "file": "cmd/deskpathguard/check.go",
+      "old": "\treturn fg.GetIssueTyped(fr, req.number, req.kind)",
+      "new": "\treturn fg.GetIssueTyped(fr, req.number, deskkit.TargetIssue)"
+    },
+    {
+      "name": "--kind is ignored and the untyped read runs (a colliding number still refuses with the flag)",
+      "file": "cmd/deskpathguard/check.go",
+      "old": "\tif req.kind == \"\" {",
+      "new": "\tif true || req.kind == \"\" {"
+    },
+    {
+      "name": "--kind issue is no longer refused (an issue's author and labels are judged against the change's diff)",
+      "file": "cmd/deskpathguard/check.go",
+      "old": "\t\tif kind == deskkit.TargetIssue {",
+      "new": "\t\tif false && kind == deskkit.TargetIssue {"
+    }
+  ]
+}

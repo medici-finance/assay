@@ -19,6 +19,8 @@ MUTATIONS = [
     ('generated-opt-in', "frontmatter[1].splitlines().count('board: generated') != 1", 'False', 'test_missing_or_non_generated_markers'),
     ('recognized-state', 'cells[5].strip() not in STATES', 'False', 'test_readme_content_boundary'),
     ('nonempty-diff', "changes == [b'']", 'False', 'test_empty_diff_and_absolute_guard'),
+    ('withdrawn-recognized', "'blocked', 'withdrawn'}", "'blocked'}", 'test_unchanged_withdrawn_rows_do_not_block_live_reconciliation'),
+    ('withdrawn-bytes-kept', "if cells[5].strip() != 'withdrawn':", 'if True:', 'test_withdrawal_and_revival_keep_the_normal_requirement'),
     ('merge-base', "ancestor = bases[0].decode('ascii')", 'ancestor = base_sha', 'test_merge_base_diff_and_repeat'),
 ]
 

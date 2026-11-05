@@ -1,0 +1,5 @@
+# A baked config path ties the image to one host layout.
+want: baked-config-path
+file: Dockerfile
+replace: "ENTRYPOINT [\"/deskd\"]"
+with: "ENTRYPOINT [\"/deskd\", \"-config\", \"/etc/deskd/cells.yaml\"]"

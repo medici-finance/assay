@@ -88,6 +88,11 @@ var corpusOperationalStreams = map[string]string{
 	// a gate: human brief's recorded ruling must link a record there, which statusgen then
 	// corroborates — so its root is the operational contract, like the registers above.
 	"decisions": "deskdispatch reads a recorded ruling's decision record there at runtime; statusgen reads it live",
+	// statusgen (#4541): exempted by the driver's ratified ruling (option B, "add statusgen"),
+	// https://github.com/medici-finance/assay/issues/4541#issuecomment-6503215739
+	// so tools/desk tests may name statusgen/NN owning-brief ids (TestCLIPerfWorkloadRoute).
+	// This one stream only; the matcher, walker and every other exemption are unchanged.
+	"statusgen": "ruled exemption (#4541): statusgen/NN brief ids are allowed under tools/desk",
 }
 
 // corpusCopySetExempt is the set of tools/desk files this guard does NOT scan

@@ -21,14 +21,14 @@ package deskkit
 // line, or an audit record — only the path is.
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/credential"
 )
 
 // loopTokenRoles maps a desk LOOP name (what a session presents in $DESK_LOOP, and what a
@@ -129,19 +129,13 @@ func SessionTokenRole(verb string) (role, loop string, err error) {
 	return role, loop, nil
 }
 
-// tokenMinter is the seam the token lookup runs through. Production shells out to the
-// minter binary; a test replaces it so no real App credential is needed. It returns the
-// PATH of the cached token file — the minter prints a path and never the token value, and
-// this side keeps that property.
+// tokenMinter is the seam the token lookup runs through. Production runs the credential
+// provider IN PROCESS (providerMint, credentialprovider.go) — no child process, no PATH
+// lookup, so a host with no `desktoken` binary on PATH mints exactly as one with it; a test
+// replaces it so no real App credential is needed. It returns the PATH of the cached token
+// file — the provider hands back a path and the caller reads it, never a token in an error.
 var tokenMinter = func(role, owner string) (path string, stderr string, err error) {
-	cmd := exec.Command("desktoken", role, "--repo", owner)
-	// Its stderr is captured, echo skipped (minterErrorDetail): no unseen digest is recorded.
-	cmd.Env = UnsurfacedEchoEnv(os.Environ())
-	var out, errb bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errb
-	err = RunProcess(cmd)
-	return strings.TrimSpace(out.String()), strings.TrimSpace(errb.String()), err
+	return providerMint(role, owner)
 }
 
 // SetRoleTokenMinter installs fn as the process's token minter and returns a function that
@@ -152,8 +146,8 @@ var tokenMinter = func(role, owner string) (path string, stderr string, err erro
 // outside without a way to supply a minter that does not.
 //
 // It grants no capability that is not already granted: SetGitHubCustodyMinter replaces the
-// whole custody step, of which this is one part. Production installs nothing and gets
-// exec.Command("desktoken", ...).
+// whole custody step, of which this is one part. Production installs nothing and gets the
+// in-process provider.
 func SetRoleTokenMinter(fn func(role, owner string) (path, stderr string, err error)) (restore func()) {
 	prev := tokenMinter
 	if fn != nil {
@@ -170,7 +164,9 @@ func SetRoleTokenMinter(fn func(role, owner string) (path, stderr string, err er
 // anything (the resolver seam in forgeresolve.go reads custody at call time by design).
 // Measured on one operating desk host: 140 desktoken invocations per `deskboard actions
 // --delta` tick over 10 repositories, 99.7% of which reported "reused cached" (#1036).
-// The memo makes one verb invocation fork at most once per account.
+// The memo makes one verb invocation mint at most once per account. (The lookup no longer
+// forks at all — it runs the credential provider in process — but each mint is still a
+// guard check, a cache probe and possibly a network round trip, so the memo stays.)
 //
 // WHAT IT IS NOT. It is not an on-disk cache: nothing here is written to a file, nothing is
 // shared between processes, and a new invocation starts empty. The on-disk reuse window
@@ -179,11 +175,11 @@ func SetRoleTokenMinter(fn func(role, owner string) (path, stderr string, err er
 
 // roleTokenMemoMaxAge bounds how long ONE PROCESS may reuse a token it already obtained.
 //
-// 45 minutes is DERIVED, not chosen. desktoken reuses its own on-disk cache for 50 minutes
-// (cmd/desktoken's cacheMaxAge), and GitHub's installation tokens live about 60. A memo
+// 45 minutes is DERIVED, not chosen. The provider reuses its on-disk cache for 50 minutes
+// (credential.ReuseWindow), and GitHub's installation tokens live about 60. A memo
 // that outlived the minter's own reuse window would hand back a token the minter would
 // have replaced — the one way a memo could make a verb FAIL where it previously succeeded.
-// This constant must stay strictly under cmd/desktoken's cacheMaxAge; each names the other
+// This constant must stay strictly under credential.ReuseWindow; each names the other
 // so the two cannot drift apart silently.
 const roleTokenMemoMaxAge = 45 * time.Minute
 
@@ -199,7 +195,15 @@ type roleTokenMemoEntry struct {
 	token string
 	path  string
 	at    time.Time
+	// expires is the token's own expiry as the provider reports it for the cache file (the
+	// recorded mint expiry, or the conservative mtime + reuse-window bound for a legacy
+	// cache). Zero means unknown, and only the age bound applies.
+	expires time.Time
 }
+
+// roleTokenExpirySkew is how far ahead of a token's reported expiry the memo stops handing
+// it out, so a verb never starts a forge call with a token about to die mid-request.
+const roleTokenExpirySkew = 5 * time.Minute
 
 // roleTokenNow is the clock the age guard reads. A package var so a test can age an entry
 // without sleeping for 45 minutes.
@@ -241,7 +245,8 @@ func lookupRoleTokenMemo(k roleOwnerKey) (roleTokenMemoEntry, bool) {
 	if !ok {
 		return roleTokenMemoEntry{}, false
 	}
-	if roleTokenNow().Sub(e.at) >= roleTokenMemoMaxAge {
+	now := roleTokenNow()
+	if now.Sub(e.at) >= roleTokenMemoMaxAge || (!e.expires.IsZero() && !now.Before(e.expires.Add(-roleTokenExpirySkew))) {
 		delete(roleTokenMemo, k)
 		return roleTokenMemoEntry{}, false
 	}
@@ -256,9 +261,9 @@ func storeRoleTokenMemo(k roleOwnerKey, e roleTokenMemoEntry) {
 	roleTokenMemo[k] = e
 }
 
-// mintRoleToken runs the minter and counts the fork. The lock is NOT held across the call:
-// minting shells out to another process, and holding a package mutex across it would
-// serialise every concurrent forge read in the verb behind the slowest mint.
+// mintRoleToken runs the minter and counts the mint. The lock is NOT held across the call:
+// a mint is a network round trip, and holding a package mutex across it would serialise
+// every concurrent forge read in the verb behind the slowest mint.
 func mintRoleToken(role, owner string) (path, stderr string, err error) {
 	roleTokenMu.Lock()
 	roleTokenMints++
@@ -285,9 +290,10 @@ func OwnerOf(repo string) string {
 // repository", which reads like a missing repo rather than a wrong identity. So the owner
 // is the unit, and the memo below is keyed on it (with the role) rather than on either half.
 //
-// MEMOISED PER PROCESS. The first lookup for a (role, owner) pair forks the minter; every
-// later one in the same process returns the same token and path without a fork, for up to
-// roleTokenMemoMaxAge. A FAILURE is never memoised — a transient mint failure must not pin
+// MEMOISED PER PROCESS. The first lookup for a (role, owner) pair runs the minter; every
+// later one in the same process returns the same token and path without a mint, for up to
+// roleTokenMemoMaxAge and never past the token's own reported expiry less
+// roleTokenExpirySkew. A FAILURE is never memoised — a transient mint failure must not pin
 // a refusal for the life of a long-running verb — so every refusal below is reached by
 // running the minter, exactly as it was before the memo existed.
 func RoleTokenForOwner(role, owner string) (token, path string, err error) {
@@ -329,7 +335,11 @@ func RoleTokenForOwner(role, owner string) (token, path string, err error) {
 		return "", path, Unverifiable(fmt.Sprintf(
 			"the %s App installation token at %s is empty", role, path), nil)
 	}
-	storeRoleTokenMemo(key, roleTokenMemoEntry{token: token, path: path, at: roleTokenNow()})
+	entry := roleTokenMemoEntry{token: token, path: path, at: roleTokenNow()}
+	if exp, _, eerr := credential.CacheExpiry(path); eerr == nil {
+		entry.expires = exp
+	}
+	storeRoleTokenMemo(key, entry)
 	return token, path, nil
 }
 

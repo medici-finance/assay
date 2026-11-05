@@ -51,7 +51,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // CheckState is one check's three-state answer.
@@ -2545,6 +2545,13 @@ func revisionProbe(dir string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// instrumentProbe resolves a pinned instrument on PATH and returns the path and
+// digest of the binary that runs. A cellctl shim first on PATH is a wrapper
+// script, so its own bytes never match a pin: the probe hashes the one binary
+// the shim execs instead, and names that binary. Only a shim that is
+// byte-for-byte the generated one is followed (ShimExecTarget); any other marked
+// script, or a target that is missing, not a regular file or itself a shim, is
+// an error (could-not-check), never the shim's own digest and never a pass.
 func instrumentProbe(name string) (string, string, error) {
 	path, err := exec.LookPath(name)
 	if err != nil {
@@ -2554,7 +2561,28 @@ func instrumentProbe(name string) (string, string, error) {
 	if err != nil {
 		return path, "", err
 	}
-	return path, verifierDigest(b), nil
+	target, shim, err := ShimExecTarget(b)
+	if !shim {
+		return path, verifierDigest(b), nil
+	}
+	if err != nil {
+		return path, "", fmt.Errorf("%s is a cellctl shim whose binary cannot be resolved: %w", path, err)
+	}
+	st, err := os.Stat(target)
+	if err != nil {
+		return path, "", fmt.Errorf("%s is a cellctl shim for %s: %w", path, target, err)
+	}
+	if !st.Mode().IsRegular() {
+		return path, "", fmt.Errorf("%s is a cellctl shim for %s, which is not a regular file", path, target)
+	}
+	tb, err := os.ReadFile(target)
+	if err != nil {
+		return path, "", fmt.Errorf("%s is a cellctl shim for %s: %w", path, target, err)
+	}
+	if _, nested, _ := ShimExecTarget(tb); nested {
+		return path, "", fmt.Errorf("%s is a cellctl shim for %s, which is itself a shim", path, target)
+	}
+	return target, verifierDigest(tb), nil
 }
 
 func short(rev string) string {

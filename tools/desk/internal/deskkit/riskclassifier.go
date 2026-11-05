@@ -168,6 +168,9 @@ func riskClassify(c RiskClassifier, repo string, changedFiles []string) (bool, s
 		if RepoVisibility(repo) == VisibilityPublic {
 			return true, "PUBLIC repo — every PR on a public repo is risk-classed"
 		}
+		if RepoVisibility(repo) == VisibilityInternal {
+			return true, "INTERNAL repo — visible instance-wide, so risk-classed exactly like a public repo"
+		}
 		return true, "repo visibility is not stated in the compiled-in policy — fail closed"
 	}
 	// (3) No changed files → we learned nothing about the diff. Fail closed.

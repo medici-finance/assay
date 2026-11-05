@@ -1,8 +1,9 @@
 {
-  "test": "go test ./internal/gitcore -run '^TestCachedAncestryDecodesSharedHistoryOnce$' -count=1 -v -timeout 30s",
+  "build": "(cd ../../gitcore && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .)",
+  "test": "go test github.com/medici-finance/assay/gitcore -run '^TestCachedAncestryDecodesSharedHistoryOnce$' -count=1 -v -timeout 30s",
   "control": {
     "name": "discard shared decoded history between queries",
-    "file": "internal/gitcore/contains.go",
+    "file": "../../gitcore/contains.go",
     "old": "refs, err := ri.refsContaining(a, map[string]plumbing.Hash{\"tip\": d})",
     "new": "ri.nodes = map[plumbing.Hash]*reachNode{}\n\trefs, err := ri.refsContaining(a, map[string]plumbing.Hash{\"tip\": d})"
   },

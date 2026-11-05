@@ -81,7 +81,7 @@ Two disciplines the engine enforces rather than requests:
 
 - **A failed dispatch does not abort the drain.** It is landed as `VerdictError` and its claim
   released, so one bad item cannot freeze the pool. See `TestDispatchFailureLandsAndContinues`.
-- **Claiming is the single dedupe chokepoint.** A claim held elsewhere is a skip, never a
+- **Claiming is the dispatch dedupe chokepoint.** A claim held elsewhere is a skip, never a
   second dispatch. See `TestClaimCollisionSkipsItem`.
 
 ## Optional layers (opt-in, deskkit-free)
@@ -94,9 +94,66 @@ a house wires its own implementation behind the interface.
 |-------|-------|--------------|
 | `WorkEvidence` | `Config.Evidence` | probe before claim — if the work is already done elsewhere, land it without dispatch; a could-not-check probe SKIPS rather than duplicates |
 | author-not-runner guard | `Config.RunnerID` + `CheckAuthorRunner` | an item whose `Implementer` equals the runner is routed to `Land` as held, never dispatched to its own author |
-| `Journal` | `Config.Journal` | a structured `Event` per scheduling decision — attribution derived from the run, for replay |
+| `Journal` | `Config.Journal` | scheduling events remain best-effort; declared effects require durable `EFFECT-INTENT` before Apply |
+| Effects / handoff | `Config.Effects`, `Config.RequireHandoff` | authoritative receipt reconciliation and mandatory intent; optional atomic claim-generation/outbox handoff |
 | `RetryPolicy` | [`retry.go`](./retry.go) | the three-state retry taxonomy (transient / deterministic / **could-not-classify → route to a human**), with bounded attempts and backoff; a facility your `Land`/re-selection consults, kept off the six-method contract on purpose |
 | `Timeouts` | [`journal.go`](./journal.go) | the schedule-to-start / start-to-close / heartbeat liveness taxonomy; the type lives here, enforcement (which reads live infra) is yours |
+
+### Effect layer
+
+`Effects(Item)` declares **every** external operation, including effects attached to
+an artifact/check/decision node. Discovery is side-effect-free; a discovery error
+SKIPs that item. Zero declarations use the ordinary `Loop.Dispatch` path. For a
+nonempty declaration the engine owns `Effect.Apply` and returns a structured result
+to `Land`; the adapter must not repeat those operations in `Loop.Dispatch`.
+The six-method Loop interface is unchanged.
+
+Queues supply a stable `RunID` and a fresh `AttemptID` for each selected attempt;
+retries retain the run. `Effect.Key()` binds run, operation, target and subject,
+excluding attempt and claim generation. `OperationKey` is the versioned helper for
+those coordinates. Keys must be nonempty and unique within an item; successful
+receipts must echo the key and carry the authoritative record's reference.
+
+The order is **reconcile → intent → apply → done**. Every delivery, including
+`Retry == 0`, looks up its authoritative receipt first. This covers lost journal
+history and duplicate queue entries without relying on a process-local cache.
+A found receipt emits `RECONCILE` and `EFFECT-DONE` without Apply. An unreadable,
+unsupported or invalid receipt holds as `reconcile could-not-check`. A provider's
+`found=false, err=nil` promises definitive absence and that application is safe
+under its provider-specific dedupe/fencing boundary. An adapter unable to establish
+that promise returns an error. Lookup followed by Apply is not an atomic provider
+transaction: concurrent executors still need provider dedupe/fencing.
+
+For a declared effect, a missing Journal refuses before any item in the selected
+pass is claimed/dispatched. `EFFECT-INTENT` records RunID, AttemptID and Key durably
+before Apply; recording failure lands `VerdictError` with journal evidence and no
+external write. All other event kinds stay best-effort, including `EFFECT-DONE`:
+a dropped completion is recovered by the next authoritative lookup. An unknown
+Apply result holds; `EffectFailure` distinguishes a provider-proven failure with
+no external change. Success lands pass. Neither an unknown outcome nor an
+unavailable journal licenses automatic replay.
+
+A Journal implementing `TransactionalJournal` supplies `Generation`, `Pending`
+and `CommitIntent`. After the item is claimed, CommitIntent atomically checks
+current ownership and commits its admitted claim generation with `EFFECT-INTENT`.
+It must not overwrite an older pending generation. Resume reads the store's
+pending entries and reconciles first. A superseded pending generation with an
+absent receipt holds; a found authoritative receipt can complete that older entry.
+Malformed/foreign or unreadable pending state holds. Commit failure never applies.
+`Record(EFFECT-DONE)` completes only its matching key/generation, and a lost write
+leaves that intent pending. This is a store-neutral seam for the PostgreSQL outbox
+consumer; drainloop adds no database driver and no per-effect Git append.
+
+`RequireHandoff` refuses Run **before queue selection** unless the journal
+implements that seam; it never falls back to another store or an ordinary journal.
+The interface is a contract, not a proof of a real store's atomicity. `handoff_test.go`
+uses an in-memory transactional fake; database durability remains its consumer's
+qualification. `Config.Context` carries caller cancellation/deadlines to the effect
+and handoff adapters (nil uses Background).
+
+Recovery mutations are reproducible with `python3 testdata/effect_mutations.py`
+from this module. Each mutant must fail a named runtime assertion and the harness
+restores the source even on failure; it rejects compile-only failures.
 
 ## Files
 
@@ -108,6 +165,8 @@ a house wires its own implementation behind the interface.
 | [`adapters.go`](./adapters.go) | `MemoryQueue` + an echoing dispatcher — the stand-in adapters |
 | [`evidence.go`](./evidence.go) | `WorkEvidence`, `CheckAuthorRunner` — the pre-dispatch gates |
 | [`retry.go`](./retry.go) | `RetryPolicy` and the three-state `Class` taxonomy |
+| [`effect.go`](./effect.go) | `Effect`, `Receipt`, stable operation coordinates and mandatory reconciliation |
+| [`handoff.go`](./handoff.go) | transactional intent/claim-generation outbox contract |
 | [`journal.go`](./journal.go) | `Journal`/`Event` sink and the `Timeouts` liveness taxonomy |
 | [`cmd/demo`](./cmd/demo) | a runnable demonstration |
 | `*_test.go` | the negative tests: claim collision, dispatch failure, held item, could-not-check tier, the opt-in layers, and the deskkit-free assertion |
@@ -146,3 +205,102 @@ drainloop is homed inside `medici-finance/assay` and released under that repo's 
 binary release, so a consumer pins the umbrella version (never a `drainloop/vX`). If independent
 versioning or heavy external adoption ever appears, the promotion trigger is to move it to its
 own repository with its own release tags — a later call recorded in the convergence plan.
+
+## GE/16 preparation: passive records only
+
+The ownership, budget and operator-incarnation records in `ownership.go`,
+`budget.go` and `incarnation.go` prepare the
+[incarnation](../spec/operator-incarnation-v1.md) and
+[checkpoint](../spec/cell-checkpoint-v1.md) contracts. They are not connected to
+Config, Run, the effect path or an ownership store. MatchCellFence compares
+records; its success is not authority, signature verification, current durable
+ownership or a provider fence. No IncarnationSource adapter is installed.
+CheckControlGrant and CheckNotRestored record the two ruled custody restrictions:
+an executor never reads signing material on the control volume it mounts, and
+restored control state never counts as current. They compare records and install
+no access rule. DecodeCellCheckpoint is the checkpoint reader: it refuses absent fields, unknown
+fields and an unsupported schema, so an absent hold flag never decodes as not held.
+
+The named schema tests and selected mutations in `testdata/effect_mutations.py`
+use synthetic state and a fake boundary. They do not complete GE/16 or qualify
+durable reservation/concurrency, real restart/rollback, credential cutover,
+Kubernetes containment or brake/pacing enforcement. All existing GE/16 Task and
+Verify obligations remain pending for implementation and independent verification.
+
+The checkpoint decoder also refuses null at every nonnullable position, repeated
+keys and case-variant keys. These shapes cannot clear a persisted hold or zero
+a reservation. Explicit null nullable counts remain unknown.
+
+
+## Store-neutral Cell admission (GE/16)
+
+`CellAuthority` joins existing ownership to cumulative budgets and effect intents.
+`CellStore.Transaction` owns an isolated-copy, expected-version durable commit;
+reservations and intent publish together or neither does. A missing/unqualified
+store refuses instead of substituting an in-memory or embedded backend. The
+`RequiredDurability` method is an adapter obligation, not proof of durability.
+GE/19 owns the actual PostgreSQL implementation and rollback qualification.
+
+Use `CellJournal` as the existing `Config.Journal` with `RequireHandoff`. Its
+trusted request mapper binds the original work, attempt/request, stable operation,
+quota reservations, runner boundary and pacing scope to `CellAdmissionDigest`.
+The capability checker must authenticate and authorize that exact digest, caller,
+expiry and required policy balances; a string reference or hash grants nothing.
+A launch-only runner needs a qualified request upper bound. Ordinary scheduling
+attribution remains best effort; this journal deliberately supplies no audit sink
+for those events. Effects still reconcile authoritative receipts before applying.
+
+The provider calls `CheckEffect` **inside its own atomic apply/dedupe boundary**,
+independently of scheduling. It re-reads protected current incarnation, current
+ownership, authenticated capability, intent and held reservations. Calling a
+check and then making an unrestricted write is not a fence. Providers lacking
+independent fencing/dedupe or proven invalidation of old credentials stay held;
+there is no exactly-once guarantee or installed production effect adapter.
+
+`Settle` resolves typed trust-gated authoritative usage through `CellUsageAuthority`.
+Unknown charges retain the entire reservation; reported zero remains zero.
+Failed/preparation/summary/fallback/verification usage stays charged to original
+work, with separate provider/account/unit/window balances. Reconciliation retains
+prior unknown observations, names their exact source predecessor and records each
+settlement idempotently. No pricing conversion, secret or raw provider payload is
+accepted by the library. `Transfer` durably pauses before operator rotation and
+holds on pending effects, unknown reservations, missing group-stop/credential
+cutover, unrotated identity/key or mismatched protected current state. Stop,
+cancellation, overrides, usage and balances survive transfer; no reset is implicit.
+
+Effect pacing re-derives from the shared retained seed and intents/receipts on
+every admission; cached rows may never supply allowance and need no update.
+The reset epoch is independently read from protected state outside the runtime
+store; absent/second reset or incomplete history is exhausted/unavailable.
+There is no separate pacing-slot reservation, lock spanning provider work or
+second count service. The existing safety transaction remains responsible for
+brakes and intent. Read-class adapters retain their shared count; no numeric read
+bound is claimed. No live cap, headroom, rate, reset or policy is selected here.
+
+The tests use a **test-only** filesystem transaction fixture (sync file, rename,
+sync directory) and fake independently invoked provider. Multiple actual child
+processes share its state and a distinct reset anchor across restarts/cache loss.
+This qualifies that fixture on the local test filesystem, not a shipped backend,
+PostgreSQL, signatures, Kubernetes custody or live credential revocation. The
+library installs no adapters and activates no consumer. All human activation and
+independent verification gates remain. Existing preparation documentation above
+records the earlier snapshot; this section describes the added opt-in seam.
+
+
+The Cell/group ownership generation and each work-item claim generation remain
+distinct. `CellState.Claims` is the existing claim authority's current per-item
+record, not a second lease: `CellJournal.Generation(item)` reads that claim, and
+both admission and the independent effect check require its exact original work,
+attempt, Cell owner and claim generation. A current Cell tuple cannot revive a
+released or transferred item claim; reevaluation identity remains separate.
+
+
+Crash-before-apply/proven-failure recovery uses `ResolvePending`, never a free
+retry. A qualified resolution port independently fences the old writer and proves
+absence plus known usage. Settlement and retirement commit together; a fresh
+attempt/request may then resume in the same claim generation while failed spend
+stays on original work. Unknowns hold. Requests bind one signed phase, and window
+checks require an explicit authority clock rather than intent provenance time.
+See the [checkpoint contract](../spec/cell-checkpoint-v1.md#store-neutral-transaction-and-accounting-seam)
+for the full resolution, phase, clock and conservative pacing contract. No
+resolution adapter or runtime clock is installed.

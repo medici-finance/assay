@@ -110,7 +110,7 @@ func TestSweepReviewQueueSnapshotMatchesPerItem(t *testing.T) {
 func TestFetchReviewQueueKeepsOpenPRFailureText(t *testing.T) {
 	installFakeForge(t)
 	t.Setenv("DESKBOARD_GH_FAIL_REPO", "example-org/tracker")
-	_, _, _, err := fetchReviewQueue("example-org/tracker")
+	_, _, _, _, err := fetchReviewQueue("example-org/tracker")
 	if err == nil || !strings.Contains(err.Error(), "cannot read open PRs for example-org/tracker") {
 		t.Fatalf("fetchReviewQueue error = %v, want the open-PR read failure text", err)
 	}

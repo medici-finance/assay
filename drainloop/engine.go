@@ -1,6 +1,7 @@
 package drainloop
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
@@ -75,9 +76,17 @@ type Config struct {
 	// elsewhere, the item is landed without dispatch. nil ⇒ not performed.
 	Evidence WorkEvidence
 	// Journal, when set, receives a structured Event per scheduling decision alongside Log.
-	// nil ⇒ not performed. The public interface is deskkit-free; a house sink maps it onto an
-	// audit schema.
+	// nil ⇒ not performed for non-effect items; declared effects require a durable sink.
+	// The public interface is deskkit-free; a house sink maps it onto an audit schema.
 	Journal Journal
+	// Effects declares every external operation, regardless of node kind. The engine
+	// owns Apply for these items; Dispatch must not repeat those external operations.
+	// Discovery errors skip the item. No effects retains the ordinary Dispatch path.
+	Effects func(Item) ([]Effect, error)
+	// RequireHandoff refuses before selection unless Journal is transactional.
+	RequireHandoff bool
+	// Context is passed to effect and handoff adapters; nil uses Background.
+	Context context.Context
 	// StopWhenIdle selects batch mode: when a pass dispatches nothing and StopWhenIdle is
 	// true, the drain calls OnIdle once and returns. Default false = poll forever (a
 	// long-running desk), sleeping IdlePoll between passes.
@@ -97,7 +106,7 @@ func (c Config) log(format string, a ...any) {
 
 // record emits a structured Event to the Journal sink, if one is configured. A sink failure
 // is logged but does not abort the drain: attribution is best-effort, and a lost journal
-// entry is not a scheduling failure.
+// entry is not a scheduling failure. EFFECT-INTENT uses the mandatory effect path.
 func (c Config) record(kind, id, detail string) {
 	if c.Journal == nil {
 		return
@@ -135,6 +144,11 @@ func Run(c Config) error {
 	if c.Loop == nil || c.Claimer == nil {
 		return fmt.Errorf("drainloop: Loop and Claimer are required")
 	}
+	if c.RequireHandoff {
+		if _, ok := c.Journal.(TransactionalJournal); !ok {
+			return fmt.Errorf("drainloop: transactional handoff required")
+		}
+	}
 	name := c.Loop.Name()
 
 	for {
@@ -143,12 +157,30 @@ func Run(c Config) error {
 			return fmt.Errorf("drainloop[%s]: SelectQueue: %w", name, err)
 		}
 
+		// Resolve the complete pass before any claim or dispatch, so a missing
+		// mandatory journal cannot permit an earlier item's external write.
+		plans := make([][]Effect, len(items))
+		unreadable := make([]error, len(items))
+		if c.Effects != nil {
+			for i, it := range items {
+				plans[i], unreadable[i] = c.Effects(it)
+				if unreadable[i] == nil && len(plans[i]) > 0 && c.Journal == nil {
+					return fmt.Errorf("drainloop: Journal required for effects on %s", it.ID)
+				}
+			}
+		}
+
 		dispatched := 0
 		inFlight := 0
 
-		for _, it := range items {
+		for idx, it := range items {
 			if inFlight >= c.PoolSize {
 				break // pool is full; the rest wait for the next pass
+			}
+
+			if unreadable[idx] != nil {
+				c.record("SKIP", it.ID, "effects could-not-check: "+unreadable[idx].Error())
+				continue
 			}
 
 			// Author-not-runner structural guard (opt-in). An item must never be dispatched
@@ -219,7 +251,12 @@ func Run(c Config) error {
 			c.record("CLAIM", it.ID, "")
 			c.log("CLAIM %s", it.ID)
 
-			res := c.dispatchAndAwait(it, tier)
+			var res Result
+			if len(plans[idx]) > 0 {
+				res = c.reconcileBeforeApply(it, plans[idx])
+			} else {
+				res = c.dispatchAndAwait(it, tier)
+			}
 
 			// Land every outcome — success, clean failure, or dispatch error — then release
 			// the claim exactly once. The drain continues regardless of the verdict.

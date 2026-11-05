@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cursorbundle"
 )
 
 // regression: #2701
@@ -288,5 +290,82 @@ func TestCursorCanonicalMetadata(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(repo, ".cursor", "skills", "adopt", "SKILL.md")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// regression: #4775 — the copy-skills inventory records the plugin release it
+// was placed from, so a later session (or upgrade-assay) can tell which release
+// a Cursor install holds; a release bump in the bundle is ownership drift until
+// the install is refreshed; a malformed version refuses instead of recording.
+func TestCursorInventoryRecordsVersion(t *testing.T) {
+	bundle := cursorFixtureBundle(t, []string{"adopt"}, nil, nil, false, false)
+	manifest := filepath.Join(bundle, ".claude-plugin", "plugin.json")
+	mustWrite(t, manifest, `{"version":"1.2.3"}`)
+	repo := t.TempDir()
+	opts := HarnessOptions{BundleDir: bundle, RepoRoot: repo, Forge: "github"}
+	if err := HarnessCursorPlace(opts, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := cursorbundle.InstalledVersion(repo); err != nil || got != "1.2.3" {
+		t.Fatalf("installed version = %q, %v; want 1.2.3", got, err)
+	}
+	raw, err := os.ReadFile(filepath.Join(repo, ".cursor", "assay-managed.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"version": "1.2.3"`) {
+		t.Fatalf("inventory does not carry the version:\n%s", raw)
+	}
+
+	mustWrite(t, manifest, `{"version":"1.2.4"}`)
+	findings, err := HarnessCursorCheck(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(findings) != "[content-differs: .cursor/assay-managed.json]" {
+		t.Fatalf("a newer bundle release against an older install: findings %v, want the inventory named", findings)
+	}
+	if err := HarnessCursorPlace(opts, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := cursorbundle.InstalledVersion(repo); got != "1.2.4" {
+		t.Fatalf("after refresh installed version = %q, want 1.2.4", got)
+	}
+
+	mustWrite(t, manifest, `{"version":"v1.2.5"}`)
+	before := treeSnapshot(t, repo)
+	if err := HarnessCursorPlace(opts, io.Discard); err == nil {
+		t.Fatal("a non-X.Y.Z bundle version was admitted")
+	}
+	if !reflect.DeepEqual(before, treeSnapshot(t, repo)) {
+		t.Fatal("refusal changed destination")
+	}
+}
+
+// regression: #4775 — an inventory written before the version field existed
+// still reads (no version recorded), and one with a malformed version refuses.
+func TestCursorInventoryVersionCompat(t *testing.T) {
+	bundle := cursorFixtureBundle(t, []string{"adopt"}, nil, nil, false, false)
+	repo := t.TempDir()
+	opts := HarnessOptions{BundleDir: bundle, RepoRoot: repo, Forge: "github"}
+	if err := HarnessCursorPlace(opts, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(repo, ".cursor", "assay-managed.json")
+	raw, err := os.ReadFile(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"version"`) {
+		t.Fatalf("a bundle with no plugin manifest recorded a version:\n%s", raw)
+	}
+	if got, err := cursorbundle.InstalledVersion(repo); err != nil || got != "" {
+		t.Fatalf("unversioned inventory: %q, %v; want empty, nil", got, err)
+	}
+	bad := strings.Replace(string(raw), `"schema": 1,`, `"schema": 1,
+  "version": "latest",`, 1)
+	mustWrite(t, state, bad)
+	if _, err := cursorbundle.InstalledVersion(repo); err == nil {
+		t.Fatal("a malformed inventory version was admitted")
 	}
 }

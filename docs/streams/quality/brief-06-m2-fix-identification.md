@@ -31,20 +31,10 @@ id: 5bdb2b3b-1f63-46a4-9735-80e1eb0da16a
 ## Context
 
 files:
-- NEW `qualgen/fixlinkage.go` (planned) (+ `qualgen/fixlinkage_test.go` (planned)) — the pluggable fix-linkage
-  ADAPTER INTERFACE and the `DefectFix` record. The interface answers two questions per candidate:
-  is a referenced issue DEFECT-CLASSED, and does a commit/PR CLOSE that issue. It classifies each
-  candidate fix into one of three precedence-ordered evidence tiers and records the tier on the fix.
-- NEW `qualgen/adapters/githublabels.go` (planned) (+ test) — the reference fix-linkage adapter:
-  resolves `Fixes #N` / `Closes #N` linkage and reads GitHub issue LABELS to decide defect-classed
-  (bug/defect/incident-labeled). It also treats a repo's configured verdict-issue LABEL SET (a generic
-  issue-label source, configured per target) as defect-classed where present — no internal identifiers
-  are hardcoded.
-- NEW `qualgen/testdata/fixid/` (planned) — a fixture repo + a stubbed issue-label source with PLANTED
-  fixes at each tier (a defect-labeled-issue closer, a `fix/`-branch / `fix:`-title PR, a
-  keyword-only-message commit) plus a non-fix, so tiering is dereferenceable against known answers.
-- Reads the miner skeleton history access + three-state plumbing from `qualgen/` (quality/01). Emits the
-  `DefectFix` records into the `defects.jsonl` schema declared by quality/05.
+- **add** `qualgen/fixlinkage.go` (planned), `qualgen/fixlinkage_test.go` (planned) — the pluggable fix-linkage ADAPTER INTERFACE and the `DefectFix` record. The interface answers two questions per candidate: is a referenced issue DEFECT-CLASSED, and does a commit/PR CLOSE that issue. It classifies each candidate fix into one of three precedence-ordered evidence tiers and records the tier on the fix.
+- **add** `qualgen/adapters/githublabels.go` (planned), `qualgen/adapters/githublabels_test.go` (planned) — the reference fix-linkage adapter: resolves `Fixes #N` / `Closes #N` linkage and reads GitHub issue LABELS to decide defect-classed (bug/defect/incident-labeled). It also treats a repo's configured verdict-issue LABEL SET (a generic issue-label source, configured per target) as defect-classed where present — no internal identifiers are hardcoded.
+- **add** `qualgen/testdata/fixid/` (planned) — a fixture repo + a stubbed issue-label source with PLANTED fixes at each tier (a defect-labeled-issue closer, a `fix/`-branch / `fix:`-title PR, a keyword-only-message commit) plus a non-fix, so tiering is dereferenceable against known answers.
+- **reads** `qualgen/` (quality/01) — reads the miner skeleton history access + three-state plumbing from `qualgen/` (quality/01). Emits the `DefectFix` records into the `defects.jsonl` schema declared by quality/05.
 
 facts:
 - THREE EVIDENCE TIERS, precedence order (§5.1), strongest first:

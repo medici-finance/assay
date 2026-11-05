@@ -27,7 +27,7 @@ import (
 // ruled on here (and its reason written) before it can land; a listed caller that disappears has
 // to be removed, so the list cannot go stale and keep a fixed site looking open.
 
-// remoteURLAllowList maps each file (relative to tools/desk) that calls RemoteURL to the number of
+// remoteURLAllowList maps each file (relative to the repository root) that calls RemoteURL to the number of
 // calls it makes and WHY each is on the list. "OPEN class site" marks a gate that git then
 // contradicts, still to be fixed; remove it here in the change that fixes it.
 //
@@ -39,34 +39,36 @@ var remoteURLAllowList = map[string]struct {
 	calls  int
 	reason string
 }{
-	"cmd/deskclaim-ref/gogit.go": {1, "assessed #1623; shared adapter since #3281 — supplies " +
+	"tools/desk/cmd/deskclaim-ref/gogit.go": {1, "assessed #1623; shared adapter since #3281 — supplies " +
 		"the host hint and default slug only; claim transport builds a canonical URL from " +
 		"ForgeKindFromSlugAndHost. No git verb resolves origin after the read."},
-	"cmd/deskwt/deskwt.go": {1, "OPEN class site (assessed #1623, fix owned by the deskwt-side " +
+	"tools/desk/cmd/deskwt/deskwt.go": {1, "OPEN class site (assessed #1623, fix owned by the deskwt-side " +
 		"work, not this change): currentRepo gates IsAllowedRepo, and role-init then runs " +
 		"`git fetch --no-tags origin main`, which resolves origin itself (worktree/global scope, " +
 		"insteadOf)."},
-	"cmd/deskreply/deskreply.go": {1, "assessed #1623 — NOT a gate git contradicts: preflight " +
+	"tools/desk/cmd/deskreply/deskreply.go": {1, "assessed #1623 — NOT a gate git contradicts: preflight " +
 		"gates IsAllowedRepo for a forge-API reply, and no git verb that resolves origin runs " +
 		"after it (the reply goes through the forge API, never git transport)."},
-	"cmd/deskpushguard/main.go": {1, "fallback only when the pre-push hook received no URL " +
+	"tools/desk/cmd/deskpushguard/main.go": {1, "fallback only when the pre-push hook received no URL " +
 		"argument; the normal path takes the URL git itself hands the hook."},
-	"internal/deskkit/remoterepo.go": {1, "OriginRepoSlug reads the repository-local URL, with " +
+	"tools/desk/internal/deskkit/remoterepo.go": {1, "OriginRepoSlug reads the repository-local URL, with " +
 		"fetch insteadOf applied by gitcore; it parses identity and does not run a git transport."},
-	"internal/deskkit/preflight.go": {2, "deriveRepoSlug only labels the mint's owner; the landing " +
+	"tools/desk/internal/deskkit/preflight.go": {2, "deriveRepoSlug only labels the mint's owner; the landing " +
 		"probe reads the remote only as a forge-KIND hint (well-known host table, roster first) and " +
 		"lists the kind's canonical URL in-process — no git verb resolves the remote after it."},
 }
 
-// remoteURLCallers walks root's cmd/ and internal/ trees (non-test Go files, testdata skipped,
-// the defining gitcore package excluded) and counts the `.RemoteURL(` method calls per file,
-// keyed relative to root with forward slashes. It returns the counts and the number of files it
-// parsed, so a caller can tell "found none" from "looked at nothing".
-func remoteURLCallers(root string) (map[string]int, int, error) {
+// remoteURLCallers walks the tops trees under root (non-test Go files, testdata skipped, the
+// files directly in the defining gitcore package directory excluded) and counts the
+// `.RemoteURL(` method calls per file, keyed relative to root with forward slashes. Packages
+// below the defining directory (its test helpers) are scanned like any consumer. It returns the
+// counts and the number of files it parsed, so a caller can tell "found none" from "looked at
+// nothing".
+func remoteURLCallers(root string, tops []string, defining string) (map[string]int, int, error) {
 	hits := map[string]int{}
 	scanned := 0
 	fset := token.NewFileSet()
-	for _, top := range []string{"cmd", "internal"} {
+	for _, top := range tops {
 		base := filepath.Join(root, top)
 		if _, err := os.Stat(base); err != nil {
 			return nil, 0, err
@@ -81,12 +83,13 @@ func remoteURLCallers(root string) (map[string]int, int, error) {
 			}
 			rel = filepath.ToSlash(rel)
 			if d.IsDir() {
-				if d.Name() == "testdata" || rel == "internal/gitcore" {
+				if d.Name() == "testdata" {
 					return filepath.SkipDir
 				}
 				return nil
 			}
-			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") ||
+				filepath.ToSlash(filepath.Dir(rel)) == defining {
 				return nil
 			}
 			af, perr := parser.ParseFile(fset, path, nil, 0) // no ParseComments: only code decides
@@ -114,11 +117,14 @@ func remoteURLCallers(root string) (map[string]int, int, error) {
 }
 
 func TestRemoteURLCallers_AllowListed(t *testing.T) {
-	root := filepath.Join("..", "..") // tools/desk, from cmd/deskgit
-	if _, err := os.Stat(filepath.Join(root, "internal", "gitcore", "gitcore.go")); err != nil {
-		t.Fatalf("cannot find the desk tree root at %s: %v", root, err)
+	root := filepath.Join("..", "..", "..", "..") // repository root, from tools/desk/cmd/deskgit
+	if _, err := os.Stat(filepath.Join(root, "gitcore", "gitcore.go")); err != nil {
+		t.Fatalf("cannot find the repository root at %s: %v", root, err)
 	}
-	hits, scanned, err := remoteURLCallers(root)
+	// The lifted gitcore module and the statusgen consumer are scanned beside the desk tree;
+	// only the files directly in gitcore/ (the defining package) are excluded.
+	hits, scanned, err := remoteURLCallers(root,
+		[]string{"tools/desk/cmd", "tools/desk/internal", "statusgen", "gitcore"}, "gitcore")
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}
@@ -173,13 +179,20 @@ func TestRemoteURLCallers_DetectsPlantedCaller(t *testing.T) {
 	write("internal/other/other.go", "package other\n\nfunc z(repo interface{ RemoteURL(string) (string, error) }) { repo.RemoteURL(\"upstream\") }\n")
 	write("internal/gitcore/gitcore.go", "package gitcore\n\nfunc w(r interface{ RemoteURL(string) (string, error) }) { r.RemoteURL(\"origin\") }\n")
 
-	hits, scanned, err := remoteURLCallers(root)
+	write("statusgen/planted.go", "package main\n\nfunc v(r interface{ RemoteURL(string) (string, error) }) { r.RemoteURL(\"origin\") }\n")
+	write("internal/gitcore/helper/helper.go", "package helper\n\nfunc h(r interface{ RemoteURL(string) (string, error) }) { r.RemoteURL(\"origin\") }\n")
+	hits, scanned, err := remoteURLCallers(root, []string{"cmd", "internal", "statusgen"}, "internal/gitcore")
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}
-	want := map[string]int{"cmd/planted/planted.go": 1, "internal/other/other.go": 1}
-	if scanned != 2 {
-		t.Fatalf("scanned %d files, want 2 (test files, testdata and gitcore excluded)", scanned)
+	want := map[string]int{
+		"cmd/planted/planted.go":            1,
+		"internal/other/other.go":           1,
+		"statusgen/planted.go":              1,
+		"internal/gitcore/helper/helper.go": 1,
+	}
+	if scanned != 4 {
+		t.Fatalf("scanned %d files, want 4 (test files, testdata and the defining package's own files excluded)", scanned)
 	}
 	if len(hits) != len(want) {
 		t.Fatalf("hits = %v, want %v", hits, want)

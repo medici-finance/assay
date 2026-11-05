@@ -1,0 +1,6 @@
+# Under set -e a command on the left of || does not stop the shell: a failed
+# scan is handled by the echo and the line goes on to report success.
+want: step-not-fatal
+file: Makefile
+replace: "\tsh containers/scripts/layer-secret-scan.sh \"assay-deskd:$$tag\"; \\\n"
+with: "\tsh containers/scripts/layer-secret-scan.sh \"assay-deskd:$$tag\" || echo \"deskd-image: scan reported a problem\" >&2; \\\n"

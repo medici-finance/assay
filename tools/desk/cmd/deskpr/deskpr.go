@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // deskprStderr is the seam for warnIfConflicting's advisory output and run()'s terminal
@@ -210,6 +210,13 @@ func cmdCreate(args []string) (err error) {
 	if terr != nil {
 		return terr
 	}
+	// #4795: a delivery trailer's brief id leads the PR title unless the title already names
+	// it. Done once the trailer has parsed and resolved, so every later gate (the secret and
+	// self-containment scans, the create itself) reads the title that will actually be used.
+	if pt := prefixTitleWithBrief(*title, body); pt != *title {
+		*title = pt
+		fmt.Fprintf(deskprStderr, "deskpr: PR title prefixed with its brief id: %s\n", pt)
+	}
 	// Decision-gate banner (lifecycle-v1 §4.5): a PR delivering a gate: human brief
 	// carries a fixed banner naming its decision issue and whether it is ruled. Inserted
 	// when missing; it informs and never refuses. Its text is fixed apart from the
@@ -309,9 +316,11 @@ func cmdCreate(args []string) (err error) {
 	if *check {
 		ac.successResult = deskkit.ResultDryRun
 		ac.detail = "check: every local gate passed"
+		fmt.Printf("check: title: %s\n", *title)
 		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
 			"Not checked (needs the forge, not run here): an existing open PR on this branch, " +
-			"the outward-write rate limit, the public-repo authorization gate, and the publish-identity range against the live destination branch.")
+			"the outward-write rate limit, the public-repo authorization gate (--check-remote runs it, read-only), " +
+			"and the publish-identity range against the live destination branch.")
 		return nil
 	}
 
@@ -342,8 +351,8 @@ func cmdCreate(args []string) (err error) {
 	}
 
 	// Public-repo gate: refuse an outward write unless the repo is authorized.
-	// The authorization is repository-scoped (a listed `:public` allowed-repos entry,
-	// or private) — see deskkit.PublicRepoGate. A create no longer needs an issue/PR
+	// The authorization is repository-scoped (a listed `:public` or `:internal`
+	// allowed-repos entry matching the live visibility, or private) — see deskkit.PublicRepoGate. A create no longer needs an issue/PR
 	// number: the former per-item `+1` on `trailerIssue` is gone, which is exactly what
 	// makes the FIRST pull request on a listed public repo openable (a brief-carrying
 	// create has no issue number and used to fail closed here). `trailerIssue` is still
@@ -755,7 +764,8 @@ func cmdUpdate(args []string) (err error) {
 	}
 
 	// Public-repo gate: refuse an outward write unless the repo is authorized
-	// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
+	// (private, or a listed allowed-repos entry tagged :public or :internal to match the
+	// live visibility — see deskkit.PublicRepoGate).
 	owner, name := splitOwnerRepo(facts.repo)
 	// The gate's visibility read goes through the SAME forge backend already resolved above
 	// (forgeForFn's fg) — never a second, hardcoded GitHub-only client (assay#1054): a
@@ -1299,7 +1309,9 @@ func parseRepo(raw string) (string, error) {
 // brief), `Authors: <stream>/<NN>[, …]` whose every entry resolves the same way (the PR only
 // AUTHORS those briefs — #1339), `Cross-repo-brief: <alias>:<stream>/<NN>` for a brief homed in
 // another repo (checked against --root's alias registry, never resolved to a file here —
-// medici-finance/assay#2748), or `Issue: #<N>` for issue-only work. Absence, duplicates,
+// medici-finance/assay#2748), or `Issue: #<N>` for issue-only work — or its RESOLVING form
+// `Fixes: #<N>` / `Closes: #<N>` / `Resolves: #<N>` (also `owner/repo#<N>`), the same edge
+// written as a GitHub closing keyword so merging the PR closes the issue. Absence, duplicates,
 // mixed kinds and non-resolving briefs are all constraint refusals (exit 5). There is deliberately no bypass flag — a worker-typeable
 // bypass makes the edge asserted again.
 //
@@ -1317,13 +1329,23 @@ func parseRepo(raw string) (string, error) {
 // issue) — and 0 for the exempt scan carrier likewise. The create path uses it only as the
 // self-containment scan's number hint (SelfContainOpts.NumberHint). It is NOT an input to
 // the public-repo write gate: deskkit.PublicRepoGate is repository-scoped (an explicit
-// `:public` allowed-repos entry agreeing with the live visibility) and takes no number.
+// `:public` or `:internal` allowed-repos entry agreeing with the live visibility) and
+// takes no number.
+// isScanCarrierBody reports whether body is the machine-written scan carrier: the
+// deskkit.ScanBodyMarker at its head (leading whitespace aside). It is the one predicate for
+// the carve-out, shared by requireTrailer (which skips validation for it), trailerLink in
+// edit.go and briefTitleID (which read no link from it), so the three cannot disagree on
+// which body is exempt.
+func isScanCarrierBody(body []byte) bool {
+	return strings.HasPrefix(strings.TrimLeft(string(body), " \t\r\n"), deskkit.ScanBodyMarker)
+}
+
 func requireTrailer(body []byte, root, dir string) (int, error) {
 	// Head-anchored, not a whole-body substring: the emitter writes ScanBodyMarker as
 	// the FIRST line (deskkit.ScanPRBody), so the exemption matches it only at the body
 	// head. A body that merely quotes the marker somewhere in its prose is NOT exempt —
 	// this keeps the carve-out keyed to genuinely emitter-produced carrier bodies.
-	if strings.HasPrefix(strings.TrimLeft(string(body), " \t\r\n"), deskkit.ScanBodyMarker) {
+	if isScanCarrierBody(body) {
 		return 0, nil
 	}
 	trs, err := deskkit.ParseTrailers(body)
@@ -1335,9 +1357,14 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 			"`Brief: <stream>/<NN>` naming the brief this PR delivers (e.g. `Brief: example-stream/02`), "+
 			"`Authors: <stream>/<NN>[, …]` naming the brief(s) a briefs-authoring PR writes, "+
 			"`Cross-repo-brief: <alias>:<stream>/<NN>` naming a brief homed in another repo, "+
-			"or `Issue: #<N>` for issue-only work")
+			"or `Issue: #<N>` for issue-only work (`Fixes: #<N>` when merging this PR should close the issue)")
 	}
 	if trs[0].Kind == deskkit.TrailerIssue {
+		// A cross-repository resolving link names an issue in ANOTHER repository, so its
+		// number is no hint about a `#N` in this repository's body.
+		if trs[0].Repo != "" {
+			return 0, nil
+		}
 		// Value is the bare digits (trailer.go guarantees `[0-9]+`); Atoi cannot fail,
 		// but treat any parse anomaly as "no number" (0) rather than admitting a
 		// negative that would read as a sentinel to the gate.

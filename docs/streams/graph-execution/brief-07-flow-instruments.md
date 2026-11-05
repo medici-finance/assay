@@ -540,6 +540,145 @@ RISK-VALUE: NAMED, NOT DERIVED — gtSmallN = 5 @ statusgen/gatetelemetry.go:76 
 - TestFlowForgeGatedOnFlagNotToken catches a missing forge gate only when a target repo resolves. It should pin GITHUB_REPOSITORY with t.Setenv to stay hermetic.
 
 **VERIFY: BLOCKED** — check-definition: row 8 [consumer-delivery-range] (medici-finance/assay#1915, still open); it pins `--base` but no `--delivery` snapshot, so it needs re-authoring before a verified flip. Witness at cb059eb8c567: all 9 rows pass exit=0 (rows 1, 2, 6 and 7 in the network-off container, rows 3, 4, 5, 8 and 9 on the host), 0 fail, so the 2026-10-22 environment hold on rows 1, 2 and 6 (medici-finance/assay#1800) no longer applies to this source. No obligation failed. gate: model; status stays implemented.
+### Non-implementer verifier run — 2026-10-28 claude-opus-5-5 verifier at 9363e5df55fa (container + host verifyrun witness; VERIFY: BLOCKED — check-definition, row 8 on medici-finance/assay#4729)
+
+This fresh non-implementer pass replaces the earlier re-verify on medici-finance/assay#4732. That run was admitted under the prior tool release, and its follow-up could not be admitted. This pass runs against merged main 9363e5df55fa6f6a9b39cf87d83e4f5648fa6065 in the attested detached home, which was clean for both witnesses. The pre-work `deskdispatch --check-verifier` admission returned rc=0, and its binding is the Verification-Attestation line under each table. Host: darwin/arm64, go1.27.2, git 2.56.0, installed statusgen v1.0.64. `KUBECONFIG=/dev/null`; GH_TOKEN and GITHUB_TOKEN unset for every witness; no row contacted the forge.
+
+**Delivery and delivered code.** Implementation PR #1347 merged as commit 5ea3f4a8bbd6e84527cd55887889f231245aeed3 (first parent 983327a4aee06a0435ccd0c8c3b50cdde0c72a66), read from the forge. Since the previous re-verify source 558f3e56d95e, `git diff --stat` over the brief's delivered paths is empty: flow.go, flow_test.go, the flow fixture, gatetelemetry.go, briefefficiency.go, roadmapdora.go, bottleneck.go, ghfetch.go, main.go and both docs. Since the 2026-10-24 source cb059eb8c567, the only changes are in main.go, ghfetch.go and iso9001-mapping.md. The ghfetch.go change moves the Brief-trailer scan to a shared trailer package, and none of the three changes touches `--flow`. The `ci-hours-per-day` flag is now at main.go:1884.
+
+**Lane split.** Rows 1, 2, 6 and 7 (check:ci) ran in the network-off container witness. Rows 3, 4, 5, 8 and 9 ran in the host witness. The two `--rows` selections are disjoint and cover all nine rows. The runner image has no jq (rows 3 and 5). Rows 8 and 9 need git history. Row 4 writes a dated report under the fixture root, which the read-only mount refuses.
+
+**Container witness (rows 1, 2, 6, 7).** The image is the release-pinned runner `ghcr.io/medici-finance/verify-runner:v1.0.64@sha256:a00e65af51fd8d6d7ddcfd71627486f08d70c7a9bd6bd136f944d1ff526957a0`, the reference named in the v1.0.64 release asset verify-runner-image.txt (its sha256 matches checksums.txt). It ran as linux/amd64 (emulated) under `--network none --read-only --cap-drop ALL` with tmpfs scratch, GOPROXY=off, a read-only module cache, and no git identity injected. The home was mounted read-only. The bracket was opened on the host before the run and closed after it with the home still clean. `statusgen verifyrun --bracket-digest --witness <witness>` returned verdict=match. One earlier container attempt in this pass mounted the home at a path the container engine does not share. verifyrun refused it before any row ("the mounted root ... digests to sha256:e3b0c44298fc..., not the sha256:8b30031d1d49... the host recorded at the open step"), so no rows executed and that attempt wrote no witness. The witness file follows byte for byte:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test -run '^TestFlow' -count=1 -v ./... > "${TMPDIR:-/tmp}/flow-row1.out" 2>&1 && grep -F -e '--- PASS: TestFlow' "${TMPDIR:-/tmp}/flow-row1.out"` | pass exit=0 sandbox=container-netns | sha256:2c2269224aa7 | 2026-10-28 | assay-verifier-app[bot] @ 9363e5df55fa (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && go test -run '^TestFlowRefusesOpenInterval$' -count=1 -v ./... > "${TMPDIR:-/tmp}/flow-row2.out" 2>&1 && grep -F -e '--- PASS: TestFlowRefusesOpenInterval' "${TMPDIR:-/tmp}/flow-row2.out"` | pass exit=0 sandbox=container-netns | sha256:657b561581aa | 2026-10-28 | assay-verifier-app[bot] @ 9363e5df55fa (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd statusgen && go test -run '^TestFlowForgeGatedOnFlagNotToken$' -count=1 -v ./... > "${TMPDIR:-/tmp}/flow-row6.out" 2>&1 && grep -F -e '--- PASS: TestFlowForgeGatedOnFlagNotToken' "${TMPDIR:-/tmp}/flow-row6.out"` | pass exit=0 sandbox=container-netns | sha256:eaa20b3b98d8 | 2026-10-28 | assay-verifier-app[bot] @ 9363e5df55fa (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && d="$(mktemp -d)" && go build -o "$d/statusgen" . && "$d/statusgen" --root testdata/flow/window-a --flow --json > /dev/null; rc=$?; echo rc=$rc; test "$rc" -eq 3` | pass exit=0 sandbox=container-netns | sha256:2763337fbb88 | 2026-10-28 | assay-verifier-app[bot] @ 9363e5df55fa (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:8b30031d1d490423aa97a887a460fd5d1ed2f777cc502d0b467548ce39497595
+Container-Image: sha256:a00e65af51fd8d6d7ddcfd71627486f08d70c7a9bd6bd136f944d1ff526957a0
+Verification-Attestation: medici-finance/assay#4753 run=a6ef9df7cd9e935a0bb26a94b88ae522713f24a6a01272ab4e6d5d3dfa578f6a source=9363e5df55fa6f6a9b39cf87d83e4f5648fa6065 brief=docs/streams/graph-execution/brief-07-flow-instruments.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=a6ef9df7cd9e935a0bb26a94b88ae522713f24a6a01272ab4e6d5d3dfa578f6a source=9363e5df55fa6f6a9b39cf87d83e4f5648fa6065 tree=sha256:8b30031d1d490423aa97a887a460fd5d1ed2f777cc502d0b467548ce39497595 witness=sha256:972151c7aa77754e47576b33b45bbaa37424ba2ba11233f68b2a4e4c344fd873 opened=2026-10-28T13:51:23Z closed=2026-10-28T13:53:10Z before=receipt after=check-verifier
+
+**Host witness (rows 3, 4, 5, 8, 9).** `statusgen verifyrun --brief docs/streams/graph-execution/brief-07-flow-instruments.md --root <home> --rows 3,4,5,8,9 --dry-run` ran at the home root with the installed statusgen v1.0.64 and exited 0. The table below is the tool's printed witness, copied mechanically with its Runner cells unchanged. After the witness, row 4's dated factory-floor report was moved out of the fixture root, as earlier passes did.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 3 | `cd statusgen && f="$(mktemp)" && go run . --root testdata/flow/window-a --flow --since 2026-08-01 --until 2026-09-20 --json > "$f"; jq -e '.environment.statusgen_version != "" and .resolution.seconds > 0 and (.briefs[] \| select(.id=="example-app/02") \| .eligible_to_start.status=="measured")' "$f"` | pass exit=0 | sha256:df57c4902d7e | 2026-10-28 | assay-verifier-app[bot] @ 9363e5df55fa (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go run . --root testdata/flow/window-a --bottleneck \| grep -c 'constraint'` | pass exit=0 | sha256:7c0a027715e1 | 2026-10-28 | assay-verifier-app[bot] @ 9363e5df55fa (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && f="$(mktemp)" && env -u GH_TOKEN -u GITHUB_TOKEN go run . --root testdata/flow/window-a --flow --forge --json > "$f"; jq -e '.ci_slot_saturation.status == "could-not-check"' "$f"` | pass exit=0 | sha256:df57c4902d7e | 2026-10-28 | assay-verifier-app[bot] @ 9363e5df55fa (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --consumers --brief assay:assay:graph-execution:07 --base 983327a4aee06a0435ccd0c8c3b50cdde0c72a66; rc=$?; echo rc=$rc; test "$rc" -eq 0` | pass exit=0 | sha256:3b76a3292b6a | 2026-10-28 | assay-verifier-app[bot] @ 9363e5df55fa (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --lint; rc=$?; echo rc=$rc; test "$rc" -eq 0` | pass exit=0 | sha256:2d61efbedc4d | 2026-10-28 | assay-verifier-app[bot] @ 9363e5df55fa (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4753 run=a6ef9df7cd9e935a0bb26a94b88ae522713f24a6a01272ab4e6d5d3dfa578f6a source=9363e5df55fa6f6a9b39cf87d83e4f5648fa6065 brief=docs/streams/graph-execution/brief-07-flow-instruments.md model=claude-opus-5-5 tier=strong
+
+**Supplemental readings (no acceptance credit).** These come from direct reruns of the same commands outside the witnesses.
+- Row 3: `go run` exits through statusgen's exit 3 as expected, and jq prints `true`. The report has statusgen_version `dev`, regen_cadence `86400` and model_versions `could-not-check`. resolution is measured at 86400 s. example-app/02 eligible_to_start is measured at 259200 s (2026-08-04 to 2026-08-07).
+- Row 4: the bottleneck report counts 2 constraint lines.
+- Row 5: ci_slot_saturation is could-not-check, with the reason "no GH_TOKEN/GITHUB_TOKEN in the environment — the forge-derived term is unread, never zero".
+- Row 8: the summary reads "1 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing". The iso9001-mapping 9.1.1 row is CORROBORATED (fixed-here). The bottleneck.go stage-age score is UNCHECKED (out-of-scope, unchanged since the merge-base). The header reads "base 983327a4aee0... (committed diff + uncommitted working tree)".
+- Row 8 with both pins, `--delivery 5ea3f4a8bbd6e84527cd55887889f231245aeed3 --base 983327a4aee06a0435ccd0c8c3b50cdde0c72a66`: "base 983327a4...5ea3f4a8... (immutable delivered snapshot)" and the same 1 / 0 / 1 summary.
+- Row 9: `LINT: PASS` with zero PROBLEM lines. statusgen v1.0.64 still prints a NOTICE for this brief: "Verify row 8 [consumer-delivery-range] consumer command has no immutable delivery snapshot (a fixed base alone still reads the latest tree and inherited claims); post-merge consumer checks must name --brief and pin both --delivery and its first-parent --base."
+
+**Supplemental mutation probes (no acceptance credit).** These ran on a scratch export of this source, outside the home, offline.
+- Row 2: flow.go:352 was mutated to return a measured 259200 s duration for an open in-progress interval. The mutant is caught: "example-app/03 active_work_time = {Status:measured Seconds:259200 ...}, want could-not-check".
+- Row 6: flow.go:471 was mutated from `if !forgeMode {` to `if false {`.
+  - With no resolvable target repository (no GITHUB_REPOSITORY and no git directory), the mutant survives and the test reports `ok`.
+  - With `GITHUB_REPOSITORY=example-org/example-app`, the mutant is caught: "RoundTrip was called 1 time(s) with forgeMode=false".
+  - So row 6's container witness cannot detect a missing flag gate. The row is not risk-bearing (risk all `no`, no risk-bearing tag), so this is an advisory, not a failed obligation. It is already recorded on medici-finance/assay#4729.
+
+**Risk-bearing values.** The enumeration covered flow.go, the --flow and --ci-hours-per-day flags in main.go, and the constants they reuse. The brief is gate: model with risk all `no`. It is a read-only reporting instrument, so every value can be reversed by an edit and a redeploy. Each literal was re-read at this source.
+- `gtExitCouldNotCheck = 3` @ statusgen/gatetelemetry.go:72; flowExitCode returns it at statusgen/flow.go:639 and :642; `return 0` @ statusgen/flow.go:644; `return 1` @ statusgen/flow.go:653, :658, :663, :671
+- `ci-hours-per-day` default `0` @ statusgen/main.go:1884, with the guard `ciHoursPerDay <= 0` @ statusgen/flow.go:478
+- `len(seen) < 2` @ statusgen/flow.go:431
+- `gtSmallN = 5` @ statusgen/gatetelemetry.go:76, reused as `len(secs) < gtSmallN` @ statusgen/flow.go:456
+- `defaultDoraWindowDays = 28` @ statusgen/roadmapdora.go:37 (predates the brief; operational knob)
+
+Ranking: the exit-code contract ranks first, because consumers key on it. The divisor sentinel comes next, then the resolution floor and the thin-data floor. The default window ranks last.
+
+RISK-VALUE: DERIVED — gtExitCouldNotCheck = 3 @ statusgen/gatetelemetry.go:72 — the brief requires --flow to carry the --gate-telemetry exit contract (0 / 1 malformed / 3 could-not-check) through unchanged. flowExitCode returns the shared constant rather than its own literal, so the two instruments cannot drift. Observed: the built binary returns 3 on the fixture (row 7, container witness).
+RISK-VALUE: DERIVED — ci-hours-per-day default = 0 @ statusgen/main.go:1884 — the brief says "no default — absent ⇒ could-not-check, never an invented number". 0 is the absent sentinel. The `<= 0` guard at statusgen/flow.go:478 turns 0, and any negative value, into could-not-check before any division.
+RISK-VALUE: DERIVED — len(seen) < 2 @ statusgen/flow.go:431 — the resolution is the median gap between distinct regen instants, and at least two instants are needed to form one gap.
+RISK-VALUE: NAMED, NOT DERIVED — gtSmallN = 5 @ statusgen/gatetelemetry.go:76 — the brief says to reuse this constant, and flow.go does. Why 5 is the right thin-data floor belongs to the gate-telemetry brief that introduced it, outside this item's diff. The open question medici-finance/assay#1934 tracks that derivation. Reversible operational floor.
+
+**Carried advisories (observations, not row failures).**
+- The ci_slot_saturation check-run reader is still absent. ci_slot_saturation therefore never reaches ok, and the "rc=0 only when every source was read" half of row 7's Expect cannot be reached.
+- Row 6 is non-discriminating without a resolvable target repository (probe above). Pinning `t.Setenv("GITHUB_REPOSITORY", "example-org/example-app")` in TestFlowForgeGatedOnFlagNotToken would make it discriminate wherever it runs (medici-finance/assay#4729).
+
+**Blockers.**
+- medici-finance/assay#4729 — blocker_kind check-definition. Row 8 pins only `--base` and no `--delivery` snapshot. It needs a reviewed Command-only amendment that pins `--delivery 5ea3f4a8bbd6e84527cd55887889f231245aeed3 --base 983327a4aee06a0435ccd0c8c3b50cdde0c72a66`, followed by fresh dispatch. Next actor: the brief author.
+
+**VERIFY: BLOCKED** — check-definition: row 8 [consumer-delivery-range] (medici-finance/assay#4729). Witness at 9363e5df55fa: all 9 rows pass exit=0 (rows 1, 2, 6 and 7 in the closed network-off container bracket; rows 3, 4, 5, 8 and 9 on the host), 0 fail, 0 could-not-run. Rows 1, 2 and 6 were observed in that bracket, so the earlier environment hold (medici-finance/assay#1800) no longer applies. No obligation failed. gate: model; status stays implemented.
+### Non-implementer verifier run — 2026-10-30 claude-opus-5-5 verifier at 7b0fa99b57c3 (container + host verifyrun witness; VERIFY: FAIL — rows 1 and 9, implementation, on medici-finance/assay#2715 and medici-finance/assay#4823)
+
+This fresh non-implementer pass runs against merged main 7b0fa99b57c3866c6d12d1cb2cebe0247e12ff09 in the attested detached home, which was clean for both witnesses. The pre-work `deskdispatch --check-verifier` admission returned rc=0, and its binding is the Verification-Attestation line under each table. Host: darwin/arm64, git 2.56.0, installed statusgen v1.0.66, docker 29.8.2. `KUBECONFIG=/dev/null`; GH_TOKEN and GITHUB_TOKEN unset for every witness; no row contacted the forge.
+
+**Delivery and delivered code.** Implementation PR #1347 merged as commit 5ea3f4a8bbd6e84527cd55887889f231245aeed3 (first parent 983327a4aee06a0435ccd0c8c3b50cdde0c72a66). Since the previous source 9363e5df55fa, the only change among the brief's delivered paths is in statusgen main.go (the verify-queue type alias, the witness-inputs lint and the witnessdigest verb); none touches `--flow`. The `ci-hours-per-day` flag is now at main.go:1871. A new test, TestFlowCard in flow_52_test.go (commit c8f2b8d71d88, after the delivery), also matches row 1's `^TestFlow` selector.
+
+**Lane split.** Rows 1, 2, 6 and 7 (check:ci) ran in the network-off container witness. Rows 3, 4, 5, 8 and 9 ran in the host witness. The two `--rows` selections are disjoint and cover all nine rows. The runner image has no jq (rows 3 and 5), rows 8 and 9 need git history, and row 4 writes a dated report under the fixture root, which the read-only mount refuses. That report was moved out of the home after the host witness so the home holds only this Evidence edit.
+
+**Container witness (rows 1, 2, 6, 7).** The image is the release-pinned runner `ghcr.io/medici-finance/verify-runner:v1.0.66@sha256:29494cbeca300a29295a2eeed7398500675cb63c7911d660a08c899e8584d175`, the reference named in the v1.0.66 release asset verify-runner-image.txt (its sha256 matches checksums.txt). It ran as linux/amd64 (emulated) under `--network none --read-only --cap-drop ALL --security-opt no-new-privileges` as a non-root user, with tmpfs scratch, GOPROXY=off, GOFLAGS=-mod=readonly and no git identity injected. The home and its git directory were mounted read-only. The bracket was opened on the host before the run and closed after it with the home still clean. `statusgen verifyrun --bracket-digest --witness <witness>` returned verdict=match (span-lines tree-digest:1, container-image:1, attestation:1). The witness file follows byte for byte:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test -run '^TestFlow' -count=1 -v ./... > "${TMPDIR:-/tmp}/flow-row1.out" 2>&1 && grep -F -e '--- PASS: TestFlow' "${TMPDIR:-/tmp}/flow-row1.out"` | fail exit=1 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && go test -run '^TestFlowRefusesOpenInterval$' -count=1 -v ./... > "${TMPDIR:-/tmp}/flow-row2.out" 2>&1 && grep -F -e '--- PASS: TestFlowRefusesOpenInterval' "${TMPDIR:-/tmp}/flow-row2.out"` | pass exit=0 sandbox=container-netns | sha256:657b561581aa | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd statusgen && go test -run '^TestFlowForgeGatedOnFlagNotToken$' -count=1 -v ./... > "${TMPDIR:-/tmp}/flow-row6.out" 2>&1 && grep -F -e '--- PASS: TestFlowForgeGatedOnFlagNotToken' "${TMPDIR:-/tmp}/flow-row6.out"` | pass exit=0 sandbox=container-netns | sha256:eaa20b3b98d8 | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && d="$(mktemp -d)" && go build -o "$d/statusgen" . && "$d/statusgen" --root testdata/flow/window-a --flow --json > /dev/null; rc=$?; echo rc=$rc; test "$rc" -eq 3` | pass exit=0 sandbox=container-netns | sha256:839594f4d08b | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:8a4ed420c7b398b85b7db0f4180194627b6e1f6af13556ea76863e4d1edf28e8
+Container-Image: sha256:29494cbeca300a29295a2eeed7398500675cb63c7911d660a08c899e8584d175
+Verification-Attestation: medici-finance/assay#4929 run=09f9c2de1c5044b2bcf3e07b66f6a96ab64e09b5e31a6d1f2b4a42266a5bc6c5 source=7b0fa99b57c3866c6d12d1cb2cebe0247e12ff09 brief=docs/streams/graph-execution/brief-07-flow-instruments.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=09f9c2de1c5044b2bcf3e07b66f6a96ab64e09b5e31a6d1f2b4a42266a5bc6c5 source=7b0fa99b57c3866c6d12d1cb2cebe0247e12ff09 tree=sha256:8a4ed420c7b398b85b7db0f4180194627b6e1f6af13556ea76863e4d1edf28e8 witness=sha256:4f4e91a804c34afb954ee298aee4fe9bd32af6a4e136aa18308fc2434347b1c4 opened=2026-10-30T00:41:30Z closed=2026-10-30T00:46:13Z before=receipt after=check-verifier
+
+**Host witness (rows 3, 4, 5, 8, 9).** `statusgen verifyrun --rows 3,4,5,8,9` (non-dry, rc=1) on the host wrote this table:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 3 | `cd statusgen && f="$(mktemp)" && go run . --root testdata/flow/window-a --flow --since 2026-08-01 --until 2026-09-20 --json > "$f"; jq -e '.environment.statusgen_version != "" and .resolution.seconds > 0 and (.briefs[] \| select(.id=="example-app/02") \| .eligible_to_start.status=="measured")' "$f"` | pass exit=0 | sha256:4ea057dcb877 | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go run . --root testdata/flow/window-a --bottleneck \| grep -c 'constraint'` | pass exit=0 | sha256:d492acc368dc | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && f="$(mktemp)" && env -u GH_TOKEN -u GITHUB_TOKEN go run . --root testdata/flow/window-a --flow --forge --json > "$f"; jq -e '.ci_slot_saturation.status == "could-not-check"' "$f"` | pass exit=0 | sha256:4ea057dcb877 | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --consumers --brief assay:assay:graph-execution:07 --base 983327a4aee06a0435ccd0c8c3b50cdde0c72a66; rc=$?; echo rc=$rc; test "$rc" -eq 0` | pass exit=0 | sha256:bafbfdfee0f8 | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --lint; rc=$?; echo rc=$rc; test "$rc" -eq 0` | fail exit=1 | sha256:d21da6234ece | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4929 run=09f9c2de1c5044b2bcf3e07b66f6a96ab64e09b5e31a6d1f2b4a42266a5bc6c5 source=7b0fa99b57c3866c6d12d1cb2cebe0247e12ff09 brief=docs/streams/graph-execution/brief-07-flow-instruments.md model=claude-opus-5-5 tier=strong
+
+**Row readings.**
+- Row 1 FAIL (exit=1, empty stdout). verifyrun's admitted row environment always sets GIT_CONFIG_COUNT (with GIT_CONFIG_NOSYSTEM, GIT_NO_REPLACE_OBJECTS and the grep pattern pins). Under it, TestFlowCard/identity_and_revisions fails at flow_52_test.go:66: "missing revision/decision links: {... SourceRevision: ... Unavailable:source revision unavailable or brief differs from HEAD}". So `go test` exits 1 and the `&&` chain never reaches the grep. The four tests this brief delivered (TestFlow, TestFlowRefusesOpenInterval, TestFlowWindowExcludesOutOfRange, TestFlowForgeGatedOnFlagNotToken) pass in every run. The failing test is outside this brief's diff, but the obligation as written failed. This is the open non-hermetic git-fixture class on medici-finance/assay#2715. TestFlowCard is a new member of that class and #2715 does not name it yet.
+- Rows 2, 6, 7 pass. Row 7's built binary returns rc=3 (could-not-check) on the fixture.
+- Rows 3, 4, 5 pass on the host.
+- Row 8 pass exit=0: "summary: 1 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing" (the docs/iso9001-mapping.md row is CORROBORATED; statusgen/bottleneck.go is UNCHECKED and out-of-scope, unchanged since the merge-base). The check-definition defect on medici-finance/assay#4729 still stands: lint still prints "Verify row 8 [consumer-delivery-range] consumer command has no immutable delivery snapshot". Row 8's exit is recorded as observed, and the definition repair is still owed.
+- Row 9 FAIL (exit=1): `LINT: FAIL 1 problem(s)`. The only PROBLEM is in another brief: "desktools-v2/65: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required". No PROBLEM names graph-execution/07. This is the main-wide lint red tracked on medici-finance/assay#4823 (open).
+
+**Supplemental probes (no acceptance credit; diagnosis only).**
+- Row 1, same command, same pinned image, network off, without the admitted row environment: rc=0. All six `TestFlow*` tests pass (TestFlowQueue, TestFlowCard, TestFlow, TestFlowRefusesOpenInterval, TestFlowWindowExcludesOutOfRange, TestFlowForgeGatedOnFlagNotToken).
+- The same run with the admitted row variables added gives rc=1 and `--- FAIL: TestFlowCard/identity_and_revisions` (flow_52_test.go:66).
+- On the darwin host, `go test -run '^TestFlowCard$'` passes when run plain. With GIT_CONFIG_COUNT=1 as the only addition, it fails the same way. Any GIT_CONFIG_COUNT moves statusgen's git reads onto the native git profile, and that profile does not resolve the fixture's source revision.
+- Row 9: a plain `statusgen --root . --lint` on the clean home before this Evidence edit gave rc=1 with the same single desktools-v2/65 PROBLEM.
+
+**Risk-bearing values.** The enumeration covered flow.go, the --flow and --ci-hours-per-day flags in main.go, and the constants they reuse. The brief is gate: model with risk all `no`. It is a read-only reporting instrument, so every value can be reversed by an edit and a redeploy. Each literal was re-read at this source.
+- `gtExitCouldNotCheck = 3` @ statusgen/gatetelemetry.go:72; flowExitCode returns it at statusgen/flow.go:639 and :642; `return 0` @ statusgen/flow.go:644; `return 1` @ statusgen/flow.go:653, :658, :663, :671
+- `ci-hours-per-day` default `0` @ statusgen/main.go:1871, with the guard `ciHoursPerDay <= 0` @ statusgen/flow.go:478
+- `len(seen) < 2` @ statusgen/flow.go:431
+- `gtSmallN = 5` @ statusgen/gatetelemetry.go:76, reused as `len(secs) < gtSmallN` @ statusgen/flow.go:456
+- `defaultDoraWindowDays = 28` @ statusgen/roadmapdora.go:37 (predates the brief; operational knob)
+
+Ranking: the exit-code contract ranks first, because consumers key on it. The divisor sentinel comes next, then the resolution floor and the thin-data floor. The default window ranks last.
+
+RISK-VALUE: DERIVED — gtExitCouldNotCheck = 3 @ statusgen/gatetelemetry.go:72 — the brief requires --flow to carry the --gate-telemetry exit contract (0 / 1 malformed / 3 could-not-check) through unchanged. flowExitCode returns the shared constant rather than its own literal, so the two instruments cannot drift. Observed: the built binary returns 3 on the fixture (row 7, container witness).
+RISK-VALUE: DERIVED — ci-hours-per-day default = 0 @ statusgen/main.go:1871 — the brief says "no default — absent ⇒ could-not-check, never an invented number". 0 is the absent sentinel. The `<= 0` guard at statusgen/flow.go:478 turns 0, and any negative value, into could-not-check before any division.
+RISK-VALUE: DERIVED — len(seen) < 2 @ statusgen/flow.go:431 — the resolution is the median gap between distinct regen instants, and at least two instants are needed to form one gap.
+RISK-VALUE: NAMED, NOT DERIVED — gtSmallN = 5 @ statusgen/gatetelemetry.go:76 — the brief says to reuse this constant, and flow.go does. Why 5 is the right thin-data floor belongs to the gate-telemetry brief that introduced it, outside this item's diff. The open question medici-finance/assay#1934 tracks that derivation. Reversible operational floor.
+
+**Carried advisories (observations, not row failures).**
+- The ci_slot_saturation check-run reader is still absent. ci_slot_saturation therefore never reaches ok, and the "rc=0 only when every source was read" half of row 7's Expect cannot be reached.
+- Row 6 cannot detect a missing forge gate unless a target repository resolves. Pinning `t.Setenv("GITHUB_REPOSITORY", "example-org/example-app")` in TestFlowForgeGatedOnFlagNotToken would fix that wherever it runs (medici-finance/assay#4729).
+- Row 1's unanchored `^TestFlow` selector now also captures TestFlowQueue and TestFlowCard, which come from later briefs. Any failure in them reds this row.
+
+**Blockers.**
+- medici-finance/assay#2715 — blocker_kind implementation (row 1). Git-fixture tests fail under verifyrun's admitted row environment. TestFlowCard/identity_and_revisions should be attached to that issue as a further instance. Next actor: the owner of TestFlowCard, or of the admitted-env profile.
+- medici-finance/assay#4823 — blocker_kind implementation (row 9). Main-wide lint red on desktools-v2/65's acceptance transition. Next actor: the owner of that transition.
+- medici-finance/assay#4729 — check-definition (row 8, carried). Row 8 needs a reviewed Command-only amendment that pins `--delivery 5ea3f4a8bbd6e84527cd55887889f231245aeed3 --base 983327a4aee06a0435ccd0c8c3b50cdde0c72a66`. Next actor: the brief author.
+
+**VERIFY: FAIL** — implementation: row 1 (TestFlowCard under the admitted row environment, medici-finance/assay#2715) and row 9 (main-wide lint PROBLEM on desktools-v2/65, medici-finance/assay#4823); row 8 check-definition still owed (medici-finance/assay#4729). Witness at 7b0fa99b57c3: 7 of 9 rows pass, 2 fail, 0 could-not-run (rows 1, 2, 6 and 7 in the closed network-off container bracket; rows 3, 4, 5, 8 and 9 on the host). The tests this brief delivered pass, and neither failing row names this brief's code. gate: model; status stays implemented.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

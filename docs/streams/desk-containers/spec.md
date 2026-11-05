@@ -63,7 +63,7 @@ macOS and win32.
 | 1 | Base image Dockerfile | `containers/base/Dockerfile` | 01 |
 | 2 | Credential/secret runtime-injection contract + layer-scan check | `containers/secrets.md` (planned), `containers/scripts/layer-secret-scan.sh` (planned) | 02 |
 | 3 | Per-desk Dockerfiles + build matrix + publish wiring | `containers/<desk-name>/Dockerfile` | 03 |
-| 4 | Interactive launch script | `containers/desk-run.sh` (planned) | 04 |
+| 4 | Interactive launch script | `containers/desk-run.sh` (shipped) | 04 |
 | 5 | docker-compose definition | `containers/compose.yaml` (planned) | 05 |
 | 6 | Kubernetes manifests | `containers/k8s/` | 06 |
 | 7 | Multi-desk control layer (tmux/equivalent, macOS + win32) | `containers/control/` (planned) | 07 |

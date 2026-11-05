@@ -1,0 +1,5 @@
+# deskd-build: a leading - makes make ignore a failed go build.
+want: step-not-fatal
+file: Makefile
+replace: "\t@cd deskd && GOWORK=off go build"
+with: "\t-@cd deskd && GOWORK=off go build"

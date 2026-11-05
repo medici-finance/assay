@@ -42,9 +42,9 @@ id: fcd37132-10d0-46b6-a094-adf6b493b669
 ## Context
 
 This is the follow-up to **harness-portability/14** (PR **#631**, merged): the code de-house that
-landed `tools/harnessgen`, `tools/harnesslint`, `tools/plugindrift` and the packaging/provenance
-files in the public tree. Three items were flagged on #631 as out-of-scope for hp/14 and ruled
-into this one brief:
+landed `tools/harnessgen`, `tools/harnesslint`, `tools/plugindrift` and the
+packaging/provenance files in the public tree. Three items were flagged on #631 as out-of-scope
+for hp/14 and ruled into this one brief:
 
 1. **CI runs the de-housed modules' suites nowhere.** `.github/workflows/ci.yml`'s `build-test`
    job discovers every module by walking for `go.mod` and runs `go build ./... && go vet ./...`

@@ -548,13 +548,13 @@ type stalledPartial struct {
 // per-PR failure never is.
 func sweepStalledRepo(repo string, c stalledCtx) (stalledPartial, error) {
 	var part stalledPartial
-	prs, _, err := fetchOpenPRs(repo)
+	prs, reviews, truncated, _, err := fetchReviewQueue(repo)
 	if err != nil {
 		// Whole-repo enumeration failure: fail-closed (exit 6). "No stalled drafts in
 		// repo X" cannot be claimed when repo X's open PRs could not be read (#236).
 		return stalledPartial{}, err
 	}
-	if len(prs) >= prListLimit {
+	if truncated || len(prs) >= prListLimit {
 		// At the cap: some open PRs in this repo were never enumerated, so a clean
 		// board for it means "nothing stalled among the ones we saw", not "nothing
 		// stalled". Say so in the report shape both audiences read.
@@ -565,7 +565,8 @@ func sweepStalledRepo(repo string, c stalledCtx) (stalledPartial, error) {
 	// so the pool's fail-closed path is unreachable from here and the discarded error
 	// cannot hide one.
 	outcomes, _ := sweepConcurrent(prs, boardSweepLimit, func(p prBase) (stalledOutcome, error) {
-		return sweepStalledPR(repo, p, c), nil
+		snapshotReviews, complete := reviews[p.Number]
+		return sweepStalledPR(repo, p, c, snapshotReviews, complete), nil
 	})
 	part.outcomes = outcomes
 	return part, nil
@@ -573,7 +574,7 @@ func sweepStalledRepo(repo string, c stalledCtx) (stalledPartial, error) {
 
 // sweepStalledPR is the former per-PR loop body. Every `continue` it used to execute is a
 // return of the outcome that `continue` implied.
-func sweepStalledPR(repo string, p prBase, c stalledCtx) stalledOutcome {
+func sweepStalledPR(repo string, p prBase, c stalledCtx, reviews []review, reviewsComplete bool) stalledOutcome {
 	// #247: MERGED / CLOSED / OPEN are distinguished HERE, before any branch
 	// comparison runs. A merged or closed PR is never a stalled draft — it is
 	// finished — and its head compared against main reads "behind by N" exactly
@@ -599,7 +600,12 @@ func sweepStalledPR(repo string, p prBase, c stalledCtx) stalledOutcome {
 	}
 	// Review verdict (the #268 deskkit reduction). A fetch failure on one PR is
 	// labeled unassessable; the rest of the board still renders (Task 3).
-	reviews, rerr := fetchReviews(repo, p.Number)
+	// Only a complete snapshot can replace the fully paginated per-item read.
+	// An empty complete entry is evidence of no reviews; a missing entry is not.
+	var rerr error
+	if !reviewsComplete {
+		reviews, rerr = fetchReviews(repo, p.Number)
+	}
 	if rerr != nil {
 		return stalledOutcome{unassessable: &unassessableRow{
 			Repo: repo, Number: p.Number, Title: p.Title,

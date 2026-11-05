@@ -418,6 +418,31 @@ The substance is the 2026-10-15 by-hand Evidence block above, at merged main 8a1
 
 Verification-Attestation: medici-finance/assay#3607 run=a9d106bc8e314b972cfcfbb9c4071a197ecbbfeef408a1b1b60eeacdd7e148e2 source=b73d90d774fca8aec8974ef410da63ebcb10eece brief=docs/streams/desk-supervision/brief-17-verification-repair-obligations.md model=claude-opus-5-5 tier=strong
 
+### Batch re-witness: 2026-11-02, assay-verifier-app[bot] (claude-opus-5-5 verifier, strong tier, on behalf of verify-desk), merged main 2c6c21336a606e64df057294f21177f16db7b9f8
+
+This is the one-time batch re-witness (medici-finance/assay#2026) at the pinned main source 2c6c21336a606e64df057294f21177f16db7b9f8. The runner is a fresh non-implementer verifier. The pre-work `deskdispatch --check-verifier` admission returned exit 0, and its binding is the Verification-Attestation line in the witness below (attestation run 7dbb2e356146). `deskpathguard rederive` reports 4 rows, all from base, 0 author-added. Earlier blocks in this section were neither copied nor relied on.
+
+All four rows are check:ci and ran inside one closed admission bracket in a network-off container (`--network none`, default seccomp profile, `statusgen verifyrun --sandbox=container-netns --rows 1,2,3,4`) on the release-pinned verify-runner image (statusgen v1.0.69, go1.27.3, linux/amd64). The home and its git directory were mounted read-only; GOPROXY=off, GOTOOLCHAIN=local, and HOME, TMPDIR and GOCACHE pointed outside the home. The table below is the unedited verifyrun witness. No Runner cell is hand-written.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationFailToWorker$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:cc24f4ff021e | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationRestartAndDuplicate$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:5a2bf5fd125d | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationMergeIsNotResolved$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:e7f345447760 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationCrossRepoFollowUp$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:c763c3adc7a4 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c
+Container-Image: sha256:1fa7c335e14f97410f83f6097187c9b4eac1863c016f6b59a1c87fd311a0d653
+Verification-Attestation: medici-finance/assay#5244 run=7dbb2e3561460b7c91928643623a3b98656df28d0a895c5668e475c31b954121 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/desk-supervision/brief-17-verification-repair-obligations.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=7dbb2e3561460b7c91928643623a3b98656df28d0a895c5668e475c31b954121 source=2c6c21336a606e64df057294f21177f16db7b9f8 tree=sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c witness=sha256:9734e47d4cb05b2018718c98b43508f40f66d5ab0d9c53789181375e1cb51731 opened=2026-11-02T00:37:37Z closed=2026-11-02T00:38:56Z before=receipt after=check-verifier
+
+Supplemental observation (no acceptance credit): the same four commands were re-run in the same image and mounts after the bracket closed, to observe the named PASS lines that each Expect cell requires. Each run printed exactly one `=== RUN` line for its named test and then `--- PASS: TestRepairObligationFailToWorker (0.02s)`, `--- PASS: TestRepairObligationRestartAndDuplicate (0.01s)`, `--- PASS: TestRepairObligationMergeIsNotResolved (0.02s)` and `--- PASS: TestRepairObligationCrossRepoFollowUp (0.07s)` respectively, each followed by `ok` for the fanoutloop package and exit 0. None of the anchored `-run` patterns passed vacuously.
+
+RISK-BEARING VALUE. Risk metadata is present, and all four answers are no, including irreversible: no. No changed path matches a `.assay-surfaces` glob, so the fail-safe trigger does not fire. For completeness, the one numeric literal in the deliverable's scheduling code is `repairLeaseTTL = 45 * time.Minute` @ tools/desk/cmd/fanoutloop/repair.go:46. It is a reversible operational knob (a lease expiry), ranks last and needs no derivation. The other constants (schema `repair-obligation-v1`, the obligation-state names and the `fk1` filing-key version) are identifiers, not bounds.
+
+Accounting: one container bracket attempt, no discarded runs. rows_passed=4 rows_total=4, 0 fail, 0 could-not-run.
+
+**VERIFY: PASS** — 4/4 rows pass in one container-netns bracket at 2c6c21336a60 (attestation medici-finance/assay#5244).
+
 ## Review
 
 Gate: model. Review the negative paths, migration compatibility and limits of enforcement. Any newly discovered need to alter authority is separate human-gated scope, not an implicit part of this brief.

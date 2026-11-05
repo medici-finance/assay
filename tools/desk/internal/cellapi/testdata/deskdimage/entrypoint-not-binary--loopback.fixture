@@ -1,0 +1,6 @@
+# Extra ENTRYPOINT arguments are baked flags even when the -addr among them is
+# loopback: the loopback value must not excuse the unrelated flag.
+want: entrypoint-not-binary
+file: Dockerfile
+replace: "ENTRYPOINT [\"/deskd\"]"
+with: "ENTRYPOINT [\"/deskd\", \"-addr\", \"127.0.0.1:8787\", \"-auth\", \"bearer\"]"

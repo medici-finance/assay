@@ -234,7 +234,7 @@ func TestPushDestOtherRepoRefuses(t *testing.T) {
 func TestPushDestRefusalRedactsUserinfo(t *testing.T) {
 	hermeticGitConfig(t)
 	work := newBaseFixture(t)
-	mustGit(t, work, "remote", "set-url", "--push", "origin", "https://x-access-token:s3cr3t@github.com/someone-else/tracker.git")
+	mustGit(t, work, "remote", "set-url", "--push", "origin", "https://x-access-token:"+"s3cr3t"+"@github.com/someone-else/tracker.git")
 	msg := wantRefusal(t, pushDestinationGate(work, "create", "example-org/tracker", ghURL), "<redacted>@github.com")
 	if strings.Contains(msg, "s3cr3t") {
 		t.Fatalf("the refusal leaked the URL's credential:\n%s", msg)

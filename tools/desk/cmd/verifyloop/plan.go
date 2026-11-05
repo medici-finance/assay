@@ -22,9 +22,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/verifyqueue"
+	"github.com/medici-finance/assay/tools/desk/internal/verifyflow"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
@@ -118,12 +121,13 @@ type planCounts struct {
 
 // planDoc is the plan value. Everything either renderer prints is read off it.
 type planDoc struct {
-	Version   int        `json:"version"`
-	Multi     bool       `json:"multiRoot"`
-	BaseQueue string     `json:"baseQueue"` // "off" | "on"
-	Roots     []planRoot `json:"roots"`
-	Items     []planItem `json:"items"`
-	Counts    planCounts `json:"counts"`
+	CandidateObservation *verifyflow.Observation `json:"candidateObservation,omitempty"`
+	Version              int                     `json:"version"`
+	Multi                bool                    `json:"multiRoot"`
+	BaseQueue            string                  `json:"baseQueue"` // "off" | "on"
+	Roots                []planRoot              `json:"roots"`
+	Items                []planItem              `json:"items"`
+	Counts               planCounts              `json:"counts"`
 	// Skipped counts roots that contributed nothing (skipped + unreadable).
 	Skipped int `json:"skippedRoots"`
 	// Complete is false when the plan is not the whole queue: a root was skipped or unreadable,
@@ -139,17 +143,7 @@ type planDoc struct {
 // --- canonical base ---------------------------------------------------------------------
 
 // baseRow is the subset of a `statusgen --gate-scores` row the plan composes with.
-type baseRow struct {
-	Brief        string `json:"brief"`
-	Status       string `json:"status"`
-	QueueVersion int    `json:"queueVersion"`
-	QueueClass   string `json:"queueClass"`
-	QueueBucket  string `json:"queueBucket"`
-	QueueOwner   string `json:"queueOwner"`
-	QueueNextAct string `json:"queueNextAct"`
-	QueueValid   bool   `json:"queueValid"`
-	QueueWhy     string `json:"queueWhy"`
-}
+type baseRow = verifyqueue.Row
 
 // baseQueueRows reads one root's canonical rows. It is a package var ONLY as the test seam
 // (the fixture tests serve the shared statusgen golden through it); production runs the
@@ -175,8 +169,16 @@ var baseQueueRows = func(root string) ([]baseRow, error) {
 	return rows, nil
 }
 
+// rootRevision reads one root's merged-main snapshot: the exact commit its canonical rows
+// describe, for a same-repository candidate the plan carries no --sha for (multi-root mode
+// refuses --sha). It is a package var ONLY as the test seam; production uses the existing
+// read-only verifier snapshot, which refuses a checkout that is not at fetched origin/main.
+var rootRevision = func(root string) (repo, sha string, err error) {
+	return deskkit.VerifierRepositorySnapshot(root)
+}
+
 // queueContractVersion is the statusgen queue contract this binary composes with.
-const queueContractVersion = 1
+const queueContractVersion = verifyqueue.Version
 
 // baseLookup is one root's canonical reading, keyed <stream>/<NN>.
 type baseLookup struct {
@@ -193,7 +195,7 @@ func readBase(root string) baseLookup {
 	b := baseLookup{state: baseCanonical, rows: map[string]baseRow{}}
 	unsupported := 0
 	for _, r := range rows {
-		if r.QueueVersion != queueContractVersion || r.QueueClass == "" {
+		if !verifyqueue.Supported(r.QueueVersion, r.QueueClass) {
 			unsupported++
 			continue
 		}
@@ -258,19 +260,8 @@ func applyBase(it loopengine.Item, disp disposition, reason string, b *baseLooku
 		return dispCouldNotCheck, "canonical queue: " + why, &planBase{Class: "unclassified", Note: b.reason}
 	}
 	pb := baseOf(row)
-	if !row.QueueValid {
-		return dispCouldNotCheck, "canonical queue: unreadable — " + firstNonEmpty(row.QueueWhy, row.QueueNextAct), pb
-	}
-	switch row.QueueClass {
-	case "judgment-dispatch":
-		return disp, reason, pb
-	case "human-action":
-		if disp == dispDispatchForEvidence {
-			return disp, reason, pb
-		}
-	}
-	return dispBaseHeld, fmt.Sprintf("canonical queue: %s (%s, owner %s): %s",
-		row.QueueClass, firstNonEmpty(row.QueueBucket, "-"), firstNonEmpty(row.QueueOwner, "-"), row.QueueNextAct), pb
+	joined, why := verifyflow.Compose(disp.String(), reason, &row)
+	return dispositionOf(joined), why, pb
 }
 
 func baseOf(r baseRow) *planBase {
@@ -306,6 +297,7 @@ func buildPlan(v *VerifyLoop, o planOpts) (*planDoc, error) {
 		doc.BaseQueue = "on"
 	}
 	bases := map[string]*baseLookup{} // by root path
+	revisions := map[string]string{}  // by root path; absent = no exact revision observed
 
 	if o.multi {
 		if strings.TrimSpace(o.sha) != "" {
@@ -357,6 +349,12 @@ func buildPlan(v *VerifyLoop, o planOpts) (*planDoc, error) {
 			stop()
 			bases[r.Path] = &b
 			r.Queue, r.QueueReason = b.state, b.reason
+			// A root whose snapshot cannot be read, or whose origin is not the configured
+			// repository, carries no revision: its candidates stay could-not-check.
+			if repo, sha, err := rootRevision(r.Path); err == nil && sha != "" &&
+				(r.Repo == "" || strings.EqualFold(repo, r.Repo)) {
+				revisions[r.Path] = sha
+			}
 		}
 	}
 
@@ -456,6 +454,9 @@ func buildPlan(v *VerifyLoop, o planOpts) (*planDoc, error) {
 			}
 		}
 	}
+	if o.baseQueue {
+		doc.CandidateObservation = observeCandidates(doc, items, bases, revisions, o.root, v.RootRepo, v.wakeNow())
+	}
 	return doc, nil
 }
 
@@ -541,4 +542,51 @@ func renderPlanJSON(p *planDoc) error {
 	}
 	_, err = fmt.Fprintf(os.Stdout, "%s\n", b)
 	return err
+}
+
+// observeCandidates is the collection adapter, not another classifier. It records
+// the existing overlays and canonical rows for the pure shared planner. The repair
+// lane is explicitly unknown until /51 supplies its complete discovery result.
+// A candidate's revision is its item's exact target (--sha, or a cross-repository
+// deliverable's source snapshot), else its own root's merged-main snapshot.
+func observeCandidates(doc *planDoc, items []loopengine.Item, bases map[string]*baseLookup, revisions map[string]string, root, repo string, now time.Time) *verifyflow.Observation {
+	o := &verifyflow.Observation{Schema: verifyflow.Schema, Evaluator: verifyflow.Evaluator,
+		Provenance: "verifyloop canonical queue and overlay observation", Collected: now,
+		WholeScope: doc.Multi, Requested: []string{}, Coverage: []verifyflow.Coverage{}, Candidates: []verifyflow.Candidate{}}
+	rootRepos := map[string]string{}
+	for i, r := range doc.Roots {
+		// An unresolved root is numbered by position so two never share one id.
+		id := firstNonEmpty(r.Repo, r.Path, fmt.Sprintf("unresolved-root-%d", i+1))
+		o.Requested = append(o.Requested, id)
+		rootRepos[r.Path] = id
+		state := "complete"
+		if r.State != rootHealthy || r.Queue != baseCanonical {
+			state = "unknown"
+		}
+		o.Coverage = append(o.Coverage, verifyflow.Coverage{Repository: id, Lane: verifyflow.Awaiting, State: state, Reason: r.Reason + r.QueueReason},
+			verifyflow.Coverage{Repository: id, Lane: verifyflow.Repair, State: "unknown", Reason: "Evidence repair discovery has not been collected"})
+	}
+	for i, it := range items {
+		path := firstNonEmpty(payloadValue(it, "root"), root)
+		id := firstNonEmpty(payloadValue(it, "repo"), repo, rootRepos[path])
+		c := verifyflow.Candidate{Subject: verifyflow.Subject{Repository: id, Brief: itemKey(it), Revision: firstNonEmpty(it.TargetSHA, revisions[path])},
+			Aliases: []string{it.ID}, Sources: []string{verifyflow.Awaiting}, Order: i}
+		if b := bases[path]; b != nil {
+			c.Base = b.rows[itemKey(it)]
+		}
+		// Use the outcome already computed by buildPlan. An explicit refusal or tier
+		// error is a hard hold; no second TierPolicy or mutable input read is performed.
+		for _, pi := range doc.Items {
+			if pi.ID == it.ID {
+				c.Overlay = firstNonEmpty(pi.Overlay, pi.Disposition, pi.Kind)
+				c.Reason = pi.Reason
+				break
+			}
+		}
+		o.Candidates = append(o.Candidates, c)
+	}
+	// Bind the exact collected content, including coverage. The collection time is
+	// excluded, so identical content collected twice has one revision.
+	o.Revision = verifyflow.ContentRevision(*o)
+	return o
 }

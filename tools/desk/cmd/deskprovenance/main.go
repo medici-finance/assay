@@ -36,11 +36,15 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
+	"io"
 	"os"
+	"strconv"
 	"strings"
 
+	"github.com/spf13/cobra"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -56,77 +60,167 @@ const provenanceCardMarker = "<!-- assay:provenance-card -->"
 // so nothing in the repo yet authorizes posting this card to a real, public pull request.
 // A doc-only gate on a live-capable write path is not a control (the finding this refusal
 // closes); refusing unconditionally in code is. Delete this constant and its one call site in
-// run(), re-enabling the upsertLiveCard call it currently guards, in the SAME change that
+// provenance(), re-enabling the upsertLiveCard call it currently guards, in the SAME change that
 // records the ruling on the DR — never before, and never by loosening this message instead.
 const liveCardRefusalReason = "refusing to post: the design record DR-provenance-card " +
 	"is still PROPOSED — no human ruling is recorded yet on whether this card may be posted " +
 	"to a real pull request. Use --dry-run (or --fixture) to gather and print the card without " +
 	"posting; this refusal holds even with --post until the DR is ratified."
 
-const usageText = `deskprovenance — gather the contributor provenance signals for a pull request and
+// helpLong is the root help's prose and the usage a run with no target prints. The flags and
+// their descriptions are generated from the command tree (desktools-v2/46).
+const helpLong = `deskprovenance — gather the contributor provenance signals for a pull request and
 print or post the resulting card. Facts only: no score, no rating, no verdict.
 
-USAGE:
   deskprovenance --dry-run --fixture <path.json>
   deskprovenance --dry-run --repo <owner/name> --pr <N>
   deskprovenance --repo <owner/name> --pr <N> [--role <desk-role>]
   deskprovenance --repo <owner/name> --pr <N> --post [--role <desk-role>]
   deskprovenance --version
 
-  --dry-run          gather and print the card; post nothing.
-  --fixture <path>   load a JSON deskkit.ProvenanceInput instead of reading the forge.
-                      Requires --dry-run: fixture data is never posted to a real PR.
-  --repo <owner/name> the target repository (required unless --fixture is given).
-  --pr <N>           the pull request number (required unless --fixture is given).
-  --post             required, IN ADDITION to omitting --dry-run, to actually post/edit a
-                      live comment on a real pull request. Naming a target with --repo/--pr
-                      alone never writes: without --post a live run only gathers and prints
-                      the card, same as --dry-run. Currently refused unconditionally even
-                      with --post — see the package doc comment.
-  --role <name>      the desk role identity to post as on a live run (default "worker").
+Naming a target with --repo/--pr alone never writes: without --post a live run only gathers
+and prints the card, same as --dry-run. A live run with --post is currently refused
+unconditionally — see the package doc comment. --fixture requires --dry-run: fixture data is
+never posted to a real pull request.
 
 Exit: 0 clean · 1 flagged · 6 could-not-check · 2 usage error.`
 
 func main() {
-	os.Exit(deskkit.PerfRun("deskprovenance", nil, os.Args[1:], func([]string) int {
-		return run(os.Args[1:])
+	os.Exit(deskkit.PerfRun("deskprovenance", nil, os.Args[1:], func(a []string) int {
+		return run(a)
 	}))
 }
 
+// run is one invocation on the process streams.
 func run(args []string) int {
-	fs := flag.NewFlagSet("deskprovenance", flag.ContinueOnError)
-	fs.SetOutput(new(strings.Builder)) // usageText below is our own, printed on error ourselves
-	dryRun := fs.Bool("dry-run", false, "gather and print the card; post nothing")
-	fixture := fs.String("fixture", "", "path to a JSON deskkit.ProvenanceInput fixture")
-	repo := fs.String("repo", "", "owner/name of the target repository")
-	pr := fs.Int("pr", 0, "pull request number")
-	post := fs.Bool("post", false, "confirm you intend to post/edit a live comment on a real pull request (required in addition to omitting --dry-run; see usage)")
-	role := fs.String("role", "worker", "desk role identity to post as (live run only)")
-	versionFlag := fs.Bool("version", false, "print version and exit")
-	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskprovenance", "post")
+	return execute(args, os.Stdout, os.Stderr)
+}
 
-	if err := fs.Parse(args); err != nil {
-		fmt.Fprintln(os.Stderr, usageText)
+// provOpts is everything a run's command line says.
+type provOpts struct {
+	dryRun   bool
+	fixture  string
+	repo     string
+	pr       int
+	post     bool
+	role     string
+	override string
+}
+
+// provenanceFn is the typed handler the command tree calls; the contract tests replace it to
+// observe the values that reach it.
+var provenanceFn = provenance
+
+// onResolve, when set, sees every invocation's resolved settings.
+var onResolve func(*cli.Values)
+
+// gatherFn reads a live pull request's signals; the contract tests replace it so the posting
+// gates are exercised on the real handler without reaching the forge.
+var gatherFn = gatherLive
+
+// exitErr is a handler's exit code carried as an error, so cli.Run keeps it.
+type exitErr int
+
+func (e exitErr) Error() string { return "exit " + strconv.Itoa(int(e)) }
+func (e exitErr) ExitCode() int { return int(e) }
+
+func codeErr(code int) error {
+	if code == deskkit.ExitOK {
+		return nil
+	}
+	return exitErr(code)
+}
+
+// versionLine is what --version and -version print.
+func versionLine() string {
+	sha, built := deskkit.Version()
+	return fmt.Sprintf("deskprovenance sourceSHA=%s builtAt=%s releaseTag=%s", sha, built, deskkit.ReleaseTagOrDev())
+}
+
+// bindings are every setting deskprovenance declares: flags and defaults only, no environment
+// variable and no configuration file. The scan-override flag is the one every outbound verb
+// declares (deskkit.ScanOverrideFlag), applied by provenance exactly as
+// deskkit.RegisterOutboundOverride applied it.
+func bindings() []cli.Binding {
+	return []cli.Binding{
+		{Key: "dry-run", Kind: cli.Bool, Flag: "dry-run", Default: false, Usage: "gather and print the card; post nothing"},
+		{Key: "fixture", Kind: cli.String, Flag: "fixture",
+			Usage: "load a JSON deskkit.ProvenanceInput from `path` instead of reading the forge (requires --dry-run)"},
+		{Key: "repo", Kind: cli.String, Flag: "repo", Usage: "the target repository `owner/name` (required unless --fixture is given)"},
+		{Key: "pr", Kind: cli.Int, Flag: "pr", Default: 0, Usage: "the pull request number `N` (required unless --fixture is given)"},
+		{Key: "post", Kind: cli.Bool, Flag: "post", Default: false,
+			Usage: "required, IN ADDITION to omitting --dry-run, to post/edit a live comment on a real pull request; currently refused unconditionally"},
+		{Key: "role", Kind: cli.String, Flag: "role", Default: "worker", Usage: "the desk role identity to post as on a live run"},
+		{Key: deskkit.ScanOverrideFlag, Kind: cli.String, Flag: deskkit.ScanOverrideFlag, Usage: deskkit.OutboundOverrideHelp},
+	}
+}
+
+// execute runs one invocation against a fresh command tree.
+func execute(args []string, stdout, stderr io.Writer) int {
+	build := func() *cobra.Command {
+		root := cli.NewRoot("deskprovenance", "gather the contributor provenance signals for a pull request and print the card")
+		root.Long = helpLong
+		set := cli.Declare(root, bindings()...)
+		// deskprovenance takes no positional argument; a stray word is refused before anything
+		// runs, never silently ignored.
+		root.Args = func(_ *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return fmt.Errorf("unexpected argument %q — deskprovenance takes flags only", args[0])
+			}
+			return nil
+		}
+		root.RunE = func(*cobra.Command, []string) error {
+			v, err := set.Resolve(cli.Inputs{})
+			if err != nil {
+				fmt.Fprintf(stderr, "deskprovenance: %v\n", err)
+				return exitErr(2)
+			}
+			if onResolve != nil {
+				onResolve(v)
+			}
+			return codeErr(provenanceFn(provOpts{
+				dryRun:   v.Bool("dry-run"),
+				fixture:  v.String("fixture"),
+				repo:     v.String("repo"),
+				pr:       v.Int("pr"),
+				post:     v.Bool("post"),
+				role:     v.String("role"),
+				override: v.String(deskkit.ScanOverrideFlag),
+			}, stdout, stderr))
+		}
+		return root
+	}
+	return cli.Run(build, args, cli.Options{
+		IO:              cli.IO{Out: stdout, Err: stderr},
+		Version:         versionLine(),
+		VersionTemplate: "{{.Version}}\n",
+		// A parse error keeps the legacy usage-error code (2).
+		UsageExit: 2,
+		// The flags were Go flag-package flags; the single-dash spellings stay accepted.
+		GoFlagCompat: true,
+	})
+}
+
+// provenance is one run from parsed options: the outbound context, the target checks, the
+// gather, then the two posting gates.
+func provenance(o provOpts, stdout, stderr io.Writer) int {
+	// The scan-override reason, applied as deskkit.RegisterOutboundOverride applies it: a
+	// non-blank reason must validate, and the outbound context is set either way.
+	if strings.TrimSpace(o.override) != "" {
+		if err := deskkit.ValidateScanOverride(o.override); err != nil {
+			fmt.Fprintln(stderr, "deskprovenance:", err)
+			return deskkit.ExitCodeOf(err)
+		}
+	}
+	deskkit.SetOutboundContext(deskkit.OutboundContext{Tool: "deskprovenance", Verb: "post", OverrideReason: o.override})
+
+	if o.fixture == "" && o.repo == "" && o.pr == 0 {
+		fmt.Fprintln(stderr, helpLong)
 		return 2
 	}
-	if err := applyOverride(); err != nil {
-		fmt.Fprintln(os.Stderr, "deskprovenance:", err)
-		return deskkit.ExitCodeOf(err)
-	}
 
-	if *versionFlag {
-		sha, built := deskkit.Version()
-		fmt.Printf("deskprovenance sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
-		return deskkit.ExitOK
-	}
-
-	if *fixture == "" && *repo == "" && *pr == 0 {
-		fmt.Fprintln(os.Stderr, usageText)
-		return 2
-	}
-
-	if *fixture != "" && !*dryRun {
-		fmt.Fprintln(os.Stderr, "deskprovenance: --fixture requires --dry-run — fixture data is never posted to a real pull request")
+	if o.fixture != "" && !o.dryRun {
+		fmt.Fprintln(stderr, "deskprovenance: --fixture requires --dry-run — fixture data is never posted to a real pull request")
 		return 2
 	}
 
@@ -135,16 +229,16 @@ func run(args []string) int {
 		err error
 	)
 	switch {
-	case *fixture != "":
-		in, err = loadFixture(*fixture)
-	case *repo != "" && *pr > 0:
-		in, err = gatherLive(*repo, *pr, *role)
+	case o.fixture != "":
+		in, err = loadFixture(o.fixture)
+	case o.repo != "" && o.pr > 0:
+		in, err = gatherFn(o.repo, o.pr, o.role)
 	default:
-		fmt.Fprintln(os.Stderr, "deskprovenance: --repo and --pr are both required for a live run (or use --fixture)")
+		fmt.Fprintln(stderr, "deskprovenance: --repo and --pr are both required for a live run (or use --fixture)")
 		return 2
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "deskprovenance: %s\n", err)
+		fmt.Fprintf(stderr, "deskprovenance: %s\n", err)
 		return 2
 	}
 
@@ -155,11 +249,11 @@ func run(args []string) int {
 	// Gate 1: naming a live target (--repo/--pr) never by itself writes. --dry-run prints and
 	// stops, as always; a live run that omits --post ALSO only prints — --post is a separate,
 	// explicit opt-in to write, never inferred from the flags that merely say where to look.
-	if *dryRun || !*post {
-		if !*dryRun {
-			fmt.Fprintln(os.Stderr, "deskprovenance: --post was not given — gathering and printing the card without posting (pass --post to write it; see --help)")
+	if o.dryRun || !o.post {
+		if !o.dryRun {
+			fmt.Fprintln(stderr, "deskprovenance: --post was not given — gathering and printing the card without posting (pass --post to write it; see --help)")
 		}
-		fmt.Print(card)
+		fmt.Fprint(stdout, card)
 		return overall.ExitCode()
 	}
 
@@ -167,7 +261,7 @@ func run(args []string) int {
 	// tool's own docs describe as pending is actually recorded. See liveCardRefusalReason —
 	// this is the line to remove, in the same change that records the ruling, to re-enable
 	// the upsertLiveCard call it currently guards.
-	fmt.Fprintln(os.Stderr, "deskprovenance: "+liveCardRefusalReason)
+	fmt.Fprintln(stderr, "deskprovenance: "+liveCardRefusalReason)
 	return 2
 }
 
@@ -224,7 +318,7 @@ func gatherLive(repoSlug string, prNumber int, role string) (deskkit.ProvenanceI
 // as one of its own lines and replaces its body, or posts body as a new comment when no such
 // comment exists — so one pull request carries at most one card.
 //
-// Not called from run() today: gate 2 (liveCardRefusalReason) refuses every live write before
+// Not called from provenance() today: gate 2 (liveCardRefusalReason) refuses every live write before
 // reaching this function. Kept, rather than deleted, because the refusal is meant to lift —
 // removing this function along with the refusal would just mean rewriting it later.
 func upsertLiveCard(repoSlug string, prNumber int, role, body string) error {

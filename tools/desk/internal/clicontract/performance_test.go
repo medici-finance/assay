@@ -115,6 +115,7 @@ var parserArgs = map[string][]string{
 	"deskclaim":     {"list"},
 	"deskclaim-ref": {"list"},
 	"deskdispatch":  nil,
+	"deskfleet":     {"labels", "--forge", "github", "--repo", "example/project", "--dry-run"},
 	"deskgitlab":    {"create"},
 	"deskread":      {"issues", "--repo", "example/project"},
 	"desktoken":     {"coverage", "invalid-role"},

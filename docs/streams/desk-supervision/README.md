@@ -125,7 +125,7 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 14 | [Budget-driven recycle — retire a healthy worker before it degrades](brief-14-budget-driven-recycle.md) | 3 | M | todo | — | — |
 | 15 | [Local supervisor host + multi-cell vitals aggregation](brief-15-local-supervisor-host-and-aggregation.md) | 4 | M | todo | — | — |
 | 16 | [Verification wake conditions — stop repeating unchanged blocked checks](brief-16-verification-wake-conditions.md) | 0 | M | done | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1396 @ e78d34ef8482d8daa0423f231fda1a06f6e3b959) |
-| 17 | [Verification failures create durable worker repair obligations](brief-17-verification-repair-obligations.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 2f44050f8a70 (claude-opus-5-5) | — |
+| 17 | [Verification failures create durable worker repair obligations](brief-17-verification-repair-obligations.md) | 1 | M | done | 2026-10-19 assay-verifier-app[bot] @ 2f44050f8a70 (claude-opus-5-5) | 2026-11-02 assay-reviewer-app[bot] (approved PR #1399 @ 91112873ba7911ffc3bf06f8845088aa5df29f01) |
 | 18 | [Enforce repair reservations at worker dispatch](brief-18-repair-admission.md) | 2 | M | verified | 2026-10-20 assay-verifier-app[bot] @ b73d90d774fc (claude-opus-5-5) | — |
 | 19 | [Persist review findings and apply the existing round cap across sessions](brief-19-review-finding-continuity.md) | 0 | M | verified | 2026-10-04 assay-verifier-app[bot] @ 70deba75a577 (claude-opus-5-5) | — |
 | 20 | [Review scope and first-pass completeness](brief-20-review-scope-and-first-pass.md) | 0 | M | implemented | — | — |
@@ -142,10 +142,10 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 31 | [Persist CI check results the desk tools already read](brief-31-ci-check-history.md) | 0 | M | implemented | — | — |
 | 32 | [Human decision record — options, recommended default, the pick and the latency](brief-32-human-decision-record.md) | 0 | M | implemented | — | — |
 | 33 | [Intake exit record — every triaged item lands one structured disposition](brief-33-intake-exit-record.md) | 0 | L | implemented | — | — |
-| 34 | [Worker usage counts at claim release — counts only, never transcripts](brief-34-worker-usage-counts.md) | 1 | M | todo | — | — |
+| 34 | [Worker usage counts at claim release — counts only, never transcripts](brief-34-worker-usage-counts.md) | 1 | M | implemented | — | — |
 | 35 | [Records and retention page lists every analysis record and what is never recorded](brief-35-records-and-retention-page.md) | 2 | S | todo | — | — |
-| 36 | [Directory scope keys in outcome records carry a trailing slash; readers accept both forms](brief-36-directory-scope-keys-carry-a-trailing-slash.md) | 0 | M | todo | — | — |
-| 37 | [Verification re-runs as waste — every attempt on the outcome record, joined to measured cost](brief-37-verification-reruns-as-waste.md) | 0 | L | todo | — | — |
+| 36 | [Directory scope keys in outcome records carry a trailing slash; readers accept both forms](brief-36-directory-scope-keys-carry-a-trailing-slash.md) | 0 | M | implemented | — | — |
+| 37 | [Verification re-runs as waste — every attempt on the outcome record, joined to measured cost](brief-37-verification-reruns-as-waste.md) | 0 | L | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -185,11 +185,14 @@ its head, brief 10, is the App's ground truth (installed? correctly scoped?), wh
 provisioning question a human may have to answer before 11 and 12 can proceed.
 Brief 10's gate is ruled on #1245: option 2 in the brief, provision then confirm (the ratified
 relay letters it "option A"). The ruling adds `pull_requests: write` to the existing workflow App,
-and a human merges the workflow-only PR. Its scope and the sole-holder invariant are recorded in
-[`workflow-app-scope.md`](workflow-app-scope.md). Row 10 stays `blocked` until the ruling is
-recorded in the DR (status and `decided-by`; `lifecycle-v1.md` §4.4 and the DR's own flip rule)
-and Verify rows 5 and 6 pass against the live installations (the ratified relay on #1245).
-Briefs 11 and 12 stay `blocked` on their own gates.
+and for the first cutover a human merges the workflow-only PR. Its scope and the sole-holder
+invariant are recorded in [`workflow-app-scope.md`](workflow-app-scope.md). Row 10 stays `blocked`
+until two holds clear. The first is that the ruling is recorded in the DR (status and
+`decided-by`, per the DR's own flip rule). It cleared 2026-11-02: the DR is accepted, and its
+`ruling:` is on #1245. The second is that Verify rows 5 and 6 pass against the live
+installations, after the App owner adds `pull_requests: write` (the ratified relay on #1245:
+"The row moves out of `blocked` once those checks pass"). The second hold is still open.
+Briefs 11 and 12 stay `blocked` on their own gates and their `depends:` chain.
 
 **The vitals delta rides a third, independent chain off 07.** Briefs 13-15 do not change the
 original head — they hang off the built machinery, and they are unrelated to the workflow-landing
