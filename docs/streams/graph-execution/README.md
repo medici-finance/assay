@@ -117,6 +117,10 @@ or removing any human gate (spec §5 states the divergence).
 | 34 | [Signal input, signal classes and decision options in the workflow-pattern schema](brief-34-signal-input-and-signal-classes.md) | 1 | L | implemented | — | — |
 | 35 | [Runtime gate for signal patterns - admission refusal, class routes and the liveness hold](brief-35-signal-pattern-runtime.md) | 2 | M | todo | — | — |
 | 36 | [Canonical PostgreSQL foundation for read-only consumers](brief-36-canonical-postgresql-foundation-for-read-only-consumers.md) | 0 | L | todo | — | — |
+| 40 | [Extract the shared process runner with launch custody intact](brief-40-extract-the-shared-process-runner-with-launch-custody-intact.md) | 1 | M | todo | — | — |
+| 41 | [Persist loop-admin journal and recovery in PostgreSQL](brief-41-persist-loop-admin-journal-and-recovery-in-postgresql.md) | 2 | L | todo | — | — |
+| 42 | [Supervise bounded invocations through the durable journal](brief-42-supervise-bounded-invocations-through-the-durable-journal.md) | 6 | M | todo | — | — |
+| 43 | [Expose caller-scoped launch control and qualify the shared journey](brief-43-expose-caller-scoped-launch-control-and-qualify-the-shared-journey.md) | 7 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)
@@ -454,3 +458,14 @@ so the spec text requires each activating brief to name the source and the brief
 The smallest unblocking move is 36's canonical substrate, not a second mirror store. At App-fetched main `863c43db` on 2026-11-03, `workflow/`, its migrations/contract and CI harness are absent; inspected open PRs 5033/4429 amend full /19's desk-instance scope but implement none of this substrate. A real disposable local server or explicit CI fixture is still needed to execute foundation qualification; client tools alone do not prove that prerequisite. No ambient database or infrastructure was queried. The mirror consumer's separate amendment and complete persistence acceptance remain owed.
 
 This is a decomposition of the existing approved R2/R6 promise. Milestone/brief-v4 reader support is not established across dispatch consumers, so no new operational milestone record or eligibility field is introduced. Foundation delivery never means full R2, mirror acceptance, deployment or tool cutover is complete.
+
+## Proposed bounded delivery of shared supervision — 2026-11-05
+
+The [parent /26 pickup and obligation map](brief-26-shared-loop-admin.md#proposed-bounded-implementation-sequence--2026-11-05)
+proposes /40 → /41 → /42 → /43: process/custody extraction, PostgreSQL journal, shared
+supervisor, then caller control and joined qualification. These are source increments
+for review, not a new accepted milestone or delivered /26. Original /26 prerequisites,
+Tasks, Verify, Evidence and consumer promise remain intact. Generated lifecycle cells
+carry no author approval. The first useful source change reuses the current process
+owner and #4157 preparation; it needs no service, database or live model. Full shared
+execution still requires every original parent row and its human gate.

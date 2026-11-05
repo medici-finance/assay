@@ -307,3 +307,128 @@ work/judgment. Pod replacement cannot treat an unconfirmed old execution group a
 Carry current perf-v3 context across the transport and retain unknown usage. Existing
 negative-path, independent-control and startup work/count checks apply to this consumer;
 /09 and desk-containers/29 own its adapter and effective-profile qualification.
+
+## Proposed bounded implementation sequence — 2026-11-05
+
+This is a review candidate, not a replacement acceptance contract. The four child
+briefs propose bounded source increments; the original promise, prerequisites,
+Tasks, thirteen Verify rows, risk flags and Evidence above are unchanged. No child
+is delivered by this authoring. Do not dispatch these candidates until decomposition
+review acknowledges the active parent claim and agrees the source/acceptance routing.
+No dependency on the children is added to this parent until that review. Its current
+consumers continue to require the full shared-supervisor promise.
+
+### Architecture pickup and actual critical-path head
+
+Source and packet agree at `7f61cff94b188d46b4e38e6259798d85bb5d4510`.
+The approved R2 target routes process facts to the cell PostgreSQL database with a
+separate journal schema; /19 owns work/acceptance and is not a Go dependency.
+The current library/engineering policies choose pgx and Goose, with separate exact
+version admission. The current operator-incarnation contract is a protected-source
+interface and passive fence; it does not install an operational source or custody.
+The manual implementation-pickup bootstrap was used; no context-tool receipt is claimed.
+
+I verified the first independently deliverable increment by reading
+`tools/desk/internal/cellprocess/run.go`: `return withCache(env, func() (int, bool, error) {`.
+That wrapper imports desk-internal `cellcache` and `deskkit`; moving the file alone
+cannot compile in loopadmin and dropping the wrapper loses cache custody and final
+enrollment telemetry. The first source increment therefore extracts the runner and
+its mandatory host-custody seam together, migrates every importer and preserves the
+independent audit/class guards. It can run compiled local fixtures with no journal,
+workflow controller or live profile. Source boundaries, rather than an approval to
+activate a service, are the immediate implementation work.
+
+Merged PR #4157 expressly says it does not claim supervisor/journal delivery. Current
+source contains its bounded preparation and between-pass maintenance; parent rows
+10–12 are carried through relocation, not implemented again. At pickup, process,
+supervisor, journal and control directories under loopadmin remain absent. The full
+remaining body spans process/custody extraction, SQL durability/recovery, lifecycle
+supervision and authenticated transport. Those are separate reviewable increments,
+not one small repair. This is the worker sizing-stop route; it is not a new defect
+fix against #4157 and no strike-two exception is asserted.
+
+Disposition: **adapt the decomposition for review; continue approved offline source
+work after acknowledgment**. The original parent depends on /20,/28,/29,/16; the
+pickup board records verified, verified, verified and implemented respectively.
+Those statuses do not prove new joined-source qualification. No runtime operator
+source, provider profile, live service, database or model is activated by this plan.
+
+### Proposed source waves
+
+| Proposed child | Start needs | Effort | Independently reviewable result | Remaining acceptance |
+|---|---|---|---|---|
+| graph-execution/40 | shipped /20 module | M | Single moved process owner, required custody integration, all current importers and launch/audit guards migrated; current-owner startup repair retained | Parent rows 4,10–12 and preserved containment/cadence/build witnesses |
+| graph-execution/41 | /40 in this conservative serial sequence | L | Separate PostgreSQL process journal, migrations, protected incarnation, shared reservation/brake consumption and passive artifact-aware recovery | Parent rows 6–9 plus passive restore; real owned disposable PostgreSQL |
+| graph-execution/42 | /41 plus existing /16,/28,/29 contracts | M | Shared both-mode lifecycle with deterministic waits, durable identity/reconciliation and per-launch/per-delivery admission | Parent rows 1,2,5,13, no graph-store dependency |
+| graph-execution/43 | /42 | M | Caller-scoped CLI/control boundary and joined CLI→supervisor→journal→fake-adapter qualification | Parent row 3, joined endpoint controls and all thirteen unchanged parent rows on the integrated source |
+
+The source order is /40 → /41 → /42 → /43. /41 has no inherent Go dependency on
+/40; that edge deliberately serializes this boundary work and can be removed after
+review if distinct ownership and qualification are established. It is never an edge
+to /19 or /36's workflow migration ledger. The native brief waves also retain the
+existing upstream depth, so /40 and /41 are waves 1/2 and /42 and /43 are waves 6/7.
+Exact dependency versions and a qualified explicit fixture are prerequisites for SQL
+implementation/evidence. Catalogue preference alone neither admits dependencies nor
+establishes a disposable PostgreSQL service exists.
+
+No milestone YAML is introduced: milestone-v1 and stream-v1 remain draft contracts
+at the pickup source. Existing full-/26 consumers, including /22,/27 and /21, are not
+repointed to an earlier child. The useful early outcome is reusable process containment
+through existing desk launches. Shared execution is accepted only after the joined
+thirteen-row parent run; fake-provider evidence never becomes live-provider evidence.
+
+### Every original obligation has one implementation owner
+
+The child Verify row is an executable acceptance command for that responsibility;
+/43 additionally reruns the complete original table at the joined subject. Mapping
+a delivered current-owner repair records reuse and requalification, not new delivery.
+
+| Original obligation | Sole implementation owner | Child acceptance command row(s) |
+|---|---|---|
+| Task 1: move, never copy, the process runner and preserve process-tree/uncertain cleanup | /40 | 1,5; original containment fixtures retained |
+| Task 1: migrate cadence and every current importer; require/replace and release resolution | /40 | 2–5; GOWORK=off consumer build and packaging qualification |
+| Task 1: extend audit roots and re-key the exact exec site without losing it | /40 | 1; planted unregistered loopadmin exec and missing-root mutations |
+| Task 1: one shared supervisor, both caller modes, no privileged all-role daemon | /42 | 1,3 |
+| Tasks 1,4: authenticated caller/profile/role and validated assignment/reservation boundary | /43 | 1,2; direct lower-boundary bypass |
+| Task 2: durable intent before child; caller/invocation/generation key and one journal transaction | /41 | 1,4 |
+| Task 2: process receipts/lifecycle/cancel/limits/usage/checkpoints; no second work store | /41 | 1–5 |
+| Task 2: stable request reconciliation across caller/journal/provider commits | /42 | 2; joined /43 rerun retains SQL row 6 |
+| Task 3: start/observe/cancel/reconcile and capability-gated idle retention | /42 | 1,2,4 |
+| Task 3: duplicate prevention, unknown launch/stop holds, bounded restart | /42 | 2 |
+| Task 3: current role/profile/generation/budget before every launch and receipt | /42 | 1–3; joined /43 direct-bypass run |
+| Task 3: shared concurrency and preserved consumed allowance across callers/crash/restore | /41 | 1,4,5; endpoint composition /43 row 1 |
+| Task 4: runtime cannot administer profiles/credentials, arbitrary argv, raised limits or unconstrained children | /43 | 1,2 |
+| Task 4: inference credential confined; no secrets in packets/artifacts/logs | /43 | 1,2 plus independent security review of credential-free fake composition |
+| Task 4: unknown caller, missing/unreadable profile/binding/budget fail closed | /42 | 3; endpoint /43 row 1 preserves lower-boundary refusal |
+| Task 5: sanitized mode/caller/optional workflow state; attach/detach starts nothing | /43 | 1,2 |
+| Task 5: offline default, separate live activation, ownership/refusal documentation | /43 | 2 plus exact-source independent review; activation excluded |
+| Task 5: artifact-aware backup/restore preserves pause/spend/unknowns and is passive | /41 | 2,5 |
+| Task 6/R2: own PostgreSQL schema/versioned migrations, no fallback, journal transaction | /41 | 1,3,4 |
+| Task 6/R2: protected incarnation before each launch/delivery and paused mismatch/missing record | /41 | 2; supervisor enforcement /42 rows 1–3 |
+| Task 6/R2: no embedded database or workflow import | /41 | 3; /42 row 1 guards graph-free composition |
+| Accounting amendment: launch counts/recursive creation are fail-closed brakes | /41 | 4; constrained endpoint /43 row 1 |
+| Accounting amendment: re-derived effect-class pacing is best effort and never source-of-truth cache | /41 | 4 |
+| Waiting amendment: deterministic observe/timers/cancel/completion; no progress model/watcher | /42 | 4 |
+| Startup item 1: shared compatible preparation, attach no work, per-role custody/authority retained | /40 | 2,3; consume #4157 |
+| Startup item 2: bounded scratch registration/cache enrollment, current hard pressure/space/leases | /40 | 2,3; consume #4157 |
+| Startup item 3: scans only in maintenance, unlocked inventory, short-lock revalidation, protected data | /40 | 2,3; consume #4157 and current scratch-maintenance owner |
+| Startup item 4: resolved opt-in, phases/confirmed starts, no double-counting or sink/consent change | /40 | 4; consume #4157 |
+| Startup item 5: full offline 1/5-role, 1x/10x-history, concurrent/restart/down/corruption matrix and measurements | /40 | 2–4; joined-source /43 rerun |
+| Interface: identity/subject/capability in; same-bound typed state/evidence/receipt out, unsupported fields/stale generations refused | /43 | 1,2; uses /42 both-mode semantics |
+| Follow-ons: canonical ownership, perf-v3/unknown usage, no separate Kubernetes/controller launch owner | /42 | 1,2,4; real adapters/cutovers remain /22,/27,/21 and existing consumer owners |
+| Human acceptance and independent exact-subject full-/26 Evidence | /43 | 3–15 rerun all parent commands; decision #5492 remains open |
+
+### Dispatch and review limits
+
+No open PR among the 47 current open changes listed a /40–43 body reference or
+changed a /40–43 brief file at the pickup check; all file lists were complete.
+Main at the recorded source has none of those paths. These numbers are proposed,
+not an exclusive reservation; recheck main/open changes before each pickup. No
+existing work or review is closed, superseded or certified by this authoring.
+The parent claim is acknowledged here and in the draft handoff; decomposition
+review owns approval of routing before child dispatch.
+
+Child risk flags retain the parent irreversible=yes/human floor. Parent decision
+issue #5492 is reused for the full promise; no approval is invented and this split
+cannot resolve it. Dependency admission, actual operator custody, workflow promotion,
+provider qualification and activation retain their existing owners and stop-points.

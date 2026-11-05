@@ -11,6 +11,7 @@ unblocks:
 - graph-execution/21
 - graph-execution/26
 - agent-execution/01
+- graph-execution/40
 effort: M
 gate: model
 risk:
