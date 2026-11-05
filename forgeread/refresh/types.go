@@ -34,6 +34,15 @@ func (l Limits) valid() bool {
 	return l.CallerFillsPerWindow > 0 && l.AdmissionFillsPerWindow >= l.CallerFillsPerWindow && l.FillWindow > 0 && l.MinFreshness > 0 && l.MaxFreshness >= l.MinFreshness && l.ActiveFills > 0 && l.QueuedCallers > 0 && l.AdmissionFills >= l.ActiveFills && l.AdmissionWaiters >= l.QueuedCallers && l.FailureEntries > 0 && l.WaitTimeout > 0 && l.FillTimeout > 0 && l.Cooldown > 0 && l.FailureTTL >= l.Cooldown && l.Refresh.Overlap >= 0 && l.Refresh.FullInventoryInterval > 0 && l.Refresh.FailureBackoff == 0
 }
 
+// Validate checks the canonical trusted refresh policy without performing I/O.
+// Adapters use it before opening authority resources; it grants no source access.
+func (l Limits) Validate() error {
+	if !l.valid() {
+		return ErrPolicy
+	}
+	return nil
+}
+
 // Caller is a trusted identity/policy snapshot. A caller-facing adapter must derive
 // every field from current authentication/configuration, not request text.
 type Caller struct {
