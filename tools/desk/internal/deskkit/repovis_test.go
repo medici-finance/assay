@@ -8,7 +8,8 @@ import (
 
 // The public-repo WRITE gate authorizes an outward write by the REPOSITORY, not the item:
 // a public repo listed in the allowed-repos set with the `:public` token passes (an internal
-// repo needs the `:internal` token — see TestGateInternalToken),
+// repo needs the `:internal` token, and a `:public` mislabel on it is tolerated — see
+// TestGateInternalToken and TestGateExposureRank),
 // and the former per-item `+1` reaction check is gone. These tests drive the decision
 // table over (live visibility × configured entry) with the package stub fetcher — no
 // network, no reaction fixtures.
@@ -29,8 +30,8 @@ ASSAY_ALLOWED_REPOS=example-org/*
 
 // TestPublicRepoGateListedPublicPasses — a repo listed with :public passes for every write
 // shape (the signature no longer distinguishes create / comment / verdict) against a live
-// "public" read. A live "internal" read on the same :public entry now REFUSES: the configured
-// claim must name the live value (TestGateInternalToken).
+// "public" read. A live "internal" read on the same :public entry also passes: the entry's
+// token ranks at least as exposed as the live value (TestGateExposureRank).
 func TestPublicRepoGateListedPublicPasses(t *testing.T) {
 	installRoster(t, gateRoster)
 
@@ -45,10 +46,13 @@ func TestPublicRepoGateListedPublicPasses(t *testing.T) {
 		})
 	}
 
-	t.Run("internal_listed_public_refuses", func(t *testing.T) {
+	// #5514: the gate tolerates a `:public` mislabel on a live-internal repo (the entry states
+	// a wider audience), so a live "internal" read on it passes. `:internal` stays the
+	// accurate token (TestGateExposureRank drives the whole rank table).
+	t.Run("internal_listed_public_passes", func(t *testing.T) {
 		f := &stubRepoInfoFetcher{visibility: "internal"}
-		if err := PublicRepoGate(f, "example-org", "pubrepo"); !IsRefused(err) {
-			t.Fatalf("listed :public repo, live internal: got %v, want Refused/exit 5 — the claim must name the live value", err)
+		if err := PublicRepoGate(f, "example-org", "pubrepo"); err != nil {
+			t.Fatalf("listed :public repo, live internal: got %v, want nil — the gate tolerates a :public mislabel on an internal repo", err)
 		}
 	})
 
@@ -310,7 +314,8 @@ ASSAY_ALLOWED_REPOS=example-org/inner:ci:internal,example-org/pubrepo:ci:public,
 `
 
 // TestGateInternalToken — live visibility `internal` has its own allowed-repos token. The
-// gate accepts a live-internal repo ONLY on an explicit `:internal` entry, refuses
+// gate accepts a live-internal repo on an explicit `:internal` entry (or a `:public` one,
+// TestGateExposureRank), refuses
 // `:internal` on a live-public repo, and keeps the internal repo under every public-form
 // requirement (risk-classing, the self-containment scan, the neutral on-behalf-of form).
 //
@@ -329,8 +334,8 @@ func TestGateInternalToken(t *testing.T) {
 		}
 	})
 
-	t.Run("live_internal_without_internal_token_refuses", func(t *testing.T) {
-		for _, repo := range []string{"bare", "privrepo", "pubrepo", "not-in-set"} {
+	t.Run("live_internal_without_authorizing_token_refuses", func(t *testing.T) {
+		for _, repo := range []string{"bare", "privrepo", "not-in-set"} {
 			f := &stubRepoInfoFetcher{visibility: "internal"}
 			err := PublicRepoGate(f, "example-org", repo)
 			if !IsRefused(err) {
@@ -338,11 +343,6 @@ func TestGateInternalToken(t *testing.T) {
 			}
 			if msg := err.Error(); !strings.Contains(msg, "example-org/"+repo+":internal") || !strings.Contains(msg, EnvAllowedRepos) {
 				t.Fatalf("%s: refusal does not name the :internal remedy: %v", repo, err)
-			}
-			// #5436: ONLY a `:public` entry on a live-internal repo can predate the token, so
-			// only that refusal carries the history clause.
-			if got, want := strings.Contains(err.Error(), internalTokenHistory), repo == "pubrepo"; got != want {
-				t.Fatalf("%s, live internal: history clause present = %v, want %v: %v", repo, got, want, err)
 			}
 		}
 	})
@@ -369,6 +369,84 @@ func TestGateInternalToken(t *testing.T) {
 		}
 		if !SelfContainApplies(repo) {
 			t.Fatalf("SelfContainApplies(%q) = false — an internal repo must be self-containment scanned", repo)
+		}
+	})
+}
+
+// rankGateRoster carries one explicit entry per visibility token, a bare entry, and an
+// owner/* pattern for a second owner, so every (live visibility x configured entry) cell
+// of the exposure rank has a repo to read.
+const rankGateRoster = `ASSAY_BLESS_LOGIN=ada:2001
+ASSAY_TRUSTED_LOGINS=ada:2001
+ASSAY_ALLOWED_REPOS=example-org/inner:ci:internal,example-org/pubrepo:ci:public,example-org/privrepo:ci:private,example-org/bare,example-pattern/*
+`
+
+// TestGateExposureRank — the gate ranks exposure private < internal < public and passes a
+// live read only on an explicit, non-private entry whose token ranks at least as exposed as
+// the live value. A `:public` entry therefore authorizes a live-internal repo, and nothing
+// passes that is more exposed than its entry states. Every refusal names its cause.
+//
+// regression: #5514
+func TestGateExposureRank(t *testing.T) {
+	installRoster(t, rankGateRoster)
+	for _, tc := range []struct {
+		live, owner, repo string
+		pass              bool
+		cause             string // substring the refusal must carry; empty on a pass
+	}{
+		{"internal", "example-org", "inner", true, ""},
+		{"internal", "example-org", "pubrepo", true, ""},
+		{"public", "example-org", "pubrepo", true, ""},
+		{"public", "example-org", "inner", false, "configured visibility: internal, less exposed than live-public"},
+		{"internal", "example-org", "privrepo", false, "a :private entry authorizes no outward write"},
+		{"public", "example-org", "privrepo", false, "a :private entry authorizes no outward write"},
+		{"internal", "example-org", "bare", false, "the entry carries no visibility token"},
+		{"public", "example-org", "bare", false, "the entry carries no visibility token"},
+		{"internal", "example-pattern", "anything", false, "matched only by an owner/* pattern"},
+		{"public", "example-pattern", "anything", false, "matched only by an owner/* pattern"},
+		{"internal", "example-org", "not-in-set", false, "no allowed-repos entry names it"},
+		{"public", "example-org", "not-in-set", false, "no allowed-repos entry names it"},
+	} {
+		name := tc.live + "_" + tc.owner + "/" + tc.repo
+		t.Run(name, func(t *testing.T) {
+			err := PublicRepoGate(&stubRepoInfoFetcher{visibility: tc.live}, tc.owner, tc.repo)
+			if tc.pass {
+				if err != nil {
+					t.Fatalf("%s: got %v, want nil", name, err)
+				}
+				return
+			}
+			if !IsRefused(err) {
+				t.Fatalf("%s: got %v, want Refused/exit 5", name, err)
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, tc.cause) {
+				t.Fatalf("%s: refusal does not name its cause %q: %v", name, tc.cause, err)
+			}
+			if !strings.Contains(msg, tc.owner+"/"+tc.repo+":"+tc.live) || !strings.Contains(msg, EnvAllowedRepos) {
+				t.Fatalf("%s: refusal does not name the %s remedy: %v", name, tc.live, err)
+			}
+			if tc.live == "public" && strings.Contains(msg, ":internal") {
+				t.Fatalf("%s: a live-public refusal must never offer :internal as a remedy: %v", name, err)
+			}
+			if tc.live == "internal" && strings.Contains(msg, ":public") {
+				t.Fatalf("%s: a live-internal refusal must never offer :public as a remedy: %v", name, err)
+			}
+		})
+	}
+
+	// The live read stays load-bearing: an unreadable or unrecognised read is exit 6 even on
+	// the widest entry, never a pass on the configured claim alone.
+	t.Run("read_error_on_public_entry_is_unverifiable", func(t *testing.T) {
+		err := PublicRepoGate(&stubRepoInfoFetcher{visibilityErr: errors.New("boom")}, "example-org", "pubrepo")
+		if err == nil || IsRefused(err) {
+			t.Fatalf("read error on a :public entry: got %v, want Unverifiable/exit 6", err)
+		}
+	})
+	t.Run("unknown_live_value_on_public_entry_is_unverifiable", func(t *testing.T) {
+		err := PublicRepoGate(&stubRepoInfoFetcher{visibility: "restricted"}, "example-org", "pubrepo")
+		if err == nil || IsRefused(err) {
+			t.Fatalf("unrecognised live value on a :public entry: got %v, want Unverifiable/exit 6", err)
 		}
 	})
 }
