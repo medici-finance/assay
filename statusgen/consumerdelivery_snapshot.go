@@ -15,9 +15,8 @@ import (
 	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
-// Consumer snapshots never extract archive links. Regular entries are written
-// exclusively first; every link is resolved against the complete immutable tree
-// before any filesystem link is created or any stream is read.
+// Consumer snapshots never create filesystem links. Link chains are validated
+// against immutable tree metadata before any stream is read.
 type consumerSnapshot struct {
 	modes map[string]string
 	dirs  map[string]bool
@@ -70,11 +69,7 @@ func newConsumerSnapshot(entries []evaluation.TreeEntry, changed map[string]bool
 	return s, nil
 }
 
-func materializeConsumerDelivery(archive *exec.Cmd, dest string, entries []evaluation.TreeEntry, changed map[string]bool) error {
-	s, err := newConsumerSnapshot(entries, changed)
-	if err != nil {
-		return err
-	}
+func (s *consumerSnapshot) materialize(archive *exec.Cmd, dest string) error {
 	var diagnostic bytes.Buffer
 	archive.Stderr = &diagnostic
 	stream, err := archive.StdoutPipe()
@@ -170,37 +165,102 @@ func (s *consumerSnapshot) extract(input io.Reader, dest string) error {
 		names = append(names, p)
 	}
 	sort.Strings(names)
-	resolved := map[string]string{}
 	for _, name := range names {
-		p, err := s.resolve(name)
+		if _, err := s.resolve(name); err != nil {
+			return err
+		}
+	}
+	return s.checkExtracted(dest)
+}
+
+// Check the filesystem's actual names and types against the regular-file roster.
+// Case-folding and normalization can otherwise merge distinct tree directories.
+func (s *consumerSnapshot) checkExtracted(dest string) error {
+	expected := map[string]bool{}
+	for name, mode := range s.modes {
+		if mode == "120000" {
+			continue
+		}
+		expected[name] = false
+		for p := path.Dir(name); p != "."; p = path.Dir(p) {
+			expected[p] = true
+		}
+	}
+	err := filepath.WalkDir(dest, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		resolved[name] = p
-	}
-	// No more archive writes occur after this point. All targets and chains are
-	// already proved in-tree, so creating a link cannot redirect extraction.
-	for _, name := range names {
-		p := filepath.Join(dest, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		if p == dest {
+			return nil
+		}
+		rel, err := filepath.Rel(dest, p)
+		if err != nil {
 			return err
 		}
-		if err := os.Symlink(s.links[name], p); err != nil {
-			return fmt.Errorf("cannot materialize checked link %s: %w", name, err)
+		rel = filepath.ToSlash(rel)
+		isDir, ok := expected[rel]
+		if !ok || d.IsDir() != isDir || (!isDir && !d.Type().IsRegular()) {
+			return fmt.Errorf("filesystem differs from delivered tree: %s", rel)
 		}
-	}
-	physicalRoot, err := filepath.EvalSymlinks(dest)
+		delete(expected, rel)
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	for _, name := range names {
-		actual, err := filepath.EvalSymlinks(filepath.Join(dest, filepath.FromSlash(name)))
-		want := filepath.Join(physicalRoot, filepath.FromSlash(resolved[name]))
-		if err != nil || actual != want {
-			return fmt.Errorf("filesystem resolution differs from immutable link target: %s", name)
+	if len(expected) != 0 {
+		return fmt.Errorf("filesystem cannot represent delivered tree exactly")
+	}
+	// Discovery opens these literal names, including a README in each stream.
+	// On a folding host an absent literal must not resolve to a different entry.
+	boardPaths := []string{"docs", "docs/streams", "docs/archive"}
+	for dir := range s.dirs {
+		if path.Dir(dir) == "docs/streams" {
+			boardPaths = append(boardPaths, dir+"/README.md")
+		}
+	}
+	for _, name := range boardPaths {
+		if s.dirs[name] || s.modes[name] != "" {
+			continue
+		}
+		if _, err := os.Lstat(filepath.Join(dest, filepath.FromSlash(name))); err == nil {
+			return fmt.Errorf("filesystem aliases an absent board input: %s", name)
+		} else if !os.IsNotExist(err) {
+			return err
 		}
 	}
 	return nil
+}
+
+// Resolve site patterns against tree entries, not paths reached through links.
+func (s *consumerSnapshot) resolveSitePath(_ string, tok string) ([]string, error) {
+	seen := map[string]bool{}
+	var out []string
+	for _, alt := range expandBraces(strings.TrimSuffix(tok, "/")) {
+		rel := filepath.Clean(alt)
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return nil, fmt.Errorf("path escapes the repo root")
+		}
+		for name := range s.dirs {
+			if name == "." && rel != "." {
+				continue
+			}
+			matched, err := filepath.Match(rel, filepath.FromSlash(name))
+			if err == nil && matched && !seen[name] {
+				seen[name] = true
+				out = append(out, name)
+			}
+		}
+		for name := range s.modes {
+			matched, err := filepath.Match(rel, filepath.FromSlash(name))
+			if err == nil && matched && !seen[name] {
+				seen[name] = true
+				out = append(out, name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func writeConsumerSnapshotFile(dest, name, mode string, source io.Reader) error {

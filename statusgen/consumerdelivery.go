@@ -80,8 +80,12 @@ func runDeliveryConsumers(root, base, brief, delivery string) int {
 	if !ok || len(entries) == 0 {
 		return fail("cannot enumerate delivered tree entries")
 	}
+	tree, err := newConsumerSnapshot(entries, changed)
+	if err != nil {
+		return fail(err)
+	}
 	archive := historyGit(root, "archive", "--format=tar", delivery+"^{tree}")
-	if err := materializeConsumerDelivery(archive, snapshot, entries, changed); err != nil {
+	if err := tree.materialize(archive, snapshot); err != nil {
 		return fail(err)
 	}
 	streams, _, err := loadStreams(snapshot)
@@ -96,7 +100,7 @@ func runDeliveryConsumers(root, base, brief, delivery string) int {
 	if bf.ConsumersProse == "" && len(bf.Consumers) == 0 {
 		return fail("delivered brief declares no consumer routes")
 	}
-	verdicts := corroborateBrief(snapshot, streams, changed, nil, bf)
+	verdicts := corroborateBriefWithSnapshot(snapshot, streams, changed, nil, bf, tree)
 	// Both explicit and Evidence-derived pins reach this one historical path.
 	// A bounded snapshot authenticates the inputs, not the caller's assertion
 	// that this commit implements the producer. Keep that separate from routing.

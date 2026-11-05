@@ -36,14 +36,14 @@ links, broken, cyclic or excessive-depth chains, submodules, and links on board 
 `docs/streams/**` and `docs/archive/**`) remain could-not-check. Link targets come
 from the delivered archive, never the current checkout or a file outside it.
 
-The bounded archive reader writes regular files exclusively before creating any
-links. It checks the complete entry roster, rejects special or duplicate archive
+The bounded archive reader writes regular files exclusively and never creates
+filesystem links. It checks the complete entry roster, rejects special or duplicate archive
 entries and missing blobs (including `export-ignore` omissions), and resolves path
 components in order so a parent step after a directory alias cannot hide an escape.
-Only after every chain is proved in-tree are links created and their filesystem
-resolution compared with the immutable result. A host unable to materialize those
-checked links remains could-not-check; there is no skip or borrowed-file fallback.
-The command's SHA bounds, routing counts and acceptance limits are unchanged.
+Every chain must resolve inside the immutable tree. The extracted regular-file names
+and types must match the tree exactly on the host, or the result is could-not-check.
+Site patterns match tracked entries and their directories, never paths through aliases.
+There is no skip or borrowed-file fallback. SHA bounds and acceptance limits are unchanged.
 
 ## A bare `--consumers --brief <id>` on merged main
 
