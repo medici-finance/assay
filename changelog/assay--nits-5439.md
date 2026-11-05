@@ -1,0 +1,2 @@
+### Changed
+- `deskgit fetch --as` on a GitLab-served repo: the README now says the identity binding (`--as` must equal the role `$DESK_LOOP` binds, exit 5 otherwise) holds on the GitLab arm too, and new tests pin that arm's refusals at the verb — lookalike and suffix hosts, a userinfo origin, a malformed `GITLAB_API_BASE`, a forge-mismatched identity, a missing or loose custody file, and a binding to a different origin URL.

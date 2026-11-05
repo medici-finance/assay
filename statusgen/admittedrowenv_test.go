@@ -131,8 +131,9 @@ func TestAdmittedRowEnvShape(t *testing.T) {
 // wraps historyGit's literal `git` reads, which start no Verify row, and adds
 // GIT_GRAFT_FILE to what a fixed-tool launch would inherit anyway) and the
 // forge CLI guard (ghGuard: it only wraps statusgen's own literal `gh` reads,
-// which start no Verify row, and only ever removes CELLCTL_GH_AMBIENT and adds
-// a placeholder for an unset token family) and the hotfix self-check's environment
+// which start no Verify row, snapshots the existing CI environment for retries,
+// removes CELLCTL_GH_AMBIENT when admission requires it, and adds a placeholder
+// for an unset token family) and the hotfix self-check's environment
 // (sgFallbackEnv: it only reaches the pinned install replacing a refused hotfix, which
 // starts no Verify row, and only ever removes
 // DESK_HOTFIX_FALLBACK).

@@ -361,7 +361,7 @@ func TestUpTmuxNoDeskdRoleFirst(t *testing.T) {
 			creates = append(creates, line)
 		}
 	}
-	if len(creates) != 1 || !strings.HasPrefix(creates[0], "new-session -d -s example-cell -n the-desk ") {
+	if len(creates) != 1 || !strings.HasPrefix(creates[0], "new-session -d -s example-cell -P -F #{window_id} -n example-the-desk ") {
 		t.Fatalf("want the first role window to create the session and no placeholder window, got %q", creates)
 	}
 }

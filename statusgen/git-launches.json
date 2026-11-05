@@ -1,7 +1,7 @@
 {
   "direct_ceiling": 83,
   "dynamic_ceiling": 12,
-  "seam_ceiling": 109,
+  "seam_ceiling": 108,
   "reasons": {
     "s001": {
       "operation": "historyGit(dir, \"rev-list\", \"--first-parent\", \"HEAD\", \"^\"+delivery)",
@@ -21,11 +21,6 @@
     "s004": {
       "operation": "provenanceRepoTop(dir)",
       "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
-      "owner": "statusgen/acceptancetransition.go — acceptanceTransition caller maintainer"
-    },
-    "s005": {
-      "operation": "historyGit(root, \"remote\", \"get-url\", \"origin\")",
-      "why": "Native configuration query retains include/scope/environment and URL rewrite behavior. The existing canonical parser/local RemoteURL accessor does not by itself establish the effective native query contract; no additional configuration resolver or authority widening is added.",
       "owner": "statusgen/acceptancetransition.go — acceptanceTransition caller maintainer"
     },
     "s006": {
@@ -179,9 +174,9 @@
       "owner": "statusgen/containercredit.go — method.provenanceSetup caller maintainer"
     },
     "s036": {
-      "operation": "historyGit(cc.dir, \"remote\", \"get-url\", \"origin\")",
+      "operation": "historyGit(dir, \"remote\", \"get-url\", \"origin\")",
       "why": "Native configuration query retains include/scope/environment and URL rewrite behavior. The existing canonical parser/local RemoteURL accessor does not by itself establish the effective native query contract; no additional configuration resolver or authority widening is added.",
-      "owner": "statusgen/containercredit.go — method.recordSetup caller maintainer"
+      "owner": "statusgen/containercredit.go — shared attestationTrackingRepo caller maintainer"
     },
     "s037": {
       "operation": "exec.Command(\"git\", \"-C\", root, \"show\", ref+\":\"+filepath.ToSlash(path))",
@@ -1050,12 +1045,6 @@
       "reason": "s004"
     },
     {
-      "key": "acceptancetransition.go::acceptanceTransition::seam#5",
-      "expression": "historyGit(root, \"remote\", \"get-url\", \"origin\")",
-      "disposition": "retained",
-      "reason": "s005"
-    },
-    {
       "key": "acceptancetransition.go::transitionWitnessTree::seam#1",
       "expression": "historyGit(dir, \"rev-parse\", \"--verify\", \"--quiet\", tree+\"^{commit}\")",
       "disposition": "retained",
@@ -1212,6 +1201,12 @@
       "reason": "s031"
     },
     {
+      "key": "containercredit.go::attestationTrackingRepo::seam#1",
+      "expression": "historyGit(dir, \"remote\", \"get-url\", \"origin\")",
+      "disposition": "retained",
+      "reason": "s036"
+    },
+    {
       "key": "containercredit.go::method.placeWitness::seam#1",
       "expression": "provenanceRepoTop(cc.dir)",
       "disposition": "moved",
@@ -1234,12 +1229,6 @@
       "expression": "historyGit(cc.dir, \"cat-file\", \"-e\", \"HEAD:\"+cc.rel)",
       "disposition": "retained",
       "reason": "s035"
-    },
-    {
-      "key": "containercredit.go::method.recordSetup::seam#1",
-      "expression": "historyGit(cc.dir, \"remote\", \"get-url\", \"origin\")",
-      "disposition": "retained",
-      "reason": "s036"
     },
     {
       "key": "corroborate.go::briefRowsAtRef::direct#1",
