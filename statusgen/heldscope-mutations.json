@@ -1708,7 +1708,7 @@
     {
       "name": "#4721 rule 6: the no-run reason is only the word offline",
       "file": "heldscope.go",
-      "old": "(?:offline|un(?:available|reachable)|absent|down|skipped|never|not|without|no[ \\t]+(?:runners?|clusters?|hosts?|mutations?|mutants?))",
+      "old": "(?:offline|un(?:available|reachable)|absent|down|skipped|never|not|cannot|[a-z]+n['’]t|without|no[ \\t]+(?:runners?|clusters?|hosts?|mutations?|mutants?))",
       "new": "(?:offline)"
     },
     {
@@ -1780,25 +1780,25 @@
     {
       "name": "#4721 rule 6: any flip possessor is excused",
       "file": "heldscope.go",
-      "old": "`(?i)\\b(earlier|previous|prior|its)(?:[ \\t]+board)?[ \\t]+flip",
+      "old": "`(?i)\\b(?:the[ \\t]+(?:earlier|previous|prior)|(its))(?:[ \\t]+board)?[ \\t]+flip",
       "new": "`(?i)()(?:\\b[A-Za-z']+[ \\t]+)?(?:board[ \\t]+)?flip"
     },
     {
       "name": "#4721 rule 6: a tracker followed by a reason is excused",
       "file": "heldscope.go",
-      "old": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry\\b)`)",
+      "old": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry[ \\t]+is[ \\t]+a[ \\t]+fresh(?:,[ \\t]*complete)?[ \\t]+(?:re-?)?run(?:[ \\t]+of[ \\t]+every[ \\t]+row)?\\.?[ \\t]*$)`)",
       "new": "#[1-9][0-9]*`)"
     },
     {
       "name": "#4721 rule 6: a tracker followed by a comma, semicolon or paren clause is excused",
       "file": "heldscope.go",
-      "old": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry\\b)`)",
-      "new": "#[1-9][0-9]*(?:[;,)]|\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry\\b)`)"
+      "old": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry[ \\t]+is[ \\t]+a[ \\t]+fresh(?:,[ \\t]*complete)?[ \\t]+(?:re-?)?run(?:[ \\t]+of[ \\t]+every[ \\t]+row)?\\.?[ \\t]*$)`)",
+      "new": "#[1-9][0-9]*(?:[;,)]|\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry[ \\t]+is[ \\t]+a[ \\t]+fresh(?:,[ \\t]*complete)?[ \\t]+(?:re-?)?run(?:[ \\t]+of[ \\t]+every[ \\t]+row)?\\.?[ \\t]*$)`)"
     },
     {
       "name": "#4721 rule 6: any sentence may follow the tracker",
       "file": "heldscope.go",
-      "old": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry\\b)`)",
+      "old": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry[ \\t]+is[ \\t]+a[ \\t]+fresh(?:,[ \\t]*complete)?[ \\t]+(?:re-?)?run(?:[ \\t]+of[ \\t]+every[ \\t]+row)?\\.?[ \\t]*$)`)",
       "new": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+)`)"
     },
     {
@@ -1822,7 +1822,7 @@
     {
       "name": "#4721 rule 6: its flip needs no earlier PASS or entry",
       "file": "heldscope.go",
-      "old": "\treturn heldEarlierRe.MatchString(clause)\n",
+      "old": "\treturn heldEarlierRe.MatchString(clause) && !heldContrastRe.MatchString(clause)\n",
       "new": "\treturn clause == clause\n"
     },
     {
@@ -1834,8 +1834,80 @@
     {
       "name": "#4721 rule 6: any earlier word names an earlier entry",
       "file": "heldscope.go",
-      "old": "`(?i)\\b(?:earlier|previous|prior)[ \\t]+(?:PASS|entry)\\b`",
+      "old": "`(?i)^[ \\t]*the[ \\t]+(?:earlier|previous|prior)[ \\t]+(?:PASS|entry)\\b`",
       "new": "`(?i)\\b(?:earlier|previous|prior)\\b`"
+    },
+    {
+      "name": "#4721 rule 6: any possessor before earlier is excused",
+      "file": "heldscope.go",
+      "old": "`(?i)\\b(?:the[ \\t]+(?:earlier|previous|prior)|(its))(?:[ \\t]+board)?[ \\t]+flip",
+      "new": "`(?i)\\b(?:(?:\\S+[ \\t]+)?(?:earlier|previous|prior)|(its))(?:[ \\t]+board)?[ \\t]+flip"
+    },
+    {
+      "name": "#4721 rule 6: any This entry sentence may follow the tracker",
+      "file": "heldscope.go",
+      "old": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry[ \\t]+is[ \\t]+a[ \\t]+fresh(?:,[ \\t]*complete)?[ \\t]+(?:re-?)?run(?:[ \\t]+of[ \\t]+every[ \\t]+row)?\\.?[ \\t]*$)`)",
+      "new": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry\\b)`)"
+    },
+    {
+      "name": "#4721 rule 6: its flip may contrast with the earlier entry",
+      "file": "heldscope.go",
+      "old": "\treturn heldEarlierRe.MatchString(clause) && !heldContrastRe.MatchString(clause)\n",
+      "new": "\treturn heldEarlierRe.MatchString(clause)\n"
+    },
+    {
+      "name": "#4721 rule 6: the earlier entry need not open its clause",
+      "file": "heldscope.go",
+      "old": "`(?i)^[ \\t]*the[ \\t]+(?:earlier|previous|prior)[ \\t]+(?:PASS|entry)\\b`",
+      "new": "`(?i)\\bthe[ \\t]+(?:earlier|previous|prior)[ \\t]+(?:PASS|entry)\\b`"
+    },
+    {
+      "name": "#4721 rule 6: a mutation parenthesis may have any subject",
+      "file": "heldscope.go",
+      "old": "heldMutationRe.MatchString(lead) &&\n\t\t\theldRoundItemSubject(before[open:])\n",
+      "new": "heldMutationRe.MatchString(lead)\n"
+    },
+    {
+      "name": "#4721 rule 6: an article may open a mutation parenthesis subject",
+      "file": "heldscope.go",
+      "old": "`(?i)^(?:the|a|an|this|that|our|its|their)\\b|\\b(?:verif",
+      "new": "`(?i)\\b(?:verif"
+    },
+    {
+      "name": "#4721 rule 6: a run word may be a mutation parenthesis subject",
+      "file": "heldscope.go",
+      "old": "|\\b(?:verif\\w*|gates?|runners?|runs?|harness\\w*|checks?|smoke|ci|pipelines?|jobs?|workflows?|scans?|statusgen|probes?|suites?|tests?|hosts?|clusters?)\\b`)",
+      "new": "`)"
+    },
+    {
+      "name": "#4721 rule 6: a mutation parenthesis subject may be any length",
+      "file": "heldscope.go",
+      "old": "(?:[ \\t]+[a-z][a-z-]*){0,2})[ \\t]+[a-z]+",
+      "new": "(?:[ \\t]+[a-z][a-z-]*)*)[ \\t]+[a-z]+"
+    },
+    {
+      "name": "#4721 rule 6: a contracted negation is no no-run reason",
+      "file": "heldscope.go",
+      "old": "|not|cannot|[a-z]+n['’]t|without|",
+      "new": "|not|without|"
+    },
+    {
+      "name": "#4721 rule 6: a table close tag in code ends the table",
+      "file": "heldscope.go",
+      "old": "heldOutsideHTMLComments(heldOutsideBackticks(masked), inComment)",
+      "new": "heldOutsideHTMLComments(masked, inComment)"
+    },
+    {
+      "name": "#4721 rule 6: a table close tag in a comment ends the table",
+      "file": "heldscope.go",
+      "old": "live, inComment := heldOutsideHTMLComments(heldOutsideBackticks(masked), inComment)\n",
+      "new": "live := heldOutsideBackticks(masked)\n"
+    },
+    {
+      "name": "#4721 rule 6: an HTML comment never carries to the next line",
+      "file": "heldscope.go",
+      "old": "\t\t\tif end < 0 {\n\t\t\t\treturn b.String(), true\n",
+      "new": "\t\t\tif end < 0 {\n\t\t\t\treturn b.String(), false\n"
     }
   ]
 }

@@ -955,6 +955,7 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 	var codeScan inlineCodeScan
 	scope := heldScanScope(evidence, latestRun)
 	tableDepth := 0
+	inTableComment := false
 	var hits []int
 	var quotes []string
 	for i, line := range strings.Split(evidence, "\n") {
@@ -968,8 +969,8 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 			continue
 		}
 		// A line inside an HTML table, its own tags or not, is table text.
+		// The depth is updated after the line is masked, below.
 		inTable := tableDepth > 0
-		tableDepth = heldHTMLTableDepth(tableDepth, line)
 		if trimmed == "" {
 			if isBlankLine(line) {
 				codeScan.blank()
@@ -985,6 +986,7 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 		// masker, so a backtick or "<" in it leaves the scan as uncertain as
 		// it is in the rendered text.
 		masked := codeScan.mask(line)
+		tableDepth, inTableComment = heldHTMLTableDepth(tableDepth, line, masked, inTableComment)
 		read := scope.lines[i]
 		if strings.HasPrefix(trimmed, ">") || read.skip {
 			continue

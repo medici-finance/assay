@@ -181,6 +181,45 @@ func TestHeldRecountedKeepsHolds(t *testing.T) {
 		{"html cell line", "<table><tr><td>\nSmoke (could-not-check 0).\n</td></tr></table>"},
 		{"html cell blank lines", "<table><tr><td>\n\nSmoke (could-not-check 0).\n\n</td></tr></table>"},
 
+		// Fourth revision: what its reviewers showed released. A flip whose
+		// possessor is not "the" earlier entry; "its" in a clause that sets it
+		// against the earlier entry or does not open on it; a "This entry"
+		// sentence that says more than a fresh run; a mutation-list
+		// parenthesis whose subject is the run or its tools; a contracted
+		// negation; a table close tag quoted in code or a comment.
+		{"flip this entry's earlier", "This entry's earlier flip was held on medici-finance/assay#4536."},
+		{"flip its earlier", "Its earlier flip was held on medici-finance/assay#4536."},
+		{"flip its unlike entry", "Unlike the earlier entry, its flip was held on medici-finance/assay#4536."},
+		{"flip its supersedes", "This entry supersedes the earlier PASS, and its flip was held on medici-finance/assay#4536."},
+		{"flip its compared", "Compared with the previous entry, its board flip was held on #4536."},
+		{"flip its lead", "So the earlier entry ran, and its board flip was held on #4536."},
+		{"flip next applies", "The earlier flip was held on medici-finance/assay#4536. This entry did not lift it, so the hold applies here."},
+		{"flip next blocked", "The earlier flip was held on medici-finance/assay#4536. This entry is blocked by the same hold."},
+		{"flip next same hold", "The earlier flip was held on #4536. This entry has the same hold."},
+		{"flip next fresh then", "The earlier flip was held on #4536. This entry is a fresh run, pending the runner."},
+		{"paren verifyrun lead", "Mutation controls pending: row 3 (verifyrun rounds could-not-check to pass)."},
+		{"paren the verifier", "Mutation check: row 3 (the verifier rounds could-not-check to pass)."},
+		{"paren after killed", "The named mutation for row 1 was killed; row 2 (verifyrun rounds could-not-check to pass)."},
+		{"paren the verifier list", "Each named mutation made its row fail: row 2 (the verifier rounds could-not-check to pass)."},
+		{"paren the gate", "Mutation controls ran; row 4 (the gate rounds could-not-check to pass)."},
+		{"paren article", "Each named mutation made its row fail: row 2 (the adapter rounds could-not-check to pass)."},
+		{"paren long subject", "Each named mutation made its row fail: row 2 (one new big adapter rounds could-not-check to pass)."},
+		{"paren code subject", "Each named mutation made its row fail: row 2 (`adapter` rounds could-not-check to pass)."},
+		// One-guard pins whose earlier fixtures the guards above now also
+		// hold: each line below is read by that one guard alone.
+		{"paren open past target", "Each named mutation made its row fail: row 2 (adapter rounds could-not-check to pass in prod)."},
+		{"paren row word inside", "Each named mutation made its row fail: row 2 (row three adapter rounds could-not-check to pass)."},
+		{"flip still lead", "Still, the earlier flip was held on #4536."},
+		{"flip row lead", "Row 3: the earlier flip was held on #4536."},
+		{"flip verified lead", "Verified: the earlier flip was held on #4536."},
+		{"no-run didn't", "The mutation rounds could-not-check to pass; the live run didn't happen."},
+		{"no-run isn't", "The mutation rounds could-not-check to pass; the runner isn't online."},
+		{"no-run curly wasn't", "The mutation rounds could-not-check to pass; the runner wasn’t up."},
+		{"no-run cannot", "The mutation rounds could-not-check to pass; the runner cannot start."},
+		{"html close in code", "<table><tr><td>\nSee `</table>` above.\nSmoke (could-not-check 0).\n</td></tr></table>"},
+		{"html close in comment", "<table><tr><td>\n<!-- </table> -->\nSmoke (could-not-check 0).\n</td></tr></table>"},
+		{"html close in long comment", "<table><tr><td>\n<!-- a note\n</table> -->\nSmoke (could-not-check 0).\n</td></tr></table>"},
+
 		// Other prose.
 		{"row before", "Verify row 3 could-not-check on this host."},
 		{"rows plural", "Rows 2 and 4 are held."},
@@ -191,6 +230,30 @@ func TestHeldRecountedKeepsHolds(t *testing.T) {
 		{"risk record", "RISK-VALUE: DERIVED — smoke run = \"could-not-check\" @ runner.log:1 — no runner online."},
 	} {
 		cases = append(cases, heldScanCase{c.name, pass + c.line + "\n", true})
+	}
+	runHeldLayerCases(t, cases)
+}
+
+// regression: #4721
+//
+// One line per word of the two closed lists the fourth revision added, so
+// dropping any one word is seen: a run word as the subject of a mutation-list
+// parenthesis (heldRoundActorRe), and a contrast word in the clause of "its
+// flip" (heldContrastRe).
+func TestHeldRecountedKeepsHoldsPerWord(t *testing.T) {
+	const pass = "**VERIFY: PASS** — every original row passes.\n\n"
+	var cases []heldScanCase
+	for _, w := range []string{"this", "that", "our", "its", "their", "a", "an"} {
+		cases = append(cases, heldScanCase{"paren determiner " + w,
+			pass + "Each named mutation made its row fail: row 2 (" + w + " adapter rounds could-not-check to pass).\n", true})
+	}
+	for _, w := range []string{"verifyrun", "verifier", "gate", "gates", "runner", "run", "harness", "check", "smoke", "ci", "pipeline", "job", "workflow", "scan", "statusgen", "probe", "suite", "test", "host", "cluster"} {
+		cases = append(cases, heldScanCase{"paren actor " + w,
+			pass + "Each named mutation made its row fail: row 2 (" + w + " rounds could-not-check to pass).\n", true})
+	}
+	for _, w := range []string{"unlike the earlier entry,", "compared to the earlier entry,", "the earlier entry was superseded, and", "the earlier entry was replaced, and", "the earlier entry passed, but instead", "the earlier entry passed, whereas", "the earlier entry ran later than", "the earlier entry and this entry ran, and", "the earlier entry and this one ran, and", "the earlier entry and this run passed, and", "the earlier entry and this PASS landed, and"} {
+		cases = append(cases, heldScanCase{"its contrast " + w,
+			pass + "Note: " + w + " its board flip was held on #4536.\n", true})
 	}
 	runHeldLayerCases(t, cases)
 }

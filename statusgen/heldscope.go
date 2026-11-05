@@ -329,14 +329,57 @@ var (
 )
 
 // heldHTMLTableDepth returns depth after line: each table open tag adds one,
-// each close tag takes one away, never below zero.
-func heldHTMLTableDepth(depth int, line string) int {
+// each close tag takes one away, never below zero. Open tags are counted on
+// the raw line, anywhere (an extra one only keeps more lines read). Close tags
+// are counted on masked, the line with its inline code masked, and only
+// outside backticks and HTML comments, so a "</table>" quoted in code or a
+// comment does not end the table early (text dropped there only keeps more
+// lines read); inComment carries a comment across lines and is returned
+// updated.
+func heldHTMLTableDepth(depth int, line, masked string, inComment bool) (int, bool) {
 	depth += len(heldHTMLTableOpenRe.FindAllStringIndex(line, -1))
-	depth -= len(heldHTMLTableCloseRe.FindAllStringIndex(line, -1))
+	live, inComment := heldOutsideHTMLComments(heldOutsideBackticks(masked), inComment)
+	depth -= len(heldHTMLTableCloseRe.FindAllStringIndex(live, -1))
 	if depth < 0 {
-		return 0
+		return 0, inComment
 	}
-	return depth
+	return depth, inComment
+}
+
+// heldOutsideBackticks returns s without any text that follows an odd
+// number of backticks: a code span's text, or all that follows an unpaired
+// backtick.
+func heldOutsideBackticks(s string) string {
+	parts := strings.Split(s, "`")
+	var b strings.Builder
+	for i := 0; i < len(parts); i += 2 {
+		b.WriteString(parts[i])
+	}
+	return b.String()
+}
+
+// heldOutsideHTMLComments returns s with every HTML comment's text removed,
+// given whether s starts inside one, and whether it ends inside one.
+func heldOutsideHTMLComments(s string, inComment bool) (string, bool) {
+	var b strings.Builder
+	for s != "" {
+		if inComment {
+			end := strings.Index(s, "-->")
+			if end < 0 {
+				return b.String(), true
+			}
+			s, inComment = s[end+3:], false
+			continue
+		}
+		start := strings.Index(s, "<!--")
+		if start < 0 {
+			b.WriteString(s)
+			break
+		}
+		b.WriteString(s[:start])
+		s, inComment = s[start+4:], true
+	}
+	return b.String(), inComment
 }
 
 // heldHTMLUnclosed reports whether an HTML block of lines ends with the
@@ -2316,46 +2359,68 @@ func heldRiskDefinition(clean string, h []int) bool {
 //     did not pass everything it counts ("1 of 2 checks passed") is not a tally.
 //   - Mutation sentence: "rounds could-not-check to pass", exactly, on a line
 //     that gives no reason the run did not happen (heldNoRunRe: offline,
-//     absent, down, skipped, unavailable, unreachable, never, not, without,
-//     no runner, cluster, host, mutation or mutant). Outside parentheses the
+//     absent, down, skipped, unavailable, unreachable, never, not, cannot,
+//     any contracted negation such as "didn't" or "isn't", without, no
+//     runner, cluster, host, mutation or mutant). Outside parentheses the
 //     subject is the mutation itself ("the mutation rounds could-not-check to
 //     pass") and the line names no row at all. Inside parentheses the
 //     parenthesis is one item of a mutation list: it follows "row N"
 //     directly, the sentence before it names a mutation, it closes straight
-//     after "to pass", and it names no row ("... named mutation ...: row 2
-//     (new adapter rounds could-not-check to pass)"). Another verb, tense,
-//     subject or target is read.
+//     after "to pass", it names no row, and its subject is one to three
+//     lower-case words with no article or determiner and no word for the run,
+//     its tools or its host (heldRoundActorRe: verifyrun, verifier, gate,
+//     runner, run, harness, check, smoke, ci, pipeline, job, workflow, scan,
+//     statusgen, probe, suite, test, host, cluster) ("... named mutation ...:
+//     row 2 (new adapter rounds could-not-check to pass)"). Another verb,
+//     tense or target, a subject outside parentheses other than the mutation,
+//     and a parenthesis subject outside those bounds are read. Any other
+//     subject of one to three plain words inside the parenthesis is excused.
 //   - Past flip hold: "flip was held on <tracker ref>" or "flip had been held on
 //     <tracker ref>", where the tracker is #N or owner/repo#N, and the flip is
 //     named as an earlier entry's: "the earlier / previous / prior [board]
-//     flip", or "its [board] flip" in a clause (from the last ".", "!", "?",
-//     ";" or ":") that names "the earlier / previous / prior PASS / entry".
-//     The tracker ends the sentence (an optional ")" then a full stop), and
-//     after it comes the end of the line or a sentence that starts "This
-//     entry". No row is named before the flip, and the line names no verified
-//     flip and nothing that still, remains or continues. A present-tense flip
-//     hold, "the flip" or "this entry's flip", one that names no tracker, and
-//     one that goes on past its tracker with a reason, a further clause or any
-//     other sentence is read.
+//     flip", with "the" directly before the earlier word, or "its [board]
+//     flip" in a clause (from the last ".", "!", "?", ";" or ":") that opens
+//     on "the earlier / previous / prior PASS / entry" and names no contrast
+//     or this entry (heldContrastRe: unlike, compared, superseded, replaced,
+//     instead, whereas, than, this entry / one / run / PASS). The tracker
+//     ends the sentence (an optional ")" then a full stop), and after it
+//     comes the end of the line or exactly "This entry is a fresh[, complete]
+//     [re-]run[ of every row]." ending the line. No row is named before the
+//     flip, and the line names no verified flip and nothing that still,
+//     remains or continues. A present-tense flip hold, "the flip", "this
+//     entry's [earlier] flip", "its earlier flip", one that names no
+//     tracker, and one that goes on past its tracker with a reason, a further
+//     clause or any other sentence is read.
 var (
 	heldTallyAfterRe  = regexp.MustCompile(`^[ \t]*:?[ \t]*0[ \t]*(?:[;,)]|\.(?:[ \t]|$)|$)`)
 	heldTallyBeforeRe = regexp.MustCompile(`(?i)(?:^|[;,(]|\b(?:accounting|summary|totals?|counts?|tally):)[ \t]*$`)
 	heldRoundBeforeRe = regexp.MustCompile(`\brounds[ \t]+$`)
-	heldRoundSubjRe   = regexp.MustCompile(`(?i)\b(?:mutation|mutant)[ \t]+rounds[ \t]+$`)
+	heldRoundSubjRe   = regexp.MustCompile(`(?i)\b(?:mutation|mutant)[ \t]+[a-z]+[ \t]+$`)
 	heldRoundAfterRe  = regexp.MustCompile(`^[ \t]+to[ \t]+pass\b`)
 	heldRoundCloseRe  = regexp.MustCompile(`^[ \t]+to[ \t]+pass[ \t]*\)`)
 	heldRoundItemRe   = regexp.MustCompile(`(?i)\brow[ \t]+[0-9]+[ \t]*$`)
-	heldMutationRe    = regexp.MustCompile(`(?i)\b(?:mutations?|mutants?)\b`)
+	// heldRoundSubjRe and heldRoundItemSubjRe match the subject and any verb
+	// word; heldRoundBeforeRe alone pins the verb to "rounds".
+	// heldRoundItemSubjRe is the subject inside a mutation-list parenthesis:
+	// one to three lower-case words naming the mutation ("new adapter").
+	heldRoundItemSubjRe = regexp.MustCompile(`^\([ \t]*([a-z][a-z-]*(?:[ \t]+[a-z][a-z-]*){0,2})[ \t]+[a-z]+[ \t]+$`)
+	// heldRoundActorRe is a subject that is not a mutation's name: an
+	// article or determiner, or a word for the run, its tools or its host.
+	heldRoundActorRe = regexp.MustCompile(`(?i)^(?:the|a|an|this|that|our|its|their)\b|\b(?:verif\w*|gates?|runners?|runs?|harness\w*|checks?|smoke|ci|pipelines?|jobs?|workflows?|scans?|statusgen|probes?|suites?|tests?|hosts?|clusters?)\b`)
+	heldMutationRe   = regexp.MustCompile(`(?i)\b(?:mutations?|mutants?)\b`)
 	// heldNoRunRe is a reason the run did not happen. Its words stand alone:
 	// "not" inside "could-not-check" is no reason.
-	heldNoRunRe      = regexp.MustCompile(`(?i)(?:^|[^\w-])(?:offline|un(?:available|reachable)|absent|down|skipped|never|not|without|no[ \t]+(?:runners?|clusters?|hosts?|mutations?|mutants?))(?:[^\w-]|$)`)
-	heldFlipBeforeRe = regexp.MustCompile(`(?i)\b(earlier|previous|prior|its)(?:[ \t]+board)?[ \t]+flip[ \t]+(?:was|had[ \t]+been)[ \t]+$`)
-	heldFlipAfterRe  = regexp.MustCompile(`^[ \t]+on[ \t]+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[1-9][0-9]*\)?(?:\.?[ \t]*$|\.[ \t]+This[ \t]+entry\b)`)
-	heldEarlierRe    = regexp.MustCompile(`(?i)\b(?:earlier|previous|prior)[ \t]+(?:PASS|entry)\b`)
-	heldVerifiedRe   = regexp.MustCompile(`(?i)\bverified\b`)
-	heldStillRe      = regexp.MustCompile(`(?i)\b(?:still|remains?|continues?)\b`)
-	heldSentenceRe   = regexp.MustCompile(`[.!?][ \t]+`)
-	heldClauseRe     = regexp.MustCompile(`[.!?;:][ \t]+`)
+	heldNoRunRe      = regexp.MustCompile(`(?i)(?:^|[^\w-])(?:offline|un(?:available|reachable)|absent|down|skipped|never|not|cannot|[a-z]+n['’]t|without|no[ \t]+(?:runners?|clusters?|hosts?|mutations?|mutants?))(?:[^\w-]|$)`)
+	heldFlipBeforeRe = regexp.MustCompile(`(?i)\b(?:the[ \t]+(?:earlier|previous|prior)|(its))(?:[ \t]+board)?[ \t]+flip[ \t]+(?:was|had[ \t]+been)[ \t]+$`)
+	heldFlipAfterRe  = regexp.MustCompile(`^[ \t]+on[ \t]+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[1-9][0-9]*\)?(?:\.?[ \t]*$|\.[ \t]+This[ \t]+entry[ \t]+is[ \t]+a[ \t]+fresh(?:,[ \t]*complete)?[ \t]+(?:re-?)?run(?:[ \t]+of[ \t]+every[ \t]+row)?\.?[ \t]*$)`)
+	heldEarlierRe    = regexp.MustCompile(`(?i)^[ \t]*the[ \t]+(?:earlier|previous|prior)[ \t]+(?:PASS|entry)\b`)
+	// heldContrastRe is a clause that sets "its" against the earlier entry
+	// or names this one, so "its" may be this entry's.
+	heldContrastRe = regexp.MustCompile(`(?i)\b(?:unlike|compar\w*|supersed\w*|replac\w*|instead|whereas|than|this[ \t]+(?:entry|one|run|PASS))\b`)
+	heldVerifiedRe = regexp.MustCompile(`(?i)\bverified\b`)
+	heldStillRe    = regexp.MustCompile(`(?i)\b(?:still|remains?|continues?)\b`)
+	heldSentenceRe = regexp.MustCompile(`[.!?][ \t]+`)
+	heldClauseRe   = regexp.MustCompile(`[.!?;:][ \t]+`)
 	// heldRowRefRe is a row ("row 3", "Row3", "rows 2 and 4", "row three",
 	// "R3").
 	heldRowRefRe = regexp.MustCompile(`(?i)\b(?:rows?(?:\b|[0-9])|r[0-9])`)
@@ -2406,9 +2471,18 @@ func heldMutationSentence(raw, before, after string) bool {
 			lead = lead[s[len(s)-1][1]:]
 		}
 		return heldRoundCloseRe.MatchString(after) && !heldNamesRow(raw[open:len(before)]) &&
-			heldRoundItemRe.MatchString(before[:open]) && heldMutationRe.MatchString(lead)
+			heldRoundItemRe.MatchString(before[:open]) && heldMutationRe.MatchString(lead) &&
+			heldRoundItemSubject(before[open:])
 	}
 	return heldRoundSubjRe.MatchString(before) && !heldNamesRow(raw)
+}
+
+// heldRoundItemSubject reports whether paren, a mutation-list parenthesis up to
+// "rounds ", names a mutation as its subject: one to three lower-case words,
+// no article, and no word for the run or its tools (heldRoundActorRe).
+func heldRoundItemSubject(paren string) bool {
+	m := heldRoundItemSubjRe.FindStringSubmatch(paren)
+	return m != nil && !heldRoundActorRe.MatchString(m[1])
 }
 
 // heldPastFlip is rule 6's flip shape: an earlier entry's flip hold, cited by a
@@ -2424,14 +2498,14 @@ func heldPastFlip(clean, raw, before, after string) bool {
 	if heldNamesRow(raw[:len(before)]) || heldVerifiedRe.MatchString(clean) {
 		return false // a row's or a verified flip: this entry's own hold
 	}
-	if !strings.EqualFold(m[1], "its") {
+	if m[1] == "" {
 		return true // "the earlier flip": named as the earlier entry's
 	}
 	clause := before
 	if s := heldClauseRe.FindAllStringIndex(before, -1); s != nil {
 		clause = before[s[len(s)-1][1]:]
 	}
-	return heldEarlierRe.MatchString(clause)
+	return heldEarlierRe.MatchString(clause) && !heldContrastRe.MatchString(clause)
 }
 
 // heldShortRatio reports whether clean carries a ratio that did not pass
