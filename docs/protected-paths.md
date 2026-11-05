@@ -55,6 +55,12 @@ label is **not** on the PR, and a caller who read only the `state=` line would w
 the gate was forced. A non-zero exit with no `state=` line means the check did not run, which is
 `could-not-check`.
 
+On GitLab, issues and merge requests are numbered in separate sequences, so one number can name
+both. A bare `check <owner/repo> <number>` then refuses `could-not-check` (exit 6, no `state=`
+line). `--kind mr` (`pr` is an alias) names the merge request: only it is read and evaluated,
+never the issue, and the verdict, `state=` line and exit codes are the ones above. On GitHub the
+flag is accepted and changes nothing. `--kind issue` is refused (exit 5): an issue has no diff.
+
 ## What this check does NOT do
 
 - It does not run the house ruleset / branch-protection half — that is a repo-admin change

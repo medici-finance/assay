@@ -4,6 +4,7 @@
 package commstransport
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -91,24 +92,45 @@ func RemoveStale(address string) error {
 	return os.Remove(address)
 }
 
-// Dial connects only to a socket this user owns, inside an owner-only
-// directory this user owns: the client half of the boundary Listen sets.
-func Dial(address string, timeout time.Duration) (net.Conn, error) {
+// checkedUnixSocket is the common client ownership boundary. Keep its order:
+// validate the path, its parent, the socket type and then the socket owner.
+func checkedUnixSocket(address string) error {
 	if err := Validate(address); err != nil {
-		return nil, err
+		return err
 	}
 	if err := ownerOnlyParent(address); err != nil {
-		return nil, err
+		return err
 	}
 	fi, err := os.Lstat(address)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if fi.Mode()&os.ModeSocket == 0 {
-		return nil, fmt.Errorf("comms endpoint is not a socket")
+		return fmt.Errorf("comms endpoint is not a socket")
 	}
-	if err := ownedByCurrentUser(address, fi); err != nil {
+	return ownedByCurrentUser(address, fi)
+}
+
+// Dial connects only to a socket this user owns, inside an owner-only
+// directory this user owns: the client half of the boundary Listen sets.
+func Dial(address string, timeout time.Duration) (net.Conn, error) {
+	if err := checkedUnixSocket(address); err != nil {
 		return nil, err
 	}
 	return net.DialTimeout("unix", address, timeout)
+}
+
+// DialUnixContext preserves cancellation while applying the same endpoint
+// ownership boundary as Dial. It creates no authority and has no fallback.
+func DialUnixContext(ctx context.Context, address string, timeout time.Duration) (net.Conn, error) {
+	if ctx == nil || timeout <= 0 {
+		return nil, fmt.Errorf("comms Unix dial requires context and a positive timeout")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := checkedUnixSocket(address); err != nil {
+		return nil, err
+	}
+	return (&net.Dialer{Timeout: timeout}).DialContext(ctx, "unix", address)
 }

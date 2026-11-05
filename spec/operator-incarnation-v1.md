@@ -1,6 +1,7 @@
 # Operator incarnation v1
 
-Status: schema/test preparation for graph-execution/16. No live authority source,
+Status: store-neutral contract and library seam for graph-execution/16; the earlier
+schema/test preparation account is retained below. No live authority source,
 key provisioning, credential cutover, Kubernetes resource or runtime wiring is
 installed. A passing record comparison is not effect authorization.
 
@@ -152,3 +153,34 @@ These are implementation tests of a pure record contract. They do not satisfy th
 whole GE/16 Verify table, prove real provider fencing or qualify PostgreSQL rollback,
 host control-state custody, Kubernetes containment, signatures or live credentials.
 All existing Verify rows, independent Evidence and human activation gates remain.
+
+
+## Store-neutral consuming seam
+
+GE/16's `CellAuthority` now reads `IncarnationSource` at admission and at the
+separately invoked provider check. `CellPermit` must be authenticated for its exact
+ownership tuple, scope/expiry and admission digest by `CellCapabilityCheck`.
+`CellRecovery` is a trusted operator port: it confirms group stop, invalidated
+credentials/capabilities and reconciliation, and rotates identity and key outside
+PostgreSQL. `Transfer` persists pause first; failures leave it paused. The returned
+current state must equal an independent protected read and rotate identity, key
+reference and ownership generation. Existing stop/cancel and budgets survive.
+These ports install no source, signer, control-volume policy or runtime consumer.
+The earlier preparation account above is retained as history. Actual custody,
+provider boundaries and credential cutover remain separately qualified before
+activation, including the two ruled restrictions and external restore provenance.
+
+
+The Cell/group ownership generation and each work-item claim generation remain
+distinct. `CellState.Claims` is the existing claim authority's current per-item
+record, not a second lease: `CellJournal.Generation(item)` reads that claim, and
+both admission and the independent effect check require its exact original work,
+attempt, Cell owner and claim generation. A current Cell tuple cannot revive a
+released or transferred item claim; reevaluation identity remains separate.
+
+
+Pending-operation resolution, signed request phases and budget-clock requirements
+live in the [checkpoint contract](cell-checkpoint-v1.md#store-neutral-transaction-and-accounting-seam).
+Resolution does not obtain current authority from restored SQL or renew an old
+capability: its qualified port independently fences the old writer before
+authoritative absence can support a fresh attempt.

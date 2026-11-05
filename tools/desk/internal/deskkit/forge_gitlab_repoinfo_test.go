@@ -1,6 +1,9 @@
 package deskkit
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab proves the public-repo WRITE gate
 // (repovis.go's PublicRepoGate) runs correctly on a GitLab-resolved repo through the generic
@@ -51,6 +54,38 @@ func TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab(t *testing.T) {
 		err := PublicRepoGate(fetcher, glRepo.Owner, glRepo.Name)
 		if err == nil || !IsRefused(err) {
 			t.Fatalf("a public repo absent from the roster must be refused (exit 5), got %v", err)
+		}
+	})
+
+	// #5436: a GitLab `internal` project is never read as a public repository. Listed `:public`
+	// (the tag earlier versions used) it refuses naming live-internal and the `:internal`
+	// replacement; listed `:internal` it passes.
+	t.Run("internal project listed :public is refused as internal", func(t *testing.T) {
+		installRoster(t, "ASSAY_ALLOWED_REPOS="+glRepo.Owner+"/"+glRepo.Name+":ci:public\n")
+		s := newGLServer(t)
+		s.project = map[string]any{"visibility": "internal"}
+		err := PublicRepoGate(ForgeRepoInfoFetcher{Forge: s.forge()}, glRepo.Owner, glRepo.Name)
+		if !IsRefused(err) {
+			t.Fatalf("an internal project listed :public must be refused (exit 5), got %v", err)
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "reads live-internal") || strings.Contains(msg, "live-public") {
+			t.Fatalf("the refusal must read the project as internal, never public: %v", err)
+		}
+		if !strings.Contains(msg, glRepo.Owner+"/"+glRepo.Name+":internal") || !strings.Contains(msg, internalTokenHistory) {
+			t.Fatalf("the refusal must name the :internal entry and the entry's history: %v", err)
+		}
+	})
+
+	t.Run("internal project listed :internal passes", func(t *testing.T) {
+		installRoster(t, "ASSAY_ALLOWED_REPOS="+glRepo.Owner+"/"+glRepo.Name+":ci:internal\n")
+		s := newGLServer(t)
+		s.project = map[string]any{"visibility": "internal"}
+		if err := PublicRepoGate(ForgeRepoInfoFetcher{Forge: s.forge()}, glRepo.Owner, glRepo.Name); err != nil {
+			t.Fatalf("an internal project listed :internal must pass, got %v", err)
+		}
+		if RepoVisibility(glRepo.Owner+"/"+glRepo.Name) != VisibilityInternal {
+			t.Fatal("a :internal entry must configure VisibilityInternal, never public")
 		}
 	})
 

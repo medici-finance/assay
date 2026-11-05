@@ -147,12 +147,12 @@ on that real environment; a Linux-host fixture cannot supply this evidence.
 
 The current compiled fixture proves exact argv/environment/cwd and child exit propagation
 on the OS where it is run, plus refusal of malformed or unauthorized records. It does not
-prove any third-party API. The `celllaunch-windows` pull-request workflow runs the three
-contract witnesses on native Windows amd64 at the exact PR head, records the platform and
-toolchain, and requires each selected PASS with no skips. Its logs establish only those
-contract runs, not production lifecycle support. Native Windows acceptance must separately run host-process and
+prove any third-party API. No CI job runs the three contract witnesses on native Windows:
+the pull-request workflow that did was retired with the rest of the native-Windows CI (#4106),
+so native Windows execution of those witnesses is no longer CI-proven. Logs from its earlier
+runs established only those contract runs, never production lifecycle support. Native Windows acceptance must separately run host-process and
 Docker lifecycles through each real cockpit with Unix shells and lifecycle-script fallbacks
 unavailable, preserving only the bounded native-shell adapter invocation described above, and repeat
 with checksum-verified packaged artifacts. Record source SHA, OS/architecture, versions,
 command outputs and immutable identities. ARM64 remains build-only without its own native
-runtime witness. The staged workflow and release evidence belong to brief 07.
+runtime witness. Brief 07 records the retired workflow and the release evidence.

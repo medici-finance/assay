@@ -22,6 +22,25 @@ id: "e20812d4-f859-41a4-b597-072d5a89d413"
 
 # Brief 16 — Verification wake conditions — stop repeating unchanged blocked checks
 
+## Amendment (#2310, 2026-11-04, brief stays `done`)
+
+**Why.** As landed, a change to the `tool` input alone woke every held receipt. Across four
+releases every such wake re-surfaced a blocker that had not moved, and no re-run changed a
+verdict, so each release cost one fleet-wide re-dispatch and nothing else.
+
+**What changes.** A tool-only change now holds; the reason names it. A tool change together
+with any other changed input still wakes, and unreadable inputs stay could-not-check. The
+receipt still records the tool version. See
+[verify-wake-v1](verify-wake-v1.md) ("A tool-only change holds").
+
+**Verify row 2.** Its Expect text lists "tool" among the changes that wake work. From this
+amendment `TestVerifyWakeRelevantChange` instead pins that a tool-only change holds, while the
+changed file, Verify definition and completed action still wake. The landed Evidence below is
+unchanged and records what was verified at the time.
+
+**Verify row 5.** New with this amendment: a `muhar` run that breaks each tool-only check in
+turn and shows the tests above go red. It has no Evidence yet; independent verification owns it.
+
 ## Context
 
 Home: medici-finance/assay.
@@ -85,6 +104,7 @@ All named tests below are planned deliverables. The verifier must observe each n
 | 2 | check:ci | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakeRelevantChange$ -v -count=1` | exit 0; named PASS for TestVerifyWakeRelevantChange; changed relevant file, Verify definition, tool or completed action wakes the affected work; an unrelated commit does not |
 | 3 | check:ci | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakeUnknownAndLegacy$ -v -count=1` | exit 0; named PASS for TestVerifyWakeUnknownAndLegacy; unreadable dependencies and legacy records are distinct from empty/pass; no fabricated unchanged claim |
 | 4 | check:ci +flow | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakePartialRows$ -v -count=1` | exit 0; named PASS for TestVerifyWakePartialRows; one newly runnable row executes without repeating held rows; no partial result closes the whole brief |
+| 5 | check +mutation | `m=$(mktemp -d)/muhar && (cd tools/desk && GOWORK=off go build -o "$m" ./cmd/muhar) && cd tools/desk && GOWORK=off "$m" -spec cmd/verifyloop/tool-only-wake-mutations.json` | exit 0; "Harness healthy: baseline GREEN, positive control CAUGHT."; every tool-only-wake mutation CAUGHT, "0 NOT CAUGHT, 0 could-not-mutate" (added by the #2310 amendment) |
 
 Pre-mortem → detection: False suppression hides executable work: rows 2 and 3. Restart loses the hold: row 1. A partial pass closes a brief: row 4. Judgment over the declared deliverable scope remains review-owned.
 
@@ -175,6 +195,49 @@ Notes:
 - Carried: the wake-receipt constructor is still called only from tests. The offline reader understands only tool and file inputs, so verify-def inputs read as could-not-check, which fails safe. The tools/desk README and a code comment cite a nonexistent example-stream spec path; the real spec is the desk-supervision verify-wake-v1 contract.
 
 VERIFY: PASS
+### Non-implementer verifier run — 2026-11-04 — claude-opus-5-5 verifier (verify-desk dispatch), merged main 9e3e4c359cfd
+
+Runner is not the implementer of PR #5435 or of the #2310 fix. Offline envelope (KUBECONFIG=/dev/null), own detached worktree at merged main 9e3e4c359cfdef769f0e51cd96d082e7530d268d, admitted by `deskdispatch --check-verifier` (exit 0). gate: model; all four risk answers no. Two witness tables, disjoint, covering all five rows. First: rows 1-4 (check:ci), run with `statusgen verifyrun --sandbox=container-netns --rows 1,2,3,4` inside a closed admission bracket, in a `--network none` container from the pinned verify-runner image (arm64, statusgen v1.0.70), bracket-digest verdict=match. Second: row 5 (check +mutation, not check:ci), run on the host (darwin/arm64, go1.27.2) with `statusgen verifyrun --rows 5`.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakeUnchangedIsVisibleWait$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:dc60db820bef | 2026-11-04 | assay-verifier-app[bot] @ 9e3e4c359cfd (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakeRelevantChange$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:8356f83ea677 | 2026-11-04 | assay-verifier-app[bot] @ 9e3e4c359cfd (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakeUnknownAndLegacy$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:72bd89b50e7b | 2026-11-04 | assay-verifier-app[bot] @ 9e3e4c359cfd (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakePartialRows$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:ee49187f4080 | 2026-11-04 | assay-verifier-app[bot] @ 9e3e4c359cfd (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:f4d21cb5c0c5e7b190752d7c249aa6e1382551f2566c691f2e18ea93f617540c
+Container-Image: sha256:45926fbe65687db26f02c9b30493dd4bde6cce2702a81c9240554b4d6b52353b
+Verification-Attestation: medici-finance/assay#5440 run=2708b6ec68f4585e17671eef0490deaae98d5bb061e7ec1d263212f798e567c8 source=9e3e4c359cfdef769f0e51cd96d082e7530d268d brief=docs/streams/desk-supervision/brief-16-verification-wake-conditions.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=2708b6ec68f4585e17671eef0490deaae98d5bb061e7ec1d263212f798e567c8 source=9e3e4c359cfdef769f0e51cd96d082e7530d268d tree=sha256:f4d21cb5c0c5e7b190752d7c249aa6e1382551f2566c691f2e18ea93f617540c witness=sha256:c9576a3533ae39dde7770f376f7ebc18a43842ec08e8ec8c39d38b8eec2e7c7d opened=2026-11-04T17:05:44Z closed=2026-11-04T17:06:41Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 5 | `m=$(mktemp -d)/muhar && (cd tools/desk && GOWORK=off go build -o "$m" ./cmd/muhar) && cd tools/desk && GOWORK=off "$m" -spec cmd/verifyloop/tool-only-wake-mutations.json` | pass exit=0 | sha256:adf677cfa17b | 2026-11-04 | assay-verifier-app[bot] @ 9e3e4c359cfd (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5440 run=2708b6ec68f4585e17671eef0490deaae98d5bb061e7ec1d263212f798e567c8 source=9e3e4c359cfdef769f0e51cd96d082e7530d268d brief=docs/streams/desk-supervision/brief-16-verification-wake-conditions.md model=claude-opus-5-5 tier=strong
+
+Observed output (from direct runs of the exact row commands on the host, kept with the run logs; the witness tables above are the record):
+
+- Row 1: exit 0; "--- PASS: Test Verify Wake Unchanged Is Visible Wait (0.00s)".
+- Row 2: exit 0; "--- PASS: Test Verify Wake Relevant Change (0.00s)". Per the #2310 amendment this test now pins that a tool-only change holds (example-stream/02 classified WAIT) while a changed file, Verify definition and completed action still wake; the row's Expect text predates the amendment, which the Amendment section records.
+- Row 3: exit 0; "--- PASS: Test Verify Wake Unknown And Legacy (0.00s)".
+- Row 4: exit 0; "--- PASS: Test Verify Wake Partial Rows (0.00s)".
+- Row 5: exit 0; "Harness healthy: baseline GREEN, positive control CAUGHT."; CAUGHT evaluate-wake-tool-only-fires, unchanged-tool-only-reads-changed, tool-with-other-input-holds, unchanged-tool-only-on-labels; "Totals: 4 caught, 0 NOT CAUGHT, 0 could-not-mutate." The harness restored every mutated file: the worktree held no change outside this Evidence section afterwards.
+
+Risk-bearing value (kit section 4). Enumeration over the #2310 diff (commits 5b7783f4d and 5d0cbcb73, tools/desk/internal/deskkit/verifywake.go) and the row 5 manifest (commit 34698f8b8, tools/desk/cmd/verifyloop/tool-only-wake-mutations.json):
+
+- toolOnlyChange bound len(changed) == 1 && changed[0] == inputKeyTool @ tools/desk/internal/deskkit/verifywake.go:400
+- inputKeyTool = "tool" @ tools/desk/internal/deskkit/verifywake.go:479 (pre-existing; it now decides a hold)
+- EvaluateWake order: fire when len(changed) > 0 && !toolOnly @ verifywake.go:348, then could-not-check when len(unreadable) > 0 @ verifywake.go:352, then the tool-only hold @ verifywake.go:356
+- Unchanged decides on raw keys, toolOnlyChange(changedKeys) @ verifywake.go:674, same order @ verifywake.go:675-681
+- manifest test timeout -timeout 120s and -count=1 @ tools/desk/cmd/verifyloop/tool-only-wake-mutations.json:3
+
+Ranking: none is irreversible. The receipt is scheduling evidence only and never flips status. The worst wrong value is a false hold (a tool change together with another change held), undone by an edit and redeploy or at once by an explicit-recheck receipt. The 120s harness timeout is a reversible knob and ranks last.
+
+RISK-VALUE: DERIVED — toolOnlyChange bound len(changed) == 1 && changed[0] == "tool" @ tools/desk/internal/deskkit/verifywake.go:400 — the amendment's contract is "a tool-only change holds; a tool change together with any other changed input still wakes", so the hold must fire exactly when the changed set is the single key tool; a count of one plus that key is precisely that set, and the tool-with-other-input-holds mutant (any set containing tool holds) is caught by row 5.
+RISK-VALUE: DERIVED — could-not-check before the tool-only hold, if len(unreadable) > 0 @ tools/desk/internal/deskkit/verifywake.go:352 ahead of if toolOnly @ verifywake.go:356 — the amendment keeps unreadable inputs could-not-check and the three-state rule forbids a hold on a partly read scope; it is pinned by Test Wake Tool Only Unreadable CNC and the "tool only, file unreadable" case of Test Unchanged Tool Only, both inside row 5's selector and green at baseline; no manifest mutant reorders these branches, so this rests on those tests rather than on a caught mutant.
+RISK-VALUE: DERIVED — tool-only decided on raw input keys, toolOnlyChange(changedKeys) @ tools/desk/internal/deskkit/verifywake.go:674 — a file input whose path is "tool" carries the display label "tool", so deciding on labels would hold a real file change; keys keep file:tool distinct from tool, and the unchanged-tool-only-on-labels mutant is caught by row 5.
+
+**VERIFY: PASS** — 5/5 rows pass at 9e3e4c359cfd: rows 1-4 check:ci container-netns witness inside a closed admission bracket, row 5 host witness with 4/4 tool-only-wake mutants caught. gate: model, no risk: yes answer.
 
 ## Review
 

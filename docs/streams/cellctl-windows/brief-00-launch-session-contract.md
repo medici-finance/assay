@@ -25,7 +25,6 @@ exec-tier-why: >-
 domain: complicated
 outcome: none
 consumers:
-  - ".github/workflows/celllaunch-windows.yml: fixed-here (native Windows amd64 execution of the three contract witnesses)"
   - "tools/desk/internal/celllaunch/: fixed-here (versioned contracts, parsers, compiled fixtures and mutation specification)"
   - "docs/cellctl-windows.md: fixed-here (handoff protocol, lifecycle semantics and capability evidence checklist)"
   - "cellctl-windows/01: follow-up cellctl-windows/01 (production runner and private store consume the launch contract)"
@@ -39,7 +38,7 @@ consumers:
 ## Context
 
 files:
-- .github/workflows/celllaunch-windows.yml (native amd64 contract witnesses for Verify rows 1–3)
+- .github/workflows/celllaunch-windows.yml (retired, #4106: was the native amd64 witness for Verify rows 1–3; native Windows execution is no longer CI-proven, so those rows need an operator run on a native Windows host)
 - tools/desk/internal/celllaunch/ (new contract and tests)
 - docs/cellctl-windows.md (new implementation contract)
 - changelog/cellctl-windows-00.md (release note)

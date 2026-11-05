@@ -96,7 +96,7 @@ or removing any human gate (spec §5 states the divergence).
 | 13 | [Deterministic admission over facts and bounded probabilistic advice](brief-13-agentic-admission.md) | 1 | M | implemented | — | — |
 | 14 | [Bind admission and graph eligibility at the dispatch boundary](brief-14-admission-dispatch-binding.md) | 6 | M | todo | — | — |
 | 15 | [Control profiles and complete scoped evidence exports](brief-15-control-evidence.md) | 10 | L | todo | — | — |
-| 16 | [Cell ownership, cumulative budgets and restoration fencing](brief-16-cell-ownership-budgets.md) | 5 | L | todo | — | — |
+| 16 | [Cell ownership, cumulative budgets and restoration fencing](brief-16-cell-ownership-budgets.md) | 5 | L | implemented | — | — |
 | 17 | [Graph-linked release and outcome records without new authority](brief-17-lifecycle-links.md) | 10 | M | todo | — | — |
 | 18 | [Offline graph, advice and assurance integration proof](brief-18-assurance-experiment.md) | 12 | M | todo | — | — |
 | 19 | [Durable instance store and production coverage binding](brief-19-durable-instance-store.md) | 6 | L | todo | — | — |
@@ -113,9 +113,10 @@ or removing any human gate (spec §5 states the divergence).
 | 30 | [Derived evaluation context and bounded validity](brief-30-derived-evaluation-context-and-bounded-validity.md) | 3 | M | verified | 2026-10-29 assay-verifier-app[bot] @ 5729430698d4 (forge-identity) | — |
 | 31 | [Accountable principal and assurance provenance](brief-31-accountable-principal-and-assurance-provenance.md) | 3 | M | implemented | — | — |
 | 32 | [Investigate criterion-level evidence freshness](brief-32-investigate-criterion-level-evidence-freshness.md) | 0 | M | verified | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
-| 33 | [Merge as a human decision node, and a derived risk-input mapping](brief-33-merge-decision-node-and-risk-input.md) | 0 | L | implemented | — | — |
+| 33 | [Merge as a human decision node, and a derived risk-input mapping](brief-33-merge-decision-node-and-risk-input.md) | 0 | L | done | 2026-11-01 assay-verifier-app[bot] @ 65a4deb064cb (on-behalf-of human:ian) (forge-identity) | 2026-11-03 human:reviewer |
 | 34 | [Signal input, signal classes and decision options in the workflow-pattern schema](brief-34-signal-input-and-signal-classes.md) | 1 | L | implemented | — | — |
 | 35 | [Runtime gate for signal patterns - admission refusal, class routes and the liveness hold](brief-35-signal-pattern-runtime.md) | 2 | M | todo | — | — |
+| 36 | [Canonical PostgreSQL foundation for read-only consumers](brief-36-canonical-postgresql-foundation-for-read-only-consumers.md) | 0 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)
@@ -439,3 +440,17 @@ Any brief that activates a signal pattern depends on /35. auto-triage/02 and /03
 auto-triage/02 and /03 own them today. No brief owns a liveness result for any source (#5148), so a caller following
 the spec has none to pass and every such run holds. The gate can't tell an observed result from a constant,
 so the spec text requires each activating brief to name the source and the brief owning its result.
+
+## Read-only PostgreSQL precursor — 2026-11-03
+
+[Brief 36](brief-36-canonical-postgresql-foundation-for-read-only-consumers.md) is an independent **Wave 0** precursor inside the existing R2 owner. It delivers the canonical module, one migration ledger and real disposable PostgreSQL harness; [19](brief-19-durable-instance-store.md) remains **Wave 6**, consumes it and retains all complete runtime acceptance. No execution or activation capability moves into the precursor.
+
+```text
+36 PostgreSQL foundation ──► read-only mirror persistence (explicit /37 prerequisite amendment)
+                        └─► 19 full R2 runtime + all original dependencies
+46/47/48 read-only kernel/source/bounds ──► source mapper (no write/execution prerequisite)
+```
+
+The smallest unblocking move is 36's canonical substrate, not a second mirror store. At App-fetched main `863c43db` on 2026-11-03, `workflow/`, its migrations/contract and CI harness are absent; inspected open PRs 5033/4429 amend full /19's desk-instance scope but implement none of this substrate. A real disposable local server or explicit CI fixture is still needed to execute foundation qualification; client tools alone do not prove that prerequisite. No ambient database or infrastructure was queried. The mirror consumer's separate amendment and complete persistence acceptance remain owed.
+
+This is a decomposition of the existing approved R2/R6 promise. Milestone/brief-v4 reader support is not established across dispatch consumers, so no new operational milestone record or eligibility field is introduced. Foundation delivery never means full R2, mirror acceptance, deployment or tool cutover is complete.

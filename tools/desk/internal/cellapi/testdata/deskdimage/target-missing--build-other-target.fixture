@@ -1,0 +1,6 @@
+# regression: #4769
+# A second rule naming deskd-build after another target overrides its recipe.
+want: target-missing
+file: Makefile
+replace: "\n## skillslint: validate"
+with: "\nother deskd-build:\n\t@echo \"skipped\"\n\n## skillslint: validate"

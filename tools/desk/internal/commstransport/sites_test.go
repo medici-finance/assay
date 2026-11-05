@@ -24,6 +24,22 @@ func rawEndpointCall(call *ast.CallExpr) (string, bool) {
 	if !ok {
 		return "", false
 	}
+	// An inline net.Dialer is a raw endpoint primitive too. Keep context-aware
+	// Unix dialing inside the same ownership boundary as package-level calls.
+	if inlineNetDialer(sel.X) {
+		network := 0
+		if sel.Sel.Name == "DialContext" {
+			network = 1
+		} else if sel.Sel.Name != "Dial" {
+			return "", false
+		}
+		if len(call.Args) > network {
+			if lit, ok := call.Args[network].(*ast.BasicLit); ok && lit.Value == `"unix"` {
+				return "net.Dialer." + sel.Sel.Name + `("unix")`, true
+			}
+		}
+		return "", false
+	}
 	pkg, ok := sel.X.(*ast.Ident)
 	if !ok {
 		return "", false
@@ -46,6 +62,23 @@ func rawEndpointCall(call *ast.CallExpr) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func inlineNetDialer(x ast.Expr) bool {
+	switch x := x.(type) {
+	case *ast.ParenExpr:
+		return inlineNetDialer(x.X)
+	case *ast.UnaryExpr:
+		return x.Op == token.AND && inlineNetDialer(x.X)
+	case *ast.CompositeLit:
+		sel, ok := x.Type.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "Dialer" {
+			return false
+		}
+		pkg, ok := sel.X.(*ast.Ident)
+		return ok && pkg.Name == "net"
+	}
+	return false
 }
 
 type endpointSite struct {
@@ -75,21 +108,27 @@ func scanEndpointSites(fset *token.FileSet, name string, file *ast.File) []endpo
 			}
 			return true
 		})
-		if raw {
+		// The shared socket checker is a required node in the ownership graph,
+		// even though it does not itself open a connection. Naming an emptied
+		// helper at a dial site must not clear this source guard.
+		ownerHelper := filepath.ToSlash(name) == "internal/commstransport/local_unix.go" && fn.Name.Name == "checkedUnixSocket"
+		if raw || ownerHelper {
 			out = append(out, site)
 		}
 	}
 	return out
 }
 
-// allowedEndpointSites is the complete list; each entry names the owner check
-// that function must call before handing back a client connection.
+// allowedEndpointSites is the complete endpoint/ownership graph; each entry
+// names the check required before that function can hand back a connection.
 var allowedEndpointSites = map[string]string{
-	"internal/commstransport/local_unix.go:Listen":         "ownerOnlyParent",
-	"internal/commstransport/local_unix.go:RemoveStale":    "ownedByCurrentUser",
-	"internal/commstransport/local_unix.go:Dial":           "ownedByCurrentUser",
-	"internal/commstransport/local_windows.go:Listen":      "pipeSecurity",
-	"internal/commstransport/local_windows.go:dialOwnedBy": "verifyPipeOwner",
+	"internal/commstransport/local_unix.go:Listen":            "ownerOnlyParent",
+	"internal/commstransport/local_unix.go:RemoveStale":       "ownedByCurrentUser",
+	"internal/commstransport/local_unix.go:Dial":              "checkedUnixSocket",
+	"internal/commstransport/local_unix.go:DialUnixContext":   "checkedUnixSocket",
+	"internal/commstransport/local_unix.go:checkedUnixSocket": "ownedByCurrentUser",
+	"internal/commstransport/local_windows.go:Listen":         "pipeSecurity",
+	"internal/commstransport/local_windows.go:dialOwnedBy":    "verifyPipeOwner",
 }
 
 func checkEndpointSites(sites []endpointSite) []string {
@@ -166,6 +205,8 @@ func TestEndpointSiteScanFlagsPlant(t *testing.T) {
 	const src = `package plant
 func a() { net.DialTimeout("unix", p, d) }
 func b() { winio.DialPipe(p, &d) }
+func c() { (&net.Dialer{}).DialContext(ctx, "unix", p) }
+func d() { (&net.Dialer{}).Dial("unix", p) }
 `
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "plant.go", src, 0)
@@ -173,11 +214,19 @@ func b() { winio.DialPipe(p, &d) }
 		t.Fatal(err)
 	}
 	bad := checkEndpointSites(scanEndpointSites(fset, "cmd/plant/plant.go", file))
-	if len(bad) != 2 {
+	if len(bad) != 4 {
 		t.Fatalf("plant not flagged: %v", bad)
 	}
 	unchecked := endpointSite{site: "internal/commstransport/local_windows.go:dialOwnedBy", calls: map[string]bool{}}
 	if bad := checkEndpointSites([]endpointSite{unchecked}); len(bad) != 1 {
 		t.Fatalf("dial without owner check not flagged: %v", bad)
+	}
+	unchecked = endpointSite{site: "internal/commstransport/local_unix.go:DialUnixContext", calls: map[string]bool{}}
+	if bad := checkEndpointSites([]endpointSite{unchecked}); len(bad) != 1 {
+		t.Fatalf("context dial without shared owner check not flagged: %v", bad)
+	}
+	unchecked = endpointSite{site: "internal/commstransport/local_unix.go:checkedUnixSocket", calls: map[string]bool{}}
+	if bad := checkEndpointSites([]endpointSite{unchecked}); len(bad) != 1 {
+		t.Fatalf("shared checker without socket owner check not flagged: %v", bad)
 	}
 }
