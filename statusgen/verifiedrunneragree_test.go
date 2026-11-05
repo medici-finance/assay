@@ -103,6 +103,13 @@ func TestRunnersAgree(t *testing.T) {
 		{"assay-worker-app", "assay-verifier-app (assay-worker-app[bot])", false, "the mirror direction disagrees too"},
 		{"assay-verifier-app[bot]", "assay-verifier-app (on-behalf-of human:x)", true, "the same bare login still agrees"},
 		{"assay-verifier-app[bot]", "model-verifier (x/assay-verifier-app[bot])", false, "a connector before the alias is not a declared alias"},
+		// regression: S1/C2 attribution-alias-overmatch — a bare login AFTER the
+		// first word is still a named actor, so one [bot] mention cannot alias it.
+		{"assay-verifier-app[bot]", "by assay-worker-app (for assay-verifier-app[bot])", false, "a bare login after a leading word is a distinct actor"},
+		{"assay-verifier-app[bot]", "opus (assay-worker-app re-run; for assay-verifier-app[bot])", false, "a bare login inside the parenthetical is a distinct actor"},
+		{"assay-verifier-app[bot]", "re-run: assay-worker-app (assay-verifier-app[bot])", false, "a bare login after a role prefix is a distinct actor"},
+		{"assay-worker-app", "opus (assay-verifier-app re-run; for assay-worker-app[bot])", false, "the mirror direction disagrees too"},
+		{"assay-verifier-app[bot]", "opus (assay-verifier-app re-run; assay-verifier-app[bot])", true, "the same actor written bare and with [bot] is still one actor"},
 	}
 	for _, c := range cases {
 		if got := runnersAgree(c.cell, c.evidence); got != c.want {

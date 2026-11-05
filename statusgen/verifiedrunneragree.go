@@ -127,13 +127,15 @@ func runnersAgree(cell, evidence string) bool {
 var (
 	runnerBotAliasRe = regexp.MustCompile(`[A-Za-z0-9][A-Za-z0-9-]*\[bot\]`)
 	runnerLoginRe    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*-(app|bot)$`)
+	runnerWordRe     = regexp.MustCompile(`[a-z0-9][a-z0-9-]*`)
 )
 
 // leadingLogin returns the forge login a label's first word names, keyed like
 // runnerKey, or "" when that word is not login-shaped (a model or role label).
 // Login-shaped means a `[bot]` suffix, or an `-app`/`-bot` slug written without
 // one. A word that only might be a login reads as "" here; the alias rule below
-// then still refuses two distinct `[bot]` actors.
+// then still refuses two distinct actors (a `[bot]` span or a bare `-app`/`-bot`
+// login anywhere in the label).
 func leadingLogin(label string) string {
 	f := strings.Fields(strings.ToLower(label))
 	if len(f) == 0 {
@@ -164,6 +166,13 @@ func runnerBotAliases(label string) []string {
 		alias := label[span[0]:span[1]]
 		seen[runnerKey(alias)] = true
 		aliases = append(aliases, alias)
+	}
+	// A bare `-app`/`-bot` login is a named actor too, wherever it sits: one
+	// `[bot]` mention cannot alias "by assay-worker-app (for x-app[bot])".
+	for _, w := range runnerWordRe.FindAllString(strings.ToLower(label), -1) {
+		if runnerLoginRe.MatchString(w) {
+			seen[w] = true
+		}
 	}
 	if len(seen) > 1 {
 		return nil // several named actors are not one actor's declared alias
