@@ -34,8 +34,8 @@
     {
       "name": "token block reports counts when transcripts are blind",
       "file": "cmd/opmetrics/dispatch.go",
-      "old": "if blind != ReasonNone {\n\t\tb.Status, b.Reason = StatusCouldNotCheck, blind",
-      "new": "if false {\n\t\tb.Status, b.Reason = StatusCouldNotCheck, blind"
+      "old": "if blind != ReasonNone {\n\t\t// Blind means every count is null",
+      "new": "if false {\n\t\t// Blind means every count is null"
     },
     {
       "name": "subagent file keyed on the parent session id",
@@ -54,18 +54,6 @@
       "file": "cmd/opmetrics/dispatch.go",
       "old": "} else if n > acc.usage[m.ID] {\n\t\t\tacc.usage[m.ID] = n",
       "new": "} else {\n\t\t\tacc.usage[m.ID] += n"
-    },
-    {
-      "name": "no-op classifier reads past the first paragraph",
-      "file": "cmd/opmetrics/dispatch.go",
-      "old": "if i := strings.Index(head, \"\\n\\n\"); i >= 0 {",
-      "new": "if i := -1; i >= 0 {"
-    },
-    {
-      "name": "no-op classifier reads past the head bound",
-      "file": "cmd/opmetrics/dispatch.go",
-      "old": "len(r) > reportHeadRunes",
-      "new": "false && len(r) > reportHeadRunes"
     },
     {
       "name": "origin on a meta prompt record ignored",
@@ -120,6 +108,72 @@
       "file": "cmd/opmetrics/main.go",
       "old": "mergedPRs = iptr(lr.MergedOnDate)",
       "new": "mergedPRs = nil"
+    },
+    {
+      "name": "no-op phrase matched anywhere, not at the opening",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "regexp.MustCompile(`(?i)^` +",
+      "new": "regexp.MustCompile(`(?i)` +"
+    },
+    {
+      "name": "no-op opening subject dropped",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "`(?:(?:this|the) (?:dispatch|task|run|work|change|fix|item|issue|request)(?: (?:is|was))? )?` +",
+      "new": "`` +"
+    },
+    {
+      "name": "a leading heading line not skipped",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "l == \"\" || reportHeadingLine.MatchString(l) ||",
+      "new": "l == \"\" ||"
+    },
+    {
+      "name": "a leading label line not skipped",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "|| reportLabelLine.MatchString(l) ||",
+      "new": "||"
+    },
+    {
+      "name": "a leading rule line not skipped",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "|| reportRuleLine.MatchString(l) {",
+      "new": "{"
+    },
+    {
+      "name": "a label on the opening line not stripped",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "l = reportLeadLabel.ReplaceAllString(l, \"\")",
+      "new": "_ = reportLeadLabel"
+    },
+    {
+      "name": "list and emphasis markers on the opening line not stripped",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "return strings.TrimLeft(l, \"*_>-+` \\t\")",
+      "new": "return l"
+    },
+    {
+      "name": "a label line may end a sentence",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "reportLabelLine   = regexp.MustCompile(`^(?:\\*\\*|__|\\*|_)[^*_.;!?\\n]{1,40}",
+      "new": "reportLabelLine   = regexp.MustCompile(`^(?:\\*\\*|__|\\*|_)[^*_\\n]{1,40}"
+    },
+    {
+      "name": "a lead label may end a sentence",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "reportLeadLabel = regexp.MustCompile(`^(?:\\*\\*|__)[^*_.;!?\\n]{1,40}",
+      "new": "reportLeadLabel = regexp.MustCompile(`^(?:\\*\\*|__)[^*_\\n]{1,40}"
+    },
+    {
+      "name": "an origin-less meta record resets the turn origin",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "case r.IsMeta == nil || !*r.IsMeta:",
+      "new": "default:"
+    },
+    {
+      "name": "a blind spend block keeps the gh merged count",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "b := TokenEfficiencyBlock{NoopClassifier: NoopClassifierVersion}",
+      "new": "b := TokenEfficiencyBlock{NoopClassifier: NoopClassifierVersion, MergedPRs: merged}"
     }
   ]
 }

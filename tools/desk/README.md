@@ -7906,10 +7906,17 @@ predates them sees them absent and reports the ladder rungs unmeasured, as befor
   `turnOrigin` (or `origin.kind`). `human` is operator; `scheduled`, `peer`,
   `task_notification` and `auto_continuation` are loop; anything else is
   unattributed. A tool result does not start a turn and does not change the origin.
-- **No-op is a versioned heuristic.** A run counts as a no-op when the first paragraph
-  of its final report (its handback message, else its last assistant text, at most
-  400 runes) opens with a closed phrase list such as "already merged" or "nothing to
-  do". Change the list or the bound only with a bump to `noop_classifier`.
+- **No-op is a versioned heuristic.** A run counts as a no-op when its final report
+  (its handback message, else its last assistant text) opens with a closed phrase
+  list such as "already merged", "nothing to do" or "no changes needed", optionally
+  after a short subject ("This dispatch was a no-op."). The match is anchored to the
+  start of the opening line, found by skipping leading heading, emphasised-label and
+  rule lines and stripping a leading `**Label:**` and list or quote markers. The same
+  phrase later in the report ("the helper already exists so I reused it") does not
+  count. Change the list or the skipped line shapes only with a bump to
+  `noop_classifier`.
+- **Blind is all-null.** When the transcripts cannot be read, both blocks are
+  could-not-check and every count in them is null, `merged_prs` included.
 - **What leaves the file is a count.** No prompt, report, agent id or tool input is
   emitted; `TestLeakEmittedKeysAreAllowlisted` pins the full key list.
 

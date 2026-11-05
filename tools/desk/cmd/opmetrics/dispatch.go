@@ -49,8 +49,9 @@ import (
 )
 
 // NoopClassifierVersion is emitted in every day-file next to the no-op count. Bump it
-// on ANY change to noopPatterns or reportHeadRunes — a changed ruler is a changed
-// series, exactly as ClassifierVersion is for the relay ratio.
+// on ANY change to noopOpening or to the lines reportOpening skips — a changed ruler
+// is a changed series, exactly as ClassifierVersion is for the relay ratio. (/1 had
+// not been emitted to any day-file when its rule was anchored, so it was not bumped.)
 const NoopClassifierVersion = "opmetrics-noop/1"
 
 // Dispatch origins — internal only, never emitted.
@@ -100,37 +101,49 @@ type AgentRun struct {
 	HasReport bool
 }
 
-// reportHeadRunes bounds how much of a final report the no-op classifier reads: the
-// first paragraph, at most this many runes. A run that did nothing says so up front;
-// reading the whole report would match "already merged" in a list of prior work.
-const reportHeadRunes = 400
-
-// noopPatterns is the closed no-op vocabulary, matched case-insensitively against the
-// head of a run's final report. A heuristic, and versioned as one
+// noopOpening is the closed no-op vocabulary, matched case-insensitively and ANCHORED
+// at the start of the report's opening line. A heuristic, and versioned as one
 // (NoopClassifierVersion): it counts runs whose report OPENS by saying the work was
-// already there or that nothing needed doing.
-var noopPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)\balready (done|merged|delivered|implemented|landed|fixed|resolved|shipped|on main|in place|exists|present)\b`),
-	regexp.MustCompile(`(?i)\bnothing (to do|to change|to fix|left to do)\b`),
-	regexp.MustCompile(`(?i)\bno (changes?|work|action) (is |was )?(needed|required|necessary)\b`),
-	regexp.MustCompile(`(?i)\bno-op\b`),
+// already there or that nothing needed doing, optionally after a short subject
+// ("This dispatch was a no-op.", "The work is already implemented."). The same
+// phrase later in the report ("the helper already exists so I reused it", a list of
+// prior work that was "already merged") is not an opening and does not count.
+var noopOpening = regexp.MustCompile(`(?i)^` +
+	`(?:(?:this|the) (?:dispatch|task|run|work|change|fix|item|issue|request)(?: (?:is|was))? )?` +
+	`(?:already (?:done|merged|delivered|implemented|landed|fixed|resolved|shipped|on main|in place|exists|present)` +
+	`|nothing (?:to do|to change|to fix|left to do)` +
+	`|no (?:changes?|work|action) (?:is |was )?(?:needed|required|necessary)` +
+	`|(?:an? )?no-op)\b`)
+
+// Lines a report may open with that make no statement: a markdown heading, a line
+// that is only an emphasised label ("**Result**", "__Summary:__"), or a rule. The
+// opening line is the first line after them.
+var (
+	reportHeadingLine = regexp.MustCompile(`^#{1,6}(?:\s|$)`)
+	reportLabelLine   = regexp.MustCompile(`^(?:\*\*|__|\*|_)[^*_.;!?\n]{1,40}(?:\*\*|__|\*|_):?$`)
+	reportRuleLine    = regexp.MustCompile(`^(?:[-*_]\s*){3,}$`)
+	// An emphasised label that starts the opening line itself ("**Result:** …").
+	reportLeadLabel = regexp.MustCompile(`^(?:\*\*|__)[^*_.;!?\n]{1,40}(?:\*\*|__):?\s+`)
+)
+
+// reportOpening is the report's first line that makes a statement: leading blank,
+// heading, label and rule lines skipped, then a leading emphasised label and any
+// list, quote or emphasis markers stripped. "" when the report has no such line.
+func reportOpening(report string) string {
+	for _, line := range strings.Split(report, "\n") {
+		l := strings.TrimSpace(line)
+		if l == "" || reportHeadingLine.MatchString(l) || reportLabelLine.MatchString(l) || reportRuleLine.MatchString(l) {
+			continue
+		}
+		l = reportLeadLabel.ReplaceAllString(l, "")
+		return strings.TrimLeft(l, "*_>-+` \t")
+	}
+	return ""
 }
 
 // isNoopReport classifies a final report. The text goes in; one bit comes out.
 func isNoopReport(report string) bool {
-	head := strings.TrimSpace(report)
-	if i := strings.Index(head, "\n\n"); i >= 0 {
-		head = head[:i]
-	}
-	if r := []rune(head); len(r) > reportHeadRunes {
-		head = string(r[:reportHeadRunes])
-	}
-	for _, re := range noopPatterns {
-		if re.MatchString(head) {
-			return true
-		}
-	}
-	return false
+	return noopOpening.MatchString(reportOpening(report))
 }
 
 // rawAssistant is the assistant-message subset the dispatch scan reads.
@@ -370,11 +383,14 @@ func buildDispatchBlock(tr TranscriptRead, blind Reason) DispatchBlock {
 // buildTokenBlock turns the read plus the gh merged count into the token block.
 // merged is nil when the gh export was absent or unreadable; ghReason says which.
 func buildTokenBlock(tr TranscriptRead, blind Reason, merged *int, ghReason Reason) TokenEfficiencyBlock {
-	b := TokenEfficiencyBlock{NoopClassifier: NoopClassifierVersion, MergedPRs: merged}
+	b := TokenEfficiencyBlock{NoopClassifier: NoopClassifierVersion}
 	if blind != ReasonNone {
+		// Blind means every count is null, merged_prs included: the block is one
+		// measurement, and a lone gh count beside null spend is not half of one.
 		b.Status, b.Reason = StatusCouldNotCheck, blind
 		return b
 	}
+	b.MergedPRs = merged
 	tokens, noop, unread := 0, 0, 0
 	for _, r := range tr.Agents {
 		tokens += r.Tokens

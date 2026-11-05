@@ -22,7 +22,7 @@ package main
 //	           + g2 20 + g4 10 + g5 15 = 3255
 //	no-op      2: g2 (handback opens "Already merged … nothing to do"), g5 (last text
 //	           opens "No changes needed"). g1's handback says "already merged" only in
-//	           its SECOND paragraph and is not a no-op.
+//	           its SECOND paragraph, not at its opening, and is not a no-op.
 //	unread     1: g4 never reported
 
 import (
@@ -152,7 +152,7 @@ func TestDispatchBlocksBlindWhenTranscriptsBlind(t *testing.T) {
 	if te.Status != StatusCouldNotCheck || te.Reason != ReasonTranscriptsUnread {
 		t.Fatalf("token_efficiency = %s/%s, want could-not-check/%s", te.Status, te.Reason, ReasonTranscriptsUnread)
 	}
-	if te.SubagentTokens != nil || te.NoopDispatches != nil || te.TotalDispatches != nil || te.ReportsUnread != nil {
+	if te.SubagentTokens != nil || te.MergedPRs != nil || te.NoopDispatches != nil || te.TotalDispatches != nil || te.ReportsUnread != nil {
 		t.Fatalf("a blind token block carried a count: %+v", te)
 	}
 }
@@ -183,6 +183,33 @@ func TestDispatchSplitBlindWhenNoOriginRecorded(t *testing.T) {
 	}
 	intAt(t, "total_dispatches", d.TotalDispatches, 1)
 	intAt(t, "unattributed", d.Unattributed, 1)
+}
+
+// TestOriginlessMetaRecordKeepsTurnOrigin: injected context inside a human turn (a
+// meta prompt record with no origin stamp) leaves the turn's origin alone, so a
+// dispatch after it is still operator-initiated (N2 of the round-1 review on #5478).
+func TestOriginlessMetaRecordKeepsTurnOrigin(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"type":"user","timestamp":"2026-07-22T08:00:00Z","sessionId":"s-meta","userType":"external","turnOrigin":"human","message":{"role":"user","content":"a human prompt"}}
+{"type":"user","timestamp":"2026-07-22T08:00:01Z","sessionId":"s-meta","userType":"external","isMeta":true,"message":{"role":"user","content":"injected context"}}
+{"type":"assistant","timestamp":"2026-07-22T08:01:00Z","sessionId":"s-meta","message":{"id":"a1","role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Agent","input":{}}]}}
+`
+	if err := os.WriteFile(filepath.Join(dir, "s-meta.jsonl"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	in := fixtureInputs(t.TempDir(), 0)
+	in.TranscriptsDirs = []string{filepath.Dir(dir)}
+	d := Build(in, &stderr).Dispatch
+	if d.Status != StatusOK {
+		t.Fatalf("dispatch = %s/%s, want ok", d.Status, d.Reason)
+	}
+	intAt(t, "total_dispatches", d.TotalDispatches, 1)
+	intAt(t, "operator_initiated", d.OperatorInitiated, 1)
+	intAt(t, "unattributed", d.Unattributed, 0)
 }
 
 // TestTokenBlockMergedPRsNullWithoutGH: no gh export means merged_prs is null with
@@ -263,8 +290,29 @@ func TestNoopReportClassifier(t *testing.T) {
 		{"The work is already implemented upstream.", true},
 		{"Implemented the widget and opened a draft.", false},
 		{"Implemented the widget.\n\nThe sibling change was already merged.", false},
-		{strings.Repeat("x", reportHeadRunes) + " already merged", false},
+		{strings.Repeat("x", 400) + " already merged", false},
 		{"", false},
+
+		// A report that opens with a heading, a bold label or a rule: the classifier
+		// reads the first line AFTER them (B1 of the round-1 review on #5478).
+		{"## Summary\n\nAlready merged on main; nothing to do.", true},
+		{"**Result**\n\nNothing to do.", true},
+		{"__Result:__\n\nNothing to do.", true},
+		{"# Report\n---\n\nNo changes needed.", true},
+		{"***\nNo-op: the fix is already on main.", true},
+		{"**Result:** Nothing to do; the check passes.", true},
+		{"**Nothing to do.** The fix is on main.", true},
+		{"**Nothing to do.**", true},
+		{"- Already merged on main.", true},
+		{"## Summary", false},
+		{"## Summary\n\nImplemented the widget.\n\nNothing to do on the CLI.", false},
+		{"**Result**\n\nImplemented the widget; the helper already exists so I reused it.", false},
+
+		// A phrase that appears mid-paragraph is not the report opening with it.
+		{"Implemented the retry loop and opened a draft PR; the helper already exists so I reused it.", false},
+		{"Made the Windows guard a no-op and added tests; PR opened.", false},
+		{"Fixed the parser. No changes needed to the CLI flags.", false},
+		{"**Result:** Fixed the parser; nothing to do on the CLI.", false},
 	}
 	for _, c := range cases {
 		if got := isNoopReport(c.report); got != c.want {
