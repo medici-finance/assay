@@ -1,0 +1,119 @@
+{
+  "test": "GOWORK=off go test ./internal/deskkit ./cmd/deskboard -run 'TestCompareHistoryEvidence|TestCommitFileEvidence|TestBoundedComparePagination|TestComparePaginationUncertainty|TestCommitPaginationUncertainty|TestHistoryPaginationBoard|TestHistoryPaginationSweepReuse|TestLaterPageFailureKeepsMetadata' -count=1 -timeout=90s",
+  "control": {
+    "name": "healthy complete fixture rejects missing completeness",
+    "file": "internal/deskkit/commithistory.go",
+    "old": "out.FilesComplete = true",
+    "new": "out.FilesComplete = false"
+  },
+  "mutations": [
+    {
+      "name": "truncate compare after its first page",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "page <= historyMaxPages",
+      "new": "page <= 1"
+    },
+    {
+      "name": "truncate commit files after their first page",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "page <= commitFileMaxPages",
+      "new": "page <= 1"
+    },
+    {
+      "name": "bless missing file arrays",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "return out, nil\n\t\t}\n\t\tfor _, f := range w.Files",
+      "new": "out.FilesComplete = true\n\t\t\treturn out, nil\n\t\t}\n\t\tfor _, f := range w.Files"
+    },
+    {
+      "name": "skip duplicate file identity checks",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "f.Filename == \"\" || seen[f.Filename]",
+      "new": "f.Filename == \"\""
+    },
+    {
+      "name": "skip duplicate commit identity checks",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "strings.TrimSpace(c.SHA) == \"\" || seen[c.SHA]",
+      "new": "strings.TrimSpace(c.SHA) == \"\""
+    },
+    {
+      "name": "discard late rename source",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "seen[f.Filename] = true\n\t\t\tout.Files = append(out.Files, ChangedFile{Filename: f.Filename, PreviousFilename: f.PreviousFilename, Status: f.Status})",
+      "new": "seen[f.Filename] = true\n\t\t\tout.Files = append(out.Files, ChangedFile{Filename: f.Filename, PreviousFilename: \"\", Status: f.Status})"
+    },
+    {
+      "name": "accept changed commit identity",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "w.SHA != identity.SHA || !reflect.DeepEqual(w.Parents, identity.Parents)",
+      "new": "false && (w.SHA != identity.SHA || !reflect.DeepEqual(w.Parents, identity.Parents))"
+    },
+    {
+      "name": "accept changed compare metadata",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "w.TotalCommits == nil || first.TotalCommits == nil || *w.TotalCommits != *first.TotalCommits || w.Status != first.Status || w.AheadBy != first.AheadBy || w.BehindBy != first.BehindBy",
+      "new": "false && (w.TotalCommits == nil || first.TotalCommits == nil || *w.TotalCommits != *first.TotalCommits || w.Status != first.Status || w.AheadBy != first.AheadBy || w.BehindBy != first.BehindBy)"
+    },
+    {
+      "name": "count-only success ignores continuation",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "!more && len(out.Commits) == *w.TotalCommits",
+      "new": "len(out.Commits) == *w.TotalCommits"
+    },
+    {
+      "name": "reuse moving compare refs across pages",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "!immutableCommitRef(base) || !immutableCommitRef(head)",
+      "new": "false"
+    },
+    {
+      "name": "read moving commit ref on later pages",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "pinned = identity.SHA",
+      "new": "pinned = ref"
+    },
+    {
+      "name": "bless exhausted compare budget",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "return out, nil // budget exhausted; CommitsComplete remains false",
+      "new": "out.CommitsComplete = true\n return out,nil // budget exhausted"
+    },
+    {
+      "name": "bless exhausted file budget",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "return out, nil // budget exhausted; FilesComplete remains false",
+      "new": "out.FilesComplete = true\n return out,nil // budget exhausted"
+    },
+    {
+      "name": "waste pages on a declared over-budget interval",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "if *w.TotalCommits > historyMaxPages*historyPerPage {",
+      "new": "if false && *w.TotalCommits > historyMaxPages*historyPerPage {"
+    },
+    {
+      "name": "later commit page failure discards page-1 metadata",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "return out, nil // later-page failure: keep page-1 metadata, files stay incomplete",
+      "new": "return nil, err"
+    },
+    {
+      "name": "later compare page failure discards page-1 status",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "return out, nil // later-page failure: keep page-1 status, commits stay incomplete",
+      "new": "return nil, err"
+    },
+    {
+      "name": "accept an oversized file page",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "w.Files == nil || len(w.Files) > historyPerPage",
+      "new": "w.Files == nil"
+    },
+    {
+      "name": "accept an oversized compare page",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "w.Commits == nil || len(w.Commits) > historyPerPage",
+      "new": "w.Commits == nil"
+    }
+  ]
+}

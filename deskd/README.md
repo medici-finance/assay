@@ -13,6 +13,19 @@ wire-schema generator, and `cmd/cellsvalidate` retains the offline schema valida
 used by the mutation harnesses. No image, release, installation or runtime is activated
 by this source placement.
 
+From the repository root, `make deskd-build` runs that same build with `-trimpath`
+into `deskd/dist/deskd` (ignored; nothing is written outside `deskd/dist/`), and
+`make deskd-image` builds a local container image from `images/deskd/Dockerfile`
+with this directory as the only build context. The image is tagged
+`assay-deskd:<source SHA>` (with a `-dirty` suffix for uncommitted changes under
+`deskd/` or `images/deskd/`), runs as a numeric non-root user, carries no shell,
+and must pass the repository's layer-secret scan. Without `docker` or a reachable
+daemon the target exits non-zero with a named could-not-check reason. The image is
+local-only: the target never pushes, logs in or exports to a registry, and its tag
+is a build name, not an artifact pin. It stays local until a separate release act
+publishes it. On Windows, `scripts/build-windows.ps1 deskd-build` builds
+`deskd\dist\deskd.exe`, and `deskd-image` refuses as unsupported.
+
 ## Architecture pickup
 
 Disposition: **adapt for a bounded compatibility relocation**.

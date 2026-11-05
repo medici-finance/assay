@@ -144,6 +144,7 @@ jobs:
       matrix:
         spec:
           - internal/deskkit/mutations.json
+          - internal/deskkit/commithistory-mutations.json
           - cmd/desksourceguard/mutations.json
           - internal/loopengine/mutations.json
           - internal/loopengine/mutations-retry.json

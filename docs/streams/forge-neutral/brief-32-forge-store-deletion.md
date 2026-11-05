@@ -55,11 +55,11 @@ id: f7d785b6-1a22-4da6-a4a0-afe5d7018d4a
 
 ## Context
 files:
-- `tools/desk/cmd/deskclaim-ref/gogit.go`, `claim.go`, `main.go`
+- `tools/desk/cmd/deskclaim-ref/gogit.go`, `tools/desk/cmd/deskclaim-ref/claim.go`, `tools/desk/cmd/deskclaim-ref/main.go`
 - `tools/desk/internal/deskkit/claimstore.go` (planned) — brief 21's file, present by then.
 - `tools/desk/internal/deskkit/preflight.go`; `tools/desk/cmd/deskdispatch/dispatch.go`
-- `tools/desk/README.md`; `docs/UPGRADING.txt`; `docs/release-notes/<release N+1>.md` (planned)
-- `changelog/<branch-slug>.md` (planned)
+- `tools/desk/README.md`; `docs/UPGRADING.txt` — and `docs/release-notes/<release N+1>.md` (planned)
+- **planned** — `changelog/<branch-slug>.md`
 
 Split out of brief 30 by ruling (2026-09-17; spec §10, the row on brief 30's shape). Brief 30
 is the release-N cutover; this brief is the release-N+1 deletion. It changes no grant.

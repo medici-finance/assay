@@ -6,7 +6,7 @@ import "github.com/medici-finance/assay/statusgen/evaluation"
 // input types remain their single owner. Repo and Siblings must answer from
 // frozen observations for a pure assessment. No adapter is installed here.
 // The envelope binds these observations to the same work, candidate and generation.
-// Complete applicability context remains graph-execution/30's responsibility.
+// EvaluationContext supplies complete applicability; adapters still establish current authority.
 type Observations struct {
 	Work              WorkIdentity
 	Candidate         Candidate

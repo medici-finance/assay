@@ -103,10 +103,10 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 41 | [Migrate the scan and monitor loops to Cobra and Viper](brief-41-migrate-the-scan-and-monitor-loops-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
 | 42 | [Migrate the comms verbs to Cobra and Viper](brief-42-migrate-the-comms-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 43 | [Migrate fanoutloop, desktick and deskdigest to Cobra and Viper](brief-43-migrate-fanoutloop-desktick-and-deskdigest-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
-| 44 | [Migrate the metrics and calibration verbs to Cobra and Viper](brief-44-migrate-the-metrics-and-calibration-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 44 | [Migrate the metrics and calibration verbs to Cobra and Viper](brief-44-migrate-the-metrics-and-calibration-verbs-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 45 | [Migrate the board reader verbs to Cobra and Viper](brief-45-migrate-the-board-reader-verbs-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
-| 46 | [Migrate the release and provenance verbs to Cobra and Viper](brief-46-migrate-the-release-and-provenance-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
-| 47 | [Migrate the small admin verbs to Cobra and Viper](brief-47-migrate-the-small-admin-verbs-to-cobra-and-viper.md) | 3 | M | todo | — | — |
+| 46 | [Migrate the release and provenance verbs to Cobra and Viper](brief-46-migrate-the-release-and-provenance-verbs-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
+| 47 | [Migrate the small admin verbs to Cobra and Viper](brief-47-migrate-the-small-admin-verbs-to-cobra-and-viper.md) | 3 | M | implemented | — | — |
 | 48 | [Migrate the small standalone module CLIs to Cobra and Viper](brief-48-migrate-the-small-standalone-module-clis-to-cobra-and-viper.md) | 3 | M | todo | — | — |
 | 49 | [Migrate the harness and version guard CLIs to Cobra and Viper](brief-49-migrate-the-harness-and-version-guard-clis-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 50 | [Migrate the skill lint CLIs to Cobra and Viper](brief-50-migrate-the-skill-lint-clis-to-cobra-and-viper.md) | 3 | L | todo | — | — |
@@ -124,19 +124,22 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 62 | [Instrument desk hot paths and qualify credential and startup savings](brief-62-instrument-desk-hot-paths-and-qualify-credential-and-startup-savings.md) | 4 | M | todo | — | — |
 | 63 | [Define perf-v3 attribution, profiles and compatible local readers](brief-63-define-perf-v3-attribution-profiles-and-compatible-local-readers.md) | 2 | M | implemented | — | — |
 | 64 | [Propagate performance context through desks, agents and tool CLIs](brief-64-propagate-performance-context-through-desks-agents-and-tool-clis.md) | 3 | M | implemented | — | — |
-| 65 | [Measure own forge request timing and GraphQL cost](brief-65-measure-own-forge-request-timing-and-graphql-cost.md) | 3 | M | implemented | — | — |
-| 66 | [Extract shared write policy and make writeguard a hook adapter](brief-66-extract-shared-write-policy-and-make-writeguard-a-hook-adapter.md) | 1 | L | todo | — | — |
+| 65 | [Measure own forge request timing and GraphQL cost](brief-65-measure-own-forge-request-timing-and-graphql-cost.md) | 3 | M | verified | 2026-10-27 assay-verifier-app[bot] @ e25479a69d69 (forge-identity) | — |
+| 66 | [Extract shared write policy and make writeguard a hook adapter](brief-66-extract-shared-write-policy-and-make-writeguard-a-hook-adapter.md) | 1 | L | implemented | — | — |
 | 67 | [Define an extensible perf-v4 envelope and compatible readers](brief-67-define-an-extensible-perf-v4-envelope-and-compatible-readers.md) | 3 | M | todo | — | — |
 | 68 | [Select perf-v4 in shared producers and qualify the direct migration](brief-68-select-perf-v4-in-shared-producers-and-qualify-the-direct-migration.md) | 4 | M | todo | — | — |
 | 69 | [Specify extensible JSON contracts and migration targets](brief-69-specify-extensible-json-contracts-and-migration-targets.md) | 1 | M | done | 2026-10-24 assay-verifier-app[bot] @ 385cb29e5682 (forge-identity) | 2026-10-27 assay-reviewer-app[bot] (approved PR #3830 @ 8ee5cc30f25b13843667a5f174951e9d0cdeb4b4) |
 | 70 | [Exempt workflow-bound issue filings from the filing budget](brief-70-exempt-workflow-bound-issue-filings-from-the-filing-budget.md) | 1 | M | todo | — | — |
 | 71 | [Credit container witness rows bracketed by host verifier admission](brief-71-credit-container-witness-rows-bracketed-by-host-verifier-admission.md) | 1 | M | implemented | — | — |
-| 72 | [Land verifier outcome records from a dispatcher-named path outside the home](brief-72-land-verifier-outcome-records-from-a-dispatcher-named-path-outside-the-home.md) | 1 | M | todo | — | — |
+| 72 | [Land verifier outcome records from a dispatcher-named path outside the home](brief-72-land-verifier-outcome-records-from-a-dispatcher-named-path-outside-the-home.md) | 1 | M | implemented | — | — |
 | 73 | [Make deskevidence own the on-behalf-of principal on Runner cells](brief-73-make-deskevidence-own-the-on-behalf-of-principal-on-runner-cells.md) | 1 | M | todo | — | — |
-| 74 | [Add a verifyrun row selector that records only the named Verify rows](brief-74-add-a-verifyrun-row-selector-that-records-only-the-named-verify-rows.md) | 1 | M | todo | — | — |
+| 74 | [Add a verifyrun row selector that records only the named Verify rows](brief-74-add-a-verifyrun-row-selector-that-records-only-the-named-verify-rows.md) | 1 | M | implemented | — | — |
 | 75 | [Build the shared forge library and make the desk verbs thin wrappers](brief-75-build-the-shared-forge-library-and-make-the-desk-verbs-thin-wrappers.md) | 2 | L | todo | — | — |
 | 76 | [Move statusgen's git launches to go-git and ratchet git launches down](brief-76-move-statusgens-git-launches-to-go-git-and-ratchet-git-launches-down.md) | 1 | L | todo | — | — |
 | 77 | [Retire the deskread bridge for statusgen's forge calls](brief-77-retire-the-deskread-bridge-for-statusgens-forge-calls.md) | 8 | M | todo | — | — |
+| 78 | [Migrate the release object transport adapter to the shared CLI contract](brief-78-migrate-the-release-object-transport-adapter.md) | 4 | M | blocked | — | — |
+| 79 | [Migrate the release object client bootstrap to the shared CLI contract](brief-79-migrate-the-release-object-client-bootstrap.md) | 4 | S | blocked | — | — |
+| 80 | [Port the release spec-header stamp script](brief-80-port-the-release-spec-header-stamp-script.md) | 4 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -235,6 +238,25 @@ fixtures use local git repositories, local HTTP servers and fake CLI executables
 
 ## Cobra/Viper migration track
 
+### Release workflow adapter ownership — PR #4939, reverted by #5089
+
+PR #4939 added an executable object handoff and a pinned-client bootstrap to the release
+workflow, and authored [brief 78](brief-78-migrate-the-release-object-transport-adapter.md)
+and [brief 79](brief-79-migrate-the-release-object-client-bootstrap.md) to own their CLI
+ports. Issue #5089 reverts that handoff: releases are back on the runner labels and GitHub
+artifact path of v1.0.68, `tools/release/transport.py` (future: re-landed with the handoff) and
+`tools/release/install-object-client.sh` (future: re-landed with the handoff) are no longer
+in the tree, and `cli-migration.json` no longer carries their pending rows.
+
+Both briefs stay on the board, `blocked`, with their /16, /46 and /17 edges unchanged.
+They are `gate: human`, so dropping or withdrawing them is a guarded move that needs a
+recorded human ruling on a decision issue (lifecycle-v1 §4.5); `blocked` only keeps them
+out of dispatch while the code they would port is absent. A PR that re-lands the handoff
+re-adds the pending rows and returns them to `todo`; otherwise a human ruling withdraws
+them, and that change also removes them from /17's `depends:`, since an edge into a
+withdrawn brief is never satisfied.
+
+
 - **Wave 1 — /15:** shared command/configuration adapter and conformance fixtures, complete
   maintained-entrypoint inventory, and bounded migration briefs for all remaining tools.
 - **Wave 2 — /16:** cellctl reference migration, preserving launch/custody behavior while
@@ -246,8 +268,10 @@ fixtures use local git repositories, local HTTP servers and fake CLI executables
   transport, install, merge authority, writers, loops, comms, metrics, readers, release,
   admin, standalone modules, lints, plugin scripts, changelog and CI scripts, the go-analysis adapter, deskperf, intake-eval). Human-gated
   children: /25–/28, /30–/37, /42, /54 — each carries credentials, refusals or authority.
-- **Wave 4 — /29, /54:** /29 ports the assay-inbox launcher onto deskinbox after /45 migrates
-  it; /54 adds token renewal to the GitLab command /30 creates.
+- **Wave 4 — /29, /54, /80:** /29 ports the assay-inbox launcher onto deskinbox after /45 migrates
+  it; /54 adds token renewal to the GitLab command /30 creates; /80 ports the release
+  spec-header stamp script into the command /52 creates, beside the check it reads back through
+  (its registry row was routed to /47, which never covered it; #5009).
 - **Routing:** [cli-migration.json](cli-migration.json) maps every discovered entrypoint to its
   owning brief or to a classified exclusion; [cli-contract.md](cli-contract.md) is the shared
   command and configuration contract. TestCLIInventory fails on any unrouted, orphaned or

@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // skipEntry records a worktree that prune LEFT untouched, with why. The reason vocabulary

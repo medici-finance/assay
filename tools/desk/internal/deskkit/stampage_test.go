@@ -162,6 +162,11 @@ func TestClaimKeyForPR(t *testing.T) {
 	}{
 		{"brief trailer", "does a thing\n\nBrief: example-stream/15\n", "one--example-stream--15"},
 		{"issue trailer", "fixes it\n\nIssue: #486\n", "one--issue-486"},
+		// The resolving form is the same edge as Issue: — same key — and a cross-repository
+		// resolving link keys under the named repository's label, never this one's.
+		{"resolving issue trailer", "fixes it\n\nFixes: #486\n", "one--issue-486"},
+		{"cross-repo resolving trailer", "x\n\nCloses: example-org/two#9\n", "two--issue-9"},
+		{"issue and fixes is a malformed set", "x\n\nIssue: #1\nFixes: #1\n", ""},
 		// ParseTrailers REFUSES a body carrying both link kinds, so such a body names no
 		// single dispatch and yields no key. That is the right answer here, not a defect to
 		// route around: a PR whose trailer set is malformed is one whose claim cannot be

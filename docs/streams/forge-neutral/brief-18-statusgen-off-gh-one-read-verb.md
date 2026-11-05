@@ -13,7 +13,7 @@ why: >-
   reads that belong to a forge go through the desk-tools read verb, and the check that runs in
   CI stops reaching the network at all.
 wave: 5
-depends: ["forge-neutral/08", "forge-neutral/33", "forge-neutral/34"]
+depends: ["forge-neutral/08", "forge-neutral/33", "forge-neutral/34", "forge-neutral/49"]
 unblocks: ["forge-neutral/35", "desktools-v2/08", "desktools-v2/77"]
 effort: L
 gate: model
@@ -24,6 +24,7 @@ delivery:
   - {in: "assay#1053", covers: partial, note: "slice 1: the deskread issues read, offline lint by default, one git walk for attribution, the memoised brief parse"}
   - {in: "assay#1262", covers: partial, note: "the --changed-only CI gate, the offline-safety proof, the history memo and the identity/surface regressions"}
   - {in: "assay#2312", covers: partial, note: "the stamp-validated read memo for --lint; the remaining gh sites need Forge reads that forge-neutral/33 authors"}
+  - {in: "assay#4385", covers: partial, note: "decision-queue and issue-metric list reads onto deskread; the remaining statusgen forge reads are not delivered"}
 schema: brief-v2
 authored: 2026-09-14 by forge-neutral authoring session
 sources:
@@ -54,8 +55,8 @@ consumers:
   - "statusgen/brieffile.go: fixed-here (the parse memo)"
   - "statusgen/main.go: fixed-here (the single history read, the `--forge` and `--changed-only` flags)"
   - "statusgen/linkcheck.go: fixed-here (the source index scoped to docs/)"
-  - "statusgen/autoflip.go, statusgen/autonomy.go, statusgen/briefdecision.go, statusgen/briefflowreview.go, statusgen/citationcorroborate.go, statusgen/claimdecay.go: fixed-here (the remaining call sites, enumerated in Task 6. They are THIS brief's own deliverable, not a follow-on: Verify row 3 — zero forge-CLI sites in `statusgen/` — is this brief's completion test, so the board row stays `in-progress` until every one of them is on the reader. There is no follow-on brief and deliberately no forward reference to one)"
-  - "statusgen/claimdecay_github.go `githubDecayToken`: fixed-here (amended 2026-10-25, `DR-forge-library`: the `gh auth token --hostname` fallback and its `gh` lookup retire here, the two `\"gh\"` lines row 3 counts; the file's forge-token environment reads stay on row 22's ratchet and retire in desktools-v2/77)"
+  - "statusgen/autoflip.go, statusgen/autonomy.go, statusgen/briefdecision.go, statusgen/briefflowreview.go, statusgen/citationcorroborate.go, statusgen/claimdecay.go: fixed-here (the remaining call sites, enumerated in Task 6. They are THIS brief's own deliverable, not a follow-on: Verify row 3 — zero forge-CLI sites in `statusgen/` — is this brief's completion test, so the board row stays `in-progress` until every one of them is on the reader. Only the bounded stored-login retirement is extracted to forge-neutral/49; every remaining migration and full cutover stays here)"
+  - "statusgen/claimdecay_github.go `githubDecayToken`: follow-up forge-neutral/49 (extracted contribution for the stored CLI lookup/fallback only; this parent retains its complete cutover obligation and row 22 token ratchet)"
   - "statusgen/decisionruling.go, statusgen/decisionruling_test.go, statusgen/decisionruling-mutations.json, statusgen/ghfetch.go: follow-up forge-neutral/35 (the ruling resolver, and the `gh auth token` fallback at `decisionruling.go:643`, move in their own human-gated brief because the move rewrites the inputs of the ruling-authenticity control; this brief does not touch them, and its row 3 excludes `statusgen/decisionruling.go` by path)"
   - "statusgen/transcribescan.go `ghCommentResolver`: follow-up forge-neutral/35 (the transcribe lanes' sign-off resolver at `:104-129`, with its launch at `:109` at `e6cb7d2a0`, moves in the same human-gated brief as the ruling resolver because both enactment gates read their sign-off check from it; this brief does not touch that function, and its row 19 pins the one line row 3 still counts to it. `ghAuthorResolver` at `:76` in the same file is this brief's)"
   - "statusgen/transcribeverdict.go `ghVerdictIssueResolver`: follow-up forge-neutral/35 (the verdict-issue read at `:505-531`, with its launch at `:506` at `e6cb7d2a0`, feeds the verdict and scan-delta lanes' author pins and edited-issue refusals; its old source never set the edit flag, so its move turns those refusals on, and it moves in the same human-gated brief. This brief does not touch that function, and its row 20 pins the one line row 3 still counts to it. `ghVerdictMainHealth` at `:579` in the same file is this brief's)"
@@ -63,7 +64,7 @@ consumers:
   - "docs/telemetry.md: fixed-here (the contract for what `--lint` may reach)"
   - "tools/desk/internal/deskkit/forge.go: out-of-scope (this brief adds NO operation — every read it needs is already enumerated, or added by forge-neutral/33, and has both backends, so the freeze rule is satisfied by consuming the surface rather than widening it)"
   - "tools/desk/internal/forgeban/allowlist.go: out-of-scope (statusgen is a separate module and has never had a permit row; the register counts desk-tools call sites, and this brief adds none)"
-version: 5
+version: 7
 id: 6ccc64a7-c32b-48ba-b6ac-d3a8165f15f9
 ---
 
@@ -98,25 +99,25 @@ files:
 no human-ruling resolver, and changes no control's accept or refuse rule. Several sites it
 moves do feed a control. Each keeps the same signal from a new source, and the table in Task 6
 names the old and the new source for each. Every site it moves is a read: the
-same data, fetched through `deskread` instead of `gh`, under the identity the verb resolves —
-`forge-neutral/07`'s roster parity and `forge-neutral/01`'s resolver locally, and in CI the
+same data, fetched through `deskread` instead of `gh`, under the identity the verb resolves — `forge-neutral/07`'s
+roster parity and `forge-neutral/01`'s resolver locally, and in CI the
 opt-in workflow-token transport that #2253's ruling chose (the CI-transport brief in #2314).
 For the CI-lane reads that identity is new: today they run under the job's own `gh` login, and
 afterwards under the transport, which is why this brief depends on that brief and adds `issue`,
 plus each further kind its CI-lane sites need, to `ciTransportKinds` by reviewed diff. The
 acting identity statusgen RECORDS is unchanged (row 14). Two resolvers and one issue read are
-deliberately not here, and forge-neutral/35, human-gated, moves all three. The first is the ruling resolver in
-`decisionruling.go`, with its `gh auth token` fallback at `:643`. Moving it rewrites the inputs
+deliberately not here, and forge-neutral/35, human-gated, moves all three. The first is the ruling resolver in `decisionruling.go`,
+with its `gh auth token` fallback at `:643`. Moving it rewrites the inputs
 of the ruling-authenticity control (deleted-comment detection, the comment-to-issue binding,
-edit detection, the bot check) and the credential it reads under. The second is
-`ghCommentResolver` in `transcribescan.go`, the sign-off check both transcribe lanes'
+edit detection, the bot check) and the credential it reads under. The second is `ghCommentResolver`
+in `transcribescan.go`, the sign-off check both transcribe lanes'
 enactment gates read. Moving it changes how the comment is found (a thread read selected by
-id instead of a single read by id) and where the author type comes from. The third is
-`ghVerdictIssueResolver` in `transcribeverdict.go`, the issue read behind the verdict and
+id instead of a single read by id) and where the author type comes from. The third is `ghVerdictIssueResolver`
+in `transcribeverdict.go`, the issue read behind the verdict and
 scan-delta lanes' author pins and edited-issue refusals. Its old source never set the edit flag,
-so moving it turns those refusals on, which changes an accept-or-refuse outcome. Row 3 excludes
-`decisionruling.go` by path and counts the two lines left in `ghCommentResolver` and
-`ghVerdictIssueResolver`; rows 19 and 20 pin each line to its function. One read this brief does move sits next to a human ratification:
+so moving it turns those refusals on, which changes an accept-or-refuse outcome. Row 3 excludes `decisionruling.go`
+by path and counts the two lines left in `ghCommentResolver` and `ghVerdictIssueResolver`;
+rows 19 and 20 pin each line to its function. One read this brief does move sits next to a human ratification:
 the decision-gate anchor's issue read (`decisiongateanchor.go:229`), whose closer the anchor
 matches against the blessing authority's login (`:157`). The anchor's rule is unchanged, and
 the closer login comes from `Issue.ClosedBy` instead of REST `closed_by`, so its signal does
@@ -124,8 +125,8 @@ not change. What this brief
 does change is the REACH of a check, and the two places that could go wrong are the offline
 default and the scope-narrowed mode. Neither removes a control: the issue-debt line is a NOTICE
 that is already `gh`-guarded and already degrades to the empty string on any failure
-(`issues.go:769-780`), so making it opt-in retires an advisory, not an assertion; and
-`--changed-only` is specified as REFUSING outright in the CI gate rather than narrowing quietly.
+(`issues.go:769-780`), so making it opt-in retires an advisory, not an assertion; and `--changed-only`
+is specified as REFUSING outright in the CI gate rather than narrowing quietly.
 Both are guarded by mandatory negative-path rows (5, 6, 11).
 
 single-point-of-failure: for the offline default, the one control between "this lint is green
@@ -279,17 +280,19 @@ What changes for this brief:
   the dead-claim decay change that removed its `gh` dependency. The row names it, at its
   measured count. This brief adds no file and raises no count; /77 takes every entry except
   /35's `decisionruling.go` to `0`.
-- **The claim-decay `gh auth token` fallback retires here, not in /77.** `githubDecayToken` in
-  `statusgen/claimdecay_github.go` (lines 96 and 99 at `d6a2ff244`) looks `gh` up on `PATH` and
+- **The claim-decay `gh auth token` fallback retires through child /49, consumed here.**
+  `githubDecayToken` in `statusgen/claimdecay_github.go` (lines 96 and 99 at `d6a2ff244`) looks `gh` up on `PATH` and
   runs `gh auth token --hostname <host>` when no forge-token variable is set. Those are two
   non-test `"gh"` lines, so row 3 counts them, and desktools-v2/08 rows 1 and 2 (which follow
-  this brief and /35 only) need them gone. This brief deletes the fallback and the lookup in
-  Task 6: with no token variable set, the GitHub decay read takes the existing no-token path
+  this brief and /35 only) need them gone. Child forge-neutral/49 deletes the fallback and
+  lookup; this brief consumes that delivery in Task 6: with no token variable set, the GitHub
+  decay read takes the existing no-token path
   (`githubBranchPRPages`), which reports could-not-check with the variables to set, and its
   message drops the `gh auth login` hint. The ruling forbids an ambient-token fallback, so this
   only tightens the read. The file's environment-token reads stay on row 22's ratchet until
   desktools-v2/77; /77's no-`gh`-fallback row stays as the regression hold. Row 3's completion
-  value stays `2`, because the two claim-decay lines are this brief's own.
+  value stays `2`, because the two claim-decay lines belong to this brief's census and retire
+  through /49.
 - **The three class c GraphQL blocks retire here.** `forge-ban.sh` sums four classes into
   its `statusgen sites:` total. This brief's moved reads build three `pullRequest(` blocks
   (`autonomy.go:548`, `:557`, `autoflip.go:1470` at `e07782de2`); they go with their launches
@@ -441,12 +444,18 @@ different total has found either a drifted brief or a new call site, and either 
 `exec.CommandContext` launch at `autonomy.go:539`. The current per-site list is forge-neutral/33's
 census.)
 
-**The claim-decay credential fallback is here (amended 2026-10-25).** `githubDecayToken`'s
+**The claim-decay credential fallback is owned by child /49 (amended 2026-10-25).**
+`githubDecayToken`'s
 `gh auth token --hostname` fallback in `statusgen/claimdecay_github.go` is not a read but a
 credential source. It added two `"gh"` lines after the freshness base and is not in the census
-above. This brief deletes it and its `exec.LookPath("gh")` guard, leaving the variable reads to
-row 22 and desktools-v2/77 (see the shared forge library amendment). A planted copy of the
-fallback must raise row 3's count from `2` to `4`.
+above. Child forge-neutral/49 deletes it and its `exec.LookPath("gh")` guard; this brief
+consumes that delivery, leaving the variable reads to row 22 and desktools-v2/77 (see the
+shared forge library amendment). A planted copy of the fallback must raise row 3's count from `2` to `4`.
+
+The stored-login lookup/fallback retirement is now the bounded contribution
+[49](brief-49-retire-claim-decay-stored-github-login-fallback.md), its single implementation
+owner. Consume that delivery here; every original Verify row and full cutover obligation
+remains. This parent stays partial until its remaining reads and controls are delivered.
 
 **The GraphQL blocks of the moved reads go with them (amended 2026-10-25).** Three non-test
 statusgen lines build a `pullRequest(` GraphQL block for a read this brief moves:

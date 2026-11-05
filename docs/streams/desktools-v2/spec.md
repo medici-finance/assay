@@ -385,7 +385,7 @@ messages in the pushed range, ref names) reaches the same function from the two 
 is already inspected: `deskpr`'s pre-push scan and the `deskpushguard` hook.
 
 **Keyed on the target's visibility.** The allowed-repos roster already states it per
-repository — `ASSAY_ALLOWED_REPOS` entries are `owner/name[:ci|:no-ci][:public|:private]`
+repository — `ASSAY_ALLOWED_REPOS` entries are `owner/name[:ci|:no-ci][:public|:private|:internal]`
 (`rosterconfig.go:86-91`; the `Visibility` type, `config.go:34-75`), read by `RepoVisibility` (`config.go:174`) with
 no network call, and `VisibilityRiskClassed` (`config.go:197`) already fails closed:
 everything except a known-private repository is treated as public.

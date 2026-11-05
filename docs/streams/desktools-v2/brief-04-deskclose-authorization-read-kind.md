@@ -45,10 +45,9 @@ id: b71f42a9-71c1-414b-a326-a9d5b2bdea8f
 ## Context
 
 files:
-- `tools/desk/cmd/deskclose/authority.go` — `fetchComment` / `fetchCommentKinded`, and the two
-  callers `authorize` and `authorizeManifest`.
+- `tools/desk/cmd/deskclose/authority.go` — `fetchComment` / `fetchCommentKinded`, and the two callers `authorize` and `authorizeManifest`.
 - `tools/desk/cmd/deskclose/authority_kind_test.go` (planned) — the tests below.
-- `changelog/<branch>.md` — the per-PR fragment this repository requires.
+- **`changelog/<branch>.md`** — the per-PR fragment this repository requires.
 
 single-point-of-failure: the control that matters is "the authorizing comment is ON the item
 the permalink names" — deskclose lists that item's comments and matches the comment's database

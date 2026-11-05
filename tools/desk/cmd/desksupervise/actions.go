@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 	"os"
 	"os/exec"
 	"strings"

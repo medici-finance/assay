@@ -397,6 +397,70 @@ rows_passed=11 rows_total=11.
 
 VERIFY: PASS. All eleven rows ran on merged main d6662bbc6b4f, and each meets its Expect on the real output, by hand and by the execution witness (11 pass, 0 fail, 0 could-not-run). Both mutations (kit row and model row) turn the pin red for the stated reason, and every grep row reads zero on the pre-delivery parent. Gate is `model` with every risk answer `no`; this run lands the Evidence, the `implemented → verified` board flip for row 06 and its verify-outcome record. The `verified → done` flip is CI's and is not made here.
 
+### Batch re-witness — 2026-11-02, non-implementer verifier, merged main 2c6c21336a60 (medici-finance/assay#2026)
+
+#### Execution witness
+
+`statusgen verifyrun --brief docs/streams/build-less-brittle/brief-06-design-fit-review-stage.md`, writing form, statusgen v1.0.69, run from the admitted home at 2c6c21336a60 (clean tree, exit 0; 11 of 11 rows `pass exit=0`). Emitted verbatim:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./internal/deskkit/ ./cmd/deskdispatch/ -count=1` | pass exit=0 | sha256:65740e9f1910 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -c 'BasisDesignFit ScopeBasis = "design-fit"' tools/desk/internal/deskkit/reviewscope.go` | pass exit=0 | sha256:4355a46b19d3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && f=cmd/deskdispatch/references/review-prompt.md && cp "$f" ../../bl06-kit.bak && awk '!/^[\|] design-fit [\|]/' ../../bl06-kit.bak > "$f" && go test ./cmd/deskdispatch/ -run TestReviewScopeKitMatchesModel -count=1 > ../../bl06-mut.out 2>&1; rc=$?; cp ../../bl06-kit.bak "$f"; test $rc -ne 0 && echo RED-ON-DRIFT` | pass exit=0 | sha256:cd183bfd8e84 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -cE '^## [0-9]+\. Design fit first' tools/desk/cmd/deskdispatch/references/review-prompt.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -cE '^[\|] design-fit [\|] advisory [\|]' plugins/assay/skills/pr-review-desk/SKILL.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -cE '^[\|] *R-design-fit-basis .*S-review-verdict' docs/contracts.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/06$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "${tip}:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" -le "$(git show "${base}:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" && echo NET-OK` | pass exit=0 | sha256:458c4e39effe | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/06$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" && echo NET-OK` | pass exit=0 | sha256:458c4e39effe | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `grep -q '^func TestPrintWeight' tools/desk/internal/weight/weight_test.go && grep -c 'go test ./internal/weight/ -run TestPrintWeight' tools/desk/cmd/deskdispatch/references/review-prompt.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `d=$(mktemp -d "${TMPDIR:-/tmp}/bl06-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach d1258928da48 && statusgen --consumers --root "$d" --brief build-less-brittle/06 --base d1258928da48~1; s=$?; rm -rf "$d"; exit $s` | pass exit=0 | sha256:fd6235f65cc3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `s=$(sed -n '/^## [0-9]*\. Design fit first/,/^## [0-9]*\. /p' tools/desk/cmd/deskdispatch/references/review-prompt.md); echo "$s" \| grep -c 'Brittle marks'; echo "$s" \| grep -c 'internal/arch'` | pass exit=0 | sha256:ad0fadf63cc7 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5236 run=2efd22172cd3516d426eb9886b61ed758ea315235ade44ccc1511e4969c98a6c source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/build-less-brittle/brief-06-design-fit-review-stage.md model=claude-opus-5-5 tier=strong
+
+`statusgen verifyrun --check` on the brief afterwards (exit 0): `11 pass, 0 fail, 0 could-not-run/missing (of 11 Verify rows); 0 author-added with no acceptance credit`.
+
+- Target: merged main 2c6c21336a606e64df057294f21177f16db7b9f8, detached in the verifier's home worktree, admitted by `deskdispatch --check-verifier` before any row ran (binding above). It contains the delivering squash d1258928da48 (medici-finance/assay#1879).
+- Runner: assay-verifier-app[bot], dispatched verifier, not the implementer of this brief or its code. Host darwin-arm64. Every row is class `check` (row 3 `check +mutation`), so each ran on the host; no row needed the container lane. TMPDIR and GOTMPDIR pointed at owned scratch outside the home.
+- Frontmatter: gate `model`; risk regulatory no, customer no, irreversible no, sensitive-data no.
+
+The witness decides each row on exit status. What each row printed, read by hand at the same head (row 1 re-run once by hand; row 3 read from the mutant log the witness run left behind):
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | go test of internal/deskkit and cmd/deskdispatch, `-count=1` (as authored) | `ok` for both | exit 0; `ok …/tools/desk/internal/deskkit 440.173s`, `ok …/tools/desk/cmd/deskdispatch 143.316s` | 2026-11-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | grep -c the `BasisDesignFit` constant in reviewscope.go (as authored) | `1` | exit 0, `1` (reviewscope.go line 74) | 2026-11-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | kit-row mutation of `TestReviewScopeKitMatchesModel` (as authored) | `RED-ON-DRIFT` | exit 0, `RED-ON-DRIFT`; mutant log: `--- FAIL: TestReviewScopeKitMatchesModel` / `reviewscope_test.go:299: the model names basis "design-fit" but the review kit's block does not`; the restored kit is byte-identical to the backup. The row's backup and log were then moved out of the home to the verifier's scratch so the home holds only this Evidence edit | 2026-11-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | grep -c the "Design fit first" clause heading (as authored) | `1` | exit 0, `1` (review-prompt.md line 36) | 2026-11-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | grep -c the `design-fit` register row with status advisory (as authored) | `1` | exit 0, `1` (SKILL.md line 708) | 2026-11-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | grep -c the `R-design-fit-basis` row serving `S-review-verdict` (as authored) | `1` | exit 0, `1` (contracts.md line 283) | 2026-11-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | net-lines row for the review kit (as authored) | `NET-OK` | exit 0, `NET-OK`; impl d1258928da48, base 2adf73c2a, 461 lines at tip and 461 at base | 2026-11-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | net-lines row for the pr-review-desk skill (as authored) | `NET-OK` | exit 0, `NET-OK`; same impl and base, 1023 lines at tip and 1023 at base | 2026-11-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | counter-test presence, then grep -c the counter command in the kit (as authored) | ≥ `1` | exit 0, one line `1` | 2026-11-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | throwaway shared clone at d1258928da48 in owned scratch, `statusgen --consumers` with base d1258928da48~1, clone removed (as authored) | exit 0; `summary: 4 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing` | exit 0, `summary: 4 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing`. CORROBORATED: reviewscope.go, review-prompt.md, pr-review-desk SKILL.md, contracts.md. UNCHECKED: the review-scope case corpus (named in prose; its line 18 lists `design-fit` as the fifth basis) and the installed binaries (out-of-scope). UNCHECKED entries are not passes. The clone directory was gone afterwards | 2026-11-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | clause extract, grep -c `Brittle marks` and `internal/arch` (as authored) | two counts, each ≥ `1` | exit 0, `1` and `1` | 2026-11-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+#### Risk-bearing value
+
+The trigger fires because the delivering diff touches a security-path file (reviewscope.go); every risk answer is `no` and irreversible is `no`.
+
+Enumeration, over the squash d1258928da48's tools/, plugins/ and contracts.md surfaces plus the literals named in Deliverables, located at 2c6c21336a60:
+- `BasisDesignFit = "design-fit"` @ tools/desk/internal/deskkit/reviewscope.go:74, its `ScopeBases()` row @ reviewscope.go:93
+- kit block key `design-fit` @ tools/desk/cmd/deskdispatch/references/review-prompt.md:376
+- register status `design-fit = advisory` @ plugins/assay/skills/pr-review-desk/SKILL.md:708
+- tier binding "Weight growth … is strong tier too" @ plugins/assay/skills/pr-review-desk/SKILL.md:477
+- demotion threshold `> 50%` for `two consecutive months` @ plugins/assay/skills/pr-review-desk/SKILL.md:710 (named in Deliverables, not changed by the diff)
+- line bounds: clause `≤ 14`, growth step `≤ 5`, net weight `≤ 0` (kit 461→461, skill 1023→1023 across the squash)
+
+Ranking: every entry is reversible by an edit and a release. The register status ranks first (it decides whether a design-fit finding holds a PR); the basis identifier second (it decides whether model, kit and register agree); the bounds, tier binding and threshold are reversible operational knobs.
+
+RISK-VALUE: DERIVED — design-fit register status = advisory @ plugins/assay/skills/pr-review-desk/SKILL.md:708 — D-A (spec §10) lands the class without power to hold a PR; its only self-correction, the > 50% / two-consecutive-month reversal demotion (SKILL.md:710), has no reversal data until the class has run, so `advisory` is the fail-soft landing state and promotion is the one-cell edit the register provides.
+RISK-VALUE: DERIVED — BasisDesignFit = "design-fit" @ tools/desk/internal/deskkit/reviewscope.go:74 — its only correctness criterion is being one identifier on every surface a reviewer is held to; read directly it equals the kit block key (review-prompt.md:376), the register class (SKILL.md:708), the basis in the R-design-fit-basis row (contracts.md:283) and the case corpus's fifth basis (review-scope-cases.md:18), and row 3's mutation shows the pin goes red when the kit drops it.
+
+rows_passed=11 rows_total=11.
+
+**VERIFY: PASS** — 11 of 11 rows pass on merged main 2c6c21336a60, by the execution witness and by hand. This run renews the witness only; it flips nothing and writes no outcome record.
+
 ## Review
 Gate: model (from frontmatter). The reviewer answers this stage's own three questions about this
 PR. It adds an enum value, a clause and a register row. Is the review kit the right owner, and

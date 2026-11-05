@@ -25,7 +25,7 @@ id: "acdc950e-3762-4ab4-ac30-fab52bfc86d7"
 
 ## Context
 
-files: `loopadmin/adapters/axcompat/` (planned), `loopadmin/testdata/axcompat/` (planned), `docs/reports/agent-execution/ax-compatibility.md` (planned). All new paths are implementation deliverables. Include a changelog fragment and module/path-trigger changes where the implementation needs them.
+files: `loopadmin/adapters/axcompat/` (planned), `loopadmin/testdata/axcompat/` (planned), `docs/reports/agent-execution/ax-compatibility.md` (planned) — All new paths are implementation deliverables. Include a changelog fragment and module/path-trigger changes where the implementation needs them.
 
 single-point-of-failure: compatibility classification against required boundaries — backed by fixture mapping tests and independent source/report review; no executable production backend is installed.
 

@@ -39,6 +39,7 @@ on:
       # statusgen resolves the forgeread module through a sibling `replace`, so a change
       # there changes what the lint binary is built from.
       - "forgeread/**"
+      - "gitcore/**"
       # Likewise the perfrec module (the shared perf-v1 writer, #3101).
       - "perfrec/**"
       - ".github/workflows/assay-statusgen.yml"
@@ -65,6 +66,7 @@ on:
       # statusgen resolves the forgeread module through a sibling `replace`, so a change
       # there changes what the lint binary is built from.
       - "forgeread/**"
+      - "gitcore/**"
       # Likewise the perfrec module (the shared perf-v1 writer, #3101).
       - "perfrec/**"
       - ".github/workflows/assay-statusgen.yml"
@@ -133,6 +135,7 @@ jobs:
       - name: statusgen --lint
         env:
           GH_TOKEN: ${{ github.token }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
           "${RUNNER_TEMP}/statusgen" --root . --lint --acceptance-forge
@@ -247,7 +250,7 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/base"
           # statusgen's local replacements need their sibling modules beside it, all
           # from the same trusted base commit. ls-tree omits modules absent at older bases.
-          git archive "$parent" statusgen $(git ls-tree -d --name-only "$parent" deskcore forgeread gitquiet perfrec) | tar -x -C "${RUNNER_TEMP}/base"
+          git archive "$parent" statusgen $(git ls-tree -d --name-only "$parent" deskcore forgeread gitquiet gitcore perfrec) | tar -x -C "${RUNNER_TEMP}/base"
           ( cd "${RUNNER_TEMP}/base/statusgen" && go build -o "${RUNNER_TEMP}/statusgen-base" . )
       # Always the pinned tarball, never a gh already on PATH: the guard's review
       # and comment reads go through it.
@@ -373,12 +376,14 @@ jobs:
       - name: Regenerate STATUS.md
         env:
           GH_TOKEN: ${{ github.token }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
           "${RUNNER_TEMP}/statusgen" --root . --acceptance-forge
       - name: Commit STATUS.md if it changed
         env:
           GH_TOKEN: ${{ github.token }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
           set -euo pipefail

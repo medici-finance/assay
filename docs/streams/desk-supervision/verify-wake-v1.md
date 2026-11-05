@@ -59,13 +59,19 @@ retired — see desk-supervision/24's Task step 8). Either shape's content is ex
 | `started`, `finished` | RFC3339 UTC; `started <= finished <= ts` |
 | `rows_passed`, `rows_total` | how many Verify rows passed, out of how many the brief has |
 | `row_results` | optional in the wire schema; [new producers](../../verify-outcome-rows.md#producer-migration-covered-rows-are-not-held-rows) require it whenever `rows` is non-empty. List of `{row, result}` (`pass` / `fail` / `could-not-run` / `deferred`) covering ALL `rows_total` rows; its length equals `rows_total` and its `pass` count equals `rows_passed` |
+| `attempts` | optional, 1-16 entries: every run of the Verify table in the dispatch, full or partial, in order. Each entry has exactly `attempt` (numbered 1..n contiguously), `disposition` (`credited` / `uncredited` / `discarded`), `reason` (absent for `credited`; `uncredited` takes `local-build`, `not-credited` or `credit-unchecked`; `discarded` takes `env-fault` or `superseded`), optional `cause_ref` (the `blocker_ref` grammar; required for `env-fault`), `started` <= `finished` (RFC3339 UTC) and `rows_run` (1..`rows_total`). Windows ascend without overlap inside the record's own `started`/`finished`, which the record must carry, with `rows_total`. At most one `credited` entry, and it is the last one; a `verified` record with `attempts` ends in `credited`. Unknown or case-variant keys are refused, naming the attempt and the rule. A discarded run keeps its entry. Read by `deskperf reruns`; never changes what is credited |
 | `dispatch_ref` | optional `<claim_key>@<YYYYMMDDTHHMMSSZ>.<12 lowercase hex>` (prefix 1-226 printable ASCII bytes, no `@`). **Self-reported and stays so** — the writer checks the shape, never that the dispatch happened |
 | `dispatch_ref_sha256` | written by the writer only, on a private register, in place of `dispatch_ref`; never valid input |
 
 Input revisions cover the **Verify definition**, the **relevant deliverable/dependency
 revisions**, and the **applicable tool version**. Keys are opaque to the evaluator; the
 already-authorized reader interprets them. The offline reader understands `tool`,
-`file:<repo-relative-path>`, and `scope:<canonical-declaration>`. Each scope digest
+`file:<repo-relative-path>`, `file:<directory>/` (one content digest over every file a
+declared directory holds, written in place of per-member `file:` keys), and
+`scope:<canonical-declaration>[/]`; the trailing `/`
+is written exactly when the declaration is a literal observed as a directory, and
+readers accept a directory key in either form (see the
+[declaration contract](../../declared-input-scope.md)). Each scope digest
 records the admitted declaration's path kinds and sorted membership, including a
 literal planned path's absence. Directory/glob member additions or removals and
 planned-file creation can therefore wake work without a pre-existing content key.
@@ -81,8 +87,25 @@ historical receipt lacks, the root reader reports could-not-check and requires a
 fresh admission/observation; it cannot assert an unchanged hold. An independently
 observed input change still fires even when another scope could not be checked.
 Older readers encountering the new scope keys report could-not-check on unknown
-keys. Custom readers must opt into the optional scope-completeness interface to
+keys, and a reader older than the slash form reports could-not-check on a
+`scope:<decl>/` key, never unchanged. Custom readers must opt into the optional scope-completeness interface to
 provide this authoring-aware check; opaque reader semantics otherwise stay intact.
+
+**A tool-only change holds (2026-11-04, #2310).** The `tool` key stays a recorded input: the
+receipt says truthfully which tool version ran. But when the tool version is the **only**
+declared input whose revision differs, the receipt **holds**, with a reason naming the change
+(`tool-only change (<was> -> <now>); blocker unmoved`), and the planner goes on to read the
+blocker as for an unchanged receipt. A tool release by itself does not move a blocker: across
+four releases every tool-only wake re-surfaced an unmoved blocker and no re-run changed a
+verdict, so the wake cost one fleet-wide re-dispatch per release and nothing else. A tool
+change together with any other changed input still fires, and the changed list names every
+key, `tool` included. An unreadable input still makes the read could-not-check. A verifier who
+believes a release fixed the blocker uses `explicit-recheck-with-reason`, or a
+`referenced-action-completed` blocker that names the fixing change. Nobody re-declares a
+receipt's tool version to force a hold. Verify rows that passed under the earlier tool
+version are carried forward as passed after a tool-only change; they are not re-run under the
+new tool. The test is on the input **key**: a declared file whose path is `tool` (key
+`file:tool`) is a file input, and its change wakes.
 
 ### Blocker kinds (closed set) → next actor
 
@@ -162,7 +185,7 @@ could-not-check until an authorized online reader supplies it).
 | State | When | Scheduling effect |
 |---|---|---|
 | **hold** | a complete receipt whose wake condition is not met | a VISIBLE `wait` row naming the blocker + next actor; excluded from costly dispatch |
-| **fire** | the wake condition was met (input/tool/Verify-def changed, action completed, deadline reached, explicit recheck) | dispatch the affected work |
+| **fire** | the wake condition was met (input/Verify-def changed, possibly with the tool too; action completed, deadline reached, explicit recheck) | dispatch the affected work |
 | **could-not-check** | a declared input could not be read | surfaced as could-not-check — never rounded up to unchanged, never an empty queue or a pass |
 | **unclassified** | a legacy or incomplete receipt (missing schema/id, unknown vocabulary, or an empty input scope for `relevant-input-changed`) | eligible for exactly one ordinary classification pass; never a fabricated hold |
 
@@ -215,7 +238,16 @@ Invariants the tests pin (`tools/desk/cmd/verifyloop/wake_test.go`, `tools/desk/
   run produces begins the wake scheduling.
 - **Rollback** is the previous released binary/skill pin. Older readers ignore unknown
   additive JSON fields, but receipts containing `scope:` input keys report could-not-check
-  because the older reader cannot resolve those keys. Receipts are never erased or
+  because the older reader cannot resolve those keys; the same holds for a directory key
+  in the `scope:<decl>/` form read by a reader older than that form, and for a `file:<dir>/`
+  directory content key read by a reader older than that key. Receipts are never erased or
   relabelled to make a rollback look clean.
+- **Directory content keys** (`file:<dir>/`) are additive within `verify-wake-v1`: no schema
+  bump. Records holding per-member `file:` keys for a directory stay valid and are read as
+  before; new records write one `file:<dir>/` key per declared directory instead (see the
+  [declaration contract](../../declared-input-scope.md#directory-content-keys)). A pending,
+  not-yet-landed record derived before the change no longer matches the writer's
+  re-derivation, so its item is could-not-check and is not dispatched (neither held nor
+  re-verified) until the pending Evidence lands or its record is re-issued.
 - **Explicit recheck** is the operator's escape hatch: an `explicit-recheck-with-reason` receipt
   wakes the work regardless of the other predicates, with the reason recorded.

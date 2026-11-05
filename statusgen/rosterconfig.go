@@ -102,8 +102,11 @@ import (
 )
 
 const (
-	scanEnvBlessLogin      = "ASSAY_BLESS_LOGIN"
-	scanEnvTrustedLogins   = "ASSAY_TRUSTED_LOGINS"
+	scanEnvBlessLogin    = "ASSAY_BLESS_LOGIN"
+	scanEnvTrustedLogins = "ASSAY_TRUSTED_LOGINS"
+	// scanEnvAssertedHumans mirrors deskkit.EnvAssertedHumans: pinned login:id assertions
+	// that a -bot / -app login is a human, consumed by the two keys above only.
+	scanEnvAssertedHumans  = trustcore.HumanAssertionsKey
 	scanEnvTrustedBotSlugs = "ASSAY_TRUSTED_BOT_SLUGS"
 	scanEnvAllowedRepos    = "ASSAY_ALLOWED_REPOS"
 	scanEnvHumanLoginMap   = "ASSAY_HUMAN_LOGIN_MAP"
@@ -326,6 +329,15 @@ const (
 	// Recognised, not applied. KEEP IN SYNC with deskkit/rosterconfig.go's
 	// EnvGitLabSessionEmails.
 	scanEnvGitLabSessionEmails = "ASSAY_GITLAB_SESSION_EMAILS"
+
+	// scanEnvGitLabRoleEmails (ASSAY_GITLAB_ROLE_EMAILS) binds each GitLab desk role to its
+	// own commit address (`role=email`, #4978), CONSUMED only by the desk's worktree
+	// commit-identity stamper (deskkit's RoleGitLabCommitIdentity). statusgen stamps no
+	// worktree and consumes it in no form — but it lives in the SAME shared roster.env, so
+	// it is recognised here or binding per-role addresses would collapse statusgen's whole
+	// configuration. Recognised, not applied. KEEP IN SYNC with deskkit/rosterconfig.go's
+	// EnvGitLabRoleEmails.
+	scanEnvGitLabRoleEmails = "ASSAY_GITLAB_ROLE_EMAILS"
 
 	// scanEnvGitLabDisplayNames (ASSAY_GITLAB_DISPLAY_NAMES) is the OFFLINE fallback that
 	// lets the Evidence-actor gate accept a GitLab service-account Evidence commit on the
@@ -590,11 +602,51 @@ type scanConfig struct {
 	// UnknownKeys are echoed, never applied. KEEP IN SYNC with deskkit.Config.
 	UnknownKeys []string
 
+	// AssertedHumans / AssertionUses: the parsed ASSAY_ASSERTED_HUMANS set and which keys
+	// each waiver applied to. Dropped: on a REFUSED configuration only, the ASSAY_ keys
+	// the refusal discarded. KEEP IN SYNC with deskkit.Config.
+	AssertedHumans trustcore.HumanAssertions
+	AssertionUses  map[string][]string
+	Dropped        []string
+
+	// Notices names single entries not applied without refusing the configuration (a
+	// name:login entry whose name contains a space). KEEP IN SYNC with deskkit.Config.
+	Notices []string
+
 	Problems []string
 }
 
 func (c scanConfig) Configured() bool {
 	return len(c.Problems) == 0 && c.Bless.Login != "" && len(c.Logins) > 0
+}
+
+// allowedRepo reports whether repo (owner/name) is in the configured repository
+// set: an explicit ASSAY_ALLOWED_REPOS entry, or an owner/* pattern entry for its
+// owner. Matching is exact-case, and an unconfigured set (a collapsed
+// configuration carries no Repos) answers false for every repo. This reader keeps
+// a pattern entry as the literal key "owner/*"; scanParseConfig refuses the
+// pattern entries deskkit refuses (a policy token, or '*' in the owner half), so
+// the two readers agree on which rosters configure a set at all. The shared
+// vector testdata/roster_coupling.json holds both to the same answers.
+//
+// It is deliberately STRICTER than IsAllowedRepo on one shape: a repo argument
+// whose name half is "*" or whose owner half contains '*' answers false here,
+// where IsAllowedRepo can answer true (it matches "owner/*" against a configured
+// owner/* pattern). No real repository has that name, and the difference only
+// ever refuses: the span's source-repo= is already held to the owner/name slug
+// shape by the attestation parser, and a record whose binding names such a
+// source repository is refused here rather than credited. KEEP IN SYNC with
+// deskkit's IsAllowedRepo.
+func (c scanConfig) allowedRepo(repo string) bool {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" || name == "*" || strings.Contains(name, "/") || strings.Contains(owner, "*") {
+		return false
+	}
+	if _, ok := c.Repos[repo]; ok {
+		return true
+	}
+	_, ok = c.Repos[owner+"/*"]
+	return ok
 }
 
 var (
@@ -685,7 +737,8 @@ func scanLoadConfig(class scanToolClass) scanConfig {
 	vals, source, problems := scanReadRawConfig(class)
 	cfg := scanParseConfig(class, source, vals)
 	if len(problems) > 0 {
-		return scanConfig{Class: class, Source: source, Problems: append(problems, cfg.Problems...)}
+		all := append(problems, cfg.Problems...)
+		return scanConfig{Class: class, Source: source, Problems: all, Dropped: trustcore.DroppedKeys(vals, all)}
 	}
 	return cfg
 }
@@ -697,7 +750,7 @@ func scanReadRawConfig(class scanToolClass) (map[string]string, string, []string
 		scanEnvRiskPathTriggersExtra,
 		scanEnvRepoAliases, scanEnvRosterSchema, scanEnvHomeRepo, scanEnvScanRepos,
 		scanEnvAuthorizedAuthors, scanEnvStreamCap, scanEnvGitLabDisplayNames,
-		scanEnvCriticalStampAuthorities,
+		scanEnvCriticalStampAuthorities, scanEnvAssertedHumans,
 	}
 	keys = append(keys, scanProductConfigKeys()...)
 	fromEnv := func() map[string]string {
@@ -839,6 +892,7 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		FormerHumanLogins:  map[string]string{},
 		AuthorizedAuthors:  map[string]int64{},
 		GitLabDisplayNames: map[string]string{},
+		AssertionUses:      map[string][]string{},
 	}
 	var problems []string
 	bad := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
@@ -904,6 +958,17 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		}
 	}
 
+	// Pinned human-name assertions: after the bot slugs (an assertion may not name a login
+	// the roster registers for a bot account), before the humans (they consume it).
+	// KEEP IN SYNC with deskkit.parseConfig.
+	botLogins := map[string]bool{}
+	for l := range cfg.Logins {
+		botLogins[l] = true
+	}
+	assertions, aProblems := trustcore.ParseHumanAssertions(vals[scanEnvAssertedHumans], botLogins)
+	problems = append(problems, aProblems...)
+	cfg.AssertedHumans = assertions
+
 	for _, entry := range scanSplitList(vals[scanEnvTrustedLogins]) {
 		login, id, ok := scanSplitIdentity(entry)
 		if !ok {
@@ -912,9 +977,12 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 			continue
 		}
 		if scanLooksLikeBot(login) {
-			bad("%s lists %q, which renders as a bot/App account. App identities belong in %s",
-				scanEnvTrustedLogins, login, scanEnvTrustedBotSlugs)
-			continue
+			if !cfg.AssertedHumans.Waives(login, id) {
+				bad("%s lists %q, which renders as a bot/App account. App identities belong in %s%s",
+					scanEnvTrustedLogins, login, scanEnvTrustedBotSlugs, trustcore.RefusalHint(login))
+				continue
+			}
+			cfg.AssertionUses[login] = append(cfg.AssertionUses[login], scanEnvTrustedLogins)
 		}
 		cfg.Humans[login] = id
 		cfg.Logins[login] = true
@@ -938,20 +1006,25 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 					"(unlike its siblings): a deleted login can be re-registered by an attacker, and "+
 					"the blessing authority is the highest-value target for that. Refusing, exactly "+
 					"as if it were unset", scanEnvBlessLogin, raw)
-			case scanLooksLikeBot(login):
+			case scanLooksLikeBot(login) && !cfg.AssertedHumans.Waives(login, id):
 				bad("%s=%q names a bot/App/shared-agent account. The blessing is the authorisation "+
 					"half of the trust gate and has to be a HUMAN act — an App that could bless would "+
-					"admit external text into its own queue. Refusing", scanEnvBlessLogin, raw)
+					"admit external text into its own queue. Refusing%s", scanEnvBlessLogin, raw, trustcore.RefusalHint(login))
 			case inBotSet:
 				bad("%s=%q is also listed in %s. A trusted App is a trusted AUTHOR; it must never be "+
 					"the blessing authority", scanEnvBlessLogin, raw, scanEnvTrustedBotSlugs)
 			default:
+				if scanLooksLikeBot(login) {
+					cfg.AssertionUses[login] = append(cfg.AssertionUses[login], scanEnvBlessLogin)
+				}
 				cfg.Bless = scanIdentity{Login: login, ID: id}
 				cfg.Humans[login] = id
 				cfg.Logins[login] = true
 			}
 		}
 	}
+	problems = append(problems, trustcore.UnusedProblems(cfg.AssertedHumans, cfg.AssertionUses,
+		scanEnvTrustedLogins, scanEnvBlessLogin)...)
 
 	// The policy tokens are VALIDATED here, exactly as deskkit validates them.
 	//
@@ -972,6 +1045,25 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 			bad("%s: %q is not an owner/name repo slug", scanEnvAllowedRepos, entry)
 			continue
 		}
+		// A PATTERN entry (owner/*) gets deskkit's two refusals, worded alike so the
+		// shared vector's rejectedRosters bind both readers: an owner half carrying
+		// '*', and any trailing ci/visibility token. Without them allowedRepo would
+		// turn a roster deskkit refuses whole into a grant for every repo of that
+		// owner. A valid pattern keeps the literal key owner/* (read by allowedRepo)
+		// with the fail-closed policy below.
+		if owner, name, _ := strings.Cut(slug, "/"); name == "*" {
+			if strings.Contains(owner, "*") {
+				bad("%s: %q — the owner half of a pattern entry may not itself contain '*'",
+					scanEnvAllowedRepos, entry)
+				continue
+			}
+			if len(parts) > 1 {
+				bad("%s: %q is a pattern entry (owner/*) and may not carry a ci/visibility policy — "+
+					"a pattern-matched repo gets fail-closed CI/visibility defaults (CI-required, "+
+					"visibility unknown) from the explicit census instead", scanEnvAllowedRepos, entry)
+				continue
+			}
+		}
 		// Fail-closed defaults, identical to deskkit: CI required unless stated,
 		// visibility UNKNOWN unless stated (unknown risk-classes every PR).
 		ci, vis := "ci", "unknown"
@@ -986,9 +1078,13 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 				vis = "public"
 			case "private":
 				vis = "private"
+			case "internal":
+				// Instance-visible, NOT private (principal.go reads only ":private" as
+				// private), matching deskkit's VisibilityInternal token for token.
+				vis = "internal"
 			case "":
 			default:
-				bad("%s: %q carries unknown policy token %q — expected ci|no-ci and public|private",
+				bad("%s: %q carries unknown policy token %q — expected ci|no-ci and public|private|internal",
 					scanEnvAllowedRepos, slug, tok)
 				malformed = true
 			}
@@ -999,9 +1095,18 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		cfg.Repos[slug] = ci + ":" + vis
 	}
 
-	for _, entry := range scanSplitList(vals[scanEnvHumanLoginMap]) {
-		name, login, found := strings.Cut(entry, ":")
-		name = strings.ToLower(strings.TrimSpace(name))
+	// Split by trustcore.SplitNameLoginList, not scanSplitList: a name with a space BETWEEN its
+	// words (`Ada Lovelace:ada`) stays ONE entry, refused on its own with a NOTICE (no mapping)
+	// instead of shredding into a colon-less word that refused the whole roster plus a fragment
+	// mapping nobody wrote. A malformed or bot-shaped entry still refuses the whole roster, and so
+	// does a space before the colon (`ada :ada`), which the splitter leaves as two malformed
+	// entries. The whitespace check reads the UNTRIMMED name half, so a space the trim would drop
+	// can never turn a refused entry into a mapping. Applies to BOTH name:login maps below. KEEP
+	// IN SYNC with deskkit.parseConfig.
+	var notices []string
+	for _, entry := range trustcore.SplitNameLoginList(vals[scanEnvHumanLoginMap]) {
+		rawName, login, found := strings.Cut(entry, ":")
+		name := strings.ToLower(strings.TrimSpace(rawName))
 		login = strings.ToLower(strings.TrimSpace(login))
 		if !found || name == "" || login == "" {
 			bad("%s: cannot parse entry %q — expected name:login", scanEnvHumanLoginMap, entry)
@@ -1015,6 +1120,10 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 				"exclude. Refusing", scanEnvHumanLoginMap, entry, login)
 			continue
 		}
+		if trustcore.NameHasWhitespace(rawName) {
+			notices = append(notices, trustcore.SpacedNameNotice(scanEnvHumanLoginMap, entry))
+			continue
+		}
 		cfg.HumanLogins[name] = login
 	}
 
@@ -1025,9 +1134,9 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 	// same reason it does on the current map: a `human:<name>` must never resolve to a
 	// shared-agent identity, even for a departed human. An unset value is neither an
 	// error nor a refusal.
-	for _, entry := range scanSplitList(vals[scanEnvFormerHumanLoginMap]) {
-		name, login, found := strings.Cut(entry, ":")
-		name = strings.ToLower(strings.TrimSpace(name))
+	for _, entry := range trustcore.SplitNameLoginList(vals[scanEnvFormerHumanLoginMap]) {
+		rawName, login, found := strings.Cut(entry, ":")
+		name := strings.ToLower(strings.TrimSpace(rawName))
 		login = strings.ToLower(strings.TrimSpace(login))
 		if !found || name == "" || login == "" {
 			bad("%s: cannot parse entry %q — expected name:login", scanEnvFormerHumanLoginMap, entry)
@@ -1040,8 +1149,13 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 				"Refusing", scanEnvFormerHumanLoginMap, entry, login)
 			continue
 		}
+		if trustcore.NameHasWhitespace(rawName) {
+			notices = append(notices, trustcore.SpacedNameNotice(scanEnvFormerHumanLoginMap, entry))
+			continue
+		}
 		cfg.FormerHumanLogins[name] = login
 	}
+	cfg.Notices = notices
 
 	// ADDITIVE-ONLY, and an unset value is neither an error nor a refusal.
 	cfg.RiskExtra = scanSplitList(vals[scanEnvRiskPathTriggersExtra])
@@ -1166,7 +1280,9 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 	scanApplyProductConfig(&cfg, vals)
 
 	if len(problems) > 0 {
-		return scanConfig{Class: class, Source: source, Problems: problems}
+		// Fail closed: a refused roster loads nothing. Dropped only names what was discarded.
+		return scanConfig{Class: class, Source: source, Problems: problems, Dropped: trustcore.DroppedKeys(vals, problems),
+			Notices: notices}
 	}
 	return cfg
 }
@@ -1247,6 +1363,12 @@ func (c scanConfig) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: %s=%s", scanEnvCriticalStampAuthorities, criticalStampAuthoritiesEcho(c.CriticalStampAuthorities, c.CriticalStampAuthoritiesSet)),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvGitLabDisplayNames, strings.Join(gitlabDisplayNames, ",")),
 	}
+	if len(c.AssertedHumans) > 0 {
+		// Present only when an assertion loaded, as in deskkit: a roster without the key
+		// echoes (and digests) exactly as before.
+		lines = append(lines, fmt.Sprintf("assay-config: %s=%s", scanEnvAssertedHumans,
+			trustcore.EchoAssertions(c.AssertedHumans, c.AssertionUses)))
+	}
 	// Product config (non-ASSAY_) echoes under its own prefix via the build-tagged
 	// hook; empty in the default (open-core) build.
 	lines = append(lines, scanProductConfigLines(c)...)
@@ -1256,6 +1378,12 @@ func (c scanConfig) EffectiveConfigLines() []string {
 	}
 	for _, p := range c.Problems {
 		lines = append(lines, "assay-config: REFUSED — "+p)
+	}
+	for _, d := range c.Dropped {
+		lines = append(lines, "assay-config: DROPPED "+d)
+	}
+	for _, n := range c.Notices {
+		lines = append(lines, "assay-config: NOTICE — "+n)
 	}
 	return lines
 }

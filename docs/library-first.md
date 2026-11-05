@@ -28,6 +28,7 @@ runtime containment. Taxonomy membership describes components and grants no auth
 | Inter-cell message contract (cellmsg-v1) | `comms/contract` (module `github.com/medici-finance/assay/comms`, comms-core/01): `Envelope`, `ParseEnvelope`, `ParseEnvelopeWith`, `Vocabulary`, `Message`, `Address`, `Receipt`, `ErrorCode`, `Mint`, `Verify`, `VerifyEnvelope` | `tools/desk/internal/comms` (the Assay policy adapter: verb and class vocabulary, compiled lane ACL, `Admit`), then `commsgw`, `commsloop`, `deskcomms`, `commsqueue`. Follow-ups comms-core/02 (server) and /03 (client SDK) consume it. Structure only: no role names, no ACL, no credential, no network, no process launch. |
 | Local performance observations | `perfrec` owns the recorder, typed versioned codecs, context validation, selectors and reducers. desktools-v2/67 adds the bounded v4 reader; /68 owns subsequent selected-profile cutover. | Desk wrappers and statusgen link the same module. No network, subprocess, credential, upload or authority moves into the library. v1–v3 remain historical contracts; no parallel recorder or authenticated statusgen adapter. |
 | Forge facts and completeness | Existing forge adapters; narrow `forgeread` API, forge-neutral/36; typed positive issue-state adapter in Go API 1.1 | `deskread`, issueboard and statusgen's offline/frozen reader adapter. No generic query, raw token getter or write API on the consumer interface. Statusgen's online reads stay on `deskread` until desktools-v2/77 moves them onto the shared forge library. |
+| Forge service wire and caller SDK | `forgeread/service` owns forge-service-v1 DTOs/codec and `forgeread/client` owns the explicit HTTP adapter (forge-neutral/39). | Offline fixtures only in this contribution; remote serving and actual caller cutover remain their owners. The client requires an already-admitted transport, trusted endpoint and explicit scope; no credential lookup or provider fallback. Review, projection and effect values retain their existing semantic/authority owners. |
 | Forge operations (reads and writes) and role credential | Planned shared forge library (`DR-forge-library`), desktools-v2/75: proposed root module `forgeclient/`, composing `forgeread`'s adapters and desktools-v2/58's credential provider | `deskread` and every desk write verb as thin wrappers; statusgen through its forge adapter layer only (desktools-v2/77). Enumerated typed operations only; one client per role and repository; token in a private field; no ambient fallback; no raw URL, request or query. `statusgen/evaluation` links none of it. |
 | Local write-isolation policy | Proposed `deskcore/writepolicy`, [write-policy contract](write-policy.md), desktools-v2/66 | `writeguard` is a thin hook adapter; managed adapters supply validated allocation observations. Core has no effects or authority; independent guards keep their owners. |
 | Work-reference interpretation | `statusgen/workref` (`Parse`, `Resolve`, copied supplied registry), milestone-support/01 | Both actual QID and trailer adapters call the package in-process with explicit, distinct legacy profiles. Typed brief adapter remains opt-in; no operational prefixed writes, capability advertisement, credential or authority moves. |
@@ -308,3 +309,31 @@ Consumer routing: the two QID/trailer adapters and domain's isolated mutation sn
 are fixed here. `statusgen/briefv2.go`/new authoring, record loaders, capability negotiation,
 claims, ruling/domain adaptation and history/export remain the respective milestone
 follow-ups /02, /03, /04, /08, /09 and /12. No operational new grammar is advertised here.
+
+## Shared reader capability assessment — milestone-support/02
+
+`statusgen/readercaps` is the pure owner of supplied operation-scoped requirements
+and advertisements, with one three-state assessment. Its JSON decoders preserve
+unknown required features and reject malformed/duplicate declarations.
+`briefdoc` also owns the shared register roster, register marker and existing stream YAML
+fields; both stream discovery and capability scope use those declarations. The tree
+adapter excludes register indices and ignores discovery-level links, while still checking
+brief records beside an ignored index. Explicit Evidence source reads use the same
+record checker through the filesystem adapter, rooted in the admitted receipt, independent
+of discovery paths. Remote and final write bytes are separately admitted. Diagnostics
+are bounded/escaped in the shared result; authority and effects stay with the host.
+Evidence commit capability refusal is adapted inside its existing audit lock, before
+landing reads or credentials; refusal appends one audit row when the sink is writable, and append failures are reported.
+
+`readercaps/record` decides presence only after `briefdoc.ParseMapping` validates one
+document and its keys, then retains `ParseFields` policy validation for opted-in records; `readercaps/tree` is
+the explicitly effectful filesystem adapter. Neither is imported by the pure core.
+Statusgen discovery and the existing desk schema gate call the shared implementation
+in process. No credential, current-subject or authority boundary moves.
+
+The statusgen module edge already exists in tools/desk; no dependency is added or
+upgraded. GOWORK=off consumer tests qualify source integration, not publication.
+Only wired legacy syntax and negotiation preflight are advertised. Milestone runtime,
+new authoring, complete dispatch/pickup and rollout remain subsequent deliveries.
+See [the contract](../spec/reader-capabilities-v1.md) for the allocated envelope,
+conformance cases, host observation responsibilities and old-reader limitation.

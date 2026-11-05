@@ -28,11 +28,11 @@ Existing independent human, review, verification and adoption gates remain in fo
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Extract one shared typed work-reference resolver](brief-01-extract-one-shared-typed-work-reference-resolver.md) | 0 | M | implemented | — | — |
-| 02 | [Negotiate reader capabilities through one shared contract](brief-02-negotiate-reader-capabilities-through-one-shared-contract.md) | 1 | M | todo | — | — |
-| 03 | [Load and validate versioned milestone records](brief-03-load-and-validate-versioned-milestone-records.md) | 2 | M | todo | — | — |
-| 04 | [Add negotiated brief schema and prefixed authoring](brief-04-add-negotiated-brief-schema-and-prefixed-authoring.md) | 2 | M | todo | — | — |
-| 05 | [Build the combined milestone and brief dependency graph](brief-05-build-the-combined-milestone-and-brief-dependency-graph.md) | 3 | M | todo | — | — |
+| 01 | [Extract one shared typed work-reference resolver](brief-01-extract-one-shared-typed-work-reference-resolver.md) | 0 | M | done | 2026-10-24 assay-verifier-app[bot] @ cb17e8f99a55 (on-behalf-of human:ian) (forge-identity) | 2026-10-27 human:reviewer |
+| 02 | [Negotiate reader capabilities through one shared contract](brief-02-negotiate-reader-capabilities-through-one-shared-contract.md) | 1 | M | implemented | — | — |
+| 03 | [Load and validate versioned milestone records](brief-03-load-and-validate-versioned-milestone-records.md) | 2 | M | verified | 2026-11-02 assay-verifier-app[bot] @ fede422ee8a5 (forge-identity) | — |
+| 04 | [Add negotiated brief schema and prefixed authoring](brief-04-add-negotiated-brief-schema-and-prefixed-authoring.md) | 2 | M | verified | 2026-11-02 assay-verifier-app[bot] @ cd08e97833cb (forge-identity) | — |
+| 05 | [Build the combined milestone and brief dependency graph](brief-05-build-the-combined-milestone-and-brief-dependency-graph.md) | 3 | M | implemented | — | — |
 | 06 | [Bind milestone acceptance to existing evidence and decisions](brief-06-bind-milestone-acceptance-to-existing-evidence-and-decisions.md) | 4 | M | todo | — | — |
 | 07 | [Evaluate milestone readiness through the canonical eligibility API](brief-07-evaluate-milestone-readiness-through-the-canonical-eligibility-api.md) | 5 | M | todo | — | — |
 | 08 | [Normalize PR trailers and claims through the shared resolver](brief-08-normalize-pr-trailers-and-claims-through-the-shared-resolver.md) | 3 | M | todo | — | — |

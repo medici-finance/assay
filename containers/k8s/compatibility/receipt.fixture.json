@@ -1,0 +1,16 @@
+{
+  "schema": "cell-kube-compat-v1",
+  "identity": {
+    "cell": "example",
+    "role": "worker-desk",
+    "config_digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "namespace": "assay-desks",
+    "statefulset_uid": "synthetic-workload",
+    "pod_uid": "synthetic-pod",
+    "container": "worker-desk",
+    "container_id": "containerd://synthetic-execution",
+    "restart_count": 0,
+    "image": "ghcr.io/medici-finance/assay/worker-desk:fixture@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "state": "held"
+}

@@ -40,6 +40,14 @@ func (k *checker) warn(format string, args ...any) {
 
 func cmdCheck(cell, cfgArg string) {
 	c := loadCell(cell)
+	if c.kubeSelected() {
+		if cfgArg != "" {
+			die("compatibility check accepts no host config directory")
+		}
+		c.kubeRuntime(false)
+		fmt.Println("checked-clean: compatibility profile and explicit static target validated offline; effective custody and candidate image require qualification")
+		return
+	}
 	k := &checker{ok: true}
 
 	policy, policySource, policyErr := c.cellModelPolicy()
@@ -88,6 +96,8 @@ func cmdCheck(cell, cfgArg string) {
 		if _, err := c.cellRoleContext(); err != nil {
 			k.chk(false, "%s", err)
 		}
+		// The same for CELL_DB_DSN: a container cell cannot reach the cell database yet.
+		c.checkCellDB(k)
 		c.containerRun("check")
 		if !k.ok {
 			exitWith(1)
@@ -228,6 +238,9 @@ func cmdCheck(cell, cfgArg string) {
 		k.na("provider — CELL_PROVIDER unset (Anthropic, the default; set CELL_PROVIDER + CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env to switch it)")
 	}
 
+	// The cell database pointer (CELL_DB_DSN / CELL_DB_PASSFILE). No rows unless it is set.
+	c.checkCellDB(k)
+
 	harnessCheck := *c
 	if policy != nil {
 		harnessCheck.Harness = "claude"
@@ -341,6 +354,21 @@ func cmdCheck(cell, cfgArg string) {
 	exitWith(1)
 }
 
+// ghConfigNA is the gh-config row on a gitlab cell: the gh CLI config is GitHub custody, so a
+// gitlab cell neither needs nor links one (GitLab custody is the role token store).
+const ghConfigNA = "gh config link — not applicable on a gitlab cell (GitLab custody is the role token store)"
+
+// ghConfigRow is the ONE place a k8s or house check reports the gh-config link, keyed on the
+// cell's forge: a MISS when a github cell lacks it, n/a on a gitlab cell. Every arm that reports
+// the row goes through here, so no check can assert this GitHub-only precondition forge-blind.
+func (c *Cell) ghConfigRow(k *checker) {
+	if c.Forge == "gitlab" {
+		k.na(ghConfigNA)
+		return
+	}
+	k.chk(exists(filepath.Join(c.Home, ghConfigRelPath)), "gh config linked: %s/.config/gh", c.Home)
+}
+
 // checkK8s: its own deskd, its own roster and keys, a cells.yaml slice.
 func (c *Cell) checkK8s(k *checker) {
 	k.chk(isDir(filepath.Join(c.Repo, ".git")), "cell.env CELL_REPO is a git checkout: %s", c.Repo)
@@ -353,7 +381,7 @@ func (c *Cell) checkK8s(k *checker) {
 	switch c.Forge {
 	case "github":
 		k.chk(isRegular(filepath.Join(c.Config, "apps.env")), "apps.env: %s/apps.env", c.Config)
-		k.chk(exists(filepath.Join(c.Home, ghConfigRelPath)), "gh config linked: %s/.config/gh", c.Home)
+		c.ghConfigRow(k)
 		// The App key and the org list exist to mint deskd's per-org tokens, so they are
 		// preconditions only when this cell requires a deskd.
 		if c.Deskd == "1" {
@@ -383,7 +411,7 @@ func (c *Cell) checkK8s(k *checker) {
 		} else {
 			k.na("GitHub App PEM — not applicable on a gitlab cell")
 		}
-		k.na("gh config link — not applicable on a gitlab cell (GitLab custody is the role token store)")
+		c.ghConfigRow(k)
 	default:
 		k.chk(false, "known forge (github|gitlab): %s", c.Forge)
 	}
@@ -411,7 +439,7 @@ func (c *Cell) checkHouse(k *checker, cfgArg string) {
 		linked.IsDir() && target.IsDir() && os.SameFile(linked, target) && os.SameFile(used, target),
 		"config home linked to the operator's: %s -> %s", c.Config, real)
 	k.chk(exists(filepath.Join(c.Home, ".gitconfig")), "gitconfig linked: %s/.gitconfig", c.Home)
-	k.chk(exists(filepath.Join(c.Home, ghConfigRelPath)), "gh config linked: %s/.config/gh", c.Home)
+	c.ghConfigRow(k)
 	k.chk(c.rosterParses(), "roster parses under the cell home: deskroster repos --scope scan")
 	k.chk(rootsValid(c.Env.Get("CELL_ROOTS")), "CELL_ROOTS well-formed: %s", c.Env.Get("CELL_ROOTS"))
 	for _, e := range rootEntries(c.Env.Get("CELL_ROOTS")) {

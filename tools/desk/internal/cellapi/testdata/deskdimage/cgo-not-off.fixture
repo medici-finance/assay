@@ -1,0 +1,5 @@
+# CGO on links against the builder's libc; the scratch image has none.
+want: cgo-not-off
+file: Dockerfile
+replace: "CGO_ENABLED=0"
+with: "CGO_ENABLED=1"

@@ -11,7 +11,7 @@ entries=[
  ("field-position", 'else if line == "" || (columnZero && scopeFieldKey(line)) {', 'else if line == "" || (strings.HasSuffix(strings.Fields(line)[0], ":") && !strings.HasPrefix(line, "-")) {', '^TestScope(ReviewedCorpusRefusesPartial|ContinuationPositions)$'),
  ("unsupported-marker", 'if marker && !strings.HasPrefix(line, "files:") {', 'if false {', '^TestScopeContinuationPositions$'),
  ("hyphen-tail", '[]string{" — "}', '[]string{" — ", " – ", " - "}', '^TestScopeContinuationPositions$'),
- ("action-annotation", 'return nil, Refused("refused: unclosed Context files: action annotation")', 'break', '^TestScopeContinuationPositions$'),
+ ("action-annotation", 'return nil, false, Refused("refused: unclosed Context files: action annotation")', 'break', '^TestScopeContinuationPositions$'),
  ("loose-continuation", 'else if scopeLooseContinuation(raw, line) {', 'else if false {', '^TestScopeLooseContinuation$'),
  ("resolution-work", 'if n > maxScopeWork-work {', 'if false {', '^TestScopeResolutionWorkBound$'),
  ("annotated-field", r"(?: \([^)]*\))?", "", '^TestScopeAcceptedFieldBoundaries$'),
@@ -28,8 +28,14 @@ entries=[
  ("fence-declaration", 'if context && (block || endedByBlank) {', 'if false {', '^TestScopeFenceIntegrity$'),
  ("fence-hidden-heading", 'else if strings.HasPrefix(line, "## ") {', 'else if false {', '^TestScopeFenceIntegrity$'),
  ("fence-hidden-marker", 'else if scopeFilesFieldPattern.MatchString(scopeMarkerText(line)) || scopeBroadFilesMarker(scopeMarkerText(line)) {', 'else if false {', '^TestScopeFenceIntegrity$'),
+ ("whitespace-marker", 'return tail == "" || strings.ContainsAny(tail[:1], ":*_`(") || tail != strings.TrimLeftFunc(tail, unicode.IsSpace)', 'return tail == "" || strings.ContainsAny(tail[:1], ":*_`(")', '^TestScope(ContinuationPositions|WrappedFilesRefuse|LabelledFilesRefuse|UnwrappedFilesRefuse)$'),
  ("section-indent", 'return nil, Refused("refused: indented section heading in Context cannot end declared scope")', '// planted indented section boundary', '^TestScopeIndentedSectionRefuses$'),
- ("section-html", 'return nil, Refused("refused: HTML may hide a section boundary in declared files scope")', '// planted hidden HTML boundary', '^TestScopeHTMLSectionBoundaryRefuses$'),
+ ("wrapped-description", 'if wrap && ExitCodeOf(err) == ExitRefused {', 'if false {', '^TestScopeWrapped(BulletParen|EqualsJoined|Boundary)$'),
+ ("wrapped-no-description", 'wrap := described && indent > bulletIndent', 'wrap := (described || true) && indent > bulletIndent', '^TestScopeWrappedBoundary$'),
+ ("wrapped-same-indent", 'wrap := described && indent > bulletIndent', 'wrap := described && indent >= bulletIndent', '^TestScopeWrappedBoundary$'),
+ ("wrapped-list-item", '&& scopeListPrefix(line) == 0 && !strings.HasPrefix(line, ">")', '', '^TestScopeWrappedBoundary$'),
+ ("wrapped-drops-decl", 'paths, desc, err := declarationLine(line)', 'paths, desc, err := declarationLine(line)\n\t\tif wrap {\n\t\t\tpaths = nil\n\t\t}', '^TestScopeWrappedBoundary$'),
+ ("section-html",'return nil, Refused("refused: HTML may hide a section boundary in declared files scope")', '// planted hidden HTML boundary', '^TestScopeHTMLSectionBoundaryRefuses$'),
 ]
 selected=set(sys.argv[1:])
 known={entry[0] for entry in entries}

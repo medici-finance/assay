@@ -1,0 +1,41 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -timeout 120s -run '^TestDeskToolsPin'",
+  "control": {
+    "name": "CONTROL \u2014 drop the installer's .tar.gz spelling (the #4842 defect, restated as a mutation)",
+    "file": "internal/deskkit/desktoolspin.go",
+    "old": "[]string{base, base + deskToolsTarballSuffix}",
+    "new": "[]string{base}"
+  },
+  "mutations": [
+    {
+      "name": "drop the suffixless per-platform spelling (older pin files lose their provenance)",
+      "file": "internal/deskkit/desktoolspin.go",
+      "old": "[]string{base, base + deskToolsTarballSuffix}",
+      "new": "[]string{base + deskToolsTarballSuffix}"
+    },
+    {
+      "name": "let the .tar.gz line WIN over a suffixless line that is present (an existing consumer's verdict changes under it)",
+      "file": "internal/deskkit/desktoolspin.go",
+      "old": "[]string{base, base + deskToolsTarballSuffix}",
+      "new": "[]string{base + deskToolsTarballSuffix, base}"
+    },
+    {
+      "name": "skip the platformLinePattern screen (a non-platform token such as `source` selects another component's line)",
+      "file": "internal/deskkit/desktoolspin.go",
+      "old": "\t\tif pat.MatchString(name) {",
+      "new": "\t\tif pat.MatchString(name) || true {"
+    },
+    {
+      "name": "let the bare lookup come LAST (a platform line decides although the bare line is present)",
+      "file": "internal/deskkit/desktoolspin.go",
+      "old": "append([]string{deskToolsName}, DeskToolsPlatformArtifacts(platform)...)",
+      "new": "append(DeskToolsPlatformArtifacts(platform), deskToolsName)"
+    },
+    {
+      "name": "drop the trailing space from the pin selector (`desk-tools ` matches every platform line, `.tar.gz` lines match by prefix)",
+      "file": "internal/deskkit/pins.go",
+      "old": "\tprefix := artifact + \" \"",
+      "new": "\tprefix := artifact"
+    }
+  ]
+}

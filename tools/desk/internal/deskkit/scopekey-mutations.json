@@ -1,0 +1,29 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -timeout=120s -run '^(TestScopeKeyAmbiguousForms|TestScopeKeyValueMustBeDigest)$'",
+  "control": {
+    "name": "CONTROL — the wake reader strips the prefix and resolves the key string again, so a directory-form key is a non-canonical declaration and every slash-keyed receipt reads could-not-check",
+    "file": "internal/deskkit/verifywake.go",
+    "old": "decl, _, ok := ParseScopeInputKey(input)",
+    "new": "decl, ok := strings.TrimPrefix(input, InputKeyScopePrefix), true"
+  },
+  "mutations": [
+    {
+      "name": "both-forms refusal removed (a receipt carrying scope:<decl> and scope:<decl>/ is accepted silently)",
+      "file": "internal/deskkit/declaredscope.go",
+      "old": "if plain && dir {",
+      "new": "if false && plain && dir {"
+    },
+    {
+      "name": "digest-format check removed (a non-digest value under a scope: key is read)",
+      "file": "internal/deskkit/declaredscope.go",
+      "old": "!scopeDigestFormat.MatchString(v) {",
+      "new": "!scopeDigestFormat.MatchString(v) && false {"
+    },
+    {
+      "name": "slash-form glob refusal removed (scope:<glob>/, never emitted, is normalised and read)",
+      "file": "internal/deskkit/declaredscope.go",
+      "old": "if dirForm && scopeDeclIsGlob(decl) {",
+      "new": "if false && dirForm && scopeDeclIsGlob(decl) {"
+    }
+  ]
+}

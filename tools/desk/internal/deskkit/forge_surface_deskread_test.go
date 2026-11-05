@@ -41,6 +41,7 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 	sort.Strings(got)
 
 	want := []string{
+		"ChangesUpdatedSince", "IssuesUpdatedSince",
 		"ApplyLabels", "ApproveGate", "ChangeDiff", "ChecksAtHead", "CloseIssue", "CloseIssueTyped",
 		"CompareRefs", "CreateDraftChange", "DeleteRef", "EditChange", "EditComment",
 		"FileIssue", "GetCommit", "GetIssue", "GetIssueTyped", "GetPullRequest",

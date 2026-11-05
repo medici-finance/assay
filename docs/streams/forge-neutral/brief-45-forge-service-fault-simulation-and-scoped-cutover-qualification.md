@@ -2,7 +2,7 @@
 brief: assay:assay:forge-neutral:45
 title: "Forge service fault simulation and scoped cutover qualification"
 why: "The service crosses caller, executor, provider, database and cache boundaries. A complete disposable journey with lost replies, revocation and reconstruction is needed before routing real desk writes through it or retiring any direct publisher."
-wave: 9
+wave: 12
 depends: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43", "forge-neutral/44", "desk-tools/43", "desk-tools/44", "desktools-v2/62"]
 unblocks: ["cell-api/07"]
 effort: L
@@ -13,10 +13,11 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 4
+version: 8
 id: 5306ce94-4e21-44af-82e4-d552eaca0ff5
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "Requested shared read-through and failure-cache behavior, 2026-11-03; no activation grant"
   - "assay:assay:desktools-v2:65 — reusable own-provider observation seam"
   - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
@@ -51,8 +52,18 @@ consumers:
 
 ## Context
 
-files: `tools/desk/internal/forgeservice/integration/` (planned), `workflow/store/forgejourney_test.go` (planned), `tools/desk/internal/deskkit/citrigger_test.go`, `tools/desk/internal/deskkit/forge_surface_test.go`, `ci/staged-workflows/forge-service.yml` (planned), `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `docs/forge-service-cutover.md` (planned), `docs/proposals/non-ci-architecture/20-amendment-manifest.md`, `changelog/forge-service-qualification.md` (planned), `tools/desk/internal/forgeservice/integration/reviewjourney_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
-files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
+files:
+- `tools/desk/internal/forgeservice/integration/` (planned)
+- `workflow/store/forgejourney_test.go` (planned)
+- `tools/desk/internal/deskkit/citrigger_test.go`
+- `tools/desk/internal/deskkit/forge_surface_test.go`
+- `ci/staged-workflows/forge-service.yml` (planned)
+- `docs/forge-service.md` (planned)
+- `docs/enforcement-model.md`
+- `docs/forge-service-cutover.md` (planned)
+- `docs/proposals/non-ci-architecture/20-amendment-manifest.md`
+- `changelog/forge-service-qualification.md` (planned)
+- `tools/desk/internal/forgeservice/integration/reviewjourney_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
 - 37/38 remain mirror/event owners. 40 supplies authenticated local serving; 41 owns the write-through adapters; 42/43 supply exact-source and derived-cache behavior.
@@ -132,6 +143,10 @@ This is an amendment to unfinished implementation acceptance. Preserve every pri
 obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
 authoring change claims no implementation or operational adoption.
 
+## Read-through and failure-cache amendment — 3 November 2026
+
+Qualify the [read-through/failure-cache contract](../../proposals/non-ci-architecture/22-forge-service-and-source-queries.md) in the real disposable served journey. With client-side source fallback disabled, a healthy cold query fills from the admitted source and returns useful data. Fifty equivalent misses or source failures coalesce; during configured failure cooldown, later clients make no provider calls. A fake clock expires the hold, one eligible retry recovers, and no failed read becomes complete-empty or a fresh watermark. Test distinct queries/admissions/access epochs, cached permission failures, authoritative absence, service outage and one canceled waiter without poisoning other admitted waiters. Add production mutations for skipped source fill, disabled cooldown, failure-as-empty, cross-admission failure reuse and errors retained forever after recovery. Existing source budgets, SQL reconstruction, unknown-effect and activation interlocks remain; no write replay or source fallback is introduced.
+
 ## Interface contract
 
 Use forge-service-v1 from 39, mirror admission/freshness from 37, event hints/demand from 38,
@@ -150,8 +165,8 @@ boundary and independent expectation, not another implementation of the same che
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedForgeJourney$' ./internal/forgeservice/integration/... > "$r" && grep -F -- '--- PASS: TestServedForgeJourney ' "$r")` | exit 0; named PASS. Actual local clients, served handlers, role-executor processes and real disposable PostgreSQL complete both-provider issue/comment/read/source/derived journeys. Named positive/negative results bind the implementation and independent fixture. |
-| 2 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedForgeFaultMatrix$' ./internal/forgeservice/integration/... > "$r" && grep -F -- '--- PASS: TestServedForgeFaultMatrix ' "$r")` | exit 0; named PASS. Lost reply, death after send, failed local receipt commit, delayed refresh, reordered/dropped hint and partial provider enumeration never create blind duplicate writes or false complete results. Configured upstream backoff/request budget prevents client fan-out. |
+| 1 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedForgeJourney$' ./internal/forgeservice/integration/... > "$r" && grep -F -- '--- PASS: TestServedForgeJourney ' "$r")` | exit 0; named PASS. Actual local clients, served handlers, role-executor processes and real disposable PostgreSQL complete both-provider issue/comment/read/source/derived journeys. Named positive/negative results bind the implementation and independent fixture. A healthy cold served query returns source-filled data with client-side source fallback disabled. |
+| 2 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedForgeFaultMatrix$' ./internal/forgeservice/integration/... > "$r" && grep -F -- '--- PASS: TestServedForgeFaultMatrix ' "$r")` | exit 0; named PASS. Lost reply, death after send, failed local receipt commit, delayed refresh, reordered/dropped hint and partial provider enumeration never create blind duplicate writes or false complete results. Configured upstream backoff/request budget prevents client fan-out. Fifty failed equivalent misses share one source attempt; cooldown causes zero extra provider calls, fake-clock expiry allows one bounded probe, successful recovery clears error state, and distinct admissions/queries/epochs plus canceled waiters stay isolated. Skipped fill, disabled cooldown, failure-as-empty, cross-admission failure reuse and permanent-error mutations fail. A native partial/truncated result with nil error cannot clear cooldown or become a fulfilled query; preserving kernel Partial backoff and prior completeness is exercised, and a nil-error-means-success mutation fails. Actual served A floods distinct keys and varying request ids; under available global budget B still fills within the configured fixture bound. Removing caller limits or trusting request ids fails; actual global exhaustion stays explicitly limited/unavailable. Oversized/truncated 404 metadata is cached only as an unqualified failure; it cannot authorize purge or prove absence. The selected-retention positive control requires qualified repository permission loss, and a status-alone purge mutation fails. |
 | 3 | check:ci +flow +mutation | `(cd workflow && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeServiceReconstruction$' ./store/... > "$r" && grep -F -- '--- PASS: TestForgeServiceReconstruction ' "$r")` | exit 0; named PASS. Delete/restore disposable SQL: old incarnation is denied, unknown submitted effects remain held, authorized reconstruction restores useful scoped state and derived queries. Missing history never becomes zero budget or renewed permission. |
 | 4 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeServiceCutoverInterlock$' ./internal/forgeservice/integration/... > "$r" && grep -F -- '--- PASS: TestForgeServiceCutoverInterlock ' "$r")` | exit 0; named PASS. Disposable inventory proves query/agent processes cannot reach publication credentials. Surviving direct publisher, unavailable R3/R4 evidence, unselected access lease/retention policy or missing provider capability holds write activation; permitted read-only mode remains usable. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/45` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |

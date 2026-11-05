@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/deskcore/writepolicy"
+	"github.com/medici-finance/assay/gitcore/gitstub"
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
@@ -249,10 +250,21 @@ func TestWriteHookParity(t *testing.T) {
 		}
 	})
 	t.Run("production-mutations", hookPolicyMutations)
-	t.Run("malformed-and-git-failure-no-decision", func(t *testing.T) {
+	t.Run("git-failure-activation-fails-closed", func(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(base, ".git"), []byte("invalid fixture gitdir"), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		t.Setenv("CLAUDE_PROJECT_DIR", base)
+		stdout, stderr, code := hookBytes(t, bin, base, os.Environ(), []byte("{"))
+		if code != 6 || len(stdout) != 0 || !strings.Contains(string(stderr), "could-not-check") {
+			t.Fatalf("rejected .git must refuse activation, never proceed: %d %s %s", code, stdout, stderr)
+		}
+	})
+	t.Run("malformed-input-no-decision", func(t *testing.T) {
+		if err := os.Remove(filepath.Join(base, ".git")); err != nil {
+			t.Fatal(err)
+		}
+		gitstub.Repo(t, base)
 		t.Setenv("CLAUDE_PROJECT_DIR", base)
 		for _, data := range []string{"{", `{"tool_name":"Write","tool_input":"malformed"}`, `{"tool_name":"Write","tool_input":{"file_path":"new"}}`} {
 			stdout, stderr, code := hookBytes(t, bin, base, os.Environ(), []byte(data))
@@ -292,6 +304,10 @@ func hookPolicyMutations(t *testing.T) {
 		{"managed-inherits-fallback", "if managed && !validManaged(in) {\n\t\treturn outcome(Unknown, ManagedHold)", "if managed && !validManaged(in) {\n\t\treturn outcome(Allow, NoObjection)", "^TestWritePolicyCases/managed-never-inherits-legacy-fallback$", "FAIL: TestWritePolicyCases/managed-never", true},
 		{"managed-unknown-allows", "if managed && unresolved {\n\t\treturn outcome(Unknown, ManagedHold)", "if managed && unresolved {\n\t\treturn outcome(Allow, NoObjection)", "^TestWritePolicyCases/managed-never-inherits-legacy-fallback$", "unknown outside shared inherited allow", true},
 		{"classification-borrows-environment", "lex.Env = env", "lex.Env = lex.Env", "^TestClassificationOwnsItsSnapshot$", "FAIL: TestClassificationOwnsItsSnapshot", true},
+		// #4821 positive control: a matcher that never fires must fail the hook-level refusal fixture.
+		{"ambient-token-unmatched", "return forgeTokenRead(c.request.Target)", "return false", "^TestAmbientTokenRefusedLoop$", "an ambient gh token read must be refused", false},
+		// #5078 positive control: the same, for the gh output filter check.
+		{"gh-filter-unmatched", "return ghFilterReads(c.request.Target)", "return false", "^TestHookGhFilterRefused$", "a gh filter reading beyond its output must be refused", false},
 	} {
 		t.Run(m.name, func(t *testing.T) {
 			dst := t.TempDir()

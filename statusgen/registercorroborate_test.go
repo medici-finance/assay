@@ -51,6 +51,8 @@ type corroborateStub struct {
 	// the forge's base-branch name is stubbed, as "main"), so a test exercises
 	// how the base is really resolved instead of handing the lane a SHA.
 	realMergeBase bool
+	// repo is the pull request's repository ("" = example/repo).
+	repo string
 }
 
 // runCorroborateOn chdirs into root (or st.cwd under it), stubs the forge/git
@@ -70,7 +72,12 @@ func runCorroborateOn(t *testing.T, root string, st *corroborateStub) int {
 		}
 		return len(st.files) + st.listedShort, nil
 	}
-	corroborateRepoFn = func() string { return "example/repo" }
+	corroborateRepoFn = func() string {
+		if st.repo != "" {
+			return st.repo
+		}
+		return "example/repo"
+	}
 	corroborateFilesFn = func(string, int) ([]ghPRFile, error) { return st.files, nil }
 	corroborateDataFn = func(string, int) (*ghPRData, error) {
 		st.dataCalls++

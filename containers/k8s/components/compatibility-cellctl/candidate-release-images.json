@@ -1,0 +1,53 @@
+{
+  "schema": "release-images-v1",
+  "version": "v1.0.65",
+  "source_revision": "fc0da35c571c9c01e23b1499b594f275fa2c2c61",
+  "repository": "medici-finance/assay",
+  "images": [
+    {
+      "name": "desk-tools",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/desk-tools:v1.0.65@sha256:e0456c07551936a49afdb9b6c926c68254c8a5d3c93087ea8e4ce3c93baa04b2"
+    },
+    {
+      "name": "assay-harness",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/assay-harness:v1.0.65@sha256:aa6c6938d0b0c064f4289bd81edbfb666b281d519aa3ad7e8b91736b8ee86fd5"
+    },
+    {
+      "name": "desk-base",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/desk-base:v1.0.65@sha256:ec52484b83c95aa6473c51ff94674bde05291a2c29a5223e3216778adac0c1f8"
+    },
+    {
+      "name": "intake-desk",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/intake-desk:v1.0.65@sha256:225978781ecd663d04e7aa65fee7940f47efb255964c8c2732fea7f9a79fec53"
+    },
+    {
+      "name": "worker-desk",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/worker-desk:v1.0.65@sha256:7131c24a5ffc75273df319245a48be9f7e486b7491400a9eb2a13871b93310ec"
+    },
+    {
+      "name": "pr-review-desk",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/pr-review-desk:v1.0.65@sha256:2668f9b0a8f6ab5f164d040f34c650a549fe0d3b0f7570919ba7e718a319f493"
+    },
+    {
+      "name": "verify-desk",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/verify-desk:v1.0.65@sha256:333773749ec8a3f3d15d8724f734666ee02d36ae1ed026ab2ec5c46334b16ba1"
+    },
+    {
+      "name": "the-desk",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/the-desk:v1.0.65@sha256:0be637845b9f57163d1031fccf03c7da2f690b034f6cd5055fd484c54c7a804c"
+    },
+    {
+      "name": "verify-runner",
+      "platform": "linux/amd64,linux/arm64",
+      "ref": "ghcr.io/medici-finance/verify-runner:v1.0.65@sha256:1af55e60c9222ad09dab8376b629725135c54912bb3583c13591833db90f2d8f"
+    }
+  ]
+}

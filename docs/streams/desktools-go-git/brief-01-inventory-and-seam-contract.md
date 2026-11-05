@@ -29,26 +29,11 @@ id: 55dfa3fd-24e3-43d1-bc1b-e28553431d86
 ## Context
 
 files:
-- NEW `tools/desk/internal/gitexec/gitexec.go` (planned) (+ `gitexec_test.go`) — the single
-  audited `git`-binary fallback seam: one exported runner plus a per-verb allowlist
-  (initially the union of today's verbs; later briefs empty it toward one entry).
-- NEW `tools/desk/internal/gittest/golden.go` (planned) — a shared behaviour-golden harness
-  (build a fixture repo, run an operation, snapshot the OUTCOME — refs/objects/tree
-  state/returned values — not the argv).
-- NEW `docs/streams/desktools-go-git/inventory.md` (planned) — the frozen op-family table
-  (op family -> tool -> seam site -> go-git mapping / gap), lifted from the spec and
-  the feasibility study; the checklist every migration brief ticks against.
-- NEW `tools/desk/scripts/count-git-exec.sh` (planned) — the CI grep that counts
-  `exec.Command("git"` (and `runGit` / `gitOut` seam) sites outside `internal/gitexec`.
-- The per-tool seams it inventories: `tools/desk/cmd/deskgit/exec.go`, `tools/desk/cmd/deskmerge/exec.go`,
-  `tools/desk/cmd/deskwt/exec.go`, deskscanbody's `gitOut` seam (retired by desktools-go-git/03 —
-  the file it lived in, tools/desk/cmd/deskscanbody/exec.go (no longer present), is deleted; its
-  callers now call `internal/gitcore` directly from deskscanbody's main.go),
-  `tools/desk/cmd/deskpr/exec.go`,
-  `tools/desk/cmd/deskreply/exec.go`, `tools/desk/cmd/deskadvisory/advisory.go`,
-  `tools/desk/cmd/deskpushguard/foreigncommit.go`, `tools/desk/cmd/verifyloop/durable.go`,
-  `tools/desk/internal/deskkit/preflight.go`, and the direct `exec.Command("git",...)` one-offs in
-  `cmd/writeguard/`, `cmd/deskboard/`, `cmd/desksourceguard/`.
+- **add** `tools/desk/internal/gitexec/gitexec.go` (planned), `tools/desk/internal/gitexec/gitexec_test.go` (planned) — the single audited `git`-binary fallback seam: one exported runner plus a per-verb allowlist (initially the union of today's verbs; later briefs empty it toward one entry).
+- **add** `tools/desk/internal/gittest/golden.go` (planned) — a shared behaviour-golden harness (build a fixture repo, run an operation, snapshot the OUTCOME — refs/objects/tree state/returned values — not the argv).
+- **add** `docs/streams/desktools-go-git/inventory.md` (planned) — the frozen op-family table (op family -> tool -> seam site -> go-git mapping / gap), lifted from the spec and the feasibility study; the checklist every migration brief ticks against.
+- **add** `tools/desk/scripts/count-git-exec.sh` (planned) — the CI grep that counts `exec.Command("git"` (and `runGit` / `gitOut` seam) sites outside `internal/gitexec`.
+- **The per-tool seams it inventories** `tools/desk/cmd/deskgit/exec.go`, `tools/desk/cmd/deskmerge/exec.go`, `tools/desk/cmd/deskwt/exec.go`, `tools/desk/cmd/deskpr/exec.go`, `tools/desk/cmd/deskreply/exec.go`, `tools/desk/cmd/deskadvisory/advisory.go`, `tools/desk/cmd/deskpushguard/foreigncommit.go`, `tools/desk/cmd/verifyloop/durable.go`, `tools/desk/internal/deskkit/preflight.go`, `tools/desk/cmd/writeguard/`, `tools/desk/cmd/deskboard/`, `tools/desk/cmd/desksourceguard/` — the last three for the direct `exec.Command("git",...)` one-offs in `cmd/writeguard/`, `cmd/deskboard/`, `cmd/desksourceguard/`; also deskscanbody's `gitOut` seam (retired by desktools-go-git/03 — the file it lived in, tools/desk/cmd/deskscanbody/exec.go (no longer present), is deleted; its callers now call `internal/gitcore` directly from deskscanbody's main.go).
 
 facts:
 - Each tool already routes git through a single seam (`runGit` / `execCommand` /

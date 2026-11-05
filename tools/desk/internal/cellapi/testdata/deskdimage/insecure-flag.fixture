@@ -1,0 +1,5 @@
+# -insecure allows plain-HTTP module fetches.
+want: insecure-flag
+file: Dockerfile
+replace: "GOFLAGS=-mod=readonly"
+with: "GOFLAGS=\"-mod=readonly -insecure\""

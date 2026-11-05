@@ -1,0 +1,7 @@
+# regression: #4769
+# A second deskd-image rule whose recipe follows a ; on the rule line itself
+# overrides the held recipe like any other.
+want: target-missing
+file: Makefile
+replace: "\n## skillslint: validate"
+with: "\ndeskd-image: ; @echo \"skipped\"\n\n## skillslint: validate"

@@ -57,6 +57,19 @@ type PRRecord struct {
 	// tree (briefdelivery.go). A declared-partial merge is not a witness that the
 	// brief is implemented, so classifyPRs counts it as work in progress (#2703).
 	Partial bool
+	// Repo is "" for a PR of the --repo being reconciled, and the configured
+	// <owner>/<repo> of the OTHER root a cross-root delivery merged in
+	// (crossroot.go). Number is then that repo's PR number.
+	Repo string
+}
+
+// prLabel names a PR in a witness: "PR #N" in the reconciled repo, "PR
+// <owner>/<repo>#N" for a cross-root delivery.
+func (pr *PRRecord) prLabel() string {
+	if pr.Repo != "" {
+		return fmt.Sprintf("PR %s#%d", pr.Repo, pr.Number)
+	}
+	return fmt.Sprintf("PR #%d", pr.Number)
 }
 
 // WitnessInfo is the `verifyrun --check` result for a brief — the `verified`
@@ -193,7 +206,7 @@ func deriveOne(b BriefIdent, prs []PRRecord, in LifecycleInput) BriefCell {
 		switch {
 		case latestMerged != nil:
 			c.Cell = "implemented"
-			c.Witness = fmt.Sprintf("PR #%d (merged %s)", latestMerged.Number, shortSHA(latestMerged.MergeSHA))
+			c.Witness = fmt.Sprintf("%s (merged %s)", latestMerged.prLabel(), shortSHA(latestMerged.MergeSHA))
 			c.MergedPR = c.Witness
 		case open != nil:
 			c.Cell = "in-progress"
@@ -327,13 +340,13 @@ func deriveBlocked(b BriefIdent, c BriefCell, in LifecycleInput) BriefCell {
 // its draft/ready state and head, a declared-partial merge by its merge.
 func inProgressWitness(pr *PRRecord) string {
 	if pr.State == prMerged && pr.Partial && !pr.Reopened {
-		return fmt.Sprintf("PR #%d (merged %s, a declared partial delivery)", pr.Number, shortSHA(pr.MergeSHA))
+		return fmt.Sprintf("%s (merged %s, a declared partial delivery)", pr.prLabel(), shortSHA(pr.MergeSHA))
 	}
 	state := "ready"
 	if pr.Draft {
 		state = "draft"
 	}
-	return fmt.Sprintf("PR #%d (%s %s)", pr.Number, state, shortSHA(pr.HeadSHA))
+	return fmt.Sprintf("%s (%s %s)", pr.prLabel(), state, shortSHA(pr.HeadSHA))
 }
 
 // classifyPRs returns the latest non-reverted merged PR and the first open PR
@@ -342,11 +355,21 @@ func inProgressWitness(pr *PRRecord) string {
 // brief declares a PARTIAL delivery (PRRecord.Partial) is not counted as a merge
 // either: part of the brief landed, the rest is still owed, so it is work in
 // progress (#2703). "Latest" merge is the highest PR number, a stable proxy for
-// merge order across a deterministic fixture set.
+// merge order across a deterministic fixture set. PR numbers of different repos
+// are not comparable, so the reconciled repo's own PRs rank first and a
+// cross-root delivery (Repo set) is the witness only when none of them is.
 func classifyPRs(prs []PRRecord) (latestMerged, open *PRRecord) {
 	sorted := make([]PRRecord, len(prs))
 	copy(sorted, prs)
-	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Number > sorted[j].Number })
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].Repo != sorted[j].Repo {
+			if sorted[i].Repo == "" || sorted[j].Repo == "" {
+				return sorted[i].Repo == ""
+			}
+			return sorted[i].Repo < sorted[j].Repo
+		}
+		return sorted[i].Number > sorted[j].Number
+	})
 	for i := range sorted {
 		pr := &sorted[i]
 		switch pr.State {

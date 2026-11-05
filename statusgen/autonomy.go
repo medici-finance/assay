@@ -167,10 +167,10 @@ type autonomyGatePR struct {
 
 // opDayFile is the CONSUMER view of the mm/40 opmetrics day-file. Only the fields
 // the CI-side axes read are declared, all as pointers so "absent" is
-// distinguishable from "present and zero". The producer's schema (opmetrics/1,
-// tools/desk/cmd/opmetrics/emit.go) does not yet carry the dispatch-split or
-// token blocks; when a future producer adds them, this reader picks them up with
-// no change here — until then both day-file axes honestly report "unmeasured".
+// distinguishable from "present and zero". The producer
+// (tools/desk/cmd/opmetrics/emit.go) writes both blocks; a day-file written
+// before it did carries neither, and both day-file axes then honestly report
+// "unmeasured". opmetricsroundtrip_test.go reads a producer-emitted day-file.
 type opDayFile struct {
 	Schema   string `json:"schema"`
 	Dispatch *struct {
@@ -495,8 +495,8 @@ func renderAutonomyText(rep AutonomyReport) string {
 // for the CI-proxy authorship split. ok=false on any gh failure — degrades to
 // "unmeasured", never a fabricated zero (offline discipline, matching --dora).
 var autonomyMergedAuthors = func(root string, since, until time.Time) ([]autonomyAuthor, bool) {
-	out, err := exec.Command("gh", "pr", "list", "--state", "merged",
-		"--limit", "500", "--json", "number,mergedAt,author").Output()
+	out, err := ghGuard(exec.Command("gh", "pr", "list", "--state", "merged",
+		"--limit", "500", "--json", "number,mergedAt,author")).Output()
 	if err != nil {
 		return nil, false
 	}
@@ -624,7 +624,7 @@ var autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR,
 	ctx, cancel := context.WithTimeout(context.Background(), autonomyGateDeadline)
 	defer cancel()
 	run := func(args ...string) ([]byte, error) {
-		cmd := exec.CommandContext(ctx, "gh", args...)
+		cmd := ghGuard(exec.CommandContext(ctx, "gh", args...))
 		cmd.Dir = root
 		return cmd.Output()
 	}

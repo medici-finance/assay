@@ -12,7 +12,7 @@ design: DR-forge-library
 issues: [2395]
 schema: brief-v2
 outcome: none
-version: 2
+version: 3
 id: f6e03aed-326e-4cb0-aa40-3194727e140c
 authored: 2026-10-25 by desktools-v2 authoring session
 sources:
@@ -46,9 +46,8 @@ consumers:
 files:
 - `forgeclient/` (planned module: `go.mod`, client constructor, typed operations, tests)
 - `tools/desk/internal/credential/` (planned by desktools-v2/58; lifted here)
-- `tools/desk/internal/deskkit/forge.go`, `forge_github.go`, `forge_gitlab.go`,
-  `forgeresolve.go`, `roletoken.go`, `ambienttoken_guard_test.go`
-- `tools/desk/cmd/deskread/` and the forge write verbs under `tools/desk/cmd/`
+- `tools/desk/internal/deskkit/forge.go`, `tools/desk/internal/deskkit/forge_github.go`, `tools/desk/internal/deskkit/forge_gitlab.go`, `tools/desk/internal/deskkit/forgeresolve.go`, `tools/desk/internal/deskkit/roletoken.go`, `tools/desk/internal/deskkit/ambienttoken_guard_test.go`
+- `tools/desk/cmd/deskread/` and `tools/desk/cmd/` — the forge write verbs under `tools/desk/cmd/`
 - `tools/desk/scripts/forge-ban.sh`, `tools/desk/internal/forgeban/allowlist.go`
 - `tools/desk/go.mod`, `forgeread/go.mod`
 - `.github/workflows/forge-surface-control.yml`
@@ -186,3 +185,19 @@ Gate: human. Review answers both: (1) the single control between a leaked or mis
 a private repository is the client's constructor binding — is the forge-side installation scope
 behind it acceptable? (2) do rows 3 and 4 prove the lower layer refuses with the verb layer
 bypassed? Approval grants no new identity, scope or deployment.
+
+## Incremental mirror read consumer — 3 November 2026
+
+The early admitted-reader contribution `assay:assay:forge-neutral:47` adds exactly two
+enumerated read methods, ChangesUpdatedSince and IssuesUpdatedSince, in the existing
+provider adapters and admitted composition. This library migration consumes those methods
+when present, retaining their context, provider/repository identity, completeness and
+read-only/CI write-fence behavior. Reuse the existing adapter implementation; do not grow
+a second mirror source or credential path. This is a consumer inventory obligation, not a
+new start prerequisite for this brief and not a claim that either delivery is accepted.
+
+The native response-allocation bound contribution `assay:assay:forge-neutral:48`, when
+present, remains the one shared mirror-only byte-bound implementation. Relocate and reuse
+its native provider controls rather than adding another wrapper or treating library
+relocation as qualification. Its transport evidence does not satisfy /37's joined durable
+mapper/watermark requirement. This is a consumer obligation, not a new start prerequisite.

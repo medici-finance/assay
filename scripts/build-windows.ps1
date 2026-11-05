@@ -68,6 +68,12 @@
     desk-hook-install  install the pre-push hook shim into .githooks/pre-push
                        (idempotent; -Force to overwrite a foreign hook).
     desk-test          run the deskkit test suite (go test ./... -count=1).
+    deskd-build        local unprivileged build of the deskd service into
+                       deskd\dist\deskd.exe (GOWORK=off, -trimpath). Writes
+                       nothing outside deskd\dist\.
+    deskd-image        NOT SUPPORTED on Windows: refuses with a named non-zero
+                       exit. The local image build is the Unix `make
+                       deskd-image` (Linux image, local only, never pushed).
     skillslint         run tools/skillslint over the plugin tree.
     guardrail-sync     regenerate every shared-guardrail copy from its source.
     paired-versions    assert the adopter front door (plugin.json vs
@@ -126,6 +132,8 @@ $MakefileParityTargets = @(
     'desk-manifest'
     'desk-hook-install'
     'desk-test'
+    'deskd-build'
+    'deskd-image'
     'skillslint'
     'guardrail-sync'
     'paired-versions'
@@ -391,6 +399,27 @@ function Target-DeskTest {
     Invoke-Go -WorkDir $DeskDir -GoArgs @('test', './...', '-count=1')
 }
 
+function Target-DeskdBuild {
+    # Mirrors `make deskd-build`: GOWORK=off, -trimpath, output only under
+    # deskd\dist\. GOWORK is restored afterwards so later targets are unaffected.
+    $deskdDir = Join-Path $RepoRoot 'deskd'
+    $out = Join-Path (Join-Path $deskdDir 'dist') 'deskd.exe'
+    $prev = $env:GOWORK
+    $env:GOWORK = 'off'
+    try {
+        Invoke-Go -WorkDir $deskdDir -GoArgs @('build', '-trimpath', '-o', $out, './cmd/deskd')
+    } finally {
+        $env:GOWORK = $prev
+    }
+    Write-Host "deskd-build: built deskd\dist\deskd.exe"
+}
+
+function Target-DeskdImage {
+    # Never a silent success: the deskd image is a Linux image built by the Unix
+    # `make deskd-image` (local only; never pushed). Refuse with a named reason.
+    throw 'deskd-image: not supported on Windows -- build the local image with `make deskd-image` on a Unix host with docker; no image was built'
+}
+
 function Target-Skillslint {
     Invoke-Go -WorkDir (Join-Path $RepoRoot 'tools\skillslint') -GoArgs @('run', '.', '--root', '../..')
 }
@@ -429,6 +458,8 @@ $Dispatch = @{
     'desk-manifest'     = ${function:Target-DeskManifest}
     'desk-hook-install' = ${function:Target-DeskHookInstall}
     'desk-test'         = ${function:Target-DeskTest}
+    'deskd-build'       = ${function:Target-DeskdBuild}
+    'deskd-image'       = ${function:Target-DeskdImage}
     'skillslint'        = ${function:Target-Skillslint}
     'guardrail-sync'    = ${function:Target-GuardrailSync}
     'paired-versions'   = ${function:Target-PairedVersions}

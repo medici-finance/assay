@@ -3,7 +3,7 @@
 **Version:** v1.0-draft
 **Status:** DRAFT — published for review. v1.0-draft is unstable: breaking changes MAY be
 made without a major-version bump; no stability commitment.
-**Describes reference implementation:** `statusgen` v1.0.64
+**Describes reference implementation:** `statusgen` v1.0.75
 
 ## 1. Scope
 
@@ -166,6 +166,7 @@ is a strict superset of the one before it; no field is removed or changed in mea
 | `brief-v1` | this document's fields (§3.1, §3.2) | `schemas/brief-v1.json` | v0.9.0 (the earliest published release) |
 | `brief-v2` | the hierarchical `brief:` id `<cell>:<repo>:<stream>:<NN>`, `version:`, and the identity/graph keys `id`, `supersedes`, `gates`, `feathers`, `verify` | `schemas/brief-v2.json` | v1.0.0 |
 | `brief-v3` | the withdrawn-status keys `withdrawn-date`, `withdrawn-reason`, `superseded-by` (§3.6) | `schemas/brief-v3.json` | v1.0.50 |
+| `brief-v4` | the colon-only prefixed definition id `<cell>:<repo>:<stream>:b-<NN>`, required `version` and `id`, `requires-milestones` (§3.7), typed brief references with optional `@<version>` selectors (§3.8), and a REQUIRED top-level `reader-requirements` envelope that requires `syntax` support for `brief-v4` | `schemas/brief-v4.json` | unreleased (negotiated; §3.7–3.8) |
 
 A `statusgen` release declares the versions it reads, and the first release of each, in
 machine-readable form: `statusgen --version --json` prints
@@ -269,18 +270,17 @@ missing legacy bindings remain explicitly unbound.
 Observation syntax belongs to the continuing-operations impact extension, not a second
 brief lifecycle or a universal observation mandate.
 
-### 3.7 Proposed delivery milestone integration (not shipped)
+### 3.7 Delivery milestone integration (`brief-v4`; negotiated, not operational)
 
 The draft [`milestone-v1.md`](./milestone-v1.md) defines a separate, versioned outcome
-contract. It does not extend the supported schema table above. A future negotiated
-brief schema (provisionally `brief-v4`, not allocated or implemented by this change)
-would add an optional `requires-milestones: array[string]` containing exact versioned
+contract. The negotiated brief schema `brief-v4` (allocated in the table above; no
+supporting release yet) adds an optional `requires-milestones: array[string]` containing exact versioned
 milestone references per milestone §2: `<stream>:m-<NN>@<version>` for the current
 root, `<repo>:<stream>:m-<NN>@<version>` within the declaring cell, or
 `<cell>:<repo>:<stream>:m-<NN>@<version>` for explicit qualification.
 These use the new typed milestone-reference grammar, not the existing brief-only
 `qualifiedRef` parser; brief §3.8 defines `:b-<NN>[@<version>]` and compatibility
-with the existing internal brief `fullId` `<cell>:<repo>:<stream>:<NN>`. Its presence would mean the capability is required before
+with the existing internal brief `fullId` `<cell>:<repo>:<stream>:<NN>`. Its presence means the capability is required before
 the consuming brief starts; absent/empty means no additional milestone start requirement.
 Unknown, unreadable or unaccepted required capabilities cannot be treated as ready.
 The brief Context must identify the capability it uses and the relevant supported
@@ -299,11 +299,14 @@ inherit that milestone's final-acceptance prerequisites as brief start dependenc
 A brief may serve several milestones. Existing Task/Verify amendment, version, risk,
 design and review obligations still apply to edits prompted by a milestone change.
 
-This proposed field MUST NOT be added to a legacy operational brief merely because its
-parser tolerates extra keys. Schema negotiation, dispatch refusal, all graph readers and
+This field MUST NOT be added to a legacy operational brief merely because its
+parser tolerates extra keys; a conforming linter refuses `requires-milestones` on any
+schema other than `brief-v4`. The reference `statusgen` reads the key and holds the
+consuming brief while a requirement is declared, reporting the milestone gate as
+`could-not-check` until milestone observations are wired to eligibility. Schema negotiation, dispatch refusal, all graph readers and
 report consumers must ship together before operational use (milestone §10).
 
-### 3.8 Proposed colon-only brief references and deprecation (not shipped)
+### 3.8 Colon-only brief references and deprecation (`brief-v4`; negotiated, not operational)
 
 For new authoring with negotiated reader support, the canonical brief ID is
 `<cell>:<repo>:<stream>:b-<NN>`, for example `example-cell:tools:build:b-11`.
@@ -357,13 +360,13 @@ Label conversion alone does not bump Task/Verify version or establish completion
 The `brief-<NN>-<slug>.md` filename convention is unchanged. No bulk rename, UUID
 reminting or historical Evidence rewrite is required.
 
-The new references require a future negotiated brief schema (provisionally `brief-v4`,
-subject to allocation alongside §3.7). Update generator/scaffolding, graph/dependency
+The new references require the negotiated brief schema `brief-v4` (§3.5, §3.7). A
+`brief-v1`–`brief-v3` file that uses the prefixed `b-` definition form is refused. Update generator/scaffolding, graph/dependency
 readers, board/eligibility, PR trailers/claims, workflow/handoff adapters, the
 human-gate ruling-link/board-ID check (lifecycle §4.5), and history/export/import
 consumers together. Old/new aliases must bind the same brief in human rulings;
 normalization must not bypass or weaken a human gate. Advertise support and refuse required
-unsupported semantics. This draft adds no supporting release or operational YAML.
+unsupported semantics. This change adds no supporting release or operational YAML.
 
 Authoring skills MUST write the new colon-only form once the pinned generator and all
 required consumers support it. Until then capture proposed IDs in scoping prose;
@@ -409,6 +412,15 @@ The body MUST contain a `## Context` section. It MUST include:
   Abbreviations, placeholders, recursive `**` and malformed/escaping paths MUST
   be reported explicitly, never interpreted as absent deliverables. See the
   [declaration and observation contract](../docs/declared-input-scope.md).
+- An OPTIONAL column-zero `inputs:` field narrowing a Verify row's witness scope to
+  the literal repository-relative files and directories (a trailing `/`) its Commands read. It
+  reads a strict subset of the `files:` grammar: bare or backtick-quoted entries as an inline
+  value or `- ` list items, separated by commas, semicolons or spaces, ended by an em dash;
+  globs, braces, backslashes, absolute paths and `..` make the whole declaration unreadable,
+  and an unreadable or absent `inputs:` means the witness scope is the whole tree. A Command
+  that names a repository path outside the declared set is refused by the witness reader
+  (`witness-input-undeclared`) and flagged by `--lint`. STATUS.md and `docs/streams/**` are
+  never inputs. See [declared-input-scope](../docs/declared-input-scope.md).
 - A `facts:` block containing 3-5 project facts as `key: value` pairs (no narrative prose).
 
 If the brief changes a SHARED VALUE (a party, identity, environment variable name,
@@ -775,3 +787,20 @@ A conforming linter MUST:
 Items 5, 7, and 10 are the clauses where the reference implementation is presently
 non-conforming. They are stated as MUSTs because the specification governs; they are
 labelled here so an adopter is not surprised by a green lint that did not check them.
+
+## Allocated reader negotiation contract
+
+[reader-capabilities-v1](reader-capabilities-v1.md) defines the versioned advertisement
+and `reader-requirements` envelope used by the shared preflight. JSON version discovery
+adds `readerCapabilities`; the existing fields and bare version output are unchanged.
+`brief-v4` is allocated (§3.5). `statusgen newbrief` writes it only on an explicit
+`--schema brief-v4` after every supplied required reader's advertisement (`--reader-caps`)
+and its own are assessed `supported` for the record's `reader-requirements`; zero supplied
+advertisements, an unreadable or malformed one, or any `unsupported` reader refuses before
+any write. `--schema legacy` is the explicitly selected supported legacy mode, and a
+`--requires-milestone` without `brief-v4` is refused, never silently dropped. The `reader-requirements` envelope is required on every `brief-v4` record: a
+reader that checks only envelopes treats a record without one as carrying no requirement
+and would read it as a legacy brief. The parser refuses a `brief-v4` record whose envelope
+is absent, or whose requirements a reader advertising only `brief-v1`..`brief-v3` would
+assess as supported. Milestone-start
+keys stay off legacy schemas. The §3.7–3.8 rollout holds on operational use remain in force.

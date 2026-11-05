@@ -1,0 +1,35 @@
+{
+  "test": "go test ./cmd/deskboard ./internal/deskkit -run \"TestActions(UsesLiveVisibility|VisibilityStaysFresh|VisibilityFallback|VisibilityFailureLoud)$|TestQueueVisibility|TestReviewQueueQueryIsOpenChangesPlusReviews|TestForgeGraphQLQueriesBalanced\" -count=1",
+  "control": {
+    "name": "CONTROL: known live visibility is marked unobserved",
+    "file": "cmd/deskboard/board.go",
+    "old": "return visibilityObservation{repo: repo, vis: vis, observed: true}, nil\n\t\t}\n\t\tf, fr, ferr := forgeFor(repo)",
+    "new": "return visibilityObservation{repo: repo, vis: vis, observed: false}, nil\n\t\t}\n\t\tf, fr, ferr := forgeFor(repo)"
+  },
+  "mutations": [
+    {
+      "name": "discard the live snapshot scalar and re-read metadata",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "Visibility:     visibility,",
+      "new": "Visibility:     visibility[:0],"
+    },
+    {
+      "name": "accept unavailable snapshot values instead of probing the forge",
+      "file": "cmd/deskboard/board.go",
+      "old": "switch vis := snapshot[repo]; vis {\n\t\tcase \"public\", \"private\", \"internal\":",
+      "new": "switch vis := snapshot[repo]; {\n\t\tcase vis != \"NEVER_A_VISIBILITY\":"
+    },
+    {
+      "name": "collapse changing live visibility to private",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "visibility := strings.ToLower(out.Data.Repository.Visibility)",
+      "new": "visibility := \"private\""
+    },
+    {
+      "name": "guess private when the live fallback read fails",
+      "file": "cmd/deskboard/board.go",
+      "old": "// could-not-read (incl. empty/absent visibility) is unobserved, not a guessed pass\n\t\t\treturn visibilityObservation{repo: repo}, nil",
+      "new": "// could-not-read (incl. empty/absent visibility) is unobserved, not a guessed pass\n\t\t\treturn visibilityObservation{repo: repo, vis: \"private\", observed: true}, nil"
+    }
+  ]
+}

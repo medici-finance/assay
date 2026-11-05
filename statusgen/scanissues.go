@@ -114,9 +114,9 @@ type scanRepoSkip struct {
 // failure is returned as an error so planScan can degrade it to a per-repo NOTICE
 // ("gh failure on one repo → skip that repo … don't abort").
 func ghIssueLister(repo string) ([]ghIssue, error) {
-	out, err := exec.Command("gh", "issue", "list",
+	out, err := ghGuard(exec.Command("gh", "issue", "list",
 		"--repo", repo, "--state", "open", "--limit", "1000",
-		"--json", "number,title,author,labels,url").Output()
+		"--json", "number,title,author,labels,url")).Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -1181,8 +1181,8 @@ type commentLister func(repo string, issue int) ([]issueComment, error)
 // existing line-per-object parse loop is unchanged.
 func issueCommentLister(repo string, issue int) ([]issueComment, error) {
 	endpoint := fmt.Sprintf("repos/%s/issues/%d/comments?per_page=100", repo, issue)
-	out, err := exec.Command("gh", "api", "--paginate", endpoint,
-		"--jq", ".[] | {user: {login: .user.login, id: .user.id, type: .user.type}, created_at: .created_at, body: .body}").Output()
+	out, err := ghGuard(exec.Command("gh", "api", "--paginate", endpoint,
+		"--jq", ".[] | {user: {login: .user.login, id: .user.id, type: .user.type}, created_at: .created_at, body: .body}")).Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {

@@ -12,6 +12,10 @@ the promise underneath all of it.
 
 ## The promise
 
+This promise covers the `telemetry-v1` payload described in this document. The separate,
+pseudonymous local `performance-event-v1` record class has its own rules. They are summarized in
+[Local performance-event-v1 records](#local-performance-event-v1-records--1-november-2026) below.
+
 - **Off by default.** No flag, no environment variable, no ping. Installing or
   running `statusgen` sends nothing.
 - **Counts only, never content.** A payload is integer tallies keyed by a fixed
@@ -279,7 +283,7 @@ the budget whichever schema recorded it. Its rules:
   calls and sits in no distribution, and a row with no measured run prints `-`, never `0`.
 - Older `statusgen` builds wrote perf-v1 with `forgeCalls` always `0`, meaning "not
   counted", so a `statusgen` perf-v1 record is an unavailable run too; perf-v1 has no
-  unavailable state of its own. Current `statusgen` writes perf-v2, whose `http` counter is
+  unavailable state of its own. Without a selected profile, current `statusgen` writes perf-v2, whose `http` counter is
   read like any other perf-v2 record.
 - Steps are never read (their calls belong to the invocation), and perf-v3 records stay in
   their own section.
@@ -303,8 +307,8 @@ environment value, and asserts none of them appears in the written bytes.
 
 ### statusgen writes the same local record
 
-`statusgen` appends to the same history. With `ASSAY_TELEMETRY=1` exported, each `statusgen`
-process writes one `perf-v2` record on exit into the same `~/.config/assay/perf/` day files,
+`statusgen` appends to the same history. With `ASSAY_TELEMETRY=1` exported and no selected
+profile, each process writes one `perf-v2` record on exit into the same `~/.config/assay/perf/` day files,
 with `tool` set to `statusgen`, `verb` the mode that ran (a positional sub-command such as
 `verifyrun`, else the first mode flag such as `--lint`, else `regen` for a plain run; a token
 outside that compiled-in roster is `other`), `exit` the process exit code and `result` its
@@ -368,11 +372,20 @@ whatever profile context is set.
   processes a switch-off run starts. The one addition is the offline `deskread --help` check,
   made only when a `deskread` child is started.
 
-A future context resolver (statusgen/20) may consume explicit, source-bound, immutable input
-snapshots that a run already holds; it may not weaken independent membership enumeration — a
-new file outside an earlier read set still invalidates completeness, and HEAD equality alone
-never makes a dirty working-tree parse reusable. The snapshot-reuse inventory and the
-repeatable workload bench for these phases are follow-up work under statusgen/26.
+The offline context resolver (statusgen/20, #3839) now consumes explicit source snapshots
+and independently enumerates their available files on discovery and recheck. It does not share
+an index with these modes or expose a reusable context-index API. Any later reuse must be
+source-bound and immutable, with compatible parser/evaluator versions; a new file outside an
+earlier read set still invalidates completeness, and HEAD equality alone never makes a dirty
+working-tree parse reusable.
+
+Statusgen's existing brief parser already reuses results by path and content hash, over its
+stamp-validated invocation-local read/directory memos. No second parser or persistent semantic
+cache is introduced. The [workload and inventory](../statusgen/bench/README.md) document the
+four mode owners, repeatable small/large corpora, fresh-reference output/exit/coverage checks,
+and fake deskread boundary. Cold/warm owner replays and fresh-process CLI measurements have
+different boundaries. File/directory counts cover only the shared memo seam; other reads are
+unmeasured, and neither fixture timings nor child-inclusive totals establish fleet savings.
 
 ## Dependency posture
 
@@ -428,3 +441,31 @@ provider attempts/cost. Optional opaque diagnostic links can use only a separate
 service protocol/transport with workflow consent at both ends; a selected profile alone never
 adds headers or forwards raw work/session/agent locators. Shared refresh cost is counted once,
 missing server measurements remain unknown, and process CPU cannot be duplicated per handler.
+
+## Local performance-event-v1 records — 1 November 2026
+
+`ASSAY_TELEMETRY=1` **together with an explicitly selected profile** (`--profile tool|workflow`
+or `ASSAY_PERFDATA_PROFILE`) now also gates a second record class: pseudonymous local
+`performance-event-v1` records written by `perfdata record` into
+`<state>/performance-events/`. The anonymized, counts-only promise at the top of this document
+applies to `telemetry-v1` only. It does not describe these records.
+
+- **Not anonymous.** A random source identity links every record of one source. Under the
+  workflow profile, work, session and agent locators are replaced by random aliases scoped to a
+  source epoch. The alias map stays local and is never part of a record, preview or batch.
+  Each epoch's map keeps its keyed-digest secret until the store is removed, after that
+  epoch's records are retired, so a reader of the store can test a guessed locator against
+  that epoch's aliases until then.
+- **Still off by default.** `ASSAY_TELEMETRY=1` alone selects no profile and arms nothing, so
+  existing telemetry-v1 or perf-v1 opt-ins do not become consent to this class. With collection
+  off, nothing is created.
+- **Local only.** No sender, listener or database exists. Retention is the selected policy's age
+  cap (initially seven UTC days) and its required byte cap. Every retirement is recorded as
+  unsent loss.
+- **Fields.** Only the closed field set in [the specification](../spec/performance-event-v1.md)
+  is written. Raw argv, paths, titles, bodies, raw errors, credentials and transcripts are never
+  written.
+
+The telemetry-v1 endpoint, its two switches and its schema are unchanged. Build, consent, loss
+envelope and retention details are in [local performance collection](performance-collection.md).
+Human acceptance of the field allowlist, loss envelope and writer overhead is pending.
