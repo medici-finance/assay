@@ -303,7 +303,7 @@ func ValidateHotfix(overlay, tool, pin string, now time.Time, owner HotfixOwnerC
 		return e, hotfixErr(1, HotfixReasonTampered, "manifest source_sha %q is not a 40-hex commit", e.SourceSHA)
 	}
 	if strings.TrimSpace(pin) == "" {
-		return e, hotfixErr(6, HotfixReasonNoPin, "no desk-tools pin to compare base %s against", e.BasePin)
+		return e, hotfixErr(6, HotfixReasonNoPin, "no %s pin to compare base %s against", hotfixPinName(tool), e.BasePin)
 	}
 	if !SameReleaseTag(e.BasePin, pin) {
 		return e, hotfixErr(1, HotfixReasonOutlived, "%s is built over %s, the pin is now %s", tool, e.BasePin, pin)
@@ -323,6 +323,15 @@ func ValidateHotfix(overlay, tool, pin string, now time.Time, owner HotfixOwnerC
 		return e, hotfixErr(1, HotfixReasonSourceRule, "manifest source_rule %q, the ruled rule is %q", e.SourceRule, HotfixSourceRule)
 	}
 	return e, nil
+}
+
+// hotfixPinName is the pin line a tool's hotfix is judged against: statusgen's own line for
+// statusgen (HotfixToolPin), the desk-tools line for every other tool.
+func hotfixPinName(tool string) string {
+	if tool == StatusgenArtifact {
+		return StatusgenArtifact
+	}
+	return "desk-tools"
 }
 
 var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)

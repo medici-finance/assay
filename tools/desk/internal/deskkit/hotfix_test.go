@@ -570,6 +570,26 @@ func TestValidateHotfix(t *testing.T) {
 			}
 		})
 	}
+	// A missing pin names the line the tool is judged against: statusgen's own, else desk-tools.
+	t.Run("no-pin names the tool's pin line", func(t *testing.T) {
+		o, e := mk(t)
+		_, err := ValidateHotfix(o, "deskpr", "", now, owner)
+		if err == nil || !strings.Contains(err.Error(), HotfixReasonNoPin) || !strings.Contains(err.Error(), "no desk-tools pin") {
+			t.Fatalf("deskpr, no pin: %v", err)
+		}
+		b, rerr := os.ReadFile(HotfixBinaryPath(o, "deskpr"))
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		hfWriteFile(t, HotfixBinaryPath(o, StatusgenArtifact), string(b))
+		_ = os.Chmod(HotfixBinaryPath(o, StatusgenArtifact), 0o755)
+		e.Tool = StatusgenArtifact
+		hfWriteManifest(t, o, e)
+		_, err = ValidateHotfix(o, StatusgenArtifact, "", now, owner)
+		if err == nil || !strings.Contains(err.Error(), HotfixReasonNoPin) || !strings.Contains(err.Error(), "no statusgen pin") {
+			t.Fatalf("statusgen, no pin: %v", err)
+		}
+	})
 	t.Run("not-root-owned", func(t *testing.T) {
 		o, _ := mk(t)
 		_, err := ValidateHotfix(o, "deskpr", "v1.0.41", now, HotfixRootOwned())
@@ -644,6 +664,8 @@ func TestHotfixToolPin(t *testing.T) {
 		{"statusgen other platform only", "desk-tools v1.0.41 " + sum + "\nstatusgen-linux-arm64 v1.0.39 " + sum + "\n", "statusgen", "darwin-arm64", "", false},
 		{"statusgen never reads desk-tools", "desk-tools v1.0.41 " + sum + "\n", "statusgen", "darwin-arm64", "", false},
 		{"malformed bare line is not skipped", "statusgen v1.0.40\nstatusgen-darwin-arm64 v1.0.39 " + sum + "\n", "statusgen", "darwin-arm64", "", false},
+		// A tab-separated line names no pin here, nor in statusgen's own reader (sgHotfixPin).
+		{"tab-separated line resolves nothing", "statusgen\tv1.0.40 " + sum + "\n", "statusgen", "darwin-arm64", "", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d := t.TempDir()

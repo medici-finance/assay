@@ -399,5 +399,5 @@ func TestBinaryPinStatusgen(t *testing.T) {
 
 	writePins(t, f.root, "desk-tools "+pinBase+sum)
 	_, _, err = f.check()
-	wantPinRefusal(t, err, deskkit.HotfixReasonNoPin, "statusgen")
+	wantPinRefusal(t, err, deskkit.HotfixReasonNoPin, "statusgen", "no statusgen pin line at or above")
 }

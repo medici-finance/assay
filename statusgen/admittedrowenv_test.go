@@ -134,9 +134,10 @@ func TestAdmittedRowEnvShape(t *testing.T) {
 // which start no Verify row, snapshots the existing CI environment for retries,
 // removes CELLCTL_GH_AMBIENT when admission requires it, and adds a placeholder
 // for an unset token family) and the hotfix self-check's environment
-// (sgFallbackEnv: it only reaches the pinned install replacing a refused hotfix, which
-// starts no Verify row, and only ever removes
-// DESK_HOTFIX_FALLBACK).
+// (sgFallbackEnv: it only reaches the pinned install replacing a refused hotfix and only
+// ever removes DESK_HOTFIX_FALLBACK; when the refused hotfix is the check:ci network-off
+// helper, that pinned install runs the row with the row's own inherited environment, less
+// that one variable).
 var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer", "historyGitEnv", "ghGuard", "sgFallbackEnv"}
 
 // rowLaunchShells are the programs a Verify row's command text runs under.

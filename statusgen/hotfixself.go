@@ -21,8 +21,11 @@ import (
 // layer 2 (tools/desk/internal/deskkit/hotfixself.go), held to deskkit's compiled values by
 // TestStatusgenHotfixParity. Two differences, both because statusgen ships as its own release
 // asset: the pin is statusgen's own `.assay-versions` line (the bare `statusgen` line, else this
-// platform's `statusgen-<os>-<arch>` line), never the desk-tools line; and outside a checkout
-// the pinned install's `statusgen --version` prints the bare tag on one line.
+// platform's `statusgen-<os>-<arch>` line), never the desk-tools line; and it never asks the
+// pinned install for its `--version`, so outside a checkout that pins statusgen a statusgen
+// hotfix is could-not-check. In the check:ci network-off helper the ownership check reads
+// root's uid as the helper's user namespace maps it (sgActiveOwnerFor); everywhere else it is
+// uid 0.
 //
 // A release build outside the overlay directories skips it entirely (no `+hotfix-` stamp, not
 // under the overlay the environment names nor the compiled-in one). ANY binary under either
@@ -175,9 +178,16 @@ func sgHotfixPin(cwd, platform string) string {
 	if err != nil {
 		return ""
 	}
+	// The nearest pin file that exists wins, readable or not (deskkit's NearestPinRoot): an
+	// unreadable one resolves nothing and is never walked past.
 	var raw []byte
 	for {
-		if b, err := os.ReadFile(filepath.Join(dir, ".assay-versions")); err == nil {
+		p := filepath.Join(dir, ".assay-versions")
+		if _, err := os.Stat(p); err == nil {
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return ""
+			}
 			raw = b
 			break
 		}
@@ -194,13 +204,15 @@ func sgHotfixPin(cwd, platform string) string {
 		}
 		names = append(names, "statusgen-"+p)
 	}
+	// A line names n only when it starts with n and a literal space (deskkit's lookupPin), so a
+	// tab-separated line resolves in no layer.
 	lines := strings.Split(string(raw), "\n")
 	for _, n := range names {
 		for _, line := range lines {
-			f := strings.Fields(line)
-			if len(f) == 0 || f[0] != n {
+			if !strings.HasPrefix(strings.TrimSpace(line), n+" ") {
 				continue
 			}
+			f := strings.Fields(line)
 			if len(f) < 3 || !sgPinTagPattern.MatchString(f[1]) {
 				return ""
 			}
@@ -327,9 +339,13 @@ func sgWithinDir(p, dir string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
-// sgFallbackEnv is the one environment the layer-2 check hands a process: the caller's own,
-// with only the fallback variable removed. It reaches exactly one program, the pinned
-// install replacing this process, and never a Verify row (TestRowEnvSingleSource lists it beside the other env-preserving wrappers).
+// sgFallbackEnv is the one environment the layer-2 check hands a process: the one this
+// process was started with, with only the fallback variable removed. It reaches exactly one
+// program, the pinned install replacing this process. That install can go on to run a
+// Verify row: when this process is the check:ci network-off helper (netnsHelperArg), the
+// pinned helper execs the row's shell. The environment is then the row's own, which the
+// helper inherited from its sandbox argv, less DESK_HOTFIX_FALLBACK, so it adds nothing to
+// the row (TestRowEnvSingleSource lists it beside the other env-preserving wrappers).
 func sgFallbackEnv() []string { return sgEnvWithout(os.Environ(), sgHotfixFallbackEnv) }
 
 func sgEnvWithout(env []string, key string) []string {
@@ -359,13 +375,84 @@ func sgHotfixApplies(tag, exe, overlay, defaultOverlay string) bool {
 }
 
 // sgActiveOwner is root's ownership check, unless a hotfixseam build names another uid.
-func sgActiveOwner() func(string) error {
+func sgActiveOwner() func(string) error { return sgActiveOwnerFor(os.Args, os.ReadFile) }
+
+// The two kernel files the network-off helper reads to find root's uid inside its namespace.
+const (
+	sgProcUIDMap      = "/proc/self/uid_map"
+	sgProcOverflowUID = "/proc/sys/kernel/overflowuid"
+)
+
+// sgActiveOwnerFor is sgActiveOwner over an explicit argv and file reader, so a test drives
+// it without a user namespace. Every invocation checks ownership by uid 0, except one: the
+// check:ci network-off helper (argv[1] == netnsHelperArg, started by netnsWrapperArgv under
+// `unshare --net --map-root-user`). In that user namespace the parent namespace's root is
+// not uid 0: the caller's own uid is mapped to 0, and an unmapped uid, root's included,
+// reads as the kernel's overflow uid. So the helper checks ownership by the uid the parent
+// namespace's root carries there (sgNamespaceRootUID), for the file and every parent
+// directory alike. A caller-owned overlay, which reads as uid 0 in there, is refused. When
+// the mapping cannot be read or is ambiguous, the helper checks uid 0, as before.
+func sgActiveOwnerFor(args []string, read func(string) ([]byte, error)) func(string) error {
 	if v := strings.TrimSpace(sgHotfixSeamGet(sgHotfixSeamRootUID)); v != "" {
 		if uid, err := strconv.ParseUint(v, 10, 32); err == nil {
 			return sgHotfixOwnedBy(uint32(uid))
 		}
 	}
+	if len(args) >= 2 && args[1] == netnsHelperArg {
+		uidMap, err1 := read(sgProcUIDMap)
+		overflow, err2 := read(sgProcOverflowUID)
+		if err1 == nil && err2 == nil {
+			if root, ok := sgNamespaceRootUID(string(uidMap), string(overflow)); ok {
+				return sgHotfixOwnedByRoot(root)
+			}
+		}
+	}
 	return sgHotfixOwnedBy(0)
+}
+
+// sgNamespaceRootUID is the uid that the parent user namespace's root (uid 0) carries in this
+// process's user namespace, read from /proc/self/uid_map (lines of `inside outside count`) and
+// the kernel overflow uid. In the initial namespace the map is `0 0 4294967295` and the answer
+// is 0. When some line maps outside uid 0, the answer is that line's inside uid. When none
+// does, root is unmapped and reads as the overflow uid, which is the answer, unless the
+// overflow uid is itself a mapped inside uid: then the two cannot be told apart and ok is
+// false. A map or overflow value that does not parse is ok == false.
+func sgNamespaceRootUID(uidMap, overflow string) (uint32, bool) {
+	type extent struct{ inside, outside, count uint64 }
+	var exts []extent
+	for _, line := range strings.Split(strings.TrimSpace(uidMap), "\n") {
+		f := strings.Fields(line)
+		if len(f) != 3 {
+			return 0, false
+		}
+		var e extent
+		var err error
+		if e.inside, err = strconv.ParseUint(f[0], 10, 32); err != nil {
+			return 0, false
+		}
+		if e.outside, err = strconv.ParseUint(f[1], 10, 32); err != nil {
+			return 0, false
+		}
+		if e.count, err = strconv.ParseUint(f[2], 10, 33); err != nil || e.count == 0 {
+			return 0, false
+		}
+		exts = append(exts, e)
+	}
+	for _, e := range exts {
+		if e.outside == 0 {
+			return uint32(e.inside), true
+		}
+	}
+	ov, err := strconv.ParseUint(strings.TrimSpace(overflow), 10, 32)
+	if err != nil {
+		return 0, false
+	}
+	for _, e := range exts {
+		if ov >= e.inside && ov < e.inside+e.count {
+			return 0, false
+		}
+	}
+	return uint32(ov), true
 }
 
 func init() { sgRunHotfixSelfCheck() }

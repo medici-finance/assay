@@ -13,7 +13,15 @@ import (
 // and not group- or world-writable, and every parent directory must be owned by uid or root
 // and not group- or world-writable unless sticky. Production passes uid 0; only a test, or a
 // binary built with the test-only hotfixseam tag, passes another uid.
-func sgHotfixOwnedBy(uid uint32) func(string) error {
+func sgHotfixOwnedBy(uid uint32) func(string) error { return sgHotfixOwnedByIn(uid, 0) }
+
+// sgHotfixOwnedByRoot is the same check where root itself carries uid root, as in the
+// network-off helper's user namespace (sgActiveOwnerFor): the file and every parent must be
+// owned by that uid, and uid 0 there, the mapped caller, is never accepted as root.
+func sgHotfixOwnedByRoot(root uint32) func(string) error { return sgHotfixOwnedByIn(root, root) }
+
+// sgHotfixOwnedByIn is the check itself: path owned by uid, every parent by uid or root.
+func sgHotfixOwnedByIn(uid, root uint32) func(string) error {
 	return func(path string) error {
 		real, err := filepath.EvalSymlinks(path)
 		if err != nil {
@@ -42,7 +50,7 @@ func sgHotfixOwnedBy(uid uint32) func(string) error {
 			if !ok {
 				return fmt.Errorf("%s: owner unreadable", dir)
 			}
-			if dst.Uid != uid && dst.Uid != 0 {
+			if dst.Uid != uid && dst.Uid != root {
 				return fmt.Errorf("parent %s is owned by uid %d, not %d or root", dir, dst.Uid, uid)
 			}
 			if di.Mode().Perm()&0o022 != 0 && di.Mode()&os.ModeSticky == 0 {

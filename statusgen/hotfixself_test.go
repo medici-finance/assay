@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -145,6 +146,15 @@ func TestStatusgenHotfixSelf(t *testing.T) {
 		{"overlay owned by another uid", "hotfix overlay not root-owned", func(f *sgSelfFixture) {
 			f.in.Owner = sgHotfixOwnedBy(uint32(os.Getuid()) + 1)
 		}},
+		{"running file owned by another uid, manifest root-owned", "hotfix overlay not root-owned", func(f *sgSelfFixture) {
+			mine, other := sgHotfixOwnedBy(uint32(os.Getuid())), sgHotfixOwnedBy(uint32(os.Getuid())+1)
+			f.in.Owner = func(p string) error {
+				if p == f.exe {
+					return other(p)
+				}
+				return mine(p)
+			}
+		}},
 		{"source rule not the ruled one", "hotfix source rule not the ruled one", func(f *sgSelfFixture) {
 			p := filepath.Join(f.overlay, sgHotfixManifestName)
 			b, _ := os.ReadFile(p)
@@ -272,4 +282,120 @@ func TestStatusgenHotfixParity(t *testing.T) {
 	if n, err := strconv.Atoi(m[1]); err != nil || time.Duration(n)*24*time.Hour != sgHotfixMaxTTL {
 		t.Errorf("HotfixMaxTTL: deskkit %s days, statusgen %s", m[1], sgHotfixMaxTTL)
 	}
+}
+
+// TestStatusgenHotfixNetnsRoot: the check:ci network-off helper runs under `unshare --net
+// --map-root-user`, where the caller's uid reads as 0 and an unmapped uid, root's included,
+// reads as the overflow uid. sgNamespaceRootUID finds the uid root carries there; the helper,
+// and only the helper, checks ownership by that uid, and never takes uid 0 there for root.
+func TestStatusgenHotfixNetnsRoot(t *testing.T) {
+	for _, c := range []struct {
+		name, uidMap, overflow string
+		want                   uint32
+		ok                     bool
+	}{
+		{"initial namespace", "         0          0 4294967295\n", "65534\n", 0, true},
+		{"map-root-user, root unmapped", "         0       1000          1\n", "65534\n", 65534, true},
+		{"root mapped to another inside uid", "1000 0 1\n0 1000 1\n", "65534", 1000, true},
+		{"root mapped in a subuid range", "0 0 1\n1 100000 65536\n", "65534", 0, true},
+		{"overflow uid is itself mapped", "0 1000 70000\n", "65534", 0, false},
+		{"empty map", "", "65534", 0, false},
+		{"malformed map line", "0 1000\n", "65534", 0, false},
+		{"zero-length extent", "0 1000 0\n", "65534", 0, false},
+		{"malformed overflow", "0 1000 1\n", "nobody", 0, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, ok := sgNamespaceRootUID(c.uidMap, c.overflow)
+			if got != c.want || ok != c.ok {
+				t.Fatalf("sgNamespaceRootUID(%q, %q) = %d, %v; want %d, %v", c.uidMap, c.overflow, got, ok, c.want, c.ok)
+			}
+		})
+	}
+
+	me := uint32(os.Getuid())
+	if me == 0 {
+		t.Skip("running as root: the owner probes below need a non-root file owner")
+	}
+	f := filepath.Join(t.TempDir(), "statusgen")
+	sgFixWrite(t, f, "x\n", 0o755)
+	procFor := func(uidMap, overflow string) func(string) ([]byte, error) {
+		return func(p string) ([]byte, error) {
+			switch p {
+			case sgProcUIDMap:
+				return []byte(uidMap), nil
+			case sgProcOverflowUID:
+				return []byte(overflow), nil
+			}
+			return nil, os.ErrNotExist
+		}
+	}
+	helper := []string{"statusgen", netnsHelperArg, "net:[1]", "sh", "-c", "true"}
+	// A namespace in which root reads as this test's uid: the file's own owner check passes,
+	// and the parent walk then meets a uid-0 directory, which in such a namespace is the
+	// mapped caller and is refused.
+	asRoot := procFor(fmt.Sprintf("0 %d 1\n", me+1), fmt.Sprint(me))
+	notRoot := fmt.Sprintf("is owned by uid %d, not 0", me)
+	err := sgActiveOwnerFor(helper, asRoot)(f)
+	if err == nil || strings.Contains(err.Error(), notRoot) || !strings.Contains(err.Error(), "parent ") ||
+		!strings.Contains(err.Error(), "owned by uid 0, not "+fmt.Sprint(me)) {
+		t.Fatalf("helper in a namespace where root reads as uid %d: %v", me, err)
+	}
+	// The same file under root's uid 0 check: every other invocation, a helper whose mapping
+	// cannot be read, and a helper whose mapping is ambiguous.
+	for name, owner := range map[string]func(string) error{
+		"ordinary invocation":   sgActiveOwnerFor([]string{"statusgen", "verifyrun"}, asRoot),
+		"helper argv not first": sgActiveOwnerFor([]string{"statusgen", "verifyrun", netnsHelperArg}, asRoot),
+		"helper, no uid_map":    sgActiveOwnerFor(helper, func(string) ([]byte, error) { return nil, os.ErrPermission }),
+		"helper, initial ns":    sgActiveOwnerFor(helper, procFor("0 0 4294967295\n", fmt.Sprint(me))),
+		"helper, ambiguous map": sgActiveOwnerFor(helper, procFor(fmt.Sprintf("0 %d 70000\n", me+1), "1")),
+		"default argv":          sgActiveOwner(),
+	} {
+		if err := owner(f); err == nil || !strings.Contains(err.Error(), notRoot) {
+			t.Errorf("%s: owner check on a uid-%d file = %v, want %q", name, me, err, notRoot)
+		}
+	}
+	// In the --map-root-user namespace root reads as the overflow uid; a file owned by anyone
+	// else, the caller included, is refused.
+	if err := sgActiveOwnerFor(helper, procFor(fmt.Sprintf("0 %d 1\n", me), "65534"))(f); err == nil ||
+		!strings.Contains(err.Error(), fmt.Sprintf("is owned by uid %d, not 65534", me)) {
+		t.Fatalf("helper, root unmapped: %v", err)
+	}
+}
+
+// TestStatusgenHotfixPinReader: sgHotfixPin reads a pin line the way deskkit's lookupPin and
+// NearestPinRoot do, so layers 1 to 3 agree on it: the name must be followed by a literal
+// space, and the nearest existing .assay-versions wins even when it cannot be read.
+func TestStatusgenHotfixPinReader(t *testing.T) {
+	sum := strings.Repeat("1", 64)
+	t.Run("tab-separated line resolves nothing", func(t *testing.T) {
+		d := t.TempDir()
+		sgFixPins(t, d, "statusgen\t"+sgFixBase+" "+sum+"\n")
+		if got := sgHotfixPin(d, "linux-amd64"); got != "" {
+			t.Fatalf("tab-separated statusgen line = %q, want none", got)
+		}
+		sgFixPins(t, d, "statusgen\t"+sgFixBase+" "+sum+"\nstatusgen-linux-amd64 v1.0.40 "+sum+"\n")
+		if got := sgHotfixPin(d, "linux-amd64"); got != "v1.0.40" {
+			t.Fatalf("tab-separated bare line beside a platform line = %q, want v1.0.40", got)
+		}
+	})
+	t.Run("an unreadable nearer pin file is not walked past", func(t *testing.T) {
+		if os.Getuid() == 0 {
+			t.Skip("running as root: a mode-000 file stays readable")
+		}
+		outer := t.TempDir()
+		inner := filepath.Join(outer, "repo")
+		sgFixPins(t, outer, "statusgen "+sgFixBase+" "+sum+"\n")
+		sgFixPins(t, inner, "statusgen "+sgFixBase+" "+sum+"\n")
+		if got := sgHotfixPin(inner, "linux-amd64"); got != sgFixBase {
+			t.Fatalf("readable nearer pin = %q", got)
+		}
+		p := filepath.Join(inner, ".assay-versions")
+		if err := os.Chmod(p, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(p, 0o644) })
+		if got := sgHotfixPin(inner, "linux-amd64"); got != "" {
+			t.Fatalf("unreadable nearer pin file walked past to %q", got)
+		}
+	})
 }
