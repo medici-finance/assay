@@ -223,6 +223,9 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// serves: coverage — a stream with no product tag can never be scoped;
 	// NOTICE it so the taxonomy stays complete as streams are added.
 	notices = append(notices, servesCoverageNotices(streams)...)
+	// GitLab CI half: an embedded pushcred/boardadd anchor older than this
+	// statusgen keeps the pipeline on an older board-push script (#5004).
+	notices = append(notices, gitlabAnchorDriftNotices(root)...)
 	// checkStreams drives WHICH briefs are validated (product-scoped under
 	// --changed/--scope); `edgeStreams` (the full house set plus archived streams)
 	// resolves cross-stream depends:/unblocks: refs so a valid dependency on an
@@ -1350,6 +1353,12 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
 		exitProcess(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
+	}
+	// `statusgen rowread` — the read-only forge lane a Verify row reads through
+	// (rowread.go, #4700): a closed set of read kinds over deskread, which holds
+	// the credential in its own process. Read-only, own flag namespace.
+	if len(os.Args) > 1 && os.Args[1] == "rowread" {
+		exitProcess(runRowread(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen verifyclosure` — the READ-ONLY board question "does this tree

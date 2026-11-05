@@ -68,6 +68,10 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 	// The current "- " bullet's indent, and whether its declaration reached a
 	// description a deeper-indented line may wrap; -1 and false outside one.
 	bulletIndent, described := -1, false
+	// listClosed: the last declaration line ended the list (a "- " bullet, or
+	// an inline line ending in "."). annotated: the block's one trailing
+	// sentence was read, so any further line in the block is refused.
+	listClosed, annotated := false, false
 	var out []string
 	seen := map[string]bool{}
 	for _, raw := range strings.Split(content, "\n") {
@@ -168,6 +172,9 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 		if !block {
 			continue
 		}
+		if annotated {
+			return nil, Refused("refused: prose line inside Context files: list; only one sentence may follow the list, as its last line")
+		}
 		indent := len(raw) - len(strings.TrimLeftFunc(raw, unicode.IsSpace))
 		// A "- " bullet whose declaration reached its description (" — " or ':')
 		// may wrap that description onto deeper-indented lines (#3697). Such a
@@ -181,6 +188,12 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 			if wrap && ExitCodeOf(err) == ExitRefused {
 				continue
 			}
+			// The one trailing sentence (#5097): it declares nothing, and it
+			// must end the block, so it cannot hide a path or end the list early.
+			if ExitCodeOf(err) == ExitRefused && columnZero && listClosed && scopeAnnotation(line, out) {
+				annotated = true
+				continue
+			}
 			return nil, err
 		}
 		if strings.HasPrefix(strings.TrimSpace(raw), "- ") {
@@ -188,6 +201,7 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 		} else if !wrap {
 			bulletIndent, described = -1, false
 		}
+		listClosed = bulletIndent >= 0 || strings.HasSuffix(line, ".")
 		for _, p := range paths {
 			expanded, err := expandDeclaration(p)
 			if err != nil {
@@ -291,6 +305,66 @@ func scopeListPrefix(line string) int {
 func scopeLooseContinuation(raw, line string) bool {
 	return line != "" && (raw != strings.TrimLeftFunc(raw, unicode.IsSpace) ||
 		scopeListPrefix(line) != 0 || strings.HasPrefix(line, "`") || strings.HasPrefix(line, ">"))
+}
+
+// scopeAnnotationWord is the capitalised plain word a trailing sentence opens with.
+var scopeAnnotationWord = regexp.MustCompile(`^[A-Z][a-z]+$`)
+
+// scopeAnnotation reports whether line, which the declaration grammar refused,
+// is a plain sentence that may stand after a closed files: list as its
+// annotation (#5097), e.g. "The short paths above are relative to tools/x/.".
+// Every condition must hold, and anything ambiguous refuses:
+//
+//   - printable ASCII only, at least four words, opening with a capitalised
+//     word of letters and ending in exactly one ".";
+//   - no list or quote marker, and none of the characters a declaration,
+//     annotation, description or glob uses: ` * _ { } [ ] < > | \ , ; + ( ) :
+//     and no " — ", "..", "#", "?", "!", "=", "$", "&", "@", "%", "~" or '"';
+//   - every word holding "/" or "." names a path the list already declares, or
+//     a directory above one, so the sentence can neither add a path nor hide
+//     one the list leaves out;
+//   - every declared path holds a "/" and none ends in ".", so a sentence never
+//     blesses a short name it explains as relative, nor an inline tail that kept
+//     the closing full stop.
+//
+// The caller adds the positional rules: column zero, after a list that ended,
+// and the block's last line.
+func scopeAnnotation(line string, declared []string) bool {
+	for i := 0; i < len(line); i++ {
+		if line[i] < 0x20 || line[i] > 0x7e {
+			return false
+		}
+	}
+	if scopeListPrefix(line) != 0 || strings.ContainsAny(line, "`*_{}[]<>|\\,;+():\"#?!=$&@%~") ||
+		strings.Contains(line, "..") || !strings.HasSuffix(line, ".") {
+		return false
+	}
+	words := strings.Fields(strings.TrimSuffix(line, "."))
+	if len(words) < 4 || !scopeAnnotationWord.MatchString(words[0]) {
+		return false
+	}
+	// A sentence may only follow a list of full paths. A short name (no '/') is the
+	// shape a "relative to" sentence explains, and would bind at the repository root;
+	// a declared path ending in '.' is an unbackticked inline tail that kept the
+	// sentence-closing full stop. Either way the record would bind the wrong path.
+	for _, d := range declared {
+		if !strings.Contains(d, "/") || strings.HasSuffix(d, ".") {
+			return false
+		}
+	}
+	for _, w := range words {
+		if !strings.ContainsAny(w, "/.") {
+			continue
+		}
+		named, covered := strings.TrimSuffix(w, "/"), false
+		for _, d := range declared {
+			covered = covered || (named != "" && (d == named || strings.HasPrefix(d, named+"/")))
+		}
+		if !covered {
+			return false
+		}
+	}
+	return true
 }
 
 // declarationLine reads one line's declarations. described reports that the line
@@ -422,8 +496,21 @@ func expandDeclaration(decl string) ([]string, error) {
 	bad := func() ([]string, error) {
 		return nil, Refused("refused: unsupported Context files: path " + fmt.Sprintf("%q", decl))
 	}
-	if len(decl) == 0 || len(decl) > 4096 || strings.ContainsAny(decl, "\\:<>") || strings.Contains(decl, "...") || strings.Contains(decl, "…") || strings.Contains(decl, "**") || strings.IndexFunc(decl, unicode.IsSpace) >= 0 || strings.IndexFunc(decl, unicode.IsControl) >= 0 {
+	if len(decl) == 0 || len(decl) > 4096 || strings.ContainsAny(decl, "\\:<>") || strings.Contains(decl, "...") || strings.Contains(decl, "…") || strings.IndexFunc(decl, unicode.IsSpace) >= 0 || strings.IndexFunc(decl, unicode.IsControl) >= 0 {
 		return bad()
+	}
+	// A recursive glob is accepted in exactly one shape (#5097): one final /**
+	// segment after a literal, glob-free directory, as in docs/guide/**. It
+	// selects every file below that directory. Any other ** (mid-path, glued to
+	// a name, repeated, bare, or straight after a sibling's name) is refused.
+	if strings.Contains(decl, "**") {
+		dir, recursive := strings.CutSuffix(decl, "/**")
+		if !recursive || dir == "" || strings.ContainsAny(dir, "*?[") {
+			return bad()
+		}
+		if _, rel, ok := strings.Cut(strings.TrimPrefix(dir, "../"), "/"); strings.HasPrefix(dir, "../") && (!ok || rel == "") {
+			return bad()
+		}
 	}
 	// The sibling form is decided on the declaration as written: a brace or
 	// glob can never produce or choose the ../<sibling>/ prefix.
@@ -555,7 +642,28 @@ func declaresSibling(siblings []string, repo string) bool {
 // repo-source:<owner>/<sibling> input. That key pins the whole deliverable
 // commit, so any change to it wakes the receipt; a sibling the run did not bind
 // is refused rather than resolved anywhere else.
+//
+// A single-repository run binds no repository at all (#5097). There, and only
+// there, a sibling is covered by a declared:<decl> = unbound input instead: the
+// receipt records the declaration as out of this home, and since no reader
+// resolves that key, the planner reads the receipt as could-not-check, never
+// unchanged. A marker beside any repo-source: key, a marker naming no declared
+// sibling, or any other marker value is refused.
 func CheckSiblingCoverage(siblings []string, inputs map[string]string) error {
+	crossRepo := false
+	for k := range inputs {
+		crossRepo = crossRepo || strings.HasPrefix(k, InputKeyRepoSourcePrefix)
+	}
+	declared := map[string]bool{}
+	for _, decl := range siblings {
+		declared[decl] = true
+	}
+	for k, v := range inputs {
+		decl, isMarker := strings.CutPrefix(k, InputKeyDeclaredPrefix)
+		if isMarker && (crossRepo || v != DeclaredUnbound || !declared[decl]) {
+			return Refused("refused: input " + fmt.Sprintf("%q", k) + " is not an unbound sibling declaration of a single-repository run")
+		}
+	}
 	for _, decl := range siblings {
 		// A malformed declaration has no name, so nothing binds it.
 		name, _, _ := SiblingDeclaration(decl)
@@ -566,7 +674,8 @@ func CheckSiblingCoverage(siblings []string, inputs map[string]string) error {
 				bound++
 			}
 		}
-		if bound != 1 {
+		unbound := name != "" && !crossRepo && inputs[InputKeyDeclaredPrefix+decl] == DeclaredUnbound
+		if bound != 1 && !unbound {
 			return Refused("refused: Context files: path " + fmt.Sprintf("%q", decl) + " names a sibling repository this run's cross-repository source does not bind")
 		}
 	}
@@ -686,6 +795,13 @@ func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScop
 			if err := consume(len(all)); err != nil {
 				return result, err
 			}
+			// <dir>/** (the only ** expandDeclaration admits) matches each entry
+			// directly below <dir>; a matched directory then expands recursively
+			// below, so it selects every file under <dir> at any depth.
+			pattern := decl
+			if dir, recursive := strings.CutSuffix(decl, "/**"); recursive {
+				pattern = dir + "/*"
+			}
 			candidates := map[string]bool{}
 			for _, f := range all {
 				for p := f; p != "." && p != "/"; p = path.Dir(p) {
@@ -700,7 +816,7 @@ func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScop
 				if err := consume(1); err != nil {
 					return result, err
 				}
-				if matched, _ := path.Match(decl, p); matched {
+				if matched, _ := path.Match(pattern, p); matched {
 					paths = append(paths, p)
 				}
 			}

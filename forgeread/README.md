@@ -82,7 +82,7 @@ both LastComplete and LastInventory strictly after the held LastAttempted.
 Incremental, not-modified and stale/replayed updates cannot recover permission.
 Store adapters enforce that transition independently of the planner. The
 persisted mirror integration retains PostgreSQL transactions/restart, authenticated
-source mapping, refresh coalescing, review population completeness, domain mapping,
+source-to-SQL integration, refresh coalescing, review population completeness, domain mapping,
 retention policy and reader rollout. These are not supplied by the kernel.
 `RetainedFrom` is optional and zero means unknown; the durable Store must derive it
 from actual retained coverage under the selected policy, never the oldest visible
@@ -147,6 +147,42 @@ watermarks, PostgreSQL, scheduling, coalescing, retention or reader cutover. Tho
 with the joined mirror delivery, including its row-23 production-flow acceptance. The
 shared-library migration reuses this native composition rather than adding a second bound.
 
+## Admitted observation mapping
+
+Desk-tools provides `NewMirrorIngestSource` over its existing `MirrorReadSource`,
+implementing `mirror.Source.Scan` with a trusted bound source-admission ID and
+explicit observation clock, a constructor-bound source identity and the canonical
+`mirror.AttemptAuthority`. Composition derives that ID alongside the source from
+the canonical credential owner; requests do not select it. Each call matches both
+Scope.AdmissionID and current Admission.ID to the bound value before and after
+the independently scoped native read, rechecking authorization before returning
+observations. This validates binding consistency, not independent proof of actual
+credential-installation selection; that real joined composition remains /37. No command, source credential discovery, listener,
+polling loop or alternate page walker is added. The adapter currently has no
+production command caller; fixtures exercise its actual native-to-reference-Store flow.
+
+`Observation.BodyKnown` distinguishes omitted and known-empty bodies. Nil and
+non-nil empty collections remain distinct through mapping, planning and detached
+Store/query copies. Individual reviewer lists do not establish team, approval,
+check or comment coverage; unfetched reviews remain never-read. These additions
+are in the mirror subpackage; the frozen root package and envelope are unchanged.
+
+Canonical `PlanRefresh` carries `PriorObservedUpTo` from its selected snapshot,
+with the admission-bound scope and expected version. `PlanScan` independently
+requires that exact baseline. A qualified complete walk can preserve the maximum
+already observed when a former newest item disappears or an incremental result
+is filtered empty; this carried bound is neither a new source stamp nor fresh
+coverage. Incomplete walks report zero and preserve prior LastComplete. The
+existing raw regression, permission-hold and Store constraints remain independent.
+Malformed/duplicate/foreign observations refuse conservatively. Raw 403/404,
+including oversized bodies, never authorizes absence or private-content purge.
+The original typed status/limit/transport cause remains available to the caller;
+qualified rate limits use the existing classifier. No error cache stores raw errors here.
+
+This source contribution does not qualify PostgreSQL transactions/restart,
+shared coalescing, retention selection, served access or consumer cutover.
+The joined persisted mirror acceptance remains with forge-neutral/37.
+
 ## Store-injected read-through coordination
 
 `refresh` composes the existing mirror query/planner/source/store ports. It has no
@@ -208,10 +244,72 @@ independently constructed coordinators; that proves port/coordinator behavior,
 not process durability, SQL atomicity, authenticated serving or activation. Full
 forge-neutral/37 retains its joined persisted mapper/watermark criterion.
 
-The current mirror ScanResult/native budget receipt and refresh Completion do not
-carry a qualified provider retry floor. Fixture cooldown/RetryAt therefore proves
-local shared failure suppression only; it is not HTTP Retry-After compliance or
-permission to retry a real provider. Real source/gate integration remains held until
-the joined owner propagates typed qualified retry timing or an explicit unknown-retry
-hold. Do not infer it from error text, retain response bodies/headers here, or install
-a blind fixed interval as a production substitute.
+The typed native grant/receipt now travels through mirror ScanPlan/ScanResult and
+refresh Ticket/Completion. The native source qualifies its own attempts and retry
+evidence at the boundary described below. This package's fake-gate cooldown/RetryAt
+cases prove local shared failure suppression only; canonical SQL and real joined
+source/gate integration remain the separate owner's qualification. They must
+propagate typed qualified retry timing or an explicit unknown-retry hold. Do not
+infer it from error text, retain response bodies/headers here, or install a blind
+fixed interval as a production substitute.
+
+
+## Native attempt accounting port
+
+`mirror.AttemptAuthority` reserves a unique attempt through `BeforeAttempt` and
+accepts only that reservation's typed `AttemptObservation` through `ObserveAttempt`.
+The authority independently binds the opaque identity to canonical scope, source,
+owner generation, caller/policy epochs, finite HTTP ceiling and expiry. Grant
+validation checks shape and consistency; it grants no repository permission or quota.
+The only production authority belongs to the canonical R2 adapter.
+
+The coordinator attaches its acquired grant after its final snapshot re-plan,
+checks scope/source/generation/caller/policy consistency, and forwards the source's
+own receipt unchanged on success, partial, failure, cancellation and admission denial.
+A native accounting hold retains prior work without becoming a provider transport
+failure or a checked requirement failure. This adds no local budget implementation.
+
+`WorkCount.Known` separates measured zero from unknown, retaining any observed
+prefix. Retry knowledge is independent of the maximum observed absolute floor and
+qualified relative delay. A positive delay can be anchored to the canonical
+authority's own observation time; process clock skew cannot justify shortening it.
+An unknown later observation never erases an earlier positive floor. Consumed
+JSON bytes, response completeness and wire bytes are distinct. Final aggregates
+cannot close, refund or reconcile missing individual attempt observations.
+
+The admitted native source instruments the existing base RoundTripper. It checks
+current admission and exact provider origin, encoded repository path, closed
+operation and page query before authority access and every base call. Metered
+mirror reads refuse redirects; ordinary native reads keep their previous behavior.
+Unknown wrappers, including an opaque legacy cache, hold rather than treating
+cached replay as fresh provider inventory or replacing admitted TLS/custody.
+
+Each base entry owns one unique reservation and one bounded observation after
+the existing decoded-body read, before SDK return. Exact consumed JSON prefixes
+are measured bytes even when the response is incomplete; compressed wire bytes
+remain unknown. Observe failure leaves the reservation held. Finite concurrent
+reservations may already be in flight when a floor is published; later authority
+checks observe that durable floor. Final aggregates cannot reconcile missing reports.
+
+Pinned go-gh REST and GitLab WithoutRetries configurations have no hidden retry
+engine. Actual SDK pagination and 503 controls qualify that configuration; repeated
+composed-leaf controls prove the lower boundary, not a newly enabled SDK retry.
+Before any repeated entry, the local maximum retry floor or unknown hold refuses
+work before authority/base access. Only bounded Retry-After and GitHub exhausted
+primary reset facts leave the transport. Provider remaining values never measure
+this source's own work, and observed absent constraints promise no universal allowance.
+
+`TestMirrorNativeAttemptReceipt`, `TestMirrorNativeAttemptGrant`,
+`TestMirrorNativeRetryReceipt`, `TestMirrorNativeObservationBoundary`,
+`TestMirrorNativeFreshnessBoundary` and `TestMirrorNativeReceiptBoundary` use
+synthetic local SDK/transport fixtures and compiling production mutations. They
+qualify no SQL, cross-process budget, real credential selection or activation.
+
+
+The native receipt contract also requires `AttemptReceipt.ObservedAt`: the latest
+qualified decoded-data completion time before authority observation I/O. It
+qualifies source observation stamps and coverage planning, including empty
+inventories. Current query time stays current so slow reporting cannot refresh old
+data. A successful production native scan requires this bound; a legacy fake zero
+is unknown. Individual attempt timing and canonical R2 quota/lease/database clocks
+keep their separate meanings.

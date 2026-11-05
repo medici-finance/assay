@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/medici-finance/assay/forgeread/mirror"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -33,6 +34,7 @@ func (a *TestAdmission) Authorize(context.Context, mirror.RepositoryID) error {
 func Check(t *testing.T, newStore func() mirror.Store) {
 	CheckPermissionHold(t, newStore)
 	CheckHoldRecovery(t, newStore)
+	CheckPartialAbsence(t, newStore)
 	t.Helper()
 	ctx := context.Background()
 	store := newStore()
@@ -71,6 +73,57 @@ func Check(t *testing.T, newStore func() mirror.Store) {
 	a.Allowed = false
 	if _, err := store.Read(ctx, a, scope); !errors.Is(err, mirror.ErrPermission) {
 		t.Fatalf("withdrawal ignored: %v", err)
+	}
+}
+
+// CheckPartialAbsence requires full completed inventory proof even when an ID
+// has no row or is already absent, so SQL no-ops cannot acknowledge bad updates.
+func CheckPartialAbsence(t *testing.T, newStore func() mirror.Store) {
+	t.Helper()
+	ctx := context.Background()
+	store := newStore()
+	repo := mirror.RepositoryID{Provider: mirror.GitHub, Host: "forge.example", Path: "example/project"}
+	now := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
+	present := mirror.RecordID{Repository: repo, Kind: "issue", Number: 1}
+	absent := mirror.RecordID{Repository: repo, Kind: "issue", Number: 2}
+	for _, mode := range []struct {
+		name           string
+		complete, full bool
+	}{{"partial-inventory", false, true}, {"incremental", true, false}, {"partial-incremental", false, false}} {
+		for name, id := range map[string]mirror.RecordID{"present": present, "already-absent": absent,
+			"missing": {Repository: repo, Kind: "issue", Number: 999}} {
+			t.Run(mode.name+"/"+name, func(t *testing.T) {
+				a := &TestAdmission{Name: "absence-" + mode.name + "-" + name, Allowed: true}
+				scope := mirror.Scope{Repository: repo, Kind: mirror.Issues, AdmissionID: a.Name}
+				initial := mirror.ScanUpdate{Scope: scope, CompleteScan: true, FullInventory: true,
+					Coverage: mirror.Coverage{State: mirror.Complete, LastAttempted: now, LastComplete: now, LastInventory: now},
+					Upsert:   []mirror.Observation{{ID: present, Title: "present", InInventory: true}, {ID: absent, Title: "absent", InInventory: true}}}
+				snap, err := store.Apply(ctx, a, initial)
+				if err != nil {
+					t.Fatal(err)
+				}
+				full := mirror.ScanUpdate{Scope: scope, ExpectedVersion: snap.Version, Coverage: snap.Coverage,
+					CompleteScan: true, FullInventory: true, NotInInventory: []mirror.RecordID{absent}}
+				before, err := store.Apply(ctx, a, full)
+				if err != nil {
+					t.Fatalf("complete inventory absence refused: %v", err)
+				}
+				bad := mirror.ScanUpdate{Scope: scope, ExpectedVersion: before.Version, Coverage: before.Coverage,
+					CompleteScan: mode.complete, FullInventory: mode.full, NotInInventory: []mirror.RecordID{id}}
+				bad.Coverage.State, bad.Coverage.Reason = mirror.Partial, mirror.Truncated
+				bad.Coverage.LastAttempted = now.Add(time.Minute)
+				if err := bad.Validate(); err != nil {
+					t.Fatalf("control must reach independent Store check: %v", err)
+				}
+				if _, err := store.Apply(ctx, a, bad); !errors.Is(err, mirror.ErrInvalid) {
+					t.Fatalf("absence without complete inventory accepted: %v", err)
+				}
+				after, err := store.Read(ctx, a, scope)
+				if err != nil || !reflect.DeepEqual(before, after) {
+					t.Fatalf("refused absence changed rows, coverage or version: %v", err)
+				}
+			})
+		}
 	}
 }
 

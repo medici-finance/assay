@@ -168,7 +168,8 @@ func runComment(owner, name string, num int, wantHead string, forcedKind *deskki
 			}
 		}
 		// Public-repo gate: refuse an outward write unless the repo is authorized
-		// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
+		// (private, or a listed allowed-repos entry tagged :public or :internal to match the
+		// live visibility — see deskkit.PublicRepoGate).
 		if gerr := deskkit.PublicRepoGate(client, owner, name); gerr != nil {
 			return withDigest(fromErr(verb, repo, num, tgt.head, gerr), dig)
 		}
