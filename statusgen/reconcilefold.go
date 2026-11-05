@@ -18,10 +18,10 @@ package main
 //     verifyflip.go's flipLatestPass; the HELD and FAIL refusals closeVerify
 //     applies; the closureWitnesses audit (`verifyrun --check`); flipProvenance
 //     (the PASS lines committed by the roster's verifier, not the implementer);
-//     the brief version read from the brief AS IT STOOD at the run's sha; and
+//     the brief version read at the run's tracking revision (source for legacy); and
 //     the evidence-coverage verdict (coverage.go). A refusal from any of them
 //     contributes no witness. A read that could not be made (no roster, a
-//     shallow clone, git failing, the version unreadable at the run's sha)
+//     shallow clone, git failing, the recorded brief revision unreadable)
 //     marks the brief Undecided: its cell is `unknown`, never `verified` and
 //     never a definite `implemented`.
 //   - Approvals (`done`, gate:model): autoflip.go's decideModelFlip — the
@@ -187,9 +187,9 @@ func foldVerified(d reconcileFoldData, coverage map[string]Coverage) (w WitnessI
 		}
 		return WitnessInfo{}, false, "could-not-check provenance: " + err.Error()
 	}
-	version, verr := briefVersionAt(d.path, p.SHA)
+	version, verr := briefVersionForPass(d.path, d.evidence, p)
 	if verr != nil {
-		return WitnessInfo{}, false, fmt.Sprintf("could-not-check the brief version at the run's sha %s: %v", p.SHA, verr)
+		return WitnessInfo{}, false, fmt.Sprintf("could-not-check the brief version for run source %s: %v", p.SHA, verr)
 	}
 	return WitnessInfo{
 		Passed:   true,
