@@ -75,7 +75,7 @@ func runDeliveryConsumers(root, base, brief, delivery string) int {
 	}
 	defer os.RemoveAll(snapshot)
 	// Only unchanged, fully contained non-board links may resolve. The bounded
-	// archive reader writes regular files first and never extracts archive links.
+	// archive reader writes regular files and never extracts archive links.
 	entries, ok := repo.TreeModes(delivery)
 	if !ok || len(entries) == 0 {
 		return fail("cannot enumerate delivered tree entries")

@@ -230,11 +230,14 @@ func TestSnapshotRosterMismatch(t *testing.T) {
 func TestSnapshotCaseCollision(t *testing.T) {
 	probe := t.TempDir()
 	mustWrite(t, filepath.Join(probe, "case"), "x")
-	if _, err := os.Stat(filepath.Join(probe, "CASE")); os.IsNotExist(err) {
-		t.Skip("case-sensitive filesystem")
-	} else if err != nil {
-		t.Fatal(err)
+	_, probeErr := os.Stat(filepath.Join(probe, "CASE"))
+	folding := probeErr == nil
+	if probeErr != nil && !os.IsNotExist(probeErr) {
+		t.Fatal(probeErr)
 	}
+	// A case-sensitive host cannot fold, so it must extract the distinct
+	// directories. The folded layout a folding host would leave is then
+	// simulated directly, so the roster refusal runs on every host.
 	parent := t.TempDir()
 	dest := filepath.Join(parent, "snapshot")
 	if err := os.Mkdir(dest, 0o700); err != nil {
@@ -270,8 +273,23 @@ func TestSnapshotCaseCollision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.extract(&archive, dest); err == nil {
+	extractErr := s.extract(&archive, dest)
+	if folding && extractErr == nil {
 		t.Fatal("folded directory collision accepted")
+	}
+	if !folding {
+		if extractErr != nil {
+			t.Fatalf("distinct directories refused: %v", extractErr)
+		}
+		folded := filepath.Join(parent, "folded")
+		mustWrite(t, filepath.Join(folded, "Dir", "one"), "x")
+		mustWrite(t, filepath.Join(folded, "Dir", "two"), "x")
+		if err := s.checkExtracted(folded); err == nil {
+			t.Fatal("folded directory layout accepted")
+		}
+		if err := os.RemoveAll(folded); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if got, err := os.ReadFile(canary); err != nil || string(got) != "unchanged" {
 		t.Fatalf("outside canary changed: %q %v", got, err)
@@ -396,6 +414,9 @@ func TestConsumerArchiveRefusals(t *testing.T) {
 		{"omitted link", []evaluation.TreeEntry{{Mode: "100644", Path: "safe"}, {Mode: "120000", Path: "alias"}}, []*tar.Header{regular("safe")}},
 		{"metadata path", []evaluation.TreeEntry{{Mode: "100644", Path: ".git/config"}}, []*tar.Header{regular(".git/config")}},
 		{"link parent", []evaluation.TreeEntry{{Mode: "120000", Path: "alias"}, {Mode: "100644", Path: "alias/file"}}, nil},
+		// A complete archive, so only the file-also-directory guard can refuse it.
+		{"link parent archive", []evaluation.TreeEntry{{Mode: "100644", Path: "safe"}, {Mode: "120000", Path: "alias"}, {Mode: "100644", Path: "alias/file"}},
+			[]*tar.Header{regular("safe"), {Name: "alias", Typeflag: tar.TypeSymlink, Linkname: "safe"}, regular("alias/file")}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -454,5 +475,128 @@ func TestConsumerSnapshotBoardAndChangedLinkPreflight(t *testing.T) {
 	}
 	if _, err := newConsumerSnapshot([]evaluation.TreeEntry{{Path: "alias", Mode: "120000"}}, map[string]bool{"alias": true}); err == nil || !strings.Contains(err.Error(), "changed") {
 		t.Fatalf("changed link was not refused before extraction: %v", err)
+	}
+}
+
+// regression: #5395
+func TestConsumerSnapshotFileAlsoDirectory(t *testing.T) {
+	_, err := newConsumerSnapshot([]evaluation.TreeEntry{
+		{Mode: "100644", Path: "safe"},
+		{Mode: "120000", Path: "alias"},
+		{Mode: "100644", Path: "alias/file"},
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "also a directory") {
+		t.Fatalf("link that is also a directory: got %v", err)
+	}
+}
+
+// regression: #5395
+func TestSnapshotResolveBounds(t *testing.T) {
+	snapshot := func(target string) *consumerSnapshot {
+		s, err := newConsumerSnapshot([]evaluation.TreeEntry{{Mode: "100644", Path: "web/fixed.go"}, {Mode: "120000", Path: "alias"}}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.links["alias"] = target
+		return s
+	}
+	for _, tc := range []struct{ name, target, reason string }{
+		// Every hop re-enters the link and pushes the whole target again.
+		{"self reference", strings.Repeat("./", consumerLinkTargetMax/4) + "alias", "component limit"},
+		// One hop would resolve, but the target itself is over the length limit.
+		{"long target", strings.Repeat("./", consumerLinkTargetMax/2) + "web/fixed.go", "length limit"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := snapshot(tc.target).resolve("alias"); err == nil || !strings.Contains(err.Error(), tc.reason) {
+				t.Fatalf("expected %q refusal, got %v", tc.reason, err)
+			}
+		})
+	}
+	if got, err := snapshot(strings.Repeat("./", 8) + "web/fixed.go").resolve("alias"); err != nil || got != "web/fixed.go" {
+		t.Fatalf("bounded target refused: %q %v", got, err)
+	}
+	// The recorded target is bounded before any resolve runs.
+	s, err := newConsumerSnapshot([]evaluation.TreeEntry{{Mode: "120000", Path: "alias"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var archive bytes.Buffer
+	w := tar.NewWriter(&archive)
+	if err := w.WriteHeader(&tar.Header{Name: "alias", Typeflag: tar.TypeSymlink, Linkname: strings.Repeat("a/", consumerLinkTargetMax)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.extract(&archive, t.TempDir()); err == nil || !strings.Contains(err.Error(), "length limit") {
+		t.Fatalf("over-long archive link target: got %v", err)
+	}
+}
+
+// regression: #5395
+func TestSnapshotRosterWalk(t *testing.T) {
+	s, err := newConsumerSnapshot([]evaluation.TreeEntry{{Mode: "100644", Path: "dir/one"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Each layout holds every roster entry, so only the per-entry name and type
+	// check in the walk can refuse it; the leftover count is zero.
+	for name, extra := range map[string]func(dest string){
+		"stray name": func(dest string) { mustWrite(t, filepath.Join(dest, "stray"), "x") },
+		"case variant": func(dest string) {
+			mustWrite(t, filepath.Join(dest, "dir", "ONE"), "x")
+		},
+		"type differs": func(dest string) {
+			if err := os.Mkdir(filepath.Join(dest, "dir", "one", "sub"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dest := t.TempDir()
+			if name == "type differs" {
+				if err := os.MkdirAll(filepath.Join(dest, "dir", "one"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				mustWrite(t, filepath.Join(dest, "dir", "one"), "x")
+			}
+			extra(dest)
+			entries, err := os.ReadDir(filepath.Join(dest, "dir"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if name == "case variant" && len(entries) == 1 {
+				t.Logf("case-folding host merged the variant; the stray-name case still pins the walk")
+				return
+			}
+			if err := s.checkExtracted(dest); err == nil || !strings.Contains(err.Error(), "differs from delivered tree") {
+				t.Fatalf("walk accepted a layout outside the roster: %v", err)
+			}
+		})
+	}
+}
+
+// regression: #5395
+func TestSnapshotVerdictsIgnoreHostTree(t *testing.T) {
+	// The host root holds none of the delivered paths. Verdicts must come from
+	// the snapshot's tree metadata for both site globbing and directory checks.
+	root := t.TempDir()
+	s, err := newConsumerSnapshot([]evaluation.TreeEntry{{Mode: "100644", Path: "web/fixed.go"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bf := &BriefFile{Brief: "alpha/01", Consumers: []string{"web/fixed.go: fixed-here", "web/: fixed-here"}}
+	verdicts := corroborateBriefWithSnapshot(root, nil, map[string]bool{"web/fixed.go": true}, nil, bf, s)
+	if len(verdicts) != 2 {
+		t.Fatalf("got %d verdicts, want 2: %+v", len(verdicts), verdicts)
+	}
+	for _, v := range verdicts {
+		if v.State != stateCorroborated {
+			t.Errorf("%s: got %s (%s), want %s from the snapshot", v.Entry, v.State, v.Reason, stateCorroborated)
+		}
+	}
+	if !strings.Contains(verdicts[1].Reason, "is a directory") {
+		t.Errorf("directory site not established from the snapshot: %s", verdicts[1].Reason)
 	}
 }

@@ -145,6 +145,9 @@ func (s *consumerSnapshot) extract(input io.Reader, dest string) error {
 			if mode != "120000" || h.Size != 0 {
 				return fmt.Errorf("archive link differs from delivered mode: %s", name)
 			}
+			if len(h.Linkname) > consumerLinkTargetMax {
+				return fmt.Errorf("delivery link target exceeds the length limit: %s", name)
+			}
 			s.links[name] = h.Linkname
 		default:
 			return fmt.Errorf("unsupported delivery archive entry: %s", name)
@@ -284,16 +287,43 @@ func writeConsumerSnapshotFile(dest, name, mode string, source io.Reader) error 
 	return closeErr
 }
 
+// Link resolution work is bounded by limits, not by the hop ceiling alone. A
+// target longer than consumerLinkTargetMax is refused outright, and one resolve
+// call may push at most consumerLinkComponentMax path components in total, so
+// the work per link stays bounded whatever the target shape or hop count.
+const (
+	consumerLinkTargetMax    = 4096
+	consumerLinkComponentMax = 4096
+	consumerLinkHopMax       = 255
+)
+
 // Resolve path components in order, expanding links before handling a following
 // '..'. Lexically cleaning the target first would miss an in-tree alias followed
 // by a parent step that actually escapes. This reads metadata, never host paths.
 func (s *consumerSnapshot) resolve(name string) (string, error) {
-	pending := strings.Split(name, "/")
+	// pending is a stack: the next component to consume is its last element,
+	// so expanding a link appends without copying what is already pending.
+	var pending []string
+	pushed := 0
+	push := func(p string) error {
+		parts := strings.Split(p, "/")
+		pushed += len(parts)
+		if pushed > consumerLinkComponentMax {
+			return fmt.Errorf("delivery link expansion exceeds the component limit: %s", name)
+		}
+		for i := len(parts) - 1; i >= 0; i-- {
+			pending = append(pending, parts[i])
+		}
+		return nil
+	}
+	if err := push(name); err != nil {
+		return "", err
+	}
 	var parts []string
 	linksWalked := 0
 	for len(pending) != 0 {
-		part := pending[0]
-		pending = pending[1:]
+		part := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
 		switch part {
 		case "", ".":
 			continue
@@ -310,15 +340,20 @@ func (s *consumerSnapshot) resolve(name string) (string, error) {
 			// fewer pending components can be finite; link identity alone
 			// must not be mistaken for a cycle.
 			linksWalked++
-			if linksWalked > 255 {
+			if linksWalked > consumerLinkHopMax {
 				return "", fmt.Errorf("cyclic or excessive-depth delivery link: %s", name)
 			}
 			target := s.links[candidate]
+			if len(target) > consumerLinkTargetMax {
+				return "", fmt.Errorf("delivery link target exceeds the length limit: %s", name)
+			}
 			if target == "" || strings.HasPrefix(target, "/") || filepath.IsAbs(target) || filepath.VolumeName(target) != "" ||
 				strings.ContainsAny(target, "\\\x00") || (len(target) >= 2 && target[1] == ':') {
 				return "", fmt.Errorf("absolute or unsupported delivery link target: %s", name)
 			}
-			pending = append(strings.Split(target, "/"), pending...)
+			if err := push(target); err != nil {
+				return "", err
+			}
 			continue
 		}
 		if !s.dirs[candidate] && s.modes[candidate] == "" {
