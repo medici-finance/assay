@@ -634,11 +634,10 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	notices = append(notices, verifyPortabilityNotices(checkStreams)...)
 	// Missing EXECUTION WITNESS (ground-truth/01, #284): a brief the README
 	// calls verified/done whose Evidence carries no record that a Verify row was
-	// actually executed. NOTICE this phase for the same reason the rule above is
-	// one — every brief closed before the witness existed lacks one by
-	// construction, and hand-writing witnesses into closed briefs to green the
-	// gate would manufacture exactly the evidence the witness exists to replace.
-	// Flip to a hard problem once the active streams are backfilled.
+	// actually executed. A NOTICE over the inherited corpus: absence alone
+	// proves neither non-execution nor closure age, and hand-writing witnesses
+	// into closed briefs would manufacture the evidence the witness replaces.
+	// New closures are gated separately by witnessAbsenceGateChecks below.
 	notices = append(notices, witnessNotices(checkStreams)...)
 	// CONTRADICTED status cell (ground-truth/02, #284): a brief the README
 	// calls verified/done whose own Evidence carries a witness recording a
@@ -1353,6 +1352,12 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
 		exitProcess(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
+	}
+	// `statusgen rowread` — the read-only forge lane a Verify row reads through
+	// (rowread.go, #4700): a closed set of read kinds over deskread, which holds
+	// the credential in its own process. Read-only, own flag namespace.
+	if len(os.Args) > 1 && os.Args[1] == "rowread" {
+		exitProcess(runRowread(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen verifyclosure` — the READ-ONLY board question "does this tree
