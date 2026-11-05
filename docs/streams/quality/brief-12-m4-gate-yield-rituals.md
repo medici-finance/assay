@@ -31,24 +31,10 @@ id: 90353ba9-74a3-48bf-918c-ae203a6d5da2
 
 ## Context
 files:
-- NEW `qualgen/reflex/gateyield.go` (planned) — gate-yield accounting PER REVIEW LANE:
-  defects caught pre-merge (request-changes findings whose flagged surface matches a later
-  trace) vs escapes attributed to that lane by **M3's `review-escape` overlay** (from
-  brief-10). Output: catch-rate, escape-rate, latency cost per lane.
-- NEW `qualgen/reflex/ritual.go` (planned) — the natural-experiment joins: authoring
-  attributes (model tier, Verify-depth, lane coverage) joined to downstream M1/M2
-  outcomes. Headline joins: **cost per durable KLOC by model tier x brittleness band** and
-  **Verify-depth vs escape rate**; plus the industry-named agent metrics (spec §7.2):
-  **agent-PR survival rate**, **first-pass approval rate**, and the
-  **review-discipline guardrails** (% PRs merged without review, time-in-review trend —
-  emitted as alarmed budgets, not dashboard lines). NO new mining — a JOIN of existing
-  outputs only.
-- NEW `qualgen/reflex/stratify.go` (planned) — the OBSERVATIONAL-VALIDITY guard:
-  brittleness-band stratification as the MINIMUM control, and a confounders block attached
-  to every readout. This module REFUSES to emit a ritual-effectiveness number that is not
-  brittleness-band stratified — the honest-claims enforcement point.
-- CONSUMES `qualgen/attribution/` (planned) per-stage ledger + `review-escape` overlay (brief-10),
-  and `qualgen/metrics/` (planned) (M1, brief-02) + `qualgen/szz/` (planned) (M2, brief-07) outcomes it joins.
+- **add** `qualgen/reflex/gateyield.go` (planned) — gate-yield accounting PER REVIEW LANE: defects caught pre-merge (request-changes findings whose flagged surface matches a later trace) vs escapes attributed to that lane by **M3's `review-escape` overlay** (from brief-10). Output: catch-rate, escape-rate, latency cost per lane.
+- **add** `qualgen/reflex/ritual.go` (planned) — the natural-experiment joins: authoring attributes (model tier, Verify-depth, lane coverage) joined to downstream M1/M2 outcomes. Headline joins: **cost per durable KLOC by model tier x brittleness band** and **Verify-depth vs escape rate**; plus the industry-named agent metrics (spec §7.2): **agent-PR survival rate**, **first-pass approval rate**, and the **review-discipline guardrails** (% PRs merged without review, time-in-review trend — emitted as alarmed budgets, not dashboard lines). NO new mining — a JOIN of existing outputs only.
+- **add** `qualgen/reflex/stratify.go` (planned) — the OBSERVATIONAL-VALIDITY guard: brittleness-band stratification as the MINIMUM control, and a confounders block attached to every readout. This module REFUSES to emit a ritual-effectiveness number that is not brittleness-band stratified — the honest-claims enforcement point.
+- **consumes** `qualgen/attribution/` (planned) (per-stage ledger + `review-escape` overlay, brief-10) and `qualgen/metrics/` (planned) (M1, brief-02) + `qualgen/szz/` (planned) (M2, brief-07) — outcomes it joins.
 
 single-point-of-failure: the ONE control preventing a misleading causal claim is the
 stratify-guard in `stratify.go`; the design keeps it independent by making it a

@@ -29,6 +29,7 @@ const (
 	stepBoardFetch      = "board-fetch"
 	stepWorktreeCurrent = "worktree-current"
 	stepFirstSweep      = "first-sweep-prereqs"
+	stepBinaryPin       = "binary-pin"
 )
 
 // bootSteps is the ordered step list, used for the plan output and pinned by a test so a
@@ -50,6 +51,7 @@ var bootSteps = []string{
 	stepBoardFetch,
 	stepWorktreeCurrent,
 	stepFirstSweep,
+	stepBinaryPin,
 }
 
 // loopToTokenRole maps a desk LOOP name (what a session presents in $DESK_LOOP, and what
@@ -247,6 +249,13 @@ func boot(o bootOpts) error {
 		return err
 	}
 	o.say("%s OK: %s", stepFirstSweep, prereqs)
+
+	// 10 — the binary marker (local hotfix overlay, layer 3). Every cell shim is classified by
+	// the path it execs; a hotfix is printed at every boot and re-checked here, so a hotfix
+	// that outlived its pin, its expiry or the ruling is a refusal, not a silent run.
+	if err := binaryPinStep(o); err != nil {
+		return err
+	}
 
 	fmt.Printf("deskboot: BOOT COMPLETE — role=%s token-role=%s root=%s (%d/%d steps)\n",
 		o.role, tokenRole, o.root, len(bootSteps), len(bootSteps))

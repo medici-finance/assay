@@ -147,8 +147,11 @@ identically → it is yours. A proven flake still blocks the desk's flip; it onl
 **The commonest self-serve red is the `changelog` check**, and it is the one red that does NOT
 reproduce locally — it reads the DIFF against the PR base, not your working tree, so a green local
 build tells you nothing about it. It PASSES when the branch adds or updates a `changelog/<slug>.md`
-fragment (`<slug>` = the branch name) carrying at least one bullet, OR when the PR wears the
-`changelog:skip` label; it FAILS when neither is true. The fix is ONE commit adding
+fragment carrying at least one bullet, OR when the PR wears the
+`changelog:skip` label; it FAILS when neither is true. `<slug>` = the branch name with every `/`
+replaced by `-` (or the issue or brief slug), so `feat/foo` becomes `changelog/feat-foo.md`. The
+fragment MUST be a single flat file directly under `changelog/`, never in a subdirectory: a nested
+path such as `changelog/feat/foo.md` is never aggregated. The fix is ONE commit adding
 `changelog/<slug>.md` — never an edit to a top-level `CHANGELOG.md`, and never self-applying
 `changelog:skip` (that label is the desk's or a human's, not yours). A branch you have RESUMED owes
 this file whether or not the check has run against it yet.

@@ -436,7 +436,7 @@ func TestWorkspaceCallerCensus(t *testing.T) {
 		{"tools/desk/cmd/scanloop/lane.go", "scanCarrierPRLane.carry", "create"},
 		{"tools/desk/cmd/verifyloop/dispatch_native.go", "gitDetachedWorktree", "create"},
 		{"statusgen/lintaudit.go", "productionWorktree", "create"},
-		{"tools/desk/cmd/deskwt/deskwt.go", "cmdAdd", "create"},
+		{"tools/desk/cmd/deskwt/deskwt.go", "runAdd", "create"},
 	}
 	have := map[unit]bool{}
 	for _, u := range found {

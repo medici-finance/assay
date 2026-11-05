@@ -1146,6 +1146,7 @@ func (c *ghClient) RepoVisibility(owner, repo string) (string, error) {
 }
 
 // NOTE: the public-repo write gate no longer consults a per-item reaction surface
-// (deskkit.PublicRepoGate reads only live visibility and the configured :public tag), so
+// (deskkit.PublicRepoGate reads only live visibility and the configured :public or :internal
+// tag), so
 // ghClient implements just RepoVisibility from deskkit.RepoInfoFetcher — the former
 // reaction-reading method is gone.

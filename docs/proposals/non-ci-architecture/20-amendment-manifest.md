@@ -213,8 +213,11 @@ resource limit changes in this documentation PR.
 ## Portable execution environments — 16 October 2026
 
 Controlling delta: [agent execution environments](27-agent-execution-environments.md).
-The new agent-execution stream, parked until that amendment is approved, authors seven
-bounded extensions of existing owners:
+The agent-execution stream authors the seven bounded extensions of existing owners below.
+Approval of amendment 27 and implementation admission of the stream are proposed by
+[PR #4349](https://github.com/medici-finance/assay/pull/4349) and take effect on the
+maintainer's merge of it. Later /08–09 profile
+qualification and all deployment/custody gates remain separate:
 
 | Gap | Owning brief | Existing prerequisite/consumer | Change made in this authoring PR |
 |---|---|---|---|
@@ -303,7 +306,9 @@ and no competing proposal is treated as approved. Dispatch refs were not read.
 
 New tests are future implementation obligations. Existing completed Evidence is unchanged.
 Active PostgreSQL/image-scan/performance PRs are recorded in amendment 28 and reconciled at
-pickup. The parked execution stream is not silently admitted by this routing note.
+pickup. Historical note: when this routing note was written the execution stream was
+parked, and the note did not admit it. Stream admission is carried only by amendment 27's
+status line (see the portable execution environments section above).
 
 ## Extensible JSON amendment — 21 October 2026
 
@@ -314,6 +319,51 @@ all other families; their next contract-changing briefs must carry the reader-fi
 compatibility matrix and consumer dispositions before implementation. This amendment
 changes no existing Verify/Evidence section or active owner's implementation. The
 earlier whole-target ratification does not certify these later codec changes.
+
+## Contract acceptance and consumer integration — 23 October 2026
+
+This coupled authoring amendment separates local /28 acceptance from its required
+consumer integration, preserving the R1 → R2/R3 → R4 → R5 → R7 → R8 sequence.
+It changes no execution architecture, runtime authority or activation gate.
+
+The boundary is approved through the acceptance-transition route, per the driver's ruling:
+https://github.com/medici-finance/assay/issues/4452#issuecomment-6403449344
+
+That ruling selected option A: local /28 acceptance is original rows 1–9, row 10 stays
+present and uncredited, and the /19, /23 and /29 consumer-use holds attach to those briefs.
+
+The existing independent Evidence PR #3921 owner recorded its checkpoint (preserved: yes):
+https://github.com/medici-finance/assay/pull/3921#issuecomment-6403147264
+
+That checkpoint answers the request at
+https://github.com/medici-finance/assay/pull/3921#issuecomment-6367743364 . It is a
+readiness record, not acceptance or merge permission; its reconciliation conditions for
+the Evidence branch still apply.
+
+Original /28 rows 1–9 belong to the pre-delivery definition at
+0580e0a02df8dce18bd2d65359225e49d525bcd6. Original implementation delivery
+3ced448e5ff83c6fbbd2a7c08d6d4b9dc6e2fdaf has that actual first parent; later
+metadata repair #4174 is not a new delivery. /28's entire delivered Verify section and current historical Evidence
+remain unchanged by this amendment. Delivery-added row 10 remains an uncredited supplemental routing
+disposition; it neither proves consumer use nor supplies an original acceptance witness.
+/29's entire six-row Verify definition and Evidence also remain unchanged.
+
+| Retained assertion | Existing acceptance owner and proof |
+|---|---|
+| Qualified work/path independence; explicit missing/could-not-check facts; exact candidate/acceptance binding; execution never acceptance; current reevaluation generation | /28 original Verify 1–5, with all original positive and mutation controls |
+| Real evaluator identity and tree-bound witnesses; pure imports; schema/semantic fixtures and canonical records; separate execution, acceptance, publication and retirement | /28 original Verify 6–9 and its existing spec/schema contract |
+| Immutable delivery/first-parent provenance and exact routing result counts; follow-up ownership is not actual use | /28 unchanged supplemental row 10, disposition only; independent subject/environment/admission requirements remain |
+| Actual old package-main adapter and new domain.Record/domain.Assess consume identical frozen facts and hand-written expected results | /29 Task 3, original Verify 2; original inventory, difference/staleness, zero-case, six baseline and runner-conformance checks all remain |
+| Durable shared identity, subject, definition, fact completeness, generation and progress round-trip through the real evaluator; valid recovery succeeds, missing facts hold and wrong/stale bindings cannot pass | /19 Tasks 3–4, strengthened prospective Verify 1–2; all existing PostgreSQL/outbox/incarnation/claim/feedback/reconstruction/context/brake obligations in rows 3–13 remain |
+| Actual shared candidate/acceptance records at freeze, independent reviewer input and restore; same-branch replacement, foreign/dirty/wrong-tree input, artifact/binding tampering and stale generations cannot inherit evidence | /23 Tasks 1–4, strengthened prospective Verify 1–3, retaining valid snapshot/recovery and existing mutation controls |
+| Connected production controller/store/runner/assessor/publication flow, crashes and unknown-outcome reconciliation | Existing /18 Task and Verify 6–7; no new owner, runtime or prerequisite is introduced |
+
+Every actual-use row above remains a required hold on its named consumer's acceptance
+until independently proved. Local /28 acceptance discharges none; routing success,
+serialization alone and matching hashes cannot substitute for production flow. No row
+is recorded passed, no historical hold/result is rewritten, and the independent owners
+still decide adequacy and omitted-consumer coverage. No /19 or /23 reverse dependency
+is added to the existing /26–27 launcher path. Generated lifecycle views are untouched.
 
 ## Candidate-plus-priority amendment routing — requested 23 October 2026
 

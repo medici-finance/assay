@@ -55,7 +55,7 @@
         },
         "reason": {
           "description": "Why the outcome is not ok, from a closed vocabulary; null when ok.",
-          "enum": [null, "not-interactive", "desk-session", "plan-not-found", "plan-invalid", "wrong-verb", "foreign-cell", "plan-expired", "already-consumed", "confirm-mismatch", "plan-stale", "unmeasured", "action-failed"]
+          "enum": [null, "not-interactive", "desk-session", "plan-not-found", "plan-invalid", "wrong-verb", "foreign-cell", "plan-expired", "already-consumed", "confirm-mismatch", "plan-stale", "unmeasured", "action-failed", "role-busy", "surface-identity-mismatch", "surface-stale", "per-role-close-unsupported"]
         },
         "detail": { "$ref": "#/$defs/optionalText" },
         "roles": {

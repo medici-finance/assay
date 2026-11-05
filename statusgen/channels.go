@@ -150,6 +150,13 @@ func regenerateHint(root string) string {
 // PROBLEM content a differently-versioned binary would reproduce.
 // n is the number of PROBLEM lines just emitted above it.
 func boardProvenanceLine(n int) string {
+	if base, ok := hotfixBase(statusgenVersion); ok {
+		return fmt.Sprintf(
+			"statusgen: the %d PROBLEM(s) above were produced by a local HOTFIX build %s over pin %s. "+
+				"Re-check against the sha256-pinned release named in .assay-versions (see %s) before "+
+				"treating this red as ground truth.",
+			n, statusgenVersion, base, pinSpecRef)
+	}
 	if statusgenVersion == "dev" {
 		return fmt.Sprintf(
 			"statusgen: the %d PROBLEM(s) above were produced by an UNSTAMPED local build "+

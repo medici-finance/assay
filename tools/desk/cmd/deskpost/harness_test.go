@@ -32,7 +32,7 @@ import (
 // now refuses; a test suite that cannot represent the real argument cannot catch a
 // regression in how it is handled.
 const (
-	testHead    = "5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b"
+	testHead    = "4c418b16e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b"
 	testOldHead = "0f1e2d3c4b5a69788796a5b4c3d2e1f009182736"
 	testNewHead = "9a8b7c6d5e4f30211203344556677889aabbccdd"
 )

@@ -90,6 +90,14 @@ STEPS, in order. Each prints one line; the first red one stops the boot and NAME
                       line, or the in-tree refs/remotes/origin/main:tools/desk. A
                       statusgen-only pin file is not provenance, however well it matches
                       main's. Refuses (exit 6) naming every gap and its remedy. Read-only.
+ 10 binary-pin        classifies every cell shim by the path it execs (never by what the
+                      binary prints): under DESK_TOOLS_BIN is pinned, under the hotfix
+                      overlay is a local hotfix, anywhere else refuses (exit 6). Prints
+                      ` + "`binary-pin OK: all pinned (<pin>)`" + ` or, per hotfix, ` + "`binary-pin: running hotfix\n                      <tool> <tag> over pin <pin> (source <sha12>, expires <date>)`" + `, and refuses (exit 6)
+                      a hotfix that is not root-owned, was tampered with, outlived its pin,
+                      expired, exceeds the ruled ceiling, carries another source rule, or
+                      whose source the forge no longer reports on main. Read-only; runs no
+                      hotfix binary.
 
 --dry-run prints the plan (every step, its command, and the derived role/repo) and stops
 before step 2 — nothing is pruned, locked, registered, minted or fetched.

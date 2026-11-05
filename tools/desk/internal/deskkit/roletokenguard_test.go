@@ -72,6 +72,7 @@ var githubMinterNames = map[string]bool{
 	"githubAppRoleToken":  true,
 	"mintRoleToken":       true,
 	"tokenMinter":         true,
+	"providerMint":        true,
 	"lookupRoleTokenMemo": true,
 	"roleTokenMemo":       true,
 }
@@ -115,6 +116,8 @@ var githubMinterAllow = map[string]string{
 		"token RoleTokenForOwner already minted, and hands nothing back",
 	"internal/deskkit/roletoken.go:resetRoleTokenMemo:roleTokenMemo": "the test reset: it drops every " +
 		"entry and hands nothing back",
+	"internal/deskkit/roletoken.go::providerMint": "the primitive's production body: the package-level " +
+		"tokenMinter seam runs the in-process credential provider; tokenMinter's own callers are confined above",
 	"internal/deskkit/roletoken.go:SetRoleTokenMinter:tokenMinter": "the test seam: it swaps the " +
 		"minter and restores it, and never calls it",
 	"cmd/cellctl/deskd.go:Cell.deskdMintGitHub:RoleTokenForRepo": "forge-switched: cmdDeskd calls " +
@@ -344,6 +347,7 @@ func TestGitHubMinterGuardCatchesPlantedCallers(t *testing.T) {
 		"inpackage.go:plantedMemoMap:roleTokenMemo",
 		"inpackage.go:plantedMemoRead:lookupRoleTokenMemo",
 		"inpackage.go:plantedPrimitive:mintRoleToken",
+		"inpackage.go:plantedProviderCall:providerMint",
 		"inpackage.go:plantedSeamCall:tokenMinter",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -352,6 +356,220 @@ func TestGitHubMinterGuardCatchesPlantedCallers(t *testing.T) {
 	for _, r := range refs {
 		if _, ok := githubMinterAllow[r.key()]; ok {
 			t.Fatalf("a planted fixture reference matched the real allow-list: %s", r)
+		}
+	}
+}
+
+// --- the desktoken EXEC half of the class guard (#1573 follow-up) ------------------------
+//
+// The AST walk above confines the in-process minter's NAMES. A caller can step around it by
+// not naming the minter at all: it forks the `desktoken` binary, which mints the same
+// credential with the forge question answered (or not) by the CLI's own defaults, and with
+// whatever binary is first on PATH. The walk below closes that route. It fails on every
+// string literal that names the desktoken program — "desktoken", "desktoken.exe", or a path
+// ending in either — in a non-test Go file outside cmd/desktoken (the minter's own package,
+// where the name is its own), unless the (file, function) is on desktokenExecAllow with its
+// reason. A literal is what the program name always is at an exec site, whether it reaches
+// exec.Command directly, through a package-level execCommand/runCmd seam, through a variable,
+// or through exec.LookPath, so a literal walk catches every one of those shapes; a literal
+// that is data and not an exec argues its way onto the list like any other.
+//
+// The list says WHY each surviving site still forks. New sites belong on the in-process
+// minter (GitHubRoleToken for a GitHub-only transport, ResolveRoleCredential otherwise).
+
+// desktokenProgramRef is one literal naming the desktoken program.
+type desktokenProgramRef struct {
+	rel, fn string
+	pos     token.Position
+	value   string
+}
+
+func (r desktokenProgramRef) key() string { return r.rel + ":" + r.fn }
+
+func (r desktokenProgramRef) String() string {
+	fn := r.fn
+	if fn == "" {
+		fn = "<package level>"
+	}
+	return fmt.Sprintf("%s:%d in %s names the desktoken program (%q)", r.rel, r.pos.Line, fn, r.value)
+}
+
+// desktokenOwnPackage is the minter's own package, where the program name is its own.
+const desktokenOwnPackage = "cmd/desktoken/"
+
+// desktokenExecPending is the reason every exec site still awaiting the routing follow-up
+// carries. Each one runs `desktoken <role> --repo <slug>` with no --forge, so on a repo the
+// roster binds to GitLab the CLI ROTATES that role's PAT; the in-process GitHub minter would
+// refuse there instead. Moving them is a custody decision (rotate, read, or refuse), not a
+// mechanical swap, so it is left to its own change.
+const desktokenExecPending = "pending #1573 follow-up: forks `desktoken <role> --repo` with no --forge, " +
+	"which rotates a GitLab-bound role's PAT; moving it to the in-process minter changes that custody behaviour"
+
+// desktokenExecAllow is every (file, function) that may name the desktoken program, with why.
+var desktokenExecAllow = map[string]string{
+	// Not an exec: the name as data.
+	"internal/deskkit/audittoolkey.go:": "not an exec: the audit tool-key table's row for the minter's own " +
+		"ledger entries",
+	"internal/deskkit/credentialprovider.go:providerMint": "not an exec: the in-process minter writes its " +
+		"audit row under the CLI's tool name, so the ledger reads one minter whichever caller ran it",
+	// Probes of the CLI itself: the binary is the thing under test.
+	"internal/deskkit/preflight.go:coldMintProbe": "a probe OF the CLI: it proves a cold shell can mint " +
+		"through the installed binary, with a scrubbed environment",
+	"cmd/deskboot/boot.go:stepMint": "a probe OF the CLI: the boot check proves the installed desktoken " +
+		"mints from a shell, and passes --forge gitlab itself when the roster binds the repo to GitLab",
+	// Deliberate binary pinning.
+	"cmd/deskrelease/github.go:resolveDeskTokenPath": "pins the desktoken installed BESIDE deskrelease " +
+		"(the release path's binary-substitution defence); moving it in-process is its own review",
+	// Pending the routing follow-up.
+	"cmd/deskclose/forge.go:mintSessionToken":       desktokenExecPending,
+	"cmd/deskdisposition/forge.go:mintSessionToken": desktokenExecPending,
+	"cmd/deskevidence/github.go:mintVerifierToken": desktokenExecPending + " (it also mints BEFORE the forge " +
+		"is resolved)",
+	"cmd/deskfile/github.go:mintSessionToken":     desktokenExecPending,
+	"cmd/desklabel/forge.go:mintSessionToken":     desktokenExecPending,
+	"cmd/deskpathguard/forge.go:mintSessionToken": desktokenExecPending,
+	"cmd/deskpr/exec.go:mintWorkerToken":          desktokenExecPending,
+	"cmd/deskreply/exec.go:mintWorkerToken":       desktokenExecPending,
+	"cmd/deskrestamp/forge.go:mintSessionToken":   desktokenExecPending,
+}
+
+// isDesktokenProgram reports whether a string literal's value names the desktoken program.
+func isDesktokenProgram(v string) bool {
+	base := strings.ReplaceAll(v, `\`, "/")
+	if i := strings.LastIndex(base, "/"); i >= 0 {
+		base = base[i+1:]
+	}
+	return base == "desktoken" || base == "desktoken.exe"
+}
+
+// scanDesktokenProgramRefs walks root and returns every string literal naming the desktoken
+// program in a non-test Go file outside the minter's own package, testdata/.git/vendor
+// excluded.
+func scanDesktokenProgramRefs(root string) ([]desktokenProgramRef, error) {
+	var refs []desktokenProgramRef
+	err := filepath.Walk(root, func(path string, info os.FileInfo, werr error) error {
+		if werr != nil {
+			return werr
+		}
+		if info.IsDir() {
+			switch info.Name() {
+			case "testdata", ".git", "vendor":
+				if path != root {
+					return filepath.SkipDir
+				}
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		rel, rerr := filepath.Rel(root, path)
+		if rerr != nil {
+			return rerr
+		}
+		rel = filepath.ToSlash(rel)
+		if strings.HasPrefix(rel, desktokenOwnPackage) {
+			return nil
+		}
+		fset := token.NewFileSet()
+		f, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if perr != nil {
+			return fmt.Errorf("parsing %s: %w", path, perr)
+		}
+		visit := func(fn string, n ast.Node) {
+			if n == nil {
+				return
+			}
+			ast.Inspect(n, func(m ast.Node) bool {
+				lit, ok := m.(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					return true
+				}
+				v, uerr := strconv.Unquote(lit.Value)
+				if uerr == nil && isDesktokenProgram(v) {
+					refs = append(refs, desktokenProgramRef{rel: rel, fn: fn, pos: fset.Position(lit.Pos()), value: v})
+				}
+				return true
+			})
+		}
+		for _, d := range f.Decls {
+			switch decl := d.(type) {
+			case *ast.FuncDecl:
+				fn := decl.Name.Name
+				if decl.Recv != nil && len(decl.Recv.List) > 0 {
+					fn = recvTypeName(decl.Recv.List[0].Type) + "." + fn
+				}
+				visit(fn, decl.Body)
+			case *ast.GenDecl:
+				visit("", decl)
+			}
+		}
+		return nil
+	})
+	return refs, err
+}
+
+// TestDesktokenExecConfined is the exec half of the class guard over the real tree.
+func TestDesktokenExecConfined(t *testing.T) {
+	refs, err := scanDesktokenProgramRefs(deskTreeRoot)
+	if err != nil {
+		t.Fatalf("could not walk %s: %v — this is could-not-check, not a clean tree", deskTreeRoot, err)
+	}
+	seen := map[string]bool{}
+	var offenders []string
+	for _, r := range refs {
+		if _, ok := desktokenExecAllow[r.key()]; ok {
+			seen[r.key()] = true
+			continue
+		}
+		offenders = append(offenders, r.String())
+	}
+	if len(offenders) > 0 {
+		sort.Strings(offenders)
+		t.Errorf("the desktoken program is named outside cmd/desktoken — mint in process through "+
+			"deskkit.GitHubRoleToken (GitHub-only transport) or deskkit.ResolveRoleCredential instead of "+
+			"forking whatever desktoken is first on PATH (#1573):\n%s", strings.Join(offenders, "\n"))
+	}
+	var stale []string
+	for k := range desktokenExecAllow {
+		if !seen[k] {
+			stale = append(stale, k)
+		}
+	}
+	if len(stale) > 0 {
+		sort.Strings(stale)
+		t.Errorf("exec allow-list entries that no longer name desktoken (remove them; do not re-point them):\n%s",
+			strings.Join(stale, "\n"))
+	}
+}
+
+// TestDesktokenExecGuardPlanted proves the exec walk is not vacuous: every planted shape is
+// reported at its own function, and the shapes that must not count are not.
+func TestDesktokenExecGuardPlanted(t *testing.T) {
+	refs, err := scanDesktokenProgramRefs(filepath.Join("testdata", "desktokenexecguard"))
+	if err != nil {
+		t.Fatalf("scan fixture: %v", err)
+	}
+	var got []string
+	for _, r := range refs {
+		got = append(got, r.key())
+	}
+	sort.Strings(got)
+	want := []string{
+		"planted.go:",
+		"planted.go:forkViaLookPath",
+		"planted.go:forkViaVariable",
+		"planted.go:forkWindowsName",
+		"planted.go:minter.forkFromMethod",
+		"planted.go:plantedDirectFork",
+		"planted.go:plantedInstallPath",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("planted desktoken forks not reported exactly:\n got: %q\nwant: %q", got, want)
+	}
+	for _, r := range refs {
+		if _, ok := desktokenExecAllow[r.key()]; ok {
+			t.Fatalf("a planted fixture fork matched the real allow-list: %s", r)
 		}
 	}
 }

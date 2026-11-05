@@ -206,7 +206,11 @@ Consume [the verifier migration amendment](../../streams/graph-execution/verifie
 An adopter may move evidence production through its existing qualified owner before R2–R8,
 and evaluate shared assessment in shadow after R1. This grants neither a second standing
 claim authority nor a publisher. Managed completion retains R1–R8 and repository-wide
-handover. The proposed Kubernetes profile is agent-execution/08; its stream remains parked.
+handover. The Kubernetes verifier profile is agent-execution/08. Admission of amendment 27
+and its stream for implementation is proposed by
+[PR #4349](https://github.com/medici-finance/assay/pull/4349) and takes effect on the
+maintainer's merge of it; that does not authorize a concrete profile, cluster contact or
+live deployment.
 
 ## Perf-v3 delivery — requested amendment, 19 October 2026
 
@@ -218,6 +222,12 @@ these owners. Collection/01 defines aliased event meanings independently; /02 co
 v1/v2/v3 after /63–65; later storage/transport/reporting preserves their coverage and units.
 A local record/read/report path needs no server or database. Leave collection's admission
 state to its own ruling and keep credential work independent; do not reopen /61 or imply deployment/collection activation.
+
+Collection/01 delivery, 1 November 2026: the local `performance-event-v1` contract, spool and
+offline report are implemented in the separate `perfdata` module. Human acceptance is pending.
+Its storage target is a separate optional performance database (/03), and transport is /04–05.
+Neither is built, and neither touches the operational store. Collection owns the meaning of
+collection only.
 
 ## Extensible contracts and perf-v4 — requested amendment, 21 October 2026
 

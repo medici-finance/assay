@@ -96,7 +96,7 @@ func TestProjectionJourney(t *testing.T) {
 	}{
 		{"full", "", []string{"ready-one", "decision-two", "addressed-three", "represented-five", "closed-nine", "external-seven"}, nil, []string{"GetIssue/9", "IssueContentEvents/2", "IssueContentEvents/3", "IssueLabelHistory/1", "IssueLabelHistory/6", "IssueLabelHistory/8", "IssueTrustEvents/4", "IssueTrustEvents/7"}},
 		{"intake", "", []string{"ready-one", "decision-two", "addressed-three", "represented-five", "closed-nine", "external-seven"}, nil, []string{"GetIssue/9", "IssueContentEvents/2", "IssueContentEvents/3", "IssueLabelHistory/1", "IssueLabelHistory/6", "IssueLabelHistory/8", "IssueTrustEvents/4", "IssueTrustEvents/7"}},
-		{"work-ready", "", []string{"ready-one", "external-seven", "held-eight", "empty says nothing about intake or inbox idle"}, []string{"decision-two", "addressed-three", "represented-five", "closed-nine", "excluded-four", "help-six"}, []string{"GetIssue/9", "IssueLabelHistory/1", "IssueLabelHistory/8", "IssueTrustEvents/7"}},
+		{"work-ready", "", []string{"external-seven", "empty says nothing about intake or inbox idle"}, []string{"ready-one", "held-eight", "decision-two", "addressed-three", "represented-five", "closed-nine", "excluded-four", "help-six"}, []string{"GetIssue/9", "IssueLabelHistory/1", "IssueLabelHistory/8", "IssueTrustEvents/7"}},
 		{"inbox", "worker", []string{"addressed-three", "ESCALATE"}, []string{"decision-two", "ready-one", "closed-nine", "external-seven"}, []string{"IssueContentEvents/3"}},
 	} {
 		t.Run(c.p, func(t *testing.T) {

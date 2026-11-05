@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // deskmerge_test.go — the Verify table, executed.
@@ -1066,7 +1066,7 @@ func TestParentOneMustBeThePRsOwnHistory(t *testing.T) {
 //
 // The case only exists when the PR is BEHIND but not AHEAD — a branch whose own commits
 // already landed, or one opened and never pushed to. A fast-forward there produces a
-// head that is genuinely current and is NOT a merge, which is the at#72 shape arrived
+// head that is genuinely current and is NOT a merge, which is the single-parent non-merge shape arrived
 // at by accident rather than by intent.
 func TestNeverFastForwards(t *testing.T) {
 	withScratchTemp(t)

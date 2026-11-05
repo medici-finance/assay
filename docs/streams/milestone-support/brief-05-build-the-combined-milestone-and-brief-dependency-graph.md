@@ -25,11 +25,11 @@ sources:
   - docs/library-first.md
   - "freshness-checked 2026-10-22 @ a631d47ea71b3270ab33ba08af47d3dde8c9e7d5"
 consumers:
-  - "statusgen/topology.go: follow-up milestone-support/05 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/briefv2.go: follow-up milestone-support/05 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/evaluation/: follow-up milestone-support/05 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/testdata/milestone-support/05/: follow-up milestone-support/05 (this delivery; replace with fixed-here in implementation)"
-  - "docs/dependency-graph-design.md: follow-up milestone-support/05 (this delivery; replace with fixed-here in implementation)"
+  - "statusgen/topology.go: fixed-here (inspected: interprets no milestone relationship; nothing to retire)"
+  - "statusgen/briefv2.go: fixed-here (GraphEdge carries a pre-resolved milestone start-gate state)"
+  - "statusgen/evaluation/: fixed-here (BuildMilestoneGraph; the evaluator reads resolved edges as given)"
+  - "statusgen/testdata/milestone-support/05/: fixed-here (mixed-graph fixture tree)"
+  - "docs/dependency-graph-design.md: fixed-here (section 3.8)"
   - "docs/streams/milestone-support/brief-06-bind-milestone-acceptance-to-existing-evidence-and-decisions.md: follow-up milestone-support/06 (consumes this delivery; exact runtime readers enumerated at pickup)"
   - "docs/streams/milestone-support/brief-07-evaluate-milestone-readiness-through-the-canonical-eligibility-api.md: follow-up milestone-support/07 (consumes this delivery; exact runtime readers enumerated at pickup)"
   - "docs/streams/milestone-support/brief-09-preserve-workflow-subjects-and-human-rulings-across-aliases.md: follow-up milestone-support/09 (consumes this delivery; exact runtime readers enumerated at pickup)"
@@ -39,7 +39,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/topology.go`, `statusgen/briefv2.go`, `statusgen/evaluation/`, `statusgen/testdata/milestone-support/05/` (planned), `docs/dependency-graph-design.md`, `changelog/milestone-support-05.md` (planned), `statusgen/testdata/milestone-support/05-mutations.json` (planned). New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/topology.go`, `statusgen/briefv2.go`, `statusgen/evaluation/`, `statusgen/testdata/milestone-support/05/` (planned), `docs/dependency-graph-design.md`, `changelog/milestone-support-05.md` (planned), `statusgen/testdata/milestone-support/05-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.

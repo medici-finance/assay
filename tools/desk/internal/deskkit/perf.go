@@ -243,6 +243,7 @@ var perfBootSteps = []string{
 	"board-fetch",
 	"worktree-current",
 	"first-sweep-prereqs",
+	"binary-pin",
 }
 
 // PerfBootSteps returns a copy of the step-name roster, in boot order.

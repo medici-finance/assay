@@ -41,16 +41,13 @@ consumers:
 ## Context
 
 files:
-- NEW `tools/regsuite/` (planned) — its own Go module (`go.mod`, module path
-  `github.com/medici-finance/assay/tools/regsuite`), like every other tool under `tools/`.
-  `main.go` (planned) with a `gate` subcommand; `gate.go` (planned) + `gate_test.go` (planned).
-- NEW `tools/regsuite/testdata/*.txtar` (planned) — fixture Go modules stored as txtar
-  archives and materialized into `t.TempDir()` at test time (see the fixture fact below).
-- NEW `.github/workflows/regression-suite.yml` (planned) — the `regression-gate` job.
+- **add** `tools/regsuite/` (planned) — its own Go module (`go.mod`, module path `github.com/medici-finance/assay/tools/regsuite`), like every other tool under `tools/`. `main.go` (planned) with a `gate` subcommand; `gate.go` (planned) + `gate_test.go` (planned).
+- **add** `tools/regsuite/testdata/*.txtar` (planned) — fixture Go modules stored as txtar archives and materialized into `t.TempDir()` at test time (see the fixture fact below).
+- **add** `.github/workflows/regression-suite.yml` (planned) — the `regression-gate` job.
 - `docs/test-policy.md` — new `## Regression suite` section under `## Regression floor`.
 - `plugins/assay/skills/author-brief/SKILL.md` — a one-line pointer from the fix-brief class-guard Verify-row paragraph (added by #1580) to the new test-policy section.
 - `tools/desk/cmd/deskwt/roleinitgitlabcred_test.go` — rename one existing test (seed).
-- `changelog/<branch-slug>.md` — the per-PR fragment this repo enforces.
+- **add** — `changelog/<branch-slug>.md`, the per-PR fragment this repo enforces.
 
 facts:
 - **Convention (issue #1581 part 1):** every closed bug leaves a named regression test

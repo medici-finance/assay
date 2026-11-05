@@ -12,6 +12,10 @@ import (
 
 func TestQualificationProbe(t *testing.T) {
 	q := reviewtest.Read(t)
+	if strings.HasPrefix(q.Case, "caller-prepare") {
+		callerPreparationProbe(t, q)
+		return
+	}
 	f := roundFixture()
 	if q.Head != "" {
 		if len(q.Head) != 40 || len(q.Base) != 40 {

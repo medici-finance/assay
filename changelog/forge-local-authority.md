@@ -1,0 +1,1 @@
+- Add explicit local mirror-query caller grants, live current-state checks and protected launcher composition, with a source-bound isolated fixture and production fault controls. Operational credentials, restore qualification and activation remain separate.

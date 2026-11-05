@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -167,24 +166,13 @@ func maintenanceLock(common string, interval time.Duration) (*os.File, string, e
 	return f, "run", nil
 }
 
-func cmdMaintain(args []string) (err error) {
-	if len(args) > 0 && args[0] == "objects" {
-		return cmdObjectMaintenance(args[1:])
-	}
+func runMaintain(o maintainOpts) (err error) {
 	audit := auditCtx{verb: "maintain"}
 	defer func() { audit.finalize(err) }()
-	fs := flag.NewFlagSet("maintain", flag.ContinueOnError)
-	repo := fs.String("repo", "", "repository or linked worktree")
-	apply := fs.Bool("apply", false, "apply safe index tasks; otherwise read-only plan")
-	interval := fs.Duration("min-interval", 6*time.Hour, "minimum time between attempts (at least 1h)")
-	timeout := fs.Duration("timeout", 30*time.Second, "total work budget (1s to 5m)")
-	if e := fs.Parse(args); e != nil {
-		if deskkit.IsHelpRequest(e) {
-			return deskkit.ErrHelpRequested
-		}
-		return deskkit.Refused("bad maintenance flags: " + e.Error())
-	}
-	if fs.NArg() != 0 || *interval < time.Hour || *timeout < time.Second || *timeout > 5*time.Minute {
+	// The one Cobra tree (cli.go) parsed the flags (durations included) and refused any
+	// positional before this handler ran; the bounds stay a domain refusal.
+	repo, apply, interval, timeout := &o.repo, &o.apply, &o.interval, &o.timeout
+	if *interval < time.Hour || *timeout < time.Second || *timeout > 5*time.Minute {
 		return deskkit.Refused("maintain requires no positional args, min-interval >=1h and timeout between 1s and 5m")
 	}
 	if *repo == "" {

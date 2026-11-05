@@ -1,0 +1,6 @@
+# regression: #4769
+# GNUMAKEFLAGS is read for switches like MAKEFLAGS, so -i there runs make -i.
+want: step-not-fatal
+file: Makefile
+replace: "\nSHELL       := /bin/sh\n"
+with: "\nSHELL       := /bin/sh\nGNUMAKEFLAGS += -i\n"

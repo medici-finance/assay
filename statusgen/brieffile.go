@@ -1,6 +1,9 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+	"github.com/medici-finance/assay/statusgen/evaluation"
+
 	"crypto/sha256"
 	"fmt"
 	"path/filepath"
@@ -69,6 +72,13 @@ type BriefFile struct {
 	// which derivation question(s) it answered yes and why.
 	// NOTICEd when exec-tier: strong but exec-tier-why is absent or empty.
 	ExecTierWhy string
+	// IndependenceOverride is the optional `independence-override:` key: the
+	// recorded, human-authorized override of the committer-identity cross-check's
+	// hard PROBLEM for one brief (measured-status/05; attribution.go,
+	// independenceOverrideRefusal). "" when absent. Only its TYPE is checked at
+	// parse; its grammar, the named human, and who committed it are checked by
+	// attributionProblems, and only when the brief actually fails that check.
+	IndependenceOverride string
 	// BlockedBy is the optional brief-v1 `blocked-by:` field — "env" when the
 	// brief is blocked on infrastructure/environment; "" when absent (marks the env-blocked segment in the segmented Awaiting board).
 	BlockedBy string
@@ -154,6 +164,12 @@ type BriefFile struct {
 	// costoutcome.go, and the absence NOTICE for post-cutover briefs lives in
 	// lifecyclelint.go.
 	Outcome *string
+	// OutcomeRevision is the optional brief-v1 `outcome-revision:` key: the
+	// approved product target revision of Outcome this brief was selected
+	// against (statusgen/23). nil when absent — an unbound brief, which a
+	// product-binding assessment reports as unknown, never aligned. It binds
+	// only a named outcome; outcomeRevisionProblem checks its grammar.
+	OutcomeRevision *string
 	// Consumers is the optional brief-v1 `consumers:` list (brief-rule 9): the
 	// readers of a shared value this brief changes,
 	// each routed `<site>: fixed-here | follow-up <stream>/<NN> | out-of-scope
@@ -237,6 +253,16 @@ type BriefFile struct {
 	// (`verify:` frontmatter list of {id, target}) — the verify substrate a row
 	// runs against. nil when absent. Shape-only validation under v2.
 	VerifyRows []VerifyRowMeta
+
+	// brief-v4 (milestone-support/04, briefv4.go). TypedID is the authored
+	// colon-only definition id <cell>:<repo>:<stream>:b-<NN>; Brief then holds the
+	// derived compatibility fullId. RequiresMilestones are the exact versioned
+	// milestone start requirements as written (nil when absent, empty when
+	// explicitly none). RefSelectors keep each depends:/unblocks: entry as written
+	// beside its normalized <stream>/<NN> key in Depends/Unblocks.
+	TypedID            string
+	RequiresMilestones []string
+	RefSelectors       []BriefRefSelector
 }
 
 var (
@@ -266,7 +292,15 @@ var (
 	// briefSchemaV3 is brief-v2 plus the off-path `withdrawn` status keys
 	// (withdrawn-date / withdrawn-reason / superseded-by, withdrawn.go). Every
 	// brief-v2 rule applies to it unchanged — see isBriefV2Family.
-	briefSchemaV3           = "brief-v3"
+	briefSchemaV3 = "brief-v3"
+	// briefSchemaV4 is brief-v3 plus the negotiated typed-reference surface
+	// (milestone-support/04, briefv4.go): the colon-only `b-` definition id, a
+	// REQUIRED explicit `version:` and `id:`, the optional `requires-milestones:`
+	// start requirements, and optional exact `@<version>` selectors on brief refs.
+	// It is statusgen-local syntax, deliberately NOT in briefdoc.SchemaVersions:
+	// that list is also desk-tools' advertisement, and desk-tools does not read
+	// `b-` ids, so it must keep refusing a brief-v4 record (newbrief negotiates).
+	briefSchemaV4           = "brief-v4"
 	briefSchemaFamilyPrefix = "brief-v"
 
 	// Required frontmatter keys. `schema` is intentionally absent: its presence
@@ -276,8 +310,9 @@ var (
 		"brief", "title", "wave", "depends", "unblocks", "effort",
 		"gate", "risk", "issues", "authored", "sources",
 	}
-	canonicalRiskKeys = []string{"regulatory", "customer", "irreversible", "sensitive-data"}
-	canonicalRiskSet  = map[string]bool{"regulatory": true, "customer": true, "irreversible": true, "sensitive-data": true}
+	// The risk questions are owned by briefdoc; these are projections of that one list.
+	canonicalRiskKeys = briefdoc.RiskKeys()
+	canonicalRiskSet  = riskKeySet(canonicalRiskKeys)
 	validEffort       = map[string]bool{"S": true, "M": true, "L": true}
 	validGate         = map[string]bool{"model": true, "human": true}
 	// validExecTier is the allowed set for the optional brief-v1 `exec-tier:` field.
@@ -312,11 +347,14 @@ var (
 	// binary parses and validates. Anything with the brief-v* prefix outside this
 	// set fails CLOSED (#271). Kept sorted for stable lint messages via
 	// recognizedBriefSchemaList.
-	recognizedBriefSchemas = map[string]bool{
-		briefSchemaCurrent: true, // brief-v1
-		briefSchemaV2:      true, // brief-v2 (derived-board)
-		briefSchemaV3:      true, // brief-v3 (brief-v2 + the withdrawn status keys)
-	}
+	recognizedBriefSchemas = func() map[string]bool {
+		schemas := map[string]bool{}
+		for _, schema := range briefdoc.SchemaVersions() {
+			schemas[schema] = true
+		}
+		schemas[briefSchemaV4] = true // statusgen-local; see briefSchemaV4
+		return schemas
+	}()
 )
 
 // recognizedBriefSchemaList returns the recognized brief-schema-family versions,
@@ -631,7 +669,7 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 	}
 	switch {
 	case recognizedBriefSchemas[s]:
-		// Recognized brief schema (brief-v1, brief-v2 or brief-v3) → validate below.
+		// Recognized brief schema (brief-v1 … brief-v4) → validate below.
 	case strings.HasPrefix(s, briefSchemaFamilyPrefix):
 		// A brief-schema-family version this binary does not understand → the
 		// #271 flag-day trap. Refuse it: the tree is on a brief schema this
@@ -889,7 +927,7 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 	// free prose, and a statusgen upgrade must not redden them. On brief-v3
 	// only TYPES are checked here; presence rules need the README row and live
 	// in checkBriefFiles.
-	if bf.Schema == briefSchemaV3 {
+	if bf.Schema == briefSchemaV3 || bf.Schema == briefSchemaV4 {
 		parseWithdrawalKeys(data, bf, addBad)
 	}
 	// parallel-streams is an OPTIONAL but KNOWN key (methodology/43): the shards
@@ -1014,6 +1052,16 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 			addBad("outcome must be a string (a requirement id REQ-<slug>, or none)")
 		}
 	}
+	// outcome-revision is an OPTIONAL but KNOWN key: the approved product
+	// target revision the brief was selected against. A wrong TYPE is a parse
+	// error; its grammar and its pairing with outcome are checked semantically.
+	if v, ok := data["outcome-revision"]; ok {
+		if s, ok := v.(string); ok {
+			bf.OutcomeRevision = &s
+		} else {
+			addBad("outcome-revision must be a string (the approved product target revision the brief was selected against)")
+		}
+	}
 	// decision-issue is an OPTIONAL but KNOWN key: the GitHub
 	// issue # for the open needs-decision issue tracking this brief. Absence is
 	// fine (most briefs do not need a human decision); a wrong TYPE is an error.
@@ -1038,11 +1086,39 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 			addBad("ruling must be a string (an issue-comment URL)")
 		}
 	}
+	// independence-override is an OPTIONAL but KNOWN key (measured-status/05): a
+	// single-line "human:<name> YYYY-MM-DD <reason>" value. A wrong TYPE is a parse
+	// error; everything else is judged where the override would apply
+	// (attribution.go), so a malformed value is echoed back there, never here.
+	if v, ok := data["independence-override"]; ok {
+		if s, isStr := v.(string); isStr {
+			bf.IndependenceOverride = strings.TrimSpace(s)
+		} else {
+			addBad("independence-override must be a string (\"human:<name> YYYY-MM-DD <reason>\")")
+		}
+	}
 	// brief-v2 reserved keys (derived-board/03). Parsed only for a v2 file; a v1
 	// file that carries one of these keys is untouched here (an unknown key is not
 	// schema drift under v1 — the same tolerance every other optional key gets).
 	if isBriefV2Family(bf.Schema) {
 		parseBriefV2Keys(data, bf, addBad)
+	}
+	// brief-v4 (milestone-support/04): the typed-reference surface on top of the
+	// v2-family keys. It normalizes the prefixed definition id and the brief refs
+	// to the compatibility forms every existing v2 reader keys on.
+	if bf.Schema == briefSchemaV4 {
+		parseBriefV4Keys(data, bf, addBad)
+	} else {
+		// A legacy reader TOLERATES unknown keys, so a start requirement written
+		// into a brief-v1..v3 file would be silently dropped. Refuse the mismatched
+		// schema instead (spec/brief-v1.md §3.7), and refuse the prefixed id, which
+		// only brief-v4 defines.
+		if _, ok := data["requires-milestones"]; ok {
+			addBad("requires-milestones needs schema brief-v4 — a %s reader tolerates the unknown key and would silently drop the start requirement", bf.Schema)
+		}
+		if isBriefV2Family(bf.Schema) && strings.HasPrefix(lastColonSegment(bf.Brief), "b-") { // briefid:raw shape of the authored id
+			addBad("brief %q uses the prefixed b- definition form, which only schema brief-v4 defines", bf.Brief)
+		}
 	}
 	if len(bad) > 0 {
 		return nil, false, fmt.Errorf("%s: %s", path, strings.Join(bad, "; "))
@@ -1308,57 +1384,23 @@ func extractEvidence(body string) string {
 // section's boundaries are decided; extractEvidence and the auto-flip's
 // Evidence-only classifier (evidenceshape.go) both read them from here, so a
 // line the parser does not read as Evidence is never classified as Evidence.
-func evidenceSectionSpan(lines []string) (start, end int, ok bool) {
-	start = -1
-	for i, l := range lines {
-		if strings.TrimSpace(l) == "## Evidence" {
-			start = i + 1
-			break
-		}
-	}
-	if start < 0 {
-		return 0, 0, false
-	}
-	end = len(lines)
-	for i := start; i < len(lines); i++ {
-		if isSectionHeading(lines[i]) {
-			end = i
-			break
-		}
-	}
-	return start, end, true
+func evidenceSectionSpan(lines []string) (int, int, bool) {
+	return briefdoc.SectionBounds(lines, "Evidence", false)
 }
 
 // isSectionHeading reports whether a brief line is a `## ` section heading as
 // the parser reads one: leading and trailing whitespace ignored.
-func isSectionHeading(l string) bool {
-	return strings.HasPrefix(strings.TrimSpace(l), "## ")
-}
+func isSectionHeading(l string) bool { return briefdoc.IsSection(l) }
 
 // evidenceHasContent reports whether an Evidence section has at least one
 // content row: a non-empty line outside HTML comments (the contract comment
 // alone does not count).
-func evidenceHasContent(section string) bool {
-	stripped := htmlCommentRe.ReplaceAllString(section, "")
-	for _, l := range strings.Split(stripped, "\n") {
-		if strings.TrimSpace(l) != "" {
-			return true
-		}
-	}
-	return false
-}
+func evidenceHasContent(section string) bool { return briefdoc.HasContent(section) }
 
 // hasHumanReviewer reports whether a Reviewed-column value names a human — a
 // whitespace-separated token with the "human:" prefix (e.g. "human:alex"). A tag
 // that merely contains the substring (e.g. "superhuman:x") does NOT count.
-func hasHumanReviewer(reviewed string) bool {
-	for _, tok := range strings.Fields(reviewed) {
-		if strings.HasPrefix(tok, "human:") {
-			return true
-		}
-	}
-	return false
-}
+func hasHumanReviewer(reviewed string) bool { return evaluation.HasHumanReviewer(reviewed) }
 
 // verifyTableHasRow reports whether a `## Verify` section body contains at least
 // one table data row whose Command and Expect cells are both non-empty. It
@@ -1600,6 +1642,11 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 		return reg
 	}
 	v2IDOwner := map[string]string{} // uuid -> first brief path that used it
+	// brief-v4 revision selectors bind against the whole scanned snapshot of
+	// their root, so pinned selectors are collected and bound after the loop.
+	v4Snaps := map[string]briefSnapshot{}
+	var v4Pending []briefV4PendingBinding
+	var msPending []milestoneStartPending
 	// withdrawn status (withdrawn.go): successor refs and depends-on-withdrawn
 	// resolve against every stream of the run, partitioned by root.
 	withdrawRes := newWithdrawalResolver(allStreams)
@@ -1637,6 +1684,9 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				// semantic pass — not the v1 exact filename-match.
 				reg := graphReposFor(s.Root)
 				checkBriefV2Semantics(add, notice, path, bf, reg, s.Name, num)
+				if bf.Schema == briefSchemaV4 {
+					checkBriefV4Semantics(add, notice, path, bf, reg)
+				}
 				if bf.ID != "" {
 					if prev, dup := v2IDOwner[bf.ID]; dup {
 						add("%s: id %q is already used by %s — a brief id (uuid) is minted once and never reused", path, bf.ID, prev)
@@ -1736,6 +1786,9 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 					add("%s: budget %s", path, reason)
 				}
 			}
+			if p := outcomeRevisionProblem(bf); p != "" {
+				add("%s: outcome-revision %s", path, p)
+			}
 			if bf.Outcome != nil {
 				probs, notes := outcomeChecks(*bf.Outcome, graphReposFor(s.Root), outcomeRegisterFor(s.Root))
 				for _, p := range probs {
@@ -1814,6 +1867,16 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				// evaluator (graph-execution/01) — brief-v2 only; nil for
 				// brief-v1/legacy briefs, exactly like Depends above.
 				row.Gates = bf.Gates
+				// requires-milestones start gates resolve over the combined
+				// milestone graph once the whole scan is in hand (milestonegraph.go).
+				if len(bf.RequiresMilestones) > 0 {
+					msPending = append(msPending, milestoneStartPending{path: path, stream: s, row: row, requires: bf.RequiresMilestones})
+				}
+				for _, sel := range bf.RefSelectors {
+					if sel.Ref.Revision != 0 {
+						v4Pending = append(v4Pending, briefV4PendingBinding{path: path, root: s.Root, row: row, sel: sel})
+					}
+				}
 				row.Feathers = bf.Feathers
 				// value flows into the Next-up score;
 				// an invalid value is caught above and left off the row so the
@@ -2004,6 +2067,10 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 			// and it drops no repo alias, so normalizeBriefKey's allow-list
 			// (TestAliasDropGuard) stays as it is.
 			edgeID := id
+			if v4Snaps[s.Root] == nil {
+				v4Snaps[s.Root] = briefSnapshot{}
+			}
+			v4Snaps[s.Root][edgeID] = briefSnapshotEntry{Version: bf.Version, ID: bf.ID}
 			for _, ref := range bf.Depends {
 				checkRef(add, path, "depends", ref, edgeID, byName)
 			}
@@ -2066,6 +2133,17 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 	// board-wide on the next release + repin. It ships at NOTICE (non-fatal, exit
 	// 0) until those edges are reconciled two-sided, then returns to PROBLEM.
 	// Follow-up reconciliation is tracked as a separate backlog item (below).
+	bindBriefV4Selectors(notice, v4Pending, v4Snaps)
+	// The graph spans every stream of the run; a root this scan did not lint
+	// reports its registry problem elsewhere, so its registry is read quietly
+	// here (an unreadable one leaves its briefs' requirements unknown).
+	applyMilestoneStartGates(add, notice, allStreams, msPending, v4Snaps, func(root string) *graphRepos {
+		if graphRegLoaded[root] {
+			return graphRegCache[root]
+		}
+		reg, _, _ := loadGraphRepos(root)
+		return reg
+	})
 	notices = append(notices, recip.reciprocityNotices()...)
 	problems = append(problems, withdrawnRowProblems(streams)...)
 	sort.Strings(problems)
@@ -2168,4 +2246,33 @@ func checkRef(add func(string, ...any), path, kind, ref, selfID string, byName m
 		}
 	}
 	add("%s: %s %q references unknown brief %q in stream %s", path, kind, ref, parts[1], parts[0])
+}
+
+// riskKeySet returns keys as a membership set.
+func riskKeySet(keys []string) map[string]bool {
+	set := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		set[k] = true
+	}
+	return set
+}
+
+// outcomeRevisionRe is the revision-name grammar context-handoff-v3 records a
+// product target revision in.
+var outcomeRevisionRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+
+// outcomeRevisionProblem checks a present outcome-revision: a revision name,
+// binding an outcome the brief names (never `none`, never an absent outcome).
+func outcomeRevisionProblem(bf *BriefFile) string {
+	if bf.OutcomeRevision == nil {
+		return ""
+	}
+	rev := *bf.OutcomeRevision
+	if bf.Outcome == nil || strings.TrimSpace(*bf.Outcome) == outcomeNone {
+		return fmt.Sprintf("%q binds no outcome — it is the product target revision of the outcome: key, which is absent or none", rev)
+	}
+	if !outcomeRevisionRe.MatchString(rev) {
+		return fmt.Sprintf("%q is not a revision name (lowercase letters and digits, then '.', '_' or '-')", rev)
+	}
+	return ""
 }

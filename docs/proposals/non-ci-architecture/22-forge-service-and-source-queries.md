@@ -41,6 +41,13 @@ composition can live in `tools/desk/internal/forgeservice/`, with a thin `forges
 the public typed read/client contracts extend the dependency-free `forgeread` module in
 separate packages. Root/offline consumers acquire no HTTP, database or credential dependency.
 Do not export all of deskkit or add a generic raw-request interface.
+*(Note, 25 October 2026: `DR-forge-library` records the driver's ruling of one shared forge
+library for reads and writes. Its desk-default placement is a separate repository-root module,
+`forgeclient/`, which composes the `forgeread` adapters, rather than further packages of the
+`forgeread` module. This keeps the `forgeread` module itself free of any credential. The path is
+decided at desktools-v2/75's human gate. The library's typed operation surface is the same
+shape as this document's role executor, so the custody service described here stays future
+work.)*
 
 A query process holds only its admitted read access and mirror-reader role. Each existing
 role-bound publisher/executor retains its own credential custody and process boundary;
@@ -63,6 +70,80 @@ Agents receive no SQL credentials and cannot UPDATE an issue row to request publ
 The mirror is view-only to consumers while ingestion and confirmed effects update it.
 SQL projections do not become authoritative issue/PR/MR records. Published evidence and
 accepted decisions retain their existing canonical owners.
+
+## Read-through and failure cache — 3 November 2026
+
+The requested read behavior is service-owned read-through. An authenticated query whose
+cache entry is missing or insufficient for its exact scope, source inputs or required
+freshness attempts the admitted source through the shared owner, within bounded request
+and provider budgets. Concurrent equivalent misses join one fill. A healthy cold source
+can therefore satisfy the original query and populate the cache; clients need no provider
+fallback, credential discovery, workspace clone or private polling loop. A shared-service
+outage returns explicit unavailable to the client, never permission to bypass it.
+
+Keep the existing owners: /37 supplies mirror refresh and coverage, /40 authenticates and
+serves, /42 fills exact-source results, /43 recomputes derived answers, and /39 carries the
+typed client contract. The pure mirror kernel performs no network operation. A derived
+miss first determines whether its base observations are sufficient: recompute locally
+when they are; otherwise request the same admitted base refresh. Periodic inventory and
+repair remain necessary even when no caller happens to miss. Source fills are enumerated
+read operations only; an absent operation receipt never resubmits a write.
+
+A short-lived failure cache belongs to those same shared read owners. Cache a bounded,
+sanitized failure class and retry eligibility, not a successful empty population or raw
+provider bodies, URLs, headers, credentials or private diagnostics. Coalesce the failed
+fill too: during its bounded cooldown, equivalent queries receive explicit unavailable,
+or explicitly permitted stale data with its original coverage and age, without another
+source request. An authenticated reader may learn only its admitted failure outcome.
+After cooldown, one eligible probe may refill; a successful fill clears the failure.
+Successful means sufficient for that query's required coverage, revision and freshness,
+not merely HTTP 200 or a nil error. A partial/truncated source walk can return no error
+while leaving the query unfulfilled: retain its explicit partial facts, prior complete
+watermark and the existing Partial/Unavailable refresh backoff instead of clearing the
+failure hold or promoting the result to complete-empty.
+Respect provider Retry-After and existing budgets in addition to cache expiry. Configure
+finite entry/count/byte bounds, injected-clock expiry and bounded backoff through trusted
+composition; do not invent a new cache daemon or a client-specific retry authority.
+
+Success, in-flight and failure reuse remain qualified by cell, provider/instance,
+repository, exact typed query inputs and current source admission/access/configuration
+epoch. Authorize before lookup and recheck when delivering a shared fill. One credential's
+failure cannot poison another admission or a changed access epoch. Permission failures
+remain unavailable and retain /37's full-inventory recovery and selected retention gate;
+expiry alone cannot clear a permission hold. Authoritatively observed absence is a
+separate successful fact with explicit coverage/invalidation, not the failure cache.
+An oversized, truncated or otherwise unqualified 404 proves neither authoritative absence
+nor confirmed repository permission loss. Its cached status cannot authorize purge.
+Keep the failed read explicit and let the existing retention owner qualify permission
+loss under the selected policy; add no automatic confirmation probe or generic endpoint.
+
+The reuse key describes the actual source fill. Different projections that need the same
+base observations join /37's one scoped refresh and its failure cooldown; this must not
+degenerate into one source poll per client query. Distinct fills retain distinct keys.
+A caller's ingress denial is never installed as a shared source failure. Only a failure
+from an already-admitted source attempt is eligible; source unavailability does not decide
+another caller's authorization.
+
+One canceled waiter cannot cancel the fill for other admitted waiters. Bound fill lifetime,
+waiter count and memory independently of any single caller. Only the shared owner may
+retry within policy. Before starting a new fill, apply the configured read owner's finite
+per-admission and stable authenticated-caller fill/concurrency/queue limits, alongside its
+global source/provider budget. Use trusted identity, not a caller-selected request id or
+diagnostic label. Schedule available capacity fairly so a flood of distinct cold keys by
+one permitted caller cannot consume every fill slot reserved for other permitted callers.
+Caller-local quota refusals never become a shared source failure. Reuse the existing
+refresh/service policy ports and accounting; add no quota authority or ledger. Coalesced
+waiters do not multiply the actual provider-attempt charge, while their own request/waiter
+bounds still apply. In a deterministic fixture with available global budget, saturating
+caller A's share must still permit caller B's useful fill; exhausting the actual global
+budget instead returns explicit limited/unavailable, never a fabricated success. Removing
+the per-caller gate or keying it by untrusted request ids must fail that fixture.
+
+Measure actual source attempts once per fill, coalesced waiters,
+failure-cache hits, age and retry eligibility using existing bounded observability seams;
+missing instrumentation is unknown. Read-through is a required acceptance behavior, not
+an operational or savings claim. No identity, scope, retention, deployment or activation
+gate is changed by this amendment.
 
 ## Write-through behavior and failure contract
 

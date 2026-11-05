@@ -51,12 +51,14 @@ type ReviewState struct {
 	// surfaces the row as EXTERNAL-PREREQ-REVIEW and leaves the authoritative grant to the
 	// ready gate (deskpost/ready.go), so the two surfaces agree on what the row IS.
 	ExternalPrereqDeclared bool
-	// BodyEditReverified is true when a row ReduceReviews marked SuspectNoOp was LIFTED by
+	// BodyEditReverified is true when a row ReduceReviews marked blocking was LIFTED by
 	// the deskboard command's applyBodyEditReverification: every standing CR at head declared the documented body-edit
 	// re-verification class and a later correctness APPROVE documents and verifies it against
 	// the live PR body (deskkit.EvaluateBodyEditReverification — the SAME decision deskflip's
-	// reviewer-approved gate runs). The row then reads approved at head and flows through the
-	// ordinary CI / mergeability / security arms; this flag only annotates its note.
+	// reviewer-approved gate runs), or, for a `Security-Review: fail`, the security lane's
+	// marked clearance holds (deskkit.EvaluateSecurityBodyClearance, #5092). The row then reads
+	// approved at head and flows through the ordinary CI / mergeability / security arms; this
+	// flag only annotates its note.
 	BodyEditReverified bool
 }
 

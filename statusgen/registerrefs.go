@@ -34,8 +34,27 @@ var registerViewNames = map[string]bool{
 // silently skipped (the register-integrity check in registers.go already flags
 // duplicate IDs; this function just maps what it can).
 func buildRegisterMap(root string) (findings, intake map[string]string) {
+	fc, ic := buildRegisterCandidates(root)
 	findings = map[string]string{}
 	intake = map[string]string{}
+	// Last candidate wins, which is the order the single-valued map always had
+	// (directory entries are read sorted); uniqueness is asked of the candidates.
+	for id, paths := range fc {
+		findings[id] = paths[len(paths)-1]
+	}
+	for id, paths := range ic {
+		intake[id] = paths[len(paths)-1]
+	}
+	return findings, intake
+}
+
+// buildRegisterCandidates is buildRegisterMap's reader with every entry file that
+// claims an id kept, not just the last: an id claimed by two files is ambiguous,
+// and a rewrite that picked one of them would invent a target
+// (repairViewLinks). Paths are repo-relative, in read order.
+func buildRegisterCandidates(root string) (findings, intake map[string][]string) {
+	findings = map[string][]string{}
+	intake = map[string][]string{}
 
 	fDir := filepath.Join(root, "docs", "streams", "findings")
 	if entries, err := os.ReadDir(fDir); err == nil {
@@ -51,7 +70,7 @@ func buildRegisterMap(root string) (findings, intake map[string]string) {
 			if err != nil || fe.ID == "" {
 				continue
 			}
-			findings[fe.ID] = filepath.Join("docs", "streams", "findings", e.Name())
+			findings[fe.ID] = append(findings[fe.ID], filepath.Join("docs", "streams", "findings", e.Name()))
 		}
 	}
 
@@ -73,7 +92,7 @@ func buildRegisterMap(root string) (findings, intake map[string]string) {
 		if loc.Subdir != "" {
 			rel = filepath.Join(loc.Subdir, loc.Name)
 		}
-		intake[ie.ID] = filepath.Join("docs", "streams", "intake", rel)
+		intake[ie.ID] = append(intake[ie.ID], filepath.Join("docs", "streams", "intake", rel))
 	}
 
 	return findings, intake
@@ -237,18 +256,35 @@ func stripFences(content string) string {
 // backfillRegisterRefs scans every brief-*.md under docs/streams/*/ and
 // rewrites bare register-ID tokens (F-NN / I-NN) to markdown links pointing at
 // the per-entry file. It is idempotent — already-linked refs are left
-// untouched. Code-fenced blocks, inline code spans, and Verify table rows are
-// skipped. Returns the total number of replacements made.
+// untouched. Code-fenced blocks (``` and ~~~), inline code spans, Verify table
+// rows and the whole `## Evidence` section are skipped. Returns the total number of replacements made.
 func backfillRegisterRefs(root string) (int, error) {
+	rep, err := backfillRegisterRefsReport(root)
+	return rep.Linked + rep.Repaired, err
+}
+
+// registerBackfillReport is what one backfill pass did: bare ids linked, typed
+// links to a generated view repaired to their per-entry file, and the typed view
+// links it could not repair (ambiguous or unmapped) — listed, never guessed.
+type registerBackfillReport struct {
+	Linked     int
+	Repaired   int
+	Unresolved []string // "<brief>:<line>: [ID](target) — reason", sorted
+}
+
+// backfillRegisterRefsReport is backfillRegisterRefs with the repair counts and the
+// unresolved list kept apart. Same files, same skips, same single write per file.
+func backfillRegisterRefsReport(root string) (registerBackfillReport, error) {
+	var rep registerBackfillReport
 	fMap, iMap := buildRegisterMap(root)
+	fCand, iCand := buildRegisterCandidates(root)
 
 	streamsDir := filepath.Join(root, "docs", "streams")
 	entries, err := os.ReadDir(streamsDir)
 	if err != nil {
-		return 0, fmt.Errorf("reading streams dir: %w", err)
+		return rep, fmt.Errorf("reading streams dir: %w", err)
 	}
 
-	total := 0
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
@@ -258,43 +294,61 @@ func backfillRegisterRefs(root string) (int, error) {
 		}
 		briefs, _ := filepath.Glob(filepath.Join(streamsDir, e.Name(), "brief-*.md"))
 		for _, bp := range briefs {
-			n, err := backfillOneFile(bp, fMap, iMap)
+			n, fixed, unresolved, err := backfillOneFileReport(bp, root, fMap, iMap, fCand, iCand)
 			if err != nil {
-				return total, fmt.Errorf("%s: %w", bp, err)
+				return rep, fmt.Errorf("%s: %w", bp, err)
 			}
-			total += n
+			rep.Linked += n
+			rep.Repaired += fixed
+			rep.Unresolved = append(rep.Unresolved, unresolved...)
 		}
 	}
-	return total, nil
+	sort.Strings(rep.Unresolved)
+	return rep, nil
 }
 
 // backfillOneFile rewrites one brief file and writes it back. Returns the
 // number of replacements made.
 func backfillOneFile(path string, fMap, iMap map[string]string) (int, error) {
+	n, _, _, err := backfillOneFileReport(path, "", fMap, iMap, nil, nil)
+	return n, err
+}
+
+// backfillOneFileReport is backfillOneFile plus the typed-view-link repair. With a
+// nil candidate map (the root-less call above) the repair is skipped. Returns
+// bare ids linked, view links repaired, and the unresolved view links.
+func backfillOneFileReport(path, root string, fMap, iMap map[string]string, fCand, iCand map[string][]string) (int, int, []string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return 0, err
+		return 0, 0, nil, err
 	}
 	content := string(raw)
 
 	lines := strings.Split(content, "\n")
 	var out []string
-	inFence := false
+	fenceMark := "" // the open fence's marker ("```" or "~~~"), "" outside a fence
 	inVerifyTable := false
-	count := 0
-	// verifyHeaderRe detects the column-header row of a Verify table.
-	verifyHeaderRe := regexp.MustCompile(`\|\s*#\s*\|\s*Command\s*\|\s*Expect\s*\|`)
+	inEvidence := false
+	count, repaired := 0, 0
+	var unresolved []string
 
-	for _, line := range lines {
+	for li, line := range lines {
 		trimmed := strings.TrimSpace(line)
+		if fenceMark == "" && strings.HasPrefix(trimmed, "## ") {
+			inEvidence = strings.EqualFold(strings.TrimSpace(strings.TrimPrefix(trimmed, "## ")), "Evidence")
+		}
 
-		// Code-fence toggle.
-		if strings.HasPrefix(trimmed, "```") {
-			inFence = !inFence
+		// Code-fence toggle: a ``` fence is closed only by ```, a ~~~ fence only by ~~~.
+		if mark := fenceMarkerOf(trimmed); mark != "" && (fenceMark == "" || mark == fenceMark) {
+			if fenceMark == "" {
+				fenceMark = mark
+			} else {
+				fenceMark = ""
+			}
 			out = append(out, line)
 			continue
 		}
-		if inFence {
+		if fenceMark != "" {
 			out = append(out, line)
 			continue
 		}
@@ -307,8 +361,28 @@ func backfillOneFile(path string, fMap, iMap map[string]string) (int, error) {
 			}
 			inVerifyTable = false
 		}
-		if verifyHeaderRe.MatchString(trimmed) {
+		if isVerifyHeaderRow(trimmed) {
 			inVerifyTable = true
+			out = append(out, line)
+			continue
+		}
+
+		// Repair typed links to a generated view (FINDINGS.md / INTAKE.md) whose
+		// id maps to exactly ONE durable entry. Recorded Evidence is history and
+		// is never rewritten; the Verify table above is skipped as a frozen command.
+		if fCand != nil && !inEvidence {
+			var fixed int
+			var left []string
+			line, fixed, left = repairViewLinks(line, root, path, fCand, iCand)
+			repaired += fixed
+			for _, l := range left {
+				unresolved = append(unresolved, fmt.Sprintf("%s:%d: %s", filepath.ToSlash(path), li+1, l))
+			}
+		}
+
+		// Recorded Evidence is history: neither arm rewrites it (a bare id there stays
+		// as the verifier wrote it).
+		if inEvidence {
 			out = append(out, line)
 			continue
 		}
@@ -319,13 +393,109 @@ func backfillOneFile(path string, fMap, iMap map[string]string) (int, error) {
 		out = append(out, newLine)
 	}
 
-	if count > 0 {
+	if count+repaired > 0 {
 		newContent := strings.Join(out, "\n")
 		if err := os.WriteFile(path, []byte(newContent), 0o644); err != nil {
-			return count, err
+			return count, repaired, unresolved, err
 		}
 	}
-	return count, nil
+	return count, repaired, unresolved, nil
+}
+
+// isVerifyHeaderRow reports whether a (trimmed) table row is a Verify table's
+// column header: a row carrying both a Command and an Expect cell, located by
+// header NAME as verifyRowTable does, so the Class-first shapes
+// (`| # | Class | Command | Expect |`, `| # | Class | Shell | Command | Expect |`)
+// freeze their rows exactly as the legacy `| # | Command | Expect |` does.
+func isVerifyHeaderRow(trimmed string) bool {
+	if !strings.HasPrefix(trimmed, "|") {
+		return false
+	}
+	cmd, exp := false, false
+	for _, c := range splitRowEscaped(trimmed) {
+		switch strings.ToLower(strings.TrimSpace(c)) {
+		case "command":
+			cmd = true
+		case "expect":
+			exp = true
+		}
+	}
+	return cmd && exp
+}
+
+// fenceMarkerOf returns "```" or "~~~" when the (trimmed) line opens or closes a
+// fenced code block, "" otherwise.
+func fenceMarkerOf(trimmed string) string {
+	switch {
+	case strings.HasPrefix(trimmed, "```"):
+		return "```"
+	case strings.HasPrefix(trimmed, "~~~"):
+		return "~~~"
+	}
+	return ""
+}
+
+// repairViewLinks rewrites, on one line, every typed register link whose target is a
+// generated view to the id's per-entry file — but ONLY when the id maps to exactly
+// one durable entry. An id with no entry or with several entries (ambiguous) is
+// left byte-for-byte as written and returned in unresolved with the reason: the
+// rewrite never invents a target. Links inside an inline code span and external
+// URLs are left alone. It is idempotent: a repaired link no longer points at a view.
+func repairViewLinks(line, root, briefPath string, fCand, iCand map[string][]string) (string, int, []string) {
+	codeSpans := regexp.MustCompile("`[^`]*`").FindAllStringIndex(line, -1)
+	inCode := func(pos int) bool {
+		for _, c := range codeSpans {
+			if pos >= c[0] && pos < c[1] {
+				return true
+			}
+		}
+		return false
+	}
+	var b strings.Builder
+	var unresolved []string
+	prev, repaired := 0, 0
+	for _, m := range registerLinkRe.FindAllStringSubmatchIndex(line, -1) {
+		if inCode(m[0]) {
+			continue
+		}
+		id := line[m[2]:m[3]]
+		target := strings.TrimSpace(line[m[4]:m[5]])
+		if strings.HasPrefix(target, "http") {
+			continue
+		}
+		bare := target
+		if i := strings.Index(bare, "#"); i >= 0 {
+			bare = bare[:i]
+		}
+		if !registerViewNames[filepath.Base(bare)] {
+			continue
+		}
+		cands := fCand[id]
+		if strings.HasPrefix(id, "I-") {
+			cands = iCand[id]
+		}
+		switch len(cands) {
+		case 1:
+			rel, err := filepath.Rel(filepath.Dir(briefPath), filepath.Join(root, cands[0]))
+			if err != nil {
+				unresolved = append(unresolved, fmt.Sprintf("[%s](%s) — cannot relativise %s", id, target, cands[0]))
+				continue
+			}
+			b.WriteString(line[prev:m[4]])
+			b.WriteString(filepath.ToSlash(rel))
+			prev = m[5]
+			repaired++
+		case 0:
+			unresolved = append(unresolved, fmt.Sprintf("[%s](%s) — no durable entry carries this id", id, target))
+		default:
+			unresolved = append(unresolved, fmt.Sprintf("[%s](%s) — ambiguous: %d entries claim this id (%s)", id, target, len(cands), strings.Join(cands, ", ")))
+		}
+	}
+	if repaired == 0 {
+		return line, 0, unresolved
+	}
+	b.WriteString(line[prev:])
+	return b.String(), repaired, unresolved
 }
 
 // replaceBareRefs finds bare F-NN/I-NN tokens on a single line and replaces

@@ -40,7 +40,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/testdata/milestone-support/14/` (planned), `tools/desk/cmd/deskinstall/`, `tools/desk/internal/cursorbundle/`, `containers/`, `Makefile`, `docs/milestone-adoption.md` (planned), `plugins/assay/paired-versions.yaml`, `spec/milestone-v1.md`, `spec/brief-v1.md`, `changelog/milestone-support-14.md` (planned), `statusgen/testdata/milestone-support/14-mutations.json` (planned). New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/testdata/milestone-support/14/` (planned), `tools/desk/cmd/deskinstall/`, `tools/desk/internal/cursorbundle/`, `containers/`, `Makefile`, `docs/milestone-adoption.md` (planned), `plugins/assay/paired-versions.yaml`, `spec/milestone-v1.md`, `spec/brief-v1.md`, `changelog/milestone-support-14.md` (planned), `statusgen/testdata/milestone-support/14-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.

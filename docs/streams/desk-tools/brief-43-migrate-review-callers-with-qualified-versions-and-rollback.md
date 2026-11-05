@@ -25,11 +25,11 @@ domain: complicated
 gate-why: Review/issue observations can expose scoped operational facts; implemented coverage and authority boundaries require the existing human acceptance.
 decision-trigger: spec
 consumers:
-  - "plugins/assay/skills/pr-review-desk/SKILL.md: follow-up desk-tools/43"
-  - "plugins/assay/skills/the-desk/SKILL.md: follow-up desk-tools/43"
-  - "plugins/assay/scripts/pr-monitor.sh: follow-up desk-tools/43"
-  - "plugins/assay/scripts/assay-inbox.sh: follow-up desk-tools/43"
-  - "tools/desk/cmd/deskboard/throughput.go: follow-up desk-tools/43"
+  - "plugins/assay/skills/pr-review-desk/SKILL.md: fixed-here"
+  - "plugins/assay/skills/the-desk/SKILL.md: fixed-here"
+  - "plugins/assay/scripts/pr-monitor.sh: fixed-here"
+  - "plugins/assay/scripts/assay-inbox.sh: fixed-here"
+  - "tools/desk/cmd/deskboard/throughput.go: fixed-here"
 ---
 
 # Brief 43 — Migrate review callers with qualified versions and rollback
@@ -56,7 +56,7 @@ design-fit:
   owner: review skill, shared supervision references, monitors and review-depth consumers
   contract: approved spec §8 and A9; existing cadence/wake/independent verdict gates; #3325 proposed shared procedure
   retires: duplicate work only after the applicable caller and equivalence acceptance
-  weight: verbs +0, flags +0, refusals +0, rule-text reduced through shared procedure references
+  weight: verbs +0, flags +1 optional throughput observation handoff, refusals +0, rule-text reduced through shared procedure references
   why-add: reuse existing contracts/runner/typed reads; a complete observation is required before removing the second read, and a new cache would preserve that duplication
 
 ## Read first
@@ -142,3 +142,25 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 Retain the derived frontmatter gate. Approval of the source spec is recorded; this brief
 adds implementation acceptance rather than reopening that decision. Existing adopter
 writer/custody/equivalence and collection consent gates remain separate.
+
+## Architecture pickup — 24 October 2026
+
+Manual source-pinned assessment at main `385cb29e5682dcb9a886b298076f722b4823ec1b`:
+brief version 3 and approved efficiency spec §7/§8 plus requested candidate/priority
+amendment; current library-first, contracts, brief-rules and telemetry guidelines read.
+/40 (#4248) and /41 (#4259) have merged; generated lifecycle rows lag these witnesses
+and are not rewritten here. /42 remains independently assigned with its acceptance hold.
+Producer release v1.0.59 (source dff97978) ships the queue/offline planner/preparation
+seams; installed-cell adoption remains separate. #3325 merged and desk-common already
+owns supervision. Current issue/verification and graph-execution/27 owners are preserved.
+
+Disposition: continue, adapting only the declared caller footprint by one optional
+`throughput --review-observation` flag so reports can reuse a complete current population.
+It validates the collector's local policy digest, requested scope and five-minute cutoff;
+a failure blinds review depth and never launches a second review scan. The monitor's
+explicit classified mode uses the existing reviewloop CLI/pure owner, not a new ranker;
+its default legacy mode remains compatible. Credentialed collection stays in deskboard,
+and both coordinator/inbox are read adapters. No service, cache, new credential,
+executor switch or policy-authority claim is added. New source qualification is recorded
+in docs/review-efficiency-compatibility.md, not an invented released version. Existing
+Task/Verify, independent Evidence and human/adopter gates are retained.

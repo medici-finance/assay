@@ -45,8 +45,7 @@ files:
 - `tools/desk/cmd/desktoken/desktoken.go` — App ID / install ID / PEM resolution.
 - `tools/desk/cmd/desktoken/desktoken_test.go`, `tools/desk/cmd/desktoken/mutations.json`.
 - `tools/desk/internal/deskkit/rosterconfig.go` — `ASSAY_TRUSTED_BOT_SLUGS` parse; role bindings.
-- `tools/desk/internal/deskkit/preflight.go` — `checkAppScopes` (reads the grant sidecar of the
-  minted token).
+- `tools/desk/internal/deskkit/preflight.go` — `checkAppScopes` (reads the grant sidecar of the minted token).
 - `tools/desk/README.md` — § "App credentials (`desktoken`, `deskpost`, `deskevidence`)".
 
 single-point-of-failure: the binding lookup is the ONE control deciding which key a role mints

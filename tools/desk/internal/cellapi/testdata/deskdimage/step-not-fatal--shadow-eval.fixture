@@ -1,0 +1,5 @@
+# A shell function defined through eval shadows the scan's interpreter.
+want: step-not-fatal
+file: Makefile
+replace: "\t@set -eu; \\\n\tsha="
+with: "\t@set -eu; eval 'sh() { :; }'; \\\n\tsha="

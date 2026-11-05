@@ -1,0 +1,23 @@
+{
+  "test": "go test ./cmd/cellctl/ -count=1 -timeout 600s -run '^(TestHotfixShimPinMoved|TestHotfixShimExpired|TestHotfixTampered|TestHotfixShimOverlayOwner)$'",
+  "control": {
+    "name": "CONTROL: invert the owner-refusal assertion in TestHotfixShimOverlayOwner",
+    "file": "cmd/cellctl/hotfix_test.go",
+    "old": "\tif strings.Contains(body, \"hotfix_bin\") || !strings.Contains(body, filepath.Join(w.pinned, \"deskboard\")) {\n\t\tt.Errorf(\"an overlay the owner check refuses",
+    "new": "\tif !strings.Contains(body, \"hotfix_bin\") || !strings.Contains(body, filepath.Join(w.pinned, \"deskboard\")) {\n\t\tt.Errorf(\"an overlay the owner check refuses"
+  },
+  "mutations": [
+    {
+      "name": "shim generation selects the overlay whatever ValidateHotfix decides (pin moved, expired, tampered, not root-owned)",
+      "file": "internal/deskkit/hotfix.go",
+      "old": "\tif err != nil {\n\t\tc.Notice = ",
+      "new": "\tif err != nil && false {\n\t\tc.Notice = "
+    },
+    {
+      "name": "the generated shim's own expiry check never fires (TestHotfixShimExpired, the already-generated shim)",
+      "file": "cmd/cellctl/shims.go",
+      "old": "(( now >= __HOTFIX_EXPIRES_EPOCH__ ))",
+      "new": "(( now < 0 ))"
+    }
+  ]
+}

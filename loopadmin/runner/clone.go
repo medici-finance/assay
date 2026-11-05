@@ -33,14 +33,27 @@ func (r LaunchRequest) clone() LaunchRequest {
 	r.Resume = clonePtr(r.Resume)
 	r.Profile.Tools = cloneSlice(r.Profile.Tools)
 	r.Require = cloneSlice(r.Require)
-	if r.Extensions != nil {
-		ext := make(map[string]json.RawMessage, len(r.Extensions))
-		for k, v := range r.Extensions {
-			ext[k] = cloneSlice(v)
-		}
-		r.Extensions = ext
-	}
+	r.Extensions = cloneExt(r.Extensions)
 	return r
+}
+
+func cloneExt(m map[string]json.RawMessage) map[string]json.RawMessage {
+	if m == nil {
+		return nil
+	}
+	ext := make(map[string]json.RawMessage, len(m))
+	for k, v := range m {
+		ext[k] = cloneSlice(v)
+	}
+	return ext
+}
+
+func (p QualifiedProfile) clone() QualifiedProfile {
+	p.Roles = cloneSlice(p.Roles)
+	p.BudgetScopes = cloneSlice(p.BudgetScopes)
+	p.Qualification.Evidence = cloneSlice(p.Qualification.Evidence)
+	p.Qualification.Limits = cloneSlice(p.Qualification.Limits)
+	return p
 }
 
 func (r Result) clone() Result {
@@ -55,6 +68,7 @@ func (u Usage) clone() Usage {
 
 func (o Observation) clone() Observation {
 	o.Usage = o.Usage.clone()
+	o.Extensions = cloneExt(o.Extensions)
 	if o.Result != nil {
 		res := o.Result.clone()
 		o.Result = &res

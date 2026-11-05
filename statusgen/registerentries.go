@@ -22,6 +22,9 @@ import (
 // ----- per-entry YAML frontmatter types -----
 
 type intakeEntry struct {
+	Path          string `yaml:"-"`
+	Handoff       string `yaml:"handoff,omitempty"`
+	HandoffOpened string `yaml:"handoff-opened,omitempty"`
 	ID            string `yaml:"id"`
 	Date          string `yaml:"date"`
 	Title         string `yaml:"title"`
@@ -241,6 +244,7 @@ func parseIntakeDir(root string) ([]intakeEntry, error) {
 			return nil, fmt.Errorf("parsing intake/%s: %w", intakeFileLabel(loc), err)
 		}
 		e.Subdir = loc.Subdir
+		e.Path = filepath.Join(loc.Dir, loc.Name)
 		entries = append(entries, *e)
 	}
 	sort.Slice(entries, func(i, j int) bool {

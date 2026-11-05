@@ -7,8 +7,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // publishProof binds a checked range to its destination, branch and source. The
@@ -60,7 +60,7 @@ func prepareCreatePush(s pushSpec, base string) (pushSpec, error) {
 			return s, deskkit.Refused(fmt.Sprintf("refused: cannot prove HEAD descends from destination %s at %s; fetch and merge before retrying", ref, shortSHA(tip)))
 		}
 	}
-	if err := publishIdentityGate(s.dir, base, tip, head.String()); err != nil {
+	if err := publishIdentityGate(s.dir, base, tip, "", head.String()); err != nil {
 		return s, err
 	}
 	s.proof = &publishProof{destination: dest, url: endpoint.URL, ref: ref, head: head.String(), tip: tip}

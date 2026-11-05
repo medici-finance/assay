@@ -36,20 +36,10 @@ id: 98414c8d-78e3-4c8a-af1e-fa8fbc8758da
 
 ## Context
 files:
-- `docs/brief-rules.md` — re-staged from the private copy FIRST (overlay: bring the public
-  file up to the private text, preserving any public-only edits), THEN amended: rule 30
-  generalized to all five lifecycle cells + `unknown`; new rule "the `Brief:` trailer is the
-  only PR→brief edge"; new rule "a generated table is single-writer"; §"Derived surfaces"
-  lists the stream README Briefs table.
-- `docs/brief-template.md` — re-staged the same way, then: `schema: brief-v2`; reserved
-  keys `gates:` / `feathers:` documented as OPTIONAL-but-KNOWN with the ref grammar; a
-  note that there is deliberately no `status:` key.
-- `docs/streams/graph-repos.yaml` (planned) — schema `graph-repos-v1`, `cell: assay`, the
-  alias registry — one short alias per stream-bearing repo in the cell, the public repo
-  included (e.g. `assay`, `at`, `rec`) — per the graph design §3.3.
-- `docs/dependency-graph-design.md` (planned) — overlay re-stage of the private dependency-graph
-  design note, scrubbed for public self-containment, so the reserved keys have a public
-  definition to point at.
+- `docs/brief-rules.md` — re-staged from the private copy FIRST (overlay: bring the public file up to the private text, preserving any public-only edits), THEN amended: rule 30 generalized to all five lifecycle cells + `unknown`; new rule "the `Brief:` trailer is the only PR→brief edge"; new rule "a generated table is single-writer"; §"Derived surfaces" lists the stream README Briefs table.
+- `docs/brief-template.md` — re-staged the same way, then: `schema: brief-v2`; reserved keys `gates:` / `feathers:` documented as OPTIONAL-but-KNOWN with the ref grammar; a note that there is deliberately no `status:` key.
+- `docs/streams/graph-repos.yaml` (planned) — schema `graph-repos-v1`, `cell: assay`, the alias registry — one short alias per stream-bearing repo in the cell, the public repo included (e.g. `assay`, `at`, `rec`) — per the graph design §3.3.
+- `docs/dependency-graph-design.md` (planned) — overlay re-stage of the private dependency-graph design note, scrubbed for public self-containment, so the reserved keys have a public definition to point at.
 - `docs/streams/derived-board/spec.md` — update §8 if a question is settled here.
 
 facts:

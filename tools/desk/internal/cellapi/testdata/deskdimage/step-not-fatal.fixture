@@ -1,0 +1,6 @@
+# Without errexit the joined recipe line ends in an echo, so a failed docker
+# build or a layer-scan finding would exit 0 and report success.
+want: step-not-fatal
+file: Makefile
+replace: "@set -eu; \\\n\tsha="
+with: "@set -u; \\\n\tsha="

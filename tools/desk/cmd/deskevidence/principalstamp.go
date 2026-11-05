@@ -66,7 +66,10 @@ package main
 
 import (
 	"fmt"
+	"html"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -121,27 +124,52 @@ func stampEvidencePrincipal(content, base []byte, resolve func() (string, error)
 			"the lint cannot read its Evidence section and this tool cannot check or stamp an on-behalf-of " +
 			"principal in it — nothing was written. Close the frontmatter with a `---` line and land again")
 	}
-	start, end, ok := evidenceSpan(lines)
-	if !ok {
-		return content, nil, nil
-	}
 	onBranch := map[string]bool{}
 	baseLines := strings.Split(string(base), "\n")
 	for _, l := range baseLines {
 		onBranch[l] = true
 	}
+	// A heading a renderer shows as Evidence, other than the one section the lint reads, shows
+	// the rows under it as Evidence that neither the lint nor this tool ever reads. A landing
+	// may neither add one nor add a line under one (a heading already on the branch with
+	// nothing added under it does not block later landings).
+	if at, under, ok := unreadEvidenceAddition(lines, baseLines, onBranch); ok {
+		where := ""
+		if under != at {
+			where = fmt.Sprintf(" (the landing adds line %d under it)", under+1)
+		}
+		return nil, nil, deskkit.Refused(fmt.Sprintf("refused: line %d of the landed brief is a heading a renderer "+
+			"shows as Evidence%s, but the lint reads only the first `## Evidence` section, so rows under that heading "+
+			"would show as Evidence and never be checked or stamped — nothing was written. Land every row in that "+
+			"one section, under no second Evidence heading: %q", at+1, where, strings.TrimSpace(lines[at])))
+	}
+	if i, r, ok := addedHeadingLetter(lines, onBranch); ok {
+		return nil, nil, deskkit.Refused(fmt.Sprintf("refused: line %d of the landed brief is a heading holding the "+
+			"non-ASCII letter or mark U+%04X, which can show as an ASCII one, so a reader can see a heading the lint "+
+			"and this tool read as other text — nothing was written. Land the heading in ASCII letters: %q",
+			i+1, r, strings.TrimSpace(lines[i])))
+	}
+	start, end, ok := evidenceSpan(lines)
+	if !ok {
+		// No section the lint reads: an App-run row anywhere in the body is still refused.
+		if i, why := outsideEvidenceProblem(lines, -1, -1, onBranch); why != "" {
+			return nil, nil, outsideRefusal(i, why, lines)
+		}
+		return content, nil, nil
+	}
 	// Every line this landing adds to the Evidence section, of any kind (data row, header,
 	// separator, or a line that is not a table row at all), is checked for a control character
 	// before any line is skipped below. A line counts as already on the branch here only when it
 	// stands in the base's own Evidence section, so a line carried in from elsewhere in the base
-	// file is checked like any other added line.
+	// file is checked like any other added line. The heading line that ends the section is
+	// checked too: a lone CR in it can put a table the lint never reads right under it.
 	onBranchEvidence := map[string]bool{}
 	if bs, be, ok := evidenceSpan(baseLines); ok {
-		for _, l := range baseLines[bs:be] {
+		for _, l := range baseLines[bs:min(be+1, len(baseLines))] {
 			onBranchEvidence[l] = true
 		}
 	}
-	for i := start; i < end; i++ {
+	for i := start; i < min(end+1, len(lines)); i++ {
 		if onBranchEvidence[lines[i]] {
 			continue
 		}
@@ -165,16 +193,7 @@ func stampEvidencePrincipal(content, base []byte, resolve func() (string, error)
 			joined[l] = true
 		}
 	}
-	blanked := evidenceCommentRe.ReplaceAllStringFunc(section, func(m string) string {
-		b := []byte(m)
-		for i := range b {
-			if b[i] != '\n' {
-				b[i] = ' '
-			}
-		}
-		return string(b)
-	})
-	view := strings.Split(blanked, "\n")
+	view := strings.Split(blankComments(section), "\n")
 
 	subject := ""
 	resolved := false
@@ -201,6 +220,17 @@ func stampEvidencePrincipal(content, base []byte, resolve func() (string, error)
 		}
 		spans := cellSpans(view[i])
 		if i+1 < len(view) && evidenceSeparatorRe.MatchString(strings.Trim(strings.TrimSpace(view[i+1]), "|")) {
+			// Checked whenever the landing adds a line to the table this header governs (the
+			// header, its separator, or any row the lint reads under it), not only when the
+			// header itself is added.
+			if lintTableAdds(view, lines[start:end], i, onBranchEvidence) {
+				if why := unreadableHeader(view[i], lines[start+i], spans); why != "" {
+					return nil, nil, deskkit.Refused(fmt.Sprintf("refused: the added Evidence header at line %d is one "+
+						"this tool cannot read the way the lint does (%s), so the column a reader takes as Runner may "+
+						"not be the one the lint reads — nothing was written. Land the header with plain ASCII column "+
+						"names and one `Runner` column: %s", start+i+1, why, strings.TrimSpace(lines[start+i])))
+				}
+			}
 			runnerIdx = -1
 			for j, sp := range spans {
 				if strings.ToLower(strings.TrimSpace(view[i][sp[0]:sp[1]])) == "runner" {
@@ -225,6 +255,19 @@ func stampEvidencePrincipal(content, base []byte, resolve func() (string, error)
 		// bytes at the same offset, so everything else in the line is left exactly as it was.
 		cell := view[i][sp[0]:sp[1]]
 		if !isAppRunnerCell(strings.TrimSpace(cell)) {
+			// A Runner cell the lint does not read as App-run must not show a reader one either:
+			// markup the lint reads as text (an HTML tag, an entity, emphasis, strikethrough, a
+			// code span, an escape, a comment marker in a code span, link or image syntax) is
+			// stripped or reduced to its shown text before deciding what a renderer shows, with
+			// a closed comment read both hidden and shown. Read on the cell's bytes as landed,
+			// comments included, since a renderer can show a comment's text.
+			if showsAppRun(orig[sp[0]:sp[1]]) {
+				return nil, nil, deskkit.Refused(fmt.Sprintf("refused: the Evidence row at line %d has a Runner cell "+
+					"this tool cannot read the way the lint does (it holds %s, and a renderer "+
+					"shows it as an App-run Runner cell the lint does not read as one), so it cannot check or stamp "+
+					"its on-behalf-of principal — nothing was written. Land the row with a plain Runner cell: %s",
+					start+i+1, shownMarkup(orig[sp[0]:sp[1]]), strings.TrimSpace(orig)))
+			}
 			continue
 		}
 		if why := unreadableRunnerCell(cell, orig[sp[0]:sp[1]], joined[i]); why != "" {
@@ -278,6 +321,13 @@ func stampEvidencePrincipal(content, base []byte, resolve func() (string, error)
 		stamped[strings.TrimSpace(orig)] = strings.TrimSpace(newLine)
 		lines[start+i] = newLine
 	}
+	// A line a renderer reads as a table row the lint does not read the same way (checked after
+	// the rows, so a row the checks above refuse keeps its own, more specific refusal).
+	if i, why := renderedRowMismatch(lines, start, end, onBranchEvidence); why != "" {
+		return nil, nil, deskkit.Refused(fmt.Sprintf("refused: the added Evidence line %d is one this tool "+
+			"cannot read the way the lint does (%s) — nothing was written. Begin every table row with `|`, and "+
+			"put a blank line between a table and any other line: %s", i+1, why, strings.TrimSpace(lines[i])))
+	}
 	// Read the landed section back the way the lint does — closed comments REMOVED, lines
 	// joined — and require every App-run row it reads that is not already a row of the
 	// branch to carry exactly the resolved stamp. The checks above keep the two readings
@@ -309,10 +359,36 @@ func stampEvidencePrincipal(content, base []byte, resolve func() (string, error)
 				"crossing a line break: %s", why, r.line))
 		}
 	}
+	// The positive check: every line the landing adds to the section must be a blank line, a
+	// row of a table both readings agree on, or a note line neither reads as a row.
+	if i, why := evidenceLayoutProblem(lines, start, end, onBranchEvidence); why != "" {
+		return nil, nil, deskkit.Refused(fmt.Sprintf("refused: the added Evidence line %d is one this tool "+
+			"cannot read the way the lint does (%s) — nothing was written. Land Evidence as `|`-led rows under a "+
+			"header and a `|---|` delimiter row, blank lines, and plain note lines: %s", i+1, why, strings.TrimSpace(lines[i])))
+	}
+	if i, why := outsideEvidenceProblem(lines, start, end, onBranch); why != "" {
+		return nil, nil, outsideRefusal(i, why, lines)
+	}
 	if stamped == nil {
 		return content, nil, nil
 	}
 	return []byte(strings.Join(lines, "\n")), stamped, nil
+}
+
+// blankComments returns section with every closed HTML comment blanked byte for byte (each
+// byte other than a newline becomes a space), so the result has the same length, the same line
+// breaks and the same byte offsets as section. Cell positions found in it slice the original
+// lines at the same cells, whatever characters a comment holds.
+func blankComments(section string) string {
+	return evidenceCommentRe.ReplaceAllStringFunc(section, func(m string) string {
+		b := []byte(m)
+		for i := range b {
+			if b[i] != '\n' {
+				b[i] = ' '
+			}
+		}
+		return string(b)
+	})
 }
 
 // canonicalStamp is the one form the stamp writes: `(on-behalf-of human:<subject>)`, the exact
@@ -384,6 +460,9 @@ func stampPosition(cell, stripped string, cuts [][2]int) (int, string) {
 //     the marker): the rendered text can show an annotation, or a name, the lint does not read.
 //     An App-run Runner cell is an App login, a commit and ASCII tags, so nothing legitimate is
 //     lost.
+//   - Markdown link or image syntax (`[text](...)`, `[text][label]`, `![alt](...)`): a renderer
+//     shows the link text, not the brackets and destination the lint reads. Brackets that open
+//     no link (`[bot]`, a model tag such as `[1m]`) are left alone.
 //
 // A control character anywhere in an added Evidence line is refused separately
 // (rowControlCharacter), since it can sit outside the Runner cell or outside any data row.
@@ -414,7 +493,1884 @@ func unreadableRunnerCell(view, orig string, joined bool) string {
 				"the lint reads", r)
 		}
 	}
+	if c, ok := runnerMarkup(orig); ok {
+		return fmt.Sprintf("it holds the markup character `%c`, which a renderer can read as HTML or Markdown "+
+			"(a struck-through or hidden annotation, an entity or escape that shows another character), so the "+
+			"rendered text can differ from what the lint reads", c)
+	}
+	if linkSyntax(orig) {
+		return "it holds Markdown link or image syntax, which a renderer shows as its link text, not as written, so " +
+			"the rendered text can differ from what the lint reads"
+	}
 	return ""
+}
+
+// runnerMarkup returns the first character in an App-run Runner cell that a renderer can read
+// as markup changing the text it shows: `<` and `>` (an HTML tag: strikethrough, a title
+// attribute, a hidden span), `&` (an entity), `~` (strikethrough) and `\` (an escape). An
+// App-run Runner cell is an App login, a commit and plain tags, so none is legitimate there.
+func runnerMarkup(cell string) (rune, bool) {
+	if i := strings.IndexAny(cell, "<>&~\\"); i >= 0 {
+		return rune(cell[i]), true
+	}
+	return 0, false
+}
+
+var (
+	// htmlTagRe and runnerMarkupRe strip what a renderer does not show as text from a Runner
+	// cell (HTML tags; emphasis, strikethrough, code and escape characters), to tell whether
+	// it would SHOW as an App-run cell. commentMarkerRe matches the markers of an HTML
+	// comment, which are removed so the comment's text counts as shown (inside a code span a
+	// renderer shows it).
+	htmlTagRe       = regexp.MustCompile(`<[^>]*>`)
+	runnerMarkupRe  = regexp.MustCompile("[*_~`\\\\]")
+	commentMarkerRe = regexp.MustCompile(`<!--|-->`)
+	// rawTableTagRe matches a raw HTML table or heading tag, which a renderer shows as a table
+	// or heading of its own that the lint never reads.
+	rawTableTagRe = regexp.MustCompile(`(?i)<\s*/?\s*(?:table|thead|tbody|tfoot|tr|td|th|h[1-6])\b`)
+	// codeSpanRe matches an inline code span, whose text a renderer shows as code, not markup.
+	// It pairs backtick runs of any lengths, where a renderer pairs only runs of the same length
+	// (see codeSpans), so it can take text a renderer shows as markup for code.
+	codeSpanRe = regexp.MustCompile("(`+)[^`]+?(`+)")
+	// gfmDelimiterCellRe matches one cell of a delimiter row a GFM renderer accepts.
+	gfmDelimiterCellRe = regexp.MustCompile(`^:?-+:?$`)
+)
+
+// commentReadings returns s read both ways a renderer can show a closed HTML comment: hidden
+// (outside a code span) and with only its markers removed (inside one, where its text shows).
+func commentReadings(s string) []string {
+	return []string{evidenceCommentRe.ReplaceAllString(s, ""), commentMarkerRe.ReplaceAllString(s, "")}
+}
+
+// linkReadings returns s as written and with its Markdown link and image syntax reduced to the
+// text a renderer shows: once with an image's alt text dropped (the image shows) and once with
+// it kept (a reader can see the alt text where the image does not load).
+func linkReadings(s string) []string {
+	return []string{s, reduceLinks(s, false), reduceLinks(s, true)}
+}
+
+// readingCap is the most text, in bytes, the tool reads for one cell or line across all its
+// readings (see eachShownText). The number of readings, each about as long as the text, grows
+// with the line breaks and hidden elements a text holds, times the places between two runs of
+// `$` a span's text can start at (white space and control words), times the pairs of control
+// words in a span, so a short text can ask for far more work than its length. Past the cap the
+// text is taken as showing App-run text and refused, never read with fewer readings. The
+// heaviest text in the briefs the cap was set against reads about 5.3 MiB.
+const readingCap = 128 << 20
+
+// readingBudget counts the bytes of the readings taken for one text against readingCap.
+type readingBudget struct{ left int }
+
+// take charges s to the budget and reports whether the budget still holds.
+func (b *readingBudget) take(s string) bool {
+	b.left -= len(s) + 1
+	return b.left >= 0
+}
+
+// eachShownText calls f with each text a renderer can show for s, for deciding what a reader
+// sees, until f returns true, and reports whether it did; it reports true as well when the
+// readings of s exceed readingCap, so a text too costly to read every way fails closed. A text
+// reached more than one way is read once.
+// The texts are: s as written and with the quoted attribute values inside its HTML tags
+// emptied (see quotedValueReadings); each comment reading and each link reading of those,
+// with HTML tags and emphasis, strikethrough, code and escape characters removed, and entities
+// decoded, read once with the text of each element a sanitizer can drop kept and dropped, and
+// apart from those, of the elements a renderer hides by default kept and dropped (see
+// eachHiddenReading); each of those once more from each place a renderer starts a new line at
+// (see lineBreakRe); and each of those once more for each math reading the tool takes (see
+// mathDecodings). Each is read once as it stands and once with every character that renders
+// as nothing dropped (see rendersBlank) and the words that lead it and cannot be a login
+// skipped (see pastLead), so a text's identity region (see identityRegion) starts at the
+// first word a reader can take for a name. That last reading is taken once more with its
+// leading words read as a renderer shows them (see pastShownLead).
+// Every reading is added beside the others and none replaces one. Text later in a cell can
+// still close a code span a run of backticks opens, which takes the runs of `$` inside it out
+// of the reading that pairs runs outside code spans, as it takes them out of what a renderer
+// typesets (see mathDecodings). A cell shows something when any of these does.
+func eachShownText(s string, f func(string) bool) bool {
+	return eachShownTextWithin(s, readingCap, f)
+}
+
+// eachShownTextWithin is eachShownText with limit in place of readingCap.
+func eachShownTextWithin(s string, limit int, f func(string) bool) bool {
+	b := &readingBudget{left: limit}
+	over := false
+	visit := func(d string) bool {
+		t := strings.TrimSpace(runnerMarkupRe.ReplaceAllString(d, ""))
+		if !b.take(t) {
+			over = true
+			return true
+		}
+		if f(t) {
+			return true
+		}
+		blank := strings.Map(dropBlank, t)
+		seen := pastLead(blank)
+		if seen != t && f(seen) {
+			return true
+		}
+		// Only the leading words are read as a renderer shows them, each by itself, and what
+		// follows them is taken as written.
+		lead := pastShownLead(blank)
+		return lead != seen && lead != t && f(lead)
+	}
+	// Each text is read once however many ways lead to it.
+	took, have, read := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, a := range quotedValueReadings(s) {
+		for _, c := range commentReadings(a) {
+			// The shortcut reading takes every balanced `[text]` as a reference link whose
+			// definition stands somewhere in the brief (or on another branch), since a renderer
+			// shows its text and not its brackets whenever a definition resolves; it is a reading
+			// of what could be shown, never of link syntax (see linkSyntax).
+			for _, r := range append(linkReadings(c), reduceLinksMode(c, true, true)) {
+				// Elements a sanitizer drops and elements a renderer hides are read kept and
+				// dropped apart from each other, since either can show while the other does not.
+				if took[r] {
+					continue
+				}
+				took[r], have[r] = true, true
+				sanitized := droppedElementRe.ReplaceAllString(r, "")
+				shown := []string{r}
+				// keep adds a reading not yet taken, charged to the budget before the next is
+				// built, and reports whether the budget is spent.
+				keep := func(e string) bool {
+					if have[e] {
+						return false
+					}
+					if !b.take(e) {
+						return true
+					}
+					have[e] = true
+					shown = append(shown, e)
+					return false
+				}
+				for _, base := range []string{r, sanitized} {
+					if keep(base) || eachHiddenReading(base, keep) {
+						return true
+					}
+				}
+				for i, n := 0, len(shown); i < n; i++ {
+					for _, m := range lineBreakRe.FindAllStringIndex(shown[i], -1) {
+						if e := shown[i][m[1]:]; !have[e] {
+							if !b.take(e) {
+								return true
+							}
+							have[e] = true
+							shown = append(shown, e)
+						}
+					}
+				}
+				for _, v := range shown {
+					if v = htmlTagRe.ReplaceAllString(v, ""); read[v] {
+						continue
+					}
+					read[v] = true
+					if mathDecodings(v, b, visit) || over {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// quotedTagRe matches an HTML tag whose quoted attribute values may hold a `>`, which ends no
+// tag inside quotes; quotedValueRe matches one such quoted value.
+var (
+	quotedTagRe   = regexp.MustCompile(`<\s*/?\s*[A-Za-z][A-Za-z0-9-]*(?:[^>"']|"[^"]*"|'[^']*')*>`)
+	quotedValueRe = regexp.MustCompile(`"[^"]*"|'[^']*'`)
+)
+
+// quotedValueReadings returns s, and when s holds an HTML tag with a quoted attribute value
+// (see quotedTagRe), s once more with every such value emptied, so a `>` inside quotes is never
+// read as the end of a tag. The reading as written is kept, so text a renderer shows after a
+// quote it does not take as one is read as well.
+func quotedValueReadings(s string) []string {
+	q := quotedTagRe.ReplaceAllStringFunc(s, func(tag string) string {
+		return quotedValueRe.ReplaceAllStringFunc(tag, func(v string) string { return v[:1] + v[:1] })
+	})
+	if q == s {
+		return []string{s}
+	}
+	return []string{s, q}
+}
+
+var (
+	// glyphWordRe matches a word a renderer replaces with a glyph (`:name:`), in any case and
+	// after emphasis and escape characters are stripped, so it matches more than a renderer
+	// replaces. glyphPlaceholder is the one symbol it is read as, which holds no ASCII letter or
+	// digit, as the glyph shown does not.
+	glyphWordRe      = regexp.MustCompile(`(?i):[a-z0-9_+-]+:`)
+	glyphPlaceholder = "\u25a1"
+	// mathDelimRe matches a run of `$`, which a renderer can take as a math delimiter. Which runs
+	// a renderer pairs is its own rule, which the tool does not hold: mathReadings reads the text
+	// between every two adjacent runs mathDelimiters leaves once it drops the dollar signs it
+	// reads as text, with each of two readings of where code spans stand (see mathDecodings).
+	mathDelimRe = regexp.MustCompile(`\$+`)
+	// mathSpanRe matches a run of `$`, text on one line holding no `$`, and the next run of `$`,
+	// which pairs runs from the left (see leftmostReadings).
+	mathSpanRe = regexp.MustCompile(`\$+[^$\n]+\$+`)
+	// mathMarkupRe matches a control word or symbol (a backslash and a name or one character), a
+	// brace, a backtick or a sub- or superscript sign. In a math span a renderer typesets each as
+	// no text of its own, except those mathGlyphs names. A control word can typeset its argument
+	// as text, as blank space or as nothing, so mathReadings reads a span's text from each place
+	// one ends.
+	mathMarkupRe = regexp.MustCompile("\\\\(?:[A-Za-z]+|.)|[{}`^_]")
+	// lineBreakRe matches a raw HTML line break or the opening or closing tag of an element a
+	// renderer shows as a block of its own (a disclosure element among them), after which the
+	// text a reader sees starts a new line.
+	lineBreakRe = regexp.MustCompile(`(?i)<\s*/?\s*(?:br|hr|p|div|details|summary|blockquote|pre|ul|ol|li|dl|dt|dd|table|thead|tbody|tfoot|tr|td|th|caption|h[1-6]|section|article|aside|header|footer|nav|main|figure|figcaption|address|center|fieldset|legend|form)\b[^>]*>`)
+	// droppedElementRe matches a raw HTML element a sanitizer can remove with its text, and so
+	// show nothing for, from its opening tag to the next such closing tag or the end of the text.
+	droppedElementRe = regexp.MustCompile(`(?is)<\s*(?:script|style|template|textarea|title|iframe|noembed|noframes|noscript|plaintext|xmp|math|svg)\b[^>]*>.*?(?:<\s*/\s*(?:script|style|template|textarea|title|iframe|noembed|noframes|noscript|plaintext|xmp|math|svg)\s*>|$)`)
+	// hiddenOpenRe matches the opening tag of a raw HTML element a renderer hides by default with
+	// its text: a ruby fallback, a data list or a dialog element (group 1 names it), or any
+	// element that carries the hidden attribute (group 2 names it).
+	hiddenOpenRe = regexp.MustCompile(`(?is)` + hiddenOpen)
+	// hiddenElementRe matches such an element from its opening tag to the first closing tag of
+	// any kind after it, or the end of the text, which is where a parser can end a ruby fallback
+	// that the next one closes. hiddenSpans reads it to the closing tag that matches it.
+	hiddenElementRe = regexp.MustCompile(`(?is)(?:` + hiddenOpen + `).*?(?:<\s*/[^>]*>|$)`)
+	// hiddenKindRe matches, more narrowly, a ruby fallback, a data list or a dialog element to
+	// the next closing tag of its own kind, and an element whose hidden attribute follows white
+	// space to the first closing tag of any kind after it.
+	hiddenKindRe = regexp.MustCompile(`(?is)<\s*(?:rp|datalist|dialog)\b[^>]*>.*?(?:<\s*/\s*(?:rp|datalist|dialog)\s*>|$)|<\s*[a-z][a-z0-9-]*\b[^>]*\shidden\b[^>]*>.*?(?:<\s*/[^>]*>|$)`)
+	// elementTagRe matches an opening or closing HTML tag: group 1 holds a closing tag's slash,
+	// and group 2 the element's name.
+	elementTagRe = regexp.MustCompile(`(?i)<\s*(/?)\s*([a-z][a-z0-9-]*)\b[^>]*>`)
+)
+
+// hiddenOpen is hiddenOpenRe's pattern without its flags. A parser reads an attribute after
+// white space, a slash or a closing quote.
+const hiddenOpen = `<\s*(rp|datalist|dialog)\b[^>]*>|<\s*([a-z][a-z0-9-]*)\b[^>]*?[\s/"']hidden\b[^>]*>`
+
+// eachHiddenReading calls f with s read without the elements a renderer hides by default,
+// until f returns true, and reports whether it did: once without every element hiddenKindRe
+// matches, and, with the elements hiddenOpenRe opens taken in order both to the first closing
+// tag after each (see hiddenElementRe) and to the closing tag that matches it (see
+// hiddenSpans), once without the first one, once without the first two, and so on to all of
+// them. Whether a renderer hides an element can differ from one element to the next, so text
+// inside a later element is read as shown after earlier ones are hidden. Each reading is built
+// only after f has taken the one before it, so a caller that charges each reading to a budget
+// stops the building as soon as the budget is spent.
+func eachHiddenReading(s string, f func(string) bool) bool {
+	if f(hiddenKindRe.ReplaceAllString(s, "")) {
+		return true
+	}
+	for _, spans := range [][][]int{hiddenElementRe.FindAllStringIndex(s, -1), hiddenSpans(s)} {
+		for k := 1; k <= len(spans); k++ {
+			var b strings.Builder
+			last := 0
+			for _, sp := range spans[:k] {
+				b.WriteString(s[last:sp[0]])
+				last = sp[1]
+			}
+			b.WriteString(s[last:])
+			if f(b.String()) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hiddenSpans returns the byte ranges of the elements in s a renderer hides by default (see
+// hiddenOpenRe), each taken from its opening tag to the closing tag that matches it, counting
+// the elements of the same name opened inside it, or to the end of the text.
+func hiddenSpans(s string) [][]int {
+	var out [][]int
+	for at := 0; ; {
+		m := hiddenOpenRe.FindStringSubmatchIndex(s[at:])
+		if m == nil {
+			return out
+		}
+		g := 2
+		if m[2] < 0 {
+			g = 4
+		}
+		name := s[at+m[g] : at+m[g+1]]
+		start, rest := at+m[0], at+m[1]
+		end, depth := len(s), 1
+		// Tags are matched one at a time from the opening tag on, so finding an element's end
+		// reads only as far as that end, and the elements of a text cost no more than one pass.
+		for pos := rest; ; {
+			t := elementTagRe.FindStringSubmatchIndex(s[pos:])
+			if t == nil {
+				break
+			}
+			from := pos
+			pos += t[1]
+			if !strings.EqualFold(s[from+t[4]:from+t[5]], name) {
+				continue
+			}
+			if t[3] > t[2] {
+				depth--
+			} else {
+				depth++
+			}
+			if depth == 0 {
+				end = pos
+				break
+			}
+		}
+		out = append(out, []int{start, end})
+		at = end
+	}
+}
+
+// pastLead returns t trimmed and without the words that lead it and hold no ASCII letter or
+// digit, a word ending at white space. Such a word cannot be a login, so a reader takes the word
+// after it for the name, whatever its characters are and whether or not they render. A word
+// that holds an ASCII letter or digit ends the skip, and its characters are read as they stand.
+// Every trim takes any Unicode white space, since a renderer shows a non-breaking or wide space
+// at the edge of a word as white space too.
+func pastLead(t string) string { return skipLead(t, false) }
+
+// pastShownLead returns t as pastLead does, except that each leading word is read as a renderer
+// shows it: a word a renderer shows as a glyph (see glyphWordRe) is read as one symbol, so a
+// leading word that, read so, holds no ASCII letter or digit is skipped. Each word ends at white
+// space and is read by itself, so only that word decides whether it is skipped. The word that
+// ends the skip and everything after it are taken as written. Math spans are read by
+// mathReadings, beside this reading and before it.
+func pastShownLead(t string) string { return skipLead(t, true) }
+
+// skipLead is pastLead, or pastShownLead when shown is set. Both readings walk the same loop,
+// so a word is skipped, and the text trimmed, the same way in each.
+func skipLead(t string, shown bool) string {
+	t = strings.TrimSpace(t)
+	for {
+		end := strings.IndexFunc(t, unicode.IsSpace)
+		if end <= 0 {
+			return t
+		}
+		word := t[:end]
+		if shown {
+			word = glyphWordRe.ReplaceAllString(word, glyphPlaceholder)
+		}
+		if strings.IndexFunc(word, asciiAlnum) >= 0 {
+			return t
+		}
+		t = strings.TrimSpace(t[end:])
+	}
+}
+
+// mathDecodings calls visit with each math reading of s, each in each decoding of it, until
+// visit returns true, and reports whether it did or the budget ran out. The readings are
+// those mathReadings takes on the runs mathDelimiters leaves, found before entities are
+// decoded, once outside the code spans codeSpanRe matches and once outside those codeSpans
+// finds, and, beside them, those leftmostReadings takes on each decoding, which pairs runs
+// inside code spans too. No set of runs replaces another: each only adds readings.
+func mathDecodings(s string, b *readingBudget, visit func(string) bool) bool {
+	seen := map[string]bool{}
+	add := func(d string) bool {
+		if seen[d] {
+			return false
+		}
+		seen[d] = true
+		return !b.take(d) || visit(d)
+	}
+	emit := func(m string) bool {
+		for _, d := range decodings(m) {
+			if add(d) {
+				return true
+			}
+		}
+		return false
+	}
+	runs := mathDelimiters(s, codeSpanRe.FindAllStringIndex(s, -1))
+	if mathReadings(s, runs, emit) {
+		return true
+	}
+	if spans := mathDelimiters(s, codeSpans(s)); !slices.EqualFunc(spans, runs, slices.Equal[[]int]) && mathReadings(s, spans, emit) {
+		return true
+	}
+	for _, d := range decodings(s) {
+		if leftmostReadings(d, add) {
+			return true
+		}
+	}
+	return false
+}
+
+// mathDelimiters returns the runs of `$` in s a renderer can take as math delimiters: each run
+// without a dollar sign a backslash escapes, and none inside one of the code spans given.
+func mathDelimiters(s string, code [][]int) [][]int {
+	var out [][]int
+	for _, m := range mathDelimRe.FindAllStringIndex(s, -1) {
+		n := 0
+		for i := m[0] - 1; i >= 0 && s[i] == '\\'; i-- {
+			n++
+		}
+		if n%2 == 1 {
+			m[0]++
+		}
+		if m[0] == m[1] || slices.ContainsFunc(code, func(c []int) bool { return c[0] <= m[0] && m[0] < c[1] }) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// codeSpans returns the byte ranges of the code spans in s as CommonMark reads them: a run of
+// backticks no backslash escapes opens one, which the next run of exactly its length closes
+// (see codeSpanEnd), and a run that closes none is text.
+func codeSpans(s string) [][]int {
+	var out [][]int
+	for i := 0; i < len(s); {
+		switch s[i] {
+		case '\\':
+			i += 2
+		case '`':
+			if end := codeSpanEnd(s, i); end > i {
+				out = append(out, []int{i, end})
+				i = end
+			} else {
+				i += len(s[i:]) - len(strings.TrimLeft(s[i:], "`"))
+			}
+		default:
+			i++
+		}
+	}
+	return out
+}
+
+// mathReadings calls add with d, and when runs holds two or more runs of `$` in d, with d read
+// by these rules, each beside the others and each with the text before the first run as
+// written, until add returns true, and reports whether it did:
+//   - once for each run, with everything from the first run up to and including it dropped, as
+//     spans that show only a symbol or blank space;
+//   - once with every run dropped and the text between the first and the last read as math
+//     (see mathText), with its white space and without;
+//   - once for each two adjacent runs and each place in the text between them where a control
+//     word, a brace or white space ends, with everything from the first run up to that place
+//     dropped, the text from there to the second run read as math, with its white space and
+//     without, and the text after the second run as written.
+//
+// Each text read as math is read once more for each two control words or symbols in it that
+// mathGlyphs does not name, in order, with the first read as an opening and the second as a
+// closing bracket (see mathText), since the tool does not know every glyph a renderer
+// typesets and any of them can be a bracket.
+// No reading depends on which runs before a span a renderer pairs. A renderer can typeset a
+// span's text as text, so a name inside a span is read where a reader sees it, and a control
+// word can show the text before such a place as blank space or as nothing, so each place is read
+// as the start of what is shown. These are rules the tool holds, not a renderer's: a renderer
+// can pair or typeset runs in a way none of them names.
+func mathReadings(d string, runs [][]int, add func(string) bool) bool {
+	if add(d) {
+		return true
+	}
+	if len(runs) < 2 {
+		return false
+	}
+	lead := d[:runs[0][0]]
+	var all strings.Builder
+	for i, r := range runs {
+		if add(lead + d[r[1]:]) {
+			return true
+		}
+		if i+1 < len(runs) {
+			all.WriteString(d[r[1]:runs[i+1][0]])
+		}
+	}
+	if mathTexts(all.String(), func(m string) bool { return add(lead + m + d[runs[len(runs)-1][1]:]) }) {
+		return true
+	}
+	for i := 0; i+1 < len(runs); i++ {
+		body, after := d[runs[i][1]:runs[i+1][0]], d[runs[i+1][1]:]
+		starts := []int{0}
+		for j, r := range body {
+			if unicode.IsSpace(r) {
+				starts = append(starts, j+utf8.RuneLen(r))
+			}
+		}
+		for _, m := range mathMarkupRe.FindAllStringIndex(body, -1) {
+			starts = append(starts, m[1])
+		}
+		for _, at := range starts {
+			if mathTexts(body[at:], func(m string) bool { return add(lead + m + after) }) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// mathTexts calls add with each reading of s as math, until add returns true, and reports
+// whether it did: s read by mathText with its white space kept and dropped, and each of those
+// once more for each control word or symbol the tool reads as neither a named glyph nor a
+// character code (see mathTokens), read alone as an opening and alone as a closing bracket,
+// and for each two of those, in order, read as an opening and a closing bracket. A control
+// word read as a bracket is read both with the argument after it shown and with it taken into
+// the bracket (see mathArgEnd), since a renderer can typeset a word and its argument as one
+// character. When s holds a character code, all of that is read once with each code read as
+// its character and once with its control word read as one the tool does not name, so a
+// renderer that does not typeset the code is read as well and no reading is lost.
+// When s holds a control word or symbol the tool neither names nor reads as a character code,
+// it reports true once those readings are taken, as a text showing App-run text: the tool
+// cannot know how many arguments such a word takes or which of them a renderer typesets, or
+// what glyph it typesets for one, so a span holding one fails closed rather than being read
+// with fewer readings than a renderer can show.
+func mathTexts(s string, add func(string) bool) bool {
+	unread := false
+	for _, collapse := range []bool{false, true} {
+		p := mathPrepare(s, collapse)
+		toks := mathTokens(p, true)
+		if mathPicks(p, collapse, toks, add) {
+			return true
+		}
+		if plain := mathTokens(p, false); !slices.Equal(plain, toks) {
+			if mathPicks(p, collapse, plain, add) {
+				return true
+			}
+		}
+		unread = unread || slices.ContainsFunc(toks, func(t mathToken) bool { return t.unnamed })
+	}
+	return unread
+}
+
+// mathPicks calls add with mathText's reading of p for each pick mathTexts describes over
+// toks, until add returns true, and reports whether it did.
+func mathPicks(p string, collapse bool, toks []mathToken, add func(string) bool) bool {
+	if add(mathText(p, collapse, toks, mathPick{open: -1, close: -1})) {
+		return true
+	}
+	var unnamed []int
+	for i, t := range toks {
+		if t.unnamed {
+			unnamed = append(unnamed, i)
+		}
+	}
+	// modes returns the argument readings of token i: shown, and taken into the bracket when
+	// an argument follows it.
+	modes := func(i int) []bool {
+		if toks[i].arg > toks[i].end {
+			return []bool{false, true}
+		}
+		return []bool{false}
+	}
+	for _, i := range unnamed {
+		for _, take := range modes(i) {
+			if add(mathText(p, collapse, toks, mathPick{open: i, close: -1, takeOpen: take})) ||
+				add(mathText(p, collapse, toks, mathPick{open: -1, close: i, takeClose: take})) {
+				return true
+			}
+		}
+	}
+	for x, i := range unnamed {
+		for _, j := range unnamed[x+1:] {
+			for _, ti := range modes(i) {
+				for _, tj := range modes(j) {
+					if add(mathText(p, collapse, toks, mathPick{open: i, close: j, takeOpen: ti, takeClose: tj})) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// mathGlyphs are the control words and symbols a renderer typesets in math as a character a
+// login or its tag can hold, each with that character. `\|` is read as `|`, the character a
+// table cell shows for it, which no reader takes for a bracket; a renderer typesets it in math
+// as a double bar, which is not one either.
+var mathGlyphs = map[string]string{
+	`\lbrack`: "[", `\rbrack`: "]", `\lbrace`: "{", `\rbrace`: "}", `\{`: "{", `\}`: "}",
+	`\_`: "_", `\$`: "$", `\#`: "#", `\&`: "&", `\%`: "%",
+	`\vert`: "|", `\lvert`: "|", `\rvert`: "|", `\|`: "|",
+}
+
+// mathPrepare returns s as mathText reads it before its markup: with collapse set, with its
+// entities decoded.
+func mathPrepare(s string, collapse bool) string {
+	if collapse {
+		return html.UnescapeString(s)
+	}
+	return s
+}
+
+// mathToken is one match of mathMarkupRe in a text read as math, from at to end. A control
+// word or symbol mathGlyphs names, or one that typesets a character code (see mathCharCode),
+// is named and typesets as glyph; a character code's end takes in its argument. Any other
+// control word or symbol is unnamed, and arg is the end of the argument after it (see
+// mathArgEnd), or end when none follows. Any other match (a brace, backtick or sub- or
+// superscript sign) typesets as nothing.
+type mathToken struct {
+	at, end, arg int
+	glyph        string
+	named        bool
+	unnamed      bool
+}
+
+// mathTokens returns the tokens of s in order (see mathToken), with codes set reading
+// character codes as their characters; a match inside a character code's argument is then part
+// of that code and no token of its own. With codes unset, a character code's control word is
+// read as unnamed.
+func mathTokens(s string, codes bool) []mathToken {
+	var out []mathToken
+	last := 0
+	for _, m := range mathMarkupRe.FindAllStringIndex(s, -1) {
+		if m[0] < last {
+			continue
+		}
+		w := s[m[0]:m[1]]
+		t := mathToken{at: m[0], end: m[1], arg: m[1]}
+		if g, ok := mathGlyphs[w]; ok {
+			t.glyph, t.named = g, true
+		} else if g, end, ok := mathCharCode(s, m[1], w); codes && ok {
+			t.glyph, t.named, t.end, t.arg = g, true, end, end
+		} else if w[0] == '\\' {
+			t.unnamed = true
+			t.arg = mathArgEnd(s, m[1])
+		}
+		out = append(out, t)
+		last = t.end
+	}
+	return out
+}
+
+// mathPick names the tokens (by index into mathTokens, or -1 for none) mathText reads as an
+// opening and a closing bracket, and whether each takes its argument into the bracket.
+type mathPick struct {
+	open, close         int
+	takeOpen, takeClose bool
+}
+
+// mathText returns s, as mathPrepare returns it, as a renderer can typeset it in math: each
+// named token (see mathToken) as its glyph, the tokens pick names as an opening and a closing
+// bracket (with the argument after each dropped when pick says it takes it), and every other
+// token as nothing. With collapse set, its white space is dropped, as math drops the white
+// space between the symbols it typesets.
+func mathText(s string, collapse bool, toks []mathToken, pick mathPick) string {
+	var b strings.Builder
+	last := 0
+	for i, t := range toks {
+		if t.at < last {
+			continue
+		}
+		b.WriteString(s[last:t.at])
+		last = t.end
+		switch {
+		case t.named:
+			b.WriteString(t.glyph)
+		case i == pick.open:
+			b.WriteString("[")
+			if pick.takeOpen {
+				last = t.arg
+			}
+		case i == pick.close:
+			b.WriteString("]")
+			if pick.takeClose {
+				last = t.arg
+			}
+		}
+	}
+	b.WriteString(s[last:])
+	out := b.String()
+	if collapse {
+		out = strings.Map(func(r rune) rune {
+			if unicode.IsSpace(r) {
+				return -1
+			}
+			return r
+		}, out)
+	}
+	return out
+}
+
+// mathSpaces returns the first index at or after i in s that is not ASCII white space.
+func mathSpaces(s string, i int) int {
+	for i < len(s) && strings.IndexByte(" \t\r\n", s[i]) >= 0 {
+		i++
+	}
+	return i
+}
+
+// mathOptions returns the end of the optional arguments (`[...]`, each up to its first `]`)
+// at or after i in s, after white space, or i when none is there; ok is false when one does
+// not close.
+func mathOptions(s string, i int) (int, bool) {
+	j := mathSpaces(s, i)
+	for j < len(s) && s[j] == '[' {
+		k := strings.IndexByte(s[j:], ']')
+		if k < 0 {
+			return i, false
+		}
+		j = mathSpaces(s, j+k+1)
+	}
+	return j, true
+}
+
+// mathGroup returns the end of the brace group that opens at s[i], counting the groups
+// nested inside it and skipping escaped braces, or len(s) when it does not close.
+func mathGroup(s string, i int) int {
+	depth := 0
+	for j := i; j < len(s); j++ {
+		switch s[j] {
+		case '\\':
+			j++
+		case '{':
+			depth++
+		case '}':
+			if depth--; depth == 0 {
+				return j + 1
+			}
+		}
+	}
+	return len(s)
+}
+
+// mathNumber returns the end of a character code's number at s[i] and its value: `"` and hex
+// digits (uppercase, as TeX reads them), `'` and octal digits, decimal digits, or a backtick and the character (or control
+// symbol) it names; ok is false when none is there.
+func mathNumber(s string, i int) (end int, v int64, ok bool) {
+	if i >= len(s) {
+		return i, 0, false
+	}
+	digits := func(from, base int, set string) (int, int64, bool) {
+		j := from
+		for j < len(s) && strings.IndexByte(set, s[j]) >= 0 {
+			j++
+		}
+		if j == from || j-from > 8 {
+			return i, 0, false
+		}
+		n, err := strconv.ParseInt(s[from:j], base, 64)
+		return j, n, err == nil
+	}
+	switch c := s[i]; {
+	case c == '"':
+		return digits(i+1, 16, "0123456789ABCDEF")
+	case c == '\'':
+		return digits(i+1, 8, "01234567")
+	case c >= '0' && c <= '9':
+		return digits(i, 10, "0123456789")
+	case c == '`':
+		j := i + 1
+		if j < len(s) && s[j] == '\\' {
+			j++
+		}
+		if j >= len(s) {
+			return i, 0, false
+		}
+		r, size := utf8.DecodeRuneInString(s[j:])
+		return j + size, int64(r), true
+	}
+	return i, 0, false
+}
+
+// mathCharCode reports whether control word w, which ends at s[i], typesets a character a
+// renderer reads from a code after it, and returns that character and the end of the code:
+// `\unicode` with optional arguments and a braced decimal, or hex led by `x` or `0x`, code;
+// `\char` with a number (see mathNumber); and `\mathchar` with a number whose low byte names
+// the character. A code that holds no valid character is not read as one.
+func mathCharCode(s string, i int, w string) (string, int, bool) {
+	var end int
+	var v int64
+	switch w {
+	case `\unicode`:
+		j, ok := mathOptions(s, i)
+		if !ok || j >= len(s) || s[j] != '{' {
+			return "", 0, false
+		}
+		end = mathGroup(s, j)
+		if end > len(s) || s[end-1] != '}' {
+			return "", 0, false
+		}
+		code := strings.TrimSpace(s[j+1 : end-1])
+		base := 10
+		switch {
+		case strings.HasPrefix(code, "x"), strings.HasPrefix(code, "X"):
+			code, base = code[1:], 16
+		case strings.HasPrefix(code, "0x"), strings.HasPrefix(code, "0X"):
+			code, base = code[2:], 16
+		}
+		if code == "" || len(code) > 8 {
+			return "", 0, false
+		}
+		n, err := strconv.ParseInt(code, base, 64)
+		if err != nil {
+			return "", 0, false
+		}
+		v = n
+	case `\char`, `\mathchar`:
+		var ok bool
+		if end, v, ok = mathNumber(s, mathSpaces(s, i)); !ok {
+			return "", 0, false
+		}
+		if w == `\mathchar` {
+			v &= 0xff
+		}
+	default:
+		return "", 0, false
+	}
+	if v <= 0 || v > utf8.MaxRune || !utf8.ValidRune(rune(v)) {
+		return "", 0, false
+	}
+	return string(rune(v)), end, true
+}
+
+// mathArgEnd returns the end of the argument a renderer can read after a control word that
+// ends at s[i]: optional arguments, then a brace group (see mathGroup) or a number (see
+// mathNumber), after white space; or i when none follows.
+func mathArgEnd(s string, i int) int {
+	j, ok := mathOptions(s, i)
+	if !ok || j >= len(s) {
+		return i
+	}
+	if s[j] == '{' {
+		return mathGroup(s, j)
+	}
+	if end, _, ok := mathNumber(s, j); ok {
+		return end
+	}
+	return i
+}
+
+// leftmostReadings calls add with each reading of d that pairs its runs of `$` from the left,
+// as mathSpanRe matches them, until add returns true, and reports whether it did: once for each
+// span and each place in its text where a control word, a brace or white space ends, with that
+// span read from there on with every match of mathMarkupRe removed, every span before it
+// dropped and the text between and after the spans as written; and once with every span
+// dropped. It is read beside mathReadings, and any span it takes is one more reading.
+func leftmostReadings(d string, add func(string) bool) bool {
+	spans := mathSpanRe.FindAllStringIndex(d, -1)
+	if len(spans) == 0 {
+		return false
+	}
+	var before strings.Builder
+	last := 0
+	for _, sp := range spans {
+		before.WriteString(d[last:sp[0]])
+		last = sp[1]
+		body := strings.Trim(d[sp[0]:sp[1]], "$")
+		starts := []int{0}
+		for i, r := range body {
+			if unicode.IsSpace(r) {
+				starts = append(starts, i+utf8.RuneLen(r))
+			}
+		}
+		for _, m := range mathMarkupRe.FindAllStringIndex(body, -1) {
+			starts = append(starts, m[1])
+		}
+		for _, at := range starts {
+			if add(before.String() + mathMarkupRe.ReplaceAllString(body[at:], "") + d[sp[1]:]) {
+				return true
+			}
+		}
+	}
+	before.WriteString(d[last:])
+	return add(before.String())
+}
+
+// asciiAlnum reports whether r is an ASCII letter or digit.
+func asciiAlnum(r rune) bool {
+	return r < utf8.RuneSelf && (unicode.IsLetter(r) || unicode.IsDigit(r))
+}
+
+// c1RefRe matches a numeric character reference to a C1 control (U+0080 to U+009F).
+var c1RefRe = regexp.MustCompile(`&#(?:[xX]0*[89][0-9a-fA-F]|0*(?:12[89]|1[3-5][0-9]));`)
+
+// decodings returns s with its entities decoded as html.UnescapeString does, which reads a
+// reference to a C1 control as the windows-1252 character a browser shows for it, and, when s
+// holds such a reference, once more with it read as the control itself, which is what a
+// CommonMark renderer emits for it and shows as nothing.
+func decodings(s string) []string {
+	d := html.UnescapeString(s)
+	c := c1RefRe.ReplaceAllStringFunc(s, func(ref string) string {
+		n, hex := strings.TrimSuffix(ref[2:], ";"), 10
+		if n[0] == 'x' || n[0] == 'X' {
+			n, hex = n[1:], 16
+		}
+		v, _ := strconv.ParseUint(n, hex, 32)
+		return string(rune(v))
+	})
+	if c == s {
+		return []string{d}
+	}
+	return []string{d, html.UnescapeString(c)}
+}
+
+// rendersBlank reports whether r renders as nothing and is not white space: a nonspacing or
+// enclosing mark, a default-ignorable code point (the filler letters among them), the blank
+// braille pattern, or a character in no letter, mark, number, punctuation, symbol or separator
+// category, which is a control, format, private-use, noncharacter or unassigned code point.
+// It is wider than rowattribution.go's stripInvisible, which reads an empty Runner: eachShownText
+// keeps each text as it stands beside the text with these dropped, so a wider family only reads
+// more of what a reader can be shown.
+func rendersBlank(r rune) bool {
+	if unicode.IsSpace(r) {
+		return false
+	}
+	if r == '\u2800' || unicode.In(r, unicode.Mn, unicode.Me, unicode.Other_Default_Ignorable_Code_Point) {
+		return true
+	}
+	return !unicode.In(r, unicode.L, unicode.M, unicode.N, unicode.P, unicode.S, unicode.Z)
+}
+
+// dropBlank is the strings.Map form of rendersBlank: it drops a character that renders as
+// nothing and keeps every other.
+func dropBlank(r rune) rune {
+	if rendersBlank(r) {
+		return -1
+	}
+	return r
+}
+
+var (
+	// autolinkRe matches a GFM autolink at the start of a string (a URI or an email address in
+	// angle brackets); group 1 is the text a renderer shows for it.
+	autolinkRe = regexp.MustCompile(`^<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^\x00-\x20<>]*|[A-Za-z0-9.!#$%&'*+/=?^_{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)>`)
+)
+
+// reduceLinks returns s with every inline link or image (`[text](dest "title")`), reference
+// link or image (`[text][label]`, `[text][]`) and autolink (`<scheme:...>`) replaced by the
+// text a renderer shows for it: the link text (itself reduced), an image's alt text when
+// keepAlt is set and nothing otherwise, and an autolink's address. Backslash escapes and code
+// spans are copied as written, since a renderer reads no link inside them. A bracket that opens
+// no link is copied, and the text after it is read on.
+func reduceLinks(s string, keepAlt bool) string {
+	return reduceLinksMode(s, keepAlt, false)
+}
+
+// reduceLinksMode is reduceLinks that, with shortcuts set, also reduces a balanced `[text]`
+// (or `![alt]`) that opens no inline or full reference link to its (reduced) text: a shortcut
+// reference link, which a renderer shows as its text once a `[text]: destination` definition
+// stands anywhere the renderer reads.
+func reduceLinksMode(s string, keepAlt, shortcuts bool) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		c := s[i]
+		switch {
+		case c == '\\' && i+1 < len(s):
+			b.WriteString(s[i : i+2])
+			i += 2
+			continue
+		case c == '`':
+			if end := codeSpanEnd(s, i); end > i {
+				b.WriteString(s[i:end])
+				i = end
+				continue
+			}
+		case c == '<':
+			if m := autolinkRe.FindStringSubmatchIndex(s[i:]); m != nil {
+				b.WriteString(s[i+m[2] : i+m[3]])
+				i += m[1]
+				continue
+			}
+		case c == '[' || (c == '!' && i+1 < len(s) && s[i+1] == '['):
+			open := i
+			if c == '!' {
+				open++
+			}
+			if text, end, ok := linkAt(s, open); ok {
+				if c == '[' || keepAlt {
+					b.WriteString(reduceLinksMode(text, keepAlt, shortcuts))
+				}
+				i = end
+				continue
+			}
+			if shortcuts {
+				if close := closingBracket(s, open); close > open {
+					if c == '[' || keepAlt {
+						b.WriteString(reduceLinksMode(s[open+1:close], keepAlt, shortcuts))
+					}
+					i = close + 1
+					continue
+				}
+			}
+		}
+		b.WriteByte(c)
+		i++
+	}
+	return b.String()
+}
+
+// codeSpanEnd returns the index just past the code span that opens with the backtick run at
+// i, or i when that run closes no span.
+func codeSpanEnd(s string, i int) int {
+	n := len(s[i:]) - len(strings.TrimLeft(s[i:], "`"))
+	for j := i + n; j < len(s); {
+		k := strings.IndexByte(s[j:], '`')
+		if k < 0 {
+			return i
+		}
+		j += k
+		m := len(s[j:]) - len(strings.TrimLeft(s[j:], "`"))
+		if m == n {
+			return j + m
+		}
+		j += m
+	}
+	return i
+}
+
+// linkAt reads a link whose text opens with the `[` at open: its text, the index just past
+// it, and whether the bracket opens one (an inline destination in parentheses, or a reference
+// label in brackets, follows the text's closing bracket).
+func linkAt(s string, open int) (text string, end int, ok bool) {
+	close := closingBracket(s, open)
+	if close < 0 || close+1 >= len(s) {
+		return "", 0, false
+	}
+	switch s[close+1] {
+	case '(':
+		if e := inlineDestinationEnd(s, close+1); e > 0 {
+			return s[open+1 : close], e, true
+		}
+	case '[':
+		for j := close + 2; j < len(s); j++ {
+			if s[j] == '\\' {
+				j++
+				continue
+			}
+			if s[j] == '[' {
+				break
+			}
+			if s[j] == ']' {
+				return s[open+1 : close], j + 1, true
+			}
+		}
+	}
+	return "", 0, false
+}
+
+// closingBracket returns the index of the `]` that closes the `[` at open (brackets nest;
+// escapes and code spans are skipped), or -1.
+func closingBracket(s string, open int) int {
+	depth := 0
+	for j := open; j < len(s); j++ {
+		switch s[j] {
+		case '\\':
+			j++
+		case '`':
+			if e := codeSpanEnd(s, j); e > j {
+				j = e - 1
+			}
+		case '[':
+			depth++
+		case ']':
+			if depth--; depth == 0 {
+				return j
+			}
+		}
+	}
+	return -1
+}
+
+// inlineDestinationEnd returns the index just past an inline link's `(destination "title")`
+// opening at p, or -1 when no such destination closes there. The destination is either
+// `<...>` or a run without spaces whose parentheses balance; the optional title is quoted with
+// `"`, `'` or parentheses.
+func inlineDestinationEnd(s string, p int) int {
+	j := p + 1
+	skipSpace := func() {
+		for j < len(s) && (s[j] == ' ' || s[j] == '\t') {
+			j++
+		}
+	}
+	skipSpace()
+	if j < len(s) && s[j] == '<' {
+		for j++; j < len(s) && s[j] != '>'; j++ {
+			if s[j] == '\\' {
+				j++
+			}
+		}
+		if j >= len(s) {
+			return -1
+		}
+		j++
+	} else {
+		depth := 0
+		for ; j < len(s) && s[j] != ' ' && s[j] != '\t'; j++ {
+			if s[j] == '\\' {
+				j++
+				continue
+			}
+			if s[j] == '(' {
+				depth++
+			}
+			if s[j] == ')' {
+				if depth == 0 {
+					break
+				}
+				depth--
+			}
+		}
+	}
+	skipSpace()
+	if j < len(s) && (s[j] == '"' || s[j] == '\'' || s[j] == '(') {
+		q := s[j]
+		if q == '(' {
+			q = ')'
+		}
+		for j++; j < len(s) && s[j] != q; j++ {
+			if s[j] == '\\' {
+				j++
+			}
+		}
+		if j >= len(s) {
+			return -1
+		}
+		j++
+		skipSpace()
+	}
+	if j < len(s) && s[j] == ')' {
+		return j + 1
+	}
+	return -1
+}
+
+// shownMarkup describes the first thing in s that eachShownText strips, decodes or reduces, or
+// that keeps the lint from reading it as a reader does, for a refusal: an HTML tag or comment
+// bracket, an entity, emphasis, strikethrough, code or escape character, then a character
+// outside printable ASCII (a non-ASCII character or a tab), then a `[bot]` login followed by
+// something other than a space or `(`, then link or image syntax.
+func shownMarkup(s string) string {
+	if i := strings.IndexAny(s, "<>&*_~`\\"); i >= 0 {
+		return fmt.Sprintf("the markup character `%c`", s[i])
+	}
+	for _, r := range s {
+		if r > unicode.MaxASCII || r == '\t' {
+			return fmt.Sprintf("the character U+%04X", r)
+		}
+	}
+	if asciiAppRunRe.MatchString(s) {
+		return "a login ending `[bot]` followed by something other than a space or `(`"
+	}
+	if i := strings.IndexAny(s, "[]!"); i >= 0 {
+		return fmt.Sprintf("the markup character `%c`", s[i])
+	}
+	return "markup"
+}
+
+// asciiAppRunRe matches text that opens with an ASCII App login directly followed by `[bot]`
+// in any case, whatever follows, for a refusal's description.
+var asciiAppRunRe = regexp.MustCompile(`(?i)^[a-z0-9][a-z0-9._-]*\[bot\]`)
+
+// tagOpen and tagClose report whether r opens or closes a tag a reader may take for the
+// brackets of a `[bot]` tag: an ASCII square or angle bracket, or any non-ASCII opening or
+// closing bracket or quotation mark.
+func tagOpen(r rune) bool {
+	return r == '[' || r == '<' || r > unicode.MaxASCII && unicode.In(r, unicode.Ps, unicode.Pi)
+}
+
+func tagClose(r rune) bool {
+	return r == ']' || r == '>' || r > unicode.MaxASCII && unicode.In(r, unicode.Pe, unicode.Pf)
+}
+
+// tagAfter reports whether a tag bracket that directly follows r may read as the tag of a
+// login ending in r: r is an ASCII letter, digit, `.`, `_` or `-`, or any non-ASCII character
+// other than a tag bracket. A bracket at the start of a text, or after another bracket or
+// other ASCII punctuation, opens no tag.
+func tagAfter(r rune) bool {
+	return !tagOpen(r) && !tagClose(r) && (loginByte(r) || r > unicode.MaxASCII)
+}
+
+// identityRegion returns the part of a shown text that names who ran a row: the text up to
+// the first ASCII space or `(`, as the lint splits a Runner cell, except that a space inside a
+// tag (see tagAfter) does not end it when the tag closes before any `(` or other tag bracket.
+// A tag that does not close so leaves the lint's cut.
+func identityRegion(s string) string {
+	cut := len(s)
+	if i := strings.IndexAny(s, " ("); i >= 0 {
+		cut = i
+	}
+	open, prev := false, rune(-1)
+	for i, r := range s {
+		after := prev
+		prev = r
+		switch {
+		case open && tagClose(r):
+			open = false
+		case open && (r == '(' || tagOpen(r)):
+			return s[:cut]
+		case !open && tagAfter(after) && tagOpen(r):
+			open = true
+		case !open && (r == ' ' || r == '('):
+			return s[:i]
+		}
+	}
+	if open {
+		return s[:cut]
+	}
+	return s
+}
+
+// loginByte reports whether r is in the alphabet an App login and its `[bot]` tag are written
+// in: ASCII letters, digits, `.`, `_`, `-` and square brackets.
+func loginByte(r rune) bool {
+	return r <= unicode.MaxASCII && (unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("._-[]", r))
+}
+
+// cjkOnly reports whether every letter and digit in s, and at least one, is Han, Hiragana,
+// Katakana or Hangul text that renders as itself. Such text cannot spell an App login.
+func cjkOnly(s string) bool {
+	seen := false
+	for _, r := range s {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			continue
+		}
+		if !unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul) ||
+			unicode.Is(unicode.Other_Default_Ignorable_Code_Point, r) {
+			return false
+		}
+		seen = true
+	}
+	return seen
+}
+
+// identityShowsTag reports whether a shown text's identity region (see identityRegion) shows
+// a reader a login followed by a tag that the lint does not read as App-run. A tag is a tag
+// bracket opened directly after a character a login may end in (see tagAfter) and closed
+// later in the region. The region shows one when a tag holds exactly three letters or digits,
+// as `[bot]` does, or when a tag holds three or more letters, digits or symbols and any
+// character in the region is outside the login alphabet (see loginByte). Only a region whose
+// letters are all CJK text (see cjkOnly) is exempt. No character is folded to or matched
+// against another, so a character no check names still fails closed.
+func identityShowsTag(s string) bool {
+	ir := identityRegion(s)
+	open, words, glyphs, prev := false, 0, 0, rune(-1)
+	three, wide, foreign := false, false, false
+	for _, r := range ir {
+		if !loginByte(r) {
+			foreign = true
+		}
+		after := prev
+		prev = r
+		switch {
+		case !open && tagAfter(after) && tagOpen(r):
+			open, words, glyphs = true, 0, 0
+		case open && tagClose(r):
+			three, wide, open = three || words == 3, wide || glyphs >= 3, false
+		case open && (unicode.IsLetter(r) || unicode.IsDigit(r)):
+			words++
+			glyphs++
+		case open && unicode.IsSymbol(r):
+			glyphs++
+		}
+	}
+	return (three || wide && foreign) && !cjkOnly(ir)
+}
+
+// showsAppRun reports whether a cell shows a reader an App-run Runner cell in any of its
+// shown texts, as the lint reads one or as a reader does (see identityShowsTag).
+func showsAppRun(cell string) bool {
+	return eachShownText(cell, func(t string) bool { return isAppRunnerCell(t) || identityShowsTag(t) })
+}
+
+// showsAttribution reports whether a line shows a reader App-run or on-behalf-of text in any
+// of its shown texts: a `[bot]` tag or the on-behalf-of marker anywhere, or a word that shows
+// as App-run (see identityShowsTag). A word starts the text or follows a space, a tab or a `(`,
+// since identityRegion ends a region at a space or `(` and a word in parentheses shows as one.
+func showsAttribution(line string) bool {
+	return eachShownText(line, func(t string) bool {
+		if l := strings.ToLower(t); strings.Contains(l, "[bot]") || strings.Contains(l, onBehalfOfCellMarker) {
+			return true
+		}
+		for i := 0; i < len(t); i++ {
+			if (i == 0 || t[i-1] == ' ' || t[i-1] == '\t' || t[i-1] == '(') && identityShowsTag(t[i:]) {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+// linkSyntax reports whether s holds Markdown link, image or autolink syntax a renderer shows
+// as other text.
+func linkSyntax(s string) bool {
+	return reduceLinks(s, true) != s
+}
+
+// lintTableAdds reports whether a landing adds the lint-read header at view index h of a
+// section, its separator, or any row the lint reads under it (the `|`-led lines after it).
+func lintTableAdds(view, lines []string, h int, onBranch map[string]bool) bool {
+	for j := h; j < len(view); j++ {
+		if j > h+1 && !strings.HasPrefix(strings.TrimSpace(view[j]), "|") {
+			break
+		}
+		if !onBranch[lines[j]] {
+			return true
+		}
+	}
+	return false
+}
+
+// headerCells returns a header row's cells as both readings compare them: trimmed, lowercased.
+func headerCells(line string, spans [][2]int) []string {
+	out := make([]string, len(spans))
+	for j, sp := range spans {
+		out[j] = strings.ToLower(strings.TrimSpace(line[sp[0]:sp[1]]))
+	}
+	return out
+}
+
+// gfmDelimiter reports whether line is a delimiter row a GFM renderer accepts under a header
+// of n cells: every cell dashes with optional edge colons, and exactly n cells.
+func gfmDelimiter(line string, n int) bool {
+	spans := cellSpans(strings.TrimSpace(line))
+	if len(spans) != n {
+		return false
+	}
+	t := strings.TrimSpace(line)
+	for _, sp := range spans {
+		if !gfmDelimiterCellRe.MatchString(strings.TrimSpace(t[sp[0]:sp[1]])) {
+			return false
+		}
+	}
+	return true
+}
+
+// evidenceLayoutProblem is the positive check on the landed Evidence section lines[start:end]:
+// it returns the first line the landing adds (one not in onBranch) that is not a blank line,
+// a row of a table both readings agree on, or a note line neither reads as a row, and why,
+// or "" when every added line is one of those. Both readings agree on a table when:
+//   - its header is a `|`-led line the lint reads as a header (a separator line follows it)
+//     and its delimiter row is one a GFM renderer accepts, with as many cells as the header
+//     (checked whenever the landing adds any line of that table);
+//   - every row is a `|`-led line, and no line in the middle of it reads to the lint as a
+//     separator or as a new header (other than a repeat of the table's own header, which the
+//     lint reads with the same Runner column);
+//   - an added row is no wider than its header when the header has no `Runner` column (the
+//     lint then reads the row's last cell, which a renderer drops), and only the cell the
+//     lint reads as Runner shows as an App-run Runner cell.
+//
+// A note line is any other line outside a table (prose after a blank line, a heading), or a
+// pipe-less line closing a table that shows no App-run or on-behalf-of text (a renderer shows
+// it as a one-cell row). A `|`-led line under no header is shown as text and read by the lint
+// with its last cell as Runner, so it is let through only when no other cell shows as an
+// App-run Runner cell, and only when it is not a separator line (which the lint reads only
+// directly under a header). An added line may also not hold a raw HTML table or heading tag,
+// share its line with an HTML comment that crosses a line break, or be a table line inside a
+// block quote. Lines a renderer reads as rows without a leading `|` are renderedRowMismatch's.
+func evidenceLayoutProblem(lines []string, start, end int, onBranch map[string]bool) (int, string) {
+	section := strings.Join(lines[start:end], "\n")
+	joined := map[int]bool{}
+	for _, m := range evidenceCommentRe.FindAllStringIndex(section, -1) {
+		first := strings.Count(section[:m[0]], "\n")
+		last := first + strings.Count(section[m[0]:m[1]], "\n")
+		for l := first; last > first && l <= last; l++ {
+			joined[l] = true
+		}
+	}
+	view := strings.Split(blankComments(section), "\n")
+	added := func(k int) bool { return !onBranch[lines[start+k]] }
+	separator := func(k int) bool {
+		return k < len(view) && evidenceSeparatorRe.MatchString(strings.Trim(strings.TrimSpace(view[k]), "|"))
+	}
+	// gfmTableAdds: whether the landing adds a line from k to the end of the table a renderer
+	// reads (the next blank line or other block).
+	gfmTableAdds := func(k int) bool {
+		for j := k; j < len(view); j++ {
+			if t := strings.TrimSpace(view[j]); t == "" || startsOtherBlock(t) {
+				break
+			}
+			if added(j) {
+				return true
+			}
+		}
+		return false
+	}
+	inTable, split := false, false
+	cols, runner := 0, -1
+	var header []string
+	for k := 0; k < len(view); k++ {
+		i := start + k
+		t := strings.TrimSpace(view[k])
+		if added(k) {
+			if rawTableTagRe.MatchString(lines[i]) {
+				return i, "it holds a raw HTML table or heading tag, which a renderer shows as a table or heading the lint never reads"
+			}
+			if joined[k] && t != "" {
+				return i, "an HTML comment that crosses a line break shares the line with other text, and the lint reads the lines around it as one"
+			}
+		}
+		if t == "" || startsOtherBlock(t) {
+			if added(k) && strings.HasPrefix(t, ">") && hasUnescapedPipe(t) {
+				return i, "it is a table line inside a block quote, which a renderer shows as a table the lint never reads"
+			}
+			inTable = false
+			continue
+		}
+		piped := strings.HasPrefix(t, "|")
+		if !inTable {
+			if !piped {
+				continue
+			}
+			if separator(k) {
+				if added(k) {
+					return i, "the lint reads it as a table separator, but no table header stands directly above it"
+				}
+				continue
+			}
+			if !separator(k + 1) {
+				// No header: a renderer shows the line as text, and the lint reads it as a row
+				// whose Runner cell is its last cell, so only that cell may show as App-run.
+				if spans := cellSpans(view[k]); added(k) {
+					for j, sp := range spans[:max(len(spans)-1, 0)] {
+						if showsAppRun(view[k][sp[0]:sp[1]]) || showsAppRun(lines[i][sp[0]:sp[1]]) {
+							return i, fmt.Sprintf("it begins with `|` under no table header, so the lint reads its Runner "+
+								"cell from its last cell, but its cell %d shows as an App-run Runner cell", j+1)
+						}
+					}
+				}
+				continue
+			}
+			spans := cellSpans(view[k])
+			if (added(k) || gfmTableAdds(k+1)) && !gfmDelimiter(view[k+1], len(spans)) {
+				return i + 1, fmt.Sprintf("the lint reads it as the delimiter row of the %d-column header above it, but a "+
+					"renderer accepts a delimiter row only of dashes with optional edge colons, one cell per header cell, "+
+					"so it shows no table there", len(spans))
+			}
+			inTable, split = true, false
+			cols, runner, header = len(spans), -1, headerCells(view[k], spans)
+			for j, sp := range spans {
+				if strings.ToLower(strings.TrimSpace(view[k][sp[0]:sp[1]])) == "runner" {
+					runner = j
+				}
+			}
+			k++
+			continue
+		}
+		if !piped {
+			if added(k) && showsAttribution(lines[i]) {
+				return i, "it closes a table without a blank line, so a renderer shows it as a one-cell row, and it shows App-run or on-behalf-of text the lint never reads as a row"
+			}
+			continue
+		}
+		if separator(k) {
+			if added(k) {
+				return i, "the lint reads it as a table separator, but it stands inside a table, where a renderer shows it as a row"
+			}
+			continue
+		}
+		if separator(k + 1) {
+			// A repeat of the table's own header reads the same to both: the lint takes its
+			// Runner column from the same cell a renderer shows rows under.
+			if spans := cellSpans(view[k]); slices.Equal(headerCells(view[k], spans), header) {
+				k++
+				continue
+			}
+			if added(k) || added(k+1) {
+				return i, "the lint reads it as a new table header, since a separator line follows it, but a renderer " +
+					"shows it as a row of the table above, whose header differs; put a blank line above it to start a new table"
+			}
+			split = true
+			continue
+		}
+		if !added(k) {
+			continue
+		}
+		if split {
+			return i, "the lint reads it under a header a renderer shows as a row, so the two read its Runner cell from different headers"
+		}
+		spans := cellSpans(view[k])
+		if runner < 0 && len(spans) > cols {
+			return i, fmt.Sprintf("it has %d cells under a %d-column header with no `Runner` column, so the lint reads "+
+				"its Runner cell from its last cell, which a renderer drops", len(spans), cols)
+		}
+		r := len(spans) - 1
+		if runner >= 0 && runner < len(spans) {
+			r = runner
+		}
+		for j, sp := range spans {
+			if j != r && (showsAppRun(view[k][sp[0]:sp[1]]) || showsAppRun(lines[i][sp[0]:sp[1]])) {
+				return i, fmt.Sprintf("its cell %d shows as an App-run Runner cell, but the lint reads its Runner cell "+
+					"from cell %d", j+1, r+1)
+			}
+		}
+	}
+	return 0, ""
+}
+
+// outsideEvidenceProblem returns the first body line outside the lint's Evidence section
+// lines[start:end] (and its heading) that the landing adds (not in onBranch) and that shows
+// a reader Evidence the lint never reads — a line holding a `|` with a cell that shows as an
+// App-run Runner cell, or a raw HTML table or heading tag outside a code span — and why, or ""
+// when there is none. Lines in fenced code show as code and are skipped. start and end are -1
+// when the brief has no section the lint reads; every body line is then checked.
+func outsideEvidenceProblem(lines []string, start, end int, onBranch map[string]bool) (int, string) {
+	from, _ := briefBodyStart(lines)
+	fence := ""
+	for i := from; i < len(lines); i++ {
+		// A fenced code block shows as code: no table, no heading.
+		if f := codeFence(lines[i]); f != "" && (fence == "" || (f[0] == fence[0] && len(f) >= len(fence) &&
+			strings.Trim(strings.TrimSpace(lines[i]), f[:1]) == "")) {
+			if fence == "" {
+				fence = f
+			} else {
+				fence = ""
+			}
+			continue
+		}
+		if fence != "" || (start >= 0 && i >= start-1 && i < end) || onBranch[lines[i]] {
+			continue
+		}
+		if slices.ContainsFunc(outsideCodeSpans(lines[i]), rawTableTagRe.MatchString) {
+			return i, "it holds a raw HTML table or heading tag, which a renderer shows as a table or heading the lint never reads"
+		}
+		t := strings.TrimSpace(lines[i])
+		if !hasUnescapedPipe(t) {
+			continue
+		}
+		for _, sp := range cellSpans(t) {
+			if showsAppRun(t[sp[0]:sp[1]]) {
+				return i, "it shows an App-run Runner cell in a table row, and the lint reads Evidence only in the first `## Evidence` section"
+			}
+		}
+	}
+	return 0, ""
+}
+
+// outsideCodeSpans returns line without its inline code spans, whose text a renderer shows as
+// code, read two ways: without the spans codeSpanRe matches, and without those codeSpans finds,
+// which pairs only backtick runs of the same length. A line holding a backslash (which can
+// escape a backtick) is returned whole in the first reading.
+func outsideCodeSpans(line string) []string {
+	var b strings.Builder
+	last := 0
+	for _, sp := range codeSpans(line) {
+		b.WriteString(line[last:sp[0]])
+		last = sp[1]
+	}
+	b.WriteString(line[last:])
+	if strings.Contains(line, "\\") {
+		return []string{line, b.String()}
+	}
+	return []string{codeSpanRe.ReplaceAllString(line, ""), b.String()}
+}
+
+// outsideRefusal is the refusal for an outsideEvidenceProblem line.
+func outsideRefusal(i int, why string, lines []string) error {
+	return deskkit.Refused(fmt.Sprintf("refused: the added line %d is outside the Evidence section the lint reads (%s), "+
+		"so it would never be checked or stamped — nothing was written. Land every row in the one `## Evidence` "+
+		"section: %s", i+1, why, strings.TrimSpace(lines[i])))
+}
+
+// unreadableHeader reports why an added Evidence header row cannot be read the way the lint
+// reads it, or "" when it can. view is the header with closed comments blanked, orig its bytes
+// as landed, spans its cells in view. The lint takes the Runner column from the last cell that
+// trims and lowercases to exactly `runner`, and otherwise from the row's last cell; a header a
+// reader sees differently can make the column shown as Runner not the one the lint reads.
+//   - An invisible format character (a bidi isolate, a zero-width space): a cell can show as
+//     `Runner` and read as something else.
+//   - A non-ASCII letter or mark: a homoglyph can show as `Runner`. Non-ASCII punctuation and
+//     symbols (`Date · Runner`) are left alone.
+//   - A cell whose letters spell `runner` but that the lint does not read as exactly `runner`
+//     (`**Runner**`, `Run<!-- -->ner`): a reader takes it as the Runner column; the lint does not.
+//   - More than one `Runner` cell: the lint reads the last, a reader may take the first.
+func unreadableHeader(view, orig string, spans [][2]int) string {
+	for i := 0; i < len(orig); {
+		r, size := utf8.DecodeRuneInString(orig[i:])
+		i += size
+		switch {
+		case r == utf8.RuneError && size == 1:
+			return "it is not valid UTF-8"
+		case unicode.Is(unicode.Cf, r):
+			return fmt.Sprintf("it holds the invisible format character U+%04X", r)
+		case r > unicode.MaxASCII && (unicode.IsLetter(r) || unicode.IsMark(r)):
+			return fmt.Sprintf("it holds the non-ASCII letter or mark U+%04X, which can show as an ASCII one", r)
+		}
+	}
+	runners := 0
+	for _, sp := range spans {
+		cell := strings.ToLower(strings.TrimSpace(view[sp[0]:sp[1]]))
+		if cell == "runner" {
+			runners++
+			continue
+		}
+		if lettersOf(cell) == "runner" {
+			return fmt.Sprintf("its cell %q renders as Runner, but the lint does not read it as the Runner column",
+				strings.TrimSpace(view[sp[0]:sp[1]]))
+		}
+	}
+	if runners > 1 {
+		return "it has more than one Runner column; the lint reads the last, and a reader may take the first"
+	}
+	return ""
+}
+
+// lettersOf returns s's letters, lowercased, everything else dropped.
+func lettersOf(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			b.WriteRune(unicode.ToLower(r))
+		}
+	}
+	return b.String()
+}
+
+// renderedRowMismatch returns the first line of the Evidence section lines[start:end] that a
+// Markdown renderer reads as a table row the lint does not read the same way, and why, or ""
+// when there is none. Only lines this landing adds (not in onBranch) are refused. A renderer
+// (GFM) reads a table from a header line holding a `|` followed by a delimiter row, through
+// every following line until a blank line or the start of another block, whether or not a
+// line begins with `|`; the lint reads only `|`-led lines, and forgets the table's header at
+// the first line that is not one.
+//   - A line in a table that does not begin with `|` but holds one renders as a row (or a
+//     header, or a delimiter row) the lint never reads. A pipe-less note line ending a table
+//     renders as a one-cell row with no Runner cell, and is left alone.
+//   - A `|`-led line after such a line in the same table renders under the table's header,
+//     but the lint has dropped that header and reads the row's last cell as its Runner cell.
+//     A repeat of the table's own header (with a separator line under it) is the exception:
+//     the lint reads its Runner column from the same cell a renderer shows rows under, so the
+//     rows after it read the same to both (a witness table appended after an attestation line).
+//     So is a row with exactly as many cells as the table's header when that header's Runner
+//     column is its last cell, or it has none: both readings then take the row's last cell as
+//     its Runner cell (rows appended without a header after an attestation line).
+func renderedRowMismatch(lines []string, start, end int, onBranch map[string]bool) (int, string) {
+	inTable, lost := false, false
+	var header []string
+	for i := start; i < end; i++ {
+		t := strings.TrimSpace(lines[i])
+		if t == "" || startsOtherBlock(t) {
+			inTable, lost = false, false
+			continue
+		}
+		piped := hasUnescapedPipe(t)
+		if !inTable {
+			if !piped || i+1 >= end || !isDelimiterRow(lines[i+1]) {
+				continue
+			}
+			inTable, lost, header = true, false, headerCells(t, cellSpans(t))
+		}
+		added := !onBranch[lines[i]]
+		if !strings.HasPrefix(t, "|") {
+			if added && piped {
+				return i, "a renderer reads it as a table row, but it does not begin with `|`, so the lint never reads it"
+			}
+			lost = true
+			continue
+		}
+		if lost && i+1 < end && evidenceSeparatorRe.MatchString(strings.Trim(strings.TrimSpace(lines[i+1]), "|")) {
+			if slices.Equal(headerCells(t, cellSpans(t)), header) {
+				lost = false
+				i++
+				continue
+			}
+			// Refused when the landing adds this header, its separator, or any later line of the
+			// table a renderer reads; a header already on the branch with nothing added under it
+			// does not block other landings.
+			for j := i; j < end; j++ {
+				if u := strings.TrimSpace(lines[j]); u == "" || startsOtherBlock(u) {
+					break
+				}
+				if !onBranch[lines[j]] {
+					return i, "the lint reads it as a new table header, but no blank line separates it from the table " +
+						"above, so a renderer shows it as a row under that table's different header; put a blank line above it"
+				}
+			}
+		}
+		if lost && added && !lastCellRunner(header, len(cellSpans(t))) {
+			return i, "a renderer reads it as a table row under the table's header, but a line above it in the same " +
+				"table does not begin with `|`, so the lint has dropped that header and reads the row's last cell as " +
+				"its Runner cell; repeat the table's header and its delimiter row above the rows"
+		}
+	}
+	return 0, ""
+}
+
+// lastCellRunner reports whether a row of n cells under a header with cells header (trimmed,
+// lowercased) has its Runner cell at its last cell to both readings: the row is as wide as the
+// header (a renderer pads a narrower row and drops a wider one's extra cells), and the column
+// the lint takes from the header (its last `runner` cell, else its last cell) is the last one.
+func lastCellRunner(header []string, n int) bool {
+	if n != len(header) || n == 0 {
+		return false
+	}
+	for j := len(header) - 1; j >= 0; j-- {
+		if header[j] == "runner" {
+			return j == n-1
+		}
+	}
+	return true
+}
+
+// startsOtherBlock reports whether a trimmed line opens a block that ends a table: an ATX
+// heading, a code fence or a block quote.
+func startsOtherBlock(t string) bool {
+	if strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~") || strings.HasPrefix(t, ">") {
+		return true
+	}
+	return atxHeadingRe.MatchString(t)
+}
+
+// isDelimiterRow reports whether a line can be a table's delimiter row: dashes, colons, pipes
+// and spaces only, with at least one dash.
+func isDelimiterRow(line string) bool {
+	t := strings.TrimSpace(line)
+	return t != "" && strings.Contains(t, "-") && evidenceSeparatorRe.MatchString(t)
+}
+
+// hasUnescapedPipe reports whether s holds a `|` not escaped as `\|` (cellSpans' reading).
+func hasUnescapedPipe(s string) bool {
+	return len(cellSpans("x"+s+"x")) > 1
+}
+
+var (
+	// atxHeadingRe matches an ATX heading line (trimmed); group 1 is its text with any closing
+	// sequence removed.
+	atxHeadingRe = regexp.MustCompile(`^#{1,6}(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$`)
+	// setextUnderlineRe matches a setext heading's underline.
+	setextUnderlineRe = regexp.MustCompile(`^ {0,3}(?:=+|-+)[ \t]*$`)
+)
+
+// htmlHeadingRe matches a raw HTML heading's opening tag; group 1 is its level, group 2 the
+// rest of the line.
+var htmlHeadingRe = regexp.MustCompile(`(?i)<h([1-6])\b[^>]*>(.*)`)
+
+// bodyHeading is one heading in a brief's body: its line, its level, and its text as written.
+type bodyHeading struct {
+	line, level int
+	text        string
+}
+
+// bodyHeadings returns every heading in the body: ATX, setext, and raw HTML `<h1>`–`<h6>`.
+// Lines are also split on a lone CR, which a renderer can treat as a line break, so a heading
+// the lint reads as part of another line counts too. A line inside a fenced code block, or
+// indented four spaces or a tab (indented code), is shown as code, never as a heading.
+func bodyHeadings(lines []string) []bodyHeading {
+	from, _ := briefBodyStart(lines)
+	type piece struct {
+		line int
+		text string
+	}
+	var pieces []piece
+	for i := from; i < len(lines); i++ {
+		for _, p := range strings.Split(lines[i], "\r") {
+			pieces = append(pieces, piece{i, p})
+		}
+	}
+	var out []bodyHeading
+	fence := ""
+	for k, p := range pieces {
+		t := strings.TrimSpace(p.text)
+		if f := codeFence(p.text); f != "" && (fence == "" || (f[0] == fence[0] && len(f) >= len(fence) && strings.Trim(t, f[:1]) == "")) {
+			if fence == "" {
+				fence = f
+			} else {
+				fence = ""
+			}
+			continue
+		}
+		if fence != "" || strings.HasPrefix(p.text, "    ") || strings.HasPrefix(p.text, "\t") {
+			continue
+		}
+		if m := atxHeadingRe.FindStringSubmatch(t); m != nil {
+			out = append(out, bodyHeading{p.line, len(t) - len(strings.TrimLeft(t, "#")), m[1]})
+		} else if m := htmlHeadingRe.FindStringSubmatch(t); m != nil {
+			out = append(out, bodyHeading{p.line, int(m[1][0] - '0'), m[2]})
+		} else if k+1 < len(pieces) && t != "" && setextUnderlineRe.MatchString(pieces[k+1].text) {
+			level := 2
+			if strings.Contains(pieces[k+1].text, "=") {
+				level = 1
+			}
+			out = append(out, bodyHeading{p.line, level, t})
+		}
+	}
+	return out
+}
+
+// codeFence returns the backtick or tilde run that opens or closes a fenced code block on
+// line (indented at most three spaces), or "" when line is not a fence.
+func codeFence(line string) string {
+	t := strings.TrimLeft(line, " ")
+	if len(line)-len(t) > 3 || (!strings.HasPrefix(t, "```") && !strings.HasPrefix(t, "~~~")) {
+		return ""
+	}
+	n := len(t) - len(strings.TrimLeft(t, t[:1]))
+	return t[:n]
+}
+
+// headingShowsEvidence reports whether a heading's text shows a reader `Evidence`: its letters
+// spell `evidence` once entities are decoded, HTML tags removed and link or image syntax
+// reduced to its shown text, with closed comments either removed or (as inside a code span)
+// shown.
+func headingShowsEvidence(text string) bool {
+	for _, s := range commentReadings(text) {
+		for _, v := range linkReadings(s) {
+			if lettersOf(html.UnescapeString(htmlTagRe.ReplaceAllString(v, ""))) == "evidence" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// unreadEvidenceHeadings returns every body heading a renderer shows as Evidence — an ATX,
+// setext or HTML heading of any level whose shown letters spell `evidence` — other than the
+// `## Evidence` line the lint reads as the section.
+func unreadEvidenceHeadings(lines []string) []bodyHeading {
+	lintHeading := -1
+	if start, _, ok := evidenceSpan(lines); ok {
+		lintHeading = start - 1
+	}
+	var out []bodyHeading
+	for _, h := range bodyHeadings(lines) {
+		if h.line == lintHeading || (len(out) > 0 && out[len(out)-1].line == h.line) {
+			continue
+		}
+		if headingShowsEvidence(h.text) {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// unreadEvidenceAddition reports a heading a renderer shows as Evidence, other than the lint's
+// section, that the landing adds (more of that heading line than the base holds), or one under
+// which the landing adds a non-blank line outside the lint's section: at is the heading's
+// line, under the added line (at itself when the heading is the addition). A heading's lines
+// run to the next heading of the same or a higher level.
+func unreadEvidenceAddition(lines, baseLines []string, onBranch map[string]bool) (at, under int, ok bool) {
+	baseCount := map[string]int{}
+	for _, h := range unreadEvidenceHeadings(baseLines) {
+		baseCount[baseLines[h.line]]++
+	}
+	start, end, hasSection := evidenceSpan(lines)
+	all := bodyHeadings(lines)
+	for _, h := range unreadEvidenceHeadings(lines) {
+		if baseCount[lines[h.line]]--; baseCount[lines[h.line]] < 0 || !onBranch[lines[h.line]] {
+			return h.line, h.line, true
+		}
+		stop := len(lines)
+		for _, n := range all {
+			if n.line > h.line && n.level <= h.level {
+				stop = n.line
+				break
+			}
+		}
+		for j := h.line + 1; j < stop; j++ {
+			if hasSection && j >= start && j < end {
+				continue
+			}
+			if strings.TrimSpace(lines[j]) != "" && !onBranch[lines[j]] {
+				return h.line, j, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+// addedHeadingLetter returns the first body heading line the landing adds (not in onBranch)
+// whose shown text holds a non-ASCII letter or mark, and that rune. A homoglyph can make a
+// heading show as Evidence while its letters spell something else.
+func addedHeadingLetter(lines []string, onBranch map[string]bool) (int, rune, bool) {
+	for _, h := range bodyHeadings(lines) {
+		if onBranch[lines[h.line]] {
+			continue
+		}
+		for _, r := range html.UnescapeString(h.text) {
+			if r > unicode.MaxASCII && (unicode.IsLetter(r) || unicode.IsMark(r)) {
+				return h.line, r, true
+			}
+		}
+	}
+	return 0, 0, false
 }
 
 // rowControlCharacter returns the first control character (C0, DEL or C1, other than a tab,

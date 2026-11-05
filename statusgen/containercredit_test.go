@@ -100,6 +100,13 @@ func creditAtt(repo string, n int, run, source, brief, model, tier string) strin
 	return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source=%s brief=%s model=%s tier=%s", repo, n, run, source, brief, model, tier)
 }
 
+// creditAttV2 is a version-2 (cross-repository) attestation line naming issue n
+// of the tracking repository repo.
+func creditAttV2(repo string, n int, sourceRepo, trackingSource string) string {
+	return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source-repo=%s source=%s tracking-source=%s brief=%s model=claude-opus-4 tier=strong",
+		repo, n, fixtureRun, sourceRepo, fixtureSource, trackingSource, creditBriefRel)
+}
+
 // creditBaseAtt is the attestation rendered from fixture record n's base binding.
 func creditBaseAtt(n int) string {
 	return creditAtt(creditRepo, n, fixtureRun, fixtureSource, creditBriefRel, "claude-opus-4", "strong")
@@ -110,12 +117,12 @@ func creditBaseAtt(n int) string {
 func creditBlock(t *testing.T, att, closed string) string {
 	t.Helper()
 	span := witnessHeader + "\n" + creditRow + "\n" + treeDigestPrefix + creditTree + "\n" + containerImagePrefix + fixtureImage + "\n" + att + "\n"
-	a := attestationV1Re.FindStringSubmatch(att)
-	if a == nil {
-		t.Fatalf("fixture attestation is not the version-1 form: %q", att)
+	a, ok := parseContainerAttestation(att)
+	if !ok {
+		t.Fatalf("fixture attestation is not a version-1 or version-2 line: %q", att)
 	}
 	return span + fmt.Sprintf("%srun=%s source=%s tree=%s witness=%s opened=%s closed=%s before=receipt after=check-verifier\n",
-		admissionBracketPrefix, a[3], a[4], creditTree, digestOf(t, span), fixtureOpened, closed)
+		admissionBracketPrefix, a.run, a.source, creditTree, digestOf(t, span), fixtureOpened, closed)
 }
 
 type creditFx struct{ root, brief string }
@@ -362,6 +369,148 @@ func TestBracketCredit(t *testing.T) {
 	})
 }
 
+// creditTrackingSource is the tracking-repository commit the version-2 fixture
+// records (60, 61) name.
+var creditTrackingSource = strings.Repeat("d", 40)
+
+// regression: #4626
+//
+// TestBracketCreditCrossRepo: a version-2 (cross-repository) span is credited
+// only when both its repositories pass the repository checks: the tracking
+// repository is the brief's own, and the source repository is in the configured
+// repository set. Records 60 and 61 differ only in their source repository.
+func TestBracketCreditCrossRepo(t *testing.T) {
+	creditFakeDeskread(t)
+	check := func(t *testing.T, name string, att string, wantCode int, wantCredit, wantWhy string) {
+		t.Helper()
+		fx := landed(t, vfMailVerifier, att)
+		if res, out := captureVerifyrunOut(t, []string{"--bracket-digest", "--witness", fx.brief}); res.code != verifyrunExitPass || !strings.Contains(out, " verdict=match ") {
+			t.Fatalf("%s: the fixture's bracket does not match (exit %d): %q", name, res.code, out)
+		}
+		code, out := fx.credit(t, fixtureSource)
+		if code != wantCode || !strings.Contains(out, " credit="+wantCredit+"\n") || !strings.Contains(out, wantWhy) {
+			t.Fatalf("%s: exit %d output %q, want exit %d credit=%s naming %q", name, code, out, wantCode, wantCredit, wantWhy)
+		}
+	}
+	admitted := creditAttV2(creditRepo, 60, "example-org/agents", creditTrackingSource)
+	unlisted := creditAttV2(creditRepo, 61, "example-org/unlisted", creditTrackingSource)
+
+	check(t, "a configured source repository", admitted, verifyrunExitPass, creditCredited, "")
+	check(t, "an unconfigured source repository", unlisted, verifyrunExitFail, creditNotCredited,
+		"source repository example-org/unlisted is not in the configured repository set")
+
+	// The source-repository check reads the roster, not the forge: with every
+	// read failing, the unconfigured span is still not-credited, never
+	// could-not-check.
+	t.Setenv("CREDIT_FAKE_FAIL", "1")
+	check(t, "an unconfigured source repository, forge unreachable", unlisted, verifyrunExitFail, creditNotCredited,
+		"is not in the configured repository set")
+	t.Setenv("CREDIT_FAKE_FAIL", "")
+
+	// The tracking repository must be the brief's own, as for version 1.
+	check(t, "a record in another tracking repository", creditAttV2("example-org/agents", 60, creditRepo, creditTrackingSource),
+		verifyrunExitFail, creditNotCredited, "is not in the brief's own repository example-org/tracker")
+
+	// The span's version-2 fields are compared with the record's.
+	check(t, "another source repository than the record's", creditAttV2(creditRepo, 60, "example-org/examples", creditTrackingSource),
+		verifyrunExitFail, creditNotCredited, "differs from the line rendered from example-org/tracker#60 in source-repo")
+	check(t, "another tracking source than the record's", creditAttV2(creditRepo, 60, "example-org/agents", strings.Repeat("e", 40)),
+		verifyrunExitFail, creditNotCredited, "differs from the line rendered from example-org/tracker#60 in tracking-source")
+
+	// The set is the roster's: an owner/* entry admits the same span.
+	allowed := rosterWith(nil)[scanEnvAllowedRepos]
+	scanWithRoster(t, rosterWith(map[string]string{scanEnvAllowedRepos: allowed + ",example-org/*"}))
+	check(t, "a source repository matched by an owner pattern", unlisted, verifyrunExitPass, creditCredited, "")
+
+	// A pattern entry carrying a policy token is a roster deskkit refuses whole;
+	// statusgen refuses it too, so it grants no source repository and the span
+	// is never credited (F-pattern-entry-parity).
+	for _, bad := range []string{"example-org/*:ci", "example-org/*:private"} {
+		scanWithRoster(t, rosterWith(map[string]string{scanEnvAllowedRepos: allowed + "," + bad}))
+		fx := landed(t, vfMailVerifier, unlisted)
+		if code, out := fx.credit(t, fixtureSource); code == verifyrunExitPass || strings.Contains(out, " credit="+creditCredited+"\n") {
+			t.Errorf("roster entry %q: exit %d output %q, want the span not credited", bad, code, out)
+		}
+	}
+}
+
+// regression: #4626
+//
+// TestAllowedRepoMirror holds allowedRepo to deskkit IsAllowedRepo's answers on
+// a roster read by scanParseConfig, the way deskkit reads it: an explicit entry
+// or an owner/* pattern, exact-case, and false for anything that is not one
+// owner/name slug or when nothing is configured. The one deliberate difference
+// is marked: deskkit answers true for the literal "other-org/*" under that
+// pattern, and allowedRepo answers false (stricter, never a grant deskkit lacks).
+func TestAllowedRepoMirror(t *testing.T) {
+	roster := rosterWith(map[string]string{scanEnvAllowedRepos: "example-org/tracker:ci:private,other-org/*"})
+	scanWithRoster(t, roster)
+	cfg := scanEffectiveConfig()
+	if len(cfg.Problems) != 0 {
+		t.Fatalf("a roster deskkit accepts did not load: %v", cfg.Problems)
+	}
+	for repo, want := range map[string]bool{
+		"example-org/tracker": true,
+		"example-org/agents":  false,
+		"Example-org/tracker": false,
+		"other-org/anything":  true,
+		"Other-org/anything":  false,
+		"other-org/*":         false, // deskkit: true; deliberately stricter here
+		"other-org/a/b":       false,
+		"other-org":           false,
+		"/tracker":            false,
+		"":                    false,
+	} {
+		if got := cfg.allowedRepo(repo); got != want {
+			t.Errorf("allowedRepo(%q) = %v, want %v", repo, got, want)
+		}
+	}
+	if (scanConfig{}).allowedRepo("example-org/tracker") {
+		t.Error("an unconfigured set admitted a repository")
+	}
+	// The refusals deskkit makes on a pattern entry collapse statusgen's
+	// configuration too, so no repository is admitted under them. The shared
+	// vector's rejectedRosters holds deskkit to the same rows.
+	for _, bad := range []string{"other-org/*:ci", "other-org/*:no-ci", "other-org/*:public", "ot*er-org/*"} {
+		scanWithRoster(t, rosterWith(map[string]string{scanEnvAllowedRepos: "example-org/tracker:ci:private," + bad}))
+		c := scanEffectiveConfig()
+		if len(c.Problems) == 0 || c.allowedRepo("other-org/anything") || c.allowedRepo("example-org/tracker") {
+			t.Errorf("roster entry %q: problems %v, want a collapsed configuration admitting nothing", bad, c.Problems)
+		}
+	}
+}
+
+// regression: #4626
+//
+// TestCreditBindingSource pins the record layer on its own. With the span-side
+// repositories() check bypassed, creditBindingProblem still refuses the
+// version-2 binding of fixture 61 (source repository not configured) and
+// admits fixture 60's, through BindingProblem's sourceAllowed argument.
+func TestCreditBindingSource(t *testing.T) {
+	scanWithRoster(t, rosterWith(nil))
+	fixtures := loadCreditRecordFixtures(t)
+	for name, wantRefuse := range map[string]bool{"60-v2-admitted": false, "61-v2-source-unconfigured": true} {
+		f, ok := fixtures[name]
+		if !ok {
+			t.Fatalf("no shared credit-record fixture %s", name)
+		}
+		var iss struct {
+			Body string `json:"body"`
+		}
+		if err := json.Unmarshal(f.Issue, &iss); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		_, raw, _ := strings.Cut(iss.Body, "\n\n")
+		var b creditBinding
+		if err := json.Unmarshal([]byte(raw), &b); err != nil || b.Version != 2 {
+			t.Fatalf("%s: not a version-2 binding (%v)", name, err)
+		}
+		if p := creditBindingProblem(b, creditRepo); (p != "") != wantRefuse {
+			t.Errorf("%s: creditBindingProblem = %q, want refused=%t", name, p, wantRefuse)
+		}
+	}
+}
+
 // TestCreditRecordFixtures is statusgen's half of row 11: the record reader
 // admits or refuses each shared fixture as its `expect` says. deskkit's
 // TestVerifierAttestationCreditParity reads the same files.
@@ -388,10 +537,13 @@ func TestCreditRecordFixtures(t *testing.T) {
 		if _, raw, ok := strings.Cut(iss.Body, "\n\n"); ok {
 			var b creditBinding
 			if json.Unmarshal([]byte(raw), &b) == nil && b.Run != "" {
-				att = creditAtt(b.Repo, f.Number, b.Run, b.Source, b.Brief, b.Model, b.Tier)
+				att = creditRenderedLine(b, f.Number)
 			}
 		}
-		a := attestationV1Re.FindStringSubmatch(att)
+		a, ok := parseContainerAttestation(att)
+		if !ok {
+			t.Fatalf("%s: %q is not an attestation line", name, att)
+		}
 		cc := &creditContext{desk: "assay-desk-app", repo: creditRepo, rec: creditOK(), records: map[string]creditRecord{}}
 		v := cc.record(a, att)
 		admitted := v.verdict == creditCredited

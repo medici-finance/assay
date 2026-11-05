@@ -153,7 +153,7 @@ func TestVerifyWakeUnchangedIsVisibleWait(t *testing.T) {
 func TestVerifyWakeRelevantChange(t *testing.T) {
 	root := planFixtureRoot(t, map[string]string{
 		"01": planBrief("model", "no", "no", "no", "no"), // relevant file changed → wake
-		"02": planBrief("model", "no", "no", "no", "no"), // tool version changed → wake
+		"02": planBrief("model", "no", "no", "no", "no"), // tool version ONLY changed → HOLD (#2310)
 		"03": planBrief("model", "no", "no", "no", "no"), // Verify definition changed → wake
 		"04": planBrief("model", "no", "no", "no", "no"), // referenced action completed → wake
 		"05": planBrief("model", "no", "no", "no", "no"), // declared input unchanged → HOLD (unrelated commit)
@@ -173,7 +173,7 @@ func TestVerifyWakeRelevantChange(t *testing.T) {
 	reader := fakeWake{
 		revs: map[string]string{
 			"file:pkg/a.go":                "rev2",               // CHANGED → wake 01
-			"tool":                         "desk-tools/v1.0.16", // CHANGED → wake 02
+			"tool":                         "desk-tools/v1.0.16", // CHANGED, tool-only → hold 02 (#2310)
 			"verify-def:example-stream/03": "vdef2",              // CHANGED → wake 03
 			"file:pkg/b.go":                "rev1",               // UNCHANGED → hold 05 (an unrelated file moved)
 		},
@@ -182,16 +182,20 @@ func TestVerifyWakeRelevantChange(t *testing.T) {
 	v := &VerifyLoop{Root: root, WakeReader: reader, Issues: openIssues, Now: fixedClock("2026-09-20T12:00:00Z")}
 	disp, reason, dispatchN := dispositionsOf(t, v)
 
-	for _, id := range []string{"example-stream/01", "example-stream/02", "example-stream/03", "example-stream/04"} {
+	for _, id := range []string{"example-stream/01", "example-stream/03", "example-stream/04"} {
 		if disp[id] != dispDispatch {
 			t.Fatalf("%s classified %v (reason %q); want DISPATCH — its wake condition was met", id, disp[id], reason[id])
 		}
 	}
+	// #2310: a tool release alone does not move a blocker, so a tool-only change holds.
+	if disp["example-stream/02"] != dispWaitReceipt {
+		t.Fatalf("example-stream/02 classified %v (reason %q); want WAIT — only the tool version changed", disp["example-stream/02"], reason["example-stream/02"])
+	}
 	if disp["example-stream/05"] != dispWaitReceipt {
 		t.Fatalf("example-stream/05 classified %v; want WAIT — its declared input is unchanged, an unrelated change must not wake it", disp["example-stream/05"])
 	}
-	if dispatchN != 4 {
-		t.Fatalf("%d dispatch(es); want exactly 4 (the four woken briefs, never the held one)", dispatchN)
+	if dispatchN != 3 {
+		t.Fatalf("%d dispatch(es); want exactly 3 (the three woken briefs, never the held ones)", dispatchN)
 	}
 }
 

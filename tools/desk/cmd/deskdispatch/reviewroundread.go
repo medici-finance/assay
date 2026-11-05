@@ -86,7 +86,14 @@ func prepareReviewRound(o dispatchOpts, plan dispatchPlan, repo string) (reviewR
 		rr.round = laneRound{why: why}
 		return rr, nil
 	}
-	fg, fr, err := reviewRoundForgeFn(repo)
+	var fg reviewRoundForge
+	var fr deskkit.ForgeRepo
+	var err error
+	if plan.reviewContext != nil {
+		fg, fr = plan.reviewContext, plan.reviewContext.repo
+	} else {
+		fg, fr, err = reviewRoundForgeFn(repo)
+	}
 	if err != nil || fg == nil {
 		return undetermined("could not reach the forge")
 	}
@@ -138,6 +145,10 @@ func prepareReviewRound(o dispatchOpts, plan dispatchPlan, repo string) (reviewR
 		prev := verdicts[len(verdicts)-1]
 		rr.prev = &prev
 	}
+	if plan.reviewContext != nil && !isCommitID(pr.BaseSHA) {
+		rr.scope = decideReviewScope(scopeFacts{unknown: "the provider supplied no exact base endpoint"})
+		return rr, nil
+	}
 	rr.scope = decideReviewScope(readScopeFacts(fg, fr, o.pr, pr, rr.prev))
 	return rr, nil
 }
@@ -167,7 +178,11 @@ func readScopeFacts(fg reviewRoundForge, fr deskkit.ForgeRepo, number int, pr *d
 		f.unknown = "the change's base branch is not known"
 		return f
 	}
-	was, err := fg.CompareRefs(fr, pr.BaseRef, f.prevHead)
+	base := pr.BaseRef
+	if isCommitID(pr.BaseSHA) {
+		base = pr.BaseSHA
+	}
+	was, err := fg.CompareRefs(fr, base, f.prevHead)
 	if err != nil || was == nil || len(was.Files) >= forgeComparePageFiles {
 		f.unknown = "the change's file list at the previous head is not provably complete"
 		return f

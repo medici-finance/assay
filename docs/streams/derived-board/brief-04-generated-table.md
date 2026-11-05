@@ -32,15 +32,11 @@ id: f48aa289-b2e2-4de0-83a7-f530c67f33f1
 
 ## Context
 files:
-- `statusgen/readmetable.go` (new) — render the Briefs table from frontmatter (#, title, wave, effort) + `reconcile` cells (Status, Verified, Reviewed + witness link) between `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->`; idempotent rewrite; anything outside the markers untouched.
+- `statusgen/readmetable.go` (new) — render the Briefs table from frontmatter (#, title, wave, effort) + `reconcile` cells (Status, Verified, Reviewed + witness link) between the `statusgen:briefs:begin` / `statusgen:briefs:end` HTML comment markers; idempotent rewrite; anything outside the markers untouched.
 - `statusgen/main.go` — `regen` gains `--readmes`; `--lint`: (a) a README with `board: generated` whose table region differs from a fresh offline render of the frontmatter columns = PROBLEM "hand edit to a generated table"; (b) the lifecycle columns are not compared offline (they are `unknown` offline) — only structure and authoring columns are.
-- `.github/workflows/assay-statusgen.yml` — regen job runs `reconcile` with
-  `GITHUB_TOKEN` (read-only `pull-requests: read`, `issues: read`), then `regen --readmes`;
-  a new `schedule:` trigger (hourly) that opens/updates ONE PR `chore(board): reconcile`
-  instead of pushing when stream READMEs changed; push-to-main path unchanged for
-  `STATUS.md`.
+- `.github/workflows/assay-statusgen.yml` — regen job runs `reconcile` with `GITHUB_TOKEN` (read-only `pull-requests: read`, `issues: read`), then `regen --readmes`; a new `schedule:` trigger (hourly) that opens/updates ONE PR `chore(board): reconcile` instead of pushing when stream READMEs changed; push-to-main path unchanged for `STATUS.md`.
 - `statusgen/init.go` — the scaffolded adopter workflow gets the same shape.
-- `docs/brief-rules.md` §Derived surfaces — add the README table + the markers.
+- `docs/brief-rules.md` (§Derived surfaces) — add the README table + the markers.
 
 facts:
 - Loop guards stay: the scheduled PR's branch is `board/reconcile`, reused; the regen

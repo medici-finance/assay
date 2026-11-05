@@ -1,0 +1,17 @@
+{
+  "test": "go test ./cmd/cellctl/ -count=1 -timeout 600s -run '^TestHotfixIneligibleSource$'",
+  "control": {
+    "name": "CONTROL: invert the shared policy (an ineligible source installs)",
+    "file": "cmd/cellctl/hotfix.go",
+    "old": "\tif err := forge.CheckEligible(pin, o.source); err != nil {",
+    "new": "\tif err := forge.CheckEligible(pin, o.source); err == nil {"
+  },
+  "mutations": [
+    {
+      "name": "install never decides eligibility",
+      "file": "cmd/cellctl/hotfix.go",
+      "old": "\tif err := forge.CheckEligible(pin, o.source); err != nil {",
+      "new": "\tif err := forge.CheckEligible(pin, o.source); err != nil && false {"
+    }
+  ]
+}

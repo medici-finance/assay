@@ -31,10 +31,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/perfrec"
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 	"github.com/spf13/cobra"
 )
 
@@ -89,10 +89,10 @@ func boardCode(n int) error {
 }
 
 type boardOptions struct {
-	table, delta, quiet, json bool
-	out, tier                 string
-	minAge, floor             int
-	merge, unreviewed         time.Duration
+	table, delta, quiet, json    bool
+	out, tier, reviewObservation string
+	minAge, floor                int
+	merge, unreviewed            time.Duration
 }
 
 func versionLine() string {
@@ -106,6 +106,7 @@ func boardBindings() []cli.Binding {
 		{Key: "json", Kind: cli.Bool, Flag: "json", Persistent: true, Default: false, Usage: "JSON output (stalled otherwise defaults to a table)"},
 		{Key: "delta", Kind: cli.Bool, Flag: "delta", Persistent: true, Default: false, Usage: "only changed rows (prs/actions/queue/nextup)"},
 		{Key: "quiet", Kind: cli.Bool, Flag: "quiet", Persistent: true, Default: false, Usage: "summary line (prs/actions/queue/nextup)"},
+		{Key: "review-observation", Kind: cli.String, Flag: "review-observation", Persistent: true, Usage: "throughput only: reuse a complete fresh review observation; no review recollection on hold"},
 		{Key: "out", Kind: cli.String, Flag: "out", Persistent: true, Default: "", Usage: "write primary output to a caller-minted file"},
 		{Key: "min-age-hours", Kind: cli.String, Flag: "min-age-hours", Persistent: true, Default: "48", Usage: "stalled draft window in positive hours"},
 		{Key: "merge-now-threshold", Kind: cli.String, Flag: "merge-now-threshold", Persistent: true, Default: "20m", Usage: "MERGE-NOW approved-age decay duration"},
@@ -123,6 +124,14 @@ func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) int) i
 }
 
 func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer) int, record func(func() int) int, sinks ...func(perfrec.Context)) int {
+	// Additive offline discovery; bare version output and help stay unchanged.
+	if len(args) == 2 && (args[0] == "--version" || args[0] == "version") && args[1] == "--json" {
+		if err := json.NewEncoder(stdout).Encode(map[string]any{"version": versionLine(), "readerCapabilities": deskkit.ReaderCapabilities(deskkit.EffectiveToolVersion(version), "deskboard")}); err != nil {
+			fmt.Fprintln(stderr, err)
+			return deskkit.ExitUnverifiable
+		}
+		return 0
+	}
 	var sink func(perfrec.Context)
 	if len(sinks) > 0 {
 		sink = sinks[0]
@@ -137,6 +146,9 @@ func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer
 				if err != nil {
 					fmt.Fprintln(stderr, err)
 					return boardExit(deskkit.ExitRefused)
+				}
+				if o.reviewObservation != "" && sub != "throughput" {
+					return deskkit.Refused("deskboard: --review-observation is supported only by throughput")
 				}
 				if o.out != "" && (o.delta || o.quiet) {
 					fmt.Fprintln(stderr, "deskboard: --out is not supported together with --delta/--quiet")
@@ -237,7 +249,7 @@ func resolveBoard(set *cli.Set) (boardOptions, error) {
 	if boardResolved != nil {
 		boardResolved(v)
 	}
-	o := boardOptions{table: v.Bool("table"), json: v.Bool("json"), delta: v.Bool("delta"), quiet: v.Bool("quiet"), out: v.String("out"), tier: v.String("tier")}
+	o := boardOptions{table: v.Bool("table"), json: v.Bool("json"), delta: v.Bool("delta"), quiet: v.Bool("quiet"), out: v.String("out"), tier: v.String("tier"), reviewObservation: v.String("review-observation")}
 	o.minAge, err = strconv.Atoi(v.String("min-age-hours"))
 	if err != nil || o.minAge <= 0 {
 		return o, deskkit.Refused("deskboard: --min-age-hours requires a positive integer")
@@ -285,7 +297,13 @@ func runBoard(sub string, rest, args []string, o boardOptions, stdout, stderr io
 	lastSweepCost = nil
 	hdr := boardHeader()
 
-	rep, err := boardDispatch(sub, rest, hdr, mergeNowThreshold, unreviewedThreshold, minAgeHours, o.tier)
+	var rep *Report
+	var err error
+	if sub == "throughput" && o.reviewObservation != "" {
+		rep, err = cmdThroughput(hdr, mergeNowThreshold, unreviewedThreshold, o.reviewObservation)
+	} else {
+		rep, err = boardDispatch(sub, rest, hdr, mergeNowThreshold, unreviewedThreshold, minAgeHours, o.tier)
+	}
 	// #2421: one read-cost line per actions sweep, on success and on refusal alike.
 	if sub == "actions" && lastSweepCost != nil {
 		fmt.Fprintln(stderr, lastSweepCost.line())
@@ -522,7 +540,35 @@ const (
 	staleStateDrift         = "drift"          // checked: they differ
 	staleStateNotApplicable = "not-applicable" // unpinned build: there is no install to drift
 	staleStateUnknown       = "unknown"        // COULD-NOT-CHECK: no pin found AND no in-tree ref
+	// staleStateHotfix: checked — the running binary is a valid local hotfix over this
+	// checkout's pin (its base == the pin, unexpired). Not stale, but never silent: the
+	// header names it on every board read.
+	staleStateHotfix = "hotfix"
 )
+
+// hotfixNow is the clock the hotfix arm reads expiry against; a seam for tests only.
+var hotfixNow = time.Now
+
+// hotfixStaleState classifies a running hotfix tag against the checkout's pin: base == pin
+// and unexpired is `hotfix` (stale=false, a HOTFIX: header); anything else is drift naming
+// the hotfix, which leaves the board BLIND exactly as any other drift does.
+func hotfixStaleState(running, base, pinTag, pinArtifact, pinFile string) (string, bool, string) {
+	expires, err := time.Parse(time.RFC3339, deskkit.HotfixExpires)
+	if err != nil {
+		return staleStateDrift, true, "desk-tools hotfix " + running + " carries no readable expiry (" +
+			deskkit.HotfixExpires + ") — run `cellctl hotfix status`; the pin is " + pinTag + " in " + pinFile
+	}
+	exp := expires.UTC().Format(time.RFC3339)
+	if !hotfixNow().Before(expires) {
+		return staleStateDrift, true, "desk-tools hotfix " + running + " expired " + exp +
+			" — regenerate the shims (`cellctl up`) to fall back to pin " + pinTag + " (" + pinFile + ")"
+	}
+	if normalizeTag(base) != normalizeTag(pinTag) {
+		return staleStateDrift, true, "desk-tools hotfix " + running + " outlived its pin: built over " + base +
+			", " + pinFile + " pins " + pinArtifact + " " + pinTag + " — regenerate the shims (`cellctl up`)"
+	}
+	return staleStateHotfix, false, "HOTFIX: desk-tools " + running + " over pin " + pinTag + " (expires " + exp + ")"
+}
 
 // staleState reports installed-vs-tracked drift as a three-state verdict plus the
 // authoritative boolean.
@@ -574,6 +620,9 @@ func staleState() (state string, stale bool, detail string) {
 		running := deskkit.ReleaseTag
 		if running != "" {
 			pinFile := filepath.Join(pinRoot, deskkit.AssayVersionsFile)
+			if base, ok := deskkit.HotfixBase(running); ok {
+				return hotfixStaleState(running, base, pinTag, pinArtifact, pinFile)
+			}
 			if normalizeTag(running) == normalizeTag(pinTag) {
 				return staleStateInSync, false,
 					"in sync with " + pinFile + " (" + pinArtifact + " " + pinTag + ")"
@@ -771,22 +820,25 @@ func normalizeTag(tag string) string {
 // the in-tree ref "when it exists", could-not-check only when neither source resolves).
 // Malformed-pin detection is `deskpins --check`'s job, not the drift banner's.
 //
-// TWO ARTIFACT NAMES, TRIED IN ORDER, NEITHER MATCHED LOOSELY. The pin contract admits two
-// legitimate spellings of the same pin: the bare `desk-tools` line, and the per-platform
+// THREE ARTIFACT NAMES, TRIED IN ORDER, NONE MATCHED LOOSELY. The pin contract admits three
+// legitimate spellings of the same pin: the bare `desk-tools` line, the per-platform
 // `desk-tools-<os>-<arch>` line `docs/distribution.md` tells an adopter to write and that
-// `deskinstall` resolves by `runtime.GOOS + "-" + runtime.GOARCH`. Only the bare one was ever
+// `deskinstall` resolves by `runtime.GOOS + "-" + runtime.GOARCH`, and the
+// `desk-tools-<os>-<arch>.tar.gz` line the installer writes under the tarball's full asset
+// name (#4842; deskkit.DeskToolsPlatformArtifacts holds the per-platform list). Only the bare one was ever
 // looked up, so a consumer whose pin file carries ONLY the per-platform line fell through
 // here (found=false), through the channel-D arm, through the in-tree fallback its checkout
 // does not have, and landed on staleState's could-not-check arm — which reports stale=true by
 // design, because an unverifiable drift check is not evidence of freshness. The verdict was
 // right about what it observed; the observation was the defect.
 //
-// The fix is a SECOND LOOKUP WITH AN EXACT NAME, never a looser match. ArtifactPin selects by
+// The fix is a FURTHER LOOKUP WITH AN EXACT NAME per spelling, never a looser match. ArtifactPin selects by
 // a trailing-space prefix, and pins.go states plainly that this is why `desk-tools ` must
 // never match `desk-tools-linux-amd64 ` — that disambiguation is a control, not an
 // inconvenience, and relaxing it would collapse the two lines into one match everywhere in
-// the suite. So this asks for each name in full, and the BARE line still wins when both are
-// present: an existing consumer's verdict cannot change under it.
+// the suite. So this asks for each name in full, and the BARE line still wins when more than
+// one is present (then the suffixless platform line): an existing consumer's verdict cannot
+// change under it.
 //
 // The matched artifact name is returned so the banner can say which line the verdict came
 // from — two sources that can disagree must be distinguishable in the message that reports
@@ -796,13 +848,13 @@ func deskToolsPinReal() (root, tag, artifact string, found bool) {
 	if t, name, ok := deskkit.DeskToolsReleasePin(dir, deskPlatform); ok {
 		return dir, t, name, true
 	}
-	return "", "", "", false // no pin file, or no usable desk-tools line of either shape
+	return "", "", "", false // no pin file, or no usable desk-tools line of any shape
 }
 
 // deskToolsArtifact is the bare artifact name, tried first so a consumer that already
 // carries it keeps exactly today's verdict. The lookup itself is deskkit's, shared with
 // deskboot's first-sweep check (#2986), so the boot and the board read one pin the same way.
-const deskToolsArtifact = deskkit.DeskToolsArtifact
+var deskToolsArtifact = deskkit.DeskToolsArtifact
 
 // deskPlatform is the host's `<os>-<arch>` token. It is a var for the same reason isPinned
 // and gitTree are: the per-platform fallback has to be exercisable for a platform the test
@@ -929,6 +981,8 @@ func printBanners(w io.Writer, h Header) {
 		fmt.Fprintln(w, "STALE-UNKNOWN: "+h.StaleDetail)
 	case staleStateDrift:
 		fmt.Fprintln(w, "STALE: "+h.StaleDetail)
+	case staleStateHotfix:
+		fmt.Fprintln(w, h.StaleDetail) // the detail opens with `HOTFIX:`
 	default:
 		fmt.Fprintln(w, "desk-tools: "+h.StaleDetail)
 	}

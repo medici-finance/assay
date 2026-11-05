@@ -80,6 +80,33 @@ facts:
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
 
+### Non-implementer verifier run — 2026-11-02 claude-opus-5-5 verifier at dbfa166d5d96 (first verification; all five rows pass, host verifyrun witness)
+
+Fresh non-implementer verification on merged main dbfa166d5d96. Admitted by the dispatcher check (exit 0, binding medici-finance/assay#5308 run=0e202752244042a1, carried in the attestation line under the table). The deliverables arrived in 022d1744c (merged by medici-finance/assay#5227, merge 379607771) with the follow-up f16f4f1e9. No Verify row is classed check:ci, so the container bracket does not apply to any row. The table below is the witness `statusgen verifyrun` (v1.0.69) wrote in write mode, run on the darwin host from the admitted home on a clean tree, with TMPDIR outside the home. Row 1's fixture: ASSAY_DESK_ENV_FILE named a one-line placeholder env-file and ASSAY_DESK_PEM_FILE_DIR named a directory of five placeholder PEM files (one line of text each, not keys), both outside the home. DOCKER_HOST named a socket that does not exist, so the docker CLI could reach no engine: every row only parsed and resolved the compose file, and no container, image pull or network call took place.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `docker compose -f containers/compose.yaml config` | pass exit=0 | sha256:97a528fd6b0d | 2026-11-02 | assay-verifier-app[bot] @ dbfa166d5d96 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `docker compose -f containers/compose.yaml config --services \| sort` | pass exit=0 | sha256:687c0691217c | 2026-11-02 | assay-verifier-app[bot] @ dbfa166d5d96 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `docker compose -f containers/compose.yaml config \| grep -c '/run/secrets/assay/app.pem'` | pass exit=0 | sha256:f0b5c2c2211c | 2026-11-02 | assay-verifier-app[bot] @ dbfa166d5d96 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `docker compose -f containers/compose.yaml config --volumes \| wc -l` | pass exit=0 | sha256:30179a803d48 | 2026-11-02 | assay-verifier-app[bot] @ dbfa166d5d96 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -c -e 'ghs_' -e 'ghp_' -e 'github_pat_' -e 'sk-ant-' -e 'PRIVATE KEY' containers/compose.yaml containers/desk.env.example; test $? -eq 1` | pass exit=0 | sha256:2d8d2678bc4d | 2026-11-02 | assay-verifier-app[bot] @ dbfa166d5d96 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5308 run=0e202752244042a1ed93fc5f097c721207d6af1d89de5999b19cf2ee4bc7bf7b source=dbfa166d5d967904f4b14956b8735933d48579d6 brief=docs/streams/desk-containers/brief-05-docker-compose.md model=claude-opus-5-5 tier=strong
+
+Reading of the witness (plain prose, no row credit):
+- `statusgen verifyrun --check` on the brief: 5 pass, 0 fail, 0 could-not-run or missing of 5 Verify rows.
+- Rows 2, 3 and 4 exit 0 whatever the count, so their Expect cells were read from the output. A supplemental hand re-run of each row command from the home, with the same fixture and environment (no row credit), reproduced all five digests exactly. Row 2's output is the five lines intake-desk, pr-review-desk, the-desk, verify-desk, worker-desk. Row 3's is 5. Row 4's is 5, padded by wc; the volumes are intake-desk-work, worker-desk-work, pr-review-desk-work, verify-desk-work and the-desk-work. Row 5's grep prints a count of 0 for both files and exits 1, so the test exits 0. Row 1's resolved config gives every service stdin_open and tty set to true, its own PEM secret at the app.pem target, its own work volume on /work, and only the fixture's placeholder model variable in its environment.
+- Supplemental mutation probes, run in a throwaway copy of the two files outside the home (no row credit). Row 5 with one placeholder line containing the Anthropic key prefix added to the example env-file: exit 1, the count for that file is 1. Row 3 with the app.pem target removed from one service: the count drops to 4 and the exit stays 0. So row 3, like rows 2 and 4, discriminates on its output, not its exit status.
+- Parity with the launcher, checked by hand: the PEM target equals pem_dst in containers/desk-run.sh line 53 and the entrypoint default in containers/entrypoint.sh line 34; the volumes follow the launcher's desk-work naming (desk-run.sh line 369); the default env-file path matches desk-run.sh line 301. The Definition of Done's interactive-session parity claim needs a live engine and image, and no Verify row covers it; it is not attested here.
+
+Enumeration (risk-bearing values). The brief carries risk fields that are all no, and it is not irreversible. Literals introduced by 022d1744c and f16f4f1e9 in containers/compose.yaml: the secret target /run/secrets/assay/app.pem (lines 48, 57, 66, 75, 84), the image tag default latest (lines 45, 54, 63, 72, 81), the five volume names (lines 106 to 115), the env-file default path (line 40), the PEM directory default (lines 93 to 101), stdin_open and tty true (lines 35 and 36) and the project name assay-desks (line 32). containers/desk.env.example sets no live value: every line is commented out. Ranked by what breaks if wrong: the PEM target first (a desk would start without its App key), then the volume names (a compose desk and a launcher desk would see different /work), then the rest. Every one is undone by an edit; none is irreversible.
+
+RISK-VALUE: DERIVED — target = /run/secrets/assay/app.pem @ containers/compose.yaml:48 — it is the path the runtime contract fixes in containers/secrets.md section 2 and the path the image's entrypoint reads by default (containers/entrypoint.sh:34), and the same path desk-run.sh mounts (containers/desk-run.sh:53), so compose and the launcher present one credential surface.
+
+RISK-VALUE: DERIVED — name = intake-desk-work @ containers/compose.yaml:107 (and the four sibling names, lines 109 to 115) — desk-run.sh mounts the volume named for the desk plus -work (containers/desk-run.sh:369), so the names must be exactly these, with no project prefix, for the two surfaces to share one /work per desk. One volume per desk follows the brief's own fact that a volume is never shared across desks.
+
+**VERIFY: PASS** — 5/5 Verify rows pass with 0 fail and 0 could-not-run at dbfa166d5d96. Gate: model; status left where it is.
+
 ## Review
 Gate: model (all four risk answers no — declarative wiring of the human-gated brief-02
 contract; committed files carry placeholders only). Reviewer confirms rows 3-5 and

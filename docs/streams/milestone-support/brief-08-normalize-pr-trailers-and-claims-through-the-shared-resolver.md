@@ -44,7 +44,7 @@ consumers:
 
 ## Context
 
-files: `tools/desk/internal/deskkit/trailer.go`, `tools/desk/internal/deskkit/briefauthoring.go`, `tools/desk/internal/deskkit/claimstore.go`, `tools/desk/internal/gitcore/claimref.go`, `tools/desk/cmd/deskpr/`, `tools/desk/cmd/deskfile/`, `tools/desk/cmd/deskclaim-ref/`, `tools/desk/internal/loopengine/`, `changelog/milestone-support-08.md` (planned), `statusgen/testdata/milestone-support/08-mutations.json` (planned). New paths and tests are planned implementation deliverables, not current artifacts.
+files: `tools/desk/internal/deskkit/trailer.go`, `tools/desk/internal/deskkit/briefauthoring.go`, `tools/desk/internal/deskkit/claimstore.go`, `gitcore/claimref.go`, `tools/desk/cmd/deskpr/`, `tools/desk/cmd/deskfile/`, `tools/desk/cmd/deskclaim-ref/`, `tools/desk/internal/loopengine/`, `changelog/milestone-support-08.md` (planned), `statusgen/testdata/milestone-support/08-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.
@@ -85,6 +85,8 @@ single-point-of-failure: incorrect shared identity or capability interpretation;
 ## Human decision
 
 Before changing the governed boundary, present the concrete implementation/design through the existing decision mechanism. Confirm the preserved actor, subject, revocation and effect-admission rules. Options: accept the bounded implementation; request corrections; hold. No answer supplies no approval. Do not infer this ruling from the planning request.
+
+Default if no answer: none — blocks until answered
 
 ## Task
 

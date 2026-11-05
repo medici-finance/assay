@@ -257,3 +257,12 @@ one)`) is printed once to `up`'s own stderr instead.
 In the dry-run transcripts, `up/0`, `up/1`, `up/2`, `up/3`, `up/4`, `kind-whole-line/1` and
 `kind-whole-line/9` lose their `[dry-run] cell: echo '…'` line from stdout and end their
 stderr with that note. Every other byte still must match. `DESKD=1` behaviour is unchanged.
+
+## Scrubbed display reporting
+
+`check/2` replaces exactly `cockpit: herdr (auto: on PATH)` with
+`cockpit: tmux (scrubbed auto: private socket)`. A scrubbed cell with no explicit
+cockpit has always launched private tmux. With cell-owned provider/Herdr support,
+`check` now reports that actual surface; Herdr is explicit opt-in. Exit status,
+all other stdout and all stderr remain byte-identical in the fixture. The frozen
+pre-migration transcript remains unchanged.

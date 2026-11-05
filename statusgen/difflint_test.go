@@ -276,4 +276,9 @@ func TestNormalizeDiffProblem(t *testing.T) {
 	if g := normalizeDiffProblem("NOTICE: brief-9 message", "/repo"); g != "brief-9 message" {
 		t.Fatalf("normalize no-path got %q", g)
 	}
+	// A "." root must not be replaced as a string: that deleted every dot in the
+	// line (".md" included), so two different files could normalise alike.
+	if g := normalizeDiffProblem("PROBLEM: a/b.md: x.y", "."); g != "a/b.md: x.y" {
+		t.Fatalf("a '.' root must not delete dots: %q", g)
+	}
 }

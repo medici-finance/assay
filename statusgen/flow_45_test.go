@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/medici-finance/assay/statusgen/verifyqueue"
 	"os"
 	"path/filepath"
 	"sort"
@@ -55,6 +56,7 @@ func flowQueueRows(t *testing.T, root string) (string, []flowQueueRow) {
 // paused/parked placements and the unknown (could-not-check) state map to one
 // class; the legacy fields stay first and unchanged; and corrupt input is an
 // explicit invalid row, never an empty queue.
+// regression: F-queue-contract
 func TestFlowQueue(t *testing.T) {
 	raw, rows := flowQueueRows(t, flowQueueRoot)
 
@@ -77,6 +79,9 @@ func TestFlowQueue(t *testing.T) {
 			t.Fatalf("got %d rows, want %d: %+v", len(rows), len(want), rows)
 		}
 		for _, r := range rows {
+			if !verifyqueue.Supported(r.QueueVersion, r.QueueClass) {
+				t.Errorf("producer emitted unsupported contract: %+v", r)
+			}
 			w, ok := want[r.Brief]
 			if !ok {
 				t.Errorf("unexpected row %s", r.Brief)

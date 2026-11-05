@@ -328,9 +328,12 @@ func expandVar(s string, e *Env) (int, string) {
 // defaults it asserts, and the variable environment every later step reads.
 type Cell struct {
 	launchStarted time.Time
-	Cadence       *cadenceOptions
-	cadenceLease  *cellcadence.Lease
-	Env           *Env
+	// pendingSurfaces is each role's surface as its cockpit opened it, bound into the role's
+	// surface receipt once the role's lease confirms the start (role_surface.go).
+	pendingSurfaces map[string]surfaceReceipt
+	Cadence         *cadenceOptions
+	cadenceLease    *cellcadence.Lease
+	Env             *Env
 
 	Name string
 	Dir  string
@@ -505,6 +508,12 @@ func loadCell(name string) *Cell {
 	switch c.Kind {
 	case "k8s":
 		c.Deskd = e.GetOr("DESKD", "1")
+		if e.Get("CELL_KUBERNETES_CONFIG") != "" {
+			if e.IsSet("DESKD") && e.Get("DESKD") != "0" {
+				die("Kubernetes compatibility does not run a host deskd; set DESKD=0")
+			}
+			c.Deskd = "0"
+		}
 	case "container":
 		if e.GetOr("DESKD", "0") != "0" {
 			die("container cells do not run host deskd")
