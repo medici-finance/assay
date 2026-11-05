@@ -22,6 +22,10 @@ in a comment posted under the driver's own login, never a role App relay — the
 [ruling comment](https://github.com/medici-finance/assay/issues/4394#issuecomment-6399242471),
 posted 2026-10-25T15:02:45Z and not edited since, reads `statusgen/36: 1`.
 
+**Written after implementation.** statusgen/36 was delivered by #4409 before this record existed.
+This record was written afterwards, to back-fill the design-approval gate for a delivered brief
+that other work depends on (statusgen/37); it did not precede the implementation.
+
 This record transcribes that ruling into the register for the lifecycle's design-approval gate
 (`spec/lifecycle-v1.md` §4.4); it does not mint a new decision. The decision text, the options
 and their recorded costs are taken from the brief and the decision issue; nothing here adds
