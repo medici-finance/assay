@@ -188,7 +188,13 @@ func TestSnapshotBoardCase(t *testing.T) {
 
 // regression: #5395
 func TestSnapshotRosterMismatch(t *testing.T) {
-	dest := t.TempDir()
+	parent := t.TempDir()
+	dest := filepath.Join(parent, "snapshot")
+	if err := os.Mkdir(dest, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	canary := filepath.Join(parent, "outside")
+	mustWrite(t, canary, "unchanged")
 	mustWrite(t, filepath.Join(dest, "Dir", "one"), "a")
 	s, err := newConsumerSnapshot([]evaluation.TreeEntry{
 		{Mode: "100644", Path: "Dir/one"},
@@ -211,6 +217,67 @@ func TestSnapshotRosterMismatch(t *testing.T) {
 	}
 	if len(entries) == 2 && err != nil {
 		t.Fatalf("distinct directories refused: %v", err)
+	}
+	if got, err := os.ReadFile(canary); err != nil || string(got) != "unchanged" {
+		t.Fatalf("outside canary changed: %q %v", got, err)
+	}
+	if siblings, err := os.ReadDir(parent); err != nil || len(siblings) != 2 {
+		t.Fatalf("unexpected outside entries: %v %v", siblings, err)
+	}
+}
+
+// regression: #5395
+func TestSnapshotCaseCollision(t *testing.T) {
+	probe := t.TempDir()
+	mustWrite(t, filepath.Join(probe, "case"), "x")
+	if _, err := os.Stat(filepath.Join(probe, "CASE")); os.IsNotExist(err) {
+		t.Skip("case-sensitive filesystem")
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	parent := t.TempDir()
+	dest := filepath.Join(parent, "snapshot")
+	if err := os.Mkdir(dest, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	canary := filepath.Join(parent, "outside")
+	mustWrite(t, canary, "unchanged")
+	entries := []evaluation.TreeEntry{
+		{Mode: "100644", Path: "Dir/one"},
+		{Mode: "100644", Path: "dir/two"},
+		{Mode: "120000", Path: "alias"},
+	}
+	var archive bytes.Buffer
+	w := tar.NewWriter(&archive)
+	for _, h := range []*tar.Header{
+		{Name: "Dir/one", Typeflag: tar.TypeReg, Size: 1, Mode: 0o644},
+		{Name: "dir/two", Typeflag: tar.TypeReg, Size: 1, Mode: 0o644},
+		{Name: "alias", Typeflag: tar.TypeSymlink, Linkname: "Dir/one"},
+	} {
+		if err := w.WriteHeader(h); err != nil {
+			t.Fatal(err)
+		}
+		if h.Size > 0 {
+			if _, err := w.Write([]byte("x")); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := newConsumerSnapshot(entries, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.extract(&archive, dest); err == nil {
+		t.Fatal("folded directory collision accepted")
+	}
+	if got, err := os.ReadFile(canary); err != nil || string(got) != "unchanged" {
+		t.Fatalf("outside canary changed: %q %v", got, err)
+	}
+	if siblings, err := os.ReadDir(parent); err != nil || len(siblings) != 2 {
+		t.Fatalf("unexpected outside entries: %v %v", siblings, err)
 	}
 }
 
