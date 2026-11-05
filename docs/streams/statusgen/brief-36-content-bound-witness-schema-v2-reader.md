@@ -247,7 +247,7 @@ record rather than the product.
   limits, exact approval, independent actor/admission and human gates. - Extend the existing
   reader/caller fixture suites and mutation maps with a wrong delivery, forged binding, changed
   parent, changed A, same-context later failure, unrelated H/E advance and agreement among real
-  callers. Test unchanged v1 behavior for the SAME explicit revision; do not confuse the approved
+  callers. Test unchanged v1 behavior for the SAME explicit revision; do not confuse a later authorized
   subject cutover with weakening its comparison algorithm. Existing broad package-test Verify rows
   must execute these added cases. The binding writer and staging remain /37; /29 owns prospective
   review/authoring consumers.
