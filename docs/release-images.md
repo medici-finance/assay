@@ -65,8 +65,9 @@ roll remains a separate downstream job under its own existing identity.
    script is a `root:root` regular file, executable, with no set-user-id or
    set-group-id bit, that neither its group nor others can write, and,
    executed directly with no argument, prints its usage and exits 2. It runs
-   the row tools `jq`, `shellcheck` and `tmux` from `PATH`, so a release whose
-   runner lacks one stops before any push. The probe
+   the row tools `jq`, `shellcheck`, `tmux` and `yq` from `PATH`, so a release
+   whose runner lacks one stops before any push; `yq --version` must also name
+   mikefarah, since rows reject any other program called `yq`. The probe
    prints Python and distribution versions into the release build log. It uses
    no pulls, network, mounts or credentials; it runs as user 1000:1000 with a
    read-only root, all capabilities dropped, no new privileges, default seccomp
@@ -245,6 +246,13 @@ cover them; their risk summary (publisher, exact versions and release dates, per
 persistence, transitive packages) is recorded on #4771. The `jq` pin is a
 `bookworm-security` version, which the archive drops once superseded, so that build fails
 closed and needs a reviewed pin update sooner than the others.
+`yq` is not a Debian package: bookworm's `yq` is a different program. The Dockerfile
+fetches mikefarah yq's static release binary over https, checks it against a per-architecture
+sha256 pin (amd64 and arm64) before installing it root-owned at `/usr/local/bin/yq`, and
+fails closed on any other architecture or a mismatch
+([issue 5531](https://github.com/medici-finance/assay/issues/5531)). A version bump
+updates the version and both checksums together, and `verifyrunner_yq_test.go` must list
+the new trio; its risk summary is recorded on #5531.
 Apt resolves transitive dependencies from the base suite during the approved build;
 `/usr/local/share/verify-runner/packages.txt` records every installed Debian package
 and version in the immutable image, including transitive dependencies and Python.
