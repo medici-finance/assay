@@ -38,7 +38,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [verification-handoff](docs/streams/verification-handoff/README.md) | P2 | active | 0/6 | 2026-11-05 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 9/18 | 2026-11-03 |  |
 
-### Stuck auto-flips (46)
+### Stuck auto-flips (47)
 
 _gate:model briefs at `verified` that the model auto-flip has not moved to `done`. See docs/board-stuck-autoflips.md._
 
@@ -81,6 +81,7 @@ _gate:model briefs at `verified` that the model auto-flip has not moved to `done
 | [measured-status/04](docs/streams/measured-status/README.md) | statusgen --lint: derive stale-FAIL vs missing-card from commit dates, and route each state to the verify desk instead of nudging a worker to hand-file a sign-off | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [milestone-support/03](docs/streams/milestone-support/README.md) | Load and validate versioned milestone records | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [milestone-support/04](docs/streams/milestone-support/README.md) | Add negotiated brief schema and prefixed authoring | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
+| [milestone-support/05](docs/streams/milestone-support/README.md) | Build the combined milestone and brief dependency graph | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [quality/19](docs/streams/quality/README.md) | qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [statusgen/15](docs/streams/statusgen/README.md) | Extract canonical eligibility and coverage evaluation API | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [statusgen/17](docs/streams/statusgen/README.md) | `--scan-issues`: a `risk:high` label derives `gate: human` on the issue's placeholder (`risk:med` does not) | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
@@ -114,9 +115,9 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **Already delivered, flip held by the reconcile's lint hold — held out of dispatch (5):** desk-containers/26 → already-merged-unflipped (merged PR #3001, Brief: trailer; flip held: desk-containers/brief-26: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/desk-containers/README.md: decision-gate hold (lifecycle-v1 §4.5): desk-containers/26 is gate: human and this change moves it to implemented (it was todo at the base), but no decision issue is recorded (frontmatter decision-issue: is absent) — no decision issue at all is a refusal, not a pass; file the brief's decision issue, record its number in decision-issue:, and record the ruling once given. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.), desktools-v2/73 → already-merged-unflipped (merged PR #4102, Brief: trailer; flip held: desktools-v2/brief-73: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/desktools-v2/README.md: decision-gate hold (lifecycle-v1 §4.5): desktools-v2/73 is gate: human and this change moves it to implemented (it was todo at the base), but decision issue #4070 has no recorded ruling (frontmatter ruling: is absent) — once a human rules on #4070, link the ruling comment in ruling:. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.), forge-neutral/48 → already-merged-unflipped (merged PR #5387, Brief: trailer; flip held: forge-neutral/brief-48: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/forge-neutral/README.md: decision-gate hold (lifecycle-v1 §4.5): forge-neutral/48 is gate: human and this change moves it to implemented (it was todo at the base), but decision issue #5384 has no recorded ruling (frontmatter ruling: is absent) — once a human rules on #5384, link the ruling comment in ruling:. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.), forge-neutral/52 → already-merged-unflipped (merged PR #5423, Brief: trailer; flip held: forge-neutral/brief-52: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/forge-neutral/README.md: decision-gate hold (lifecycle-v1 §4.5): forge-neutral/52 is gate: human and this change moves it to implemented (it was todo at the base), but decision issue #5401 has no recorded ruling (frontmatter ruling: is absent) — once a human rules on #5401, link the ruling comment in ruling:. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.), graph-execution/36 → already-merged-unflipped (merged PR #5418, Brief: trailer; flip held: graph-execution/brief-36: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/graph-execution/README.md: decision-gate hold (lifecycle-v1 §4.5): graph-execution/36 is gate: human and this change moves it to implemented (it was todo at the base), but decision issue #5405 has no recorded ruling (frontmatter ruling: is absent) — once a human rules on #5405, link the ruling comment in ruling:. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.). Fix: the reconcile's lint hold refuses to write this row, so reconciling cannot clear it — clear the problem the hold names: cite the approved design-decision record in the brief's `design:` (lifecycle-v1 §4.4), or record the human ruling in `ruling:` (lifecycle-v1 §4.5); the next reconcile then writes the row. Do not re-dispatch it.
 
-_Next-up: 20 of 48 eligible — 28 held back (14 by per-stream caps, 14 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 20 of 49 eligible — 29 held back (2 by per-stream caps, 27 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
-_Held by per-stream caps: 14 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (11), desk-tools (3). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: desk-tools. By stream: desk-tools (2). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
@@ -130,7 +131,8 @@ _Held by per-stream caps: 14 brief(s) across 2 stream(s) — top: desktools-v2. 
 | statusgen | 27 — Reject newly introduced actionable lint notices on changed briefs [exec:strong] | 1 | 8500 |
 | desk-tools | 42 — Narrow issue discovery projections before enrichment [exec:strong] | 3 | 7000 |
 | desk-tools | 48 — Report remaining landing capacity from the enforced budget owners [exec:strong] | 2 | 7000 |
-| milestone-support | 08 — Normalize PR trailers and claims through the shared resolver [exec:strong] | 3 | 4010 |
+| milestone-support | 06 — Bind milestone acceptance to existing evidence and decisions [exec:strong] | 4 | 4000 |
+| milestone-support | 08 — Normalize PR trailers and claims through the shared resolver [exec:strong] | 3 | 4000 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3500 |
 | statusgen | 28 — Separate frozen historical notices from actionable lint findings [exec:strong] | 1 | 3000 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2530 |
@@ -139,7 +141,6 @@ _Held by per-stream caps: 14 brief(s) across 2 stream(s) — top: desktools-v2. 
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2030 |
 | desktools-v2 | 30 — Port the GitLab fleet provisioner to a Go command [exec:strong] | 3 | 2000 |
 | statusgen | 32 — Connect board drift notices to the existing reconciliation owners [exec:strong] | 1 | 2000 |
-| agent-execution | 10 — Evaluate a Pi Durable runner with offline recovery fixtures [exec:strong] | 1 | 1000 |
 
 ## Intake queue
 
@@ -164,7 +165,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 01 [exec:strong] | implemented | 9500 | 15 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#1800 | — | — |
 | desk-containers | 02 | implemented | 9000 | 16 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#900 | — | — |
 | desktools-v2 | 63 [exec:strong] | implemented | 8000 | 14 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
-| milestone-support | 02 [exec:strong] | implemented | 7010 | 12 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#5048 | — | — |
+| milestone-support | 02 [exec:strong] | implemented | 7000 | 12 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#5048 | — | — |
 | forge-neutral | 21 [exec:strong] | implemented | 6500 | 9 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#1800 | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 6000 | 8 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#1800 | — | — |
 | forge-neutral | 07 [exec:strong] | implemented | 5000 | 6 | — | driver | resolve the recorded blocker before sign-off: hold (check-definition), cite medici-finance/assay#1281 | — | — |
@@ -304,12 +305,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 09 [exec:strong] | verified | 9000 | 16 | — | CI auto-flip | none; stuck after one main run → file | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | desktools-v2 | 61 [exec:strong] | verified | 8500 | 15 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 0e661b6e15de (claude-opus-5-5) | — |
 | desk-containers | 06 [exec:strong] | verified | 7500 | 13 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
-| milestone-support | 04 [exec:strong] | verified | 6010 | 10 | — | CI auto-flip | none; stuck after one main run → file | 2026-11-02 assay-verifier-app[bot] @ cd08e97833cb (forge-identity) | — |
+| milestone-support | 04 [exec:strong] | verified | 6000 | 10 | — | CI auto-flip | none; stuck after one main run → file | 2026-11-02 assay-verifier-app[bot] @ cd08e97833cb (forge-identity) | — |
 | build-less-brittle | 04 [exec:strong] | verified | 5520 | 5 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
-| milestone-support | 03 [exec:strong] | verified | 5510 | 9 | — | CI auto-flip | none; stuck after one main run → file | 2026-11-02 assay-verifier-app[bot] @ fede422ee8a5 (forge-identity) | — |
 | desktools-v2 | 65 [exec:strong] | verified | 5500 | 9 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ e25479a69d69 (forge-identity) | — |
-| milestone-support | 05 [exec:strong] | implemented | 5010 | 8 | — | verify runner | none | — | — |
+| milestone-support | 03 [exec:strong] | verified | 5500 | 9 | — | CI auto-flip | none; stuck after one main run → file | 2026-11-02 assay-verifier-app[bot] @ fede422ee8a5 (forge-identity) | — |
 | windows-port | 00 | verified | 5010 | 8 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 8bc28e8edf84 (claude-opus-5-5) | — |
+| milestone-support | 05 [exec:strong] | verified | 5000 | 8 | — | CI auto-flip | none; stuck after one main run → file | 2026-11-04 assay-verifier-app[bot] @ 7f61cff94b18 (forge-identity) | — |
 | build-less-brittle | 05 [exec:strong] | verified | 4520 | 3 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
 | build-less-brittle | 06 [exec:strong] | verified | 4520 | 3 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | build-less-brittle | 09 [exec:strong] | verified | 4020 | 2 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
@@ -882,7 +883,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 02 Negotiate reader capabilities through one shared contract — implemented (wave 1)
 - 03 Load and validate versioned milestone records — verified (wave 2)
 - 04 Add negotiated brief schema and prefixed authoring — verified (wave 2)
-- 05 Build the combined milestone and brief dependency graph — implemented (wave 3)
+- 05 Build the combined milestone and brief dependency graph — verified (wave 3)
 - 06 Bind milestone acceptance to existing evidence and decisions — todo (wave 4)
 - 07 Evaluate milestone readiness through the canonical eligibility API — todo (wave 5)
 - 08 Normalize PR trailers and claims through the shared resolver — todo (wave 3)
