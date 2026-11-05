@@ -4016,7 +4016,9 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
     a human-maintained opt-out list file under `~/.config/assay/` (respectively
     `$XDG_CONFIG_HOME/assay/`) — is gone: its reader has been removed, so the file no longer
     has any effect. An operator who maintained one moves each `owner/name` line into
-    `ASSAY_ALLOWED_REPOS` as `owner/name:public`. The tools never wrote, and never deleted,
+    `ASSAY_ALLOWED_REPOS` with the token that matches the repository's live visibility:
+    `owner/name:public` for a public repository, `owner/name:internal` for an internal
+    one. The tools never wrote, and never deleted,
     that file; it is the operator's to remove.
 
 **The desk writes where it does not watch.** The write gates use `IsAllowedRepo`, which a
