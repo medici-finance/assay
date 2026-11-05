@@ -77,8 +77,10 @@ read) and names create --check-remote as the read-only preflight that runs it â€
 to see, before a live create, that an allowed-repos entry no longer authorizes the live
 visibility (for example a project that became public while still listed :internal, which
 refuses until the operator changes the entry to :public; an entry authorizes a live read
-only when its tag is at least as exposed as the live visibility, so :public also covers
-an internal project; no verb rewrites the allowed-repos set).
+only when its tag is at least as exposed as the live visibility; :internal is the accurate
+tag for an internal project, and the gate only tolerates a :public mislabel there, which
+deskboard policydrift reports as drift and which over-ranks the repo as a verifier
+cross-repo source, so change it to :internal; no verb rewrites the allowed-repos set).
 
 A live create confirms the destination branch through its credentialed push endpoint,
 checks only commits beyond its confirmed tip, and pins that tip during the plain push.

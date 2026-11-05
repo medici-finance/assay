@@ -262,7 +262,9 @@ finished `assay:install` run hands you a checklist rather than the impression th
    **push to `main`**, the **release tag** and any **history rewrite** are yours *every time*, not
    just at install. So is the decision to add a public repository to the allowed-repos set with
    the `:public` token (an instance-visible `internal` repository takes the `:internal` token
-   instead, which a `:public` entry also covers, and is gated like a public one): it is a one-time, repository-scoped
+   instead, and is gated like a public one; the write gate tolerates a `:public` mislabel on
+   it, but that label over-ranks the repository as a verifier cross-repo source and is
+   reported as drift, so change it to `:internal`): it is a one-time, repository-scoped
    authorization that only you make,
    and a repository you have not listed stays refused. The quick-reference table above is the
    standing list.

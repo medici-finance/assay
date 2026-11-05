@@ -88,8 +88,9 @@ func gateScopeClause() string {
 // before every write-capable desk tool: tracker writes such as deskfile do not call it.
 // The authorization unit is the REPOSITORY, not the item: a repo listed in the allowed-repos
 // configuration with a visibility token at least as exposed as its live visibility — a
-// public repo listed `:public`, an internal repo listed `:internal` or `:public` — is a place
-// the desk may write, decided once by a human out-of-band, and every gated write on it passes.
+// public repo listed `:public`, an internal repo listed `:internal` — is a place the desk may
+// write, decided once by a human out-of-band, and every gated write on it passes. (The gate
+// also tolerates an internal repo mislabelled `:public`; see step 3.)
 // This replaces the former per-item `+1` reaction check, which was unsatisfiable for the
 // write that matters most — opening the first pull request, which has no issue/PR number
 // yet — and expressed the human decision in the wrong unit. A draft PR is inert until a
@@ -110,9 +111,14 @@ func gateScopeClause() string {
 //     CONFIGURED visibility is non-private and ranks at least as exposed as the live read,
 //     on the exposure rank private < internal < public (visibilityExposure, the same rank
 //     the verifier cross-repo check uses). So live public needs VisibilityPublic, and live
-//     internal needs VisibilityInternal or VisibilityPublic: a `:public` entry states a
-//     wider audience than an internal repo has, so the write reaches no reader the entry
-//     did not admit. Nothing passes that is more exposed than its entry states. If the
+//     internal needs VisibilityInternal. The gate TOLERATES VisibilityPublic on a live-
+//     internal repo, because the write reaches no reader the entry did not admit, but that
+//     entry is a mislabel, not an equal choice: `deskboard policydrift` reports it as drift,
+//     and it over-ranks the repo wherever the configured visibility is ranked alone (the
+//     verifier cross-repo source check, where a public tracking repo could then publish its
+//     binding). So no refusal ever names `:public` as a live-internal remedy, and operators
+//     change such an entry to `:internal`. Nothing passes that is more exposed than its
+//     entry states. If the
 //     entry does not authorize — absent, matched only by an `owner/*` pattern (patterns
 //     carry no policy), tagged `:private`, carrying no visibility token, or tagged
 //     `:internal` on a live-public repo — return Refused (exit 5) naming the repo, what was
@@ -159,10 +165,11 @@ func PublicRepoGate(fetcher RepoInfoFetcher, owner, repo string) error {
 		if configured != VisibilityPrivate && liveRank > 0 && entryRank >= liveRank {
 			return nil
 		}
+		// The remedy names the live value only. The gate tolerates a `:public` entry on a
+		// live-internal repo, but that is a mislabel: it over-ranks the repo elsewhere
+		// (the verifier cross-repo source check ranks configured visibility alone), so the
+		// refusal never recommends it.
 		remedy := slug + ":" + live
-		if live == "internal" {
-			remedy += " (or " + slug + ":public, which also authorizes it)"
-		}
 		return Refused(fmt.Sprintf(
 			"public-repo gate: %s reads live-%s but the allowed-repos set does not authorize outward writes to it "+
 				"(%s). Add %s to the allowed-repos configuration (%s) — %s",

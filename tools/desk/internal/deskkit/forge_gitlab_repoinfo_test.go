@@ -57,9 +57,9 @@ func TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab(t *testing.T) {
 		}
 	})
 
-	// #5514: a GitLab `internal` project listed `:public` passes — the entry states a wider
-	// audience than the project has, so the write reaches no reader the entry did not admit.
-	// Listed `:internal` it passes too; every entry that does not rank at least as exposed as
+	// #5514: a GitLab `internal` project listed `:public` passes — the gate tolerates the
+	// mislabel, since the entry states a wider audience than the project has. `:internal` is
+	// the accurate token and passes too; every entry that does not rank at least as exposed as
 	// live-internal still refuses, naming live-internal and its cause.
 	t.Run("internal project listed :public passes", func(t *testing.T) {
 		installRoster(t, "ASSAY_ALLOWED_REPOS="+glRepo.Owner+"/"+glRepo.Name+":ci:public\n")

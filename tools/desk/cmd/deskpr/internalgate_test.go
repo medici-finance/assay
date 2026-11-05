@@ -10,7 +10,8 @@ import (
 )
 
 // internalgate_test.go — #5436, #5514. The public-repo gate decides a GitLab `internal`
-// project by exposure rank: a `:internal` or `:public` entry authorizes it, and any entry
+// project by exposure rank: a `:internal` entry authorizes it (a `:public` mislabel is
+// tolerated), and any entry
 // that does not (here `:private`) is refused at the live create. These tests pin that the
 // gate's verdict is visible BEFORE the live create: offline --check names --check-remote as
 // the preflight that runs the gate, and --check-remote runs the REAL gate and refuses with
@@ -63,14 +64,15 @@ func TestCheckNamesRemoteGate(t *testing.T) {
 }
 
 // regression: #5436
-func TestRemoteCheckStalePublicEntry(t *testing.T) {
+func TestRemoteCheckRunsRealGate(t *testing.T) {
 	const repo = "example-org/tracker"
 	for _, tc := range []struct {
 		name, entry string
 		want        int
 		cause       string // the refusal's named cause; empty on a pass
 	}{
-		// #5514: a :public entry ranks above live-internal, so it authorizes the create.
+		// #5514: the gate tolerates a :public mislabel on a live-internal repo (it ranks
+		// above live-internal), so --check-remote runs the real gate and the create passes.
 		{"public entry, live internal", repo + ":ci:public", deskkit.ExitOK, ""},
 		{"internal entry, live internal", repo + ":ci:internal", deskkit.ExitOK, ""},
 		{"private entry, live internal", repo + ":ci:private", deskkit.ExitRefused, "a :private entry authorizes no outward write"},

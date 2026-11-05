@@ -1082,7 +1082,8 @@ and refuses with the same text and exit code (5) as the live create. An entry th
 longer authorizes the live visibility therefore shows up here, before any push: for
 example a project that became public while still listed `:internal`. The refusal names
 the cause and the replacement entry. (A GitLab `internal` project listed `:public`
-passes: the gate ranks exposure, and `:public` covers an internal audience.) The operator
+passes: the gate ranks exposure and tolerates that mislabel. `:internal` is the accurate
+entry; see the allowed-repos section for why a `:public` label should be changed.) The operator
 edits `ASSAY_ALLOWED_REPOS`. No verb rewrites it from a live read, because it is an
 authorization control.
 
@@ -3968,15 +3969,15 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
   `gh api repos/<repo>`, so an `owner/*` slug there is a live break (C-10 fails the whole
   board run), not a cosmetic one. Patterns are display-only, in `AllowedRepoScope()`.
 - **Writes to a public repo require an explicit `:public` allowed-repos entry, and writes to
-  an `internal` repo an explicit `:internal` or `:public` one** — the public-repo write gate
+  an `internal` repo an explicit `:internal` one** — the public-repo write gate
   (`PublicRepoGate`). The gate ranks exposure private < internal < public (the same rank as
   the verifier cross-repo check) and passes a live read only when the entry's token is not
-  `:private` and ranks at least as exposed as the live visibility: a `:public` entry states a
-  wider audience than an internal repo has, so it authorizes one too, and nothing passes that
-  is more exposed than its entry states. The authorization is REPOSITORY-scoped, decided
-  once by a human out-of-band: a public repo listed as `owner/name:public` (an internal repo
-  listed as `owner/name:internal` or `owner/name:public`) is a place the desk may write, and
-  every gated write passes on it.
+  `:private` and ranks at least as exposed as the live visibility, so nothing passes that is
+  more exposed than its entry states. It therefore also tolerates a `:public` entry on a
+  live-internal repo; that is a mislabel, not an equal choice (see below). The authorization
+  is REPOSITORY-scoped, decided once by a human out-of-band: a public repo listed as
+  `owner/name:public` (an internal repo listed as `owner/name:internal`) is a place the desk
+  may write, and every gated write passes on it.
   The gate runs in `deskpr` (create / update / edit), `deskpost` (comment / ready / review),
   `deskreply`, `deskevidence` and `deskrelease cut` — the commands
   `deskkit.PublicRepoGateVerbs` lists and the refusal names. Tracker writes such as
@@ -3998,9 +3999,15 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
     read), and a stale roster claim never authorizes a repo the forge reports as more
     exposed than the claim. A live read that fails or returns an unrecognised value is
     **unverifiable** (exit 6, fail closed) — never guessed private.
-  - **A `:public` entry on a live-internal repo passes.** Earlier versions had no
-    `:internal` token, so `:public` was the tag such a repo got; that entry keeps
-    authorizing it, because an internal repo's audience is narrower than the entry states.
+  - **A `:public` entry on a live-internal repo is a tolerated mislabel.** Earlier versions
+    had no `:internal` token, so `:public` was the tag such a repo got. The write gate still
+    passes it, because an internal repo's audience is narrower than the entry states, and
+    its refusals never name `:public` as an internal repo's remedy. `:internal` is the
+    accurate token: a `:public` label on an internal repo is reported as drift by
+    `deskboard policydrift`, and it over-ranks the repo as a verifier cross-repo source,
+    which ranks the configured visibility alone, so a public tracking repo could then
+    publish that repo's binding. Operators with such an entry should change it to
+    `:internal`; nothing migrates it.
     `deskpr create --check-remote` surfaces any entry that does not authorize the live
     visibility before a live create. `deskroster` has no check that reads repo visibility
     from the forge, so it does not report such an entry; `deskboard policydrift` reports

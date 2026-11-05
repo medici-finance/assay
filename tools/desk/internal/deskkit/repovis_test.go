@@ -8,8 +8,8 @@ import (
 
 // The public-repo WRITE gate authorizes an outward write by the REPOSITORY, not the item:
 // a public repo listed in the allowed-repos set with the `:public` token passes (an internal
-// repo needs the `:internal` or `:public` token — see TestGateInternalToken and
-// TestGateExposureRank),
+// repo needs the `:internal` token, and a `:public` mislabel on it is tolerated — see
+// TestGateInternalToken and TestGateExposureRank),
 // and the former per-item `+1` reaction check is gone. These tests drive the decision
 // table over (live visibility × configured entry) with the package stub fetcher — no
 // network, no reaction fixtures.
@@ -46,12 +46,13 @@ func TestPublicRepoGateListedPublicPasses(t *testing.T) {
 		})
 	}
 
-	// #5514: a `:public` entry states a wider audience than an internal repo has, so a live
-	// "internal" read on it passes (TestGateExposureRank drives the whole rank table).
+	// #5514: the gate tolerates a `:public` mislabel on a live-internal repo (the entry states
+	// a wider audience), so a live "internal" read on it passes. `:internal` stays the
+	// accurate token (TestGateExposureRank drives the whole rank table).
 	t.Run("internal_listed_public_passes", func(t *testing.T) {
 		f := &stubRepoInfoFetcher{visibility: "internal"}
 		if err := PublicRepoGate(f, "example-org", "pubrepo"); err != nil {
-			t.Fatalf("listed :public repo, live internal: got %v, want nil — :public covers an internal audience", err)
+			t.Fatalf("listed :public repo, live internal: got %v, want nil — the gate tolerates a :public mislabel on an internal repo", err)
 		}
 	})
 
@@ -427,6 +428,9 @@ func TestGateExposureRank(t *testing.T) {
 			}
 			if tc.live == "public" && strings.Contains(msg, ":internal") {
 				t.Fatalf("%s: a live-public refusal must never offer :internal as a remedy: %v", name, err)
+			}
+			if tc.live == "internal" && strings.Contains(msg, ":public") {
+				t.Fatalf("%s: a live-internal refusal must never offer :public as a remedy: %v", name, err)
 			}
 		})
 	}
