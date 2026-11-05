@@ -304,3 +304,5 @@ Gate: model. Confirm scope, exact-subject evidence, independent failure controls
 ## Execution-environment follow-on routing — 2026-10-16
 
 Reciprocal unblocks only: agent-execution/01. The [execution amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md) adds a follow-on obligation over this brief's existing output. Its Task, Verify, gate, version and historical Evidence are unchanged; this note grants no delivery, reassignment or activation.
+
+Reciprocal unblocks only, 2026-10-22: agent-execution/10, an optional offline Pi Durable runner investigation that consumes this brief's runner API and conformance kit unchanged. Task, Verify, gate, version and historical Evidence are unchanged; this note grants no delivery, reassignment or activation.

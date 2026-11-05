@@ -17,7 +17,7 @@ and effect owners. The [future-state amendment](../../proposals/non-ci-architect
 is the controlling specification. Approval of amendment 27 for implementation and activation
 of this stream are proposed by [PR #4349](https://github.com/medici-finance/assay/pull/4349)
 and take effect on the maintainer's merge of it, the ruling record under lifecycle §8.4.
-The existing nine briefs retain their statuses,
+The nine briefs authored before admission (01–09) retain their statuses,
 dependencies, individual human decisions and independent verification requirements.
 Stream admission does not activate a runtime or approve a concrete custody or deployment
 profile. Later adoption, profile qualification and activation gates remain separate.
@@ -79,7 +79,7 @@ Global waves include the existing graph-execution prerequisites:
 
 | Wave | New work | Existing prerequisite |
 |---|---|---|
-| 1 | 01 qualified execution profile contract | graph-execution/20, wave 0 |
+| 1 | 01 qualified execution profile contract; 10 offline Pi Durable runner investigation (optional input, not a prerequisite) | graph-execution/20, wave 0 |
 | 2 | 02 prepared-environment receipt and workspace port | 01 |
 | 3 | 06 AX compatibility and 07 Harness² refinement investigations | 01–02; independent of core integration |
 | 8 | 03 local supervisor/adapter readiness enforcement | 02 and graph-execution/22 (7), /26 (6) |
@@ -144,14 +144,13 @@ activation under amendment 27, which takes effect on the maintainer's merge of
 [PR #4349](https://github.com/medici-finance/assay/pull/4349); /09's individual human
 decision and qualification requirements remain.
 
-
 ## Pi Durable runner investigation — 22 October 2026
 
 [Brief 10](brief-10-evaluate-a-pi-durable-runner-with-offline-recovery-fixtures.md)
 adds a wave-1 offline experiment after the implemented graph-execution/20 runner contract.
 The fresh source check at `ecc895ce2dd5989ff2119fb7aeeed5e1e0b8761e` found the runner kit
 and no supervisor or workflow implementation; those absent components are not its first
-blocker. The stream remains parked under its controlling amendment's approval gate.
+blocker. Stream admission under amendment 27 activates no runtime or profile, and this brief adds none.
 
 The experiment uses real Pi durable tasks with scripted models and synthetic effects to
 produce a go/no-go/unknown decision, recovery evidence and a concrete omission/deletion
