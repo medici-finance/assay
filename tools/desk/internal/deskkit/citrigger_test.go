@@ -547,6 +547,20 @@ func ciCrossModuleRegistry() []ciEntry {
 			why:        "the deskd build contract parses the root Makefile and the deskd Dockerfile and ignore file; the unconditional build-test floor runs it on any edit to them",
 		},
 		{
+			test: "tools/desk/internal/forgeservice/auth/testdata/qualify_fixture.py", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: ciJobRef{id: "forge-local-authority", check: "forge-local-authority"}, pushJob: ciJobRef{id: "forge-local-authority", check: "forge-local-authority"},
+			reads:      []string{"tools/desk", "comms", "forgeread", "deskcore", "perfrec", "gitquiet", "gitcore", ".github/workflows/ci.yml", "docs/proposals/non-ci-architecture/21-cell-operator-surface.md", "docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md", "spec/operator-incarnation-v1.md", "spec/forge-local-authority-v1.md"},
+			runInvokes: []string{"qualify_fixture.py", "--endpoint unix:///var/run/docker.sock", "--platform linux/amd64"},
+			why:        "the actual hosted source-bound Docker entrypoint compiles the authority owner and existing module replacements, requires named custody and compiling fault PASS, and checks exact cleanup; missing profile or ordinary skips do not qualify",
+		},
+		{
+			test: "tools/desk/internal/forgeservice/auth/qualification_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{"docs/proposals/non-ci-architecture/21-cell-operator-surface.md", "docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md", "spec/operator-incarnation-v1.md", "spec/forge-local-authority-v1.md", ".github/workflows/ci.yml", ".github/workflows/assay-workflow.yml", "tools/desk/internal/forgeservice/auth/testdata/qualify_fixture.py"},
+			runInvokes: deskShardInvokes,
+			why:        "the unconditional Go floor checks controlling local/external/restore requirements and the actual required source-bound custody workflow; ordinary Dockerless skips remain explicitly unqualified",
+		},
+		{
 			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",
 			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads: []string{

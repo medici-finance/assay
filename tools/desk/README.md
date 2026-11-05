@@ -7853,6 +7853,31 @@ still present, so a v1 reader keeps working. The one new block is
     "recurrence_candidates": 1                 // CANDIDATES — a prompt to look, not a finding
   },
 
+  // Read by statusgen's autonomy ladder (rung 3). Population: main-session
+  // Agent/Task dispatches on the day, each attributed to the origin of the prompt
+  // record that started its turn (see "the dispatch split" below).
+  "dispatch": {
+    "status": "ok",                            // could-not-check: transcripts blind, or
+                                               // dispatch-origin-unrecorded (both sides null)
+    "total_dispatches": 9,
+    "loop_initiated": 4,                       // scheduled | peer | task_notification | auto_continuation
+    "operator_initiated": 2,                   // human
+    "unattributed": 3                          // sdk, or no origin stamp; never folded into a side
+  },
+
+  // Read by the ladder's rung 4. Population: subagent RUNS (sidechain records grouped
+  // by session + agent) whose first record is on the day. All four counts share it.
+  "token_efficiency": {
+    "status": "ok",
+    "reason": "",                              // the gh reason when merged_prs is null
+    "subagent_tokens": 3255,                   // input + output + cache-creation + cache-read, per message id once
+    "merged_prs": 5,                           // same source as intervention.merged_prs
+    "noop_dispatches": 2,                      // runs whose report OPENS as a no-op (heuristic)
+    "total_dispatches": 4,                     // the run count
+    "reports_unread": 1,                       // runs with no report text to classify
+    "noop_classifier": "opmetrics-noop/1"      // the no-op ruler's version
+  },
+
   "unmeasured": ["prompt-blockage", "operator-think-time"],
 
   "trend": {                                   // present only with --trend N
@@ -7869,7 +7894,31 @@ still present, so a v1 reader keeps working. The one new block is
 `reason` codes: `transcripts-unreadable` · `no-transcript-files` ·
 `no-operator-messages` · `gh-json-not-supplied` · `gh-json-unreadable` ·
 `no-merged-prs` · `no-latency-samples` · `roster-dir-unreadable` ·
-`claims-dir-unreadable` · `no-prior-day-files`.
+`claims-dir-unreadable` · `no-prior-day-files` · `dispatch-origin-unrecorded`.
+
+### The dispatch split and the no-op count
+
+The `dispatch` and `token_efficiency` blocks were added inside `opmetrics/2` without a
+schema bump: both are new top-level keys, no existing key changed, and a reader that
+predates them sees them absent and reports the ladder rungs unmeasured, as before.
+
+- **Origin is read, never guessed.** The harness stamps each prompt record with
+  `turnOrigin` (or `origin.kind`). `human` is operator; `scheduled`, `peer`,
+  `task_notification` and `auto_continuation` are loop; anything else is
+  unattributed. A tool result does not start a turn and does not change the origin.
+- **No-op is a versioned heuristic.** A run counts as a no-op when its final report
+  (its handback message, else its last assistant text) opens with a closed phrase
+  list such as "already merged", "nothing to do" or "no changes needed", optionally
+  after a short subject ("This dispatch was a no-op."). The match is anchored to the
+  start of the opening line, found by skipping leading heading, emphasised-label and
+  rule lines and stripping a leading `**Label:**` and list or quote markers. The same
+  phrase later in the report ("the helper already exists so I reused it") does not
+  count. Change the list or the skipped line shapes only with a bump to
+  `noop_classifier`.
+- **Blind is all-null.** When the transcripts cannot be read, both blocks are
+  could-not-check and every count in them is null, `merged_prs` included.
+- **What leaves the file is a count.** No prompt, report, agent id or tool input is
+  emitted; `TestLeakEmittedKeysAreAllowlisted` pins the full key list.
 
 ### `classifierVersion` — the ruler, versioned
 

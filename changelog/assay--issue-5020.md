@@ -1,2 +1,0 @@
-### Added
-- `deskreply` and `deskpathguard check` accept `--kind mr` (`pr` is an alias). On GitLab, where one number can name both an issue and a merge request, the bare number still refuses could-not-check (exit 6); with the flag the verb reads or writes the merge request only. `--kind issue` is refused (exit 5) on both, because each acts only on a change. A bad value is refused in the same words as `deskpost`, `desklabel` and `deskfile`.
