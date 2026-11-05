@@ -7,6 +7,8 @@ depends: ["forge-neutral/53", "forge-neutral/52", "forge-neutral/51"]
 unblocks: ["forge-neutral/37", "forge-neutral/55"]
 effort: L
 gate: human
+decision-issue: 5411
+ruling: "https://github.com/medici-finance/assay/issues/5411#issuecomment-6672310072"
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "The adapter controls durable private-observation refreshes and shared work budgets. Accept only the demonstrated synthetic PostgreSQL/native integration; retention, real policy initialization, credentials, remote exposure and activation remain separately gated."
 issues: []
