@@ -223,8 +223,8 @@ func planCut(rest []string) writeResult {
 
 	// Public-repo write gate. deskrelease cut creates a tag ref via
 	// POST /repos/{owner}/{repo}/git/refs — an outward write. A public target is authorized
-	// only by a listed `:public` allowed-repos entry, an internal one only by `:internal`
-	// (deskkit.PublicRepoGate).
+	// only by a listed `:public` allowed-repos entry, an internal one by `:internal` or
+	// `:public` (deskkit.PublicRepoGate).
 	// The gate runs on whatever repoSlug RESOLVED to — the shipped default or a configured
 	// one — so making the slug configurable cannot route a release around it.
 	//
