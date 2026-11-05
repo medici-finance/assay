@@ -184,7 +184,7 @@ func TestFoldTrackingRevisionRefusalsSourcePresent(t *testing.T) {
 		"blockquoted":          "not bound by literal selected-run metadata",
 		"indented":             "not bound by literal selected-run metadata",
 		"unparseable":          "malformed cross-repository run attestation",
-		"tracking-source only": "malformed cross-repository run attestation",
+		"tracking-source only": "attestation: it names no source-repo=",
 		"no tracking-source":   "it names no tracking-source=",
 		"non-github origin":    "needs a github.com origin",
 	} {
