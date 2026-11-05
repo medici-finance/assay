@@ -345,6 +345,9 @@ func designGateStreamProblems(s *Stream, known map[string]bool, delivery gateDel
 		}
 		status := row.Status
 		if !designGateStatuses[status] {
+			if !reconcileMovesFrom(status) {
+				continue // blocked, withdrawn or another status reconcile never writes from
+			}
 			pr := delivery.delivers(filepath.Base(s.Dir), num)
 			if pr == 0 && s.Name != "" {
 				pr = delivery.delivers(s.Name, num)

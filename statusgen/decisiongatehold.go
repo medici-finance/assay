@@ -1321,38 +1321,44 @@ func layerOneRefusal(f gateFault, missing string) string {
 // a relabel or drop leaves no gate: human brief behind to count, so with the
 // base unreadable only layer two, which fails closed on its own base, sees it.
 func decisionGateHoldProblems(root string) (problems, notices []string) {
-	if hasNoGitDir(root) {
-		return nil, []string{"decision-gate hold (" + decisionGateSpecRef + ") did not run: .git is absent, so there is no base to judge a status move against"}
-	}
 	// A pull request that names a brief in a Brief: trailer moves it on merge
 	// (decisiongatedelivery.go): the head is judged with that move applied.
+	// The payload is read before the .git check on purpose: the design gate
+	// judges the same delivery without a base, and it leaves an unreadable
+	// payload's refusal to this hold, so the hold must report it either way.
 	delivery, why := prDeliveryFn(root)
 	if why != "" {
 		return []string{fmt.Sprintf("decision-gate hold (%s) refused (fail-closed): this lint runs on a pull_request event, but what the pull request delivers could not be read: %s. A brief its Brief: trailer names would move to implemented on merge unjudged", decisionGateSpecRef, why)}, nil
+	}
+	if delivery.Undecided != "" {
+		notices = append(notices, fmt.Sprintf("decision-gate hold (%s) and design-approval gate (spec/lifecycle-v1.md §4.4) judge no delivery for PR #%d: %s; reconcile moves no row for it either", decisionGateSpecRef, delivery.PR, delivery.Undecided))
+	}
+	if hasNoGitDir(root) {
+		return nil, append(notices, "decision-gate hold ("+decisionGateSpecRef+") did not run: .git is absent, so there is no base to judge a status move against")
 	}
 	head := delivery.withDelivery(gateSnapshotOnDisk(root))
 	base, resolved := registerLandedBase(root)
 	if !resolved {
 		if guarded := gateGuardedBriefs(head); len(guarded) > 0 {
 			return []string{fmt.Sprintf("decision-gate hold (%s) refused (fail-closed): the exact ref %s could not be resolved to a merge-base with HEAD, so %s — gate: human at implemented or later — cannot be judged against the board it merges onto, and a committed move would compare with itself and pass. Fetch the base branch into %s (actions/checkout fetch-depth: 0, or `git fetch origin main`) and re-run; a clone with no origin remote cannot pass this check",
-				decisionGateSpecRef, remoteMainRef, gateBriefList(guarded), remoteMainRef)}, nil
+				decisionGateSpecRef, remoteMainRef, gateBriefList(guarded), remoteMainRef)}, notices
 		}
-		return nil, []string{"decision-gate hold (" + decisionGateSpecRef + ") did not run: origin/main could not be resolved, so a gate: human brief's status move cannot be judged against its base; no gate: human brief is at implemented or later, so there is nothing to refuse. If this is CI, fetch origin/main before the lint step"}
+		return nil, append(notices, "decision-gate hold ("+decisionGateSpecRef+") did not run: origin/main could not be resolved, so a gate: human brief's status move cannot be judged against its base; no gate: human brief is at implemented or later, so there is nothing to refuse. If this is CI, fetch origin/main before the lint step")
 	}
 	baseSnap, err := gateSnapshotAtRev(root, base)
 	if err != nil {
 		if guarded := gateGuardedBriefs(head); len(guarded) > 0 {
 			return []string{fmt.Sprintf("decision-gate hold (%s) refused (fail-closed): the board at the base %s could not be read (%v), so %s — gate: human at implemented or later — cannot be judged against it",
-				decisionGateSpecRef, base, err, gateBriefList(guarded))}, nil
+				decisionGateSpecRef, base, err, gateBriefList(guarded))}, notices
 		}
-		return nil, []string{fmt.Sprintf("decision-gate hold (%s) could not check: the board at the base %s could not be read (%v); no gate: human brief is at implemented or later, so there is nothing to refuse", decisionGateSpecRef, base, err)}
+		return nil, append(notices, fmt.Sprintf("decision-gate hold (%s) could not check: the board at the base %s could not be read (%v); no gate: human brief is at implemented or later, so there is nothing to refuse", decisionGateSpecRef, base, err))
 	}
 	for _, f := range judgeDecisionGate(baseSnap, head) {
 		if _, ok, missing := offlineRuling(f); !ok {
 			problems = append(problems, layerOneRefusal(f, missing))
 		}
 	}
-	return problems, nil
+	return problems, notices
 }
 
 // gateGuardedBriefs is what layer one guards when it cannot read the base: every

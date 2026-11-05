@@ -12,20 +12,33 @@ package main
 // missing keys on.
 //
 // THE CHECK. On a pull_request event, --lint reads the event payload the runner wrote
-// (GITHUB_EVENT_PATH): the pull request's number and body, and the repository. Each brief the
-// body names in a `Brief:` trailer, read the way reconcile reads it (parseLinkTrailers), counts as
-// moved to implemented by this change when its row is on the board below implemented. Both gates
-// then judge that move as they judge a written one. The base, the cutover and the scope are
-// unchanged. A brief whose `delivery:` list declares this pull request a partial delivery is not
-// moved, because reconcile does not move it either (briefdelivery.go).
+// (GITHUB_EVENT_PATH): the pull request's number and body, and the repository. The body's brief
+// is read exactly the way reconcile reads it: a body carrying exactly ONE `Brief:` trailer names
+// one brief (singleBriefTrailer, ghfetch.go), reduced to its join key by canonicalBriefKey and
+// matched against the board id as the row spells it. A body with no trailer or with two names
+// nothing, and a value reconcile cannot join (`sdlc/018` against row 18, `sdlc/18.`) names
+// nothing either: reconcile never credits it, so the merge moves no row. The named brief counts
+// as moved to implemented by this change only when its row stands at a status reconcile writes
+// from, todo or in-progress (reconcileMovesFrom). Both gates then judge that move as they judge a
+// written one. The base, the cutover and the scope are unchanged.
+//
+// PARTIAL DELIVERIES. A brief whose `delivery:` list declares this pull request a partial delivery
+// in this repository is not moved, because reconcile does not move it (briefdelivery.go). A
+// partial claim whose `in:` cannot be resolved makes the brief derive unknown in reconcile, which
+// moves nothing and refuses --apply; the gates likewise judge no move and the hold reports the
+// reason as a notice.
 //
 // WHAT IT DOES NOT CHANGE. Outside a pull_request event (push, schedule, a local run, reconcile's
 // hold) nothing is read and both gates behave as before. A brief already merged is never judged
-// again: no pull request event names it. A held row already on main stays as it is.
+// again: no pull request event names it. A held row already on main stays as it is, and a row at
+// blocked, withdrawn, implemented or later is never judged as moved: reconcile does not write it.
 //
-// THREE-STATE. A pull_request event whose payload cannot be read cannot say what this change
-// delivers. The decision-gate hold then refuses (fail-closed); it never reads that as "delivers
-// nothing".
+// THREE-STATE. A pull_request event whose payload cannot be read (no GITHUB_EVENT_PATH, an
+// unreadable file, a payload that is not JSON, no pull request number, or a delivering body with
+// no repository to resolve its partial claims against) cannot say what this change delivers. The
+// decision-gate hold then refuses (fail-closed), whether or not the tree carries .git; it never
+// reads that as "delivers nothing". The design gate reads the same payload and leaves that
+// refusal to the hold rather than reporting it twice.
 
 import (
 	"encoding/json"
@@ -35,18 +48,33 @@ import (
 	"strings"
 )
 
-// gateDelivery is what a pull request's `Brief:` trailers deliver.
+// gateDelivery is what a pull request's `Brief:` trailer delivers.
 type gateDelivery struct {
-	PR   int            // the pull request's number
-	Keys map[string]int // board key (<stream>/<normalised NN>, lowercased) → PR number
+	PR  int    // the pull request's number
+	Key string // canonicalBriefKey of the one trailer reconcile credits; "" = delivers nothing
+	// Undecided is why a partial `delivery:` claim on the named brief could not be resolved
+	// against this repository: reconcile derives it unknown and moves nothing, so Key is "".
+	Undecided string
 }
 
-// delivers reports the pull request number that delivers the brief at stream/num, or 0.
+// reconcileMovesFrom reports whether reconcile's writer moves a row standing at status: it
+// writes only from todo or in-progress (reconcileapply.go). Every other status is immutable
+// there, so a pull request naming such a brief moves nothing on merge.
+func reconcileMovesFrom(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "todo", "in-progress":
+		return true
+	}
+	return false
+}
+
+// delivers reports the pull request number that delivers the brief at stream/num, or 0. num is
+// the board's own spelling: reconcile joins on it exactly.
 func (d gateDelivery) delivers(stream, num string) int {
-	if len(d.Keys) == 0 {
+	if d.Key == "" || d.Key != canonicalBriefKey(stream+"/"+num) {
 		return 0
 	}
-	return d.Keys[strings.ToLower(stream)+"/"+normBriefNum(num)]
+	return d.PR
 }
 
 // prDeliveryFn is the seam the tests replace; it reads the runner's event.
@@ -87,61 +115,67 @@ func prDeliveryFromEvent(root string) (d gateDelivery, why string) {
 	if ev.PullRequest.Body != nil {
 		body = *ev.PullRequest.Body
 	}
-	return deliveryFromBody(root, ev.Repository.FullName, ev.PullRequest.Number, body), ""
+	return deliveryFromBody(root, ev.Repository.FullName, ev.PullRequest.Number, body)
 }
 
-// deliveryFromBody maps the body's `Brief:` trailers to board keys. Every trailer counts, so a body
-// naming two briefs is judged for both. A trailer the brief's own `delivery:` list declares a
-// partial delivery of this pull request (in this repository) is dropped, as reconcile drops it.
-func deliveryFromBody(root, repo string, number int, body string) gateDelivery {
-	d := gateDelivery{PR: number, Keys: map[string]int{}}
-	_, briefs, _ := parseLinkTrailers(body)
-	if len(briefs) == 0 {
-		return d
+// deliveryFromBody reads the body's brief the way reconcile credits it: exactly one `Brief:`
+// trailer (singleBriefTrailer), keyed by canonicalBriefKey. A trailer the brief's own `delivery:`
+// list declares a partial delivery of this pull request (in this repository) is dropped, as
+// reconcile drops it; one whose partial claim cannot be resolved is dropped with the reason.
+func deliveryFromBody(root, repo string, number int, body string) (gateDelivery, string) {
+	d := gateDelivery{PR: number}
+	ref, ok := singleBriefTrailer(body)
+	if !ok {
+		return d, "" // unlinked or multi-linked: reconcile credits no brief
 	}
-	var partials declaredPartials
-	if repo != "" {
-		partials = readDeclaredPartials(root, repo)
+	if repo == "" {
+		return d, "the event payload names no repository, so the brief's partial delivery: claims cannot be resolved"
 	}
-	for _, b := range briefs {
-		stream, num, ok := briefStreamNum(b)
-		if !ok {
-			continue // not a board id; reconcile cannot credit it either
+	key := canonicalBriefKey(ref)
+	partials := readDeclaredPartials(root, repo)
+	if partials.partial(number, ref) {
+		return d, ""
+	}
+	ids := make([]string, 0, len(partials.undecided))
+	for id := range partials.undecided {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		if canonicalBriefKey(id) == key {
+			d.Undecided = partials.undecided[id]
+			return d, ""
 		}
-		if partials.partial(number, b) {
-			continue
-		}
-		d.Keys[strings.ToLower(stream)+"/"+normBriefNum(num)] = number
 	}
-	return d
+	d.Key = key
+	return d, ""
 }
 
-// withDelivery returns head with every brief d delivers moved to implemented, when its row stands
-// on the board below implemented. head itself is not changed.
+// withDelivery returns head with the brief d delivers moved to implemented, when its row stands
+// at a status reconcile writes from (reconcileMovesFrom). head itself is not changed.
 func (d gateDelivery) withDelivery(head gateSnapshot) gateSnapshot {
-	if len(d.Keys) == 0 {
+	if d.Key == "" {
 		return head
 	}
 	out := make(gateSnapshot, len(head))
 	for k, v := range head {
 		out[k] = v
 	}
-	keys := make([]string, 0, len(d.Keys))
-	for k := range d.Keys {
+	keys := make([]string, 0, len(head))
+	for k := range head {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	for _, k := range keys {
-		for hk, h := range head {
-			if strings.ToLower(hk) != k || !h.hasRow() || h.Unreadable != "" || gateStatusRank(h.Status) >= 1 {
-				continue
-			}
-			moved := *h
-			moved.Status = "implemented"
-			moved.DeliveredBy = d.Keys[k]
-			moved.DeliveredFrom = h.Status
-			out[hk] = &moved
+	for _, hk := range keys {
+		h := head[hk]
+		if canonicalBriefKey(h.Board) != d.Key || !h.hasRow() || h.Unreadable != "" || !reconcileMovesFrom(h.Status) {
+			continue
 		}
+		moved := *h
+		moved.Status = "implemented"
+		moved.DeliveredBy = d.PR
+		moved.DeliveredFrom = h.Status
+		out[hk] = &moved
 	}
 	return out
 }

@@ -334,8 +334,8 @@
     {
       "name": "#5507: a delivering PR's Brief: trailer moves nothing (the head is judged as written, so an unkeyed delivery passes)",
       "file": "decisiongatedelivery.go",
-      "old": "func (d gateDelivery) withDelivery(head gateSnapshot) gateSnapshot {\n\tif len(d.Keys) == 0 {",
-      "new": "func (d gateDelivery) withDelivery(head gateSnapshot) gateSnapshot {\n\tif true || len(d.Keys) == 0 {"
+      "old": "func (d gateDelivery) withDelivery(head gateSnapshot) gateSnapshot {\n\tif d.Key == \"\" {",
+      "new": "func (d gateDelivery) withDelivery(head gateSnapshot) gateSnapshot {\n\tif true || d.Key == \"\" {"
     },
     {
       "name": "#5507: the pull_request event is never read (every lint judges the tree as written)",
@@ -352,20 +352,62 @@
     {
       "name": "#5507: a declared partial delivery is still judged as the move (reconcile does not make it)",
       "file": "decisiongatedelivery.go",
-      "old": "if partials.partial(number, b) {",
-      "new": "if false && partials.partial(number, b) {"
+      "old": "if partials.partial(number, ref) {",
+      "new": "if false && partials.partial(number, ref) {"
     },
     {
-      "name": "#5507: a row already landed at the base is moved again by the trailer",
+      "name": "#5507: a row reconcile never writes (blocked) is moved by the trailer",
       "file": "decisiongatedelivery.go",
-      "old": "h.Unreadable != \"\" || gateStatusRank(h.Status) >= 1 {",
-      "new": "h.Unreadable != \"\" {"
+      "old": "h.Unreadable != \"\" || !reconcileMovesFrom(h.Status) {",
+      "new": "h.Unreadable != \"\" || gateStatusRank(h.Status) >= 1 {"
     },
     {
       "name": "#5507: the design gate (§4.4) ignores a delivering PR's trailer",
       "file": "designgate.go",
       "old": "\t\t\tif pr == 0 {\n\t\t\t\tcontinue // a status before the guarded transition (todo)",
       "new": "\t\t\tif true || pr == 0 {\n\t\t\t\tcontinue // a status before the guarded transition (todo)"
+    },
+    {
+      "name": "#5507: every Brief: trailer counts, not reconcile's single one (a two-trailer body is judged)",
+      "file": "decisiongatedelivery.go",
+      "old": "ref, ok := singleBriefTrailer(body)",
+      "new": "_, rs, _ := parseLinkTrailers(body)\n\tref, ok := \"\", len(rs) > 0\n\tif ok {\n\t\tref = rs[0]\n\t}"
+    },
+    {
+      "name": "#5507: the trailer joins the board on a normalised number (sdlc/018 is judged though reconcile never credits it)",
+      "file": "decisiongatedelivery.go",
+      "old": "if canonicalBriefKey(h.Board) != d.Key ||",
+      "new": "if h.Key != func() string { s, n, _ := briefStreamNum(d.Key); return strings.ToLower(s) + \"/\" + normBriefNum(n) }() ||"
+    },
+    {
+      "name": "#5507: an undecided partial claim is judged as a full delivery",
+      "file": "decisiongatedelivery.go",
+      "old": "d.Undecided = partials.undecided[id]\n\t\t\treturn d, \"\"",
+      "new": "_ = id"
+    },
+    {
+      "name": "#5507: a delivering body with no repository reads as delivering everything unresolved (fail-open)",
+      "file": "decisiongatedelivery.go",
+      "old": "if repo == \"\" {\n\t\treturn d, \"the event payload names no repository",
+      "new": "if false {\n\t\treturn d, \"the event payload names no repository"
+    },
+    {
+      "name": "#5507: reconcile's writable statuses widened (a blocked row reads as moved)",
+      "file": "decisiongatedelivery.go",
+      "old": "case \"todo\", \"in-progress\":\n\t\treturn true",
+      "new": "case \"todo\", \"in-progress\", \"blocked\":\n\t\treturn true"
+    },
+    {
+      "name": "#5507: the design gate judges a delivered row reconcile never writes (blocked, withdrawn)",
+      "file": "designgate.go",
+      "old": "if !reconcileMovesFrom(status) {\n\t\t\t\tcontinue // blocked",
+      "new": "if false {\n\t\t\t\tcontinue // blocked"
+    },
+    {
+      "name": "#5507: with no .git an unreadable payload is swallowed (neither gate reports it)",
+      "file": "decisiongatehold.go",
+      "old": "delivery, why := prDeliveryFn(root)\n\tif why != \"\" {",
+      "new": "delivery, why := prDeliveryFn(root)\n\tif why != \"\" && !hasNoGitDir(root) {"
     }
   ]
 }

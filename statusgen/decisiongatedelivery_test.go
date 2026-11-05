@@ -242,3 +242,184 @@ func TestDecisionGateDeliveryEventCleared(t *testing.T) {
 		t.Fatalf("a pull_request event set by the caller reached the tests: %v\n%s", err, out)
 	}
 }
+
+// The body is read the way reconcile credits it (singleBriefTrailer +
+// canonicalBriefKey, joined on the board id as the row spells it): two
+// trailers, a zero-padded number the row does not carry, and trailing
+// punctuation each name nothing reconcile moves, so nothing is judged. The
+// hierarchical form reduces to the same key and is judged.
+func TestDecisionGateDeliveryReadsTrailerAsReconcile(t *testing.T) {
+	dhSeams(t, nil)
+	for _, body := range []string{
+		"Brief: " + dhBoardID + "\nBrief: sdlc/19\n",
+		"Brief: sdlc/018\n",
+		"Brief: " + dhBoardID + ".\n",
+	} {
+		root := dvBase(t, "")
+		dvEvent(t, rlRepo, body)
+		if p := dhLayerOne(t, root); len(p) != 0 {
+			t.Errorf("body %q: reconcile credits no brief, yet the hold judged a delivery: %v", body, p)
+		}
+	}
+	root := dvBase(t, "")
+	dvEvent(t, rlRepo, "Brief: ex:sdlc:18\n")
+	if p := dhLayerOne(t, root); len(p) != 1 {
+		t.Fatalf("a hierarchical trailer reconcile credits was not judged: %v", p)
+	}
+}
+
+// Only a row reconcile writes from (todo, in-progress) is judged as moved; a
+// blocked row is immutable to reconcile, so a PR naming it moves nothing.
+func TestDecisionGateDeliveryOnlyReconcileWritableRows(t *testing.T) {
+	dhSeams(t, nil)
+	for _, tc := range []struct {
+		status string
+		want   int
+	}{{"todo", 1}, {"in-progress", 1}, {"blocked", 0}, {"withdrawn", 0}, {"done", 0}} {
+		root := dhFixture(t, map[string]string{
+			dhReadmePath: dhReadme(dhRow("18", tc.status)),
+			dhBriefPath:  dhFM("gate: human", ""),
+		})
+		dvEvent(t, rlRepo, dvBody)
+		if p := dhLayerOne(t, root); len(p) != tc.want {
+			t.Errorf("row at %s: %d problems, want %d: %v", tc.status, len(p), tc.want, p)
+		}
+	}
+	for _, s := range []string{"todo", "In-Progress"} {
+		if !reconcileMovesFrom(s) {
+			t.Errorf("reconcileMovesFrom(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{"blocked", "withdrawn", "implemented", "verified", "done", ""} {
+		if reconcileMovesFrom(s) {
+			t.Errorf("reconcileMovesFrom(%q) = true, want false", s)
+		}
+	}
+}
+
+// A partial claim whose alias the registry cannot resolve makes reconcile
+// derive the brief unknown and move nothing: the hold judges no move and
+// says why in a notice.
+func TestDecisionGateDeliveryUndecidedPartialNotJudged(t *testing.T) {
+	dhSeams(t, nil)
+	reg := "schema: graph-repos-v1\ncell: ex\nrepos:\n  ex: {cell: ex, repo: " + rlRepo + "}\n"
+	root := dhFixture(t, map[string]string{
+		dhReadmePath:                    dhReadme(dhRow("18", "todo")),
+		dhBriefPath:                     dhFM("gate: human", dvV1Lines+"delivery:\n  - {in: \"nosuch#77\", covers: partial, note: \"first slice\"}\n"),
+		"docs/streams/graph-repos.yaml": reg,
+	})
+	dvEvent(t, rlRepo, dvBody)
+	p, n := decisionGateHoldProblems(root)
+	if len(p) != 0 {
+		t.Fatalf("an undecided partial delivery was judged as a full one: %v", p)
+	}
+	if len(n) != 1 {
+		t.Fatalf("notices %v, want one naming the unresolved claim", n)
+	}
+	wantContains(t, "undecided notice", n[0], "PR #77", "nosuch", "not in the registry", "reconcile moves no row")
+}
+
+// Every unreadable shape of a pull_request event fails closed: an empty or
+// unset GITHUB_EVENT_PATH, a payload that is not JSON, one with no pull
+// request or no number, and a delivering body with no repository to resolve
+// its partial claims against.
+func TestDecisionGateDeliveryNegativePayloads(t *testing.T) {
+	dhSeams(t, nil)
+	write := func(t *testing.T, raw string) string {
+		t.Helper()
+		p := filepath.Join(t.TempDir(), "event.json")
+		if err := os.WriteFile(p, []byte(raw), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	for _, tc := range []struct {
+		name, path, want string
+	}{
+		{"empty path", "", "GITHUB_EVENT_PATH is unset"},
+		{"not JSON", write(t, "not json {"), "is not JSON"},
+		{"no pull_request", write(t, `{"repository":{"full_name":"`+rlRepo+`"}}`), "no pull request number"},
+		{"no number", write(t, `{"pull_request":{"body":"Brief: sdlc/18"},"repository":{"full_name":"`+rlRepo+`"}}`), "no pull request number"},
+		{"no repository", write(t, `{"pull_request":{"number":77,"body":"Brief: sdlc/18\n"}}`), "names no repository"},
+	} {
+		root := dvBase(t, dhRuledLines())
+		t.Setenv("GITHUB_EVENT_NAME", "pull_request")
+		t.Setenv("GITHUB_EVENT_PATH", tc.path)
+		p, _ := decisionGateHoldProblems(root)
+		if len(p) != 1 || !strings.Contains(p[0], "refused (fail-closed)") || !strings.Contains(p[0], tc.want) {
+			t.Errorf("%s: %v, want one fail-closed refusal naming %q", tc.name, p, tc.want)
+		}
+	}
+	// A body naming no brief needs no repository: nothing is delivered.
+	root := dvBase(t, "")
+	t.Setenv("GITHUB_EVENT_NAME", "pull_request")
+	t.Setenv("GITHUB_EVENT_PATH", write(t, `{"pull_request":{"number":77,"body":"no trailer"}}`))
+	if p := dhLayerOne(t, root); len(p) != 0 {
+		t.Fatalf("a body naming no brief, with no repository, was refused: %v", p)
+	}
+}
+
+// With no .git the hold has no base and reports did-not-run, but it still
+// reads the event first: an unreadable payload is refused there too (the
+// design gate, which needs no base, leaves that refusal to the hold), and a
+// readable one reaches the design gate.
+func TestDecisionGateDeliveryNoGitDir(t *testing.T) {
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("testdata/designgate")); err != nil {
+		t.Fatal(err)
+	}
+	if !hasNoGitDir(root) {
+		t.Fatal("fixture: the design-gate tree carries .git")
+	}
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GITHUB_EVENT_NAME", "pull_request")
+	t.Setenv("GITHUB_EVENT_PATH", filepath.Join(t.TempDir(), "absent.json"))
+	if p, _ := decisionGateHoldProblems(root); len(p) != 1 || !strings.Contains(p[0], "refused (fail-closed)") {
+		t.Fatalf("no .git, unreadable payload: %v, want one fail-closed refusal", p)
+	}
+	if hasProblem(designGateProblems(root, streams), "dg/brief-05") {
+		t.Fatal("the design gate judged a delivery it could not read")
+	}
+	dvEvent(t, rlRepo, "Brief: dg/05\n")
+	p, n := decisionGateHoldProblems(root)
+	if len(p) != 0 || len(n) != 1 || !strings.Contains(n[0], ".git is absent") {
+		t.Fatalf("no .git, readable payload: problems %v notices %v, want the did-not-run notice only", p, n)
+	}
+	if !hasProblem(designGateProblems(root, streams), "dg/brief-05", "PR #77") {
+		t.Fatal("no .git: the design gate missed a readable delivery")
+	}
+}
+
+// §4.4 judges a delivery only from a row reconcile writes from: dg/05 at
+// blocked or withdrawn is not gated when a PR names it.
+func TestDecisionGateDeliveryDesignGateWritableRowsOnly(t *testing.T) {
+	for _, st := range []string{"blocked", "withdrawn"} {
+		root := t.TempDir()
+		if err := os.CopyFS(root, os.DirFS("testdata/designgate")); err != nil {
+			t.Fatal(err)
+		}
+		rm := filepath.Join(root, "docs/streams/dg/README.md")
+		raw, err := os.ReadFile(rm)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := strings.Replace(string(raw), "| 0 | S | todo | — | — |", "| 0 | S | "+st+" | — | — |", 1)
+		if s == string(raw) {
+			t.Fatal("fixture: could not set dg/05's status")
+		}
+		if err := os.WriteFile(rm, []byte(s), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		streams, _, err := loadStreams(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dvEvent(t, rlRepo, "Brief: dg/05\n")
+		if p := designGateProblems(root, streams); hasProblem(p, "dg/brief-05") {
+			t.Errorf("dg/05 at %s was gated as delivered:\n%s", st, strings.Join(p, "\n"))
+		}
+	}
+}
