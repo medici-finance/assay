@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // Tests for the delivery half of the decision-gate hold and the design-approval
@@ -421,5 +425,68 @@ func TestDecisionGateDeliveryDesignGateWritableRowsOnly(t *testing.T) {
 		if p := designGateProblems(root, streams); hasProblem(p, "dg/brief-05") {
 			t.Errorf("dg/05 at %s was gated as delivered:\n%s", st, strings.Join(p, "\n"))
 		}
+	}
+}
+
+// Under `--lint --diff-base` the base tree is linted by a re-run of the binary.
+// That re-run must not see the pull request's event: applied to the base tree
+// the delivery check reports the same problems there, and the differential then
+// demotes the head's as pre-existing on base. The differential (the parent) runs
+// in this process with its production wiring; only the re-run target is a built
+// binary, so the parent's environment handling is what is under test.
+func TestDecisionGateDeliveryNotDemotedUnderDiffBase(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "statusgen")
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	if out, err := goquiet.Cmd(exec.CommandContext(ctx, "go", "build", "-o", bin, ".")).CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	old := diffLintExeFn
+	t.Cleanup(func() { diffLintExeFn = old })
+	diffLintExeFn = func() (string, error) { return bin, nil }
+
+	home := t.TempDir()
+	dir := filepath.Join(home, ".config", "assay")
+	mustMkdirAll(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "roster.env"), []byte(fixtureRoster), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	root := dvBase(t, "")
+	// The PR's own commit: it leaves the board as it is (the delivery writes no move).
+	dhWrite(t, root, map[string]string{"tools/change.txt": "the delivered change\n"})
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "deliver")
+	dvEvent(t, rlRepo, dvBody) // sets GITHUB_EVENT_NAME / GITHUB_EVENT_PATH as the runner does
+
+	res, err := runDiffLintOne(diffLintProductionConfig(root, "refs/remotes/origin/main", nil, "", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.couldNotCheck != "" {
+		t.Fatalf("the differential could not check: %s", res.couldNotCheck)
+	}
+	isDelivery := func(l string) bool { return strings.Contains(l, "decision-gate hold") && strings.Contains(l, "PR #77") }
+	for _, l := range res.demoted {
+		if isDelivery(l) {
+			t.Errorf("the delivery refusal was demoted as pre-existing on base: %s", l)
+		}
+	}
+	var fired bool
+	for _, l := range res.introduced {
+		fired = fired || isDelivery(l)
+	}
+	if !fired {
+		t.Fatalf("no diff-introduced delivery PROBLEM under --diff-base: introduced=%v demoted=%v", res.introduced, res.demoted)
+	}
+}
+
+// withoutPREvent drops exactly the event variables.
+func TestWithoutPREvent(t *testing.T) {
+	got := withoutPREvent([]string{"A=1", "GITHUB_EVENT_NAME=pull_request", "GITHUB_EVENT_PATH=/e.json", "GITHUB_EVENT_PATHX=k", "GITHUB_REPOSITORY=o/r"})
+	want := []string{"A=1", "GITHUB_EVENT_PATHX=k", "GITHUB_REPOSITORY=o/r"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("withoutPREvent = %v, want %v", got, want)
 	}
 }

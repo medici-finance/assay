@@ -26,12 +26,19 @@ package main
 // in this repository is not moved, because reconcile does not move it (briefdelivery.go). A
 // partial claim whose `in:` cannot be resolved makes the brief derive unknown in reconcile, which
 // moves nothing and refuses --apply; the gates likewise judge no move and the hold reports the
-// reason as a notice.
+// reason as a notice. That is a residual: should the claim later resolve, reconcile may move the
+// row after the merge with no pre-merge check of the keys.
+//
+// DIFFERENTIAL LINT. Under --diff-base the base tree is linted by a re-run of the binary with the
+// PR event removed from its environment (withoutPREvent, difflint.go): the PR delivers to the head,
+// so its refusals are never demoted as pre-existing on base.
 //
 // WHAT IT DOES NOT CHANGE. Outside a pull_request event (push, schedule, a local run, reconcile's
 // hold) nothing is read and both gates behave as before. A brief already merged is never judged
 // again: no pull request event names it. A held row already on main stays as it is, and a row at
 // blocked, withdrawn, implemented or later is never judged as moved: reconcile does not write it.
+// Only the boards in the tree being linted are read, so a delivery credited to a brief in another
+// stream root is never judged here (a residual: that root's reconcile can still move it).
 //
 // THREE-STATE. A pull_request event whose payload cannot be read (no GITHUB_EVENT_PATH, an
 // unreadable file, a payload that is not JSON, no pull request number, or a delivering body with

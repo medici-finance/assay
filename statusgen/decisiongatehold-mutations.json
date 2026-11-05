@@ -408,6 +408,18 @@
       "file": "decisiongatehold.go",
       "old": "delivery, why := prDeliveryFn(root)\n\tif why != \"\" {",
       "new": "delivery, why := prDeliveryFn(root)\n\tif why != \"\" && !hasNoGitDir(root) {"
+    },
+    {
+      "name": "#5507: the diff-lint base run inherits the PR event (delivery refusals demoted as pre-existing on base)",
+      "file": "difflint.go",
+      "old": "\tif base {\n\t\tcmd.Env = withoutPREvent(cmd.Environ())\n\t}",
+      "new": "\tif base {\n\t\tcmd.Env = cmd.Environ()\n\t}"
+    },
+    {
+      "name": "#5507: the differential lints the base tree with the head runner",
+      "file": "difflint.go",
+      "old": "\tif cfg.baseLintRunner != nil {\n\t\tbaseRunner = cfg.baseLintRunner\n\t}",
+      "new": "\tif false && cfg.baseLintRunner != nil {\n\t\tbaseRunner = cfg.baseLintRunner\n\t}"
     }
   ]
 }
