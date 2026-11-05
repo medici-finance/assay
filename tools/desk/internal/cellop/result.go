@@ -68,6 +68,13 @@ const (
 	ReasonPlanStale       = "plan-stale"       // a precondition no longer holds its recorded value
 	ReasonUnmeasured      = "unmeasured"       // a precondition could not be measured (could-not-check)
 	ReasonActionFailed    = "action-failed"    // an action failed after the plan was consumed
+
+	// The per-role stop's work-safety refusals. They guard against closing
+	// a busy role or the wrong window; none of them is an authorization control.
+	ReasonRoleBusy                = "role-busy"                  // the role is not paused, or did not re-measure idle
+	ReasonSurfaceIdentityMismatch = "surface-identity-mismatch"  // the live surface does not match its receipt, or could not be read
+	ReasonSurfaceStale            = "surface-stale"              // the receipt's harness pid is gone or has another start time
+	ReasonPerRoleCloseUnsupported = "per-role-close-unsupported" // no receipt, or the cockpit build has no single-surface close
 )
 
 // Role is one role's line in a result. A nil State or field value is unmeasured, never a default.

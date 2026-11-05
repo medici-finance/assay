@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -75,29 +74,19 @@ func runDeliveryConsumers(root, base, brief, delivery string) int {
 		return fail(err)
 	}
 	defer os.RemoveAll(snapshot)
-	// Reuse the existing Git archive pipeline. No historical source is run,
-	// no refs/worktree metadata are mutated, and local edits cannot replace inputs.
-	// A tree archive has no commit context for export-subst. Check the complete
-	// entry roster before extraction, so no symlink or submodule can escape the
-	// snapshot or make an input silently disappear. export-ignore is detected below.
+	// Only unchanged, fully contained non-board links may resolve. The bounded
+	// archive reader writes regular files and never extracts archive links.
 	entries, ok := repo.TreeModes(delivery)
 	if !ok || len(entries) == 0 {
 		return fail("cannot enumerate delivered tree entries")
 	}
-	for _, entry := range entries {
-		if entry.Mode != "100644" && entry.Mode != "100755" {
-			return fail("delivery snapshot contains a symlink or submodule: " + entry.Path)
-		}
-	}
-	archive := historyGit(root, "archive", "--format=tar", delivery+"^{tree}")
-	if err := materializeCommands(delivery, archive, exec.Command("tar", "-x", "-C", snapshot)); err != nil {
+	tree, err := newConsumerSnapshot(entries, changed)
+	if err != nil {
 		return fail(err)
 	}
-	for _, entry := range entries {
-		info, err := os.Lstat(filepath.Join(snapshot, filepath.FromSlash(entry.Path)))
-		if err != nil || !info.Mode().IsRegular() {
-			return fail("delivery archive omitted a tracked blob (for example export-ignore): " + entry.Path)
-		}
+	archive := historyGit(root, "archive", "--format=tar", delivery+"^{tree}")
+	if err := tree.materialize(archive, snapshot); err != nil {
+		return fail(err)
 	}
 	streams, _, err := loadStreams(snapshot)
 	if err != nil {
@@ -111,7 +100,11 @@ func runDeliveryConsumers(root, base, brief, delivery string) int {
 	if bf.ConsumersProse == "" && len(bf.Consumers) == 0 {
 		return fail("delivered brief declares no consumer routes")
 	}
-	verdicts := corroborateBrief(snapshot, streams, changed, nil, bf)
+	verdicts := corroborateBriefWithSnapshot(snapshot, streams, changed, nil, bf, tree)
+	// Both explicit and Evidence-derived pins reach this one historical path.
+	// A bounded snapshot authenticates the inputs, not the caller's assertion
+	// that this commit implements the producer. Keep that separate from routing.
+	fmt.Fprintln(os.Stderr, "PRODUCER-DELIVERY: COULD-NOT-CHECK — producer identity and implementation completeness are not evaluated; follow-up routes prove target existence and reference-back only. Independently establish the actual producer delivery. Routing counts on stdout and the exit status concern declared consumer routes only.")
 	return emitConsumers(base+".."+delivery+" (immutable delivered snapshot)", 1, verdicts, nil, true)
 }
 

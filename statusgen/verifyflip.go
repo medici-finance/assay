@@ -269,7 +269,7 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 	if err != nil {
 		return verifyFlipPlan{}, err
 	}
-	if err := closeVerifyHeldRefusal(key, row.Status, bf.Evidence); err != nil {
+	if err := flipHeldRefusal(key, row.Status, bf.Evidence); err != nil {
 		return verifyFlipPlan{}, &flipRefusal{err.Error()}
 	}
 	if err := closeVerifyFailRefusal(key, row.Status, bf.Evidence); err != nil {
@@ -478,7 +478,34 @@ func flipLatestPass(evidence string) (flipPass, error) {
 			}
 		}
 	}
-	rows, at := flipDateRunnerRows(lines[start:last.line])
+	// The run is the latest PASS run only (#4294). It is read from the verdict
+	// before it; when that span does not read as one run and an entry heading
+	// lies in it, the run is read again from the latest such heading, so the
+	// tail of an earlier entry whose verdict sits at its top (its rows, its
+	// BLOCKED bullet) is not read as this run's. The re-read must pass every
+	// check on its own rows; an ambiguous heading (heldRunFrom) keeps the
+	// first refusal. RunStart stays the verdict-bounded start: the provenance
+	// check keeps judging every line from there, never fewer.
+	p, err := flipReadRun(lines, start, start, last.line)
+	if err != nil {
+		from, ok := heldRunFrom(lines, start, last.line)
+		if !ok || from == start {
+			return flipPass{}, err
+		}
+		q, qerr := flipReadRun(lines, start, from, last.line)
+		if qerr != nil {
+			return flipPass{}, err
+		}
+		p = q
+	}
+	return p, nil
+}
+
+// flipReadRun reads lines [from, end) as the run the strict PASS on line end
+// closes, with start the line after the verdict before it: its Date/Runner
+// rows must agree on one date and one `<login> @ <sha>`.
+func flipReadRun(lines []string, start, from, end int) (flipPass, error) {
+	rows, at := flipDateRunnerRows(lines[from:end])
 	if len(rows) == 0 {
 		return flipPass{}, refuseFlip("runner mismatch: no Date/Runner rows are recorded for the latest PASS")
 	}
@@ -504,7 +531,7 @@ func flipLatestPass(evidence string) (flipPass, error) {
 		}
 	}
 	for _, r := range rows {
-		if r[0] == "" || normalizeMark(r[0]) == "" || r[1] == "" {
+		if !flipRowDated(r) {
 			return flipPass{}, refuseFlip("runner mismatch: a row of the latest PASS has no Date or Runner")
 		}
 		m := flipRunnerRe.FindStringSubmatch(r[1])
@@ -527,13 +554,21 @@ func flipLatestPass(evidence string) (flipPass, error) {
 			return flipPass{}, refuseFlip("runner mismatch: rows of the latest PASS read %q and %q", runner, r[1])
 		}
 	}
-	p := flipPass{Runner: m0[1], SHA: sha, Run: strings.Join(lines[start:last.line], "\n"), RunStart: start}
+	p := flipPass{Runner: m0[1], SHA: sha, Run: strings.Join(lines[from:end], "\n"), RunStart: start}
 	p.Stamp, p.StampErr = flipStamp(date, []string{m0[0], m0[1], sha, m0[3]})
 	for _, i := range at {
-		p.Marks = append(p.Marks, start+i)
+		p.Marks = append(p.Marks, from+i)
 	}
-	p.Marks = append(p.Marks, last.line)
+	p.Marks = append(p.Marks, end)
 	return p, nil
+}
+
+// flipRowDated reports whether a Date/Runner row (flipDateRunnerRows) carries
+// both cells: a Date that is not empty or a dash placeholder, and a Runner
+// that is not empty. A run with a row that fails it is not a PASS run, for
+// verifyflip's run reader and the held scan's latest-run rule alike.
+func flipRowDated(r [2]string) bool {
+	return r[0] != "" && normalizeMark(r[0]) != "" && r[1] != ""
 }
 
 // flipSHAAgree reports whether two Runner-cell shas name one commit: equal,

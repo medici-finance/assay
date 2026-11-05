@@ -57,7 +57,7 @@ files:
 - `tools/desk/scripts/forge-ban.sh` + NEW `tools/desk/scripts/forge-ban-probe.sh` (planned) — classes e and f, still advisory.
 - `docs/streams/desktools-v2/forge-ban-baseline.txt` — the `desktools-v2/13` line.
 - `statusgen/` — the Verify-row portability NOTICE and its test.
-- `.github/workflows/ci.yml`, `.github/workflows/windows-ci-leg.yml` — staged as a patch for the human to apply; never pushed by this brief's implementer.
+- `.github/workflows/ci.yml`, `windows-ci-leg.yml` (live copy, retired #4106) — staged as a patch for the human to apply; never pushed by this brief's implementer.
 - `docs/streams/desktools-v2/brief-06-installation-token-scoping.md` — the re-derivation, offered to its human gate.
 - `docs/streams/desk-containers/README.md` — row 10 corrected.
 - `changelog/<branch>.md` — the per-PR fragment this repository requires.
@@ -133,12 +133,15 @@ applied state and are expected to pass after the human's commit lands.
    `sh -c` row, a `findstr` row each NOTICE) and the negative controls (a `${TMPDIR:-/tmp}` row,
    an OS-marked row, a plain `go test` row each stay silent). Calibrated against the existing
    tree: the NOTICE list it produces on main today is recorded in Evidence as the baseline.
-4. **Windows test leg** (staged for human push with deliverable 1). `windows-ci-leg.yml`
+4. **Windows test leg — retired (#4106, ruling A).** `windows-ci-leg.yml` was removed with the
+   rest of the native-Windows CI, so native Windows execution is no longer CI-proven and
+   Verify row 7 checks the retired state. The deliverable as originally written, for the record:
+   (staged for human push with deliverable 1) `windows-ci-leg.yml`
    gains `cd tools/desk && go test ./...` on `windows-latest` (free on a public repo). Expected
    green once desktools-v2/12's `custodytest.PrivateTempDir` lands; if this leg lands first, it
    is expected red on the custody tests and the PR says so — that is the leg working, and 12 is
    the fix.
-   **NOTE — trigger.** Today `windows-ci-leg.yml` runs only on a `v*` tag push and on
+   **NOTE — trigger** (moot since #4106). Before its retirement `windows-ci-leg.yml` ran only on a `v*` tag push and on
    `workflow_dispatch`, not on `pull_request`, so without a trigger change the leg proves
    Windows behavior at release time, not on a PR. The staged patch proposes adding a
    `pull_request` trigger — safe under the workflow's existing `permissions: contents: read`,
@@ -179,13 +182,13 @@ applied state and are expected to pass after the human's commit lands.
 | 4 | check | `grep -E -e '^desktools-v2/02 [0-9]+$' docs/streams/desktools-v2/forge-ban-baseline.txt && grep -E -e '^desktools-v2/13 glab=[0-9]+ gitlab-literal=[0-9]+$' docs/streams/desktools-v2/forge-ban-baseline.txt` | prints the `desktools-v2/02` line and the new `desktools-v2/13` line (exit 0) — the GitLab columns are recorded, machine-readably, on their own line; the `desktools-v2/02` total is untouched by classes e and f (row 3 proves the exclusion) |
 | 5 | check +mutation | `d=$(mktemp -d) && cd statusgen && go test -run '^TestVerifyRowPortability$' -v . > "$d/r5.out" 2>&1 && grep -E -e '^--- PASS: TestVerifyRowPortability \(' "$d/r5.out" && sh testdata/portability-mutation.sh` | prints the top-level PASS line and `MUTATION PASS: disabled detector was rejected` (exit 0; the `&&` keeps `go test`'s status and the grep is anchored at column 0, so a failing control subtest cannot hide behind a passing one) — the positive controls NOTICE naming the portability rule and the negative controls, `${TMPDIR:-/tmp}` included, stay silent |
 | 6 | check | `d=$(mktemp -d) && cd statusgen && go build -o "$d/statusgen" . && cd .. && "$d/statusgen" --root . --lint >/dev/null 2>&1; echo rc=$?` | `rc=0` — the new lint is NOTICE-level: the existing tree, POSIX rows included, still lints clean, and the NOTICE baseline is recorded in Evidence |
-| 7 | check | `awk 'prev ~ /^[ ]+cd tools\/desk[ ]*$/ && $0 ~ /^[ ]+go test \.\/\.\.\.[ ]*$/ {f=1} {prev=$0} END {exit !f}' .github/workflows/windows-ci-leg.yml && grep -q -F -e 'windows-latest' .github/workflows/windows-ci-leg.yml` | exit 0 — the windows leg has a step that does `cd tools/desk` and then runs `go test ./...` on its very next line, i.e. the tools/desk suite itself rather than a mention of the path (passes once the human-applied workflow commit lands; exits 1 today, where the only `tools/desk` text in that file is a comment and no step runs the suite) |
+| 7 | check | **Retired (#4106, ruling A) — native Windows execution is no longer CI-proven.** The Windows leg that was to run the tools/desk suite was removed with the rest of the native-Windows CI, so no workflow runs on a Windows runner: `grep -rlE 'windows-(latest\|[0-9]+\|11-arm)\|runs-on:.*windows' .github/workflows/ ci/staged-workflows/; echo "exit=$?"` | `exit=1` — no file listed. The tools/desk suite is not run on native Windows by CI; `ci.yml`'s `desk-platform-compile` job compiles its test binaries for `windows/amd64` without running them. A native run is an operator act on a Windows host, recorded in Evidence when it happens |
 | 8 | check | `grep -n -e 1145 -e 1146 -e 1223 docs/streams/desktools-v2/brief-06-*.md; test $? -eq 1` | exit 0 and nothing printed — the closed premises are out of brief 06 |
 | 9 | check | `f=$(ls docs/streams/desktools-v2/brief-06-*.md); grep -q -F -e 'cmd/cellctl' "$f" && grep -q -E -e '^gate: human$' "$f" && grep -q -F -e '(desktools-v2/13 GitLab row)' "$f" && grep -q -F -e '(desktools-v2/13 Windows row)' "$f"` | exit 0 — row 4 targets the Go port, the gate is untouched, and brief 06 carries its GitLab and Windows rows |
 | 10 | check | `miss=0; for n in 641 642 1604 1621 1418 1424 1805 1435 1644 678 1569 1693 1573 1203 655 676 677 1477 1411 1412 1415 865 1667 1794; do grep -q -E -e "^[\|] #$n [\|] desktools-v2/[0-9]+" -e "^[\|] #$n [\|] out-of-scope" docs/streams/desktools-v2/brief-13-platform-gates-and-reconciliation.md \|\| { echo "UNOWNED #$n"; miss=1; }; done; test $miss -eq 0` | exit 0 and nothing printed — each of the 24 §3 issues has its own triage row naming an owner (today it prints 24 `UNOWNED` lines and exits 1) |
 | 11 | check | `grep -q -E -e '^[\|] 10 [\|].*[\|] implemented [\|]' -e '^[\|] 10 [\|].*[\|] verified [\|]' -e '^[\|] 10 [\|].*[\|] done [\|]' docs/streams/desk-containers/README.md` | exit 0 — the desk-containers board row 10 itself (not any other row) reads `implemented` (this brief's correction), or `verified`/`done` once the verifier or CI has flipped it; never `todo` |
 | 12 | check | `statusgen --consumers --root .` | exit 0; no routing claim in this brief is disproved by the diff |
-| 13 | check | `miss=0; for n in 641 642 1604 1621 1418 1424 1805 1435 1644 678 1569 1693 1573 1203 655 676 677 1477 1411 1412 1415 865 1667 1794; do c=$(gh api --paginate "repos/{owner}/{repo}/issues/$n/comments" --jq '.[] \| select(.body \| contains("(desktools-v2/13 triage)")) \| .id') \|\| { echo "READ FAILED #$n"; miss=1; continue; }; test -n "$c" \|\| { echo "NO TRIAGE COMMENT #$n"; miss=1; }; done; test $miss -eq 0` | exit 0 and nothing printed — each of the 24 §3 issues carries its triage comment on the tracker (the DoD bullet below); a failed read prints `READ FAILED` and fails the row rather than reading as empty. Today it prints 24 `NO TRIAGE COMMENT` lines and exits 1 |
+| 13 | check | `miss=0; for n in 641 642 1604 1621 1418 1424 1805 1435 1644 678 1569 1693 1573 1203 655 676 677 1477 1411 1412 1415 865 1667 1794; do c=$(statusgen rowread comments --issue medici-finance/assay#$n --body-contains '(desktools-v2/13 triage)') \|\| { echo "READ FAILED #$n"; miss=1; continue; }; test -n "$c" \|\| { echo "NO TRIAGE COMMENT #$n"; miss=1; }; done; c=$(statusgen rowread comments --issue medici-finance/assay#1836 --body-contains '(desktools-v2/13 triage)') \|\| { echo "READ FAILED #1836"; miss=1; }; test -z "$c" \|\| { echo "CONTROL MATCHED #1836"; miss=1; }; test $miss -eq 0` | exit 0 and nothing printed — each of the 24 §3 issues carries its triage comment on the tracker (the DoD bullet below), and the control #1836, which carries none, matches nothing, so the filter discriminates; a failed read prints `READ FAILED` and fails the row rather than reading as empty. The reads go through `statusgen rowread`, a read-only verb that holds the forge credential inside its own reader process, so the row names no credential and needs none in its environment |
 
 ## DoD
 

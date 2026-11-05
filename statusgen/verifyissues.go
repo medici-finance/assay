@@ -921,7 +921,7 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 	if !hasVerifyPass(evidence) {
 		return false, ""
 	}
-	return unroutedHeldLine(evidence)
+	return unroutedHeldLine(evidence, false)
 }
 
 // unroutedHeldLine is verifyPassHeldContradiction's line scan WITHOUT the
@@ -946,10 +946,14 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 // or, once that entry re-ran EVERY row key of EVERY earlier entry so, any
 // held line of an earlier entry but a table line it cannot key (#3841) — and
 // otherwise the first held line in the whole section refuses, as before.
-func unroutedHeldLine(evidence string) (bool, string) {
+// Those are rules 3a and 3b. Rule 3c (the latest PASS run only, #4294) is read
+// only when latestRun is true: flipHeldRefusal passes it for verifyflip and
+// the reconcile fold, whose witness check reads the same run; every other
+// caller passes false.
+func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 	inFence := false
 	var codeScan inlineCodeScan
-	scope := heldScanScope(evidence)
+	scope := heldScanScope(evidence, latestRun)
 	tableDepth := 0
 	var hits []int
 	var quotes []string
@@ -1820,8 +1824,27 @@ func closeVerifyFlipPlan(root, briefID string, now time.Time) (readme string, up
 // one. There the verifier who resolves a hold strikes the earlier line through
 // (`~~…~~`, which the scan strips) or routes it to a named follow-up; an
 // unstruck, unrouted hold refuses by design.
+//
+// Rule 3c (the latest PASS run only, #4294) is NOT read here: close-verify
+// runs no witness check on the run 3c would stop at, so it keeps rules 3a and
+// 3b. verifyflip and the reconcile fold read 3c through flipHeldRefusal.
 func closeVerifyHeldRefusal(briefID, status, evidence string) error {
-	held, why := unroutedHeldLine(evidence)
+	return heldRefusal(briefID, status, evidence, false)
+}
+
+// flipHeldRefusal is closeVerifyHeldRefusal with rule 3c read as well: when the
+// last entry is the PASS run verifyflip credits, holds before its heading are
+// not read (#4294, the maintainer's scope ruling). Only verifyflip and the
+// reconcile fold call it; both refuse unless that run carries a passing
+// witness for every Verify row (closureRunWitnesses), which is what makes
+// stopping at its heading safe.
+func flipHeldRefusal(briefID, status, evidence string) error {
+	return heldRefusal(briefID, status, evidence, true)
+}
+
+// heldRefusal is the refusal both reads share, so their text cannot drift.
+func heldRefusal(briefID, status, evidence string, latestRun bool) error {
+	held, why := unroutedHeldLine(evidence, latestRun)
 	if !held {
 		return nil
 	}

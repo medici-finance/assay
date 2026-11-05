@@ -12,6 +12,7 @@ package main
 
 import (
 	"crypto/rsa"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -285,13 +286,24 @@ func exchangeJWT(jwt, installID string, clients ...*http.Client) (*tokenResult, 
 // forge's own expires_at, recorded at mint (`expiry=recorded`) — or, for a cache minted
 // before expiry was recorded, to the conservative reuse bound mtime + 50m (`expiry=bound`),
 // never to a lifetime nobody observed.
+//
+// The cache is stat'd with deskkit.LstatCustody under CustodyNoLinks, as the provider's own
+// reuse path reads it: a symlink at the cache path is refused, never reported as the role's
+// cache with the TTL and age of whatever it points at (#1573).
 func printTTL(tokenPath string) error {
-	fi, err := os.Stat(tokenPath)
+	_, fi, err := deskkit.LstatCustody(tokenPath, deskkit.CustodyNoLinks)
 	if err != nil {
+		var le *deskkit.CustodyLinkError
+		if errors.As(err, &le) {
+			return deskkit.Unverifiable(le.Error(), nil)
+		}
 		if os.IsNotExist(err) {
 			return deskkit.Unverifiable("no cached token at "+tokenPath, nil)
 		}
 		return deskkit.Unverifiable("cannot stat cached token", err)
+	}
+	if !fi.Mode().IsRegular() {
+		return deskkit.Unverifiable("cached token at "+tokenPath+" is not a regular file", nil)
 	}
 	expires, recorded, eerr := credential.CacheExpiry(tokenPath)
 	if eerr != nil {

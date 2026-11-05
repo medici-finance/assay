@@ -32,6 +32,8 @@ hand-edits a board cell, and the board follows the witness.
 
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
+> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, and how it is reconciled and marked read are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
+
 > Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
 **House rules live in the repo's own house-rules doc (`CLAUDE.md`)** — git/PR discipline, identity and
@@ -418,7 +420,7 @@ delivered the brief, as `{repo, number, merge_sha}`; or an explicit `prs: []` wi
 `strong`, equal to your admitted tier; never a model name), `started` and `finished` (RFC3339 UTC,
 `started <= finished <= ts`), plus the existing `rows_passed` / `rows_total`.
 When rows is non-empty, row_results is required for ALL original Verify IDs and their observed results.
-This includes non-contiguous numeric and suffixed inventories. Each exact result is
+This includes non-contiguous numeric, suffixed and label inventories. Each exact result is
 `{row, result}` (`pass` / `fail` / `could-not-run` / `deferred`); when `rows` is empty
 or omitted, `row_results` remains optional.
 `rows` names only exact identities still held by the receipt, never every covered row;
@@ -655,6 +657,12 @@ Keep the verdict, Evidence prose, row accounting and outcome record consistent:
 | No obligation failed, but required evidence is unavailable or incomplete | Exact `**VERIFY: BLOCKED**`; `blocked` | Name every uncovered row and the capability, definition or provenance needed to run it |
 | Every required obligation has current admissible evidence and closure gates allow advancement | Strict `**VERIFY: PASS**`; `verified` only after the closure lands | Follow the landing and closure checks below |
 
+Write the one verdict marker you reached and no other `VERIFY:` token in this run's Evidence or
+deliverable: not negated, not in inline code, not as "no PASS marker". The readers are lexical.
+The strict gate matches `**VERIFY: PASS**` inside backticks, and the board reader takes the last
+token it sees, so "No strict `**VERIFY: PASS**` marker" under a FAIL reads as a PASS to both.
+Say what the verdict is not in words that carry no token ("this is not a pass").
+
 For BLOCKED, retain command → could-not-run → reason for each uncovered obligation, file the
 blocker and land the available Evidence without a lifecycle flip. Use the same admitted
 Evidence-first outcome path below with `outcome: blocked` and a complete wake receipt. If the
@@ -677,7 +685,9 @@ sets and the PR shape.
 
 Otherwise the brief does NOT advance. File a `bug` immediately (`deskfile new -R <owner/repo> --raised-by verifier
 --label bug`) with the failing command and its real output, then **continue the drain** — the filed issue
-IS the report. **In addition** write one outcome record and land it with `deskevidence --outcome-record` (since
+IS the report. The body carries each failed row in the Evidence form, one line per row:
+`` `<command>` → exit <N> → <verbatim output> ``. That is the triple the fixer re-runs and compares
+against, so never split it into prose ("its exit code, 6") or drop the exit code. **In addition** write one outcome record and land it with `deskevidence --outcome-record` (since
 #882: one NEW file per outcome, landed under `docs/streams/verify-outcomes/<stream>/`, single-writer = this
 desk; the `VERIFY FAIL` commit-subject convention is grep-fragile, so bounce-back rate is not
 computable from prose). Write the record to the dispatcher-named outcome path from your prompt —
