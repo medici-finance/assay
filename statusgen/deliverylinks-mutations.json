@@ -1,0 +1,77 @@
+{
+  "test": "go test . -run '^TestDelivery' -count=1 -timeout 280s",
+  "control": {
+    "name": "CONTROL: the escape check is removed, so every recorded link is accepted",
+    "file": "consumerdelivery.go",
+    "old": "\tif p := escapingDeliveryLink(links); p != \"\" {",
+    "new": "\tif p := escapingDeliveryLink(links); false && p != \"\" {"
+  },
+  "mutations": [
+    {
+      "name": "escape check: an absolute target is accepted",
+      "file": "deliverylinks.go",
+      "old": "\tif target == \"\" || strings.HasPrefix(target, \"/\") || nonPortableLinkTarget.MatchString(target) {",
+      "new": "\tif target == \"\" || nonPortableLinkTarget.MatchString(target) {"
+    },
+    {
+      "name": "escape check: a non-portable target (backslash or drive prefix) is accepted",
+      "file": "deliverylinks.go",
+      "old": "var nonPortableLinkTarget = regexp.MustCompile(`\\x00|\\\\|^[A-Za-z]:`)",
+      "new": "var nonPortableLinkTarget = regexp.MustCompile(`\\x00`)"
+    },
+    {
+      "name": "escape check: a .. above the snapshot root is clamped at the root instead of refused",
+      "file": "deliverylinks.go",
+      "old": "\t\t\tif len(stack) == 0 {\n\t\t\t\treturn true\n\t\t\t}",
+      "new": "\t\t\tif len(stack) == 0 {\n\t\t\t\tcontinue\n\t\t\t}"
+    },
+    {
+      "name": "escape check: a chain is not followed, so only the first link's own target is judged",
+      "file": "deliverylinks.go",
+      "old": "\t\tnext, isLink := links[strings.Join(stack, \"/\")]",
+      "new": "\t\tnext, isLink := links[strings.Join(stack, \"/\")]\n\t\tisLink = false"
+    },
+    {
+      "name": "escape check: a link reached through the chain may be absolute",
+      "file": "deliverylinks.go",
+      "old": "\t\tif next == \"\" || strings.HasPrefix(next, \"/\") || nonPortableLinkTarget.MatchString(next) {",
+      "new": "\t\tif next == \"\" || nonPortableLinkTarget.MatchString(next) {"
+    },
+    {
+      "name": "escape check: a loop or over-long chain is accepted",
+      "file": "deliverylinks.go",
+      "old": "\t\tif hops > maxDeliveryLinkHops {\n\t\t\treturn true\n\t\t}",
+      "new": "\t\tif hops > maxDeliveryLinkHops {\n\t\t\treturn false\n\t\t}"
+    },
+    {
+      "name": "escape check: the hop bound is off by one",
+      "file": "deliverylinks.go",
+      "old": "\t\tif hops > maxDeliveryLinkHops {",
+      "new": "\t\tif hops >= maxDeliveryLinkHops {"
+    },
+    {
+      "name": "escape check: the target is resolved lexically, ignoring links on its path",
+      "file": "deliverylinks.go",
+      "old": "\t\tstack = stack[:len(stack)-1]\n\t\tpending = append(strings.Split(next, \"/\"), pending...)",
+      "new": "\t\t_ = next"
+    },
+    {
+      "name": "submodule: a gitlink entry is skipped instead of refused",
+      "file": "consumerdelivery.go",
+      "old": "\t\tdefault:\n\t\t\treturn fail(\"delivery snapshot contains a symlink or submodule: \" + entry.Path)",
+      "new": "\t\tdefault:\n\t\t\tcontinue"
+    },
+    {
+      "name": "not followed: the extracted link is left in place, so readers pass through it",
+      "file": "consumerdelivery.go",
+      "old": "\t\t\tif err := os.Remove(p); err != nil {\n\t\t\t\treturn fail(err)\n\t\t\t}\n\t\t\tplaceholder, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)\n\t\t\tif err != nil {\n\t\t\t\treturn fail(err)\n\t\t\t}\n\t\t\tif err := placeholder.Close(); err != nil {\n\t\t\t\treturn fail(err)\n\t\t\t}\n\t\t\tcontinue",
+      "new": "\t\t\tcontinue"
+    },
+    {
+      "name": "in-tree link: every symlink is refused again (the original over-refusal)",
+      "file": "consumerdelivery.go",
+      "old": "\t\tcase \"120000\":\n",
+      "new": "\t\tcase \"120000\":\n\t\t\treturn fail(\"delivery snapshot contains a symlink or submodule: \" + entry.Path)\n"
+    }
+  ]
+}

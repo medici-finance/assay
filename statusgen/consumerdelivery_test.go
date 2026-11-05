@@ -70,7 +70,9 @@ func TestDeliveryBounds(t *testing.T) {
 	for _, kind := range []string{"link", "export-ignore"} {
 		r, b, _ := deliveryFixture(t, []string{"web/fixed.go: fixed-here"})
 		if kind == "link" {
-			if err := os.Symlink("fixed.go", filepath.Join(r, "web/link.go")); err != nil {
+			// An in-tree link is recorded, not refused (#5476); this control
+			// keeps the refusal for a link whose target leaves the root.
+			if err := os.Symlink("../../outside.go", filepath.Join(r, "web/link.go")); err != nil {
 				t.Fatal(err)
 			}
 		} else {
