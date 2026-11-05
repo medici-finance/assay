@@ -315,6 +315,10 @@ briefs propose bounded source increments; the original promise, prerequisites,
 Tasks, thirteen Verify rows, risk flags and Evidence above are unchanged. No child
 is delivered by this authoring. Do not dispatch these candidates until decomposition
 review acknowledges the active parent claim and agrees the source/acceptance routing.
+Decomposition review is one named event: a driver comment on
+#5492, under the driver's own login, accepting this split and its routing. Until it
+lands, each child carries a `gates:` edge on #5492 (forge-backed, so held off Next-up),
+so /40 is not dispatched beside this parent for the same process move.
 No dependency on the children is added to this parent until that review. Its current
 consumers continue to require the full shared-supervisor promise.
 

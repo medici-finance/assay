@@ -11,7 +11,8 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 gate-why: "Composes durable process state with role/profile/generation and launch brakes. Human acceptance confirms every new launch and receipt delivery rechecks current authority, including direct lower-boundary calls."
 decision-trigger: spec
-issues: []
+issues: [5492]
+gates: [{"on": "#5492", "type": "human-gate", "reason": "Decomposition review: dispatch waits for a driver comment on #5492, posted under the driver's own login (never a role App), that accepts this proposed split and its source/acceptance routing. Only a follow-up PR citing that comment removes this edge."}]
 schema: brief-v2
 version: 1
 id: 4665c5e6-0de1-49c5-a39f-4dd335bac0ed
@@ -101,6 +102,7 @@ The parent-row number in Expect identifies the unchanged obligation this child i
 | 2 | check +flow +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout 90s -v -run '^TestLoopAdminUnknownRestartAndAccounting$' ./supervisor/... > "$o" && grep -F -- '--- PASS: TestLoopAdminUnknownRestartAndAccounting ' "$o")` | Parent row 2: exit 0; named PASS. Crash between caller intent and journal receipt reconciles once; unknown cancel holds relaunch; usage and limits survive reopen. Relaunch-on-missing-receipt fails. |
 | 3 | check +flow +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout 90s -v -run '^TestLoopAdminFailClosed$' ./supervisor/... > "$o" && grep -F -- '--- PASS: TestLoopAdminFailClosed ' "$o")` | Parent row 5: exit 0; named PASS. Unrecognized caller, unreadable/missing profile or role binding and absent/unreadable budget each start no child. Treating absent budget as unlimited fails. |
 | 4 | check +flow +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout 90s -v -run '^TestLoopAdminWaitDoesNotInvokeModel$' ./supervisor/... > "$o" && grep -F -- '--- PASS: TestLoopAdminWaitDoesNotInvokeModel ' "$o")` | Parent row 13: exit 0; named PASS. Production timers, unchanged observations and repeated receipts start zero additional invocations; one admitted job starts once and delivers completion in code. Observe-timeout Start mutation fails. |
+| 5 | check:ci | `(consumer_out=$(mktemp) && trap 'rm -f "$consumer_out"' 0 && statusgen --root . --consumers --brief graph-execution/42 > "$consumer_out" && cat "$consumer_out" && grep -Eqx -- 'summary: [1-9][0-9]* corroborated, 0 disproved, 0 unchecked, 0 brief\(s\) claiming nothing' "$consumer_out")` | Exit 0 at the implementation delivery: each `consumers:` entry flips to fixed-here where the diff edits it and corroborates; none disproved or unchecked. With `--brief` and no `--base`/`--delivery`, statusgen pins the run to the delivery its committed Verification-Table marker records; if that marker is absent the run is could-not-check and the verifier pins `--delivery <implementation merge> --base <its first parent>` explicitly. A routing claim the diff contradicts fails. |
 
 ## Pre-mortem and dispatch checks
 
@@ -114,4 +116,4 @@ Rows discriminate through the named production mutations; every claimed fact is 
 
 ## Review
 
-Gate: human. Parent decision issue #5492 remains the decision surface for the complete /26 promise. No child approval is inferred from an empty issue or from authoring this split. At design pickup, present the concrete child acceptance candidate under the existing decision process before activation or final acceptance. The proposed decomposition must be reviewed before dispatch.
+Gate: human. Parent decision issue #5492 remains the decision surface for the complete /26 promise. No child approval is inferred from an empty issue or from authoring this split. At design pickup, present the concrete child acceptance candidate under the existing decision process before activation or final acceptance. The proposed decomposition must be reviewed before dispatch. "Decomposition review" is one event: a driver comment on #5492, under the driver's own login, accepting this split and its routing. Until then the `gates:` edge on #5492 holds this child off Next-up (a forge-backed gate is could-not-check, so held); a follow-up PR citing that comment removes the edge.

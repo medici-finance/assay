@@ -11,7 +11,8 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 gate-why: "Relocates the audited process-launch site and its cache-custody guards. Human acceptance confirms every caller still crosses the same custody and process-containment boundary."
 decision-trigger: spec
-issues: []
+issues: [5492]
+gates: [{"on": "#5492", "type": "human-gate", "reason": "Decomposition review: dispatch waits for a driver comment on #5492, posted under the driver's own login (never a role App), that accepts this proposed split and its source/acceptance routing. Only a follow-up PR citing that comment removes this edge."}]
 schema: brief-v2
 version: 1
 id: 5377cd38-a556-4367-b01b-dbc4b1390d3b
@@ -66,6 +67,11 @@ files:
 - `Dockerfile`
 - `images/assay-harness/Dockerfile`
 - `images/verify-runner/Dockerfile`
+- `tools/desk/internal/cellcadence/mutations.json`
+- `tools/desk/internal/cellscratch/mutations.json`
+- `ci/staged-workflows/cellcache-mutate.yml`
+- `.github/scripts/go-test-shard.py`
+- `tools/go-analysis/baseline.json`
 
 facts: At the pickup head, `loopadmin/process` is absent. The sole raw harness runner is `tools/desk/internal/cellprocess/run.go::runObserved`; its public wrappers call `withCache`, which imports desk-internal `cellcache` and `deskkit`. A literal file move cannot compile outside that module and omitting those imports removes custody/telemetry. Production importers are cellctl cadence/cache/scratch/comms, cellreader and gitmaintenance. `TestCacheClassGuard`, `TestCacheObservedRoutes`, cachequiet and the forge register inspect this route. Merged PR #4157 delivered bounded startup and cadence cache maintenance; consume that implementation and its committed controls, do not repair the same class again.
 
@@ -121,6 +127,8 @@ The parent-row number in Expect identifies the unchanged obligation this child i
 | 3 | check +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout 90s -v -run '^TestCellPrepFences$' ./cmd/cellctl/ > "$o" && grep -F -- '--- PASS: TestCellPrepFences ' "$o")` | Parent row 11: exit 0; named PASS. Concurrent starts, stale receipts/profile/generation, absent accounting and interrupted down retain per-role leases, stop/authority checks and protected hashes; stale-lease and unacknowledged-reclaim mutations fail. |
 | 4 | check +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout 90s -v -run '^TestCellLaunchTelemetry$' ./cmd/cellctl/ ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestCellLaunchTelemetry ' "$o")` | Parent row 12: exit 0; named PASS. Resolved config-only opt-in records shared preparation once through actual confirmed starts; unknown/refused starts stay incomplete; off/slow/failed sink semantics remain; ambient-only consent and missing-enrollment mutations fail. |
 | 5 | check +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout 90s -v -run '^TestProcessCustodyFlow$' ./internal/cellcache/ > "$o" && grep -F -- '--- PASS: TestProcessCustodyFlow ' "$o" && GOWORK=off go build ./cmd/cellctl/)` | Exit 0; named production process→host-custody integration proves final enrollment, current free-space refusal, definite completion release and uncertain completion retention through the moved owner. Carry existing custody, observed-route and containment fixtures to their new owning packages without removing assertions. A planted second raw caller and omitted enrollment each fail; original cadence tests stay unchanged. Full platform/release builds remain separate required qualification. |
+| 6 | check +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && test ! -e tools/desk/internal/cellprocess && { git grep -n -e 'internal/cellprocess' -- . ':(exclude)CHANGELOG.md' ':(exclude)changelog/' ':(exclude)docs/streams/' ':(exclude)statusgen/strength_test.go' > "$o"; rc=$?; cat "$o"; test "$rc" -eq 1; })` | Exit 0: the old package directory is gone and no live source, mutation manifest, staged workflow, shard table, analysis baseline or current doc still names `internal/cellprocess` (history, stream records and the statusgen fixture string are excluded). A git error also fails (only grep's no-match exit 1 passes). Mutation: leave one `internal/cellprocess` path in `tools/desk/internal/cellscratch/mutations.json`; the row fails. |
+| 7 | check:ci | `(consumer_out=$(mktemp) && trap 'rm -f "$consumer_out"' 0 && statusgen --root . --consumers --brief graph-execution/40 > "$consumer_out" && cat "$consumer_out" && grep -Eqx -- 'summary: [1-9][0-9]* corroborated, 0 disproved, 0 unchecked, 0 brief\(s\) claiming nothing' "$consumer_out")` | Exit 0 at the implementation delivery: each `consumers:` entry flips to fixed-here where the diff edits it and corroborates; none disproved or unchecked. With `--brief` and no `--base`/`--delivery`, statusgen pins the run to the delivery its committed Verification-Table marker records; if that marker is absent the run is could-not-check and the verifier pins `--delivery <implementation merge> --base <its first parent>` explicitly. A routing claim the diff contradicts fails. |
 
 ## Pre-mortem and dispatch checks
 
@@ -134,4 +142,4 @@ Rows discriminate through the named production mutations; every claimed fact is 
 
 ## Review
 
-Gate: human. Parent decision issue #5492 remains the decision surface for the complete /26 promise. No child approval is inferred from an empty issue or from authoring this split. At design pickup, present the concrete child acceptance candidate under the existing decision process before activation or final acceptance. The proposed decomposition must be reviewed before dispatch.
+Gate: human. Parent decision issue #5492 remains the decision surface for the complete /26 promise. No child approval is inferred from an empty issue or from authoring this split. At design pickup, present the concrete child acceptance candidate under the existing decision process before activation or final acceptance. The proposed decomposition must be reviewed before dispatch. "Decomposition review" is one event: a driver comment on #5492, under the driver's own login, accepting this split and its routing. Until then the `gates:` edge on #5492 holds this child off Next-up (a forge-backed gate is could-not-check, so held); a follow-up PR citing that comment removes the edge.

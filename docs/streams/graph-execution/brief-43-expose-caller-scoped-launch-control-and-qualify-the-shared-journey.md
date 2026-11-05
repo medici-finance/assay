@@ -11,7 +11,8 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 gate-why: "Adds the authenticated runtime launch endpoint. Human acceptance confirms caller isolation, fixed profile/role/limit binding, no operator administration or effect credentials, and exact joined-subject evidence before any activation."
 decision-trigger: spec
-issues: []
+issues: [5492]
+gates: [{"on": "#5492", "type": "human-gate", "reason": "Decomposition review: dispatch waits for a driver comment on #5492, posted under the driver's own login (never a role App), that accepts this proposed split and its source/acceptance routing. Only a follow-up PR citing that comment removes this edge."}]
 schema: brief-v2
 version: 1
 id: 366cd30e-3d42-443f-92df-8afef2988770
@@ -118,6 +119,7 @@ The parent-row number in Expect identifies the unchanged obligation this child i
 | 13 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellPrepFences$' ./... > "$o" && grep -F -- '--- PASS: TestCellPrepFences ' "$o")` | Integrated rerun of parent row 11: exit 0; named PASS. Concurrent starts, stale preparation, changed profiles, missing accounting and interrupted down preserve per-role leases, stop/authority gates and protected hashes. Mutation: accept a stale preparation receipt as a current role lease or reclaim unacknowledged work; test fails. |
 | 14 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellLaunchTelemetry$' ./... > "$o" && grep -F -- '--- PASS: TestCellLaunchTelemetry ' "$o")` | Integrated rerun of parent row 12: exit 0; named PASS. Config-only opt-in records preparation through confirmed child start; missing/unknown child starts remain incomplete, shared work counted once, no-opt-in writes nothing and slow/failed sink changes no launch result. Mutation: gate parent recording only on ambient environment or omit final enrollment; test fails. |
 | 15 | check:ci +flow +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLoopAdminWaitDoesNotInvokeModel$' ./... > "$o" && grep -F -- '--- PASS: TestLoopAdminWaitDoesNotInvokeModel ' "$o")` | Integrated rerun of parent row 13: exit 0; named PASS. Production supervisor timers, unchanged observations and repeated receipts do not call adapter Start; one admitted invocation starts once and completion is delivered without a model waiter. Mutation: start a model on each observe timeout; the named test fails. |
+| 16 | check:ci | `(consumer_out=$(mktemp) && trap 'rm -f "$consumer_out"' 0 && statusgen --root . --consumers --brief graph-execution/43 > "$consumer_out" && cat "$consumer_out" && grep -Eqx -- 'summary: [1-9][0-9]* corroborated, 0 disproved, 0 unchecked, 0 brief\(s\) claiming nothing' "$consumer_out")` | Exit 0 at the implementation delivery: each `consumers:` entry flips to fixed-here where the diff edits it and corroborates; none disproved or unchecked. With `--brief` and no `--base`/`--delivery`, statusgen pins the run to the delivery its committed Verification-Table marker records; if that marker is absent the run is could-not-check and the verifier pins `--delivery <implementation merge> --base <its first parent>` explicitly. A routing claim the diff contradicts fails. |
 
 ## Pre-mortem and dispatch checks
 
@@ -131,4 +133,4 @@ Rows discriminate through the named production mutations; every claimed fact is 
 
 ## Review
 
-Gate: human. Parent decision issue #5492 remains the decision surface for the complete /26 promise. No child approval is inferred from an empty issue or from authoring this split. At design pickup, present the concrete child acceptance candidate under the existing decision process before activation or final acceptance. The proposed decomposition must be reviewed before dispatch.
+Gate: human. Parent decision issue #5492 remains the decision surface for the complete /26 promise. No child approval is inferred from an empty issue or from authoring this split. At design pickup, present the concrete child acceptance candidate under the existing decision process before activation or final acceptance. The proposed decomposition must be reviewed before dispatch. "Decomposition review" is one event: a driver comment on #5492, under the driver's own login, accepting this split and its routing. Until then the `gates:` edge on #5492 holds this child off Next-up (a forge-backed gate is could-not-check, so held); a follow-up PR citing that comment removes the edge.

@@ -11,7 +11,8 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 gate-why: "Introduces durable process intent, shared reservations and passive recovery under independently protected incarnation state. Human acceptance confirms database loss or restore cannot regain launch allowance or revive an old execution group."
 decision-trigger: spec
-issues: []
+issues: [5492]
+gates: [{"on": "#5492", "type": "human-gate", "reason": "Decomposition review: dispatch waits for a driver comment on #5492, posted under the driver's own login (never a role App), that accepts this proposed split and its source/acceptance routing. Only a follow-up PR citing that comment removes this edge."}]
 schema: brief-v2
 version: 1
 id: fa7b1bb7-ae5e-4204-8447-cdcec9e5e42a
@@ -110,6 +111,7 @@ The parent-row number in Expect identifies the unchanged obligation this child i
 | 3 | check:ci +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout 90s -v -run '^TestNoEmbeddedJournalEngine$' ./journal/... > "$o" && grep -F -- '--- PASS: TestNoEmbeddedJournalEngine ' "$o")` | Parent row 8: exit 0; named PASS. All loopadmin package dependency closures reject SQLite/other embedded engines and workflow; an independently planted embedded import fails the named guard. |
 | 4 | check +flow +mutation | `(cd loopadmin && test -n "$ASSAY_TEST_POSTGRES_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout 90s -v -run '^TestLoopAdminLaunchBudgetBrake$' ./journal/... > "$o" && grep -F -- '--- PASS: TestLoopAdminLaunchBudgetBrake ' "$o")` | Parent row 9: exit 0; named PASS. Real disposable PostgreSQL: unreadable launch use refuses without child; repeated restarts cannot exceed the configured window budget; unavailable pacing estimate alone permits an otherwise admitted launch. Under-budget-on-unavailable mutation fails. |
 | 5 | check +flow +mutation | `(cd loopadmin && test -n "$ASSAY_TEST_POSTGRES_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout 90s -v -run '^TestJournalPassiveRestore$' ./journal/... > "$o" && grep -F -- '--- PASS: TestJournalPassiveRestore ' "$o")` | Exit 0; real fixture backup/restore retains unknowns, pauses, limits, usage completeness and artifact identity. Missing/corrupt referenced artifact, rolled-back allowance and auto-launch-on-restore mutations each fail. Nothing restores an operational database. |
+| 6 | check:ci | `(consumer_out=$(mktemp) && trap 'rm -f "$consumer_out"' 0 && statusgen --root . --consumers --brief graph-execution/41 > "$consumer_out" && cat "$consumer_out" && grep -Eqx -- 'summary: [1-9][0-9]* corroborated, 0 disproved, 0 unchecked, 0 brief\(s\) claiming nothing' "$consumer_out")` | Exit 0 at the implementation delivery: each `consumers:` entry flips to fixed-here where the diff edits it and corroborates; none disproved or unchecked. With `--brief` and no `--base`/`--delivery`, statusgen pins the run to the delivery its committed Verification-Table marker records; if that marker is absent the run is could-not-check and the verifier pins `--delivery <implementation merge> --base <its first parent>` explicitly. A routing claim the diff contradicts fails. |
 
 ## Pre-mortem and dispatch checks
 
@@ -123,4 +125,4 @@ Rows discriminate through the named production mutations; every claimed fact is 
 
 ## Review
 
-Gate: human. Parent decision issue #5492 remains the decision surface for the complete /26 promise. No child approval is inferred from an empty issue or from authoring this split. At design pickup, present the concrete child acceptance candidate under the existing decision process before activation or final acceptance. The proposed decomposition must be reviewed before dispatch.
+Gate: human. Parent decision issue #5492 remains the decision surface for the complete /26 promise. No child approval is inferred from an empty issue or from authoring this split. At design pickup, present the concrete child acceptance candidate under the existing decision process before activation or final acceptance. The proposed decomposition must be reviewed before dispatch. "Decomposition review" is one event: a driver comment on #5492, under the driver's own login, accepting this split and its routing. Until then the `gates:` edge on #5492 holds this child off Next-up (a forge-backed gate is could-not-check, so held); a follow-up PR citing that comment removes the edge.
