@@ -104,11 +104,13 @@ RUN set -eu; \
       amd64) gl_arch=x64 \
              kustomize_sha=cb9e31198d3f63b44848bd0afc4c8efc56e6cfef9c93a4a39a211940e6decd61 \
              kubeconform_sha=9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883 \
-             gitleaks_sha=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb ;; \
+             gitleaks_sha=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb \
+             yq_sha=8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f ;; \
       arm64) gl_arch=arm64 \
              kustomize_sha=9867b76482cfc6d25b546abc1d2b5a32bd137505aba640649b4b378f64f6d68f \
              kubeconform_sha=1f53fc8e81258197a35e8603054162a5af1de8c5af13746c71ab680d9534ed87 \
-             gitleaks_sha=e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080 ;; \
+             gitleaks_sha=e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080 \
+             yq_sha=189088da0c6429ec5178dfaab1a114805f6cab0b61b165ab236efedf1d57a71b ;; \
       *) echo "verify-runner: no pinned tool checksums for '${TARGETARCH:-}'" >&2; exit 1 ;; \
     esac; \
     fetch() { \
@@ -124,6 +126,11 @@ RUN set -eu; \
       "$kubeconform_sha" kubeconform; \
     fetch "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_${gl_arch}.tar.gz" \
       "$gitleaks_sha" gitleaks; \
+    curl -fsSL --proto '=https' --tlsv1.2 -o /tmp/yq \
+      "https://github.com/mikefarah/yq/releases/download/v4.54.1/yq_linux_${TARGETARCH}"; \
+    echo "$yq_sha  /tmp/yq" | sha256sum -c -; \
+    install -o 0 -g 0 -m 0755 /tmp/yq /usr/local/bin/yq; \
+    rm -f /tmp/yq; \
     test "$(kustomize version)" = v5.8.3; \
     test "$(kubeconform -v)" = v0.8.0; \
     test "$(gitleaks version)" = 8.30.1

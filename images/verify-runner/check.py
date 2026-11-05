@@ -74,6 +74,7 @@ for name in ENTRYPOINTS:
 # name: (probe args, probe stdin, expected stdout or None, version args).
 ROW_TOOLS = {
     'jq': (['-n', '-c', '{"sum": (1 + 1)}'], b'', b'{"sum":2}\n', ['--version']),
+    'yq': (['-o=json', '-I=0', '.'], b'sum: 2\n', b'{"sum":2}\n', ['--version']),
     'shellcheck': (['--shell=sh', '-'], b'#!/bin/sh\nprintf \'%s\\n\' "$1"\n', b'',
                    ['--version']),
     'tmux': (['-V'], b'', None, ['-V']),
