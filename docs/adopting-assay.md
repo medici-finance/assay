@@ -20,8 +20,8 @@ Apps, protected-branch push-access lists in place of ruleset bypass, the runner,
 variables — is [`docs/adopting-assay-gitlab.md`](adopting-assay-gitlab.md); the two files are
 the per-forge halves of one flow, and a GitLab adopter reads both. `gh` and `glab` are optional
 convenience CLIs on their own forge and no install step requires either (see the `assay:install`
-skill, *Optional forge CLIs*). **Cursor has no `/plugin` path**;
-use [Running Assay on Cursor](#running-assay-on-cursor--a-second-first-class-harness). **Codex has
+skill, *Optional forge CLIs*). **Cursor has no `/plugin` path**: it has its own plugin
+marketplace route and a versioned copy-skills route; see [Running Assay on Cursor](#running-assay-on-cursor--a-second-first-class-harness). **Codex has
 no Claude `/plugin` path either**, and its resident rules travel in `AGENTS.md` rather than a
 session hook; use [Running Assay on Codex](#running-assay-on-codex). **Native
 Windows** follows [Windows adopters](#windows-adopters) at the install step (release assets, or
@@ -35,7 +35,7 @@ a from-source pin).
 | GitHub | Claude Code | native Windows | Turnkey skill **plus** [Windows adopters](#windows-adopters) (channel E release, or channel D source) |
 | GitLab (any edition you will actually run) | Claude Code | macOS / Linux | Turnkey `assay:install` below for the forge-neutral half (acquisition, `statusgen init` writing `.gitlab-ci.yml`, pins, instruction-file bindings) **plus** [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) for the GitLab half (tier, service accounts, protected branch, runner, CI/CD variables) — read its tier ladder before provisioning anything. No `gh` and no `glab` needed. |
 | GitLab | other harnesses | any | [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) for the GitLab half, then this file for CORE and the harness row below |
-| GitHub or GitLab | Cursor (IDE or `cursor-agent`) | any | [Cursor section](#running-assay-on-cursor--a-second-first-class-harness): copy skills + `references/`, no marketplace install |
+| GitHub or GitLab | Cursor (IDE or `cursor-agent`) | any | [Cursor section](#running-assay-on-cursor--a-second-first-class-harness): versioned copy-skills + `references/` (pins a release), or a Cursor team-marketplace import (follows a branch) |
 | GitHub or GitLab | Codex (CLI) | any | [Codex section](#running-assay-on-codex): skills into `.agents/skills/`, the `AGENTS.md` fragment, the `multi_agent` flag; not the Claude `/plugin` commands |
 
 A Windows + GitLab + Cursor boot is a **real combination**. It is three documented arms, not
@@ -52,7 +52,7 @@ true shape on this page and not at step four:
 | **Principals** | **2** — one human, one automation | The human merges and rules on gates; the automation identity is what the fleet runs *as*. They must be distinct (the two-principals prerequisite; GitHub Apps or GitLab service accounts for the automation side). |
 | **GitHub App identities** | **the implementer identity + a separate reviewer App** | This one pair is **load-bearing and non-negotiable**: the identity that *writes* a change and the identity that *approves* it must be different, and the forge will not let a PR author approve their own PR. Everything else is attribution, not separation — see **§1a** and [`docs/enforcement-model.md`](enforcement-model.md). |
 | **Supported platform** | **GitHub** (this file's identity half); **GitLab** (its identity half is [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md)) | The install flow is shared; this page's identity and protection half is GitHub-shaped (Apps, rulesets). GitLab substitutes service accounts for Apps. Self-managed Community Edition is not the same as gitlab.com Free — read the GitLab doc's edition + read-back rules before claiming controls. |
-| **Supported harness** | **Claude Code** (turnkey plugin); **Cursor** (copy-skills); **Codex CLI** (copy-skills + `AGENTS.md` fragment + the `multi_agent` flag) | Desk CLIs are harness-neutral. `/plugin marketplace add` is Claude Code only — Cursor has no marketplace install, and Codex's is its own `codex plugin marketplace` surface. Codex CLI's default `workspace-write` sandbox makes the implementer skills **refuse**; see the [Codex section](#running-assay-on-codex). |
+| **Supported harness** | **Claude Code** (turnkey plugin); **Cursor** (copy-skills); **Codex CLI** (copy-skills + `AGENTS.md` fragment + the `multi_agent` flag) | Desk CLIs are harness-neutral. `/plugin marketplace add` is Claude Code only — Cursor's plugin route is a team-marketplace import that follows a branch, and Codex's is its own `codex plugin marketplace` surface. Codex CLI's default `workspace-write` sandbox makes the implementer skills **refuse**; see the [Codex section](#running-assay-on-codex). |
 
 **Per-App scope cost.** Every role App you *do* create must carry the **same three write duties** —
 `pull_requests: write`, `issues: write`, `contents: write` (`requiredDuties`; see *The required duty
@@ -105,7 +105,7 @@ never-autonomous escalation points below.
   section — the pinned `statusgen-windows-<arch>.exe` is acquired through the PowerShell
   bootstrap + Go-native `deskinstall` path (same sha256-verify-or-refuse control; a
   `deskinstall` built from this tree also refuses any asset whose build attestation does not
-  verify — see that section), with the SessionStart-hook `bash`+`jq` workaround and the arm64-native-smoke caveat stated there.
+  verify — see that section), with the SessionStart-hook `bash`+`jq` workaround and the not-CI-proven caveat stated there.
 
 **What the skill does** — it DELEGATES every PRIMITIVE and every human-gate to the manual runbook
 below; the two are **one story with one mechanism**, not two implementations:
@@ -261,7 +261,9 @@ finished `assay:install` run hands you a checklist rather than the impression th
 6. **The ongoing human gates — not one-time.** The ready-flip is the desk's, but the **merge**, the
    **push to `main`**, the **release tag** and any **history rewrite** are yours *every time*, not
    just at install. So is the decision to add a public repository to the allowed-repos set with
-   the `:public` token: it is a one-time, repository-scoped authorization that only you make,
+   the `:public` token (an instance-visible `internal` repository takes the `:internal` token
+   instead, and is gated exactly like a public one): it is a one-time, repository-scoped
+   authorization that only you make,
    and a repository you have not listed stays refused. The quick-reference table above is the
    standing list.
 7. **Optionally acquire the desk-tools.** If you run the automated desk pipeline, install the pinned
@@ -444,7 +446,8 @@ works but loses the guards. The mechanism is **channel-E, identical to `install-
 **Optional for the repo, required for a desk.** A statusgen-only `.assay-versions` stays a complete
 setup for an adopter that runs no desk. A desk role cannot boot on one: `deskboot`'s
 `first-sweep-prereqs` step refuses (exit 6) unless the nearest `.assay-versions` carries a
-`desk-tools` or `desk-tools-<os>-<arch>` line, or a `desk-tools-source` line with a full commit —
+`desk-tools`, `desk-tools-<os>-<arch>` or `desk-tools-<os>-<arch>.tar.gz` line (the last is the
+spelling `assay-install.sh pin --kind desk-tools` writes), or a `desk-tools-source` line with a full commit —
 the lines `deskboard`'s drift check reads. Matching statusgen lines on your branch and on main do
 not count. The one exemption is the source tree itself, where `refs/remotes/origin/main:tools/desk`
 resolves. So if you run desks, land this pin on main before the first boot:
@@ -595,9 +598,10 @@ identity* — plan for it before you turn protection on, not after the board sil
 > Variables) with the values from `configure-roster`; `ASSAY_TRUSTED_BOT_SLUGS` must bind
 > `verifier=<slug>:<bot-user-id>` or the Evidence-actor check has nothing to compare against.
 > They carry logins, numeric ids and role bindings **only** — a token or key never belongs in
-> them. A GitLab adopter has the same gap and a different transport: one CI/CD variable,
-> `STATUSGEN_ROSTER_ENV`, materialised into the config-home file — see
-> [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md), section "Trust roster for CI".
+> them. A GitLab adopter has a different transport — one CI/CD variable,
+> `STATUSGEN_ROSTER_ENV`, materialised into the config-home file — and a different outcome when
+> it is unset: see [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md), section "Trust roster
+> for CI", for what each GitLab job does without it.
 
 > **DECISION-GATE HOLD — the PR check, and the admin act that makes it bind
 > ([`lifecycle-v1.md`](../spec/lifecycle-v1.md) §4.5).** A `gate: human` brief may move to
@@ -763,6 +767,46 @@ account name to the roster login the scan-override audit row names (the desk too
 present in `ASSAY_TRUSTED_LOGINS`, never a configured App slug; anything else invalidates
 the key. An OS account name containing a list separator (space, comma, semicolon) cannot
 be expressed and always lands on the audit row's marked `os:<username>` fallback.
+
+**A human whose username ends in `-bot` or `-app`: `ASSAY_ASSERTED_HUMANS`.** The loader refuses
+any `ASSAY_TRUSTED_LOGINS` or `ASSAY_BLESS_LOGIN` entry whose login *looks* like a bot. Two of
+the four clauses are structural — the forge itself renders an App as `<slug>[bot]` or
+`app/<slug>` — and no configuration waives them. The other two (`-bot`, `-app` suffixes) are a
+naming convention a human's own username can also match, and such a human otherwise cannot be
+rostered at all. `ASSAY_ASSERTED_HUMANS` is the one statement that waives the name-shape check,
+and it is deliberately narrow:
+
+- **Pinned.** Comma-separated `login:id` entries; the id (the forge's numeric user id) is
+  mandatory. A bare login is refused. The waiver applies only to a `ASSAY_TRUSTED_LOGINS` /
+  `ASSAY_BLESS_LOGIN` entry carrying the **same login and the same id** — the same login with
+  another id, a bare `login` entry, or the id under another login is still refused, so a
+  re-registered username does not inherit the assertion.
+- **Name shape only.** An entry for a `[bot]` / `app/` rendering, for a login the name check
+  never refused, for a login the roster registers in `ASSAY_TRUSTED_BOT_SLUGS`, a repeated
+  login or one id under two logins are all refused, and so is an assertion no entry uses.
+  Every other key that refuses a bot-shaped login (`ASSAY_HUMAN_LOGIN_MAP`,
+  `ASSAY_STAMP_TRUSTED_LOGINS`, …) keeps refusing it.
+- **Echoed.** `assay-config: ASSAY_ASSERTED_HUMANS=<login>:<id> (name check waived for <keys>)`
+  names every waiver and the keys it applied to, so it is part of the config digest; the
+  one-line digest form adds `asserted=<n>`.
+- **The forge's own bot flag still wins where it is readable.** The roster loader is offline: it
+  reads the file or the CI variables and never calls a forge, so at load the pinned id is the
+  whole check. At run time an asserted login that the forge marks as a bot is refused wherever
+  the read carries the forge's actor kind: the desk tools' bless-then-edit trust read (GitHub
+  `__typename` `Bot`, GitLab's `bot` field), the `deskread trust` envelope's `authorBot` field,
+  and statusgen's issue-author and blessing checks that are handed the actor kind. Reads that
+  carry only a login (and at most an id) — the login-only trusted-author checks and the
+  escalation-clock readers — cannot see the flag, and there the pinned id is the control.
+  The desk tools' human-only checks (the trusted-human and accountable-human predicates)
+  still exclude every `-bot` / `-app` login, asserted or not.
+
+A malformed `ASSAY_ASSERTED_HUMANS` refuses the whole roster, like the trust surfaces above.
+
+**A refused roster loads nothing — and now says what it dropped.** Any `REFUSED` line still
+discards the whole configuration (never a partial load). After the `REFUSED` lines, the echo adds
+one `assay-config: DROPPED <KEY> — …` line per `ASSAY_` key that carried a value: `refused` when a
+`REFUSED` line names that key's own value, `not applied: discarded with the refused roster` when
+the key was well-formed and is empty only because of another key's refusal.
 
 #### Failure mode 2 — a PARTIAL roster looks like a normal board, not an empty one
 
@@ -1192,9 +1236,9 @@ delivery layer is real: a Windows release matrix (`statusgen-windows-<arch>.exe`
 `desk-tools-windows-<arch>.tar.gz`, checksummed), a Go-native install path with the
 sha256-verify-or-refuse control intact, and a portability triage of every shell-assuming surface.
 Two honesty caveats travel with it, spelled out below: the SessionStart hooks need a documented
-`bash`+`jq` workaround, and the **native `windows/arm64` smoke is BLOCKED** for want of an arm64
-Windows runner. Do not read "runs on Windows" as "every surface is native and CI-green" — read the
-specifics.
+`bash`+`jq` workaround, and **no CI job runs anything on native Windows** (the native-Windows CI
+was retired, #4106; the `windows/arm64` native smoke never ran). Do not read "runs on Windows" as
+"every surface is native and CI-green" — read the specifics.
 
 ### The three-command install (Cursor + GitLab, channel E)
 
@@ -1229,8 +1273,8 @@ rather than warning and continuing on a sha256 mismatch, but they signal it diff
 - The **bootstrap** throws a `REFUSED: …` error. It does this on a digest mismatch
   (`scripts/bootstrap-windows.ps1:108`) and on every manifest-resolve failure (`:52-96`). Under
   `powershell -File` that is a non-zero exit (not `5`), and nothing is placed.
-  `scripts/windows-bootstrap-hashcheck-smoke.ps1` asserts on that refusal's message text (for
-  example `sha256 mismatch`), not on the `REFUSED:` prefix.
+  The message text names the cause (for example `sha256 mismatch`). No CI job runs this
+  refusal on native Windows (see the CI status below).
 - **`deskinstall`** exits `5` (refused, nothing placed). A `deskinstall` built from this tree
   runs a second check after the sha256 one: it downloads each asset's Sigstore build attestation
   (`<asset>.sigstore.json`, from the same release) and refuses unless it verifies as SLSA
@@ -1311,8 +1355,8 @@ operation still needs Git-Bash or WSL after install: **bulk PAT renewal**. See *
 
 ### Prerequisites
 - A **native 64-bit Windows host** (Windows 10 / 11 or Windows Server), `windows/amd64`. The
-  `windows/arm64` binaries are published and checksummed, but their native smoke is BLOCKED (see
-  **CI-proven status**); an arm64 host installs the same way, with that caveat stated.
+  `windows/arm64` binaries are published and checksummed; neither architecture is CI-run on
+  native Windows (see **CI status**). An arm64 host installs the same way, with that caveat stated.
 - **PowerShell** (ships with Windows) — for the ~5-line first-install bootstrap (channel E).
 - **Channel E:** **No Go toolchain and no `gh` are required to install.** The adopter downloads the
   *pinned release binary*, not a from-source build: the bootstrap fetches over `Invoke-WebRequest`
@@ -1458,34 +1502,25 @@ statusgen-windows-arm64.exe  v0.26.0  9b01f839841742634377dd1b8c70e07503fe905ed3
 
 (These are the `v0.26.0` pins from `plugins/assay/paired-versions.yaml`; the desk-tools tarballs
 `desk-tools-windows-<arch>.tar.gz` pin the same way.) `windows/arm64` is pinned and checksummed
-like any other platform — the BLOCKED item below is only its *native smoke*, never its release
-asset.
+like any other platform; only a *native* `windows/arm64` run is missing (see below), never its
+release asset.
 
-### CI-proven status — the Windows leg is live
+### CI status — native Windows is not CI-proven
 
-A Windows CI leg is **live**, under `.github/workflows/windows-ci-leg.yml` (promoted by a
-maintainer's workflow-scoped credential; `windows-port/04` is `done` on this stream's board). It
-carries two running jobs — `windows-smoke` (`statusgen --lint` plus an **offline** `--version`
-smoke on `windows-latest`, and a fail-first demonstration that the leg genuinely reddens on a
-broken input) and `windows-bootstrap-smoke` (exercises `bootstrap-windows.ps1`'s sha256
-hash-verify at Windows runtime — a tampered checksum refuses, the pinned one installs) — plus one
-**held** job, `arm64-native-smoke` (`if: false`, by design, so it can never read as a passing
-arm64 result): the **native `windows/arm64` smoke stays BLOCKED** pending a `windows-11-arm`
-runner, and is never greened from the `windows-smoke` amd64 result. The `windows/arm64` release
-assets themselves still ship cross-compiled and checksummed regardless of that block.
+No CI job runs on a native Windows runner. The Windows CI leg (`windows-port/04`) and the other
+native-Windows workflows were retired (#4106). Nothing in CI now executes `statusgen` or the desk
+tools on Windows, runs the Windows PowerShell 5.1 parse check, or exercises
+`bootstrap-windows.ps1`'s runtime sha256 refusal of a tampered download. The Windows claims in this
+section rest on the Go code paths, the cross-compiled builds and earlier recorded runs, not on a
+current CI run.
 
-**When it runs.** "Live" means the workflow is installed, not that it gates every change. It
-triggers only on a `v*` **tag push** and on a manual **`workflow_dispatch`**
-(`.github/workflows/windows-ci-leg.yml`, `on:`). It is not a per-PR or per-push check. The
-fail-first step runs only on a dispatch with `failfirst: true` (`if: ${{ inputs.failfirst }}`).
-So the Windows claim is re-proven at each release tag, not on each PR.
-
-The earlier staged copy under `ci/staged-workflows/windows-ci-leg.yml` was not removed at
-promotion and still exists — but it is **not** a stale duplicate to clean up here: diffed against
-the live file, it carries additional not-yet-promoted jobs (a Windows PowerShell 5.1 parse check
-and the `verify-in-container` / `windows-verify-in-container` legs staged for `windows-port/10`).
-Retiring or promoting the rest of that staged content is a separate decision for whichever brief
-owns those jobs, not a side effect of this docs correction.
+What CI still covers runs on Linux. The `windows/amd64` and `windows/arm64` release assets are
+cross-compiled and checksummed in `release.yml`, and their sha256 pins in
+`plugins/assay/paired-versions.yaml` are unchanged. `ci.yml`'s `desk-platform-compile` job vets
+the desk tools and compiles their test binaries for `windows/amd64` without running them.
+`winparity.yml` keeps the Windows build's
+target set equal to the `Makefile`'s, and a build-test guard rejects any `*.ps1` carrying a
+non-ASCII byte without a UTF-8 BOM. The native `windows/arm64` smoke was never run.
 
 ### Known gaps — documented workarounds
 The portability audit (`docs/streams/windows-port/portability-audit.md`) triaged every
@@ -1779,8 +1814,22 @@ instructions run on any agent that reads them — the capability table in
 [how-assay-works.md](./how-assay-works.md) gives the concrete mapping per harness. Capability
 bindings: [`plugins/assay/references/cursor.md`](../plugins/assay/references/cursor.md).
 
-**There is no Cursor marketplace / `/plugin` install.** Do not run the Claude Code
-`/plugin marketplace add` commands in Cursor and call the harness unsupported when they no-op.
+**Cursor has no `/plugin marketplace add`.** Do not run the Claude Code `/plugin`
+commands in Cursor and call the harness unsupported when they no-op. Cursor has two
+routes of its own, and they track different things:
+
+- **Versioned copy-skills (below) pins a release.** It places the bundle of one umbrella
+  tag, and `.cursor/assay-managed.json` records that release's plugin `version`. Read the
+  field to see what a repo holds; `upgrade-assay --harness cursor` moves it to the latest
+  stable tag or a named one. Pick this route when you need to know which release you run.
+- **The Cursor plugin follows a branch.** This repo carries a Cursor marketplace at
+  `.cursor-plugin/marketplace.json`, pointing at `plugins/assay/.cursor-plugin/plugin.json`.
+  Assay is not in the public Cursor Marketplace, so the route is a Teams/Enterprise
+  **Import from Repo**. Cursor re-indexes the tracked branch on push (Auto Refresh) or
+  on **Refresh**. It does not use the manifest `version` to decide on updates, and its
+  docs describe no tag pinning. The default branch carries the *next* patch version
+  after each release, so an import that tracks it reports that unreleased version.
+
 The in-editor agent is the path most adopters actually use; headless `cursor-agent` remains the
 automation/smoke surface (brief 13) and is **not** a prerequisite for copying skills.
 
@@ -1816,8 +1865,9 @@ Both routes run before `assay:install`, because they place that skill into Curso
 
 **Upgrade an existing adopter.** Use the existing version resolver and migration
 runner through `upgrade-assay --root <repo> --harness cursor --to vX.Y.Z --fetch --dry-run`.
-Inspect the plan, then apply the same command without `--dry-run`; finish with
-`--check`. A Cursor upgrade places the verified bundle before advancing
+Omit `--to` to select the latest stable umbrella tag. The command prints the release
+the inventory records beside the one selected. Inspect the plan, then apply the same
+command without `--dry-run`; finish with `--check`. A Cursor upgrade places the verified bundle before advancing
 `.assay-versions` and does not print Claude marketplace commands. `--check` is
 read-only and reports drift with exit 1; unavailable or unverifiable bundles refuse.
 A same-version upgrade still verifies the bundle and checks/repairs missing generated
@@ -1825,7 +1875,8 @@ files. It never silently overwrites local edits.
 
 **Ownership.** `.cursor/skills/`, sibling `.cursor/references/`, and
 `.cursor/rules/assay.mdc` come from the canonical bundle. Generated text identifies
-its source. `.cursor/assay-managed.json` records owned file hashes; it is generated,
+its source. `.cursor/assay-managed.json` records owned file hashes and the placed plugin `version`
+(absent only for a source tree with no plugin manifest); it is generated,
 not an authorization boundary against a writer who can change the repository.
 Sync retires only previously owned, unchanged files no longer in the source set.
 Unrelated files and bytes outside the bounded `AGENTS.md` bindings are preserved.

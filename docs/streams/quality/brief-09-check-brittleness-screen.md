@@ -30,16 +30,10 @@ id: 5249dc83-3fb7-4c3c-a833-39474be3bf64
 ## Context
 
 files:
-- NEW `qualgen/check.go` (planned) (+ `qualgen/check_test.go` (planned)) — the `check <paths>` mode: take a named
-  file set (globs or explicit paths), assemble each file's features, and emit advisory flags.
-- REUSES `qualgen/features.go` (planned) (brief 08 factored it) if present; this brief and brief 08
-  share one feature assembly, so if `features.go` does not yet exist on the branch, this brief adds it
-  and brief 08 reuses it — either order, one shared assembly, no fork.
-- CONSUMES M1 hotspot/ownership/coupling from briefs 02–03 and instruction-layer
-  reference-validity from brief 04 (a screened instruction/config/brief file with dead
-  references is a brittleness flag too, spec §4.6).
-- OUTPUT is advisory text/JSON to stdout (a screen result, not a committed artifact); the
-  mode is designed to run at authoring time OR in CI as a non-blocking step.
+- **add** `qualgen/check.go` (planned), `qualgen/check_test.go` (planned) — the `check <paths>` mode: take a named file set (globs or explicit paths), assemble each file's features, and emit advisory flags.
+- **reuses** `qualgen/features.go` (planned) (brief 08 factored it) — if present; this brief and brief 08 share one feature assembly, so if `features.go` does not yet exist on the branch, this brief adds it and brief 08 reuses it — either order, one shared assembly, no fork.
+- **consumes** — M1 hotspot/ownership/coupling from briefs 02–03 and instruction-layer reference-validity from brief 04 (a screened instruction/config/brief file with dead references is a brittleness flag too, spec §4.6).
+- **output** — advisory text/JSON to stdout (a screen result, not a committed artifact); the mode is designed to run at authoring time OR in CI as a non-blocking step.
 
 facts:
 - advisory flags (spec §9.2): for a file above the brittleness signal, emit up to three

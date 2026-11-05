@@ -48,10 +48,10 @@ per-artifact lines) has landed outside this stream, so no typed `depends:` edge 
 brief must be able to express the umbrella pin-file line the version scheme defines.
 
 ## Context
-files: the pin-file spec at its single, settled home — `docs/distribution.md § The
-`.assay-versions` pin file` (extended in place, never duplicated),
-`tools/desk/internal/deskkit/roots.go`, `tools/desk/cmd/deskboard/nextup.go`,
-`tools/desk/README.md`, `.github/workflows/release.yml`.
+files:
+- `docs/distribution.md` — the pin-file spec at its single, settled home: § The `.assay-versions` pin file (extended in place, never duplicated),
+- `tools/desk/internal/deskkit/roots.go`, `tools/desk/cmd/deskboard/nextup.go`,
+- `tools/desk/README.md`, `.github/workflows/release.yml`.
 
 facts:
 - **The current format:** whitespace-separated lines, `<artifact> <tag> <sha256>`, with an

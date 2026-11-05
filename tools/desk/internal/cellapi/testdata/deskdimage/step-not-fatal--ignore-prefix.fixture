@@ -1,0 +1,6 @@
+# A leading - on the recipe line makes make ignore its exit status, so a
+# failed docker build or layer scan still leaves deskd-image green.
+want: step-not-fatal
+file: Makefile
+replace: "\t@set -eu; \\\n\tsha="
+with: "\t-@set -eu; \\\n\tsha="

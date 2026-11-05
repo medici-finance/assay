@@ -31,7 +31,7 @@ consumers:
 
 ## Context
 
-files: `spec/brief-v1.md`, `spec/context-handoff-v1.md`, `schemas/context-handoff-v1.json`, `schemas/amendment-manifest-v1.json`, brief schemas/readers, `statusgen/contexthandoff/`, `statusgen/brieffile.go`, `docs/context-handoff.md` (planned), `docs/contracts.md`; `changelog/statusgen-23-portfolio.md` (planned).
+files: `spec/brief-v1.md`, `spec/context-handoff-v1.md`, `schemas/context-handoff-v1.json`, `schemas/amendment-manifest-v1.json`, `statusgen/contexthandoff/`, `statusgen/brieffile.go`, `docs/context-handoff.md` (planned), `docs/contracts.md`, `changelog/statusgen-23-portfolio.md` (planned) — brief schemas/readers, `statusgen/contexthandoff/`, `statusgen/brieffile.go`, `docs/context-handoff.md` (planned), `docs/contracts.md`; `changelog/statusgen-23-portfolio.md` (planned).
 
 facts (d484dd5df, 13 October 2026; the statusgen/19 line refreshed against main after PR #2763):
 - Statusgen/19 owns the initial handoff contract and has merged (PR #2763; contract files exist on main); /20 owns discovery/recheck and is still todo.
@@ -166,6 +166,34 @@ Risk-bearing values. Gate model, not irreversible, no risk-classed path touched.
 Verdict accounting: 3 required rows; 3 pass, witnessed in one closed bracket; 0 fail; 0 could-not-run.
 
 **VERIFY: PASS** — 3/3 rows at 47ef38f96, each named mutation killed (supplemental).
+
+### Independent verification — 2026-11-02 (run 3, batch re-witness at source 2c6c21336, container bracket)
+
+Runner: assay-verifier-app[bot], model claude-opus-5-5, admitted tier strong; independent non-implementer, fresh context. Observed source: merged main 2c6c21336a606e64df057294f21177f16db7b9f8, the batch re-witness pin (medici-finance/assay#2026), detached home admitted by `deskdispatch --check-verifier` (medici-finance/assay#5284). Earlier blocks above were neither copied nor relied on; every row was run again at this source.
+
+Runner class: local container on the OrbStack engine, `--network none`, `--user 501:20`, default seccomp, image ghcr.io/medici-finance/verify-runner:v1.0.66 by digest sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4 (arm64, module cache baked into the image), with the home bind-mounted read-only at /work. Every row is check:ci and the darwin host has no `unshare --net`, so rows 1–3 ran inside one closed admission bracket: `statusgen verifyrun --open-bracket` on the host (statusgen v1.0.69), `--sandbox=container-netns` in the container, `--close-bracket` on the host; `--bracket-digest` reports verdict=match. The Output digest is of each row's stdout (the grep's matched `--- PASS:` line); exit 0 means the named PASS line was present.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestProductBindingIndependentTargets$" ./contexthandoff/ > "$check_output" && grep -F -- "--- PASS: TestProductBindingIndependentTargets " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:00b16e6e7d6c | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestProductBindingApprovalCoverage$" ./contexthandoff/ > "$check_output" && grep -F -- "--- PASS: TestProductBindingApprovalCoverage " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:c24da4fcb4a1 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestProductBindingCheckpointFlow$" . > "$check_output" && grep -F -- "--- PASS: TestProductBindingCheckpointFlow " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:bd2723715591 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c
+Container-Image: sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4
+Verification-Attestation: medici-finance/assay#5284 run=2a9994cc5b65ea237bcaa25e35906887e36c4e4145f4c995dd38cb50b35b188f source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/statusgen/brief-23-product-target-binding-and-context-drift-assessment.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=2a9994cc5b65ea237bcaa25e35906887e36c4e4145f4c995dd38cb50b35b188f source=2c6c21336a606e64df057294f21177f16db7b9f8 tree=sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c witness=sha256:b02a2e5c8d3c83f1b396369083746e947483b2d7fa121213947d88e482ee66c4 opened=2026-11-02T02:08:01Z closed=2026-11-02T02:08:50Z before=receipt after=check-verifier
+
+Fail-first: no row is risk-bearing (the brief's risk answers are all "no", and no row carries a risk-bearing, live, mutating or end-to-end tag), so no fail-first base witness is required. This re-witness ran no mutation probes.
+
+Risk-bearing values. Gate model, not irreversible, no risk-classed path touched. The literals the earlier enumeration found were re-read at this source:
+
+- RISK-VALUE: DERIVED — HandoffSchemaV3 = "context-handoff-v3" @ statusgen/contexthandoff/records.go:8 — Task 1 asks for a versioned extension that readers reject rather than silently drop; a new schema identifier beside v1/v2 is that.
+- RISK-VALUE: DERIVED — REQ slug bound {8,18} in outcomeRefRe / inRepoReqRe / aliasReqRe @ statusgen/contexthandoff/product.go:87-89 — one leading and one trailing [a-z0-9] plus 8–18 middle characters gives 10–20 characters, exactly the REQ-<slug> grammar spec/registers-v1.md line 120 fixes.
+- RISK-VALUE: DERIVED — outcomeRevisionRe = ^[a-z0-9][a-z0-9._-]*$ @ statusgen/brieffile.go:2193 — byte-identical to the outcome-revision grammar spec/brief-v1.md line 77 publishes.
+
+Verdict accounting: 3 required rows; 3 pass, witnessed in one closed bracket; 0 fail; 0 could-not-run.
+
+**VERIFY: PASS** — 3/3 rows at 2c6c21336.
 
 ## Review
 

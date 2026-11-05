@@ -25,16 +25,16 @@ sources:
   - docs/library-first.md
   - "freshness-checked 2026-10-22 @ a631d47ea71b3270ab33ba08af47d3dde8c9e7d5"
 consumers:
-  - "statusgen/briefv2.go: follow-up milestone-support/04 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/brieffile.go: follow-up milestone-support/04 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/briefschemaversions.go: follow-up milestone-support/04 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/newbrief.go: follow-up milestone-support/04 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/newbrief_test.go: follow-up milestone-support/04 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/conform_test.go: follow-up milestone-support/04 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/testdata/milestone-support/04/: follow-up milestone-support/04 (this delivery; replace with fixed-here in implementation)"
-  - "schemas/brief-v4.json: follow-up milestone-support/04 (this delivery; replace with fixed-here in implementation)"
-  - "spec/brief-v1.md: follow-up milestone-support/04 (this delivery; replace with fixed-here in implementation)"
-  - "docs/contracts.md: follow-up milestone-support/04 (this delivery; replace with fixed-here in implementation)"
+  - "statusgen/briefv2.go: out-of-scope (the strict brief-v2 parser is preserved unchanged for v1-v3; brief-v4 parsing is added beside it in statusgen/briefv4.go)"
+  - "statusgen/brieffile.go: fixed-here"
+  - "statusgen/briefschemaversions.go: fixed-here"
+  - "statusgen/newbrief.go: fixed-here"
+  - "statusgen/newbrief_test.go: fixed-here"
+  - "statusgen/conform_test.go: fixed-here"
+  - "statusgen/testdata/milestone-support/04/: fixed-here"
+  - "schemas/brief-v4.json: fixed-here"
+  - "spec/brief-v1.md: fixed-here"
+  - "docs/contracts.md: fixed-here"
   - "docs/streams/milestone-support/brief-05-build-the-combined-milestone-and-brief-dependency-graph.md: follow-up milestone-support/05 (consumes this delivery; exact runtime readers enumerated at pickup)"
   - "docs/streams/milestone-support/brief-08-normalize-pr-trailers-and-claims-through-the-shared-resolver.md: follow-up milestone-support/08 (consumes this delivery; exact runtime readers enumerated at pickup)"
 ---
@@ -43,7 +43,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/briefv2.go`, `statusgen/brieffile.go`, `statusgen/briefschemaversions.go`, `statusgen/newbrief.go`, `statusgen/newbrief_test.go`, `statusgen/conform_test.go`, `statusgen/testdata/milestone-support/04/` (planned), `schemas/brief-v4.json` (planned), `spec/brief-v1.md`, `docs/contracts.md`, `changelog/milestone-support-04.md` (planned), `statusgen/testdata/milestone-support/04-mutations.json` (planned). New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/briefv2.go`, `statusgen/brieffile.go`, `statusgen/briefschemaversions.go`, `statusgen/newbrief.go`, `statusgen/newbrief_test.go`, `statusgen/conform_test.go`, `statusgen/testdata/milestone-support/04/` (planned), `schemas/brief-v4.json` (planned), `spec/brief-v1.md`, `docs/contracts.md`, `changelog/milestone-support-04.md` (planned), `statusgen/testdata/milestone-support/04-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.
@@ -101,6 +101,13 @@ The following named tests, fixtures and executable mutation maps are FUTURE DELI
 | 1 | check:ci +flow +mutation | sh | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPrefixedBriefSchema$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestPrefixedBriefSchema ' "$milestone_verify_out")` | exit 0 and named PASS; actual parser validates new IDs/requirements, legacy forms still read once, duplicate UUID aliases and unavailable versions refuse/are unknown; a parser accepting a mismatched schema fails. |
 | 2 | check:ci +flow +mutation | sh | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestNewbriefCaps$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestNewbriefCaps ' "$milestone_verify_out")` | exit 0 and named PASS; actual generator writes a valid ID/schema pair and inverses; unsupported required consumers cause zero writes, even with a tolerant YAML decoder. |
 
+## Notes
+
+Known limits recorded by the milestone-support/04 follow-up. Neither is fixed there, because each needs a design choice rather than a few obviously-correct lines.
+
+- A scoped lint run (`--changed` / `--scope`) builds the per-root brief snapshot only from the validated stream subset, while a full run builds it from every stream. A `depends:` reference pinned with `@<version>` to a brief in a stream outside the subset therefore binds as unknown (a notice plus a could-not-check gate) in a scoped run, where a full run would resolve it. Resolving it would need the snapshot to be built from the full stream set, which changes what a scoped run reads.
+- A brief-v2 record that omits `version:` is read as revision 1, so an `@1` pin binds it as though revision 1 had been authored. Only brief-v1 (no `version:` field at all) is treated as carrying no authored revision. Telling an authored revision from a defaulted one would need the parser to record whether the field was present.
+
 ## Pre-mortem and dispatch check
 
 The wrong-but-plausible delivery is the mutation named in each Verify row. Each must turn that production-path test red and the correct implementation green; do not merely inspect imports or fixture shapes. The facts, public-module visibility, derived waves, risk answers, sizing and consumers were inspected while authoring. API adequacy, completeness of the reader census and human acceptance remain review obligations. Implementation pickup rechecks them.
@@ -108,6 +115,36 @@ The wrong-but-plausible delivery is the mutation named in each Verify row. Each 
 ## Evidence
 
 <!-- Empty by design. Independent verifier records actual commit, environment, command/exit, named test and mutation result, coverage/unknowns and evidence location. -->
+
+Verifier pass, 2026-11-02, by a non-implementer (model claude-opus-5-5, tier strong) at merged main cd08e97833cbf31395e302adf8922fe6b0bde137. This is the first verification of this brief. Delivering change: #5340, merge commit 0dbff54ce38e3d1e76d538d2c29502371bf34485, first parent fbd80a540b3bf8b039296f6ee67eb60c718c62db. No file the delivery changed has changed between that merge and this source. Pre-work admission: deskdispatch --check-verifier exited 0 for this home and brief before any row (run af2b32499660, attestation #5345, tool v1.0.70, runtime darwin-arm64). Installed statusgen v1.0.70 on the host and in the image. The Verify table re-derived with 2 rows and 0 author-added (deskpathguard rederive, base cd08e97833cb).
+
+Rows 1-2 (check:ci) ran in one closed container bracket. Image: verify-runner v1.0.70, pinned by its linux/arm64 platform manifest digest (Container-Image below; the tag's manifest list is sha256:45926fbe65687db26f02c9b30493dd4bde6cce2702a81c9240554b4d6b52353b), go 1.27.3, git 2.56.0, run on the host's local Docker engine (OrbStack) with --network none, the engine's default seccomp profile, the host uid, GOPROXY=off, GOTOOLCHAIN=local, KUBECONFIG=/dev/null and a fresh GOCACHE outside the home. The home, its git dir, the receipt and the Go module cache were mounted read-only; only the witness output and Go scratch directories were writable, both outside the home. No forge credential entered the container. Each row's output hash is the empty-output digest because the command sends its test output to a temporary file and checks it with grep -q, so exit 0 is the named-PASS result. Neither row carries a risk-bearing tag and the brief answers every risk question no, so no fail-first base witness applies. The close step re-admitted the run and --bracket-digest reports verdict=match.
+
+Row S1 is supplemental and carries no acceptance credit. It ran the brief's declared mutation manifest in the same image with --network none against a tracked-file snapshot of this source outside the home.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| S1 | python3 statusgen/testdata/milestone-support/04-mutate.py, against a snapshot of cd08e97833cb | every manifest plant turns its named test red | exit 0; 10 of 10 manifest cases printed CAUGHT (6 against TestPrefixedBriefSchema, 4 against TestNewbriefCaps); both named baselines passed first; no case missed; the snapshot was clean afterwards | 2026-11-02 | assay-verifier-app[bot] @ cd08e97833cb (on-behalf-of human:ian) (forge-identity) |
+
+Risk-bearing values. The brief carries risk metadata, all no, and is not irreversible. Enumerated over every non-test Go file in the diff of fbd80a540b3b..0dbff54ce38e (statusgen/briefv4.go, statusgen/newbriefv4.go, statusgen/brieffile.go, statusgen/newbrief.go, statusgen/briefschemaversions.go, statusgen/versiongate.go, statusgen/conform.go, statusgen/withdrawn.go, statusgen/briefinfo.go), plus the schema statusgen/schemas/brief-v4.json (byte-identical to schemas/brief-v4.json) and the spec. Literals found: the schema id "brief-v4", its first-release "" entry, the brief-id and milestone-reference patterns, the unversioned sentinels Revision == 0 and Version == 0 (statusgen/briefv4.go:253 and :256), the edge types "behavioural-gate" (:279) and "build-dep" (:296), the required operation "syntax" (statusgen/newbriefv4.go:57) and the selector words "" and "legacy" (statusgen/newbriefv4.go:28-29). No value is irreversible; each is undone by an edit and a release. A wrong one mis-reads or mis-writes a brief record. The sentinels, edge-type names and selector words are internal spellings ranked last. Ranked top entries:
+
+- RISK-VALUE: DERIVED — briefSchemaV4 = "brief-v4" @ statusgen/brieffile.go:303 — spec/brief-v1.md:169 allocates exactly this schema name, and the shipped schema pins it as const at schemas/brief-v4.json:27; the parser, the embedded schema and the spec agree.
+- RISK-VALUE: DERIVED — briefSchemaFirstRelease["brief-v4"] = "" @ statusgen/briefschemaversions.go:31 — spec/brief-v1.md:169 lists brief-v4 as unreleased, and the brief's Task 4 forbids fabricating a supporting-release number, so empty is the only correct value until a release cut fills it.
+- RISK-VALUE: DERIVED — requires-milestones item pattern = "^([a-z0-9][a-z0-9-]*:){1,3}m-[0-9]{2,}@[1-9][0-9]*$" @ schemas/brief-v4.json:186 — the {1,3} prefix count matches the three colon-only forms in spec/milestone-v1.md:49-51, and @[1-9][0-9]* matches the positive-integer contract-version in spec/milestone-v1.md:82.
+- RISK-VALUE: NAMED, NOT DERIVED — brief id pattern = "^[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*:b-[0-9]{2,4}[a-z]?$" @ schemas/brief-v4.json:32 — the four-segment colon-only b- shape matches spec/brief-v1.md:312, but the spec writes only <NN> and names no source for the 2-4 digit bound or the optional letter suffix. The schema is descriptive and the validator owns the semantic rule, so a too-loose bound is caught there.
+
+This brief is gate: model with every risk answer no; on this PASS, the same branch flips the stream index row 04 from implemented to verified (the verifier makes that flip; CI owns verified to done).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPrefixedBriefSchema$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestPrefixedBriefSchema ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ cd08e97833cb (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestNewbriefCaps$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestNewbriefCaps ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ cd08e97833cb (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:646b4e70934f4e4fd4018087336bea3f81a6aff3dec573f40fd5bf07adc7887e
+Container-Image: sha256:c556f436ff2789b07b2097d50a9d7b5f1266b09f3c40f51b4f02e52bbac7f217
+Verification-Attestation: medici-finance/assay#5345 run=af2b324996608071a47e15dcebf6d3834646fea725818bd099cfa870c5ab8f61 source=cd08e97833cbf31395e302adf8922fe6b0bde137 brief=docs/streams/milestone-support/brief-04-add-negotiated-brief-schema-and-prefixed-authoring.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=af2b324996608071a47e15dcebf6d3834646fea725818bd099cfa870c5ab8f61 source=cd08e97833cbf31395e302adf8922fe6b0bde137 tree=sha256:646b4e70934f4e4fd4018087336bea3f81a6aff3dec573f40fd5bf07adc7887e witness=sha256:6ebe2f6c488d504415db652884a34abc22cae286304d0aa3c5a99cce9f138e28 opened=2026-11-02T21:55:06Z closed=2026-11-02T21:56:33Z before=receipt after=check-verifier
+
+**VERIFY: PASS** — rows 1-2 pass in one closed container bracket (verdict=match) at cd08e97833cb, and 10 of 10 manifest mutations were caught (supplemental, no acceptance credit).
 
 ## Review
 

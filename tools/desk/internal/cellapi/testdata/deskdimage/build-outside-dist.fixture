@@ -1,0 +1,5 @@
+# The local build writes outside deskd/dist/.
+want: build-outside-dist
+file: Makefile
+replace: "-o dist/deskd ./cmd/deskd"
+with: "-o /usr/local/bin/deskd ./cmd/deskd"

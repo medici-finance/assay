@@ -1,0 +1,5 @@
+# MAKEFLAGS gaining -i through the :::= operator runs every target as make -i.
+want: step-not-fatal
+file: Makefile
+replace: "\nSHELL       := /bin/sh\n"
+with: "\nSHELL       := /bin/sh\nMAKEFLAGS :::= -i\n"

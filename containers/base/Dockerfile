@@ -62,7 +62,7 @@
 # ---- Reused binary suite --------------------------------------------------
 # Pin the already-published desk-tools image; its static binaries (desk-tools
 # suite + statusgen) are copied into the final stage rather than recompiled.
-ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v1.0.60@sha256:33f9aab2bd116023b77c6c602fb03a42e5bc604e64bb5cca0ce2c9fd868dec1a
+ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v1.0.69@sha256:5232eba2782784f3b587c03d47e4fd37c8b5f075326fbaaa7575dc9d2ef95351
 FROM ${DESK_TOOLS_IMAGE} AS desktools
 
 # ---- git, built from a pinned upstream release ---------------------------
@@ -232,6 +232,11 @@ COPY --from=desktools /usr/local/bin/ /usr/local/bin/
 # The assay plugin baked from this repo: skills, commands, hooks. A desk session
 # finds its skill by public desk name under /opt/assay/plugin/skills.
 COPY plugins/assay/ /opt/assay/plugin/
+
+# Bounded compatibility launcher; existing shell defaults and credential preflight stay.
+COPY containers/k8s/compatibility/desk-session.sh /usr/local/bin/desk-session
+COPY containers/k8s/compatibility/desk-session.py /usr/local/lib/assay/desk-session.py
+RUN chmod 0755 /usr/local/bin/desk-session /usr/local/lib/assay/desk-session.py
 
 # Non-root user. Home is routed onto the persistent volume (see ENV below) so
 # the parts of $HOME that must survive a container restart live on /work.

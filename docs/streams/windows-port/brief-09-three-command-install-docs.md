@@ -9,7 +9,7 @@ why: >-
   `plugins/assay/skills/install/SKILL.md` §Scope still frames Windows as an ACQUISITION arm only
   ("The statusgen binary acquisition in step 3 is the only OS-specific arm", :249-251), and
   `docs/adopting-assay.md:978-987` still says the Windows CI leg "lives at
-  `ci/staged-workflows/windows-ci-leg.yml`, *not yet* under `.github/workflows/`" — which it does,
+  `windows-ci-leg.yml` (staged copy, retired #4106), *not yet* under `.github/workflows/`" — which it does,
   and has since the promotion commit, with `windows-port/04` recorded `done` on this stream's own
   board. A doc that understates a shipped capability is the same defect class as one that
   overstates an unshipped one: the reader cannot act on it.
@@ -71,7 +71,7 @@ files:
 - **edit** `plugins/assay/references/cursor.md` — the five manual steps (:11-25) become a pointer.
 - **edit** `docs/streams/windows-port/README.md` — the stream's end-state paragraph.
 - **create** `changelog/<branch-slug>.md` — this repo enforces a per-PR fragment.
-- **do NOT** edit `.github/workflows/windows-ci-leg.yml` — this brief corrects the doc's
+- **do NOT** edit `windows-ci-leg.yml` (live copy, retired #4106) — this brief corrects the doc's
   DESCRIPTION of it, not the workflow.
 
 facts:
@@ -89,8 +89,8 @@ facts:
   an overstatement, which is worse.
 - **The CI-leg claim is stale, and the board already disagrees with it.**
   `docs/adopting-assay.md:978-987` says the Windows leg "lives at
-  `ci/staged-workflows/windows-ci-leg.yml`, *not yet* under `.github/workflows/`" and is therefore
-  "pending promotion, not a live green check". At the freshness head `.github/workflows/windows-ci-leg.yml`
+  `windows-ci-leg.yml` (staged copy, retired #4106), *not yet* under `.github/workflows/`" and is therefore
+  "pending promotion, not a live green check". At the freshness head `windows-ci-leg.yml` (live copy, retired #4106)
   exists, carrying `windows-smoke` (:77), `windows-bootstrap-smoke` (:141) and a deliberately
   never-scheduled `arm64-native-smoke` (:171, `if: false`); `windows-port/04` is recorded `done` on
   this stream's board (verified 2026-09-06, reviewed 2026-09-08). Note the file ALSO still exists
@@ -208,8 +208,8 @@ second. NONE is not the answer here.
 | 2 | The widened scope names all three arms: `grep -c -e 'deskinstall --harness' -e 'bootstrap-windows.ps1' plugins/assay/skills/install/SKILL.md` | `>= 2`, and a manual read confirms the forge-provisioning arm is named too | `check` |
 | 3 | **Both honesty caveats survive**: `grep -c 'windows/arm64' plugins/assay/skills/install/SKILL.md` and `grep -ci 'jq' plugins/assay/skills/install/SKILL.md` | both `>= 1` — the BLOCKED arm64 smoke and the bash+jq workaround are still stated | `check +neighbour` |
 | 4 | The stale staged-CI claim is gone: `grep -n 'not yet. under .github/workflows' docs/adopting-assay.md; echo "rc=$?"` | `rc=1` — no match | `check` |
-| 5 | **DEREFERENCE the CI claim against the tree** (the row that catches a wrong-but-well-formed paragraph): `test -f .github/workflows/windows-ci-leg.yml && echo LIVE \|\| echo STAGED` then confirm the rewritten section says the same thing | the file state and the prose agree | `check +dereference` |
-| 6 | **DEREFERENCE the held arm64 row**: `grep -n 'if: false' .github/workflows/windows-ci-leg.yml` then confirm the doc describes `arm64-native-smoke` as HELD/BLOCKED and not as passing | the job's real state and the prose agree | `check +dereference` |
+| 5 | **DEREFERENCE the CI claim against the tree** (the row that catches a wrong-but-well-formed paragraph). Since #4106 no native-Windows workflow exists, live or staged: `grep -rlE 'windows-(latest\|[0-9]+\|11-arm)\|runs-on:.*windows' .github/workflows/ ci/staged-workflows/; echo "exit=$?"` then confirm `docs/adopting-assay.md` §"CI status — native Windows is not CI-proven" says no CI job runs on a native Windows runner | `exit=1`, and the prose says native Windows is not CI-proven — the tree and the prose agree | `check +dereference` |
+| 6 | **DEREFERENCE the arm64 row** — the held `arm64-native-smoke` job was retired with the leg (#4106), so no workflow names a native arm64 Windows runner: `grep -rl 'windows-11-arm' .github/workflows/ ci/staged-workflows/; echo "exit=$?"` then confirm the doc says the native `windows/arm64` smoke was never run and does not describe it as passing | `exit=1`, and the prose records the arm64 run as never run — the tree and the prose agree | `check +dereference` |
 | 7 | `sed -n '/^param(/,/^)/p' scripts/bootstrap-windows.ps1 && cd tools/desk && go run ./cmd/deskinstall --help 2>&1 \| grep -c -e '--harness' -e '--forge' -e '--repo'` — **DEREFERENCE the three commands against the shipped artifacts** — for each of the three commands the walkthrough now prints, run its `--help` (or, for the PowerShell one, read its `param(` block) and confirm every flag the doc shows EXISTS with that spelling | exit 0; every flag in the doc appears in the tool's own surface; no invented flag | `check +dereference` |
 | 8 | `cd tools/desk && go build ./cmd/deskfleet/ && go run ./cmd/deskfleet --help 2>&1 \| head -5` — **DEREFERENCE the GitLab claims**: the doc's GitLab provisioning command (`deskfleet`, the verb the GitLab section names) exists as a built verb | exit 0; the command named in the doc is the command that exists | `check +dereference` |
 | 9 | **Git-Bash is never needed to install or to provision** (amended in review on #1680; the hooks are no longer the only surviving need). Failable core: `awk '/^### Manual appendix/,/^## 3a/{next} tolower($0) ~ /git-bash/ {print FILENAME":"FNR": "$0}' docs/adopting-assay.md docs/adopting-assay-gitlab.md \| grep -i -E 'install\|provision' \| grep -v -i -E 'not needed to install\|never as a prerequisite\|not a prerequisite\|no git-bash\|hooks\|after install: \*\*bulk pat renewal'; echo "rc=$?"`, then the full list: `grep -n -i 'git-bash' docs/adopting-assay.md docs/adopting-assay-gitlab.md` | core: `rc=1`, no line outside the Manual appendix presents Git-Bash/WSL as needed to install or to provision (mutation: appending `Git-Bash or WSL is required to provision the GitLab fleet.` to either doc prints that line and gives `rc=0`). Full list: every mention outside the Manual appendix is exactly one of (a) the Claude Code SessionStart hooks, including that Cursor does not need them; (b) a line labelling `tools/create-fleet-gitlab.sh` as the initial-provisioning fallback (#1646), never a prerequisite; (c) GitLab **bulk PAT renewal** via `tools/renew-fleet-gitlab-tokens.sh`, stated as needed only until `windows-port/16` ships `deskfleet renew`; (d) a statement that a path needs no Git-Bash/WSL. The numbered steps inside the Manual appendix (Task 4's manual route) are exempt | `check +dereference` |

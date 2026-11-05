@@ -83,7 +83,7 @@ func humanStampProblems(root string, streams []*Stream) (problems, notices []str
 	}
 
 	// Resolve HEAD SHA to compare against the merge-base.
-	headOut, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+	headOut, err := gitHeadOutput(root)
 	if err != nil {
 		// Cannot determine HEAD — emit NOTICE, don't silently skip.
 		notices = append(notices, "human-stamp guard: cannot resolve HEAD; running degraded (no gain detection on this run)")
@@ -154,7 +154,7 @@ func humanStampProblems(root string, streams []*Stream) (problems, notices []str
 // undetected the first time). An explicit backslash-to-slash replacement
 // normalizes deterministically regardless of which OS is running the
 // binary, so TestRelPath_HandlesBothSeparatorStyles proves the fix on every
-// CI leg, not only windows-smoke.
+// CI leg; no native-Windows leg runs since #4106, so it is the only proof.
 func relPath(dir string) string {
 	dir = strings.ReplaceAll(dir, `\`, "/")
 	// The dir is typically an absolute path like /repo/docs/streams/name.

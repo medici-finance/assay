@@ -198,7 +198,7 @@ func TestContainerNetnsRequiresAdmissionReceipt(t *testing.T) {
 // regression: #4071
 // TestContainerNetnsReceipt: a valid version-1 receipt yields exactly the
 // attestation line the in-process path renders, plus the image and
-// Tree-Digest lines; a version-2 receipt, a brief mismatch, an incomplete
+// Tree-Digest lines; a version-2 receipt with no digests, a brief mismatch, an incomplete
 // receipt, a receipt inside the home, a missing or malformed image digest,
 // and a mounted tree that does not digest to the receipt's tree (one file
 // changed, one file added) are each refused before any row runs.
@@ -213,7 +213,7 @@ func TestContainerNetnsReceipt(t *testing.T) {
 		mutate           func()
 		restore          func()
 	}{
-		{name: "version 2", check: checkJSON(2, fixtureRun, fixtureSource, "docs/brief.md", "m"), why: "version 2 (cross-repository) receipts are not admitted"},
+		{name: "version 2 without digests", check: checkJSON(2, fixtureRun, fixtureSource, "docs/brief.md", "m"), why: "the cross-repository receipt's binding is refused"},
 		{name: "brief mismatch", check: checkJSON(1, fixtureRun, fixtureSource, "docs/other.md", "m"), why: "the receipt admits brief docs/other.md"},
 		{name: "incomplete", check: checkJSON(1, fixtureRun, fixtureSource, "docs/brief.md", ""), why: "incomplete pre-work verifier receipt"},
 		{name: "short run", check: checkJSON(1, "r", fixtureSource, "docs/brief.md", "m"), why: "incomplete receipt"},

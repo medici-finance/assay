@@ -86,6 +86,7 @@ COPY perfrec/ /src/perfrec/
 # `replace` to a sibling directory (their test builds import it); same sibling layout as forgeread.
 # `go mod download` reads each replaced module's go.mod, so the directory must exist in this stage.
 COPY gitquiet/ /src/gitquiet/
+COPY gitcore/ /src/gitcore/
 COPY deskcore /src/deskcore/
 
 # statusgen — its own module, stamped with main.statusgenVersion.

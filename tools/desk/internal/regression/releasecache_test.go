@@ -19,7 +19,7 @@ func TestReleaseGoCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), shellBudget)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "python3", "-B", "-m", "unittest", "discover", "-s", "tools/release", "-p", "*_test.py", "-v")
 	cmd.Dir = root

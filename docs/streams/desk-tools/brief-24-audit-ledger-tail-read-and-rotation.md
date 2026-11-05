@@ -128,25 +128,16 @@ between files without altering, dropping or reordering a single row. Rows 4, 5, 
 mechanical evidence; a reviewer who finds otherwise flips the answer.
 
 files:
-- `tools/desk/internal/deskkit/audit.go` (existing) — `LastEntry`, `segmentPaths`, the reverse
-  line reader (`scanBackwards`), `rotateIfNeeded` called from `Log`, and `LoadEntries` reading
-  across segments. `Entry`, `Log`'s append semantics and `LoadEntries`' refusal contract unchanged.
-- `tools/desk/internal/deskkit/audittail.go` (planned) (new, same package) — the bounded reverse
-  reader and its byte counter, kept in its own file so the tail mechanics are reviewable apart from
-  the ledger's schema.
-- `tools/desk/internal/deskkit/killswitch.go` (existing) — `lastResultWas` calls `LastEntry`. One
-  function body; `Guard` itself is untouched.
-- `tools/desk/internal/deskkit/ratelimit.go` (existing) — `pointsFor` gains the bounded reverse
-  read, its determinacy stop and its fail-closed fallback.
+- `tools/desk/internal/deskkit/audit.go` (existing) — `LastEntry`, `segmentPaths`, the reverse line reader (`scanBackwards`), `rotateIfNeeded` called from `Log`, and `LoadEntries` reading across segments. `Entry`, `Log`'s append semantics and `LoadEntries`' refusal contract unchanged.
+- `tools/desk/internal/deskkit/audittail.go` (planned) (new, same package) — the bounded reverse reader and its byte counter, kept in its own file so the tail mechanics are reviewable apart from the ledger's schema.
+- `tools/desk/internal/deskkit/killswitch.go` (existing) — `lastResultWas` calls `LastEntry`. One function body; `Guard` itself is untouched.
+- `tools/desk/internal/deskkit/ratelimit.go` (existing) — `pointsFor` gains the bounded reverse read, its determinacy stop and its fail-closed fallback.
 - `tools/desk/internal/deskkit/auditrecover.go` (existing) — `RecoverCorruptAudit` across segments.
-- `tools/desk/internal/deskkit/audittail_test.go` (planned), `auditrotate_test.go` (planned),
-  `ratelimitbounded_test.go` (planned) — all new in the same package.
-- `tools/desk/internal/deskkit/audittail-mutations.json` (planned) (new, same package) — the
-  `muhar` spec for row 10.
+- `tools/desk/internal/deskkit/audittail_test.go` (planned), `tools/desk/internal/deskkit/auditrotate_test.go` (planned), `tools/desk/internal/deskkit/ratelimitbounded_test.go` (planned) — all new in the same package.
+- `tools/desk/internal/deskkit/audittail-mutations.json` (planned) (new, same package) — the `muhar` spec for row 10.
 - `tools/desk/cmd/desktoken/desktoken.go` (existing) — the reuse path suppresses its row.
 - `tools/desk/cmd/deskaudit/main.go` (existing) — the `tail` verb, its usage text and its tests.
-- `tools/desk/README.md` (existing) — the ledger section gains rotation, the segment names and
-  `deskaudit tail`.
+- `tools/desk/README.md` (existing) — the ledger section gains rotation, the segment names and `deskaudit tail`.
 - `changelog/perf-desk-tools--24-09141630.md` (planned) (new).
 
 facts (read at `e428134c`, 2026-09-14):

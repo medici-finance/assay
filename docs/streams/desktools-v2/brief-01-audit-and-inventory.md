@@ -35,8 +35,7 @@ id: 4041a2e5-62b9-47de-9d42-82e530c571b9
 ## Context
 
 files:
-- NEW `docs/streams/desktools-v2/inventory.md` (planned) — the frozen file:line table. This
-  is the ONLY deliverable; this brief changes no code.
+- **NEW** `docs/streams/desktools-v2/inventory.md` (planned) — the frozen file:line table. This is the ONLY deliverable; this brief changes no code.
 
 facts:
 - The seam is `tools/desk/internal/deskkit/forge.go` (one `Forge` interface, ~four-dozen
@@ -59,8 +58,8 @@ facts:
   header): it reaches the seam by running the `deskread` verb and parsing its JSON. Its
   migration is OWNED by `forge-neutral/18` (in progress), not by this stream. The inventory
   therefore enumerates the statusgen sites from a full sweep
-  (`grep -rn 'exec.Command("gh"' statusgen --include='*.go'`, tests excluded — 26 sites in 15
-  files at the freshness base; the run's own count is the record, not this number) and routes
+  (`grep -rn 'exec.Command("gh"' statusgen --include='*.go'`, tests excluded — 26 sites in
+  15 files at the freshness base; the run's own count is the record, not this number) and routes
   every one of them to `forge-neutral/18`. It marks which are on the `scanloop` path (#628).
   The inventory does NOT propose a client, a library or a port for statusgen.
 - The five **desk-verb `gh` exceptions** are a separable, token-custody-gated follow-wave, not

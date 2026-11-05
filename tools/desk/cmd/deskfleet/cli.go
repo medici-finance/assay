@@ -26,22 +26,30 @@ Verbs:
              gitlab-<role>.token in --out-dir; with --project it also configures the
              project. --avatars-only sets the avatars of existing accounts.
   labels     creates the nine fleet labels on one GitHub repo or GitLab project.
+  push-token rotates the board-push credential STATUSGEN_PUSH_TOKEN in one process
+             (rotate) and checks it read-only (check); the new value is never printed:
+               deskfleet push-token rotate --project <path-or-id> --rotator-token-file <file> --token-name <name>
+               deskfleet push-token check  --project <path-or-id> --reader-token-file <file> --token-name <name>
 
 Run 'deskfleet <verb> --help' for a verb's options.
 
-Credentials are read from FILES only (--owner-token-file / --token-file), which must pass
+Credentials are read from FILES only (--owner-token-file / --token-file /
+--rotator-token-file / --reader-token-file), which must pass
 the owner-only custody check; they are never accepted as a flag value or env variable, and
 never printed — only paths are.
 
 --dry-run  enumerates every action and makes ZERO network calls.
 
-Exit: 0 ok · 1 a step failed · 2 usage · 5 refused.`
+Exit: 0 ok · 1 a step failed · 2 usage · 5 refused · 6 could-not-check (push-token).`
 
 const provisionLong = `provision creates the seven role service accounts, their group memberships and (for an
 account created by this run) one PAT each, written owner-only to gitlab-<role>.token in
 --out-dir (default: the config home, where desktoken --forge gitlab <role> reads it). With
 --project it also protects main, sets MR approvals, protects release tags, sets the pipeline
-and discussion merge checks, and creates the fleet labels. With --avatars-dir, each new
+and discussion merge checks, creates the fleet labels, and mints the board-push credential:
+a write_repository-only project access token at Maintainer, stored as the masked, protected
+CI/CD variable STATUSGEN_PUSH_TOKEN (never a role-fleet PAT; where the forge cannot mint
+one, a recorded failure naming the manual step). With --avatars-dir, each new
 account sets <dir>/<role>.png as its own avatar, signed in as itself; without it (or with
 --no-avatars) the avatar step is SKIPPED and named (no icon is fetched from the web).
 
@@ -87,6 +95,7 @@ Exit: 0 ok · 1 a step failed · 2 usage · 5 refused.`
 var (
 	provisionFn = runProvision
 	labelsFn    = runLabels
+	pushTokenFn = runPushToken
 )
 
 // onResolve, when set, sees every invocation's resolved settings (the contract tests' window
@@ -235,7 +244,7 @@ func newFleetCLI(e *env) *cobra.Command {
 		return codeErr(labelsFn(o, e))
 	}
 
-	root.AddCommand(provision, labels)
+	root.AddCommand(provision, labels, newPushTokenCLI(e))
 	return root
 }
 

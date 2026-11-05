@@ -1,0 +1,59 @@
+# Local PostgreSQL for a multi-cell host — its own compose project (docs/postgres.md).
+#
+# One server, one database and one restricted role per cell (provision-cell.sh). Kept apart from
+# any desk compose file on purpose: `docker compose down` on the desks never stops the database,
+# and host cells that are not containers use it too. A desk compose file that wants this network
+# references it as `external:`; it never copies this service.
+#
+# Start:  ASSAY_PG_SECRETS_DIR=<dir holding superuser.password> docker compose -f containers/postgres/compose.yaml up -d --wait
+#
+# Nothing here carries a password. The superuser password is a compose secret read from
+# ASSAY_PG_SECRETS_DIR at runtime (containers/secrets.md §4.2); compose refuses to resolve this
+# file when that variable is unset, and there is no default path inside the repository.
+name: assay-postgres
+
+services:
+  postgres:
+    # PostgreSQL 18.6 on Debian trixie, pinned by digest (the multi-platform index). 18.6 is the
+    # PostgreSQL version of the CloudNativePG 1.30.1 default operand, so a later move to that
+    # cluster is same-major and same-minor. Changing the major version of an existing volume in
+    # place is not supported: a major upgrade is dump, new volume, restore (docs/postgres.md).
+    image: postgres:18.6-trixie@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      # The image reads the superuser password from this file (its file_env support).
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_superuser
+      # Replace the image's default `trust` for local and loopback connections: the socket takes
+      # only the matching OS user (peer), and every TCP connection — loopback included — needs a
+      # SCRAM password. Read only by initdb, so it applies to a fresh volume.
+      POSTGRES_INITDB_ARGS: --auth-local=peer --auth-host=scram-sha-256
+    secrets:
+      - pg_superuser
+    ports:
+      # Loopback only. No TLS in the local profile; remote cells use a cluster with TLS.
+      - "127.0.0.1:${ASSAY_PG_HOST_PORT:-5432}:5432"
+    volumes:
+      # The PostgreSQL 18 image declares VOLUME /var/lib/postgresql and sets PGDATA to
+      # /var/lib/postgresql/18/docker. Mounting the pre-18 path (/var/lib/postgresql/data)
+      # would leave the data in an anonymous volume. Never on a network filesystem.
+      - assay-postgres-data:/var/lib/postgresql
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Over TCP: during first init the image runs a socket-only temporary server, so a
+      # socket probe could report ready before initialisation finishes.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "postgres"]
+      start_period: 30s
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+secrets:
+  pg_superuser:
+    file: ${ASSAY_PG_SECRETS_DIR:?set ASSAY_PG_SECRETS_DIR to the directory holding superuser.password (docs/postgres.md)}/superuser.password
+
+volumes:
+  # Compose prefixes the project name, so the operator's volume is assay-postgres_assay-postgres-data
+  # and a drill project's volume is its own.
+  assay-postgres-data: {}

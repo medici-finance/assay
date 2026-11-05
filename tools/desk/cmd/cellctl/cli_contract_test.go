@@ -22,8 +22,8 @@ import (
 // visibleVerbs is every documented verb. The three internal entrypoints (model-policy,
 // cache-run, container-run) are covered by the legacy-forms and boundary tests.
 var visibleVerbs = []string{
-	"ls", "version", "new", "set", "show", "check", "deskd", "desk", "up", "down",
-	"reset", "models", "smoke", "status", "cadence", "scratch", "cache", "comms", "defaults", "hotfix", "providers",
+	"ls", "version", "new", "set", "show", "check", "deskd", "desk", "up", "down", "pause", "resume", "drain",
+	"reset", "models", "smoke", "status", "attach", "cadence", "scratch", "cache", "comms", "defaults", "hotfix", "providers",
 }
 
 // snapshotTree is a stable fingerprint of every path under dir: name, mode, size and mtime.

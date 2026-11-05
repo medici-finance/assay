@@ -30,20 +30,10 @@ id: ea11d1ed-a626-4e3b-801b-28495a41c072
 
 ## Context
 files:
-- `plugins/assay/skills/author-brief/SKILL.md` — template block: `schema: brief-v2`, the
-  reserved keys, the "no status: key" note; README structure: the generated-markers table,
-  `board: generated` in stream frontmatter; Working-method step 6 rewritten (status is
-  derived; author the `why:` and the edges, not the cell).
-- `plugins/assay/skills/worker-desk/SKILL.md` — §Board claim and the Board row bullet
-  replaced: the PR body carries `Brief: <stream>/<NN>` (deskpr refuses otherwise); the
-  worker NEVER edits the README table; `in-progress` appears when the draft PR opens,
-  `implemented` when it merges.
-- `plugins/assay/skills/pr-review-desk/SKILL.md` — bounce rule: a PR whose diff touches
-  a generated table region, or whose body lacks the trailer, is bounced with the one-line
-  reason; no reviewer edits the board.
-- `plugins/assay/skills/verify-desk/SKILL.md` — `verified`/`done` unchanged in mechanism
-  (witness + Evidence row); remove any instruction to edit the README cell by hand;
-  the verifier's deliverable is the witness, the board follows.
+- `plugins/assay/skills/author-brief/SKILL.md` — template block: `schema: brief-v2`, the reserved keys, the "no status: key" note; README structure: the generated-markers table, `board: generated` in stream frontmatter; Working-method step 6 rewritten (status is derived; author the `why:` and the edges, not the cell).
+- `plugins/assay/skills/worker-desk/SKILL.md` — §Board claim and the Board row bullet replaced: the PR body carries `Brief: <stream>/<NN>` (deskpr refuses otherwise); the worker NEVER edits the README table; `in-progress` appears when the draft PR opens, `implemented` when it merges.
+- `plugins/assay/skills/pr-review-desk/SKILL.md` — bounce rule: a PR whose diff touches a generated table region, or whose body lacks the trailer, is bounced with the one-line reason; no reviewer edits the board.
+- `plugins/assay/skills/verify-desk/SKILL.md` — `verified`/`done` unchanged in mechanism (witness + Evidence row); remove any instruction to edit the README cell by hand; the verifier's deliverable is the witness, the board follows.
 
 facts:
 - Public-tree content must be self-contained — no private issue numbers or slugs in the

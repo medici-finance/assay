@@ -718,6 +718,8 @@ func cellSnapshot(t *testing.T, c *Cell) map[string]string {
 	m["cockpit"], _ = c.cockpitWant("")
 	sp, err := c.scratchPolicy()
 	m["scratch"] = fmt.Sprintf("%v %v", sp, err)
+	si, err := c.scratchSweepInterval()
+	m["scratch sweep interval"] = fmt.Sprintf("%v %v", si, err)
 	for _, role := range strings.Fields(rolesDefault) {
 		for _, harness := range harnessValues {
 			m["model "+role+" on "+harness] = fmt.Sprintf("%+v", c.resolveRoleModel(role, harness))
@@ -977,6 +979,7 @@ var templateDefaultProof = map[string]string{
 	"CELL_GO_TRIMPATH":                "resolved: cache trimpath",
 	"CELL_SCRATCH_MAX_AGE":            "resolved: scratch",
 	"CELL_SCRATCH_MAX_BYTES":          "resolved: scratch",
+	"CELL_SCRATCH_SWEEP_INTERVAL":     "resolved: scratch sweep interval",
 	"CELL_HARNESS":                    "resolved: harness",
 	"CELL_COCKPIT":                    "resolved: cockpit",
 	"CELLCTL_GENERATED_FILES":         "resolved: generated files",
