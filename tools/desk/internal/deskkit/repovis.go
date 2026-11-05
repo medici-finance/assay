@@ -23,7 +23,7 @@ type RepoInfoFetcher interface {
 //
 // These types are NOT used by PublicRepoGate any more — the public-repo write gate
 // stopped reading reactions when the per-item +1 was replaced by the repository-scoped
-// :public authorization (PublicRepoGate below). They remain because the Forge
+// :public / :internal authorization (PublicRepoGate below). They remain because the Forge
 // abstraction's reaction/award admission surface (forge.go, with the GitHub and GitLab
 // backends) consumes them; that surface is a separate control and out of scope here.
 type Reaction struct {
@@ -61,12 +61,45 @@ func FetchRepoVisibility(fetcher RepoInfoFetcher, owner, repo string) (string, e
 	return v, nil
 }
 
+// internalTokenHistory is the one clause the gate's refusal gains when a live-internal repo
+// is listed `:public` (#5436). Earlier versions of the allowed-repos grammar had no
+// `:internal` token, so `:public` was the only non-private tag an operator could give an
+// internal repo. The gate cannot tell that case from a repo listed `:public` while it was
+// public and later changed to internal: both read configured `:public`, live `internal`.
+// So the clause states the history conditionally and nothing else — the remedy is the same
+// `:internal` entry, edited by the operator. No verb rewrites the entry: the allowed-repos
+// set is an authorization control.
+const internalTokenHistory = " Earlier versions had no :internal token: if this :public entry was written before it existed, it predates it."
+
+// PublicRepoGateVerbs names the desk commands that call PublicRepoGate before an outward
+// write, in the order the gate's refusal lists them: deskpr (create, update, edit),
+// deskpost (comment, ready, review), deskreply, deskevidence and deskrelease (cut). The
+// refusal names exactly these, so it never claims to cover a write the gate does not see.
+// Tracker writes are not among them: deskfile, for one, never calls the gate
+// (publicRepoGateUngated). TestPublicRepoGateVerbsMatchCallers in cmd/deskevidence walks
+// the command tree and fails when a command starts or stops calling the gate without this
+// list following it (#5436).
+var PublicRepoGateVerbs = []string{"deskpr", "deskpost", "deskreply", "deskevidence", "deskrelease"}
+
+// publicRepoGateUngated is the issue-tracker command the refusal names as one the gate
+// does not cover. It must never appear in PublicRepoGateVerbs (TestGateRefusalNamesGatedVerbs).
+const publicRepoGateUngated = "deskfile"
+
+// gateScopeClause renders the refusal's scope sentence from PublicRepoGateVerbs.
+func gateScopeClause() string {
+	return "the authorization is repository-scoped and covers the desk commands that run this gate (" +
+		strings.Join(PublicRepoGateVerbs, ", ") + "); tracker writes such as " + publicRepoGateUngated +
+		" do not run it; merge remains the human's."
+}
+
 // PublicRepoGate enforces the public-repo write gate.
 //
-// It is called before ANY write-capable desk tool acts on a repo. The authorization
-// unit is the REPOSITORY, not the item: a public repo listed in the allowed-repos
-// configuration with the `:public` visibility token — or an internal repo listed with
-// the `:internal` token — is a place the desk may write, decided once by a human out-of-band, and every write verb on it passes.
+// It is called before the outward write of each command in PublicRepoGateVerbs — not
+// before every write-capable desk tool: tracker writes such as deskfile do not call it.
+// The authorization unit is the REPOSITORY, not the item: a public repo listed in the
+// allowed-repos configuration with the `:public` visibility token — or an internal repo
+// listed with the `:internal` token — is a place the desk may write, decided once by a
+// human out-of-band, and every gated write on it passes.
 // This replaces the former per-item `+1` reaction check, which was unsatisfiable for the
 // write that matters most — opening the first pull request, which has no issue/PR number
 // yet — and expressed the human decision in the wrong unit. A draft PR is inert until a
@@ -91,7 +124,10 @@ func FetchRepoVisibility(fetcher RepoInfoFetcher, owner, repo string) (string, e
 //     non-private token (`:internal` on a live-public repo, `:public` on a live-internal
 //     one) — return Refused (exit 5) naming the repo, what was read live, what the set
 //     says, and the exact remedy. This is why BOTH reads are load-bearing at once: the
-//     live read AND the configured claim must AGREE.
+//     live read AND the configured claim must AGREE. A `:public` entry on a live-internal
+//     repo additionally names its possible history (internalTokenHistory): if it was
+//     written before the `:internal` token existed, it predates it. It still refuses; the
+//     operator edits the entry.
 //
 // `internal` is instance-visible, not private — the gate's premise is untrusted eyes, so
 // it is gated exactly like `public`, not treated as a pass, and VisibilityInternal is not
@@ -108,8 +144,8 @@ func PublicRepoGate(fetcher RepoInfoFetcher, owner, repo string) error {
 
 	// Allowlist, not a denylist: ONLY "private" (case-insensitively, trimmed) skips the
 	// gate. Everything else — "public", "internal", a re-cased or padded read, or a value
-	// this code has never seen — either requires the `:public` allowed-repos entry below or
-	// fails closed outright. A denylist here ("gate only when == public") is a bypass by
+	// this code has never seen — either requires the matching `:public` / `:internal`
+	// allowed-repos entry below or fails closed outright. A denylist here ("gate only when == public") is a bypass by
 	// spelling: security review on #310 drove the live gate over every visibility string
 	// GitHub's API can return and found "PUBLIC", "public " (whitespace), and "internal"
 	// all fell through ungated under `visibility != "public"`.
@@ -133,11 +169,15 @@ func PublicRepoGate(fetcher RepoInfoFetcher, owner, repo string) error {
 		if configured == want {
 			return nil
 		}
+		history := ""
+		if want == VisibilityInternal && configured == VisibilityPublic {
+			history = internalTokenHistory
+		}
 		return Refused(fmt.Sprintf(
 			"public-repo gate: %s/%s reads live-%s but the allowed-repos set does not authorize outward writes to it "+
 				"(configured visibility: %s, not :%s). Add %s/%s:%s to the allowed-repos configuration (%s) — "+
-				"the authorization is repository-scoped and covers every write verb; merge remains the human's.",
-			owner, repo, live, configured.String(), live, owner, repo, live, EnvAllowedRepos))
+				"%s%s",
+			owner, repo, live, configured.String(), live, owner, repo, live, EnvAllowedRepos, gateScopeClause(), history))
 	default:
 		return Unverifiable(fmt.Sprintf("public-repo gate: repo %s/%s returned unrecognised visibility %q — refusing rather than treating it as private", owner, repo, visibility), nil)
 	}

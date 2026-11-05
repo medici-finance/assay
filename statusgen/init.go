@@ -221,6 +221,9 @@ func runInitForge(root string, forge forgeKind, remotePresent bool, host string,
 	}
 	for _, p := range skipped {
 		fmt.Printf("  exists   %s (unchanged)\n", p)
+		if forge == forgeGitLab && hasCI && p == ci.path {
+			reportGitlabAnchorDrift(root, p)
+		}
 	}
 	if len(created) == 0 {
 		fmt.Println("\nNothing to create — the streams structure is already in place.")
@@ -995,6 +998,150 @@ func gitlabScriptAnchor(name, script, comment string) string {
 	b.WriteString(indentScript(script, "    "))
 	b.WriteString("\n")
 	return b.String()
+}
+
+// reportGitlabAnchorDrift names each embedded script anchor of an existing
+// .gitlab-ci.yml that differs from this statusgen's copy (#5004). init never
+// overwrites the file, so without this an upgraded adopter keeps running the
+// older embedded pushcred.sh and boardadd.sh, and the re-run said only
+// "unchanged". It reads the file and prints; it never writes.
+func reportGitlabAnchorDrift(root, path string) {
+	body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
+	if err != nil {
+		fmt.Printf("  note     %s: could not read it to compare its embedded anchors: %v\n", path, err)
+		return
+	}
+	for _, name := range gitlabAnchorDrift(string(body)) {
+		fmt.Printf("  STALE    %s: its embedded %s anchor differs from this statusgen's (%s) copy.\n"+
+			"           init never overwrites the file, so the pipeline runs the script the file\n"+
+			"           holds, not this release's, and its board-push fixes do not reach it.\n"+
+			"           Refresh it with `%s`.\n", path, name, statusgenVersion, gitlabAnchorRefreshCmd)
+	}
+}
+
+// gitlabAnchorRefreshCmd is the command every drift report names (#5004).
+const gitlabAnchorRefreshCmd = "statusgen migrate gitlab-anchors --root ."
+
+// gitlabAnchors are the script anchors the GitLab template embeds, by key
+// name, with the sourced script each one carries.
+var gitlabAnchors = []struct{ name, script string }{
+	{"statusgen-pushcred", pushcredSh},
+	{"statusgen-boardadd", boardAddSh},
+}
+
+// gitlabAnchorWant is the current rendering of one anchor, as yamlAnchorBlock
+// returns it (key line plus body, no comment, no trailing blank line).
+func gitlabAnchorWant(name, script string) string {
+	want, _ := yamlAnchorBlock(gitlabScriptAnchor(name, script, ""), name)
+	return want
+}
+
+// gitlabAnchorDrift returns the embedded script anchors in a .gitlab-ci.yml
+// body that differ from the ones this statusgen renders. An anchor the body
+// does not carry is not reported: the adopter removed or renamed it.
+func gitlabAnchorDrift(body string) []string {
+	var stale []string
+	for _, a := range gitlabAnchors {
+		got, ok := yamlAnchorBlock(body, a.name)
+		if !ok {
+			continue
+		}
+		if got != gitlabAnchorWant(a.name, a.script) {
+			stale = append(stale, "."+a.name)
+		}
+	}
+	return stale
+}
+
+// gitlabAnchorDriftNotices is the --lint half of the drift check: one NOTICE
+// per stale embedded anchor in <root>/.gitlab-ci.yml, naming the refresh
+// command, and one NOTICE for a scaffold that predates the anchors (see
+// gitlabPreAnchorScaffold). No file, or an unreadable one, adds nothing: a
+// repo without the GitLab CI half has no anchor to drift.
+func gitlabAnchorDriftNotices(root string) []string {
+	body, err := os.ReadFile(filepath.Join(root, ".gitlab-ci.yml"))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, name := range gitlabAnchorDrift(string(body)) {
+		out = append(out, fmt.Sprintf(".gitlab-ci.yml: the embedded %s anchor differs from this statusgen's (%s) copy, so the pipeline runs the board-push script the file holds, not this release's (a pin bump does not refresh it; #5004). Refresh it with `%s` and commit the file.", name, statusgenVersion, gitlabAnchorRefreshCmd))
+	}
+	if gitlabPreAnchorScaffold(string(body)) {
+		out = append(out, fmt.Sprintf(".gitlab-ci.yml: it carries the %s job but neither the .statusgen-pushcred nor the .statusgen-boardadd anchor, so it was scaffolded before the anchors existed and its board push is inline in the job; `%s` has nothing to refresh there and later board-push fixes do not reach it (#5004). Move it aside, run `statusgen init --forge gitlab` to write a current one, re-apply your own edits, and commit the file.", gitlabRegenJob, gitlabAnchorRefreshCmd))
+	}
+	return out
+}
+
+// gitlabRegenJob is the top-level job key every GitLab scaffold carries.
+const gitlabRegenJob = "statusgen-regen"
+
+// gitlabPreAnchorScaffold reports whether a .gitlab-ci.yml body carries the
+// scaffolded statusgen regen job but neither embedded script anchor: the shape
+// a release before the anchors existed scaffolded, which gitlabAnchorDrift
+// cannot see. A file with the anchors, or without the job, is not one.
+func gitlabPreAnchorScaffold(body string) bool {
+	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	job := false
+	for _, l := range lines {
+		if strings.HasPrefix(l, gitlabRegenJob+":") {
+			job = true
+			break
+		}
+	}
+	if !job {
+		return false
+	}
+	for _, a := range gitlabAnchors {
+		if _, _, ok := yamlAnchorSpan(lines, a.name); ok {
+			return false
+		}
+	}
+	return true
+}
+
+// yamlAnchorBlock returns the top-level ".<name>:" line and every following
+// indented line, through the last non-blank one, with blank lines normalised
+// to empty, so line endings and whitespace-only lines never read as drift.
+func yamlAnchorBlock(body, name string) (string, bool) {
+	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	start, end, ok := yamlAnchorSpan(lines, name)
+	if !ok {
+		return "", false
+	}
+	block := make([]string, 0, end-start)
+	for _, l := range lines[start:end] {
+		if strings.TrimSpace(l) == "" {
+			l = ""
+		}
+		block = append(block, l)
+	}
+	return strings.Join(block, "\n"), true
+}
+
+// yamlAnchorSpan finds the top-level ".<name>:" key in lines (split on "\n")
+// and returns [start, end): its line through the last non-blank indented line
+// after it, so trailing blank lines stay outside the span.
+func yamlAnchorSpan(lines []string, name string) (start, end int, ok bool) {
+	head := "." + name + ":"
+	for i, l := range lines {
+		if !strings.HasPrefix(l, head) {
+			continue
+		}
+		end = i + 1
+		for j := i + 1; j < len(lines); j++ {
+			n := strings.TrimRight(lines[j], "\r")
+			if strings.TrimSpace(n) == "" {
+				continue
+			}
+			if !strings.HasPrefix(n, " ") {
+				break
+			}
+			end = j + 1
+		}
+		return i, end, true
+	}
+	return 0, 0, false
 }
 
 // indentScript indents every non-blank line of script for a YAML literal block;

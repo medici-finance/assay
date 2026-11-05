@@ -23,6 +23,68 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.73 — 2026-11-04
+
+### Added
+- The handoff record a desk writes on a drain and reads at boot is stated once in `plugins/assay/references/handoff-note.md`, and the five desk skills point to it. The mechanism behind these verbs (stop flags, the cadence checkpoint, a file under the cell) is interim, as `docs/cellctl.md` states.
+- `cellctl down <cell> <role>` closes one paused or drained role's own window, tab or terminal after re-verifying its surface identity and re-measuring it idle. It never closes a session, a sibling or another cell's surface.
+- `cellctl pause`, `resume` and `drain <cell> [role...]` are adapters onto the runner-lifecycle states (running, pausing, paused, draining, drained, stopped). `drain` pauses, waits (bounded by `--timeout`) for each role to go idle without cancelling in-flight work, collects each desk's handoff record, then stops the roles one by one. On timeout it leaves busy roles up and paused and names `drain --now` and `resume`.
+- `resume` lifts only the stops `pause` created; any other stop is lifted only by name with `--foreign` on the operator's terminal. A recorded transition request is never authority: only pause, a timed drain and an idle-checked per-role stop are taken from one.
+
+### Fixed
+- The deskd build contract test now reads the root Makefile closer to how GNU Make does, so it can no longer be silently bypassed by any of these: a setting split across backslash-continued lines, `GNUMAKEFLAGS` carrying `-i`, an `exit 256` (which the shell reports as success) before the image build, or a second `deskd-image`/`deskd-build` rule written with spaces, alongside other targets, with its recipe after `;`, as a grouped target (`&:`), through a variable or an expansion holding `:`, `=` or `#`, or with a blank or comment line before its recipe. A rule whose target is named only through a variable no longer stands in for the held rules. A `.RECIPEPREFIX` setting is now refused, and make-level settings on tab-led lines (which make reads as makefile lines where no rule is open) are now read. `.PHONY` is read from joined lines with names after a `#` or a `;` left out. Each spelling has its own negative fixture.
+- The forge-gitlab/13 brief's Verify table now fails on the tree before the fix and passes on the delivered one. Test rows use anchored selectors and assert their `--- PASS:` line. The mutation row builds a Go overlay copy instead of asking for a hand checkout. The consumers row requires the fix merge and asserts its summary line. The lint row checks only this brief and its board row, so another brief's could-not-check no longer turns it red.
+- The measured-status/03 Verify table now fails at the tree before the commsloop risk derivation was delivered and passes on the delivered tree: each row reads the `// Derivation:` block directly above the retained `const risk = false` literal, every test-backed row requires the test's own `--- PASS:` line, and the consumers row resolves the delivering change from the checked-out history and clones it under `$TMPDIR`.
+- `statusgen verifyflip` reads only the latest PASS run when that run is a strict, dated, clean re-run under an entry heading the page surely draws: an older, superseded entry's could-not-check row or BLOCKED bullet no longer blocks the flip, and an earlier entry's trailing rows are no longer read as the latest run's. A hold inside the latest run, a non-strict or undated latest run, and an uncertain run boundary still refuse (#4294).
+
+### Changed
+- Add a store-injected mirror read-through coordinator with shared refresh-gate ports, bounded trusted demand, truthful partial/failure outcomes and current authorization checks at result release. PostgreSQL gate/store implementation, real source integration, custody and activation remain separately gated.
+- Add an admitted read-only source for mirror ingestion, preserving unknown fields and failed-scan watermarks through the existing native readers without waiting for execution or serving.
+- Add bounded forge-service-v1 data envelopes and a separately imported scoped HTTP client over an explicitly admitted transport. Preserve review/projection producer meanings, source identity, unknown states and distinct effect/projection outcomes; serving and activation remain separately gated. Carry nullable service-owned retry advice and original cached coverage/age without client retries or provider fallback.
+- Add the canonical PostgreSQL migration foundation so read-only persistence can advance independently of workflow execution, with explicit connections and real disposable-container qualification.
+- Ground the typed forge-service pickup in delivered review-observation source while preserving independent verification and acceptance gates.
+- Run PostgreSQL service qualification on a Docker-capable Ubuntu runner and enforce forward-only policy across Goose annotation spellings.
+- Specify shared-cache read-through on query misses, with coalesced source fills and a bounded failure cache; clients require no direct source fallback.
+- Split read-only cache profile provisioning, local caller-authority qualification and mirror-query serving into independent contracts so they can advance without write executors or workflow execution.
+- Split the admitted read-to-mirror mapper into an independent read-only contribution, with field-presence and incomplete-scan controls before persistent ingestion.
+- Split the read-only PostgreSQL mirror adapter from workflow execution, reusing the canonical migration ledger and disposable container harness while retaining full parent acceptance.
+- The desk-containers/08 tick-contract brief's Verify table now runs offline and discriminates: each offline row is an executable command that ends in a fixed `rowN-ok` token, fails on the pre-delivery base and passes on the delivered tree (with full-SHA pins where history matters), and the four rows that need a real tick on a cell are marked production-only so an offline runner records them could-not-check instead of a pass.
+- The desk-containers/17 brief (`cellctl up` converges the cell) goes to version 3, which re-derives Verify rows 5 and 7. Row 5 is now one runnable command: it builds `cellctl`, runs the parity harness against the shell oracle for the claude and codex `up` cells on each cockpit (tmux, herdr, orca), and fails unless every claude cell prints `parity: 4 cells, 0 divergent` and the codex divergences stay inside the base set (the `k8s` and `house` cells). Row 7 names a concrete disposable cell instead of a `<cell>` placeholder, runs it in a clean scratch environment on a private tmux server, pins the tmux cockpit and passes `--no-attach` to the first `up` so its exit code is the converge result, says which process to kill, and says that it is run by hand on a terminal. The brief also declares `outcome: none`.
+- The statusgen brief 18 verification rows (the placeholder gate-mismatch notice for `--scan-issues`) now run as written on merged main. Row 4 runs the four selector groups that cover every scan test instead of the whole statusgen package, which needs a prior-release binary only CI supplies. Row 7 pins the delivering commit and its first parent, so the consumers check no longer depends on what `origin/main` happens to be.
+- Three human-gated briefs now record their decision issue: solo identity mode (apps-installer/08), the outbound-write house callout (desktools-v2/11) and the fetch-hardening retirement (desktools-go-git/05). The fetch-hardening retirement also records the ruling that answered it. The other two record no ruling yet, because the human comments on their decision issues do not name the brief, so the decision-gate hold would not accept them. Frontmatter only; no brief body, status or tool changes.
+- `author-brief` now asks the critical-path head check to be run against what the session can read (always the requester's own words and the material handed over) and to quote the line it rests on, so an offline plan can no longer answer the check with a bare "unproven".
+- `verify-desk` now asks a FAIL bug to carry each failed row as `` `<command>` → exit <N> → <verbatim output> ``, and the Evidence to carry only the verdict marker it reached: a negated or code-quoted `**VERIFY: PASS**` under a FAIL reads as a pass to the strict gate and to the board reader.
+
+## v1.0.72 — 2026-11-03
+
+### Fixed
+- Bound each admitted incremental mirror response before GitHub or GitLab SDK decoding, including compressed and error responses, while preserving the separate aggregate budget and ordinary forge operations.
+- The brief Context `files:` parser now reads a bullet whose description wraps onto deeper-indented lines, such as a continuation that starts with "(". It reads it the same way as the bullet joined onto one line. A continuation line that reads as declarations still declares, and every other wrapped shape is still refused (#3697).
+- The windows-port/12 Verify table now runs deterministically offline: each row asserts a named passing test or a tree-built binary instead of a vacuous `go test -run`, cross-compiles for Windows rather than executing a foreign binary, and the rows that need a native Windows host or a live forge identity are marked production-only.
+- `author-brief` now requires the critical-path head to be checked while the plan is authored and stated in one explicit form ("I verified … by reading …; it showed …" or "… is unproven, so it is the real head"), never taken from the requester's stated edges or left to brief 01's Task; and its freshness rule now withholds a fix brief only when the site is shown already fixed, so a stated read yields the brief with its `freshness-checked` stamp instead of a held draft.
+
+### Changed
+- Add the store-neutral Cell ownership, quota reservation, effect-intent and recovery protocol, with refusing authority ports and offline concurrent/process restart qualification. Runtime PostgreSQL and consumer activation remain separately gated.
+- Claim decay now requires an explicitly supplied token for its current host and reports unavailable without launching a stored-login credential subprocess when that token is missing.
+- Historical consumer checks now report producer delivery identity as separately unqualified on stderr while preserving stdout report bytes, so corroborated follow-up routes cannot be mistaken for implementation delivery evidence.
+- Keep Cell ownership generations distinct from per-item claim generations at both admission and the independent effect boundary.
+- Record the requested purge-to-tombstones implementation direction and the remaining storage and tool-cutover dependency path.
+- Resolve definitively absent operations only after independent writer fencing and known-usage settlement; bind provider requests to one phase and check quota windows against an explicit authority clock.
+- Split the native mirror response-allocation bound into an independently testable contribution while retaining joined persistence acceptance and the existing activation gates.
+- The CI jobs that needed a native Windows runner are retired (#4106): the Windows CI leg
+  (desk suite, `statusgen --lint`/`--version` smoke, bootstrap hash-check smoke, the held arm64
+  smoke and the in-container witness job), the native cellctl launch-contract workflow, the
+  Windows git-maintenance workflow and the bootstrap hash-check smoke script. No CI job now runs
+  anything on native Windows, including the bootstrap's runtime sha256 refusal of a tampered
+  download. The Windows release cross-compiles, `scripts/bootstrap-windows.ps1`,
+  `scripts/build-windows.ps1` and the Linux-side Windows build checks are unchanged.
+- The desktools-v2/10 brief's frontmatter now records a `ruling:` link to the human ruling comment on its decision issue that names `desktools-v2/10`. The decision gate accepts that link, so the brief's next status move is no longer held for a missing ruling.
+- The evidence coverage brief's Review now records the maintainer's accepted residual for the board-bookkeeping exemption: in the conservative scope, `STATUS.md` and paths under `docs/streams/` do not stale a witness. Declaring an artifact in `files:` restores invalidation only for a `docs/streams/` artifact that verify and regen do not necessarily write; an edit to `STATUS.md`, a stream `README.md`, a brief file or the verify outcome log never stales a witness, declared or not, so a lint row is not protected by a declaration. No code changes.
+- Two briefs no longer name the native-Windows CI files retired by #4106 as live: desktools-v2/35
+  drops the bootstrap hash-check smoke script as a port target and both copies of the Windows CI
+  leg as consumers, and its Windows vet row now says native Windows execution is no longer
+  CI-proven; cellctl-windows/00 drops the retired launch-contract workflow from its consumers.
+
 ## v1.0.71 — 2026-11-03
 
 ### Added

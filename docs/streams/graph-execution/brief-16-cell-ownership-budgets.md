@@ -24,8 +24,9 @@ risk:
   sensitive-data: no
 gate-why: Ownership and restore behavior constrain external effects; the owner confirms stale writers cannot retain independent authority.
 decision-trigger: spec
+design: DR-graph-exec-16
 decision-issue: 5111
-ruling: "https://github.com/medici-finance/assay/issues/5111#issuecomment-6561259515"
+ruling: "https://github.com/medici-finance/assay/issues/5111#issuecomment-6612666889"
 issues: []
 schema: brief-v2
 authored: 2026-09-19 by Codex (author-brief)
@@ -359,6 +360,67 @@ implementation tests are not independent acceptance Evidence or an activation ru
 ## Evidence
 
 <!-- Independent verifier records command, exit, key output/digest, subject revision, environment and date. No implementation or execution evidence is asserted by this authoring change. -->
+### Non-implementer verifier run — 2026-11-04 — claude-opus-5-5 verifier (verify-desk dispatch), merged main db877f68ef27
+
+Runner is not the implementer of PR #5386 (delivery merge 9ec2680d0d24, an ancestor of the verified commit) or of the earlier preparation PR #5113. Offline envelope (KUBECONFIG=/dev/null), own detached worktree at merged main db877f68ef273e5796df5ddf92e89b0d5bc05ffe, admitted by deskdispatch --check-verifier (exit 0 before and after the run). gate: human; risk irreversible: yes. All 11 rows are check:ci Go tests in the drainloop package and need no host capability, so the whole table ran in one closed admission bracket: statusgen verifyrun --sandbox=container-netns in a --network none container from the pinned verify-runner v1.0.73 image (sha256:100dde7f1f3a), home mounted read-only, bracket-digest verdict=match. The host row selection is empty; the two selections are disjoint and cover rows 1-11.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnership" ./...` | pass exit=0 sandbox=container-netns | sha256:206f373e4eff | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnershipStaleWriterDenied" ./...` | pass exit=0 sandbox=container-netns | sha256:80876d04733f | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnershipRestoreBudgetPause" ./...` | pass exit=0 sandbox=container-netns | sha256:0c6bfda9a9d2 | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd drainloop && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCellBudgetConcurrentReservations.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBudgetConcurrentReservations$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCellBudgetConcurrentReservations " "$wi_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `(cd drainloop && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCellBudgetRestoreAllAttempts.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBudgetRestoreAllAttempts$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCellBudgetRestoreAllAttempts " "$wi_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestOwnershipBackendHandbackUnknown$" ./... > "$routing_out" && grep -q -- "--- PASS: TestOwnershipBackendHandbackUnknown " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationStaleRefused$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationStaleRefused " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationMismatchPaused$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationMismatchPaused " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationSpecMatchesFields$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationSpecMatchesFields " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBrakeCountUnavailableHolds$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCellBrakeCountUnavailableHolds " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellPacingRestartNoMultiply$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCellPacingRestartNoMultiply " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:90feb2f363705b5697e93fb395a6f3dfedb537b0b501a6fe4bdeb15ccf91818c
+Container-Image: sha256:100dde7f1f3a8be53ae45e9c1ff21fcd9fc82760595c91c422670db36c25d8d9
+Verification-Attestation: medici-finance/assay#5454 run=198ede9a5dc8809793ba34683f54130d2b613a5721f4c3f61a4aae019e04710b source=db877f68ef273e5796df5ddf92e89b0d5bc05ffe brief=docs/streams/graph-execution/brief-16-cell-ownership-budgets.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=198ede9a5dc8809793ba34683f54130d2b613a5721f4c3f61a4aae019e04710b source=db877f68ef273e5796df5ddf92e89b0d5bc05ffe tree=sha256:90feb2f363705b5697e93fb395a6f3dfedb537b0b501a6fe4bdeb15ccf91818c witness=sha256:693025ccc3347855bfb1caf1ef106569ad156f36b489432862c8de16326fb8da opened=2026-11-04T19:50:19Z closed=2026-11-04T19:50:46Z before=receipt after=check-verifier
+
+Observed output (supplemental, no acceptance credit; the exact row selectors re-run on an archived copy of the verified commit in the same image, logs kept outside the home): every named test prints its "--- PASS" line and the owning package prints "ok github.com/medici-finance/assay/drainloop"; the cmd/demo package prints "[no test files]", so no selector matched zero tests. Hand-read against each Expect: row 4 admits exactly 3 of 24 concurrent reservations (100 limit, 10 headroom, 30 reserved); row 11 uses two processes, a seed of 3 against a cap of 10 with C = 2, keeps 7 + 3 + 10 = 20 admissions after the one recorded reset, within 2 × (cap + C) = 24, and an anchor of 2 or a missing anchor admits nothing.
+
+Mutation probes (supplemental, no acceptance credit; independent mutants built on the archived copy, never in the home). Killed means the row's named test failed:
+- M4 outstanding reservations left out of the charge: row 4 killed (admitted=24).
+- M5 unknown reservation ignored in Transfer, M6 handback with an unknown effect allowed: row 6 killed both.
+- M7 owner and generation compared, incarnation ignored: row 7 killed ("restored SQL tuple revived old incarnation").
+- M8 current incarnation taken from the store activation: row 8 killed.
+- M9a contract Go name renamed, M9b wire name renamed: row 9 killed both.
+- M10a unavailable brake count treated as zero at admission, M10c treated as known at admission and effect: row 10 killed both.
+- M11a seed of zero, M11b per-process estimate, M11c cached pacing row as source: row 11 killed all three (intents 10, 28, 48).
+- M2 presented generation ignored in Match Cell Fence alone survived row 2, because the item-claim owner check rejects the same stale writer; M2b with both guards removed is killed by row 2 ("scheduler bypass applied stale writer"). Defence in depth, not a gap.
+- M10b effect-boundary brake check removed alone survives row 10's test (its apply step already fails on a missing admitted intent) but is killed by row 1's restored-records unknown-brake subtest.
+
+Risk-bearing value (kit section 4). Enumeration over the delivery diff (9ec2680d: drainloop budget.go, ownership.go, incarnation.go and the two specs). Test fixture values (100, 10, 30, Cap 10, C 2, seed 3, 24 × 30) are test-only and the brief marks them as not live policy; Cap, C, Limit and Headroom are configuration-owned, with no production default in code.
+- epoch bound p.Epoch > 1 (and p.Epoch != epoch) @ drainloop/budget.go:157
+- pacing admission n >= p.Cap @ drainloop/budget.go:177
+- budget admission used > found.Limit after charging Headroom and outstanding reservations @ drainloop/budget.go:110-120
+- launch-only control ControlBoundary "request" / "launch" with UpperBoundRef required @ drainloop/ownership.go:328
+- item claim count matches != 1 @ drainloop/ownership.go:724
+- overflow guards math.MaxUint64 @ drainloop/budget.go:104 and :166, ^uint64(0) @ drainloop/ownership.go:697
+- pacing classes "effect" / "read", other class refused @ drainloop/budget.go:162-175
+- charged phases "preparation", "summary", "execution", "fallback", "verification" @ drainloop/ownership.go:324 and :634
+- control roles ControlOperator = "operator", ControlExecutor = "executor" @ drainloop/incarnation.go:62-63
+- IncarnationSchema = "operator-incarnation/v1" @ drainloop/incarnation.go:9; CellCheckpointSchema = "cell-checkpoint/v1" @ drainloop/ownership.go:18
+
+Ranking: the irreversible act is a provider spend or an external effect admitted past a brake, or by a stale owner. The epoch, cap, limit, boundary and claim-count bounds decide that and rank first. Overflow guards, class and phase sets fail closed (an unknown value is refused) and rank next. The schema tags and role labels are wire identifiers whose mismatch refuses, undone by an edit and redeploy, and rank last.
+
+RISK-VALUE: DERIVED — epoch bound p.Epoch > 1 @ drainloop/budget.go:157 — the amendment allows "one recorded reset per window and operator incarnation; a second treats the window as exhausted"; epochs 0 and 1 admit and 2 or more refuse, and the caller's epoch must equal the recorded one; this is what gives the 2 × (cap + C) ceiling (M11a and row 11).
+RISK-VALUE: DERIVED — pacing admission n >= p.Cap @ drainloop/budget.go:177 — the count includes the shared seed plus every distinct recorded effect intent, so admission stops once Cap are counted; that is tighter than the brief's cap + C bound (C only absorbs cross-process lag and grants no slot), and with one reset it stays within 2 × (cap + C).
+RISK-VALUE: DERIVED — budget admission used > found.Limit @ drainloop/budget.go:120 with Headroom charged first @ drainloop/budget.go:110 — Dimension 3 requires "configured operator headroom and outstanding unknown reservations charged"; consumed + headroom + outstanding + new must not exceed the limit, so spending exactly to the limit is allowed and one unit more is refused; a missing consumed count refuses ("brake usage unavailable") rather than reading as zero (M4, M10a).
+RISK-VALUE: DERIVED — ControlBoundary "request" or "launch" with UpperBoundRef @ drainloop/ownership.go:328 — Dimension 3: "only a request-limiting runner may claim a hard per-request cap; launch-only control must reserve a proven request upper bound or hold"; launch without an upper-bound reference is refused, and any other boundary is refused.
+RISK-VALUE: DERIVED — item claim count matches != 1 @ drainloop/ownership.go:724 — exactly one live claim for the work item, owned by the current fenced owner and generation, must back an effect; zero (released or transferred) or two (ambiguous) refuse, so a restored Cell tuple cannot revive a released claim (M2b).
+
+Observations (outside the Verify table, for the desk to route; none fails a row):
+1. Row 10's named test does not tell apart the effect-boundary brake check on its own (M10b); row 1 covers it. A row-10-local assertion would make that row self-sufficient.
+2. Row 10's Expect mentions a per-target write-ceiling count. The implementation admits against no per-target or per-repository ceiling, so that clause has nothing to check at this commit.
+3. The admitted container run passed GOFLAGS=-mod=mod, which was unnecessary (drainloop has no module dependencies); the tree digest was identical before and after.
+
+**VERIFY: PASS** — 11/11 rows pass at db877f68ef27 in one closed container-netns admission bracket (bracket-digest verdict=match); every row-named mutation killed. gate: human, irreversible: yes — status stays implemented for the human gate; a model does not sign it off.
 
 ## Review
 
@@ -367,3 +429,32 @@ must be rejected or replaced with an authorized reference, while numeric usage-t
 counts survive unchanged. Check the WI-1 source-trust binding referenced by WI-4.
 
 Gate: human. Confirm scope, consumer routing, negative-path independence and exact-subject evidence; a confidence score cannot enlarge permission.
+
+## Delivery reconciliation — 2026-11-03
+
+Source inspection on main `3342a32ab90440ce7f2f6bf8957b83de626d70dd` confirms the
+actual implementation delivery is merged PR #5386, commit
+`9ec2680d0d242abd0fc13584feddb1459ddbd634`. PR #5113 remains the earlier schema/test
+preparation, not the implementation witness. Its historical remaining-work statement
+describes that preparation checkpoint.
+
+| Original obligation | Delivered source to assess independently |
+|---|---|
+| Task 1: durable ownership/reservations, cumulative budgets and stop retention | `drainloop/ownership.go`: `CellStore`, `CellAuthority.Commit`, `CellJournal`; `drainloop/budget.go` reservation/balance/pacing owners |
+| Task 2: separate effect-boundary fencing and unknown outcomes | `CellAuthority.CheckEffect`, capability/current-authority ports and `ResolvePending`; real provider credential cutover remains profile qualification |
+| Task 3: concurrency/crash/restore fixtures | `drainloop/ownership_test.go`, `budget_test.go`, `restore_test.go` and the test-only filesystem/provider adapters; these are source witnesses, not independent PASS evidence |
+| Task 4: qualified hold/reconciliation limits | `drainloop/README.md`, `docs/enforcement-model.md`, authoritative resolution and settlement ports; no production backend or exactly-once guarantee |
+| Task 5: current incarnation and restore authority | `spec/operator-incarnation-v1.md`, `drainloop/incarnation.go` and current-incarnation checks at admission/effect boundaries; concrete custody/signature/consumer qualification remains separate |
+
+The record-specific human binding is now recorded in `DR-graph-exec-16` and the
+frontmatter `design:`/`ruling:` fields. It preserves the earlier bounded design
+and both custody restrictions:
+https://github.com/medici-finance/assay/issues/5111#issuecomment-6612666889
+
+No board row is hand-edited here. After this metadata lands, use native
+`statusgen reconcile` to judge the implemented transition against the actual
+#5386 delivery. Independent verification, final human acceptance and activation
+remain subsequent distinct acts.
+
+This reconciliation changes no Task, original Verify definition, Evidence, dependency
+or accepted policy. It installs no runtime/backend and claims no test execution.

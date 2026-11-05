@@ -124,6 +124,7 @@ func cmdReply(args []string) (err error) {
 	workpad := fs.Bool("workpad", false, "upsert ONE workpad comment per PR instead of always posting a new reply — find the newest unresolved workpad comment authored by the worker identity and edit it in place, or create the first one")
 	dryRun := fs.Bool("dry-run", false, "report what would happen without posting or editing anything: with --workpad, WORKPAD: would edit #<id> / WORKPAD: would create; on the plain reply path, run every check (including the forge reads a real reply performs) and stop before the post")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
+	kindFlag := fs.String("kind", "", "force the object kind for <pr>: mr (pr is accepted as an alias of mr) — matters when GitLab's separate issue/MR sequences both have a match at this number; default resolves automatically. issue is refused: deskreply only replies on your own PR")
 	if perr := fs.Parse(args[2:]); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp. A help
 		// screen is not a refusal and writes no audit row — the finalizer skips it
@@ -142,6 +143,10 @@ func cmdReply(args []string) (err error) {
 	}
 	if verr := applyOverride(); verr != nil {
 		return verr
+	}
+	kind, kerr := replyKind(*kindFlag)
+	if kerr != nil {
+		return kerr
 	}
 	// --dry-run used to refuse outright without --workpad, so the plain reply path had no
 	// rehearsal at all. It is now widened: on the plain path it runs every check a real
@@ -235,13 +240,14 @@ func cmdReply(args []string) (err error) {
 	// read and the write below. It is resolved AFTER the mint (the resolver is handed the
 	// token this tool already holds) and BEFORE the first forge call, so no read and no
 	// write can happen on an ambient credential.
-	fg, fr, ferr := forgeFor(repo)
+	fg, fr, ferr := forgeForFn(repo)
 	if ferr != nil {
 		return ferr
 	}
 
 	// Public-repo gate: refuse an outward write unless the repo is authorized
-	// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
+	// (private, or a listed allowed-repos entry tagged :public or :internal to match the
+	// live visibility — see deskkit.PublicRepoGate).
 	// The gate's visibility read goes through the SAME forge backend already resolved
 	// above (fg) — never a second, hardcoded GitHub-only client (assay#1054): a
 	// GitLab-resolved repo must have its visibility answered by GitLab's own API, not
@@ -278,7 +284,7 @@ func cmdReply(args []string) (err error) {
 	// decision (workpad.go): it has its own write-budget check and its own post/edit call,
 	// and it never falls through to the plain-reply idempotency/post logic.
 	if *workpad {
-		return cmdWorkpadUpsert(ac, fg, fr, dir, repo, pr, body, *dryRun)
+		return cmdWorkpadUpsert(ac, fg, fr, dir, repo, pr, kind, body, *dryRun)
 	}
 
 	// idempotency, key (repo, pr, headSHA, bodyDigest): this exact reply body already
@@ -333,7 +339,7 @@ func cmdReply(args []string) (err error) {
 	// tool never calls, and there is no generic request method on the seam to reach them
 	// through. The body travels as a value, not as a file path in an argv, so there is no
 	// longer a temp file to stage or a flag position for anything to be injected into.
-	ref, cErr := fg.PostComment(fr, pr, string(postBody))
+	ref, cErr := postReply(fg, fr, pr, kind, string(postBody))
 	if cErr != nil {
 		return deskkit.Unverifiable("posting the reply comment failed", cErr)
 	}
