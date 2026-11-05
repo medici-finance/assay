@@ -1,0 +1,2 @@
+### Fixed
+- `deskevidence` outcome records no longer refuse three Context `files:` shapes that lint accepts at authoring: a `../<sibling>/` path in a single-repository run (recorded as `declared:<path>` = `unbound`, which always reads could-not-check), a trailing `<dir>/**` glob (every file below the directory, at any depth), and one plain closing sentence after the list (ignored as an annotation). Malformed entries inside the list, a second prose line, and an unbound sibling in a cross-repository run still refuse.

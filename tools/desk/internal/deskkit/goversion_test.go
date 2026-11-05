@@ -19,7 +19,7 @@ import (
 // fleetUploadArtifact. A bump changes these constants and every site in the
 // same change, so a site left behind goes red here rather than drifting.
 const (
-	fleetGoToolchain    = "1.27.2"
+	fleetGoToolchain    = "1.27.3"
 	fleetGoDirective    = "1.27.0"
 	fleetUploadArtifact = "cf430e030ddbb5b0abf93d22962f4752f3646cd9" // v7.0.2
 )

@@ -71,7 +71,12 @@ offline (chiefly a bare #N reference, which needs a number from the forge to com
 against) is reported as NOT CHECKED, by name, rather than passing silently — update's
 --check cannot check the trailer (it lives on the EXISTING PR's forge-held body) and
 edit's cannot check trailer-immutability or the self-containment scan's bare-#N hint (both
-need the existing PR's body/number); each names what it skipped.
+need the existing PR's body/number); each names what it skipped. create --check also
+reports the public-repo authorization gate as not checked (it needs the live visibility
+read) and names create --check-remote as the read-only preflight that runs it — the way
+to see, before a live create, that an allowed-repos entry no longer matches the forge
+(for example a GitLab internal project still listed :public, which refuses until the
+operator changes the entry to :internal; no verb rewrites the allowed-repos set).
 
 A live create confirms the destination branch through its credentialed push endpoint,
 checks only commits beyond its confirmed tip, and pins that tip during the plain push.
@@ -123,7 +128,18 @@ PR does to its work item:
                                    <stream>:<NN>, <repo>:<stream>:<NN>, <cell>:<repo>:<stream>:<NN>.
   Authors: <stream>/<NN>[, ...]    the PR only AUTHORS (writes the files of) the listed briefs
                                    and delivers none of them — a briefs-authoring PR (#1339).
-  Issue: #<N>                      issue-only work with no brief.
+  Issue: #<N>                      issue-only work with no brief; the issue stays OPEN when
+                                   the PR merges (related, do not close).
+  Fixes: #<N>                      the RESOLVING form of Issue: — the same edge to every reader,
+                                   but the line is also a GitHub closing keyword, so merging the
+                                   PR into the default branch closes the issue. Closes: and
+                                   Resolves: are accepted and mean the same; owner/repo#<N> names
+                                   an issue in another repository. The # is required.
+PR TITLE (create). A Brief: trailer prefixes the title as "<stream>/<NN>: <title>", and a
+Cross-repo-brief: trailer prefixes its full value ("<alias>:<stream>/<NN>: <title>"), unless the
+title already names that id as a whole token (so x/4 never matches inside x/46). Authors:,
+Issue: and Fixes: PRs keep their title. --check prints the title it would use. edit --title
+sets its title verbatim, with no prefix added.
 Every brief named by Brief: or Authors: must resolve to docs/streams/<stream>/brief-<NN>-*.md
 under --root. Brief: is read as DELIVERY by the dispatcher's phantom check, the planner and
 the derived board, so an authoring PR must not carry it: create REFUSES a Brief: line when
@@ -137,10 +153,11 @@ forge-served diff at flip time: an Authors: PR whose complete diff is not author
 every listed id needs a security review before it can flip.
 
 deskpr edit cannot change the body's link trailer. "Brief: <stream>/<NN>" /
-"Authors: <stream>/<NN>[, ...]" / "Issue: #<N>" is the derived board's edge from the PR
+"Authors: <stream>/<NN>[, ...]" / "Issue: #<N>" / "Fixes: #<N>" is the derived board's edge from the PR
 to its work item: the replacement body must carry exactly one, and when the PR's current body already has one, the replacement's must match
 it. A PR whose current body has NO trailer may gain one — that is the pre-trailer
-migration deskpr update tells you to perform. Because a body edit moves no head SHA,
+migration deskpr update tells you to perform. Issue: -> Fixes: (or back) is a link change
+and is refused; Fixes: -> Closes: on the same issue is not. Because a body edit moves no head SHA,
 edit also posts one short comment naming what changed, so a head-keyed review monitor
 has an event to see.
 

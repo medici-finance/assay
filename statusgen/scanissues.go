@@ -114,9 +114,9 @@ type scanRepoSkip struct {
 // failure is returned as an error so planScan can degrade it to a per-repo NOTICE
 // ("gh failure on one repo → skip that repo … don't abort").
 func ghIssueLister(repo string) ([]ghIssue, error) {
-	out, err := exec.Command("gh", "issue", "list",
+	out, err := ghGuard(exec.Command("gh", "issue", "list",
 		"--repo", repo, "--state", "open", "--limit", "1000",
-		"--json", "number,title,author,labels,url").Output()
+		"--json", "number,title,author,labels,url")).Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -433,6 +433,13 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 		return isHeld
 	}
 	existing := existingPlaceholderIssues(streams)
+	rootPlaceholders := map[string][]Placeholder{}
+	for _, s := range streams {
+		for _, ph := range s.Placeholders {
+			key := ph.Repo + "#" + strconv.Itoa(ph.Issue)
+			rootPlaceholders[key] = append(rootPlaceholders[key], ph)
+		}
+	}
 	// (D3): archived placeholders (already moved into
 	// `<stream>/done/`) count as EXISTING — a reopened issue reactivates its
 	// archived placeholder (below), it must never get a second one created at the
@@ -487,7 +494,20 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 			if !issueflow.Select(issueflow.Scanner, candidate, "") {
 				continue
 			}
-			if existing[repo+"#"+strconv.Itoa(iss.Number)] {
+			key := repo + "#" + strconv.Itoa(iss.Number)
+			if existing[key] {
+				if derivePlaceholderGate(labels, iss.Title) == "human" {
+					for _, ph := range rootPlaceholders[key] {
+						if ph.Status == "done" || ph.Gate != "model" {
+							continue
+						}
+						rel, err := filepath.Rel(root, ph.Path)
+						if err != nil {
+							rel = ph.Path
+						}
+						notices = append(notices, fmt.Sprintf("scan-issues: %s#%d derives gate: human but placeholder %s reads gate: model — the scan does not change it; set gate: human in the file by hand", repo, iss.Number, filepath.ToSlash(rel)))
+					}
+				}
 				continue
 			}
 			// Trust gate (trustgate.go):
@@ -1161,8 +1181,8 @@ type commentLister func(repo string, issue int) ([]issueComment, error)
 // existing line-per-object parse loop is unchanged.
 func issueCommentLister(repo string, issue int) ([]issueComment, error) {
 	endpoint := fmt.Sprintf("repos/%s/issues/%d/comments?per_page=100", repo, issue)
-	out, err := exec.Command("gh", "api", "--paginate", endpoint,
-		"--jq", ".[] | {user: {login: .user.login, id: .user.id, type: .user.type}, created_at: .created_at, body: .body}").Output()
+	out, err := ghGuard(exec.Command("gh", "api", "--paginate", endpoint,
+		"--jq", ".[] | {user: {login: .user.login, id: .user.id, type: .user.type}, created_at: .created_at, body: .body}")).Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {

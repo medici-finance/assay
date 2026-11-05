@@ -10,8 +10,8 @@
     {
       "name": "the --root join becomes a no-op (a repo-relative --evidence-file is read from the process cwd, not the --root checkout — #1709 defeated)",
       "file": "cmd/deskevidence/deskevidence.go",
-      "old": "\t\t\tlocalReadPath = filepath.Join(evidenceRoot, evidenceRepoPath)",
-      "new": "\t\tlocalReadPath = evidenceRepoPath"
+      "old": "capstree.ReadRecord(evidenceRoot, evidenceRepoPath,",
+      "new": "capstree.ReadRecord(\"\", evidenceRepoPath,"
     },
     {
       "name": "drop the absolute-path-with---root refusal (an absolute --evidence-file silently ignores --root instead of being refused)",

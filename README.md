@@ -29,6 +29,7 @@ The board is derived from agent-authored artifacts, checked by the linter and re
 
 | Path | What it is |
 |------|-----------|
+| [What Assay is and is not](docs/what-assay-is-and-is-not.md) | The auditor handover page: evidence, limitations and adopter responsibilities. |
 | [docs/vision/](docs/vision/) | The public strategic vision, GitHub-rendered diagrams and matching PDF. |
 | [docs/](docs/) | The methodology: the [adoption runbook](docs/adopting-assay.md), the brief schema ([rules](docs/brief-rules.md), [template](docs/brief-template.md)), the [lifecycle](docs/lifecycle.md), the [registers](docs/registers.md), the [evidence bundle](docs/evidence-bundle.md), and the [telemetry posture](docs/telemetry.md) (opt-in, off by default). |
 | [statusgen/](statusgen/) | The generator and linter. Run `cd statusgen && go run . --root ../examples/adopter-scaffold --lint`. |

@@ -27,6 +27,12 @@ fetched from the release home for the tag — unless a hand-authored composition
 (`releases/<umbrella>.yaml`) is present, which wins. "Latest stable" means the highest
 **umbrella** release — never the highest per-artifact tag.
 
+Every umbrella release also carries `sbom.spdx.json`, an SPDX 2.3 JSON software bill of materials.
+It lists every Go module and the Go toolchain linked into each statusgen and qualgen binary and
+each desk-tools tarball, with each asset's sha256 and a `pkg:golang` purl per module. It is listed in
+`checksums.txt` and attested like the binaries. To list what an asset links:
+`jq -r '.packages[].externalRefs[]?.referenceLocator' sbom.spdx.json | sort -u`.
+
 Per-artifact tags (`statusgen/v0.8.2`, `desk-tools/v0.2.6`) are how the source repo cuts individual
 tools; they are **not** upgrade targets. An adopter moves the whole umbrella, never a single
 artifact.

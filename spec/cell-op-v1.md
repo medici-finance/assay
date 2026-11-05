@@ -48,7 +48,7 @@ A result is one JSON object. Every member is always present; a value that was no
 
 **Read verbs** (`status`, `logs`) report per-field `null`s inside an `ok` result. They exit 6 only when the cell itself cannot be loaded.
 
-**Reasons:** `not-interactive`, `desk-session`, `plan-not-found`, `plan-invalid`, `wrong-verb`, `foreign-cell`, `plan-expired`, `already-consumed`, `confirm-mismatch`, `plan-stale`, `unmeasured`, `action-failed`. A consumer that meets a reason it does not know MUST treat the result as not `ok`.
+**Reasons:** `not-interactive`, `desk-session`, `plan-not-found`, `plan-invalid`, `wrong-verb`, `foreign-cell`, `plan-expired`, `already-consumed`, `confirm-mismatch`, `plan-stale`, `unmeasured`, `action-failed`, and the per-role stop's work-safety refusals `role-busy`, `surface-identity-mismatch`, `surface-stale` and `per-role-close-unsupported`. A consumer that meets a reason it does not know MUST treat the result as not `ok`.
 
 A successful apply:
 

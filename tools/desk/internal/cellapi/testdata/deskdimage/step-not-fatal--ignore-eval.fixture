@@ -1,0 +1,5 @@
+# .IGNORE set through $(eval) is a bare .IGNORE the checker cannot read as a rule.
+want: step-not-fatal
+file: Makefile
+replace: "\n## deskd-image: LOCAL image build"
+with: "\n$(eval .IGNORE:)\n\n## deskd-image: LOCAL image build"

@@ -29,13 +29,13 @@ id: 722f8aa0-51fa-4201-9fb7-e4501c03a913
 
 ## Context
 files:
-- `tools/desk/cmd/deskapps/avatar.go` (new), `page/` (Screen 1 preview, Screen 2 Avatar cell).
-- `docs/desk-tools/deskapps.md` (planned) § Avatar.
+- `tools/desk/cmd/deskapps/avatar.go` (new), `tools/desk/cmd/deskapps/page/` (Screen 1 preview, Screen 2 Avatar cell).
+- `docs/desk-tools/deskapps.md` (planned) — § Avatar.
 
 facts:
 - Settings page URL for an App: org-owned `https://github.com/organizations/<org>/settings/apps/<slug>`;
   personal `https://github.com/settings/apps/<slug>`.
-- Files: `~/.config/assay/avatars/<app>.png` + `.svg`, generated at `init` (Screen 1 preview) via
+- Avatar files: `~/.config/assay/avatars/<app>.png` + `.svg`, generated at `init` (Screen 1 preview) via
   `internal/avatar.Generate`; `deskapps avatar --regen` regenerates and resets every row's
   `avatar_confirmed` to false.
 - The Avatar cell opens the settings page and shows the PNG with the instruction *"Drag this file

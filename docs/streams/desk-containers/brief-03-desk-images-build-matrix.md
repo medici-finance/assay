@@ -39,15 +39,9 @@ release job and `tools/release/images.py`. The Verify table below follows that
 entry point; earlier Evidence retains the workflow paths used by those runs.
 
 files:
-- `containers/intake-desk/Dockerfile`, `containers/worker-desk/Dockerfile`,
-  `containers/pr-review-desk/Dockerfile`, `containers/verify-desk/Dockerfile`,
-  `containers/the-desk/Dockerfile` (all new) — thin layers over the base.
-- `containers/entrypoint.sh` (new) — shared interactive boot: verifies the brief-02
-  credential mounts/env are present (fail-closed with a precise message), prints the
-  desk's identity + skill pointer, and lands in the interactive session.
-- `.github/workflows/release.yml` — the approved publisher builds/checks/pushes
-  the base and five desks through `tools/release/images.py`, then publishes
-  the umbrella tag and release assets.
+- `containers/intake-desk/Dockerfile`, `containers/worker-desk/Dockerfile`, `containers/pr-review-desk/Dockerfile`, `containers/verify-desk/Dockerfile`, `containers/the-desk/Dockerfile` (all new) — thin layers over the base.
+- `containers/entrypoint.sh` (new) — shared interactive boot: verifies the brief-02 credential mounts/env are present (fail-closed with a precise message), prints the desk's identity + skill pointer, and lands in the interactive session.
+- `.github/workflows/release.yml` — the approved publisher builds/checks/pushes the base and five desks through `tools/release/images.py`, then publishes the umbrella tag and release assets.
 - `docs/docker.md` — document the five image names + tags.
 
 facts:

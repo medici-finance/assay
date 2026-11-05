@@ -274,7 +274,12 @@ brief holds the write for the whole board, by design: a scheduled writer then
 writes nothing rather than a partial board. A passing witness with no merged PR on
 record is `unknown` too — the fold cannot settle that contradiction; under
 `--backfill` a branch/body-matched merged PR is that merge, and the cell is
-re-derived over it by the same overlay a trailer merge gets. The demotions
+re-derived over it by the same overlay a trailer merge gets. A branch/body match
+whose own link trailer points elsewhere (it names a different brief, is
+`Authors:` only, or is `Issue:` with no `Brief:`) is a mention, not this brief's
+delivery: the backfill walk passes it, under the same predicate the trailer fold
+uses, and takes the next older candidate. A trailerless match is never passed,
+and a candidate whose file list cannot be read ends the walk `unknown`. The demotions
 (a reverted merge, a red witness, a dismissed approval, a stale-version witness)
 fall back to the highest state still witnessed. `--root` may point anywhere inside
 the repo — reconcile walks up to the board root (the nearest `docs/streams`).
@@ -893,3 +898,21 @@ pull request, and on push to `main` regenerates and commits `STATUS.md`
 self-triggering loop). Adopters wiring this into their own repo should copy
 the workflow and adjust the `docs/streams/**` path filters if their stream
 docs live elsewhere.
+
+### CI rate-limit recovery
+
+In GitHub Actions (`GITHUB_ACTIONS=true`), statusgen's read-only REST client
+and the four PR corroboration CLI reads retry a rate-limited read once with the
+same credential. REST waits require `Retry-After` or an exhausted
+`X-RateLimit-Remaining` with a valid reset. CLI reads preserve the provider's
+error and, only for a rate-limit error, consult `/rate_limit` for the relevant
+REST or GraphQL reset. Ordinary permission/authentication errors never retry.
+
+HTTP and CLI reads share a 65-minute wait budget for the whole process: one
+hourly quota window plus a small reset margin. A repeated denial, missing or
+unusable reset, cancellation or exhausted wait budget still fails closed.
+Outside GitHub Actions these reads keep their immediate failure behavior. No
+stored-login fallback, additional token, permission, stale response cache or
+clean result is introduced. CLI diagnostics redact explicit credential values.
+This recovery does not reduce the request count of full-history reconciliation;
+its cadence and query cost remain separate operational concerns.

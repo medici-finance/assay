@@ -1,0 +1,5 @@
+# The final stage runs as root.
+want: final-user-root
+file: Dockerfile
+replace: "USER 65532:65532"
+with: "USER root"

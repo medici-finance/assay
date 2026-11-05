@@ -2,7 +2,7 @@
 brief: assay:assay:forge-neutral:41
 title: "Write-through forge receipts and read-after-write projection"
 why: "Waiting for a webhook after our own forge write makes follow-on reads stale; retrying after a lost reply can duplicate issues or comments. Projecting confirmed write receipts into the same mirror gives immediate visibility while preserving unknown outcomes for reconciliation."
-wave: 8
+wave: 10
 depends: ["forge-neutral/37", "forge-neutral/40", "graph-execution/04", "graph-execution/19"]
 unblocks: ["forge-neutral/45"]
 effort: L
@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 4
+version: 5
 id: 1fc36b0b-e3d0-4497-8863-0a039180a0f3
 authored: 2026-10-14 by forge-service authoring
 sources:
@@ -49,8 +49,19 @@ consumers:
 
 ## Context
 
-files: `workflow/store/forgeeffects.go` (planned), `workflow/store/forgeeffects_test.go` (planned), `workflow/store/forgemirror.go` (planned), `workflow/store/forgemirror_test.go` (planned), `tools/desk/internal/forgeservice/write/` (planned), `tools/desk/internal/forgeexecutor/` (planned), `tools/desk/cmd/deskfile/`, `tools/desk/cmd/deskreply/`, `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `changelog/forge-write-through.md` (planned), `tools/desk/internal/forgeservice/write/contextreceipt_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
-files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
+files:
+- `workflow/store/forgeeffects.go` (planned)
+- `workflow/store/forgeeffects_test.go` (planned)
+- `workflow/store/forgemirror.go` (planned)
+- `workflow/store/forgemirror_test.go` (planned)
+- `tools/desk/internal/forgeservice/write/` (planned)
+- `tools/desk/internal/forgeexecutor/` (planned)
+- `tools/desk/cmd/deskfile/`
+- `tools/desk/cmd/deskreply/`
+- `docs/forge-service.md` (planned)
+- `docs/enforcement-model.md`
+- `changelog/forge-write-through.md` (planned)
+- `tools/desk/internal/forgeservice/write/contextreceipt_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
 - 37 owns the admission-bound mirror; 19 owns PostgreSQL and 04 owns intent/receipt/reconciliation. Their qualified implementations are prerequisites, not features this brief reimplements.

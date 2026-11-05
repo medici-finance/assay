@@ -35,7 +35,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -188,6 +190,9 @@ func loadHistoryUncached(path string) ([]HistoryEntry, error) {
 		if line == "" {
 			continue
 		}
+		if err := refuseHumanActLine([]byte(line)); err != nil { // historian-sink-read
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
 		var e HistoryEntry
 		if err := json.Unmarshal([]byte(line), &e); err != nil {
 			return nil, fmt.Errorf("%s: malformed history line: %w", path, err)
@@ -271,6 +276,17 @@ func appendHistory(path string, entries []HistoryEntry) error {
 	if len(entries) == 0 {
 		return nil
 	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	for _, e := range entries {
+		if err := enc.Encode(e); err != nil {
+			return err
+		}
+	}
+	if err := refuseHumanActBytes(buf.Bytes()); err != nil { // historian-sink-write
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -279,10 +295,45 @@ func appendHistory(path string, entries []HistoryEntry) error {
 		return err
 	}
 	defer f.Close()
-	enc := json.NewEncoder(f)
-	enc.SetEscapeHTML(false)
-	for _, e := range entries {
-		if err := enc.Encode(e); err != nil {
+	_, err = f.Write(buf.Bytes())
+	return err
+}
+
+// historianActMembers are the brief-flow members that mark a human-act record
+// or carry actor classification (spec brief-flow-event-v1 §17). The board
+// historian is a git-tracked, committed log: it records board status
+// transitions only, and a line carrying any of these members is refused on
+// read and on write, so a human-act record can never enter it or be replayed
+// out of it. The check is on member NAMES; the refusal never quotes a value.
+var historianActMembers = []string{
+	"record", "act_id", "category", "taxonomy", "brief_uuids", "attribution",
+	"effects", "submission", "initiator_role", "executor_role",
+}
+
+// refuseHumanActLine refuses one historian line that carries a human-act or
+// actor member at its top level.
+func refuseHumanActLine(line []byte) error {
+	line = bytes.TrimSpace(line)
+	if len(line) == 0 {
+		return nil
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(line, &m); err != nil {
+		return nil // not an object: the ordinary decode reports it as malformed
+	}
+	for _, k := range historianActMembers {
+		if _, ok := m[k]; ok {
+			return errors.New("history line carries a human-act or actor member; the board historian records status transitions only and refuses it (member value not shown)")
+		}
+	}
+	return nil
+}
+
+// refuseHumanActBytes applies refuseHumanActLine to every line of a JSONL
+// buffer about to be written to the historian.
+func refuseHumanActBytes(b []byte) error {
+	for _, line := range bytes.Split(b, []byte("\n")) {
+		if err := refuseHumanActLine(line); err != nil {
 			return err
 		}
 	}

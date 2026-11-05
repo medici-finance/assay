@@ -1,0 +1,6 @@
+# set +o errexit before the build turns errexit back off for the rest of the
+# line, so the commands after a failed build still run and decide the status.
+want: step-not-fatal
+file: Makefile
+replace: "\tdocker build -f images/deskd/Dockerfile --build-arg"
+with: "\tset +o errexit; \\\n\tdocker build -f images/deskd/Dockerfile --build-arg"

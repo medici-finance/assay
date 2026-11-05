@@ -232,7 +232,7 @@ func TestBoardHonestyNotices(t *testing.T) {
 			"08", "Any statusgen SOURCE change must be made in medici-finance/assay, not here.\n")
 		s.Briefs = []Brief{{Num: "08", Status: "todo"}}
 
-		got := boardHonestyNotices([]*Stream{s}, nil, nil)
+		got := boardHonestyNotices(root, []*Stream{s}, nil, nil)
 		if len(got) != 1 {
 			t.Fatalf("want exactly 1 NOTICE, got %d: %v", len(got), got)
 		}
@@ -249,7 +249,7 @@ func TestBoardHonestyNotices(t *testing.T) {
 			"08", "The deliverable lands in another repo.\n")
 		// Same phantom text, but the row is implemented — past the line this draws.
 		s.Briefs = []Brief{{Num: "08", Status: "implemented"}}
-		if got := boardHonestyNotices([]*Stream{s}, nil, nil); len(got) != 0 {
+		if got := boardHonestyNotices(root, []*Stream{s}, nil, nil); len(got) != 0 {
 			t.Fatalf("a non-todo row must never surface; got %v", got)
 		}
 	})
@@ -259,7 +259,7 @@ func TestBoardHonestyNotices(t *testing.T) {
 		s := writeStream(t, root, "gtm", "Active stream.\n",
 			"08", "## Context\nAn ordinary dispatchable brief in this repo.\n")
 		s.Briefs = []Brief{{Num: "08", Status: "todo"}}
-		if got := boardHonestyNotices([]*Stream{s}, nil, nil); len(got) != 0 {
+		if got := boardHonestyNotices(root, []*Stream{s}, nil, nil); len(got) != 0 {
 			t.Fatalf("a clean todo row must be silent; got %v", got)
 		}
 	})
@@ -271,7 +271,7 @@ func TestBoardHonestyNotices(t *testing.T) {
 		// (#709), not just the stream README.
 		s := writeStream(t, root, "distribution", "Active stream.\n", "", "")
 		s.Briefs = []Brief{{Num: "07", Status: "todo", RawCell: "Old distribution row [homed→acme/widgets]"}}
-		got := boardHonestyNotices([]*Stream{s}, nil, nil)
+		got := boardHonestyNotices(root, []*Stream{s}, nil, nil)
 		if len(got) != 1 || !strings.Contains(got[0], phantomReHomed) {
 			t.Fatalf("a re-homed pointer row with no brief file must surface; got %v", got)
 		}
@@ -286,7 +286,7 @@ func TestBoardHonestyNotices(t *testing.T) {
 			"This stream was re-homed here from the platform repo; do not re-implement the OLD rows.\n",
 			"13", "## Context\nA live, dispatchable brief in this re-homed-in stream.\n")
 		s.Briefs = []Brief{{Num: "13", Status: "todo"}}
-		if got := boardHonestyNotices([]*Stream{s}, nil, nil); len(got) != 0 {
+		if got := boardHonestyNotices(root, []*Stream{s}, nil, nil); len(got) != 0 {
 			t.Fatalf("a live re-homed-in row (brief file present) must be silent; got %v", got)
 		}
 	})
@@ -305,7 +305,7 @@ func TestBoardHonestyNotices(t *testing.T) {
 		// An ordinary in-repo todo row: no brief file, a plain cell with no
 		// re-home marker of its own.
 		s.Briefs = []Brief{{Num: "05", Status: "todo", Title: "Add the vault balance check", RawCell: "Add the vault balance check"}}
-		if got := boardHonestyNotices([]*Stream{s}, nil, nil); len(got) != 0 {
+		if got := boardHonestyNotices(root, []*Stream{s}, nil, nil); len(got) != 0 {
 			t.Fatalf("a plain todo row must not be flagged re-homed on stream-level README text; got %v", got)
 		}
 	})
@@ -318,7 +318,7 @@ func TestBoardHonestyNotices(t *testing.T) {
 		s := writeStream(t, root, "distribution",
 			"Active stream. Wave 1 briefs are ready.\n", "", "")
 		s.Briefs = []Brief{{Num: "07", Status: "todo", Title: "Old thing", RawCell: "Old thing [homed→acme/widgets]"}}
-		got := boardHonestyNotices([]*Stream{s}, nil, nil)
+		got := boardHonestyNotices(root, []*Stream{s}, nil, nil)
 		if len(got) != 1 || !strings.Contains(got[0], phantomReHomed) {
 			t.Fatalf("a pointer row with [homed→…] in its own cell must surface re-homed; got %v", got)
 		}
@@ -334,7 +334,7 @@ func TestBoardHonestyNotices(t *testing.T) {
 			Subject: "Merge pull request #1086 from x/brief/oss-replacement-08-thing",
 			Briefs:  []string{"oss-replacement/08"},
 		}}
-		got := boardHonestyNotices([]*Stream{s}, merged, nil)
+		got := boardHonestyNotices(root, []*Stream{s}, merged, nil)
 		if len(got) != 1 || !strings.Contains(got[0], phantomMergedUnflipped) {
 			t.Fatalf("a locally-merged brief must surface as merged-unflipped (wins over out-of-repo); got %v", got)
 		}
@@ -346,7 +346,7 @@ func TestBoardHonestyNotices(t *testing.T) {
 			"08", "STATUS: DEFERRED. Do not dispatch ahead of the gate.\n")
 		s.Briefs = []Brief{{Num: "08", Status: "todo"}}
 
-		got := boardHonestyNotices([]*Stream{s}, nil, errNoGitForMerge)
+		got := boardHonestyNotices(root, []*Stream{s}, nil, errNoGitForMerge)
 		var cnc, phantom bool
 		for _, n := range got {
 			if strings.Contains(n, "could-not-check") && strings.Contains(n, phantomMergedUnflipped) {
@@ -374,7 +374,7 @@ func TestBoardHonestyNotices(t *testing.T) {
 			t.Fatal(err)
 		}
 		s := &Stream{Name: "gtm", Dir: dir, Briefs: []Brief{{Num: "08", Status: "todo", RawCell: "Ordinary row"}}}
-		got := boardHonestyNotices([]*Stream{s}, nil, nil)
+		got := boardHonestyNotices(root, []*Stream{s}, nil, nil)
 		for _, n := range got {
 			if strings.Contains(n, "could-not-check") && strings.Contains(n, "README") {
 				t.Fatalf("a missing README must NOT be a could-not-check any more (#1516); got %v", got)
@@ -389,7 +389,7 @@ func TestBoardHonestyNotices(t *testing.T) {
 		root := t.TempDir()
 		s := writeStream(t, root, "gtm", "Active stream.\n", "08", "anything")
 		s.Briefs = []Brief{{Num: "08", Status: "done"}}
-		if got := boardHonestyNotices([]*Stream{s}, nil, nil); len(got) != 0 {
+		if got := boardHonestyNotices(root, []*Stream{s}, nil, nil); len(got) != 0 {
 			t.Fatalf("a stream with no todo rows must produce nothing (not even a README read); got %v", got)
 		}
 	})
@@ -418,7 +418,7 @@ func TestBoardHonestyDehousedRowScoped(t *testing.T) {
 			"Brief 15 here is de-housed-code tooling; the other rows are ordinary work.\n",
 			"16", "## Context\nAn ordinary dispatchable brief in this repo.\n")
 		s.Briefs = []Brief{{Num: "16", Status: "todo", Title: "Add the cap", RawCell: "Add the cap"}}
-		if got := boardHonestyNotices([]*Stream{s}, nil, nil); len(got) != 0 {
+		if got := boardHonestyNotices(root, []*Stream{s}, nil, nil); len(got) != 0 {
 			t.Fatalf("a plain todo row must not be flagged dehoused on stream-level README text; got %v", got)
 		}
 	})
@@ -428,7 +428,7 @@ func TestBoardHonestyDehousedRowScoped(t *testing.T) {
 		s := writeStream(t, root, "gtm", "Active stream.\n",
 			"08", "## Context\nThis brief was de-housed to the public repo by ruling.\n")
 		s.Briefs = []Brief{{Num: "08", Status: "todo", RawCell: "Old thing"}}
-		got := boardHonestyNotices([]*Stream{s}, nil, nil)
+		got := boardHonestyNotices(root, []*Stream{s}, nil, nil)
 		if len(got) != 1 || !strings.Contains(got[0], phantomDehoused) {
 			t.Fatalf("a body-de-housed row must still surface dehoused; got %v", got)
 		}
@@ -439,7 +439,7 @@ func TestBoardHonestyDehousedRowScoped(t *testing.T) {
 		// README ordinary; the de-house marker lives in the row's OWN cell.
 		s := writeStream(t, root, "distribution", "Active stream.\n", "", "")
 		s.Briefs = []Brief{{Num: "07", Status: "todo", Title: "Old thing", RawCell: "Old thing — de-housed to acme/widgets by ruling"}}
-		got := boardHonestyNotices([]*Stream{s}, nil, nil)
+		got := boardHonestyNotices(root, []*Stream{s}, nil, nil)
 		if len(got) != 1 || !strings.Contains(got[0], phantomDehoused) {
 			t.Fatalf("a row-cell-de-housed row must surface dehoused; got %v", got)
 		}

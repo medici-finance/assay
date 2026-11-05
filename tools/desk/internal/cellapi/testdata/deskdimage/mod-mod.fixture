@@ -1,0 +1,5 @@
+# -mod=mod lets the build add or change requirements.
+want: mod-mod
+file: Dockerfile
+replace: "go build -trimpath"
+with: "go build -mod=mod -trimpath"

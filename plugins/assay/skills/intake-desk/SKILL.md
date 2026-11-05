@@ -24,6 +24,8 @@ description: >-
 
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
+> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, and how it is reconciled and marked read are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
+
 > Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
 The **intake-desk** is the generic front door of the process-desk pipeline — the first of the four
@@ -204,6 +206,11 @@ surfaces order *worth the attention* ahead of *cheap to do*, not by urgency-then
   set after the placeholder exists does not change its gate. When you score an item `risk:high` and
   its placeholder already reads `gate: model`, label the issue `help wanted` and comment, naming the
   placeholder file, that human:<name> must set `gate: human` in it by hand.
+  `statusgen --scan-issues` prints one `NOTICE` for each such item on every pass, with or
+  without `--dry-run`, naming the issue and the placeholder file, until the file reads
+  `gate: human`: that line is the mechanical signal that this edit is still owed. The desk's
+  scan drain does not show it; read it by running `statusgen --root . --scan-issues --dry-run`,
+  which writes nothing.
 - **Every exit, forward-only.** All five tracked exits (and the intake lane's four) take a
   triple; scoring is forward-only — the corpus accretes from now, existing items are not
   back-labelled, so an unscored older item is expected, never a defect.

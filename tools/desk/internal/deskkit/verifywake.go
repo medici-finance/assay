@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -324,6 +325,7 @@ func (r WakeReceipt) EvaluateWake(reader WakeInputs, now time.Time) WakeDecision
 	switch r.WakePredicate {
 	case WakeRelevantInputChanged:
 		var changed, unreadable []string
+		var toolNow string
 		if scope, ok := reader.(receiptScopeReader); ok {
 			if err := scope.CheckReceiptScope(r); err != nil {
 				unreadable = append(unreadable, "declared scope: "+err.Error())
@@ -337,15 +339,22 @@ func (r WakeReceipt) EvaluateWake(reader WakeInputs, now time.Time) WakeDecision
 			}
 			if cur != r.Inputs[in] {
 				changed = append(changed, in)
+				if in == inputKeyTool {
+					toolNow = cur
+				}
 			}
 		}
-		if len(changed) > 0 {
+		toolOnly := toolOnlyChange(changed)
+		if len(changed) > 0 && !toolOnly {
 			return WakeDecision{State: WakeFire, Changed: changed,
 				Reason: base + " — woke: changed input(s): " + strings.Join(changed, ", ")}
 		}
 		if len(unreadable) > 0 {
 			return WakeDecision{State: WakeCouldNotCheck, Unreadable: unreadable,
 				Reason: base + " — could-not-check: unreadable declared input(s): " + strings.Join(unreadable, ", ")}
+		}
+		if toolOnly {
+			return WakeDecision{State: WakeHold, Reason: base + " — " + toolOnlyReason(r.Inputs[inputKeyTool], toolNow)}
 		}
 		return WakeDecision{State: WakeHold, Reason: base + " — all " + strconv.Itoa(len(r.Inputs)) + " declared input(s) unchanged"}
 
@@ -378,6 +387,21 @@ func (r WakeReceipt) EvaluateWake(reader WakeInputs, now time.Time) WakeDecision
 	}
 	// Unreachable: Complete() already rejected an unknown predicate.
 	return WakeDecision{State: WakeUnclassified, Reason: base + " — unknown predicate"}
+}
+
+// toolOnlyChange reports whether the ONLY declared input that changed is the tool version
+// (#2310). changed must hold raw input KEYS, never display labels: a file input whose path is
+// "tool" has the label "tool" and is not the tool input. Both comparators (EvaluateWake and
+// Unchanged) route through it, so a tool-only change holds on every path. A tool release by itself does not move a blocker: the receipt
+// still records the tool truthfully, and a tool change together with any other change still
+// wakes. A verifier who believes a release fixed the blocker uses an explicit recheck, or a
+// referenced-action blocker naming the fixing change.
+func toolOnlyChange(changed []string) bool {
+	return len(changed) == 1 && changed[0] == inputKeyTool
+}
+
+func toolOnlyReason(was, now string) string {
+	return "tool-only change (" + was + " -> " + now + "); blocker unmoved"
 }
 
 func refSuffix(ref string) string {
@@ -435,7 +459,7 @@ func (r WakeReceipt) MarshalLine() ([]byte, error) {
 
 // RootRevisionReader is the OFFLINE, probe-free reader used by the live plan. It answers a
 // revision query by content-hashing the named file under the repo root (a "file:<relpath>" key),
-// the applicable tool version (the "tool" key), or refuses (ok=false) for a key it does not know.
+// or the named directory's members (a "file:<dir>/" key), the applicable tool version (the "tool" key), or refuses (ok=false) for a key it does not know.
 // It NEVER observes an external action — ActionCompleted always returns ok=false, which is
 // exactly could-not-check, so an offline plan cannot fabricate an action-completed wake.
 type RootRevisionReader struct {
@@ -454,11 +478,19 @@ const (
 	InputKeyRepoSourcePrefix = "repo-source:"
 	inputKeyTool             = "tool"
 	inputKeyFilePrefix       = "file:"
+	// InputKeyDeclaredPrefix records a ../<sibling>/ declaration that a
+	// single-repository run holds no source commit for (#5097). Its only value
+	// is DeclaredUnbound. No reader resolves it, so a receipt carrying one is
+	// never read as unchanged.
+	InputKeyDeclaredPrefix = "declared:"
+	DeclaredUnbound        = "unbound"
 )
 
 // Revision content-hashes a declared input against the local tree. A "tool" key returns the
 // configured tool version; a "file:<relpath>" key returns the sha256 of that file's bytes (of a
-// symlink's target text, as git stores it); any unreadable file or unknown key is ok=false
+// symlink's target text, as git stores it); a "file:<dir>/" key (#4865) returns DirInputDigest
+// over the directory's current members, each hashed the same way, so an edit, add, remove or
+// rename of any member changes it; any unreadable file or unknown key is ok=false
 // (could-not-check).
 func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 	switch {
@@ -467,6 +499,10 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 			return "", false
 		}
 		return rr.ToolVersion, true
+	case strings.HasPrefix(input, InputKeyDeclaredPrefix):
+		// An unbound sibling declaration (#5097) has no tree this reader may
+		// read: always could-not-check, so it never establishes unchangedness.
+		return "", false
 	case strings.HasPrefix(input, InputKeyRepoSourcePrefix):
 		repo := strings.TrimPrefix(input, InputKeyRepoSourcePrefix)
 		root := RootForRepo(repo)
@@ -489,45 +525,90 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 			return "", false
 		}
 		return head, true
-	case strings.HasPrefix(input, inputKeyFilePrefix):
-		rel := strings.TrimPrefix(input, inputKeyFilePrefix)
-		if _, err := (rootScopeTree{root: rr.Root}).safePath(rel); err != nil {
+	case strings.HasPrefix(input, inputKeyFilePrefix) && strings.HasSuffix(input, "/"):
+		// A declared directory (#4865): one digest over every member's path and content,
+		// enumerated exactly as the scope: reader enumerates it. An older reader resolves
+		// this key as a file path, fails, and reports could-not-check.
+		dir, ok := ParseDirInputKey(input)
+		if !ok {
 			return "", false
 		}
-		// Contain the read within the root: a key that climbs out is could-not-check, never a
-		// read of an arbitrary path.
-		clean := filepath.Clean(rel)
-		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
+		tree := rootScopeTree{root: rr.Root}
+		if kind, err := tree.PathKind(dir); err != nil || kind != "tree" {
 			return "", false
 		}
-		// A symlink is hashed as its target text, never followed — exactly the blob git stores
-		// for it, which is what the receipt writer hashed at the record's sha. Following it would
-		// disagree with the writer on every symlinked input and could read outside the root.
-		full := filepath.Join(rr.Root, clean)
-		var b []byte
-		if fi, err := os.Lstat(full); err != nil {
-			return "", false
-		} else if fi.Mode()&os.ModeSymlink != 0 {
-			target, lerr := os.Readlink(full)
-			if lerr != nil {
-				return "", false
-			}
-			b = []byte(target)
-		} else if b, err = os.ReadFile(full); err != nil {
-			return "", false
-		}
-		sum := sha256.Sum256(b)
-		return hex.EncodeToString(sum[:]), true
-	case strings.HasPrefix(input, InputKeyScopePrefix):
-		decl := strings.TrimPrefix(input, InputKeyScopePrefix)
-		scope, err := ResolveDeclaredScope([]string{decl}, rootScopeTree{root: rr.Root})
+		members, err := tree.ListFiles(dir)
 		if err != nil {
 			return "", false
 		}
-		return scope.Shapes[input], true
+		digest, err := DirInputDigest(members, func(f string) (string, error) {
+			if !canonicalRepoPath(f) || !strings.HasPrefix(f, dir+"/") {
+				return "", errors.New("invalid directory member")
+			}
+			if h, ok := rr.fileRevision(f); ok {
+				return h, nil
+			}
+			return "", errors.New("unreadable directory member")
+		})
+		if err != nil {
+			return "", false
+		}
+		return digest, true
+	case strings.HasPrefix(input, inputKeyFilePrefix):
+		return rr.fileRevision(strings.TrimPrefix(input, inputKeyFilePrefix))
+	case strings.HasPrefix(input, InputKeyScopePrefix):
+		// Key on the declaration, not the key string: a legacy directory key and its
+		// slash form name the same declaration and read the same digest. A kind change
+		// changes the digest, so it wakes; it never reads as missing.
+		decl, _, ok := ParseScopeInputKey(input)
+		if !ok {
+			return "", false
+		}
+		scope, err := ResolveDeclaredScope([]string{decl}, rootScopeTree{root: rr.Root})
+		if err != nil || len(scope.Shapes) != 1 {
+			return "", false
+		}
+		for _, digest := range scope.Shapes {
+			if digest == "" {
+				return "", false
+			}
+			return digest, true
+		}
+		return "", false
 	default:
 		return "", false
 	}
+}
+
+// fileRevision is the sha256 of one repo-relative file under the root, or ok=false.
+func (rr *RootRevisionReader) fileRevision(rel string) (string, bool) {
+	if _, err := (rootScopeTree{root: rr.Root}).safePath(rel); err != nil {
+		return "", false
+	}
+	// Contain the read within the root: a key that climbs out is could-not-check, never a
+	// read of an arbitrary path.
+	clean := filepath.Clean(rel)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
+		return "", false
+	}
+	// A symlink is hashed as its target text, never followed — exactly the blob git stores
+	// for it, which is what the receipt writer hashed at the record's sha. Following it would
+	// disagree with the writer on every symlinked input and could read outside the root.
+	full := filepath.Join(rr.Root, clean)
+	var b []byte
+	if fi, err := os.Lstat(full); err != nil {
+		return "", false
+	} else if fi.Mode()&os.ModeSymlink != 0 {
+		target, lerr := os.Readlink(full)
+		if lerr != nil {
+			return "", false
+		}
+		b = []byte(target)
+	} else if b, err = os.ReadFile(full); err != nil {
+		return "", false
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), true
 }
 
 // ActionCompleted never observes an action offline — this is could-not-check by construction, so
@@ -549,14 +630,17 @@ var _ WakeInputs = (*RootRevisionReader)(nil)
 type InputsState int
 
 const (
-	InputsUnchanged     InputsState = iota // every declared input read, every revision equal
+	InputsUnchanged     InputsState = iota // every declared input read; all equal, or only the tool differs (#2310)
 	InputsChanged                          // at least one declared input read with a different revision
 	InputsCouldNotCheck                    // no change observed, but some input could not be read
 )
 
 // Unchanged hashes every declared input of r at the current tree and compares it with the
 // revision the receipt recorded. It returns the state and a reason: "unchanged",
-// "changed <path>[, <path>…]" or "could-not-check <why>". An observed change wins over an
+// "unchanged (tool-only change (<was> -> <now>); blocker unmoved)" when the tool version is the
+// only input that differs (#2310), "changed <path>[, <path>…]" or "could-not-check <why>". A
+// label two changed inputs share (a file named "tool" beside the tool input) is shown as its
+// key instead, so the reason never lists one name twice. An observed change wins over an
 // unreadable sibling (a change is enough to wake); otherwise one unreadable input makes the
 // whole read could-not-check, because unchangedness cannot be established on a partial scope.
 // An empty scope, or no tree reader, is could-not-check too.
@@ -567,7 +651,11 @@ func Unchanged(r WakeReceipt, tree WakeInputs) (InputsState, string) {
 	if len(r.Inputs) == 0 {
 		return InputsCouldNotCheck, "could-not-check the receipt declares no inputs"
 	}
-	var changed, unreadable []string
+	// changedKeys carries the raw input keys and decides tool-only; changed carries the
+	// display labels for the reason only. A file named "tool" has the label "tool" but is a
+	// file input, so the decision must never be taken on labels (#2310).
+	var changed, changedKeys, unreadable []string
+	var toolNow string
 	if scope, ok := tree.(receiptScopeReader); ok {
 		if err := scope.CheckReceiptScope(r); err != nil {
 			unreadable = append(unreadable, "declared scope: "+err.Error())
@@ -580,13 +668,22 @@ func Unchanged(r WakeReceipt, tree WakeInputs) (InputsState, string) {
 			unreadable = append(unreadable, inputLabel(in))
 		case !strings.EqualFold(strings.TrimSpace(cur), strings.TrimSpace(r.Inputs[in])):
 			changed = append(changed, inputLabel(in))
+			changedKeys = append(changedKeys, in)
+			if in == inputKeyTool {
+				toolNow = cur
+			}
 		}
 	}
-	if len(changed) > 0 {
-		return InputsChanged, "changed " + strings.Join(changed, ", ")
+	toolOnly := toolOnlyChange(changedKeys)
+	if len(changed) > 0 && !toolOnly {
+		return InputsChanged, "changed " + strings.Join(distinctLabels(changed, changedKeys), ", ")
 	}
 	if len(unreadable) > 0 {
 		return InputsCouldNotCheck, "could-not-check unreadable input(s): " + strings.Join(unreadable, ", ")
+	}
+	if toolOnly {
+		// #2310: a tool-only change is not a change to the blocker's inputs.
+		return InputsUnchanged, "unchanged (" + toolOnlyReason(r.Inputs[inputKeyTool], toolNow) + ")"
 	}
 	return InputsUnchanged, "unchanged"
 }
@@ -594,6 +691,24 @@ func Unchanged(r WakeReceipt, tree WakeInputs) (InputsState, string) {
 // inputLabel is the human-facing name of an input key: the path of a file: key, else the key.
 func inputLabel(in string) string {
 	return strings.TrimPrefix(in, inputKeyFilePrefix)
+}
+
+// distinctLabels returns labels with every label that occurs more than once replaced by its
+// key (labels[i] is the label of keys[i]): a file named "tool" and the tool input both changing
+// read "file:tool, tool", never "tool, tool". It changes the reason text only, never a decision.
+func distinctLabels(labels, keys []string) []string {
+	seen := make(map[string]int, len(labels))
+	for _, l := range labels {
+		seen[l]++
+	}
+	out := make([]string, len(labels))
+	for i, l := range labels {
+		out[i] = l
+		if seen[l] > 1 {
+			out[i] = keys[i]
+		}
+	}
+	return out
 }
 
 // BlockerState is ReadBlocker's three-state verdict on the issue a receipt's blocker_ref names.

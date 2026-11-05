@@ -1,0 +1,6 @@
+# make expands a recipe line before it reads the @ - + markers, so an expansion
+# that yields - ignores the line's exit status and a failed go build is green.
+want: step-not-fatal
+file: Makefile
+replace: "\t@cd deskd && GOWORK=off go build"
+with: "\t$(strip -)@cd deskd && GOWORK=off go build"
