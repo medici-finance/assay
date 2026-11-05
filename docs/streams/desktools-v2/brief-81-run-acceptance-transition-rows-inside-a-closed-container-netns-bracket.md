@@ -9,6 +9,7 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 gate-why: "Changes which runs count as admitted network-off witnesses for protected acceptance rows (the hermetic witness is a security control; proposal 11 independent verification). Human acceptance of the transition bracket is required at done."
+design: DR-transition-netns
 decision-issue: 1800
 ruling: "https://github.com/medici-finance/assay/issues/1800#issuecomment-6665625151"
 issues: [1800]
