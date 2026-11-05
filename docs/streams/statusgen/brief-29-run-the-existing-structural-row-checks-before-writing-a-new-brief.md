@@ -2,8 +2,8 @@
 brief: assay:assay:statusgen:29
 title: "Run the existing structural row checks before writing a new brief"
 why: "The authoring generator can still write rows that the linter later calls broken. Refusing these rows before any file is written prevents repair work at its cheapest point."
-wave: 2
-depends: ["statusgen/27", "statusgen/36"]
+wave: 3
+depends: ["statusgen/27", "statusgen/37"]
 unblocks: ["statusgen/35", "desk-tools/51"]
 effort: L
 gate: human
@@ -110,8 +110,8 @@ At pickup, pin this brief/version, the controlling contracts, actual producer/co
 open PRs; adapt or hold only the affected slice. No new evaluator, record store, desk, tracer or
 qualification stage is authorized.
 
-**Owner: prospective review context and authoring consumers (I-4).** Consume /36's binding/criteria
-contract. Adopt and finish existing PR 4139 in its current owners, including its tests and staged
+**Owner: prospective review context and authoring consumers (I-4).** Consume the binding/criteria
+contract of the I-2 slice (owned by /37 on /36's delivered evaluator). Adopt and finish existing PR 4139 in its current owners, including its tests and staged
 workflow; do not create a second preflight or classifier. This is also the existing authoring
 generator/kit's owner for new post-merge consumer rows that name the symbolic binding from the
 start.
@@ -129,8 +129,9 @@ start.
   approved compatibility assessment; do not bulk rewrite original commands. - Extend
   `TestNewBriefRowRefusal` and the existing prospective/deskflip suites with a meaningful post-merge
   delivery, absent binding plan, wrong producer/head, changed review context, unchanged legacy
-  adopter and a planted second bad row. Existing Verify package tests must execute the prospective
-  integration cases. Workflow promotion and custody remain human-owned; /51 consumes the released
+  adopter and a planted second bad row. Row 2 executes the statusgen-module prospective cases; the deskflip suite extensions under
+  `tools/desk/cmd/deskflip` are reached by no existing row, and adding one needs the same decision as
+  any other frozen-table change. Workflow promotion and custody remain human-owned; /51 consumes the released
   context/action contract.
 
 ### Existing task obligations

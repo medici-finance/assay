@@ -126,7 +126,7 @@ open PRs; adapt or hold only the affected slice. No new evaluator, record store,
 qualification stage is authorized.
 
 **Owner: bounded historical compatibility and witness backfill.** Consume /37's independently
-produced historical binding and /36's D/A eligibility; no new historical resolver, approval path or
+produced historical binding and the I-2 D/A eligibility it owns; no new historical resolver, approval path or
 global grandfather exception. Code fixtures may use known metadata while /31 prepares actual legacy
 metadata dispositions; missing declarations still hold the affected record, not the whole feature.
 

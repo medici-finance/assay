@@ -474,7 +474,7 @@ than duplicate implementation. /46, /47 and /51 remain unfinished and are amende
 
 ```text
 statusgen/36 -> /37 -> desk-tools/46 -> desk-tools/47 -> desk-tools/51
-statusgen/36 -> /29 -------------------------------> desk-tools/51
+statusgen/36 -> /37 -> /29 ------------------------> desk-tools/51
 statusgen/37 -> /38 -------------------------------> desk-tools/51 -> handoff/06
 ```
 

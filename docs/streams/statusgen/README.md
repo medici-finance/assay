@@ -62,9 +62,9 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 26 | [Extend statusgen phase measurements through the shared performance recorder](brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md) | 4 | M | implemented | — | — |
 | 27 | [Reject newly introduced actionable lint notices on changed briefs](brief-27-reject-newly-introduced-actionable-lint-notices-on-changed-briefs.md) | 1 | M | todo | — | — |
 | 28 | [Separate frozen historical notices from actionable lint findings](brief-28-separate-frozen-historical-notices-from-actionable-lint-findings.md) | 1 | M | todo | — | — |
-| 29 | [Run the existing structural row checks before writing a new brief](brief-29-run-the-existing-structural-row-checks-before-writing-a-new-brief.md) | 2 | L | todo | — | — |
+| 29 | [Run the existing structural row checks before writing a new brief](brief-29-run-the-existing-structural-row-checks-before-writing-a-new-brief.md) | 3 | L | todo | — | — |
 | 30 | [Repair deterministic defects in active Verify rows with a reviewed dry run](brief-30-repair-deterministic-defects-in-active-verify-rows-with-a-reviewed-dry-run.md) | 2 | M | todo | — | — |
-| 31 | [Backfill derivable active brief metadata without fabricating evidence](brief-31-backfill-derivable-active-brief-metadata-without-fabricating-evidence.md) | 2 | M | todo | — | — |
+| 31 | [Backfill derivable active brief metadata without fabricating evidence](brief-31-backfill-derivable-active-brief-metadata-without-fabricating-evidence.md) | 3 | M | todo | — | — |
 | 32 | [Connect board drift notices to the existing reconciliation owners](brief-32-connect-board-drift-notices-to-the-existing-reconciliation-owners.md) | 1 | M | todo | — | — |
 | 33 | [Drive active notice severity from the existing registry after cleanup](brief-33-drive-active-notice-severity-from-the-existing-registry-after-cleanup.md) | 9 | M | todo | — | — |
 | 34 | [One owned scratch path for Verify rows](brief-34-one-owned-scratch-path-for-verify-rows.md) | 1 | L | todo | — | — |
@@ -318,30 +318,31 @@ this automation when its authorized bounded bootstrap applies.
 ## Fixed-delivery completion amendment — 2026-10-27
 
 The [controlling proposal](../../proposals/fixed-delivery-verification/README.md#ownership-assignments-made-in-this-pr)
-now assigns the previously unowned work to existing briefs. /36 owns admitted D/A and
-common acceptance/checker/closure semantics (binding I-2); /37 owns binder production,
-historical attribution, staged custody configuration and fixed-D execution/recording
-(I-1/I-3); /29 owns prospective review context and authoring consumers (I-4), reusing
+now assigns the previously unowned work to existing briefs. /36 was delivered by PR 4409
+(merged 2026-10-28; its v2 reader and digest owner) and is not reopened. /37 therefore owns
+admitted D/A and common acceptance/checker/closure semantics (binding I-2, re-homed from
+/36) as well as binder production, historical attribution, staged custody configuration
+and fixed-D execution/recording (I-1/I-3); /29 owns prospective review context and authoring consumers (I-4), reusing
 PR 4139 rather than a second preflight. /31 owns corroborated metadata, /38 bounded
 historical compatibility/backfill, and /35 the real active cohort/report.
 
-The current head is the pending FDV-SUBJECT/D/A and custody decisions plus /36's
-reader/admission work; PR 4409 is already in flight and needs scope reassessment, not
-duplicate dispatch. /14's verified design is preserved. /27 (PR 4134), /28 (PR 4140)
+The current head is the pending FDV-SUBJECT/D/A and custody decisions plus /37's
+admission and binding work on top of /36's delivered reader; /36 owes its existing
+independent acceptance, not new implementation. /14's verified design is preserved. /27 (PR 4134), /28 (PR 4140)
 and /32 (PR 4137) have source implementations; their acceptance remains owed, and
 stale `todo` board cells do not justify rebuilding them.
 
 ```text
 statusgen/36 -> statusgen/37 -> statusgen/38 -> desk-tools/51 -> handoff/06
-statusgen/36 -> statusgen/29 ----------------> desk-tools/51
-statusgen/36 -> statusgen/31 -> statusgen/35
+statusgen/37 -> statusgen/29 ----------------> desk-tools/51
+statusgen/37 -> statusgen/31 -> statusgen/35
 statusgen/37 -> desk-tools/46 -> /47 -> handoff/02 -> /04 -> /05 -> /06
 desk-tools/46 -> handoff/05 -> statusgen/35
 statusgen/27..32 + /38 + desk-tools/47 + handoff/05 -> statusgen/35
 ```
 
 The typed frontmatter is authoritative for exact edges; the sketch shows shared owners,
-not an additional graph. /29 and /31 remain wave 2; /37 wave 2; /38 wave 3; historical
+not an additional graph. /37 stays wave 2; /29, /31 and /38 are wave 3; historical
 corpus execution /35 is wave 8 after its actual recovery prerequisites, and /33 follows
 at wave 9. This supersedes the original notice-debt plan's wave 3/4 for /35–33 without
 making full debt cleanup a prerequisite for fixed-D runtime or fixture qualification.

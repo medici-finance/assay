@@ -238,10 +238,10 @@ all original Verify/Evidence sections remain unchanged. No new brief ID is intro
 
 | Existing owner | Assigned slice | Explicit prerequisites |
 |---|---|---|
-| statusgen/36 | I-2 binding admission/checker/lint; common D/A coverage, protected closure and witness-selection policy | Existing authority decisions; one semantic owner and existing v1/v2 guards |
-| statusgen/37 | I-1 binding producer and historical attribution; I-3 staged writer/custody configuration; isolated D execution and truthful E recording; scope/outcome compatibility | /36; existing writer/custody/approval rulings before affected effects |
-| statusgen/29 | I-4 authoring consumers; finish PR 4139 in the existing prospective preflight/deskflip/review owners | /27 and /36 |
-| statusgen/31 | Corroborated historical metadata/disposition, not witness or binding fabrication | /28 and /36 |
+| statusgen/36 | None added: delivered by [PR 4409](https://github.com/medici-finance/assay/pull/4409) (merged 2026-10-28) as the v2 reader and the one digest owner; not reopened | Its own existing independent acceptance |
+| statusgen/37 | I-2 binding admission/checker/lint; common D/A coverage, protected closure and witness-selection policy (re-homed from delivered /36, on /36's reader and existing v1/v2 guards). I-1 binding producer and historical attribution; I-3 staged writer/custody configuration; isolated D execution and truthful E recording; scope/outcome compatibility | /36; existing authority decisions; existing writer/custody/approval rulings before affected effects |
+| statusgen/29 | I-4 authoring consumers; finish PR 4139 in the existing prospective preflight/deskflip/review owners | /27 and /37 |
+| statusgen/31 | Corroborated historical metadata/disposition, not witness or binding fabrication | /28 and /37 |
 | desk-tools/46 → /47 | Accepted D/A/run scheduling identity, then remaining authorized landing effects | /46 needs /45 and statusgen/37; /47 needs /46 |
 | statusgen/38 | Bounded historical subject compatibility and recoverable witness backfill | /37; per-case metadata/provenance remains a real hold |
 | desk-tools/51 | Released review/Verify context-test/action contract and consumer version qualification | Existing /45–50 and /52, plus statusgen/29 and /38 |
@@ -263,9 +263,9 @@ this does not silently revoke unrelated work already approved under its original
 | Existing brief or PR | Observed position | Exact finish owed |
 |---|---|---|
 | [PR 4579](https://github.com/medici-finance/assay/pull/4579), this proposal | Open, reviewed; design only | Resolve fixed-subject, historical-subject and row-reuse policy on the existing decision surfaces; preserve old decision-token meanings. Publication is not activation |
-| build-less-brittle/14 design I-1–I-4; [4380](https://github.com/medici-finance/assay/issues/4380)/[4381](https://github.com/medici-finance/assay/issues/4381) | Design delivered; I-1/I-3 assigned to /37, I-2 to /36 and I-4 to /29 here | Trusted delivery attribution and ref admission, offline graph/marker checks, existing consumer checker/lint integration, writer protection and guidance. Include historical attribution and D/A correction/version semantics. A locally forged tag is not authenticated by a remote ruleset |
+| build-less-brittle/14 design I-1–I-4; [4380](https://github.com/medici-finance/assay/issues/4380)/[4381](https://github.com/medici-finance/assay/issues/4381) | Design delivered; I-1, I-2 and I-3 assigned to /37 and I-4 to /29 here | Trusted delivery attribution and ref admission, offline graph/marker checks, existing consumer checker/lint integration, writer protection and guidance. Include historical attribution and D/A correction/version semantics. A locally forged tag is not authenticated by a remote ruleset |
 | [PR 4139](https://github.com/medici-finance/assay/pull/4139) | Open, changes requested | Owned by amended statusgen/29; finish prospective ready-flip context check; resolve producer binding for the preflight signal, trusted-base ruling resolution, duplicate classification and outstanding qualification/adopter findings. It assesses the prospective implemented transition, not full Verify closure |
-| statusgen/36, [PR 4409](https://github.com/medici-finance/assay/pull/4409) | Open, changes requested | Finish the shared reader/digest owner and existing old-reader qualification/review. The unresolved qualification choice is tracked on issue 4459. Amended /36 owns binding admission and common D/A acceptance; preserve comparison behavior for the same explicit v1 target |
+| statusgen/36, [PR 4409](https://github.com/medici-finance/assay/pull/4409) | Merged 2026-10-28; board row not yet reconciled | Complete the existing independent acceptance of the shared reader/digest owner. The unresolved old-reader qualification choice is tracked on issue 4459. No binding-admission or D/A work is added to /36; that I-2 slice is owned by amended /37, which must preserve comparison behavior for the same explicit v1 target |
 | statusgen/37 → /38 | Authored; no implementation PRs found | Finish the writers/desk readers, then bounded historical witness backfill. Make admission, criteria, actual execution W, recording E and accepted D agree through existing seams; never manufacture missing historical output or identity |
 | desk-tools/46 → /47 | Authored; no implementation PRs found; /46 depends on /45 | Recognize an independently accepted unchanged PASS as continuation, then resume only remaining sanctioned Evidence/outcome/status effects. Preserve applicable rows, same-context failure precedence, partial writes and authority exclusions |
 | desk-tools/48 and /52 → /51 | Authored; no implementation PRs found | Finish existing capacity reporting and distinct decision/verification-card authority, then drive verifier guidance/prompts from the implemented lane-to-action contract. /51 also depends on /45, /46, /47, /49 and /50. Do not silently drop these declared dependencies or invent a new limiter |
@@ -275,9 +275,10 @@ this does not silently revoke unrelated work already approved under its original
 ### Delivered pieces to accept and integrate, not rebuild
 
 All five source implementations below are ancestors of installed v1.0.63 source
-`125611dfbdfb950cf09c003e941c48902803fb1f`, despite their observed board rows
-remaining `todo`. Source presence does not establish independent acceptance or live
-adapter activation. Complete the existing verification/sign-off/reconciliation owed;
+`125611dfbdfb950cf09c003e941c48902803fb1f`. At this revision's read, desk-tools/45,
+verification-handoff/01 and verification-handoff/03 are `implemented` on the board, while
+desk-tools/49 and /50 still read `todo`. Neither state establishes independent acceptance
+or live adapter activation. Complete the existing verification/sign-off/reconciliation owed;
 do not dispatch duplicate implementation from the stale board label.
 
 | Existing brief | Merged delivery / evidence | Remaining boundary |
@@ -304,7 +305,7 @@ in PR 4571 is also reused, not duplicated.
 | Shared declared-scope reader: [3697](https://github.com/medici-finance/assay/issues/3697), [3708](https://github.com/medici-finance/assay/issues/3708) | Finish wrapped/prose and basename handling in the existing owner and outcome-writing path. PR 3703 was a partial corpus cleanup; it did not clear the class |
 | [PR 4371](https://github.com/medici-finance/assay/pull/4371) | Finish relative-brief resolution, containment review finding and merge conflict. Do not claim that this alone fixes every CI/root spelling |
 | [PR 4150](https://github.com/medici-finance/assay/pull/4150), [PR 4149](https://github.com/medici-finance/assay/pull/4149) | Finish evidence-bound historical diagnostics and the specific statusgen/02 table repair. At the work-map read, PR 4150 is approved; PR 4149 still has a changelog-format failure |
-| desktools-v2/73, [PR 4102](https://github.com/medici-finance/assay/pull/4102) | Finish agreement between rendered Evidence and admission/lint interpretation; review still identifies a divergence. Keep one acceptance meaning across these readers |
+| desktools-v2/73, [PR 4102](https://github.com/medici-finance/assay/pull/4102) | Merged 2026-10-29: deskevidence refuses Evidence shapes a renderer shows but the lint skips. Its existing independent acceptance remains owed (the board row still reads `todo`); do not dispatch duplicate implementation. Keep one acceptance meaning across these readers |
 | [4596](https://github.com/medici-finance/assay/issues/4596) | Finish authoritative lint's verifier binding and relative-root resolution. Earlier acceptance-forge activation already merged in PR 3515; issue 3493's old publication-blocked comment is not evidence that all wiring is still absent |
 | [4340](https://github.com/medici-finance/assay/issues/4340), [4451](https://github.com/medici-finance/assay/issues/4451), [4598](https://github.com/medici-finance/assay/issues/4598) | Resolve the reported same-evidence disagreements over latest witnesses, Runner eligibility and BLOCKED verdicts against shared fixtures and existing owners. An open issue alone does not prove every historical report still reproduces; verify the residual before changing code |
 | [4554](https://github.com/medici-finance/assay/issues/4554) | Make the existing outcome-record dry run validate/plan without committing. This is an effect-boundary defect within the existing landing tool |

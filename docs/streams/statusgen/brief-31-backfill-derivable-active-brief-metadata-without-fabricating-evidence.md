@@ -2,8 +2,8 @@
 brief: assay:assay:statusgen:31
 title: "Backfill derivable active brief metadata without fabricating evidence"
 why: "Missing file declarations and one-way routing claims produce persistent debt. Historical provenance can supply some answers; uncertain answers must remain owned work rather than plausible invented metadata."
-wave: 2
-depends: ["statusgen/28", "statusgen/36"]
+wave: 3
+depends: ["statusgen/28", "statusgen/37"]
 unblocks: ["statusgen/35"]
 effort: M
 gate: human
@@ -87,7 +87,7 @@ At pickup, pin this brief/version, the controlling contracts, actual producer/co
 open PRs; adapt or hold only the affected slice. No new evaluator, record store, desk, tracer or
 qualification stage is authorized.
 
-**Owner: historical active metadata disposition.** Reuse /36's admitted subject/criteria meanings in
+**Owner: historical active metadata disposition.** Reuse the I-2 admitted subject/criteria meanings (/37) in
 the already-planned metadata repair owner. Do not mint a trusted delivery binding: /37 owns that
 operation. `files:` remains the implementation-touch declaration; never infer a transitive test read
 set from it.
