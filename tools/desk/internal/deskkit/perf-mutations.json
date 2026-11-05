@@ -46,7 +46,7 @@
     {
       "name": "propagate the perf write error into the verb's exit code (a full disk turns a green verb red)",
       "file": "internal/deskkit/perf.go",
-      "old": "\tperfAppend(rec)\n\treturn code\n}",
+      "old": "\tperfAppendEnabled(enabled, rec)\n\treturn code\n}",
       "new": "\tif perfWrite(rec) != nil {\n\t\treturn ExitUnverifiable\n\t}\n\treturn code\n}"
     }
   ],

@@ -44,7 +44,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.27.2"
+  GO_VERSION: "1.27.3"
   # Canonical module path for gitleaks v8 (the go.mod still declares zricethezav
   # even though the repo now lives at github.com/gitleaks/gitleaks). Pinned by
   # version; `go install` verifies the download against sum.golang.org.

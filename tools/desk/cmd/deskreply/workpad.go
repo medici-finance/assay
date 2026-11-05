@@ -182,7 +182,7 @@ func checkCommentBody(body []byte) error {
 // preflight/mint/public-repo-gate/PR-state verification the plain-reply path already ran
 // (ac.head is already set, the worker token already minted), and replaces the plain
 // path's idempotency+post block with the find-or-create decision.
-func cmdWorkpadUpsert(ac *auditCtx, fg deskkit.Forge, fr deskkit.ForgeRepo, dir, repo string, pr int, body []byte, dryRun bool) error {
+func cmdWorkpadUpsert(ac *auditCtx, fg deskkit.Forge, fr deskkit.ForgeRepo, dir, repo string, pr int, kind deskkit.TargetKind, body []byte, dryRun bool) error {
 	// Cheapest check first, and again here even though cmdReply already ran it: this is the
 	// seam a caller with a body already in hand enters, and the size/marker refusal must
 	// precede the comment list, not follow it.
@@ -240,7 +240,7 @@ func cmdWorkpadUpsert(ac *auditCtx, fg deskkit.Forge, fr deskkit.ForgeRepo, dir,
 	// The create path. The id recorded for the NEXT invocation is the one the FORGE reported
 	// for the comment it just created — not a number parsed back out of a printed URL, which
 	// only ever worked for one forge's URL shape and silently yielded 0 for anything else.
-	ref, cErr := fg.PostComment(fr, pr, string(postBody))
+	ref, cErr := postReply(fg, fr, pr, kind, string(postBody))
 	if cErr != nil {
 		return deskkit.Unverifiable("posting the workpad comment failed", cErr)
 	}

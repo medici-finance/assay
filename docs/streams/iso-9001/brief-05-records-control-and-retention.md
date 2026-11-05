@@ -46,8 +46,7 @@ the page is registered for periodic re-review rather than left to age.
 
 files:
 - `docs/records-and-retention.md` (planned) — the deliverable; one page.
-- `docs/registers.md` — a pointer from the register conventions to the new page, so the two
-  are found together.
+- `docs/registers.md` — a pointer from the register conventions to the new page, so the two are found together.
 
 facts:
 - **Classify, then state per class.** Records here are not one thing. At minimum: register

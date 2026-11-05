@@ -1,0 +1,5 @@
+# Without -trimpath the binary embeds builder paths.
+want: build-missing-trimpath
+file: Dockerfile
+replace: "go build -trimpath -o"
+with: "go build -o"

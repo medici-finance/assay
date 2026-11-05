@@ -73,13 +73,13 @@ func fixture(t *testing.T, name string) string {
 	return dst
 }
 
-var purePackages = []string{module + "/domain", module + "/facts", module + "/policy", module + "/config", module + "/writepolicy"}
+var purePackages = []string{module + "/domain", module + "/facts", module + "/policy", module + "/config", module + "/writepolicy", module + "/issueflow", module + "/riskpath", module + "/trust", module + "/attestation"}
 
 // TestPurePackagesHaveNoEffectfulTransitiveImports: domain, facts, policy and config reach no
 // process, network or HTTP package, no effectful module package and no third-party package, by
 // any transitive path, and import directly no standard package outside AllowedStd.
 func TestPurePackagesHaveNoEffectfulTransitiveImports(t *testing.T) {
-	pkgs := goList(t, "..", "./domain", "./facts", "./policy", "./config", "./writepolicy")
+	pkgs := goList(t, "..", "./domain", "./facts", "./policy", "./config", "./writepolicy", "./issueflow", "./riskpath", "./trust", "./attestation")
 	for _, v := range Check(pkgs, deskcorePolicy(module, purePackages...)) {
 		t.Errorf("%s", v)
 	}
@@ -225,7 +225,7 @@ func TestKnobReadLintCatchesStrayRead(t *testing.T) {
 	}
 }
 
-var pureDirs = []string{"domain", "facts", "policy", "config", "writepolicy"}
+var pureDirs = []string{"domain", "facts", "policy", "config", "writepolicy", "issueflow", "riskpath", "trust", "attestation"}
 
 // deskcoreRules are the call rules the pure packages live by.
 func deskcoreRules() []Rule {

@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -40,6 +41,8 @@ import (
 // reads the re-stamp needs — the change (with its CURRENT labels) and its label timeline —
 // and accepts the ensure/apply/remove writes, recording each request.
 type ghStampServer struct {
+	number int // zero retains the existing subject 77 fixture
+
 	srv      *httptest.Server
 	mu       sync.Mutex // guards fields a fixture handler shares with the test goroutine
 	requests []ghStampReq
@@ -108,8 +111,13 @@ func (s *ghStampServer) handle(w http.ResponseWriter, r *http.Request) {
 		Auth: r.Header.Get("Authorization")})
 	enc := func(v any) { _ = json.NewEncoder(w).Encode(v) }
 	path := r.URL.Path
+	number := s.number
+	if number == 0 {
+		number = 77
+	}
+	subject := strconv.Itoa(number)
 	switch {
-	case r.Method == http.MethodGet && strings.HasSuffix(path, "/pulls/77"):
+	case r.Method == http.MethodGet && strings.HasSuffix(path, "/pulls/"+subject):
 		if s.failPR || (s.failAfter && s.writes > 0) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -119,7 +127,7 @@ func (s *ghStampServer) handle(w http.ResponseWriter, r *http.Request) {
 			labels = append(labels, map[string]any{"name": l})
 		}
 		enc(map[string]any{
-			"number": 77, "state": func() string {
+			"number": number, "state": func() string {
 				if s.state != "" {
 					return s.state
 				}
@@ -133,7 +141,7 @@ func (s *ghStampServer) handle(w http.ResponseWriter, r *http.Request) {
 			}()},
 			"base": map[string]any{"ref": "main"}, "user": map[string]any{"login": "example-bot[bot]", "id": 1},
 		})
-	case r.Method == http.MethodGet && strings.HasSuffix(path, "/issues/77/timeline"):
+	case r.Method == http.MethodGet && strings.HasSuffix(path, "/issues/"+subject+"/timeline"):
 		if s.failTL {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -152,7 +160,7 @@ func (s *ghStampServer) handle(w http.ResponseWriter, r *http.Request) {
 		enc(evs)
 	case r.Method == http.MethodPost && strings.HasSuffix(path, "/labels"):
 		// Model the standing set and append-only history for readback.
-		if strings.HasSuffix(path, "/issues/77/labels") {
+		if strings.HasSuffix(path, "/issues/"+subject+"/labels") {
 			s.writes++
 			if s.failWrite {
 				w.WriteHeader(500)
@@ -181,14 +189,14 @@ func (s *ghStampServer) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusCreated)
 		enc([]map[string]any{})
-	case r.Method == http.MethodDelete && strings.Contains(path, "/issues/77/labels/"):
+	case r.Method == http.MethodDelete && strings.Contains(path, "/issues/"+subject+"/labels/"):
 		s.writes++
 		if s.failWrite {
 			w.WriteHeader(500)
 			return
 		}
 		if !s.dropWrites {
-			_, l, _ := strings.Cut(path, "/issues/77/labels/")
+			_, l, _ := strings.Cut(path, "/issues/"+subject+"/labels/")
 			var keep []string
 			for _, v := range s.labels {
 				if v != l {

@@ -18,6 +18,9 @@ depends: ["forge-gitlab/15"]
 unblocks: []
 effort: M
 gate: human
+decision-issue: 2912
+ruling: "https://github.com/medici-finance/assay/issues/2912#issuecomment-6640161913"
+design: DR-forge-gitlab-18
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: >-
   The brief handles a live push credential to the default branch (sensitive-data: yes). The new
@@ -58,8 +61,8 @@ domain: complicated
 outcome: none
 tier: free
 consumers:
-  - "tools/desk/cmd/deskfleet/main.go: follow-up forge-gitlab/18 (the `push-token` subcommand, its usage text and dispatch; this brief's own Task 1 and 6, flipped to fixed-here by the implementing change)"
-  - "docs/adopting-assay-gitlab.md: follow-up forge-gitlab/18 (§2c gains the rotation procedure; §5 gains one line saying the board-push credential rotates through this verb, not the role-PAT path; this brief's own Task 6, flipped to fixed-here by the implementing change)"
+  - "tools/desk/cmd/deskfleet/main.go: fixed-here (the `push-token` subcommand's usage text and its perf-measured verb entry; the command tree is in cli.go and pushcli.go, the verb in pushrotate.go)"
+  - "docs/adopting-assay-gitlab.md: fixed-here (§2c gains the \"Rotating it\" subsection with the procedure, defaults, outcomes and check mode; §5 gains one line saying the board-push credential rotates through `deskfleet push-token`, not the role-PAT path)"
   - "statusgen/init.go: out-of-scope (the regen job's pre-push credential check and its distinct expired, revoked and wrong-scope outcomes are part A of #2910, in its own pull request; this brief adds nothing to the scaffold)"
   - "tools/renew-fleet-gitlab-tokens.sh: out-of-scope (it rotates role PATs, a different credential class; §2c forbids pointing the push variable at a role token)"
   - "docs/streams/windows-port/brief-16-deskfleet-renew-and-the-go-owned-fleet-tables.md: out-of-scope (coordination only: both add a `deskfleet` subcommand and edit its usage text; whichever lands second merges main)"
@@ -105,13 +108,11 @@ and `check` shares the probes' by-id comparator, so liveness has no independent 
 liveness claim below that names part A is contingent on that merge.
 
 files:
-- `tools/desk/cmd/deskfleet/pushtoken.go` (new): the `push-token` subcommand, its `rotate` and
-  `check` modes, the redacting secret type, preflight, install, read-back, containment and
-  proof.
-- `tools/desk/cmd/deskfleet/pushtoken_test.go` (new) and `tools/desk/cmd/deskfleet/fake_test.go`: the fake GitLab gains the access-token, variable, self-information and receive-pack routes.
-- `tools/desk/cmd/deskfleet/main.go`: usage text and dispatch.
-- `tools/desk/cmd/deskfleet/mutations.json`: the named mutations below.
-- `docs/adopting-assay-gitlab.md`: §2c rotation procedure; one line in §5.
+- `tools/desk/cmd/deskfleet/pushtoken.go` (new) — the `push-token` subcommand, its `rotate` and `check` modes, the redacting secret type, preflight, install, read-back, containment and proof.
+- `tools/desk/cmd/deskfleet/pushtoken_test.go` (new) and `tools/desk/cmd/deskfleet/fake_test.go` — the fake GitLab gains the access-token, variable, self-information and receive-pack routes.
+- `tools/desk/cmd/deskfleet/main.go` — usage text and dispatch.
+- `tools/desk/cmd/deskfleet/mutations.json` — the named mutations below.
+- `docs/adopting-assay-gitlab.md` — §2c rotation procedure; one line in §5.
 - `changelog/forge-gitlab-18-push-credential-rotation.md` (planned).
 
 layering: flat tool, one new file in an existing command. The meaningful rules are pure
@@ -204,7 +205,7 @@ Every defended item maps to a Verify row in the pre-mortem table below.
 
 ### Risk-files cross-read
 
-`files:` sits under `tools/desk/cmd/deskfleet/`, a credential-handling path. The four answers
+The `files:` block sits under `tools/desk/cmd/deskfleet/`, a credential-handling path. The four answers
 were read against it, not defaulted:
 - **sensitive-data: yes.** The verb holds a repository-write credential in memory, and the
   rotator credential it runs under has `api` scope. `check` runs under a separate read-only

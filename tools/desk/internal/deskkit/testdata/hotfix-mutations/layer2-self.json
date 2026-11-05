@@ -1,0 +1,53 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -timeout 600s -run '^(TestHotfixSelfCheck|TestHotfixSelfGate)$'",
+  "control": {
+    "name": "CONTROL: invert the valid-proceeds assertion in TestHotfixSelfCheck",
+    "file": "internal/deskkit/hotfix_test.go",
+    "old": "\t\tif v.Skip || v.Reason != \"\" {\n\t\t\tt.Fatalf(\"valid hotfix: %+v\", v)",
+    "new": "\t\tif !(v.Skip || v.Reason != \"\") {\n\t\t\tt.Fatalf(\"valid hotfix: %+v\", v)"
+  },
+  "mutations": [
+    {
+      "name": "the integrity pass runs only under the overlay the environment names (cases A and B)",
+      "file": "internal/deskkit/hotfixself.go",
+      "old": "\tif reason := selfIntegrity(in, tool); reason != \"\" {",
+      "new": "\tif reason := selfIntegrity(in, tool); reason != \"\" && WithinDir(in.Exe, in.Overlay) {"
+    },
+    {
+      "name": "the overlay, bin and file owner checks are skipped (wrong-owner, writable-by-group, staging owner rows)",
+      "file": "internal/deskkit/hotfixself.go",
+      "old": "\t\tif err := in.Owner(p); err != nil {",
+      "new": "\t\tif err := in.Owner(p); err != nil && false {"
+    },
+    {
+      "name": "the staging file skips the owner checks too (case D)",
+      "file": "internal/deskkit/hotfixself.go",
+      "old": "\tfor _, p := range []string{in.Overlay, filepath.Join(in.Overlay, \"bin\"), in.Exe} {",
+      "new": "\tif isHotfixStagingFile(in) {\n\t\treturn \"\"\n\t}\n\tfor _, p := range []string{in.Overlay, filepath.Join(in.Overlay, \"bin\"), in.Exe} {"
+    },
+    {
+      "name": "the running file's sha256 is not compared to the manifest entry",
+      "file": "internal/deskkit/hotfixself.go",
+      "old": "\tif got != e.SHA256 {",
+      "new": "\tif got != e.SHA256 && false {"
+    },
+    {
+      "name": "a binary under the compiled-in overlay is not an overlay binary when the environment names another",
+      "file": "internal/deskkit/hotfixself.go",
+      "old": "\tinOverlay := WithinDir(in.Exe, in.Overlay) || WithinDir(in.Exe, in.DefaultOverlay)",
+      "new": "\tinOverlay := WithinDir(in.Exe, in.Overlay)"
+    },
+    {
+      "name": "the start-up gate reads only the environment's overlay (TestHotfixSelfGate)",
+      "file": "internal/deskkit/hotfixself.go",
+      "old": "\treturn IsHotfix(tag) || WithinDir(exe, HotfixOverlayDir()) || WithinDir(exe, defaultOverlay)",
+      "new": "\treturn IsHotfix(tag) || WithinDir(exe, HotfixOverlayDir())"
+    },
+    {
+      "name": "the binary's own expiry is not checked",
+      "file": "internal/deskkit/hotfixself.go",
+      "old": "\tif !in.Now.Before(expires) {",
+      "new": "\tif false {"
+    }
+  ]
+}

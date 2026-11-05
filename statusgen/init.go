@@ -221,6 +221,9 @@ func runInitForge(root string, forge forgeKind, remotePresent bool, host string,
 	}
 	for _, p := range skipped {
 		fmt.Printf("  exists   %s (unchanged)\n", p)
+		if forge == forgeGitLab && hasCI && p == ci.path {
+			reportGitlabAnchorDrift(root, p)
+		}
 	}
 	if len(created) == 0 {
 		fmt.Println("\nNothing to create — the streams structure is already in place.")
@@ -705,7 +708,12 @@ const initWorkflowTail = `          git config user.name  'statusgen'
 //     half of the roster from the CI/CD variable STATUSGEN_ROSTER_ENV into that
 //     path (owner-only permissions, the mode the loader enforces) before statusgen
 //     runs, and print a NOTICE naming the variable when it is unset. A token never
-//     belongs in it; a secret-shaped key refuses.
+//     belongs in it; a secret-shaped key refuses. The NOTICE states each job's real
+//     outcome (#4978): the file-class loader REFUSES a missing roster file, so
+//     `statusgen --lint` exits 5 and the merge-request job fails, while the
+//     default-branch regen still writes the board with every roster-backed check
+//     could-not-check. TestGitLabRosterUnsetClaim runs the anchor and the binary
+//     and holds the NOTICE, and docs/adopting-assay-gitlab.md section 2e, to both.
 //   - The dead-claim decay reads merge-request state over REST v4 (#1111). Every
 //     GitLab job already carries CI_API_V4_URL, CI_PROJECT_ID and CI_JOB_TOKEN, so
 //     the read needs no wiring in the common case; where an instance does not let
@@ -748,13 +756,16 @@ const initGitlabCIHead = `# statusgen CI — the two-half single-writer shape on
 # TRUST ROSTER — the NON-secret half, as the CI/CD variable STATUSGEN_ROSTER_ENV.
 # On a GitLab runner statusgen reads its roster from ${HOME}/.config/assay/roster.env
 # (there is no GITHUB_ACTIONS environment transport here), and nothing writes that
-# file on a fresh runner — so without this variable every roster-backed check (the
-# Evidence-actor check on verified/done rows: which identity committed each brief's
-# Evidence lines; the trust gates) reports could-not-check on every run while the
-# job stays green: a silent gap, not a pass. Set STATUSGEN_ROSTER_ENV to the
-# roster.env CONTENTS (Variable type, multi-line) or as a File-type variable; both
-# jobs materialise it into that path with owner-only permissions before statusgen
-# runs, and print a NOTICE naming the variable when it is unset. It holds logins,
+# file on a fresh runner. A missing roster file is a REFUSED configuration, not a
+# partial one, so without this variable the merge-request job's statusgen --lint
+# refuses (LINT: REFUSED configuration, exit 5) and that job FAILS; the regen job
+# still writes the board, but every roster-backed check on it (the Evidence-actor
+# check on verified/done rows: which identity committed each brief's Evidence
+# lines; the trust gates) reports could-not-check, which is not a pass. Set
+# STATUSGEN_ROSTER_ENV to the roster.env CONTENTS (Variable type, multi-line) or
+# as a File-type variable; both jobs materialise it into that path with
+# owner-only permissions before statusgen runs, and print a NOTICE naming the
+# variable and each job's outcome when it is unset. It holds logins,
 # numeric ids, and role bindings ONLY (ASSAY_TRUSTED_BOT_SLUGS must bind
 # verifier=<forge>:<slug>[:<id>] for the Evidence-actor check to run) — never a
 # token, key, or password: it is NOT masked and NOT protected, so the merge-request
@@ -825,7 +836,9 @@ stages: [statusgen]
     set -euo pipefail
     if [ -z "${STATUSGEN_ROSTER_ENV:-}" ]; then
       echo "NOTICE: STATUSGEN_ROSTER_ENV is not set — no trust roster for this job."
-      echo "statusgen reads the roster from ${HOME}/.config/assay/roster.env, which nothing has written, so every roster-backed check (the Evidence-actor check on verified/done rows, the trust gates) reports could-not-check. That is NOT a pass; the board below is generated without it."
+      echo "statusgen reads the roster from ${HOME}/.config/assay/roster.env, which nothing has written. A missing roster file is a REFUSED configuration, not a partial one."
+      echo "Merge-request job: statusgen --lint refuses it — it prints 'LINT: REFUSED configuration; trust-dependent checks could-not-check' and exits 5, so the merge-request job FAILS until the variable is set."
+      echo "Default-branch regen job: the board is still generated, but every roster-backed check on it (the Evidence-actor check on verified/done rows, the trust gates) reports could-not-check. That is NOT a pass."
       echo "Set a CI/CD variable named STATUSGEN_ROSTER_ENV holding the NON-secret roster lines (ASSAY_TRUSTED_BOT_SLUGS with its verifier= binding, ASSAY_TRUSTED_LOGINS, ASSAY_BLESS_LOGIN, ASSAY_ALLOWED_REPOS, ASSAY_HUMAN_LOGIN_MAP) — never a token, key, or password. See docs/adopting-assay-gitlab.md, section Trust roster for CI."
     else
       install -d -m 700 "${HOME}/.config/assay"
@@ -985,6 +998,150 @@ func gitlabScriptAnchor(name, script, comment string) string {
 	b.WriteString(indentScript(script, "    "))
 	b.WriteString("\n")
 	return b.String()
+}
+
+// reportGitlabAnchorDrift names each embedded script anchor of an existing
+// .gitlab-ci.yml that differs from this statusgen's copy (#5004). init never
+// overwrites the file, so without this an upgraded adopter keeps running the
+// older embedded pushcred.sh and boardadd.sh, and the re-run said only
+// "unchanged". It reads the file and prints; it never writes.
+func reportGitlabAnchorDrift(root, path string) {
+	body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
+	if err != nil {
+		fmt.Printf("  note     %s: could not read it to compare its embedded anchors: %v\n", path, err)
+		return
+	}
+	for _, name := range gitlabAnchorDrift(string(body)) {
+		fmt.Printf("  STALE    %s: its embedded %s anchor differs from this statusgen's (%s) copy.\n"+
+			"           init never overwrites the file, so the pipeline runs the script the file\n"+
+			"           holds, not this release's, and its board-push fixes do not reach it.\n"+
+			"           Refresh it with `%s`.\n", path, name, statusgenVersion, gitlabAnchorRefreshCmd)
+	}
+}
+
+// gitlabAnchorRefreshCmd is the command every drift report names (#5004).
+const gitlabAnchorRefreshCmd = "statusgen migrate gitlab-anchors --root ."
+
+// gitlabAnchors are the script anchors the GitLab template embeds, by key
+// name, with the sourced script each one carries.
+var gitlabAnchors = []struct{ name, script string }{
+	{"statusgen-pushcred", pushcredSh},
+	{"statusgen-boardadd", boardAddSh},
+}
+
+// gitlabAnchorWant is the current rendering of one anchor, as yamlAnchorBlock
+// returns it (key line plus body, no comment, no trailing blank line).
+func gitlabAnchorWant(name, script string) string {
+	want, _ := yamlAnchorBlock(gitlabScriptAnchor(name, script, ""), name)
+	return want
+}
+
+// gitlabAnchorDrift returns the embedded script anchors in a .gitlab-ci.yml
+// body that differ from the ones this statusgen renders. An anchor the body
+// does not carry is not reported: the adopter removed or renamed it.
+func gitlabAnchorDrift(body string) []string {
+	var stale []string
+	for _, a := range gitlabAnchors {
+		got, ok := yamlAnchorBlock(body, a.name)
+		if !ok {
+			continue
+		}
+		if got != gitlabAnchorWant(a.name, a.script) {
+			stale = append(stale, "."+a.name)
+		}
+	}
+	return stale
+}
+
+// gitlabAnchorDriftNotices is the --lint half of the drift check: one NOTICE
+// per stale embedded anchor in <root>/.gitlab-ci.yml, naming the refresh
+// command, and one NOTICE for a scaffold that predates the anchors (see
+// gitlabPreAnchorScaffold). No file, or an unreadable one, adds nothing: a
+// repo without the GitLab CI half has no anchor to drift.
+func gitlabAnchorDriftNotices(root string) []string {
+	body, err := os.ReadFile(filepath.Join(root, ".gitlab-ci.yml"))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, name := range gitlabAnchorDrift(string(body)) {
+		out = append(out, fmt.Sprintf(".gitlab-ci.yml: the embedded %s anchor differs from this statusgen's (%s) copy, so the pipeline runs the board-push script the file holds, not this release's (a pin bump does not refresh it; #5004). Refresh it with `%s` and commit the file.", name, statusgenVersion, gitlabAnchorRefreshCmd))
+	}
+	if gitlabPreAnchorScaffold(string(body)) {
+		out = append(out, fmt.Sprintf(".gitlab-ci.yml: it carries the %s job but neither the .statusgen-pushcred nor the .statusgen-boardadd anchor, so it was scaffolded before the anchors existed and its board push is inline in the job; `%s` has nothing to refresh there and later board-push fixes do not reach it (#5004). Move it aside, run `statusgen init --forge gitlab` to write a current one, re-apply your own edits, and commit the file.", gitlabRegenJob, gitlabAnchorRefreshCmd))
+	}
+	return out
+}
+
+// gitlabRegenJob is the top-level job key every GitLab scaffold carries.
+const gitlabRegenJob = "statusgen-regen"
+
+// gitlabPreAnchorScaffold reports whether a .gitlab-ci.yml body carries the
+// scaffolded statusgen regen job but neither embedded script anchor: the shape
+// a release before the anchors existed scaffolded, which gitlabAnchorDrift
+// cannot see. A file with the anchors, or without the job, is not one.
+func gitlabPreAnchorScaffold(body string) bool {
+	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	job := false
+	for _, l := range lines {
+		if strings.HasPrefix(l, gitlabRegenJob+":") {
+			job = true
+			break
+		}
+	}
+	if !job {
+		return false
+	}
+	for _, a := range gitlabAnchors {
+		if _, _, ok := yamlAnchorSpan(lines, a.name); ok {
+			return false
+		}
+	}
+	return true
+}
+
+// yamlAnchorBlock returns the top-level ".<name>:" line and every following
+// indented line, through the last non-blank one, with blank lines normalised
+// to empty, so line endings and whitespace-only lines never read as drift.
+func yamlAnchorBlock(body, name string) (string, bool) {
+	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	start, end, ok := yamlAnchorSpan(lines, name)
+	if !ok {
+		return "", false
+	}
+	block := make([]string, 0, end-start)
+	for _, l := range lines[start:end] {
+		if strings.TrimSpace(l) == "" {
+			l = ""
+		}
+		block = append(block, l)
+	}
+	return strings.Join(block, "\n"), true
+}
+
+// yamlAnchorSpan finds the top-level ".<name>:" key in lines (split on "\n")
+// and returns [start, end): its line through the last non-blank indented line
+// after it, so trailing blank lines stay outside the span.
+func yamlAnchorSpan(lines []string, name string) (start, end int, ok bool) {
+	head := "." + name + ":"
+	for i, l := range lines {
+		if !strings.HasPrefix(l, head) {
+			continue
+		}
+		end = i + 1
+		for j := i + 1; j < len(lines); j++ {
+			n := strings.TrimRight(lines[j], "\r")
+			if strings.TrimSpace(n) == "" {
+				continue
+			}
+			if !strings.HasPrefix(n, " ") {
+				break
+			}
+			end = j + 1
+		}
+		return i, end, true
+	}
+	return 0, 0, false
 }
 
 // indentScript indents every non-blank line of script for a YAML literal block;

@@ -36,7 +36,9 @@ func createDispatchWorktree(o dispatchOpts, plan dispatchPlan) runResult {
 		args = append(args, "--branch", plan.branch)
 	}
 	if workerResume(o) {
-		args = append(args, "--upstream", "refs/remotes/origin/"+plan.branch)
+		// The claim for plan.claimKey is held by now, so a home stamped with that run key
+		// is a FINISHED one; deskwt adopts it only on its own clean/pushed/at-head proof (#4272).
+		args = append(args, "--upstream", "refs/remotes/origin/"+plan.branch, "--adopt-run", plan.claimKey)
 	}
 	args = append(args, "--base", base, "--role", plan.identityRole)
 	return runCmd(o.root, "deskwt", args...)

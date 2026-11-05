@@ -36,7 +36,7 @@ id: 2799ba50-f6ef-4ee6-beb2-6ca378f909d3
 ## Context
 files:
 - `docs/streams/forge-neutral/reviewer-write-boundary.md` — §12 gains one inventory table per role and a findings list.
-- `changelog/<branch-slug>.md` (planned)
+- **planned** — `changelog/<branch-slug>.md`
 
 **Placeholder by design.** This brief is authored now so the follow-on wave has a head; its
 method is fixed, its findings are not knowable yet. It writes no tool code and proposes no

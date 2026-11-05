@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // CheckoutGitRead binds a configured fetch destination to this session's role.

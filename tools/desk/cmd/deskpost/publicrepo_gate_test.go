@@ -12,7 +12,7 @@ import (
 // unconditionally.
 //
 // Before this, riskPathTriggers was five tracker-shaped paths applied to every repo.
-// example-org/example-k8s is PUBLIC, holds the Ledger/Identity manifests, and has no
+// example-org/example-k8s is PUBLIC, holds the deployment manifests, and has no
 // k8s/ directory at all — so the trigger list could never match a file in it and the
 // public infrastructure repo got strictly LESS mandatory security scrutiny than the
 // private application repo. These are the tests whose absence let that survive.
@@ -127,7 +127,7 @@ func TestReadyEmptyChangedFileListFailsClosed(t *testing.T) {
 func TestReadyPrivateRepoUnchanged(t *testing.T) {
 	t.Run("clean diff flips", func(t *testing.T) {
 		f, _ := setupFake(t)
-		f.files = []string{"frontend/src/lib/ledger.ts"}
+		f.files = []string{"frontend/src/lib/format.ts"}
 		f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
 		f.status = greenStatus()
 		if code := run(readyArgs(exampleRepo)); code != 0 {

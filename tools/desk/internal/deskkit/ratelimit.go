@@ -444,6 +444,45 @@ func AllowPRCreateAt(repo string, now time.Time) error {
 	return allowRepoWideAt("deskpr", repo, now, true)
 }
 
+// AllowPRBoundWrite gates one more PR-bound deskfile write (a `new --for-pr` filing or a
+// `attach --kind mr` reply) on `repo`. It replaces the fixed AllowWriteRepoWide ceiling for
+// that class: it counts only deskfile's PR-bound writes on the repo in the rolling hour and holds
+// them at `limit`, the runaway backstop. The caller resolves `limit` from the
+// write.bound.repo_hour knob and records its value and source on the audit line.
+//
+// The bound is never removed: a limit below 1, or no repo, is Unverifiable (exit 6), not
+// "unmetered". The per-PR tier, the per-repo tier and the circuit breakers are the caller's other
+// gates and are unchanged; the breakers are applied here as they are for the repo-wide gate.
+func AllowPRBoundWrite(repo string, limit int) error {
+	return AllowPRBoundWriteAt(repo, limit, time.Now())
+}
+
+// AllowPRBoundWriteAt is AllowPRBoundWrite with an injectable clock.
+func AllowPRBoundWriteAt(repo string, limit int, now time.Time) error {
+	const tool = "deskfile"
+	if repo == "" || limit < 1 {
+		return Unverifiable(fmt.Sprintf(
+			"the PR-bound write ceiling cannot be applied (repo %q, limit %d) — holding rather than leaving it unmetered",
+			repo, limit), nil)
+	}
+	mine, err := pointsFor(tool, now)
+	if err != nil {
+		return err
+	}
+	count, over, freeAt, retryAfter := chargedInWindow(now, mine, limit, func(e auditPoint) bool {
+		return e.repo == repo && prBoundPoint(e)
+	})
+	if over {
+		return budgetRefusal(tool, "PR-bound", repo+" (filings and replies bound to change requests)",
+			count, limit, freeAt, retryAfter,
+			"This is the larger runaway backstop for PR-bound writes (knob write.bound.repo_hour); unbound filings keep the fixed repo-wide ceiling.")
+	}
+	if err := checkBreakerRepo(tool, repo, now, mine); err != nil {
+		return err
+	}
+	return checkBreakerBackstop(tool, now, mine)
+}
+
 func allowRepoWideAt(tool, repo string, now time.Time, createsOnly bool) error {
 	tool, err := RequireCanonicalToolKey(tool)
 	if err != nil {
@@ -580,6 +619,29 @@ func chargesPointBudget(e auditPoint) bool {
 	return chargesBudget(e.result)
 }
 
+// deskfile's PR-bound audit verbs. A filing bound to an open change request (`deskfile new
+// --for-pr`, verb new-bound), the back-link it posts, and a `deskfile attach` reply on a change
+// (verb attach-pr) are the writes a desk makes while doing its own work on a PR. They are kept
+// out of the fixed repo-wide ceiling (checkRepoWideBudget) and counted by their own, larger,
+// knob-set tier instead (AllowPRBoundWrite), so a verifier repairing many PRs is not throttled by
+// the 20 per hour that guards unbound filings. The per-PR tier and the per-repo tier still count
+// them. These constants are the single spelling of the verbs: cmd/deskfile writes them and the
+// meters read them here, so the two cannot drift.
+const (
+	// PRBoundVerbNew is the audit verb of a `deskfile new --for-pr` filing.
+	PRBoundVerbNew = "new-bound"
+	// PRBoundVerbAttach is the audit verb of a `deskfile attach --kind mr` reply on a change,
+	// including a bound filing's back-link.
+	PRBoundVerbAttach = "attach-pr"
+)
+
+// prBoundPoint reports whether p is one of deskfile's PR-bound writes. An unknown or legacy verb
+// is NOT bound: it stays in the fixed ceiling, the fail-closed side. (A change reply written by
+// an earlier build is recorded as plain `attach` and so keeps counting there until it ages out.)
+func prBoundPoint(p auditPoint) bool {
+	return p.tool == "deskfile" && (p.verb == PRBoundVerbNew || p.verb == PRBoundVerbAttach)
+}
+
 // chargedInWindow counts `tool`'s charged writes inside the rolling window that match
 // `scope`, and — when the count has reached `limit` — returns the instant the budget
 // frees and the rounded wait to advertise.
@@ -702,8 +764,11 @@ func checkPRCreateBudget(repo string, now time.Time, mine []auditPoint) error {
 // admits can escape the bucket the gate reads, which is precisely what the per-PR and
 // unnumbered scopes could not promise for this call site.
 func checkRepoWideBudget(tool, repo string, now time.Time, mine []auditPoint) error {
+	// deskfile's PR-bound writes are the one class kept out of this fixed bucket: they are
+	// counted by AllowPRBoundWrite's own tier (see prBoundPoint). Every other write, of every
+	// tool, is counted here as before.
 	count, over, freeAt, retryAfter := chargedInWindow(now, mine, RateLimitPerPRPerHour, func(e auditPoint) bool {
-		return e.repo == repo
+		return e.repo == repo && !prBoundPoint(e)
 	})
 	if !over {
 		return nil

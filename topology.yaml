@@ -144,7 +144,9 @@ comms: interim
 # repos — one entry per repo whose topology this tree states.
 #
 #   visibility:  public | private | unknown   (unknown is the FAIL-CLOSED zero
-#                value: "not stated" must never read as "private")
+#                value: "not stated" must never read as "private"; `internal`
+#                is not a topology value and reads as unknown — the gates take
+#                an internal repo's `:internal` token from ASSAY_ALLOWED_REPOS)
 #   ci:          true when the repo runs PR CI, so an EMPTY check rollup means
 #                "not reported yet" (unverifiable), not "green". Default true.
 #   root:        default local checkout path for the multi-repo board, using the

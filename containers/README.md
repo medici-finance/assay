@@ -18,15 +18,19 @@ land, the per-desk images and launch surfaces.
 | `verify-desk/Dockerfile` | Thin per-desk image for `verify-desk`. |
 | `the-desk/Dockerfile` | Thin per-desk image for the coordinator `the-desk`. |
 | `entrypoint.sh` | Shared interactive boot baked into all five desk images: fail-closed credential preflight, then desk identity + skill pointer, then the interactive session. |
+| `desk-run.sh` | Interactive desktop launcher: validates the desk name and the credential files, then runs the desk image with the secrets.md mounts (`--dry-run` prints the command, `--attach` resumes a container). The default PEM is per desk (`<config>/assay/<desk-name>.pem`); the launcher mounts the file and does not decide which App the desk mints as. |
+| `desk-run.test.sh` | Offline tests for the launcher (dry-run output, refusal paths, no credential value in any output); no docker daemon needed. Run in CI by `TestDeskRunLauncherSuite` in `tools/desk/internal/regression`. |
+| `desk-run.mutate.sh` | Negative controls: runs the launcher suite against mutated copies of the launcher, one guard removed each, and requires the fixture that pins it to go red. |
 | `scripts/layer-secret-scan.sh` | Fails a built image that carries key-shaped material in any layer/config/history. |
 | `scripts/layer-secret-scan.test.sh` | Mutation proof for the scan: fixture images with baked fake keys must go red, a clean one green. |
 | `scripts/layer-secret-scan.mutate.sh` | Negative controls: runs the test against mutated copies of the scan (a merged-view scan, and each fail-closed step reverted) and requires each fixture to fail against its own mutant and no other assertion to break. |
+| `postgres/` | Local PostgreSQL for a multi-cell host: its own compose project (`assay-postgres`, pinned image, loopback only), per-cell provisioning, backup, restore, a drift check and the restore drill ([`docs/postgres.md`](../docs/postgres.md)). |
 | `secrets.md` | Runtime credential-injection contract (normative). |
 | `README.md` | This map. |
 
-An interactive launch script, a compose file, Kubernetes manifests, and a
-multi-desk control layer land in later work and are added to this table as they
-arrive.
+A compose file, Kubernetes manifests, and a multi-desk control layer land in
+later work and are added to this table as they arrive. To run one desk from a
+desktop, see [Run a desk from your desktop](../docs/docker.md).
 
 ## The base image
 

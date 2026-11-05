@@ -165,7 +165,19 @@ func TestEvidenceDriftAndCost(t *testing.T) {
 func TestRolloutSourceAdmission(t *testing.T) {
 	d := readDeclaredPartials("..", "medici-finance/assay")
 	prs := []PRRecord{}
-	for _, n := range []int{735, 736, 945, 1010, 1194} {
+	// The partial members come from the coverage-checked cohort (derived-board/10), never a
+	// hand-kept list: candidate-cohort.json is joined to a complete inventory by TestCandidateCoverage.
+	_, cohort := candMustLoad(t)
+	var partials []int
+	for _, m := range cohort.Members {
+		if m.Disposition == "partial" {
+			partials = append(partials, m.Number)
+		}
+	}
+	if len(partials) == 0 {
+		t.Fatal("the cohort records no partial members")
+	}
+	for _, n := range partials {
 		if !d.partial(n, "derived-board/07") {
 			t.Errorf("rollout PR #%d is not declared partial", n)
 		}

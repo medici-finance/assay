@@ -126,6 +126,12 @@ func TestReap(t *testing.T) {
 	}
 	material(t, p, "build/result", 100)
 	material(t, p, "mod/module/file", 100)
+	// Launch uses fresh complete accounting after the timestamp safety margin;
+	// only explicit maintenance refreshes payload measurements.
+	time.Sleep(AdmitMtimeSlack)
+	if _, err := Check(p, false); err != nil {
+		t.Fatal(err)
+	}
 
 	// A root with an active consumer record is refused, and left byte-identical.
 	l, err := Acquire(p.Env())

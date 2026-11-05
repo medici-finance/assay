@@ -1,11 +1,22 @@
 # Portable agent execution environments
 
-**Status: requested future-state amendment, 16 October 2026; routed to the
-[agent-execution stream](../../streams/agent-execution/README.md), which stays parked until
-this amendment is approved.** This extends the
-existing R2/R3/R4/R7 owners. It specifies implementation work, not deployment,
-credential migration, a remote backend selection or an expansion of the earlier
-revision-bound architecture approval. Existing decisions and historical Evidence stay intact.
+**Status:** approved — approval of this bounded implementation scope and activation of the
+agent-execution stream are proposed by
+[PR #4349](https://github.com/medici-finance/assay/pull/4349) and take effect on the
+maintainer's merge of it, the ruling record under lifecycle §8.4. From that merge this
+document is the approved plan of record for the stream. Its routing edge is already closed:
+agent-execution briefs 01–08 already cite this path in their `sources:`, so no
+brief-authoring is owed. (Graph-execution briefs 20–22 and 25–27 link this amendment in
+their body text only; they are not `sources:` citations.)
+
+**Routes-to:** docs/streams/agent-execution/
+
+This extends the existing R2/R3/R4/R7 owners through the already-authored
+[agent-execution stream](../../streams/agent-execution/README.md). The approval that merge
+stamps is a new bounded implementation approval, not an expansion of the earlier
+revision-bound architecture decision. Deployment, credential migration, remote backend
+selection, concrete profile adoption and live activation retain their separate approvals.
+Existing decisions, Task/Verify obligations and historical Evidence stay intact.
 
 ## Outcome and controlling design
 
@@ -176,9 +187,10 @@ owners retain scheduling/promotion; no self-modifying production loop is selecte
 
 ## Delivery, compatibility and decisions
 
-[Seven M-sized briefs](../../streams/agent-execution/README.md) deliver the extension,
-workspace receipts, first local consumer, integrated recovery, lifecycle projection and
-independent AX feasibility and Harness² evaluation reports. Core delivery uses local fixtures and existing owners.
+[Nine M-sized briefs](../../streams/agent-execution/README.md) deliver the extension,
+workspace receipts, first local consumer, integrated recovery, lifecycle projection,
+independent AX feasibility and Harness² evaluation reports (/01–07), and the separately
+gated Kubernetes verifier (/08) and standing-desk (/09) profiles. Core delivery uses local fixtures and existing owners.
 AX feasibility neither gates that path nor qualifies remote execution. A production AX adapter,
 remote registration, cluster operations, credential migration and live promotion require
 separately authored work after measured compatibility and existing activation decisions.

@@ -58,7 +58,6 @@ WEIGHTS = {
     "cmd/deskgit": 13.7,
     "cmd/deskmerge": 13.1,
     "internal/gitmaintenance": 10.9,
-    "internal/gitcore": 9.5,
     "cmd/deskmonitor": 9.3,
     "cmd/verifyloop": 7.1,
     "internal/cellprocess": 6.4,

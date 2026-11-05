@@ -1,0 +1,5 @@
+# Module mode other than readonly lets the build rewrite go.mod.
+want: modules-not-readonly
+file: Dockerfile
+replace: "GOFLAGS=-mod=readonly"
+with: "GOFLAGS=-mod=vendor"

@@ -9,6 +9,11 @@ unblocks:
 - graph-execution/12
 effort: M
 gate: human
+decision-issue: 1992
+delivery:
+  - in: "assay#1993"
+    covers: partial
+    note: "Preparatory validation and subprocess boundary only; approved artifact bundle, executable loader, OS isolation and real smoke remain owed (PR #1993)."
 risk:
   regulatory: no
   customer: no

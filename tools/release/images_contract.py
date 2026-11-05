@@ -3,9 +3,19 @@ import re
 
 NAMES = {"desk-tools", "assay-harness", "desk-base", "intake-desk", "worker-desk",
          "pr-review-desk", "verify-desk", "the-desk", "verify-runner"}
+# verify-runner is published as one image index over these platforms (#4323); its
+# reference pins the index digest, which names each platform's manifest digest.
+RUNNER_PLATFORMS = ("linux/amd64", "linux/arm64")
+RUNNER_PLATFORM = ",".join(RUNNER_PLATFORMS)
+# Releases before #4323 recorded an amd64-only runner. A consumer that keeps one
+# of those records still validates it; the producer passes only RUNNER_PLATFORM.
+LEGACY_RUNNER_PLATFORM = "linux/amd64"
 
 
-def validate(manifest, version, source, runner, repository):
+def validate(manifest, version, source, runner, repository,
+             runner_platforms=(RUNNER_PLATFORM, LEGACY_RUNNER_PLATFORM)):
+    if isinstance(runner_platforms, str) or not runner_platforms:
+        raise ValueError("runner_platforms must be a non-empty collection of platform values")
     if set(manifest) != {"schema", "version", "source_revision", "repository", "images"}:
         raise ValueError("unexpected image manifest fields")
     if manifest["schema"] != "release-images-v1" or manifest["version"] != version:
@@ -19,7 +29,8 @@ def validate(manifest, version, source, runner, repository):
         if set(image) != {"name", "platform", "ref"}:
             raise ValueError("unexpected image fields")
         name = image["name"]
-        if name not in NAMES or name in seen or image["platform"] != "linux/amd64":
+        platforms = runner_platforms if name == "verify-runner" else ("linux/amd64",)
+        if name not in NAMES or name in seen or image["platform"] not in platforms:
             raise ValueError("missing, duplicate or unexpected image/platform")
         path = repository.split("/")[0] + "/verify-runner" if name == "verify-runner" else repository + "/" + name
         prefix = f"ghcr.io/{path}:{version}@sha256:"

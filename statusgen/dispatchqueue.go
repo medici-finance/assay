@@ -134,6 +134,7 @@ func runNextUp(root string) int {
 	// (see the package comment above) and never prints board-shaped NOTICE text;
 	// only the MUTATION this call performs is wanted here.
 	_, _ = runSiblingMergeIfOptedIn(streams, root) // opt-in only: --sibling-merge or ASSAY_SIBLING_MERGE=1
+	holdPhantomRowsFromGit(streams, root)          // strong board-honesty findings (boardhonesty.go)
 	nu := nextUp(streams, ClaimView{Claimed: claimed, Source: claimSource}, briefTouch)
 
 	// The root's declared repo, carried on the view AND every row so a cross-repo

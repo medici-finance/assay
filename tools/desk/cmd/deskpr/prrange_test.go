@@ -213,7 +213,8 @@ func TestUpdateDivergedLive(t *testing.T) {
 
 // TestUpdateNoTrackRefWide — the default path is unchanged: with no local tracking ref for
 // the branch, the offline stage judges the whole range and refuses before any forge read,
-// even though the forge would report a usable head.
+// even though the forge would report a usable head. The refusal names the unused tracking
+// ref and the fetch remedy, and never offers to rewrite the already-published commit.
 func TestUpdateNoTrackRefWide(t *testing.T) {
 	work, calls, remote := mixedPRFixture(t)
 	t.Setenv("FAKEGH_PR_OID", remote)
@@ -221,8 +222,16 @@ func TestUpdateNoTrackRefWide(t *testing.T) {
 	addTwoWorkerCommits(t, work)
 	var rc int
 	stderr := captureStderr(t, func() { rc = run([]string{"update"}) })
-	if rc != deskkit.ExitRefused || !strings.Contains(stderr, "does not resolve") {
-		t.Fatalf("update with no tracking ref rc = %d, want 5 naming the unresolved tip\n%s", rc, stderr)
+	if rc != deskkit.ExitRefused || !strings.Contains(stderr, "Range judged: refs/remotes/origin/main..") || strings.Contains(stderr, "excluding the remote tip") {
+		t.Fatalf("update with no tracking snapshot rc = %d, want 5 judging the whole range\n%s", rc, stderr)
+	}
+	for _, want := range []string{"commit " + remote[:12], `"refs/remotes/origin/feature/test-branch" was not used`, "does not resolve", "`git fetch origin` and retry"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("refusal does not name %q:\n%s", want, stderr)
+		}
+	}
+	if strings.Contains(stderr, "--reset-author") {
+		t.Errorf("refusal offers to rewrite a commit the remote may already hold:\n%s", stderr)
 	}
 	if anyPush(*calls) {
 		t.Fatal("pushed")

@@ -4,7 +4,7 @@ title: Importable fact reader SDK and first shared read
 why: "Consumers currently need a subprocess or duplicate forge handling to reuse read behavior. A narrow SDK lets commands and applications share the implementation without acquiring custody or write authority."
 wave: 1
 depends: []
-unblocks: ["forge-neutral/37"]
+unblocks: ["forge-neutral/37", "forge-neutral/46", "forge-neutral/47"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -91,6 +91,14 @@ Options:
    evidence of equivalent scope and independent enforcement.
 
 Default if no answer: none — blocks until answered.
+
+**Superseded direction (note added 2026-10-25).** `DR-forge-neutral-36`, the design this brief
+cites, is superseded by `DR-forge-library` (the driver's ruling of 2026-10-25 on #2395): one
+shared forge library for reads and writes, linked by statusgen, holding the role-and-repo
+credential. Option 1's clause that statusgen's online reads stay on the deskread process adapter,
+and Task 3's matching clause, are superseded going forward by desktools-v2/77, which replaces
+that adapter with the library. This brief's delivered module, Verify table and Evidence are
+unchanged and stand as recorded; the `forgeread` root package stays dependency-free (row 11).
 
 ## Ground rules
 

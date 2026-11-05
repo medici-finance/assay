@@ -17,6 +17,8 @@ the bundle does not independently prove the verification was actually performed 
 separate identity -- that corroboration is the reviewer-App / commit-author check
 that happens in CI, which is a separate concern.
 
+For the handover summary, see [what Assay is and is not](what-assay-is-and-is-not.md).
+
 ## Bundle format
 
 A single `.tgz` (gzip-compressed tar) file containing:

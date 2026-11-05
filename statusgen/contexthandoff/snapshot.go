@@ -25,6 +25,10 @@ type Snapshot struct {
 	Claims       []Claim
 	Proposals    []Proposal
 	Limits       Limits
+	// Product is the optional product-target input (statusgen/23). Nil means
+	// the snapshot supplies none, and every receipt over it stays
+	// architecture-only.
+	Product *SnapshotProduct
 }
 
 // SnapshotSource is one member of the source universe. Files is nil when the
@@ -123,6 +127,18 @@ type snapshotFile struct {
 		Checkpoint    string `json:"checkpoint"`
 	} `json:"claims"`
 	Proposals []string `json:"proposals"`
+	Product   *struct {
+		Targets []struct {
+			Outcome   string `json:"outcome"`
+			Revision  string `json:"revision"`
+			Approval  string `json:"approval"`
+			Reference string `json:"reference"`
+		} `json:"targets"`
+		Relationships []struct {
+			Subject string `json:"subject"`
+			Outcome string `json:"outcome"`
+		} `json:"relationships"`
+	} `json:"product"`
 }
 
 // snapshotErr is a refusal of the snapshot itself (not of a record).
@@ -177,6 +193,15 @@ func LoadSnapshot(fsys fs.FS, lim Limits) (*Snapshot, error) {
 			return nil, snapshotErr("proposal %s: %v", p, err)
 		}
 		s.Proposals = append(s.Proposals, Proposal{Locator: p, Handoff: h})
+	}
+	if sf.Product != nil {
+		s.Product = &SnapshotProduct{Targets: []ProductTarget{}, Relationships: []ProductRelationship{}}
+		for _, t := range sf.Product.Targets {
+			s.Product.Targets = append(s.Product.Targets, ProductTarget(t))
+		}
+		for _, rel := range sf.Product.Relationships {
+			s.Product.Relationships = append(s.Product.Relationships, ProductRelationship(rel))
+		}
 	}
 	if err := s.Validate(); err != nil {
 		return nil, err
@@ -276,6 +301,9 @@ func (s *Snapshot) Validate() error {
 		case !textRe.MatchString(c.Checkpoint):
 			return snapshotErr("claim %d: checkpoint is non-blank text", i)
 		}
+	}
+	if s.Product != nil {
+		return s.Product.validate(decl)
 	}
 	return nil
 }

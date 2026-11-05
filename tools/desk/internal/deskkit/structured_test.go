@@ -269,7 +269,7 @@ func TestPathRuleDifferential(t *testing.T) {
 		"services/app/internal/api/handlers/reviewwrite/",
 		"docs/reports/2026/07/30/factory-floor-summary",
 		"src/Example/Report",
-		"com/example/desk/commit/5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b",
+		"com/example/desk/commit/4c418b16e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b",
 		"docs/streams/groundtruth/brief06gategoldencorpus",
 		"tools/desk/internal/IsOnByDefault/router",
 		"docs/reports/2026/07/30/factoryfloorsummary",

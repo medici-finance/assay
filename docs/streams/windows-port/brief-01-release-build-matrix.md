@@ -47,12 +47,8 @@ id: 6a4da201-5caa-420c-9494-fb1b21bd5f1b
 ## Context
 
 files:
-- **amend** `.github/workflows/release.yml` — the `Build binaries` step (statusgen) and the
-  `Build and package desk-tools binaries` step (desk-tools loop), plus the `Generate checksums`
-  step. Add `windows/amd64` and `windows/arm64` to each.
-- **amend** `examples/adopter-scaffold/.assay-versions` — add illustrative
-  `statusgen-windows-amd64` / `statusgen-windows-arm64` pin lines (placeholder sha256 with a
-  comment; the real hash is harvested from a published release, never a local build).
+- **amend** `.github/workflows/release.yml` — the `Build binaries` step (statusgen) and the `Build and package desk-tools binaries` step (desk-tools loop), plus the `Generate checksums` step. Add `windows/amd64` and `windows/arm64` to each.
+- **amend** `examples/adopter-scaffold/.assay-versions` — add illustrative `statusgen-windows-amd64` / `statusgen-windows-arm64` pin lines (placeholder sha256 with a comment; the real hash is harvested from a published release, never a local build).
 
 facts:
 - **Today's matrix is three Unix targets.** statusgen: `GOOS=darwin GOARCH=arm64`,

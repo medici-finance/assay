@@ -46,7 +46,6 @@ would let differential lint demote a process refusal as pre-existing.
 | Installer `plugins/assay/scripts/assay-install.sh` | `statusgen --root COPY --lint` | Requires exit 0 to prove installation; refusal cannot prove installation |
 | `.github/workflows/assay-statusgen.yml` and staged counterpart | PR lint, post-merge board validation and reconcile validation use `--root . --lint` | Nonzero fails the shell step; unchanged |
 | `.github/workflows/verify-gate-close.yml` and staged counterpart | Captures `statusgen --root . --lint` in a conditional | Nonzero retains refusal; unchanged |
-| `.github/workflows/windows-ci-leg.yml` and staged counterpart | `statusgen.exe --root .. --lint` | Requires success; unchanged |
 | Shipped author-brief, adopt, install, intake-desk, PR-review-desk and verify-desk skills | Prescribe `--lint` proof or review checks | Continue to require success; exit 5 is could-not-check for trust, never a clean source result |
 | `writeguard` | Classifies `--lint` as read-only | No verdict interpretation; unchanged |
 | deskboard/deskdispatch | References lint guarantees or consumes board/brief data; no lint subprocess at the inventoried sites | No invocation change |

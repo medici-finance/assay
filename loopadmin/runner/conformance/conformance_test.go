@@ -118,6 +118,10 @@ func TestRunnerKitRunAll(t *testing.T) {
 	t.Run("minimal", func(t *testing.T) { conformance.RunAll(t, minimal) })
 }
 
+// TestRunnerKitRunAllQualified runs the whole kit against an adapter that declares the
+// qualified profile. regression: agent-execution/01
+func TestRunnerKitRunAllQualified(t *testing.T) { conformance.RunAll(t, qualified) }
+
 // The cases below each prove one contract rule on the Client alone: no caller
 // check runs, so the contract is the layer that refuses.
 
@@ -203,4 +207,28 @@ func TestRunnerNoAliasing(t *testing.T) {
 func TestRunnerNoAliasingRecord(t *testing.T) {
 	conformance.CaseNoAliasingRecord(t, full)
 	conformance.CaseNoAliasingRecord(t, minimal)
+}
+
+// qualified is a fake that knows the execution-profile extension and declares
+// the kit's qualified profile.
+func qualified(t *testing.T) conformance.Subject {
+	a := fake.New(fake.FullCapabilities())
+	a.Qualify(conformance.QualifiedProfile())
+	return conformance.Subject{Adapter: a, Control: a}
+}
+
+// TestRunnerProfileBeforeStart runs the case against adapters that do not know
+// the extension and one that declares other profiles.
+// regression: agent-execution/01
+func TestRunnerProfileBeforeStart(t *testing.T) {
+	conformance.CaseProfileRefusedBeforeStart(t, full)
+	conformance.CaseProfileRefusedBeforeStart(t, minimal)
+	conformance.CaseProfileRefusedBeforeStart(t, qualified)
+}
+
+// TestRunnerProfileAdmittedByAdapter runs the adapter-side admission case
+// against an adapter that declares a qualified profile.
+// regression: agent-execution/01
+func TestRunnerProfileAdmittedByAdapter(t *testing.T) {
+	conformance.CaseProfileAdmittedByAdapter(t, qualified)
 }

@@ -4,6 +4,7 @@ date: "2026-10-20"
 title: "Expose the canonical verification queue: `statusgen --gate-scores` rows carry an additive, versioned queue classification; `deskboard awaiting` and `throughput` read it; `verifyloop plan` builds one plan value with `--json` and `--base-queue`, and the canonical base can only demote a dispatch"
 consequence: major
 decided-by: "human:<name>"
+ruling: "https://github.com/medici-finance/assay/issues/3577#issuecomment-6505687459"
 alternatives:
   - "Option B on the decision issue, reject or amend the design before it moves (\"a follow-up commit can change the class set, the base precedence or the --json shape\") — not chosen for the contract: the driver answered A (https://github.com/medici-finance/assay/issues/3382#issuecomment-6258267531). No rationale was recorded, and none is supplied here."
   - "Hold until the reviewer has reviewed the pull request — offered as option C in the relay comment that put the question (posted by the worker role's App, not the desk's), not in the issue body's fork test; not chosen for the contract, which the driver accepted on that issue. No rationale was recorded."
@@ -15,12 +16,15 @@ accepted:
   - "Only `implemented` rows classed `judgment-dispatch` count toward verify depth. Runnable-offline, continuation and human-action rows no longer size a model verifier pool, so a board reading counts fewer verify items than before for the same tree."
 ---
 
-**This record transcribes a recorded human ruling and states the delivered design. It is
-NOT approved.** The ruling below accepts brief desk-tools/45's queue contract and says, in its
-own words, that the design-approval record is a separate follow-up. This file is that
-follow-up's draft. The design approval is pending on its own decision issue: https://github.com/medici-finance/assay/issues/3577
-Until the driver's comment approving this record exists there, nothing here claims the design
-was approved.
+**Approved as recorded** by the driver's unedited comment on 29 October 2026:
+https://github.com/medici-finance/assay/issues/3577#issuecomment-6505687459
+
+> Approve DR-desk-tools-45 as recorded. The executable-pinning advisory, current-scope reconciliation, independent verification and rollout remain outstanding.
+
+The approval covers this recorded design. It grants no activation, lifecycle flip,
+acceptance or claim that the 23-October candidate/priority amendment is already delivered.
+The following historical discussion records why the earlier contract ruling alone was
+insufficient. The new `ruling:` above binds the separate design approval.
 
 ## The ruling recorded
 
@@ -45,21 +49,10 @@ after independent verification", "2. Request corrections and keep the change pen
 issue's A, not the brief's option 1, and the independent verification that option 1 names has
 not run.
 
-**Why this record carries no `ruling:` key yet.** `decided-by` is the public placeholder
-`human:<name>`. Under `spec/registers-v1.md` §7.5's placeholder rule, a placeholder names
-nobody: it is never looked up in a login map and never corroborated by a pull-request
-approval. Its only route is a `ruling:` link to an unedited human comment whose own text names
-this record by its id, posted on a decision issue that carries this record's decision-gate
-marker. The ruling comment above fails that test: it names no record (condition 5), and it
-accepts the contract rather than the design, so a `ruling:` pointing at it would fail closed.
-The decision issue for this record's approval carries the marker and asks the driver for a new
-comment naming the record. The `ruling:` key is added to this record, by a later push, only
-after that unedited comment exists. It links only the driver's own comment choosing option A
-(approve) and naming this record. A comment from any other login, or one that requests
-changes or rejects the design, never qualifies; that is a procedural rule for whoever reviews
-the `ruling:` push, not a rule the corroboration check enforces (see "What happens after
-merge"). Until then this record is not approved, and the
-corroboration check correctly reports `decided-by` as `placeholder-unratified`.
+**Approval binding.** `decided-by` remains the public placeholder `human:<name>`.
+The new unedited comment names this record on its own decision-gate issue. It is the
+approval linked by `ruling:`, not the older comment accepting the queue contract.
+Corroboration of the link does not verify implementation or acceptance.
 
 ## The design stated for approval
 
@@ -110,10 +103,9 @@ and a route back exists. The driver can correct the level before the record's ap
 
 ## Open / not decided
 
-- **The design approval.** It is the driver's, and it is pending on https://github.com/medici-finance/assay/issues/3577
-  It counts only as the driver's own unedited comment there naming `DR-desk-tools-45`, linked
-  from this record's `ruling:` key. A pull-request approval, a desk relay or a reviewer verdict
-  does not stand in for it.
+- **Current-scope reconciliation.** The approval above covers the recorded design;
+  the later candidate/priority amendment still requires its own implementation and
+  independent verification. No current-scope delivery is inferred from the old PR.
 - **SEC-2, the unpinned statusgen in the base read.** The security review of the delivering
   pull request (review 5579323310, advisory) found that `baseQueueRows`
   (verifyloop's plan.go, lines 156-167 at head `2caa578a`) runs `STATUSGEN_BIN` or the statusgen on
@@ -134,26 +126,8 @@ and a route back exists. The driver can correct the level before the record's ap
 
 ## What happens after merge
 
-The delivering pull request merged with desk-tools/45 still at `todo` in the stream README.
-The brief's frontmatter keeps `gate: human` and `decision-issue: 3382` and carries no
-`design:` key. **Merging this
-record alone authorizes no flip.** A new follow-up pull request that flips desk-tools/45 to
-`implemented` and adds `design: DR-desk-tools-45` to the brief's frontmatter waits for ALL of:
-
-1. the driver's own unedited comment on https://github.com/medici-finance/assay/issues/3577
-   approving `DR-desk-tools-45` (option A, naming the record);
-2. a push adding this record's `ruling:` key, linking that comment;
-3. a clean `statusgen --corroborate` read of this record.
-
-No tool enforces these three conditions or their order. The corroboration check's ruling lane
-establishes who wrote the linked comment and where, not what it says. For a record whose
-`decided-by` is the placeholder, it accepts a comment by any login that the check's human-login
-map resolves to a human. It counts an approval and a rejection alike as a ruling. Whoever
-reviews the `ruling:` push confirms by hand that the linked comment is the driver's own
-unedited option-A approval.
-
-A passing `lint` on that follow-up is not evidence of approval, for two separate reasons. The
-design gate checks that the record exists, not that it is ratified; that gap is tracked at
-https://github.com/medici-finance/assay/issues/2704. The corroboration job reports success
-without running `statusgen --corroborate` on a change that touches only a decision record; that
-gap is tracked at https://github.com/medici-finance/assay/issues/2669.
+The original delivering pull request merged with desk-tools/45 still at `todo`.
+The record now carries the driver's design approval. Binding and corroborating that
+approval does not advance the board. The current-scope amendment, independent verification,
+executable-pinning advisory and rollout remain separate obligations as the approval states.
+A passing design corroboration establishes neither implementation nor acceptance.

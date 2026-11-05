@@ -1,2 +1,0 @@
-### Added
-- `assay:trace-path-to-live` skill: turns an objective (a brief id, a drive slug or a plain-language goal, confirmed before walking) into its prerequisite brief graph across every stream root — live status, gate, open PR, claim, eligibility and the critical path — plus a ranked move list per owning role, rendered as one self-contained page outside any repository. It orchestrates the existing `statusgen` and `deskboard` readers and adds no reader of its own.

@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance|TestDirectProvider|TestPerfProcessCoverage|TestGitHubMinter|TestDesktokenExec|TestGitLabCred'",
   "schemata": true,
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
@@ -311,8 +311,8 @@
     {
       "name": "drop the memo's age guard entirely (a token is reused past its own lifetime)",
       "file": "internal/deskkit/roletoken.go",
-      "old": "\tif roleTokenNow().Sub(e.at) >= roleTokenMemoMaxAge {",
-      "new": "\tif false {"
+      "old": "\tif now.Sub(e.at) >= roleTokenMemoMaxAge || (!e.expires.IsZero() && !now.Before(e.expires.Add(-roleTokenExpirySkew))) {",
+      "new": "\tif false && now.Sub(e.at) >= 0 {"
     },
     {
       "name": "memoise before the token file is read and validated (a transient failure is pinned for the life of the process)",
@@ -793,6 +793,72 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "return nil, g.mapErr(http.MethodPost, fmt.Sprintf(\"/projects/%s/repository/commits\", proj), cerr)",
       "new": "_, _, _ = cl.Commits.CreateCommit(repo.Slug(), opt)\n\t\treturn nil, g.mapErr(http.MethodPost, fmt.Sprintf(\"/projects/%s/repository/commits\", proj), cerr)"
+    },
+    {
+      "name": "drop the memo's expiry half (a token whose reported expiry has passed is reused until the age guard alone trips)",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "\tif now.Sub(e.at) >= roleTokenMemoMaxAge || (!e.expires.IsZero() && !now.Before(e.expires.Add(-roleTokenExpirySkew))) {",
+      "new": "\tif now.Sub(e.at) >= roleTokenMemoMaxAge {"
+    },
+    {
+      "name": "reintroduce the minter child: providerMint forks desktoken from PATH instead of running the provider",
+      "file": "internal/deskkit/credentialprovider.go",
+      "old": "\tcred, gerr := credential.GitHub(req, CredentialAdapters(audit, credentialHTTP))\n\tif gerr != nil {\n\t\treturn \"\", \"\", CredentialError(gerr)\n\t}",
+      "new": "\t_, _ = req, credentialHTTP\n\tif r := Run(ToolCall{Name: \"desktoken\", Args: []string{role, \"--repo\", owner}}); true {\n\t\treturn strings.TrimSpace(r.Stdout), r.Stderr, r.Err\n\t}\n\tcred := credential.Credential{}"
+    },
+    {
+      "name": "plant an exec fallback: a provider refusal falls back to forking desktoken from PATH (a second identity path)",
+      "file": "internal/deskkit/credentialprovider.go",
+      "old": "\tcred, gerr := credential.GitHub(req, CredentialAdapters(audit, credentialHTTP))\n\tif gerr != nil {\n\t\treturn \"\", \"\", CredentialError(gerr)\n\t}",
+      "new": "\tcred, gerr := credential.GitHub(req, CredentialAdapters(audit, credentialHTTP))\n\tif gerr != nil {\n\t\tr := Run(ToolCall{Name: \"desktoken\", Args: []string{role, \"--repo\", owner}})\n\t\treturn strings.TrimSpace(r.Stdout), r.Stderr, r.Err\n\t}"
+    },
+    {
+      "name": "drop providerMint's top-of-run guard (a request-build refusal is recorded while desk tools are stopped)",
+      "file": "internal/deskkit/credentialprovider.go",
+      "old": "\tif gerr := Guard(); gerr != nil {\n\t\treturn \"\", \"\", gerr // the guard recorded its own refusal\n\t}",
+      "new": "\tif gerr := Guard(); false && gerr != nil {\n\t\treturn \"\", \"\", gerr // the guard recorded its own refusal\n\t}"
+    },
+    {
+      "name": "url-userinfo — disarm the arm (a password in URL userinfo scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif at, pw := urlUserinfoAt(s); at >= 0 {",
+      "new": "\tif at, pw := urlUserinfoAt(s); false && at >= 0 {"
+    },
+    {
+      "name": "url-userinfo — drop the placeholder skip (<token>, ${VAR}, *** refuse)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\t\tif bad < 0 && !isUserinfoPlaceholder(pw) {",
+      "new": "\t\tif bad < 0 {"
+    },
+    {
+      "name": "url-userinfo — drop the authority bound (a host:port/path@x match refuses)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\t\tbad := strings.LastIndexAny(s[m[2]:m[5]], \"/?#[]\")",
+      "new": "\t\tbad := strings.LastIndexAny(s[m[2]:m[5]], \"\")"
+    },
+    {
+      "name": "url-userinfo — require a username again (scheme://:<password>@host scans clean)",
+      "file": "internal/deskkit/scrub.go",
+      "old": "reURLUserinfo = regexp.MustCompile(`://([^:/@\\s]*):([^@\\s]+)@`)",
+      "new": "reURLUserinfo = regexp.MustCompile(`://([^:/@\\s]+):([^@\\s]+)@`)"
+    },
+    {
+      "name": "url-userinfo — resume after the whole skipped match (a userinfo nested in a longer URL scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\t\tpos = userinfoResume(s, m, bad)",
+      "new": "\t\tpos = m[1]"
+    },
+    {
+      "name": "url-userinfo — resume at the first bad character, not the last (a nested userinfo scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\t\tbad := strings.LastIndexAny(s[m[2]:m[5]], \"/?#[]\")",
+      "new": "\t\tbad := strings.IndexAny(s[m[2]:m[5]], \"/?#[]\")"
+    },
+    {
+      "name": "fork desktoken again from repohardenguard's auditor mint (a caller steps around the in-process minter by exec'ing the binary first on PATH; the exec half of the #1573 class guard must fire)",
+      "file": "cmd/repohardenguard/forge.go",
+      "old": "\ttok, _, err := githubRoleTokenFn(\"auditor\", repoSlug)",
+      "new": "\ttok, _, err := githubRoleTokenFn(\"auditor\", repoSlug)\n\t_ = []string{\"desktoken\", \"auditor\", \"--repo\", repoSlug}"
     }
   ],
   "_not_mutated": {

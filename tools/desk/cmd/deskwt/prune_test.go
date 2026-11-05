@@ -385,8 +385,8 @@ func TestPruneBadIntervalRefuses(t *testing.T) {
 func TestPrunePositionalRefuses(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
-	if rc := run([]string{"prune", "stray"}); rc != deskkit.ExitRefused {
-		t.Fatalf("prune with a positional arg rc = %d, want 5", rc)
+	if rc := run([]string{"prune", "stray"}); rc != 2 {
+		t.Fatalf("prune with a positional arg rc = %d, want 2 (usage)", rc)
 	}
 }
 

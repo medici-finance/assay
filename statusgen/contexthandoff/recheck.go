@@ -12,6 +12,8 @@ const (
 	FindingReconcile = "reconcile" // a conclusion depends on a changed input: reconcile before acting
 	FindingHold      = "hold"      // an input is unavailable or coverage is partial: could-not-check, scoped to it
 	FindingIgnored   = "ignored"   // an input that cannot affect approved work (an unapproved rival)
+	// FindingAssess (product.go) is a product-binding change for the deciding
+	// role to assess; it neither reconciles nor holds.
 )
 
 // Finding is one recheck conclusion, scoped to the input it concerns.
@@ -70,8 +72,20 @@ func Recheck(prior *Handoff, s *Snapshot) (*RecheckResult, error) {
 	if prior.DeclaredBy != fresh.DeclaredBy {
 		return nil, snapshotErr("prior receipt is declared by %s, the snapshot by %s", prior.DeclaredBy, fresh.DeclaredBy)
 	}
+	if prior.Product != nil && fresh.Product == nil {
+		return nil, snapshotErr("the prior receipt carries product bindings but the snapshot supplies no product input: they cannot be rechecked, and dropping them would lose their dispositions")
+	}
+	// The prior's product section is checked again, as the decoder would: a
+	// carried disposition and a carried assessment are never trusted on sight.
+	if err := checkProduct(prior.Product, prior.Readiness.DecidingRole); err != nil {
+		return nil, err
+	}
+	if prior.Product != nil && len(prior.Product.Dispositions) > 0 && prior.Readiness.DecidingRole != fresh.Readiness.DecidingRole {
+		return nil, snapshotErr("the snapshot changes the deciding role from %s to %s, but the prior receipt carries product dispositions recorded by %s: they cannot be carried under another deciding role; discover a fresh receipt", prior.Readiness.DecidingRole, fresh.Readiness.DecidingRole, prior.Readiness.DecidingRole)
+	}
 	c := &comparison{ix: ix, prior: prior, fresh: fresh, touched: map[string]bool{}}
 	c.compare()
+	c.compareProduct()
 	receipt := c.merge()
 	c.sortFindings()
 	return &RecheckResult{Receipt: receipt, Findings: c.findings}, nil
@@ -294,7 +308,7 @@ func (c *comparison) sortFindings() {
 	})
 }
 
-var classOrder = map[string]int{FindingHold: 0, FindingReconcile: 1, FindingPreserved: 2, FindingIgnored: 3}
+var classOrder = map[string]int{FindingHold: 0, FindingReconcile: 1, FindingAssess: 2, FindingPreserved: 3, FindingIgnored: 4}
 
 func (c *comparison) inUnavailable(loc string) bool {
 	id, _, _ := strings.Cut(loc, ":")
@@ -440,6 +454,7 @@ func (c *comparison) merge() *Handoff {
 		unresolved = []string{}
 	}
 	h.Readiness.Unresolved = unresolved
+	h.Product = c.mergeProduct()
 
 	have := map[string]bool{}
 	var pre []string
@@ -449,10 +464,16 @@ func (c *comparison) merge() *Handoff {
 			pre = append(pre, l)
 		}
 	}
-	for _, l := range c.fresh.Readiness.Prerequisites {
+	// The scope line and the product lines come from the merged product
+	// section (with its carried dispositions); the prior receipt's are
+	// superseded, never accumulated.
+	for _, l := range withProductScope(c.fresh.Readiness.Prerequisites, h.Product) {
 		push(l)
 	}
 	for _, l := range c.prior.Readiness.Prerequisites {
+		if l == ArchitectureOnly || l == ProductAssessed || strings.HasPrefix(l, productLinePrefix) {
+			continue
+		}
 		if !strings.HasPrefix(l, "reconcile: ") && !strings.HasPrefix(l, "hold: ") && !strings.HasPrefix(l, "partial: ") && !strings.HasPrefix(l, "duplicate: ") {
 			push(l)
 		}

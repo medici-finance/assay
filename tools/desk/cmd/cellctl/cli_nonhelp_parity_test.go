@@ -444,6 +444,10 @@ func unknownCmd(name string) string {
 func shapeErr(msg string) string { return "cellctl: " + msg + "\nRun 'cellctl --help' for usage.\n" }
 
 var deliberateDiffs = map[string]deliberateDiff{
+	"check/2": {code: 1, stdoutReplace: func() []string {
+		return []string{"cockpit: herdr (auto: on PATH)", "cockpit: tmux (scrubbed auto: private socket)"}
+	}, stderrReplace: []string{"", ""}, why: "scrubbed display support: check reports the actual private tmux process surface unless Herdr is explicitly selected; all other bytes remain equal"},
+
 	// #2696 deliberately replaces the implicit Codex cadence and adds native
 	// admission. Retain the original transcript and compare all other bytes.
 	"desk-house/8": {code: 0, stdoutReplace: func() []string {

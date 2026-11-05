@@ -7,6 +7,7 @@ depends: []
 unblocks: []
 effort: M
 gate: human
+decision-issue: 4070
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Changes how the tool writes human attribution into Evidence: the stamped subject is a login on a target the roster states private, and the on-behalf-of annotation is an attribution control the segregation-of-duties checks trust. Human acceptance of the restamp-or-refuse rule is required at done."
 issues: []

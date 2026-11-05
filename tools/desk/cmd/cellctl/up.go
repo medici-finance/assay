@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/perfrec"
 	"os"
 	"os/exec"
 	"runtime"
@@ -311,6 +312,7 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 	ctl.toStderr()
 	defer ctl.restore()
 	started0 := time.Now()
+	c.launchStarted = perfrec.ProcessEntry().At()
 	noTheDesk, attach, persist := v.Bool("no-the-desk"), !v.Bool("no-attach") && !ctl.json && ctl.applyID == "", v.Bool("set")
 	wait := v.Duration("lease-wait")
 	if wait <= 0 {
@@ -584,6 +586,14 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 		}
 		c.commsPreflightStale(commsCfg, false)
 		probes, _ := probe(rs)
+		for _, p := range probes {
+			if p.Kind == probeAbsent {
+				if _, err := c.prepareLaunch(); err != nil {
+					die("up preparation: %v; no windows launched", err)
+				}
+				break
+			}
+		}
 		if o.Comms && res.Cockpit != "tmux" {
 			if err := c.startComms(res.Cockpit); err != nil {
 				die("up comms: %v", err)
@@ -691,26 +701,27 @@ func (c *Cell) upTmux(cfg string, probes []upProbe, reconciled map[string]bool, 
 		}
 	}
 	open := func(role string) error {
-		name := strings.TrimSuffix(role, "-desk")
-		switch role {
-		case "pr-review-desk":
-			name = "review"
-		case "the-desk":
-			name = "the-desk"
-		}
+		// The window is cell-qualified (<cell>-<role>), so names never collide across cells on the
+		// shared tmux server, and its id is printed back for the role's surface receipt.
+		name := surfaceName(c.Name, role)
 		verb := []string{"new-window", "-t", c.Session}
 		if exec.Command("tmux", "has-session", "-t", c.Session).Run() != nil {
 			verb = []string{"new-session", "-d", "-s", c.Session}
 		}
-		out, err := exec.Command("tmux", append(verb, "-n", name, "-c", c.Dir,
+		out, err := exec.Command("tmux", append(verb, "-P", "-F", "#{window_id}", "-n", name, "-c", c.Dir,
 			c.paneRoleCmd(role, cfg, o)+"; echo '["+role+"] exited'; exec $SHELL")...).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("tmux %s: %s", verb[0], orDefault(firstOutLine(string(out)), err.Error()))
 		}
+		id := firstOutLine(string(out))
+		if !strings.HasPrefix(id, "@") {
+			id = ""
+		}
+		c.noteSurface(role, surfaceReceipt{Cockpit: "tmux", Session: c.Session, Surface: id})
 		return nil
 	}
 	rows := c.convergeRoles(probes, reconciled, c.roleGate(wait), open)
-	_ = exec.Command("tmux", "select-window", "-t", c.Session+":the-desk").Run()
+	_ = exec.Command("tmux", "select-window", "-t", c.Session+":"+surfaceName(c.Name, "the-desk")).Run()
 	report(rows)
 	fmt.Printf("[cell] %s up: %s (config=%s)\n", c.Session, upWindowList(firstName, "", upRoleNames(probes)), cfg)
 	fmt.Printf("[cell] attach: tmux attach -t %s   ·   down: cellctl down %s\n", c.Session, c.Name)
@@ -754,7 +765,11 @@ func (c *Cell) upHerdr(cfg string, probes []upProbe, reconciled map[string]bool,
 		c.herdrWindow(c.Name+"-"+firstName, firstCmd, newWsID)
 	}
 	rows := c.convergeRoles(probes, reconciled, c.roleGate(wait), func(role string) error {
-		return c.herdrWindow(c.Name+"-"+role, c.paneRoleCmd(role, cfg, o), newWsID)
+		tab, pane, err := c.herdrWindowIDs(surfaceName(c.Name, role), c.paneRoleCmd(role, cfg, o), newWsID)
+		if err == nil {
+			c.noteSurface(role, surfaceReceipt{Cockpit: "herdr", Workspace: newWsID, Surface: tab, Pane: pane})
+		}
+		return err
 	})
 	// The freshly-created workspace's own default tab is never wanted — dropped now that the
 	// workspace holds the cell's own labelled tabs too. Closing it any earlier (before the
@@ -771,32 +786,42 @@ func (c *Cell) upHerdr(cfg string, probes []upProbe, reconciled map[string]bool,
 }
 
 func (c *Cell) herdrWindow(label, cmd, wsID string) error {
+	_, _, err := c.herdrWindowIDs(label, cmd, wsID)
+	return err
+}
+
+// herdrWindowIDs opens the labelled tab and runs cmd in its root pane, returning the tab and
+// pane ids herdr reported (a role's surface receipt records both).
+func (c *Cell) herdrWindowIDs(label, cmd, wsID string) (string, string, error) {
 	args := []string{"tab", "create", "--label", label}
 	if wsID != "" {
 		args = []string{"tab", "create", "--workspace", wsID, "--label", label}
 	}
 	out, err := exec.Command("herdr", args...).CombinedOutput()
-	paneID := ""
+	paneID, tabID := "", ""
 	if err == nil {
 		var d struct {
 			Result struct {
+				Tab struct {
+					TabID string `json:"tab_id"`
+				} `json:"tab"`
 				RootPane struct {
 					PaneID string `json:"pane_id"`
 				} `json:"root_pane"`
 			} `json:"result"`
 		}
 		_ = json.Unmarshal(out, &d)
-		paneID = d.Result.RootPane.PaneID
+		paneID, tabID = d.Result.RootPane.PaneID, d.Result.Tab.TabID
 	}
 	if paneID == "" {
 		fmt.Fprintf(os.Stderr, "NOTICE: 'herdr tab create --label %s' did not return a pane id — start it by hand: %s\n", label, cmd)
-		return fmt.Errorf("herdr tab create --label %s returned no pane id", label)
+		return "", "", fmt.Errorf("herdr tab create --label %s returned no pane id", label)
 	}
 	if exec.Command("herdr", "pane", "run", paneID, cmd).Run() != nil {
 		fmt.Fprintf(os.Stderr, "NOTICE: 'herdr pane run' failed for %s (pane %s) — start it by hand: %s\n", label, paneID, cmd)
-		return fmt.Errorf("herdr pane run failed for %s", label)
+		return "", "", fmt.Errorf("herdr pane run failed for %s", label)
 	}
-	return nil
+	return tabID, paneID, nil
 }
 
 // upOrca has two shapes. Live: one terminal per role under the cell's checkout, running the same
@@ -852,9 +877,22 @@ func (c *Cell) upOrca(cfg string, roles []string, probes []upProbe, reconciled m
 			args = append(args, nameflag, c.Name+"-"+role)
 		}
 		args = append(args, cmdflag, c.paneRoleCmd(role, cfg, o))
-		if err := exec.Command("orca", args...).Run(); err != nil {
+		// --json, where advertised, returns the terminal handle and runtime id the role's surface
+		// receipt records; a build without it opens the terminal with no receipt (per-role down
+		// then refuses per-role-close-unsupported).
+		hasJSON := strings.Contains(h, "--json")
+		if hasJSON {
+			args = append(args, "--json")
+		}
+		out, err := exec.Command("orca", args...).Output()
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "NOTICE: 'orca %s' failed — run it by hand: %s\n", strings.Join(args, " "), c.paneRoleCmd(role, cfg, o))
 			return fmt.Errorf("orca terminal %s failed: %v", verb, err)
+		}
+		if hasJSON {
+			if d, err := readOrcaComms(out); err == nil {
+				c.noteSurface(role, surfaceReceipt{Cockpit: "orca", Runtime: d.Meta.RuntimeID, Surface: d.Result.Terminal.Handle})
+			}
 		}
 		return nil
 	})

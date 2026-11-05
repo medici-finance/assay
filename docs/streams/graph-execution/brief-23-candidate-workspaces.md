@@ -30,7 +30,7 @@ domain: complicated
 consumers:
 - 'workflow/internalreview: follow-up graph-execution/24'
 - 'workflow/publication: follow-up graph-execution/25'
-version: 1
+version: 2
 id: f1533c82-d868-4189-a19a-9fdd53369cac
 ---
 
@@ -73,11 +73,15 @@ candidate and acceptance-binding types, so a literal reader of Task 1 does not m
 candidate record (review advisory A3 on medici-finance/assay#2739). No other Task or Verify text
 changed.
 
+## Consumer integration amendment — 2026-10-23
+
+The 2026-10-13 unchanged-section statements above describe that earlier amendment only. Version 2 now strengthens Tasks 1 and 3 and the Expect cells of Verify rows 1–3 with actual shared candidate and acceptance-binding flows, exact frozen subjects, restored generation checks, positive baselines and independent mutation controls. Dependencies and historical Evidence remain unchanged. See [the acceptance and consumer integration manifest](../../proposals/non-ci-architecture/20-amendment-manifest.md#contract-acceptance-and-consumer-integration--23-october-2026). These are prospective obligations, not passing results.
+
 ## Task
 
-1. Define candidate references binding repository, base/candidate commit and tree, acceptance version and artifact manifest by importing graph-execution/28's candidate and acceptance-binding types (`verification-domain-v1`), never a second candidate record. Consume an injected workspace/effect port; the profile supplies the existing git library/role executor implementation. Do not vendor a second git/claim implementation.
+1. Define candidate references binding repository, base/candidate commit and tree, acceptance version and artifact manifest by importing graph-execution/28's candidate and acceptance-binding types (`verification-domain-v1`), never a second candidate record. Construct and validate those actual shared types at freeze, reviewer-input and restore boundaries; a serialized lookalike or owning-brief corroboration is not contract use. Consume an injected workspace/effect port; the profile supplies the existing git library/role executor implementation. Do not vendor a second git/claim implementation.
 2. Allow one implementation writer per mutable attempt. Freeze a candidate before checks/review; provide independent immutable/read-only snapshots. Dirty or incomplete snapshots cannot be candidates. Parallel checks may read the same frozen input; concurrent code writers are excluded from this profile.
-3. Repairs produce a new candidate identity and leave prior evidence immutable. Dependency/acceptance changes invalidate affected claims; file non-overlap does not establish applicability. Preserve evidence artifacts until retention policy permits deletion.
+3. Repairs produce a new candidate identity and leave prior evidence immutable. Dependency/acceptance changes invalidate affected claims; file non-overlap does not establish applicability. Preserve evidence artifacts until retention policy permits deletion. Restored references retain the exact shared acceptance version/digest and canonical generation; repairs bind their new candidate explicitly and never rebind old evidence to it or renew stale observations.
 4. Test reviewer input while implementation changes, foreign-repository candidate, artifact tampering and restored reference integrity through real workspace port fixtures. Update lifecycle docs and module/path CI.
 
 ## Interface contract
@@ -88,9 +92,9 @@ Pinned instance/attempt/subject and actor capability enter; typed state, evidenc
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCandidateImmutableDuringRepair$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCandidateImmutableDuringRepair " "$routing_out")` | exit 0; named PASS; reviewer keeps frozen A while repair creates B; verdict on A cannot attach to B; mutation: let repair write into the frozen candidate workspace — the named test must fail |
-| 2 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCandidateDirtyOrForeignDenied$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCandidateDirtyOrForeignDenied " "$routing_out")` | exit 0; named PASS; dirty tree or substituted repository is rejected; mutation: skip the clean-tree check when freezing a candidate — the named test must fail |
-| 3 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCandidateRestoreManifest$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCandidateRestoreManifest " "$routing_out")` | exit 0; named PASS; missing or mutated candidate artifact cannot be restored as valid; mutation: skip artifact hash verification on candidate restore — the named test must fail |
+| 1 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCandidateImmutableDuringRepair$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCandidateImmutableDuringRepair " "$routing_out")` | exit 0; named PASS; the real workspace port constructs /28 shared candidate/acceptance types; independent reviewer input keeps exact frozen A while repair creates B, including on the same branch; A's binding and verdict cannot attach to B, while valid A remains readable; mutation controls, each planted independently: let repair write into frozen A; compare branch names instead of the shared exact subject — each must make the named test fail, while the healthy positive baseline passes |
+| 2 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCandidateDirtyOrForeignDenied$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCandidateDirtyOrForeignDenied " "$routing_out")` | exit 0; named PASS; a valid clean snapshot retains its shared repository/base commit/base tree/commit/tree/manifest binding; a dirty tree, substituted repository or mismatching observed tree is rejected through the real workspace port; mutation controls, each planted independently: skip the clean-tree check; omit repository comparison; omit observed-tree comparison when freezing a candidate — each must make the named test fail, while the healthy positive baseline passes |
+| 3 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCandidateRestoreManifest$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCandidateRestoreManifest " "$routing_out")` | exit 0; named PASS; valid restore retains the exact shared candidate/acceptance version and digest with its canonical generation; a missing/mutated artifact, changed acceptance binding or stale generation cannot restore as valid or attach old evidence; mutation controls, each planted independently: skip artifact hash verification; skip shared acceptance-binding validation; skip generation validation on restore — each must make the named test fail, while the healthy positive baseline passes |
 
 ## Pre-mortem and dispatch checks
 

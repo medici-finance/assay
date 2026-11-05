@@ -376,9 +376,7 @@ func cmdDispatch(hdr Header, verbUsed, tier string) (*Report, error) {
 		fmt.Fprintf(w, "population: %s (todo/in-progress, unclaimed) — the queue to START from; NOT `awaiting` (implemented/verified) (#321)\n",
 			rep.Population)
 		if rep.StatusgenSkew {
-			fmt.Fprintf(w, "WARN statusgen %s does not match the .assay-versions pin %s — "+
-				"reinstall the pinned binary (tools/statusgen/README.md)\n",
-				rep.StatusgenVersion, rep.StatusgenPinned)
+			fmt.Fprintln(w, statusgenSkewLine(rep.StatusgenVersion, rep.StatusgenPinned))
 		}
 		for _, r := range rep.Roots {
 			fmt.Fprintf(w, "  root %-24s %s\n", shortRepo(r.Repo), r.Path)

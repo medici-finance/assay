@@ -9,16 +9,60 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
 
 const StatePath = ".cursor/assay-managed.json"
 
+// inventory is the ownership record at StatePath. Version is the plugin release
+// the placed payload came from (the bundle's .claude-plugin/plugin.json version,
+// bare X.Y.Z): it is what tells a later session, or `upgrade-assay`, which
+// release a copy-skills Cursor install holds (#4775). It is omitted only when
+// the source bundle carries no plugin manifest (a hand-assembled tree); a
+// release archive always carries one, verified against the selected tag.
 type inventory struct {
 	Schema         int               `json:"schema"`
+	Version        string            `json:"version,omitempty"`
 	Files          map[string]string `json:"files"`
 	BindingsSHA256 string            `json:"bindingsSha256"`
+}
+
+var bareVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+
+// bundleVersion reads the plugin release version a source bundle carries. A
+// missing manifest is "" (no version recorded); an unreadable, unparseable, or
+// non-X.Y.Z manifest is an error, never a silently unversioned inventory.
+func bundleVersion(bundleDir string) (string, error) {
+	raw, err := os.ReadFile(filepath.Join(bundleDir, ".claude-plugin", "plugin.json"))
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("Cursor bundle plugin metadata: %w", err)
+	}
+	var plugin struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(raw, &plugin); err != nil {
+		return "", fmt.Errorf("Cursor bundle plugin metadata: %w", err)
+	}
+	if !bareVersionPattern.MatchString(plugin.Version) {
+		return "", fmt.Errorf("Cursor bundle plugin version %q is not MAJOR.MINOR.PATCH", plugin.Version)
+	}
+	return plugin.Version, nil
+}
+
+// InstalledVersion reports the plugin release recorded in a repository's
+// Cursor ownership inventory: "" with a nil error when there is no inventory or
+// it predates the version field.
+func InstalledVersion(repoRoot string) (string, error) {
+	inv, raw, err := readInventory(repoRoot)
+	if err != nil || raw == nil {
+		return "", err
+	}
+	return inv.Version, nil
 }
 
 func digest(b []byte) string { return fmt.Sprintf("%x", sha256.Sum256(b)) }
@@ -128,7 +172,8 @@ func readInventory(root string) (inventory, []byte, error) {
 	if err = decoder.Decode(&extra); err != io.EOF {
 		return inv, nil, fmt.Errorf("trailing Cursor ownership inventory data")
 	}
-	if inv.Schema != 1 || len(inv.Files) == 0 || !shaPattern.MatchString(inv.BindingsSHA256) {
+	if inv.Schema != 1 || len(inv.Files) == 0 || !shaPattern.MatchString(inv.BindingsSHA256) ||
+		(inv.Version != "" && !bareVersionPattern.MatchString(inv.Version)) {
 		return inv, nil, fmt.Errorf("invalid Cursor ownership inventory schema/content")
 	}
 	seen := map[string]bool{}
@@ -156,8 +201,12 @@ func desiredFiles(opts Options) (map[string][]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	version, err := bundleVersion(opts.BundleDir)
+	if err != nil {
+		return nil, "", err
+	}
 	files := map[string][]byte{}
-	inv := inventory{Schema: 1, Files: map[string]string{}}
+	inv := inventory{Schema: 1, Version: version, Files: map[string]string{}}
 	seen := map[string]bool{}
 	for _, f := range raw.files {
 		rel := filepath.ToSlash(f.rel)

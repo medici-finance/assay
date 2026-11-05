@@ -242,8 +242,8 @@ func recordLinkedIssueRefs(root, prRepo, recordFile string) []decisionGateRef {
 // never a fabricated corroboration. GitHub populates closed_by only for a CLOSED
 // issue; ClosedBy is left empty for anything else, which fails condition (a).
 func fetchDecisionGateIssue(repo string, number int) *decisionGateIssue {
-	out, err := exec.Command("gh", "api",
-		fmt.Sprintf("repos/%s/issues/%d", repo, number)).Output()
+	out, err := ghGuard(exec.Command("gh", "api",
+		fmt.Sprintf("repos/%s/issues/%d", repo, number))).Output()
 	if err != nil {
 		return nil
 	}

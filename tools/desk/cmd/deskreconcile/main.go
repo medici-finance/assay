@@ -18,11 +18,15 @@
 package main
 
 import (
-	"flag"
 	"fmt"
+	"io"
 	"os"
+	"strconv"
 	"time"
 
+	"github.com/spf13/cobra"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -57,81 +61,151 @@ nothing to flip.
 Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.`
 
 func main() {
-	os.Exit(deskkit.PerfRun("deskreconcile", nil, os.Args[1:], func([]string) int {
-		// This tool ACTS on the roster (it writes through deskpr): ciEligible=false — the
-		// config-home file only, never the environment, in CI as well as locally.
-		deskkit.SetToolClass(deskkit.ClassForTool(false))
-		deskkit.EchoEffectiveConfig(os.Stderr)
-		if !deskkit.CheckVerbActivation(os.Stderr) {
-			return deskkit.ExitUnverifiable
-		}
-		return run(os.Args[1:], os.Stdout)
+	os.Exit(deskkit.PerfRun("deskreconcile", nil, os.Args[1:], func(a []string) int {
+		return execute(a, os.Stdout, os.Stderr, startup)
 	}))
 }
 
-func run(args []string, stdout *os.File) int {
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
-		sha, built := deskkit.Version()
-		fmt.Printf("deskreconcile sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
-		return deskkit.ExitOK
+// startup is what every real run does first, after its command line parsed, and never for
+// help or version (help reads nothing).
+//
+// This tool ACTS on the roster (it writes through deskpr): ciEligible=false — the
+// config-home file only, never the environment, in CI as well as locally.
+func startup(stderr io.Writer) int {
+	deskkit.SetToolClass(deskkit.ClassForTool(false))
+	deskkit.EchoEffectiveConfig(stderr)
+	if !deskkit.CheckVerbActivation(stderr) {
+		return deskkit.ExitUnverifiable
 	}
-	if len(args) >= 1 && (args[0] == "-h" || args[0] == "--help" || args[0] == "help") {
-		fmt.Fprintln(os.Stderr, usage)
-		return deskkit.ExitOK
-	}
+	return deskkit.ExitOK
+}
 
+// run is execute without the process startup.
+func run(args []string, stdout, stderr io.Writer) int {
+	return execute(args, stdout, stderr, nil)
+}
+
+// guard is the kill switch and loopIdentity the per-loop stop-flag precondition, variables so
+// the contract tests can count them.
+var (
+	guard        = deskkit.Guard
+	loopIdentity = deskkit.RequireLoopIdentity
+)
+
+// reconcileFn is the typed handler the command tree calls; the contract tests replace it to
+// observe the values that reach it.
+var reconcileFn = Run
+
+// onResolve, when set, sees every invocation's resolved settings.
+var onResolve func(*cli.Values)
+
+// exitErr is a handler's exit code carried as an error, so cli.Run keeps it.
+type exitErr int
+
+func (e exitErr) Error() string { return "exit " + strconv.Itoa(int(e)) }
+func (e exitErr) ExitCode() int { return int(e) }
+
+// versionLine is what --version and -version print.
+func versionLine() string {
+	sha, built := deskkit.Version()
+	return fmt.Sprintf("deskreconcile sourceSHA=%s builtAt=%s releaseTag=%s", sha, built, deskkit.ReleaseTagOrDev())
+}
+
+// bindings are every setting deskreconcile declares: flags and defaults only. The tool reads
+// no configuration file or environment variable for them (statusgen's own GITHUB_TOKEN
+// fallback is statusgen's).
+func bindings() []cli.Binding {
+	return []cli.Binding{
+		{Key: "root", Kind: cli.String, Flag: "root", Default: ".", Usage: "the target repo checkout to reconcile"},
+		{Key: "worktree", Kind: cli.String, Flag: "worktree", Usage: "the isolated linked worktree to run in (absolute, outside --root)"},
+		{Key: "branch", Kind: cli.String, Flag: "branch", Default: defaultBranch, Usage: "the fixed carry branch"},
+		{Key: "issue", Kind: cli.Int, Flag: "issue", Default: 0, Usage: "the tracking issue for the fresh-create PR body trailer"},
+		{Key: "repo", Kind: cli.String, Flag: "repo", Usage: "owner/name statusgen reads PRs from to witness a flip (default: the checkout's origin)"},
+		{Key: "token-file", Kind: cli.String, Flag: "token-file", Usage: "file holding the GitHub API token for the PR read (else GITHUB_TOKEN)"},
+		{Key: "dry-run", Kind: cli.Bool, Flag: "dry-run", Default: false, Usage: "reconcile against origin/main and report the rows it would flip; write nothing"},
+	}
+}
+
+// execute runs one invocation against a fresh command tree. pre is the process startup (nil
+// in the in-package tests).
+func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) int) int {
+	build := func() *cobra.Command {
+		root := cli.NewRoot("deskreconcile", "flip merged briefs' board Status cells and carry them as one draft PR")
+		root.Long = usage
+		set := cli.Declare(root, bindings()...)
+		// A leading `help` word is the adapter's help command; any other word (including
+		// `help` after --) is refused before anything runs, as before.
+		root.Args = func(_ *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return fmt.Errorf("refused: deskreconcile takes no positional arguments")
+			}
+			return nil
+		}
+		root.RunE = func(_ *cobra.Command, _ []string) error {
+			if code := reconcile(set, stdout, stderr, pre); code != deskkit.ExitOK {
+				return exitErr(code)
+			}
+			return nil
+		}
+		return root
+	}
+	return cli.Run(build, args, cli.Options{
+		IO:              cli.IO{Out: stdout, Err: stderr},
+		Version:         versionLine(),
+		VersionTemplate: "{{.Version}}\n",
+		// A parse error keeps the legacy refusal code (5), not the adapter's default.
+		UsageExit:    deskkit.ExitRefused,
+		GoFlagCompat: true,
+	})
+}
+
+// reconcile resolves the settings, then runs the process startup, the kill switch, the loop
+// identity check and the reconcile, in that order.
+func reconcile(set *cli.Set, stdout, stderr io.Writer, pre func(io.Writer) int) int {
+	v, err := set.Resolve(cli.Inputs{})
+	if err != nil {
+		fmt.Fprintln(stderr, "refused:", err)
+		return deskkit.ExitRefused
+	}
+	if onResolve != nil {
+		onResolve(v)
+	}
+	if pre != nil {
+		if code := pre(stderr); code != deskkit.ExitOK {
+			return code
+		}
+	}
 	// Kill switch first, before any surface is read.
-	if err := deskkit.Guard(); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
+	if err := guard(); err != nil {
+		fmt.Fprintln(stderr, err.Error())
 		return deskkit.ExitCodeOf(err)
 	}
 	// The per-loop stop flag is matched against $DESK_LOOP; refuse with it unset so a stop
 	// flag a human is holding fires rather than silently never matching. deskpr, which this
 	// verb shells out to, refuses on the same condition.
-	if err := deskkit.RequireLoopIdentity("deskreconcile"); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
+	if err := loopIdentity("deskreconcile"); err != nil {
+		fmt.Fprintln(stderr, err.Error())
 		return deskkit.ExitCodeOf(err)
 	}
-	deskkit.WarnIfUnpinned(os.Stderr)
+	deskkit.WarnIfUnpinned(stderr)
 
-	fs := flag.NewFlagSet("deskreconcile", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	root := fs.String("root", ".", "the target repo checkout to reconcile")
-	worktree := fs.String("worktree", "", "the isolated linked worktree to run in (absolute, outside --root)")
-	branch := fs.String("branch", defaultBranch, "the fixed carry branch")
-	issue := fs.Int("issue", 0, "the tracking issue for the fresh-create PR body trailer")
-	repo := fs.String("repo", "", "owner/name statusgen reads PRs from to witness a flip (default: the checkout's origin)")
-	tokenFile := fs.String("token-file", "", "file holding the GitHub API token for the PR read (else GITHUB_TOKEN)")
-	dryRun := fs.Bool("dry-run", false, "reconcile against origin/main and report the rows it would flip; write nothing")
-	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
-			fmt.Fprintln(os.Stderr, usage)
-			return deskkit.ExitOK
-		}
-		return deskkit.ExitRefused
-	}
-	if fs.NArg() > 0 {
-		fmt.Fprintln(os.Stderr, "refused: deskreconcile takes no positional arguments")
-		return deskkit.ExitRefused
-	}
-
-	res, err := Run(Options{
-		Root:      *root,
-		Worktree:  *worktree,
-		Branch:    *branch,
+	res, err := reconcileFn(Options{
+		Root:      v.String("root"),
+		Worktree:  v.String("worktree"),
+		Branch:    v.String("branch"),
 		Now:       time.Now(),
-		DryRun:    *dryRun,
-		Issue:     *issue,
-		Repo:      *repo,
-		TokenFile: *tokenFile,
+		DryRun:    v.Bool("dry-run"),
+		Issue:     v.Int("issue"),
+		Repo:      v.String("repo"),
+		TokenFile: v.String("token-file"),
 	})
 	// The step audit surface prints regardless of outcome: a run that reports without the
 	// steps that produced it is a claim, not evidence.
 	for _, s := range res.Steps {
-		fmt.Fprintln(os.Stderr, s)
+		fmt.Fprintln(stderr, s)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
+		fmt.Fprintln(stderr, err.Error())
 		return deskkit.ExitCodeOf(err)
 	}
 	printResult(res, stdout)
@@ -139,7 +213,7 @@ func run(args []string, stdout *os.File) int {
 }
 
 // printResult writes the human-facing summary: what flipped, or that nothing did.
-func printResult(res Result, stdout *os.File) {
+func printResult(res Result, stdout io.Writer) {
 	verb := "flipped"
 	if res.DryRun {
 		verb = "would flip"

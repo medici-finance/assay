@@ -1,0 +1,5 @@
+# The licence label no longer names the module's licence.
+want: missing-oci-label
+file: Dockerfile
+replace: "org.opencontainers.image.licenses=\"Apache-2.0\""
+with: "org.opencontainers.image.licenses=\"MIT\""

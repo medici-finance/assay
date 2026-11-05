@@ -15,6 +15,8 @@ package main
 // re-implements the small `## Verify` row-parse it needs, keyed on the `#` column, same as
 // statusgen's parseVerifyItems.
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"bytes"
 	"flag"
 	"fmt"
@@ -50,35 +52,11 @@ type rederivedRow struct {
 // heading through the next level-2 heading or EOF), "" if the heading is absent.
 // Prefix grammar mirrors statusgen/verifyissues.go extractSectionByPrefix.
 // Keep the historical case-insensitive exact spelling supported as well.
-func extractVerifySection(md string) string {
-	lines := strings.Split(md, "\n")
-	start := -1
-	for i, l := range lines {
-		if isVerifyHeading(l) {
-			start = i + 1
-			break
-		}
-	}
-	if start < 0 {
-		return ""
-	}
-	end := len(lines)
-	for i := start; i < len(lines); i++ {
-		if strings.HasPrefix(strings.TrimSpace(lines[i]), "## ") {
-			end = i
-			break
-		}
-	}
-	return strings.Join(lines[start:end], "\n")
-}
+func extractVerifySection(md string) string { return briefdoc.Section(md, "Verify", true) }
 
 // isVerifyHeading is shared with the diff detector: descriptive Verify headings
 // must protect the same rows that re-derivation reads.
-func isVerifyHeading(line string) bool {
-	t := strings.TrimSpace(line)
-	rest, ok := strings.CutPrefix(t, "## ")
-	return ok && (strings.HasPrefix(rest, "Verify") || strings.EqualFold(rest, "Verify"))
-}
+func isVerifyHeading(line string) bool { return briefdoc.IsVerify(line) }
 
 // parseVerifyTable reads complete, structurally valid tables. Unlike statusgen's
 // best-effort lint readers, re-derivation cannot silently omit unreadable rows.

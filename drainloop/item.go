@@ -24,6 +24,11 @@ type Item struct {
 	// ID is a stable, unique key for the item. It is the claim key, so two items with the
 	// same ID are the same unit of work and must never be dispatched concurrently.
 	ID string
+	// RunID is stable across retries of one logical work unit. AttemptID is assigned
+	// by the queue per dispatch; both are required when external effects are declared.
+	// Reselection retains RunID and supplies a fresh AttemptID (not the Retry count).
+	RunID     string
+	AttemptID string
 	// Implementer names who authored or produced this item, when that matters. It powers the
 	// opt-in author-not-runner structural guard (CheckAuthorRunner): an item must not be
 	// dispatched to a runner that equals its own Implementer. Empty ⇒ the guard is inert for

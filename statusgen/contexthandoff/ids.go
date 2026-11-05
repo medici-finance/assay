@@ -1,9 +1,8 @@
 package contexthandoff
 
 import (
-	"fmt"
+	"github.com/medici-finance/assay/statusgen/workref"
 	"regexp"
-	"strings"
 )
 
 // QID is a qualified brief identity in its canonical four-segment form,
@@ -20,7 +19,6 @@ func (q QID) String() string {
 var (
 	idSegmentRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 	idNumberRe  = regexp.MustCompile(`^[0-9]{2,4}[a-z]?$`)
-	issueRefRe  = regexp.MustCompile(`^[A-Za-z0-9._/-]*#[0-9]+$`)
 )
 
 // ResolveQualifiedID parses a brief reference and expands it to the canonical
@@ -35,43 +33,13 @@ var (
 // the brief-v1 "<stream>/<NN>" form and any other unqualified string are
 // refused.
 func ResolveQualifiedID(ref string, declaring *QID) (QID, error) {
-	switch {
-	case ref == "":
-		return QID{}, fmt.Errorf("empty brief reference")
-	case strings.TrimSpace(ref) != ref || strings.ContainsAny(ref, " \t\r\n"):
-		return QID{}, fmt.Errorf("%q: a brief reference carries no whitespace", ref)
-	case issueRefRe.MatchString(ref):
-		return QID{}, fmt.Errorf("%q: an issue reference is not a brief identity; use <cell>:<repo>:<stream>:<NN>", ref)
-	case strings.Contains(ref, "/") && !strings.Contains(ref, ":"):
-		if strings.Count(ref, "/") == 1 && idNumberRe.MatchString(ref[strings.Index(ref, "/")+1:]) {
-			return QID{}, fmt.Errorf("%q: the brief-v1 <stream>/<NN> form is refused; use <cell>:<repo>:<stream>:<NN>", ref)
-		}
-		return QID{}, fmt.Errorf("%q: a path is not a brief identity; use <cell>:<repo>:<stream>:<NN>", ref)
-	case strings.Contains(ref, "/"):
-		return QID{}, fmt.Errorf("%q: a brief reference carries no path separator", ref)
+	var context *workref.Context
+	if declaring != nil {
+		context = &workref.Context{Cell: declaring.Cell, Repo: declaring.Repo}
 	}
-	segs := strings.Split(ref, ":")
-	if len(segs) < 2 || len(segs) > 4 {
-		return QID{}, fmt.Errorf("%q: not a qualified brief reference; use <cell>:<repo>:<stream>:<NN>", ref)
+	resolved, err := workref.Resolve(ref, context, workref.Registry{}, workref.LegacyQualified)
+	if err != nil {
+		return QID{}, err
 	}
-	nn := segs[len(segs)-1]
-	if !idNumberRe.MatchString(nn) {
-		return QID{}, fmt.Errorf("%q: brief number %q is not two to four digits", ref, nn)
-	}
-	for _, s := range segs[:len(segs)-1] {
-		if !idSegmentRe.MatchString(s) {
-			return QID{}, fmt.Errorf("%q: segment %q is not a lower-case name", ref, s)
-		}
-	}
-	if len(segs) < 4 && declaring == nil {
-		return QID{}, fmt.Errorf("%q: an elided reference needs a declaring record; the declaring identity itself is always <cell>:<repo>:<stream>:<NN>", ref)
-	}
-	switch len(segs) {
-	case 4:
-		return QID{Cell: segs[0], Repo: segs[1], Stream: segs[2], NN: nn}, nil
-	case 3:
-		return QID{Cell: declaring.Cell, Repo: segs[0], Stream: segs[1], NN: nn}, nil
-	default:
-		return QID{Cell: declaring.Cell, Repo: declaring.Repo, Stream: segs[0], NN: nn}, nil
-	}
+	return QID{Cell: resolved.Cell, Repo: resolved.Repo, Stream: resolved.Stream, NN: resolved.Number}, nil
 }

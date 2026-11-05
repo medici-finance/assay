@@ -65,12 +65,16 @@ const usage = `reviewloop — pr-review-desk's board-reactor driver (archetype B
 
 USAGE:
   reviewloop plan --actions <actions.json|-> [--prs <prs.json>] [--now <RFC3339>] [--dry-run]
+  reviewloop plan --snapshot <observation.json> --selection <JSON> --now <RFC3339>
   reviewloop --version
 
 'plan' classifies every row of a deskboard sweep against the reactor's action table,
 coalesces the outward verbs on (repo, pr, head, verb), and states the THREE-STATE idle
 verdict. It spawns nothing, writes nothing outward, and makes no GitHub call.
 
+  --snapshot  complete frozen review observation; excludes legacy inputs.
+  --selection JSON invocation: Policy, ObservationPolicy, Scope, Oldest, Capacity.
+              See docs/deskboard.md. Explicit --now is required with --snapshot.
   --actions   ` + "`deskboard actions`" + ` JSON. REQUIRED: no sweep means BLIND, not idle.
   --prs       ` + "`deskboard prs`" + ` JSON. Supplies the head SHAs the actions verb omits;
               without it every outward verb is SUPPRESSED as could-not-check.

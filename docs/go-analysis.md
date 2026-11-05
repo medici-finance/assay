@@ -42,7 +42,7 @@ run project tests or generators.
 risk assessment. The scanner is golangci-lint **2.14.0**, released 24 September 2026,
 built with **Go 1.27.1** (released 1 September 2026). Project package loading uses
 **Go 1.25.0**. These are separate toolchains. The rest of the fleet has since moved
-to one Go version (1.27.2, `go 1.27.0`; #2918); these analysis pins lag it on purpose
+to one Go version (1.27.3, `go 1.27.0`; #2918); these analysis pins lag it on purpose
 and are listed exceptions in that single-version guard
 (`tools/desk/internal/deskkit/goversion_test.go`) until a separately reviewed
 baseline migration moves them (see "Maintain the ratchet").

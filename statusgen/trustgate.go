@@ -1,6 +1,8 @@
 package main
 
 import (
+	trustcore "github.com/medici-finance/assay/deskcore/trust"
+
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -28,13 +30,8 @@ import (
 // nobody and blesses nobody (P1), which makes --scan-issues refuse rather than
 // scan ungated.
 //
-// KEEP IN SYNC with the desk-tools deskkit trust reader — the desk-tools module
-// deliberately does NOT share code with statusgen (the documented-duplicate
-// pattern: issueboard's ownedRepos mirrors scanRepos the same way), so the trust
-// reader, the GraphQL query, and the blessing rule below are a cross-tree
-// duplicate of deskkit's. A change to either copy must be made in both, and a
-// behavioural coupling test binds the two READERS over a shared vector file so
-// the duplication cannot drift.
+// Numeric identity and bless-then-edit evaluation are shared through deskcore/trust.
+// Forge observation and the scanner's unavailable/error contract remain here.
 
 // trustedAuthor reports whether a login is a trusted desk identity. Login-only
 // (gh issue list JSON carries no numeric id); empty/unknown → untrusted (fail
@@ -45,8 +42,9 @@ import (
 // For the BOARD surface (planScan), this is the login-only check — the REST API
 // (gh issue list --json author) does not return a numeric user id, so recycled-
 // login defense for human accounts is deferred to the blessing path
-// (evalIssueBlessing), which verifies numeric id via GraphQL. Bot accounts are
-// trusted by login alone: GitHub Apps cannot be recycled.
+// (evalIssueBlessing), which verifies numeric id via GraphQL. This surface carries
+// no id at all; every surface that does supply one goes through trustedAuthorID,
+// where a supplied id must match its pin for bots and humans alike.
 func trustedAuthor(login string) bool {
 	if login == "" {
 		return false
@@ -60,9 +58,11 @@ func trustedAuthor(login string) bool {
 
 // trustedAuthorID reports whether a login+id pair is a trusted desk identity,
 // requiring NUMERIC ID match for human accounts as a recycled-login defense.
-// Bot accounts (the [bot] suffix or app/ prefix) are trusted by login alone —
-// GitHub Apps cannot be recycled. When id is zero (caller has no numeric id),
-// human accounts fail closed (not trusted). This is the strict form used in
+// Any supplied (nonzero) id must equal the identity's configured pin, for bot
+// accounts (the [bot] suffix or app/ prefix) as well as humans; a mismatched or
+// unpinned id is refused (deskcore/trust Admit). A bot rendering that carries no
+// id (id == 0) is admitted on its rostered login, since GitHub Apps cannot be
+// recycled; a human with id zero fails closed (not trusted). This is the strict form used in
 // the GraphQL blessing path (evalIssueBlessing) where numeric ids ARE available.
 //
 // A configured human identity with NO pinned id (the id is optional on
@@ -75,33 +75,15 @@ func trustedAuthor(login string) bool {
 // too. The BLESSING authority is never in that position: its id is mandatory at
 // load.
 func trustedAuthorID(login string, id int64) bool {
-	if login == "" {
-		return false
-	}
 	c := scanEffectiveConfig()
-	if !c.Configured() {
-		return false
+	bare := map[string]int64{}
+	for l, b := range c.BotIdents {
+		if b.Forge == forgeGitLab {
+			bare[l] = b.ID
+		}
 	}
-	lower := strings.ToLower(login)
-	// Bot accounts: trusted by login alone (Apps cannot be recycled).
-	if strings.HasSuffix(lower, "[bot]") || strings.HasPrefix(lower, "app/") {
-		return c.Logins[lower]
-	}
-	// Human accounts: require numeric id match against the configured pin.
-	want, ok := c.Humans[lower]
-	if !ok {
-		return false
-	}
-	// want == 0 (configured, never pinned) is NOT a match on this surface. This is
-	// the STRICT path — the GraphQL databaseId is always present here — so an
-	// unpinned login has no recycling defence and cannot be trusted content.
-	//
-	// It used to answer `id != 0`: an unpinned human was trusted carrying ANY id,
-	// while deskkit's twin (post-review) answers false. That divergence survived
-	// because the shared coupling vector listed `unpinned-human` in the roster and
-	// then carried no CASE for it. It does now.
-	// KEEP IN SYNC with deskkit's TrustedAuthorID / trustedContentAuthor.
-	return want != 0 && id == want
+	pin, _ := trustcore.ExpectedID(login, c.Humans, c.Bots, bare)
+	return trustcore.Admit(c.Configured(), trustedAuthor(login), pin, id, trustcore.IsBot(strings.ToLower(login)), trustcore.Content)
 }
 
 // authorizedAuthorSet returns the effective AUTHORIZED-AUTHOR set for the
@@ -139,9 +121,10 @@ func authorizedAuthorSet() map[string]int64 {
 // lane? Two disjoint identity classes, each id-pinned to the extent GitHub
 // allows:
 //
-//   - a rostered desk App (type Bot, or a login that renders as one): trusted by
-//     login alone — GitHub Apps cannot be recycled — but ONLY when the login is in
-//     the rostered bot set (ASSAY_TRUSTED_BOT_SLUGS). The bare slug is never
+//   - a rostered desk App (type Bot, or a login that renders as one): trusted on
+//     its login when no id is supplied — GitHub Apps cannot be recycled — and a
+//     supplied id must match its pin; ONLY when the login is in the rostered bot
+//     set (ASSAY_TRUSTED_BOT_SLUGS). The bare slug is never
 //     trusted (scanParseConfig only registers the `slug[bot]` and `app/slug`
 //     renderings), so a plain user squatting a slug stays untrusted.
 //   - a human authorized author: the login MUST be in authorizedAuthorSet AND the
@@ -159,10 +142,16 @@ func authorizedByIdentity(login string, id int64, typ string) bool {
 	if !c.Configured() {
 		return false
 	}
-	// Desk App identity: type Bot, or a login rendering as a bot/App. Trusted by
-	// login alone, but only if it is a REGISTERED bot rendering.
-	if typ == "Bot" || scanLooksLikeBot(lower) {
-		return c.Logins[lower]
+	// A login the roster asserts is a human (ASSAY_ASSERTED_HUMANS) takes the human path,
+	// id-pinned below — unless the forge's own actor kind marks it a bot, which wins.
+	if _, asserted := c.AssertedHumans[lower]; asserted {
+		if trustcore.ForgeMarkedBot(typ) {
+			return false
+		}
+	} else if typ == "Bot" || scanLooksLikeBot(lower) {
+		// Desk App identity: type Bot, or a login rendering as a bot/App. Only a
+		// REGISTERED bot rendering is trusted, and a supplied id must match its pin.
+		return trustedAuthorID(login, id)
 	}
 	// Human authorized author: login in the set AND id-pinned match.
 	want, ok := authorizedAuthorSet()[lower]
@@ -177,10 +166,7 @@ func authorizedByIdentity(login string, id int64, typ string) bool {
 // roster unconfigured there is no authority and this is false for every input.
 func isBlessAuthorityID(login string, id int64) bool {
 	c := scanEffectiveConfig()
-	if !c.Configured() {
-		return false
-	}
-	return strings.EqualFold(login, c.Bless.Login) && id != 0 && id == c.Bless.ID
+	return trustcore.Admit(c.Configured(), strings.EqualFold(login, c.Bless.Login), c.Bless.ID, id, false, trustcore.NumericID)
 }
 
 // issueBlessChecker evaluates the blessing for one untrusted-author issue.
@@ -205,9 +191,9 @@ func ghIssueBlessChecker(repo string, issue int) (bool, error) {
 	if !ok {
 		return false, fmt.Errorf("bad repo %q", repo)
 	}
-	out, err := exec.Command("gh", "api", "graphql",
+	out, err := ghGuard(exec.Command("gh", "api", "graphql",
 		"-f", "query="+scanIssueTrustQuery,
-		"-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(issue)).Output()
+		"-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(issue))).Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -296,6 +282,7 @@ func evalIssueBlessing(raw []byte) (bool, error) {
 		if n.Author != nil {
 			e.login = n.Author.Login
 			e.id = n.Author.DatabaseID
+			e.forgeBot = trustcore.ForgeMarkedBot(n.Author.Typename)
 			if n.Author.Typename == "Bot" {
 				// GraphQL Bot actors carry the BARE slug; re-suffix to the REST
 				// rendering so a plain User squatting a slug stays untrusted.
@@ -310,11 +297,16 @@ func evalIssueBlessing(raw []byte) (bool, error) {
 // blessEvent is one comment's trust-relevant content: its author identity (a Bot
 // already re-suffixed to the "<slug>[bot]" REST rendering) and its creation and
 // content-edit times (zero when never edited).
+//
+// forgeBot is the forge's own bot flag for the author where the read carried it (the GraphQL
+// __typename here; the deskread envelope's authorBot). It is consulted only to REFUSE a
+// human-name assertion: false is also what a read without the flag reports.
 type blessEvent struct {
-	login   string
-	id      int64
-	created time.Time
-	edited  time.Time
+	login    string
+	id       int64
+	forgeBot bool
+	created  time.Time
+	edited   time.Time
 }
 
 // deskreadIssueBlessChecker is the --scan-issues issueBlessChecker since #1255: the
@@ -351,40 +343,17 @@ func evalBlessingEvents(bodyEdited time.Time, events []blessEvent, complete bool
 		return false, err
 	}
 	if !complete {
-		return false, nil // overflowed thread — fail closed to quarantine
-	}
-	var bless time.Time
-	for _, e := range events {
-		// T10: the selection is STRICT (login + numeric id) — trustedAuthorID (used
-		// in the untrusted-content loop below) returns false for a human login with
-		// id==0, so an id-less blessing comment accepted here would then void itself
-		// as untrusted content. Keeping the selection strict avoids that
-		// contradiction. The configured bless id is mandatory at load, so there is
-		// never a "configured without a pin" case to fall back to here.
-		if isBlessAuthorityID(e.login, e.id) && e.created.After(bless) {
-			bless = e.created
-		}
-	}
-	if bless.IsZero() {
 		return false, nil
 	}
-	// T3: use !Before rather than After so a tie (same-second edit) voids
-	// the blessing — fail-closed on ties.
-	if !bodyEdited.Before(bless) {
-		return false, nil // body edited at/after the blessing — void
-	}
+	asserted := scanEffectiveConfig().AssertedHumans
+	facts := make([]trustcore.Event, 0, len(events))
 	for _, e := range events {
-		if trustedAuthorID(e.login, e.id) {
-			continue // trusted content (numeric-id-verified) is trusted in its own right
+		// The forge's bot flag wins over a human-name assertion (keep in sync with deskkit.Blessed).
+		if trustcore.AssertionOverruled(asserted, e.login, e.forgeBot) {
+			facts = append(facts, trustcore.Event{Created: e.created, Edited: e.edited})
+			continue
 		}
-		last := e.created
-		if e.edited.After(last) {
-			last = e.edited
-		}
-		// T3: tie voids the blessing — fail-closed on same-second edits.
-		if !last.Before(bless) {
-			return false, nil // untrusted content added/edited at/after the blessing
-		}
+		facts = append(facts, trustcore.Event{Authority: isBlessAuthorityID(e.login, e.id), Trusted: trustedAuthorID(e.login, e.id), Created: e.created, Edited: e.edited})
 	}
-	return true, nil
+	return trustcore.Blessed(bodyEdited, facts), nil
 }

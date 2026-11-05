@@ -1,0 +1,52 @@
+{
+  "test": "go test ./cmd/cellctl ./internal/cellcadence ./internal/cellcache -run '^TestCacheMaintenanceCancellation$|^TestCacheMaintenanceFresh$|^TestCadenceCacheMaintenance$|^TestBetweenPassMaintenanceCustody$|^TestUncertainPassDoesNotMaintain$|^TestCellPrepBounded$' -count=1 -timeout=90s",
+  "control": {
+    "name": "CONTROL new cache cannot prepare",
+    "file": "internal/cellcache/launch.go",
+    "old": "return m.launchCheck()",
+    "new": "return Report{}, fmt.Errorf(\"control preparation unavailable\")"
+  },
+  "mutations": [
+    {
+      "name": "omit between-pass cache trigger",
+      "file": "cmd/cellctl/cadence.go",
+      "old": "BetweenPasses: c.cadenceCacheMaintenance,",
+      "new": "BetweenPasses: nil,"
+    },
+    {
+      "name": "omit post-interval maintenance",
+      "file": "internal/cellcadence/cadence.go",
+      "old": "if completedHere {",
+      "new": "if false && completedHere {"
+    },
+    {
+      "name": "hide failed maintenance outcome",
+      "file": "internal/cellcadence/cadence.go",
+      "old": "s.Maintenance = \"could-not-check\"",
+      "new": "s.Maintenance = \"checked-clean\""
+    },
+    {
+      "name": "omit filesystem timestamp settling before inventory",
+      "file": "internal/cellcache/maintenance.go",
+      "old": "time.NewTimer(AdmitMtimeSlack)",
+      "new": "time.NewTimer(0)"
+    },
+    {
+      "name": "plant second supervisor maintenance owner",
+      "file": "cmd/cellctl/cache.go",
+      "old": "func (c *Cell) cacheAdmission() error {",
+      "new": "func secondMaintenance(){cellcache.Maintain(context.Background(),cellcache.Policy{})}\n\nfunc (c *Cell) cacheAdmission() error {"
+    },
+    {
+      "name": "walk fresh between-pass cache accounting",
+      "file": "internal/cellcache/maintenance.go",
+      "old": "why == \"\" {",
+      "new": "false && why == \"\" {"
+    }
+  ],
+  "timeout": {
+    "multiplier": 3,
+    "floor": "60s",
+    "baseline": "2m"
+  }
+}

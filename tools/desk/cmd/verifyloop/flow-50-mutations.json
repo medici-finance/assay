@@ -1,0 +1,53 @@
+{
+  "test": "go test ./cmd/verifyloop -run '^TestFlowWorld$' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL - landing no longer rechecks the dispatched record",
+    "file": "cmd/verifyloop/attestation.go",
+    "old": "\treturn dispatched.World.Recheck(probes)",
+    "new": "\t_ = probes\n\treturn nil"
+  },
+  "mutations": [
+    {
+      "name": "Land skips the prerequisite record",
+      "file": "cmd/verifyloop/land.go",
+      "old": "if err := v.landWorld(run.receipt, receipt); err != nil {",
+      "new": "if err := v.landWorld(run.receipt, receipt); false && err != nil {"
+    },
+    {
+      "name": "dispatch no longer rechecks the record",
+      "file": "cmd/verifyloop/dispatch.go",
+      "old": "\tif err := w.Recheck(v.World.probes); err != nil {",
+      "new": "\tif err := w.Recheck(v.World.probes); false && err != nil {"
+    },
+    {
+      "name": "a gated loop lands a run with no record",
+      "file": "cmd/verifyloop/attestation.go",
+      "old": "\t\t\treturn deskkit.Refused(\"verifier result has no admitted prerequisite record\")",
+      "new": "\t\t\treturn nil"
+    },
+    {
+      "name": "a held item keeps no reason",
+      "file": "cmd/verifyloop/attestation.go",
+      "old": "\t\t\tit.Payload[\"could_not_check\"] = adm.Reason()",
+      "new": "\t\t\t_ = adm.Reason()"
+    },
+    {
+      "name": "selection does not admit items",
+      "file": "cmd/verifyloop/adapter.go",
+      "old": "\t\tv.World.admitItems(v, items)",
+      "new": "\t\t_ = items"
+    },
+    {
+      "name": "the root preflight drops its record",
+      "file": "cmd/verifyloop/attestation.go",
+      "old": "\tadmittedRoots.m[abs] = *w\n",
+      "new": "\t_ = w\n"
+    },
+    {
+      "name": "a missing sibling is a FAIL, not could-not-check",
+      "file": "internal/deskkit/preflight.go",
+      "old": "record(key, \"\", unchecked(\"\", why, \"materialize \"",
+      "new": "record(key, \"\", failed(\"\", why, \"materialize \""
+    }
+  ]
+}

@@ -114,7 +114,11 @@ func cmdShow(c *Cell, v *cli.Values, extra []string) {
 			tokstate = "set"
 		}
 		fmt.Printf("[show] provider %s base_url=%s (%s)\n", provider, orDefault(pb, "<unset>"), pbs)
-		fmt.Printf("[show] provider %s token_env=%s (%s; %s in this shell)\n", provider, orDefault(pt, "<unset>"), pts, tokstate)
+		if c.Kind == "scrubbed" {
+			fmt.Printf("[show] provider %s token_file=%s (cell-owned; shell tokens ignored)\n", provider, c.scrubbedTokenPath(provider))
+		} else {
+			fmt.Printf("[show] provider %s token_env=%s (%s; %s in this shell)\n", provider, orDefault(pt, "<unset>"), pts, tokstate)
+		}
 		fmt.Printf("[show] provider %s model=%s (%s)\n", provider, orDefault(pm, "<unset>"), pms)
 	} else if harness == "cursor" {
 		fmt.Printf("[show] CELL_PROVIDER=unset (Cursor native authentication)\n")
@@ -157,6 +161,12 @@ func cmdShow(c *Cell, v *cli.Values, extra []string) {
 			continue
 		}
 		rm := c.resolveRoleModel(r, harness)
+		if c.Kind == "scrubbed" && provider != "" && harness == "claude" && rm.Src != "DESK_MODEL_"+underscore(r) {
+			if model, _ := c.providerValue(provider, "MODEL"); model != "" {
+				fmt.Printf("[show] model %s=%s (provider:%s)\n", r, model, provider)
+				continue
+			}
+		}
 		if !rm.OK {
 			fmt.Printf("[show] model %s=%s (%s)\n", r, "unresolved", rm.Src)
 			continue

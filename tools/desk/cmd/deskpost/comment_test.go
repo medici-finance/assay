@@ -130,7 +130,7 @@ func TestCommentRateLimitExit4(t *testing.T) {
 // ---------------------------------------------------------------------------
 // #513, second defect — `comment` had no --head, so it stamped
 // whichever head was live at POST time into the audit ledger and the idempotency
-// key. On #505 the reviewer examined f9c9ca94 and d7b2d1d3 was recorded, because a
+// key. Once the reviewer examined one commit and a later one was recorded, because a
 // merge landed mid-review. That one was a clean keep-current merge so the body's
 // conclusions still held — but the tool guaranteed nothing and would have stamped
 // the new head identically had the push been real work.
