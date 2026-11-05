@@ -23,6 +23,11 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.75 — 2026-11-05
+
+### Changed
+- Add explicit local mirror-query caller grants, live current-state checks and protected launcher composition, with a source-bound isolated fixture and production fault controls. Operational credentials, restore qualification and activation remain separate.
+
 ## v1.0.74 — 2026-11-05
 
 ### Added
