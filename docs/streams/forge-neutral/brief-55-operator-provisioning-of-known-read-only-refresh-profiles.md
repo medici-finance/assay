@@ -8,6 +8,8 @@ unblocks: ["forge-neutral/56"]
 split-from: forge-neutral/40
 effort: L
 gate: human
+decision-issue: 5424
+ruling: "https://github.com/medici-finance/assay/issues/5424#issuecomment-6672660827"
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Review the demonstrated separation between operator profile initialization and restricted runtime SQL access. Accepting this library and synthetic role proof grants no operational role, credential, policy value or activation."
 decision-trigger: spec
