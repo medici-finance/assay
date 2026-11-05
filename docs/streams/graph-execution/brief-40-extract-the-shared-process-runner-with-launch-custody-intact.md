@@ -38,13 +38,34 @@ consumers:
 - "tools/desk/internal/cachequiet/: follow-up graph-execution/40 (this child; only implementation may change to fixed-here)"
 - "tools/desk/go.mod: follow-up graph-execution/40 (this child; only implementation may change to fixed-here)"
 - "docs/contracts.md: follow-up graph-execution/40 (this child; only implementation may change to fixed-here)"
+- "Dockerfile: follow-up graph-execution/40 (this child; implementation corroborates the actual path)"
+- "images/assay-harness/Dockerfile: follow-up graph-execution/40 (this child; implementation corroborates the actual path)"
+- "images/verify-runner/Dockerfile: follow-up graph-execution/40 (this child; implementation corroborates the actual path)"
 ---
 
 # Brief 40 — Extract the shared process runner with launch custody intact
 
 ## Context
 
-files: `loopadmin/process/`, `loopadmin/go.mod`, `loopadmin/go.sum`, `tools/desk/internal/cellprocess/` (retired), `tools/desk/internal/cellcache/`, `tools/desk/internal/deskkit/{perf.go,forge_surface_test.go,citrigger_test.go}`, `tools/desk/internal/forgeban/allowlist.go`, `tools/desk/internal/cachequiet/`, `tools/desk/cmd/cellctl/`, `tools/desk/internal/{cellreader,gitmaintenance}/`, `tools/desk/go.mod`, `tools/desk/go.sum`, release build inputs/Dockerfiles that copy module dependencies, `docs/{cellctl-cadence.md,cellctl-scratch.md,cellctl-go-cache.md,contracts.md}`, `tools/desk/README.md`, `changelog/graph-execution-40-process-extraction.md` (planned).
+files:
+- `loopadmin/process/`
+- `loopadmin/go.mod`
+- `loopadmin/go.sum`
+- `tools/desk/internal/cellprocess/` (retired)
+- `tools/desk/internal/cellcache/`
+- `tools/desk/internal/deskkit/{perf.go,forge_surface_test.go,citrigger_test.go}`
+- `tools/desk/internal/forgeban/allowlist.go`
+- `tools/desk/internal/cachequiet/`
+- `tools/desk/cmd/cellctl/`
+- `tools/desk/internal/{cellreader,gitmaintenance}/`
+- `tools/desk/go.mod`
+- `tools/desk/go.sum`
+- `docs/{cellctl-cadence.md,cellctl-scratch.md,cellctl-go-cache.md,contracts.md}`
+- `tools/desk/README.md`
+- `changelog/graph-execution-40-process-extraction.md` (planned)
+- `Dockerfile`
+- `images/assay-harness/Dockerfile`
+- `images/verify-runner/Dockerfile`
 
 facts: At the pickup head, `loopadmin/process` is absent. The sole raw harness runner is `tools/desk/internal/cellprocess/run.go::runObserved`; its public wrappers call `withCache`, which imports desk-internal `cellcache` and `deskkit`. A literal file move cannot compile outside that module and omitting those imports removes custody/telemetry. Production importers are cellctl cadence/cache/scratch/comms, cellreader and gitmaintenance. `TestCacheClassGuard`, `TestCacheObservedRoutes`, cachequiet and the forge register inspect this route. Merged PR #4157 delivered bounded startup and cadence cache maintenance; consume that implementation and its committed controls, do not repair the same class again.
 

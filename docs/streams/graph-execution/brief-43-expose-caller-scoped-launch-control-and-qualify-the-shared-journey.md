@@ -34,13 +34,25 @@ consumers:
 - "loopadmin/go.sum: follow-up graph-execution/43 (this child; only implementation may change to fixed-here)"
 - "loopadmin/README.md: follow-up graph-execution/43 (this child; only implementation may change to fixed-here)"
 - "docs/loop-admin.md: follow-up graph-execution/43 (this child; only implementation may change to fixed-here)"
+- "ci/staged-workflows/loopadmin.yml: follow-up graph-execution/43 (this child; implementation corroborates the actual path)"
+- "tools/desk/internal/deskkit/citrigger_test.go: follow-up graph-execution/43 (this child; implementation corroborates the actual path)"
 ---
 
 # Brief 43 — Expose caller-scoped launch control and qualify the shared journey
 
 ## Context
 
-files: `loopadmin/control/`, `loopadmin/cmd/loop-admin/`, `loopadmin/testdata/supervisor/`, `loopadmin/go.mod`, `loopadmin/go.sum`, `loopadmin/README.md`, `docs/loop-admin.md` (planned), staged `.github/workflows/loopadmin.yml` (planned) candidate under `ci/staged-workflows/`, relevant actual cross-module trigger registry, `changelog/graph-execution-43-control.md` (planned).
+files:
+- `loopadmin/control/`
+- `loopadmin/cmd/loop-admin/`
+- `loopadmin/testdata/supervisor/`
+- `loopadmin/go.mod`
+- `loopadmin/go.sum`
+- `loopadmin/README.md`
+- `docs/loop-admin.md` (planned)
+- `changelog/graph-execution-43-control.md` (planned)
+- `ci/staged-workflows/loopadmin.yml`
+- `tools/desk/internal/deskkit/citrigger_test.go`
 
 facts: No control endpoint, loop-admin command or active dedicated loopadmin workflow exists at pickup. The runner module has a staged workflow. New command entrypoints must use the shared Cobra/Viper foundation; a standalone module cannot import tools/desk/internal/cli. Catalogue selection of Cobra/Viper does not admit an exact dependency version. /22 owns real provider adapters and /27 owns standing-role migration; /21 owns workflow scheduling. This brief activates none of them.
 

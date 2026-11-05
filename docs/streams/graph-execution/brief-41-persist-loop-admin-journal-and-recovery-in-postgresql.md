@@ -35,13 +35,26 @@ consumers:
 - "loopadmin/README.md: follow-up graph-execution/41 (this child; only implementation may change to fixed-here)"
 - "docs/loop-admin.md: follow-up graph-execution/41 (this child; only implementation may change to fixed-here)"
 - "docs/contracts.md: follow-up graph-execution/41 (this child; only implementation may change to fixed-here)"
+- "ci/staged-workflows/loopadmin.yml: follow-up graph-execution/41 (this child; implementation corroborates the actual path)"
+- "tools/desk/internal/deskkit/citrigger_test.go: follow-up graph-execution/41 (this child; implementation corroborates the actual path)"
 ---
 
 # Brief 41 — Persist loop-admin journal and recovery in PostgreSQL
 
 ## Context
 
-files: `loopadmin/journal/`, `loopadmin/journal/migrations/`, `loopadmin/testdata/supervisor/`, `loopadmin/go.mod`, `loopadmin/go.sum`, `loopadmin/README.md`, `docs/loop-admin.md` (planned), `docs/contracts.md`, staged loopadmin CI source and its fixture/contract trigger registration, `changelog/graph-execution-41-journal.md` (planned).
+files:
+- `loopadmin/journal/`
+- `loopadmin/journal/migrations/`
+- `loopadmin/testdata/supervisor/`
+- `loopadmin/go.mod`
+- `loopadmin/go.sum`
+- `loopadmin/README.md`
+- `docs/loop-admin.md` (planned)
+- `docs/contracts.md`
+- `changelog/graph-execution-41-journal.md` (planned)
+- `ci/staged-workflows/loopadmin.yml`
+- `tools/desk/internal/deskkit/citrigger_test.go`
 
 facts: No loopadmin journal or migrations exist at pickup. Loopadmin currently has only its perfrec module dependency. The selected PostgreSQL access/pool is pgx and migration engine is Goose; catalogue selection is not version admission. The workflow foundation delivered by /36 owns a different schema/ledger and explicitly excludes loopadmin persistence; loopadmin must not import workflow. `spec/operator-incarnation-v1.md` supplies a protected source contract and passive records, not installed custody or a production incarnation source.
 

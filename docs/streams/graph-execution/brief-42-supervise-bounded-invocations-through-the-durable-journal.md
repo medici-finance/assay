@@ -39,7 +39,14 @@ consumers:
 
 ## Context
 
-files: `loopadmin/supervisor/`, `loopadmin/testdata/supervisor/`, `loopadmin/runner/` (only contract-compatible composition seams if needed), `loopadmin/README.md`, `docs/loop-admin.md` (planned), `docs/contracts.md`, `changelog/graph-execution-42-supervisor.md` (planned).
+files:
+- `loopadmin/supervisor/`
+- `loopadmin/testdata/supervisor/`
+- `loopadmin/runner/` (only contract-compatible composition seams if needed)
+- `loopadmin/README.md`
+- `docs/loop-admin.md` (planned)
+- `docs/contracts.md`
+- `changelog/graph-execution-42-supervisor.md` (planned)
 
 facts: At pickup runner.Adapter already exposes Capabilities, Start, Observe, Cancel and Reconcile, and runner.Client checks extensions, model/profile identity and generation when accepting results. Its invocation map is in-memory and does not replace the planned durable process journal. No supervisor exists. The caller owns work/acceptance and its claim/assignment generation; the cell/group generation is distinct. /16 is implemented on the board, while /20,/28,/29 are verified; fresh independent producer qualification is still required before any live activation.
 
