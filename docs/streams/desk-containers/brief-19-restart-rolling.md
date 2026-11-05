@@ -9,8 +9,8 @@ why: >-
   Restart is a sequence of runner-lifecycle transitions, not a mechanism of its own, so the
   verb is a thin adapter: it composes `drain` and `up` and inherits whatever implements
   those transitions, interim today and the lifecycle contract later.
-wave: 11
-depends: ["desk-containers/17", "desk-containers/18"]
+wave: 10
+depends: ["desk-containers/17", "desk-containers/18", "desk-containers/33"]
 unblocks: ["desk-containers/23"]
 effort: M
 gate: model
@@ -71,7 +71,7 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
 ## Task
 1. Implement `restart` as above; register it; docs; changelog fragment.
 
-- **Instance amendment:** For qualified worker/review replacement, compose /18 admission barrier and /33 desired-entry binding with successor start before predecessor drain completion. Persist/reuse one replacement intent; old tasks/claims stay with the predecessor and its observed work informs approximate role pacing. New profile selection uses existing qualified configuration, not arbitrary provider input. Report successor failure or old drain timeout as partial; do not silently resume old admission. Keep sequential restart for singleton/non-overlap profiles and all existing plan/TTY/batch protections.
+- **Instance amendment:** For qualified worker/review replacement, compose the /33 admission barrier (over completed /18 drain) and /33 desired-entry binding with successor start before predecessor drain completion. Persist/reuse one replacement intent; old tasks/claims stay with the predecessor and its observed work informs approximate role pacing. New profile selection uses existing qualified configuration, not arbitrary provider input. Report successor failure or old drain timeout as partial; do not silently resume old admission. Keep sequential restart for singleton/non-overlap profiles and all existing plan/TTY/batch protections.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |

@@ -120,7 +120,7 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
 
 5. Register only the new transport responsibility in docs/contracts.md and docs/library-first.md. Publish the handoff/compatibility guide and regenerate contract fixtures. Keep admission and deployment gates intact.
 
-- **Instance amendment:** Extend the existing contract/source inventory with qualified desk-instance IDs, execution generation, desired revision, predecessor/successor, estimated role occupancy/target, freshness and optional instance refill target. Use the existing required-extension/version negotiation; old readers cannot flatten a required population to one role. Inventory every CLI/MCP/cockpit and lifecycle consumer, preserving completed cell-op Evidence.
+- **Instance amendment:** Consuming the desk-containers/33 cell-op instance contract, extend the existing contract/source inventory with qualified desk-instance IDs, execution generation, desired revision, predecessor/successor, estimated role occupancy/target, freshness and optional instance refill target. Use the existing required-extension/version negotiation; old readers cannot flatten a required population to one role. Inventory every CLI/MCP/cockpit and lifecycle consumer, preserving completed cell-op Evidence.
 
 ## Interface and acceptance contract
 
