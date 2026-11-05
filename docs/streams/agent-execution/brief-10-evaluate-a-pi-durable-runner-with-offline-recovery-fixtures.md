@@ -4,7 +4,7 @@ title: Evaluate a Pi Durable runner with offline recovery fixtures
 why: Pi Durable may remove conversation and tool-recovery machinery we would otherwise maintain. A bounded experiment must show which code can be omitted without weakening invocation ownership, uncertain-effect handling or independent acceptance.
 wave: 1
 depends: ["graph-execution/20"]
-unblocks: []
+unblocks: ["agent-execution/11"]
 effort: M
 gate: model
 risk: {regulatory: "no", customer: "no", irreversible: "no", sensitive-data: "no"}

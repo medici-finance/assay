@@ -11,10 +11,11 @@ package main
 // the forge token variables removed (admittedRowEnv), so a row that reached a
 // forge read would otherwise authenticate as whoever is logged in on the
 // runner. One function decides (storedLoginRefusal); every credential site
-// receives its answer: the ruling-read client (rulingForgeClient), the
-// dead-claim decay's token (githubDecayToken) and every forge CLI launch, each
-// of which is wrapped in ghGuard. A refused read with no token variable set is
-// a could-not-check on the site's existing error path, never an anonymous or
+// receives its answer: the ruling-read client (rulingForgeClient) and every
+// forge CLI launch, each of which is wrapped in ghGuard. Claim-decay token
+// lookup never uses a stored login, regardless of this decision. A refused read
+// with no token variable set is a could-not-check on the site's existing error
+// path, never an anonymous or
 // ambient-authenticated read. Where none of storedLoginRefusal's signals holds,
 // nothing changes.
 

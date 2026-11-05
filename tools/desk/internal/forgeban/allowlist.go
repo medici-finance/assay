@@ -248,6 +248,20 @@ var UnresolvedArgv = []Allowance{
 			"cell's composed PATH; presence probe, launches nothing.",
 	},
 	{
+		Key: "cmd/cellctl/lifecycle.go::Cell.liveClaims::<unresolved>",
+		Reason: "runs the cell's own desksupervise binary from its pinned desk-tools bin directory " +
+			"(`desksupervise status --json --repo <repo> [--root <path>]`) to read the dispatch claims " +
+			"this cell's sessions hold, so drain can measure idle. A claims read, not a forge CLI; " +
+			"argv[0] is a path joined at run time from the cell's environment.",
+	},
+	{
+		Key: "cmd/cellctl/role_surface.go::liveCockpit.exec::<unresolved>",
+		Reason: "the per-role surface runner: launches the cockpit CLI named by its caller (tmux, herdr " +
+			"or orca) to list a role's window, tab or terminal and to close exactly that one surface. " +
+			"argv is composed by the caller, run through exec.Command with no shell, and is never a " +
+			"forge CLI.",
+	},
+	{
 		Key: "cmd/cellctl/launch.go::runForeground::<unresolved>",
 		Reason: "the hand-over site: replaces this process, as far as the caller can tell, with the harness " +
 			"or with tmux attach. argv is composed by the verb that calls it and is never a forge CLI.",

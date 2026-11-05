@@ -200,6 +200,21 @@ func TestDeskdImageContractCI(t *testing.T) {
 	ciAssertPublicLayoutRow(t, "tools/desk/internal/cellapi/deskdimage_test.go")
 }
 
+// TestWorkflowFoundationCI keeps this contract reader live without tools.yml.
+func TestWorkflowFoundationCI(t *testing.T) {
+	ciAssertPublicLayoutRow(t, "workflow/store/foundation_test.go")
+	ciAssertPublicLayoutRow(t, "workflow/store/mirror_test.go")
+	const name = ".github/workflows/assay-workflow.yml"
+	raw, err := os.ReadFile(filepath.Join("../../../..", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, found := ciWorkflowJobLines(t, string(raw), name, "test")
+	if !found || !regexp.MustCompile(`(?m)^    runs-on: ubuntu-latest[ \t]*$`).MatchString(strings.Join(job, "\n")) {
+		t.Fatal(name + ": PostgreSQL service qualification requires the admitted Ubuntu Docker host; the regular builder has no Docker daemon")
+	}
+}
+
 // ciAssertPublicLayoutRow runs one registry row's event reachability and read
 // coverage against the workflow in the public source layout, without the
 // house-only tools.yml fixture the full sweep above skips on.
@@ -336,6 +351,18 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{test: "workflow/store/mirror_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
+			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
+			reads:      []string{"spec/coordination-store-v1.md", "forgeread/go.mod", "forgeread/mirror/", ".github/workflows/assay-workflow.yml"},
+			runInvokes: []string{"cd workflow", "go test -count=1 -race -timeout=180s ./..."},
+			why:        "the canonical SQL mirror consumes the kernel, conformance helpers, schema and workflow through executable controls"},
+
+		{test: "workflow/store/foundation_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
+			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
+			reads:      []string{"spec/coordination-store-v1.md", ".github/workflows/assay-workflow.yml"},
+			runInvokes: []string{"cd workflow", "go test -count=1 -race -timeout=180s ./..."},
+			why:        "the canonical PostgreSQL foundation contract and workflow are executable inputs, not build-only documentation"},
+
 		{test: "gitcore/ackguard_test.go", module: "gitcore", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads: []string{"gitcore/", "tools/desk/"}, runInvokes: []string{`*/gitcore|gitcore) extra="GOWORK=off go test -count=1 -timeout=300s . ./gittest"`},
 			why: "the lifted Git owner retains desk and public-owner source coverage; actual source CI execution is required"},
@@ -478,10 +505,36 @@ func ciCrossModuleRegistry() []ciEntry {
 			reads: []string{
 				"tools/forge-import-check/check_env_imports.go",
 				"tools/forge-import-check/check_env_imports_test.go",
-				"docs/streams",
+				"forgeread/refresh", "docs/streams", "forgeread", "schemas",
 			},
 			runInvokes: deskShardInvokes,
 			why:        "the unconditional build-test floor executes both authored import-check commands against compiler-valid syntax fixtures",
+		},
+		{
+			test: "tools/desk/internal/deskkit/mirror_attempts_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{"forgeread", "forgeread/mirror", "forgeread/refresh", "tools/desk/internal/deskkit/mirrorsource.go", "tools/desk/internal/deskkit/forge_github.go", "tools/desk/internal/deskkit/forge_gitlab.go", "tools/desk/go.mod", ".github/workflows/ci.yml"},
+			runInvokes: deskShardInvokes,
+			why:        "the unconditional desk floor qualifies typed native receipt owners, actual closed operations, pinned SDK configuration and their CI reader coverage",
+		},
+		{
+			test: "forgeread/service/reviewmapping_test.go", module: "forgeread",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads: []string{"schemas"}, runInvokes: deskShardInvokes,
+			why: "the existing unconditional regression reader invokes the complete review-mapping suite, including canonical schema vocabulary and scalar-bound controls",
+		},
+		{
+			test: "forgeread/service/contract_test.go", module: "forgeread",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads: []string{"schemas"}, runInvokes: deskShardInvokes,
+			why: "the existing unconditional regression reader invokes the named contract suite, including committed schema field/tag conformance",
+		},
+		{
+			test: "forgeread/service/boundaries_test.go", module: "forgeread",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{"forgeread", "tools/forge-import-check"},
+			runInvokes: deskShardInvokes,
+			why:        "the unconditional desk regression reader executes the actual named service/client suites, including this source-checker and dependency-closure consumer; it asserts every named PASS",
 		},
 		{
 			test: "tools/desk/internal/regression/releasecache_test.go", module: "tools/desk",
@@ -2413,6 +2466,7 @@ func globToRegexp(g string) (*regexp.Regexp, error) {
 // gone, or that the scanner no longer flags, is a hard failure — so the list
 // cannot rot into a blanket suppression.
 var ciRegistryOptOut = map[string]string{
+	"forgeread/refresh/boundary_test.go":                          "reads only its own module source and dependency graph; command Dir parent is the forgeread module root, not a cross-module source read; shared checker is exercised by the registered mirrorimports regression reader",
 	"tools/desk/internal/reviewtest/perf_test.go":                 `moduleRoot is tools/desk; command probe binaries, own-module legacy perf fixtures, and disposable homes only. No source from another module is read; CI runs the desk module on every PR`,
 	"tools/desk/internal/reviewtest/observation_contract_test.go": `Own-module production source overlays, fixtures and command probes only; all other reads are disposable fixtures. No sibling-module source is read.`,
 	"tools/desk/internal/reviewtest/qualification_test.go":        `filepath.Join("..", "..") from internal/reviewtest resolves to tools/desk, its own module. The test compiles command test binaries and reads its own testdata; all other files are disposable fixtures. It reads Git revision/status metadata but no sibling-module source. ci.yml runs go test ./... for tools/desk on every PR`,
@@ -2783,12 +2837,17 @@ runs:
 // public entries must not inherit that skip.
 // regression: #2686
 func TestRegressionCIEntrypoints(t *testing.T) {
-	count := 0
+	count, serviceCount := 0, 0
 	for _, e := range ciCrossModuleRegistry() {
-		if !strings.HasPrefix(e.test, "tools/desk/internal/regression/") {
+		serviceEntry := e.test == "forgeread/service/boundaries_test.go" || e.test == "forgeread/service/contract_test.go" || e.test == "forgeread/service/reviewmapping_test.go"
+		if !strings.HasPrefix(e.test, "tools/desk/internal/regression/") && !serviceEntry {
 			continue
 		}
-		count++
+		if serviceEntry {
+			serviceCount++
+		} else {
+			count++
+		}
 		raw, err := os.ReadFile(filepath.Join("../../../..", e.workflow))
 		if err != nil {
 			t.Fatal(err)
@@ -2813,6 +2872,9 @@ func TestRegressionCIEntrypoints(t *testing.T) {
 	}
 	if count != 6 {
 		t.Fatalf("floor has %d CI registry entries, want 6 (manifest, shell, Evidence, changelog, mirror import and release cache suites)", count)
+	}
+	if serviceCount != 3 {
+		t.Fatalf("service schema/boundary CI entry count=%d, want 3", serviceCount)
 	}
 }
 

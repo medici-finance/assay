@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance|TestDirectProvider|TestPerfProcessCoverage|TestGitHubMinter|TestGitLabCred'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance|TestDirectProvider|TestPerfProcessCoverage|TestGitHubMinter|TestDesktokenExec|TestGitLabCred'",
   "schemata": true,
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
@@ -853,6 +853,12 @@
       "file": "internal/deskkit/bodycheck.go",
       "old": "\t\tbad := strings.LastIndexAny(s[m[2]:m[5]], \"/?#[]\")",
       "new": "\t\tbad := strings.IndexAny(s[m[2]:m[5]], \"/?#[]\")"
+    },
+    {
+      "name": "fork desktoken again from repohardenguard's auditor mint (a caller steps around the in-process minter by exec'ing the binary first on PATH; the exec half of the #1573 class guard must fire)",
+      "file": "cmd/repohardenguard/forge.go",
+      "old": "\ttok, _, err := githubRoleTokenFn(\"auditor\", repoSlug)",
+      "new": "\ttok, _, err := githubRoleTokenFn(\"auditor\", repoSlug)\n\t_ = []string{\"desktoken\", \"auditor\", \"--repo\", repoSlug}"
     }
   ],
   "_not_mutated": {

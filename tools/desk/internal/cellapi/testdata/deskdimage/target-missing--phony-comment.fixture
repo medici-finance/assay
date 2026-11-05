@@ -1,0 +1,7 @@
+# regression: #4769
+# A comment ending in a backslash swallows the .PHONY line below it, so
+# deskd-build and deskd-image are not phony and a file of that name skips them.
+want: target-missing
+file: Makefile
+replace: "\n.PHONY: build-all"
+with: "\n# phony targets \\\n.PHONY: build-all"
