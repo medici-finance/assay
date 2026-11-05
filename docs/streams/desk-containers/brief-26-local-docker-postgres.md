@@ -14,6 +14,7 @@ depends: []
 unblocks: ["desk-containers/27"]
 effort: M
 gate: human
+decision-issue: 2940
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: >-
   This brief designs the custody of new credentials: the database superuser password, a
