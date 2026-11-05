@@ -84,6 +84,48 @@
       "file": "cmd/clusterguard/shim.go",
       "old": "\t\tif bareOnlyVerbs[cli][scan.verb] {",
       "new": "\t\tif false && bareOnlyVerbs[cli][scan.verb] {"
+    },
+    {
+      "name": "a flag-restricted read-only verb stops inspecting its arguments (an unlisted flag after it passes as read-only)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\tif _, found := unlistedArg(cli, args, s.at); found {",
+      "new": "\t\tif _, found := unlistedArg(cli, args, s.at); false && found {"
+    },
+    {
+      "name": "an unlisted flag around a flag-restricted verb is accepted as classified",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\tif !listed[name] && !vf[name] {\n\t\t\treturn a, true\n\t\t}",
+      "new": "\t\tif false && !listed[name] && !vf[name] {\n\t\t\treturn a, true\n\t\t}"
+    },
+    {
+      "name": "a listed flag around a flag-restricted verb consumes the next token even when it is a flag (an unlisted flag hides behind a listed one)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "if !inline && i+1 < len(seg) && !strings.HasPrefix(seg[i+1], \"-\") {",
+      "new": "if !inline && i+1 < len(seg) {"
+    },
+    {
+      "name": "a listed --flag=value around a flag-restricted verb consumes the next token (peek --window=5m x passes as read-only)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "if !inline && i+1 < len(seg) && !strings.HasPrefix(seg[i+1], \"-\") {",
+      "new": "if (inline || !inline) && i+1 < len(seg) && !strings.HasPrefix(seg[i+1], \"-\") {"
+    },
+    {
+      "name": "the arguments before a flag-restricted verb stop being classified (--added-upstream=true health passes as read-only)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "for _, seg := range [][]string{args[:at], args[at+1:]} {",
+      "new": "for _, seg := range [][]string{args[at+1:]} {"
+    },
+    {
+      "name": "an empty argument after a flag-restricted verb reads as nothing found again (health \"\" --added-upstream passes as read-only)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "if a, found := unlistedIn(cli, verb, seg); found {",
+      "new": "if a, found := unlistedIn(cli, verb, seg); found && a != \"\" {"
+    },
+    {
+      "name": "the flag-restricted refusal stops saying the entry is read-only only with its listed flags",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\t\tif a, found := unlistedArg(cli, args, scan.at); found {",
+      "new": "\t\t\tif a, found := unlistedArg(cli, args, scan.at); false && found {"
     }
   ]
 }

@@ -1,0 +1,7 @@
+# regression: #4769
+# make ignores a blank line among recipe lines, so a second deskd-image rule
+# whose recipe follows a blank line still overrides the held recipe.
+want: target-missing
+file: Makefile
+replace: "\n## skillslint: validate"
+with: "\ndeskd-image:\n\n\t@echo \"skipped\"\n\n## skillslint: validate"

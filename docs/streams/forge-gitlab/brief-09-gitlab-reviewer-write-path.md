@@ -73,27 +73,11 @@ touching `REVIEWER_APP_ID`. Minimum proof: a `deskfile check` on a GitLab repo t
 without ever calling the GitHub App mint path.
 
 files:
-- `tools/desk/internal/deskkit/forge.go` — the reviewer verdict-write op(s) deskpost needs
-  (`PostReview` with an `APPROVE` / `REQUEST_CHANGES` verdict, `PostComment`, `MarkReadyForReview`
-  where deskpost drives the ready flip). Brief 02 shipped `PostReview(APPROVE)` /`PostComment` /
-  `MarkReadyForReview`; the addition here is the **request-changes verdict** on the same typed op
-  (no new generic method, spec §6 freeze rule — the op that lands it carries a consuming call
-  site in deskpost in this same change).
-- `tools/desk/internal/deskkit/forge_gitlab.go` — implement the request-changes verdict on the
-  GitLab backend: GitLab has no native "request changes" review state, so it maps to
-  **unapprove + a verdict note carrying the verdict and the head SHA**, exactly the surface
-  `ReviewsAtHead` already reads (brief 02's note-body SHA pin). This is a *mapping*, not a new
-  degradation — see `## Edition`.
-- `tools/desk/internal/deskkit/forge_github.go` — the GitHub backend keeps its existing
-  `REQUEST_CHANGES` semantics (go-gh review event); the typed op is symmetric across backends.
-- `tools/desk/cmd/deskpost/*.go` — `review` / `security-review` / `comment` / `ready` resolve the
-  Forge for the repo (GitHub or GitLab) and read preconditions + write the verdict/comment/ready
-  through it; the `could-not-check: deskpost has no gitlab write backend … exit 6` fail-closed is
-  removed once the GitLab path exists. Budgets/rate-limits/breakers/body-secret checks WRAP the
-  interface (spec §6) and stay put — this brief does not pull them into a backend.
-- `tools/desk/cmd/desktoken/*.go`, `tools/desk/cmd/deskfile/*.go` — reviewer-role auth on a
-  GitLab-resolved repo resolves `<config>/gitlab-reviewer.token` (brief 03 contract) instead of
-  minting a GitHub App; the `REVIEWER_APP_ID` lookup is not reached on the GitLab path.
+- `tools/desk/internal/deskkit/forge.go` — the reviewer verdict-write op(s) deskpost needs (`PostReview` with an `APPROVE` / `REQUEST_CHANGES` verdict, `PostComment`, `MarkReadyForReview` where deskpost drives the ready flip). Brief 02 shipped `PostReview(APPROVE)` /`PostComment` / `MarkReadyForReview`; the addition here is the **request-changes verdict** on the same typed op (no new generic method, spec §6 freeze rule — the op that lands it carries a consuming call site in deskpost in this same change).
+- `tools/desk/internal/deskkit/forge_gitlab.go` — implement the request-changes verdict on the GitLab backend: GitLab has no native "request changes" review state, so it maps to **unapprove + a verdict note carrying the verdict and the head SHA**, exactly the surface `ReviewsAtHead` already reads (brief 02's note-body SHA pin). This is a *mapping*, not a new degradation — see `## Edition`.
+- `tools/desk/internal/deskkit/forge_github.go` — the GitHub backend keeps its existing `REQUEST_CHANGES` semantics (go-gh review event); the typed op is symmetric across backends.
+- `tools/desk/cmd/deskpost/*.go` — `review` / `security-review` / `comment` / `ready` resolve the Forge for the repo (GitHub or GitLab) and read preconditions + write the verdict/comment/ready through it; the `could-not-check: deskpost has no gitlab write backend … exit 6` fail-closed is removed once the GitLab path exists. Budgets/rate-limits/breakers/body-secret checks WRAP the interface (spec §6) and stay put — this brief does not pull them into a backend.
+- `tools/desk/cmd/desktoken/*.go`, `tools/desk/cmd/deskfile/*.go` — reviewer-role auth on a GitLab-resolved repo resolves `<config>/gitlab-reviewer.token` (brief 03 contract) instead of minting a GitHub App; the `REVIEWER_APP_ID` lookup is not reached on the GitLab path.
 
 single-point-of-failure: the reviewer verdict WRITE that `ReviewsAtHead` can see at head is the
 one control the ready-gate stands on — if an approve/request-changes lands somewhere the read

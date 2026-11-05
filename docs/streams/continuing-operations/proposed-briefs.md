@@ -261,3 +261,13 @@ O07 consumes their typed report result; O10/O11 reuse /09 assessment/proposal li
 retain general subject/practice ownership. These draft outlines do not hold local reporting
 behind the whole framework. Full managed cadence/effects still require their existing
 runtime prerequisites, policy and qualification; the amendment grants no activation.
+
+## Transport-consumption note — 1 November 2026
+
+performance-collection/01 now provides a local `performance-event-v1` spool, a per-source
+coverage manifest, a frozen report-input snapshot and a batch/receipt contract with conformance
+fixtures ([specification](../../../spec/performance-event-v1.md)). When O02/O04 are authored,
+they can consume these as one recorded-data source: the coverage states, the duplicate and
+conflict receipts, and the replay horizon carry the provenance and honest-coverage cases O04
+names. This is a source O02/O04 can consume. It does not implement either one. O02's metric
+definitions and O04's adapter remain outlines, and collection defines no measurement meaning.

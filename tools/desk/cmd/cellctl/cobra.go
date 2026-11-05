@@ -481,8 +481,8 @@ func buildRoot() *cobra.Command {
 		return cmd.Help()
 	}
 	root.AddCommand(
-		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(),
-		smokeCmd(), statusCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
+		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(), pauseCmd(), resumeCmd(), drainCmd(),
+		smokeCmd(), statusCmd(), attachCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), hotfixCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(), scrubbedRunCmd(),
 	)
 	// The cellopfixture build adds the fixture verb and the stand-ins; the release build adds nothing.
@@ -754,6 +754,10 @@ func upCmd() *cobra.Command {
 		if v.Bool("plan") && cmd.Flags().Changed("apply") {
 			die("up: --plan and --apply are exclusive")
 		}
+		if c.kubeSelected() {
+			c.kubeUp(cmd, v, lastBare(args[1:]))
+			return nil
+		}
 		if v.Bool("plan") {
 			upPlan(cmd, c, c.upTargets(v.Strings("role"), v.Bool("no-the-desk")))
 			return nil
@@ -770,11 +774,15 @@ func upCmd() *cobra.Command {
 
 func downCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "down <cell>",
-		Short: "tear a cell's session down",
+		Use:   "down <cell> [role...]",
+		Short: "tear a cell's session down, or stop only the named roles",
 		Long: "Tear the session (and this cell's deskd) down. What `up` opened in a non-tmux cockpit is closed where that\n" +
 			"cockpit offers a verb for it, and named for you to close by hand where it does not. A container or scrubbed\n" +
-			"cell accepts no host cockpit or deskd flags.",
+			"cell accepts no host cockpit or deskd flags.\n\n" +
+			"With role arguments, down stops exactly the named roles (the per-role interim stop). Each must already be\n" +
+			"paused or drained; a role that is not is refused role-busy and down never pauses it. For each it stops the\n" +
+			"cadence, re-measures the idle signal, re-verifies the surface against its receipt and closes that one\n" +
+			"window, tab or terminal, on this terminal's confirm. It never closes the session or a sibling's surface.",
 		Annotations: map[string]string{leadingArgsKey: "1"},
 		Args:        cobra.ArbitraryArgs,
 	}
@@ -785,6 +793,22 @@ func downCmd() *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
 		given := len(args) > 1 || cmd.Flags().Changed("keep-deskd") || cmd.Flags().Changed("cockpit")
+		c := loadCell(cell)
+		if c.kubeSelected() {
+			if cmd.Flags().Changed("keep-deskd") || cmd.Flags().Changed("cockpit") {
+				die("compatibility down refuses host cockpit/deskd flags")
+			}
+			c.kubeDown(cmd, args[1:])
+			return nil
+		}
+		if len(args) > 1 && c.Kind != "container" && c.Kind != "scrubbed" {
+			// down <cell> <role...>: the per-role interim stop, never the session.
+			if cmd.Flags().Changed("keep-deskd") || cmd.Flags().Changed("cockpit") {
+				die("down <cell> <role...> stops only the named roles; it takes no --keep-deskd or --cockpit")
+			}
+			cmdDownRoles(cmd, c, args[1:])
+			return nil
+		}
 		cmdDown(cell, resolve(set, nil), args[1:], given)
 		return nil
 	}
@@ -883,7 +907,8 @@ func newCmd() *cobra.Command {
 			"gitlab: --group <group> [--gitlab-api-base URL] [--gitlab-token-store DIR], no App PEM and no --orgs.\n\n" +
 			"--kind house: a LOCAL cell on the operator's laptop; the desks reuse the operator's config home by symlink,\n" +
 			"no deskd is required, every role still boots in its own LOCKED worktree. --roots '<owner>/<repo>=<abs path>,...'\n" +
-			"[--roles \"<role> ...\"] [--port N].\n\n" +
+			"[--roles \"<role> ...\"] [--port N] [--forge gitlab [--group G] [--gitlab-api-base URL]] (a gitlab house cell\n" +
+			"links no gh config).\n\n" +
 			"--kind container: --repo <repo-id> with --launcher <absolute-executable> (an operator-owned launcher, no\n" +
 			"credentials copied) or --container-config <absolute JSON file> (the native Go runtime; see docs/cellctl.md).\n\n" +
 			"--kind scrubbed: --repo <checkout> --repo-slug <owner/repo> [--roots '...'] [--roles \"...\"], a host-local\n" +

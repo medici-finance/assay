@@ -5,8 +5,9 @@ carries a wake receipt (`wake_schema: verify-wake-v1`). `deskevidence --outcome-
 derives the receipt when it lands the record:
 
 - `inputs` holds one `file:<path>` key per path in the brief's `## Context` `files:` list that
-  exists at the admitted observation's Source commit. A listed directory contributes every
-  file under it. The keys also include the brief itself, hashed as its Evidence lands, and
+  exists at the admitted observation's Source commit. A listed directory contributes one
+  `file:<dir>/` key whose digest covers every file under it, so a change to any member wakes
+  the held work. The keys also include the brief itself, hashed as its Evidence lands, and
   the tool version. The record's `sha` names that Evidence commit, which may follow a repair;
   hashes of observed content ensure an existing-file content repair wakes the failed work.
   A change to declared paths, path kinds or a declared directory's file membership between
@@ -32,7 +33,9 @@ predicates retain their existing contracts.
 makes two independent reads, and each one can return could-not-check:
 
 - **Inputs.** Every declared input is hashed again at the current tree and compared with the
-  receipt.
+  receipt. When the tool version is the only input that differs, the inputs read as unchanged
+  (#2310): a tool release by itself does not move a blocker. A tool change together with any
+  other changed input still reads as changed.
 - **Blocker issue.** The issue named by `blocker_ref` is read through the forge as the verifier
   App. A bare `#N` is read in the record's `repo`, or, when the record has none, in the plan
   root's own repository (its `origin` remote). The read is could-not-check, never "closed", in

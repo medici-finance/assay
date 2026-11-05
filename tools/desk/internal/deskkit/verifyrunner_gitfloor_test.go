@@ -268,7 +268,7 @@ func TestVerifyRunnerImageRunsGitFloor(t *testing.T) {
 	purgeLine := " && apt-get purge -y git git-man \\\n"
 	gitCopy := "COPY --from=gitbuild /out/usr/ /usr/\n"
 	checkCopy := "COPY containers/scripts/git-floor-check.sh " + gitFloorScriptInImg + "\n"
-	statusgenCopy := "COPY .release-images/harness/statusgen /usr/local/bin/statusgen\n"
+	statusgenCopy := "COPY .release-images/verify-runner/statusgen-linux-${TARGETARCH} /usr/local/bin/statusgen\n"
 	testX := "    test -x /usr/bin/git; \\\n"
 	testRemote := "    test -x /usr/libexec/git-core/git-remote-http; \\\n"
 	lddGate := "    if ldd /usr/bin/git /usr/libexec/git-core/git-remote-http | grep 'not found'; then \\\n" +

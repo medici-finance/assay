@@ -1,0 +1,6 @@
+# regression: #4769
+# Text after a ; on a .PHONY line is a recipe for .PHONY, not more names.
+want: target-missing
+file: Makefile
+replace: "deskd-build deskd-image skillslint"
+with: "skillslint ; deskd-build deskd-image"

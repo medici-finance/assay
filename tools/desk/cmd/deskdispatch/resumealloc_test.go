@@ -10,22 +10,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore/gittest"
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gittest"
 )
 
 // The forge is offline, but dispatch's allocation child and every Git command
 // are real. An argv-only stub cannot catch a producer/allocator contract mismatch.
 // regression: #3327
+// regression: desktools-v2/58 — the allocator child mints in process, so a PATH minter
+// fixture is never run; the child must be served from the provider's own cache.
 func TestResumeRealAllocator(t *testing.T) {
 	r := newRealResume(t)
 	result := createDispatchWorktree(r.o, r.plan)
 	if result.err != nil {
 		t.Fatalf("real allocator rejected verified resume: %v; %s", result.err, result.stderr)
 	}
-	if got, err := os.ReadFile(r.record); err != nil || string(got) != "worker --repo medici-finance" {
-		t.Fatalf("allocator child did not resolve its worker custody: %q %v", got, err)
+	if got, err := os.ReadFile(r.adopted); err != nil || strings.TrimSpace(string(got)) != "worker-app medici-finance" {
+		t.Fatalf("allocator child did not resolve its worker custody for medici-finance: %q %v", got, err)
 	}
 	target := strings.TrimSpace(result.stdout)
 	t.Cleanup(func() { r.git(r.root, "worktree", "remove", target) })
@@ -42,10 +44,10 @@ func TestResumeRealAllocator(t *testing.T) {
 
 // realResume is a verified worker resume wired to the SHIPPED allocator binary.
 type realResume struct {
-	o                                dispatchOpts
-	plan                             dispatchPlan
-	git                              func(dir string, args ...string) string
-	root, record, branch, head, main string
+	o                                 dispatchOpts
+	plan                              dispatchPlan
+	git                               func(dir string, args ...string) string
+	root, adopted, branch, head, main string
 }
 
 func newRealResume(t *testing.T) realResume {
@@ -59,36 +61,31 @@ func newRealResume(t *testing.T) realResume {
 	if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 		t.Fatalf("build allocator: %v %s", err, out)
 	}
-	// The allocator is another process: the parent's in-memory minter seam
-	// cannot reach it. Supply a native fixture minter, never an installed tool.
-	minterDir := t.TempDir()
-	minter := filepath.Join(minterDir, "desktoken")
-	if runtime.GOOS == "windows" {
-		minter += ".exe"
-	}
-	source := filepath.Join(t.TempDir(), "main.go")
-	if err := os.WriteFile(source, []byte(`package main
-import ("fmt"; "os"; "strings")
-func main() {
- if strings.Join(os.Args[1:], " ") != "worker --repo medici-finance" { os.Exit(2) }
- if err := os.WriteFile(os.Getenv("RESUME_MINTER_RECORD"), []byte(strings.Join(os.Args[1:], " ")), 0600); err != nil { os.Exit(3) }
- fmt.Println(os.Getenv("RESUME_MINTER_TOKEN_FILE"))
-}
-`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if out, err := goquiet.Cmd(exec.Command("go", "build", "-o", minter, source)).CombinedOutput(); err != nil {
-		t.Fatalf("build fixture minter: %v %s", err, out)
-	}
+	// The allocator is another process: the parent's in-memory minter seam cannot reach it.
+	// Since desktools-v2/58 it resolves its worker custody IN PROCESS through the credential
+	// provider, never a desktoken found on PATH, so the fixture is that provider's own on-disk
+	// state: an App ID, the (App, account) install-id cache and a fresh 0600 token cache. A
+	// reuse needs no key and no network, and it adopts the cache for the account it served.
 	s := &stub{}
 	home, root := s.install(t)
-	t.Setenv("PATH", minterDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	record := filepath.Join(home, "minter.record")
-	t.Setenv("RESUME_MINTER_RECORD", record)
-	t.Setenv("RESUME_MINTER_TOKEN_FILE", filepath.Join(home, "allocator.token"))
-	if err := os.WriteFile(os.Getenv("RESUME_MINTER_TOKEN_FILE"), []byte("allocator-role-fixture"), 0600); err != nil {
+	cfg := filepath.Join(home, ".config", "assay")
+	if err := os.MkdirAll(cfg, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv(deskkit.EnvConfigHome, "")
+	for _, suffix := range []string{"_APP_ID", "_PEM", "_TOKEN", "_INSTALL_ID", "_APP"} {
+		t.Setenv("WORKER"+suffix, "")
+	}
+	t.Setenv("WORKER_APP_ID", "12345")
+	for name, body := range map[string]string{
+		"worker-app-install-medici-finance": "4242\n",
+		"worker-token-4242":                 "allocator-role-fixture\n",
+	} {
+		if err := os.WriteFile(filepath.Join(cfg, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	adopted := filepath.Join(cfg, "worker-token-4242.owner")
 	git := func(dir string, args ...string) string {
 		t.Helper()
 		cmd := exec.Command("git", args...)
@@ -140,5 +137,5 @@ func main() {
 	if err := resolveResume(o, &plan); err != nil {
 		t.Fatal(err)
 	}
-	return realResume{o: o, plan: plan, git: git, root: root, record: record, branch: branch, head: head, main: main}
+	return realResume{o: o, plan: plan, git: git, root: root, adopted: adopted, branch: branch, head: head, main: main}
 }

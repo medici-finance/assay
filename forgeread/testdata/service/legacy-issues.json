@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "kind": "issues",
+  "repos": [
+    {
+      "repo": "example/project",
+      "issues": []
+    }
+  ],
+  "partial": []
+}

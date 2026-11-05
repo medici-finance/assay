@@ -41,14 +41,8 @@ id: 3b8c1c71-09a2-42cb-8990-8acaf32ebeff
 ## Context
 
 files:
-- **amend** `docs/adopting-assay.md` — add the Windows walkthrough. Mirror the existing
-  per-scenario structure: the runbook already routes green-field / existing-suite / carve-out;
-  the Windows axis is orthogonal (an adopter on Windows follows their scenario AND the Windows
-  install section), so the cleanest shape is a **`## Windows adopters` section** the scenario
-  sections cross-reference at the install step, not a fourth scenario.
-- **amend** `plugins/assay/skills/install/SKILL.md` — update the §Scope "Windows deferred" note to
-  point at the now-real path. This is the one cross-file edit this brief owns (the shared-value
-  note that install briefs 03 deliberately left for the doc delta).
+- **amend** `docs/adopting-assay.md` — add the Windows walkthrough. Mirror the existing per-scenario structure: the runbook already routes green-field / existing-suite / carve-out; the Windows axis is orthogonal (an adopter on Windows follows their scenario AND the Windows install section), so the cleanest shape is a **`## Windows adopters` section** the scenario sections cross-reference at the install step, not a fourth scenario.
+- **amend** `plugins/assay/skills/install/SKILL.md` — update the §Scope "Windows deferred" note to point at the now-real path. This is the one cross-file edit this brief owns (the shared-value note that install briefs 03 deliberately left for the doc delta).
 
 facts:
 - **The doc has no per-OS axis today.** It is per-scenario; OS handling hides inside
@@ -102,7 +96,7 @@ facts:
 | 4 | The install SKILL's §Scope no longer flatly defers Windows — grep the file's OWN deferral sentence, verbatim: `grep -qiF "Windows is a deferred fast-follow" plugins/assay/skills/install/SKILL.md; echo $?` | `1` — the deferral sentence is gone (replaced by the real-path pointer). **This row is non-vacuous by construction: on pre-brief main the same grep returns `0`, because that exact sentence is present at `plugins/assay/skills/install/SKILL.md` §Scope today.** |
 | 4a | **Positive control for row 4** — the SKILL now references the Windows path: `grep -qiF 'windows' plugins/assay/skills/install/SKILL.md; echo $?` | `0` (Windows is still mentioned — now as a supported path, not a deferral) |
 | 4b | The doc's own deferral sentence is retired too — grep `adopting-assay.md`'s verbatim wording. The sentence WRAPS across two source lines (`**Windows** is a named` / `fast-follow, not yet in scope`), so the pattern must be a fragment that sits wholly on one line, or a line-oriented grep can never match it: `grep -qiF "fast-follow, not yet in scope" docs/adopting-assay.md; echo $?` | `1` — gone. Non-vacuous by construction: on pre-brief main this exact grep returns `0` (`grep -c` counts 1 hit, the wrapped continuation line in the Prerequisites list). |
-| 5 | **Dereferencing — the doc's CI claim resolves to a REAL windows leg** (a wrong-but-well-formed doc that claims CI without one goes red here): `grep -qiE -e 'CI-proven' -e 'windows CI' -e 'windows-latest' docs/adopting-assay.md && grep -rqE 'runs-on: *windows-latest' .github/workflows/; echo $?` | `0` — the doc claims CI proof AND a windows-latest leg actually exists in the workflows |
+| 5 | **Dereferencing — the doc's CI claim matches the tree** (a doc that claims CI proof without a Windows leg goes red here). Since #4106 (ruling A) native Windows execution is no longer CI-proven, so the doc must say so and no workflow may run on a Windows runner: `grep -q 'native Windows is not CI-proven' docs/adopting-assay.md && ! grep -rqE 'windows-(latest\|[0-9]+\|11-arm)\|runs-on:.*windows' .github/workflows/ ci/staged-workflows/; echo $?` | `0` — the doc states native Windows is not CI-proven AND no Windows runner exists in the workflows |
 | 6 | **Dereferencing — a documented-workaround the doc lists is a REAL triaged surface** (not invented): `grep -qiE -e 'git.?bash' -e 'jq' -e 'SessionStart' -e 'hook' docs/adopting-assay.md && grep -qiF 'documented-workaround' docs/streams/windows-port/portability-audit.md; echo $?` | `0` — the doc's known-gap references a surface the audit actually triaged as a workaround |
 | 7 | Native-not-WSL is stated: `grep -qiF 'native' docs/adopting-assay.md && grep -qiF 'wsl' docs/adopting-assay.md; echo $?` | `0` — both the native claim and the WSL-fallback note are present |
 | 8 | **Consumers routing corroborated by the diff** (run on the implementer's branch): `statusgen --root . --consumers windows-port/05; echo $?` | `0` — both fixed-here edits (adopting-assay.md + the install SKILL §Scope) are proved by the branch diff |

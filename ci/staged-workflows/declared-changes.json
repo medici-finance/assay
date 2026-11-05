@@ -17,9 +17,6 @@
   "release.yml": {
     "mode": "identical"
   },
-  "windows-ci-leg.yml": {
-    "mode": "identical"
-  },
   "winparity.yml": {
     "mode": "identical"
   },

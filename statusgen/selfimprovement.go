@@ -397,9 +397,9 @@ func ghSelfImprovementDetailFetcher(ownerRepo string, number int) (selfImproveme
 	if !ok || owner == "" || name == "" {
 		return selfImprovementDetail{}, fmt.Errorf("bad repo %q", ownerRepo)
 	}
-	out, err := exec.Command("gh", "api", "graphql",
+	out, err := ghGuard(exec.Command("gh", "api", "graphql",
 		"-f", "query="+selfImprovementDetailQuery,
-		"-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(number)).Output()
+		"-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(number))).Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {

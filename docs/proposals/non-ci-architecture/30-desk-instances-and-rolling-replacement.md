@@ -64,7 +64,7 @@ Legacy `ROLES` configuration maps to one implicit desired entry per enabled role
 The config adapter may support legacy and instance forms individually but rejects
 ambiguous mixed declarations. An old reader must refuse a required instance capability;
 it cannot collapse several entries to one role. Negotiate new contract fields using the
-existing extensible-contract rules. Wire/result changes belong to desk-containers/31
+existing extensible-contract rules. Wire/result changes belong to desk-containers/33
 and cell-api/01, not a rewrite of completed desk-containers/15 Evidence.
 
 ## Work assignment and capacity
@@ -177,7 +177,7 @@ workspace grants no lease, budget, effect retry or human approval.
 The managed Kubernetes profile provides a separate workload and retained writable
 workspace for each configured desk instance. Role-specific images/permissions can be
 reused. Singleton compatibility manifests and their historical Evidence remain intact;
-the managed desired-population renderer is delivered by desk-containers/28 consuming /31.
+the managed desired-population renderer is delivered by desk-containers/28 consuming /33.
 
 Display cell/role/harness/provider/word names in Kubernetes within validated platform
 name limits, using a deterministic short locator if the full prefix does not fit; retain
@@ -207,7 +207,7 @@ transport is qualified, the existing supported transport remains explicit.
 |---|---|
 | R2 exact ownership and runtime facts; approximate role pacing | graph-execution/16, /19; shared supervisor journal /26 |
 | Standing clients and claim/usage policy | graph-execution/27 |
-| Config, naming, desired-population adapter and cell-op extension | new desk-containers/31; consumes /27 and completed /15 |
+| Config, naming, desired-population adapter and cell-op extension | new desk-containers/33; consumes /27 and completed /15 |
 | Stops, lifecycle and replacement | desk-containers/16, /18, /19 |
 | Status, diagnostics, logs, upgrade, GC and repair consumers | desk-containers/07, /20–25 |
 | Qualified profile, readiness, recovery and projection | delivered agent-execution/01 consumed; extension in /03, with /02, /04–05, /09 |

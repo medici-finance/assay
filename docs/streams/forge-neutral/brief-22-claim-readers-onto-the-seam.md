@@ -51,12 +51,12 @@ id: 5babe9aa-27f1-4ccf-988c-97eab1bc4368
 
 ## Context
 files:
-- `tools/desk/cmd/desksupervise/live.go`, `actions.go`
-- `tools/desk/cmd/deskpost/claimliveness.go`, `forgeclient.go`
+- `tools/desk/cmd/desksupervise/live.go`, `tools/desk/cmd/desksupervise/actions.go`
+- `tools/desk/cmd/deskpost/claimliveness.go`, `tools/desk/cmd/deskpost/forgeclient.go`
 - `tools/desk/cmd/fanoutloop/land.go`
 - `tools/desk/internal/loopengine/writescope_io.go`
 - `tools/desk/cmd/deskroster/` (the list join)
-- `tools/desk/internal/deskkit/mutations.json`; `changelog/<branch-slug>.md` (planned)
+- `tools/desk/internal/deskkit/mutations.json` — and `changelog/<branch-slug>.md` (planned)
 
 single-point-of-failure: each reader's use of the resolver — behind it, a source-level test
 that fails when any non-test file outside the store implementations names the forge claim

@@ -8,7 +8,7 @@ why: >-
   `doctor`, `gc` and the console cockpit read, removes most of the manual digging from the
   2026-10-14 recovery.
 wave: 10
-depends: ["desk-containers/15", "desk-containers/16", "desk-containers/31"]
+depends: ["desk-containers/15", "desk-containers/16", "desk-containers/33"]
 unblocks: ["desk-containers/21", "desk-containers/23", "desk-containers/29"]
 effort: M
 gate: model
@@ -67,7 +67,7 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
 2. Rebuild `status` text and `--json` on it, keeping the existing line as the prefix.
 3. Docs; changelog fragment.
 
-- **Instance amendment:** Render /31 instance-aware results: cell/role/name/instance/generation, desired versus observed state, profile, paused/draining predecessors and successor readiness, estimated role occupancy/target, freshness and optional instance refill target. Preserve aggregate and individual unknowns and independent effect/acceptance dimensions. Role-only legacy output is explicitly limited rather than collapsing required instance data.
+- **Instance amendment:** Render /33 instance-aware results: cell/role/name/instance/generation, desired versus observed state, profile, paused/draining predecessors and successor readiness, estimated role occupancy/target, freshness and optional instance refill target. Preserve aggregate and individual unknowns and independent effect/acceptance dimensions. Role-only legacy output is explicitly limited rather than collapsing required instance data.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |

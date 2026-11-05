@@ -69,6 +69,16 @@ const (
 	defaultStatusCheckName = "assay-verdict"
 )
 
+// The board-push credential the scaffolded statusgen-regen job reads (pushtoken.go). A
+// DEDICATED project access token, never a role-fleet PAT: write_repository only (no `api`),
+// at Maintainer — the credential class docs/adopting-assay-gitlab.md §2c names.
+const (
+	pushTokenVariable    = "STATUSGEN_PUSH_TOKEN"
+	pushTokenName        = "assay-statusgen-push"
+	pushTokenScope       = "write_repository"
+	pushTokenAccessLevel = "40"
+)
+
 // fleetUsername / fleetPATName are fleet_username / fleet_pat_name of the shared shell file.
 func fleetUsername(prefix, role string) string { return prefix + "-" + role + "-bot" }
 func fleetPATName(role string) string          { return "assay-" + role + "-fleet" }

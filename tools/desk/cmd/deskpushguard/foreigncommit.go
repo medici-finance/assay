@@ -46,7 +46,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // shaRe bounds localSHA before it ever reaches a constructed git argv: a real pre-push

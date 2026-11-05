@@ -68,6 +68,11 @@ versioned prerequisite capabilities and open decisions. Preserve existing promis
 do not infer milestone order from wave numbers or decompose the execution work here.
 Carry these records into the brief-authoring handoff. While readers lack support,
 capture proposals in the scoping document rather than operational milestone YAML.
+When a useful outcome includes simulated or temporarily absent dependencies, apply the
+shared procedure's **Outcomes delivered with simulated dependencies** section. Capture
+real/substitute boundaries, evidence limits and real-service replacement requirements
+before decomposition; use existing scope and acceptance sections rather than a new
+universal spec template.
 
 ## Resolve the consequential questions
 

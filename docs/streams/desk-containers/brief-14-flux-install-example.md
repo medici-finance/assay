@@ -31,9 +31,9 @@ consumers:
 
 ## Context
 files:
-- `examples/gitops/flux/overlay/kustomization.yaml` (planned) (new — the same adopter-owned overlay shape as brief 13: remote base and component at a pinned tag, namespace, image pin, schedule patch)
-- `examples/gitops/flux/gitrepository.yaml` (planned) (new — a `source.toolkit.fluxcd.io` GitRepository for the ADOPTER's GitOps repo)
-- `examples/gitops/flux/kustomization.yaml` (planned) (new — a `kustomize.toolkit.fluxcd.io` Kustomization that applies the overlay path from that GitRepository)
+- `examples/gitops/flux/overlay/kustomization.yaml` (planned) (new: the same adopter-owned overlay shape as brief 13: remote base and component at a pinned tag, namespace, image pin, schedule patch)
+- `examples/gitops/flux/gitrepository.yaml` (planned) (new: a `source.toolkit.fluxcd.io` GitRepository for the ADOPTER's GitOps repo)
+- `examples/gitops/flux/kustomization.yaml` (planned) (new: a `kustomize.toolkit.fluxcd.io` Kustomization that applies the overlay path from that GitRepository)
 - `docs/install-flux.md` (planned) (new)
 - `docs/docker.md` — one pointer line beside brief 13's
 - `changelog/desk-containers-14-flux-example.md` (planned)

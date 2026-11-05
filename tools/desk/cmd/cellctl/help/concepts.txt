@@ -90,3 +90,11 @@ identical: the key is simply absent from the launched environment. Default: off.
 Design rule: the Claude session keeps the operator's REAL HOME and CLAUDE_CONFIG_DIR, because the
 harness keys its login, plugins and memory by HOME — swapping HOME for the whole session loses the
 login. ONLY the desk verbs run with the cell config-home, and they get there through the shims.
+
+Trusted Kubernetes compatibility is explicitly selected with CELL_KUBERNETES_CONFIG
+on a k8s-kind cell. It uses pinned named workloads and static target credentials;
+without that selection the existing local path stays. `attach <cell> <role>` only
+presents the exact existing agent. It never starts one. Down confirms idle and
+reconciled work, then requires complete execution stop and exact container proof.
+This profile includes role credential/transcript custody and requires a genuine
+candidate image release plus separate human qualification before activation.

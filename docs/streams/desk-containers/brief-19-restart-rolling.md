@@ -71,7 +71,7 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
 ## Task
 1. Implement `restart` as above; register it; docs; changelog fragment.
 
-- **Instance amendment:** For qualified worker/review replacement, compose /18 admission barrier and /31 desired-entry binding with successor start before predecessor drain completion. Persist/reuse one replacement intent; old tasks/claims stay with the predecessor and its observed work informs approximate role pacing. New profile selection uses existing qualified configuration, not arbitrary provider input. Report successor failure or old drain timeout as partial; do not silently resume old admission. Keep sequential restart for singleton/non-overlap profiles and all existing plan/TTY/batch protections.
+- **Instance amendment:** For qualified worker/review replacement, compose /18 admission barrier and /33 desired-entry binding with successor start before predecessor drain completion. Persist/reuse one replacement intent; old tasks/claims stay with the predecessor and its observed work informs approximate role pacing. New profile selection uses existing qualified configuration, not arbitrary provider input. Report successor failure or old drain timeout as partial; do not silently resume old admission. Keep sequential restart for singleton/non-overlap profiles and all existing plan/TTY/batch protections.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |

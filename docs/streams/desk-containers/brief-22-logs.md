@@ -8,7 +8,7 @@ why: >-
   through the cockpit's own API and prints it, for one role or all of them, so the console
   cockpit can show it too.
 wave: 11
-depends: ["desk-containers/15", "desk-containers/18", "desk-containers/31"]
+depends: ["desk-containers/15", "desk-containers/18", "desk-containers/33"]
 unblocks: []
 effort: S
 gate: model

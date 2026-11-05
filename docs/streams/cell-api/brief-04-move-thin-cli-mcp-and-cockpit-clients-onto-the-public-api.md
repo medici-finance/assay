@@ -4,7 +4,7 @@ title: Move thin CLI MCP and cockpit clients onto the public API
 why: "Public service delivery is incomplete while callers import legacy internals or keep their own result meanings. Thin clients prove the same authorized status and reconnect contract across CLI, MCP and a later cockpit adapter."
 wave: 14
 depends: ["cell-api/03"]
-unblocks: ["cell-api/07"]
+unblocks: ["cell-api/07", "delivery-profiles/05"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}

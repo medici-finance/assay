@@ -35,8 +35,7 @@ id: 13f71975-1f4f-48e2-b44a-e1902d7a8d7b
 ## Context
 files:
 - `tools/desk/internal/deskkit/forge.go` (new) — the `Forge` interface + shared types.
-- `tools/desk/internal/deskkit/forge_github.go` (new) — extraction of the existing
-  GitHub REST behavior.
+- `tools/desk/internal/deskkit/forge_github.go` (new) — extraction of the existing GitHub REST behavior.
 - `tools/desk/cmd/*` — call sites move from direct API calls to the interface.
 
 single-point-of-failure: the golden corpus is the one control proving extraction changed

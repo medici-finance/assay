@@ -8,6 +8,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 source = (ROOT / 'tools/go-analysis/runner.py').read_text()
 cases = [
+    ('lifted-platforms', "for module in ['tools/desk', 'gitcore']:", "for module in ['tools/desk']:", 'Coverage.test_lifted_owner_tuples'),
     ('growth', "if any(key not in prior or record != prior[key] for key, record in current.items()):", 'if False:', 'Ratchet.test_baseline_growth'),
     ('policy', "if candidate.get('contract') != policy or trusted.get('contract') != policy:", 'if False:', 'Ratchet.test_baseline_growth'),
     ('stale', 'if stale:', 'if False:', 'Ratchet.test_resolved_allowance'),

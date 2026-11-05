@@ -10,8 +10,10 @@ S-component-activation 2
 S-eligibility 1
 S-evidence-coverage 1
 S-exit-codes 1
+S-forge-local-authority 1
 S-identity 2
 S-publication-scan 1
 S-review-verdict 3
+S-role-credential 2
 S-worktree 1
 S-write-policy 1

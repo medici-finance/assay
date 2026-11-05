@@ -327,7 +327,7 @@ func TestNewRefusesBeforeMkdir(t *testing.T) {
 		root := t.TempDir()
 		e := envWith(map[string]string{"ASSAY_CONFIG_HOME": t.TempDir()})
 		assertDies(t, "house new with no home", func() {
-			newHouse(e, root, "h1", repo, "example/repo="+repo, rolesDefault, "8787")
+			newHouse(e, root, "h1", repo, "example/repo="+repo, rolesDefault, "8787", houseForge{})
 		})
 		if exists(filepath.Join(root, "h1")) {
 			t.Fatal("house new refused after creating the cell directory")

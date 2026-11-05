@@ -3,7 +3,7 @@ brief: assay:assay:desk-containers:28
 title: Package in-cluster cellctl and bind the interactive desk profile
 why: An in-cluster Linux operator removes the native Windows dependency while giving the whole cell one qualified launch and reconnect path.
 wave: 10
-depends: ["desk-containers/06", "desk-containers/15", "agent-execution/09", "desk-containers/31"]
+depends: ["desk-containers/06", "desk-containers/15", "agent-execution/09", "desk-containers/33"]
 unblocks: ["desk-containers/29", "desk-containers/07", "cell-api/06"]
 effort: M
 gate: human
@@ -129,7 +129,7 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
    detach/reconnect/status/stop operator guide, compatibility limitations, and exact profile
    prerequisites in docs/cellctl.md and docs/docker.md. Publish no deployed-support claim.
 
-- **Instance amendment:** Consume /31 desired population in cell.env to render/pre-provision one managed workload and retained writable workspace per instance, reusing role images and scoped identities. Include cell in human/Kubernetes locators with validated name limits and cell/role/instance/generation metadata. Start/attach/control uses /09 and exact UID receipts; repeated up preserves names/IDs and paused peers. Keep compatibility /06 manifests intact and operator-only provisioning separate from desk launch.
+- **Instance amendment:** Consume /33 desired population in cell.env to render/pre-provision one managed workload and retained writable workspace per instance, reusing role images and scoped identities. Include cell in human/Kubernetes locators with validated name limits and cell/role/instance/generation metadata. Start/attach/control uses /09 and exact UID receipts; repeated up preserves names/IDs and paused peers. Keep compatibility /06 manifests intact and operator-only provisioning separate from desk launch.
 
 ## Operator image and component acceptance
 

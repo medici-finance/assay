@@ -1,0 +1,77 @@
+{
+  "test": "go test -timeout 300s -count=1 ./cmd/deskfleet -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms)$'",
+  "control": {
+    "name": "CONTROL: usage exit is wrong",
+    "file": "cmd/deskfleet/cli.go",
+    "old": "UsageExit:    exitUsage,",
+    "new": "UsageExit:    3,"
+  },
+  "mutations": [
+    {
+      "name": "help runs after a configuration read",
+      "file": "cmd/deskfleet/cli.go",
+      "old": "root := cli.NewRoot(\"deskfleet\",",
+      "new": "_, _ = e.lookupEnv(\"GITLAB_API_BASE\")\n\troot := cli.NewRoot(\"deskfleet\","
+    },
+    {
+      "name": "undeclared environment key binds provision --group",
+      "file": "cmd/deskfleet/cli.go",
+      "old": "{Key: \"group\", Kind: cli.String, Flag: \"group\",",
+      "new": "{Key: \"group\", Kind: cli.String, Flag: \"group\", Env: []string{\"DESKFLEET_GROUP\"},"
+    },
+    {
+      "name": "config-file source declared for labels --token-file",
+      "file": "cmd/deskfleet/cli.go",
+      "old": "{Key: \"token-file\", Kind: cli.String, Flag: \"token-file\",",
+      "new": "{Key: \"token-file\", Kind: cli.String, Flag: \"token-file\", Config: true,"
+    },
+    {
+      "name": "single-dash legacy flag form dropped",
+      "file": "cmd/deskfleet/cli.go",
+      "old": "GoFlagCompat: true,",
+      "new": "GoFlagCompat: false,"
+    },
+    {
+      "name": "legacy flag spelling renamed",
+      "file": "cmd/deskfleet/cli.go",
+      "old": "{Key: \"owner-token-file\", Kind: cli.String, Flag: \"owner-token-file\",",
+      "new": "{Key: \"owner-token-file\", Kind: cli.String, Flag: \"owner-token\","
+    },
+    {
+      "name": "pat-expiry-days default changed",
+      "file": "cmd/deskfleet/cli.go",
+      "old": "Flag: \"pat-expiry-days\", Default: 7,",
+      "new": "Flag: \"pat-expiry-days\", Default: 30,"
+    },
+    {
+      "name": "domain validation skipped by the command tree",
+      "file": "cmd/deskfleet/cli.go",
+      "old": "if err := validateProvision(&o); err != nil {",
+      "new": "if err := validateProvision(&o); false && err != nil {"
+    },
+    {
+      "name": "stray positional accepted",
+      "file": "cmd/deskfleet/cli.go",
+      "old": "if len(args) > 0 {\n\t\treturn fmt.Errorf(\"unexpected argument",
+      "new": "if len(args) > 99 {\n\t\treturn fmt.Errorf(\"unexpected argument"
+    },
+    {
+      "name": "API base exposed as a flag",
+      "file": "cmd/deskfleet/cli.go",
+      "old": "return cli.Binding{Key: \"gitlab-api-base\", Kind: cli.String, Env: []string{\"GITLAB_API_BASE\"},",
+      "new": "return cli.Binding{Key: \"gitlab-api-base\", Kind: cli.String, Flag: \"gitlab-api-base\", Env: []string{\"GITLAB_API_BASE\"},"
+    },
+    {
+      "name": "version answered before argument validation",
+      "file": "cmd/deskfleet/cli.go",
+      "old": "GoFlagCompat: true,",
+      "new": "Version: versionLine(), GoFlagCompat: true,"
+    },
+    {
+      "name": "bare root exits 0",
+      "file": "cmd/deskfleet/cli.go",
+      "old": "_ = cmd.Help()\n\t\treturn exitErr(exitUsage)",
+      "new": "_ = cmd.Help()\n\t\treturn nil"
+    }
+  ]
+}

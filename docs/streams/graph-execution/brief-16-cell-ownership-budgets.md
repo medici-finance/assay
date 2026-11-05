@@ -24,6 +24,9 @@ risk:
   sensitive-data: no
 gate-why: Ownership and restore behavior constrain external effects; the owner confirms stale writers cannot retain independent authority.
 decision-trigger: spec
+design: DR-graph-exec-16
+decision-issue: 5111
+ruling: "https://github.com/medici-finance/assay/issues/5111#issuecomment-6612666889"
 issues: []
 schema: brief-v2
 authored: 2026-09-19 by Codex (author-brief)
@@ -48,9 +51,9 @@ consumers:
 - 'tools/desk: follow-up graph-execution/14'
 - 'workflow/store: follow-up graph-execution/19'
 - 'workflow/controller: follow-up graph-execution/21'
-- 'spec/operator-incarnation-v1.md: follow-up graph-execution/16 (this brief; flips to fixed-here when the implementation edits the path)'
+- 'spec/operator-incarnation-v1.md: fixed-here (record contract landed by the 2026-10-31 schema/test preparation; enforcement remains owed)'
 - 'loopadmin supervisor launch admission (checks the current incarnation): follow-up graph-execution/26'
-version: 9
+version: 10
 id: db922112-28f0-44c0-b120-9d6c4f56e103
 ---
 
@@ -61,7 +64,9 @@ id: db922112-28f0-44c0-b120-9d6c4f56e103
 
 ## Context
 
-files: `drainloop/ownership.go` (planned), `drainloop/ownership_test.go` (planned), `drainloop/budget.go` (planned), `drainloop/budget_test.go` (planned), `drainloop/restore_test.go` (planned), `drainloop/README.md`, `docs/enforcement-model.md`, `changelog/graph-execution-16-cell-ownership-budgets.md` (planned). Added by the R2 amendment (2026-10-13): `spec/operator-incarnation-v1.md` (planned), `drainloop/incarnation.go` (planned), `drainloop/incarnation_test.go` (planned).
+Schema/test preparation (2026-10-31) added `spec/cell-checkpoint-v1.md`, `drainloop/testdata/cell-checkpoint.json`, `drainloop/testdata/effect_mutations.py` and `docs/superpowers/plans/2026-10-31-ge16-schema-tests.md` to the `files:` line below. These are partial preparation; all original delivery obligations remain.
+
+files: `drainloop/ownership.go`, `drainloop/ownership_test.go`, `drainloop/budget.go`, `drainloop/budget_test.go`, `drainloop/restore_test.go`, `drainloop/checkpoint_decode_test.go`, `drainloop/README.md`, `docs/enforcement-model.md`, `changelog/graph-execution-16-cell-ownership-budgets.md`, `spec/operator-incarnation-v1.md`, `drainloop/incarnation.go`, `drainloop/incarnation_test.go`, `spec/cell-checkpoint-v1.md`, `drainloop/testdata/cell-checkpoint.json`, `drainloop/testdata/effect_mutations.py`, `docs/superpowers/plans/2026-10-31-ge16-schema-tests.md` — Added by the R2 amendment (2026-10-13): `spec/operator-incarnation-v1.md`, `drainloop/incarnation.go`, `drainloop/incarnation_test.go`.
 
 facts: 04 owns basic effect receipts and reconcile-before-retry. This extension adds ownership/budgets without replacing that protocol or widening the six-method Loop interface.
 
@@ -70,6 +75,124 @@ single-point-of-failure: the new contract or policy alone cannot establish safe 
 ## Human decision
 
 Decision-trigger: spec. At implementation pickup, prepare concrete policy choices and negative-path evidence, then file a self-contained decision issue. No response permits no activation; schema/test work may proceed within the declared scope.
+
+### Schema/test preparation — 2026-10-31
+
+This preparation adds passive record contracts, an operator-current-value read port
+and offline negative fixtures. It does not deliver this brief. The existing Task,
+Verify rows 1–11, Evidence, dependencies and human activation gate remain owed.
+No generated board status or lifecycle completion is changed.
+
+#### Human decision block — ruled: option 3, design only
+
+**Ruling recorded.** Option 3, design only: custody 1A, reopen 2A, budget 3A,
+provider 4A, and pacing rule 5 unchanged. Two restrictions apply to 1A: role
+executors cannot read signing material on the volume they mount, and snapshots or
+backups of that volume never restore operator-control state as current. Both are
+contract text in `spec/operator-incarnation-v1.md`, each pinned by a negative-control
+test and committed mutants. The accountable operator for the concrete profile is
+the maintainer the ruling names, `human:ian`. The ruling grants no deployment,
+credentials or admission reopening; activation still needs the separate human gate.
+
+Ruling: https://github.com/medici-finance/assay/issues/5111#issuecomment-6561259515
+
+The options as offered:
+
+**Decision:** approve a bounded first Kubernetes operator profile for subsequent
+implementation and qualification of ownership, budgets and restoration fencing.
+A response authorizes only the selected design scope; activation still requires
+the existing separate human gate and consumer qualification. No response leaves
+mutation admission paused. Scope is one Cell execution/publisher group; automatic
+multi-host recovery and R3 repository assignment remain excluded.
+
+Responses offered:
+
+1. **Approve the recommended bounded design profile:** custody 1A, reopen 2A,
+   budget 3A, provider 4A, and pacing rule 5 unchanged, as detailed below. This
+   approves subsequent implementation/qualification only, never live activation.
+2. **Hold:** leave all policy choices pending and affected mutation admission paused.
+3. **Approve a narrower or explicit alternative design:** name the selected dimensions
+   and restrictions below; every unspecified dimension stays held. This also grants
+   no deployment, credential provisioning or reopening authority.
+
+Default if no answer (superseded by the ruling): none — blocks until answered; keep all policy choices pending and mutation admission paused; schema/test preparation alone may proceed.
+
+**Dimension 1 — Incarnation custody and rotation (1A / 1B).** Recommend protected operator-control state
+   on a dedicated persistent volume outside PostgreSQL/CNPG backup and PITR, mounted
+   only by the trusted operator and qualified role executors; mutation is restricted
+   to the operator, with signing material unavailable to model/runner containers.
+   The profile must pin its Kubernetes namespace, execution-group identity, volume,
+   access identities and key reference before implementation activation. Reconstruct,
+   PITR rollback and transfer each rotate identity AND key, even if restored SQL
+   matches an old generation. Alternative: a separately qualified external secret
+   authority with equivalent non-restorable-current semantics. A Git revision or
+   restored database value is never current authority. This choice creates no
+   Kubernetes resources or credentials.
+   Ruled restrictions on 1A: (a) role executors never read the signing material
+   on the volume they mount, and only the operator writes control state; (b) a
+   snapshot or backup of the volume never restores operator-control state as
+   current, so the operator rotates identity and key away from every restored
+   value before a match counts.
+**Dimension 2 — Reopen procedure (2A / 2B).** Recommend operator-confirmed whole-group stop plus old
+   socket/capability invalidation and independent credential revocation/restriction
+   (or expiry), followed by external reconciliation, rotation and fresh executors.
+   Persist a scoped stop-confirmation reference and the new activation binding.
+   Unknown stop, incomplete credential inventory, missing operator state or a
+   mismatched activation remains paused. Alternative: require full manual teardown
+   and reconciliation on every transfer until the automated group-stop boundary is
+   qualified. Neither permits an SQL lease or process list to stand in for fencing.
+**Dimension 3 — Budget and runner boundary (3A / 3B).** Recommend no conservative fallback for unavailable
+   brakes: hold until authoritative usage/reservations are recovered or a separately
+   authorized reset is recorded. Keep account/provider/unit/window balances separate,
+   with configured operator headroom and outstanding unknown reservations charged.
+   All preparation, summary, failed, fallback and verification attempts charge
+   original work; pricing/model identities remain references. Only a request-limiting
+   runner may claim a hard per-request cap; launch-only control must reserve a proven
+   request upper bound or hold. Alternative: a separately reviewed per-profile
+   conservative upper bound, never an assumed zero or cross-provider fallback.
+   Synthetic fixture values (100 units, 10 headroom, 30 reserved) are not live policy.
+**Dimension 4 — Unknown effects and handback (4A / 4B).** Recommend retain old ownership restrictions and
+   unknown-effect reservations until authoritative reconciliation and independently
+   fenced old writers permit transfer. Providers lacking enforceable dedupe/fencing
+   or confirmed old-writer stop stay held for authorized resolution. Alternative:
+   support those providers in report-only mode with no mutating cohort. Neither
+   claims exactly-once or releases unknown usage because a process restarted.
+**Dimension 5 — Pacing boundary (unchanged).** Retain the already accepted brake/pacing distinction: unknown
+   brakes hold; effect-class pacing re-derives shared window intents/receipts on every
+   admission, read-class seeds retained shared state, with only one recorded unseeded
+   reset per window/scope/incarnation. Missing/second reset exhausts that window.
+   No relaxing alternative is proposed under this gate.
+
+**Exact response:** name this brief in the reply. Reply `graph-execution/16: 1`
+to approve only the recommended bounded design (1A/2A/3A/4A + 5 unchanged),
+`graph-execution/16: 2` to hold, or `graph-execution/16: 3` followed by the
+explicit alternative selections/narrowed scope and rationale. A bare option
+number does not name the brief and is not recorded as a ruling. For either
+approval, name the operator accountable for the concrete profile and any
+restrictions on the selected options. Missing or ambiguous selections
+stay held. No reply authorizes deployment, credentials or admission reopening.
+
+**Evidence available for the ruling:** implementation tests
+`TestCellFenceBoundary`, `TestIncarnationContractFields`,
+`TestCellCheckpointRoundTrip`, `TestCheckpointAbsentFieldsHeld`,
+`TestExecutorKeyReadRefused` and `TestRestoredControlNotCurrent`, with a
+committed negative mutation control per guard, exercise the pure contract and
+separately invoked fake effect boundary. They cover restored owner/generation
+under an old incarnation, stale tuple, absent or unsupported protected current
+state, activation/key mismatch, contract wire names, refusal of a checkpoint with
+any field absent, executor signing-material reads, restored control state
+presented as current, retained pause/cancellation/unknown usage and all attempt phases. They do not
+qualify Kubernetes containment, signature custody, real provider enforcement,
+atomic reservations, concurrent owners or PostgreSQL rollback. Those checks remain
+could-not-check in this preparation and required before activation. Independent
+verification has not been performed and no Verify Evidence is recorded here.
+
+**Remaining delivery:** complete Task 1–5 and all original Verify rows; couple
+reservations/ownership/intent at the existing authority; implement real adapter
+conformance, concurrency/crash/restore/handback and brake/pacing tests; qualify
+credential cutover and all consumers. GE/19 owns real PostgreSQL rollback; GE/26
+owns launch enforcement. The preparation includes the incarnation and checkpoint
+contracts described above; neither activates a runtime consumer.
 
 ## Read first
 
@@ -207,9 +330,106 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.
 
+## Store-neutral implementation — 3 November 2026
+
+The library implements `CellAuthority`, `CellStore`, `CellJournal`, authenticated
+capability binding, all-balance reservations, retained usage settlement and held
+transfer. `CellJournal` consumes the existing transactional handoff and the frozen
+Loop/Config/effect flow unchanged. `CellStore` is the existing coordination owner:
+its compare/commit must publish ownership, reservation and intent together, or
+publish none. No runtime backend or additional claim authority is installed.
+
+`CheckEffect` belongs inside the provider's independently enforcing atomic effect
+boundary, with current protected incarnation, authenticated capability and matching
+intent/reservations. A wrapper that checks and then invokes an unrestricted write
+is not a conforming provider. Required durability, current operator custody,
+authentication/expiry/policy, credential cutover, reset history and authoritative
+usage are explicit refusing ports, not inferred from record contents.
+
+Offline qualification uses a test-only local-filesystem transactional fixture and
+a separately invoked fake provider, plus actual child processes sharing one state
+file and an independent reset anchor. These qualify library semantics and the
+fixture's acknowledged sync/rename behavior only. GE/19 still owes PostgreSQL
+transactions/rollback/conformance; GE/26 and the effect consumers still owe their
+concrete launch/provider integration. Real control-volume custody, provider fencing
+and credential cutover remain could-not-check until those profiles are qualified.
+No runtime consumer, activation, signing material or deployment is supplied.
+
+The group ownership and per-item claim generations are distinct. The existing
+claim authority retains exact work/attempt/owner bindings in `CellState.Claims`;
+admission and the separately invoked effect boundary reject stale or released item
+claims. Crash-before-apply and proven-failure retirement require authoritative absence,
+independent old-writer fencing and complete known usage through an explicit port;
+unknowns stay held. A fresh attempt/request may then resume in the same claim
+generation without losing failed spend or creating a free retry. Provider requests
+bind one signed phase, and budget-window checks use an injected authority clock.
+The original eleven Verify Class/Command/Expect rows are unchanged. Their
+implementation tests are not independent acceptance Evidence or an activation ruling.
+
 ## Evidence
 
 <!-- Independent verifier records command, exit, key output/digest, subject revision, environment and date. No implementation or execution evidence is asserted by this authoring change. -->
+### Non-implementer verifier run — 2026-11-04 — claude-opus-5-5 verifier (verify-desk dispatch), merged main db877f68ef27
+
+Runner is not the implementer of PR #5386 (delivery merge 9ec2680d0d24, an ancestor of the verified commit) or of the earlier preparation PR #5113. Offline envelope (KUBECONFIG=/dev/null), own detached worktree at merged main db877f68ef273e5796df5ddf92e89b0d5bc05ffe, admitted by deskdispatch --check-verifier (exit 0 before and after the run). gate: human; risk irreversible: yes. All 11 rows are check:ci Go tests in the drainloop package and need no host capability, so the whole table ran in one closed admission bracket: statusgen verifyrun --sandbox=container-netns in a --network none container from the pinned verify-runner v1.0.73 image (sha256:100dde7f1f3a), home mounted read-only, bracket-digest verdict=match. The host row selection is empty; the two selections are disjoint and cover rows 1-11.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnership" ./...` | pass exit=0 sandbox=container-netns | sha256:206f373e4eff | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnershipStaleWriterDenied" ./...` | pass exit=0 sandbox=container-netns | sha256:80876d04733f | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnershipRestoreBudgetPause" ./...` | pass exit=0 sandbox=container-netns | sha256:0c6bfda9a9d2 | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd drainloop && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCellBudgetConcurrentReservations.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBudgetConcurrentReservations$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCellBudgetConcurrentReservations " "$wi_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `(cd drainloop && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCellBudgetRestoreAllAttempts.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBudgetRestoreAllAttempts$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCellBudgetRestoreAllAttempts " "$wi_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestOwnershipBackendHandbackUnknown$" ./... > "$routing_out" && grep -q -- "--- PASS: TestOwnershipBackendHandbackUnknown " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationStaleRefused$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationStaleRefused " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationMismatchPaused$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationMismatchPaused " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationSpecMatchesFields$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationSpecMatchesFields " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBrakeCountUnavailableHolds$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCellBrakeCountUnavailableHolds " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellPacingRestartNoMultiply$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCellPacingRestartNoMultiply " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-04 | assay-verifier-app[bot] @ db877f68ef27 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:90feb2f363705b5697e93fb395a6f3dfedb537b0b501a6fe4bdeb15ccf91818c
+Container-Image: sha256:100dde7f1f3a8be53ae45e9c1ff21fcd9fc82760595c91c422670db36c25d8d9
+Verification-Attestation: medici-finance/assay#5454 run=198ede9a5dc8809793ba34683f54130d2b613a5721f4c3f61a4aae019e04710b source=db877f68ef273e5796df5ddf92e89b0d5bc05ffe brief=docs/streams/graph-execution/brief-16-cell-ownership-budgets.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=198ede9a5dc8809793ba34683f54130d2b613a5721f4c3f61a4aae019e04710b source=db877f68ef273e5796df5ddf92e89b0d5bc05ffe tree=sha256:90feb2f363705b5697e93fb395a6f3dfedb537b0b501a6fe4bdeb15ccf91818c witness=sha256:693025ccc3347855bfb1caf1ef106569ad156f36b489432862c8de16326fb8da opened=2026-11-04T19:50:19Z closed=2026-11-04T19:50:46Z before=receipt after=check-verifier
+
+Observed output (supplemental, no acceptance credit; the exact row selectors re-run on an archived copy of the verified commit in the same image, logs kept outside the home): every named test prints its "--- PASS" line and the owning package prints "ok github.com/medici-finance/assay/drainloop"; the cmd/demo package prints "[no test files]", so no selector matched zero tests. Hand-read against each Expect: row 4 admits exactly 3 of 24 concurrent reservations (100 limit, 10 headroom, 30 reserved); row 11 uses two processes, a seed of 3 against a cap of 10 with C = 2, keeps 7 + 3 + 10 = 20 admissions after the one recorded reset, within 2 × (cap + C) = 24, and an anchor of 2 or a missing anchor admits nothing.
+
+Mutation probes (supplemental, no acceptance credit; independent mutants built on the archived copy, never in the home). Killed means the row's named test failed:
+- M4 outstanding reservations left out of the charge: row 4 killed (admitted=24).
+- M5 unknown reservation ignored in Transfer, M6 handback with an unknown effect allowed: row 6 killed both.
+- M7 owner and generation compared, incarnation ignored: row 7 killed ("restored SQL tuple revived old incarnation").
+- M8 current incarnation taken from the store activation: row 8 killed.
+- M9a contract Go name renamed, M9b wire name renamed: row 9 killed both.
+- M10a unavailable brake count treated as zero at admission, M10c treated as known at admission and effect: row 10 killed both.
+- M11a seed of zero, M11b per-process estimate, M11c cached pacing row as source: row 11 killed all three (intents 10, 28, 48).
+- M2 presented generation ignored in Match Cell Fence alone survived row 2, because the item-claim owner check rejects the same stale writer; M2b with both guards removed is killed by row 2 ("scheduler bypass applied stale writer"). Defence in depth, not a gap.
+- M10b effect-boundary brake check removed alone survives row 10's test (its apply step already fails on a missing admitted intent) but is killed by row 1's restored-records unknown-brake subtest.
+
+Risk-bearing value (kit section 4). Enumeration over the delivery diff (9ec2680d: drainloop budget.go, ownership.go, incarnation.go and the two specs). Test fixture values (100, 10, 30, Cap 10, C 2, seed 3, 24 × 30) are test-only and the brief marks them as not live policy; Cap, C, Limit and Headroom are configuration-owned, with no production default in code.
+- epoch bound p.Epoch > 1 (and p.Epoch != epoch) @ drainloop/budget.go:157
+- pacing admission n >= p.Cap @ drainloop/budget.go:177
+- budget admission used > found.Limit after charging Headroom and outstanding reservations @ drainloop/budget.go:110-120
+- launch-only control ControlBoundary "request" / "launch" with UpperBoundRef required @ drainloop/ownership.go:328
+- item claim count matches != 1 @ drainloop/ownership.go:724
+- overflow guards math.MaxUint64 @ drainloop/budget.go:104 and :166, ^uint64(0) @ drainloop/ownership.go:697
+- pacing classes "effect" / "read", other class refused @ drainloop/budget.go:162-175
+- charged phases "preparation", "summary", "execution", "fallback", "verification" @ drainloop/ownership.go:324 and :634
+- control roles ControlOperator = "operator", ControlExecutor = "executor" @ drainloop/incarnation.go:62-63
+- IncarnationSchema = "operator-incarnation/v1" @ drainloop/incarnation.go:9; CellCheckpointSchema = "cell-checkpoint/v1" @ drainloop/ownership.go:18
+
+Ranking: the irreversible act is a provider spend or an external effect admitted past a brake, or by a stale owner. The epoch, cap, limit, boundary and claim-count bounds decide that and rank first. Overflow guards, class and phase sets fail closed (an unknown value is refused) and rank next. The schema tags and role labels are wire identifiers whose mismatch refuses, undone by an edit and redeploy, and rank last.
+
+RISK-VALUE: DERIVED — epoch bound p.Epoch > 1 @ drainloop/budget.go:157 — the amendment allows "one recorded reset per window and operator incarnation; a second treats the window as exhausted"; epochs 0 and 1 admit and 2 or more refuse, and the caller's epoch must equal the recorded one; this is what gives the 2 × (cap + C) ceiling (M11a and row 11).
+RISK-VALUE: DERIVED — pacing admission n >= p.Cap @ drainloop/budget.go:177 — the count includes the shared seed plus every distinct recorded effect intent, so admission stops once Cap are counted; that is tighter than the brief's cap + C bound (C only absorbs cross-process lag and grants no slot), and with one reset it stays within 2 × (cap + C).
+RISK-VALUE: DERIVED — budget admission used > found.Limit @ drainloop/budget.go:120 with Headroom charged first @ drainloop/budget.go:110 — Dimension 3 requires "configured operator headroom and outstanding unknown reservations charged"; consumed + headroom + outstanding + new must not exceed the limit, so spending exactly to the limit is allowed and one unit more is refused; a missing consumed count refuses ("brake usage unavailable") rather than reading as zero (M4, M10a).
+RISK-VALUE: DERIVED — ControlBoundary "request" or "launch" with UpperBoundRef @ drainloop/ownership.go:328 — Dimension 3: "only a request-limiting runner may claim a hard per-request cap; launch-only control must reserve a proven request upper bound or hold"; launch without an upper-bound reference is refused, and any other boundary is refused.
+RISK-VALUE: DERIVED — item claim count matches != 1 @ drainloop/ownership.go:724 — exactly one live claim for the work item, owned by the current fenced owner and generation, must back an effect; zero (released or transferred) or two (ambiguous) refuse, so a restored Cell tuple cannot revive a released claim (M2b).
+
+Observations (outside the Verify table, for the desk to route; none fails a row):
+1. Row 10's named test does not tell apart the effect-boundary brake check on its own (M10b); row 1 covers it. A row-10-local assertion would make that row self-sufficient.
+2. Row 10's Expect mentions a per-target write-ceiling count. The implementation admits against no per-target or per-repository ceiling, so that clause has nothing to check at this commit.
+3. The admitted container run passed GOFLAGS=-mod=mod, which was unnecessary (drainloop has no module dependencies); the tree digest was identical before and after.
+
+**VERIFY: PASS** — 11/11 rows pass at db877f68ef27 in one closed container-netns admission bracket (bracket-digest verdict=match); every row-named mutation killed. gate: human, irreversible: yes — status stays implemented for the human gate; a model does not sign it off.
 
 ## Review
 
@@ -218,3 +438,32 @@ must be rejected or replaced with an authorized reference, while numeric usage-t
 counts survive unchanged. Check the WI-1 source-trust binding referenced by WI-4.
 
 Gate: human. Confirm scope, consumer routing, negative-path independence and exact-subject evidence; a confidence score cannot enlarge permission.
+
+## Delivery reconciliation — 2026-11-03
+
+Source inspection on main `3342a32ab90440ce7f2f6bf8957b83de626d70dd` confirms the
+actual implementation delivery is merged PR #5386, commit
+`9ec2680d0d242abd0fc13584feddb1459ddbd634`. PR #5113 remains the earlier schema/test
+preparation, not the implementation witness. Its historical remaining-work statement
+describes that preparation checkpoint.
+
+| Original obligation | Delivered source to assess independently |
+|---|---|
+| Task 1: durable ownership/reservations, cumulative budgets and stop retention | `drainloop/ownership.go`: `CellStore`, `CellAuthority.Commit`, `CellJournal`; `drainloop/budget.go` reservation/balance/pacing owners |
+| Task 2: separate effect-boundary fencing and unknown outcomes | `CellAuthority.CheckEffect`, capability/current-authority ports and `ResolvePending`; real provider credential cutover remains profile qualification |
+| Task 3: concurrency/crash/restore fixtures | `drainloop/ownership_test.go`, `budget_test.go`, `restore_test.go` and the test-only filesystem/provider adapters; these are source witnesses, not independent PASS evidence |
+| Task 4: qualified hold/reconciliation limits | `drainloop/README.md`, `docs/enforcement-model.md`, authoritative resolution and settlement ports; no production backend or exactly-once guarantee |
+| Task 5: current incarnation and restore authority | `spec/operator-incarnation-v1.md`, `drainloop/incarnation.go` and current-incarnation checks at admission/effect boundaries; concrete custody/signature/consumer qualification remains separate |
+
+The record-specific human binding is now recorded in `DR-graph-exec-16` and the
+frontmatter `design:`/`ruling:` fields. It preserves the earlier bounded design
+and both custody restrictions:
+https://github.com/medici-finance/assay/issues/5111#issuecomment-6612666889
+
+No board row is hand-edited here. After this metadata lands, use native
+`statusgen reconcile` to judge the implemented transition against the actual
+#5386 delivery. Independent verification, final human acceptance and activation
+remain subsequent distinct acts.
+
+This reconciliation changes no Task, original Verify definition, Evidence, dependency
+or accepted policy. It installs no runtime/backend and claims no test execution.

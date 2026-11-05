@@ -4,8 +4,8 @@ The defect class is conflating routine delivery-state recording with a notable
 change. The changelog gate's one shared engine handles both the active workflow
 and its historical staging copy. The board exception is deliberately narrower
 than general README changes: it recognizes the scheduled board-writer's exact
-identity and branch custody, then compares immutable Git trees and erases only
-recognized Status cells for comparison. This does not validate the truth of a
+identity and branch custody, then compares immutable Git trees and erases live
+Status cells for comparison; withdrawn cells are compared byte-for-byte. This does not validate the truth of a
 status, grant a merge permission, or bypass the board's other checks.
 
 `check.sh` loads the classifier library by its exact adjacent path after the

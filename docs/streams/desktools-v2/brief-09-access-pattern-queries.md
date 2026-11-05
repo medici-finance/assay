@@ -45,11 +45,9 @@ id: 264e1b84-3155-4369-8c68-059a35e70645
 
 files:
 - `tools/desk/internal/deskkit/forge.go` — the new typed access-pattern operations (e.g. `ReviewQueueSnapshot`, `HeadSHAsForChanges`, `BoardSweepRead`) and their typed result structs.
-- `forge_github.go`, `forge_gitlab.go` — each backend implements each op as ONE tuned query (GitHub GraphQL document / GitLab equivalent), the document PRIVATE to the backend.
-- The one consumer migrated as proof (the freeze-rule call site) — e.g. `deskboard`'s board
-  sweep or the head-sha review monitor — switched from its N per-item calls to the new op.
-- NEW `docs/streams/desktools-v2/query-cost.md` (planned) — the measured before/after call and
-  GraphQL-point costs for the migrated consumer (one variable per row).
+- `tools/desk/internal/deskkit/forge_github.go`, `tools/desk/internal/deskkit/forge_gitlab.go` — each backend implements each op as ONE tuned query (GitHub GraphQL document / GitLab equivalent), the document PRIVATE to the backend.
+- **The one consumer migrated as proof (the freeze-rule call site)** — e.g. `deskboard`'s board sweep or the head-sha review monitor — switched from its N per-item calls to the new op.
+- **NEW** `docs/streams/desktools-v2/query-cost.md` (planned) — the measured before/after call and GraphQL-point costs for the migrated consumer (one variable per row).
 
 single-point-of-failure: none of the credential kind — read-only, no identity change. The
 design control that matters is that a raw query never crosses the interface; the independent
@@ -346,6 +344,34 @@ Second run, build cache outside the tree (the only change from the first):
 | 6 | `D="${D:-05c937307aa6}"; test -n "$D" && git rev-parse -q --verify "$D^1^{commit}" >/dev/null && git rev-parse -q --verify "$D^{commit}" >/dev/null && { n0=; n1=; for r in "$D^1" "$D"; do t=$(mktemp -d) && git archive -o "$t.tar" "$r" && tar -xf "$t.tar" -C "$t" && cp tools/desk/scripts/forge-ban.sh "$t/tools/desk/scripts/forge-ban.sh" && sh "$t/tools/desk/scripts/forge-ban.sh" > "$t.out" 2>&1; n=$(sed -n 's/.*reach-around sites: \([0-9][0-9]*\).*/\1/p' "$t.out"); rm -rf "$t" "$t.tar" "$t.out"; if [ -z "$n" ]; then echo "$r NO-COUNT"; exit 1; fi; echo "$r reach-around sites: $n"; if [ -z "$n0" ]; then n0=$n; else n1=$n; fi; done; if [ "$n1" -le "$n0" ]; then echo "NOT-HIGHER $n0 -> $n1"; else echo "HIGHER $n0 -> $n1"; exit 1; fi; }` | pass exit=0 | sha256:e8b2d23f1d16 | 2026-10-08 | assay-verifier-app[bot] @ c6ac80b45107+dirty (on-behalf-of human:ian) (forge-identity) |
 | 7 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestReadPatternBackends$' -v` | pass exit=0 | sha256:5abeda244d3f | 2026-10-08 | assay-verifier-app[bot] @ c6ac80b45107+dirty (on-behalf-of human:ian) (forge-identity) |
 | 8 | `d=$(mktemp -d) && cd tools/desk && GOOS=windows GOARCH=amd64 go test -c -o "$d/accesspattern.test.exe" ./internal/deskkit/ && test -s "$d/accesspattern.test.exe"` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-08 | assay-verifier-app[bot] @ c6ac80b45107+dirty (on-behalf-of human:ian) (forge-identity) |
+
+### Execution witness @ cff4646b5488 — 2026-11-02 re-witness (claude-opus-5-5, non-implementer)
+
+A fresh, admitted non-implementer pass ran the whole eight-row Verify table through `statusgen verifyrun` (v1.0.69, writing form) in a detached home at main cff4646b548853c3dcbf45de1585f7ade809d300, offline, with the Go build cache and temp directory outside the tree. No row carries a `check:ci` class, so no container bracket was needed. The table below is exactly as the tool wrote it: 8 pass, 0 fail, 0 could-not-run.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test -timeout 10m ./internal/deskkit/` | pass exit=0 | sha256:6f3bb342af7c | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestAccessPatternSingleRoundTrip -v` | pass exit=0 | sha256:ed1765942474 | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeNoRawQueryInSignature -v` | pass exit=0 | sha256:49b43756b72f | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `sh -c 'for p in "calls before" "calls after" "points before" "points after"; do grep -qiF -- "$p" docs/streams/desktools-v2/query-cost.md; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $p"; exit 1; fi; done; echo all-present'` | pass exit=0 | sha256:6a62edb7cced | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `D="${D:-05c937307aa6}"; test -n "$D" && git rev-parse -q --verify "$D^1^{commit}" >/dev/null && git rev-parse -q --verify "$D^{commit}" >/dev/null && { n0=; n1=; for r in "$D^1" "$D"; do t=$(mktemp -d) && git archive -o "$t.tar" "$r" && tar -xf "$t.tar" -C "$t" && cp tools/desk/scripts/forge-ban.sh "$t/tools/desk/scripts/forge-ban.sh" && sh "$t/tools/desk/scripts/forge-ban.sh" > "$t.out" 2>&1; n=$(sed -n 's/.*reach-around sites: \([0-9][0-9]*\).*/\1/p' "$t.out"); rm -rf "$t" "$t.tar" "$t.out"; if [ -z "$n" ]; then echo "$r NO-COUNT"; exit 1; fi; echo "$r reach-around sites: $n"; if [ -z "$n0" ]; then n0=$n; else n1=$n; fi; done; if [ "$n1" -le "$n0" ]; then echo "NOT-HIGHER $n0 -> $n1"; else echo "HIGHER $n0 -> $n1"; exit 1; fi; }` | pass exit=0 | sha256:e8b2d23f1d16 | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestReadPatternBackends$' -v` | pass exit=0 | sha256:0d768a0a3eea | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `d=$(mktemp -d) && cd tools/desk && GOOS=windows GOARCH=amd64 go test -c -o "$d/accesspattern.test.exe" ./internal/deskkit/ && test -s "$d/accesspattern.test.exe"` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5291 run=75a7dad73b8d3b03ea5dc51def48dca16cabef75015e0f11032b66207e715be9 source=cff4646b548853c3dcbf45de1585f7ade809d300 brief=docs/streams/desktools-v2/brief-09-access-pattern-queries.md model=claude-opus-5-5 tier=strong
+
+The witness keeps an output hash only, so the Expect cells that name literal lines were confirmed by hand at the same commit, outside the witness. Row 3 printed `--- PASS: TestAccessPatternSingleRoundTrip`. Row 4 printed `--- PASS: TestForgeNoRawQueryInSignature`. Row 7 printed `--- PASS: TestReadPatternBackends` with subtests github, gitlab, gitlab/ce_404_approvals, gitlab/free_tier_403, gitlab/last_pipeline_empty, gitlab/last_pipeline_absent and gitlab/x_next_page, all passing. Row 6, with `D` left at its default, exited 0 and printed `05c937307aa6^1 reach-around sites: 66`, `05c937307aa6 reach-around sites: 66`, `NOT-HIGHER 66 -> 66`. So D = 05c937307aa6, parent 61d700db1712e4a2512904efdd8659a29e87ad40, N0 = 66, N1 = 66.
+
+Risk-bearing values. The brief is not irreversible (all four risk answers no), but every literal the delivering diff (05c937307aa6) added to the forge seam and the migrated consumer was enumerated: reviews(first:100), labels(first:100), commits(last:1) and contexts(first:100) in the review-queue document, forgeQueueReviewsCap = 100, the GitLab ReviewsComplete: false, and the recorded points 3 -> 4. All are reversible by an edit and a redeploy (read-only path). The top-ranked ones are the review bound and its completeness guard, because a wrong value would make a truncated review set read as complete.
+
+RISK-VALUE: DERIVED — forgeQueueReviewsCap = 100 @ tools/desk/internal/deskkit/forge_github.go:821 — equals the first: argument of the reviews selection it bounds (line 809), which is the largest page the forge's GraphQL connection accepts. The guard at line 1019 needs hasNextPage false AND node count <= cap, so a change with more than 100 reviews is reported incomplete, never complete-but-truncated.
+RISK-VALUE: DERIVED — reviews(first:100) @ tools/desk/internal/deskkit/forge_github.go:809 — the forge's maximum page per GraphQL connection, and the same size as the REST page the per-item read walks, so the snapshot and the per-item path split a review set at the same boundary.
+RISK-VALUE: DERIVED — ReviewsComplete: false @ tools/desk/internal/deskkit/forge_gitlab.go:983 — the GitLab backend fetches no reviews in the snapshot, so false is the only honest value, and the caller falls back to the per-item read instead of reading an empty set as "no reviews".
+RISK-VALUE: DERIVED — points 3 -> 4 @ docs/streams/desktools-v2/query-cost.md:38 — recomputed from the document's own table (lines 45 to 51): 1 + 100 + 100 + 100 = 301 requests is 3 points for the open-changes document, plus 100 for reviews = 401 requests is 4 points. The document says points are computed, not live-measured (line 19); this offline pass made no live measurement either.
+
+**VERIFY: PASS** — 8 of 8 rows pass at cff4646b5488
+
 
 ## Review
 Gate: model (all four risk answers no — read-only typed operations added behind the seam; no

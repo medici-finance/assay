@@ -12,7 +12,12 @@ type TrailerKind string
 const (
 	// TrailerBrief is `Brief: ...` — the PR delivers a brief.
 	TrailerBrief TrailerKind = "brief"
-	// TrailerIssue is `Issue: #<N>` — issue-only work, no brief.
+	// TrailerIssue is `Issue: #<N>` — issue-only work, no brief. The RESOLVING variant
+	// `Fixes: #<N>` (or `Closes:` / `Resolves:`, optionally `owner/repo#<N>`) is the same
+	// kind with Trailer.Resolves set: every reader keyed on TrailerIssue reads it as the
+	// same edge, and the line itself is a GitHub closing keyword, so merging the PR into
+	// the default branch closes the issue. A plain `Issue:` line means "related, do not
+	// close" and never sets Resolves.
 	TrailerIssue TrailerKind = "issue"
 	// TrailerAuthors is `Authors: <stream>/<NN>[, <stream>/<NN> …]` — the PR AUTHORS
 	// (writes the files of) the named briefs and delivers none of them. Value is the raw
@@ -30,16 +35,46 @@ type Trailer struct {
 	Kind  TrailerKind
 	Value string // trimmed value after the colon; for Issue, the bare number ("123")
 	Line  int
+	// Resolves is true only for the resolving form of an Issue trailer (`Fixes:`,
+	// `Closes:`, `Resolves:`): the PR resolves the issue and GitHub closes it on merge.
+	Resolves bool
+	// Repo is the `owner/repo` a resolving trailer names when it is written in the
+	// cross-repository form (`Fixes: owner/repo#<N>`); empty for a same-repository
+	// reference. Value is still the bare number, so a reader that treats Value as an
+	// issue in the PR's own repository MUST check Repo first.
+	Repo string
+}
+
+// ResolvingKeyword is the one spelling a resolving Issue trailer is rendered with when
+// two bodies are compared (deskpr edit's trailer immutability): `Fixes:`, `Closes:` and
+// `Resolves:` mean the same thing, so swapping one for another is not a link change.
+const ResolvingKeyword = "Fixes"
+
+// IssueLink renders an Issue trailer in one comparable form: `Issue: #<N>`, `Fixes: #<N>` or
+// `Fixes: owner/repo#<N>`. Moving between the plain and the resolving form, or to another
+// number or repository, changes the rendering; a different resolving keyword does not.
+func (t Trailer) IssueLink() string {
+	if !t.Resolves {
+		return "Issue: #" + t.Value
+	}
+	return ResolvingKeyword + ": " + t.Repo + "#" + t.Value
 }
 
 var (
 	reTrailerBrief = regexp.MustCompile(`^[ \t]*Brief:[ \t]*(\S.*?)[ \t]*$`)
 	reTrailerIssue = regexp.MustCompile(`^[ \t]*Issue:[ \t]*#?[ \t]*([0-9]+)[ \t]*$`)
-	reTrailerAuth  = regexp.MustCompile(`^[ \t]*Authors:[ \t]*(\S.*?)[ \t]*$`)
-	reTrailerXR    = regexp.MustCompile(`^[ \t]*Cross-repo-brief:[ \t]*(\S.*?)[ \t]*$`)
+	// reTrailerResolve is the resolving Issue variant. The `#` is REQUIRED (unlike
+	// `Issue:`) because the line must also be a GitHub closing keyword, and GitHub only
+	// honours `KEYWORD #N` / `KEYWORD owner/repo#N` (a colon after the keyword is allowed).
+	// Group 1 is the keyword, group 2 the optional owner/repo, group 3 the number.
+	reTrailerResolve = regexp.MustCompile(`^[ \t]*(Fixes|Closes|Resolves):[ \t]*([A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+)?#([0-9]+)[ \t]*$`)
+	reTrailerAuth    = regexp.MustCompile(`^[ \t]*Authors:[ \t]*(\S.*?)[ \t]*$`)
+	reTrailerXR      = regexp.MustCompile(`^[ \t]*Cross-repo-brief:[ \t]*(\S.*?)[ \t]*$`)
 )
 
 // ErrTrailerDuplicate reports a second Brief: (or second Issue:, or second Authors:) trailer.
+// An `Issue:` line and a resolving `Fixes:`/`Closes:`/`Resolves:` line are the same kind,
+// so a body carrying both is a duplicate too.
 type ErrTrailerDuplicate struct {
 	Kind      TrailerKind
 	FirstLine int
@@ -149,12 +184,16 @@ func OutsideFences(body string) []Line {
 func Scan(body []byte) []Trailer {
 	var out []Trailer
 	for _, line := range OutsideFences(string(body)) {
+		if m := reTrailerResolve.FindStringSubmatch(line.Text); m != nil {
+			out = append(out, Trailer{Kind: TrailerIssue, Value: m[3], Line: line.Number, Resolves: true, Repo: m[2]})
+			continue
+		}
 		for _, p := range []struct {
 			kind TrailerKind
 			re   *regexp.Regexp
 		}{{TrailerBrief, reTrailerBrief}, {TrailerIssue, reTrailerIssue}, {TrailerAuthors, reTrailerAuth}, {TrailerCrossRepoBrief, reTrailerXR}} {
 			if m := p.re.FindStringSubmatch(line.Text); m != nil {
-				out = append(out, Trailer{p.kind, strings.TrimSpace(m[1]), line.Number})
+				out = append(out, Trailer{Kind: p.kind, Value: strings.TrimSpace(m[1]), Line: line.Number})
 				break
 			}
 		}

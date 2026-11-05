@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // writeguard does NOT call deskkit.Guard() — it is a PreToolUse deny hook
@@ -107,6 +107,30 @@ func run(stdin io.Reader) (Verdict, error) {
 	if err := json.Unmarshal(data, &in); err != nil {
 		return Verdict{}, err
 	}
+	// The ambient forge-credential refusal (#4821) runs right after the Bash
+	// input is decoded and BEFORE checkout discovery: it guards a credential,
+	// not a path, so a session outside any git checkout is refused the same.
+	// A tool_input that does not decode stays a no-decision error (fail open),
+	// exactly as it was in the switch below.
+	// The Bash call is classified once here and the same value is evaluated
+	// below: the classification reads only the call and the hook's own
+	// context (cwd, home, environment), none of which discovery changes.
+	var bash bashToolInput
+	var classified *classifiedCall
+	if in.ToolName == "Bash" {
+		if err := json.Unmarshal(in.ToolInput, &bash); err != nil {
+			return Verdict{}, err
+		}
+		if bash.Command != "" && deskSession() {
+			classified = classifyCall(in.ToolName, bash.Command, in.Cwd)
+			if v, refused := ambientTokenRefusal(classified); refused {
+				return v, nil
+			}
+			if v, refused := ghFilterRefusal(classified); refused {
+				return v, nil
+			}
+		}
+	}
 
 	projectDir := os.Getenv("CLAUDE_PROJECT_DIR")
 	if projectDir == "" {
@@ -151,11 +175,7 @@ func run(stdin io.Reader) (Verdict, error) {
 			target = fi.NotebookPath
 		}
 	case "Bash":
-		var bi bashToolInput
-		if err := json.Unmarshal(in.ToolInput, &bi); err != nil {
-			return Verdict{}, err
-		}
-		target = bi.Command
+		target = bash.Command // decoded above
 	default:
 		return Verdict{}, nil
 	}
@@ -163,7 +183,7 @@ func run(stdin io.Reader) (Verdict, error) {
 		return Verdict{}, nil
 	}
 
-	v, _, _ := cfg.evaluate(in.ToolName, target)
+	v, _, _ := cfg.evaluateWith(classified, in.ToolName, target)
 	return v, nil
 }
 

@@ -29,6 +29,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/verifyqueue"
 	rf "github.com/medici-finance/assay/tools/desk/internal/reviewflow"
 	"io"
 	"os"
@@ -432,7 +433,7 @@ func renderThroughput(w io.Writer, rep *throughputReport) {
 // widen on a partial depth.
 func verifyDepth(nv *nextupReport) (depth int, partial string) {
 	for _, row := range nv.Rows {
-		if row.Status == "implemented" && row.Class == queueClassJudgment {
+		if verifyqueue.JudgmentWork(row.Status, row.Class) {
 			depth++
 		}
 	}

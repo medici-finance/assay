@@ -38,7 +38,7 @@ files:
 - `containers/k8s/testdata/unattended/` (planned) — hostile overlay fixtures
 - `containers/k8s/components/unattended/kustomization.yaml` (planned) (new, `kind: Component`)
 - `containers/k8s/components/unattended/*.yaml` (new: one CronJob + one PVC per desk, or a generator the implementer picks)
-- `containers/k8s/overlays/unattended/kustomization.yaml` (planned) (new reference overlay: base + this component — the thing the Verify rows build)
+- `containers/k8s/overlays/unattended/kustomization.yaml` (planned) (new reference overlay: base + this component; the thing the Verify rows build)
 - `docs/docker.md` — an "Unattended mode" subsection inside brief 06's Kubernetes section
 - `changelog/desk-containers-12-unattended-component.md` (planned)
 

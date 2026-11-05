@@ -77,7 +77,7 @@ M1–M6/C1–C4 and implemented-brief status remain unchanged.
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Semantic-owner index in docs/contracts.md — one meaning, one home](brief-01-semantic-owner-index.md) | 0 | M | done | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1671 @ d44d6ef3292216341ec8b82741cfc925e3e1c79c) |
-| 02 | [design-fit: in every new brief — owner, contract, retires, weight, why-add](brief-02-design-fit-in-briefs.md) | 1 | M | verified | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
+| 02 | [design-fit: in every new brief — owner, contract, retires, weight, why-add](brief-02-design-fit-in-briefs.md) | 1 | M | done | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | 2026-11-02 assay-reviewer-app[bot] (approved PR #1842 @ 43c692117f860a2dcdcf15dff523251d5642e768) |
 | 03 | [Weight counter and CI ratchet (a Go test, not a verb)](brief-03-weight-ratchet.md) | 0 | M | done | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) | 2026-09-27 assay-reviewer-app[bot] (approved PR #1672 @ 0662681ce2588e4a156968be794de94595c53952) |
 | 04 | [Intake files by error class; a recurring class triggers a design brief, not another point fix](brief-04-intake-by-error-class.md) | 2 | M | verified | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | 05 | [Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight](brief-05-worker-two-strikes-and-weight.md) | 3 | M | verified | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
@@ -85,11 +85,12 @@ M1–M6/C1–C4 and implemented-brief status remain unchanged.
 | 07 | [Rule register (owner, invariant, justifying issue, catch source) and the monthly rule diet](brief-07-rule-register-and-diet.md) | 1 | M | done | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1846 @ adc753ecdf5f19417405408fc813ba4997270bdb) |
 | 08 | [Hotspot metric (churn × complexity, temporal coupling) from git history, and the brittle mark](brief-08-hotspot-metric-and-brittle-mark.md) | 1 | M | done | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1850 @ 47604cb9c363336ba0ee46717ae7120979b4a859) |
 | 09 | [Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept](brief-09-brittle-investigation.md) | 3 | M | verified | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
-| 10 | [Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning](brief-10-fitness-functions.md) | 2 | M | verified | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
+| 10 | [Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning](brief-10-fitness-functions.md) | 2 | M | done | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | 2026-11-02 assay-reviewer-app[bot] (approved PR #1930 @ d16e13702ba88e58abb3d3814ec7723904e7c9ef) |
 | 11 | [Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge](brief-11-regression-test-ratchet.md) | 4 | M | verified | 2026-10-19 assay-verifier-app[bot] @ ecb8c74a4ae8 (claude-opus-5-5) | — |
 | 12 | [The refactor oracle: what a redesign is coded against — intent, failure modes, triaged characterization tests, invariants, and an acceptance rule](brief-12-refactor-oracle.md) | 5 | M | implemented | — | — |
 | 13 | [Incident-time refactor by an agent, with one human residue: the strong-tier session runs the investigation, assembles the oracle, drafts the refactor PR, and asks the driver exactly one typed decision, only for what the record does not settle](brief-13-incident-refactor-by-agent.md) | 6 | L | todo | — | — |
 | 14 | [Bind consumer acceptance obligations to immutable delivery provenance before post-merge dispatch](brief-14-bind-consumer-acceptance-obligations-to-immutable-delivery-provenance-before-post-merge-dispatch.md) | 0 | M | verified | 2026-10-26 assay-verifier-app[bot] @ e07782de22a5 (forge-identity) | — |
+| 15 | [Witness inputs are recorded, not parsed](brief-15-witness-inputs-are-recorded-not-parsed.md) | 0 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -104,6 +105,7 @@ M1–M6/C1–C4 and implemented-brief status remain unchanged.
         └──► 08 hotspot metric + brittle mark ───────────────┘
 03 weight ratchet ──────────────────► 06, 07 ──────────────────────────────────┘
 14 delivery-binding design (independent of 01–13; its implementation briefs follow its owed decisions)
+15 recorded witness inputs (independent of 01–14; gate: human — ruled option 1 on its decision issue; dispatchable once it merges)
 ```
 
 **Longest chain:** `01 → 02 → 04 → 05 → 11 → 12 → 13` (seven briefs). Before the
@@ -140,7 +142,7 @@ scanner fix becomes the real head of the 04 → 05 chain.
 
 | Wave | Briefs | Starts when |
 |---|---|---|
-| 0 | 01, 03, 14 | this stream merged (the spec approval); 14 starts now, independent of 01–13 |
+| 0 | 01, 03, 14, 15 | this stream merged (the spec approval); 14 starts now, independent of 01–13; 15 is ruled and starts once it merges |
 | 1 | 02, 07, 08 | 01 merged (07 also after 03) |
 | 2 | 04, 06, 10 | 02 merged (06 also after 03 and 07; 10 after 01 and 07) |
 | 3 | 05, 09 | 03 and 04 merged (09 after 04 and 08) |

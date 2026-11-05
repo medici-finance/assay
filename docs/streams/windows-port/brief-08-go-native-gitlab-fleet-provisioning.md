@@ -79,18 +79,12 @@ id: e3b5f1aa-b73a-40e7-b011-179b99ea51cf
 ## Context
 
 files:
-- **create** a new command under `tools/desk/cmd/` (name it for what it does — fleet provisioning
-  — and say the chosen name in the PR body), plus its tests.
-- **create** the forge-neutral label path — either as a mode of that command or as a sibling
-  command; it must serve BOTH forges, since the GitHub side exists today only as nine hand-run
-  `gh label create` lines in a doc.
-- **create** `changelog/<branch-slug>.md` — this repo enforces a per-PR fragment.
-- **do NOT** edit `tools/create-fleet-gitlab.sh` — it stays as the reference implementation and
-  the Unix path; retiring it is a separate decision.
-- **do NOT** edit `tools/desk/internal/deskkit/custodyacl.go` or `custodyowner_*.go` — this brief
-  CALLS that guarantee, it does not change it.
-- **do NOT** edit `docs/adopting-assay-gitlab.md`, `docs/adopting-assay.md`, or
-  `plugins/assay/skills/install/SKILL.md` — `windows-port/09` owns the doc collapse.
+- **create** `tools/desk/cmd/` — a new command under `tools/desk/cmd/` (name it for what it does — fleet provisioning — and say the chosen name in the PR body), plus its tests.
+- **create** — the forge-neutral label path — either as a mode of that command or as a sibling command; it must serve BOTH forges, since the GitHub side exists today only as nine hand-run `gh label create` lines in a doc.
+- **create** — `changelog/<branch-slug>.md` — this repo enforces a per-PR fragment.
+- **do NOT edit** `tools/create-fleet-gitlab.sh` — it stays as the reference implementation and the Unix path; retiring it is a separate decision.
+- **do NOT edit** `tools/desk/internal/deskkit/custodyacl.go` and `tools/desk/internal/deskkit/custodyowner_*.go` (neither) — not `custodyacl.go` or `custodyowner_*.go`: this brief CALLS that guarantee, it does not change it.
+- **do NOT edit** `docs/adopting-assay-gitlab.md`, `docs/adopting-assay.md` and `plugins/assay/skills/install/SKILL.md` (none of them) — `windows-port/09` owns the doc collapse.
 
 facts:
 - **The seven roles, their access levels and their scopes** are a table in the shared role

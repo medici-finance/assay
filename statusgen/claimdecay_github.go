@@ -20,14 +20,12 @@ package main
 // installed, so a read that needs a desk-tools verb on PATH would fail there for
 // the same reason `gh` did.
 //
-// Credential: GH_TOKEN, then GITHUB_TOKEN (what a workflow step passes), then —
-// only when neither is set and `gh` happens to be on PATH — `gh auth token
-// --hostname github.com`, so a desk machine that relied on gh's own login keeps
-// decaying. `gh` is never REQUIRED. An endpoint guessed from the origin host (a
-// GitHub Enterprise Server) gets only an enterprise credential, never the
-// github.com one (githubDecayToken). GitHub's GraphQL API refuses unauthenticated
-// calls, so no credential at all is a named could-not-check before any request,
-// never an anonymous try.
+// Credential: GH_TOKEN, then GITHUB_TOKEN (what a workflow step passes).
+// Stored CLI logins are never consulted, even outside verification. Missing
+// explicit credentials are a named could-not-check before any provider request.
+// An endpoint guessed from the origin host (a GitHub Enterprise Server) gets
+// only an enterprise credential, never the github.com one (githubDecayToken).
+// GitHub's GraphQL API refuses unauthenticated reads; no anonymous try is made.
 //
 // Three-state contract (docs/three-state-instrument-rule.md): every exit is a
 // listing that was read in full, or an error naming why it could not be. A
@@ -43,7 +41,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 )
@@ -64,21 +61,9 @@ var githubDecayClient = &http.Client{Timeout: 30 * time.Second}
 // supplied it (for the no-credential text). Token and source are empty when
 // there is none.
 //
-// The credential stays on the host it was issued for — the split `gh` itself
-// makes:
-//
-//   - An endpoint DERIVED from the origin remote's host (the GitHub Enterprise
-//     Server guess in githubDecayEndpoint) gets only an enterprise credential:
-//     GH_ENTERPRISE_TOKEN, GITHUB_ENTERPRISE_TOKEN, then `gh auth token
-//     --hostname <host>`. Never GH_TOKEN, GITHUB_TOKEN or gh's github.com login:
-//     the derivation trusts any host with a "github" label, so an origin on a
-//     lookalike host would otherwise receive the github.com credential on a
-//     plain regen.
-//   - github.com's endpoint, or one the operator set in GITHUB_GRAPHQL_URL, gets
-//     GH_TOKEN, then GITHUB_TOKEN, then `gh auth token --hostname <host>`.
-//
-// `gh` is consulted only when it is on PATH, and always with --hostname: a bare
-// `gh auth token` answers with the github.com login whatever host is asked about.
+// An endpoint derived from an origin host receives only GH_ENTERPRISE_TOKEN
+// then GITHUB_ENTERPRISE_TOKEN. github.com and an explicitly configured operator
+// endpoint receive GH_TOKEN then GITHUB_TOKEN. No stored-login source is used.
 func githubDecayToken(endpoint string, derived bool) (token, source string, vars []string) {
 	vars = []string{"GH_TOKEN", "GITHUB_TOKEN"}
 	if derived {
@@ -87,18 +72,6 @@ func githubDecayToken(endpoint string, derived bool) (token, source string, vars
 	for _, env := range vars {
 		if v := strings.TrimSpace(os.Getenv(env)); v != "" {
 			return v, env, vars
-		}
-	}
-	host := githubCredentialHost(endpoint)
-	if host == "" {
-		return "", "", vars
-	}
-	if _, err := exec.LookPath("gh"); err != nil {
-		return "", "", vars
-	}
-	if out, err := exec.Command("gh", "auth", "token", "--hostname", host).Output(); err == nil {
-		if v := strings.TrimSpace(string(out)); v != "" {
-			return v, "`gh auth token --hostname " + host + "`", vars
 		}
 	}
 	return "", "", vars
@@ -186,12 +159,12 @@ func githubBranchPRPages(root string) ([]byte, error) {
 	if token == "" {
 		if derived {
 			host := githubCredentialHost(endpoint)
-			return nil, fmt.Errorf("no GitHub API token for %s: set %s, or log in with `gh auth login --hostname %s` "+
+			return nil, fmt.Errorf("no GitHub API token for %s: set %s "+
 				"(the github.com credential is never sent to another host); the GitHub GraphQL API does not answer unauthenticated reads",
-				host, strings.Join(vars, " or "), host)
+				host, strings.Join(vars, " or "))
 		}
-		return nil, fmt.Errorf("no GitHub API token: set %s (in a workflow, the job's token with pull-requests read), "+
-			"or log in with `gh`; the GitHub GraphQL API does not answer unauthenticated reads", strings.Join(vars, " or "))
+		return nil, fmt.Errorf("no GitHub API token: set %s (in a workflow, the job's token with pull-requests read); "+
+			"the GitHub GraphQL API does not answer unauthenticated reads", strings.Join(vars, " or "))
 	}
 	owner, name, err := githubDecayRepo(root)
 	if err != nil {

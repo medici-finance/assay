@@ -7,6 +7,7 @@ depends: ["desk-tools/38", "desk-tools/39"]
 unblocks: ["desk-tools/43", "desk-tools/44"]
 effort: M
 gate: human
+decision-issue: 4523
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2

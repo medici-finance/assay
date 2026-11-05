@@ -74,3 +74,51 @@ func TestCrossRepoTrailerLink(t *testing.T) {
 		t.Fatalf("trailerLink(Cross-repo-brief) = (%q, %v)", got, ok)
 	}
 }
+
+// regression: F-resolving-trailer
+// TestRequireTrailerResolving — the resolving `Fixes:`/`Closes:`/`Resolves:` form is THE one
+// link line exactly like `Issue:`: accepted on its own (a same-repository number is the
+// self-containment hint, a cross-repository one is not), refused next to any other link.
+func TestRequireTrailerResolving(t *testing.T) {
+	root := t.TempDir()
+	for _, tc := range []struct {
+		body string
+		n    int
+		want string
+	}{
+		{"Issue: #77", 77, ""},
+		{"Fixes: #77", 77, ""},
+		{"Closes: #77", 77, ""},
+		{"Resolves: example-org/other#77", 0, ""},
+		{"Issue: #77\nFixes: #77", 0, "exactly one link"},
+		{"Fixes: #77\nBrief: example-stream/05", 0, "exactly one link"},
+	} {
+		n, err := requireTrailer([]byte("body\n"+tc.body+"\n"), root, root)
+		if tc.want == "" {
+			if err != nil || n != tc.n {
+				t.Errorf("%q: got (%d, %v), want (%d, nil)", tc.body, n, err, tc.n)
+			}
+			continue
+		}
+		if !deskkit.IsRefused(err) || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%q: got %v, want an exit-5 refusal containing %q", tc.body, err, tc.want)
+		}
+	}
+}
+
+// regression: F-resolving-trailer
+// TestTrailerLinkResolving — edit's immutability compare: `Issue:` and the resolving form
+// render differently (switching is a link change), resolving keywords render alike.
+func TestTrailerLinkResolving(t *testing.T) {
+	for body, want := range map[string]string{
+		"x\nIssue: #77\n":                     "Issue: #77",
+		"x\nFixes: #77\n":                     "Fixes: #77",
+		"x\nCloses: #77\n":                    "Fixes: #77",
+		"x\nResolves: example-org/other#77\n": "Fixes: example-org/other#77",
+	} {
+		got, ok := trailerLink([]byte(body))
+		if !ok || got != want {
+			t.Errorf("trailerLink(%q) = (%q, %v), want %q", body, got, ok, want)
+		}
+	}
+}
