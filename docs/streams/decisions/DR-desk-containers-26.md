@@ -4,6 +4,7 @@ date: "2026-11-05"
 title: "Local PostgreSQL for host cells with database isolation and restricted restore"
 consequence: major
 decided-by: "human:<name>"
+ruling: "https://github.com/medici-finance/assay/issues/2940#issuecomment-6668052413"
 alternatives:
   - "Put PostgreSQL in the desks' Compose project. The brief keeps it separate because the database must outlive desk restarts and serve host cells independently of desk container support."
   - "Load a cell-controlled archive from a superuser session with SET ROLE. The brief rejects this because RESET ROLE could restore superuser authority during data load."
@@ -24,11 +25,11 @@ option 1 on the decision issue on October 27, 2026, in an initial selection and 
 - [Initial selection](https://github.com/medici-finance/assay/issues/2940#issuecomment-6454685177)
 - [Clarification approving option 1](https://github.com/medici-finance/assay/issues/2940#issuecomment-6455035865)
 
-The record is **placeholder-unratified** until the driver adds an unedited comment on #2940
-naming `DR-desk-containers-26` and `desk-containers/26`. The two October comments establish the
-choice and predate this identifier. The public `decided-by` placeholder and absent `ruling`
-reflect that pending binding. Add `ruling:` here and `design:` and `ruling:` on the brief together
-after that comment is corroborated under [registers-v1 §7.5](../../../spec/registers-v1.md#75-the-ruling-link-and-its-corroboration).
+The November 5 comment names `DR-desk-containers-26` and `desk-containers/26`, refers to
+option 1 as briefed, and leaves independent verification and final acceptance pending. It binds
+this record to the October approval under
+[registers-v1 §7.5](../../../spec/registers-v1.md#75-the-ruling-link-and-its-corroboration).
+The record and brief cite the same comment. [Named ruling](https://github.com/medici-finance/assay/issues/2940#issuecomment-6668052413)
 
 ## Delivery and ownership
 
