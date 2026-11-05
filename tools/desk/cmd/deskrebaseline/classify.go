@@ -113,22 +113,24 @@ type RowFacts struct {
 	CommandRan    bool
 	RCDiffers     bool
 
-	// Count-drift facts (SafeCount). CountShaped is true when the Expect asserts a count
-	// whose current value differs; OnlyAdditions is true when the command's target files
-	// changed only by additions since the Evidence date.
-	//
-	// SCAFFOLDING: gatherRowFacts (facts.go) does not yet SET either field, so in the shipped
-	// verb both are always false and safe:count never fires — only the fixture-fed unit tests
-	// exercise this path. Wiring them is the tracked follow-up (see the SafeCount const).
+	// Count-drift facts (SafeCount), set by gatherRowFacts (facts.go, count.go). CountShaped is
+	// true when the probed row fails ONLY because its one pinned count grew: same exit, the
+	// output now a larger bare integer CountNow, and the Expect rewritten to CountNow passes.
+	// OnlyAdditions is true when git history proves every file the command names changed
+	// only by additions between the row's Evidence commit and HEAD; CountEvidence records it.
 	CountShaped   bool
 	OnlyAdditions bool
+	CountNow      int
+	CountEvidence string
 
-	// RetiredIdiom names a tool idiom the row pins that a recorded ruling retired (e.g. the
-	// `--consumers` form), or "" when the row pins no such idiom.
-	//
-	// SCAFFOLDING: gatherRowFacts does not yet set it either, so safe:idiom is likewise
-	// unreachable in the shipped verb pending the same follow-up.
+	// RetiredIdiom names a tool idiom the row's command uses that an entry of the checked-in
+	// list retired-idioms.json retires, and IdiomRuling is that entry's ruling reference
+	// (idiom.go). An idiom the list does not name, or an entry with no ruling reference, is
+	// never set. IdiomProbe is the judgement of the row re-run with the idiom replaced,
+	// against its own Expect; "" when it was not re-run.
 	RetiredIdiom string
+	IdiomRuling  string
+	IdiomProbe   judgement
 }
 
 // Classification is the verb's decision about one row: the verdict and a one-line reason
