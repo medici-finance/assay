@@ -433,7 +433,12 @@ decided, never what they decided.
   Where the base revision cannot be resolved or its board cannot be read, this layer
   MUST fail closed (a PROBLEM) while any `gate: human` brief after the change sits at
   `implemented` or later, and MAY report a notice otherwise. A relabel or drop judged
-  against an unreadable base is left to layer two.
+  against an unreadable base is left to layer two. On a pull request, a brief that the pull
+  request's body names in a `Brief:` trailer is judged as moved to `implemented` when its row
+  stands below `implemented`, because that is the move reconcile makes on merge. The
+  exception is a brief whose `delivery:` list declares that pull request a partial delivery.
+  The design-approval gate (section 4.4) judges that move the same way. A pull request event
+  whose payload cannot be read is a PROBLEM.
 - **Layer two (network).** The linked comment is fetched and MUST pass every condition of
   the design-decision ruling-link check (`registers-v1.md` §7.5): an unedited comment by a
   login mapped to a human, never a bot, on the brief's recorded decision issue. The issue

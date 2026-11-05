@@ -275,8 +275,12 @@ func designGateProblems(root string, streams []*Stream) []string {
 	if !ok {
 		return problems
 	}
+	// A pull request's Brief: trailer moves the brief on merge
+	// (decisiongatedelivery.go). An unreadable event payload is the
+	// decision-gate hold's fail-closed PROBLEM; it is not reported twice.
+	delivery, _ := prDeliveryFn(root)
 	for _, s := range streams {
-		problems = append(problems, designGateStreamProblems(s, known)...)
+		problems = append(problems, designGateStreamProblems(s, known, delivery)...)
 	}
 	return problems
 }
@@ -309,7 +313,9 @@ func designGateRegister(root string) (problems []string, known map[string]bool, 
 
 // designGateStreamProblems is the gate over ONE stream's brief files, in the
 // stream's file order: the per-stream half designGateProblems concatenates.
-func designGateStreamProblems(s *Stream, known map[string]bool) []string {
+// A brief the pull request under judgment delivers (delivery) is judged at
+// implemented, the status reconcile writes for it on merge.
+func designGateStreamProblems(s *Stream, known map[string]bool, delivery gateDelivery) []string {
 	var problems []string
 	for _, path := range briefFilePaths(s) {
 		bf, ok, perr := parseBriefFile(path)
@@ -334,14 +340,25 @@ func designGateStreamProblems(s *Stream, known map[string]bool) []string {
 				break
 			}
 		}
-		if row == nil || !designGateStatuses[row.Status] {
-			continue // no row, or a status before the guarded transition (todo)
+		if row == nil {
+			continue
+		}
+		status := row.Status
+		if !designGateStatuses[status] {
+			pr := delivery.delivers(filepath.Base(s.Dir), num)
+			if pr == 0 && s.Name != "" {
+				pr = delivery.delivers(s.Name, num)
+			}
+			if pr == 0 {
+				continue // a status before the guarded transition (todo)
+			}
+			status = fmt.Sprintf("implemented (PR #%d's Brief: trailer delivers it; reconcile moves the row from %q on merge)", pr, row.Status)
 		}
 		label := fmt.Sprintf("%s/brief-%s", s.Name, num)
 		ref := strings.TrimSpace(bf.Design)
 		switch {
 		case ref == "":
-			add := fmt.Sprintf("%s: risk-gated brief at %q has no design: record — a brief authored after %s may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4)", label, row.Status, designGateCutover)
+			add := fmt.Sprintf("%s: risk-gated brief at %s has no design: record — a brief authored after %s may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4)", label, designGateStatusLabel(status, row.Status), designGateCutover)
 			problems = append(problems, add)
 		case !designRefRe.MatchString(ref):
 			problems = append(problems, fmt.Sprintf("%s: design: %q is not a valid design-decision reference (want DR-<slug>, slug 10-20 chars of [a-z0-9-] starting and ending alphanumeric)", label, ref))
@@ -422,4 +439,13 @@ func decisionCountPhrase(n int) string {
 		return "1 design-decision record"
 	}
 	return fmt.Sprintf("%d design-decision records", n)
+}
+
+// designGateStatusLabel quotes a row status as the gate always has, and leaves
+// a delivered brief's description unquoted.
+func designGateStatusLabel(status, row string) string {
+	if status == row {
+		return fmt.Sprintf("%q", status)
+	}
+	return status
 }

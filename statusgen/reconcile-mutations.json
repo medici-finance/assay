@@ -94,7 +94,7 @@
     {
       "name": "the design gate keeps the moved stream's pre-move block",
       "file": "reconcileholdinc.go",
-      "old": "st.next = designGateStreamProblems(st.e.streams[m.si], st.known)",
+      "old": "st.next = designGateStreamProblems(st.e.streams[m.si], st.known, st.delivery)",
       "new": "st.next = st.parts[m.si]"
     },
     {

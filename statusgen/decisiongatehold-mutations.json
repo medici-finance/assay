@@ -330,6 +330,42 @@
       "file": "decisiongatehold.go",
       "old": "func() []string { return decisionGateAliases(root, baseRev, repo) }",
       "new": "func() []string { return decisionGateAliases(root, \"\", repo) }"
+    },
+    {
+      "name": "#5507: a delivering PR's Brief: trailer moves nothing (the head is judged as written, so an unkeyed delivery passes)",
+      "file": "decisiongatedelivery.go",
+      "old": "func (d gateDelivery) withDelivery(head gateSnapshot) gateSnapshot {\n\tif len(d.Keys) == 0 {",
+      "new": "func (d gateDelivery) withDelivery(head gateSnapshot) gateSnapshot {\n\tif true || len(d.Keys) == 0 {"
+    },
+    {
+      "name": "#5507: the pull_request event is never read (every lint judges the tree as written)",
+      "file": "decisiongatedelivery.go",
+      "old": "\tcase \"pull_request\", \"pull_request_target\":\n\tdefault:",
+      "new": "\tcase \"never-an-event\":\n\tdefault:"
+    },
+    {
+      "name": "#5507: an unreadable pull_request payload reads as delivering nothing (fail-open)",
+      "file": "decisiongatedelivery.go",
+      "old": "return d, fmt.Sprintf(\"the event payload could not be read (%v)\", err)",
+      "new": "return d, strings.Repeat(\"\", len(err.Error()))"
+    },
+    {
+      "name": "#5507: a declared partial delivery is still judged as the move (reconcile does not make it)",
+      "file": "decisiongatedelivery.go",
+      "old": "if partials.partial(number, b) {",
+      "new": "if false && partials.partial(number, b) {"
+    },
+    {
+      "name": "#5507: a row already landed at the base is moved again by the trailer",
+      "file": "decisiongatedelivery.go",
+      "old": "h.Unreadable != \"\" || gateStatusRank(h.Status) >= 1 {",
+      "new": "h.Unreadable != \"\" {"
+    },
+    {
+      "name": "#5507: the design gate (§4.4) ignores a delivering PR's trailer",
+      "file": "designgate.go",
+      "old": "\t\t\tif pr == 0 {\n\t\t\t\tcontinue // a status before the guarded transition (todo)",
+      "new": "\t\t\tif true || pr == 0 {\n\t\t\t\tcontinue // a status before the guarded transition (todo)"
     }
   ]
 }
