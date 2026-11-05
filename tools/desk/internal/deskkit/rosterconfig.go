@@ -586,17 +586,21 @@ func autoLaneRawKeys() []string {
 // can be bound to statusgen's twin (scanKnownRosterKeys) over the shared vector
 // file statusgen/testdata/roster_coupling.json.
 //
-// WHY THE BINDING EXISTS. Both binaries read the SAME ~/.config/assay/roster.env,
-// and both REFUSE the whole configuration on an ASSAY_ key they do not recognise
-// (see the comment in parseConfig). So a key one binary knows and the other does
-// not makes a roster that is valid and REQUIRED for one tool a total refusal for
-// the other, with no roster edit able to satisfy both. That is not hypothetical:
+// WHY THE BINDING EXISTS. Both binaries read the SAME ~/.config/assay/roster.env.
+// statusgen REFUSES the whole configuration on an ASSAY_ key it does not recognise;
+// this reader did too until #1261, and now records a NOTICE instead (see the comment
+// in parseConfig). The per-key comments above that say an unknown key "REFUSES the
+// whole configuration" record why each key was registered, and still hold for
+// statusgen. So a key one binary knows and the other does not still makes a roster
+// that is valid and REQUIRED for one tool a total refusal for the other, with no
+// roster edit able to satisfy both. That is not hypothetical:
 // ASSAY_REPO_FORGES is the only way the desk verbs resolve a repo to a forge, and
 // while statusgen did not recognise it, a roster carrying it took the whole
 // --scan-issues intake lane down.
 //
 // RECOGNITION IS NOT CONSUMPTION. Listing a key here settles one thing only: it
-// does not refuse. What reads it is a separate question with three answers —
+// draws no unknown-key NOTICE here and no refusal in statusgen. What reads it is a
+// separate question with three answers —
 // parseConfig below, some other site through a direct os.Getenv, or the OTHER
 // binary and not this one at all. Each entry's own comment says which. Adding a
 // key here does NOT make deskkit consume it.
@@ -833,13 +837,10 @@ type Config struct {
 	// recognise, sorted. They are ECHOED, never applied — but only for a key
 	// OUTSIDE the ASSAY_ namespace (a legitimate co-tenant in the same file, per
 	// knownRosterKeys' doc comment). A key INSIDE the ASSAY_ namespace that this
-	// version does not recognise is NOT added here: it still refuses the whole
-	// configuration exactly as before this brief (see the `bad(...)` call this
-	// loop makes for that case) — that is the one facts bullet this brief left
-	// unimplemented (BLOCKED-ON-HUMAN, security-gate removal; see the PR body's
-	// "Known deviation"), not a change this brief made. Only the six named
-	// EXTENSION keys' own bad VALUES (as opposed to an unrecognised key NAME)
-	// get the new per-key, non-aborting treatment — see Ext, below.
+	// version does not recognise is NOT added here: it is recorded in Notices
+	// (unknownAssayKeyNotice) and does not refuse the configuration (#1261).
+	// A recognised key's bad VALUE is unaffected: a trust key's still refuses,
+	// an EXTENSION key's is recorded per key — see Ext, below.
 	UnknownKeys []string
 
 	// AssertedHumans is the parsed ASSAY_ASSERTED_HUMANS set (lowercased login → pinned id),
@@ -854,7 +855,8 @@ type Config struct {
 	Dropped []string
 
 	// Notices names single ENTRIES that were not applied without refusing the configuration —
-	// today only an ASSAY_HUMAN_LOGIN_MAP entry whose name half contains a space
+	// an unrecognised key in the ASSAY_ namespace (unknownAssayKeyNotice, #1261) and an
+	// ASSAY_HUMAN_LOGIN_MAP entry whose name half contains a space
 	// (trustcore.SpacedNameNotice). Each renders as an `assay-config: NOTICE` line and forces
 	// the full echo, so a dropped entry is never silent.
 	Notices []string
@@ -1238,6 +1240,21 @@ func splitIdentity(entry string) (string, int64, bool) { return trustcore.SplitI
 // has to be a human act". A blessing IS that authorisation half.
 func looksLikeBot(login string) bool { return trustcore.LooksLikeBot(login) }
 
+// unknownAssayKeyNotice is the NOTICE parseConfig records for a key in the ASSAY_ namespace
+// this version does not recognise (#1261). It names the key, says it was not applied, and
+// lists the recognised trust keys so a misspelling is easy to spot. It is a NOTICE, never a
+// refusal: the rest of the roster loads and every recognised key keeps its own validation.
+func unknownAssayKeyNotice(k string) string {
+	return fmt.Sprintf("%s: unknown key in the ASSAY_ namespace — NOT applied, so whatever it was "+
+		"meant to configure keeps its unset behaviour. It does not refuse the rest of the roster. "+
+		"If it is a misspelt key, fix the name (recognised keys include %s, %s, %s, %s, %s, %s, "+
+		"%s, %s, %s, %s, %s, %s and the optional %s); if a newer release added it, this binary "+
+		"is older than the roster",
+		k, EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs, EnvAllowedRepos,
+		EnvHumanLoginMap, EnvRiskPathTriggersExtra, EnvRiskCallout, EnvRepoAliases, EnvRepoForges,
+		EnvReleaseRepo, EnvWriteguardCallout, EnvContributorLedger, EnvRosterSchema)
+}
+
 func parseConfig(class ToolClass, source string, vals map[string]string) Config {
 	cfg := Config{
 		UsageDir:      vals[EnvUsageDir],
@@ -1261,20 +1278,23 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// A key this version does not know is one of two very different things, and
 	// collapsing them is what made the gap silent:
 	//
-	//   ASSAY_ALOWED_REPOS=…   a TYPO on a roster key. The surface it was meant to
-	//                          configure stays EMPTY while the configuration reports
-	//                          itself correct. Fail closed is the safe direction for
-	//                          the value, but "reports itself correct" is not — so
-	//                          this REFUSES the whole configuration, the same way a
-	//                          malformed value already does.
+	//   ASSAY_ALOWED_REPOS=…   a TYPO on a roster key, or a key a NEWER release added.
+	//                          It is not applied, so the surface it was meant to
+	//                          configure keeps its unset behaviour. That must never be
+	//                          silent, so it records a NOTICE naming the key (which
+	//                          forces the full echo). It does NOT refuse the rest of the
+	//                          roster (#1261): one unrecognised name used to take every
+	//                          desk verb down at once. Unset is already a complete,
+	//                          fail-closed configuration for every trust surface, so a
+	//                          misspelt trust key still leaves trust unconfigured.
 	//   PROD_DEPLOY_GUARDED_PATHS=…  a legitimate co-tenant. The two CI guards read
 	//                          their own variables directly, and an adopter may keep
 	//                          them in this same file. Refusing here would make the
 	//                          documented layout unusable, so these are ECHOED.
 	//
 	// Namespace membership is the discriminator, not a near-miss distance metric: a
-	// typo inside the owned namespace is rejected, and a key outside it is out of
-	// scope entirely.
+	// name inside the owned namespace gets a NOTICE, and a key outside it is out of
+	// scope entirely. A RECOGNISED key's value is validated below exactly as before.
 	//
 	// The SET itself lives in knownRosterKeys() — it is the half that must stay
 	// identical to statusgen's, and it is bound to it by the shared key list in
@@ -1286,23 +1306,19 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	for _, k := range knownRosterKeys() {
 		known[k] = true
 	}
+	var unknownKeyNotices []string
 	for k := range vals {
 		if known[k] {
 			continue
 		}
 		if strings.HasPrefix(k, "ASSAY_") {
-			bad("%s: unknown key in the ASSAY_ namespace. It is not applied, so whatever it was "+
-				"meant to configure is EMPTY — and an empty control surface that reports itself "+
-				"configured is the failure this refusal exists to prevent. Recognised keys: "+
-				"%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s (and the optional %s)",
-				k, EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs, EnvAllowedRepos,
-				EnvHumanLoginMap, EnvRiskPathTriggersExtra, EnvRiskCallout, EnvRepoAliases, EnvRepoForges,
-				EnvReleaseRepo, EnvWriteguardCallout, EnvContributorLedger, EnvRosterSchema)
+			unknownKeyNotices = append(unknownKeyNotices, unknownAssayKeyNotice(k))
 			continue
 		}
 		cfg.UnknownKeys = append(cfg.UnknownKeys, k)
 	}
 	sort.Strings(cfg.UnknownKeys)
+	sort.Strings(unknownKeyNotices)
 
 	// --- schema version (optional, but validated when present) ---
 	// Without this a future format change is indistinguishable from a stale file
@@ -1556,7 +1572,8 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// does a space before the colon (`ada :ada`), which the splitter leaves as two malformed
 	// entries. The whitespace check reads the UNTRIMMED name half, so a space the trim would drop
 	// can never turn a refused entry into a mapping. KEEP IN SYNC with statusgen's scanParseConfig.
-	var notices []string
+	// The unknown-ASSAY_-key NOTICEs recorded at key recognition lead the list.
+	notices := append([]string(nil), unknownKeyNotices...)
 	for _, entry := range trustcore.SplitNameLoginList(vals[EnvHumanLoginMap]) {
 		rawName, login, found := strings.Cut(entry, ":")
 		name := strings.ToLower(strings.TrimSpace(rawName))

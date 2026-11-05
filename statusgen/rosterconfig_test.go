@@ -58,6 +58,12 @@ type couplingVectors struct {
 		Roster          map[string]string `json:"roster"`
 		ProblemContains string            `json:"problemContains"`
 	} `json:"rejectedRosters"`
+	UnknownKeyRosters []struct {
+		Why                      string            `json:"why"`
+		Roster                   map[string]string `json:"roster"`
+		DeskkitNoticeContains    string            `json:"deskkitNoticeContains"`
+		StatusgenProblemContains string            `json:"statusgenProblemContains"`
+	} `json:"unknownKeyRosters"`
 }
 
 // scanWithRoster installs an explicit roster into a private config home for one
@@ -805,6 +811,26 @@ func TestCouplingRepoRolesAndRejections(t *testing.T) {
 		if !strings.Contains(joined, rr.ProblemContains) {
 			t.Errorf("the refusal does not name %q — %s\n  problems: %s",
 				rr.ProblemContains, rr.Why, joined)
+		}
+	}
+
+	// statusgen's reader still REFUSES an unknown ASSAY_ key (its --lint refusal, #3057); the
+	// desk-tools reader records a NOTICE instead (#1261). Pinned here so the divergence is
+	// deliberate, never drift.
+	if len(vec.UnknownKeyRosters) == 0 {
+		t.Fatalf("%s carries no unknownKeyRosters — an empty section is a vacuous pass", couplingVectorPath)
+	}
+	for _, ur := range vec.UnknownKeyRosters {
+		scanWithRoster(t, ur.Roster)
+		c := scanEffectiveConfig()
+		if c.Configured() {
+			t.Errorf("statusgen loaded a roster with an unknown ASSAY_ key as configured — %s\n  roster: %v",
+				ur.Why, ur.Roster)
+			continue
+		}
+		if joined := strings.Join(c.Problems, "\n"); !strings.Contains(joined, ur.StatusgenProblemContains) {
+			t.Errorf("the refusal does not name %q — %s\n  problems: %s",
+				ur.StatusgenProblemContains, ur.Why, joined)
 		}
 	}
 }

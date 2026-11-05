@@ -54,6 +54,12 @@ type couplingVectors struct {
 		Roster          map[string]string `json:"roster"`
 		ProblemContains string            `json:"problemContains"`
 	} `json:"rejectedRosters"`
+	UnknownKeyRosters []struct {
+		Why                      string            `json:"why"`
+		Roster                   map[string]string `json:"roster"`
+		DeskkitNoticeContains    string            `json:"deskkitNoticeContains"`
+		StatusgenProblemContains string            `json:"statusgenProblemContains"`
+	} `json:"unknownKeyRosters"`
 }
 
 // couplingVectorPath is the ONE path both trees read. It lives in the STATUSGEN
@@ -470,6 +476,24 @@ func TestCouplingRepoRolesAndRejections(t *testing.T) {
 		if !strings.Contains(joined, rr.ProblemContains) {
 			t.Errorf("the refusal does not name %q — %s\n  problems: %s",
 				rr.ProblemContains, rr.Why, joined)
+		}
+	}
+
+	// An unknown ASSAY_ key is a NOTICE on this reader, never a refusal (#1261); statusgen's
+	// twin still refuses — the vector's unknownKeyRosters section records that divergence.
+	if len(vec.UnknownKeyRosters) == 0 {
+		t.Fatalf("%s carries no unknownKeyRosters — an empty section is a vacuous pass", couplingVectorPath)
+	}
+	for _, ur := range vec.UnknownKeyRosters {
+		withRoster(t, ur.Roster)
+		c := EffectiveConfig()
+		if !c.Configured() {
+			t.Errorf("an unknown ASSAY_ key refused the roster; it must be a NOTICE — %s\n  problems: %v",
+				ur.Why, c.Problems)
+			continue
+		}
+		if joined := strings.Join(c.Notices, "\n"); !strings.Contains(joined, ur.DeskkitNoticeContains) {
+			t.Errorf("no NOTICE names %q — %s\n  notices: %s", ur.DeskkitNoticeContains, ur.Why, joined)
 		}
 	}
 }
