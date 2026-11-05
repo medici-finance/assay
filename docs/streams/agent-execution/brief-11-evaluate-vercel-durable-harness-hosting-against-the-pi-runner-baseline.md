@@ -40,7 +40,9 @@ consumers:
 
 ## Context
 
-files: `loopadmin/experiments/vercelharness/adapter.go` (planned), `loopadmin/experiments/vercelharness/evaluation_test.go` (planned), `loopadmin/experiments/vercelharness/node/` (planned), `loopadmin/testdata/vercelharness/` (planned), `docs/reports/agent-execution/vercel-durable-harness-evaluation.md` (planned), `loopadmin/README.md`, `ci/staged-workflows/loopadmin.yml`, `changelog/agent-execution-11-vercel-evaluation.md` (planned). These are future implementation deliverables. No live workflow, production default, core runner schema, deployment profile or credential configuration changes here.
+files: `loopadmin/experiments/vercelharness/adapter.go` (planned), `loopadmin/experiments/vercelharness/evaluation_test.go` (planned), `loopadmin/experiments/vercelharness/node/` (planned), `loopadmin/testdata/vercelharness/` (planned), `docs/reports/agent-execution/vercel-durable-harness-evaluation.md` (planned), `loopadmin/README.md`, `ci/staged-workflows/loopadmin.yml`, `changelog/agent-execution-11-vercel-evaluation.md` (planned).
+
+These are future implementation deliverables. No live workflow, production default, core runner schema, deployment profile or credential configuration changes here.
 
 single-point-of-failure: assuming World session-writer fencing authorizes every resumed operation — backed by a separately controlled synthetic executor that independently rejects stale effect authority. Exercise it with the upper session/adapter check bypassed. No production trust boundary is qualified by these fixtures.
 
