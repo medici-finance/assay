@@ -478,9 +478,7 @@ func renderAwaiting(hdr Header, rep nextupReport) *Report {
 				"the name says dispatch queue, the rows are the verification backlog (#321)")
 		}
 		if rep.StatusgenSkew {
-			fmt.Fprintf(w, "WARN statusgen %s does not match the .assay-versions pin %s — "+
-				"reinstall the pinned binary (tools/statusgen/README.md)\n",
-				rep.StatusgenVersion, rep.StatusgenPinned)
+			fmt.Fprintln(w, statusgenSkewLine(rep.StatusgenVersion, rep.StatusgenPinned))
 		}
 		for _, r := range rep.Roots {
 			fmt.Fprintf(w, "  root %-24s %s\n", shortRepo(r.Repo), r.Path)
@@ -518,4 +516,14 @@ func renderAwaiting(hdr Header, rep nextupReport) *Report {
 				shortRepo(r.Repo), trunc(r.Stream, 24), r.Score, r.Status, r.Class, r.Brief)
 		}
 	}}
+}
+
+// statusgenSkewLine is the one skew WARN both board views print. A running statusgen that
+// is a local hotfix over the pin is named as one, never reported as a bare mismatch.
+func statusgenSkewLine(running, pinned string) string {
+	if base, ok := deskkit.HotfixBase(running); ok && normalizeTag(base) == normalizeTag(pinned) {
+		return "WARN statusgen hotfix " + running + " over pin " + pinned
+	}
+	return "WARN statusgen " + running + " does not match the .assay-versions pin " + pinned + " — " +
+		"reinstall the pinned binary (tools/statusgen/README.md)"
 }

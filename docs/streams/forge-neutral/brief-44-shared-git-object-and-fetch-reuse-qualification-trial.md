@@ -2,7 +2,7 @@
 brief: assay:assay:forge-neutral:44
 title: "Shared Git object and fetch reuse qualification trial"
 why: "Shared Git objects and fetches could reduce repeated work across agents, but a new daemon would also add cache, permission and maintenance duties. A bounded comparison of our existing common-store/worktree paths can establish whether another mechanism earns its cost."
-wave: 8
+wave: 11
 depends: ["forge-neutral/42"]
 unblocks: ["forge-neutral/45"]
 effort: M
@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 5
+version: 6
 id: 1cb50a0e-129b-4009-a1e1-bf9fe498f765
 authored: 2026-10-14 by forge-service authoring
 sources:
@@ -47,8 +47,7 @@ consumers:
 
 ## Context
 
-files: `tools/desk/internal/gitcore/sharedreuse_test.go` (planned), `tools/desk/internal/gitcore/testdata/sharedreuse/` (planned), `docs/research/2026-10-14-scion-git-reuse/README.md` (planned), `docs/cellctl-maintenance.md`, `changelog/scion-git-reuse-trial.md` (planned), `tools/desk/internal/gitcore/reviewreuse_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
-files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
+files: `tools/desk/internal/gitcore/sharedreuse_test.go` (planned), `tools/desk/internal/gitcore/testdata/sharedreuse/` (planned), `docs/research/2026-10-14-scion-git-reuse/README.md` (planned), `docs/cellctl-maintenance.md`, `changelog/scion-git-reuse-trial.md` (planned), `tools/desk/internal/gitcore/reviewreuse_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
 - gitcore already has alternate readers and object-store helpers; worktree allocation/retirement and maintenance have existing owners.

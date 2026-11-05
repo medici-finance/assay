@@ -336,3 +336,11 @@ read-only measurements and reports the hold. This is a point-in-time admission
 check, not a storage reservation or active-task quota; other writers can consume
 space after admission. It does not measure arbitrary custom output destinations.
 An explicit nonzero floor on an unsupported platform fails closed.
+
+Maintenance inventory streams directory entries, with a limit of 262,144 entries per tree/list and 64 directory levels. Incomplete accounting reports could-not-check; it grants no fresh clean report, cleanup permission or launch admission. Candidate accumulation is bounded by the same entry limit.
+
+For an inventory wider than the default, explicitly raise the maintenance-only budget, for example `ASSAY_MAINTENANCE_ENTRY_LIMIT=524288 cellctl cache house clean` (or the existing scratch sweep command). Values must be 1 through 1,048,576. Invalid values and exhausted budgets fail closed; there is no unlimited fallback. This setting does not change retained-data protections, per-role authority or launch pressure policy. Trees beyond the finite ceiling or depth limit remain incomplete and require owner-assisted layout correction.
+
+The existing cadence supervisor triggers this cache maintenance between completed passes and again at the due boundary when accounting is dirty, stale or otherwise cannot be proved clean. It retains the same owner’s finite inventory and reclamation checks. Interactive mode (`--cadence off`) and initial bounded startup still require operator `cache clean` when accounting refuses. Scratch diagnostic retention remains operator-triggered; no new background service is installed.
+
+The default entry budget covers the representative fixture with 150,000 compiler-cache entries and 75,000 module-cache entries. The override remains finite; it is a maintenance resource budget, not a launch-policy or retention override.

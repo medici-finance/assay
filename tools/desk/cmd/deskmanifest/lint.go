@@ -1,9 +1,7 @@
 package main
 
 import (
-	"flag"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -102,20 +100,6 @@ type provider struct {
 	version   string
 	flavour   string
 	path      string
-}
-
-func lintCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("lint", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	root := fs.String("root", ".", "tree root to discover component.yaml under")
-	activationFlag := fs.Bool("activation", false, "include an ACTIVATION report (§6.1): every component's ACTIVE/INACTIVE state and, when INACTIVE, why")
-	fs.Usage = func() { fmt.Fprintln(stderr, usage) }
-	if err := fs.Parse(args); err != nil {
-		return exitCouldNotCheck
-	}
-	report, code := lintReport(*root, *activationFlag)
-	fmt.Fprint(stdout, report)
-	return code
 }
 
 // lint runs the whole check over root and returns a report and an exit code.

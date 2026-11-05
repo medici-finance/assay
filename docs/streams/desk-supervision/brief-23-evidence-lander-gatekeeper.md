@@ -106,26 +106,12 @@ What changes, at the premise level:
 ## Context
 
 files:
-- **add** `tools/desk/cmd/evidencegate/` (planned) — `main.go` (deskkit contract: kill switch
-  first, one audit line, exit 0 ok · 3 disabled · 5 refused · 6 unverifiable), `scope.go` (the
-  validator's decision), `lander.go` (the lander's decision), `scope_test.go` (planned),
-  `lander_test.go` (planned), fixtures under its `testdata/`, and
-  `tools/desk/cmd/evidencegate/testdata/mutate.sh` (planned).
+- **add** `tools/desk/cmd/evidencegate/` (planned) — `main.go` (deskkit contract: kill switch first, one audit line, exit 0 ok · 3 disabled · 5 refused · 6 unverifiable), `scope.go` (the validator's decision), `lander.go` (the lander's decision), `scope_test.go` (planned), `lander_test.go` (planned), fixtures under its `testdata/`, and `tools/desk/cmd/evidencegate/testdata/mutate.sh` (planned).
 - **add** `statusgen/evidenceaudit.go` (planned) + `statusgen/evidenceaudit_test.go` (planned) — the `statusgen evidence-audit` subcommand (post-land audit).
-- **add** `.github/workflows/evidence-scope.yml` (planned) (event-facing validator half: its
-  event-facing jobs hold only a read-only `GITHUB_TOKEN`; it also runs the post-land audit, whose
-  push-to-main job holds a `GITHUB_TOKEN` scoped to `issues: write` only and never an App key),
-  `.github/workflows/evidence-scope-post.yml` (planned)
-  (Option 1: the status poster) and `.github/workflows/evidence-lander.yml` (planned) (lander).
-  These are workflow files: no implementer App can push them. They land ONLY through the
-  workflow-only PR path of desk-supervision/11, which is why this brief depends on it. Never as a
-  staged copy for hand-landing.
-- **edit** `plugins/assay/skills/verify-desk/SKILL.md` (§ "Public repo (PR-required main)") and
-  `docs/adopting-assay.md` (branch-protection section).
-- **add** `changelog/<branch>.md` — the fragment this repo enforces.
-- **not files, human acts** (Task step 1): the lander App, (Option 1) the validator App, their
-  environment secrets, the ruleset restructure, and the change to the withheld-content status
-  poster.
+- **add** `.github/workflows/evidence-scope.yml` (planned) (event-facing validator half: its event-facing jobs hold only a read-only `GITHUB_TOKEN`; it also runs the post-land audit, whose push-to-main job holds a `GITHUB_TOKEN` scoped to `issues: write` only and never an App key), `.github/workflows/evidence-scope-post.yml` (planned) (Option 1: the status poster) and `.github/workflows/evidence-lander.yml` (planned) (lander) — These are workflow files: no implementer App can push them. They land ONLY through the workflow-only PR path of desk-supervision/11, which is why this brief depends on it. Never as a staged copy for hand-landing.
+- **edit** `plugins/assay/skills/verify-desk/SKILL.md` and `docs/adopting-assay.md` (branch-protection section) — in the skill, § "Public repo (PR-required main)".
+- **add** — `changelog/<branch>.md` — the fragment this repo enforces.
+- **not files, human acts** — (Task step 1): the lander App, (Option 1) the validator App, their environment secrets, the ruleset restructure, and the change to the withheld-content status poster.
 
 single-point-of-failure: the lander App's bypass of the PR-required rule is the ONE grant that lets a commit reach main without review — layers behind it: (1) the required `leak-sweep` and (Option 1) `evidence-scope` statuses sit in a ruleset the lander does NOT bypass, each pinned to its own dedicated App's integration id; `evidence-scope` is posted only by the validator App from a default-branch run, and reads `success` only as a staging-ref `admit` or as the not-a-landing pass on a PR head approved at that exact head, so the server refuses any lander push whose SHA is neither validated Evidence nor an approved PR head; a separate ruleset on `evidence-landing/**` lets only the verifier App and the lander App create, update or delete a staging ref; (2) the lander workflow, from a default-branch definition with a key only a default-branch run can read, acts only on the current head of an `evidence-landing/**` ref, re-runs the `scope` core itself instead of trusting the status (including the writer binding, on data a raw push cannot forge: a single-parent commit only when the forge attributes it to the verifier App and the verifier App moved the ref onto it; a two-parent `remerge` only when the lander App moved the ref onto it from its staging-side parent AND its tree is byte-identical to the clean three-way merge of its two parents recomputed from forge objects, so a remerge can carry no content of its own), and lands only a fast-forward of that exact SHA on its own `admit` (this layer is independent of a forged or misapplied status, not of a bug in the shared `scope` core; layer 4 is the one independent of that code); (3) the lander App's permission ceiling (contents + metadata on this one repository; no workflows, no administration); every claim this brief makes about the lander key is about main, since a contents permission also reaches tags and releases; (4) the post-land `statusgen evidence-audit` selects by the PUSH, never by commit author (every push to main by the lander, and every push carrying a commit that no merged pull request in that range accounts for), re-derives Evidence-only-ness and the writer per commit with a different algorithm (and re-checks every `remerge` tree against its own recompute of the merge, with git's merge rather than the `scope` core's code), and halts the lane on a mismatch or a `could-not-check` in a lander push (either in another identity's push files a non-halting finding for a human: halting the lane cannot contain a write the lane did not make). One assumption sits beneath layers 1, 2 and 4 alike: every job that holds a key or writes (the poster, the lander, and the audit job) executes only default-branch code, and that holds only if the job's MACHINE runs nothing else. A runner shared with PR-authored jobs that keeps state between jobs defeats all three through one channel, and layer 3 bounds nothing there, since main's contents are the damage. So every job in the three workflows runs on a GitHub-hosted runner, a fresh machine per job, never on the self-hosted pool that runs pull-request CI (Task step 3; rows 20 and 21).
 

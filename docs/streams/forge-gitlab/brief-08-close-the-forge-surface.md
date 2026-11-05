@@ -40,21 +40,10 @@ id: 932f1239-5355-4be2-9f61-bcd7682931a4
 
 ## Context
 files:
-- `tools/desk/internal/deskkit/forge.go` — the frozen interface: confirm NO generic
-  `Do`/`Raw`/`APIRequest`/arbitrary-endpoint method exists; add typed ops for the residual
-  shell callsites that are genuine forge operations (e.g. a `DeleteRef(repo, ref)` to retire
-  fanoutloop's `gh api -X DELETE`, a `ListPullRequests`/`SetLabels`/`ReadyForReview` op where
-  a tool shells one) — each addition carries its consuming tool in this change (spec §6).
-- `tools/desk/internal/deskkit/forge_github.go`, `forge_gitlab.go` — implement each newly
-  enumerated op on both backends (GitHub via go-gh per brief 07; GitLab via REST v4 per brief
-  02); neither backend exposes an arbitrary-endpoint escape hatch.
-- `tools/desk/internal/deskkit/forge_surface_test.go` (new) — the two enforcement tests
-  (shell-exec ban + no-passthrough), runnable in CI.
-- `tools/desk/cmd/**` — the residual `exec.Command("gh"|"glab", …)` forge callsites
-  (deskflip, deskboard, deskmerge, deskdispatch, deskroster, deskadvisory, deskpushguard,
-  issueboard, scanloop, repohardenguard, deskdisposition, fanoutloop) move onto the interface
-  or are removed; the `askassay` gh-probe entry that only exists to check the `gh` binary is
-  installed is dropped, since no tool requires the binary any more.
+- `tools/desk/internal/deskkit/forge.go` — the frozen interface: confirm NO generic `Do`/`Raw`/`APIRequest`/arbitrary-endpoint method exists; add typed ops for the residual shell callsites that are genuine forge operations (e.g. a `DeleteRef(repo, ref)` to retire fanoutloop's `gh api -X DELETE`, a `ListPullRequests`/`SetLabels`/`ReadyForReview` op where a tool shells one) — each addition carries its consuming tool in this change (spec §6).
+- `tools/desk/internal/deskkit/forge_github.go`, `tools/desk/internal/deskkit/forge_gitlab.go` — implement each newly enumerated op on both backends (GitHub via go-gh per brief 07; GitLab via REST v4 per brief 02); neither backend exposes an arbitrary-endpoint escape hatch.
+- `tools/desk/internal/deskkit/forge_surface_test.go` (new) — the two enforcement tests (shell-exec ban + no-passthrough), runnable in CI.
+- `tools/desk/cmd/` — the residual `exec.Command("gh"|"glab", …)` forge callsites (deskflip, deskboard, deskmerge, deskdispatch, deskroster, deskadvisory, deskpushguard, issueboard, scanloop, repohardenguard, deskdisposition, fanoutloop) move onto the interface or are removed; the `askassay` gh-probe entry that only exists to check the `gh` binary is installed is dropped, since no tool requires the binary any more.
 
 single-point-of-failure: the ban's detection logic is the one control — if it misses a
 callsite spelling or a reachable passthrough, it ships a false-clean. It is backed by a

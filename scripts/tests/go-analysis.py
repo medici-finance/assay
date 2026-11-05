@@ -31,6 +31,21 @@ def baseline(*entries):
     return dict(schema='go-analysis-baseline/v1', contract='policy', findings=list(entries))
 
 
+class Coverage(unittest.TestCase):
+    # regression: #2395
+    def test_lifted_owner_tuples(self):
+        expected = {('linux', 'amd64', ''), ('windows', 'amd64', ''),
+                    ('darwin', 'arm64', ''), ('linux', 'amd64', 'parity')}
+        plan = r.coverage(['statusgen', 'tools/desk', 'gitcore'])
+        for owner in ['tools/desk', 'gitcore']:
+            self.assertEqual({row[1:] for row in plan if row[0] == owner}, expected)
+        self.assertEqual(len(plan), len(set(plan)))
+        self.assertEqual([row for row in plan if row[0] == 'statusgen'],
+                         [('statusgen', 'linux', 'amd64', '')])
+        self.assertEqual(r.coverage(['statusgen']),
+                         [('statusgen', 'linux', 'amd64', '')])
+
+
 class Ratchet(unittest.TestCase):
     # regression: F-go-analysis-ratchet
     def test_legacy(self):

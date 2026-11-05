@@ -326,7 +326,7 @@ func TestPerfCoverageFlow(t *testing.T) {
 		}
 	})
 	t.Run("mutation_erases_budget_history", func(t *testing.T) {
-		mutated := mutationBinary(t, "deskdispatch", "internal/deskkit/perf.go", "\tperfAppend(rec)\n\treturn code", "\tif p, err := auditPath(); err == nil { _ = os.Truncate(p, 0) }\n\tperfAppend(rec)\n\treturn code")
+		mutated := mutationBinary(t, "deskdispatch", "internal/deskkit/perf.go", "\tperfAppendEnabled(enabled, rec)\n\treturn code", "\tif p, err := auditPath(); err == nil { _ = os.Truncate(p, 0) }\n\tperfAppendEnabled(enabled, rec)\n\treturn code")
 		if err := preservationCase(t, mutated, "deskdispatch"); err == nil || !strings.Contains(err.Error(), "seeded audit history changed") {
 			t.Fatalf("erased production budget history accepted: %v", err)
 		}

@@ -47,8 +47,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // sourceArtifact is the `.assay-versions` artifact name carrying the source pin.
@@ -117,8 +117,9 @@ func defaultPlatform() (string, error) {
 
 // pin is one `.assay-versions` line: artifact, tag, digest.
 type pin struct {
-	tag    string
-	digest string
+	artifact string
+	tag      string
+	digest   string
 }
 
 // readPin returns the pin for exactly one artifact name. The trailing space in the
@@ -126,9 +127,24 @@ type pin struct {
 // pin: without it `desk-tools-source` would also match `desk-tools-source-foo`,
 // and `statusgen ` would match `statusgen-linux-amd64`.
 func readPin(pinFile, artifact string) (pin, error) {
+	p, found, err := findPin(pinFile, artifact)
+	if err != nil {
+		return pin{}, err
+	}
+	if !found {
+		return pin{}, deskkit.Unverifiable("no "+artifact+" pin in "+pinFile, nil)
+	}
+	return p, nil
+}
+
+// findPin is readPin's selector with "absent" kept apart from "malformed":
+// found=false with a nil error means no line names artifact; a matching line with
+// fewer than three fields is an Unverifiable error, so a caller trying several
+// spellings never skips a malformed line in search of a better one.
+func findPin(pinFile, artifact string) (pin, bool, error) {
 	raw, err := os.ReadFile(pinFile)
 	if err != nil {
-		return pin{}, deskkit.Unverifiable("cannot read "+pinFile+
+		return pin{}, false, deskkit.Unverifiable("cannot read "+pinFile+
 			" — the pin file is the only record of which release this consumer runs", err)
 	}
 	for _, line := range strings.Split(string(raw), "\n") {
@@ -138,13 +154,45 @@ func readPin(pinFile, artifact string) (pin, error) {
 		}
 		fields := strings.Fields(line)
 		if len(fields) < 3 {
-			return pin{}, deskkit.Unverifiable(fmt.Sprintf(
+			return pin{}, true, deskkit.Unverifiable(fmt.Sprintf(
 				"malformed %q pin in %s: %q — expected `<artifact> <tag> <digest>`",
 				artifact, pinFile, line), nil)
 		}
-		return pin{tag: fields[1], digest: fields[2]}, nil
+		return pin{artifact: artifact, tag: fields[1], digest: fields[2]}, true, nil
 	}
-	return pin{}, deskkit.Unverifiable("no "+artifact+" pin in "+pinFile, nil)
+	return pin{}, false, nil
+}
+
+// readBinaryPin returns this platform's desk-tools binary pin. The line names come
+// from deskkit.DeskToolsPlatformArtifacts, the grammar the shared reader
+// (deskkit.DeskToolsReleasePin) uses, so the guard and boot, the drift banner and
+// preflight agree on what a pin line is (#4862): the suffixless
+// `desk-tools-<platform>` line, then the `desk-tools-<platform>.tar.gz` line the
+// installer writes. The first line found wins, and each name is looked up in full,
+// so another component's or another platform's line never stands in.
+//
+// The bare `desk-tools` line is deliberately not read here: it names no platform,
+// and this half of the check is the per-platform binary pin. A platform token that
+// is not `<os>-<arch>` (say `source`) yields no names and so no pin, never another
+// component's line. No matching line is Unverifiable: refuse, never trust.
+func readBinaryPin(pinFile, platform string) (pin, error) {
+	names := deskkit.DeskToolsPlatformArtifacts(platform)
+	if len(names) == 0 {
+		return pin{}, deskkit.Unverifiable(fmt.Sprintf(
+			"no desk-tools binary pin can be read for platform %q from %s — it is not an "+
+				"`<os>-<arch>` token, so it names no desk-tools release line", platform, pinFile), nil)
+	}
+	for _, name := range names {
+		p, found, err := findPin(pinFile, name)
+		if err != nil {
+			return pin{}, err
+		}
+		if found {
+			return p, nil
+		}
+	}
+	return pin{}, deskkit.Unverifiable(fmt.Sprintf("no %s pin in %s (looked for the lines %s)",
+		names[0], pinFile, strings.Join(names, ", ")), nil)
 }
 
 // headOf resolves the commit a materialised checkout is actually at. It asks git
@@ -170,7 +218,7 @@ func headOf(dir string) (string, error) {
 func verify(opts options, stampedSHA string, out *strings.Builder) error {
 	pinFile := filepath.Join(opts.repoRoot, ".assay-versions")
 
-	binaryPin, err := readPin(pinFile, "desk-tools-"+opts.platform)
+	binaryPin, err := readBinaryPin(pinFile, opts.platform)
 	if err != nil {
 		return err
 	}
@@ -182,9 +230,9 @@ func verify(opts options, stampedSHA string, out *strings.Builder) error {
 	// (1) one release, not two.
 	if sourcePin.tag != binaryPin.tag {
 		return deskkit.Refused(fmt.Sprintf(
-			"pin split: %s names tag %s but desk-tools-%s names tag %s in %s. "+
+			"pin split: %s names tag %s but %s names tag %s in %s. "+
 				"The source and the binaries must come from ONE release; bump both lines together.",
-			sourceArtifact, sourcePin.tag, opts.platform, binaryPin.tag, pinFile))
+			sourceArtifact, sourcePin.tag, binaryPin.artifact, binaryPin.tag, pinFile))
 	}
 
 	if !fullSHA.MatchString(sourcePin.digest) {

@@ -30,7 +30,10 @@ func validateHandoff(h *Handoff) error {
 				"an active claim adjusted in place must be acknowledged by its owner (%s) before the amendment lands", w.Owner)
 		}
 	}
-	return checkReadiness(h)
+	if err := checkReadiness(h); err != nil {
+		return err
+	}
+	return checkProduct(h.Product, h.Readiness.DecidingRole)
 }
 
 func checkTarget(t Target) error {

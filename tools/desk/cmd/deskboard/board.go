@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/reviewflow"
 )
 
@@ -285,14 +285,14 @@ func prBaseFromChange(c deskkit.OpenChange) prBase {
 //
 // A failure fails the whole run, named for the repo, exactly as fetchOpenPRs does — the
 // error text is the same so the out-of-installation scoping check still recognizes it.
-func fetchReviewQueue(repo string) (prs []prBase, reviews map[int][]review, truncated bool, err error) {
+func fetchReviewQueue(repo string) (prs []prBase, reviews map[int][]review, truncated bool, visibility string, err error) {
 	f, fr, ferr := forgeFor(repo)
 	if ferr != nil {
-		return nil, nil, false, ferr
+		return nil, nil, false, "", ferr
 	}
 	q, qerr := f.ReviewQueueSnapshot(fr)
 	if qerr != nil {
-		return nil, nil, false, deskkit.Unverifiable("cannot read open PRs for "+repo, qerr)
+		return nil, nil, false, "", deskkit.Unverifiable("cannot read open PRs for "+repo, qerr)
 	}
 	prs = make([]prBase, 0, len(q.Changes))
 	reviews = make(map[int][]review, len(q.Changes))
@@ -302,7 +302,7 @@ func fetchReviewQueue(repo string) (prs []prBase, reviews map[int][]review, trun
 			reviews[c.Number] = reviewsFromForge(c.Reviews)
 		}
 	}
-	return prs, reviews, warnTruncated(repo, len(prs), q.TruncatedAtCap, q.Cap), nil
+	return prs, reviews, warnTruncated(repo, len(prs), q.TruncatedAtCap, q.Cap), q.Visibility, nil
 }
 
 // outOfInstallationMarkers are the phrases GitHub uses when the authenticated identity
@@ -466,7 +466,7 @@ const maxFilePages = 40 // 4000 entries; GitHub's own /files cap is 3000
 // complete=false is not an error — the caller degrades CLOSED per-PR (risk-classed,
 // and RE-REVIEW rather than MERGE-CURR) instead of failing the whole board, so one
 // enormous PR cannot brick the desk's sweep.
-func fetchChangedFiles(repo string, num int) (files map[string]bool, complete bool, err error) {
+func fetchChangedFiles(repo string, num int, expectedHead ...string) (files map[string]bool, complete bool, err error) {
 	f, fr, ferr := forgeFor(repo)
 	if ferr != nil {
 		return nil, false, ferr
@@ -476,6 +476,9 @@ func fetchChangedFiles(repo string, num int) (files map[string]bool, complete bo
 	pr, perr := f.GetPullRequest(fr, num)
 	if perr != nil {
 		return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read PR metadata for %s#%d", repo, num), perr)
+	}
+	if len(expectedHead) > 0 && pr.HeadSHA != expectedHead[0] {
+		return nil, false, deskkit.Unverifiable("changed-file metadata head differs from frozen queue head; refresh required", nil)
 	}
 	changed, ferr2 := f.ListChangedFiles(fr, num)
 	if ferr2 != nil {
@@ -761,20 +764,24 @@ type reviewState struct {
 	// surfaces the row as EXTERNAL-PREREQ-REVIEW and leaves the authoritative grant to the
 	// ready gate (deskpost/ready.go), so the two surfaces agree on what the row IS.
 	externalPrereqDeclared bool
-	// bodyEditReverified is true when a row reduceReviews marked suspectNoOp was LIFTED by
+	// bodyEditReverified is true when a row reduceReviews marked blocking was LIFTED by
 	// applyBodyEditReverification: every standing CR at head declared the documented body-edit
 	// re-verification class and a later correctness APPROVE documents and verifies it against
 	// the live PR body (deskkit.EvaluateBodyEditReverification — the SAME decision deskflip's
-	// reviewer-approved gate runs). The row then reads approved at head and flows through the
-	// ordinary CI / mergeability / security arms; this flag only annotates its note.
+	// reviewer-approved gate runs), or, for a `Security-Review: fail`, the security lane's
+	// marked clearance holds (deskkit.EvaluateSecurityBodyClearance, #5092). The row then
+	// reads approved at head and flows through the ordinary CI / mergeability / security
+	// arms; this flag only annotates its note.
 	bodyEditReverified bool
 }
 
 // applyBodyEditReverification applies the ruled documented body-edit re-verification class
-// to a reduction that suppressed a same-head APPROVE (suspectNoOp). It is a no-op on every
-// other shape, and on a declared external-prerequisite row (that class has its own surface).
+// to a reduction that reads BLOCKING at head — most often one that suppressed a same-head
+// APPROVE (suspectNoOp). It is a no-op on every other shape, and on a declared
+// external-prerequisite row (that class has its own surface).
 //
-// It mirrors deskflip's gate exactly rather than approximating it: EVERY reviewer CR at head
+// It mirrors deskflip's gate rather than approximating it, with the one difference stated
+// below for the security lane: EVERY reviewer CR at head
 // must be cleared by the shared decision (one undeclared or failing CR keeps the row
 // suppressed), the candidate APPROVEs are the reviewer's, at head, correctness lane only,
 // the digest is checked against the body THIS sweep read, and "edited after the CR" is
@@ -782,20 +789,52 @@ type reviewState struct {
 // edited — keeps the row suppressed). When it lifts, the effective
 // verdict becomes the governing same-head APPROVE — the ruling's "the same-head APPROVE
 // stands" — and CI green stays the board's own CI verdict, never the citation's.
+//
+// A `Security-Review: fail` CR at head is routed to the SECURITY lane's decision instead
+// (deskkit.EvaluateSecurityBodyClearance, the one deskflip's securityBodyCRCleared runs,
+// #5092): it is cleared only by the reviewer's later security-marked reviews, never by a
+// correctness APPROVE, and a correctness CR is never cleared by a security pass. Because a
+// marked security fail can be the LAST decisive review at head — APPROVE, then the fail, then
+// the COMMENTED pass, which reduceReviews never sees as decisive — the lift does not require
+// suspectNoOp; it requires instead, as rule 1 of the gate does, that the reviewer's last
+// correctness-lane APPROVED/CHANGES_REQUESTED is an APPROVED at head.
+//
+// DIFFERENCE FROM THE GATE, security lane. deskflip's securityBodyCRCleared also requires the
+// security-verdict reduction (securityVerdictStanding) to read a pass at head; the board has
+// no such check. The two agree on outcome, because when the shared decision clears, no fail
+// follows the clearing pass, so that reduction reads a pass at head. But it leaves the reviewer filter
+// on the `after` list below as the board's ONLY actor control: the shared decision takes no
+// actor, so another account's pass must never reach it (pinned by TestSecBodyBoardStaysBlocked,
+// "pass from another account"). Each review reaches the decision with its review state, so
+// the board admits a pass only in the states deskkit.SecurityPassStateStands admits, the same
+// two `deskpost ready`'s own list holds. A fail or pass whose body also carries a correctness
+// verdict line refuses in the shared decision, so such a row stays blocking.
 func applyBodyEditReverification(st reviewState, reviews []review, head, liveBody, bodyEditedAt string) reviewState {
-	if !st.atHead || !st.blocking || !st.suspectNoOp || st.externalPrereqDeclared {
+	if !st.atHead || !st.blocking || st.externalPrereqDeclared {
 		return st
 	}
-	var crs []review
+	var crs []int
 	var approves []deskkit.BodyEditApprove
 	var lastApprove string
-	for _, r := range reviews {
-		if !isReviewerBot(r.User.Login) || !sameHead(r.CommitID, head) {
+	lastCorrectness := ""
+	for i, r := range reviews {
+		if !isReviewerBot(r.User.Login) {
+			continue
+		}
+		correctnessDecisive := classifySecurityBody(r.Body) == secNone &&
+			(r.State == "APPROVED" || r.State == "CHANGES_REQUESTED")
+		if correctnessDecisive {
+			lastCorrectness = ""
+			if sameHead(r.CommitID, head) {
+				lastCorrectness = r.State
+			}
+		}
+		if !sameHead(r.CommitID, head) {
 			continue
 		}
 		switch r.State {
 		case "CHANGES_REQUESTED":
-			crs = append(crs, r)
+			crs = append(crs, i)
 		case "APPROVED":
 			if classifySecurityBody(r.Body) != secNone {
 				continue
@@ -804,14 +843,30 @@ func applyBodyEditReverification(st reviewState, reviews []review, head, liveBod
 			lastApprove = r.SubmittedAt
 		}
 	}
-	if len(crs) == 0 || len(approves) == 0 {
+	if len(crs) == 0 || lastCorrectness != "APPROVED" {
 		return st
 	}
-	for _, cr := range crs {
-		dec := deskkit.EvaluateBodyEditReverification(deskkit.BodyEditInput{
-			CRBody: cr.Body, CRSubmittedAt: cr.SubmittedAt, Head: head, Approves: approves, LiveBody: liveBody,
-			BodyEditedAt: bodyEditedAt,
-		})
+	for _, i := range crs {
+		cr := reviews[i]
+		var dec deskkit.BodyEditDecision
+		if hasSecurityFailLine(cr.Body) {
+			var after []deskkit.SecurityVerdictReview
+			for _, r := range reviews[i+1:] {
+				if isReviewerBot(r.User.Login) && classifySecurityBody(r.Body) != secNone {
+					after = append(after, deskkit.SecurityVerdictReview{Body: r.Body, CommitID: r.CommitID, State: r.State,
+						SubmittedAt: r.SubmittedAt})
+				}
+			}
+			dec = deskkit.EvaluateSecurityBodyClearance(deskkit.SecurityBodyInput{
+				FailBody: cr.Body, FailSubmittedAt: cr.SubmittedAt, Head: head, Later: after, LiveBody: liveBody,
+				BodyEditedAt: bodyEditedAt,
+			})
+		} else {
+			dec = deskkit.EvaluateBodyEditReverification(deskkit.BodyEditInput{
+				CRBody: cr.Body, CRSubmittedAt: cr.SubmittedAt, Head: head, Approves: approves, LiveBody: liveBody,
+				BodyEditedAt: bodyEditedAt,
+			})
+		}
 		if !dec.Cleared {
 			return st
 		}
@@ -1127,12 +1182,12 @@ var mergeStateDisplay = reviewflow.MergeStateDisplay
 // unreadable mergeStateStatus) were silently converted into positive verdicts and
 // nothing could see it. TestClassify_ActionInventory drives the real payload shapes
 // through THIS function, not through a hand-built classifyInput.
-func buildClassifyInput(p prBase, rs reviewState, ciRequired bool, zeroCI string) classifyInput {
-	var checks []reviewflow.CheckFact
+func classificationFacts(p prBase, rs reviewState, ciRequired bool, zeroCI string) reviewflow.ClassificationFacts {
+	checks := []reviewflow.CheckFact{}
 	for _, c := range deskkit.LatestRunPerName(p.StatusCheckRollup, check.groupKey, check.recencyKey) {
 		checks = append(checks, reviewflow.CheckFact{Status: c.Status, Conclusion: c.Conclusion, State: c.State})
 	}
-	in := (reviewflow.ClassificationFacts{Change: reviewflow.ChangeFact{Title: p.Title, Body: p.Body, MergeStateStatus: p.MergeStateStatus, IsDraft: p.IsDraft, Labels: p.labelNames(), Checks: checks}, Reviews: reviewflow.ReviewState{
+	return reviewflow.ClassificationFacts{Change: reviewflow.ChangeFact{Title: p.Title, Body: p.Body, MergeStateStatus: p.MergeStateStatus, IsDraft: p.IsDraft, Labels: p.labelNames(), Checks: checks}, Reviews: reviewflow.ReviewState{
 		BodyEditReverified:     rs.bodyEditReverified,
 		Ever:                   rs.ever,
 		AtHead:                 rs.atHead,
@@ -1144,7 +1199,11 @@ func buildClassifyInput(p prBase, rs reviewState, ciRequired bool, zeroCI string
 		LastReviewAt:           rs.lastReviewAt,
 		SuspectNoOp:            rs.suspectNoOp,
 		ExternalPrereqDeclared: rs.externalPrereqDeclared,
-	}, CIRequired: ciRequired, ZeroCI: zeroCI}).ClassifyInput()
+	}, CIRequired: ciRequired, ZeroCI: zeroCI}
+}
+
+func buildClassifyInput(p prBase, rs reviewState, ciRequired bool, zeroCI string) classifyInput {
+	in := classificationFacts(p, rs, ciRequired, zeroCI).ClassifyInput()
 	return classifyInput{
 		ever:                    in.Ever,
 		atHead:                  in.AtHead,
@@ -1643,6 +1702,10 @@ func fetchAndMapGateScores() (map[string]int, error) {
 // concurrent sweep shares no mutable state — the merge happens after the sweep, in a
 // deterministic order (see cmdActions).
 type actionsPartial struct {
+	resolved []resolvedReview
+	// The current queue snapshot's repository scalar, never saved in prfacts.
+	visibility string
+
 	rows        []actionRow
 	external    []externalRow
 	currentOpen []string // every open PR id seen (quarantined included) — tombstone input
@@ -1654,6 +1717,7 @@ type actionsPartial struct {
 // operation the per-repo → product → full hierarchy is built from: repo partials merge
 // into a product-level partial, product partials merge into the full one.
 func (p *actionsPartial) merge(o actionsPartial) {
+	p.resolved = append(p.resolved, o.resolved...)
 	p.rows = append(p.rows, o.rows...)
 	p.external = append(p.external, o.external...)
 	p.currentOpen = append(p.currentOpen, o.currentOpen...)
@@ -1666,6 +1730,8 @@ func (p *actionsPartial) merge(o actionsPartial) {
 // row. It is what the per-PR fan-out returns; assembling the partial from the outcomes in
 // PR-list order keeps the result byte-identical to the old serial loop.
 type prOutcome struct {
+	resolved *resolvedReview
+
 	id       string
 	external *externalRow
 	row      *actionRow
@@ -1683,7 +1749,7 @@ type prOutcome struct {
 // any global semaphore. It fails CLOSED exactly as the old serial body did: any read/parse
 // error is wrapped-and-repo/PR-named and propagates to fail the whole run, deterministically
 // (lowest-index PR first).
-func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time) (actionsPartial, error) {
+func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time, qualified ...bool) (actionsPartial, error) {
 	var part actionsPartial
 	// repo-level: fetchReviewQueue lists ALL open PRs for the repo AND their reviews in one
 	// read — nothing about the repo can be classified without it, so failing the whole run
@@ -1691,15 +1757,17 @@ func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []stri
 	// kind). The reviews it carries replace classifyPR's per-PR review read (N+1 → 1, and
 	// the head and its reviews come from one consistent instant); a PR it did not carry in
 	// full is read per-item as before.
-	prs, queued, truncated, err := fetchReviewQueue(repo)
+	prs, queued, truncated, visibility, err := fetchReviewQueue(repo)
 	if err != nil {
 		return actionsPartial{}, err // fail the whole run, name the repo
 	}
 	part.truncated = truncated
+	part.visibility = visibility
 	ciRequired := deskkit.CIRequired(repo)
 	// #2421: the previous sweep's per-PR facts for this repo (prfacts.go). Saved only when the
 	// whole repo classified, so a failed sweep never replaces good facts with partial ones.
 	facts := loadPRFacts(repo)
+	facts.qualified = len(qualified) > 0 && qualified[0]
 	outcomes, err := sweepConcurrent(prs, sweepConcurrency, func(p prBase) (prOutcome, error) {
 		rv, have := queued[p.Number]
 		return classifyPRFrom(repo, p, rv, have, ciRequired, briefScore, knownBriefs, redBases, now, facts)
@@ -1718,6 +1786,7 @@ func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []stri
 		part.openList = append(part.openList, oc.id)
 		if oc.row != nil {
 			part.rows = append(part.rows, *oc.row)
+			part.resolved = append(part.resolved, *oc.resolved)
 		}
 	}
 	return part, nil
@@ -1790,6 +1859,7 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 	// contract instead of a second degrade mechanism.
 	var rs reviewState
 	var staleGrantNote string
+	var laneReviews []review
 	reviews, err := snapReviews, error(nil)
 	if !haveReviews {
 		reviews, err = fetchReviews(repo, p.Number)
@@ -1811,6 +1881,7 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 				"its committer date: re-anchored from an older head, they verify nothing here (#3093)",
 				stale, short(p.HeadRefOid))
 		}
+		laneReviews = grantReviews
 		rs = reduceReviews(grantReviews, p.HeadRefOid)
 		rs = applyBodyEditReverification(rs, grantReviews, p.HeadRefOid, p.Body, p.LastEditedAt)
 	}
@@ -2004,7 +2075,8 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 		}
 	}
 
-	return prOutcome{id: id, row: &actionRow{
+	resolved := resolveObservation(p, rs, laneReviews, ciRequired, zeroState, in, score, len(degradeReasons) == 0)
+	return prOutcome{id: id, resolved: &resolved, row: &actionRow{
 		Repo: repo, Number: p.Number, Title: p.Title, Action: action,
 		Draft: p.IsDraft, CIPass: pass, CIPending: pending, CIFail: fail,
 		CIUnknown: unknownChecks, CIZero: zeroState, CIZeroDetail: zeroDetail,
@@ -2066,11 +2138,6 @@ func actionsSweep(hdr *Header, mergeNowThreshold, unreviewedThreshold time.Durat
 	mainHealth := assessBranchHealth()
 	redBases := mainHealth.redRepoSet()
 
-	// an internal hardening review: the public-repo risk rule visibility-drift check rides
-	// the actions header the same way mainHealth does, so the periodic surface the finding
-	// asked for is this loop rather than a new cron nobody yet runs.
-	policyAlarm := assessPolicyDrift()
-
 	// Bounded-concurrency sweep (per-repo → product → full). Each repo's work runs in
 	// one of sweepConcurrency workers and returns its own partial; a repo error fails the
 	// whole run, deterministically named. See sweep.go. #1652's zero-CI probe
@@ -2082,6 +2149,14 @@ func actionsSweep(hdr *Header, mergeNowThreshold, unreviewedThreshold time.Durat
 	if err != nil {
 		return nil, err
 	}
+	// The same live queue responses can carry repository visibility. Reuse only
+	// those current-invocation observations; a backend without the scalar still
+	// gets the original explicit live metadata probe. No policy check is dropped.
+	visibility := make(map[string]string, len(repos))
+	for i, repo := range repos {
+		visibility[repo] = partials[i].visibility
+	}
+	policyAlarm := assessPolicyDriftFrom(visibility)
 
 	// Merge per-repo partials → product-level → full. The merge order is deterministic
 	// (products sorted, repos in roster order within each product), and the full report is
@@ -2957,12 +3032,23 @@ type visibilityObservation struct {
 // killing the board. That is the same judgement #295's branch-health probe already makes, and
 // it is stated here rather than inferred from the absence of an error return.
 func assessPolicyDrift() policyDriftAlarm {
+	return assessPolicyDriftFrom(nil)
+}
+
+// assessPolicyDriftFrom accepts only the current invocation's queue observations.
+// Standalone policydrift and unavailable/unknown snapshot values keep the same
+// explicit metadata read and NOT OBSERVED failure behavior as before.
+func assessPolicyDriftFrom(snapshot map[string]string) policyDriftAlarm {
 	scope := deskkit.AllowedRepos()
 	alarm := policyDriftAlarm{Scope: scope}
 
 	// Never errors, by construction: every arm below returns a nil error, so the pool's
 	// fail-closed path is unreachable from here and the discarded error cannot hide one.
 	obs, _ := sweepRepos(scope, boardSweepLimit, func(repo string) (visibilityObservation, error) {
+		switch vis := snapshot[repo]; vis {
+		case "public", "private", "internal":
+			return visibilityObservation{repo: repo, vis: vis, observed: true}, nil
+		}
 		f, fr, ferr := forgeFor(repo)
 		if ferr != nil {
 			return visibilityObservation{repo: repo}, nil // unobserved → reported NOT OBSERVED

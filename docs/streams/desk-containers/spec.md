@@ -63,7 +63,7 @@ macOS and win32.
 | 1 | Base image Dockerfile | `containers/base/Dockerfile` | 01 |
 | 2 | Credential/secret runtime-injection contract + layer-scan check | `containers/secrets.md` (planned), `containers/scripts/layer-secret-scan.sh` (planned) | 02 |
 | 3 | Per-desk Dockerfiles + build matrix + publish wiring | `containers/<desk-name>/Dockerfile` | 03 |
-| 4 | Interactive launch script | `containers/desk-run.sh` (planned) | 04 |
+| 4 | Interactive launch script | `containers/desk-run.sh` (shipped) | 04 |
 | 5 | docker-compose definition | `containers/compose.yaml` (planned) | 05 |
 | 6 | Kubernetes manifests | `containers/k8s/` | 06 |
 | 7 | Multi-desk control layer (tmux/equivalent, macOS + win32) | `containers/control/` (planned) | 07 |
@@ -196,4 +196,8 @@ critical path. Existing images and Evidence are preserved. The PEM-bearing legac
 is labelled transitional; the managed profile consumes existing runner/executor custody.
 Current scope and verification changes are applied to /06, /07 and /08's Kubernetes
 execution consumer (agent-execution/08); new owners are agent-execution/09 and /28–29.
-The execution stream's existing parked/admission status is unchanged.
+When this section was written the execution stream was parked, and this section did not
+change that. Stream admission is carried only by
+[amendment 27](../../proposals/non-ci-architecture/27-agent-execution-environments.md)'s
+status line, effective on the maintainer's merge of
+[PR #4349](https://github.com/medici-finance/assay/pull/4349).

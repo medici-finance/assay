@@ -1,0 +1,5 @@
+# A source path that climbs out of the deskd/ context.
+want: out-of-context-copy
+file: Dockerfile
+replace: "COPY go.mod go.sum ./\n"
+with: "COPY go.mod go.sum ./\nCOPY ../tools/desk /tools/desk\n"

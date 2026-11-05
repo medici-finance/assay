@@ -113,6 +113,14 @@ It never floods the forge:
   · a secondary-rate-limit or 429 signature ends the cycle without further calls,
     marking every remaining repo `MONITOR-DEGRADED: <slug> rate-limited, skipped`.
 
+Qualified mode (launcher-selected, producer/plugin matrix in
+ docs/review-efficiency-compatibility.md): set PR_MONITOR_REVIEW_OBSERVATION to
+ a private artifact path, PR_MONITOR_REVIEW_POLICY to current SelectionPolicy JSON,
+ and PR_MONITOR_REVIEW_CAPACITY to current available proposal capacity. The script
+ collects review-queue once, runs the shared offline planner, emits REVIEW-PLAN and
+ REVIEW-OBSERVATION, and derives events from that same observation. A hold exits 2,
+ invalidates the output and retains prior event baselines; no legacy fallback in-cycle.
+
 Environment:
   PR_MONITOR_STATE_DIR             per-repo state (default $TMPDIR/assay-pr-monitor).
   PR_MONITOR_LIMIT                 per-repo fetch cap for `gh pr list` (default 100).
@@ -135,7 +143,9 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
+if [[ -z "${PR_MONITOR_REVIEW_OBSERVATION:-}" ]]; then
 command -v gh >/dev/null 2>&1 || { echo "pr-monitor: gh CLI not found" >&2; exit 1; }
+fi
 command -v jq >/dev/null 2>&1 || { echo "pr-monitor: jq not found" >&2; exit 1; }
 
 # Numeric knobs must be non-negative integers — a non-numeric value would poison
@@ -229,6 +239,72 @@ statefile() {
   local slug="$1"
   printf '%s/%s.state' "$STATE_DIR" "$(printf '%s' "$slug" | sed 's#/#__#g')"
 }
+
+# Qualified classified mode is explicitly selected by the launcher. The one
+# collector owns the whole configured scope. No legacy read runs on either success
+# or hold; rolling back means selecting the prior recipe on the NEXT cycle.
+CLASSIFIED=0
+CLASSIFIED_JSON=""
+if [[ -n "${PR_MONITOR_REVIEW_OBSERVATION:-}" ]]; then
+  CLASSIFIED=1
+  classified_hold() {
+    # Attempt atomic replacement with private invalid files. If output IO fails,
+    # explicitly reject any surviving prior artifact as evidence for this cycle.
+    local invalid target
+    # Report the hold before attempting IO: even an unwritable output directory
+    # must wake the monitor owner. Never truncate a possibly replaced symlink.
+    printf 'MONITOR-DEGRADED: complete review cycle held (%s); use the supported legacy recipe next cycle or repair and retry; no PR dropped\n' "$1"
+    for target in "$PR_MONITOR_REVIEW_OBSERVATION" "${PR_MONITOR_REVIEW_OBSERVATION}.plan"; do
+      if invalid=$(mktemp "${target}.XXXXXX"); then
+        if ! mv "$invalid" "$target"; then
+          rm -f "$invalid"
+          printf 'MONITOR-DEGRADED: artifact invalidation failed (replacement unavailable); previous output may remain and must not be reused\n'
+        fi
+      else
+        printf 'MONITOR-DEGRADED: artifact invalidation failed (temporary file unavailable); previous output may remain and must not be reused\n'
+      fi
+    done
+    exit 2
+  }
+  [[ "$MAX_REPOS" -eq 0 ]] || classified_hold "classified mode requires the full scope, no cursor cap"
+  [[ -n "${PR_MONITOR_REVIEW_POLICY:-}" && -n "${PR_MONITOR_REVIEW_CAPACITY:-}" ]] || classified_hold "explicit current policy and capacity required"
+  [[ "$PR_MONITOR_REVIEW_CAPACITY" =~ ^[0-9]+$ ]] || classified_hold "capacity must be nonnegative"
+  command -v deskboard >/dev/null 2>&1 && command -v reviewloop >/dev/null 2>&1 || classified_hold "qualified producer tools unavailable"
+  # Producer-first release gate. Do not guess a future release or auto-upgrade a pin.
+  for tool in deskboard reviewloop; do
+    v=$("$tool" --version 2>/dev/null) || classified_hold "producer version unavailable"
+    tag="${v##*releaseTag=}"
+    if ! printf '%s' "$tag" | awk -F. '$1 ~ /^v[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { if (substr($1,2)>1 || (substr($1,2)==1 && ($2>0 || ($2==0 && $3>=59)))) ok=1 } END {exit !ok}'; then
+      classified_hold "producer requires released v1.0.59 or later"
+    fi
+  done
+  observed=$(mktemp "${PR_MONITOR_REVIEW_OBSERVATION}.XXXXXX") || classified_hold "artifact directory unavailable"
+  planned=$(mktemp "${PR_MONITOR_REVIEW_OBSERVATION}.XXXXXX") || { rm -f "$observed"; classified_hold "plan scratch unavailable"; }
+  if ! deskboard review-queue --out "$observed" > /dev/null; then
+    rm -f "$observed" "$planned"
+    classified_hold "review-queue incomplete, quarantined, degraded or unavailable"
+  fi
+  # Explicit requested scope comes from the launcher's repo list, not the artifact.
+  scope=$(printf '%s\n' "${REPOS[@]}" | jq -Rsc 'split("\n") | map(select(length>0) | {provider:"github",host:"github.com",repository:ascii_downcase})')
+  moment=$(jq -nr 'now as $n | ($n | todateiso8601 | rtrimstr("Z")) + "." + (("000000" + (($n - ($n|floor))*1000000|floor|tostring))[-6:]) + "Z"')
+  oldest=$(jq -nr 'now - 300 | todateiso8601')
+  selection=$(jq -nc --argjson policy "$PR_MONITOR_REVIEW_POLICY" --argjson capacity "$PR_MONITOR_REVIEW_CAPACITY" --argjson scope "$scope" --arg oldest "$oldest" --slurpfile o "$observed" \
+    '{Policy:$policy,Capacity:$capacity,Scope:$scope,ObservationPolicy:$o[0].inputs.policy,Oldest:$oldest}') || {
+      rm -f "$observed" "$planned"; classified_hold "policy invocation invalid";
+    }
+  if ! reviewloop plan --snapshot "$observed" --selection "$selection" --now "$moment" > "$planned"; then
+    rm -f "$observed" "$planned"; classified_hold "shared planner refused observation/policy";
+  fi
+  CLASSIFIED_JSON=$(jq -ce '[.inputs.changes[] | {repo:.identity.repository.repository, number:.identity.number, headRefOid:.identity.head, isDraft:.facts.change.IsDraft, state:"OPEN", mergeStateStatus:.facts.change.MergeStateStatus}]' "$observed") || {
+    rm -f "$observed" "$planned"; classified_hold "invalid classified event inputs";
+  }
+  # Hand off private artifact paths, not the full population on every wake.
+  # The complete plan remains advisory and consumers validate the observation.
+  mv "$planned" "${PR_MONITOR_REVIEW_OBSERVATION}.plan" || { rm -f "$observed" "$planned"; classified_hold "plan publication failed"; }
+  mv "$observed" "$PR_MONITOR_REVIEW_OBSERVATION" || { rm -f "$observed"; classified_hold "artifact publication failed"; }
+  printf 'REVIEW-PLAN: %s\n' "${PR_MONITOR_REVIEW_OBSERVATION}.plan"
+  printf 'REVIEW-OBSERVATION: %s\n' "$PR_MONITOR_REVIEW_OBSERVATION"
+fi
 
 CURSOR_FILE="$STATE_DIR/.cursor"
 
@@ -365,12 +441,15 @@ while [[ "$idx" -lt "$proc_n" ]]; do
   # and the captured-stderr file is emptied so a stale rate-limit signature from
   # an earlier repo cannot be mistaken for this one's.
   mint_failed=0
-  if ! mint_for_repo "$repo"; then
+  if [[ "$CLASSIFIED" -eq 0 ]] && ! mint_for_repo "$repo"; then
     mint_failed=1
     : > "$TMP_ERR"
   fi
 
-  if [[ "$mint_failed" -eq 1 ]]; then
+  if [[ "$CLASSIFIED" -eq 1 ]]; then
+    hits=$(printf '%s' "$CLASSIFIED_JSON" | jq -c --arg repo "$(printf '%s' "$repo" | tr '[:upper:]' '[:lower:]')" '[.[] | select(.repo==$repo)]')
+    read_ok=1
+  elif [[ "$mint_failed" -eq 1 ]]; then
     read_ok=0
     hits=""
   else
@@ -422,7 +501,7 @@ while [[ "$idx" -lt "$proc_n" ]]; do
     cur_n=$(countlines "$TMP_CUR")
     # A read that comes back at EXACTLY the limit is TRUNCATED: `gh` keeps only
     # the newest LIMIT and gives no truncation signal of its own.
-    [[ "$cur_n" -ge "$LIMIT" ]] && at_limit=1
+    [[ "$CLASSIFIED" -eq 0 && "$cur_n" -ge "$LIMIT" ]] && at_limit=1
   else
     cur_n=0
   fi

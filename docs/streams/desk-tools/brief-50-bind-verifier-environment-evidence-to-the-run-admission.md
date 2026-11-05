@@ -23,15 +23,15 @@ outcome: none
 version: 2
 id: b5cb55be-755f-4166-8f27-cfe3af63556c
 consumers:
-  - "tools/desk/internal/deskkit/flow_50_test.go: follow-up desk-tools/50 (planned test contract)"
-  - "tools/desk/cmd/verifyloop/flow_50_test.go: follow-up desk-tools/50 (planned test contract)"
-  - "tools/desk/internal/deskkit/preflight.go: follow-up desk-tools/50 (this implementation brief)"
-  - "tools/desk/cmd/verifyloop/preflight.go: follow-up desk-tools/50 (this implementation brief)"
-  - "tools/desk/cmd/verifyloop/dispatch.go: follow-up desk-tools/50 (this implementation brief)"
-  - "tools/desk/cmd/verifyloop/association.go: follow-up desk-tools/50 (this implementation brief)"
-  - "tools/desk/cmd/verifyloop/attestation.go: follow-up desk-tools/50 (this implementation brief)"
-  - "tools/desk/internal/deskkit/verifierattestation.go: follow-up desk-tools/50 (this implementation brief)"
-  - "changelog/verifier-world-evidence.md: follow-up desk-tools/50 (this implementation brief)"
+  - "tools/desk/internal/deskkit/flow_50_test.go: fixed-here (planned test contract)"
+  - "tools/desk/cmd/verifyloop/flow_50_test.go: fixed-here (planned test contract)"
+  - "tools/desk/internal/deskkit/preflight.go: fixed-here (this implementation brief)"
+  - "tools/desk/cmd/verifyloop/preflight.go: fixed-here (this implementation brief)"
+  - "tools/desk/cmd/verifyloop/dispatch.go: fixed-here (this implementation brief)"
+  - "tools/desk/cmd/verifyloop/association.go: fixed-here (this implementation brief)"
+  - "tools/desk/cmd/verifyloop/attestation.go: fixed-here (this implementation brief)"
+  - "tools/desk/internal/deskkit/verifierattestation.go: fixed-here (this implementation brief)"
+  - "changelog/verifier-world-evidence.md: fixed-here (this implementation brief)"
 ---
 
 # Brief 50 — Bind verifier environment evidence to the run admission

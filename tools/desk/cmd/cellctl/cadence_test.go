@@ -156,6 +156,11 @@ func init() {
 		fmt.Fprintln(f, "pass")
 		f.Close()
 	}
+	if os.Getenv("FIXTURE_CACHE_WRITE") == "1" {
+		if os.WriteFile(filepath.Join(os.Getenv("GOCACHE"), "cadence-result"), []byte("compiled result"), 0600) != nil {
+			os.Exit(27)
+		}
+	}
 	for i, a := range os.Args[1:] {
 		if a == "--output-last-message" && i+2 < len(os.Args) {
 			if os.WriteFile(os.Args[i+2], []byte(final), 0600) != nil {

@@ -4,14 +4,14 @@
     "name": "CONTROL: judge Evidence source against the destination again",
     "file": "cmd/deskevidence/deskevidence.go",
     "old": "publishEvidenceIdentityGate(*root, receipt)",
-    "new": "publishIdentityGate(*root, branch)"
+    "new": "publishIdentityGate(*root, branch, \"\", \"\")"
   },
   "mutations": [
     {
       "name": "outcome lane judges the source against its older destination",
       "file": "cmd/deskevidence/outcomerecord.go",
       "old": "publishEvidenceIdentityGate(root, receipt)",
-      "new": "publishIdentityGate(root, branch)"
+      "new": "publishIdentityGate(root, branch, \"\", \"\")"
     },
     {
       "name": "conditional write discards the immutable admitted source",
@@ -34,8 +34,8 @@
     {
       "name": "confirmed destination skips new-commit identity gate",
       "file": "cmd/deskpr/createpublish.go",
-      "old": "if err := publishIdentityGate(s.dir, base, tip, head.String()); err != nil {",
-      "new": "if err := publishIdentityGate(s.dir, base, tip, head.String()); false && err != nil {"
+      "old": "if err := publishIdentityGate(s.dir, base, tip, \"\", head.String()); err != nil {",
+      "new": "if err := publishIdentityGate(s.dir, base, tip, \"\", head.String()); false && err != nil {"
     }
   ]
 }

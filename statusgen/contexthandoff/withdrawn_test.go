@@ -33,7 +33,7 @@ func TestWithdrawalHandoffIsVersioned(t *testing.T) {
 	if err != nil || again.Digest() != h.Digest() {
 		t.Fatal("v2 canonical roundtrip changed provenance")
 	}
-	if _, err := DecodeHandoff(bytes.Replace(v2, []byte("context-handoff-v2"), []byte("context-handoff-v3"), 1)); err == nil {
+	if _, err := DecodeHandoff(bytes.Replace(v2, []byte("context-handoff-v2"), []byte("context-handoff-v4"), 1)); err == nil {
 		t.Fatal("future schema silently accepted")
 	}
 }

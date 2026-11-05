@@ -41,21 +41,12 @@ id: 7bcc1459-688f-41b7-9260-3d1b9a8e7166
 
 files:
 - `tools/desk/cmd/deskboard/scope.go` — the owner-wide PR search (`ownersOf`).
-- `tools/desk/cmd/deskboard/health.go` — the commit-history listing (`fetchRecentCommits`) and
-  the per-commit check-runs read (`fetchCheckRuns`).
-- `tools/desk/cmd/deskboard/stalled.go` — the single-commit read (`fetchHeadCommit`), the PR
-  conversation-comments read (`fetchLastAuthorComment`), and the behind-main compare
-  (`fetchBehindMain`).
-- `tools/desk/cmd/deskboard/zeroci.go` — the combined-status total (`fetchCombinedStatusTotal`),
-  the workflow-directory listing (`listWorkflowFiles`), and a workflow file read
-  (`fetchWorkflowContent`).
-- `tools/desk/cmd/deskboard/board.go` — the remaining REST reads that ride `ghRun`
-  (`fetchReviews`, `fetchChangedFiles`, `changedFilesBetween`, `fetchLabelEvents`, the queue's
-  issues-by-label walk, `cmdDiff`'s raw PR diff, `cmdFiles`' contents read, the policy-drift
-  repo-metadata reads) and the `ghRun` choke point + the `cmd/deskboard/board.go::ghRun::gh`
-  permit row itself.
+- `tools/desk/cmd/deskboard/health.go` — the commit-history listing (`fetchRecentCommits`) and the per-commit check-runs read (`fetchCheckRuns`).
+- `tools/desk/cmd/deskboard/stalled.go` — the single-commit read (`fetchHeadCommit`), the PR conversation-comments read (`fetchLastAuthorComment`), and the behind-main compare (`fetchBehindMain`).
+- `tools/desk/cmd/deskboard/zeroci.go` — the combined-status total (`fetchCombinedStatusTotal`), the workflow-directory listing (`listWorkflowFiles`), and a workflow file read (`fetchWorkflowContent`).
+- `tools/desk/cmd/deskboard/board.go` — the remaining REST reads that ride `ghRun` (`fetchReviews`, `fetchChangedFiles`, `changedFilesBetween`, `fetchLabelEvents`, the queue's issues-by-label walk, `cmdDiff`'s raw PR diff, `cmdFiles`' contents read, the policy-drift repo-metadata reads) and the `ghRun` choke point + the `cmd/deskboard/board.go::ghRun::gh` permit row itself.
 - `tools/desk/cmd/deskboard/prstate.go` — the tombstone PR-state read (`fetchPRState`).
-- `tools/desk/internal/deskkit/forge.go` and both backends — the new read ops.
+- `tools/desk/internal/deskkit/forge.go` — and both backends: the new read ops.
 - `docs/streams/forge-gitlab/inventory.md` — every newly enumerated op and its GitLab mapping.
 
 **Why the risk answers are all `no`.** These are reads. No credential, permission or trust

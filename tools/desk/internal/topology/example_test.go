@@ -250,7 +250,7 @@ func TestPublicExampleBoundaryPositiveControl(t *testing.T) {
 				{Slug: "example-org/tracker"},
 				{Slug: "some-house-org/private-thing"},
 			},
-			Apps:   []App{{Role: "reviewer", ID: 4331323, IDSet: true}},
+			Apps:   []App{{Role: "reviewer", ID: 7051864, IDSet: true}},
 			Humans: []Human{{Name: "someone", Login: "someone"}},
 		}
 		joined := strings.Join(examplePublishabilityFindings(bad), "\n")

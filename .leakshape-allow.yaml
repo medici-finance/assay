@@ -438,11 +438,6 @@ allow:
     sha256:
       - 26bb3f88e2e30ad7da987e34a7ed3dc76e34af9362eab3c82ada8278426765ce
     reason: *fx-ssh
-  - path: tools/desk/cmd/deskwt/main.go
-    shape: ssh-host-alias
-    sha256:
-      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
-    reason: *doc-ssh
   - path: tools/desk/cmd/deskwt/pushtransport_test.go
     shape: ssh-host-alias
     sha256:

@@ -123,6 +123,25 @@ func TestEditRefusesATrailerChange(t *testing.T) {
 		}
 	})
 
+	// regression: F-resolving-trailer
+	// Turning `Issue: #77` (related, do not close) into `Fixes: #77` (close on merge) on an
+	// existing PR changes what the link asserts, so it is a trailer change and is refused.
+	t.Run("issue to resolving", func(t *testing.T) {
+		work := newBaseFixture(t)
+		calls := withEnv(t, work)
+		t.Setenv("FAKEGH_LIST_HAS_PR", "1")
+		t.Setenv("FAKEGH_PR_BODY", "the original body\nIssue: #77\n")
+		bodyPath := writeTempFile(t, "corrected text\nFixes: #77\n")
+
+		rc := run([]string{"edit", "--body-file", bodyPath})
+		if rc != deskkit.ExitRefused {
+			t.Fatalf("edit Issue: -> Fixes: rc = %d, want %d (refused)", rc, deskkit.ExitRefused)
+		}
+		if got := editCalls(*calls); len(got) != 0 {
+			t.Fatalf("the refusal still edited the PR: %v", got)
+		}
+	})
+
 	// Removal is the same rule seen from the other side, and it is caught EARLIER — by the
 	// same requireTrailer grammar create runs, before any network call. Asserting it here
 	// pins that a replacement body cannot simply drop the link.

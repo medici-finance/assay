@@ -62,6 +62,11 @@ func TestAgentReleaseLineHasCred(t *testing.T) {
 			case "review":
 				args = append(args, "--pr", "547")
 			case "verifier":
+				// This prompt test needs a valid model-gated brief; unreadable YAML
+				// deliberately takes the conservative human-gate path.
+				if err := os.WriteFile(filepath.Join(root, "spec.md"), []byte("---\ngate: model\n---\n# fixture\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
 				args = append(args, "--model", "gpt-6-astra", "--brief", "spec.md")
 			}
 			if rc := run(args); rc != deskkit.ExitOK {

@@ -61,6 +61,18 @@ var (
 	// ErrCancelFailed: the adapter returned an error for a cancel request, so
 	// the request may not have been taken. The recorded state is unchanged.
 	ErrCancelFailed = errors.New("runner: the adapter failed the cancel request")
+	// ErrProfileMismatch: a declared, pinned or observed execution profile
+	// (harness, model binding, backend, runner profile, role or digest) is not
+	// the qualified one the request pinned. Nothing is substituted for it.
+	ErrProfileMismatch = errors.New("runner: execution profile differs from the pinned qualified profile")
+	// ErrProfileUnreported: a launch governed by the execution-profile
+	// extension finished without an execution report. Unreported is unknown,
+	// and unknown is not the pinned profile.
+	ErrProfileUnreported = errors.New("runner: execution profile was not reported")
+	// ErrCapabilityUnknown: a mandatory capability's support is declared or
+	// observed as unknown. It refuses like unsupported, and is never read as
+	// either supported or unsupported.
+	ErrCapabilityUnknown = errors.New("runner: support for a mandatory capability is unknown")
 )
 
 // opaque carries an error from outside the contract (an adapter, a fence)

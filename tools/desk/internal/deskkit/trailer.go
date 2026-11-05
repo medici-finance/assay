@@ -1,9 +1,12 @@
 package deskkit
 
 import (
+	"github.com/medici-finance/assay/statusgen/workref/trailers"
+
 	"fmt"
-	"regexp"
 	"strings"
+
+	"github.com/medici-finance/assay/statusgen/workref"
 )
 
 // trailer is the PR-body link grammar (example-stream/02). A PR body must carry
@@ -23,108 +26,19 @@ import (
 // shadow the implementation it is waiting for.
 
 // TrailerKind is which link kind a trailer line carries.
-type TrailerKind string
+type TrailerKind = trailers.TrailerKind
 
 const (
-	// TrailerBrief is `Brief: ...` — the PR delivers a brief.
-	TrailerBrief TrailerKind = "brief"
-	// TrailerIssue is `Issue: #<N>` — issue-only work, no brief.
-	TrailerIssue TrailerKind = "issue"
-	// TrailerAuthors is `Authors: <stream>/<NN>[, <stream>/<NN> …]` — the PR AUTHORS
-	// (writes the files of) the named briefs and delivers none of them. Value is the raw
-	// list; SplitAuthorsTrailer reduces it to brief ids.
-	TrailerAuthors TrailerKind = "authors"
-	// TrailerCrossRepoBrief is `Cross-repo-brief: <alias>:<stream>/<NN>` — the PR delivers a
-	// brief homed (tracked) in ANOTHER repo, named by its graph-repos.yaml alias
-	// (medici-finance/assay#2748). Value is the raw `<alias>:<stream>/<NN>`;
-	// SplitCrossRepoBriefTrailer validates it.
-	TrailerCrossRepoBrief TrailerKind = "cross-repo-brief"
+	TrailerBrief          = trailers.TrailerBrief
+	TrailerIssue          = trailers.TrailerIssue
+	TrailerAuthors        = trailers.TrailerAuthors
+	TrailerCrossRepoBrief = trailers.TrailerCrossRepoBrief
 )
 
-// Trailer is one parsed trailer line. Line is the 1-based line number in the body.
-type Trailer struct {
-	Kind  TrailerKind
-	Value string // trimmed value after the colon; for Issue, the bare number ("123")
-	Line  int
-}
-
-var (
-	reTrailerBrief = regexp.MustCompile(`^[ \t]*Brief:[ \t]*(\S.*?)[ \t]*$`)
-	reTrailerIssue = regexp.MustCompile(`^[ \t]*Issue:[ \t]*#?[ \t]*([0-9]+)[ \t]*$`)
-	reTrailerAuth  = regexp.MustCompile(`^[ \t]*Authors:[ \t]*(\S.*?)[ \t]*$`)
-	reTrailerXR    = regexp.MustCompile(`^[ \t]*Cross-repo-brief:[ \t]*(\S.*?)[ \t]*$`)
-	// reCrossRepoBriefValue is the one accepted Cross-repo-brief: value: the registry alias grammar,
-	// one colon, then the slash-form brief id — exactly the `<alias>:<stream>/<NN>` item key
-	// deskdispatch accepts, so a lane can hand the value straight back to it.
-	reCrossRepoBriefValue = regexp.MustCompile(`^([a-z][a-z0-9_-]{0,31}):([^:/\s]+)/([0-9]+)$`)
-	reFenceOpen           = regexp.MustCompile("^[ \t]*```")
-)
-
-// ErrTrailerDuplicate reports a second Brief: (or second Issue:, or second Authors:) trailer.
-type ErrTrailerDuplicate struct {
-	Kind      TrailerKind
-	FirstLine int
-	Line      int
-}
-
-func (e *ErrTrailerDuplicate) Error() string {
-	return fmt.Sprintf("duplicate %s: trailer (first at line %d, again at line %d) — exactly one link per PR body",
-		e.Kind, e.FirstLine, e.Line)
-}
-
-// ErrTrailerBoth reports a body carrying both a Brief: and an Issue: trailer.
-type ErrTrailerBoth struct {
-	BriefLine int
-	IssueLine int
-}
-
-func (e *ErrTrailerBoth) Error() string {
-	return fmt.Sprintf("both Brief: (line %d) and Issue: (line %d) trailers present — exactly one link per PR body",
-		e.BriefLine, e.IssueLine)
-}
-
-// ErrTrailerMixed reports a body carrying an Authors: trailer together with a Brief: or
-// an Issue: trailer. A PR either authors briefs, delivers one, or does issue-only work;
-// one link per body keeps the board's edge unambiguous. (Brief: with Issue: and no
-// Authors: stays ErrTrailerBoth, unchanged.) Kinds and Lines are parallel, in body order.
-type ErrTrailerMixed struct {
-	Kinds []TrailerKind
-	Lines []int
-}
-
-func (e *ErrTrailerMixed) Error() string {
-	parts := make([]string, len(e.Kinds))
-	for i, k := range e.Kinds {
-		parts[i] = fmt.Sprintf("%s: (line %d)", trailerKeyword(k), e.Lines[i])
-	}
-	return strings.Join(parts, " and ") + " trailers present — exactly one link per PR body " +
-		"(a PR authors briefs, delivers one brief, or does issue-only work)"
-}
-
-// Has reports whether kind is one of the mixed trailers.
-func (e *ErrTrailerMixed) Has(kind TrailerKind) bool {
-	for _, k := range e.Kinds {
-		if k == kind {
-			return true
-		}
-	}
-	return false
-}
-
-// trailerKeyword is the literal keyword a kind is written with in a PR body.
-func trailerKeyword(k TrailerKind) string {
-	switch k {
-	case TrailerBrief:
-		return "Brief"
-	case TrailerIssue:
-		return "Issue"
-	case TrailerAuthors:
-		return "Authors"
-	case TrailerCrossRepoBrief:
-		return "Cross-repo-brief"
-	}
-	return string(k)
-}
+type Trailer = trailers.Trailer
+type ErrTrailerDuplicate = trailers.ErrTrailerDuplicate
+type ErrTrailerBoth = trailers.ErrTrailerBoth
+type ErrTrailerMixed = trailers.ErrTrailerMixed
 
 // WHY `Cross-repo-brief:` IS ITS OWN KIND (medici-finance/assay#2748). A brief homed in one repo
 // may be delivered by a PR in another. A `Brief:` line there would be read by every reader in the
@@ -139,11 +53,11 @@ func trailerKeyword(k TrailerKind) string {
 // brief id with a numeric NN — and ok is false for anything else. The alias resolves through
 // graph-repos.yaml elsewhere (deskpr checks it is registered and is not the registry's own self).
 func SplitCrossRepoBriefTrailer(v string) (alias, stream, nn string, ok bool) {
-	m := reCrossRepoBriefValue.FindStringSubmatch(strings.TrimSpace(v))
-	if m == nil {
+	parsed, err := workref.Parse(v, workref.LegacyCrossRepo)
+	if err != nil {
 		return "", "", "", false
 	}
-	return m[1], m[2], m[3], true
+	return parsed.Repo, parsed.Stream, parsed.Number, true
 }
 
 // SplitAuthorsTrailer reduces an `Authors:` trailer value — one or more brief ids
@@ -186,30 +100,11 @@ func SplitAuthorsTrailer(v string) ([]string, error) {
 // graph-repos.yaml elsewhere and are not needed for the reduction here. NN must be
 // numeric. ok is false when v is not a well-formed brief trailer value.
 func SplitBriefTrailer(v string) (stream, nn string, ok bool) {
-	v = strings.TrimSpace(v)
-	var parts []string
-	if strings.Contains(v, ":") {
-		parts = strings.Split(v, ":")
-		if len(parts) < 2 {
-			return "", "", false
-		}
-		stream, nn = parts[len(parts)-2], parts[len(parts)-1]
-	} else {
-		parts = strings.Split(v, "/")
-		if len(parts) != 2 {
-			return "", "", false
-		}
-		stream, nn = parts[0], parts[1]
-	}
-	if stream == "" || nn == "" {
+	parsed, err := workref.Parse(v, workref.LegacyTrailer)
+	if err != nil {
 		return "", "", false
 	}
-	for _, c := range nn {
-		if c < '0' || c > '9' {
-			return "", "", false
-		}
-	}
-	return stream, nn, true
+	return parsed.Stream, parsed.Number, true
 }
 
 // CanonicalBriefID reduces a `Brief:` trailer value to the canonical brief id
@@ -230,60 +125,10 @@ func CanonicalBriefID(v string) string {
 // two different kinds, is a multiplicity error (the caller refuses). A body with no
 // trailer is NOT an error here — the caller decides what absence means (deskpr
 // refuses it). An Authors: value is returned raw; SplitAuthorsTrailer validates it.
-func ParseTrailers(body []byte) ([]Trailer, error) {
-	var trs []Trailer
-	var firstBrief, firstIssue, firstAuth, firstXR int
-	inFence := false
-	for i, raw := range strings.Split(string(body), "\n") {
-		line := i + 1
-		if reFenceOpen.MatchString(raw) {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
-			continue
-		}
-		switch {
-		case reTrailerBrief.MatchString(raw):
-			v := strings.TrimSpace(reTrailerBrief.FindStringSubmatch(raw)[1])
-			if firstBrief != 0 {
-				return nil, &ErrTrailerDuplicate{Kind: TrailerBrief, FirstLine: firstBrief, Line: line}
-			}
-			firstBrief = line
-			trs = append(trs, Trailer{Kind: TrailerBrief, Value: v, Line: line})
-		case reTrailerIssue.MatchString(raw):
-			v := reTrailerIssue.FindStringSubmatch(raw)[1]
-			if firstIssue != 0 {
-				return nil, &ErrTrailerDuplicate{Kind: TrailerIssue, FirstLine: firstIssue, Line: line}
-			}
-			firstIssue = line
-			trs = append(trs, Trailer{Kind: TrailerIssue, Value: v, Line: line})
-		case reTrailerAuth.MatchString(raw):
-			v := strings.TrimSpace(reTrailerAuth.FindStringSubmatch(raw)[1])
-			if firstAuth != 0 {
-				return nil, &ErrTrailerDuplicate{Kind: TrailerAuthors, FirstLine: firstAuth, Line: line}
-			}
-			firstAuth = line
-			trs = append(trs, Trailer{Kind: TrailerAuthors, Value: v, Line: line})
-		case reTrailerXR.MatchString(raw):
-			v := strings.TrimSpace(reTrailerXR.FindStringSubmatch(raw)[1])
-			if firstXR != 0 {
-				return nil, &ErrTrailerDuplicate{Kind: TrailerCrossRepoBrief, FirstLine: firstXR, Line: line}
-			}
-			firstXR = line
-			trs = append(trs, Trailer{Kind: TrailerCrossRepoBrief, Value: v, Line: line})
-		}
-	}
-	if (firstAuth != 0 || firstXR != 0) && len(trs) > 1 {
-		mixed := &ErrTrailerMixed{}
-		for _, t := range trs {
-			mixed.Kinds = append(mixed.Kinds, t.Kind)
-			mixed.Lines = append(mixed.Lines, t.Line)
-		}
-		return nil, mixed
-	}
-	if firstBrief != 0 && firstIssue != 0 {
-		return nil, &ErrTrailerBoth{BriefLine: firstBrief, IssueLine: firstIssue}
-	}
-	return trs, nil
+func ParseTrailers(body []byte) ([]Trailer, error) { return trailers.ParseStrict(body) }
+
+// ResolveWorkTrailer is the explicit typed adapter for negotiated callers. It
+// retains exact selectors; existing operational trailer readers remain legacy.
+func ResolveWorkTrailer(v string, declaring *workref.Context, registry workref.Registry) (workref.Result, error) {
+	return workref.Resolve(v, declaring, registry, workref.TypedBrief)
 }

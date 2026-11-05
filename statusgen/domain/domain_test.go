@@ -287,6 +287,9 @@ func TestDomainSchemaFixtures(t *testing.T) {
 		t.Fatalf("fixtures not found: %v", e)
 	}
 	for _, file := range files {
+		if filepath.Base(filepath.Dir(file)) == "context" {
+			continue
+		}
 		t.Run(filepath.Base(file), func(t *testing.T) {
 			data, e := os.ReadFile(file)
 			if e != nil {

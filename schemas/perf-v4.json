@@ -1,0 +1,823 @@
+{
+  "$comment": "Exact known members derive from canonical perfrec reference structs. The codec additionally enforces duplicate rejection, maximum nesting 32, JSONL bytes smaller than 1 MiB including newline, work-reference relationships, identity privacy, UTF-8 byte limits and all cross-field coverage/aggregate invariants. Registered v1 member sets, fixed vocabularies, rosters, patterns and array bounds are structural constraints; they do not replace canonical Go validation. Unknown optional data is discarded, never a producer API.",
+  "$id": "https://github.com/medici-finance/assay/schemas/perf-v4.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "boundary": {
+      "enum": [
+        "process-init",
+        "caller"
+      ]
+    },
+    "cpu": {
+      "enum": [
+        "measured",
+        "missing",
+        "unsupported",
+        "failed"
+      ]
+    },
+    "cpuMs": {
+      "maximum": 9223372036854775807,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "exit": {
+      "type": "integer"
+    },
+    "extensions": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "object"
+          },
+          "version": {
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "maxProperties": 8,
+      "properties": {
+        "attribution": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "data": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "agentId": {
+                      "pattern": "^$|^[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "coverage": {
+                      "additionalProperties": {
+                        "enum": [
+                          "measured",
+                          "missing",
+                          "invalid",
+                          "unsupported"
+                        ],
+                        "type": "string"
+                      },
+                      "maxProperties": 7,
+                      "propertyNames": {
+                        "enum": [
+                          "sessionId",
+                          "agentId",
+                          "parentAgentId",
+                          "parentInvocationId",
+                          "deskRole",
+                          "role",
+                          "work"
+                        ],
+                        "type": "string"
+                      },
+                      "required": [
+                        "sessionId",
+                        "agentId",
+                        "parentAgentId",
+                        "parentInvocationId",
+                        "deskRole",
+                        "role",
+                        "work"
+                      ],
+                      "type": "object"
+                    },
+                    "deskRole": {
+                      "enum": [
+                        "",
+                        "the-desk",
+                        "worker-desk",
+                        "pr-review-desk",
+                        "verify-desk",
+                        "intake-desk"
+                      ],
+                      "type": "string"
+                    },
+                    "parentAgentId": {
+                      "pattern": "^$|^[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "parentInvocationId": {
+                      "pattern": "^$|^[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "role": {
+                      "enum": [
+                        "",
+                        "coordinate",
+                        "implement",
+                        "review",
+                        "verify",
+                        "triage",
+                        "investigate",
+                        "other"
+                      ],
+                      "type": "string"
+                    },
+                    "sessionId": {
+                      "pattern": "^$|^[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "work": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "brief": {
+                            "pattern": "^$|^[a-z][a-z0-9-]{0,39}:[a-z][a-z0-9-]{0,39}:[a-z][a-z0-9-]{0,39}:[1-9][0-9]{0,8}$",
+                            "type": "string"
+                          },
+                          "briefUuid": {
+                            "pattern": "^$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                            "type": "string"
+                          },
+                          "forge": {
+                            "enum": [
+                              "",
+                              "github",
+                              "gitlab"
+                            ],
+                            "type": "string"
+                          },
+                          "instance": {
+                            "not": {
+                              "pattern": "\\.\\."
+                            },
+                            "pattern": "^$|^[a-z0-9][a-z0-9.-]{0,251}[a-z0-9]$",
+                            "type": "string"
+                          },
+                          "issue": {
+                            "maximum": 2147483647,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "kind": {
+                            "enum": [
+                              "brief",
+                              "issue"
+                            ],
+                            "type": "string"
+                          },
+                          "primary": {
+                            "type": "boolean"
+                          },
+                          "repo": {
+                            "not": {
+                              "pattern": "\\.\\."
+                            },
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "repo"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 8,
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "coverage"
+                  ],
+                  "type": "object"
+                },
+                "version": {
+                  "const": 1
+                }
+              },
+              "required": [
+                "version",
+                "data"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "data": {
+                  "type": "object"
+                },
+                "version": {
+                  "maximum": 2147483647,
+                  "minimum": 2,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "version",
+                "data"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "process": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "data": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "counters": {
+                      "additionalProperties": {
+                        "maximum": 9223372036854775807,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "maxProperties": 10,
+                      "propertyNames": {
+                        "enum": [
+                          "subprocess",
+                          "subprocessMs",
+                          "http",
+                          "cacheLookup",
+                          "cacheHit",
+                          "cacheMiss",
+                          "cacheRefresh",
+                          "waitShared",
+                          "waitFailed",
+                          "waitAbandon"
+                        ],
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
+                    "phaseOverlap": {
+                      "type": "boolean"
+                    },
+                    "phases": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "ms": {
+                            "maximum": 9223372036854775807,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "n": {
+                            "maximum": 9223372036854775807,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "name": {
+                            "maxLength": 64,
+                            "pattern": "^-{0,2}[a-z][a-z0-9-]{0,39}(:[a-z][a-z0-9-]{0,39})?$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "n",
+                          "ms"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 17,
+                      "type": "array"
+                    },
+                    "unavailable": {
+                      "items": {
+                        "enum": [
+                          "subprocess",
+                          "subprocessMs",
+                          "http",
+                          "cacheLookup",
+                          "cacheHit",
+                          "cacheMiss",
+                          "cacheRefresh",
+                          "waitShared",
+                          "waitFailed",
+                          "waitAbandon"
+                        ],
+                        "type": "string"
+                      },
+                      "maxItems": 10,
+                      "type": "array",
+                      "uniqueItems": true
+                    }
+                  },
+                  "required": [
+                    "phases",
+                    "phaseOverlap",
+                    "counters",
+                    "unavailable"
+                  ],
+                  "type": "object"
+                },
+                "version": {
+                  "const": 1
+                }
+              },
+              "required": [
+                "version",
+                "data"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "data": {
+                  "type": "object"
+                },
+                "version": {
+                  "maximum": 2147483647,
+                  "minimum": 2,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "version",
+                "data"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "query": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "data": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "query": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "coalescing": {
+                          "enum": [
+                            "none",
+                            "leader",
+                            "waiter",
+                            "failed",
+                            "abandoned",
+                            "unavailable"
+                          ],
+                          "type": "string"
+                        },
+                        "diagnosticId": {
+                          "pattern": "^$|^[0-9a-f]{32}$",
+                          "type": "string"
+                        },
+                        "logicalCalls": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "operation": {
+                          "enum": [
+                            "query",
+                            "source-query",
+                            "mirror-read",
+                            "refresh",
+                            "poll",
+                            "repair",
+                            "other"
+                          ],
+                          "type": "string"
+                        },
+                        "parentDiagnosticId": {
+                          "pattern": "^$|^[0-9a-f]{32}$",
+                          "type": "string"
+                        },
+                        "providerAttempts": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "providerCoverage": {
+                          "enum": [
+                            "measured",
+                            "missing",
+                            "unknown",
+                            "unsupported",
+                            "failed"
+                          ],
+                          "type": "string"
+                        },
+                        "result": {
+                          "enum": [
+                            "ok",
+                            "partial",
+                            "stale",
+                            "denied",
+                            "error",
+                            "cancelled",
+                            "timeout",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        "source": {
+                          "enum": [
+                            "hit",
+                            "miss",
+                            "stale",
+                            "bypass",
+                            "unavailable"
+                          ],
+                          "type": "string"
+                        },
+                        "transportAttempts": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "operation",
+                        "logicalCalls",
+                        "transportAttempts",
+                        "providerCoverage",
+                        "source",
+                        "coalescing",
+                        "result"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "version": {
+                  "const": 1
+                }
+              },
+              "required": [
+                "version",
+                "data"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "data": {
+                  "type": "object"
+                },
+                "version": {
+                  "maximum": 2147483647,
+                  "minimum": 2,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "version",
+                "data"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "requests": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "data": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "requestCoverage": {
+                      "enum": [
+                        "measured",
+                        "missing",
+                        "unsupported",
+                        "failed"
+                      ],
+                      "type": "string"
+                    },
+                    "requestDrops": {
+                      "maximum": 9223372036854775807,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "requests": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "attempts": {
+                            "maximum": 9223372036854775807,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "bytes": {
+                            "maximum": 9223372036854775807,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "bytesSamples": {
+                            "maximum": 9223372036854775807,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "class": {
+                            "enum": [
+                              "provider",
+                              "authentication",
+                              "service"
+                            ],
+                            "type": "string"
+                          },
+                          "durationBins": {
+                            "items": {
+                              "maximum": 9223372036854775807,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "maxItems": 32,
+                            "minItems": 32,
+                            "type": "array"
+                          },
+                          "durationCoverage": {
+                            "additionalProperties": {
+                              "maximum": 9223372036854775807,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "maxProperties": 4,
+                            "propertyNames": {
+                              "enum": [
+                                "measured",
+                                "missing",
+                                "unsupported",
+                                "failed"
+                              ],
+                              "type": "string"
+                            },
+                            "type": "object"
+                          },
+                          "durationMaxMs": {
+                            "maximum": 9223372036854775807,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "durationSumMs": {
+                            "maximum": 9223372036854775807,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "origin": {
+                            "enum": [
+                              "direct",
+                              "service-passthrough",
+                              "refresh",
+                              "poll",
+                              "repair",
+                              "unknown"
+                            ],
+                            "type": "string"
+                          },
+                          "outcome": {
+                            "enum": [
+                              "2xx",
+                              "3xx",
+                              "304",
+                              "4xx",
+                              "5xx",
+                              "error",
+                              "cancelled",
+                              "timeout"
+                            ],
+                            "type": "string"
+                          },
+                          "pointSamples": {
+                            "maximum": 9223372036854775807,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "points": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "coverage": {
+                                "enum": [
+                                  "measured",
+                                  "estimated",
+                                  "unknown",
+                                  "unsupported",
+                                  "failed",
+                                  "missing"
+                                ],
+                                "type": "string"
+                              },
+                              "method": {
+                                "maxLength": 64,
+                                "pattern": "^$|^-{0,2}[a-z][a-z0-9-]{0,39}(:[a-z][a-z0-9-]{0,39})?$",
+                                "type": "string"
+                              },
+                              "unit": {
+                                "enum": [
+                                  "none",
+                                  "github-points",
+                                  "gitlab-complexity"
+                                ],
+                                "type": "string"
+                              },
+                              "value": {
+                                "maximum": 9223372036854775807,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "version": {
+                                "maxLength": 64,
+                                "pattern": "^$|^-{0,2}[a-z][a-z0-9-]{0,39}(:[a-z][a-z0-9-]{0,39})?$",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "coverage",
+                              "unit"
+                            ],
+                            "type": "object"
+                          },
+                          "protocol": {
+                            "enum": [
+                              "rest",
+                              "graphql",
+                              "http",
+                              "local"
+                            ],
+                            "type": "string"
+                          },
+                          "resource": {
+                            "enum": [
+                              "core",
+                              "search",
+                              "graphql",
+                              "complexity",
+                              "authentication",
+                              "service",
+                              "unknown"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "class",
+                          "origin",
+                          "protocol",
+                          "resource",
+                          "outcome",
+                          "attempts",
+                          "durationCoverage",
+                          "durationBins",
+                          "durationSumMs",
+                          "durationMaxMs",
+                          "bytes",
+                          "bytesSamples",
+                          "points",
+                          "pointSamples"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "requests",
+                    "requestDrops",
+                    "requestCoverage"
+                  ],
+                  "type": "object"
+                },
+                "version": {
+                  "const": 1
+                }
+              },
+              "required": [
+                "version",
+                "data"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "data": {
+                  "type": "object"
+                },
+                "version": {
+                  "maximum": 2147483647,
+                  "minimum": 2,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "version",
+                "data"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,31}$"
+      },
+      "type": "object"
+    },
+    "install": {
+      "pattern": "^[0-9a-f]{32}$",
+      "type": "string"
+    },
+    "invocationId": {
+      "pattern": "^[0-9a-f]{32}$",
+      "type": "string"
+    },
+    "observationKind": {
+      "enum": [
+        "process-summary",
+        "service-client",
+        "service-handler",
+        "provider-work"
+      ]
+    },
+    "profile": {
+      "enum": [
+        "tool",
+        "workflow"
+      ]
+    },
+    "result": {
+      "enum": [
+        "ok",
+        "disabled",
+        "refused",
+        "unverifiable"
+      ]
+    },
+    "role": {
+      "enum": [
+        "none",
+        "coordinate",
+        "implement",
+        "review",
+        "verify",
+        "triage",
+        "investigate",
+        "other"
+      ]
+    },
+    "schema": {
+      "const": "perf-v4"
+    },
+    "sourceSHA": {
+      "pattern": "^([0-9a-f]{7,40}|unpinned)$",
+      "type": "string"
+    },
+    "tool": {
+      "maxLength": 64,
+      "pattern": "^-{0,2}[a-z][a-z0-9-]{0,39}(:[a-z][a-z0-9-]{0,39})?$",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "verb": {
+      "maxLength": 64,
+      "pattern": "^-{0,2}[a-z][a-z0-9-]{0,39}(:[a-z][a-z0-9-]{0,39})?$",
+      "type": "string"
+    },
+    "wallMs": {
+      "maximum": 9223372036854775807,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "ts",
+    "tool",
+    "verb",
+    "role",
+    "boundary",
+    "wallMs",
+    "cpu",
+    "exit",
+    "result",
+    "sourceSHA",
+    "install",
+    "profile",
+    "observationKind",
+    "invocationId",
+    "extensions"
+  ],
+  "title": "Local performance observation v4",
+  "type": "object"
+}

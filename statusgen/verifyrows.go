@@ -1815,21 +1815,15 @@ func verifyRowTable(section string, fn func(verifyRowCells)) {
 // Correcting a CLOSED brief's row is not in scope for the backfill: the row is a
 // historical record of what was actually run. Note the defect in Evidence instead.
 //
-// CLOSED-BRIEF SCOPING — `gotest-run-vacuous` (statusgen/14) and `prose-led-command`. Measured
-// 2026-09-23: 233 of the 684 rows this rule's shape can hit already sit in 62
-// `done` briefs. Emitting one NOTICE per such row would swamp every real run
-// with historical rows nobody is about to rewrite (the same falsification the
-// paragraph above already rules out) and would drown the per-row notices on the
-// OPEN briefs this rule exists to catch before they close. So a brief whose
-// README status is `done` or `verified` emits NO per-row `gotest-run-vacuous`
-// notice; instead the whole run emits exactly ONE summary NOTICE counting the
-// rows and briefs it suppressed, so the class stays visible without being
-// unreadable. A brief absent from its stream's README table (no row at all)
-// counts as open — silence about a brief's status is never grounds to suppress
-// its notices. `prose-led-command` (#1805) is scoped the same way, for the same
-// reason (#1808 review: its advice to mark the command is not actionable on a
-// closed record). Every OTHER rule is unscoped by brief status; this scoping
-// applies to these two tags only.
+// CLOSED-BRIEF SCOPING (statusgen/28). A pre-existing closed record's findings are
+// emitted here like any other — one line per row, per rule, never summarised or
+// dropped by this function. WHICH of them are historical, and how their totals
+// are reported, is decided in ONE place, notice_report.go (the shared reporter
+// that `--lint`, `--lint --json` and the differential all use). This function
+// used to keep its own private aggregates for gotest-run-vacuous,
+// prose-led-command and the strength tags — a second, independent
+// classification — and so could not be counted, listed (`--all`) or compared
+// consistently with the other rule families.
 //
 // This is the R1–R10 family's (and the two scoped tags') NOTICE surface, with no
 // merge-base and without the R11–R13 strength heuristics, which are
@@ -1842,18 +1836,12 @@ func unfailableRowNotices(streams []*Stream) []string {
 // unfailableRowAudit applies every row rule (rowFindingsCtx) and the per-table
 // R13 check to every brief. With baseOK, a brief whose README status is
 // verified/done and which is NOT in grandfathered is a closure THIS branch made
-// (post-base): its R1–R10 findings are PROBLEMs (verify-integrity/03), and it
-// is exempt from the closed-brief scoping above — the branch closing it is the
-// moment its rows can still be fixed. Every other finding is a NOTICE. With
+// (post-base): its R1–R10 findings are PROBLEMs (verify-integrity/03) — the
+// branch closing it is the moment its rows can still be fixed. Every other
+// finding is a NOTICE (the shared reporter marks a pre-existing closed record's
+// as historical). With
 // strength false the R11–R13 heuristics are skipped.
 func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK, strength bool) (problems, notices []string) {
-	closedRows := 0
-	closedBriefs := map[string]bool{}
-	closedProseRows := 0
-	closedProseBriefs := map[string]bool{}
-	closedStrength := 0
-	closedStrengthBriefs := map[string]bool{}
-
 	for _, s := range streams {
 		statusByNum := map[string]string{}
 		for _, b := range s.Briefs {
@@ -1873,7 +1861,6 @@ func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK
 				closed = status == "done" || status == "verified"
 			}
 			postBase := closed && okName && baseOK && !grandfathered[briefID]
-			scoped := closed && !postBase // a pre-existing closed record
 			verify := bf.Verify
 			if closed {
 				if plan, refusal := protectedAcceptance(bf.Verify, bf.Evidence, path); refusal == "" {
@@ -1893,21 +1880,6 @@ func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK
 					if !strength && (f.rule == ruleTriviallyGreen || f.rule == ruleNoOutputAssert) {
 						continue
 					}
-					if scoped && f.rule == ruleGoTestRunVacuous {
-						closedRows++
-						closedBriefs[briefID] = true
-						continue
-					}
-					if scoped && f.rule == ruleProseLedCommand {
-						closedProseRows++
-						closedProseBriefs[briefID] = true
-						continue
-					}
-					if scoped && (f.rule == ruleTriviallyGreen || f.rule == ruleNoOutputAssert) {
-						closedStrength++
-						closedStrengthBriefs[briefID] = true
-						continue
-					}
 					line := fmt.Sprintf("%s: %s [%s] %s", path, where, f.rule, f.msg)
 					if postBase && promotedRowRules[f.rule] {
 						problems = append(problems, line+" — a PROBLEM because this branch closes the brief (it was not verified/done at the merge-base): an unfailable row cannot be the basis of a new closure. Fix the row and re-run it before closing")
@@ -1919,24 +1891,12 @@ func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK
 			msg, cnc := tableFilesCheck(cmds, bf.DeclaredPaths, filesLabelPresent(bf.Body))
 			switch {
 			case !strength, msg == "" && !cnc:
-			case scoped:
-				closedStrength++
-				closedStrengthBriefs[briefID] = true
 			case cnc:
 				notices = append(notices, fmt.Sprintf("%s: [%s] COULD-NOT-CHECK — the `files:` line is present but yields no path, so whether the Verify table touches the deliverable cannot be read (never a pass)", path, ruleTableNoFiles))
 			default:
 				notices = append(notices, fmt.Sprintf("%s: [%s] %s", path, ruleTableNoFiles, msg))
 			}
 		}
-	}
-	if closedStrength > 0 {
-		notices = append(notices, fmt.Sprintf("[%s/%s/%s] %d strength finding(s) in %d closed brief(s) — closed records are not rewritten; the per-row notice covers open briefs and closures this branch makes (docs/verify-row-strength.md)", ruleTriviallyGreen, ruleNoOutputAssert, ruleTableNoFiles, closedStrength, len(closedStrengthBriefs)))
-	}
-	if closedRows > 0 {
-		notices = append(notices, fmt.Sprintf("[%s] %d Verify row(s) in %d closed brief(s) carry an unasserted go test -run selector — closed records are not rewritten; the per-row notice covers open briefs only", ruleGoTestRunVacuous, closedRows, len(closedBriefs)))
-	}
-	if closedProseRows > 0 {
-		notices = append(notices, fmt.Sprintf("[%s] %d Verify row(s) in %d closed brief(s) lift something that is not a command (a prose mention as the first code span, or a shell comment or no-op, marked or not) — closed records are not rewritten, and verifyrun records such a row could-not-run; the per-row notice covers open briefs only", ruleProseLedCommand, closedProseRows, len(closedProseBriefs)))
 	}
 	sort.Strings(problems)
 	sort.Strings(notices)

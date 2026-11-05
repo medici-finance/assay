@@ -1,0 +1,13 @@
+{
+  "id": "changed",
+  "verify": "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true && echo changed` | exit 0 |",
+  "evidence": "| # | Command | Result | Output | Date | Runner |\n|---|---------|--------|--------|------|--------|\n| 1 | `true` | pass exit=0 | sha256:abc123def456 | 2026-09-25 | fixture-verifier @ 4444444444444444444444444444444444444444 |",
+  "edge": "",
+  "expected": {
+    "released": false,
+    "claim": "error",
+    "eligibility": "eligible",
+    "hold_states": [],
+    "notice_states": []
+  }
+}

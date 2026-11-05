@@ -250,6 +250,7 @@ source and quality evidence in the affected implementation briefs.
 | External PR/review/issue/deployment facts | External provider, captured as attributed observations | Every read says what was covered, when, under which scope and whether complete. A page limit cannot mean an empty or complete result. |
 | In-flight attempts, claims, schedules, effects and runtime coordination | PostgreSQL operational store | Transactional during normal operation; after complete loss reconstruct obligations from canonical sources, reconcile effects and repeat safe work. Some transient history can be lost. |
 | Raw evidence, logs, receipts and durable exports | Git-stored retained artifacts and the existing governed publication path for this phase | Scratch can be disposable; canonical evidence needed for recovery must have a durable source; transient diagnostics need an explicit loss policy. A later non-Git evidence store needs an explicit migration. |
+| Optional performance observations (performance-event-v1) | A local spool under the state directory (`performance-events/`); later, a separate optional performance database, never the PostgreSQL operational store | Collection is consented and optional. With it off, every operational record works unchanged. Records confer no work, acceptance, budget or effect authority. Retired or unsent data is reported as coverage loss, never as zero, and losing the whole store loses only observations. |
 | Board, context graph, cockpit lists, reports and search indexes | Rebuildable projections | Show projection revision/watermark and source coverage. Display lag is not authority to repeat an effect. |
 
 For the revised target, use **PostgreSQL in local Docker, then CloudNativePG on Kubernetes**. PostgreSQL owns operational transactions and query indexes; Git retains canonical definitions and published evidence, while the forge owns external objects. The [storage amendment](14-storage-forge-graph.md) defines HA limits, reconstruction with permitted transient loss, the forge mirror and graph queries.
@@ -429,7 +430,7 @@ Command breaks are allowed; authoritative state and historical evidence still re
 
 This design makes a cell service central to **online operation**, while keeping pure evaluation and offline authoring usable without it. That is a larger change than improving the existing CLIs. It adds a PostgreSQL service, explicit reconstruction and operating responsibility in exchange for removing repeated scans, divergent decisions and ad hoc recovery. The first implementation carries an [existing regression floor](15-regression-from-day-one.md).
 
-Preserve separate role authority, operator-only credential custody, pure library reuse and retirement after consumers move. A shared online coordination/API service and any unified operator CLI need precise amendments to existing command/process contracts; permission for command breaks does not approve pooling credentials. The [public library-first contract](https://github.com/medici-finance/assay/blob/f9327a5954d57e786464e244a8e9c06f695d980d/docs/library-first.md) keeps online statusgen reads behind `deskread`; replacing that particular command seam needs an explicit contract amendment before activation.
+Preserve separate role authority, operator-only credential custody, pure library reuse and retirement after consumers move. A shared online coordination/API service and any unified operator CLI need precise amendments to existing command/process contracts; permission for command breaks does not approve pooling credentials. The [public library-first contract](https://github.com/medici-finance/assay/blob/f9327a5954d57e786464e244a8e9c06f695d980d/docs/library-first.md) keeps online statusgen reads behind `deskread`; replacing that particular command seam needs an explicit contract amendment before activation. *(Amended 25 October 2026: that amendment exists. The driver's [ruling on #2395](https://github.com/medici-finance/assay/issues/2395#issuecomment-6404972196), recorded as `docs/streams/decisions/DR-forge-library.md`, supersedes `DR-forge-neutral-36`. One shared forge library for reads and writes replaces the `deskread` seam for statusgen's forge calls; it holds the role-and-repo credential in a private field with no ambient fallback, and it is a narrow package with named consumers, not deskkit exported wholesale. Activation stays behind the human gates of desktools-v2/75 and /77.)*
 
 Do not retain every old constraint by inertia, or erase it by implication. The [migration proposal](13-migration-and-decisions.md) names the decisions and affected plans to reconcile. The [future-state model](12-future-state-model.md) makes subsequent amendments discoverable and revision-bound.
 
@@ -519,6 +520,14 @@ logical requests and latency, per-handler/cache/coalescing work, and actual dire
 or background provider requests/cost. Keep these observation kinds distinct and charge shared
 refreshes once; see the [boundary contract](../../performance-attribution-spec.md#querycache-service-and-passthrough-boundaries).
 
+Collection delivery note, 1 November 2026: performance-collection/01 implements the local
+`performance-event-v1` contract, spool and offline report in the separate `perfdata` module
+([specification](../../../spec/performance-event-v1.md)). The optional performance database,
+collector and sender are later briefs of that stream and stay separate from the operational
+store. Collection owns the meaning of collection only. Measurement meanings stay with their
+existing owners. Human acceptance of the field and loss contract is pending, and no remote
+destination is active.
+
 ## Local write policy — amendment, 18 October 2026
 
 The proposed [shared write-policy contract](../../write-policy.md) places deterministic
@@ -548,3 +557,23 @@ additive fields or optional extensions. Perf-v4 is the first concrete migration:
 retain v1/v2/v3 readers, qualify the new reader before selecting producers, and direct
 future performance upgrades to v4. This supersedes v3 as the *future format target*
 in the earlier performance amendment, not its completed implementation or evidence.
+
+## Shared candidate and priority planning — requested 23 October 2026
+
+The [existing efficiency specification](../../desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+owns the candidate-observation plus explicit current-policy/time/capacity plan contract.
+Both prose and discrete desks consume the same role-qualified pure planner; existing
+work/policy evaluators retain their meanings. Runtime coordination consumes ordered
+proposals, rechecks admission and owns attempts; provider effects retain credential custody.
+No new scheduler, per-role independent ranker, universal replacement score or policy store.
+
+Use uncapped authorized source coverage, visible held/unknown/unmapped work, stable aliases
+and policy/evaluator revisions. A presentation cap is not a full candidate set. Slot refill
+and priority edits reevaluate supplied observations without automatically re-enumerating GH.
+R6 refreshes invalidated/due source observations once per admitted scope; final consequential
+checks stay fresh. Portfolio allocation remains advisory until its own qualified migration.
+
+Delivery reuses desk-tools/39–45 and /51, graph-execution/27, desktools-v2's existing typed
+query/custody boundaries and forge-neutral/37–43. Existing adopter role cutovers qualify
+same-input prose/discrete parity. The ranked request model and A11–A12 acceptance live in
+the efficiency spec; this pointer grants no new activation or revision-bound approval.

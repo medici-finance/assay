@@ -3,10 +3,15 @@ package deskkit
 import (
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	trustcore "github.com/medici-finance/assay/deskcore/trust"
 )
 
 // ---- pure-loader helpers (offline, no filesystem) --------------------------
@@ -239,6 +244,38 @@ func TestTrustTierLedgerRowGrants(t *testing.T) {
 	}
 }
 
+// TestTrustTierLedgerNoMaintainer: `maintainer` is roster membership and is
+// resolved from the roster, never from the ledger. A well-formed, pinned ledger
+// row that names a NON-roster identity at `maintainer` must grant nothing — not
+// the top tier, and not a lower one either. Otherwise one write to the ledger
+// would be enough to mint the top tier.
+//
+// regression: #5210
+func TestTrustTierLedgerNoMaintainer(t *testing.T) {
+	withRoster(t, map[string]string{
+		EnvBlessLogin:    "ada:2001",
+		EnvTrustedLogins: "ada:2001",
+	})
+	for _, name := range []string{"maintainer", "Maintainer", " MAINTAINER "} {
+		fakeLedger(t, []LedgerRow{
+			{
+				Repo: "medici-finance/example", Login: "upstart", ID: 7007,
+				Tier: name, Date: "2026-09-01", Recorder: "human:example",
+				Reason: "negative control — the ledger must never mint the roster tier",
+			},
+		})
+		tier, prov := ResolveTier("medici-finance/example", "upstart", 7007)
+		t.Logf("ledger tier %q: ResolveTier = tier=%s provenance=%s", name, tier, prov)
+		if tier != TierUnknown || prov != ProvenanceDefaultAbsent {
+			t.Errorf("ledger row tier %q for a non-roster identity resolved (%s, %s), want (unknown, %s)",
+				name, tier, prov, ProvenanceDefaultAbsent)
+		}
+	}
+	if got, ok := parseTier("maintainer"); ok {
+		t.Errorf("parseTier(\"maintainer\") = (%s, true), want ok=false — a ledger row cannot carry the roster tier", got)
+	}
+}
+
 // TestTrustTierCapabilityTableGrantsNoMergeAuthority pins the one invariant the
 // brief states in prose: no tier's capability set may ever be extended with a
 // merge-authority-shaped entry. There is no "merge" Capability constant; this
@@ -308,21 +345,47 @@ func TestContributorLedgerRosterCoupling(t *testing.T) {
 		t.Fatal("statusgen/rosterconfig.go: scanKnownRosterKeys is gone — nothing declares the " +
 			"recognised roster schema on that side")
 	}
-	// Windowed: the new constant must actually be LISTED inside scanKnownRosterKeys's
-	// body, not merely declared and forgotten (the same class of gap #491 was).
-	fnIdx := strings.Index(src, "func scanKnownRosterKeys()")
-	if fnIdx < 0 {
-		t.Fatal("statusgen/rosterconfig.go: scanKnownRosterKeys function body not found")
+	// Structural: scanKnownRosterKeys's body must be exactly one return of the shared
+	// schema, so the twin cannot keep (or grow back) a second list, and the shared
+	// schema itself must list the new key (the same class of gap #491 was).
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "rosterconfig.go", rc, 0)
+	if err != nil {
+		t.Fatalf("statusgen/rosterconfig.go does not parse: %v", err)
 	}
-	closeIdx := strings.Index(src[fnIdx:], "\n}")
-	if closeIdx < 0 {
-		t.Fatal("statusgen/rosterconfig.go: scanKnownRosterKeys function body has no closing brace " +
-			"within scan range")
+	delegates := false
+	for _, d := range file.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "scanKnownRosterKeys" || fn.Body == nil || len(fn.Body.List) != 1 {
+			continue
+		}
+		ret, ok := fn.Body.List[0].(*ast.ReturnStmt)
+		if !ok || len(ret.Results) != 1 {
+			continue
+		}
+		call, ok := ret.Results[0].(*ast.CallExpr)
+		if !ok || len(call.Args) != 0 {
+			continue
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			continue
+		}
+		if pkg, isIdent := sel.X.(*ast.Ident); isIdent && pkg.Name == "trustcore" && sel.Sel.Name == "KnownRosterKeys" {
+			delegates = true
+		}
 	}
-	body := src[fnIdx : fnIdx+closeIdx]
-	if !strings.Contains(body, "scanEnvContributorLedger") {
-		t.Error("statusgen/rosterconfig.go: scanKnownRosterKeys() does not list scanEnvContributorLedger " +
-			"— declaring the constant without recognising it changes nothing")
+	if !delegates {
+		t.Error("statusgen/rosterconfig.go: scanKnownRosterKeys must be exactly `return trustcore.KnownRosterKeys()` " +
+			"(deskcore/trust), not a second list")
+	}
+	shared := map[string]bool{}
+	for _, k := range trustcore.KnownRosterKeys() {
+		shared[k] = true
+	}
+	if !shared[EnvContributorLedger] {
+		t.Errorf("deskcore/trust.KnownRosterKeys() does not list %s — declaring the constant without "+
+			"recognising it changes nothing", EnvContributorLedger)
 	}
 
 	// ---- (3) behavioural: this reader actually resolves a configured path ----

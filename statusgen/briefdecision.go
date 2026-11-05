@@ -14,11 +14,8 @@ package main
 // aggregateSeconds rather than re-deriving percentiles.
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
-	"strings"
 	"time"
 )
 
@@ -29,37 +26,43 @@ type dqIssue struct {
 	ClosedAt  string // "" when still open
 }
 
-// decisionQueueSource is the network seam: gh issue list for one label/state.
-// The production impl shells to gh; tests inject a fake.
+// decisionQueueSource is the network seam: one label's issues at one state.
+// The production impl reads through the desk-tools `deskread` verb; tests
+// inject a fake.
 type decisionQueueSource interface {
 	Issues(repo, label, state string) ([]dqIssue, error)
 }
 
-type ghDecisionQueueSource struct{}
+// deskreadDecisionQueueSource reads the queue through `deskread issue-list`
+// (deskreadReader.IssueList), the forge seam the desk verbs read through,
+// instead of shelling `gh issue list`. Any list the verb could not serve in
+// full — unreadable, or stopped at its page bound — is an error, which
+// runDecisionLatency already reports as could-not-check; the `gh --limit 1000`
+// read it replaces truncated a larger queue silently.
+type deskreadDecisionQueueSource struct{}
 
-func (ghDecisionQueueSource) Issues(repo, label, state string) ([]dqIssue, error) {
-	out, err := exec.Command("gh", "issue", "list",
-		"--repo", repo, "--state", state, "--label", label, "--limit", "1000",
-		"--json", "number,createdAt,closedAt").Output()
+func (deskreadDecisionQueueSource) Issues(repo, label, state string) ([]dqIssue, error) {
+	listed, err := newDeskreadReader().IssueList(repo, state, label)
 	if err != nil {
-		detail := ""
-		if ee, ok := err.(*exec.ExitError); ok {
-			detail = strings.TrimSpace(string(ee.Stderr))
-		}
-		return nil, fmt.Errorf("gh issue list --repo %s --state %s --label %s: %v %s", repo, state, label, err, detail)
+		return nil, err
 	}
-	var issues []dqIssue
-	if err := json.Unmarshal(out, &issues); err != nil {
-		return nil, fmt.Errorf("unmarshal gh issue list for %s: %w", repo, err)
+	issues := make([]dqIssue, 0, len(listed))
+	for _, is := range listed {
+		issues = append(issues, dqIssue{Number: is.Number, CreatedAt: is.CreatedAt, ClosedAt: is.ClosedAt})
 	}
 	return issues, nil
 }
+
+// defaultDecisionQueueSource is the source the production --decision-latency
+// and --assayscore paths read. A var with a stable name so a test exercises the
+// production wiring itself, not a hand-picked implementation.
+var defaultDecisionQueueSource decisionQueueSource = deskreadDecisionQueueSource{}
 
 // bfDecisionLatencyReport is metric 6's JSON shape.
 type bfDecisionLatencyReport struct {
 	Generated          string           `json:"generated"`
 	Window             doraTimingWindow `json:"window"`
-	State              string           `json:"state"` // reflects whether the gh reads SUCCEEDED, independent of counts (an empty-but-read queue is "ok")
+	State              string           `json:"state"` // reflects whether the reads SUCCEEDED, independent of counts (an empty-but-read queue is "ok")
 	Latency            doraTimingMetric `json:"latency"`
 	WIP                int              `json:"wip"`
 	OldestOpenAgeHours float64          `json:"oldest_open_age_hours,omitempty"`

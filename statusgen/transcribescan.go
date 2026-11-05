@@ -31,16 +31,13 @@ package main
 // membership, never on any text an issue author controls.
 
 import (
-	"crypto"
 	"crypto/rsa"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	verdictcore "github.com/medici-finance/assay/deskcore/verdict"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -74,9 +71,9 @@ type authorResolver func(repo string, issue int) (authorIdentity, error)
 
 // ghAuthorResolver is the default authorResolver: `gh api` for one issue's user.
 func ghAuthorResolver(repo string, issue int) (authorIdentity, error) {
-	out, err := exec.Command("gh", "api",
+	out, err := ghGuard(exec.Command("gh", "api",
 		fmt.Sprintf("repos/%s/issues/%d", repo, issue),
-		"--jq", "{login: .user.login, id: .user.id, type: .user.type}").Output()
+		"--jq", "{login: .user.login, id: .user.id, type: .user.type}")).Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -106,9 +103,9 @@ func ghCommentResolver(url string) (authorIdentity, string, error) {
 	if !ok {
 		return authorIdentity{}, "", fmt.Errorf("cannot parse comment URL %q", url)
 	}
-	out, err := exec.Command("gh", "api",
+	out, err := ghGuard(exec.Command("gh", "api",
 		fmt.Sprintf("repos/%s/issues/comments/%s", repo, id),
-		"--jq", "{login: .user.login, id: .user.id, type: .user.type, body: .body}").Output()
+		"--jq", "{login: .user.login, id: .user.id, type: .user.type, body: .body}")).Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -692,7 +689,7 @@ const scanDeltaSchemaVersion = "scan-delta-v1"
 // role-keyed variable alongside verdictPubkeyVar (verdict-lane/01's landed
 // invariant, which this brief EXTENDS to a second role rather than carving an
 // exception to). Matches deskkit.IssueLoopPubkeyVar byte-for-byte; the two are
-// separate Go modules that share no code (see transcribeverdict.go's package
+// separate Go modules that share no code (see transcribeverdictcore.go's package
 // doc), so this name is a documented cross-tree duplicate.
 const scanDeltaPubkeyVar = "ASSAY_ISSUE_LOOP_PUBKEY"
 
@@ -705,14 +702,8 @@ const scanDeltaWantRole = "issue-loop"
 // before role-keying existed) means the implicit default "verifier" — the
 // SAME default deskkit.extractDeclaredRole applies, so the two independently
 // duplicated implementations agree on every input.
-var scanDeltaRoleRE = regexp.MustCompile(verdictSigMarker + `\b[^>]*\brole=([a-z-]+)`)
 
-func scanDeltaDeclaredRole(body string) string {
-	if m := scanDeltaRoleRE.FindStringSubmatch(body); m != nil {
-		return m[1]
-	}
-	return "verifier"
-}
+func scanDeltaDeclaredRole(body string) string { return verdictcore.DeclaredRole(body) }
 
 // scanDeltaEntry is ONE cross-repo delta item inside a scan-delta payload —
 // the producer's canonical per-entry shape (brief fact: "repo, issue number,
@@ -770,29 +761,17 @@ func scanDeltaResolvePubkey(pubkeyPath string) (*rsa.PublicKey, error) {
 // refused on this lane even with an otherwise-valid signature, and even if
 // the wrong key were somehow reachable from this lane's pubkey resolution.
 func scanDeltaVerifyBody(body string, pub *rsa.PublicKey) (verdictVerifyState, string) {
-	rawPayload, sigB64, err := verdictParseBody(body)
-	if err != nil {
+	if _, _, err := verdictcore.ParseBody(body); err != nil {
 		return verdictCouldNotCheck, "could not check: " + err.Error()
 	}
-	if declared := scanDeltaDeclaredRole(body); declared != scanDeltaWantRole {
+	if declared := verdictcore.DeclaredRole(body); declared != scanDeltaWantRole {
 		return verdictRefused, fmt.Sprintf("refused: signed block declares role %q, but the scan-delta lane requires role %q", declared, scanDeltaWantRole)
 	}
 	if pub == nil {
 		return verdictCouldNotCheck, "could not check: no issue-loop public key configured (" + scanDeltaPubkeyVar + ")"
 	}
-	canonical, cerr := verdictCanonicalizeJSON(rawPayload)
-	if cerr != nil {
-		return verdictCouldNotCheck, "could not check: " + cerr.Error()
-	}
-	sig, derr := base64.StdEncoding.DecodeString(strings.TrimSpace(sigB64))
-	if derr != nil {
-		return verdictRefused, "refused: signature is not valid base64: " + derr.Error()
-	}
-	sum := sha256.Sum256(canonical)
-	if verr := rsa.VerifyPKCS1v15(pub, crypto.SHA256, sum[:], sig); verr != nil {
-		return verdictRefused, "refused: signature does not verify against the issue-loop public key"
-	}
-	return verdictVerified, "verified: signature matches the canonical scan-delta payload (role=issue-loop)"
+	v, why := verdictcore.VerifyBodyForRole(body, pub, scanDeltaWantRole)
+	return verdictVerifyState(v), why
 }
 
 // scanDeltaIssueLoopIdentity resolves the issue-loop App's identity from the

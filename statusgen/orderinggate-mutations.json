@@ -1,0 +1,41 @@
+{
+  "test": "GOWORK=off go test -count=1 -run '^TestOrderingGate' .",
+  "control": {
+    "name": "negation remains an exclusion",
+    "file": "orderinggate.go",
+    "old": "|| orderingGateNegated.MatchString(line)",
+    "new": "|| false"
+  },
+  "mutations": [
+    {
+      "name": "discard unicode fallback",
+      "file": "orderinggate.go",
+      "old": "if !f.ascii || !orderingASCII(line) {",
+      "new": "if !f.ascii {"
+    },
+    {
+      "name": "discard case folding of literal prefix",
+      "file": "orderinggate.go",
+      "old": "text = strings.ToLower(text)",
+      "new": "text = text"
+    },
+    {
+      "name": "omit fallback for nullable pattern",
+      "file": "orderinggate.go",
+      "old": "if !ok {\n\t\t\tf.ascii = false\n\t\t\tbreak\n\t\t}",
+      "new": "if !ok { continue }"
+    },
+    {
+      "name": "reverse ordered lexicon priority",
+      "file": "orderinggate.go",
+      "old": "for _, re := range orderingGateLexicon {",
+      "new": "for i := len(orderingGateLexicon)-1; i>=0; i-- { re := orderingGateLexicon[i]"
+    },
+    {
+      "name": "suppress all candidate lines",
+      "file": "orderinggate.go",
+      "old": "return true\n\t\t}\n\t}\n\treturn false",
+      "new": "return false\n\t\t}\n\t}\n\treturn false"
+    }
+  ]
+}

@@ -132,3 +132,47 @@ func TestPerfV3ContextAndConsent(t *testing.T) {
 		t.Fatal("profile bypassed opt-in")
 	}
 }
+
+// regression: #3353
+func TestWriterResolvedConsent(t *testing.T) {
+	v3 := v3Record(v3Context("tool"))
+	for _, value := range []string{"", "0", "true", "1", " 1"} {
+		t.Run("v3 env="+value, func(t *testing.T) {
+			t.Setenv(EnvVar, value)
+			for _, enabled := range []bool{false, true} {
+				sink := t.TempDir()
+				err := (&Writer{}).WriteEnabled(enabled, sink, v3)
+				want := enabled && value == "1"
+				if (err == nil) != want {
+					t.Fatalf("resolved=%v env=%q: write error %v, want admitted=%v", enabled, value, err, want)
+				}
+				if !want {
+					if _, err := os.Stat(Dir(sink)); !os.IsNotExist(err) {
+						t.Fatalf("refused v3 write created state: %v", err)
+					}
+				}
+			}
+		})
+	}
+	for _, schema := range []string{Schema, SchemaV2} {
+		r, err := Decode(fixtureLines(t, schema+".jsonl")[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, ambient := range []string{"0", "1"} {
+			t.Setenv(EnvVar, ambient)
+			for _, enabled := range []bool{false, true} {
+				sink := t.TempDir()
+				err := (&Writer{}).WriteEnabled(enabled, sink, r)
+				if (err == nil) != enabled {
+					t.Fatalf("%s resolved=%v ambient=%q: %v", schema, enabled, ambient, err)
+				}
+				if !enabled {
+					if _, err := os.Stat(Dir(sink)); !os.IsNotExist(err) {
+						t.Fatalf("resolved opt-out created state: %v", err)
+					}
+				}
+			}
+		}
+	}
+}

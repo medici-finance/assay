@@ -92,7 +92,7 @@ var (
 // TestBodyCheck covers BOTH directions: git SHAs and clean
 // prose pass; every credential-shaped pattern refuses with ExitRefused.
 func TestBodyCheck(t *testing.T) {
-	const sha1 = "5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b"                           // 40 lc hex
+	const sha1 = "4c418b16e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b"                           // 40 lc hex
 	const sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // 64 lc hex
 
 	cases := []struct {
@@ -417,7 +417,7 @@ func TestIsPathLikeIsNotWiderThanTheAnchoredRule(t *testing.T) {
 		// A git SHA inside a path stays exempt: a BARE SHA is already exempt above, so
 		// refusing it only when it wears a URL would refuse every commit link the
 		// methodology quotes.
-		{"commit url run carrying a 40-char sha", "com/example/desk/commit/5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b", true},
+		{"commit url run carrying a 40-char sha", "com/example/desk/commit/4c418b16e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -702,7 +702,7 @@ func TestAssignmentStripsOnlyTheKey(t *testing.T) {
 		// The prefix strip must be no STRONGER than the bare bar either. A git SHA is
 		// exempt standing alone and the methodology quotes SHAs constantly, so a
 		// SHA-valued assignment must not refuse what the SHA alone permits.
-		{"key over a 40-char git sha", "base=" + "5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b", true},
+		{"key over a 40-char git sha", "base=" + "4c418b16e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b", true},
 		{"key over a 64-char git sha", "sha=" + "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", true},
 
 		// NOT exempt: the value is credential material. The key half is deliberately

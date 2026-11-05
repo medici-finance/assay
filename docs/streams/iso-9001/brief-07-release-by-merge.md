@@ -74,9 +74,7 @@ files:
 - **edit (staged)** `ci/staged-workflows/release.yml` — a staged twin of the LIVE release.yml, re-based on it, adding ONLY the tag-push-path authorizer resolution + unmarked-tag refusal in the `resolve` job. Additive; no step reordered.
 - **edit** `ci/staged-workflows/README.md` — the entries describing both files and their one-time maintainer promote.
 - **new** `tools/desk/internal/deskkit/release_on_merge_test.go` — a source-coupling test in the shape of `release_authorizer_test.go`, reading the STAGED workflow files (the live files do not carry the wiring until promotion) and reddening if the release-by-merge wiring is dropped, with a mutation control proving every guarded string is caught.
-- **specify only (task, not implemented here)** `deskrelease propose vX.Y.Z` — the desk verb
-  that opens the release PR. Left as a task because opening a PR is a forge-write flow larger
-  than this brief's diff; the interim is the documented worker flow below.
+- **specify only (task, not implemented here)** — `deskrelease propose vX.Y.Z`, the desk verb that opens the release PR. Left as a task because opening a PR is a forge-write flow larger than this brief's diff; the interim is the documented worker flow below.
 
 facts:
 - **A GITHUB_TOKEN tag push does not trigger release.yml.** release.yml's own header states it
@@ -106,8 +104,8 @@ facts:
   second (fires the build) — so one merge is one atomic cut of both tags at the reviewed commit,
   with no separate `deskrelease cut` to type. `deskrelease cut` is retained UNCHANGED as the
   manual break-glass path; its grammar and guards are not touched.
-- **The version bump is what the cut stamps today.** The release PR carries exactly the seven
-  files `stamp-plugin-version.sh stamp vX.Y.Z` rewrites (see sources), plus the changelog. This
+- **The version bump is what the cut stamps today.** The release PR carries exactly the
+  seven files `stamp-plugin-version.sh stamp vX.Y.Z` rewrites (see sources), plus the changelog. This
   is the same stamp the dispatch path performs before tagging; here it is committed in the PR so
   the merge commit already carries the stamped version, and release.yml's existing
   `stamp-plugin-version gate` passes against the tagged tree.

@@ -16,6 +16,17 @@ archive-omitted blobs are could-not-check (exit 2). With both pins on the comman
 does not choose a historical commit for the author: identifying the actual delivery remains
 an independently reviewed claim.
 
+Every evaluated delivery writes a separate `PRODUCER-DELIVERY: COULD-NOT-CHECK`
+qualification to stderr. The stdout report stays byte-identical, preserving its header
+and pinned report hashes. The routing counts on stdout and exit status concern declared consumer routes
+only. In particular, `follow-up` corroborates that a target brief exists and references
+back; it does not require that the selected diff contains the producer's implementation.
+Two different producer deliveries can therefore corroborate the same follow-up routes.
+Even `fixed-here` establishes path changes, not producer identity or implementation
+completeness. Independently inspect the actual delivery mapping and relevant changes
+before using these results as acceptance evidence. This limit also applies when the
+delivery pin is derived from committed Evidence below.
+
 ## A bare `--consumers --brief <id>` on merged main
 
 With a named `--brief` and neither `--base` nor `--delivery`, a brief the branch diff does
@@ -53,9 +64,18 @@ the protected-table closure reads only the current run's marker. Evidence that h
 could-not-check. The `consumer-delivery-range` lint below is unchanged and still asks for
 explicit pins in authored rows.
 
-Every re-authored row asserts its exact summary, including unchecked count. Exit 0 means
-no disproved claim; a delivery with no corroborated claim returns 2. Unchecked exclusions
-remain review obligations. Neither a successful path-touch check nor this mode establishes
+A row re-authored under the
+[immutable-delivery rule](protected-paths.md#explicit-human-approved-acceptance-transitions)
+asserts its exact summary, including unchecked count. A row amended under an explicit
+command-only acceptance transition
+([protected paths](protected-paths.md#explicit-human-approved-acceptance-transitions))
+changes only its Command and keeps its original Expect, class, shell and order, so its
+Expect might not name the exact summary. The amended Command can assert the exact summary
+itself, exiting non-zero on any other summary, which an unchanged exit-0 Expect still
+accepts. Where it does not, the exact summary, including unchecked count, is a review
+obligation, not a changed Expect. Exit 0 means no disproved claim; a
+delivery with no corroborated claim returns 2. Unchecked exclusions remain review
+obligations. Neither a successful path-touch check nor this mode establishes
 that the consumer list is complete or that a consumer's behavior is correct.
 
 For an undelivered brief, mark the branch check explicitly **pre-merge**, name its brief

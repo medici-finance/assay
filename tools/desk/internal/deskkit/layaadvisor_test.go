@@ -1,15 +1,29 @@
 package deskkit
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+)
+
+// The fixture hangs far past the envelope, so a call that returns inside the envelope
+// proves the deadline killed it; the margin keeps runner scheduling out of the result.
+const (
+	layaHang     = 10 * time.Second
+	layaEnvelope = 3 * time.Second
 )
 
 // Reexec this test binary, not Python or any model, across the production seam.
@@ -22,12 +36,18 @@ func TestLayaProcess(t *testing.T) {
 		os.Exit(2)
 	}
 	if req.Consultation.Detail == "timeout" {
-		time.Sleep(time.Second)
+		time.Sleep(layaHang)
 		os.Exit(0)
 	}
 	if req.Consultation.Detail == "malformed" {
 		os.Stdout.WriteString("not json")
 		os.Exit(0)
+	}
+	if req.Consultation.Detail == "env" {
+		// The child must see GPUs hidden and nothing inherited from the caller.
+		if v, ok := os.LookupEnv("CUDA_VISIBLE_DEVICES"); !ok || v != "" || os.Getenv("LAYA_PARENT_MARKER") != "" {
+			os.Exit(6)
+		}
 	}
 	p := ConservativePrediction(req.Request)
 	p.ShadowLabels = []string{"hold"}
@@ -52,9 +72,20 @@ func TestLayaProcess(t *testing.T) {
 	if req.Consultation.Detail == "stderr-over" {
 		os.Stderr.WriteString(strings.Repeat("x", 4097))
 	}
-	p.RequestedBackend = req.Backend
-	p.ActualBackend = "cpu"
-	json.NewEncoder(os.Stdout).Encode(layaResponse{Prediction: p, FallbackReason: "device unavailable"})
+	// An honest child echoes the request; the Detail cases report a device switch.
+	p.RequestedBackend, p.ActualBackend = req.Backend, req.Backend
+	reason := ""
+	switch req.Consultation.Detail {
+	case "actual-cuda":
+		p.ActualBackend = "cuda"
+	case "actual-mps":
+		p.ActualBackend = "mps"
+	case "requested-other":
+		p.RequestedBackend = "cuda"
+	case "fallback-reason":
+		reason = "device unavailable"
+	}
+	json.NewEncoder(os.Stdout).Encode(layaResponse{Prediction: p, FallbackReason: reason})
 	if req.Consultation.Detail == "pipes-error" {
 		os.Exit(4)
 	}
@@ -79,15 +110,120 @@ func TestLayaAdvisorRoundTrip(t *testing.T) {
 		t.Fatalf("shadow advice escaped: %+v %v", advice, err)
 	}
 }
+
+// layaRefused reports a typed boundary refusal, never a process failure or crash.
+func layaRefused(err error) bool {
+	var de *DeskError
+	return errors.As(err, &de) && de.Code == ExitRefused
+}
+
+// Per the driver's ruling no device fallback is permitted: the child cannot report a
+// non-CPU actual backend, a different requested backend, or a fallback reason.
 func TestLayaAdvisorUnauthorizedFallback(t *testing.T) {
 	a := layaFixture(t)
-	a.Backend = "cuda"
-	if _, err := a.Predict(context.Background(), Consultation{}); err == nil {
-		t.Fatal("unauthorized fallback accepted")
-	}
-	a.AllowCPUFallback = true
 	if _, err := a.Predict(context.Background(), Consultation{}); err != nil {
-		t.Fatal(err)
+		t.Fatalf("valid cpu control: %v", err)
+	}
+	for _, detail := range []string{"actual-cuda", "actual-mps", "requested-other", "fallback-reason"} {
+		if _, err := a.Predict(context.Background(), Consultation{Detail: detail}); !layaRefused(err) {
+			t.Errorf("%s accepted or not refused: %v", detail, err)
+		}
+	}
+}
+
+// The response check is a distinct lower layer: with the pre-launch backend check
+// bypassed (the advisor itself names a non-CPU backend), a matching non-CPU record is
+// still refused when decoded, whichever of the two backend fields carries it.
+func TestLayaAdvisorDecodeCPUOnly(t *testing.T) {
+	a := layaFixture(t)
+	for _, backend := range []string{"cuda", "mps", "CPU", ""} {
+		a.Backend = backend
+		for _, fields := range [][2]string{{backend, backend}, {backend, "cpu"}, {"cpu", backend}} {
+			p := ConservativePrediction(a.Request)
+			p.RequestedBackend, p.ActualBackend = fields[0], fields[1]
+			data, err := json.Marshal(layaResponse{Prediction: p})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := a.decode(context.Background(), data); !layaRefused(err) {
+				t.Errorf("record requested=%q actual=%q accepted by decode: %v", fields[0], fields[1], err)
+			}
+		}
+	}
+}
+
+// Per the driver's ruling the provider is CPU only. Every other value, including case
+// and whitespace variants, an empty value, CUDA and MPS, is refused before a process
+// starts. The command path does not exist, so a launch attempt would surface as a
+// process failure rather than the refusal; the cpu control proves that it would.
+func TestLayaAdvisorCPUOnly(t *testing.T) {
+	a := layaFixture(t)
+	a.Command = []string{filepath.Join(t.TempDir(), "never-launched")}
+	if _, err := a.Predict(context.Background(), Consultation{}); err == nil || !strings.Contains(err.Error(), "process failed") {
+		t.Fatalf("control: the cpu backend must reach launch: %v", err)
+	}
+	for _, backend := range []string{"", "cuda", "mps", "CPU", "Cpu", " cpu", "cpu ", "cpu\n", "cpu,cuda", "cuda:0", "auto", "rocm"} {
+		a.Backend = backend
+		_, err := a.Predict(context.Background(), Consultation{})
+		if !layaRefused(err) || strings.Contains(err.Error(), "process failed") {
+			t.Errorf("backend %q not refused before launch: %v", backend, err)
+		}
+	}
+	a.Backend, a.Approved = "cpu", false
+	if _, err := a.Predict(context.Background(), Consultation{}); !layaRefused(err) || strings.Contains(err.Error(), "process failed") {
+		t.Errorf("unapproved call not refused before launch: %v", err)
+	}
+}
+
+// The child sees CUDA devices hidden and inherits nothing from the caller, even when
+// the caller's own environment selects a GPU.
+func TestLayaAdvisorChildEnvironment(t *testing.T) {
+	t.Setenv("CUDA_VISIBLE_DEVICES", "0")
+	t.Setenv("LAYA_PARENT_MARKER", "inherited")
+	a := layaFixture(t)
+	if _, err := a.Predict(context.Background(), Consultation{Detail: "env"}); err != nil {
+		t.Fatalf("child environment not fixed: %v", err)
+	}
+}
+
+// Per the driver's ruling the provider stays disabled. No production file in this
+// module other than its own may name LayaAdvisor, so nothing can construct or route to it.
+func TestLayaAdvisorNotWired(t *testing.T) {
+	root := filepath.Join("..", "..")
+	own := filepath.Join(root, "internal", "deskkit", "layaadvisor.go")
+	scanned := 0
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") || filepath.Clean(path) == own {
+			return nil
+		}
+		scanned++
+		src, err := os.ReadFile(path)
+		if err != nil || !bytes.Contains(src, []byte("LayaAdvisor")) {
+			return err
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, src, parser.SkipObjectResolution)
+		if err != nil {
+			return err
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok && id.Name == "LayaAdvisor" {
+				t.Errorf("%s names LayaAdvisor; the provider must stay unwired", path)
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil || scanned == 0 {
+		t.Fatalf("scan incomplete: %d files, %v", scanned, err)
 	}
 }
 func TestLayaAdvisorLimits(t *testing.T) {
@@ -103,8 +239,8 @@ func TestLayaAdvisorLimits(t *testing.T) {
 		if _, err := a.Predict(context.Background(), Consultation{Detail: detail}); err == nil {
 			t.Fatalf("accepted %s", detail)
 		}
-		if time.Since(start) > 500*time.Millisecond {
-			t.Fatal("process exceeded deadline envelope")
+		if time.Since(start) > layaEnvelope {
+			t.Fatalf("%s exceeded deadline envelope", detail)
 		}
 	}
 	a.MaxBytes = 1
@@ -115,7 +251,7 @@ func TestLayaAdvisorLimits(t *testing.T) {
 
 func TestLayaPipeHold(t *testing.T) {
 	if os.Getenv("HF_HUB_OFFLINE") == "1" {
-		time.Sleep(time.Second)
+		time.Sleep(layaHang)
 		os.Exit(0)
 	}
 }
@@ -141,7 +277,7 @@ func TestLayaAdvisorPipeDeadline(t *testing.T) {
 		if err == nil {
 			t.Errorf("expired %s accepted", detail)
 		}
-		if time.Since(start) > 500*time.Millisecond {
+		if time.Since(start) > layaEnvelope {
 			t.Errorf("%s exceeded completion deadline", detail)
 		}
 	}

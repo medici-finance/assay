@@ -444,3 +444,32 @@ func attestGitOutput(t *testing.T, root string, args ...string) string {
 	}
 	return out
 }
+
+// TestVerifierVisibilityRank — the tracking destination may not be MORE visible than the
+// deliverable repository: private < internal < public. An internal tracker must refuse a
+// private source, which a check keyed only on "public" would admit.
+//
+// regression: #4978
+func TestVerifierVisibilityRank(t *testing.T) {
+	for _, tc := range []struct {
+		tracking, source string
+		ok               bool
+	}{
+		{"internal", "private", false},
+		{"public", "internal", false},
+		{"internal", "internal", true},
+		{"internal", "public", true},
+		{"private", "internal", true},
+	} {
+		t.Run(tc.tracking+"-"+tc.source, func(t *testing.T) {
+			crossRepoVisibilityRoster(t, tc.tracking, tc.source)
+			if !EffectiveConfig().Configured() {
+				t.Fatalf("fixture roster did not load: %v", EffectiveConfig().Problems)
+			}
+			err := verifierVisibility("example-org/tracking", "example-org/one")
+			if (err == nil) != tc.ok {
+				t.Fatalf("verifierVisibility(tracking=%s, source=%s) = %v, want ok=%v", tc.tracking, tc.source, err, tc.ok)
+			}
+		})
+	}
+}

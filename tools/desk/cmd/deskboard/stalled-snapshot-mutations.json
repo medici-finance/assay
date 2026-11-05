@@ -1,0 +1,35 @@
+{
+  "test": "go test ./cmd/deskboard -run \"TestStalled\" -count=1",
+  "control": {
+    "name": "CONTROL: discard a complete blocking snapshot",
+    "file": "cmd/deskboard/stalled.go",
+    "old": "appReviews := toAppReviews(reviews)",
+    "new": "appReviews := toAppReviews(nil)"
+  },
+  "mutations": [
+    {
+      "name": "reread complete snapshots",
+      "file": "cmd/deskboard/stalled.go",
+      "old": "if !reviewsComplete {",
+      "new": "if true {"
+    },
+    {
+      "name": "treat missing reviews as complete",
+      "file": "cmd/deskboard/stalled.go",
+      "old": "if !reviewsComplete {",
+      "new": "if false {"
+    },
+    {
+      "name": "hide per-item review failure",
+      "file": "cmd/deskboard/stalled.go",
+      "old": "if rerr != nil {",
+      "new": "if false {"
+    },
+    {
+      "name": "reduce reviews against a previous head",
+      "file": "cmd/deskboard/stalled.go",
+      "old": "deskkit.ReduceAppVerdict(c.reviewerLogin, appReviews, p.HeadRefOid)",
+      "new": "deskkit.ReduceAppVerdict(c.reviewerLogin, appReviews, \"previous\")"
+    }
+  ]
+}

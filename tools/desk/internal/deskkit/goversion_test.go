@@ -19,7 +19,7 @@ import (
 // fleetUploadArtifact. A bump changes these constants and every site in the
 // same change, so a site left behind goes red here rather than drifting.
 const (
-	fleetGoToolchain    = "1.27.2"
+	fleetGoToolchain    = "1.27.3"
 	fleetGoDirective    = "1.27.0"
 	fleetUploadArtifact = "cf430e030ddbb5b0abf93d22962f4752f3646cd9" // v7.0.2
 )
@@ -45,13 +45,17 @@ var goPinSkipFiles = map[string]string{
 }
 
 var (
-	goModGoRe     = regexp.MustCompile(`^go\s+(\S+)\s*$`)
-	goModTcRe     = regexp.MustCompile(`^toolchain\s+go(\S+)\s*$`)
-	ymlGoVerRe    = regexp.MustCompile(`^\s*GO_VERSION:\s*["']?([^"'\s#]+)`)
-	ymlSetupGoRe  = regexp.MustCompile(`^\s*go-version:\s*["']?([^"'\s#]+)`)
-	ymlGoShaRe    = regexp.MustCompile(`^\s*(?:GO_SHA256|GO_LINUX_AMD64_SHA256):\s*["']?([^"'\s#]+)`)
-	uploadArtRe   = regexp.MustCompile(`uses:\s*actions/upload-artifact@([^\s#]+)`)
-	fromGolangRe  = regexp.MustCompile(`^\s*FROM\s+(?:--platform=\S+\s+)?golang:([^\s@]+)`)
+	goModGoRe    = regexp.MustCompile(`^go\s+(\S+)\s*$`)
+	goModTcRe    = regexp.MustCompile(`^toolchain\s+go(\S+)\s*$`)
+	ymlGoVerRe   = regexp.MustCompile(`^\s*GO_VERSION:\s*["']?([^"'\s#]+)`)
+	ymlSetupGoRe = regexp.MustCompile(`^\s*go-version:\s*["']?([^"'\s#]+)`)
+	ymlGoShaRe   = regexp.MustCompile(`^\s*(?:GO_SHA256|GO_LINUX_AMD64_SHA256):\s*["']?([^"'\s#]+)`)
+	uploadArtRe  = regexp.MustCompile(`uses:\s*actions/upload-artifact@([^\s#]+)`)
+	fromGolangRe = regexp.MustCompile(`^\s*FROM\s+(?:--platform=\S+\s+)?golang:([^\s@]+)`)
+	// argGoBaseRe reads a Dockerfile `ARG <NAME>=golang:<tag>…` line: a base
+	// image reference held in an ARG and reached through `FROM ${NAME}`, which
+	// fromGolangRe cannot see (#4207, F-runner-base-unguarded).
+	argGoBaseRe   = regexp.MustCompile(`^\s*ARG\s+\w+=golang:([^\s@]+)`)
 	argGoVerRe    = regexp.MustCompile(`^\s*ARG\s+GO_VERSION=(\S+)`)
 	argGoShaRe    = regexp.MustCompile(`^\s*ARG\s+GO_SHA256_(AMD64|ARM64)=(\S+)`)
 	golangciGoRe  = regexp.MustCompile(`^\s+go:\s*["']?([^"'\s#]+)`)
@@ -91,6 +95,9 @@ func goPinsIn(rel, body string) []goPin {
 		case strings.HasPrefix(base, "Dockerfile"):
 			if m := fromGolangRe.FindStringSubmatch(line); m != nil {
 				add(n, "FROM golang", goVersionTagR.FindString(m[1]), fleetGoToolchain)
+			}
+			if m := argGoBaseRe.FindStringSubmatch(line); m != nil {
+				add(n, "ARG golang base", goVersionTagR.FindString(m[1]), fleetGoToolchain)
 			}
 			if m := argGoVerRe.FindStringSubmatch(line); m != nil {
 				add(n, "ARG GO_VERSION", m[1], fleetGoToolchain)
@@ -212,7 +219,7 @@ func TestGoSingleVersion(t *testing.T) {
 	}
 	need := []string{"go.mod go"}
 	if isFullCheckout(fixtureRepoRoot) {
-		need = append(need, "GO_VERSION", "Go sha256", "upload-artifact", "FROM golang")
+		need = append(need, "GO_VERSION", "Go sha256", "upload-artifact", "FROM golang", "ARG golang base")
 	}
 	for _, k := range need {
 		if count[k] == 0 {
@@ -234,6 +241,8 @@ func TestGoSingleVersionControls(t *testing.T) {
 			"      - uses: actions/upload-artifact@" + fleetUploadArtifact + " # v7.0.2\n" +
 			"          go-version: ${{ env.GO_VERSION }}\n",
 		"Dockerfile": "FROM golang:" + fleetGoToolchain + "-alpine AS b\nARG GO_VERSION=" + fleetGoToolchain + "\n",
+		// A base held in an ARG is a site too (#4207).
+		"images/r/Dockerfile": "ARG RUNNER_BASE=golang:" + fleetGoToolchain + "-bookworm@sha256:00\nFROM ${RUNNER_BASE}\n",
 	}
 	for rel, body := range good {
 		pins := goPinsIn(rel, body)
@@ -253,6 +262,7 @@ func TestGoSingleVersionControls(t *testing.T) {
 		"w/d.yml.proposed": "      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0\n",
 		"i/Dockerfile":     "FROM --platform=$BUILDPLATFORM golang:1.26-bookworm@sha256:00 AS g\n",
 		"j/Dockerfile":     "ARG GO_VERSION=1.25.0\n",
+		"l/Dockerfile":     "ARG RUNNER_BASE=golang:1.24-bookworm\nFROM ${RUNNER_BASE}\n",
 		"k/Dockerfile.ci":  "ARG GO_SHA256_ARM64=" + sha + "\n",
 		"tools/x/pins.env": "ANALYSIS_GO=1.25.0\n",
 		"r/.golangci.yml":  "run:\n  go: \"1.25.0\"\n",

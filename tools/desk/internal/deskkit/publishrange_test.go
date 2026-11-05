@@ -262,3 +262,48 @@ func TestPubSourceSnapshot(t *testing.T) {
 		}
 	}
 }
+
+// regression: #4434
+func TestPublishTrackingTip(t *testing.T) {
+	r := newRangeRepo(t)
+	r.git("config", "branch.feat.remote", "origin")
+	r.git("config", "branch.feat.merge", "refs/heads/main")
+	if got, why := PublishTrackingTip(r.dir, "feat"); got != r.remote || why != "" {
+		t.Fatalf("branch tip = %q (why %q), want %s", got, why, r.remote)
+	}
+	for branch, reason := range map[string]string{
+		"": "names no branch", "HEAD": "names no branch", "missing": "`git fetch origin` and retry",
+		"feat~0": "outside a plain ref name", "feat..main": "not a well-formed ref name", "feat@{0}": "outside a plain ref name",
+	} {
+		got, why := PublishTrackingTip(r.dir, branch)
+		if got != "" || !strings.Contains(why, `"refs/remotes/origin/`+branch+`" was not used`) || !strings.Contains(why, reason) {
+			t.Errorf("invalid/missing branch %q yielded %q, why %q (want %q)", branch, got, why, reason)
+		}
+	}
+	tip, _ := PublishTrackingTip(r.dir, "feat")
+	r.commitAs(verifierEmail, "Assay Verifier", "new.txt", "new foreign work")
+	r.git("update-ref", "refs/remotes/origin/feat", "HEAD")
+	wantRefusedNaming(t, r.gate(tip), "new foreign work")
+}
+
+// regression: #4434 review — a tracking snapshot that supplied no tip must still say so: the
+// gate records its reason as the widening note, and the refusal then leads with that remedy
+// instead of offering to rewrite a commit the remote may already hold.
+func TestPublishTipWhyNote(t *testing.T) {
+	r := newRangeRepo(t)
+	r.commitAs(workerEmail, "Assay Worker", "one.txt", "worker commit")
+	r.git("update-ref", "-d", "refs/remotes/origin/feat")
+	tip, why := PublishTrackingTip(r.dir, "feat")
+	err := PublishIdentityMatchesRole(PublishIdentityInput{Dir: r.dir, Base: "main", RemoteTip: tip, RemoteTipWhy: why, Role: "worker"})
+	wantRefusedNaming(t, err, "earlier commit by another App", `"refs/remotes/origin/feat" was not used`,
+		"does not resolve", "`git fetch origin` and retry", "so the whole range was judged", "never rewritten")
+	if err != nil && strings.Contains(err.Error(), "--reset-author") {
+		t.Errorf("widened refusal offers to rewrite a commit the remote may hold: %v", err)
+	}
+	// Without a reason the same range refuses with the ordinary re-author remedy.
+	err = PublishIdentityMatchesRole(PublishIdentityInput{Dir: r.dir, Base: "main", RemoteTip: "", Role: "worker"})
+	wantRefusedNaming(t, err, "earlier commit by another App", "--reset-author")
+	if err != nil && strings.Contains(err.Error(), "was not used") {
+		t.Errorf("an unexplained wide range invented a note: %v", err)
+	}
+}

@@ -21,21 +21,21 @@ package main
 //   - Internal-vs-external and agent-vs-human author classification, plus the
 //     by-raising-desk cut over the `raised-by:<desk>` label.
 //
-// Data source: `gh issue list --state all --json number,state,createdAt,closedAt,
-// author,labels,title` over the owned-repo set (scanRepos — the same reader the
-// issue scanner uses), generalising dora.go's bug-issue fetch. Like --dora it is
-// a self-contained diagnostic sub-command: it never reads or writes STATUS.md.
+// Data source: `deskread issue-list --state all` over the owned-repo set
+// (scanRepos — the same roster the issue scanner uses), generalising dora.go's
+// bug-issue fetch. Like --dora it is a self-contained diagnostic sub-command: it
+// never reads or writes STATUS.md.
 //
-// Offline discipline: --issues needs `gh`; a per-repo gh failure degrades to a
-// could-not-check note rather than aborting, and the stale-issue alarm that rides
-// the --lint gate is gh-guarded (skipped, never a hard failure, when gh is
-// absent) so the offline lint never gains a hard network dependency.
+// Offline discipline: --issues needs the desk-tools `deskread` verb; a per-repo
+// read it could not serve in full degrades to a could-not-check note rather than
+// aborting, and the stale-issue alarm that rides the --lint gate reads through
+// the run's forgeReader, offline unless --forge, so the offline lint never gains
+// a network dependency.
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -557,77 +557,75 @@ func renderIssueSeriesText(points []issueSeriesPoint) string {
 	return b.String()
 }
 
-// --- gh fetch (production) ---------------------------------
+// --- the issue read (production) ----------------------------
 
-// issueMetricListerFn is the issue reader --issues uses. The production
-// implementation shells out to gh; tests inject a fixture so the mode is
-// exercised offline.
+// issueMetricLister is the issue reader --issues uses. The production
+// implementation reads through the desk-tools `deskread` verb; tests inject a
+// fixture so the mode is exercised offline.
 type issueMetricLister func(repo string) ([]issueMetricRecord, error)
 
-// ghIssueMetricLister lists ALL issues (state all) of a repo with the extended
-// field set the metrics need. An empty repo means the ambient repo (no --repo),
-// matching --dora's ambient-repo behaviour. A gh failure is an error the caller
-// degrades to a per-repo could-not-check note.
-var ghIssueMetricLister issueMetricLister = func(repo string) ([]issueMetricRecord, error) {
-	args := []string{"issue", "list", "--state", "all", "--limit", "1000",
-		"--json", "number,state,createdAt,closedAt,author,labels,title"}
-	if repo != "" {
-		args = append(args[:2:2], append([]string{"--repo", repo}, args[2:]...)...)
+// defaultIssueMetricLister is the lister the production --issues and
+// --self-improvement paths read. A var with a stable name so a test exercises
+// the production wiring itself, not a hand-picked implementation.
+var defaultIssueMetricLister issueMetricLister = deskreadIssueMetricLister
+
+// deskreadIssueMetricLister lists ALL issues (state all) of a repo with the
+// field set the metrics need, through `deskread issue-list`
+// (deskreadReader.IssueList). An empty repo means the ambient repo: the verb
+// takes no ambient default, so it resolves to the configured home repo
+// (resolvedOwnerRepo), and with none configured the read is could-not-check
+// rather than a guess. Every failure is an error the caller degrades to a
+// per-repo could-not-check note — including a list stopped at its page bound,
+// which the `gh issue list --limit 1000` read this replaces truncated silently.
+func deskreadIssueMetricLister(repo string) ([]issueMetricRecord, error) {
+	target := resolvedOwnerRepo(repo)
+	if target == "" {
+		return nil, fmt.Errorf("deskread issue-list: could-not-check: no repo to read — ASSAY_SCAN_REPOS names none and no home repo is configured")
 	}
-	out, err := exec.Command("gh", args...).Output()
+	listed, err := newDeskreadReader().IssueList(target, "all", "")
 	if err != nil {
-		detail := ""
-		if ee, ok := err.(*exec.ExitError); ok {
-			detail = strings.TrimSpace(string(ee.Stderr))
+		return nil, err
+	}
+	recs := make([]issueMetricRecord, 0, len(listed))
+	for _, is := range listed {
+		created, cerr := time.Parse(time.RFC3339, is.CreatedAt)
+		if cerr != nil {
+			return nil, fmt.Errorf("deskread issue-list --repo %s: issue #%d has an unreadable createdAt %q: %v", target, is.Number, is.CreatedAt, cerr)
 		}
-		return nil, fmt.Errorf("gh issue list%s: %v %s", repoArgSuffix(repo), err, detail)
-	}
-	var raw []struct {
-		Number    int        `json:"number"`
-		Title     string     `json:"title"`
-		State     string     `json:"state"`
-		CreatedAt time.Time  `json:"createdAt"`
-		ClosedAt  *time.Time `json:"closedAt"`
-		Author    struct {
-			Login string `json:"login"`
-		} `json:"author"`
-		Labels []struct {
-			Name string `json:"name"`
-		} `json:"labels"`
-	}
-	if err := json.Unmarshal(out, &raw); err != nil {
-		return nil, fmt.Errorf("parsing gh output%s: %w", repoArgSuffix(repo), err)
-	}
-	recs := make([]issueMetricRecord, 0, len(raw))
-	for _, r := range raw {
+		author := is.AuthorLogin
+		// A GitHub App author is an automation identity whichever rendering the forge
+		// served: REST already says "<slug>[bot]"; a bare slug typed Bot gets the suffix,
+		// so classifyIssueAuthor sees it as the agent it is.
+		if strings.EqualFold(is.AuthorType, "Bot") && author != "" && !strings.HasSuffix(strings.ToLower(author), "[bot]") {
+			author += "[bot]"
+		}
 		rec := issueMetricRecord{
-			Number:    r.Number,
+			Number:    is.Number,
 			Repo:      repoLabel(repo),
-			OwnerRepo: resolvedOwnerRepo(repo),
-			Title:     r.Title,
-			State:     r.State,
-			CreatedAt: r.CreatedAt.UTC(),
-			Author:    r.Author.Login,
+			OwnerRepo: target,
+			Title:     is.Title,
+			State:     is.State,
+			CreatedAt: created.UTC(),
+			Author:    author,
 		}
-		if r.ClosedAt != nil && !r.ClosedAt.IsZero() {
-			rec.ClosedAt = r.ClosedAt.UTC()
-			rec.HasClosed = true
+		if is.ClosedAt != "" {
+			closed, xerr := time.Parse(time.RFC3339, is.ClosedAt)
+			if xerr != nil {
+				return nil, fmt.Errorf("deskread issue-list --repo %s: issue #%d has an unreadable closedAt %q: %v", target, is.Number, is.ClosedAt, xerr)
+			}
+			if !closed.IsZero() {
+				rec.ClosedAt = closed.UTC()
+				rec.HasClosed = true
+			}
 		}
-		for _, l := range r.Labels {
-			if n := strings.TrimSpace(l.Name); n != "" {
+		for _, l := range is.Labels {
+			if n := strings.TrimSpace(l); n != "" {
 				rec.Labels = append(rec.Labels, n)
 			}
 		}
 		recs = append(recs, rec)
 	}
 	return recs, nil
-}
-
-func repoArgSuffix(repo string) string {
-	if repo == "" {
-		return ""
-	}
-	return " --repo " + repo
 }
 
 // repoLabel names a repo for display: its own slug, or "(ambient)" for the empty
@@ -712,7 +710,7 @@ func gatherIssueRecords(list issueMetricLister) (records []issueMetricRecord, re
 // runIssues is the --issues entrypoint. Self-contained diagnostic sub-command —
 // never reads or writes STATUS.md, same discipline as --dora.
 func runIssues(root string, asJSON, series bool, staleDays int, teamLoginsCSV string) int {
-	records, repos, couldNotCheck := gatherIssueRecords(ghIssueMetricLister)
+	records, repos, couldNotCheck := gatherIssueRecords(defaultIssueMetricLister)
 
 	if series {
 		points := computeIssueSeries(records, nowFunc())

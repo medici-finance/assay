@@ -24,6 +24,10 @@ const (
 	fakeProject    = "proj"
 	fakeOwnerToken = "TOKEN-PLACEHOLDER-owner"
 	fakeMinted     = "TOKEN-PLACEHOLDER-minted"
+	// fakePushToken is the minted push token. The variable write MUST carry it in its body,
+	// so it is not a TOKEN-PLACEHOLDER value (the custody case asserts no body carries one);
+	// pushtoken_test.go asserts it never reaches the output.
+	fakePushToken = "PUSH-PLACEHOLDER-value"
 )
 
 type fakeRequest struct {
@@ -53,6 +57,8 @@ type fakeGitLab struct {
 	// dropPath makes every API request whose path contains it a transport failure (the
 	// connection is closed with no answer).
 	dropPath string
+	// pushVarSet is whether STATUSGEN_PUSH_TOKEN exists: absent (404) until a variable POST.
+	pushVarSet bool
 }
 
 func newFakeGitLab(t *testing.T) *fakeGitLab {
@@ -172,6 +178,16 @@ func (f *fakeGitLab) answer(m, p, body string) (int, string) {
 		return 201, `{}`
 	case "PUT /user/avatar":
 		return 200, `{"avatar_url":"/uploads/-/system/user/avatar/1/x.png"}`
+	case "GET /projects/7/variables/STATUSGEN_PUSH_TOKEN":
+		if !f.pushVarSet {
+			return 404, `{"message":"404 Variable Not Found"}`
+		}
+		return 200, `{"key":"STATUSGEN_PUSH_TOKEN","value":"` + fakePushToken + `","masked":true,"protected":true}`
+	case "POST /projects/7/access_tokens":
+		return 201, `{"id":61,"user_id":301,"name":"assay-statusgen-push","token":"` + fakePushToken + `"}`
+	case "POST /projects/7/variables":
+		f.pushVarSet = true
+		return 201, `{"key":"STATUSGEN_PUSH_TOKEN","value":"` + fakePushToken + `","masked":true,"protected":true}`
 	}
 	switch {
 	case m == "GET" && strings.HasPrefix(p, "/groups/1/members/"):

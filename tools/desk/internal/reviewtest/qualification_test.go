@@ -109,7 +109,11 @@ func probe(t *testing.T, bin, tool string, request q.Request, root string) (q.Re
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(bin, tool+".test"), "-test.run=^TestQualificationProbe$", "-test.v")
+	probeName := "TestQualificationProbe"
+	if strings.HasPrefix(request.Case, "queue-") {
+		probeName = "TestQueueBridgeProbe"
+	}
+	cmd := exec.CommandContext(ctx, filepath.Join(bin, tool+".test"), "-test.run=^"+probeName+"$", "-test.v")
 	cmd.Dir = dir
 	cmd.Env = append(isolatedEnv(dir), q.RequestEnv+"="+in, q.ResponseEnv+"="+out)
 	v := invocation{Tool: tool, Start: time.Now()}
@@ -120,7 +124,7 @@ func probe(t *testing.T, bin, tool string, request q.Request, root string) (q.Re
 		v.OwnCPUMs = &cpu
 		v.Exit = cmd.ProcessState.ExitCode()
 	}
-	if e != nil || !strings.Contains(string(log), "--- PASS: TestQualificationProbe ") {
+	if e != nil || !strings.Contains(string(log), "--- PASS: "+probeName+" ") {
 		t.Fatalf("%s/%s probe: %v\n%s", tool, request.Case, e, log)
 	}
 	b, e = os.ReadFile(out)

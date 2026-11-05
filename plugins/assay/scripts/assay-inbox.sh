@@ -1558,7 +1558,11 @@ collect_flow() {
   # ONE throughput read for the whole fleet: its depths and slots are resolved across the
   # repo/root set as a whole, so calling it per cell would report the same fleet numbers N
   # times under N different cell names — a coverage claim the reader does not make.
-  read_json "deskboard throughput" "$tp_out" "$tp_v" "$DESKBOARD_BIN" throughput --json
+  if [[ -n "${PR_MONITOR_REVIEW_OBSERVATION:-}" ]]; then
+    read_json "deskboard throughput" "$tp_out" "$tp_v" "$DESKBOARD_BIN" throughput --json --review-observation "$PR_MONITOR_REVIEW_OBSERVATION"
+  else
+    read_json "deskboard throughput" "$tp_out" "$tp_v" "$DESKBOARD_BIN" throughput --json
+  fi
 
   jq -n \
     --arg asOf "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \

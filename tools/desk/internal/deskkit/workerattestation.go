@@ -17,6 +17,8 @@ package deskkit
 // model is never inferred from the record. The record carries no claim of execution surveillance.
 
 import (
+	"github.com/medici-finance/assay/deskcore/attestation"
+
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -267,7 +269,10 @@ func attestationRecord(f Forge, repo ForgeRepo, n int, title, body string, autho
 
 // attestationTarget checks a typed observation without silently fetching a different one.
 func attestationTarget(issue *Issue, title, body string, authority func(string) bool, what string) error {
-	if issue == nil || issue.IsPullRequest || !authority(issue.Author.Login) || issue.Title != title || issue.Body != body {
+	if issue == nil {
+		return Refused(what + " target is not the exact dispatcher-authored run record")
+	}
+	if why := attestation.TargetProblem(true, issue.IsPullRequest, authority(issue.Author.Login), issue.Title, issue.Body, title, body); why != "" {
 		return Refused(what + " target is not the exact dispatcher-authored run record")
 	}
 	return nil
@@ -285,7 +290,7 @@ func attestationRecordObserved(f attestationRecordReader, repo ForgeRepo, n int,
 	if err != nil {
 		return nil, Unverifiable("cannot establish immutable "+what+" record", err)
 	}
-	if trust == nil || !trust.BodyHistoryKnown || !trust.Complete || !trust.BodyEdited.IsZero() {
+	if trust == nil || attestation.HistoryProblem(trust.BodyHistoryKnown, trust.Complete, !trust.BodyEdited.IsZero()) != "" {
 		return nil, Refused(what + " record edited or its history is incomplete")
 	}
 	return issue, nil

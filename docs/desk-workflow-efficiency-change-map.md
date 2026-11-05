@@ -154,3 +154,29 @@ this explicitly versioned local instrument. /62 and statusgen/26 adopt v3; colle
 preserve identity/coverage/units into reports, without raw local locators in exports.
 The source/consumer routing table in the contract classifies the remaining performance briefs;
 completed implementations and their Evidence are not reopened.
+
+## Candidate-plus-priority ownership reconciliation — 23 October 2026
+
+Requested amendment at App-fetched main `9c4307a19`; source audit release v1.0.57.
+The [planner contract and ranked call model](desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+extend existing delivery. No new stream/brief identity, second policy register or scheduler.
+
+| Existing work | Reuse / bounded amendment | Consumer and retirement proof |
+|---|---|---|
+| desk-tools/39–40 | Complete review candidate observation + explicit policy/time/capacity pure plan; keep role evaluators canonical | Same plan value feeds prose, reactor and summary; do not make operation-key sort the slot priority. |
+| desk-tools/42 | Issue projection input and enrichment/batching qualification | Work-ready, intake and inbox retain distinct complete populations; no global scan per root. Already shipped narrowing is baseline, not new savings. |
+| desk-tools/43–44 | Actual caller migration and full-workflow parity/cost qualification, spec A11–A12 | Retire duplicate calls before code/commands; preserve producer/skill/schema compatibility, liveness and admission. |
+| desk-tools/45,47,51 | Verification base classification, interrupted Evidence repair and skill lane integration | One complete multi-root candidate view, including owned Evidence repair; shared-blocker cache is per pass and final held-head checks remain. |
+| graph-execution/27 | Five-role composition in the already-declared tools/desk-local deskclient adapter | Both prose and discrete clients consume the same role-qualified planner; Loop/reactor, claims, supervisor and bounded judgments keep their owners. |
+| desktools-v2/09 and /20–21 | Reuse verified typed access-pattern queries; coordinate CLI adapters | Raw provider queries stay below Forge; parser migration does not create a ranker or take over policy. Preserve completed Evidence. |
+| forge-neutral/37–43 | One ingestion owner, typed serving, exact-source reuse and invalidation | Share across windows only after scope/freshness qualification; include policy/time/capacity dependencies without fetching GH for a pure priority change. No fallback poller per caller. |
+| Adopter desk-simplification and drain migration | Amend existing role cutover/parity and cleanup responsibilities locally | Do not recreate withdrawn core/policy plans, copy private plans into public Assay, or activate a parked program. |
+
+The first independently useful head remains /37's oracle plus /39's shared pure contract,
+then /40 and /43, qualified by /44. /27 composes the existing review/issue and verification
+APIs. /45 supplies the canonical verification queue; /43 and /51 supply the actual review
+and verifier prose adapters required by all-five-role parity. All three are reciprocal
+prerequisites of /27: composition consumes their implementations instead of duplicating them.
+This includes /51’s existing human gate; no earlier pure-contract acceptance waits on /27. R6 service dependencies remain on their own path;
+read-only improvement does not wait on a credential/writer cutover. Active /42 work retains
+its assigned revision until its owner acknowledges the bounded input/acceptance amendment.

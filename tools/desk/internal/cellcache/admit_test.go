@@ -347,26 +347,26 @@ func TestCacheSkipsSecondWalk(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.close()
-	// measure reads free space once per walk, so the count is the walk count.
-	walks := 0
-	m.free = func(string) (uint64, error) { walks++; return bigFree, nil }
+	// Observe actual traversals; statfs is also rechecked at the final boundary.
+	m.walks = 0
+	m.free = func(string) (uint64, error) { return bigFree, nil }
 	r := m.check(false)
-	if walks != 1 || r.Outcome != "checked-clean" || *r.After.LogicalBytes != 100 || *r.Before.LogicalBytes != 100 {
-		t.Fatalf("clean pass walked %d times: %+v", walks, r)
+	if m.walks != 1 || r.Outcome != "checked-clean" || *r.After.LogicalBytes != 100 || *r.Before.LogicalBytes != 100 {
+		t.Fatalf("clean pass walked %d times: %+v", m.walks, r)
 	}
 	// A pass that removes something still re-measures, so After is real.
 	m.p.Budget = 10
-	walks = 0
+	m.walks = 0
 	r = m.check(false)
-	if walks != 2 || r.Reclaimed != 100 || *r.After.LogicalBytes != 0 {
-		t.Fatalf("removal pass did not re-measure: walks=%d %+v", walks, r)
+	if m.walks != 2 || r.Reclaimed != 100 || *r.After.LogicalBytes != 0 {
+		t.Fatalf("removal pass did not re-measure: walks=%d %+v", m.walks, r)
 	}
 	// A removal that fails part way still re-measures: its effect is unknown.
 	material(t, p, "build/b", 100)
 	m.remove = func(string) error { return errors.New("removal denied") }
-	walks = 0
+	m.walks = 0
 	r = m.check(false)
-	if walks != 2 || r.Outcome != "could-not-check" {
-		t.Fatalf("failed removal skipped the re-measure: walks=%d %+v", walks, r)
+	if m.walks != 2 || r.Outcome != "could-not-check" {
+		t.Fatalf("failed removal skipped the re-measure: walks=%d %+v", m.walks, r)
 	}
 }

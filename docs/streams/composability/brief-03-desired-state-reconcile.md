@@ -37,9 +37,7 @@ id: 0805e599-cd9f-4825-9a60-f305190b5e63
 ## Context
 
 files:
-- **create** the schema and a reference `.assay/config.yaml` (planned) (`schema: assay-config-v1`,
-  `umbrella`, `entries[]` with `id`, `component`, `version`, `config`, `intercept`, `disabled`)
-  — documented in `component-model.md` §7, checked by `deskmanifest lint`.
+- **create the schema and a reference** `.assay/config.yaml` (planned) (`schema: assay-config-v1`, `umbrella`, `entries[]` with `id`, `component`, `version`, `config`, `intercept`, `disabled`) — documented in `component-model.md` §7, checked by `deskmanifest lint`.
 - **edit** `tools/desk/cmd/deskmigrate/` — becomes the reconcile engine driver: `deskmigrate plan` (diff record vs ledger + tree, print operations) and `deskmigrate apply` (run them). Existing migrations run as pre-reconcile steps keyed on the `umbrella` change.
 - **edit** `tools/desk/cmd/deskversion/` — read `umbrella` from the record; fall back to `.assay-versions` when no record exists (pre-record adopters).
 - **edit** `plugins/assay/skills/upgrade-assay/SKILL.md` — an upgrade is: bump `umbrella` and the entry versions it pins, `deskmigrate plan`, show release notes, `deskmigrate apply`.

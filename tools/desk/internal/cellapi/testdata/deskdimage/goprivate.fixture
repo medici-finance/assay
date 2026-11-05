@@ -1,0 +1,5 @@
+# GOPRIVATE implies GONOSUMDB for its patterns.
+want: goprivate
+file: Dockerfile
+replace: "    GOFLAGS=-mod=readonly\n"
+with: "    GOFLAGS=-mod=readonly \\\n    GOPRIVATE=example.com/*\n"

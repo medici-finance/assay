@@ -470,6 +470,43 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			len(nu.MergedElsewhere), strings.Join(frags, ", "))
 		w("")
 	}
+	// Held by a strong board-honesty finding (boardhonesty.go): already delivered
+	// by a merged `Brief:`-trailer PR, or a re-homed pointer row. NAMED so the
+	// hold is visible; the row stays on the board until it is reconciled.
+	// A delivered row the reconcile's own lint hold refuses to write is named
+	// apart: "reconcile" cannot clear it, so its line carries the hold's PROBLEM
+	// and the record that clears it instead.
+	if len(nu.PhantomElsewhere) > 0 {
+		ids := make([]string, 0, len(nu.PhantomElsewhere))
+		for id := range nu.PhantomElsewhere {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		var frags []string
+		byFlip := map[phantomFlipState][]string{}
+		for _, id := range ids {
+			frag := fmt.Sprintf("%s → %s", id, nu.PhantomElsewhere[id])
+			if st := nu.PhantomFlip[id]; st != phantomFlipClean {
+				byFlip[st] = append(byFlip[st], frag)
+				continue
+			}
+			frags = append(frags, frag)
+		}
+		if len(frags) > 0 {
+			w("> **Already delivered or re-homed — held out of dispatch (%d):** %s. Each is a board-honesty "+
+				"finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose "+
+				"brief file is gone); reconcile or retire the row to clear it.",
+				len(frags), strings.Join(frags, ", "))
+			w("")
+		}
+		for _, st := range []phantomFlipState{phantomFlipHeld, phantomFlipUnchecked} {
+			if len(byFlip[st]) > 0 {
+				w("> **Already delivered, %s — held out of dispatch (%d):** %s. Fix: %s.",
+					st.heading(), len(byFlip[st]), strings.Join(byFlip[st], ", "), st.remediation())
+				w("")
+			}
+		}
+	}
 	// Overflow is an alarm (SCADA / EEMUA-191): when the eligible backlog exceeds
 	// what the caps show, say so explicitly — never silently truncate. The
 	// held-back count names WHICH cap fired: it used to blame the span-of-control

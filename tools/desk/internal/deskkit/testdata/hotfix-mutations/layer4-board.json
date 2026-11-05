@@ -1,0 +1,23 @@
+{
+  "test": "go test ./cmd/deskboard/ -count=1 -timeout 600s -run '^TestStaleStateHotfix$'",
+  "control": {
+    "name": "CONTROL: TestStaleStateHotfix wants the banner without its HOTFIX: prefix",
+    "file": "cmd/deskboard/hotfix_test.go",
+    "old": "\tif !strings.HasPrefix(first, \"HOTFIX:\") ||",
+    "new": "\tif strings.HasPrefix(first, \"HOTFIX:\") ||"
+  },
+  "mutations": [
+    {
+      "name": "the board header drops the HOTFIX: marker",
+      "file": "cmd/deskboard/main.go",
+      "old": "\"HOTFIX: desk-tools \" + running",
+      "new": "\"desk-tools \" + running"
+    },
+    {
+      "name": "the board reads an expired hotfix as a valid one",
+      "file": "cmd/deskboard/main.go",
+      "old": "\tif !hotfixNow().Before(expires) {",
+      "new": "\tif false {"
+    }
+  ]
+}

@@ -68,6 +68,16 @@ func (h *Hostile) Report(ref runner.Ref, obs runner.Observation) {
 	h.mu.Unlock()
 }
 
+// QualifiedProfiles forwards the wrapped adapter's qualified-profile
+// declaration, so wrapping an adapter that knows the execution-profile
+// extension does not hide it.
+func (h *Hostile) QualifiedProfiles() []runner.QualifiedProfile {
+	if d, ok := h.Adapter.(runner.ProfileDeclarer); ok {
+		return d.QualifiedProfiles()
+	}
+	return nil
+}
+
 // Start implements runner.Adapter.
 func (h *Hostile) Start(ctx context.Context, req runner.LaunchRequest) (runner.Receipt, error) {
 	h.mu.Lock()

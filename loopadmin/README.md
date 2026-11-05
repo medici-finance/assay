@@ -1,6 +1,6 @@
 # loopadmin
 
-The shared runner contract for model-backed agent launches: one checked protocol that standing desks and workflow stages both use, so provider integrations, crash recovery and cost accounting are implemented once. The protocol is specified in [`spec/loop-admin-runner-v1.md`](../spec/loop-admin-runner-v1.md) and its launch request has a machine-readable shape in [`schemas/loop-admin-runner-v1.json`](../schemas/loop-admin-runner-v1.json).
+The shared runner contract for model-backed agent launches: one checked protocol that standing desks and workflow stages both use, so provider integrations, crash recovery and cost accounting are implemented once. The protocol is specified in [`spec/loop-admin-runner-v1.md`](../spec/loop-admin-runner-v1.md) and its launch request has a machine-readable shape in [`schemas/loop-admin-runner-v1.json`](../schemas/loop-admin-runner-v1.json). The `execution-profile/v1` extension, which pins a qualified harness, model and backend and states what each lifecycle operation preserves, is specified in [`spec/loop-admin-execution-profile-v1.md`](../spec/loop-admin-execution-profile-v1.md) with its shapes in [`schemas/loop-admin-execution-profile-v1.json`](../schemas/loop-admin-execution-profile-v1.json).
 
 This unit ships the contract, an in-memory fake adapter and an offline conformance kit. There is no real provider client and no provider call.
 
@@ -8,10 +8,11 @@ This unit ships the contract, an in-memory fake adapter and an offline conforman
 
 | Path | What it is |
 |---|---|
-| `runner/` | The contract: request and result types, strict decoding, the caller `Client`, the `Adapter` and `Fence` interfaces, usage and capability declarations, credential exclusion. |
-| `runner/fake/` | An in-memory adapter with scripted faults: lost launch acknowledgment, definite launch rejection, ignored cancel, a different model than pinned. |
-| `runner/conformance/` | The conformance kit (`RunAll` and one exported case per behaviour), request builders, a reference caller claim check and the fence-bypass fixture. |
+| `runner/` | The contract: request and result types, strict decoding, the caller `Client`, the `Adapter` and `Fence` interfaces, usage and capability declarations, credential exclusion. `executionprofile.go` holds the `execution-profile/v1` extension: qualified profiles, requirements, admission before Start and the execution report checked at acceptance. |
+| `runner/fake/` | An in-memory adapter with scripted faults: lost launch acknowledgment, definite launch rejection, ignored cancel, a different model than pinned. `Qualify` makes it declare qualified execution profiles and run its own admission; `SubstituteBackend` and `ObserveRestored` script a run on another backend and a partial restoration. |
+| `runner/conformance/` | The conformance kit (`RunAll` and one exported case per behaviour), request builders, a reference caller claim check and the fence-bypass fixture; for the execution-profile extension, profile builders, the `ForgedProfiles` client-bypass fixture and the reference `ProfileCaller` check. |
 | `testdata/runner/` | Request fixtures: valid standing-desk, valid workflow-stage, a workflow request missing a reference, an unknown field and a future version. |
+| `testdata/executionprofile/` | Execution-profile fixtures: a qualified profile, a standing-desk and a workflow-stage requirement, and malformed requirements and profiles (unknown field, null field, bad digest, undefined support value, drifted content). |
 | `testdata/mutations.json`, `mutate/` | The mutation gate. |
 
 ## Module
@@ -42,7 +43,7 @@ GOWORK=off go test -count=1 ./...
 GOWORK=off go run ./mutate -map testdata/mutations.json
 ```
 
-The mutation gate copies the module to a scratch directory, applies one textual replacement from the map (the old text must match exactly once), and requires the named test to fail. Every guard the contract tests name has a mutation (196 in the map: the five Verify tests, plus one or more per review finding, including the source-level class guard `TestNoPayloadInErrors` and the gate's own file confinement); a test that stays green under its mutation does not guard what it names. A mutation must fail a test, not the build: a mutation that does not compile is reported as an error, not a kill. The module's CI job is staged at `ci/staged-workflows/loopadmin.yml` until a maintainer promotes it; the repository's `ci.yml` build-test job already builds and vets every module it finds.
+The mutation gate copies the module to a scratch directory, applies one textual replacement from the map (the old text must match exactly once), and requires the named test to fail. Every guard the contract tests name has a mutation (206 in the map: the five Verify tests and the three execution-profile tests, plus one or more per review finding, including the source-level class guard `TestNoPayloadInErrors` and the gate's own file confinement); a test that stays green under its mutation does not guard what it names. A mutation must fail a test, not the build: a mutation that does not compile is reported as an error, not a kill. The module's CI job is staged at `ci/staged-workflows/loopadmin.yml` until a maintainer promotes it; the repository's `ci.yml` build-test job already builds and vets every module it finds.
 
 ## What is not here
 

@@ -1,5 +1,7 @@
 package deskkit
 
+import "github.com/medici-finance/assay/deskcore/issueflow"
+
 // addressto.go — the `to:<role>` desk-inbox addressee stamp.
 //
 // WHAT THIS IS. A `raised-by:<role>` label answers "which desk NOTICED this"; a
@@ -25,7 +27,7 @@ package deskkit
 // AddressedToPrefix is the label prefix carrying the desk-inbox addressee stamp. Like
 // RaisedByPrefix it is the ONE spelling of it: writers build the label through
 // AddressedToLabel and readers match through AddressedToOf, so no consumer restates it.
-const AddressedToPrefix = "to:"
+const AddressedToPrefix = issueflow.AddressPrefix
 
 // AddressedToLabel validates role against the roster's DERIVED desk vocabulary (the same
 // boundRole resolver `--raised-by` uses — one resolver, two flags) and returns the

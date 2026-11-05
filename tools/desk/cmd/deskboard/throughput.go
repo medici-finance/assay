@@ -29,7 +29,11 @@ package main
 
 import (
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/verifyqueue"
+	rf "github.com/medici-finance/assay/tools/desk/internal/reviewflow"
 	"io"
+	"os"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -150,7 +154,11 @@ func (r *stageRow) finish() {
 // allowed to FAIL independently: this verb's job is to compare stages, and one unreadable
 // stage must not deny the coordinator a reading on the other three. Every failure becomes a
 // named blind row, never a zero.
-func cmdThroughput(hdr Header, mergeNowThreshold, unreviewedThreshold time.Duration) (*Report, error) {
+func cmdThroughput(hdr Header, mergeNowThreshold, unreviewedThreshold time.Duration, observationPaths ...string) (*Report, error) {
+	observationPath := ""
+	if len(observationPaths) > 0 {
+		observationPath = observationPaths[0]
+	}
 	// Repo-axis coverage. This verb sweeps deskkit.AllowedRepos for its review depth, so it
 	// carries `scope` like every other repo-sweeping verb (#359).
 	hdr.Scope = boardScope()
@@ -226,7 +234,15 @@ func cmdThroughput(hdr Header, mergeNowThreshold, unreviewedThreshold time.Durat
 
 	// ---- review depth ----
 	ahdr := hdr
-	if arep, err := cmdActions(&ahdr, mergeNowThreshold, unreviewedThreshold); err != nil {
+	if observationPath != "" {
+		depth, cutoff, err := frozenReviewDepth(observationPath, time.Now().UTC())
+		reviewStage.DepthNote = "complete review observation at " + cutoff + "; NEEDS-REVIEW plus RE-REVIEW; no additional review collection"
+		if err != nil {
+			reviewStage.Blind = appendBlind(reviewStage.Blind, "depth: "+err.Error())
+		} else {
+			reviewStage.Depth = intp(depth)
+		}
+	} else if arep, err := cmdActions(&ahdr, mergeNowThreshold, unreviewedThreshold); err != nil {
 		reviewStage.Blind = appendBlind(reviewStage.Blind, "depth: "+err.Error())
 	} else if av, ok := arep.value.(actionsReport); ok {
 		n := 0
@@ -417,7 +433,7 @@ func renderThroughput(w io.Writer, rep *throughputReport) {
 // widen on a partial depth.
 func verifyDepth(nv *nextupReport) (depth int, partial string) {
 	for _, row := range nv.Rows {
-		if row.Status == "implemented" && row.Class == queueClassJudgment {
+		if verifyqueue.JudgmentWork(row.Status, row.Class) {
 			depth++
 		}
 	}
@@ -427,4 +443,45 @@ func verifyDepth(nv *nextupReport) (depth int, partial string) {
 		}
 	}
 	return depth, partial
+}
+
+// frozenReviewDepth preserves the producer's complete population and the shared
+// observation validator. Current scope, local policy and the five-minute cadence
+// must match; a held snapshot never falls through to another provider scan.
+func frozenReviewDepth(path string, now time.Time) (int, string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, "unknown", err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, 16<<20+1))
+	if err != nil || len(b) > 16<<20 {
+		return 0, "unknown", fmt.Errorf("review observation unreadable or exceeds 16 MiB")
+	}
+	o, err := rf.DecodeObservation(b)
+	if err != nil {
+		return 0, "unknown", err
+	}
+	scope := []rf.Repository{}
+	repos := deskkit.AllowedRepos()
+	for _, repo := range repos {
+		owner, name, _ := strings.Cut(repo, "/")
+		kind, err := deskkit.ForgeKindFor(deskkit.ForgeRepo{Owner: owner, Name: name})
+		if err != nil || kind.Kind != deskkit.ForgeGitHub {
+			return 0, "unknown", fmt.Errorf("review scope unsupported")
+		}
+		scope = append(scope, rf.Repository{Provider: "github", Host: "github.com", Repository: strings.ToLower(repo)})
+	}
+	if !reflect.DeepEqual(scope, o.Inputs.Requested) {
+		return 0, "unknown", fmt.Errorf("review access scope changed; refresh observation")
+	}
+	scores, err := fetchAndMapGateScores()
+	if err != nil {
+		return 0, "unknown", err
+	}
+	plan, err := rf.PlanObservation(o, rf.ObservationPolicy{Now: now, Oldest: now.Add(-5 * time.Minute), Policy: reviewCollectionPolicy(scores, repos)})
+	if err != nil {
+		return 0, "unknown", err
+	}
+	return plan.Idle.NeedsReview + plan.Idle.ReReview, o.Inputs.Collection.End.Format(time.RFC3339Nano), nil
 }

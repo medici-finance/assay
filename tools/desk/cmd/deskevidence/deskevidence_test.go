@@ -434,7 +434,7 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) { return nil, nil }
 	t.Cleanup(func() { decisionGateBranchBoardFn = oldBranchBoard })
 	oldLanded := landedClosureFn
-	landedClosureFn = func(root, target string, before, after []byte, exists bool, f deskkit.Forge, r deskkit.ForgeRepo, branch string) (string, string, func(), error) {
+	landedClosureFn = func(root, target string, before, after []byte, exists bool, f deskkit.Forge, r deskkit.ForgeRepo, branch string, _ deskkit.VerifierReceipt) (string, string, func(), error) {
 		return root, "", func() {}, nil
 	}
 	t.Cleanup(func() { landedClosureFn = oldLanded })

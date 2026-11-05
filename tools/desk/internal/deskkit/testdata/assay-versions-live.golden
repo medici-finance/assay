@@ -19,14 +19,14 @@
 # changes NO parsed content: the 12 artifact lines below (and their trailing inline
 # comments) are the real assertions and are preserved exactly. Refresh by re-copying a
 # live consumer file and re-applying the same neutralization, keeping the artifact
-# lines byte-identical, and updating the Source revision line below to the new commit id.
+# lines byte-identical; record the source revision privately, never in this file.
 #
-# Source revision: 33fa2723ff55355df4aa0f2c81361895e0ef8952 — the live consumer's
-# `.assay-versions` at that commit. The source repo slug is withheld (it is the leak the
-# neutralization removes); a bare 40-hex commit id carries no private identifier and is
-# safe in the public tree. This anchors WHICH live revision the backward-compat
-# assertions are compatible with, so drift between this fixture and the live file stays
-# detectable.
+# Source revision: withheld. The live consumer is not a public repo, so its commit id
+# resolves nowhere a public reader can follow and is itself a private identifier: the
+# repo slug AND the commit id are withheld together. Drift between this fixture and
+# the live file is detected by re-copying the live file and diffing the artifact
+# lines, which are the only parsed content; the comments here anchor nothing the
+# parser reads.
 #
 # One normalization vs a raw copy: a single trailing newline at end-of-file, so the
 # append-based duplicate-rejection test forms a new line instead of gluing onto the
