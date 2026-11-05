@@ -118,11 +118,17 @@ func TestHTTPGateEndToEndOverHTTP(t *testing.T) {
 		t.Fatalf("listed :public repo, live public over HTTP: got %v, want pass", err)
 	}
 
-	// Listed :public repo, live internal → refused: live-internal needs an explicit
-	// :internal entry (#4978); TestGateInternalToken covers the :internal pass.
+	// Listed :public repo, live internal → pass: a :public entry is at least as exposed as
+	// live-internal (#5514); TestGateExposureRank covers the full rank table.
 	visibility = "internal"
-	if err := PublicRepoGate(f, "example-org", "pubrepo"); !IsRefused(err) {
-		t.Fatalf("listed :public repo, live internal over HTTP: got %v, want Refused/exit 5", err)
+	if err := PublicRepoGate(f, "example-org", "pubrepo"); err != nil {
+		t.Fatalf("listed :public repo, live internal over HTTP: got %v, want pass", err)
+	}
+
+	// Listed :private repo, live internal → refused: a :private entry authorizes no
+	// outward write to a non-private repo.
+	if err := PublicRepoGate(f, "example-org", "privrepo"); !IsRefused(err) {
+		t.Fatalf("configured :private but live internal over HTTP: got %v, want Refused/exit 5", err)
 	}
 
 	// A repo NOT listed :public, live public → refused.
