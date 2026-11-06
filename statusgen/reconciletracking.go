@@ -29,27 +29,39 @@ func briefVersionForPass(path, evidence string, p flipPass) (int, error) {
 		}
 		return version, nil
 	}
-	dir := filepath.Dir(path)
-	repo, err := attestationTrackingRepo(dir)
-	if err != nil {
+	if err := crossBindingBriefIdentity(path, binding); err != nil {
 		return 0, err
-	}
-	if !strings.EqualFold(repo, binding.repo) {
-		return 0, fmt.Errorf("attestation tracking repository %s is not the brief's repository", binding.repo)
-	}
-	prefix, ok := (coverageRepo{root: dir}).RootPrefix()
-	if !ok {
-		return 0, fmt.Errorf("cannot resolve the tracking brief's repository-relative path")
-	}
-	rel := prefix + filepath.Base(path)
-	if binding.brief != rel {
-		return 0, fmt.Errorf("attestation names brief %s, not %s", binding.brief, rel)
 	}
 	version, err := briefVersionAt(path, binding.trackingSource)
 	if err != nil {
 		return 0, fmt.Errorf("tracking-source %s: %w", binding.trackingSource, err)
 	}
 	return version, nil
+}
+
+// crossBindingBriefIdentity holds a version-2 binding to the brief at path:
+// the attestation's repo= must be the brief's own repository and its brief=
+// the brief's repository-relative path. The brief-version read
+// (briefVersionForPass) and the fail-first closure gate (failFirstCrossAnchor)
+// share it, so a binding one of them refuses the other never accepts.
+func crossBindingBriefIdentity(path string, binding *containerAttestation) error {
+	dir := filepath.Dir(path)
+	repo, err := attestationTrackingRepo(dir)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(repo, binding.repo) {
+		return fmt.Errorf("attestation tracking repository %s is not the brief's repository", binding.repo)
+	}
+	prefix, ok := (coverageRepo{root: dir}).RootPrefix()
+	if !ok {
+		return fmt.Errorf("cannot resolve the tracking brief's repository-relative path")
+	}
+	rel := prefix + filepath.Base(path)
+	if binding.brief != rel {
+		return fmt.Errorf("attestation names brief %s, not %s", binding.brief, rel)
+	}
+	return nil
 }
 
 // selectedRunCrossBinding is the ONE reader of a selected PASS run's

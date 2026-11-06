@@ -31,7 +31,8 @@ func ffCrossRepo(t *testing.T) (root, older, base, source, later, stray string) 
 
 // ffCrossTracking builds the tracking clone the gate runs in: one commit that
 // origin/main also names, so its merge-base resolves and only the deliverable
-// commits are absent from it, as in a real cross-repository verify.
+// commits are absent from it, as in a real cross-repository verify. Its origin
+// names example-org/one, the repository the fixture attestation's repo= names.
 func ffCrossTracking(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -40,6 +41,7 @@ func ffCrossTracking(t *testing.T) string {
 	gitRun(t, root, "add", "-A")
 	gitRun(t, root, "commit", "-q", "-m", "tracking")
 	gitRun(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+	gitRun(t, root, "remote", "add", "origin", "https://github.com/example-org/one.git")
 	return root
 }
 
@@ -159,5 +161,55 @@ func TestFFCrossRepoSelected(t *testing.T) {
 		if c.wantErr && (err == nil || !strings.Contains(err.Error(), "attested deliverable source")) {
 			t.Errorf("%s: want the cross-repository ancestry refusal, got %v", c.name, err)
 		}
+	}
+}
+
+// regression: #5549
+// TestFFCrossAnchorBriefIdentity: the cross-repository anchor holds the
+// attestation to the brief it closes, with the same identity checks the
+// brief-version read applies (crossBindingBriefIdentity): repo= must be the
+// brief's own repository and brief= its repository-relative path. Either
+// mismatch keeps every risk-bearing row a PROBLEM.
+func TestFFCrossAnchorBriefIdentity(t *testing.T) {
+	withBase(t, true)
+	deliverable, _, base, source, _, _ := ffCrossRepo(t)
+	t.Setenv("DESK_ROOTS", "example-org/two="+deliverable)
+	tracking := ffCrossTracking(t)
+	for _, c := range []struct {
+		name, want string
+		att        func(string) string
+	}{
+		{"repo= names another repository", "is not the brief's repository",
+			func(l string) string { return strings.Replace(l, "example-org/one#7", "example-org/three#7", 1) }},
+		{"brief= names another brief", "attestation names brief",
+			func(l string) string {
+				return strings.Replace(l, "brief=docs/streams/ff/brief-01-ff.md", "brief=docs/streams/ff/brief-02-ff.md", 1)
+			}},
+	} {
+		problems, _ := failFirstGateChecks(tracking, ffStream(t, tracking, ffCrossEvidence(base, source, c.att)))
+		if !containsSub(problems, "cannot be bound") || !containsSub(problems, c.want) {
+			t.Errorf("%s: want a PROBLEM naming %q; problems=%v", c.name, c.want, problems)
+		}
+	}
+}
+
+// regression: #5549
+// TestFFCrossAnchorDeliverableDiffersFromBrief: a cross-repository run's
+// source-repo= names the DELIVERABLE repository, so it is never the brief's
+// own repository. One that is keeps every risk-bearing row a PROBLEM, even
+// with a checkout configured for it. The attestation parser refuses a line
+// whose repo= and source-repo= agree, and crossBindingBriefIdentity holds
+// repo= to the brief's repository; this pins the two together.
+func TestFFCrossAnchorDeliverableDiffersFromBrief(t *testing.T) {
+	withBase(t, true)
+	deliverable, _, base, source, _, _ := ffCrossRepo(t)
+	t.Setenv("DESK_ROOTS", "example-org/one="+deliverable)
+	tracking := ffCrossTracking(t)
+	att := func(l string) string {
+		return strings.Replace(l, "source-repo=example-org/two", "source-repo=example-org/one", 1)
+	}
+	problems, _ := failFirstGateChecks(tracking, ffStream(t, tracking, ffCrossEvidence(base, source, att)))
+	if !containsSub(problems, "cannot be bound") {
+		t.Errorf("want the binding refused; problems=%v", problems)
 	}
 }

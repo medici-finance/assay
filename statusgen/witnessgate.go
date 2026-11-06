@@ -293,7 +293,7 @@ func failFirstClosureChecks(root, id, status string, art briefArtifacts, plan pr
 		problems = append(problems, fmt.Sprintf("%s: cannot close as %s — the Verify section holds %s that `statusgen verifyrun` cannot place, so it is never run, witnessed or held to a fail-first record. Give the table a `Command` column (and a Command cell on every row)", id, status, u))
 	}
 	evidence := parseEvidenceRows(plan.Evidence)
-	cross, crossWhy := failFirstCrossAnchor(art.Evidence)
+	cross, crossWhy := failFirstCrossAnchor(art.Path, art.Evidence)
 	for _, r := range rows {
 		ff, found, stale := latestFailFirst(evidence[r.ID], r.Command)
 		if !risky[r.ID] {
@@ -384,10 +384,12 @@ var failFirstDeliverableRoot = func(repo string) (string, bool) {
 //
 // It fails closed: why is non-empty, and every risk-bearing row's ancestry is
 // a PROBLEM, when the Evidence names a cross-repository run the gate cannot
-// bind (selectedRunCrossBinding's refusals) or when the deliverable repository
+// bind (selectedRunCrossBinding's refusals), when the binding is not for the
+// brief at path (crossBindingBriefIdentity, the identity checks the
+// brief-version read applies), or when the deliverable repository
 // has no configured checkout. Without one the base cannot be checked, which is
 // never a pass.
-func failFirstCrossAnchor(evidence string) (*ffCrossAnchor, string) {
+func failFirstCrossAnchor(path, evidence string) (*ffCrossAnchor, string) {
 	p, err := flipLatestPass(evidence)
 	if err != nil {
 		if unboundCrossAttestation(evidence) {
@@ -401,6 +403,9 @@ func failFirstCrossAnchor(evidence string) (*ffCrossAnchor, string) {
 	}
 	if b == nil {
 		return nil, ""
+	}
+	if err := crossBindingBriefIdentity(path, b); err != nil {
+		return nil, "its cross-repository attestation cannot be bound: " + err.Error()
 	}
 	root, ok := failFirstDeliverableRoot(b.sourceRepo)
 	if !ok {
