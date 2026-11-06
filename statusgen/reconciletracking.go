@@ -15,49 +15,11 @@ import (
 // cross-repository line anywhere, a run with no literal binding refuses
 // rather than taking the source-revision read.
 func briefVersionForPass(path, evidence string, p flipPass) (int, error) {
-	var binding *containerAttestation
-	legacy := false
-	// p.Run is the selected, already comment-normalized run. Reuse the literal
-	// marker scanner without normalizing comments a second time or reading an
-	// older run's attestation.
-	for _, m := range protectedMarkersNamed(normalizedProtectedEvidence(p.Run), strings.TrimSpace(attestationPrefix)) {
-		a, ok := parseContainerAttestation(m.text)
-		cross := false
-		for _, field := range strings.Fields(m.text) {
-			cross = cross || strings.HasPrefix(field, "source-repo=") || strings.HasPrefix(field, "tracking-source=")
-		}
-		if !cross {
-			// The old source-revision reader ignored optional v1 metadata,
-			// including unstructured historical notes. Keep that acceptance
-			// set; only a structured v1 line conflicts with a selected v2 run.
-			legacy = legacy || (m.literal && ok && a.version == 1)
-			continue
-		}
-		if !m.literal {
-			return 0, fmt.Errorf("cross-repository attestation must be literal run metadata")
-		}
-		if !ok || a.version != 2 {
-			return 0, fmt.Errorf("malformed cross-repository run attestation%s", missingCrossFields(m.text))
-		}
-		if !hex64Re.MatchString(a.run) || !hex40Re.MatchString(a.source) || !hex40Re.MatchString(a.trackingSource) {
-			return 0, fmt.Errorf("cross-repository attestation needs full run, source and tracking-source identifiers")
-		}
-		if !flipSHAAgree(p.SHA, a.source) {
-			return 0, fmt.Errorf("attested source %s does not bind the run's source %s", a.source, p.SHA)
-		}
-		// The whole parsed line is compared, run=, model= and tier= included:
-		// two brackets from separate invocations in one run refuse even when
-		// they bind one tracking-source. That fails closed by intent.
-		if binding != nil && *binding != a {
-			return 0, fmt.Errorf("conflicting cross-repository attestations in the selected run")
-		}
-		candidate := a
-		binding = &candidate
+	binding, err := selectedRunCrossBinding(evidence, p)
+	if err != nil {
+		return 0, err
 	}
 	if binding == nil {
-		if unboundCrossAttestation(evidence) {
-			return 0, fmt.Errorf("a cross-repository attestation in Evidence is not bound by literal selected-run metadata")
-		}
 		version, err := briefVersionAt(path, p.SHA)
 		if err != nil {
 			// The source revision is read in this repository. A run made in
@@ -66,9 +28,6 @@ func briefVersionForPass(path, evidence string, p flipPass) (int, error) {
 			return 0, fmt.Errorf("%w; a run made in another repository is read only at the tracking-source= its selected run's literal Verification-Attestation line names, and this run binds none", err)
 		}
 		return version, nil
-	}
-	if legacy {
-		return 0, fmt.Errorf("selected run mixes same-repository and cross-repository attestations")
 	}
 	dir := filepath.Dir(path)
 	repo, err := attestationTrackingRepo(dir)
@@ -91,6 +50,67 @@ func briefVersionForPass(path, evidence string, p flipPass) (int, error) {
 		return 0, fmt.Errorf("tracking-source %s: %w", binding.trackingSource, err)
 	}
 	return version, nil
+}
+
+// selectedRunCrossBinding is the ONE reader of a selected PASS run's
+// cross-repository binding: the literal version-2 Verification-Attestation line
+// in p.Run, held to full identifiers and to the run's own source. It returns
+// nil and no error for a same-repository run. evidence is the brief's whole raw
+// Evidence section: once it records a cross-repository line anywhere, a run
+// with no literal binding is an error rather than a same-repository run. Its
+// callers are the brief-version read (briefVersionForPass) and the fail-first
+// closure gate (failFirstCrossAnchor), so the two never disagree about which
+// run is cross-repository.
+func selectedRunCrossBinding(evidence string, p flipPass) (*containerAttestation, error) {
+	var binding *containerAttestation
+	legacy := false
+	// p.Run is the selected, already comment-normalized run. Reuse the literal
+	// marker scanner without normalizing comments a second time or reading an
+	// older run's attestation.
+	for _, m := range protectedMarkersNamed(normalizedProtectedEvidence(p.Run), strings.TrimSpace(attestationPrefix)) {
+		a, ok := parseContainerAttestation(m.text)
+		cross := false
+		for _, field := range strings.Fields(m.text) {
+			cross = cross || strings.HasPrefix(field, "source-repo=") || strings.HasPrefix(field, "tracking-source=")
+		}
+		if !cross {
+			// The old source-revision reader ignored optional v1 metadata,
+			// including unstructured historical notes. Keep that acceptance
+			// set; only a structured v1 line conflicts with a selected v2 run.
+			legacy = legacy || (m.literal && ok && a.version == 1)
+			continue
+		}
+		if !m.literal {
+			return nil, fmt.Errorf("cross-repository attestation must be literal run metadata")
+		}
+		if !ok || a.version != 2 {
+			return nil, fmt.Errorf("malformed cross-repository run attestation%s", missingCrossFields(m.text))
+		}
+		if !hex64Re.MatchString(a.run) || !hex40Re.MatchString(a.source) || !hex40Re.MatchString(a.trackingSource) {
+			return nil, fmt.Errorf("cross-repository attestation needs full run, source and tracking-source identifiers")
+		}
+		if !flipSHAAgree(p.SHA, a.source) {
+			return nil, fmt.Errorf("attested source %s does not bind the run's source %s", a.source, p.SHA)
+		}
+		// The whole parsed line is compared, run=, model= and tier= included:
+		// two brackets from separate invocations in one run refuse even when
+		// they bind one tracking-source. That fails closed by intent.
+		if binding != nil && *binding != a {
+			return nil, fmt.Errorf("conflicting cross-repository attestations in the selected run")
+		}
+		candidate := a
+		binding = &candidate
+	}
+	if binding == nil {
+		if unboundCrossAttestation(evidence) {
+			return nil, fmt.Errorf("a cross-repository attestation in Evidence is not bound by literal selected-run metadata")
+		}
+		return nil, nil
+	}
+	if legacy {
+		return nil, fmt.Errorf("selected run mixes same-repository and cross-repository attestations")
+	}
+	return binding, nil
 }
 
 // missingCrossFields names the cross-repository fields a malformed attestation
