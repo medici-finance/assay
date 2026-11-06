@@ -225,6 +225,55 @@ Verdict accounting: 4 required rows; 4 pass, witnessed in one closed bracket; 0 
 
 **VERIFY: PASS** — 4/4 rows at 2c6c21336 (batch re-witness).
 
+### Independent verification — 2026-11-06 (run 4, source 4cf979559, container bracket)
+
+Runner: assay-verifier-app[bot], model claude-opus-5-5, admitted tier strong; independent non-implementer, fresh context. Observed source: merged main 4cf9795597f6b88517eb503758b9c4de8a5fb9be, detached home admitted by `deskdispatch --check-verifier` (#5660), statusgen and deskdispatch v1.0.75 on the host, KUBECONFIG=/dev/null, no forge credential variable set in any verifyrun environment. This block takes nothing from runs 1 to 3; every row was executed afresh.
+
+Delivery: the work landed in the merge of #4337 (08b39a8cc951f0eaca1942d2e450c372f0d92e7a; first parent 5e54bfe7b, second parent 3ee8abe79), an ancestor of the observed source. Between the run 3 source 2c6c21336 and this source, statusgen/portfolio, statusgen/testdata/portfolio, statusgen/portfolio_schema_test.go, the portfolio schema and spec, the runner schema and spec/registers-v1.md are byte-identical; the only change under the delivered paths is loopadmin/runner/request_test.go (0f47239cb, fixture construction in a loopadmin test), which no row runs.
+
+Runner class: local container, `--network none`, `--read-only`, all capabilities dropped, user 501:20, image ghcr.io/medici-finance/verify-runner:v1.0.75 by index digest sha256:732786a33ebfa6dc1d80d396781df1f31c5331f67a8c0bd97518785f5a72b173 (statusgen v1.0.75, go1.27.3 linux/arm64 native, module cache baked into the image, module proxy and checksum database off, toolchain local). The home and its git directory were bind-mounted read-only at their own paths, the receipt read-only, a HOME holding only a roster copy read-only, and only the witness directory writable. Every row is check:ci and the darwin host has no `unshare --net`, so rows 1–4 ran inside one closed admission bracket: `statusgen verifyrun --open-bracket` on the host, `--sandbox=container-netns` in the container, `--close-bracket` on the host from inside the home; `--bracket-digest` on the closed witness reports verdict=match with span-lines tree-digest:1, container-image:1, attestation:1. The table and the four lines after it are the closed witness bytes.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestPortfolioLedgerIdentityAndUnits$" ./portfolio/ > "$check_output" && grep -F -- "--- PASS: TestPortfolioLedgerIdentityAndUnits " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:5d9276a14eda | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestPortfolioUnknownAndZero$" ./portfolio/ > "$check_output" && grep -F -- "--- PASS: TestPortfolioUnknownAndZero " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:0e2bdcc129da | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestPortfolioRunnerAdapterFlow$" ./portfolio/ > "$check_output" && grep -F -- "--- PASS: TestPortfolioRunnerAdapterFlow " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:3324fe5ee14a | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestPortfolioTargetNotConsumption$" ./portfolio/ > "$check_output" && grep -F -- "--- PASS: TestPortfolioTargetNotConsumption " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:f7a2f7a3d21f | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a79a70fd35d138ac22f0615de82cd826bac8e27941d5f065ee3a8b7264c2f873
+Container-Image: sha256:732786a33ebfa6dc1d80d396781df1f31c5331f67a8c0bd97518785f5a72b173
+Verification-Attestation: medici-finance/assay#5660 run=45fbf46d03128c8e0e1c46897cb3ca1ab36781825490d8cf3824b6e6b13a2bc6 source=4cf9795597f6b88517eb503758b9c4de8a5fb9be brief=docs/streams/statusgen/brief-24-portfolio-allocation-and-capacity-accounting.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=45fbf46d03128c8e0e1c46897cb3ca1ab36781825490d8cf3824b6e6b13a2bc6 source=4cf9795597f6b88517eb503758b9c4de8a5fb9be tree=sha256:a79a70fd35d138ac22f0615de82cd826bac8e27941d5f065ee3a8b7264c2f873 witness=sha256:235dca12afe895fa75433ec7925cba6130c8f0a9f7c2f556a1db963dc325b7e1 opened=2026-11-06T19:19:38Z closed=2026-11-06T19:20:05Z before=receipt after=check-verifier
+
+Supplemental observations — diagnostics only, no acceptance credit for any row. The probes ran in the same image under `--network none`, on a scratch copy of the observed source (git archive of 4cf979559) outside the home, mounted read-only into the container. Each applied one entry of the delivery's own mutation catalogue (statusgen/portfolio/testdata/mutations.json) on the host by exact before/after replacement, the before text asserted to match exactly once, then ran that row's test selector and named PASS grep, then restored the file; at the end the scratch statusgen/portfolio tree was confirmed identical to the home's. All eight catalogue entries that target the four row tests were applied, including each brief-named mutation. A first probe pass wrote the patched file in place and one entry (pinned-model-as-actual) then failed to compile with a truncated-file syntax error, a stale bind-mount view of the rewritten file; that pass is discarded, and the pass below wrote each patched file to a new file renamed over the old one.
+
+| Probe | Command or mutation | Observed | Date | Runner |
+|---|---|---|---|---|
+| S1 | rows 1–4 selectors on the unmutated scratch copy | each exit 0 with its named PASS line | 2026-11-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| M1 | row 1, catalogue entry count-every-report (the brief's named mutation) | killed: exit 1, named test FAIL; "reliability active: got {Known:120 KnownRecords:1 UnknownRecords:1}, want {Known:240 KnownRecords:2 UnknownRecords:0}" | 2026-11-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| M2 | row 1, catalogue entry count-retry-as-duplicate | killed: exit 1, named test FAIL; "reliability active: got {Known:120 KnownRecords:1 UnknownRecords:0}, want {Known:240 KnownRecords:2 UnknownRecords:0}" | 2026-11-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| M3 | row 1, catalogue entry drop-overlap-reconciliation | killed: exit 1, named test FAIL; "overlap double-counted" | 2026-11-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| M4 | row 2, catalogue entry coerce-missing-to-zero (the brief's named mutation) | killed: exit 1, named test FAIL; "reliability cost: got {Known:0 KnownRecords:1 UnknownRecords:0}, want {Known:0 KnownRecords:0 UnknownRecords:1}" | 2026-11-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| M5 | row 2, catalogue entry zero-total-share-defined | killed: exit 1, named test FAIL; "zero total produced a share: {Measure:active-seconds Numerator:0 Denominator:0 Defined:true Reason:}" | 2026-11-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| M6 | row 3, catalogue entry use-elapsed-silently (the brief's named mutation) | killed: exit 1, named test FAIL; "missing interval: got {Known:900 KnownRecords:1 UnknownRecords:0}, want {Known:0 KnownRecords:0 UnknownRecords:1}" | 2026-11-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| M7 | row 3, catalogue entry pinned-model-as-actual | killed: exit 1, named test FAIL; "pinned model substituted" | 2026-11-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| M8 | row 4, catalogue entry normalize-target-to-consumption (the brief's named mutation) | killed: exit 1, named test FAIL; "5% target against 2% consumption: ... TargetBasis:200 ... Numerator:120 Denominator:6000 ... State:aligned" | 2026-11-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Fail-first: no row is risk-bearing (the brief's risk answers are all "no", and each row's class is check:ci +flow +mutation, with no risk-bearing, live, mutating or end-to-end tag), so the fail-first audit selects no row and no base witness is required; the named mutations above are the rows' discrimination evidence.
+
+Risk-bearing values. Gate model, not irreversible, no risk-classed path touched. Enumeration over the delivery's non-test Go source (statusgen/portfolio records.go, ledger.go, compare.go, decode.go, runner.go, checked.go), re-read at this source, found these literals; none is irreversible, since all are revisable by an edit and a release of a read-only capability.
+
+- RISK-VALUE: DERIVED — Schema = "portfolio-measurement/v1" @ statusgen/portfolio/records.go:12 — equals the const at schemas/portfolio-measurement-v1.json line 9; the brief asks for a versioned contract.
+- RISK-VALUE: DERIVED — tolerance ceiling, per-party sum bound and share ceiling 10000 @ statusgen/portfolio/decode.go:140, decode.go:171, decode.go:190 — one basis point is 1/10000 of the whole, so 10000 is exactly 100 percent.
+- RISK-VALUE: DERIVED — share scale 10000 @ statusgen/portfolio/compare.go:76 — |numerator*10000 - want*denominator| <= tolerance*denominator is the basis-point aligned rule with the fraction cleared, in exact big.Int arithmetic.
+- RISK-VALUE: DERIVED — reqRE slug bound {8,18} @ statusgen/portfolio/decode.go:16 — one leading and one trailing [a-z0-9] plus 8–18 middle characters gives 10–20 characters, the REQ-slug grammar of spec/registers-v1.md line 120.
+- RISK-VALUE: DERIVED — RunnerVersion = "loop-admin-runner/v1" @ statusgen/portfolio/runner.go:13 — equals the const at schemas/loop-admin-runner-v1.json line 12, so the adapter consumes the runner contract unchanged.
+- RISK-VALUE: DERIVED — ModelWeight milli unit 1000 = 1.0 @ statusgen/portfolio/records.go:86 — weights are adopter-supplied thousandths (field Milli at line 89) with no default shipped.
+- Ranked last, no derivation needed: tokenRE length {0,127} @ statusgen/portfolio/decode.go:14 — an identifier length cap on synthetic offline records.
+
+Verdict accounting: 4 required rows; 4 pass, witnessed in one closed bracket; 0 fail; 0 not run.
+
+**VERIFY: PASS** — 4/4 rows at 4cf979559, each named mutation killed (supplemental).
+
 ## Review
 
 Gate: model; all risk answers no because this slice processes synthetic/explicit offline
