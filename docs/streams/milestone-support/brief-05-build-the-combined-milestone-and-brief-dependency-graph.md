@@ -160,6 +160,28 @@ Admission-Bracket: run=21c7008a99dfcc1f95b9f1aa5e1fd9525c678383e476504d5f597fe0e
 
 **VERIFY: PASS** — both Verify rows exit 0 with their named PASS lines (TestMilestoneMixedGraph, TestMilestoneGraphUnknowns) at source 7f61cff94b18 in the closed container bracket. Risk fields are all no and gate is model, so the README row flips implemented → verified.
 
+### Non-implementer verifier run at source 4cf9795597f6 — 2026-11-06 assay-verifier-app (verify-desk, strong tier, gate:model)
+
+Admitted home at assay 4cf9795597f6 (detached, equal to origin/main at dispatch), attestation medici-finance/assay#5659. statusgen v1.0.75 on the host and in the verify-runner v1.0.75 image (index digest sha256:732786a33ebf, the house image-lock pin). Both rows are check:ci and the darwin host has no `unshare --net`, so both ran in the network-off container lane (`--network none`, home mounted read-only) inside a closed admission bracket: `--bracket-digest` reports verdict=match, span-lines tree-digest:1, container-image:1, attestation:1. `deskdispatch --check-verifier` exited 0 before the run, and the bracket's open and close steps each re-ran it. One attempt, credited. Fail-first: no row is risk-bearing (risk block all no; neither row carries a risk-bearing, live, mutating or end-to-end tag), so no base run is owed. Delivering PR medici-finance/assay#5379, merge 178eab638a64.
+
+Risk-bearing value enumeration over the non-test Go diff of PR #5379 (178eab638a64^1..178eab638a64): EvaluatorVersion, maxGateDetail, the two key-collision thresholds, the four GraphState string constants at statusgen/evaluation/milestonegraph.go:40-46 and the zero revision floor. Each is reversible by an edit and a release; none is an irreversible act. The top-ranked four:
+
+RISK-VALUE: DERIVED — EvaluatorVersion = "statusgen-evaluation/5" @ statusgen/evaluation/identity.go:13 — bumped from /4 because a verdict can now change for the same observations (edges carry a pre-resolved milestone start-gate state), which is the rule the constant's own comment states.
+RISK-VALUE: DERIVED — maxGateDetail = 20 @ statusgen/evaluation/milestonegraph.go:409 — a display cap on the detail one start gate carries into its reason text; the milestone node keeps the full list, so the cap changes no verdict.
+RISK-VALUE: DERIVED — claim collision threshold 2 @ statusgen/milestonegraph.go:84 — two distinct claimants of one logical key is the smallest real collision; one row seen twice is deduplicated first, so 2 is exact.
+RISK-VALUE: DERIVED — record collision threshold 2 @ statusgen/milestonegraph.go:102 — the same reasoning for two loaded milestone records declaring one key at one contract version.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestMilestoneMixedGraph$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestMilestoneMixedGraph ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestMilestoneGraphUnknowns$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestMilestoneGraphUnknowns ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a79a70fd35d138ac22f0615de82cd826bac8e27941d5f065ee3a8b7264c2f873
+Container-Image: sha256:732786a33ebfa6dc1d80d396781df1f31c5331f67a8c0bd97518785f5a72b173
+Verification-Attestation: medici-finance/assay#5659 run=ef94328cd37a9010ae49a4d63f895c3bbe427c75f180db9014ad28f31c02e6c9 source=4cf9795597f6b88517eb503758b9c4de8a5fb9be brief=docs/streams/milestone-support/brief-05-build-the-combined-milestone-and-brief-dependency-graph.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=ef94328cd37a9010ae49a4d63f895c3bbe427c75f180db9014ad28f31c02e6c9 source=4cf9795597f6b88517eb503758b9c4de8a5fb9be tree=sha256:a79a70fd35d138ac22f0615de82cd826bac8e27941d5f065ee3a8b7264c2f873 witness=sha256:ae5e166f352be0e9d9d72a08b8dcb0d7e151cf037211a40e43e6ba289a6053ac opened=2026-11-06T19:18:58Z closed=2026-11-06T19:19:45Z before=receipt after=check-verifier
+
+**VERIFY: PASS** — both Verify rows exit 0 with their named PASS lines (TestMilestoneMixedGraph, TestMilestoneGraphUnknowns) at source 4cf9795597f6 in the closed container bracket; the risk block is all no and the gate is model.
+
 ## Review
 
 Gate: model, derived from the declared risks. Independent review checks compatibility and consumer-flow evidence. No reviewer/worker stamp, release permission or acceptance receipt is created by this authoring change.
