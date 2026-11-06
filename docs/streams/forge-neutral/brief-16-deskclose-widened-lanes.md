@@ -1153,6 +1153,88 @@ Outcome record: a `verify-fail` record draft for this run was written for the la
 
 Rows 2-15 and 17 pass.
 
+### Non-implementer verifier re-run (Linux container witness) — 2026-11-06 claude-opus-5-5-verifier
+
+Context: gate: model; risk: regulatory no, customer no, irreversible no, sensitive-data no. Verified against merged main 4cf9795597f6b88517eb503758b9c4de8a5fb9be in the dispatched detached home. The runner is not the implementer. The Verify table is unchanged since the 2026-10-30 run; the brief's only change since 40925e8 is that run's Evidence (015a1d069), and nothing under tools/desk/cmd/deskclose or the verify-gate-close workflow changed. The delivering change is 5f906464a (#1172), whose parent 2024206ebb5e3d51393b3057faa5856d16d4a027 is the fail-first base.
+
+Two lanes ran, and their `--rows` selections are disjoint and cover the whole table:
+- The check:ci rows (1-12, 14, 17) ran in the released verify-runner v1.0.75 image (digest below; linux/arm64, native, statusgen v1.0.75, go1.27.3, git 2.56.0, jq-1.6) inside host-opened and host-closed admission brackets. The settings match the 2026-10-30 run: `--network none`, read-only root, all capabilities dropped, no-new-privileges, uid 501; the home and its repository's git directory mounted read-only at their own paths; a read-only roster copy as the only configuration and no forge token; GOPROXY=off, GOTOOLCHAIN=local, GOFLAGS=-mod=readonly.
+- Attempt 1 (first table below) ran all fourteen check:ci rows. Row 1 hit verifyrun's default 10m per-row runner limit and produced no verdict. Attempt 2 (second table) re-ran row 1 alone in a fresh bracket with `--timeout 45m`, which raises only verifyrun's runner limit; the row's command is unchanged. Rows 2-12, 14 and 17 are taken from attempt 1.
+- Rows 13, 15 and 16 (class check) ran last on the darwin-arm64 host with statusgen v1.0.75, `--fail-first --base 2024206ebb5e3d51393b3057faa5856d16d4a027`, offline, KUBECONFIG=/dev/null and no forge token in the environment.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | could-not-run exit=- sandbox=container-netns — timed out after 10m0s — no verdict was produced | sha256:bc62a9e68c3b | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskclose/... -count=1` | pass exit=0 sandbox=container-netns | sha256:06694cc592ee | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawSucceedsOnOwnDraft -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:ffc55a8d7c16 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawRefusesNonAuthor -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:9d4ace264a37 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawRefusesNonDraft -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:8c09ab350178 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawRefusesDecisionLabelled -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:ce2ccd061dde | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawIDPinRejectsLoginOnlyMatch -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:fc65081a8923 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawIgnoresUnsignedRuling -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:bb3a51f67a78 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./cmd/deskclose/... -run TestVerifyGateRefireSucceedsAsVerifier -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:ce05afeffc9e | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/deskclose/... -run TestVerifyGateRefireRefusesNonVerifier -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:2ed939316f6c | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && go test ./cmd/deskclose/... -run TestVerifyGateRefireRefusesUnlabelledItem -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:5f88ec4f87cc | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/desk && go test ./cmd/deskclose/... -run TestVerifyGateRefireIgnoresUnsignedRuling -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:e45f4dbf69be | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `cd tools/desk && go test ./internal/deskkit/ -run TestReopenIssueOpBothBackends -count=1 -v && go test ./internal/deskkit/ -run TestForgeGithubGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -count=1` | pass exit=0 sandbox=container-netns | sha256:1a963f8808d2 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 17 | `d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach 5f906464a && statusgen --consumers --root "$d" --brief forge-neutral/16 --base d97abb672~1; s=$?; rm -rf "$d"; exit $s` | pass exit=0 sandbox=container-netns | sha256:c49336053eff | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a79a70fd35d138ac22f0615de82cd826bac8e27941d5f065ee3a8b7264c2f873
+Container-Image: sha256:732786a33ebfa6dc1d80d396781df1f31c5331f67a8c0bd97518785f5a72b173
+Verification-Attestation: medici-finance/assay#5642 run=5bafbb808263472a049db4278dcba462b56ec901fac2d58fa82257ed8da091be source=4cf9795597f6b88517eb503758b9c4de8a5fb9be brief=docs/streams/forge-neutral/brief-16-deskclose-widened-lanes.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=5bafbb808263472a049db4278dcba462b56ec901fac2d58fa82257ed8da091be source=4cf9795597f6b88517eb503758b9c4de8a5fb9be tree=sha256:a79a70fd35d138ac22f0615de82cd826bac8e27941d5f065ee3a8b7264c2f873 witness=sha256:5e247c6ab6cc42089de8be3454999950969689c809b8cb18ea253fe6f55485e7 opened=2026-11-06T18:35:11Z closed=2026-11-06T18:46:26Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | fail exit=1 sandbox=container-netns | sha256:8d505a23a4e6 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a79a70fd35d138ac22f0615de82cd826bac8e27941d5f065ee3a8b7264c2f873
+Container-Image: sha256:732786a33ebfa6dc1d80d396781df1f31c5331f67a8c0bd97518785f5a72b173
+Verification-Attestation: medici-finance/assay#5642 run=5bafbb808263472a049db4278dcba462b56ec901fac2d58fa82257ed8da091be source=4cf9795597f6b88517eb503758b9c4de8a5fb9be brief=docs/streams/forge-neutral/brief-16-deskclose-widened-lanes.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=5bafbb808263472a049db4278dcba462b56ec901fac2d58fa82257ed8da091be source=4cf9795597f6b88517eb503758b9c4de8a5fb9be tree=sha256:a79a70fd35d138ac22f0615de82cd826bac8e27941d5f065ee3a8b7264c2f873 witness=sha256:a6054b82020a471ab9aa7d46a7f063ba8adb18fb62d5dbb42756117f62c5877a opened=2026-11-06T18:46:36Z closed=2026-11-06T18:58:47Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 13 | `grep -cE -e 'sender\.type' -e 'gh issue reopen' .github/workflows/verify-gate-close.yml` | pass exit=0 | sha256:7de1555df0c2 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4cf9795597f6 |
+| 15 | `grep -c 'self-withdraw' docs/streams/forge-gitlab/inventory.md tools/desk/cmd/deskclose/main.go; grep -c 'verify-gate-refire' docs/streams/forge-gitlab/inventory.md tools/desk/cmd/deskclose/main.go` | pass exit=0 | sha256:edaa14e07dff | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4cf9795597f6 |
+| 16 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdraw -count=1` | pass exit=0 | sha256:39d1b311b202 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) | base=2024206ebb5e green rc=0 · head=4cf9795597f6 |
+Verification-Attestation: medici-finance/assay#5642 run=5bafbb808263472a049db4278dcba462b56ec901fac2d58fa82257ed8da091be source=4cf9795597f6b88517eb503758b9c4de8a5fb9be brief=docs/streams/forge-neutral/brief-16-deskclose-widened-lanes.md model=claude-opus-5-5 tier=strong
+
+
+Row results, observed against each row's Expect:
+
+- Rows 2-12, 14 and 17 pass in the first bracketed container witness (opened 18:35:11Z, closed 18:46:26Z). Row 1 fails in the second (opened 18:46:36Z, closed 18:58:47Z) with exit 1. `--bracket-digest` reports verdict=match for both brackets.
+- The witness keeps no per-row output (#4335). A supplemental diagnostic therefore re-ran row 1's own command with the same image, mounts and environment, outside any witness; it earns no acceptance credit. It also exits 1. The deskclose package is ok in it, and ten packages fail. Each attribution below is read from that run's output:
+  - cmd/deskinbox: TestParityWalk and TestParityHTMLLoginShapes fail with "jq: error: scan/2 is not defined". The image's jq-1.6 lacks scan/2 (jq 1.7 or later), as on 2026-10-30.
+  - cmd/deskperf: TestV4ReadReportFlow cannot build deskperf because the Go build cache under the lane's read-only HOME cannot be created ("mkdir /tmp/vh/.cache: permission denied"). The test does not use the lane's GOCACHE.
+  - cmd/deskpreflight: TestRealFixtures and TestRealRepo_GitStorageIsOutOfScope see exit 5 from the ambient configuration. These tests are not hermetic (#4322).
+  - cmd/desksourceguard: TestDefaultPlatform reports `derived platform "linux-arm64" is not one desk-tools publishes`.
+  - internal/deskkit: TestOverrideIdentityResolvesRosterLogin panics with a nil-pointer dereference at scanoverride_identity_test.go:105 (#4329). Row 14's `-run`-filtered invocations never reach it.
+  - cmd/cellctl (TestReconcileHandClosedWindows, "orphan … still running"), cmd/deskwt (TestLegacyDeadlineTree), cmd/muhar (TestInterruptKillsSuite), internal/cellcache (three TestMutateGate* tests, "survived SIGTERM") and internal/cellprocess (TestRunCleansDescendants, TestInteractiveCleansDescendants) all fail on process-tree cleanup checks: a child process the test killed or orphaned is still seen as alive. This run started the container without an init process to reap orphans. The output is consistent with that cause, but this run does not prove it.
+  - internal/regression, which failed on 2026-10-30, is ok in this run.
+- Rows 13 and 15 pass on the host (table above). Supplemental reads of the same files:
+  - Row 13 counts 4 matching lines in the verify-gate-close workflow: lines 29, 98, 133 and 299.
+  - Row 15 counts self-withdraw 0 + 2 and verify-gate-refire 3 + 2 (inventory + deskclose main), so both totals are at least 1.
+- Row 16 passes at head but is **non-discriminating** under fail-first. Its Expect contains "LIVE", so verifyrun selects it as risk-bearing (#3388). At base 2024206eb no TestSelfWithdraw test exists (0 test functions there, 7 at head), so the command exits 0 at the base. The Base cell reads `base=2024206ebb5e green rc=0`, and verifyrun reports "row 16: non-discriminating — green at base 2024206ebb5e and pass at head", folding the host run to exit 1.
+- A supplemental hand mutation for row 16 earns no acceptance credit. It ran in a throwaway export of 4cf9795, outside the home. Unmutated, the row's command exits 0. Changing lanes.go:239 to `if false && pr.Author.ID != self.id {` gives exit 1, with only `--- FAIL: TestSelfWithdrawIDPinRejectsLoginOnlyMatch`. Restoring the line gives exit 0 again. The control is live; the row as written cannot show it.
+- `statusgen verifyrun --check` on this brief reports "16 pass, 1 fail, 0 could-not-run/missing (of 17 Verify rows)" and exits 1, failing row 1. It scores row 16 as pass. Row 16's non-discrimination comes from the `--fail-first` run's own exit 1, quoted above.
+
+#### Risk-bearing values (enumerate, rank, derive)
+
+Re-enumerated at 4cf9795 over the same sources as 2026-10-30; every value and line is unchanged:
+- ident.ID == 0 refusal @ lanes.go:160 and pr.Author.ID != self.id @ lanes.go:239
+- roleVerifier = "verifier" @ lanes.go:48; "verify-desk": "verifier" @ roletoken.go:45
+- VerifyGateLabel = "verify-gate" @ trust.go:300; workflow label condition @ verify-gate-close.yml:58
+- the mode names @ lanes.go:41-42, the --because values @ lanes.go:52-53, reasonNotPlanned = "not_planned" @ verbs.go:41
+
+Ranked by blast radius: (1) the authorship id pin; (2) the verifier role literal; (3) the verify-gate label; (4) the mode names, --because values and close reason, which are reversible names and need no derivation.
+
+RISK-VALUE: DERIVED — ident.ID == 0 refusal @ lanes.go:160 (+ pr.Author.ID != self.id @ lanes.go:239) — 0 is the roster's "unpinned" sentinel (forgeidentity.go:53). Refusing 0 means a login-only match can never pass. Row 7 covers the mismatch, and the supplemental row 16 mutation shows the comparison is load-bearing.
+RISK-VALUE: DERIVED — roleVerifier = "verifier" @ lanes.go:48 — equals the verify-desk loop's role binding at roletoken.go:45. Row 10 refuses every other role.
+RISK-VALUE: DERIVED — VerifyGateLabel = "verify-gate" @ trust.go:300 — equals the label the independent server-side guard keys on (verify-gate-close.yml:58), which reopens any close not made by an allowlisted `User` sender (lines 126-133); row 13 reads that guard. Row 11 refuses unlabelled items.
+
+Outcome record: a `verify-fail` record for this run was written for the landing writer. It sets blocker_kind check-definition and blocker_ref medici-finance/assay#3388, lists rows 1 and 16, and gives row_results for all 17 rows. It lists two attempts: the first container bracket, whose row 1 timed out (discarded, superseded), and the credited run.
+
+**VERIFY: FAIL** — Row 16, the one risk-bearing row, is non-discriminating under fail-first: it is green at the honest base 2024206eb because its tests do not exist there. This is a check-definition defect (#3388 class). No implementation defect was found in the deskclose widened lanes, and the supplemental mutation shows the id pin is live. Row 1 also fails in the container lane, on ten packages outside deskclose (listed above). Rows 2-15 and 17 pass.
+
 ## Review
 Gate: **model** (from frontmatter — all four risk answers `no`; see gate-why for the reasoning that
 each widened lane stays inside the identity/authority model `forge-neutral/13` already put a human
