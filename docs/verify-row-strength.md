@@ -172,8 +172,10 @@ gate (lint, `brief --check-verified` and `verifyclosure`) then resolves the base
 checkout the operator configured for the attestation's `source-repo=` (`DESK_ROOTS`, or
 `--sibling-root <owner>/<repo>=<path>`), never in a path the tree supplies. The base must be the
 attested `source=` commit or an ancestor of it. The rule that the base must hold the brief is not
-applied, since no deliverable commit holds the tracking brief: the receipt binds the brief's bytes
-at `tracking-source=`. It fails closed. A PROBLEM is reported when the deliverable repository has no
+applied, since no deliverable commit holds the tracking brief. The closure gate never reads the
+verifier receipt: the brief's bytes are checked against the receipt's `BriefSHA256` on
+`verifyrun`'s container lane and on the desk tools' verifier and landing paths, not here. It fails
+closed. A PROBLEM is reported when the deliverable repository has no
 configured checkout, when that checkout lacks the base or the source, when the base is a later
 commit or one outside the source's history, when the Evidence holds a cross-repository
 attestation that the selected PASS run does not bind literally, and when the bound attestation is

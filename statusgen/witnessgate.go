@@ -359,7 +359,7 @@ const crossRepoRemedy = "Name the deliverable checkout in DESK_ROOTS (or --sibli
 // crossRepoBindingRemedy is what it asks for when the attestation itself is
 // refused (unbound, malformed, or not for this brief): no checkout or --base
 // change clears that, only a run that records a binding attestation.
-const crossRepoBindingRemedy = "Record a cross-repository verify run for this brief whose selected PASS run carries its literal Verification-Attestation line, with repo= the brief's repository, brief= its repository-relative path and source= the run's source, and commit that run's Evidence"
+const crossRepoBindingRemedy = "Re-run the cross-repository verify for this brief so its selected PASS run records the binding attestation that run emits, and commit that run's Evidence"
 
 // ffCrossAnchor is where the closure gate resolves a cross-repository run's
 // fail-first base: root is the deliverable checkout, source the deliverable
@@ -389,8 +389,10 @@ var failFirstDeliverableRoot = func(repo string) (string, bool) {
 // (selectedRunCrossBinding, the reader the brief-version read shares), the base
 // is resolved in the deliverable checkout the attestation's source-repo= names,
 // against the source= it binds, and the brief-held rule is not applied: no
-// deliverable commit holds the tracking brief, and the receipt binds the
-// brief's bytes at tracking-source= instead. Every other run keeps the
+// deliverable commit holds the tracking brief. This gate never reads the
+// verifier receipt: the brief's bytes are checked against its BriefSHA256 on
+// verifyrun's container lane (crossRepoBindingProblem) and on the desk tools'
+// verifier and landing paths, not here. Every other run keeps the
 // tracking-clone rule unchanged.
 //
 // It fails closed: why is non-empty, and every risk-bearing row's ancestry is
