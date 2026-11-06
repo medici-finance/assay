@@ -902,6 +902,76 @@ Findings (none touches this brief's implementation): the v1.0.67 verify-runner i
 
 **VERIFY: BLOCKED** — row 4 (live GitLab read-back under a human-provisioned auditor PAT) could not be checked, and its command still needs the medici-finance/assay#1794 re-authoring. In the closed container bracket, rows 2, 3 and 5 pass. Row 1 is red for lane reasons, not for anything in this brief. Row 6 exits 0 with 0 corroborated, 0 disproved and 5 unchecked, so it judged no routing claim. No implementation defect was observed. Blocker: medici-finance/assay#1794.
 
+### Independent run 2026-11-06 (claude-opus-5-5, strong) — container-netns admission bracket plus host row
+
+Separate run under a fresh admission (attestation medici-finance/assay#5637) at merged head bc078e9179c8. It credits nothing from the runs above. Container rows 1, 2, 3 and 5 ran in one closed admission bracket; row 6 ran on the host because it reads git history; row 4 was not selected (reason below).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | fail exit=1 sandbox=container-netns | sha256:e2c7370314dd | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGitlabGolden -v && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v` | pass exit=0 sandbox=container-netns | sha256:a77ce242f6db | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/repohardenguard/ -run TestGitLabNotAvailableNoRequest -v && go test ./cmd/repohardenguard/ -run TestGitLabTierGateCouldNotCheck -v` | pass exit=0 sandbox=container-netns | sha256:4f170cadf3cd | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -c 'not available — Premium' docs/adopting-assay-gitlab.md` | pass exit=0 sandbox=container-netns | sha256:53c234e5e847 | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:e7680c0408d6980d7652468226c1df98402ddb98ffaccc211519a83d505450b2
+Container-Image: sha256:576cb2e49407447769b79a32af370a23e1c108d62842b8f1772a809d1d3b7617
+Verification-Attestation: medici-finance/assay#5637 run=a810a1aadb36b3494219e252f9752daace0f8aa92a7c60e2a6c338ec31cfe327 source=bc078e9179c862dde02b367d35177f8ffdf1b421 brief=docs/streams/forge-gitlab/brief-12-gitlab-hardening-reads.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=a810a1aadb36b3494219e252f9752daace0f8aa92a7c60e2a6c338ec31cfe327 source=bc078e9179c862dde02b367d35177f8ffdf1b421 tree=sha256:e7680c0408d6980d7652468226c1df98402ddb98ffaccc211519a83d505450b2 witness=sha256:d154d7c778960cda8d8ae5c3782a0207e48dadbd0659c8375709075da3bd5764 opened=2026-11-06T18:21:51Z closed=2026-11-06T18:33:59Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 6 | `statusgen --root . --consumers` | pass exit=0 | sha256:721adfadf42a | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5637 run=a810a1aadb36b3494219e252f9752daace0f8aa92a7c60e2a6c338ec31cfe327 source=bc078e9179c862dde02b367d35177f8ffdf1b421 brief=docs/streams/forge-gitlab/brief-12-gitlab-hardening-reads.md model=claude-opus-5-5 tier=strong
+
+
+Host and lane. darwin-arm64 host, Docker 29.8.2 (6 CPU), statusgen v1.0.75 as installed. Rows 1, 2, 3 and 5 ran in the pinned verify-runner v1.0.75 image, its linux/arm64 entry (digest above, child of index sha256:732786a33ebfa6dc1d80d396781df1f31c5331f67a8c0bd97518785f5a72b173, run natively, go1.27.3, git 2.56.0, jq-1.6). The container had no network, a read-only root, all capabilities dropped and no-new-privileges. GOPROXY was off and HOME was on a tmpfs. Only a copy of roster.env was mounted, with no keys and no other config. A no-hardlinks clone of the head was mounted read-only at the home's path. Per-row timeout 60m. The bracket closed with a matching digest (bracket-digest verdict=match). Row 6 ran on the host, in the home, because its base and diff come from that checkout's refs.
+
+Row 4 was not run: no row filter selected it. It needs a live GitLab instance and a human-provisioned auditor personal access credential, and its command mints that credential through the desk minting verb. GITLAB_API_BASE is not set and the checkout's origin is a GitHub remote. The row's command is still open for re-authoring (medici-finance/assay#1794, re-authoring tracker medici-finance/assay#1927, both open on 2026-11-06). The auditor's minimum roles are still stated rather than measured (medici-finance/assay#1946, open). The row's claim is unproven.
+
+Row 1 is red in this lane. None of its failures is in the code this brief changed. A diagnostic re-run of the same command under the same container settings (outside the bracket, no credit, 18:34Z to 18:52Z) reproduced exit 1. 118 packages were ok, including the repohardenguard command package, and 7 packages were red. I read each failure from the log but did not isolate each one with a separate run, so each cause below is the failure message as observed:
+- deskboard TestNonProbingVerbs_OmitMainHealth and TestDispatch_VerbInventory (review-queue), deskdispatch TestReviewDispatchCarriesThePacketLine and TestReviewDispatchSurvivesAForgeThatWillNotServeThePacket, and deskkit TestSharedReadLowerScope all report "cannot resolve which forge serves …". The scratch clone's origin is a local path, so no forge host maps from it. This is a property of this lane's clone, not of the brief.
+- scanloop TestRun_CoalescesAcrossSessions, TestRun_ForeignScanPRIgnored, TestRun_UnreadOpenPRsFailClosed and TestRun_ExplicitScanPRWins report "the trust gate could not be evaluated for 1 inbound item(s)". The cause was not isolated.
+- deskdispatch then hit the default 10m go test deadline in TestPacketBuildFailureNeverFailsTheDispatch/nowhere_to_write_it. The container runs as root. The cause was not isolated.
+- deskinbox TestParityWalk and TestParityHTMLLoginShapes call the jq builtin scan/2, which the image's jq-1.6 lacks.
+- desksourceguard TestDefaultPlatform derives linux-arm64, which desk-tools does not publish.
+- regression TestReg786FleetHardening reports that its shell fixture case "B1 --help exits 0 and lists the options" failed. Run alone in the same image and settings (S4 below), the fixture suite passes 20 of 20, B1 included, so this red appears only under full-suite load.
+Row 1 still has no passing witness in this lane.
+
+Row 2 detail (no credit, same image and settings). Mutation: a compile overlay makes a tier-gated 403 or 404 in the GitLab hardening read return an empty JSON document with no error. TestForgeGitlabGolden went red in push_rules_premium_gated, push_rules_ce_not_found and hardening_read_approvals_ce_404, and exited 1. So the golden test catches a tier-gated read that is silently turned into an empty value.
+
+Row 3 detail (no credit, same image and settings). Mutation: a compile overlay turns the checklist's not-available short-circuit in repohardenguard's check.go into a never-taken branch. TestGitLabNotAvailableNoRequest went red and the run exited 1. So row 3 catches a Premium row that would otherwise reach the forge.
+
+Row 5's count is 2 (the push-rules-signed and push-rules-secrets rows). Row 6's only Expect is exit 0, and it says little here. A read-only re-run in the home, with the Evidence edit in place, reports 0 corroborated, 0 disproved and 5 unchecked, all unchanged since the merge-base, exit 0. The base is the head, so the gate judged none of the routing claims. Unchecked entries are not passes.
+
+Fail-first. Base 39a637693e6257df64ba0a126550d1a0ff070458 is the parent of the delivering commit 4ce477d7100b (medici-finance/assay#1179). I ran it on the host as a dry run over rows 2, 3 and 5, and it printed "--fail-first: no risk-bearing row among the selected rows; every row is recorded not-selected at base". The brief's risk fields are all "no" and no row carries a risk-bearing tag, so the selection is empty and no fail-first witness exists to write. The mutation runs above are the discriminating evidence for rows 2 and 3.
+
+Disclosed attempts. The bracket ran once (rows 1, 2, 3, 5). The host fail-first dry run wrote nothing. Row 6 ran once on the host. The diagnostic runs S1 to S4 below carry no credit.
+
+Uncovered obligations and supplemental runs (the S rows carry no acceptance credit):
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 4 | row 4's live GitLab protected_branches read-back, as written in the Verify table | 200 | not run: the bracket's row filter (rows 1, 2, 3, 5) and the host row filter (row 6) excluded it because it needs a live GitLab instance and a human-provisioned auditor credential; GITLAB_API_BASE is not set and origin is a GitHub remote. Blocker medici-finance/assay#1794 | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 | not run green in this lane: exit 1 in the bracket; the failures are forge resolution from a local-path origin, scanloop trust-gate evaluation, a 10m deadline in deskdispatch, jq-1.6 scan/2, the linux-arm64 platform list and a regression shell fixture; none is on the GitLab hardening path | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| S1 | `cd tools/desk && go build ./... && go test ./...` (diagnostic, outside the bracket, same container settings) | diagnosis | exit 1; 118 packages ok, 7 red as listed | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| S2 | `go test -overlay <mutant overlay> ./internal/deskkit/ -run TestForgeGitlabGolden -v` in tools/desk (container, outside the bracket) | exit 1 | exit 1; red in push_rules_premium_gated, push_rules_ce_not_found and hardening_read_approvals_ce_404 | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| S3 | `go test -overlay <mutant overlay> ./cmd/repohardenguard/ -run TestGitLabNotAvailableNoRequest -v` in tools/desk (container, outside the bracket) | exit 1 | exit 1; TestGitLabNotAvailableNoRequest red | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| S4 | `bash tools/create-fleet-gitlab_test.sh` (container, outside the bracket, run alone) | diagnosis | passed: 20 failed: 0; B1 ok | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+Risk values at this head:
+- RISK-VALUE: DERIVED — hardeningGitlabObjectPaths = projects/%s, projects/%s/push_rule, projects/%s/approvals @ tools/desk/internal/deskkit/forge_gitlab.go:2600-2604, and hardeningGitlabListPaths = projects/%s/protected_branches, projects/%s/protected_tags @ forge_gitlab.go:2606-2609 — these are GitLab's REST v4 resource paths, as the brief's kind table states. The goldens pin them, and a wrong path fails closed as a 404.
+- RISK-VALUE: DERIVED — gitlabTierGatedHardeningKinds = {push-rules, approvals} @ forge_gitlab.go:2621, with 403 and 404 mapped to Unverifiable @ forge_gitlab.go:2680-2681 — the brief's kind table gives these two kinds a tier gate. Mutation S2 shows the golden test discriminates.
+- RISK-VALUE: DERIVED — empty body refused = len(raw) == 0 @ forge_gitlab.go:2687 — an empty answer is not a value.
+- RISK-VALUE: DERIVED — hardeningKindForge = closed per-forge partition @ tools/desk/internal/deskkit/forge.go:1369 — one closed vocabulary split by forge, as the brief requires. Row 2's coverage test ran over it.
+- RISK-VALUE: DERIVED — main-no-force = false, main-push-no-one = 0, main-merge-maintainers = 40, release-tags = 40 @ docs/adopting-assay-gitlab.md:1334-1337 — GitLab's protected-branches API defines 0 as No one and 40 as Maintainer, which matches each row's stated check.
+- RISK-VALUE: DERIVED — push-rules-signed, push-rules-secrets = not available — Premium @ docs/adopting-assay-gitlab.md:1341-1342; secret-push-protection = not available — Ultimate @ docs/adopting-assay-gitlab.md:1343 — taken from the tiers that the brief's kind table and facts record. Row 5 counts the two Premium rows. Mutation S3 shows the short-circuit is tested.
+- RISK-VALUE: DERIVED — approvals-reset = true, approvals-no-author = false, approvals-no-committer = true @ docs/adopting-assay-gitlab.md:1338-1340 — each row is marked advisory on Community Edition and cites spec controls B3 and B4.
+- RISK-VALUE: NAMED, NOT DERIVED — auditor roles = Reporter (20), Maintainer (40) @ docs/adopting-assay-gitlab.md:144, role table at :1276-1283 — the doc says at :1285 that the Maintainer rows are a stated minimum, not a measured one. Only row 4's live read-back can derive it. Tracked as medici-finance/assay#1946.
+- RISK-VALUE: NAMED, NOT DERIVED — gitlabMaxHardeningPage = 10 @ forge_gitlab.go:2615; gitlabPerPage = 100 @ forge_gitlab.go:465 — reversible ceilings that fail closed past the cap, so they rank last and need no derivation.
+
+Findings. None of them touches this brief's implementation. Row 1 cannot go green in the no-network container lane while: the clone's origin carries no forge host (forge-resolving tests in deskboard, deskdispatch and deskkit); the v1.0.75 verify-runner image ships jq-1.6, which lacks the scan/2 the deskinbox parity tests need; desksourceguard's platform test fails on a native linux-arm64 lane; the scanloop and deskdispatch deadline failures remain undiagnosed here; and the regression fleet fixture goes red under full-suite load although it passes alone. Row 6's exit status depends on the checkout's base.
+
+**VERIFY: BLOCKED** — row 4 (live GitLab read-back under a human-provisioned auditor credential) was not run, and its command still needs the medici-finance/assay#1794 re-authoring. In the closed container bracket, rows 2, 3 and 5 pass, and mutations show rows 2 and 3 discriminate. Row 1 is red for lane reasons, not for anything in this brief. Row 6 exits 0 with 0 corroborated, 0 disproved and 5 unchecked, so it judged no routing claim. No implementation defect was observed. Blocker: medici-finance/assay#1794.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
 Reviewer answers: with the checklist's `not available` short-circuit removed, does the backend's
