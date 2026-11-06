@@ -1,0 +1,2 @@
+### Changed
+- The Evidence auto-merge workflow no longer merges an already-clean Evidence PR itself. Main's push/merge restriction refuses the workflow token that step used, and the recorded ruling on #997 chose a human merge over a bypass-capable credential. A clean PR now gets a benign "clean status" skip and waits for a human merge. PRs that still have checks or reviews pending keep merging through GitHub auto-merge as before. The workflow token in the enable job is back to read-only, and the direct-merge helper `merge_clean.py` is removed.
