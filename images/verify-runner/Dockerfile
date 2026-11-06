@@ -128,6 +128,28 @@ RUN set -eu; \
     test "$(kubeconform -v)" = v0.8.0; \
     test "$(gitleaks version)" = 8.30.1
 
+# mikefarah yq (#5531), the Go YAML processor rows call as `yq` to convert Job
+# templates and fixtures; check.py proves it runs and is the mikefarah build.
+# It is a single static binary, not an archive: the download is compared with
+# the sha256 pinned below for this platform before it is installed, and a
+# mismatch, an unpinned platform or a version other than v4.54.1 fails the
+# build. Each sha256 is the SHA-256 column of the upstream release's checksums
+# file, matched against the downloaded asset when it was pinned. Risk summary:
+# issue #5531. tools/desk/internal/deskkit/verifyrunner_yq_test.go holds the pin
+# and the check in place.
+RUN set -eu; \
+    case "${TARGETARCH:-}" in \
+      amd64) yq_sha=8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f ;; \
+      arm64) yq_sha=189088da0c6429ec5178dfaab1a114805f6cab0b61b165ab236efedf1d57a71b ;; \
+      *) echo "verify-runner: no pinned yq checksum for '${TARGETARCH:-}'" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 -o /tmp/yq \
+      "https://github.com/mikefarah/yq/releases/download/v4.54.1/yq_linux_${TARGETARCH}"; \
+    echo "${yq_sha}  /tmp/yq" | sha256sum -c -; \
+    install -o 0 -g 0 -m 0755 /tmp/yq /usr/local/bin/yq; \
+    rm -f /tmp/yq; \
+    test "$(yq --version)" = 'yq (https://github.com/mikefarah/yq/) version v4.54.1'
+
 # Go module cache for tools/desk (which also holds the gopkg.in/yaml.v3 module
 # the containers/k8s YAML adapter runs on) and for statusgen, which tools/desk
 # tests build from source. Only module files are copied; the downloads are
