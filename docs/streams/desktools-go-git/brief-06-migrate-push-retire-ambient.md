@@ -570,6 +570,14 @@ listTimeout = 45s and the 0o111 mask are reversible operational knobs, ranked la
 
 Lifecycle: this block leaves row 06 at implemented. A verifier never sets verified and never hand-writes the Verified stamp.
 
+#### Correction — 2026-11-06 rework
+
+Two statements in this block are wrong. This paragraph corrects them. The verdict and the routing to #2337 do not change.
+
+Row 6 attribution. The "Row 6 cause" paragraph above says the anchored test-file exclusion moves both counts down by one. It does not. The shift comes from the anchored internal/gitexec exclusion that 9e5ca6e4c added: `grep -v '/internal/gitexec/'` became `grep -v '^internal/gitexec/'`, so the script stopped counting the sanctioned spawn in internal/gitexec/gitexec.go, which the unanchored pattern had counted. The test-file anchor from bd1dac192 (`'_test\.go:'` became `'^[^:]*_test\.go:'`) changes nothing in these two trees. Re-measured on 2026-11-06 in a throwaway clone outside the home, copying each revision's count-git-exec.sh into cc0ef547~1 and then cc0ef547: the 2c6c21336a60 script prints 166 then 165 (direct spawns 46 then 45) and exits 0 on both trees; the 9e5ca6e4c, bd1dac192 and bc078e917 scripts, each run with `--count`, all print 165 then 164 (direct spawns 45 then 44). Seam call sites are 120 in every run. A repair that pins row 6 to the script as of 9e5ca6e4c would therefore still count 165 then 164 and still need the pin file. Only a script from before 9e5ca6e4c, such as the 2c6c21336a60 one, reproduces the 166 then 165 the row's case patterns expect.
+
+Lifecycle. The Lifecycle sentence above says this block leaves row 06 at implemented. Row 06 is not at implemented. docs/streams/desktools-go-git/README.md:43 in this block's tree reads `verified`, stamped `2026-10-30 assay-verifier-app[bot] @ 40925e8233c8 (forge-identity)`. This block does not edit that row. Once this block merges, its FAIL becomes the latest verdict in this brief's Evidence. statusgen's flipLatestPass (statusgen/verifyflip.go on main), which the reconcile fold uses to derive `verified`, refuses when the latest verdict is anything other than a PASS. This rework did not run a regen against the merged tree, so it does not state what the board will show for row 06 after merge. The merging reviewer should read this FAIL as landing on a row that is currently `verified`.
+
 **VERIFY: FAIL** — row 6 exit=1 on the single credited witness run at bc078e917 (5 pass, 1 fail, 0 could-not-run). Check-definition defect: the counting script row 6 copies was changed by desktools-go-git/08 (pin file, anchored exclusion), so it now prints 165 then 164 and exits 2 in the old trees; the one-spawn removal still holds. Rows 1 to 5 pass. Route: #2337.
 
 ## Review
