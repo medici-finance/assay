@@ -52,9 +52,15 @@ does not own or mutate native Goal state.
 Explicit `--cadence` / `CELL_CADENCE` durations select the existing headless supervisor;
 `--cadence off` or saved `CELL_CADENCE=off` explicitly selects interactive mode.
 A tick budget requires an explicit cadence; `off` ignores a saved budget. Codex tick
-launches disable native Goals and never receive the standing bootstrap. Claude and
-Cursor keep their existing behavior. Defaults do not rewrite cell.env or change
-already-running sessions.
+launches disable native Goals and never receive the standing bootstrap.
+
+Interactive Cursor desks opened by `desk` or `up` use Cursor's built-in
+`/loop` skill during role boot. The loop wakes the same chat for its due sweep,
+with normal operator input and approvals in that chat. Use the updated Cursor
+bundle in the role worktree so the boot can read the
+[interactive cadence binding](../plugins/assay/references/cursor.md#interactive-desk-cadence).
+An explicit duration still selects the headless supervisor. Changes to these
+launch defaults apply the next time a session starts.
 
 The same bootstrap covers host and scrubbed Codex desk argv. Native container cells
 run an independently pinned image entrypoint with its own paused/handoff contract;
