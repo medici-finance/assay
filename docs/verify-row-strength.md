@@ -164,6 +164,24 @@ Base cell is self-attested Evidence text, like every witness cell. Binding the b
 delivering change in code is a design decision tracked on the issue linked from the pull request
 that introduced the gate, not something the lint decides today.
 
+### Cross-repository runs
+
+When the latest PASS run binds a literal cross-repository (version 2) attestation, its Base cell
+names a commit of the DELIVERABLE repository, which the tracking clone never holds. The closure
+gate (lint, `brief --check-verified` and `verifyclosure`) then resolves the base in the deliverable
+checkout the operator configured for the attestation's `source-repo=` (`DESK_ROOTS`, or
+`--sibling-root <owner>/<repo>=<path>`), never in a path the tree supplies. The base must be the
+attested `source=` commit or an ancestor of it. The rule that the base must hold the brief is not
+applied, since no deliverable commit holds the tracking brief: the receipt binds the brief's bytes
+at `tracking-source=`. It fails closed. A PROBLEM is reported when the deliverable repository has no
+configured checkout, when that checkout lacks the base or the source, when the base is a later
+commit or one outside the source's history, when the Evidence holds a cross-repository
+attestation that the selected PASS run does not bind literally, and when the bound attestation is
+not for this brief: its `repo=` is not the brief's own repository or its `brief=` is not the
+brief's repository-relative path (the same identity checks the brief-version read applies). A
+refusal of the attestation itself asks for a run that records a binding attestation; a checkout
+or `--base` change cannot clear it. Same-repository runs keep the merge-base rule above unchanged.
+
 ### Verify text the runner cannot place
 
 `verifyrun` runs the rows of a table whose header names a `Command` column. On a closure the
