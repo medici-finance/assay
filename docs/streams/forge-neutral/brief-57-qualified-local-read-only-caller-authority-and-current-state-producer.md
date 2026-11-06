@@ -12,6 +12,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Approve the concrete Task1 local producer/current-state/custody design and bounded profile before implementing that newly selected mechanism. Actual authentication and custody remain unqualified until the existing implementation, negative-control and independent-verification obligations are met. Approving the library mechanism assigns no operational issuer identity, credential, entitlement, lease value or deployment authority."
 decision-trigger: spec
 decision-issue: 5428
+ruling: https://github.com/medici-finance/assay/issues/5428#issuecomment-6631318014
 issues: []
 schema: brief-v2
 version: 13
