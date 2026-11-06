@@ -382,6 +382,10 @@ RISK-VALUE: DERIVED — team strip width = 60 in Verify row 5 — the 20 px stri
 
 RISK-VALUE: DERIVED — reviewBody mix ratio = 0.55 @ tools/desk/internal/avatar/generate.go:183 — a cosmetic tone choice that can be undone, placing the review body between read's dark body and act's accent body. The brief's acceptance is the unchanged 20 px proof, which rows 2 and 5 show passing, with TestTeamProofEveryHue covering the whole hue circle.
 
+#### Correction — 2026-11-06 rework
+
+The row 5 bullet above gives the wrong test count. The verbose package run at this source shows 21 top-level tests PASS, not 12. A fresh `go test ./internal/avatar/ -count=1 -v` in `tools/desk`, over package bytes identical to 7ded00183785 (`git diff --stat` over `tools/desk` against this branch prints nothing), printed 21 top-level `--- PASS` lines, 0 `--- FAIL` lines, and ended `ok github.com/medici-finance/assay/tools/desk/internal/avatar`. TestGenerateTeamNamesAndCount and TestGolden20px are among the 21. The package declares 23 `func Test` functions; two are fixtures under `testdata/classguard/`, which `go test ./internal/avatar/` does not compile. Row 5's result and every other row result stand unchanged, because none depends on this count. The outcome record first added with this section repeated the wrong count in its note; a new record with the corrected note replaces it.
+
 **VERIFY: BLOCKED** — rows 1, 5 and 6, human-action, #4560: all 6 rows pass at 7ded00183785 on the current (amended) table. But this is a protected record whose Verify section differs from the delivery, and no human approval binds amendment 706d7deb9179 for rows 1, 5 and 6. Next actor: the driver posts the acceptance-transition approval on a decision issue that carries this brief's marker. A fresh dispatch then runs `statusgen verifyrun --acceptance-record` with the transition descriptor and `--acceptance-forge`.
 
 ## Review
