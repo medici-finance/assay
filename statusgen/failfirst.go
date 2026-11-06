@@ -31,6 +31,11 @@ package main
 //   - it is the LATEST witness for the row and was run for the row's CURRENT
 //     command (the sibling check checkWitnesses applies the same two rules).
 //
+// verifyrun's own --base check mirrors the first two rules. A cross-repository
+// run (version 2 receipt) applies only the first: its base is a deliverable
+// commit, which never holds the tracking brief; the receipt binds the brief
+// bytes instead (failFirstCrossRepoBaseRev).
+//
 // THE LIMIT, stated here and wherever the guarantee is claimed (the doc's
 // Fail-first section, the verify-desk step, the PR body): the gate proves only
 // that the base is the merge-base or older and that the brief already existed
@@ -226,6 +231,24 @@ func truncateRunes(s string, n int) string {
 // change, so the verifier passes the delivering change's parent), or by
 // default the exact merge-base of HEAD and origin/main.
 func failFirstBaseRev(root, rev, briefPath string) (string, error) {
+	return failFirstBase(root, rev, func(full, mb string) string {
+		return briefHeldAtBase(root, briefPath, full, mb)
+	})
+}
+
+// failFirstCrossRepoBaseRev resolves the base for a cross-repository (version
+// 2 receipt) run, where root is the deliverable repository and the brief lives
+// in the tracking repository. A deliverable commit never holds the tracking
+// brief, so briefHeldAtBase cannot apply; the brief bytes the base rows run
+// from are the tracking tree the receipt binds (BriefSHA256). The ancestry
+// check still applies: the base must be the deliverable merge-base or an
+// ancestor of it. Callers pick this only on an admitted version 2 receipt,
+// never because of where the brief file sits.
+func failFirstCrossRepoBaseRev(root, rev string) (string, error) {
+	return failFirstBase(root, rev, nil)
+}
+
+func failFirstBase(root, rev string, held func(full, mb string) string) (string, error) {
 	if rev != "" {
 		if strings.HasPrefix(rev, "-") {
 			return "", fmt.Errorf("--base %q is not a revision", rev)
@@ -241,8 +264,10 @@ func failFirstBaseRev(root, rev, briefPath string) (string, error) {
 			if ok, why := commitIsAncestor(root, full, mb); !ok {
 				return "", fmt.Errorf("--base %q is refused: %s", rev, why)
 			}
-			if why := briefHeldAtBase(root, briefPath, full, mb); why != "" {
-				return "", fmt.Errorf("--base %q is refused: %s", rev, why)
+			if held != nil {
+				if why := held(full, mb); why != "" {
+					return "", fmt.Errorf("--base %q is refused: %s", rev, why)
+				}
 			}
 		}
 		return full, nil

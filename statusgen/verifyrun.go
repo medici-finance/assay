@@ -2000,7 +2000,8 @@ Flags:
   --history-pack <file>  with container-netns --fail-first, import that pack
                     into private scratch for baseline checkouts. Its source must
                     equal the admitted source. Head rows still run on --root.
-                    See docs/container-baseline-history.md.
+                    A version 2 (cross-repository) receipt's brief stays in the
+                    tracking tree it binds. See docs/container-baseline-history.md.
   --admission-receipt <file>  the --open-bracket receipt, read-only and outside the
                     home. The container run refuses before any row unless its
                     --root digests to the receipt's tree, the receipt admits
@@ -2113,7 +2114,9 @@ Flags:
   --base <rev>      the base for --fail-first (default: the exact merge-base of
                     HEAD and origin/main); it may name that merge-base or an
                     ancestor of it. After the change has merged, pass the
-                    parent of the delivering merge
+                    parent of the delivering merge. On a cross-repository
+                    (version 2 receipt) run the base is a deliverable commit; the
+                    brief-held check is skipped, as the receipt binds the brief
   --env-file <path> role env-file forwarded to the container as --env-file (the
                     PATH only; its contents are never read or logged). Defaults to
                     the ASSAY_VERIFY_ENV_FILE environment variable. Omit for offline.
@@ -2608,6 +2611,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	var riskyIDs map[string]bool
 	if *failFirstMode {
 		baseRoot, baseBrief := root, path
+		// A cross-repository run is one ADMITTED on a version 2 receipt (the
+		// host lane's admitted deliverable home, or the container receipt's
+		// binding), never inferred from where the brief file sits: its base is a
+		// deliverable commit and the receipt binds the tracking brief's bytes.
+		crossRepo := admittedHome != ""
 		if *historyPack != "" {
 			binding, err := checkBinding(container.cell.Check)
 			if err != nil {
@@ -2615,14 +2623,29 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 				return verifyrunExitCouldNot
 			}
 			var cleanup func()
-			baseRoot, baseBrief, cleanup, err = importContainerHistory(root, path, *historyPack, binding.Source)
+			if binding.Version == 2 {
+				crossRepo = true
+				baseRoot, cleanup, err = importCrossRepoHistory(root, path, *historyPack, binding.Source)
+			} else {
+				baseRoot, baseBrief, cleanup, err = importContainerHistory(root, path, *historyPack, binding.Source)
+			}
 			if err != nil {
 				fmt.Fprintln(stderr, "statusgen verifyrun: --history-pack:", err)
 				return verifyrunExitCouldNot
 			}
 			defer cleanup()
+		} else if netnsContainer {
+			if binding, err := checkBinding(container.cell.Check); err == nil && binding.Version == 2 {
+				crossRepo = true
+			}
 		}
-		base, berr := failFirstBaseRev(baseRoot, *baseRev, baseBrief)
+		var base string
+		var berr error
+		if crossRepo {
+			base, berr = failFirstCrossRepoBaseRev(baseRoot, *baseRev)
+		} else {
+			base, berr = failFirstBaseRev(baseRoot, *baseRev, baseBrief)
+		}
 		if berr != nil {
 			fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first:", berr)
 			return verifyrunExitCouldNot
