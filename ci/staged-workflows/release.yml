@@ -1615,7 +1615,7 @@ jobs:
           name: release-runner-arm64
           retention-days: 7
           if-no-files-found: error
-          compression-level: 0
+          compression-level: 1
           path: |
             ${{ runner.temp }}/release-native-arm64/verify-runner-linux-arm64.tar
             ${{ runner.temp }}/release-native-arm64/verify-runner-linux-arm64.json
