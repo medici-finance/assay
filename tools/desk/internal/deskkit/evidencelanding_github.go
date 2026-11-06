@@ -1,11 +1,13 @@
 package deskkit
 
 import (
-	"crypto/sha1" // Git's object format, not an authentication primitive.
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 )
 
 // The file is selected UNDER the returned branch commit, rather than through a
@@ -175,20 +177,67 @@ func (g *GitHubForge) evidenceSnapshot(repo ForgeRepo, number int, file, branch 
 		}
 		b := f.Object
 		// Evidence must be a regular text blob. Refuse symlinks, binaries and
-		// partial/converted text instead of mistaking them for absent files.
-		if f.Mode != 0100644 || b == nil || b.Typename != "Blob" || b.IsBinary == nil || *b.IsBinary || b.Text == nil || b.ByteSize == nil || *b.ByteSize != len(*b.Text) {
+		// objects that are not blobs instead of mistaking them for absent files.
+		if f.Mode != gitModeRegular || b == nil || b.Typename != "Blob" || b.IsBinary == nil || *b.IsBinary || b.ByteSize == nil || *b.ByteSize < 0 {
 			return bad("destination is not a complete regular text blob")
 		}
-		content := []byte(*b.Text)
-		h := sha1.New()
-		fmt.Fprintf(h, "blob %d\x00", len(content))
-		h.Write(content)
-		if fmt.Sprintf("%x", h.Sum(nil)) != b.OID {
-			return bad("destination bytes do not match the returned Git blob")
+		// Blob.text is not a record of the blob's bytes. The go-gh client
+		// transport rewrites control-character escapes in every JSON answer
+		// into caret notation, a literal backslash-u-0003 included (#5543),
+		// and the forge omits text for large blobs. It is used only when it
+		// proves itself against the blob's own id; any other answer reads the
+		// bytes by that id, base64-served and so untouched by that rewrite.
+		var content []byte
+		if b.Text != nil && *b.ByteSize == len(*b.Text) && gitBlobMatches(b.OID, []byte(*b.Text)) {
+			content = []byte(*b.Text)
+		} else {
+			raw, err := g.evidenceBlobBytes(repo, b.OID, *b.ByteSize)
+			if err != nil {
+				return nil, err
+			}
+			content = raw
 		}
 		// The checks above prove a regular-mode, complete text blob whose bytes hash to its
 		// own object id, so the read is a plain file (S-2266-8's FileKindRegular).
 		s.file = &FileContent{Content: content, SHA: b.OID, Exists: true, Kind: FileKindRegular}
 	}
 	return s, nil
+}
+
+// evidenceBlobBytes reads one blob's bytes by object id through the git blobs
+// API. An object id names immutable content, so the bytes describe the same
+// tree the snapshot selected. They are accepted only when they are
+// base64-served, exactly size bytes long, hash to oid and are valid UTF-8 text;
+// anything else is the snapshot's fail-closed refusal.
+func (g *GitHubForge) evidenceBlobBytes(repo ForgeRepo, oid string, size int) ([]byte, error) {
+	bad := func(reason string) ([]byte, error) {
+		return nil, Unverifiable("cannot read evidence publication snapshot: "+reason, nil)
+	}
+	if len(oid) != 40 && len(oid) != 64 {
+		return bad("destination is not a complete regular text blob")
+	}
+	if _, err := hex.DecodeString(oid); err != nil {
+		return bad("destination is not a complete regular text blob")
+	}
+	var w struct {
+		SHA      string `json:"sha"`
+		Size     *int   `json:"size"`
+		Content  string `json:"content"`
+		Encoding string `json:"encoding"`
+	}
+	path := fmt.Sprintf("/repos/%s/%s/git/blobs/%s", repo.Owner, repo.Name, oid)
+	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+		return nil, err
+	}
+	if w.Encoding != "base64" || !strings.EqualFold(w.SHA, oid) || w.Size == nil || *w.Size != size {
+		return bad("destination is not a complete regular text blob")
+	}
+	content, err := base64.StdEncoding.DecodeString(stripBase64Whitespace(w.Content))
+	if err != nil || len(content) != size || !utf8.Valid(content) {
+		return bad("destination is not a complete regular text blob")
+	}
+	if !gitBlobMatches(oid, content) {
+		return bad("destination bytes do not match the returned Git blob")
+	}
+	return content, nil
 }
