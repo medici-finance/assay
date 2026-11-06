@@ -505,6 +505,70 @@ rows_passed=12 rows_total=13
 
 **VERIFY: BLOCKED** — 12/13 rows pass at 99627c1b8084; rows 1–12 pass; row 9 recorded (last heading quoted, no skill-body truncation on the shell-read path); row 13 could-not-check (the lint's only PROBLEM is its own could-not-check on another brief's acceptance authority; no PROBLEM names this brief; green with --acceptance-forge) (blocker: #4823)
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/skillslint && go build -o /tmp/skillslint-hp17 . && /tmp/skillslint-hp17 --skills-dir testdata/conformance/desc-1025` | pass exit=1 | sha256:e715cb5375c8 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/skillslint && go build -o /tmp/skillslint-hp17 . && /tmp/skillslint-hp17 --skills-dir testdata/conformance/desc-1024-multibyte` | pass exit=0 | sha256:9790e87ec8da | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/skillslint && go build -o /tmp/skillslint-hp17 . && /tmp/skillslint-hp17 --skills-dir testdata/conformance/name-mismatch` | pass exit=1 | sha256:ef7e6bebbab4 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/skillslint && go build -o /tmp/skillslint-hp17 . && /tmp/skillslint-hp17 --skills-dir testdata/conformance/name-pattern` | pass exit=1 | sha256:f4999d9c6952 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/skillslint && go build -o /tmp/skillslint-hp17 . && /tmp/skillslint-hp17 --skills-dir testdata/conformance/budget-over` | pass exit=0 | sha256:5c2fd9647504 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/skillslint && go build -o /tmp/skillslint-hp17 . && /tmp/skillslint-hp17 --root ../..` | pass exit=0 | sha256:b4fd6b3d320c | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd tools/skillslint && go build -o /tmp/skillslint-hp17 .) && rm -rf /tmp/hp17-mut && mkdir -p /tmp/hp17-mut/install && git show e284ba9b8:plugins/assay/skills/install/SKILL.md > /tmp/hp17-mut/install/SKILL.md && /tmp/skillslint-hp17 --skills-dir /tmp/hp17-mut` | pass exit=1 | sha256:589fe12cf3df | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/skillslint && go test ./... -count=1` | pass exit=0 | sha256:6c5d12c42699 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `assay@assay` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:91a3808c8252 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `curl -fsSL -o /tmp/hp17-render.rs https://raw.githubusercontent.com/openai/codex/30fc6864cc1318121eca1843c217fe00ce1212f1/codex-rs/ext/skills/src/render.rs && grep -c -e 'MAX_CATALOG_SKILL_DESCRIPTION_CHARS: usize = 1_024' -e 'MAX_SKILL_PROMPT_BYTES: usize = 8_000' -e 'DEFAULT_SKILL_METADATA_CHAR_BUDGET: usize = 8_000' /tmp/hp17-render.rs` | pass exit=0 | sha256:1121cfccd591 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `gh api 'repos/medici-finance/assay/commits/main/check-runs?check_name=skillslint' --jq '.check_runs[0].conclusion'` | pass exit=0 | sha256:81b2bd4ea98c | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `M=aa1cc0e3677570d1ec38e36d754a3cfe132bfc8d && D=$(mktemp -d) && git worktree add --detach "$D" "$M" >/dev/null && (cd "$D" && statusgen --consumers --root . --brief harness-portability/17 --base "$M^1"); rc=$?; git worktree remove --force "$D"; test $rc -eq 0` | pass exit=0 | sha256:e32bc33dbfb1 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `statusgen --lint --root .` | fail exit=1 | sha256:d85d5e23cf65 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5650 run=a6ebc24a606a8e7d104a6119465ab01a25245b7caa7054486536ad154325d66c source=4cf9795597f6b88517eb503758b9c4de8a5fb9be brief=docs/streams/harness-portability/brief-17-skill-frontmatter-conformance-lint.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 9 | `assay@assay` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:91a3808c8252 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) | base=be4380ce5a82 unproven · head=4cf9795597f6 |
+Verification-Attestation: medici-finance/assay#5650 run=a6ebc24a606a8e7d104a6119465ab01a25245b7caa7054486536ad154325d66c source=4cf9795597f6b88517eb503758b9c4de8a5fb9be brief=docs/streams/harness-portability/brief-17-skill-frontmatter-conformance-lint.md model=claude-opus-5-5 tier=strong
+
+### Non-implementer verifier run — 2026-11-06 claude-opus-5-5 verifier at 4cf9795597f6
+
+Execution witness: `statusgen verifyrun` (v1.0.75, installed) over the whole table on the clean admitted checkout, normal HOME, `KUBECONFIG=/dev/null`, 19:01:59Z-19:03:54Z, before any hand run. Its table and attestation are above as it wrote them, followed by the fail-first witness for row 9 (`--fail-first --rows 9 --base be4380ce5a82`, the parent of merge aa1cc0e36, PR #1663), 19:10:25Z-19:10:30Z. The table has no Class column, so no row is `check:ci` and no container bracket applies. Admission: `deskdispatch --check-verifier` exit 0 (Verification-Attestation above, run a6ebc24a606a).
+
+`statusgen verifyrun --check`, after both witnesses: exit 2; rows 1-8 and 10-12 pass (witness matches the row and passed); row 9 could-not-run (the witness records could-not-run, no verdict); row 13 fail (the witness records a failure); summary `11 pass, 1 fail, 1 could-not-run/missing (of 13 Verify rows); 0 author-added with no acceptance credit`.
+
+Fail-first: row 9 is the only risk-bearing row (its Command cell says "Live"; every risk answer is `no`). Its Command cell is prose-led, so verifyrun lifts `assay@assay` and the shell exits 127 at both base and head: `row 9: unproven at base be4380ce5a82 — the row could not run there, so it was never shown to fail`. No other row matches the risk-bearing words.
+
+Hand run of row 9, which verifyrun did not run (prose-led command). A fresh verifier, not the implementer, ran it at 4cf9795597f6 (darwin/arm64) from a session scratch directory outside the checkout:
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 9 | `codex exec 'Use the pr-review-desk skill. Quote verbatim the LAST level-2 heading of its SKILL.md, and say whether you were told the skill was truncated.'` | A record of which applies: last heading quoted (NOT truncated) or truncation warning reported (IS) | Codex CLI 0.166.0, model gpt-6.1-sol, `assay@assay` plugin enabled, invoked with `--sandbox read-only --skip-git-repo-check --ephemeral`, 19:02:14Z-19:02:28Z, exit 0. The model read the plugin cache copy of pr-review-desk SKILL.md with `cat`, then listed level-2 headings with `rg -n '^## '`, and quoted `## Optional local performance context`. That cache copy is byte-identical to this commit's file (120844 bytes, sha256 0e1e41bb724f…, last level-2 heading at line 1403 of 1422). The reply's "Warning: truncated output" refers to the shell tool's output cap on its first read, not to the skill body; the session log carries no skill-body truncation notice. Recorded: last heading quoted, NOT truncated on the shell-read path; the injected-body path was not exercised. | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) |
+
+Supplemental probes (scratch, outside the checkout; they discharge no row):
+- Rows 1-5 fixtures with the row-built skillslint: desc-1025 exit 1 `description is 1025 characters, over the 1024-character hard limit`; desc-1024-multibyte exit 0; name-mismatch exit 1 `frontmatter name "not-the-desk" != directory "the-desk"`; name-pattern exit 1 `name "Bad--Name" does not match the agentskills name pattern ^[a-z0-9]+(-[a-z0-9]+)*$`; budget-over exit 0 with NOTICE `summed description characters 8100 exceeds the 8000-character budget`.
+- Row 6 `--root ../..`: exit 0, `SKILLSLINT: PASS — 18 skill file(s) under ../..`, 26 NOTICE lines (summed description characters 11091); no Issue on the install or pr-review-desk descriptions. Row 7's mutation: exit 1, `install/SKILL.md: description is 1103 characters`.
+- Row 12 in a shared scratch clone detached at this commit: exit 0, `summary: 3 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing`; the tools/skillslint entry and the install and pr-review-desk descriptions are corroborated, the two out-of-scope entries unchecked.
+- Row 13 by hand: installed v1.0.75 exit 1, `LINT: FAIL 2 problem(s)`, both PROBLEMs on other briefs' acceptance transitions (desk-tools/37 and desktools-v2/65), each saying the human authority cannot be read without `--acceptance-forge`. A binary built from this commit's statusgen directory (`--version` prints `dev`): exit 1, the same two briefs, each saying the repository origin authority is unavailable because an include may affect authority. No PROBLEM names harness-portability/17 in either run.
+
+**Risk-bearing value.** Gate is `model` and every risk answer is `no`. The implementing change (aa1cc0e36, PR #1663) is still the only commit that has changed tools/skillslint/conformance.go. Enumeration, re-read at 4cf9795597f6:
+- `maxDescriptionChars = 1024` @ tools/skillslint/conformance.go:69 (hard, exit 1)
+- `maxNameChars = 64` @ tools/skillslint/conformance.go:71 (hard, exit 1)
+- `namePattern = ^[a-z0-9]+(-[a-z0-9]+)*$` @ tools/skillslint/conformance.go:76 (hard, exit 1)
+- `bodyByteBudget = 8000` @ :83, `bodyLineBudget = 500` @ :85, `bodyTokenBudget = 5000` @ :88, `approxBytesPerToken = 4` @ :92, `bundleDescriptionBudget = 8000` @ :99 (advisory NOTICE only; they never move the exit code)
+
+Ranking: every value is a lint limit, undone by an edit and a re-release; none is irreversible. The hard limits rank first (a wrong one ships a skill Codex truncates, or reddens valid adopter skills); the advisory budgets rank last and need no derivation.
+
+RISK-VALUE: DERIVED — maxDescriptionChars = 1024 @ tools/skillslint/conformance.go:69 — the agentskills specification sets `description` at 1-1024 characters, and Codex's `MAX_CATALOG_SKILL_DESCRIPTION_CHARS: usize = 1_024` resolves at the pinned upstream SHA (row 10); the check counts code points with utf8.RuneCountInString (conformance.go:106), the spec's character unit (row 2)
+RISK-VALUE: DERIVED — maxNameChars = 64 @ tools/skillslint/conformance.go:71 — the agentskills specification sets `name` at 1-64 characters
+RISK-VALUE: DERIVED — namePattern = ^[a-z0-9]+(-[a-z0-9]+)*$ @ tools/skillslint/conformance.go:76 — the agentskills name rule: lowercase a-z, 0-9 and single hyphens between runs, so no leading, trailing or consecutive hyphen; the fixture Bad--Name fails on both the uppercase letters and the double hyphen (row 4)
+
+**Findings.**
+- Row 13 fails as authored on a main-wide lint red that is not this brief's: the only PROBLEMs are the lint's own inability to read acceptance authority for desk-tools/37 and desktools-v2/65 (the #4823 class). This brief has NOTICEs only.
+- Row 9's Command cell is prose-led ("Live Codex probe, in a Codex CLI session …: `codex exec …`"), so verifyrun lifts the first code span `assay@assay` and records could-not-run (exit 127) at head and base. The row's acceptance is the hand record above; as authored it can never give verifyrun a verdict or a fail-first discrimination (a check-definition defect).
+- Row 11 passed on first read (printed `success`).
+- Since the 2026-11-01 run at 99627c1b8084, tools/skillslint is unchanged; pr-review-desk SKILL.md gained two lines (70bb9d780). Rows 6 and 8 cover that change and stay green.
+
+rows_passed=11 rows_total=13
+
+**VERIFY: BLOCKED** — 11/13 rows pass at 4cf9795597f6; row 13 fails as authored on a lint PROBLEM about other briefs' acceptance authority (desk-tools/37, desktools-v2/65), none naming this brief; row 9 not run by verifyrun (prose-led command), hand run recorded the last heading quoted with no skill-body truncation (blocker: medici-finance/assay#4823)
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table and
 answers: are the shortened descriptions' opening sentences still the trigger text a harness
