@@ -725,9 +725,8 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 	// itself kept and never a candidate, and the bytes it hides only lower the totals
 	// the budget rules read, so the remaining candidates may still be reclaimed.
 	if len(errs) > 0 {
-		errs = append(errs, unmeasured...)
 		rep.Partial = true
-		return rep, errors.Join(errs...)
+		return rep, errors.Join(append(errs, unmeasured...)...)
 	}
 	// Oldest retained diagnostics leave first. Successful acknowledged tasks need no
 	// local evidence; failed/recovered records retain exit status, receipt and bounded tail.
