@@ -227,7 +227,12 @@ func (g *GitHubForge) evidenceBlobBytes(repo ForgeRepo, oid string, size int) ([
 	}
 	path := fmt.Sprintf("/repos/%s/%s/git/blobs/%s", repo.Owner, repo.Name, oid)
 	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
-		return nil, err
+		// The snapshot just named this oid, so a 404 here is never a real
+		// absence: drop that cause so no caller can read it as "not found".
+		if IsForgeNotFound(err) {
+			err = nil
+		}
+		return nil, Unverifiable("cannot read evidence publication snapshot: destination blob unreadable", err)
 	}
 	if w.Encoding != "base64" || !strings.EqualFold(w.SHA, oid) || w.Size == nil || *w.Size != size {
 		return bad("destination is not a complete regular text blob")
