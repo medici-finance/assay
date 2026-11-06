@@ -5,6 +5,9 @@ on:
       - "workflow/**"
       - "forgeread/go.mod"
       - "forgeread/mirror/**"
+      - "forgeread/refresh/**"
+      - "forgeread/**"
+      - "tools/desk/**"
       - "spec/coordination-store-v1.md"
       - "docs/contracts.md"
       - "docs/go-engineering.md"
@@ -16,6 +19,9 @@ on:
       - "workflow/**"
       - "forgeread/go.mod"
       - "forgeread/mirror/**"
+      - "forgeread/refresh/**"
+      - "forgeread/**"
+      - "tools/desk/**"
       - "spec/coordination-store-v1.md"
       - "docs/contracts.md"
       - "docs/go-engineering.md"
@@ -40,6 +46,7 @@ jobs:
         options: --health-cmd "pg_isready -U fixture_admin -d postgres" --health-interval 1s --health-timeout 2s --health-retries 30
     env:
       GOWORK: "off"
+      KUBECONFIG: /dev/null
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -64,3 +71,15 @@ jobs:
           cd workflow
           go vet ./...
           go test -count=1 -race -timeout=180s ./...
+      - name: Qualify admitted persisted read-through
+        env:
+          ASSAY_TEST_POSTGRES_DSN: postgresql://fixture_admin:fixture_only@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres?sslmode=disable
+        run: |
+          set -euo pipefail
+          test -n "$ASSAY_TEST_POSTGRES_DSN"
+          cd tools/desk
+          out="$(mktemp)"
+          trap 'rm -f "$out"' EXIT
+          go test -count=1 -race -timeout=180s -v -run '^TestMirrorPersistedReadThroughJoin$' ./internal/deskkit > "$out"
+          cat "$out"
+          grep -F -- '--- PASS: TestMirrorPersistedReadThroughJoin ' "$out"

@@ -161,12 +161,54 @@ func (f *Fixture) drop(ctx context.Context) error {
 		return errors.New("fixture ownership mismatch; database retained")
 	}
 	if _, err = f.Admin.ExecContext(ctx, "DROP DATABASE "+pgx.Identifier{f.Config.Database}.Sanitize()+" WITH (FORCE)"); err != nil {
-		return errors.New("owned fixture database cleanup failed")
+		return cleanupFailure(ctx, err)
 	}
 	f.owned = false
 	f.ready = false
 	return nil
 }
+
+// fixtureCleanupError exposes only validated protocol/context classifications.
+// It never retains the driver error or raw PostgreSQL message in its chain.
+type fixtureCleanupError struct {
+	sqlState, contextState string
+	cause                  error
+}
+
+func (e *fixtureCleanupError) Error() string {
+	return "owned fixture database cleanup failed (sqlstate=" + e.sqlState + ", context=" + e.contextState + ")"
+}
+func (e *fixtureCleanupError) SQLState() string { return e.sqlState }
+func (e *fixtureCleanupError) Unwrap() error    { return e.cause }
+
+func cleanupFailure(ctx context.Context, err error) error {
+	e := &fixtureCleanupError{sqlState: "unknown", contextState: "none"}
+	var protocol interface{ SQLState() string }
+	if errors.As(err, &protocol) {
+		state := protocol.SQLState()
+		valid := len(state) == 5
+		for _, ch := range state {
+			valid = valid && ((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9'))
+		}
+		if valid {
+			e.sqlState = state
+		}
+	}
+	var contextErr error
+	if ctx != nil {
+		contextErr = ctx.Err()
+	}
+	switch {
+	case errors.Is(contextErr, context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded):
+		e.contextState, e.cause = "deadline-exceeded", context.DeadlineExceeded
+	case errors.Is(contextErr, context.Canceled) || errors.Is(err, context.Canceled):
+		e.contextState, e.cause = "canceled", context.Canceled
+	case contextErr != nil:
+		e.contextState = "unknown"
+	}
+	return e
+}
+
 func (f *Fixture) Reset(ctx context.Context) error {
 	if err := f.drop(ctx); err != nil {
 		return err
@@ -177,7 +219,7 @@ func (f *Fixture) Close() error {
 	if !f.owned {
 		return f.Admin.Close()
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	err := f.drop(ctx)
 	closeErr := f.Admin.Close()
@@ -185,4 +227,17 @@ func (f *Fixture) Close() error {
 		return err
 	}
 	return closeErr
+}
+
+// ConnectOwned returns a test-only SQL connection after rechecking this fixture's
+// exact generated database and ownership marker. It never opens an ambient DB.
+func (f *Fixture) ConnectOwned(ctx context.Context) (*sql.DB, error) {
+	if f == nil || !f.owned || !f.ready || !strings.HasPrefix(f.Config.Database, "assay_pg_") {
+		return nil, errors.New("unowned fixture database")
+	}
+	var marker string
+	if err := f.Admin.QueryRowContext(ctx, "SELECT coalesce(shobj_description(oid,'pg_database'),'') FROM pg_database WHERE datname=$1 AND datdba=(SELECT oid FROM pg_roles WHERE rolname=current_user)", f.Config.Database).Scan(&marker); err != nil || marker != f.marker {
+		return nil, errors.New("fixture ownership mismatch")
+	}
+	return dial(ctx, f.Config)
 }

@@ -59,6 +59,12 @@ owned test database, and requires its own name, database owner and marker before
 A failed setup also retains the owned-creation receipt for bounded cleanup. Missing input
 fails tests; no skip is a qualification pass. Local server binaries and ambient Docker or
 Kubernetes discovery are excluded. CI supplies its own disposable PostgreSQL container.
+Fixture startup uses a finite 10-second context. Fixture.Close alone allows 30 seconds
+for ownership checks and the exact forced DROP, including PostgreSQL checkpoint completion;
+Reset keeps its explicit caller context. Cleanup never retries, ignores an error or relaxes
+name/owner/marker validation. A cleanup error may expose only validated SQLSTATE and context
+enums, plus safe cancellation sentinels; never raw server text or connection data. This local
+test teardown budget does not set an application, authorization, lease or retry deadline.
 
 ## Implemented mirror schema
 
@@ -131,6 +137,179 @@ external capability. Future shared-refresh integration must bind generation vali
 Store.Apply and completion in one transaction before production coordinator use. Naked
 Apply supplies CAS and durability, not stale refresh-owner fencing.
 
+## Implemented read-only refresh coordination
+
+Migration00003 extends the same forward-only Goose manifest and private pool. The
+canonical adapter implements `refresh.Gate` and `mirror.AttemptAuthority`; it
+initializes no policy/accounting and adds no execution or activation authority.
+`RefreshConfig` is explicit trusted composition, with no production defaults.
+Source/native, admission and caller accounting have separate persisted rows.
+Missing, unknown or mismatched profiles hold; an epoch/new client does not create
+an allowance. Only the disposable test fixture seeds known profiles.
+
+| Table | Column | PostgreSQL type |
+|---|---|---|
+| refresh_budgets | source_id | bytea |
+| refresh_budgets | profile | bytea |
+| refresh_budgets | known | boolean |
+| refresh_budgets | write_xid | xid8 |
+| refresh_budgets | window_at | timestamp with time zone |
+| refresh_budgets | window_ns | bigint |
+| refresh_budgets | http_used | bigint |
+| refresh_budgets | http_limit | bigint |
+| refresh_budgets | inflight_limit | bigint |
+| refresh_budgets | reservation_limit | bigint |
+| refresh_budgets | retry_at | timestamp with time zone |
+| refresh_budgets | unknown_hold | boolean |
+| refresh_admissions | admission | bytea |
+| refresh_admissions | source_id | bytea |
+| refresh_admissions | profile | bytea |
+| refresh_admissions | known | boolean |
+| refresh_admissions | write_xid | xid8 |
+| refresh_admissions | window_at | timestamp with time zone |
+| refresh_admissions | window_ns | bigint |
+| refresh_admissions | fills_used | bigint |
+| refresh_admissions | fill_limit | bigint |
+| refresh_admissions | http_used | bigint |
+| refresh_admissions | http_limit | bigint |
+| refresh_admissions | active_limit | bigint |
+| refresh_admissions | waiter_limit | bigint |
+| refresh_admissions | failure_limit | bigint |
+| refresh_callers | admission | bytea |
+| refresh_callers | caller_id | bytea |
+| refresh_callers | known | boolean |
+| refresh_callers | write_xid | xid8 |
+| refresh_callers | window_at | timestamp with time zone |
+| refresh_callers | fills_used | bigint |
+| refresh_callers | fill_limit | bigint |
+| refresh_callers | http_used | bigint |
+| refresh_callers | http_limit | bigint |
+| refresh_callers | active_limit | bigint |
+| refresh_callers | waiter_limit | bigint |
+| refresh_fills | fill_key | bytea |
+| refresh_fills | admission | bytea |
+| refresh_fills | identity | bytea |
+| refresh_fills | scope_key | bytea |
+| refresh_fills | generation | bytea |
+| refresh_fills | owner_id | bytea |
+| refresh_fills | owner_reviews | boolean |
+| refresh_fills | expires_at | timestamp with time zone |
+| refresh_fills | retire_at | timestamp with time zone |
+| refresh_fills | state | text |
+| refresh_fills | reason | text |
+| refresh_fills | retry_at | timestamp with time zone |
+| refresh_fills | snapshot_version | bigint |
+| refresh_fills | base_retry_at | timestamp with time zone |
+| refresh_fills | review_retry_at | timestamp with time zone |
+| refresh_fills | attempts_used | bigint |
+| refresh_fills | attempt_limit | bigint |
+| refresh_fills | attempt_held | boolean |
+| refresh_fills | review_only_partial | boolean |
+| refresh_fills | completion_xid | xid8 |
+| refresh_waiters | ticket_id | bytea |
+| refresh_waiters | admission | bytea |
+| refresh_waiters | fill_key | bytea |
+| refresh_waiters | generation | bytea |
+| refresh_waiters | caller_id | bytea |
+| refresh_waiters | reviews | boolean |
+| refresh_waiters | expires_at | timestamp with time zone |
+| refresh_waiters | released | boolean |
+| refresh_attempts | reservation_id | bytea |
+| refresh_attempts | admission | bytea |
+| refresh_attempts | source_id | bytea |
+| refresh_attempts | fill_key | bytea |
+| refresh_attempts | generation | bytea |
+| refresh_attempts | caller_id | bytea |
+| refresh_attempts | grant_id | bytea |
+| refresh_attempts | expires_at | timestamp with time zone |
+| refresh_attempts | observed | boolean |
+| refresh_attempts | unknown_hold | boolean |
+| refresh_attempts | http_count | bigint |
+| refresh_attempts | http_known | boolean |
+| refresh_attempts | decoded_bytes | bigint |
+| refresh_attempts | decoded_known | boolean |
+| refresh_attempts | response_complete | boolean |
+| refresh_attempts | status | integer |
+| refresh_attempts | retry_knowledge | text |
+| refresh_attempts | retry_at | timestamp with time zone |
+| refresh_attempts | observed_at | timestamp with time zone |
+| refresh_attempts | source_observed_at | numeric |
+| refresh_attempts | reported_retry_at | numeric |
+| refresh_attempts | retry_delay_ns | bigint |
+| refresh_attempts | delay_known | boolean |
+
+Every mutation locks admission, then source budget, caller usage, fill, waiter or
+individual attempt, then observation scope/records. Identity-only lookups before
+those locks are rechecked. Native HTTP runs after reservation commit with no SQL
+locks/pool connection retained. Different admissions sharing a source budget use
+the same budget row and never acquire a second admission lock.
+Shared profiles require `Limits.Refresh.FailureBackoff == 0`; the Gate is the sole
+shared retry authority. Construction rejects nonzero values before I/O rather than
+normalizing them. The standalone mirror planner retains its own policy contract.
+
+Usage is debited before the actual native base-transport entry, not after a scan.
+An individual opaque reservation is required; its qualified observation can close
+only that slot. Duplicates/foreign reports cannot replace another reservation.
+A final scan aggregate cannot synthesize missing individual observations.
+Count/prefix values and knowledge are stored separately: a positive decoded prefix
+with unknown total is retained and does not make qualified HTTP/retry knowledge
+unknown. Decoded work is actual consumed bytes, independent of response completeness;
+there is no byte quota. Unknown
+reports and expired unobserved reservations hold new work without refund. A
+qualified zero-entry observation (permit never returned, or lower pre-base refusal)
+closes only its own slot with known zero HTTP; its budget charge remains consumed.
+It is distinct from a known entered transport with no response and from unknown
+commit/report. Postcommit caller refusal records this bounded bookkeeping before
+returning no permit; uncertain bookkeeping retains its hold. Explicit
+finite source concurrency permits already-authorized in-flight work; a published
+floor applies to every later reservation. Missing/unknown timing is a hold.
+
+`DB.Refresh` takes a required explicit trusted `refresh.Clock` for data validation
+and `ApplyCompletion` evaluation, shared with the admitted native source and
+coordinator. Constructor nil/typed-nil/zero samples refuse before database I/O;
+after-I/O and final samples must remain valid. Native decoded-data bounds are
+validated in this application clock domain, never compared to database wall time
+or replaced by report/commit time. Missing/future data bounds still hold. The clock
+is not serialized in the known profile and grants no budget, generation or identity.
+Held/done completion takes only the scope identity/version lock and establishes its
+actual baseline before the existing fenced terminal transition; no observations or
+coverage are decoded/applied for that bookkeeping.
+
+PostgreSQL time owns windows, expiry and retry eligibility. A relative retry delay
+is anchored to database observation time and combined with the reported absolute
+floor using the maximum; lower bounds round upwards to SQL microseconds. The
+observation Store's separate nanosecond watermark codec stays exact. Window reset
+requires elapsed canonical time and no unresolved individual observations. Row
+limits on retained reservations and failures are finite explicit trusted inputs.
+`NativeLimits.Reservations` counts every retained source reservation, including
+observed entries, over the source identity's lifetime; it is not a window allowance
+or just the in-flight count. At capacity new attempts hold across window rollover
+and restart. Runtime does not delete this history, reset its profile or repair the
+cap. Future archival/reconstruction requires an explicit accounting contract;
+unexpired failures/unknown holds cannot be evicted into allowance.
+
+The full base-fill identity is bounded version1 canonical JSON over byte-array
+identity fields alongside an index hash; opaque string bytes are preserved.
+All scope/source/admission/epoch/policy fields are matched before use. This is a
+private storage encoding, not a request protocol. Requirements failure classes
+are the two bounded base/Reviews cases, separately bound to generation and actual
+queried snapshot version. The canonical `Completion.ReviewOnlyPartial` class is
+persisted only after its qualified partial Apply; a weaker joined query cannot
+install a review-owner-induced failure. Strong requirements and actual source
+failures retain their backoff without upgrading LastComplete. Unchecked outcomes
+only release their waiter debit. After generation replacement, Leave still releases
+the exact old ticket but never interprets its outcome against the new generation.
+
+`Complete` verifies its exact bound canonical Store, current generation/lease and
+current caller/admission before any observation write. Its private transaction-
+bound Store runs the existing typed `ApplyCompletion` seam; rows/coverage/version
+and completion commit together. SQL also rejects expired/foreign completion and
+completion outside the observation write transaction. Public standalone Store
+Apply retains its own transaction and supplies no refresh grant. Final current
+authorization/deadline checks bracket terminal I/O. A failed/uncertain acknowledgement
+never authorizes replay. These checks assume a role unable to disable triggers or
+alter schemas; they cannot authenticate an external capability in SQL.
+
 ## Planned domain schema
 
 **Not implemented by the foundation:** canonical workflow instances/nodes/attempts and
@@ -141,7 +320,6 @@ bindings, stale-generation restore and brake/pacing accounting. Full graph-execu
 retains all its original Tasks and 13 Verify rows. Its full schema-match obligation is not
 satisfied by checking only this implemented foundation section.
 
-**Read-only mirror follow-up:** the bounded Store is implemented above. Shared refresh
-generation/completion, admission epochs, retention policy, ingestion daemon, served API,
+**Read-only mirror follow-up:** the bounded Store is implemented above. The bounded read-only shared refresh adapter is implemented above. Retention policy, ingestion daemon, served API,
 provider credential custody and cutover remain future contributions. All forge-neutral/37 acceptance and retention gates
 remain. A completed foundation is neither full R2 nor service activation.
