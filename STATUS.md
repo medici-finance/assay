@@ -178,7 +178,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | verification-handoff | 03 [exec:strong] | implemented | 3510 | 5 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 | derived-board | 04 | implemented | 3040 | 2 | — | driver | human action, cite #1175 | — | — |
 | windows-port | 03 [exec:strong] | implemented | 3030 | 4 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
-| iso-9001 | 08 [exec:strong] | implemented | 2540 | 3 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
+| iso-9001 | 08 [exec:strong] | implemented | 2550 | 3 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 | forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | driver | resolve the recorded blocker before sign-off: hold (check-definition), cite medici-finance/assay#1281 | — | — |
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#1800 | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2030 | 0 | — | driver | close the sign-off card | — | — |
@@ -213,7 +213,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 |---|---|---|---|---|---|---|---|---|---|
 | graph-execution | 03 [exec:strong] | implemented | 18010 | 32 | — | worker | fix, cite #1927 | — | — |
 | desk-containers | 15 [exec:strong] | implemented | 14000 | 26 | — | worker | fix, cite medici-finance/assay#4823 | — | — |
-| desk-supervision | 28 [exec:strong] | implemented | 8000 | 14 | — | worker | fix, cite #4691 | — | — |
+| desk-supervision | 28 [exec:strong] | implemented | 8000 | 14 | — | worker | fix, cite medici-finance/assay#4691 | — | — |
 | graph-execution | 07 [exec:strong] | implemented | 7010 | 10 | — | worker | fix, cite #2715 | — | — |
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | worker | fix, cite medici-finance/assay#1606 | — | — |
 | desk-containers | 16 [exec:strong] | implemented | 6500 | 11 | — | worker | fix, cite #4560 | — | — |
@@ -253,8 +253,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 23 [exec:strong] | implemented | 1500 | 1 | — | worker | fix, cite medici-finance/assay#4560 | — | — |
 | desktools-v2 | 44 [exec:strong] | implemented | 1500 | 1 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | desktools-v2 | 47 [exec:strong] | implemented | 1500 | 1 | — | worker | fix, cite medici-finance/assay#4560 | — | — |
+| iso-9001 | 06 [exec:strong] | implemented | 1050 | 0 | — | worker | fix, cite #4823 | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1040 | 0 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
-| iso-9001 | 06 [exec:strong] | implemented | 1040 | 0 | — | worker | fix, cite #4823 | — | — |
 | desk-containers | 04 | implemented | 1000 | 0 | — | worker | fix, cite https://github.com/medici-finance/assay/issues/63#issuecomment-6568642807 | — | — |
 | desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#2816 | — | — |
 | desk-supervision | 36 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#5081 | — | — |
@@ -280,7 +280,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 66 [exec:strong] | implemented | 8000 | 14 | — | operator | environment blocker, cite medici-finance/assay#5112 | — | — |
 | cellctl-windows | 00 [exec:strong] | implemented | 5500 | 7 | — | operator | `$log = New-TemporaryFile; go test ./internal/celllaunch -run '^TestLaunchSpecRoundTrip$' -count=1 -v *> $log; if ($LASTEXITCODE -ne 0) { Get-Content $log; exit 1 }; if (-not (Select-String -Path $log -SimpleMatch '--- PASS: TestLaunchSpecRoundTrip ')) { exit 1 }; if (Select-String -Path $log -SimpleMatch '--- SKIP:') { exit 1 }` | — | — |
 | derived-board | 03 [exec:strong] | implemented | 4540 | 5 | — | operator | environment blocker, cite medici-finance/assay#4173 | — | — |
-| iso-9001 | 03 [exec:strong] | verified | 3040 | 4 | — | operator | environment blocker, cite #4823 | 2026-10-19 assay-verifier-app[bot] @ 810a5edf064b (claude-opus-5-5) | — |
+| iso-9001 | 03 [exec:strong] | verified | 3050 | 4 | — | operator | environment blocker, cite #4823 | 2026-10-19 assay-verifier-app[bot] @ 810a5edf064b (claude-opus-5-5) | — |
 | desktools-v2 | 60 [exec:strong] | implemented | 2500 | 3 | — | operator | environment blocker, cite medici-finance/assay#4327 | — | — |
 | forge-neutral | 14 [exec:strong] | implemented | 2000 | 0 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | harness-portability | 17 [exec:strong] | implemented | 1540 | 1 | — | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
