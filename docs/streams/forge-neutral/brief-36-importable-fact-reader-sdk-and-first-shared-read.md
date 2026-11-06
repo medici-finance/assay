@@ -9,6 +9,8 @@ effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 design: DR-forge-neutral-36
+decision-issue: 3662
+ruling: "https://github.com/medici-finance/assay/issues/3662#issuecomment-6561248130"
 gate-why: "sensitive-data is yes because the slice moves the code that reads private issue data under a minted credential into a new module other processes can link. The human confirms three things: no credential moves into a previously credential-free process; the forge-CLI scan, the ambient-token rule and the CI path trigger follow the moved code (rows 5 to 8); and the lower boundary refuses an out-of-scope repository with the consumer-side check bypassed (row 9)."
 issues: []
 schema: brief-v2
@@ -218,3 +220,13 @@ Gate is human, with sensitive-data: yes and every other risk answer no. A model 
 ## Review
 
 Gate: human. Library-first does not authorize new credentials, reduced checks or live rollout.
+
+The [November 1 ruling on #3662](https://github.com/medici-finance/assay/issues/3662#issuecomment-6561248130)
+selects option 1 for the delivered bounded extraction. The delivery is [#2536](https://github.com/medici-finance/assay/pull/2536),
+with the workflow promotion in [#2540](https://github.com/medici-finance/assay/pull/2540).
+The independent first stamp at `331aba8f343c` recorded 11 of 11 passing rows
+in [#3670](https://github.com/medici-finance/assay/pull/3670). Its
+[retained outcome](../verify-outcomes/forge-neutral/36-20261020T122723Z-5ef47573dd26.json)
+recorded the human gate as pending at the time of that run. Verify-desk owns
+assessment of that evidence for any lifecycle transition. The delivered design
+history and the later `DR-forge-library` direction remain recorded above.
