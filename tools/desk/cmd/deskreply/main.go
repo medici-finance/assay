@@ -5,7 +5,7 @@
 // iteration.
 //
 // Identity separation is the POINT of this tool: the worker voice and the reviewer
-// App voice never share a tool. deskreply mints the WORKER App token via desktoken worker;
+// App voice never share a tool. deskreply mints the WORKER App token read in process (deskkit.WriteVerbRoleCredential);
 // it NEVER mints the reviewer App token — it never reads REVIEWER_APP_ID /
 // REVIEWER_INSTALL_ID / any reviewer App key, and never imports deskpost's mint code.
 // The unforgeable review gate depends on the reviewer App's voice being mintable ONLY

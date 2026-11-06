@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -76,8 +75,8 @@ var mintedRole = "worker"
 // runCmd executes name+args in dir and returns trimmed stdout. Commands are ALWAYS
 // built from an explicit argv slice — never a shell string and never a caller-supplied
 // git flag. Callers pass literal verbs plus values derived from git
-// state, so no external input can inject a git option. Only `git` and `desktoken` (the
-// identity layer) reach this path — deskpr no longer shells a forge CLI.
+// state, so no external input can inject a git option. Only `git` reaches this path
+// — deskpr no longer shells a forge CLI, and reads its credential in process (#5457).
 func runCmd(dir, name string, args ...string) (string, error) {
 	cmd := execCommand(name, args...)
 	cmd.Dir = dir
@@ -125,8 +124,9 @@ func pushTransportGate(dir, verb string) error {
 // mintWorkerToken mints or reuses the installation token for the App role THIS session
 // acts under and sets it as ghToken, so every subsequent gh invocation (list, create,
 // view) authenticates as that App. It resolves the role from the session loop identity via
-// deskkit.SessionTokenRole and calls `desktoken <role> --repo <repo>`; the WORKER App is
-// the default, kept only when no loop is set or the loop carries no App role (see below).
+// deskkit.SessionTokenRole and reads that role's credential READ-ONLY through
+// deskkit.WriteVerbRoleCredential (#5457); the WORKER App is the default, kept only when no
+// loop is set or the loop carries no App role (see below).
 //
 // WHY THE ROLE IS RESOLVED, NOT HARDCODED (#396). deskpr create/update/edit all land a PR
 // authored by the App whose token this mints. A verify-desk session
@@ -147,16 +147,16 @@ func pushTransportGate(dir, verb string) error {
 // practice deskpr's main() already refuses via RequireLoopIdentity before any subcommand
 // runs when the loop is unset or unrecognised, so the fallback is a defensive floor.)
 //
-// --repo is not optional here (#565, mirroring #563/#562): each App is installed on more
-// than one account (e.g. example-org AND medici-finance), and desktoken defaults the owner
-// to "example-org" whenever --repo is absent. Without this flag, deskpr running against a
-// medici-finance/* repo would silently mint a token for the WRONG installation — one with
-// no access to the target repo — and the subsequent `gh pr create`/`gh pr view` would fail
-// with a GitHub API "Could not resolve to a Repository" error, surfacing as deskpr's exit
-// 6. Passing the caller's own already-verified repo (deskpr only ever calls this with the
-// repo it just confirmed via preflight() matches this worktree's origin) makes resolution
-// deterministic regardless of which worktree/remote deskpr happens to run in. Returns an
-// error if desktoken is not available or the token file is unreadable.
+// The repo is not optional here (#565, mirroring #563/#562): each App is installed on more
+// than one account (e.g. example-org AND medici-finance), and the installation is chosen by
+// the repo's owner. Without it, deskpr running against a medici-finance/* repo would
+// silently mint a token for the WRONG installation — one with no access to the target repo
+// — and the subsequent `gh pr create`/`gh pr view` would fail with a GitHub API "Could not
+// resolve to a Repository" error, surfacing as deskpr's exit 6. Passing the caller's own
+// already-verified repo (deskpr only ever calls this with the repo it just confirmed via
+// preflight() matches this worktree's origin) makes resolution deterministic regardless of
+// which worktree/remote deskpr happens to run in. Returns an error, its exit code kept, when
+// the credential cannot be read.
 func mintWorkerToken(repo string) error {
 	// Resolve the App role this session acts under from its loop identity; fall back to
 	// the worker App, and say so, when there is no App role to resolve (#396).
@@ -167,19 +167,12 @@ func mintWorkerToken(repo string) error {
 		fmt.Fprintf(deskprStderr, "deskpr: no App role resolved for this session — defaulting to the worker App token (%v)\n", rerr)
 	}
 	mintedRole = role
-	// Run desktoken <role> --repo <repo>; it prints the path to the cached token file.
-	out, err := runCmd("", "desktoken", role, "--repo", repo)
+	// Read the role's credential in process, READ-ONLY (#5457): never the desktoken binary,
+	// whose no-`--forge` shape rotates a GitLab-bound repo's PAT as a side effect.
+	cred, err := deskkit.WriteVerbRoleCredential("deskpr", role, repo)
 	if err != nil {
-		return fmt.Errorf("desktoken %s --repo %s: %w", role, repo, err)
+		return err
 	}
-	tokenPath := strings.TrimSpace(out)
-	b, rerr := os.ReadFile(tokenPath)
-	if rerr != nil {
-		return fmt.Errorf("read %s token from %s: %w", role, tokenPath, rerr)
-	}
-	ghToken = strings.TrimSpace(string(b))
-	if ghToken == "" {
-		return fmt.Errorf("%s token at %s is empty", role, tokenPath)
-	}
+	ghToken = cred.Token
 	return nil
 }

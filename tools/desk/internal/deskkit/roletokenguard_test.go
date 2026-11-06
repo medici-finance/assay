@@ -397,15 +397,10 @@ func (r desktokenProgramRef) String() string {
 // desktokenOwnPackage is the minter's own package, where the program name is its own.
 const desktokenOwnPackage = "cmd/desktoken/"
 
-// desktokenExecPending is the reason every exec site still awaiting the routing follow-up
-// carries. Each one runs `desktoken <role> --repo <slug>` with no --forge, so on a repo the
-// roster binds to GitLab the CLI ROTATES that role's PAT; the in-process GitHub minter would
-// refuse there instead. Moving them is a custody decision (rotate, read, or refuse), not a
-// mechanical swap, so it is left to its own change.
-const desktokenExecPending = "pending #1573 follow-up: forks `desktoken <role> --repo` with no --forge, " +
-	"which rotates a GitLab-bound role's PAT; moving it to the in-process minter changes that custody behaviour"
-
 // desktokenExecAllow is every (file, function) that may name the desktoken program, with why.
+// The nine write-verb sites that used to sit here pending a custody decision now read the
+// role credential through WriteVerbRoleCredential (#5457); TestWriteVerbsReadCredential
+// (writeverbcred_test.go) keeps any write verb from coming back onto this list.
 var desktokenExecAllow = map[string]string{
 	// Not an exec: the name as data.
 	"internal/deskkit/audittoolkey.go:": "not an exec: the audit tool-key table's row for the minter's own " +
@@ -420,17 +415,6 @@ var desktokenExecAllow = map[string]string{
 	// Deliberate binary pinning.
 	"cmd/deskrelease/github.go:resolveDeskTokenPath": "pins the desktoken installed BESIDE deskrelease " +
 		"(the release path's binary-substitution defence); moving it in-process is its own review",
-	// Pending the routing follow-up.
-	"cmd/deskclose/forge.go:mintSessionToken":       desktokenExecPending,
-	"cmd/deskdisposition/forge.go:mintSessionToken": desktokenExecPending,
-	"cmd/deskevidence/github.go:mintVerifierToken": desktokenExecPending + " (it also mints BEFORE the forge " +
-		"is resolved)",
-	"cmd/deskfile/github.go:mintSessionToken":     desktokenExecPending,
-	"cmd/desklabel/forge.go:mintSessionToken":     desktokenExecPending,
-	"cmd/deskpathguard/forge.go:mintSessionToken": desktokenExecPending,
-	"cmd/deskpr/exec.go:mintWorkerToken":          desktokenExecPending,
-	"cmd/deskreply/exec.go:mintWorkerToken":       desktokenExecPending,
-	"cmd/deskrestamp/forge.go:mintSessionToken":   desktokenExecPending,
 }
 
 // isDesktokenProgram reports whether a string literal's value names the desktoken program.

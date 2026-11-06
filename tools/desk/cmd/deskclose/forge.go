@@ -3,7 +3,7 @@ package main
 // forge.go — deskclose's forge wiring.
 //
 // SINCE THE WRITE-VERBS-C MIGRATION deskclose no longer shells `gh` under an ambient credential.
-// It mints the SESSION-ROLE App installation token (DESK_LOOP-selected) via desktoken and reaches
+// It mints the SESSION-ROLE App installation token (DESK_LOOP-selected) read in process (deskkit.WriteVerbRoleCredential, #5457) and reaches
 // the forge through the resolved deskkit.Forge under that App's custody — the token-custody
 // decision the #781 ruling confirmed. The blessing-authority model is UNCHANGED: authority is read
 // from the ITEM's authorizing comment and checked against the roster-pinned human, never from the
@@ -14,10 +14,7 @@ package main
 // There is no ambient fallback: an empty token is a HARD REFUSAL at the custody step.
 
 import (
-	"bytes"
 	"errors"
-	"fmt"
-	"os"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -50,13 +47,15 @@ func githubCustodyMint(role string, repo deskkit.ForgeRepo) (token, baseURL stri
 }
 
 // mintTokenFn mints the session-role token for a repo and sets ghToken. Package var so a test can
-// inject a token without shelling desktoken; production binds it to mintSessionToken.
+// inject a token without a real credential read; production binds it to mintSessionToken.
 var mintTokenFn = mintSessionToken
 
 // mintSessionToken resolves the App role this session acts under (DESK_LOOP via
 // deskkit.SessionTokenRole; deskclose has NO worker default — an unresolvable role is a refusal,
 // because deskclose closes other people's items and must never do so under a guessed identity),
-// calls `desktoken <role> --repo <slug>`, and sets ghToken. It also records the role in mintedRole.
+// reads that role's credential READ-ONLY through deskkit.WriteVerbRoleCredential (never the
+// desktoken binary, so never its rotation path — #5457), and sets ghToken. It also records the
+// role in mintedRole.
 func mintSessionToken(repoSlug string) error {
 	role, _, rerr := deskkit.SessionTokenRole("deskclose")
 	if rerr != nil {
@@ -66,23 +65,11 @@ func mintSessionToken(repoSlug string) error {
 				"booted desk window (DESK_LOOP set) whose role the roster binds to an App.")
 	}
 	mintedRole = role
-	cmd := execCommand("desktoken", role, "--repo", repoSlug)
-	var out, errb bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errb
-	if err := cmd.Run(); err != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("desktoken %s --repo %s: %v (%s)",
-			role, repoSlug, err, strings.TrimSpace(errb.String())), err)
+	cred, err := deskkit.WriteVerbRoleCredential("deskclose", role, repoSlug)
+	if err != nil {
+		return err
 	}
-	tokenPath := strings.TrimSpace(out.String())
-	b, rerr := os.ReadFile(tokenPath)
-	if rerr != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("read %s token from %s", role, tokenPath), rerr)
-	}
-	ghToken = strings.TrimSpace(string(b))
-	if ghToken == "" {
-		return deskkit.Unverifiable(fmt.Sprintf("%s token at %s is empty", role, tokenPath), nil)
-	}
+	ghToken = cred.Token
 	return nil
 }
 

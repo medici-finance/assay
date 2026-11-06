@@ -45,11 +45,6 @@ type dfForge struct {
 	// backends refuse an unset one; on GitLab an unset/change target lands on the MR sharing
 	// the issue's number, so the fake pins the ISSUE target the same way.
 	labelTarget deskkit.TargetKind
-
-	// readOnlyCustody records the readOnly argument the verb passed to forgeForFn — i.e.
-	// whether it asked for a NON-rotating credential lookup. It is the observable that
-	// distinguishes a dry-run's custody request from a writing verb's.
-	readOnlyCustody bool
 }
 
 func (f *dfForge) SearchIssues(repo deskkit.ForgeRepo, in deskkit.SearchIssuesInput) ([]deskkit.IssueSearchResult, error) {
@@ -252,10 +247,9 @@ func installFakeForge(t *testing.T) *dfForge {
 	oldTok := ghToken
 	ghToken = "fake-token"
 	old := forgeForFn
-	forgeForFn = func(repo string, readOnly bool) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
+	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
 		owner, name, _ := cutSlug(repo)
 		f.fr = deskkit.ForgeRepo{Owner: owner, Name: name}
-		f.readOnlyCustody = readOnly
 		// The kind mirrors what production's resolver would answer from the planted roster
 		// (plantRosterWithForges → ASSAY_REPO_FORGES), defaulting to GitHub when the roster is
 		// silent — so a GitLab-configured test sees the GitLab label-create hint (#887 item 2).

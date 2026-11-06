@@ -3,17 +3,13 @@ package main
 // forge.go — deskpathguard's forge wiring: the desklabel precedent, verbatim in shape.
 //
 // deskpathguard mints the SESSION-ROLE App installation token (DESK_LOOP-selected) via
-// desktoken and reaches the forge through the resolved deskkit.Forge under that App's
+// read in process (deskkit.WriteVerbRoleCredential, #5457) and reaches the forge through the resolved deskkit.Forge under that App's
 // custody. There is no ambient fallback and no worker default: an empty token is a hard
 // refusal at the custody step, and an unresolvable role refuses before the mint is even
 // attempted.
 
 import (
-	"bytes"
 	"errors"
-	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -28,9 +24,6 @@ var mintedRole string
 
 // forgeAPIBase is a TEST-ONLY override of the resolved backend's API base. Empty in production.
 var forgeAPIBase string
-
-// execCommand is the exec seam; a test substitutes a fake to avoid shelling desktoken.
-var execCommand = exec.Command
 
 func init() {
 	deskkit.SetGitHubCustodyMinter(githubCustodyMint)
@@ -48,12 +41,13 @@ func githubCustodyMint(role string, repo deskkit.ForgeRepo) (token, baseURL stri
 }
 
 // mintTokenFn mints the session-role token for a repo and sets ghToken. Package var so a
-// test can inject a token without shelling desktoken; production binds it to mintSessionToken.
+// test can inject a token without a real credential read; production binds it to mintSessionToken.
 var mintTokenFn = mintSessionToken
 
-// mintSessionToken calls `desktoken <role> --repo <slug>` for the role cmdCheck already
-// resolved (mintedRole) and sets ghToken. --repo is not optional: an App installed on more
-// than one account mints for the wrong installation when it is omitted.
+// mintSessionToken reads the credential of the role cmdCheck already resolved (mintedRole)
+// READ-ONLY through deskkit.WriteVerbRoleCredential (never the desktoken binary, so never its
+// rotation path — #5457) and sets ghToken. The repo is not optional: an App installed on more
+// than one account resolves the wrong installation when the owner is omitted.
 func mintSessionToken(repoSlug string) error {
 	if mintedRole == "" {
 		role, rerr := roleFn()
@@ -62,24 +56,11 @@ func mintSessionToken(repoSlug string) error {
 		}
 		mintedRole = role
 	}
-	role := mintedRole
-	cmd := execCommand("desktoken", role, "--repo", repoSlug)
-	var out, errb bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errb
-	if err := cmd.Run(); err != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("desktoken %s --repo %s: %v (%s)",
-			role, repoSlug, err, strings.TrimSpace(errb.String())), err)
+	cred, err := deskkit.WriteVerbRoleCredential("deskpathguard", mintedRole, repoSlug)
+	if err != nil {
+		return err
 	}
-	tokenPath := strings.TrimSpace(out.String())
-	b, rerr := os.ReadFile(tokenPath)
-	if rerr != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("read %s token from %s", role, tokenPath), rerr)
-	}
-	ghToken = strings.TrimSpace(string(b))
-	if ghToken == "" {
-		return deskkit.Unverifiable(fmt.Sprintf("%s token at %s is empty", role, tokenPath), nil)
-	}
+	ghToken = cred.Token
 	return nil
 }
 

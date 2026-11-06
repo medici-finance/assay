@@ -4,8 +4,9 @@ import (
 	"os/exec"
 )
 
-// execCommand is the seam through which deskfile starts a child process. Since the write-verbs-C
-// migration the ONLY child it starts is `desktoken` (the identity layer, in github.go); the forge
-// reads and writes go through the resolved deskkit.Forge, not a `gh` subprocess. Production binds
-// it to exec.Command; tests wrap it to record argv.
+// execCommand is the seam through which deskfile would start a child process. It starts none in
+// production: the forge reads and writes go through the resolved deskkit.Forge (write-verbs-C),
+// and the role credential is read in process through deskkit.WriteVerbRoleCredential (#5457),
+// not by forking `desktoken`. Production binds it to exec.Command; the test harness wraps it to
+// record argv, so a child process reintroduced here shows up in the recorded calls.
 var execCommand = exec.Command
