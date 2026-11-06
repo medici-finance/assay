@@ -2,9 +2,9 @@
 id: DR-statusgen-36
 date: "2026-10-25"
 title: "Content-bound witness v2 environment rule: option 1 — a container run, or a host or back-filled run whose row is not marked environment-dependent and names no readable network tool, counts as environment-free; a host row whose command cannot be read needs a re-run"
-consequence: major
+consequence: major # The transcriber's classification.
 decided-by: "human:<name>"
-ruling: "https://github.com/medici-finance/assay/issues/4394#issuecomment-6399242471"
+ruling: "https://github.com/medici-finance/assay/issues/4394#issuecomment-6673302154"
 alternatives:
   - "Option 2 (strictest) — only runs in the pinned, network-less container runner count; host runs and back-filled records are recorded for audit but always reported as needing a re-run. Not chosen by the driver's ruling (option 1). The brief records it as the no-answer default after 2026-11-03 and as the option that closes the residual risk of an unmarked host row whose network use the library cannot see."
   - "Option 3 (widest, not recommended by the brief) — any run not marked environment-dependent by its author counts, including commands the library cannot read. Not chosen by the driver's ruling (option 1)."
@@ -21,6 +21,10 @@ on the brief's decision-gate [issue 4394](https://github.com/medici-finance/assa
 in a comment posted under the driver's own login, never a role App relay — the
 [ruling comment](https://github.com/medici-finance/assay/issues/4394#issuecomment-6399242471),
 posted 2026-10-25T15:02:45Z and not edited since, reads `statusgen/36: 1`.
+
+The [November 5 binding comment](https://github.com/medici-finance/assay/issues/4394#issuecomment-6673302154) restates the original choice as
+`statusgen/36: 1 — DR-statusgen-36` and names this record. The October 25 comment records
+the original option selection. The November 5 comment supplies the record binding.
 
 **Written after implementation.** statusgen/36 was delivered by #4409 before this record existed.
 This record was written afterwards, to back-fill the design-approval gate for a delivered brief
