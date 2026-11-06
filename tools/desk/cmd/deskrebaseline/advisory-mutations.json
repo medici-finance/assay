@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskrebaseline ./cmd/verifyloop ./internal/verifycmd -count=1 -timeout=60s -run 'Test(RenameKeepsGuardPath|RenameWholePaths|NumericExitWinsProse|ExpectStaysFailClosed|CommentRenameNeverRuns|RenameJudgesRenamedExpect|EscapedPipeStaysInCommand|CommandColumnLiftsViaLift|RebaselineCommentCells|RunBriefRowsCommentCells|RunnerGetsWholePipeline|RenameRerunsAgainstTarget|ProbeCouldNotRunIsNotChanged|EvidenceKeepsPipedCommand|StreamTableHonoursEscapedPipe|RenameUndecidableExpectRefused|RefusedRenameNeverRuns)$'",
+  "test": "go test ./cmd/deskrebaseline ./cmd/verifyloop ./internal/verifycmd -count=1 -timeout=60s -run 'Test(RenameKeepsGuardPath|RenameWholePaths|NumericExitWinsProse|ExpectStaysFailClosed|CommentRenameNeverRuns|RenameJudgesRenamedExpect|EscapedPipeStaysInCommand|CommandColumnLiftsViaLift|RebaselineCommentCells|RunBriefRowsCommentCells|RunnerGetsWholePipeline|RenameRerunsAgainstTarget|ProbeCouldNotRunIsNotChanged|EvidenceKeepsPipedCommand|StreamTableHonoursEscapedPipe|RenameUndecidableExpectRefused|RefusedRenameNeverRuns|SafeCount|SafeCountDirAdds|CountDeletionMixedIn|CountRenameInTarget|CountBinaryInTarget|CountModeChange|CountNoEvidenceCommit|CountShallowHistory|CountRowEditedAfter|CountDirtyTarget|CountNotDrift|SafeIdiom|IdiomRefusals|IdiomListLoads)$'",
   "control": {
     "name": "CONTROL: exact path rewrite disabled",
     "file": "cmd/deskrebaseline/rename.go",
@@ -114,6 +114,96 @@
       "file": "cmd/deskrebaseline/classify.go",
       "old": "case judgePass:",
       "new": "case judgePass, judgeUndecided:"
+    },
+    {
+      "name": "count history accepts a deleted line",
+      "file": "cmd/deskrebaseline/count.go",
+      "old": "if err1 != nil || err2 != nil || add < 0 || del != 0 {",
+      "new": "if err1 != nil || err2 != nil || add < 0 || del < 0 {"
+    },
+    {
+      "name": "count history accepts a binary numstat",
+      "file": "cmd/deskrebaseline/count.go",
+      "old": "if err1 != nil || err2 != nil || add < 0 || del != 0 {",
+      "new": "if (err1 != nil || err2 != nil) && f[0] != \"-\" || del != 0 {"
+    },
+    {
+      "name": "count history accepts a rename",
+      "file": "cmd/deskrebaseline/count.go",
+      "old": "\t\tcase f[4] == \"A\":",
+      "new": "\t\tcase f[4] == \"A\", strings.HasPrefix(f[4], \"R\"):"
+    },
+    {
+      "name": "count history accepts a mode change",
+      "file": "cmd/deskrebaseline/count.go",
+      "old": "case f[4] == \"M\" && f[0] == f[1]:",
+      "new": "case f[4] == \"M\":"
+    },
+    {
+      "name": "count accepts a row edited after its Evidence",
+      "file": "cmd/deskrebaseline/count.go",
+      "old": "\"merge-base\", \"--is-ancestor\", rowSha, evSha); !ok {",
+      "new": "\"merge-base\", \"--is-ancestor\", rowSha, evSha); !ok && false {"
+    },
+    {
+      "name": "count accepts failing Evidence",
+      "file": "cmd/deskrebaseline/count.go",
+      "old": "if len(result) == 0 || result[0] != \"pass\" {",
+      "new": "if len(result) == 0 {"
+    },
+    {
+      "name": "count accepts Evidence for another command",
+      "file": "cmd/deskrebaseline/count.go",
+      "old": "verifycmd.UnescapePipes(verifycmd.Lift(cell(\"command\"))) != row.Command {",
+      "new": "verifycmd.UnescapePipes(verifycmd.Lift(cell(\"command\"))) == \"\" {"
+    },
+    {
+      "name": "count accepts a dirty target",
+      "file": "cmd/deskrebaseline/count.go",
+      "old": "if st, ok := gitOutput(repoRoot, stArgs...); !ok || st != \"\" {",
+      "new": "if _, ok := gitOutput(repoRoot, stArgs...); !ok {"
+    },
+    {
+      "name": "count accepts a lower count",
+      "file": "cmd/deskrebaseline/count.go",
+      "old": "measured <= pinned {",
+      "new": "measured == pinned {"
+    },
+    {
+      "name": "count accepts an Expect naming two numbers",
+      "file": "cmd/deskrebaseline/count.go",
+      "old": "if len(runs) != 1 || runs[0] != spec.wantLine {",
+      "new": "if len(runs) == 0 {"
+    },
+    {
+      "name": "safe:count skips the history proof",
+      "file": "cmd/deskrebaseline/classify.go",
+      "old": "if f.CountShaped && f.OnlyAdditions && f.CommandProbed && f.CommandRan {",
+      "new": "if f.CountShaped && f.CommandProbed && f.CommandRan {"
+    },
+    {
+      "name": "open writes a count it did not prove",
+      "file": "cmd/deskrebaseline/open.go",
+      "old": "if !ran || !ok || now != f.CountNow {",
+      "new": "if !ran || !ok {"
+    },
+    {
+      "name": "idiom entry without a ruling is used",
+      "file": "cmd/deskrebaseline/idiom.go",
+      "old": "if !rulingRef.MatchString(e.Ruling) {",
+      "new": "if false {"
+    },
+    {
+      "name": "idiom matches a longer word",
+      "file": "cmd/deskrebaseline/idiom.go",
+      "old": "return token == idiom || strings.HasPrefix(token, idiom+\"=\")",
+      "new": "return strings.HasPrefix(token, idiom)"
+    },
+    {
+      "name": "idiom rewrite that cannot run is proof",
+      "file": "cmd/deskrebaseline/classify.go",
+      "old": "\t\tcase judgePass:\n\t\t\treturn Classification{SafeIdiom",
+      "new": "\t\tcase judgePass, judgeCouldNotRun:\n\t\t\treturn Classification{SafeIdiom"
     }
   ]
 }

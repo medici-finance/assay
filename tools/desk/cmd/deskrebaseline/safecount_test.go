@@ -104,9 +104,15 @@ func TestSafeCount(t *testing.T) {
 	if f.CountNow != 3 || f.CountEvidence == "" {
 		t.Fatalf("CountNow=%d CountEvidence=%q, want 3 and a record", f.CountNow, f.CountEvidence)
 	}
-	cmd, exp, changed := computeNewRow("", row, f, got)
+	root := filepath.Dir(filepath.Dir(row.BriefPath))
+	cmd, exp, changed := computeNewRow(root, row, f, got)
 	if !changed || cmd != row.Command || exp != "output is `3`" {
 		t.Fatalf("computeNewRow = %q, %q, %t; want the command unchanged and output is `3`", cmd, exp, changed)
+	}
+	// A count that moved again after it was proven is not the proven count: --open refuses.
+	appendTo(t, root, "data/list.txt", "item d\n")
+	if _, _, changed := computeNewRow(root, row, f, got); changed {
+		t.Fatalf("computeNewRow wrote a count the history proof did not cover")
 	}
 }
 
@@ -232,12 +238,17 @@ func TestCountRowEditedAfter(t *testing.T) {
 	refusedByHistory(t, "row edited after evidence", f, got)
 }
 
-// TestCountDirtyTarget — an uncommitted addition is not history.
+// TestCountDirtyTarget — an uncommitted change is not history, even on top of committed
+// additions: the probe counted the working tree, so it must be HEAD's.
 //
 // regression: #5529
 func TestCountDirtyTarget(t *testing.T) {
 	f, got, _ := countCase(t, countBrief(fileCmd, "output is `2`"), countEvidence(fileCmd, "pass exit=0"), listData,
-		func(root string) { appendTo(t, root, "data/list.txt", "item c\n") }, false)
+		func(root string) {
+			appendTo(t, root, "data/list.txt", "item c\n")
+			gitCommit(t, root, "grow")
+			writeFile(t, root, "data/list.txt", "item a\nitem b\nitem c\nitem d\n")
+		}, false)
 	refusedByHistory(t, "dirty target", f, got)
 }
 
@@ -250,7 +261,7 @@ func TestCountNotDrift(t *testing.T) {
 		data   string
 	}{
 		"count fell":  {"output is `2`", "item a\n"},
-		"two numbers": {"exit 0 and output is `2`", "item a\nitem b\nitem c\n"},
+		"two numbers": {"output is `2`, up from 1", "item a\nitem b\nitem c\n"},
 	} {
 		f, got, _ := countCase(t, countBrief(fileCmd, tc.expect), countEvidence(fileCmd, "pass exit=0"), listData,
 			func(root string) { writeFile(t, root, "data/list.txt", tc.data) }, true)

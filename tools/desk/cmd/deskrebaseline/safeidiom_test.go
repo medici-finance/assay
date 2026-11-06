@@ -9,8 +9,12 @@ import (
 // list (the shipped list is empty); everything else goes through gatherRowFacts and Classify
 // against a real checkout, in the shape of TestSafeRename.
 
-// toolScript exits 0 only when its first argument is accept.
+// toolScript exits 0 only when its first argument is accept. An accept of "!" makes every
+// call exit 127, the shell's could-not-run code.
 func toolScript(accept string) string {
+	if accept == "!" {
+		return "#!/bin/sh\nexit 127\n"
+	}
 	return "#!/bin/sh\n[ \"$1\" = \"" + accept + "\" ] && echo ok && exit 0\nexit 2\n"
 }
 
@@ -56,7 +60,7 @@ func TestSafeIdiom(t *testing.T) {
 
 // TestIdiomRefusals — near-misses: an idiom not in the list, a list entry with no ruling
 // reference or a malformed one, a longer word that only starts with the idiom, and a
-// rewritten row that still fails.
+// rewritten row that still fails or cannot run.
 //
 // regression: #5529
 func TestIdiomRefusals(t *testing.T) {
@@ -70,6 +74,7 @@ func TestIdiomRefusals(t *testing.T) {
 		{"prose ruling", `{"idioms":[{"idiom":"--old-flag","replacement":"--new-flag","ruling":"agreed in chat"}]}`, "--old-flag", "--new-flag", ""},
 		{"token boundary", oldFlagList, "--old-flag-x", "--new-flag-x", ""},
 		{"rewrite fails", oldFlagList, "--old-flag", "--third-flag", "--old-flag"},
+		{"rewrite cannot run", oldFlagList, "--old-flag", "!", "--old-flag"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			withIdioms(t, tc.list)
