@@ -955,7 +955,7 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 	var codeScan inlineCodeScan
 	scope := heldScanScope(evidence, latestRun)
 	tableDepth := 0
-	inTableComment := false
+	var tableLex heldHTMLLex
 	var hits []int
 	var quotes []string
 	for i, line := range strings.Split(evidence, "\n") {
@@ -986,7 +986,7 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 		// masker, so a backtick or "<" in it leaves the scan as uncertain as
 		// it is in the rendered text.
 		masked := codeScan.mask(line)
-		tableDepth, inTableComment = heldHTMLTableDepth(tableDepth, line, masked, inTableComment)
+		tableDepth, tableLex = heldHTMLTableDepth(tableDepth, line, masked, tableLex)
 		read := scope.lines[i]
 		if strings.HasPrefix(trimmed, ">") || read.skip {
 			continue

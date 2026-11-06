@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"strings"
+	"testing"
+)
 
 // regression: #4721
 //
@@ -220,6 +225,24 @@ func TestHeldRecountedKeepsHolds(t *testing.T) {
 		{"html close in comment", "<table><tr><td>\n<!-- </table> -->\nSmoke (could-not-check 0).\n</td></tr></table>"},
 		{"html close in long comment", "<table><tr><td>\n<!-- a note\n</table> -->\nSmoke (could-not-check 0).\n</td></tr></table>"},
 
+		// Fifth revision: what its reviewers showed released. A close tag
+		// split by a comment or a code span, a near-miss close tag or one in
+		// an attribute value; a reason the run did not happen before the
+		// earlier flip or in the tally's sentence.
+		{"html close split by comment", "<table><tr><td>\n</ta<!-- x -->ble>\nSmoke (could-not-check 0).\n</td></tr></table>"},
+		{"html close split by code", "<table><tr><td>\n</ta`x`ble>\nSmoke (could-not-check 0).\n</td></tr></table>"},
+		{"html close near miss", "<table><tr><td>\n</table-x>\nSmoke (could-not-check 0).\n</td></tr></table>"},
+		{"html close in attribute", "<table><tr><td>\n<a title=\"</table>\">x</a>\nSmoke (could-not-check 0).\n</td></tr></table>"},
+		{"html close in single-quoted attribute", "<table><tr><td>\n<a title='</table>'>x</a>\nSmoke (could-not-check 0).\n</td></tr></table>"},
+		{"html close after > in attribute", "<table><tr><td>\n<a title=\"a>b</table>\">x</a>\nSmoke (could-not-check 0).\n</td></tr></table>"},
+		{"html close in long attribute", "<table><tr><td>\n<a title=\"a note\n</table>\">x</a>\nSmoke (could-not-check 0).\n</td></tr></table>"},
+		{"flip lead offline", "The runner was offline, so the earlier flip was held on #4536."},
+		{"flip lead skipped", "Smoke skipped; the earlier flip was held on #4536."},
+		{"flip lead could not reach", "This entry could not reach the cluster, and the earlier flip was held on #4536."},
+		{"flip its lead reason", "The earlier PASS ran without a runner, but its board flip was held on #4536."},
+		{"tally then reason", "Accounting: passed 8; could-not-check 0, runner offline."},
+		{"tally after reason", "Runner offline; could-not-check 0."},
+
 		// Other prose.
 		{"row before", "Verify row 3 could-not-check on this host."},
 		{"rows plural", "Rows 2 and 4 are held."},
@@ -237,13 +260,16 @@ func TestHeldRecountedKeepsHolds(t *testing.T) {
 // regression: #4721
 //
 // One line per word of the two closed lists the fourth revision added, so
-// dropping any one word is seen: a run word as the subject of a mutation-list
-// parenthesis (heldRoundActorRe), and a contrast word in the clause of "its
-// flip" (heldContrastRe).
+// dropping any one word is seen: a determiner or a run word as the subject of
+// a mutation-list parenthesis (heldRoundActorRe), and a contrast word in the
+// clause of "its flip" (heldContrastRe). The fifth revision closed the
+// determiner list ("the" is pinned by the "paren article" line above).
 func TestHeldRecountedKeepsHoldsPerWord(t *testing.T) {
 	const pass = "**VERIFY: PASS** — every original row passes.\n\n"
 	var cases []heldScanCase
-	for _, w := range []string{"this", "that", "our", "its", "their", "a", "an"} {
+	for _, w := range []string{"this", "that", "our", "its", "their", "a", "an",
+		"my", "your", "his", "her", "these", "those", "some", "each", "every", "any", "all", "another", "both",
+		"either", "neither", "no", "which", "whose", "what"} {
 		cases = append(cases, heldScanCase{"paren determiner " + w,
 			pass + "Each named mutation made its row fail: row 2 (" + w + " adapter rounds could-not-check to pass).\n", true})
 	}
@@ -256,4 +282,40 @@ func TestHeldRecountedKeepsHoldsPerWord(t *testing.T) {
 			pass + "Note: " + w + " its board flip was held on #4536.\n", true})
 	}
 	runHeldLayerCases(t, cases)
+}
+
+// regression: #4721
+//
+// Each heldscope-mutations.json anchor occurs exactly once in its file. A
+// mutation edits its anchor's first occurrence, so a second occurrence (the
+// #4294 "|cannot|" anchor once rule 6's no-run list carried the same text)
+// lets a reorder of the file retarget a pin silently.
+func TestMutationAnchorsUniqueHeldscopeSpec(t *testing.T) {
+	type mutation struct{ Name, File, Old string }
+	var spec struct {
+		Control   mutation
+		Mutations []mutation
+	}
+	b, err := os.ReadFile("heldscope-mutations.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &spec); err != nil {
+		t.Fatal(err)
+	}
+	src := map[string]string{}
+	for _, m := range append([]mutation{spec.Control}, spec.Mutations...) {
+		s, ok := src[m.File]
+		if !ok {
+			f, err := os.ReadFile(m.File)
+			if err != nil {
+				t.Fatalf("%s: %v", m.Name, err)
+			}
+			s = string(f)
+			src[m.File] = s
+		}
+		if n := strings.Count(s, m.Old); n != 1 {
+			t.Errorf("%s: anchor occurs %d times in %s, want 1", m.Name, n, m.File)
+		}
+	}
 }
