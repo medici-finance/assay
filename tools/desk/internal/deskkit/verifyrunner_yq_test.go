@@ -51,6 +51,23 @@ const (
 var yqCurlRe = regexp.MustCompile(`^curl -fsSL ` + regexp.QuoteMeta(gitCurlHTTPSOnly) +
 	` --tlsv1\.2 -o /tmp/yq "https://github\.com/mikefarah/yq/releases/download/v([0-9]+\.[0-9]+\.[0-9]+)/yq_linux_\$\{TARGETARCH\}"$`)
 
+// namesYq finds `yq` as a word or path component: a package name (apt, pip),
+// a module path (`…/mikefarah/yq/v4`), a COPY source or destination
+// (`tools/yq`, `/usr/bin/yq`, `/go/bin/yq`) or a command (`$(yq …)`). It is
+// lexical: a file brought in under another name and renamed by a later word
+// it cannot read still needs a reviewer's eye.
+var namesYq = regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])yq(?:$|[^A-Za-z0-9-])`)
+
+// redefinesYqCommand finds a shell function or alias named for a command the
+// yq RUN runs that redefinesCheckCommand (shared with the base image guard)
+// does not cover: the install, the version gate and yq itself.
+var redefinesYqCommand = regexp.MustCompile(`(?:^|[\s;&|(){}])(?:function\s+)?(install|test|yq)\s*\(\s*\)|\balias\s+(install|test|yq)=`)
+
+// changesCommandLookup finds a command that changes where the shell finds the
+// next command by name: a PATH assignment (plain, `+=`, exported or as an env
+// prefix) or a `hash -p`, which binds a name to any file.
+var changesCommandLookup = regexp.MustCompile(`(?:^|[^A-Za-z0-9_])PATH\+?=|\bexport\s+PATH\b|\bhash\s+-p\b`)
+
 // yqVersionCmd is the bare version gate the RUN ends with.
 func yqVersionCmd(ver string) string {
 	return `test "$(yq --version)" = 'yq (https://github.com/mikefarah/yq/) version v` + ver + `'`
@@ -65,9 +82,14 @@ func yqVersionCmd(ver string) string {
 //     then installs as the very next command, so nothing can replace the file
 //     between the check and the install;
 //   - ends with the bare version gate for the same version;
+//   - redefines none of the commands it runs (no function, alias or
+//     `hash -p`) and never changes PATH, so each name it runs is the system's;
 //
-// and that nothing else in the final stage writes /usr/local/bin/yq or
-// apt-installs the Debian `yq`, which is a different program.
+// and that no other instruction anywhere in the Dockerfile names yq as a word
+// or path component (namesYq: an apt or pip `yq`, a `go install` of yq, a COPY
+// or another RUN naming any `…/yq`), and no final-stage ENV sets PATH, so no
+// directory can be put ahead of /usr/local/bin. The Debian `yq` is a different
+// program.
 func verifyRunnerYqProblem(dockerfile string) string {
 	ins := parseDockerfile(dockerfile)
 	lastFrom := -1
@@ -80,20 +102,30 @@ func verifyRunnerYqProblem(dockerfile string) string {
 		return "no FROM"
 	}
 	run := -1
-	for i := lastFrom + 1; i < len(ins); i++ {
-		in := ins[i]
-		names := strings.Contains(strings.Join(in.args, " "), yqDownload) || strings.Contains(strings.Join(in.args, " "), yqBin)
-		if in.op == "RUN" && hasWord(in.args, "apt-get") && aptInstallsPkg(in.args, "yq") {
-			return "the final stage apt-installs the Debian yq, which is not the mikefarah yq rows call"
+	for i, in := range ins {
+		joined := strings.Join(in.args, " ")
+		if i > lastFrom && in.op == "ENV" {
+			for j, a := range in.args {
+				if strings.HasPrefix(a, "PATH=") || (j == 0 && a == "PATH") {
+					return "the final stage's ENV `" + joined + "` sets PATH, so a directory ahead of " + yqBin + " could shadow the checked yq"
+				}
+			}
 		}
-		if !names {
+		if in.op == "RUN" && hasWord(in.args, "apt-get") && aptInstallsPkg(in.args, "yq") {
+			return "the Dockerfile apt-installs the Debian yq, which is not the mikefarah yq rows call"
+		}
+		if !namesYq.MatchString(joined) {
 			continue
 		}
-		if in.op != "RUN" {
-			return in.op + " `" + strings.Join(in.args, " ") + "` writes yq outside the checked RUN"
-		}
-		if run >= 0 {
-			return "more than one RUN names " + yqDownload + " or " + yqBin + ", so the yq installed need not be the one checked"
+		switch {
+		case i < lastFrom:
+			return "an earlier stage's " + in.op + " `" + joined + "` names yq, outside the checked RUN"
+		case in.op != "RUN":
+			return in.op + " `" + joined + "` names yq outside the checked RUN"
+		case run >= 0:
+			return "more than one RUN names yq, so the yq installed need not be the one checked"
+		case !strings.Contains(joined, yqDownload) && !strings.Contains(joined, yqBin):
+			return "RUN `" + joined + "` names yq outside the checked RUN"
 		}
 		run = i
 	}
@@ -103,6 +135,17 @@ func verifyRunnerYqProblem(dockerfile string) string {
 	in := ins[run]
 	if p := failClosedProblem(in.args); p != "" {
 		return "the yq RUN " + p
+	}
+	for _, sg := range in.segs {
+		if m := redefinesCheckCommand.FindStringSubmatch(sg); m != nil {
+			return "the yq RUN redefines `" + m[1] + m[2] + "` (`" + sg + "`), which would mask the check"
+		}
+		if m := redefinesYqCommand.FindStringSubmatch(sg); m != nil {
+			return "the yq RUN redefines `" + m[1] + m[2] + "` (`" + sg + "`), which would mask the check"
+		}
+		if changesCommandLookup.MatchString(sg) {
+			return "the yq RUN changes command lookup (`" + sg + "`), so the check, install or version gate need not run the system's command"
+		}
 	}
 	ver, amdSha, armSha := "", "", ""
 	curl, amd, arm, other, check, inst := -1, -1, -1, -1, -1, -1
@@ -257,16 +300,54 @@ func TestVerifyRunnerImageInstallsYq(t *testing.T) {
 		"plant: Debian yq via apt":      swap(aptAnchor, aptAnchor+"      yq \\\n"),
 		"plant: yq copied over":         text + "COPY tools/yq /usr/local/bin/yq\n",
 		"plant: second RUN replaces yq": text + "RUN set -eu; cp /bin/true /usr/local/bin/yq\n",
+		// A second yq that never names /usr/local/bin/yq: another directory on
+		// PATH, another installer, or a directory put ahead of /usr/local/bin.
+		"plant: COPY to /usr/bin/yq":         text + "COPY tools/yq /usr/bin/yq\n",
+		"plant: COPY to /go/bin/yq":          text + "COPY tools/yq /go/bin/yq\n",
+		"plant: pip yq":                      text + "RUN set -eu; pip install yq\n",
+		"plant: go install yq":               text + "RUN set -eu; go install github.com/mikefarah/yq/v4@v4.54.1\n",
+		"plant: pip yq before the yq RUN":    swap(runStart, "RUN set -eu; pip install yq\n"+runStart),
+		"plant: earlier stage builds yq":     swap("FROM ${RUNNER_BASE}\n", "FROM ${RUNNER_BASE} AS yqbuild\nRUN set -eu; go install github.com/mikefarah/yq/v4@v4.54.1\nFROM ${RUNNER_BASE}\n"),
+		"plant: ENV PATH prepend":            text + "ENV PATH=/opt/bin:$PATH\n",
+		"plant: ENV PATH legacy form":        text + "ENV PATH /opt/bin:/usr/local/bin:/usr/bin:/bin\n",
+		"plant: ENV PATH beside another var": text + "ENV LANG=C.UTF-8 PATH=/opt/bin:$PATH\n",
+		// The check, install or version gate masked by redefining what it runs
+		// or where the shell finds it.
+		"sha256sum redefined (function)": swap(checkLine, "    sha256sum() { return 0; }; \\\n"+checkLine),
+		"sha256sum redefined (alias)":    swap(checkLine, "    alias sha256sum=true; \\\n"+checkLine),
+		"PATH shim before check":         swap(checkLine, "    PATH=/tmp/shim:$PATH; \\\n"+checkLine),
+		"PATH exported before check":     swap(checkLine, "    export PATH=/tmp/shim:$PATH; \\\n"+checkLine),
+		"hash -p before check":           swap(checkLine, "    hash -p /bin/true sha256sum; \\\n"+checkLine),
+		"install redefined":              swap(checkLine, "    install() { cp /bin/true /usr/local/bin/yq; }; \\\n"+checkLine),
+		"test redefined":                 swap(checkLine, "    alias test=true; \\\n"+checkLine),
+		"PATH shim before version gate":  swap(versionLine, "    PATH=/tmp/shim:$PATH; \\\n"+versionLine),
 	}
 	wantRule := map[string]string{
-		"yq RUN removed (old recipe)":   "no RUN that downloads",
-		"amd64 sha256 wrong":            "not the reviewed sha256s",
-		"arm64 sha256 wrong":            "not the reviewed sha256s",
-		"amd64 and arm64 swapped":       "not the reviewed sha256s",
-		"version bumped alone":          "not a reviewed row",
-		"plant: Debian yq via apt":      "Debian yq",
-		"plant: yq copied over":         "outside the checked RUN",
-		"plant: second RUN replaces yq": "more than one RUN",
+		"yq RUN removed (old recipe)":        "no RUN that downloads",
+		"amd64 sha256 wrong":                 "not the reviewed sha256s",
+		"arm64 sha256 wrong":                 "not the reviewed sha256s",
+		"amd64 and arm64 swapped":            "not the reviewed sha256s",
+		"version bumped alone":               "not a reviewed row",
+		"plant: Debian yq via apt":           "Debian yq",
+		"plant: yq copied over":              "outside the checked RUN",
+		"plant: second RUN replaces yq":      "more than one RUN",
+		"plant: COPY to /usr/bin/yq":         "outside the checked RUN",
+		"plant: COPY to /go/bin/yq":          "outside the checked RUN",
+		"plant: pip yq":                      "more than one RUN",
+		"plant: go install yq":               "more than one RUN",
+		"plant: pip yq before the yq RUN":    "names yq outside the checked RUN",
+		"plant: earlier stage builds yq":     "earlier stage",
+		"plant: ENV PATH prepend":            "sets PATH",
+		"plant: ENV PATH legacy form":        "sets PATH",
+		"plant: ENV PATH beside another var": "sets PATH",
+		"sha256sum redefined (function)":     "redefines `sha256sum`",
+		"sha256sum redefined (alias)":        "redefines `sha256sum`",
+		"PATH shim before check":             "changes command lookup",
+		"PATH exported before check":         "changes command lookup",
+		"hash -p before check":               "changes command lookup",
+		"install redefined":                  "redefines `install`",
+		"test redefined":                     "redefines `test`",
+		"PATH shim before version gate":      "changes command lookup",
 	}
 	for name, m := range mutants {
 		if m == text {
