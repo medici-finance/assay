@@ -1191,7 +1191,20 @@ func autoFlipModel(root string, streams []*Stream, src modelFlipSource, rev revi
 // ghModelFlipSource is the production seam: git for history, gh for GitHub.
 // Read-only in both directions — it lists commits and reads pull requests, and
 // creates, comments on and mutates nothing.
-type ghModelFlipSource struct{}
+type ghModelFlipSource struct{ githubToken string }
+
+func (g ghModelFlipSource) gh(args ...string) *exec.Cmd {
+	return ghGuard(exec.Command("gh", args...), g.githubToken)
+}
+
+// repoArg pins PR commands to the same host as the bound REST credential.
+// With no binding, standalone auto-flip keeps the CLI's host selection.
+func (g ghModelFlipSource) repoArg(repo string) string {
+	if g.githubToken != "" {
+		return "github.com/" + repo
+	}
+	return repo
+}
 
 func (ghModelFlipSource) CommitsTouching(root, relPath string, limit int) ([]string, error) {
 	out, err := exec.Command("git", "-C", root, "log",
@@ -1219,8 +1232,8 @@ type ghCommitPR struct {
 }
 
 func (g ghModelFlipSource) MergedPRForCommit(repo, sha string) (int, bool, error) {
-	out, err := ghGuard(exec.Command("gh", "api",
-		fmt.Sprintf("repos/%s/commits/%s/pulls", repo, sha))).Output()
+	out, err := g.gh("api",
+		fmt.Sprintf("repos/%s/commits/%s/pulls", repo, sha)).Output()
 	if err != nil {
 		return 0, false, fmt.Errorf("gh api commits/%s/pulls: %w", sha, err)
 	}
@@ -1298,9 +1311,9 @@ func mergedPRForCommit(sha string, prs []ghCommitPR, prCommits func(n int) ([]st
 // from this list; that is what lets mergedPRForCommit credit a genuine
 // intermediate commit while still refusing a PR that merely CONTAINS one. (The
 // endpoint caps at 250 commits per PR — far beyond any brief-touching branch.)
-func (ghModelFlipSource) prBranchCommits(repo string, n int) ([]string, error) {
-	out, err := ghGuard(exec.Command("gh", "api", "--paginate",
-		fmt.Sprintf("repos/%s/pulls/%d/commits", repo, n))).Output()
+func (g ghModelFlipSource) prBranchCommits(repo string, n int) ([]string, error) {
+	out, err := g.gh("api", "--paginate",
+		fmt.Sprintf("repos/%s/pulls/%d/commits", repo, n)).Output()
 	if err != nil {
 		return nil, fmt.Errorf("gh api pulls/%d/commits: %w", n, err)
 	}
@@ -1354,8 +1367,8 @@ func summaryBase(pr int, v ghPRSummaryJSON) (base, def string, err error) {
 // as docs/streams-only when later paths are code. Even the REST endpoint caps
 // (at 3000 files), so shapeFromListing refuses any list whose length disagrees
 // with the PR's own changed_files count.
-func (ghModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
-	sum, err := ghGuard(exec.Command("gh", "api", fmt.Sprintf("repos/%s/pulls/%d", repo, pr))).Output()
+func (g ghModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
+	sum, err := g.gh("api", fmt.Sprintf("repos/%s/pulls/%d", repo, pr)).Output()
 	if err != nil {
 		return prShape{}, fmt.Errorf("gh api pulls/%d: %w", pr, err)
 	}
@@ -1366,9 +1379,9 @@ func (ghModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
 	// --jq emits one JSON [filename, previous_filename, patch] triple per line
 	// across every page, so the concatenated per-page arrays --paginate
 	// produces never need re-joining. patch is null when GitHub omits it.
-	out, err := ghGuard(exec.Command("gh", "api", "--paginate",
+	out, err := g.gh("api", "--paginate",
 		fmt.Sprintf("repos/%s/pulls/%d/files?per_page=100", repo, pr),
-		"--jq", `.[] | [.filename, (.previous_filename // ""), .patch] | @json`)).Output()
+		"--jq", `.[] | [.filename, (.previous_filename // ""), .patch] | @json`).Output()
 	if err != nil {
 		return prShape{}, fmt.Errorf("gh api pulls/%d/files: %w", pr, err)
 	}
@@ -1386,7 +1399,7 @@ func (ghModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
 	if shape.BaseRef, shape.DefaultBranch, err = summaryBase(pr, v); err != nil {
 		return prShape{}, err
 	}
-	shape.Heads = readEvidenceHeads(repo, v.Head.SHA, shape)
+	shape.Heads = g.readEvidenceHeads(repo, v.Head.SHA, shape)
 	return shape, nil
 }
 
@@ -1395,7 +1408,7 @@ func (ghModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
 // nothing unless every changed path could be Evidence-shaped (so an ordinary
 // code PR costs no extra call). A read that fails is left out, and a missing
 // head is never Evidence-only: the PR then stays a candidate.
-func readEvidenceHeads(repo, sha string, shape prShape) map[string]string {
+func (g ghModelFlipSource) readEvidenceHeads(repo, sha string, shape prShape) map[string]string {
 	if sha == "" || len(shape.RenamedFrom) > 0 {
 		return nil
 	}
@@ -1415,8 +1428,8 @@ func readEvidenceHeads(repo, sha string, shape prShape) map[string]string {
 		for i := range segs {
 			segs[i] = url.PathEscape(segs[i])
 		}
-		b, err := ghGuard(exec.Command("gh", "api", "-H", "Accept: application/vnd.github.raw+json",
-			fmt.Sprintf("repos/%s/contents/%s?ref=%s", repo, strings.Join(segs, "/"), sha))).Output()
+		b, err := g.gh("api", "-H", "Accept: application/vnd.github.raw+json",
+			fmt.Sprintf("repos/%s/contents/%s?ref=%s", repo, strings.Join(segs, "/"), sha)).Output()
 		if err == nil {
 			heads[f] = string(b)
 		}
@@ -1456,10 +1469,10 @@ func parseFileListing(pr int, out []byte) (files, renamedFrom []string, patches 
 // re-read (PRShape) and its trailers parsed before it can be credited, so a
 // looser match (a key that is a prefix of another, prose quoting the trailer)
 // is dropped by attributeCandidate, never credited.
-func (ghModelFlipSource) PRsNamingBrief(repo, briefKey string) ([]int, error) {
-	out, err := ghGuard(exec.Command("gh", "pr", "list", "--repo", repo, "--state", "merged",
+func (g ghModelFlipSource) PRsNamingBrief(repo, briefKey string) ([]int, error) {
+	out, err := g.gh("pr", "list", "--repo", g.repoArg(repo), "--state", "merged",
 		"--search", fmt.Sprintf("%q in:body", "Brief: "+briefKey),
-		"--limit", "100", "--json", "number")).Output()
+		"--limit", "100", "--json", "number").Output()
 	if err != nil {
 		return nil, fmt.Errorf("gh pr list --search Brief: %s: %w", briefKey, err)
 	}
@@ -1478,14 +1491,14 @@ func (ghModelFlipSource) PRsNamingBrief(repo, briefKey string) ([]int, error) {
 
 // PRBodyEditedAt reads the PR's GraphQL `lastEditedAt` (null: never edited).
 // REST and `gh pr view --json` do not expose it.
-func (ghModelFlipSource) PRBodyEditedAt(repo string, pr int) (time.Time, error) {
+func (g ghModelFlipSource) PRBodyEditedAt(repo string, pr int) (time.Time, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok || owner == "" || name == "" {
 		return time.Time{}, fmt.Errorf("repo %q is not <owner>/<name>", repo)
 	}
-	out, err := ghGuard(exec.Command("gh", "api", "graphql",
+	out, err := g.gh("api", "graphql",
 		"-f", "query=query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){lastEditedAt}}}",
-		"-f", "o="+owner, "-f", "r="+name, "-F", fmt.Sprintf("n=%d", pr))).Output()
+		"-f", "o="+owner, "-f", "r="+name, "-F", fmt.Sprintf("n=%d", pr)).Output()
 	if err != nil {
 		return time.Time{}, fmt.Errorf("gh api graphql lastEditedAt of PR %d: %w", pr, err)
 	}
@@ -1555,9 +1568,9 @@ type ghPRHead struct {
 	MergedAt   string `json:"mergedAt"`
 }
 
-func (ghModelFlipSource) ReviewState(repo string, pr int) (prReviewState, error) {
-	head, err := ghGuard(exec.Command("gh", "pr", "view", fmt.Sprintf("%d", pr),
-		"--repo", repo, "--json", "headRefOid,state,mergedAt")).Output()
+func (g ghModelFlipSource) ReviewState(repo string, pr int) (prReviewState, error) {
+	head, err := g.gh("pr", "view", fmt.Sprintf("%d", pr),
+		"--repo", g.repoArg(repo), "--json", "headRefOid,state,mergedAt").Output()
 	if err != nil {
 		return prReviewState{}, fmt.Errorf("gh pr view %d: %w", pr, err)
 	}
@@ -1566,8 +1579,8 @@ func (ghModelFlipSource) ReviewState(repo string, pr int) (prReviewState, error)
 		return prReviewState{}, fmt.Errorf("unmarshal PR %d head: %w", pr, err)
 	}
 
-	out, err := ghGuard(exec.Command("gh", "api", "--paginate",
-		fmt.Sprintf("repos/%s/pulls/%d/reviews", repo, pr))).Output()
+	out, err := g.gh("api", "--paginate",
+		fmt.Sprintf("repos/%s/pulls/%d/reviews", repo, pr)).Output()
 	if err != nil {
 		return prReviewState{}, fmt.Errorf("gh api pulls/%d/reviews: %w", pr, err)
 	}
@@ -1606,7 +1619,7 @@ func runAutoFlipModel(root string, dryRun, check bool) int {
 		return 1
 	}
 	rev := modelReviewer()
-	results, err := autoFlipModel(root, streams, liveModelFlipSource(rev.Forge), rev, time.Now(), dryRun)
+	results, err := autoFlipModel(root, streams, liveModelFlipSource(rev.Forge, ""), rev, time.Now(), dryRun)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen:", err)
 		return 1
@@ -1645,11 +1658,11 @@ func autoFlipCheckExit(errw io.Writer, results []modelFlipResult, code int, chec
 // unit-tested (decideGitLabFlip); only the live reader that would feed it real MR
 // state is deferred. forgeUnknown keeps GitHub (a legacy roster with no
 // forge-qualified reviewer ident resolves to GitHub, per modelReviewer).
-func liveModelFlipSource(forge forgeKind) modelFlipSource {
+func liveModelFlipSource(forge forgeKind, githubToken string) modelFlipSource {
 	if forge == forgeGitLab {
 		return gitlabModelFlipUnavailable{}
 	}
-	return ghModelFlipSource{}
+	return ghModelFlipSource{githubToken: githubToken}
 }
 
 // errGitLabFlipReadUnavailable is the honest could-not-check a GitLab auto-flip
