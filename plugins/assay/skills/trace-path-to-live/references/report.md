@@ -1,5 +1,25 @@
 # Report presentation
 
+### Default: compact comparisons with inspectable evidence
+
+Use a data-first layout: the monthly trend chart, compact daily and weekly movement
+tables, then the evidence-backed focus and remaining sections below. Related periods
+share aligned columns so the reader can compare the whole pattern without scrolling
+through a separate chart card for every metric. Print exact counts in the cells; restrained
+within-row shading assists scanning and is never the only way to read a value. Different
+rows have different units: label any row-normalized shading and do not imply that equally
+dark cells in different rows have the same magnitude, severity or importance.
+
+Keep dates, units, partial-period labels, unknowns and material coverage caveats visible.
+Put detailed receipts behind the native cell controls. Do not move essential qualifications
+into hover-only tooltips or replace the report's explanations with a wordless-screen rule.
+Use the consuming project's identity and status tokens; alert colour requires an evidenced
+condition, not simply a large number. Avoid repeated headline cards that restate the tables.
+
+Use a separate bar chart or small multiple when its shape answers a question the table
+does not; state its scale and keep common scales for directly comparable series. This is
+a presentation default, not a change to collection, lifecycle semantics or ranking.
+
 ### Plain-language titles and counts
 
 Use these visible headings: **Progress over the last month**, **Work still to finish**,
