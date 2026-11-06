@@ -402,5 +402,53 @@ RISK-VALUE: DERIVED — key = repo + "#" + strconv.Itoa(number) @ statusgen/scan
 
 **VERIFY: BLOCKED** — 7 of 9 rows pass at source 40925e8233c8. Row 4 is could-not-run as written: the only failing tests are the two statusgen/36 skew tests, which need the SG_OLD_BIN precondition that only CI supplies. With it supplied, every package test passes, well inside the 600s budget. Row 7 is could-not-check on merged main: the row is pinned pre-merge, and the post-merge replay corroborates 4 of 4 with 0 disproved. No obligation was observed to fail.
 
+### Non-implementer verifier run — 2026-11-06 — claude-opus-5-5 (tier any), source 4cf9795597f6
+
+Verified on merged main at source 4cf9795597f6b88517eb503758b9c4de8a5fb9be. The delivery is PR #4539, merge commit c49e6877db03, first parent f2e232039c99; it is in this source's history. Brief frontmatter: gate model, every risk answer no, not irreversible. This run uses the current Verify table, in which rows 4 and 7 carry their amended commands (selector groups for row 4, pinned delivery and base commits for row 7).
+
+The check:ci rows 1-6, 8 and 9 ran inside the closed admission bracket, selected with --rows 1,2,3,4,5,6,8,9: host open-bracket, then the verify-runner v1.0.75 image (native linux/arm64, digest 732786a33ebf) under docker run with network none, read-only root, all capabilities dropped, no-new-privileges, the home mounted read-only and the receipt mounted read-only, then host close-bracket from inside the home. The bracket digest reports verdict=match. Row 7 is classed check (it needs git history and the forge-free consumers instrument), so it ran on the host through verifyrun with only that row selected, under the normal HOME with no forge variable set. Both witness blocks below are the tool's own bytes.
+
+#### Container-lane witness (rows 1-6, 8, 9) at 4cf9795597f6
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && GOWORK=off go build ./... && GOWORK=off go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanGateMismatchNotice$' -v . > "${TMPDIR:-/tmp}/sg18-r2.out" 2>&1 && grep -F -e '--- PASS: TestScanGateMismatchNotice' "${TMPDIR:-/tmp}/sg18-r2.out"` | pass exit=0 sandbox=container-netns | sha256:5a42b48343f9 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanGateNoticeWritesNothing$' -v . > "${TMPDIR:-/tmp}/sg18-r3.out" 2>&1 && grep -F -e '--- PASS: TestScanGateNoticeWritesNothing' "${TMPDIR:-/tmp}/sg18-r3.out"` | pass exit=0 sandbox=container-netns | sha256:255fbc5f9354 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && : > "${TMPDIR:-/tmp}/sg18-r4.out" && for p in Scan '^TestCloseOut' '^TestRe[oa][pc]' '^TestLabelHold'; do if ! GOWORK=off go test -count=1 -timeout 300s -run "$p" -v . >> "${TMPDIR:-/tmp}/sg18-r4.out" 2>&1; then exit 1; fi; done && grep -F -e '--- PASS: TestScanGateMismatchNotice' "${TMPDIR:-/tmp}/sg18-r4.out" && grep -F -e '--- PASS: TestScanGateNoticeWritesNothing' "${TMPDIR:-/tmp}/sg18-r4.out"` | pass exit=0 sandbox=container-netns | sha256:08099b8bb1dd | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `awk '/^## /{f=/^## Scored triage/} f{$1=$1; printf "%s ", $0}' plugins/assay/skills/intake-desk/SKILL.md > "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'in it by hand\. .statusgen --scan-issues. prints one .NOTICE. for each such item on every pass' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'naming the issue and the placeholder file, until the file reads .gate: human.' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'mechanical signal that this edit is still owed' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'scan drain does not show it; read it by running .statusgen --root \. --scan-issues --dry-run., which writes nothing\.' "${TMPDIR:-/tmp}/sg18-r5.txt"` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/skillslint && go build -o "${TMPDIR:-/tmp}/sg18-skl" . && "${TMPDIR:-/tmp}/sg18-skl" --root ../..` | pass exit=0 sandbox=container-netns | sha256:b4fd6b3d320c | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanRiskHighPlaceholderGate$' -v . > "${TMPDIR:-/tmp}/sg18-r8.out" 2>&1 && grep -F -e '--- PASS: TestScanRiskHighPlaceholderGate' "${TMPDIR:-/tmp}/sg18-r8.out"` | pass exit=0 sandbox=container-netns | sha256:0402bb278da5 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check` | pass exit=0 sandbox=container-netns | sha256:54208d57d196 | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a79a70fd35d138ac22f0615de82cd826bac8e27941d5f065ee3a8b7264c2f873
+Container-Image: sha256:732786a33ebfa6dc1d80d396781df1f31c5331f67a8c0bd97518785f5a72b173
+Verification-Attestation: medici-finance/assay#5658 run=bca61454dffb7455117d563d0f8288c0012453dd354fbe47d820b5b5aa6c690a source=4cf9795597f6b88517eb503758b9c4de8a5fb9be brief=docs/streams/statusgen/brief-18-gate-mismatch-notice.md model=claude-opus-5-5 tier=any
+Admission-Bracket: run=bca61454dffb7455117d563d0f8288c0012453dd354fbe47d820b5b5aa6c690a source=4cf9795597f6b88517eb503758b9c4de8a5fb9be tree=sha256:a79a70fd35d138ac22f0615de82cd826bac8e27941d5f065ee3a8b7264c2f873 witness=sha256:b13c281ca01259d6619365396c278995b397be759123c6a8b35804a5e0ea53bd opened=2026-11-06T19:19:04Z closed=2026-11-06T19:20:23Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 7 | `! grep -q -e '[:] follow-up statusgen/18' docs/streams/statusgen/brief-18-gate-mismatch-notice.md && cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg18c" . && cd .. && "${TMPDIR:-/tmp}/sg18c" --root . --consumers --brief statusgen/18 --delivery c49e6877db037fe7595ea863c43bb40eedc771cf --base f2e232039c99455b0b9a7dacfe639f9f68b164d2 > "${TMPDIR:-/tmp}/sg18-r7.out" 2>&1 && grep -q -F -e 'summary: 4 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing' "${TMPDIR:-/tmp}/sg18-r7.out"` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ 4cf9795597f6 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5658 run=bca61454dffb7455117d563d0f8288c0012453dd354fbe47d820b5b5aa6c690a source=4cf9795597f6b88517eb503758b9c4de8a5fb9be brief=docs/streams/statusgen/brief-18-gate-mismatch-notice.md model=claude-opus-5-5 tier=any
+
+
+The second block above is the host witness for row 7, at the same source and under the same attestation. Its instrument output named statusgen/scanissues.go, plugins/assay/skills/intake-desk/SKILL.md, .cursor/skills/intake-desk/SKILL.md and .cursor/assay-managed.json as corroborated by the delivery diff, left the two out-of-scope entries unchecked, and ended with the summary line the row asserts: 4 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing.
+
+#### Row accounting, fail-first and risk values
+
+Rows 1 through 9 all ran and all passed: 9 of 9 rows, none not run. `statusgen verifyrun --check` over the whole table reports 9 pass, 0 fail, 0 not run. Fail-first is owed on no row: brief frontmatter answers no to every risk question, and no Command or Expect cell carries a risk-bearing, live, mutating or end-to-end tag, so the table has 0 risk-bearing rows.
+
+Risk-bearing values: these are the literals the delivered notice depends on. Listed in rank order:
+1. the derived gate "human", which decides whether a placeholder is considered at all;
+2. the placeholder gate "model", which is the mismatch the notice reports;
+3. the skip status "done", which silences the notice for finished items;
+4. the repo#number key that joins an issue to its placeholder.
+
+- RISK-VALUE: DERIVED — derived-gate = "human" @ statusgen/scanissues.go:499 — the notice path runs only when derivePlaceholderGate returns "human". statusgen/placeholder.go:166-177 returns only "human" or "model", so the comparison covers both branches. Rows 2, 4 and 8 exercise both outcomes.
+- RISK-VALUE: DERIVED — placeholder-gate = "model" @ statusgen/scanissues.go:501 — the notice fires only for a placeholder that reads gate: model. A placeholder already at gate: human is skipped, which is the steady state the notice asks the desk to reach (rows 2 and 3).
+- RISK-VALUE: DERIVED — skip-status = "done" @ statusgen/scanissues.go:501 — a placeholder whose status reads done never draws the notice, so a finished item cannot keep the notice alive. The check is evaluated before the gate comparison on the same line.
+- RISK-VALUE: DERIVED — placeholder-key = repo + "#" + issue number @ statusgen/scanissues.go:439 and statusgen/scanissues.go:497 — both sides build the key with the same expression, so the issue-to-placeholder join cannot drift between the index and the lookup. Row 2's expected count of three mismatches (statusgen/scanissues_test.go:2069, in TestScanGateMismatchNotice) depends on that join.
+
+**VERIFY: PASS** — 9 of 9 rows pass at source 4cf9795597f6. Rows 1-6, 8 and 9 ran in the closed container admission bracket (verdict=match) and row 7 ran on the host. Fail-first is owed on no row. Attestation: medici-finance/assay#5658, model claude-opus-5-5, tier any.
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.
