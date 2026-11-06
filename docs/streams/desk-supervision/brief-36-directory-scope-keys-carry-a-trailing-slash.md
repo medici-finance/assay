@@ -410,6 +410,10 @@ Risk-bearing values. Every risk field is `no` and the gate is model, but the del
 - RISK-VALUE: DERIVED — planted `ghp_` + 36 base62 @ scopekey_test.go:350 — this is the classic GitHub personal secret shape, and row 5 requires that no planted finding is attributed to generic-api-key. The 40-character base62 value at :299 is the shape row 10 shows refused.
 - RISK-VALUE: NAMED, NOT DERIVED — mutation and test timeouts 120s @ scopekey-mutations.json:2 — an operational budget the author chose. It bounds runtime only and gates no acceptance value.
 
+#### Correction — 2026-11-06 rework
+
+The row 6 bullet above names the wrong selection set. The row's selector keeps a PR only when its body has a line that is exactly `Brief: desk-supervision/36`, and the body of #3824 (the authoring PR) has no `Brief:` line at all, so the body clause drops it. On 2026-11-06 the set the row selects is #4628 (the delivery) and the open draft #5221. The raw forge search matches #3824 by its text, but the row's body clause removes it. This was checked by reading the three PR bodies and applying the row's own body test to each, without running the row: #3824 false, #4628 true, #5221 true. This agrees with the 2026-10-29 Evidence for this row, where the selector picked #4628 only. The conclusion stands as written: the loop reports #5221 as touched and exits 1, which the witness hash 8e4666ce23ec records, and #4628 is clean under all three checks. The selector has no second defect.
+
 **VERIFY: BLOCKED** 9/12 @ 75c8d54da108 — rows 1-5 and 9-12 pass, and the closed bracket reports verdict=match. Rows 6, 7 and 8 are red, and none of them traces to the delivery. Row 6: the selector now catches the open Verify-table PR #5221, while the delivery #4628 itself is clean under all three of the row's checks. Row 7: the 300s package budget ran out under host load with no failed assertion (#4179 class). Row 8: lint is red only on two other briefs' acceptance transitions (#4823). Blocker: check-definition. #5221 is the fix and is waiting on a human acceptance transition. Leave the lifecycle at implemented.
 
 ## Review
