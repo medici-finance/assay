@@ -22,9 +22,13 @@ is kept honest by `TestBriefV1SchemaCoverage` and `statusgen conform`.
   rewritten). Fails closed with exit 2, writing nothing, on a malformed tag,
   an unreadable file, a missing header line, or a header line with no token.
 - `check-spec-header-version.sh <vX.Y.Z> [spec-file]` — the proof. Exit 0 on a
-  match, 1 on a mismatch, 2 when it cannot check.
+  match, 1 on a mismatch, 2 when it cannot check. It is an adapter onto
+  `deskchangelog check-spec-header` (`tools/desk/cmd/deskchangelog`), built from
+  this checkout's `tools/desk` source (a `deskchangelog` on `PATH` is used only by
+  a tree without that source); it exits 127 when Go is missing or the build fails.
 - `stamp-spec-header-version.test.sh` and `check-spec-header-version.test.sh` —
-  offline suites, bash + grep + awk only. Run them directly:
+  offline suites in bash + grep + awk; they drive the check through its adapter,
+  so they also need a Go toolchain. Run them directly:
 
   ```
   bash tools/release/stamp-spec-header-version.test.sh
