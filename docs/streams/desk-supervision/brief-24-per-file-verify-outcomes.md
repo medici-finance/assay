@@ -1074,6 +1074,76 @@ RISK-VALUE (the trigger fires on the deskkit security path; no entry is irrevers
 
 **VERIFY: BLOCKED** — row 9 held as could-not-check at `57cef065e37a`: its offline lint is red only on another brief's could-not-check human authority (desktools-v2/65), tracked in medici-finance/assay#4823; with forge corroboration the same lint passes. The other 14 rows pass, 0 fail. Row 10 read MERGEABLE on the qualifying pair medici-finance/assay#4647 after medici-finance/assay#4660. Status stays implemented. This is the latest observation, at newer main than the 2026-10-29 block.
 
+### Non-implementer verifier re-run — 2026-11-06 claude-opus-5-5
+
+Source `e9410e9e1354` (full sha e9410e9e13540d3f9565de9d986334ea4b644bce), in an admitted detached home that stayed clean before the rows and through the bracket. The rows ran read-only, and the witnesses were written outside the home. The runner is not the implementer (implementing change medici-finance/assay#1803, squash c248703b0bab, first parent b7899516cb45). `gate: model`, with all four risk answers `no`. Admission: `deskdispatch --check-verifier` exited 0 before the rows (Verification-Attestation medici-finance/assay#5593, run 7f60429de588…, brief sha256 109f9b53…). Tool release v1.0.75 was used throughout. Every row that ran was re-run at this source.
+
+Fail-first: `statusgen verifyrun --fail-first --dry-run` exits 2 with "no risk-bearing row in this table", so no fail-first witness is owed. That dry run wrote nothing. It executed row 8 on the host (pass) and row 10 (exit 127, `SIBLING_PR` unset); neither result is credited.
+
+Lanes. Rows 1–9 and 11–15 went through the container lane under one admission bracket:
+
+1. `--open-bracket` on the host.
+2. `statusgen verifyrun --sandbox=container-netns --rows 1,2,3,4,5,6,7,8,9,11,12,13,14,15` inside `docker run --rm --network none`, on the release-pinned runner image `ghcr.io/medici-finance/verify-runner:v1.0.75@sha256:732786a33ebfa6dc1d80d396781df1f31c5331f67a8c0bd97518785f5a72b173`. The digest comes from the v1.0.75 release asset `verify-runner-image.txt`, whose sha256 matches the release checksums. The image ran natively as linux/arm64.
+3. `--close-bracket` on the host.
+4. `--bracket-digest`, which returned verdict=match.
+
+Inside the container: a non-root user; the home, its git directory and the Go module cache mounted read-only; module proxy and checksum database off, toolchain local; a container-local build cache; a HOME holding only a roster copy (no key, App configuration or forge secret); only the witness directory writable.
+
+A first `--close-bracket` call, from outside the home with a relative `--brief`, was refused with nothing appended. Re-issued from inside the home, it appended the bracket line below.
+
+Row 10 was not run: it needs the forge and an open qualifying pair, and none existed on 2026-11-06. The last pair (medici-finance/assay#4660, #4647) merged on 2026-10-27 and 2026-11-01, and no open verifier Evidence PR with an outcome record (#5563, #5573, #5574) was open while a sibling with one merged. Row 10's latest tool-written witness is still the 2026-10-30 host table above (pass, MERGEABLE on #4647 after #4660).
+
+Container bracket (14 rows): 13 pass; row 9 exits 1.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestVerifyOutcomes$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r1-1.out" 2>&1 && grep -F -e '--- PASS: TestVerifyOutcomes' "${TMPDIR:-/tmp}/b24-r1-1.out"` | pass exit=0 sandbox=container-netns | sha256:20fece53bd96 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/verifyloop/ -run '^TestOutcomeRecords$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r2-1.out" 2>&1 && grep -F -e '--- PASS: TestOutcomeRecords' "${TMPDIR:-/tmp}/b24-r2-1.out"` | pass exit=0 sandbox=container-netns | sha256:a2007106961f | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestOutcomeRecordWrite$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r3-1.out" 2>&1 && grep -F -e '--- PASS: TestOutcomeRecordWrite' "${TMPDIR:-/tmp}/b24-r3-1.out"` | pass exit=0 sandbox=container-netns | sha256:0f477ed269d7 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestAppendedLogWriteRefused$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r4-1.out" 2>&1 && grep -F -e '--- PASS: TestAppendedLogWriteRefused' "${TMPDIR:-/tmp}/b24-r4-1.out"` | pass exit=0 sandbox=container-netns | sha256:af516ed9514f | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestVerifyOutcomesSingleReader$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r5-1.out" 2>&1 && grep -F -e '--- PASS: TestVerifyOutcomesSingleReader' "${TMPDIR:-/tmp}/b24-r5-1.out" && cd ../../statusgen && go test . -run '^TestVerifyOutcomesSingleReader$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r5-2.out" 2>&1 && grep -F -e '--- PASS: TestVerifyOutcomesSingleReader' "${TMPDIR:-/tmp}/b24-r5-2.out"` | pass exit=0 sandbox=container-netns | sha256:124aa4dcc225 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestOutcomeRecordsConcurrentLandingsMergeable$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r6-1.out" 2>&1 && grep -F -e '--- PASS: TestOutcomeRecordsConcurrentLandingsMergeable' "${TMPDIR:-/tmp}/b24-r6-1.out"` | pass exit=0 sandbox=container-netns | sha256:a4244ef1394a | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go test . -run '^TestOutcomesSplit$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r7-1.out" 2>&1 && grep -F -e '--- PASS: TestOutcomesSplit' "${TMPDIR:-/tmp}/b24-r7-1.out"` | pass exit=0 sandbox=container-netns | sha256:deb95f05316c | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `(cd statusgen && go build -o /tmp/statusgen-24 .) && /tmp/statusgen-24 outcomes split --root . --check` | pass exit=0 sandbox=container-netns | sha256:8573ee90721d | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `(cd statusgen && go build -o /tmp/statusgen-24 .) && /tmp/statusgen-24 --root . --lint` | fail exit=1 sandbox=container-netns | sha256:604842417061 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `! grep -rn 'verifyOutcomesMaxBytes' tools/desk/cmd/deskevidence/` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `o=$(statusgen --root . --consumers --brief desk-supervision/24 --delivery c248703b0bab5020a6e592d66150a45cee32212d --base b7899516cb45d41286eb37aeeed7df887ea2fb33); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 13 corroborated, 0 disproved, 7 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | pass exit=0 sandbox=container-netns | sha256:12f4296d82b1 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestReceiptInputsCoverDeliverables$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r13-1.out" 2>&1 && grep -F -e '--- PASS: TestReceiptInputsCoverDeliverables' "${TMPDIR:-/tmp}/b24-r13-1.out"` | pass exit=0 sandbox=container-netns | sha256:b974aab2f8b7 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestReceiptBlockerRef$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r14-1.out" 2>&1 && grep -F -e '--- PASS: TestReceiptBlockerRef' "${TMPDIR:-/tmp}/b24-r14-1.out"` | pass exit=0 sandbox=container-netns | sha256:0a772b34d5a7 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 15 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestReceiptBriefHashAsLanded$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r15-1.out" 2>&1 && grep -F -e '--- PASS: TestReceiptBriefHashAsLanded' "${TMPDIR:-/tmp}/b24-r15-1.out"` | pass exit=0 sandbox=container-netns | sha256:1dd5666ee474 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:8b4df5b4377c4fb7d4e183f13b2b7f41cccba1f7bbd7c321a8f88016d20a12c2
+Container-Image: sha256:732786a33ebfa6dc1d80d396781df1f31c5331f67a8c0bd97518785f5a72b173
+Verification-Attestation: medici-finance/assay#5593 run=7f60429de588d2dd6c4e4fc3028cdaeb1cd2948a54ca598ab8b485e894948e8c source=e9410e9e13540d3f9565de9d986334ea4b644bce brief=docs/streams/desk-supervision/brief-24-per-file-verify-outcomes.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=7f60429de588d2dd6c4e4fc3028cdaeb1cd2948a54ca598ab8b485e894948e8c source=e9410e9e13540d3f9565de9d986334ea4b644bce tree=sha256:8b4df5b4377c4fb7d4e183f13b2b7f41cccba1f7bbd7c321a8f88016d20a12c2 witness=sha256:2b88dac2b8b3f0e0ee21e02140b34470b93a9dd1de6eda2580a5868cec51e948 opened=2026-11-06T16:20:05Z closed=2026-11-06T16:23:43Z before=receipt after=check-verifier
+
+Row 9 diagnosis (supplemental and labelled; it discharges no row). Two read-only diagnostic runs of the in-tree statusgen at this source (`--root . --lint`), with no forge access:
+- Inside the same image, network-off: `LINT: FAIL 2 problem(s)`. Both PROBLEMs are acceptance transitions on the protected tables of two other briefs, desk-tools/37 and desktools-v2/65. Neither can confirm human authority because `--acceptance-forge is required`.
+- On the host, from the home: the same two briefs and the same `LINT: FAIL 2 problem(s)`. Here the stated reason is that repository origin authority is unavailable, because an include in the worktree's git configuration may affect authority.
+
+Neither run prints a PROBLEM for this brief, and no output line names `verify-outcomes` as a stream without a README; this brief appears only in NOTICE lines (risk-files-crossread, and verify-row portability for rows 8 and 9). The lint is red only because acceptance authority cannot be confirmed for other briefs, tracked in open medici-finance/assay#4823 (desktools-v2/65) and medici-finance/assay#4599 (desk-tools/37). Per C4 that is neither a pass nor a fail of this brief's property, so row 9 is not credited and stays open behind #4823. The row command is unchanged.
+
+Result, by the latest tool-written witness for each row:
+- 13 rows pass at this source: rows 1–8 and 11–15, network-off inside the closed bracket above, with a matching digest.
+- Row 10 passes on its 2026-10-30 host witness (not re-run: no open qualifying pair).
+- Row 9's witness reads fail exit=1. By the diagnosis above, that exit comes from the instrument, not from an observed failure of this brief's property.
+
+No row rests on a hand run.
+
+Declared deliverables at this source (an observation, not a row result): every literal path in the Context `files:` block resolves. The three retirement-step files (attributes file, union test, legacy log) are still present because Task step 8 has not run (medici-finance/assay#1802).
+
+The record glob `docs/streams/verify-outcomes/*/*.json` matches 549 files in 27 stream directories, each named by the first 12 hex of its own SHA-256 (549 of 549). The legacy log has 96 lines. The largest record, 177588 bytes (desk-tools/23), is within the 256 KiB cap.
+
+RISK-VALUE (the trigger fires on the deskkit security path; no entry is irreversible by edit and redeploy), enumerated over the implementing diff c248703b0bab (non-test Go) plus the Deliverables, every literal re-read at e9410e9e1354. Since 57cef065e37a these files changed only by a sibling-declaration marker in the record builder, an attempts comment, a landed-closure receipt argument and a verifyloop message wording change. No literal below changed value; only line numbers moved.
+
+- RISK-VALUE: DERIVED — record digest truncation = 12 hex @ tools/desk/internal/deskkit/verifyoutcomes.go:112, mirrored at statusgen/verifyoutcomes.go:155. The brief pins "first 12 hex digits". A collision needs the same brief, the same second and a 48-bit digest match, and the writer refuses rather than overwrites. All 549 of 549 committed names reproduce from their bytes.
+- RISK-VALUE: DERIVED — outcomeStreamRe = `^[a-z0-9][a-z0-9-]*$` and outcomeNumRe = `^[0-9]+$` @ tools/desk/internal/deskkit/verifyoutcomes.go:55-56 and statusgen/verifyoutcomes.go:110-111. These are the brief's own patterns, verbatim. Neither admits a slash or a dot, so a record path cannot leave its stream directory.
+- RISK-VALUE: DERIVED — ts compaction layout = `20060102T150405Z` @ tools/desk/internal/deskkit/verifyoutcomes.go:165 and statusgen/verifyoutcomes.go:199. It is lossless for second-precision RFC 3339 `Z` timestamps and sorts lexically in time order, as the brief requires.
+- RISK-VALUE: DERIVED — blocker reference patterns @ tools/desk/internal/deskkit/verifywake.go:751-753. They accept a bare `#N`, an `owner/repo#N`, and a forge URL whose path is issues, pull or actions/runs followed by a number. That is exactly the three reference shapes Task step 3(b) lists.
+- RISK-VALUE: NAMED, NOT DERIVED — MaxClockSkew = `5 * time.Minute` @ tools/desk/internal/deskkit/verifyoutcomes.go:278, hand-copied as maxClockSkew at statusgen/verifyoutcomes.go:296. The value comes from the #1803 security review, not from the brief, and no source derives it. It is a reversible operational knob, nothing ties the two copies together, and its question is filed as #4128.
+- Ranked last, reversible, and needing no derivation: the evidence side-branch digest prefix `dig[:8]` @ tools/desk/cmd/deskevidence/outcomerecord.go:386, and the general cap `maxBytes = 256 * 1024` @ tools/desk/cmd/deskevidence/deskevidence.go:20. Row 11 confirms that the log override is gone.
+
+**VERIFY: BLOCKED** — at `e9410e9e1354`, row 9's lint is red only on the acceptance authority of two other briefs (desktools-v2/65 and desk-tools/37), tracked in medici-finance/assay#4823 and medici-finance/assay#4599; no line names this brief or `verify-outcomes`. Rows 1–8 and 11–15 pass network-off in one closed bracket (verdict=match). Row 10 was not run: no open qualifying pair exists on 2026-11-06, and its latest witness is the 2026-10-30 pass. 0 rows fail. Status stays implemented.
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the
 stream README table.
