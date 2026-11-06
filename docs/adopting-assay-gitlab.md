@@ -372,9 +372,13 @@ the GitLab issue/orphan lane as could-not-check rather than empty. **It is a DIS
 the write boundary `ASSAY_ALLOWED_REPOS`** — a green write-lane preflight says nothing about
 it, and `ASSAY_ALLOWED_REPOS` already listing the adopter project does not set it.
 (A project whose GitLab visibility is `internal` is tagged `:internal` in
-`ASSAY_ALLOWED_REPOS` — `mygroup/myproject:ci:internal` — not `:public` and not `:private`: the
-public-repo write gate requires the tag to name the visibility the forge reports, and an
-`internal` project keeps every public-repo requirement, `ASSAY_HUMAN_LOGIN_MAP` included.)
+`ASSAY_ALLOWED_REPOS` — `mygroup/myproject:ci:internal` — not `:private`: the public-repo write
+gate requires the tag to be at least as exposed as the visibility the forge reports.
+`:internal` is the accurate tag. The write gate tolerates an existing `:public` entry on an
+internal project, but that is a mislabel: `deskboard policydrift` reports it as drift, and it
+over-ranks the project as a verifier cross-repo source (a public tracking repo could then
+publish its binding), so change it to `:internal`. An `internal` project keeps every public-repo
+requirement, `ASSAY_HUMAN_LOGIN_MAP` included.)
 
 - **Required value shape.** A comma-separated list of `<group>/<project>` slugs — the scan
   scope. It must contain **at least the adopter project itself** (the same slug that appears

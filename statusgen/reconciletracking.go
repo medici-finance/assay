@@ -37,7 +37,7 @@ func briefVersionForPass(path, evidence string, p flipPass) (int, error) {
 			return 0, fmt.Errorf("cross-repository attestation must be literal run metadata")
 		}
 		if !ok || a.version != 2 {
-			return 0, fmt.Errorf("malformed cross-repository run attestation")
+			return 0, fmt.Errorf("malformed cross-repository run attestation%s", missingCrossFields(m.text))
 		}
 		if !hex64Re.MatchString(a.run) || !hex40Re.MatchString(a.source) || !hex40Re.MatchString(a.trackingSource) {
 			return 0, fmt.Errorf("cross-repository attestation needs full run, source and tracking-source identifiers")
@@ -58,7 +58,14 @@ func briefVersionForPass(path, evidence string, p flipPass) (int, error) {
 		if unboundCrossAttestation(evidence) {
 			return 0, fmt.Errorf("a cross-repository attestation in Evidence is not bound by literal selected-run metadata")
 		}
-		return briefVersionAt(path, p.SHA)
+		version, err := briefVersionAt(path, p.SHA)
+		if err != nil {
+			// The source revision is read in this repository. A run made in
+			// another repository has no such commit here; say what would let
+			// it be read rather than leave a bare git failure.
+			return 0, fmt.Errorf("%w; a run made in another repository is read only at the tracking-source= its selected run's literal Verification-Attestation line names, and this run binds none", err)
+		}
+		return version, nil
 	}
 	if legacy {
 		return 0, fmt.Errorf("selected run mixes same-repository and cross-repository attestations")
@@ -84,6 +91,26 @@ func briefVersionForPass(path, evidence string, p flipPass) (int, error) {
 		return 0, fmt.Errorf("tracking-source %s: %w", binding.trackingSource, err)
 	}
 	return version, nil
+}
+
+// missingCrossFields names the cross-repository fields a malformed attestation
+// line lacks, so the refusal says what the record must carry. A line without
+// tracking-source= has no commit in this repository to read the brief at: its
+// source= belongs to the deliverable repository and is never read here.
+func missingCrossFields(line string) string {
+	has := map[string]bool{}
+	for _, field := range strings.Fields(line) {
+		if k, _, ok := strings.Cut(field, "="); ok {
+			has[k] = true
+		}
+	}
+	switch {
+	case !has["tracking-source"]:
+		return ": it names no tracking-source=, the commit in this repository to read the brief version at (its source= is a deliverable-repository commit and is never read here)"
+	case !has["source-repo"]:
+		return ": it names no source-repo=, the deliverable repository its source= belongs to"
+	}
+	return ""
 }
 
 // unboundCrossAttestation reports whether any raw Evidence line, in any

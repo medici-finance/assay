@@ -226,7 +226,7 @@
     {
       "name": "tracking: a malformed cross-repository line is skipped, not refused",
       "file": "reconciletracking.go",
-      "old": "if !ok || a.version != 2 {\n\t\t\treturn 0, fmt.Errorf(\"malformed cross-repository run attestation\")\n\t\t}",
+      "old": "if !ok || a.version != 2 {\n\t\t\treturn 0, fmt.Errorf(\"malformed cross-repository run attestation%s\", missingCrossFields(m.text))\n\t\t}",
       "new": "if !ok || a.version != 2 {\n\t\t\tcontinue\n\t\t}"
     },
     {
