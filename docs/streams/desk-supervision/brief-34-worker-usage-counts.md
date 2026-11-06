@@ -401,5 +401,47 @@ All eleven rows pass in one admitted bracket.
 
 Desk note (2026-11-01): the implemented→verified flip is held. A simulated flip in a scratch clone adds one statusgen lint PROBLEM, `[consumer-delivery-range]` on Verify row 10: the unpinned `--consumers` form has no explicit `--base`. That is a check-definition blocker tracked at medici-finance/assay#1927. The outcome is recorded as blocked (check-definition), and the row stays implemented until the row is re-authored.
 
+### Verification — 2026-11-06 (non-implementer, claude-opus-5-5, tier strong)
+
+Source: merged main 75c8d54da108 (delivery PR #4135, merge 421f214d48c6). The usage implementation files are unchanged since the 2026-11-01 pass; dispatchrecord.go gained a dispatch_instructions_sha256 field from other work, and the worker-desk skill gained an unrelated handoff-note line. Admission: deskdispatch --check-verifier rc 0 before the first row (run f95064ecdbff). All eleven rows ran network-off in one closed admission bracket in the native linux/arm64 verify-runner v1.0.75 image (statusgen v1.0.75, image named by its release-pinned reference digest), bracket-digest verdict=match; runner --timeout 30m, every command unchanged. The container ran as the host's non-root uid with a passwd entry for that uid, the home and the git common directory mounted read-only at their host paths, and HOME, TMPDIR and GOCACHE on the container's own file system. One attempt, credited.
+
+Verification-Attestation: medici-finance/assay#5599 run=f95064ecdbff388c7804e9035d62a9184a31e25e03909f5dba2543ecd5021d82 source=75c8d54da108ba3706f4b23ff3491fa94dad5a05 brief=docs/streams/desk-supervision/brief-34-worker-usage-counts.md model=claude-opus-5-5 tier=strong
+
+Bracket witness (rows 1-11):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./cmd/deskusage/... ./internal/deskkit/...` | pass exit=0 sandbox=container-netns | sha256:f4fa2703f69a | 2026-11-06 | assay-verifier-app[bot] @ 75c8d54da108 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsageRecord_RefusesTranscriptShapedInput$' -v > "${TMPDIR:-/tmp}/b34-transcript.out" 2>&1 && grep -F -e '--- PASS: TestUsageRecord_RefusesTranscriptShapedInput' "${TMPDIR:-/tmp}/b34-transcript.out"` | pass exit=0 sandbox=container-netns | sha256:29d25653cbd1 | 2026-11-06 | assay-verifier-app[bot] @ 75c8d54da108 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsageSummary_RefusesPollutedStore$' -v > "${TMPDIR:-/tmp}/b34-polluted.out" 2>&1 && grep -F -e '--- PASS: TestUsageSummary_RefusesPollutedStore' "${TMPDIR:-/tmp}/b34-polluted.out"` | pass exit=0 sandbox=container-netns | sha256:b33ebec9abab | 2026-11-06 | assay-verifier-app[bot] @ 75c8d54da108 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestUsageStore_RefusesGitWorkTree$' -v > "${TMPDIR:-/tmp}/b34-gitdir.out" 2>&1 && grep -F -e '--- PASS: TestUsageStore_RefusesGitWorkTree' "${TMPDIR:-/tmp}/b34-gitdir.out"` | pass exit=0 sandbox=container-netns | sha256:debd889e1e3d | 2026-11-06 | assay-verifier-app[bot] @ 75c8d54da108 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestUsageRecord_ThreeState$' -v > "${TMPDIR:-/tmp}/b34-3state.out" 2>&1 && grep -F -e '--- PASS: TestUsageRecord_ThreeState' "${TMPDIR:-/tmp}/b34-3state.out"` | pass exit=0 sandbox=container-netns | sha256:b3b37d75e948 | 2026-11-06 | assay-verifier-app[bot] @ 75c8d54da108 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsage' -v > "${TMPDIR:-/tmp}/b34-flow.out" 2>&1 && test "$(grep -c -e '^--- PASS: TestUsage_RecordToSummaryFlow ' -e '^--- PASS: TestUsageClaimKeyDispatchRecovery ' "${TMPDIR:-/tmp}/b34-flow.out")" -eq 2` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ 75c8d54da108 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd statusgen && go test . -run '^TestRosterKeySchemaCoupling$' -v > "${TMPDIR:-/tmp}/b34-sg-roster.out" 2>&1 && grep -F -e '--- PASS: TestRosterKeySchemaCoupling' "${TMPDIR:-/tmp}/b34-sg-roster.out") && (cd tools/desk && go test ./internal/deskkit/ -run '^TestRosterKeySchemaCoupling$' -v > "${TMPDIR:-/tmp}/b34-dk-roster.out" 2>&1 && grep -F -e '--- PASS: TestRosterKeySchemaCoupling' "${TMPDIR:-/tmp}/b34-dk-roster.out") && grep -F -e 'ASSAY_USAGE_DIR' statusgen/testdata/roster_coupling.json` | pass exit=0 sandbox=container-netns | sha256:0d7455b7a795 | 2026-11-06 | assay-verifier-app[bot] @ 75c8d54da108 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `grep -n 'deskusage record' plugins/assay/skills/worker-desk/SKILL.md && grep -n -i 'transcript' plugins/assay/skills/worker-desk/SKILL.md` | pass exit=0 sandbox=container-netns | sha256:a9a38a73174b | 2026-11-06 | assay-verifier-app[bot] @ 75c8d54da108 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `grep -n 'func cmdRelease' tools/desk/cmd/deskclaim-ref/claim.go && ! grep -rn -i -e 'deskusage' -e 'UsageRecord' -e 'usage-v1' tools/desk/cmd/deskclaim-ref/ tools/desk/cmd/deskdispatch/` | pass exit=0 sandbox=container-netns | sha256:af0444daed5b | 2026-11-06 | assay-verifier-app[bot] @ 75c8d54da108 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --consumers --root .` | pass exit=0 sandbox=container-netns | sha256:2a58655e7e87 | 2026-11-06 | assay-verifier-app[bot] @ 75c8d54da108 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `for k in input_tokens output_tokens cost_micros; do if grep -qF "json:\"$k" loopadmin/runner/usage.go && grep -qF "\"$k\"" tools/desk/internal/deskkit/usage.go; then :; else echo "MISMATCH $k"; exit 1; fi; done; echo aligned` | pass exit=0 sandbox=container-netns | sha256:04325331435a | 2026-11-06 | assay-verifier-app[bot] @ 75c8d54da108 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:926ed845203f0c8d3f003a640060f788c08bb1479f53c5da88469c9b334ed2cb
+Container-Image: sha256:732786a33ebfa6dc1d80d396781df1f31c5331f67a8c0bd97518785f5a72b173
+Verification-Attestation: medici-finance/assay#5599 run=f95064ecdbff388c7804e9035d62a9184a31e25e03909f5dba2543ecd5021d82 source=75c8d54da108ba3706f4b23ff3491fa94dad5a05 brief=docs/streams/desk-supervision/brief-34-worker-usage-counts.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=f95064ecdbff388c7804e9035d62a9184a31e25e03909f5dba2543ecd5021d82 source=75c8d54da108ba3706f4b23ff3491fa94dad5a05 tree=sha256:926ed845203f0c8d3f003a640060f788c08bb1479f53c5da88469c9b334ed2cb witness=sha256:6f7b9ab8cad7bf1deb7edb564192b65a4a0753eaf0d9945a5b1ca5acf4c96dd8 opened=2026-11-06T16:39:59Z closed=2026-11-06T16:47:00Z before=receipt after=check-verifier
+
+Risk-bearing values: the risk fields are all no and none is irreversible. Every literal the delivery diff introduces in the usage store, reader and verb was enumerated anyway.
+
+RISK-VALUE: DERIVED — usage store file mode = 0600 @ tools/desk/internal/deskkit/usage.go:281 — Task 2 requires mode 0600: owner-only access for a per-user local store.
+RISK-VALUE: DERIVED — usage store directory mode = 0700 @ tools/desk/internal/deskkit/usage.go:247 — a 0600 file in a directory others can list still exposes its name and timing, so the directory is owner-only as well.
+RISK-VALUE: DERIVED — record field count = 11 @ tools/desk/internal/deskkit/usage.go:134 — six string fields (schema, ts, dispatch_ref, repo, item, tier) plus five counts (input_tokens, output_tokens, total_tokens, cost_micros, wall_seconds), exactly Task 1's list; any extra key is refused.
+RISK-VALUE: DERIVED — item length bound = 256 @ tools/desk/internal/deskkit/usage.go:74, grammar stream/NN or issue-N @ usage.go:23 — Task 1's item definition; the bound keeps free text out of the item field.
+RISK-VALUE: DERIVED — UsageSchema = usage-v1, UsageFile = usage.jsonl @ tools/desk/internal/deskkit/usage.go:20-21 — the names Task 1 and Task 2 give.
+RISK-VALUE: DERIVED — ExitRefused = 5, ExitUnverifiable = 6 @ tools/desk/internal/deskkit/exitcodes.go:51 and :55 — the refusal convention the brief's Context names (refused exit 5, unverifiable exit 6), reused unchanged.
+RISK-VALUE: NAMED, NOT DERIVED — usage reader line buffer = 64*1024 @ tools/desk/internal/deskkit/usage.go:306, dispatch-record reader buffer = 1024*1024 @ tools/desk/internal/deskkit/dispatchrecord.go:404 and :442 — reversible operational limits far above one record's size; an over-long line fails closed, and no spec value pins them.
+
+Fail-first: no Verify row carries a risk-bearing, live, mutating or end-to-end tag and the brief-wide risk answers are all no, so no row owes a fail-first base run.
+
+All eleven rows pass in one admitted bracket.
+
+**VERIFY: PASS** — rows 1-11 pass (network-off, native linux/arm64 container, closed admission bracket).
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.
