@@ -197,6 +197,50 @@ RISK-VALUE: DERIVED — packetMaxAge = 7 * 24 * time.Hour @ tools/desk/cmd/deskd
 
 **VERIFY: BLOCKED** — 4/7 rows pass at source 011f14965ef2; rows 3, 6 and 7 could-not-check (row 3 needs a lane with a git directory, a forge origin and a non-root user, #4327, #4322; row 6 is pre-merge only; row 7's lint is red on desktools-v2/65, #4823); no obligation of this brief observed failing.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `git diff origin/main -- tools/desk/internal/deskkit/verifiersource.go tools/desk/internal/deskkit/verifierattestation.go tools/desk/internal/deskkit/verifyoutcomes.go \| wc -l` | pass exit=0 | sha256:4eff2db4bada | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --root . --consumers --brief desktools-v2/72 --base $(git merge-base origin/main HEAD)` | fail exit=2 | sha256:f7e463c10949 | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `statusgen --root . --lint` | fail exit=1 | sha256:c07e8ac0bd8d | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5634 run=033a65a50342d481620ca741845c71d7018f659964b84c730227a7d130178fe0 source=bc078e9179c862dde02b367d35177f8ffdf1b421 brief=docs/streams/desktools-v2/brief-72-land-verifier-outcome-records-from-a-dispatcher-named-path-outside-the-home.md model=claude-opus-5-5 tier=any
+
+### Postmerge verification, 2026-11-06, source bc078e9179
+
+Verifier: claude-opus-5-5, tier any, non-implementer, against merged main source bc078e9179c8 (attestation medici-finance/assay#5634), desk-tools and statusgen v1.0.75, darwin arm64 host. Delivery: commit da4c268ac2 through merge 6cdcf0c06a (PR #4073). The admitted-home check (deskdispatch --check-verifier) exited 0 before the bracket opened, and again on the finished Evidence.
+
+The table above is the host verifyrun witness for rows 4, 6 and 7 (normal HOME, no forge identity variable set, 2026-11-06T18:36:49Z to 18:38:35Z). Rows 1, 2, 3 and 5 (check:ci) ran once through the admitted container-netns lane: verifyrun --open-bracket on the host (opened 2026-11-06T18:19:47Z), the container run (the arm64 manifest sha256:576cb2e49407 of the v1.0.75 runner release index sha256:732786a33ebf, which matches the release's verify-runner-image.txt; native platform, --network none, home and receipt mounted read-only, --rows 1,2,3,5), verifyrun --close-bracket from inside the home (closed 2026-11-06T18:24:39Z, exit 0) and verifyrun --bracket-digest (verdict=match). No attempt was discarded. The closed container witness follows verbatim.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestVerifierOutcomePath$' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:a4f07c6c9028 | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestOutcomeRecordOutsideRoot$' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:e9d8bd7e60c3 | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskevidence/ ./cmd/deskdispatch/ ./internal/deskkit/ -count=1` | fail exit=1 sandbox=container-netns | sha256:32dc12cb829f | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check` | pass exit=0 sandbox=container-netns | sha256:54208d57d196 | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:e7680c0408d6980d7652468226c1df98402ddb98ffaccc211519a83d505450b2
+Container-Image: sha256:576cb2e49407447769b79a32af370a23e1c108d62842b8f1772a809d1d3b7617
+Verification-Attestation: medici-finance/assay#5634 run=033a65a50342d481620ca741845c71d7018f659964b84c730227a7d130178fe0 source=bc078e9179c862dde02b367d35177f8ffdf1b421 brief=docs/streams/desktools-v2/brief-72-land-verifier-outcome-records-from-a-dispatcher-named-path-outside-the-home.md model=claude-opus-5-5 tier=any
+Admission-Bracket: run=033a65a50342d481620ca741845c71d7018f659964b84c730227a7d130178fe0 source=bc078e9179c862dde02b367d35177f8ffdf1b421 tree=sha256:e7680c0408d6980d7652468226c1df98402ddb98ffaccc211519a83d505450b2 witness=sha256:a084a5f98ca1cb36cefd0af6916db9d16c203599674212fa7a5288a88c6ec0ae opened=2026-11-06T18:19:47Z closed=2026-11-06T18:24:39Z before=receipt after=check-verifier
+
+
+Row notes:
+
+- Row 1: pass in the container lane, exit 0, the named test passes. Mutation (supplemental, a git-archive copy of the source outside the home, same image, --network none, no acceptance credit): replacing the claim-key refusal in outcomeClaimDir with a sanitizeSegment rewrite fails the traversal-shaped claim keys subtest on both the beside --prompt-file branch and the user cache branch, a/b among the keys, and the refused keys create 7 entries under each outcomes base; the other subtests still pass.
+- Row 2: pass in the container lane, exit 0, the named test passes. Mutation (supplemental, no credit): removing the pathWithin(root, localFile) arm at tools/desk/cmd/deskevidence/outcomerecord.go:68 fails the subtests "absolute path inside the home is refused" and "symlink alias into the home is refused" (exit 0, want 5); the relative-path and outside-the-home subtests still pass.
+- Row 3: not run to a credited result. The container lane observed exit 1, and the evidence places the cause in the lane, not in this delivery, so no acceptance credit is taken either way. Supplemental probe (same image, same command, --network none, admitted home mounted read-only, no credit): deskevidence passes (119.6s). deskdispatch reaches the 10m go test deadline inside TestPacketBuildFailureNeverFailsTheDispatch/nowhere_to_write_it, whose unwritable-directory setup does not hold for uid 0, and also fails TestDispatchRulesRefusals (its unreadable_file case: uid 0 reads the file regardless of mode) and two review-dispatch packet tests that need a resolvable forge (no origin remote, ASSAY_REPO_FORGES unset). deskkit fails 6 top-level tests: three that drive real git, which reports "fatal: gitfile does not point to a valid repository: /work/.git" because the mounted home's .git file points outside the mount; TestReviewCallerFlow and TestReviewCallerRollback; and TestSharedReadLowerScope, which needs a resolvable forge. Every failing test lives in a file the delivery diff does not touch (dispatchinstructions_test.go, packet_test.go, packet_review_test.go, credhelperchain_test.go, reviewcallers_test.go, sharedread_test.go). The suite needs a lane with a git directory, a forge origin and a non-root user (#4327, #4322) before it can be witnessed.
+- Row 4: pass, exit 0, output 0 (origin/main 4cf9795597f6 against HEAD bc078e9179c8).
+- Row 5: pass in the container lane, exit 0.
+- Row 6: not run to a credited result. Exit 2 on merged main: the tool reports that assay:assay:desktools-v2:72 is not in the diff against the source, so the run carries no evidence about its claims; no entry was corroborated and none was disproved. A clean scratch clone of the source reproduces the same exit and message. The row's Expect is pre-merge, on the implementation branch.
+- Row 7: not run to a credited result. Exit 1, LINT: FAIL 2 problem(s). Both PROBLEMs are protected-table acceptance transitions on other briefs, desk-tools/37 and desktools-v2/65 (the latter tracked in #4823), each asking for --acceptance-forge for human authority. No PROBLEM line names desktools-v2/72, which is the part of the Expect this brief owns. Exit 0 cannot be shown until those resolve.
+
+Accounting: 7 rows; 4 pass (rows 1, 2, 4, 5); 3 not run to a credited result (rows 3, 6, 7: the lane gap, the pre-merge-only Expect, and lint problems on other briefs); 0 failed obligations of this brief. Fail-first: no row is risk-bearing (the brief's risk fields are all no, and rows 1 and 2 carry only the +mutation tag, answered by the mutation probes above), so no fail-first witness is owed.
+
+RISK-VALUE: DERIVED — outcomeDirName = "outcomes" @ tools/desk/cmd/deskdispatch/outcomepath.go:25, with cache subpath assay/outcomes @ :60 — Task 1 names exactly these two forms: outcomes/{claim key} beside --prompt-file, else assay/outcomes/{claim key} under the user cache directory.
+RISK-VALUE: DERIVED — directory mode 0o700 @ tools/desk/cmd/deskdispatch/outcomepath.go:135 and :141 — Task 1 creates the directory owner-only, and 0o700 grants the owner alone; this run's own outcome directory and its outcomes parent read drwx------.
+RISK-VALUE: DERIVED — refusal mask 0o022 @ tools/desk/cmd/deskdispatch/outcomepath.go:164 — the group-write and other-write bits, so a base another user can write to, where that user could swap the per-claim leaf, is refused.
+RISK-VALUE: DERIVED — packetMaxAge = 7 * 24 * time.Hour @ tools/desk/cmd/deskdispatch/packet.go:154 — Task 1 asks for the same week-based pruning as packets; the allocator reuses this constant, so the two cannot drift.
+
+**VERIFY: BLOCKED** — 4/7 rows pass at source bc078e9179c8; rows 3, 6 and 7 not run to a credited result (row 3 needs a lane with a git directory, a forge origin and a non-root user, #4327, #4322; row 6 is pre-merge only; row 7's lint is red on desk-tools/37 and desktools-v2/65, #4823); no obligation of this brief observed failing.
+
 ## Review
 
 Gate: model. Independent correctness review of the exact head.
