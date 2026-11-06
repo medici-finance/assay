@@ -75,6 +75,18 @@ and evidence limits in the affected briefs. Separate profile setup, contract/fak
 and the joined real-consumer qualification where they have different owners; record
 actual producer prerequisites rather than adding another controller to hide a gap.
 
+## Scope capabilities before scheduling
+
+Apply the shared procedure's [Capability-sized delivery and prerequisite splits](../../references/milestone-authoring.md#capability-sized-delivery-and-prerequisite-splits)
+when decomposing work or reviewing a delivery-blocking prerequisite, even without
+milestone reader support. Prefer one coherent, independently testable capability or
+enabling contribution per brief. Identify what each critical dependency supplies;
+extract an earlier delivery when it safely unblocks consumers. Preserve all original
+requirements, controls and evidence obligations, and show the affected path before/after.
+Keep inseparable work together with a reason; this is not a requirement to split every
+feature. A dependency still waits for the named brief's completion. The procedure owns
+split conservation and amendment steps; this introduces no schema or runtime gate.
+
 ## The most important judgment call: find the REAL head of the critical path
 
 The critical path is the chain that, if it slips, slips everything. The recurring failure is putting
@@ -847,8 +859,9 @@ layer; the floor does not wait on one.)
 1. **Reconcile outcomes and inventory the work** — preserve the source's milestone promises;
    map criterion coverage to existing briefs before adding new units. Follow the shared
    procedure for milestone dependencies, versions and reader support. Each new unit becomes
-   a brief; keep them roughly equal-
-   sized (split anything too big — e.g. one brief doing two distinct roles becomes two).
+   a brief with a coherent capability and acceptance boundary. Split broad prerequisites
+   where an earlier delivery enables consumers; effort limits still apply, but equal size
+   is not the objective. Preserve and route the remaining requirements.
 2. **Map dependencies** — for each unit, what must exist first (`Depends on`) and what it enables
    (`Unblocks`). This gives the waves (Wave 0 = no deps; Wave N = depends only on <N).
 3. **Derive + verify the critical path** — for each selected milestone, include its contributing

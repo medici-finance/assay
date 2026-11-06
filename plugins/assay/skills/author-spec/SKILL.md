@@ -74,6 +74,13 @@ real/substitute boundaries, evidence limits and real-service replacement require
 before decomposition; use existing scope and acceptance sections rather than a new
 universal spec template.
 
+Use the shared procedure's **Capability-sized delivery and prerequisite splits** section
+to distinguish the first useful supported journey from later automation, scale and
+generalisation. Capture its users, actual operating boundary, manual steps, necessary
+controls and joined acceptance. Retain later requirements explicitly; an early outcome
+is a scoped promise, not partial acceptance of the full end state. Hand off capability
+boundaries and consumer needs to author-brief without prescribing execution steps.
+
 ## Resolve the consequential questions
 
 Scale depth to uncertainty and impact: a small change may take a paragraph and examples;
