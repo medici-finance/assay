@@ -1012,9 +1012,10 @@ func (s *Store) abandonedBuild(r Record, p Policy, seen pins) ([]string, int64, 
 	return build, total, nil
 }
 
-// overLimitReason keeps an entry whose walk ran past the inventory bound. Its size and
-// Git content are unknown, so it is never reclaimed by this sweep.
-const overLimitReason = "over the maintenance inventory limit; not measured, retained (ASSAY_MAINTENANCE_ENTRY_LIMIT raises the bound)"
+// overLimitReason keeps an entry whose walk ran past the inventory bound, either the
+// entry count or the fixed directory depth. Its size and Git content are unknown, so it
+// is never reclaimed by this sweep. The remedy differs by limit, so both are named.
+const overLimitReason = "over the maintenance inventory limit (entries or depth); not measured, retained (ASSAY_MAINTENANCE_ENTRY_LIMIT raises the entry bound; a tree past the depth limit needs owner-assisted layout correction)"
 
 var errNotRealDir = errors.New("scratch path crosses a link or non-directory")
 

@@ -339,8 +339,10 @@ func TestMaintenanceScanBound(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	t.Setenv("ASSAY_MAINTENANCE_ENTRY_LIMIT", "32")
 	// Any failed inspection other than the per-entry bound still withdraws
 	// authority from the whole plan: the measured task beside it is not reclaimed.
+	// The over-limit task is present too, so the early return must still name it.
 	locked := filepath.Join(s.Path, "legacy-locked", "locked")
 	must(t, os.MkdirAll(locked, 0700))
 	must(t, os.Chmod(locked, 0))
@@ -349,9 +351,11 @@ func TestMaintenanceScanBound(t *testing.T) {
 	if err == nil || !rep.Partial || rep.Reclaimed != 0 || !exists(t, small.Work()) {
 		t.Fatalf("failed inspection did not fail the plan closed: %+v %v", rep, err)
 	}
+	if !errors.Is(err, deskkit.ErrScanLimit) || !strings.Contains(err.Error(), r.Record.ID) {
+		t.Fatalf("early return dropped the over-limit entry's name: %v", err)
+	}
 	must(t, os.Chmod(locked, 0700))
 	must(t, os.RemoveAll(filepath.Dir(locked)))
-	t.Setenv("ASSAY_MAINTENANCE_ENTRY_LIMIT", "32")
 	// The over-limit task gains no authority; since #5560 it no longer withholds
 	// authority from the fully measured task beside it (TestScanBoundPerEntry).
 	rep, err = s.Sweep(DefaultPolicy(), true)
