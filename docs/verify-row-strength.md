@@ -175,9 +175,12 @@ attested `source=` commit or an ancestor of it. The rule that the base must hold
 applied, since no deliverable commit holds the tracking brief: the receipt binds the brief's bytes
 at `tracking-source=`. It fails closed. A PROBLEM is reported when the deliverable repository has no
 configured checkout, when that checkout lacks the base or the source, when the base is a later
-commit or one outside the source's history, and when the Evidence holds a cross-repository
-attestation that the selected PASS run does not bind literally. Same-repository runs keep the
-merge-base rule above unchanged.
+commit or one outside the source's history, when the Evidence holds a cross-repository
+attestation that the selected PASS run does not bind literally, and when the bound attestation is
+not for this brief: its `repo=` is not the brief's own repository or its `brief=` is not the
+brief's repository-relative path (the same identity checks the brief-version read applies). A
+refusal of the attestation itself asks for a run that records a binding attestation; a checkout
+or `--base` change cannot clear it. Same-repository runs keep the merge-base rule above unchanged.
 
 ### Verify text the runner cannot place
 

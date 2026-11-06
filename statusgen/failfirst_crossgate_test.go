@@ -213,3 +213,51 @@ func TestFFCrossAnchorDeliverableDiffersFromBrief(t *testing.T) {
 		t.Errorf("want the binding refused; problems=%v", problems)
 	}
 }
+
+// regression: #5549
+// TestFFCrossAnchorRemedyPerCause: each cross-repository PROBLEM names the
+// step that clears it. A refusal of the attestation itself (identity,
+// unbound or malformed) asks for a run whose attestation binds this brief,
+// never a checkout or a --base change, which cannot clear it; a missing
+// deliverable checkout keeps the checkout remedy.
+func TestFFCrossAnchorRemedyPerCause(t *testing.T) {
+	withBase(t, true)
+	deliverable, _, base, source, _, _ := ffCrossRepo(t)
+	tracking := ffCrossTracking(t)
+	for _, c := range []struct {
+		name, roots, want, notWant string
+		att                        func(string) string
+	}{
+		{"repo= names another repository", "example-org/two=" + deliverable, crossRepoBindingRemedy, crossRepoRemedy,
+			func(l string) string { return strings.Replace(l, "example-org/one#7", "example-org/three#7", 1) }},
+		{"attestation in a code span", "example-org/two=" + deliverable, crossRepoBindingRemedy, crossRepoRemedy,
+			func(l string) string { return "`" + l + "`" }},
+		{"no configured deliverable checkout", "", crossRepoRemedy, crossRepoBindingRemedy, nil},
+	} {
+		t.Setenv("DESK_ROOTS", c.roots)
+		problems, _ := failFirstGateChecks(tracking, ffStream(t, tracking, ffCrossEvidence(base, source, c.att)))
+		if !containsSub(problems, c.want) || containsSub(problems, c.notWant) {
+			t.Errorf("%s: want the remedy %q only; problems=%v", c.name, c.want, problems)
+		}
+	}
+}
+
+// regression: #5549
+// TestFFCrossAnchorUnreadablePass: when the Evidence records a
+// cross-repository attestation but its latest verdict is not a PASS the gate
+// can read, every risk-bearing row is a PROBLEM; it never falls back to the
+// tracking-clone rule.
+func TestFFCrossAnchorUnreadablePass(t *testing.T) {
+	withBase(t, true)
+	deliverable, _, base, source, _, _ := ffCrossRepo(t)
+	t.Setenv("DESK_ROOTS", "example-org/two="+deliverable)
+	tracking := ffCrossTracking(t)
+	evidence := strings.Replace(ffCrossEvidence(base, source, nil), vfPass, "VERIFY: PASS", 1)
+	problems, _ := failFirstGateChecks(tracking, ffStream(t, tracking, evidence))
+	if !containsSub(problems, "no PASS run the gate can read binds it") {
+		t.Errorf("want the unreadable-PASS PROBLEM; problems=%v", problems)
+	}
+	if containsSub(problems, "not the merge-base or an ancestor") {
+		t.Errorf("fell back to the tracking-clone rule; problems=%v", problems)
+	}
+}

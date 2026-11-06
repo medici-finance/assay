@@ -1,0 +1,35 @@
+{
+  "test": "go test . -run '^TestFFCross' -count=1 -timeout 600s",
+  "control": {
+    "name": "CONTROL \u2014 the closure gate resolves a cross-repository base in the tracking clone (the #5549 defect itself)",
+    "file": "witnessgate.go",
+    "old": "if found && !stale && ff.State != baseUnproven && (cross != nil || crossWhy != \"\") {",
+    "new": "if false {"
+  },
+  "mutations": [
+    {
+      "name": "cross anchor: the brief identity checks are not applied (TestFFCrossAnchorBriefIdentity)",
+      "file": "witnessgate.go",
+      "old": "\tif err := crossBindingBriefIdentity(path, b); err != nil {\n\t\treturn nil, \"its cross-repository attestation cannot be bound: \" + err.Error(), crossRepoBindingRemedy\n\t}",
+      "new": "\t_ = path"
+    },
+    {
+      "name": "attestation parser: a v2 line whose repo= and source-repo= agree is accepted (TestFFCrossAnchorDeliverableDiffersFromBrief)",
+      "file": "containerbracket.go",
+      "old": " || strings.EqualFold(m[1], m[4]) {",
+      "new": " {"
+    },
+    {
+      "name": "cross anchor: an unbindable attestation asks for the checkout remedy (TestFFCrossAnchorRemedyPerCause)",
+      "file": "witnessgate.go",
+      "old": "b, err := selectedRunCrossBinding(evidence, p)\n\tif err != nil {\n\t\treturn nil, \"its cross-repository attestation cannot be bound: \" + err.Error(), crossRepoBindingRemedy",
+      "new": "b, err := selectedRunCrossBinding(evidence, p)\n\tif err != nil {\n\t\treturn nil, \"its cross-repository attestation cannot be bound: \" + err.Error(), crossRepoRemedy"
+    },
+    {
+      "name": "cross anchor: an unreadable PASS with a cross-repository line falls through (TestFFCrossAnchorUnreadablePass)",
+      "file": "witnessgate.go",
+      "old": "\t\tif unboundCrossAttestation(evidence) {\n\t\t\treturn nil, \"its Evidence records a cross-repository attestation",
+      "new": "\t\tif false {\n\t\t\treturn nil, \"its Evidence records a cross-repository attestation"
+    }
+  ]
+}

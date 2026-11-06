@@ -293,7 +293,7 @@ func failFirstClosureChecks(root, id, status string, art briefArtifacts, plan pr
 		problems = append(problems, fmt.Sprintf("%s: cannot close as %s — the Verify section holds %s that `statusgen verifyrun` cannot place, so it is never run, witnessed or held to a fail-first record. Give the table a `Command` column (and a Command cell on every row)", id, status, u))
 	}
 	evidence := parseEvidenceRows(plan.Evidence)
-	cross, crossWhy := failFirstCrossAnchor(art.Path, art.Evidence)
+	cross, crossWhy, crossRemedy := failFirstCrossAnchor(art.Path, art.Evidence)
 	for _, r := range rows {
 		ff, found, stale := latestFailFirst(evidence[r.ID], r.Command)
 		if !risky[r.ID] {
@@ -306,7 +306,12 @@ func failFirstClosureChecks(root, id, status string, art briefArtifacts, plan pr
 		if found && !stale && ff.State != baseUnproven && (cross != nil || crossWhy != "") {
 			fact.AncestryProblem = crossWhy
 			if cross != nil {
-				_, fact.AncestryProblem = crossRepoBaseAncestry(cross.root, ff.Base, cross.source)
+				if ok, why := crossRepoBaseAncestry(cross.root, ff.Base, cross.source); !ok {
+					fact.AncestryProblem = why
+					if why == "" {
+						fact.AncestryProblem = "its ancestry could not be shown"
+					}
+				}
 			}
 		} else if found && !stale && ff.State != baseUnproven {
 			if !mergeBaseDone {
@@ -328,7 +333,7 @@ func failFirstClosureChecks(root, id, status string, art briefArtifacts, plan pr
 			problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s could not run at base %s, so it was never shown to fail. Make the row runnable on the base tree, or re-author it, and re-run `statusgen verifyrun --fail-first`", id, status, r.ID, ff.Base))
 		default:
 			if why := fact.AncestryProblem; problem == "ancestry" && (cross != nil || crossWhy != "") {
-				problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its fail-first base comes from a cross-repository run and cannot be shown to be the attested deliverable source or an ancestor of it (base %s: %s), so its %s is not shown to be about the tree without this change. %s", id, status, r.ID, ff.Base, why, ff.State, crossRepoRemedy))
+				problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its fail-first base comes from a cross-repository run and cannot be shown to be the attested deliverable source or an ancestor of it (base %s: %s), so its %s is not shown to be about the tree without this change. %s", id, status, r.ID, ff.Base, why, ff.State, crossRemedy))
 				continue
 			}
 			if why := fact.AncestryProblem; problem == "ancestry" {
@@ -347,8 +352,14 @@ func failFirstClosureChecks(root, id, status string, art briefArtifacts, plan pr
 	return problems, notices
 }
 
-// crossRepoRemedy is what a cross-repository ancestry PROBLEM asks for.
+// crossRepoRemedy is what a cross-repository ancestry PROBLEM asks for when the
+// attestation binds and the base cannot be resolved or is not an ancestor.
 const crossRepoRemedy = "Name the deliverable checkout in DESK_ROOTS (or --sibling-root <owner>/<repo>=<path>) with the attested source fetched, or re-run `statusgen verifyrun --fail-first --base <the attested source or an ancestor of it>`"
+
+// crossRepoBindingRemedy is what it asks for when the attestation itself is
+// refused (unbound, malformed, or not for this brief): no checkout or --base
+// change clears that, only a run that records a binding attestation.
+const crossRepoBindingRemedy = "Record a cross-repository verify run for this brief whose selected PASS run carries its literal Verification-Attestation line, with repo= the brief's repository, brief= its repository-relative path and source= the run's source, and commit that run's Evidence"
 
 // ffCrossAnchor is where the closure gate resolves a cross-repository run's
 // fail-first base: root is the deliverable checkout, source the deliverable
@@ -388,30 +399,31 @@ var failFirstDeliverableRoot = func(repo string) (string, bool) {
 // brief at path (crossBindingBriefIdentity, the identity checks the
 // brief-version read applies), or when the deliverable repository
 // has no configured checkout. Without one the base cannot be checked, which is
-// never a pass.
-func failFirstCrossAnchor(path, evidence string) (*ffCrossAnchor, string) {
+// never a pass. remedy is the step the PROBLEM asks for: crossRepoBindingRemedy
+// when the attestation itself is refused, crossRepoRemedy otherwise.
+func failFirstCrossAnchor(path, evidence string) (anchor *ffCrossAnchor, why, remedy string) {
 	p, err := flipLatestPass(evidence)
 	if err != nil {
 		if unboundCrossAttestation(evidence) {
-			return nil, "its Evidence records a cross-repository attestation but no PASS run the gate can read binds it (" + err.Error() + ")"
+			return nil, "its Evidence records a cross-repository attestation but no PASS run the gate can read binds it (" + err.Error() + ")", crossRepoBindingRemedy
 		}
-		return nil, ""
+		return nil, "", ""
 	}
 	b, err := selectedRunCrossBinding(evidence, p)
 	if err != nil {
-		return nil, "its cross-repository attestation cannot be bound: " + err.Error()
+		return nil, "its cross-repository attestation cannot be bound: " + err.Error(), crossRepoBindingRemedy
 	}
 	if b == nil {
-		return nil, ""
+		return nil, "", ""
 	}
 	if err := crossBindingBriefIdentity(path, b); err != nil {
-		return nil, "its cross-repository attestation cannot be bound: " + err.Error()
+		return nil, "its cross-repository attestation cannot be bound: " + err.Error(), crossRepoBindingRemedy
 	}
 	root, ok := failFirstDeliverableRoot(b.sourceRepo)
 	if !ok {
-		return nil, "could not check: the deliverable repository " + b.sourceRepo + " has no configured checkout, so the base cannot be resolved"
+		return nil, "could not check: the deliverable repository " + b.sourceRepo + " has no configured checkout, so the base cannot be resolved", crossRepoRemedy
 	}
-	return &ffCrossAnchor{root: root, source: b.source}, ""
+	return &ffCrossAnchor{root: root, source: b.source}, "", crossRepoRemedy
 }
 
 // latestFailFirst reads a row's LATEST witness and answers whether it is a
