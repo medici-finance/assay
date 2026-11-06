@@ -59,7 +59,8 @@ Interactive Cursor desks opened by `desk` or `up` use Cursor's built-in
 with normal operator input and approvals in that chat. Use the updated Cursor
 bundle in the role worktree so the boot can read the
 [interactive cadence binding](../plugins/assay/references/cursor.md#interactive-desk-cadence).
-An explicit duration still selects the headless supervisor.
+An explicit duration still selects the headless supervisor. Changes to these
+launch defaults apply the next time a session starts.
 
 The same bootstrap covers host and scrubbed Codex desk argv. Native container cells
 run an independently pinned image entrypoint with its own paused/handoff contract;

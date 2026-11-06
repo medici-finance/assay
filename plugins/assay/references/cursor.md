@@ -59,9 +59,9 @@ They do not exist in Cursor.
 The in-editor agent is a supported install surface. Headless `cursor-agent` is the
 smoke/automation surface (HP/13); blocked live smoke does not mean "do not copy skills."
 
-Every mechanism and degradation cell below cites the measured Cursor capability matrix
-(HP/12, documentary + public-docs sweep, 2026-08-26 — **no live Cursor environment**;
-the rows a live install must settle stay flagged `[needs: live-install confirmation]`).
+The Cursor capability matrix (HP/12) records the documentary sweep from 2026-08-26.
+Rows that still need a live check are marked `[needs: live-install confirmation]`.
+The interactive cadence row also has a live test recorded under Freshness.
 
 Source of the capability set: the closed vocabulary block in
 [`../../../docs/streams/harness-portability/README.md`](../../../docs/streams/harness-portability/README.md).
@@ -166,8 +166,12 @@ permitted degradation, always stated.
 
 ## Freshness
 
-This binding is behavioural fact about a live harness, measured documentarily on
-2026-08-26 with no live environment. It is registered in `freshness.yaml`
-(harness-portability/12) so it expires on a clock, and the
-`[needs: live-install confirmation]` rows are re-measured once a Cursor environment
-exists (the live smoke is the stream's external head, human:<name>'s).
+The broader documentary review is registered in `freshness.yaml`
+(harness-portability/12). The rows marked `[needs: live-install confirmation]`
+remain open for live smoke testing.
+
+Interactive cadence was tested live on 2026-11-05 with Cursor CLI
+`2026.11.05-86047df`. In a fresh cell with a disposable 45-second verify desk,
+Cursor invoked `/loop` at boot. One shell approval let the timer start, and
+two scheduled wakes reached the original chat without further input.
+[Live test evidence](https://github.com/medici-finance/assay/pull/5521#validation)
