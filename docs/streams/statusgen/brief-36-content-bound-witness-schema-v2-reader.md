@@ -16,6 +16,9 @@ version: 1
 authored: "2026-10-20 by the-desk (design brief for the witness-staleness class)"
 gate-why: "It narrows a verification control. A v2 witness is released on content equality instead of commit ancestry, so a wrong digest scope or a wrong environment rule would release a stale pass. The driver signs off on the release policy in Human decision."
 decision-trigger: start
+decision-issue: 4394
+ruling: "https://github.com/medici-finance/assay/issues/4394#issuecomment-6673302154"
+design: DR-statusgen-36
 sources:
   - "medici-finance/assay#2026 — witnesses refused as wrong-revision: cause 1 squash-orphaned witness commits, cause 2 the whole-tree scope when no dependency manifest exists"
   - "medici-finance/assay#3105 — the stuck verified-to-done report (twelve briefs at filing)"
