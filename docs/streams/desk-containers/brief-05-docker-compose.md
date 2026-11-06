@@ -107,6 +107,33 @@ RISK-VALUE: DERIVED — name = intake-desk-work @ containers/compose.yaml:107 (a
 
 **VERIFY: PASS** — 5/5 Verify rows pass with 0 fail and 0 could-not-run at dbfa166d5d96. Gate: model; status left where it is.
 
+### Non-implementer verifier re-run — 2026-11-06 claude-opus-5-5 verifier at e9410e9e1354 (all five rows pass, host verifyrun witness)
+
+Fresh non-implementer re-verification on merged main e9410e9e1354, admitted by the dispatcher check (exit 0, binding medici-finance/assay#5584 run=05f090f1f6b6, carried in the attestation line under the table). containers/compose.yaml and containers/desk.env.example are unchanged since f16f4f1e9 (the follow-up to the delivering merge 379607771, medici-finance/assay#5227). No Verify row is classed check:ci, so the container bracket applies to no row. The table below is the witness `statusgen verifyrun` (v1.0.75) wrote in write mode on the darwin host from the admitted home, normal HOME, no forge variable set, TMPDIR outside the home. Row 1's fixture, outside the home: ASSAY_DESK_ENV_FILE named a one-line placeholder env-file (ANTHROPIC_MODEL only) and ASSAY_DESK_PEM_FILE_DIR a directory of five one-line placeholder PEM files (plain text, not keys). DOCKER_HOST named a socket that does not exist, so no engine was reachable: every row only parsed and resolved the compose file; no container, pull or network call took place.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `docker compose -f containers/compose.yaml config` | pass exit=0 | sha256:2e76a8900f39 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `docker compose -f containers/compose.yaml config --services \| sort` | pass exit=0 | sha256:687c0691217c | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `docker compose -f containers/compose.yaml config \| grep -c '/run/secrets/assay/app.pem'` | pass exit=0 | sha256:f0b5c2c2211c | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `docker compose -f containers/compose.yaml config --volumes \| wc -l` | pass exit=0 | sha256:30179a803d48 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -c -e 'ghs_' -e 'ghp_' -e 'github_pat_' -e 'sk-ant-' -e 'PRIVATE KEY' containers/compose.yaml containers/desk.env.example; test $? -eq 1` | pass exit=0 | sha256:2d8d2678bc4d | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5584 run=05f090f1f6b613c5b6f5e7b023a709578f0ca4f2f76de8afded3a6be50e97109 source=e9410e9e13540d3f9565de9d986334ea4b644bce brief=docs/streams/desk-containers/brief-05-docker-compose.md model=claude-opus-5-5 tier=any
+
+Reading of the witness (plain prose, no row credit):
+- `statusgen verifyrun --check` on the brief: 5 pass, 0 fail, 0 could-not-run/missing of 5 Verify rows.
+- Rows 2, 3 and 4 exit 0 whatever the count, so their Expect cells were read from output. A supplemental hand re-run of the row commands from the home, same fixture and environment (no row credit), reproduced row 1's digest 2e76a8900f39 and printed: row 2 the five lines intake-desk, pr-review-desk, the-desk, verify-desk, worker-desk; row 3 the count 5; row 4 the count 5 (wc-padded; volumes intake-desk-work, worker-desk-work, pr-review-desk-work, verify-desk-work, the-desk-work); row 5 a count of 0 for both files with grep exit 1, so the test exits 0. Rows 2 to 5 digests equal the 2026-11-02 run's; row 1's differs only because the resolved config embeds this run's fixture paths. Row 1's resolved config gives every service stdin_open and tty true, its own PEM secret at the app.pem target, its own volume on /work and only the fixture's placeholder model variable.
+- Fail-first: not run, because no row is risk-bearing. Every risk answer in the frontmatter is no and the Verify table has no row tags (columns #, Command, Expect only), so `--fail-first` has no row to run at base.
+- The Definition of Done's interactive-session parity claim needs a live engine and image; no Verify row covers it and it is not attested here.
+
+Enumeration (risk-bearing values). Not irreversible; risk metadata present and all no; the delivering diff (022d1744c, f16f4f1e9) touches no risk-classed path. Literals in containers/compose.yaml: secret target /run/secrets/assay/app.pem (lines 48, 57, 66, 75, 84); image tag default latest (lines 45, 54, 63, 72, 81); env-file default path (line 40); PEM directory default (lines 93 to 101); volume names (lines 106 to 115); stdin_open and tty true (lines 35, 36); project name assay-desks (line 32). containers/desk.env.example sets no live value (every line commented out). Ranked: the PEM target first (a desk would start without its App key), then the volume names (compose and launcher desks would see different /work), then the rest; every one is undone by an edit and redeploy.
+
+RISK-VALUE: DERIVED — target = /run/secrets/assay/app.pem @ containers/compose.yaml:48 — the path containers/secrets.md fixes (its table line 39 and section 2, line 55), the entrypoint's default (containers/entrypoint.sh:34) and the launcher's pem_dst (containers/desk-run.sh:53), so compose and desk-run.sh present one PEM surface.
+
+RISK-VALUE: DERIVED — name = intake-desk-work @ containers/compose.yaml:107 (siblings at lines 109, 111, 113, 115) — desk-run.sh mounts the volume named for the desk plus -work (containers/desk-run.sh:369), so these exact unprefixed names give one shared /work per desk across both surfaces and never one volume across desks.
+
+**VERIFY: PASS** — 5/5 Verify rows pass with 0 fail and 0 could-not-run at e9410e9e1354. Gate: model; status left where it is.
+
 ## Review
 Gate: model (all four risk answers no — declarative wiring of the human-gated brief-02
 contract; committed files carry placeholders only). Reviewer confirms rows 3-5 and
