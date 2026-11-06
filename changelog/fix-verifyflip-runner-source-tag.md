@@ -1,0 +1,2 @@
+### Fixed
+- `statusgen verifyflip` reads the rows of one latest PASS run as one runner when they share the login, the `@ <sha>` and every other qualifier (an on-behalf-of principal, `+dirty`) and differ only in the derived source tag (`(forge-identity)`, `(git-config)`, `(model verifier)` or none). A container-bracket row and a row the verifier recorded itself no longer refuse the flip. Any other difference, including an unknown or differently spelled tag, still refuses; when the rows' tags differ the Verified stamp names no source.
