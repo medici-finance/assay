@@ -399,16 +399,16 @@ a delivered current-owner repair records reuse and requalification, not new deli
 | Task 2: stable request reconciliation across caller/journal/provider commits | /42 | 2; joined /43 rerun retains SQL row 6 |
 | Task 3: start/observe/cancel/reconcile and capability-gated idle retention | /42 | 1,2,4 |
 | Task 3: duplicate prevention, unknown launch/stop holds, bounded restart | /42 | 2 |
-| Task 3: current role/profile/generation/budget before every launch and receipt | /42 | 1–3; joined /43 direct-bypass run |
+| Task 3: current role/profile/generation/budget before every launch and receipt | /42 | 1–3; 7 refuses a stale owner/claim generation at launch and at receipt delivery; joined /43 direct-bypass run |
 | Task 3: shared concurrency and preserved consumed allowance across callers/crash/restore | /41 | 1,4,5; endpoint composition /43 row 1 |
 | Task 4: runtime cannot administer profiles/credentials, arbitrary argv, raised limits or unconstrained children | /43 | 1,2 |
-| Task 4: inference credential confined; no secrets in packets/artifacts/logs | /43 | 1,2 plus independent security review of credential-free fake composition |
+| Task 4: inference credential confined; no secrets in packets/artifacts/logs | /43 | 2 checks the planted credential canary at the CLI/control surface and in the joined evidence bundle; /42 row 6 checks it in status, receipts, errors and logs; independent security review of credential-free fake composition is an extra check |
 | Task 4: unknown caller, missing/unreadable profile/binding/budget fail closed | /42 | 3; endpoint /43 row 1 preserves lower-boundary refusal |
-| Task 5: sanitized mode/caller/optional workflow state; attach/detach starts nothing | /43 | 1,2 |
+| Task 5: sanitized mode/caller/optional workflow state; attach/detach starts nothing | /43 | 1,2; /42 row 6 credential-canary redaction of argv and adapter errors |
 | Task 5: offline default, separate live activation, ownership/refusal documentation | /43 | 2 plus exact-source independent review; activation excluded |
 | Task 5: artifact-aware backup/restore preserves pause/spend/unknowns and is passive | /41 | 2,5 |
 | Task 6/R2: own PostgreSQL schema/versioned migrations, no fallback, journal transaction | /41 | 1,3,4 |
-| Task 6/R2: protected incarnation before each launch/delivery and paused mismatch/missing record | /41 | 2; supervisor enforcement /42 rows 1–3 |
+| Task 6/R2: protected incarnation before each launch/delivery and paused mismatch/missing record | /41 | 2; supervisor enforcement /42 rows 1–3 and 7 (stale generation at launch and receipt delivery) |
 | Task 6/R2: no embedded database or workflow import | /41 | 3; /42 row 1 guards graph-free composition |
 | Accounting amendment: launch counts/recursive creation are fail-closed brakes | /41 | 4; constrained endpoint /43 row 1 |
 | Accounting amendment: re-derived effect-class pacing is best effort and never source-of-truth cache | /41 | 4 |
