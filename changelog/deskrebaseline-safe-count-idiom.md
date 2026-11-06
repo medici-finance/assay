@@ -1,0 +1,2 @@
+### Added
+- `deskrebaseline` now produces `safe:count` and `safe:idiom`. A count row qualifies only when its one pinned count grew and `git diff` from the row's Evidence commit to `HEAD` shows only added lines in every target, with no rename, delete, mode or binary change. An idiom row qualifies only when an entry of the checked-in `retired-idioms.json` list, carrying a ruling reference, retires the idiom and the rewritten row passes its Expect. The list ships empty, and both classes fail closed (#5529).

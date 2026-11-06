@@ -15,7 +15,8 @@ import (
 // missing one, and (only when the pinned path is intact) whether the row's command still
 // runs and returns a different result. Gathering is kept OUT of classify.go so the decision
 // is a pure function of facts; the git and command seams below are package vars so a test
-// can supply a fixture without a checkout.
+// can supply a fixture without a checkout. The safe:count history proof lives in count.go and
+// the safe:idiom list in idiom.go.
 
 // gitOutput runs `git -C dir <args...>` and returns stdout (trimmed) and whether it
 // succeeded. It is a package var so tests can stub git. It never contacts a remote — every
@@ -98,18 +99,31 @@ func gatherRowFacts(repoRoot string, row verifyRow, riskBearing bool, riskReason
 		_, f.RenameProbe = probeRow(repoRoot, renamed(row.Command, f), renamed(row.ExpectCell, f))
 	}
 
-	// NOTE: this gatherer populates the rename + behaviour-probe facts only. It does NOT set
-	// CountShaped/OnlyAdditions (safe:count) or RetiredIdiom (safe:idiom): those classes are
-	// classifier-ready scaffolding not yet wired to a real fact source, so the shipped verb
-	// produces only safe:rename among the safe verdicts. Wiring them is a tracked follow-up;
-	// docs/rebaseline.md marks safe:count/safe:idiom not-yet-implemented for that reason.
+	// safe:idiom (#5529). Only an idiom the checked-in, ruling-referenced list retires is a
+	// candidate (idiom.go), and it is proof only once the row, rewritten to the replacement,
+	// passes its own Expect. Like the behaviour probe it runs only on an intact path.
+	if e, ok := retiredIdiomIn(row.Command); ok {
+		f.RetiredIdiom, f.IdiomRuling = e.Idiom, e.Ruling
+		if cmd, ok := rewriteIdiom(row.Command, e); ok && mayRun && (f.PathRef == "" || f.PathExists) {
+			_, f.IdiomProbe = probeRow(repoRoot, cmd, row.ExpectCell)
+		}
+	}
 
 	// Behaviour probe only when there is no stale-path question to answer first.
 	if mayRun && (f.PathRef == "" || f.PathExists) {
-		ran, j := probeRow(repoRoot, row.Command, row.ExpectCell)
+		ran, rc, out := runCommand(repoRoot, row.Command)
+		j := parseExpect(row.ExpectCell).judge(ran, rc, out)
 		f.CommandProbed = true
 		f.CommandRan = ran
 		f.RCDiffers = j == judgeFail // judged against the row's Expect, not rc != 0 (#1953)
+		// safe:count (#5529): a failing run that is only its one pinned count grown is
+		// CountShaped; OnlyAdditions is then proven, or not, from git history (count.go).
+		if f.RCDiffers {
+			if now, ok := countDrift(rc, out, row); ok {
+				f.CountShaped, f.CountNow = true, now
+				f.CountEvidence, f.OnlyAdditions = countAdditionsOnly(repoRoot, row)
+			}
+		}
 	}
 	return f
 }
