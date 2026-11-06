@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarryElement|TestHeldContainerFence|TestVerifyflip' -count=1 -timeout 300s",
+  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarryElement|TestHeldContainerFence|TestVerifyflip|TestHeldRecounted' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — supersession drops every earlier hold (the S1 defect)",
     "file": "heldscope.go",
@@ -1596,6 +1596,372 @@
       "file": "heldscope.go",
       "old": "\tif s, _ := stripRowComments(p.Run); s != p.Run {",
       "new": "\tif s, _ := stripRowComments(p.Run); s != p.Run && false {"
+    },
+    {
+      "name": "#4721 rule 6: recounted prose is not excused",
+      "file": "verifyissues.go",
+      "old": "if cuts == nil && !heldProseExempt(line, read, inTable) && heldRecounted(clean, line, h) {",
+      "new": "if false && cuts == nil && !heldProseExempt(line, read, inTable) && heldRecounted(clean, line, h) {"
+    },
+    {
+      "name": "#4721 rule 6: every prose occurrence is excused",
+      "file": "heldscope.go",
+      "old": "func heldRecounted(clean, raw string, h []int) bool {\n",
+      "new": "func heldRecounted(clean, raw string, h []int) bool {\n\treturn true\n"
+    },
+    {
+      "name": "#4721 rule 6: a struck line is excused (read on its cut text)",
+      "file": "verifyissues.go",
+      "old": "if cuts == nil && !heldProseExempt(line, read, inTable) && heldRecounted(clean, line, h) {",
+      "new": "if !heldProseExempt(line, read, inTable) && heldRecounted(clean, clean, h) {"
+    },
+    {
+      "name": "#4721 rule 6: a pipe line is excused",
+      "file": "verifyissues.go",
+      "old": "\t\tstrings.Contains(line, \"|\") || heldHTMLTableRe.MatchString(line)\n",
+      "new": "\t\theldHTMLTableRe.MatchString(line)\n"
+    },
+    {
+      "name": "#4721 rule 6: an HTML table line is excused",
+      "file": "verifyissues.go",
+      "old": "\t\tstrings.Contains(line, \"|\") || heldHTMLTableRe.MatchString(line)\n",
+      "new": "\t\tstrings.Contains(line, \"|\")\n"
+    },
+    {
+      "name": "#4721 rule 6: a line inside a multi-line HTML table is excused",
+      "file": "verifyissues.go",
+      "old": "return inTable || read.key != \"\"",
+      "new": "return read.key != \"\""
+    },
+    {
+      "name": "#4721 rule 6: a capital or mixed-case occurrence is excused",
+      "file": "heldscope.go",
+      "old": "if word != \"held\" && word != \"could-not-check\" {",
+      "new": "if !strings.EqualFold(word, \"held\") && !strings.EqualFold(word, \"could-not-check\") {"
+    },
+    {
+      "name": "#4721 rule 6: a zero tally needs no clause break before it",
+      "file": "heldscope.go",
+      "old": "heldTallyAfterRe.MatchString(after) && heldTallyBeforeRe.MatchString(before) &&\n\t\t!heldNamesRow(raw[:h[0]]) && !heldShortRatio(clean) &&\n\t\t!heldNoRunRe.MatchString(heldSentenceOf(clean, raw, h)) {",
+      "new": "heldTallyAfterRe.MatchString(after) &&\n\t\t!heldNamesRow(raw[:h[0]]) && !heldShortRatio(clean) &&\n\t\t!heldNoRunRe.MatchString(heldSentenceOf(clean, raw, h)) {"
+    },
+    {
+      "name": "#4721 rule 6: a zero tally after a row is excused",
+      "file": "heldscope.go",
+      "old": "heldTallyAfterRe.MatchString(after) && heldTallyBeforeRe.MatchString(before) &&\n\t\t!heldNamesRow(raw[:h[0]]) && !heldShortRatio(clean) &&\n\t\t!heldNoRunRe.MatchString(heldSentenceOf(clean, raw, h)) {",
+      "new": "heldTallyAfterRe.MatchString(after) && heldTallyBeforeRe.MatchString(before) &&\n\t\t!heldShortRatio(clean) &&\n\t\t!heldNoRunRe.MatchString(heldSentenceOf(clean, raw, h)) {"
+    },
+    {
+      "name": "#4721 rule 6: a row in inline code before a zero tally is excused",
+      "file": "heldscope.go",
+      "old": "heldTallyAfterRe.MatchString(after) && heldTallyBeforeRe.MatchString(before) &&\n\t\t!heldNamesRow(raw[:h[0]]) && !heldShortRatio(clean) &&\n\t\t!heldNoRunRe.MatchString(heldSentenceOf(clean, raw, h)) {",
+      "new": "heldTallyAfterRe.MatchString(after) && heldTallyBeforeRe.MatchString(before) &&\n\t\t!heldNamesRow(before) && !heldShortRatio(clean) &&\n\t\t!heldNoRunRe.MatchString(heldSentenceOf(clean, raw, h)) {"
+    },
+    {
+      "name": "#4721 rule 6: a zero tally beside a short ratio is excused",
+      "file": "heldscope.go",
+      "old": "heldTallyAfterRe.MatchString(after) && heldTallyBeforeRe.MatchString(before) &&\n\t\t!heldNamesRow(raw[:h[0]]) && !heldShortRatio(clean) &&\n\t\t!heldNoRunRe.MatchString(heldSentenceOf(clean, raw, h)) {",
+      "new": "heldTallyAfterRe.MatchString(after) && heldTallyBeforeRe.MatchString(before) &&\n\t\t!heldNamesRow(raw[:h[0]]) &&\n\t\t!heldNoRunRe.MatchString(heldSentenceOf(clean, raw, h)) {"
+    },
+    {
+      "name": "#4721 rule 6: a zero followed by a noun is a tally",
+      "file": "heldscope.go",
+      "old": "0[ \\t]*(?:[;,)]|",
+      "new": "0[ \\t]*(?:[;,)]|[ \\t]+[a-z]|"
+    },
+    {
+      "name": "#4721 rule 6: a row is only a row word and a number",
+      "file": "heldscope.go",
+      "old": "`(?i)\\b(?:rows?(?:\\b|[0-9])|r[0-9])`",
+      "new": "`(?i)\\brows?[ \\t]+#?[0-9]`"
+    },
+    {
+      "name": "#4721 rule 6: a mutation verb is not needed before the state",
+      "file": "heldscope.go",
+      "old": "if !heldRoundBeforeRe.MatchString(before) || !heldRoundAfterRe.MatchString(after) {",
+      "new": "if !heldRoundAfterRe.MatchString(after) {"
+    },
+    {
+      "name": "#4721 rule 6: a mutation target is not needed after the state",
+      "file": "heldscope.go",
+      "old": "if !heldRoundBeforeRe.MatchString(before) || !heldRoundAfterRe.MatchString(after) {",
+      "new": "if !heldRoundBeforeRe.MatchString(before) {"
+    },
+    {
+      "name": "#4721 rule 6: a past-tense or synonym mutation verb is excused",
+      "file": "heldscope.go",
+      "old": "`\\brounds[ \\t]+$`",
+      "new": "`\\b(?:rounds|rounded|coerces|converts)[ \\t]+$`"
+    },
+    {
+      "name": "#4721 rule 6: a synonym mutation target is excused",
+      "file": "heldscope.go",
+      "old": "`^[ \\t]+to[ \\t]+pass\\b`",
+      "new": "`^[ \\t]+(?:to|into)[ \\t]+(?:pass|green|success)\\b`"
+    },
+    {
+      "name": "#4721 rule 6: a mutation sentence with a no-run reason is excused",
+      "file": "heldscope.go",
+      "old": "if heldNoRunRe.MatchString(raw) {\n\t\treturn false // a reason the run",
+      "new": "if false {\n\t\treturn false // a reason the run"
+    },
+    {
+      "name": "#4721 rule 6: the no-run reason is only the word offline",
+      "file": "heldscope.go",
+      "old": "(?:offline|un(?:available|reachable)|absent|down|skipped|never|not|[a-z]+n['’]t|without|no[ \\t]+(?:runners?|clusters?|hosts?|mutations?|mutants?)|cannot)",
+      "new": "(?:offline)"
+    },
+    {
+      "name": "#4721 rule 6: any subject may round outside a parenthesis",
+      "file": "heldscope.go",
+      "old": "return heldRoundSubjRe.MatchString(before) && !heldNamesRow(raw)",
+      "new": "return !heldNamesRow(raw)"
+    },
+    {
+      "name": "#4721 rule 6: a row outside any mutation parenthesis is excused",
+      "file": "heldscope.go",
+      "old": "return heldRoundSubjRe.MatchString(before) && !heldNamesRow(raw)",
+      "new": "return heldRoundSubjRe.MatchString(before)"
+    },
+    {
+      "name": "#4721 rule 6: a row in inline code outside a parenthesis is excused",
+      "file": "heldscope.go",
+      "old": "return heldRoundSubjRe.MatchString(before) && !heldNamesRow(raw)",
+      "new": "return heldRoundSubjRe.MatchString(before) && !heldNamesRow(before+after)"
+    },
+    {
+      "name": "#4721 rule 6: a mutation parenthesis need not close at the target",
+      "file": "heldscope.go",
+      "old": "return heldRoundCloseRe.MatchString(after) && !heldNamesRow(raw[open:len(before)]) &&",
+      "new": "return !heldNamesRow(raw[open:len(before)]) &&"
+    },
+    {
+      "name": "#4721 rule 6: a row inside the mutation parenthesis is excused",
+      "file": "heldscope.go",
+      "old": "return heldRoundCloseRe.MatchString(after) && !heldNamesRow(raw[open:len(before)]) &&",
+      "new": "return heldRoundCloseRe.MatchString(after) &&"
+    },
+    {
+      "name": "#4721 rule 6: a mutation parenthesis need not follow row N",
+      "file": "heldscope.go",
+      "old": "heldRoundItemRe.MatchString(before[:open]) && heldMutationRe.MatchString(lead)",
+      "new": "heldMutationRe.MatchString(lead)"
+    },
+    {
+      "name": "#4721 rule 6: a mutation parenthesis needs no mutation named before it",
+      "file": "heldscope.go",
+      "old": "heldRoundItemRe.MatchString(before[:open]) && heldMutationRe.MatchString(lead)",
+      "new": "heldRoundItemRe.MatchString(before[:open])"
+    },
+    {
+      "name": "#4721 rule 6: a mutation named in an earlier sentence counts",
+      "file": "heldscope.go",
+      "old": "if s := heldSentenceRe.FindAllStringIndex(lead, -1); s != nil {",
+      "new": "if s := heldSentenceRe.FindAllStringIndex(lead, -1); false && s != nil {"
+    },
+    {
+      "name": "#4721 rule 6: a flip hold needs no tracker",
+      "file": "heldscope.go",
+      "old": "if m == nil || !heldFlipAfterRe.MatchString(after) {",
+      "new": "if m == nil {"
+    },
+    {
+      "name": "#4721 rule 6: a tracker needs no flip before it",
+      "file": "heldscope.go",
+      "old": "m := heldFlipBeforeRe.FindStringSubmatch(before)\n",
+      "new": "m := append(heldFlipBeforeRe.FindStringSubmatch(before), \"\", \"\")\n"
+    },
+    {
+      "name": "#4721 rule 6: a present-tense flip hold is excused",
+      "file": "heldscope.go",
+      "old": "flip[ \\t]+(?:was|had[ \\t]+been)",
+      "new": "flip[ \\t]+(?:is|was|had[ \\t]+been)"
+    },
+    {
+      "name": "#4721 rule 6: any flip possessor is excused",
+      "file": "heldscope.go",
+      "old": "`(?i)\\b(?:the[ \\t]+(?:earlier|previous|prior)|(its))(?:[ \\t]+board)?[ \\t]+flip",
+      "new": "`(?i)()(?:\\b[A-Za-z']+[ \\t]+)?(?:board[ \\t]+)?flip"
+    },
+    {
+      "name": "#4721 rule 6: a tracker followed by a reason is excused",
+      "file": "heldscope.go",
+      "old": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry[ \\t]+is[ \\t]+a[ \\t]+fresh(?:,[ \\t]*complete)?[ \\t]+(?:re-?)?run(?:[ \\t]+of[ \\t]+every[ \\t]+row)?\\.?[ \\t]*$)`)",
+      "new": "#[1-9][0-9]*`)"
+    },
+    {
+      "name": "#4721 rule 6: a tracker followed by a comma, semicolon or paren clause is excused",
+      "file": "heldscope.go",
+      "old": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry[ \\t]+is[ \\t]+a[ \\t]+fresh(?:,[ \\t]*complete)?[ \\t]+(?:re-?)?run(?:[ \\t]+of[ \\t]+every[ \\t]+row)?\\.?[ \\t]*$)`)",
+      "new": "#[1-9][0-9]*(?:[;,)]|\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry[ \\t]+is[ \\t]+a[ \\t]+fresh(?:,[ \\t]*complete)?[ \\t]+(?:re-?)?run(?:[ \\t]+of[ \\t]+every[ \\t]+row)?\\.?[ \\t]*$)`)"
+    },
+    {
+      "name": "#4721 rule 6: any sentence may follow the tracker",
+      "file": "heldscope.go",
+      "old": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry[ \\t]+is[ \\t]+a[ \\t]+fresh(?:,[ \\t]*complete)?[ \\t]+(?:re-?)?run(?:[ \\t]+of[ \\t]+every[ \\t]+row)?\\.?[ \\t]*$)`)",
+      "new": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+)`)"
+    },
+    {
+      "name": "#4721 rule 6: a flip hold said to be still in force is excused",
+      "file": "heldscope.go",
+      "old": "if heldStillRe.MatchString(clean) {\n\t\treturn false // the line says",
+      "new": "if false {\n\t\treturn false // the line says"
+    },
+    {
+      "name": "#4721 rule 6: a row-named flip hold is excused",
+      "file": "heldscope.go",
+      "old": "if heldNamesRow(raw[:len(before)]) || heldVerifiedRe.MatchString(clean) {",
+      "new": "if heldVerifiedRe.MatchString(clean) {"
+    },
+    {
+      "name": "#4721 rule 6: a verified flip hold is excused",
+      "file": "heldscope.go",
+      "old": "if heldNamesRow(raw[:len(before)]) || heldVerifiedRe.MatchString(clean) {",
+      "new": "if heldNamesRow(raw[:len(before)]) {"
+    },
+    {
+      "name": "#4721 rule 6: its flip needs no earlier PASS or entry",
+      "file": "heldscope.go",
+      "old": "\treturn heldEarlierRe.MatchString(clause) && !heldContrastRe.MatchString(clause)\n",
+      "new": "\treturn clause == clause\n"
+    },
+    {
+      "name": "#4721 rule 6: its flip reads the whole line for an earlier PASS",
+      "file": "heldscope.go",
+      "old": "if s := heldClauseRe.FindAllStringIndex(before, -1); s != nil {",
+      "new": "if s := heldClauseRe.FindAllStringIndex(before, -1); false && s != nil {"
+    },
+    {
+      "name": "#4721 rule 6: any earlier word names an earlier entry",
+      "file": "heldscope.go",
+      "old": "`(?i)^[ \\t]*the[ \\t]+(?:earlier|previous|prior)[ \\t]+(?:PASS|entry)\\b`",
+      "new": "`(?i)\\b(?:earlier|previous|prior)\\b`"
+    },
+    {
+      "name": "#4721 rule 6: any possessor before earlier is excused",
+      "file": "heldscope.go",
+      "old": "`(?i)\\b(?:the[ \\t]+(?:earlier|previous|prior)|(its))(?:[ \\t]+board)?[ \\t]+flip",
+      "new": "`(?i)\\b(?:(?:\\S+[ \\t]+)?(?:earlier|previous|prior)|(its))(?:[ \\t]+board)?[ \\t]+flip"
+    },
+    {
+      "name": "#4721 rule 6: any This entry sentence may follow the tracker",
+      "file": "heldscope.go",
+      "old": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry[ \\t]+is[ \\t]+a[ \\t]+fresh(?:,[ \\t]*complete)?[ \\t]+(?:re-?)?run(?:[ \\t]+of[ \\t]+every[ \\t]+row)?\\.?[ \\t]*$)`)",
+      "new": "#[1-9][0-9]*\\)?(?:\\.?[ \\t]*$|\\.[ \\t]+This[ \\t]+entry\\b)`)"
+    },
+    {
+      "name": "#4721 rule 6: its flip may contrast with the earlier entry",
+      "file": "heldscope.go",
+      "old": "\treturn heldEarlierRe.MatchString(clause) && !heldContrastRe.MatchString(clause)\n",
+      "new": "\treturn heldEarlierRe.MatchString(clause)\n"
+    },
+    {
+      "name": "#4721 rule 6: the earlier entry need not open its clause",
+      "file": "heldscope.go",
+      "old": "`(?i)^[ \\t]*the[ \\t]+(?:earlier|previous|prior)[ \\t]+(?:PASS|entry)\\b`",
+      "new": "`(?i)\\bthe[ \\t]+(?:earlier|previous|prior)[ \\t]+(?:PASS|entry)\\b`"
+    },
+    {
+      "name": "#4721 rule 6: a mutation parenthesis may have any subject",
+      "file": "heldscope.go",
+      "old": "heldMutationRe.MatchString(lead) &&\n\t\t\theldRoundItemSubject(before[open:])\n",
+      "new": "heldMutationRe.MatchString(lead)\n"
+    },
+    {
+      "name": "#4721 rule 6: an article may open a mutation parenthesis subject",
+      "file": "heldscope.go",
+      "old": "`(?i)^(?:the|a|an|this|that|these|those|my|your|his|her|its|our|their|whose|which|what|some|any|each|every|all|both|either|neither|no|another)\\b|\\b(?:verif",
+      "new": "`(?i)\\b(?:verif"
+    },
+    {
+      "name": "#4721 rule 6: a run word may be a mutation parenthesis subject",
+      "file": "heldscope.go",
+      "old": "|\\b(?:verif\\w*|gates?|runners?|runs?|harness\\w*|checks?|smoke|ci|pipelines?|jobs?|workflows?|scans?|statusgen|probes?|suites?|tests?|hosts?|clusters?)\\b`)",
+      "new": "`)"
+    },
+    {
+      "name": "#4721 rule 6: a mutation parenthesis subject may be any length",
+      "file": "heldscope.go",
+      "old": "(?:[ \\t]+[a-z][a-z-]*){0,2})[ \\t]+[a-z]+",
+      "new": "(?:[ \\t]+[a-z][a-z-]*)*)[ \\t]+[a-z]+"
+    },
+    {
+      "name": "#4721 rule 6: a contracted negation is no no-run reason",
+      "file": "heldscope.go",
+      "old": "|not|[a-z]+n['’]t|without|",
+      "new": "|not|without|"
+    },
+    {
+      "name": "#4721 rule 6: a table close tag in code ends the table",
+      "file": "heldscope.go",
+      "old": "heldHTMLLive(heldOutsideBackticks(masked), st)",
+      "new": "heldHTMLLive(masked, st)"
+    },
+    {
+      "name": "#4721 rule 6: a table close tag in a comment ends the table",
+      "file": "heldscope.go",
+      "old": "case strings.HasPrefix(s[i:], \"<!--\"):\n\t\t\tst.comment, n = true, 4\n",
+      "new": "case false:\n"
+    },
+    {
+      "name": "#4721 rule 6: an HTML comment or start tag never carries to the next line",
+      "file": "heldscope.go",
+      "old": "\treturn string(b), st\n}",
+      "new": "\treturn string(b), heldHTMLLex{}\n}"
+    },
+    {
+      "name": "#4721 rule 6: a no-run reason in a zero tally's sentence is excused",
+      "file": "heldscope.go",
+      "old": "!heldShortRatio(clean) &&\n\t\t!heldNoRunRe.MatchString(heldSentenceOf(clean, raw, h)) {",
+      "new": "!heldShortRatio(clean) {"
+    },
+    {
+      "name": "#4721 rule 6: a tally's sentence starts at the state word",
+      "file": "heldscope.go",
+      "old": "from, to := 0, len(clean)",
+      "new": "from, to := h[0], len(clean)"
+    },
+    {
+      "name": "#4721 rule 6: a tally's sentence ends at the state word",
+      "file": "heldscope.go",
+      "old": "to = h[1] + e[1]",
+      "new": "to = h[1]"
+    },
+    {
+      "name": "#4721 rule 6: a flip line with a no-run reason is excused",
+      "file": "heldscope.go",
+      "old": "if heldNoRunRe.MatchString(raw) {\n\t\treturn false // this entry gives",
+      "new": "if false {\n\t\treturn false // this entry gives"
+    },
+    {
+      "name": "#4721 rule 6: cannot is no no-run reason",
+      "file": "heldscope.go",
+      "old": "|cannot)",
+      "new": ")"
+    },
+    {
+      "name": "#4721 rule 6: only eight determiners close a mutation parenthesis subject",
+      "file": "heldscope.go",
+      "old": "`(?i)^(?:the|a|an|this|that|these|those|my|your|his|her|its|our|their|whose|which|what|some|any|each|every|all|both|either|neither|no|another)\\b|\\b(?:verif",
+      "new": "`(?i)^(?:the|a|an|this|that|our|its|their)\\b|\\b(?:verif"
+    },
+    {
+      "name": "#4721 rule 6: any table close prefix ends the table",
+      "file": "heldscope.go",
+      "old": "`(?i)</table(?:[ \\t\\r\\n\\f/>]|$)`",
+      "new": "`(?i)</table\\b`"
+    },
+    {
+      "name": "#4721 rule 6: a close tag inside a start tag ends the table",
+      "file": "heldscope.go",
+      "old": "case c == '<' && i+1 < len(b) && 'a' <= b[i+1]|0x20 && b[i+1]|0x20 <= 'z':",
+      "new": "case false:"
+    },
+    {
+      "name": "#4721 rule 6: a > inside a quoted attribute value ends the start tag",
+      "file": "heldscope.go",
+      "old": "\t\t\tif c == '\"' || c == '\\'' {\n\t\t\t\tst.quote = c\n\t\t\t} else if c == '>' {",
+      "new": "\t\t\tif c == '>' {"
     }
   ]
 }
