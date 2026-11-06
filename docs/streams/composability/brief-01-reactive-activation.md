@@ -612,6 +612,12 @@ RISK-VALUE: N/A — irreversibility — every value above is code, reversible by
 
 `statusgen verifyrun --check` over this Evidence: rc=1, `10 pass, 1 fail, 0 could-not-run/missing (of 11 Verify rows); 0 author-added with no acceptance credit`. Its one fail is row 8, the prose-execution defect described above.
 
+#### Correction — 2026-11-06 rework
+
+Two statements in this section are wrong about row 8, and this paragraph supersedes them. The row-8 bullet under "Reading of the witness" says "No ruling is recorded in this tree", and the verdict line below gives the blocker as human-action, waiting on the owner ruling on medici-finance/assay#1261. That ruling was recorded before this run started at 15:16:15Z. The driver's own comment, https://github.com/medici-finance/assay/issues/1261#issuecomment-6671787334 (2026-11-05T23:01:38Z), picks the NOTICE option: an unknown `ASSAY_*` roster key warns and does not refuse. The issue was closed `human-decided` at 2026-11-05T23:32:38Z, naming medici-finance/assay#5527 as the tracker for the remaining work. Only the brief's own text still describes the ruling as pending: row 8's Expect at line 95 was written before the ruling.
+
+Row 8's Expect says "A NOTICE ruling needs a new implementing brief". Row 8 therefore no longer waits on a person. It waits on implementation of the NOTICE behaviour, tracked by medici-finance/assay#5527 (an open draft at this rework), and on an amendment of row 8 to pin that behaviour. Row 8's Expect records that the delivered loader refuses the whole configuration on an unknown `ASSAY_*` key; this run did not re-test that. The row results do not change: rows 1-7 and 9-11 pass, row 8 is not credited, and the outcome stays blocked. Only the blocker class changes, to implementation cited on medici-finance/assay#5527, in place of human-action on medici-finance/assay#1261. The verify-outcome record is re-landed with that class, and the earlier record this PR added is removed. The row-8 `fail exit=2` witness line remains a verifyrun defect (a prose `gate:human` Command cell executed as shell), now linked on medici-finance/assay#5575. Status stays implemented.
+
 **VERIFY: BLOCKED** — human-action, on merged main 7ded00183785: 10 of 11 rows pass (rows 1-7 and 9-11); row 8 is not run because it waits on the owner ruling on medici-finance/assay#1261, so status stays implemented.
 
 ## Review
