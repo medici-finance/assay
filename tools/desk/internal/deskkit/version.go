@@ -88,6 +88,17 @@ var hotfixIneligiblePaths = []string{
 	"tools/desk/internal/deskkit/hotfixowner_windows.go",
 	"tools/desk/internal/deskkit/hotfixexec_unix.go",
 	"tools/desk/internal/deskkit/hotfixexec_windows.go",
+	// statusgen's own copy of the hotfix identity (its own module), its version gate and its
+	// schema migrations: a statusgen hotfix can never rewrite the rules it is checked against
+	"statusgen/migrate.go",
+	"statusgen/versiongate.go",
+	"statusgen/hotfixself.go",
+	"statusgen/hotfixseam_off.go",
+	"statusgen/hotfixseam_on.go",
+	"statusgen/hotfixowner_unix.go",
+	"statusgen/hotfixowner_windows.go",
+	"statusgen/hotfixexec_unix.go",
+	"statusgen/hotfixexec_windows.go",
 }
 
 // HotfixIneligiblePaths returns a copy of the compiled ineligible-path list.

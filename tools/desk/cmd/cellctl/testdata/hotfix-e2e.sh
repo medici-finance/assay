@@ -3,7 +3,8 @@
 #
 #   install overlay -> shim generation -> `running hotfix` (deskboot step) -> `HOTFIX:`
 #   (deskboard header) -> pin moved -> `hotfix outlived its pin` (deskboot, exit 6) ->
-#   regenerate shims -> `all pinned (v1.0.42)`
+#   regenerate shims -> `all pinned (v1.0.42)` -> a statusgen hotfix over statusgen's own pin
+#   line (install, its own --version, its self-check refusing once that line moves)
 #
 # Nothing here touches the real install dir, overlay dir, cells root or network: HOME, the
 # cell, the pinned dir and the overlay dir are temp dirs, the source is a local bare clone, the
@@ -57,7 +58,7 @@ echo "built cellctl and pinned deskboard (v1.0.41)"
 
 step "offline source: a bare clone of this tree, plus the release workflow's GO_VERSION"
 mkdir -p "$tmp/work/src"
-( cd "$repo" && git ls-files -co --exclude-standard -z -- tools/desk comms forgeread perfrec gitquiet deskcore statusgen |
+( cd "$repo" && git ls-files -co --exclude-standard -z -- tools/desk comms forgeread perfrec gitquiet deskcore gitcore statusgen |
   python3 -I -c '
 import os, shutil, sys
 dst = sys.argv[1]
@@ -105,7 +106,12 @@ for _ in $(seq 1 50); do [ -s "$tmp/work/forge.port" ] && break; sleep 0.1; done
 
 # The cell's worktree: pins desk-tools v1.0.41.
 mkdir -p "$tmp/repo"
-pins() { printf 'desk-tools %s 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n' "$1" > "$tmp/repo/.assay-versions"; }
+pins() { # pins <desk-tools tag> [<statusgen tag>]
+  printf 'desk-tools %s 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n' "$1" > "$tmp/repo/.assay-versions"
+  if [ -n "${2:-}" ]; then
+    printf 'statusgen %s 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n' "$2" >> "$tmp/repo/.assay-versions"
+  fi
+}
 pins v1.0.41
 
 export ASSAY_HOTFIXSEAM_ROOT_UID="$mykuid"
@@ -161,5 +167,30 @@ step "8. deskboot is clean again"
 boot_step | tee "$tmp/work/boot3.out"
 expect boot-pinned "$tmp/work/boot3.out" "all pinned (v1.0.42)"
 expect boot-exit0 "$tmp/work/boot3.out" "exit=0"
+
+step "9. statusgen is hotfixed over its OWN pin line (statusgen v1.0.40, desk-tools v1.0.42)"
+pins v1.0.42 v1.0.40
+( cd "$tmp/repo" && "$tmp/pinned/cellctl" hotfix install statusgen --source "$sha" ) 2>&1 | tee "$tmp/work/sg-install.out"
+expect sg-install "$tmp/work/sg-install.out" "statusgen v1.0.40+hotfix-${sha:0:12} over pin v1.0.40"
+( cd "$tmp/repo" && "$tmp/overlay/bin/statusgen" --version ) 2>&1 | tee "$tmp/work/sg-version.out"
+expect sg-version "$tmp/work/sg-version.out" "v1.0.40+hotfix-${sha:0:12}"
+# status exits 1 here: step 1's deskboard entry outlived the desk-tools pin back in step 5.
+( cd "$tmp/repo" && "$tmp/pinned/cellctl" hotfix status ) > "$tmp/work/sg-status.out" 2>&1 || true
+cat "$tmp/work/sg-status.out"
+expect sg-status "$tmp/work/sg-status.out" "hotfix statusgen v1.0.40+hotfix-${sha:0:12} over pin v1.0.40"
+
+step "10. statusgen's pin line moves; its own self-check refuses (exit 6), or runs the pinned fallback"
+pins v1.0.42 v1.0.41
+printf '#!/bin/sh\necho v1.0.41\n' > "$tmp/pinned/statusgen"; chmod 0755 "$tmp/pinned/statusgen"
+set +e
+( cd "$tmp/repo" && "$tmp/overlay/bin/statusgen" --version ) > "$tmp/work/sg-outlived.out" 2>&1
+echo "exit=$?" >> "$tmp/work/sg-outlived.out"
+set -e
+cat "$tmp/work/sg-outlived.out"
+expect sg-outlived "$tmp/work/sg-outlived.out" "hotfix outlived its pin"
+expect sg-exit6 "$tmp/work/sg-outlived.out" "exit=6"
+( cd "$tmp/repo" && DESK_HOTFIX_FALLBACK="$tmp/pinned/statusgen" "$tmp/overlay/bin/statusgen" --version ) 2>&1 | tee "$tmp/work/sg-fallback.out"
+expect sg-notice "$tmp/work/sg-fallback.out" "statusgen NOTICE: hotfix v1.0.40+hotfix-${sha:0:12} refused"
+expect sg-pinned "$tmp/work/sg-fallback.out" "v1.0.41"
 
 printf '\nhotfix-e2e: OK\n'

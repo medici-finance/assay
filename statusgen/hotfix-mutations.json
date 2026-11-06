@@ -1,0 +1,137 @@
+{
+  "test": "go test . -count=1 -timeout 300s -run '^(TestStatusgenHotfixSelf|TestStatusgenHotfixParity|TestStatusgenHotfixReaders|TestStatusgenHotfixNetnsRoot|TestStatusgenHotfixPinReader)$'",
+  "control": {
+    "name": "CONTROL: invert the valid-proceeds assertion in TestStatusgenHotfixSelf",
+    "file": "hotfixself_test.go",
+    "old": "\t\tif v.Skip || v.Reason != \"\" || v.Pin != sgFixBase {",
+    "new": "\t\tif !(v.Skip || v.Reason != \"\" || v.Pin != sgFixBase) {"
+  },
+  "mutations": [
+    {
+      "name": "F1 PRE-FIX: the network-off helper checks ownership by uid 0, as every other invocation does (TestStatusgenHotfixNetnsRoot)",
+      "file": "hotfixself.go",
+      "old": "\tif len(args) >= 2 && args[1] == netnsHelperArg {",
+      "new": "\tif false && len(args) >= 2 && args[1] == netnsHelperArg {"
+    },
+    {
+      "name": "F1: the namespace owner check applies to every invocation, not only the helper (ordinary invocation must stay on uid 0)",
+      "file": "hotfixself.go",
+      "old": "\tif len(args) >= 2 && args[1] == netnsHelperArg {",
+      "new": "\tif len(args) >= 2 {"
+    },
+    {
+      "name": "F1: in the helper a uid-0 parent (the mapped caller) is still accepted as root",
+      "file": "hotfixowner_unix.go",
+      "old": "func sgHotfixOwnedByRoot(root uint32) func(string) error { return sgHotfixOwnedByIn(root, root) }",
+      "new": "func sgHotfixOwnedByRoot(root uint32) func(string) error { return sgHotfixOwnedByIn(root, 0) }"
+    },
+    {
+      "name": "F1: a mapped overflow uid is not treated as ambiguous",
+      "file": "hotfixself.go",
+      "old": "\t\tif ov >= e.inside && ov < e.inside+e.count {",
+      "new": "\t\tif false && ov >= e.inside && ov < e.inside+e.count {"
+    },
+    {
+      "name": "F1: a line mapping outside uid 0 is ignored (root always read as the overflow uid)",
+      "file": "hotfixself.go",
+      "old": "\t\tif e.outside == 0 {",
+      "new": "\t\tif false && e.outside == 0 {"
+    },
+    {
+      "name": "F1: a zero-length extent is accepted",
+      "file": "hotfixself.go",
+      "old": "err != nil || e.count == 0 {",
+      "new": "err != nil {"
+    },
+    {
+      "name": "A3: a pin line matches its name without the literal space (tab-separated lines resolve)",
+      "file": "hotfixself.go",
+      "old": "\t\t\tif !strings.HasPrefix(strings.TrimSpace(line), n+\" \") {",
+      "new": "\t\t\tif f := strings.Fields(line); len(f) == 0 || f[0] != n {"
+    },
+    {
+      "name": "A3: an unreadable nearer pin file is walked past",
+      "file": "hotfixself.go",
+      "old": "\t\tif _, err := os.Stat(p); err == nil {\n\t\t\tb, err := os.ReadFile(p)\n\t\t\tif err != nil {\n\t\t\t\treturn \"\"\n\t\t\t}\n\t\t\traw = b",
+      "new": "\t\tif b, err := os.ReadFile(p); err == nil {\n\t\t\traw = b"
+    },
+    {
+      "name": "the platform pin line is not read",
+      "file": "hotfixself.go",
+      "old": "\t\tnames = append(names, \"statusgen-\"+p)\n",
+      "new": "\n"
+    },
+    {
+      "name": "the owner checks on the overlay, its bin and the file are skipped",
+      "file": "hotfixself.go",
+      "old": "\t\tif err := in.Owner(p); err != nil {",
+      "new": "\t\tif err := in.Owner(p); err != nil && false {"
+    },
+    {
+      "name": "a missing owner check is accepted",
+      "file": "hotfixself.go",
+      "old": "\tif in.Owner == nil {\n\t\treturn sgReasonNotRootOwned + \": no owner check supplied\"\n\t}",
+      "new": "\tif in.Owner == nil {\n\t\treturn \"\"\n\t}"
+    },
+    {
+      "name": "the running file's sha256 is not compared to the manifest entry",
+      "file": "hotfixself.go",
+      "old": "\tif got != e.SHA256 {",
+      "new": "\tif got != e.SHA256 && false {"
+    },
+    {
+      "name": "the stamp is not compared to the manifest entry",
+      "file": "hotfixself.go",
+      "old": "\tif want != in.Tag {",
+      "new": "\tif want != in.Tag && false {"
+    },
+    {
+      "name": "the source rule is not checked",
+      "file": "hotfixself.go",
+      "old": "\tif e.SourceRule != sgHotfixSourceRule {",
+      "new": "\tif e.SourceRule != sgHotfixSourceRule && false {"
+    },
+    {
+      "name": "the expiry is not checked",
+      "file": "hotfixself.go",
+      "old": "\tif !in.Now.Before(expires) {",
+      "new": "\tif false && !in.Now.Before(expires) {"
+    },
+    {
+      "name": "the ceiling is not checked",
+      "file": "hotfixself.go",
+      "old": "expires.Sub(built) > sgHotfixMaxTTL {",
+      "new": "expires.Sub(built) > 1000*sgHotfixMaxTTL {"
+    },
+    {
+      "name": "a moved statusgen pin is not compared to the hotfix base",
+      "file": "hotfixself.go",
+      "old": "\tif sgBareTag(base) != sgBareTag(pin) {",
+      "new": "\tif false && sgBareTag(base) != sgBareTag(pin) {"
+    },
+    {
+      "name": "no pin line falls through instead of could-not-check",
+      "file": "hotfixself.go",
+      "old": "\tif pin == \"\" {\n\t\treturn fail(",
+      "new": "\tif pin == \"\" && false {\n\t\treturn fail("
+    },
+    {
+      "name": "a fallback outside the pinned dir is accepted",
+      "file": "hotfixself.go",
+      "old": "\t\tif sgWithinDir(in.Fallback, in.PinnedBin) && !sgWithinDir(in.Fallback, in.Overlay) && !sgWithinDir(in.Fallback, in.DefaultOverlay) {",
+      "new": "\t\tif true {"
+    },
+    {
+      "name": "TestStatusgenHotfixParity: a statusgen refusal phrase drifts from deskkit's",
+      "file": "hotfixself.go",
+      "old": "\tsgReasonNoPin        = \"hotfix could-not-check: no pin resolves\"",
+      "new": "\tsgReasonNoPin        = \"hotfix could-not-check: no pin resolved\""
+    },
+    {
+      "name": "TestStatusgenHotfixReaders: the version gate no longer strips a +hotfix suffix",
+      "file": "versiongate.go",
+      "old": "\tif i := strings.IndexByte(tag, '+'); i >= 0 {",
+      "new": "\tif i := strings.IndexByte(tag, '+'); i >= 0 && false {"
+    }
+  ]
+}
