@@ -51,8 +51,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // reconcileFoldData is one brief's fold-relevant record, read once from the
@@ -201,10 +203,11 @@ func foldVerified(d reconcileFoldData, coverage map[string]Coverage) (w WitnessI
 
 // briefVersionAt reads the brief's `version:` as the file stood at sha — the
 // version the recorded run was made against, never the current one copied.
+// A failed read carries git's own reason beside the exit status.
 func briefVersionAt(path, sha string) (int, error) {
 	out, err := coverageGit(filepath.Dir(path), "show", "--end-of-options", sha+":./"+filepath.Base(path)).Output()
 	if err != nil {
-		return 0, fmt.Errorf("git show: %w", err)
+		return 0, gitShowError(err)
 	}
 	bf, ok, perr := parseBriefFileBytes(path, out)
 	if perr != nil {
@@ -217,6 +220,19 @@ func briefVersionAt(path, sha string) (int, error) {
 		return bf.Version, nil
 	}
 	return 1, nil
+}
+
+// gitShowError carries git's first stderr line beside the exit status, so a
+// failed read says why (a revision this repository does not hold, a path the
+// revision lacks) instead of a bare "exit status 128".
+func gitShowError(err error) error {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if detail, _, _ := strings.Cut(strings.TrimSpace(string(ee.Stderr)), "\n"); detail != "" {
+			return fmt.Errorf("git show: %w: %s", err, detail)
+		}
+	}
+	return fmt.Errorf("git show: %w", err)
 }
 
 // humanSignoff returns the README Reviewed cell's human stamp ("human:<name>")

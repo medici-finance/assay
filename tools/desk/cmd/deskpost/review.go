@@ -373,8 +373,8 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		dup, why := appReviewExistsAt(existing, curHead, shape.state, kind, reviewBodyDigest(body))
 		// writeGates are the two gates every outward write of this verb passes: the trust
 		// gate (no write on unvetted third-party work; exit 5, audited) and the public-repo
-		// gate (private, or a listed allowed-repos entry tagged :public or :internal to match
-		// the live visibility — see deskkit.PublicRepoGate). The post below passes them; so does a merge-hold write on
+		// gate (private, or a listed allowed-repos entry whose :public or :internal tag is at
+		// least as exposed as the live visibility — see deskkit.PublicRepoGate). The post below passes them; so does a merge-hold write on
 		// the already-recorded path, which is an outward write with no post before it.
 		writeGates := func() (writeResult, bool) {
 			if terr := prTrustGate(client, pr, info.User.Login, info.User.ID); terr != nil {

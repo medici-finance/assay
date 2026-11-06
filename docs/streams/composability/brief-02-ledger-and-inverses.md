@@ -13,6 +13,9 @@ depends: ["composability/00"]
 unblocks: ["composability/03", "composability/05"]
 effort: L
 gate: human
+design: DR-composability-02
+decision-issue: 4285
+ruling: "https://github.com/medici-finance/assay/issues/4285#issuecomment-6425251325"
 gate-why: >-
   The `disable` verb deletes things: files and hooks in an adopter's repo, and — through
   compensations — labels, rulesets, and App installations on a forge that other people's
