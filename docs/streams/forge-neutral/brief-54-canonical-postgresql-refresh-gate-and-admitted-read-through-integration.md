@@ -7,11 +7,13 @@ depends: ["forge-neutral/53", "forge-neutral/52", "forge-neutral/51"]
 unblocks: ["forge-neutral/37", "forge-neutral/55"]
 effort: L
 gate: human
+decision-issue: 5411
+ruling: "https://github.com/medici-finance/assay/issues/5411#issuecomment-6672310072"
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "The adapter controls durable private-observation refreshes and shared work budgets. Accept only the demonstrated synthetic PostgreSQL/native integration; retention, real policy initialization, credentials, remote exposure and activation remain separately gated."
 issues: []
 schema: brief-v2
-version: 7
+version: 9
 authored: 2026-11-03 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -50,6 +52,7 @@ files:
 - `workflow/store/` (planned)
 - `workflow/store/migrations/` (planned)
 - `workflow/internal/pgtest/` (planned)
+- `workflow/internal/pgtest/fixture_error_test.go` (planned)
 - `workflow/internal/refreshcodec/` (planned)
 - `workflow/pgtestfixture/fixture.go` (planned)
 - `workflow/pgtestfixture/fixture_test.go` (planned)
@@ -68,6 +71,7 @@ files:
 single-point-of-failure: the canonical SQL transaction binding the current refresh generation, Store update and completion — independent SQL version/coverage constraints reject malformed observations, while the native pre-request authority/closed-operation guard bounds provider work even when coordination planning is bypassed. No gate ownership grants data permission.
 
 facts:
+- The canonical disposable fixture uses a finite 30-second Close-only cleanup budget so a forced PostgreSQL checkpoint can finish after strict ownership validation. Startup remains bounded to 10 seconds; Reset retains its explicit caller context. Exact generated name, database owner, marker and forced DROP checks remain unchanged, with no retry, fallback or ignored cleanup failure. Safe SQLSTATE/context diagnostics disclose no raw PostgreSQL message or connection value. This is test-harness completion time, not an R2/auth/lease policy.
 - Store52 uses the canonical private DB pool, one Goose ledger and migration00002. Its public Apply owns its transaction and explicitly supplies no generation fence. Refactor private helpers in that owner; do not wrap naked Apply in an unrelated gate transaction.
 - Required51 pickup supplies bounded observation Requirements on Demand and a checked post-requery Leave Outcome bound to actual snapshot version. Base FillKey remains projection-independent. Owner-only completion cannot classify a stronger joined query. Consume the actual published repair before implementation; no current working API is assumed delivered.
 - Source53 supplies scoped grant/BeforeAttempt/ObserveAttempt and typed receipt semantics. Existing page/byte counts or post-hoc HTTP totals cannot prevent an overspend. The canonical authority must validate/debit before every native base RoundTrip, including SDK retries.
@@ -86,6 +90,34 @@ design-fit:
 ## Read first and pickup
 
 Read actual36/50/51/52/53 source, this schema contract,37, DR-forge-library, library-first and Go engineering. Record immutable revisions and continue/adapt/hold. Canonical dispatch requires the published53 contract and final repaired51 source. SQL runtime pickup may then genuinely consume a coherent immutable tested53 shared-port/coordinator-propagation commit supplied by its actual owner while native implementation continues. It must compile and pass the declared port/propagation controls; authoring-only declarations or copied types do not qualify. Final joined evidence and delivery/publication must consume the completed qualified native53 source. Genuine tested feature merges may supply canonical36/52/53 and published mapper/coordinator source before mainline delivery; a stack grants no acceptance. A missing module, schema, fixture or port is NEEDS_CONTEXT, never permission for another store or guessed source API. Authoring and SQL preparation can proceed in parallel with53; runtime pickup follows its actual tested port source, without any execution/claim/outbox dependency.
+
+## Completion clock and consumer binding
+
+`DB.Refresh` requires an explicit trusted `refresh.Clock`, shared in composition
+with the native source and coordinator. It validates decoded-data bounds and
+supplies `ApplyCompletion` query time in that application clock domain, sampled
+after SQL I/O and rechecked before commit. Nil, typed-nil and zero-time clocks
+refuse before SQL activity; invalid later samples cannot commit. No default clock,
+skew tolerance, policy duration or serialized profile field is introduced.
+PostgreSQL remains the only authority for lease expiry, windows, generation
+publication and retry floors. Original observation timestamps are never restamped
+at database/report time, and missing or future bounds still refuse promotion.
+
+Actual API consumers are the workflow Store/process/schema tests,
+`workflow/pgtestfixture/fixture_test.go` and the deskkit persisted native join.
+The operator-provisioned runtime join owned by forge-neutral/55 must genuinely
+consume this constructor change and supply the same explicit data clock; its
+known-accounting profile codec remains unchanged. Planned forge-neutral/56 serving
+must bind its admitted source, coordinator and canonical Gate to that trusted data
+clock. These are composition requirements, not production clock/identity selection
+or authorization. A held/done completion locks and fences only the current scope
+identity/version without decoding observations or altering coverage.
+
+`NativeLimits.Reservations` is a lifetime retained-ledger cap per source identity,
+including observed entries. It is independent of per-window charges and concurrent
+in-flight capacity. Reaching it holds further reservations across windows/restarts;
+there is no runtime pruning, reset or automatic repair. Any future bounded archival
+or reconstruction needs its own explicit canonical accounting contract.
 
 ## Human decision
 
