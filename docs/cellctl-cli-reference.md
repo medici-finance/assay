@@ -58,6 +58,19 @@ initialize, check, run or recover a cell's interim comms service
   --repo                     string   quarantine issue destination owner/repo
 ```
 
+## `cellctl cycle <cell> [role...]`
+
+drain each role window, sync its plugin placement to the pin, check it, restart it, confirm a heartbeat
+
+```
+  --all-at-once                       drain every targeted role together instead of one at a time
+  --drain-timeout            duration how long to wait for each role's in-flight work (on timeout the role keeps running)
+  --force-after-timeout               on a drain timeout, plan the stop with every held claim abandoned (interactive confirm only)
+  --handoff-wait             duration how long to wait for each desk's own handoff record
+  --heartbeat-wait           duration how long to wait for a heartbeat newer than the restart
+  --json                              print the cell-op-v1 document and nothing else on stdout
+```
+
 ## `cellctl defaults init|print`
 
 print or create the machine-wide cell defaults file

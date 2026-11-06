@@ -229,6 +229,14 @@ func cellopPlan(cmd *cobra.Command, c *Cell, verb string, actions []cellop.Actio
 // annotated state-changing (the gate already ran for it), then hands the stored plan to
 // cellop.Session.Apply on this terminal and exits with the result's code.
 func cellopApply(cmd *cobra.Command, c *Cell, v cellopVerb, id string) {
+	r := cellopApplyResult(cmd, c, v, id)
+	emitResult(cmd, r)
+	exitWith(r.ExitCode())
+}
+
+// cellopApplyResult is cellopApply without the print and the exit: the one apply session, with
+// every gate cellopApply holds, returning the result to a verb that goes on past the apply.
+func cellopApplyResult(cmd *cobra.Command, c *Cell, v cellopVerb, id string) cellop.Result {
 	cellopFixtureTrace(cmd)
 	if !stateChangingInvocation(cmd) {
 		die("%s: an apply was reached from an invocation not annotated %s", cmd.Name(), stateChanging)
@@ -250,6 +258,5 @@ func cellopApply(cmd *cobra.Command, c *Cell, v cellopVerb, id string) {
 	if v.After != nil {
 		v.After(c, &r)
 	}
-	emitResult(cmd, r)
-	exitWith(r.ExitCode())
+	return r
 }
