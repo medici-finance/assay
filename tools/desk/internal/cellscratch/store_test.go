@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 func scratchStore(t *testing.T) *Store {
@@ -338,15 +340,17 @@ func TestMaintenanceScanBound(t *testing.T) {
 		}
 	}
 	t.Setenv("ASSAY_MAINTENANCE_ENTRY_LIMIT", "32")
+	// The over-limit task gains no authority; since #5560 it no longer withholds
+	// authority from the fully measured task beside it (TestScanBoundPerEntry).
 	rep, err := s.Sweep(DefaultPolicy(), true)
-	if err == nil || !rep.Partial || rep.Reclaimed != 0 {
-		t.Fatalf("incomplete scan gained authority: %+v %v", rep, err)
+	if err == nil || !rep.Partial {
+		t.Fatalf("incomplete scan reported complete: %+v %v", rep, err)
 	}
 	if _, err := os.Stat(filepath.Join(r.Work(), "build")); err != nil {
 		t.Fatalf("partial inventory deleted acknowledged work: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(small.Work(), "build")); err != nil {
-		t.Fatalf("partial inventory authorized earlier candidate: %v", err)
+	if exists(t, small.Work()) {
+		t.Fatal("over-limit task withheld authority from a measured one")
 	}
 	for i := 0; i < 40; i++ {
 		if err := os.Mkdir(filepath.Join(s.Path, fmt.Sprintf("wide-%03d", i)), 0700); err != nil {
@@ -363,4 +367,54 @@ func TestMaintenanceScanBound(t *testing.T) {
 		t.Fatalf("finite raised-budget recovery failed: %+v %v", rep, err)
 	}
 
+}
+
+// One entry too large to walk inside the inventory bound is kept and named, and the
+// rest of the plan still runs: an ordinary reclaimable task beside it is reclaimed.
+// The sweep stays partial, so the periodic stamp is not written.
+//
+// regression: #5560
+func TestScanBoundPerEntry(t *testing.T) {
+	for _, kind := range []string{"task", "unverified"} {
+		t.Run(kind, func(t *testing.T) {
+			s := scratchStore(t)
+			ordinary := scratchRun(t, s)
+			acknowledge(t, ordinary)
+			finish(t, ordinary, 0)
+			id, wide := "legacy-wide", filepath.Join(s.Path, "legacy-wide")
+			if kind == "task" {
+				r := scratchRun(t, s)
+				acknowledge(t, r)
+				finish(t, r, 0)
+				id, wide = r.Record.ID, r.Work()
+			} else if err := os.Mkdir(wide, 0700); err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < 65; i++ {
+				if err := os.WriteFile(filepath.Join(wide, fmt.Sprintf("wide-%03d", i)), []byte("retain"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("ASSAY_MAINTENANCE_ENTRY_LIMIT", "32")
+			rep, ran, err := s.SweepIfDue(DefaultPolicy(), time.Hour, true)
+			rows := map[string]Entry{}
+			for _, e := range rep.Entries {
+				rows[e.ID] = e
+			}
+			done := rows[ordinary.Record.ID]
+			if !ran || exists(t, filepath.Join(s.Path, ordinary.Record.ID)) || done.Action != "remove" || rep.Reclaimed == 0 || rep.Reclaimed != done.Reclaimed {
+				t.Fatalf("one over-limit entry blocked the rest: ran=%v err=%v %+v", ran, err, rep)
+			}
+			kept := rows[id]
+			if !exists(t, filepath.Join(wide, "wide-000")) || kept.Action != "keep" || !strings.Contains(kept.Reason, "inventory limit") {
+				t.Fatalf("over-limit entry not kept with its reason: %+v", kept)
+			}
+			if err == nil || !rep.Partial || !errors.Is(err, deskkit.ErrScanLimit) || !strings.Contains(err.Error(), id) {
+				t.Fatalf("unmeasured entry not reported by name: err=%v %+v", err, rep)
+			}
+			if exists(t, filepath.Join(s.Path, maintenanceStampName)) || !exists(t, filepath.Join(s.Path, maintenanceAttemptName)) {
+				t.Fatal("incomplete accounting stamped the interval as done")
+			}
+		})
+	}
 }
