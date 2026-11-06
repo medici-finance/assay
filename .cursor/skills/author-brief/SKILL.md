@@ -787,7 +787,10 @@ could-not-check runs serial.
 
 ## Phase README structure
 
-`docs/<phase>/README.md` ties the briefs together:
+`docs/<phase>/README.md` ties the briefs together. It carries each numbered item below that
+applies under its own `##` heading (`## Briefs`, `## Critical path`, `## Dependency waves`, …).
+The `## Dependency waves` section is never folded into the `## Critical path` section, even
+though both show the critical path:
 
 1. **Briefs table — generated, not hand-written, once `statusgen` is wired up.**
    The table lives between
@@ -857,6 +860,13 @@ layer; the floor does not wait on one.)
    cycles and qualify paths with unknown root/evidence coverage. Verify the head per the
    judgment-call section above; a wave summary alone is not readiness.
 4. **Write the README first** (table + path + waves), then the briefs. Cross-link both directions.
+   Minimal skeleton, one `##` heading per section:
+
+   ```markdown
+   ## Briefs
+   ## Critical path
+   ## Dependency waves
+   ```
 5. **Convert relative dates to absolute** (e.g. "by next week" → the actual date) — these docs
    outlive the conversation.
 6. **Author the facts and the edges, not the cell.** Status is DERIVED, not chosen: write `why:`,
