@@ -41,6 +41,8 @@ func TestBriefInputsLint(t *testing.T) {
 	if err != nil || len(fixtures) == 0 {
 		t.Fatalf("fixture briefs: %v, %v", fixtures, err)
 	}
+	// Older fixture briefs omit inputs; omission remains valid. The generated
+	// fixture below supplies a declaration and exercises both lint outcomes.
 	for _, path := range fixtures {
 		body, err := os.ReadFile(path)
 		if err != nil {
@@ -56,6 +58,12 @@ func TestBriefInputsLint(t *testing.T) {
 	if problems := witnessInputsProblems(f.Root, gv2StreamOf(f)); len(problems) != 0 {
 		t.Fatalf("valid fixture inputs: %v", problems)
 	}
+	var code int
+	stdout := captureStdout(t, func() { code = run(f.Root, "lint", nil, nil, "") })
+	if code != 0 || finalStdoutLine(t, stdout) != "LINT: PASS" {
+		t.Fatalf("valid fixture lint: exit=%d stdout=%q", code, stdout)
+	}
+	t.Logf("fixture lint output: %s", strings.TrimSpace(stdout))
 	body, err := os.ReadFile(f.BriefPath)
 	if err != nil {
 		t.Fatal(err)
@@ -71,5 +79,11 @@ func TestBriefInputsLint(t *testing.T) {
 	gv2Write(t, f.Root, relative, broken)
 	if problems := witnessInputsProblems(f.Root, gv2StreamOf(f)); len(problems) != 1 || !strings.Contains(problems[0], "inputs-undeclared") {
 		t.Fatalf("malformed fixture inputs: %v", problems)
+	}
+	stderr := captureStderr(t, func() {
+		stdout = captureStdout(t, func() { code = run(f.Root, "lint", nil, nil, "") })
+	})
+	if code != 1 || !strings.HasPrefix(finalStdoutLine(t, stdout), "LINT: FAIL ") || !strings.Contains(stderr, "inputs-undeclared") {
+		t.Fatalf("malformed fixture lint: exit=%d stdout=%q stderr=%s", code, stdout, stderr)
 	}
 }
