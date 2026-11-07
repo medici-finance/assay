@@ -120,7 +120,7 @@ Manual bootstrap at source commit `5142af8c66f4671d7cb3c575d5b65d5eadd6275b`:
 - Observed seams: `deskkit.ResolveWorkTrailer` already calls `TypedBrief`, but
   operational trailer helpers still select legacy reduction. Durable claims use
   `ClaimStoreRecord.Version` for CAS and an owner/state/branch message;
-  `deskclaim-ref/alias.go` recognizes only its existing per-PR claim family.
+  `tools/desk/cmd/deskclaim-ref/alias.go` recognizes only its existing per-PR claim family.
   `deskdispatch.claimKeyFor` separately derives brief transport keys.
   `loopengine.Claim` uses a separate local, flock-backed primitive.
 - Source tests establish the intended cases to retain, not results of this pickup:
@@ -213,19 +213,19 @@ its callers have acquired context.
 
 | Consumer | Proposed disposition |
 |---|---|
-| `internal/deskkit/trailer.go`, `briefauthoring.go`, `prrepr.go` | fixed-here after ruling: shared typed identity at negotiated seams; preserve legacy profiles, link kind and complete-file classification. |
-| `cmd/deskpr/deskpr.go`, `crossrepotrailer.go` | fixed-here after ruling: validate owning root, record and exact subject before write; retain Authors/delivery and tracking-repo checks. |
-| `cmd/deskfile/bound.go` | fixed-here after ruling: replace argument/frontmatter/trailer qualifier comparisons with shared resolution while preserving the open-PR, full diff and tracking-repo checks. |
-| `internal/deskkit/claimstore.go`, `cmd/deskclaim-ref/{args,claim,alias,gogit}.go`, `gitcore/claimref.go` | fixed-here at identity/payload adapters after ruling; storage selection, transport custody and CAS mechanics stay with their current owners. |
-| `cmd/deskdispatch/dispatch.go` (`claimKeyFor`), `internal/loopengine/{claim,probes,engine}.go` | fixed-here at brief identity/key inputs after ruling; keep local and forge claim scopes distinct and retain work-evidence/author checks. |
-| `cmd/deskdispatch/authoring.go`, `cmd/fanoutloop/{represented,represented_live}.go` | fixed-here after ruling: qualified linkage/reconciliation inputs; preserve completeness and historical authoring exemptions. |
-| `internal/deskkit/{briefrisk,stampage}.go`, `cmd/deskflip/flip.go` | fixed-here for affected reference adapters after ruling; independent security, current-head and flip authority remain unchanged. |
-| `internal/deskkit/repairobligation.go`, `cmd/verifyloop/repair.go` | fixed-here only if adapting the shared reference input is necessary; desk-tools/49 retains filing identity/deduplication. Do not reimplement it. |
+| `tools/desk/internal/deskkit/trailer.go`, `briefauthoring.go`, `prrepr.go` | fixed-here after ruling: shared typed identity at negotiated seams; preserve legacy profiles, link kind and complete-file classification. |
+| `tools/desk/cmd/deskpr/deskpr.go`, `crossrepotrailer.go` | fixed-here after ruling: validate owning root, record and exact subject before write; retain Authors/delivery and tracking-repo checks. |
+| `tools/desk/cmd/deskfile/bound.go` | fixed-here after ruling: replace argument/frontmatter/trailer qualifier comparisons with shared resolution while preserving the open-PR, full diff and tracking-repo checks. |
+| `tools/desk/internal/deskkit/claimstore.go`, `tools/desk/cmd/deskclaim-ref/{args,claim,alias,gogit}.go`, `gitcore/claimref.go` | fixed-here at identity/payload adapters after ruling; storage selection, transport custody and CAS mechanics stay with their current owners. |
+| `tools/desk/cmd/deskdispatch/dispatch.go` (`claimKeyFor`), `tools/desk/internal/loopengine/{claim,probes,engine}.go` | fixed-here at brief identity/key inputs after ruling; keep local and forge claim scopes distinct and retain work-evidence/author checks. |
+| `tools/desk/cmd/deskdispatch/authoring.go`, `tools/desk/cmd/fanoutloop/{represented,represented_live}.go` | fixed-here after ruling: qualified linkage/reconciliation inputs; preserve completeness and historical authoring exemptions. |
+| `tools/desk/internal/deskkit/{briefrisk,stampage}.go`, `tools/desk/cmd/deskflip/flip.go` | fixed-here for affected reference adapters after ruling; independent security, current-head and flip authority remain unchanged. |
+| `tools/desk/internal/deskkit/repairobligation.go`, `tools/desk/cmd/verifyloop/repair.go` | fixed-here only if adapting the shared reference input is necessary; desk-tools/49 retains filing identity/deduplication. Do not reimplement it. |
 | Queue classification and verify planning | out-of-scope: desk-tools/45 owns these meanings; preserve their inputs and existing classification. |
 | Workflow/domain/ruling readers; dispatch/pickup eligibility; generated views | follow-up milestone-support/09, /10 and /11 respectively; no acceptance, readiness or projection credit from this slice. |
 | Historical claim namespaces, non-brief issue claims and per-PR review/security lanes | out-of-scope for migration; preserve their existing separation and admission. Do not reinterpret them by splitting arbitrary `--` keys. |
 
-Paths without a module prefix in the table are relative to `tools/desk/`.
+All desk consumer paths in the table are rooted at `tools/desk/`; grouped names share the preceding directory.
 
 #### Acceptance examples for implementation review
 
