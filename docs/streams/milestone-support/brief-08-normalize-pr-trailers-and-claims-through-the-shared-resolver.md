@@ -88,6 +88,185 @@ Before changing the governed boundary, present the concrete implementation/desig
 
 Default if no answer: none — blocks until answered
 
+### Bounded design for the pending ruling
+
+**Proposal only, inspected 7 November 2026.** This section prepares the decision
+above. It does not approve a design, implement reference support, advance this
+brief, or supply Verify/Evidence credit. The original Task and Verify rows below
+remain the implementation contract. Record accept, corrections or hold through the
+[existing decision issue](https://github.com/medici-finance/assay/issues/5704); acceptance must identify the reviewed proposal revision.
+
+#### Architecture pickup
+
+Manual bootstrap at source commit `5142af8c66f4671d7cb3c575d5b65d5eadd6275b`:
+
+- Controlling sources: this brief (version 1, permanent ID unchanged), the stream's
+  approved implementation scope, `spec/brief-v1.md` §3.8,
+  `spec/milestone-v1.md` §2/§6/§10, `spec/stream-v1.md`,
+  `spec/reader-capabilities-v1.md`, `docs/library-first.md`,
+  `docs/go-engineering.md`, and semantic-owner row S-claim in `docs/contracts.md`.
+  All references in this assessment are to that source commit. The large brief and
+  semantic-owner documents were inspected in the affected sections, not audited
+  in their entirety.
+- Observed prerequisite code: `statusgen/workref` exposes `NewRegistry`, `Parse`
+  and `Resolve`, including `TypedBrief` and distinct legacy profiles;
+  `statusgen/readercaps.Assess` assesses explicit operation requirements.
+  `tools/desk/go.mod` already requires statusgen with a source-tree replacement.
+  These APIs are available in the actual consumer module; a published module or
+  installed capability is not established by that replacement.
+- The board records /01 done, /02 implemented and /04 verified. /02 has not thereby
+  acquired independent completion credit. The old Context baseline describes the
+  original authoring snapshot; its absent-package statements are historical.
+- Observed seams: `deskkit.ResolveWorkTrailer` already calls `TypedBrief`, but
+  operational trailer helpers still select legacy reduction. Durable claims use
+  `ClaimStoreRecord.Version` for CAS and an owner/state/branch message;
+  `deskclaim-ref/alias.go` recognizes only its existing per-PR claim family.
+  `deskdispatch.claimKeyFor` separately derives brief transport keys.
+  `loopengine.Claim` uses a separate local, flock-backed primitive.
+- Source tests establish the intended cases to retain, not results of this pickup:
+  `TestWorkrefGrammarAndAliases` covers root/kind/key/revision separation;
+  the claim reader and alias tests cover existing transport and lane contracts.
+  No new churn, complexity or performance measurement was made. S-claim records
+  existing namespace/release duplication; this proposal does not claim to repair it.
+- Coverage: local source, manifests, contracts and the direct helper caller census.
+  Current forge decisions, open changes, active claims and error-class history
+  could not be checked because authenticated forge access was unavailable.
+  Recheck those facts, file overlap and owner acknowledgments before implementation
+  or publication. No decision-issue number or ruling is inferred from this gap.
+
+Disposition: **continue** bounded design authoring; **hold** governed production
+changes until the recorded human ruling and current overlap/decision checks.
+Reuse the existing public packages and S-claim owner. No dependency installation,
+new module, process boundary, claim store or credential owner is proposed.
+
+#### Proposed flow and preserved boundaries
+
+1. At the named desk consumer seams, collect the actual declaring cell/root,
+   supplied graph aliases and existing UUID/rename bindings through their current
+   host adapters. Call `workref.NewRegistry` and `Resolve(..., TypedBrief)` in
+   process. Keep the returned canonical identity, stable logical key, original
+   spelling, compatibility fullId and requested revision together. Do not first
+   strip `b-`, `m-`, qualifiers or selectors. A root/UUID collision refuses;
+   unavailable registry or source observations hold as could-not-check.
+2. Bind a separate selected subject containing the existing brief UUID, exact
+   authored version, owning repository, source commit and repository-relative
+   record path. An explicit selector must match that version at the selected
+   source; an unversioned reference binds the supplied source snapshot. Missing
+   exact revisions remain unknown. Never use a revision, path or claim CAS token
+   as logical work identity, and never treat a resolver fallback key as proof
+   that an executable record exists or has a permanent UUID.
+3. Adapt that resolved brief to the existing repo-scoped transport key shape
+   `<repo-label>--<stream>--<NN>`, derived from its canonical compatibility identity
+   and the existing repository-label owner. Keep this physical key distinct from
+   the UUID/logical key. Ordinary legacy keys retain their bytes. Resolve supplied
+   historical aliases to that same work before deciding whether it is held.
+   If an existing live alias uses a different physical key, report its holder and
+   hold: normalization itself never renames, removes, releases or takes it over.
+   Multiple live aliases, incomplete enumeration or ambiguous label configuration
+   also hold. A selector never creates another physical key.
+4. Persist the selected subject with a newly acquired negotiated claim, in the
+   same stored payload and therefore under the same CAS version as its holder.
+   Proposed encoding: retain the existing first-line message and append one
+   versioned `subject-v1=` token containing base64url-encoded JSON with the subject
+   fields from step 2. Use the standard JSON/base64 codecs, a closed bounded
+   decoder and compatibility tests against the actual old readers. Do not put
+   subject data in `note`, a second ref or a sidecar store. Unknown/malformed
+   required subject metadata holds. An existing payload without metadata remains
+   readable as held; it cannot satisfy a pinned request or be silently upgraded.
+   Conflicting pinned subjects hold without calling UpdateFrom, Remove or steal.
+5. Retain the current claim-store resolver, role/credential admission, holder
+   checks, branch liveness, TTL policy and server CAS. Progress must preserve the
+   admitted subject and use the exact store version read. The dispatch generation
+   (`dispatch_ref`) also remains separate: aliases do not mint a new generation,
+   revive an old one or transfer custody. Explicit release/steal operations retain
+   their existing admission semantics; merely resolving a reference invokes neither.
+   The new adapter reads no ambient credential and adds no auth fallback.
+6. Preserve link kinds before resolving their values. `Brief:` represents delivery;
+   `Authors:` represents authoring and cannot represent delivery. Retain trailer
+   multiplicity/fence rules, changed-file completeness, authoring classification,
+   risk checks and cross-repository tracking checks. A milestone refuses at every
+   executable-brief/claim/trailer boundary, including when the outer check is
+   bypassed. Only after qualified root/kind checks may a legacy API receive the
+   compatibility fullId; pass its subject separately rather than erase the selector.
+7. Reuse operation-scoped reader assessment before new semantics can cause effects.
+   Syntax support alone never grants dispatch/claim admission. Keep operational
+   advertisements and rollout held for /10 and /14 qualification. An older writer
+   that cannot participate in subject/alias admission is not safe to co-dispatch
+   negotiated work. Mixed-writer support must be established, or the new operation
+   holds; a scan of aliases alone is not an atomic cross-version exclusion proof.
+   Local loopengine claims must not be described as cross-machine exclusion.
+
+The shared result is interpretation, not a grant. Existing trusted actor and
+responsible-principal checks remain at effect admission. This slice does not
+authenticate a ruling, alter its subject or carry approval across a revision.
+Revoked, superseded, edited, wrong-actor or wrong-subject rulings cannot be made
+valid by an alias; /09 owns their existing-record binding and /10 owns dispatch
+eligibility. Their independent lower-boundary checks remain required.
+
+#### Consumer census and routing
+
+This is a pickup census of direct calls to the trailer/authoring helpers and the
+named claim seams at the pinned source. The dispositions describe proposed work,
+not code already fixed. Implementation must refresh transitive callers before
+changing a shared helper; do not widen a legacy signature in place and assume
+its callers have acquired context.
+
+| Consumer | Proposed disposition |
+|---|---|
+| `internal/deskkit/trailer.go`, `briefauthoring.go`, `prrepr.go` | fixed-here after ruling: shared typed identity at negotiated seams; preserve legacy profiles, link kind and complete-file classification. |
+| `cmd/deskpr/deskpr.go`, `crossrepotrailer.go` | fixed-here after ruling: validate owning root, record and exact subject before write; retain Authors/delivery and tracking-repo checks. |
+| `cmd/deskfile/bound.go` | fixed-here after ruling: replace argument/frontmatter/trailer qualifier comparisons with shared resolution while preserving the open-PR, full diff and tracking-repo checks. |
+| `internal/deskkit/claimstore.go`, `cmd/deskclaim-ref/{args,claim,alias,gogit}.go`, `gitcore/claimref.go` | fixed-here at identity/payload adapters after ruling; storage selection, transport custody and CAS mechanics stay with their current owners. |
+| `cmd/deskdispatch/dispatch.go` (`claimKeyFor`), `internal/loopengine/{claim,probes,engine}.go` | fixed-here at brief identity/key inputs after ruling; keep local and forge claim scopes distinct and retain work-evidence/author checks. |
+| `cmd/deskdispatch/authoring.go`, `cmd/fanoutloop/{represented,represented_live}.go` | fixed-here after ruling: qualified linkage/reconciliation inputs; preserve completeness and historical authoring exemptions. |
+| `internal/deskkit/{briefrisk,stampage}.go`, `cmd/deskflip/flip.go` | fixed-here for affected reference adapters after ruling; independent security, current-head and flip authority remain unchanged. |
+| `internal/deskkit/repairobligation.go`, `cmd/verifyloop/repair.go` | fixed-here only if adapting the shared reference input is necessary; desk-tools/49 retains filing identity/deduplication. Do not reimplement it. |
+| Queue classification and verify planning | out-of-scope: desk-tools/45 owns these meanings; preserve their inputs and existing classification. |
+| Workflow/domain/ruling readers; dispatch/pickup eligibility; generated views | follow-up milestone-support/09, /10 and /11 respectively; no acceptance, readiness or projection credit from this slice. |
+| Historical claim namespaces, non-brief issue claims and per-PR review/security lanes | out-of-scope for migration; preserve their existing separation and admission. Do not reinterpret them by splitting arbitrary `--` keys. |
+
+Paths without a module prefix in the table are relative to `tools/desk/`.
+
+#### Acceptance examples for implementation review
+
+These are proposed cases for the two existing Verify targets and their mutation
+manifest, not additional executed checks or replacement Verify rows.
+
+| Case | Required observation |
+|---|---|
+| All six specified legacy forms, canonical/elided `b-` forms and the two permitted draft slash aliases for the same source | Same canonical root/UUID and physical claim key. Subject/selector remains separate; no second worker. |
+| Same stream/number in two different owning roots | Remain distinct; supplying another root never binds a local brief just because its filename matches. |
+| Unknown root, duplicate UUID alias, `m-` input, malformed/zero/overflow selector or unavailable exact version | Refusal or explicit could-not-check as appropriate, with zero claim/PR/filing effects; never prefix-strip into a brief. |
+| `Authors:` versus `Brief:`, fenced sample, duplicate trailers, incomplete changed-file list and cross-repo alias | Existing distinction, completeness and tracking checks survive through deskpr and reconciliation; an authoring proposal cannot suppress delivery dispatch. |
+| Existing claim at an old physical alias; two aliases acquired concurrently; missing/partial enumeration | No overwrite, migration or second admitted worker. Exercise pre/post race handling with a fake transport and show why mixed unsupported writers hold. |
+| Same key requested at version 2 then version 3, or pinned request meets an old payload with no subject | Existing holder/version/generation unchanged; conflicting or unknown subject holds without a write. |
+| Claim advanced or reassigned between read and update | Exact-old CAS loses; alias equality cannot restore the old owner, subject or generation. |
+| Unsupported/stale capability observation, wrong actor/subject, revoked ruling | Existing effect boundary still holds with the upper resolver/preflight bypassed; library support is never approval. Ruling integration remains /09. |
+
+After ruling, produce fail-first runs and the declared mutation map before making
+test-based implementation claims. Plant a second caller that erases root/kind or
+puts the selector in the claim key; the production-boundary test must turn red
+naming that repeat. Preserve old reader output and actual fake-transport entrypoint
+coverage, not just resolver-unit-test coverage.
+
+#### Exact decision requested
+
+The human driver is asked to record one ruling on the existing decision issue,
+bound to this proposal's reviewed commit:
+
+1. **Accept the bounded implementation** described above, including the separate
+   logical/physical/subject identities and versioned same-payload subject extension,
+   while preserving actor, exact-subject, revocation and effect-admission rules.
+2. **Request corrections**, naming the steps/cases that must change before approval.
+3. **Hold**, leaving production behavior unchanged.
+
+Recommendation: accept only after the current claim/PR overlap check and the
+same-payload compatibility cases are judged adequate; otherwise request the
+specific correction. Replacing every existing claim key with a UUID or moving
+normalization into a new helper process are rejected alternatives: the former
+would split live custody during migration, and the latter adds no required
+authority or isolation. Silence selects none of these options.
+
 ## Task
 
 1. Route all brief linkage and logical claim-key normalization through workref, preserving cell/repository ownership and UUID. Retire parallel grammar fragments in PR trailers, work-item/claim aliases and issue-bound brief lookups; inventory every caller with an explicit disposition.

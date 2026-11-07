@@ -1,0 +1,1 @@
+- Prepare the bounded design and acceptance cases for shared PR-trailer and claim reference resolution; production changes remain subject to the existing human decision gate.
