@@ -40,7 +40,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/milestoneacceptance.go` (planned), `statusgen/milestoneacceptance_test.go` (planned), `statusgen/decisionruling.go`, `statusgen/domain/`, `statusgen/testdata/milestone-support/06/` (planned), `spec/milestone-v1.md`, `changelog/milestone-support-06.md` (planned), `statusgen/testdata/milestone-support/06-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/milestoneacceptance.go` (planned) (planned), `statusgen/milestoneacceptance_test.go` (planned), `statusgen/decisionruling.go`, `statusgen/domain/`, `statusgen/testdata/milestone-support/06/` (planned), `spec/milestone-v1.md`, `changelog/milestone-support-06.md` (planned), `statusgen/testdata/milestone-support/06-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.
@@ -179,7 +179,7 @@ on [the existing decision issue](https://github.com/medici-finance/assay/issues/
 
 Use existing repository Evidence artifacts and the existing human decision-issue
 mechanism. Add a pure aggregate adapter in the statusgen module, with host mapping
-in the planned `statusgen/milestoneacceptance.go`. Proposed aggregate types belong
+in the planned `statusgen/milestoneacceptance.go` (planned). Proposed aggregate types belong
 to the S-verification-domain owner; they are separate from brief `WorkIdentity` and
 from its existing wire schema. Names and a wire-format allocation remain proposed
 until the ruling; no operational declaration or support advertisement is added here.
@@ -278,7 +278,7 @@ proposal; the named tests are still absent at this source revision.
 | Consumer | Disposition |
 |---|---|
 | This brief's decision/design appendix and changelog | fixed-here: authoring material only; no shared runtime value changes. |
-| `statusgen/milestoneacceptance.go`, its tests/fixtures and `statusgen/domain` aggregate types | follow-up /06 after ruling; preserve existing brief wire/identity contracts. |
+| `statusgen/milestoneacceptance.go` (planned), its tests/fixtures and `statusgen/domain` aggregate types | follow-up /06 after ruling; preserve existing brief wire/identity contracts. |
 | `statusgen/decisionruling.go` and existing DR/brief ruling consumers | follow-up /06 only for shared authentication extraction needed by the adapter; preserve all checks and explicit no-content-verdict semantics. Alias/workflow subject expansion remains /09. |
 | `statusgen/milestones.go`, `evaluation.BuildMilestoneGraph`, reader capability advertisement | out-of-scope for this authoring change; delivered loader/graph remain held and acceptance remains unadvertised. Any newly required seam is inventoried before implementation. |
 | `spec/milestone-v1.md` receipt boundary | follow-up /06: update canonical semantics only after the ruling; this appendix is a proposal under the existing contract. |
