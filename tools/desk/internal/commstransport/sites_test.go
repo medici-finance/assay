@@ -121,6 +121,11 @@ type endpointSite struct {
 	calls map[string]bool
 }
 
+// Both the real-tree walk and its plants require lexical object resolution.
+func parseEndpointFile(fset *token.FileSet, name string, src any) (*ast.File, error) {
+	return parser.ParseFile(fset, name, src, 0)
+}
+
 func scanEndpointSites(fset *token.FileSet, name string, file *ast.File) []endpointSite {
 	var out []endpointSite
 	for _, decl := range file.Decls {
@@ -206,7 +211,7 @@ func TestEndpointSitesAreConfined(t *testing.T) {
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		file, err := parser.ParseFile(fset, path, nil, 0)
+		file, err := parseEndpointFile(fset, path, nil)
 		if err != nil {
 			return err
 		}
@@ -259,7 +264,7 @@ func shadowedNetwork() {
 }
 `
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "plant.go", src, 0)
+	file, err := parseEndpointFile(fset, "plant.go", src)
 	if err != nil {
 		t.Fatal(err)
 	}
