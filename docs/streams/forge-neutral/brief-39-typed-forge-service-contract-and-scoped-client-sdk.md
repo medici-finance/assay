@@ -10,6 +10,9 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Confirm the demonstrated wire allowlist and privacy boundary. The contract does not grant a caller a role or a credential; detailed issuer and executor configuration remains separately controlled."
 decision-trigger: spec
+decision-issue: 5414
+ruling: https://github.com/medici-finance/assay/issues/5414#issuecomment-6665908896
+design: DR-forge-neutral-39
 issues: []
 outcome: none
 schema: brief-v2
@@ -129,9 +132,7 @@ Options:
 
 Default if no answer: none — blocks until answered.
 
-Acceptance remains pending. This implementation-evidence decision
-does not prevent authoring or independent offline fixture work. Existing mirror retention and
-webhook payload decisions are not answered by this section.
+The driver accepted the bounded wire and privacy design in the [recorded ruling](https://github.com/medici-finance/assay/issues/5414#issuecomment-6665908896). Independent verification, mirror retention, webhook payload policy, and operational activation retain their own gates.
 
 ## Ground rules
 
