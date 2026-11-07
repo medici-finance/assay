@@ -39,6 +39,9 @@ func TestWitnessAdapterIgnoresReplaceRefs(t *testing.T) {
 			}
 		}
 	}
+	// Host configuration must not hide the same mutation either.
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	root := t.TempDir()
 	gv2Git(t, root, "init", "-q", "-b", "main")
 	gv2Git(t, root, "config", "commit.gpgsign", "false")
