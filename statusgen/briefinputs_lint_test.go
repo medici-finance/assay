@@ -28,9 +28,18 @@ func TestBriefInputsLint(t *testing.T) {
 		t.Fatalf("template inputs: %v, found=%v, problem=%q", entries, found, problem)
 	}
 
-	fixtures, err := filepath.Glob("testdata/witnessv2/v1corpus/steps/*/docs/streams/*/brief-*.md")
+	var fixtures []string
+	err = filepath.WalkDir("testdata", func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && strings.HasPrefix(entry.Name(), "brief-") && strings.HasSuffix(entry.Name(), ".md") {
+			fixtures = append(fixtures, path)
+		}
+		return nil
+	})
 	if err != nil || len(fixtures) == 0 {
-		t.Fatalf("witness corpus: %v, %v", fixtures, err)
+		t.Fatalf("fixture briefs: %v, %v", fixtures, err)
 	}
 	for _, path := range fixtures {
 		body, err := os.ReadFile(path)
