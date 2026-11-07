@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/clicontract"
 )
 
 // prepEnvironment keeps the compiled CLI real. Only the Python interpreter is
@@ -66,7 +68,8 @@ func testCompatPreparationConfigFlow(t *testing.T) {
 	if defaulted["work"] != "/work" || defaulted["model"] != "claude-sonnet-5-5" || defaulted["prepare"] != false || defaulted["readback"] != false {
 		t.Fatal("undeclared environment or mode changed defaults", defaulted)
 	}
-	for _, value := range []string{"/work/a b", `C:\desk\work`, `\\server\share`, "../relative", "-dash=one,two", "é/role"} {
+	for _, path := range clicontract.PathValues {
+		value := path.Value
 		for _, words := range [][]string{{"--work", value}, {"--work=" + value}} {
 			args := append(append([]string{}, base...), words...)
 			got := prepJSON(t, execIn(t, bin, env, args...))
