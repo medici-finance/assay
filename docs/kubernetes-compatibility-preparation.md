@@ -48,15 +48,42 @@ into the operator profile. If the approved layout differs, review those paths
 together before preparation. Checksums measure the installed inputs; they do not
 establish that those inputs were approved.
 
-Use the bounded [preparation helper](../containers/k8s/compatibility/prepare.py)
-in that context. Copy or mount this reviewed source file read-only at
-`/opt/assay-preparation/prepare.py`; it is not baked into the existing v1.0.65
-images, and those image pins do not need changing. It calls the image-owned
-launcher at `/usr/local/lib/assay/desk-session.py`, rather than implementing a
-second history or hash format. It starts no agent, installs no package and makes
-no cluster or model call. The existing `assay-desks` namespace and five paused
-StatefulSets remain the deployment layout. Start with Claude; this helper does
-not claim a qualified Codex argv/credential profile.
+Use the bounded [preparation delegate](../containers/k8s/compatibility/prepare.py)
+and its companion `cellctl` binary in that context. `cellctl compat-prepare` owns
+all argument parsing through the existing Cobra/Viper foundation. It sends typed
+inputs to the embedded preparation domain, which calls the image-owned launcher
+at `/usr/local/lib/assay/desk-session.py`. That launcher still owns the history and
+hash format. The delegate contains no second parser.
+
+Build the companion from the reviewed source revision, using the existing approved
+Go toolchain and cached dependencies. In that source checkout, record the exact
+revision before building the static Linux AMD64 binary outside the tree:
+
+```sh
+git rev-parse HEAD
+mkdir -p /tmp/assay-preparation
+(cd tools/desk && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOWORK=off \
+  GOPROXY=off GOTOOLCHAIN=local go build -trimpath \
+  -o /tmp/assay-preparation/cellctl ./cmd/cellctl)
+shasum -a 256 /tmp/assay-preparation/cellctl containers/k8s/compatibility/prepare.py
+```
+
+Record the source revision and both checksums with the preparation handoff.
+Copy or mount that binary read-only at `/opt/assay-preparation/cellctl` and the
+matching delegate read-only at `/opt/assay-preparation/prepare.py`. Neither is baked
+into the existing v1.0.65 role images. The binary embeds the preparation domain;
+no additional Python source mount or image release is required. Use the existing
+Python 3 interpreter in the image. Missing/mismatched companion placement holds
+preparation; do not fall back to an old standalone parser.
+
+The preparation command starts no agent, installs no package and makes no cluster
+or model call. The existing `assay-desks` namespace and five paused StatefulSets
+remain the deployment layout. Start with Claude; this helper does not claim a
+qualified Codex argv/credential profile. Both the direct command
+`/opt/assay-preparation/cellctl compat-prepare` and the delegate below accept the
+same eleven long options, using `--name value` or `--name=value`. Parse failures
+remain exit 2; domain refusals remain exit 78. Use complete option names; the shared
+parser does not provide argparse's incidental unique-prefix abbreviations.
 
 The image's existing installer can provision the exact Claude package version
 under `/work/.npm-global` in the already authorized preparation context. For

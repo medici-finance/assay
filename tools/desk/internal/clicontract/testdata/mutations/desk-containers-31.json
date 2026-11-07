@@ -1,0 +1,47 @@
+{
+  "test": "KUBECONFIG=/dev/null go test -count=1 -timeout 120s -run '^TestCLICompatPreparation$' ./cmd/cellctl",
+  "control": {
+    "name": "preparation parse exit 2 becomes 3",
+    "file": "cmd/cellctl/cobra.go",
+    "old": "usageExit = 2",
+    "new": "usageExit = 3"
+  },
+  "mutations": [
+    {
+      "name": "help reads operator configuration during command construction",
+      "file": "cmd/cellctl/kube_compat_preparation.go",
+      "old": "func compatPrepareCmd() *cobra.Command {",
+      "new": "func compatPrepareCmd() *cobra.Command {\n echoRoster()"
+    },
+    {
+      "name": "work reads an undeclared environment variable",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "Usage: usage, Default: def}",
+      "new": "Usage: usage, Default: def, Env: []string{\"WORK\"}}"
+    },
+    {
+      "name": "readback and prepare are no longer mutually exclusive",
+      "file": "cmd/cellctl/kube_compat_preparation.go",
+      "old": "cmd.MarkFlagsMutuallyExclusive(\"prepare\", \"readback\")",
+      "new": "// exclusive mode guard removed"
+    },
+    {
+      "name": "instructions option no longer reaches the typed handler",
+      "file": "cmd/cellctl/kube_compat_preparation.go",
+      "old": "bStr(\"instructions\",",
+      "new": "bStr(\"instruction-file\","
+    },
+    {
+      "name": "domain no longer refuses a foreign preparer",
+      "file": "internal/kubecompat/preparation/core.py",
+      "old": "os.geteuid() == 999 and os.getegid() == 999",
+      "new": "True"
+    },
+    {
+      "name": "plan performs preparation by default",
+      "file": "internal/kubecompat/preparation/core.py",
+      "old": "if not args.prepare:",
+      "new": "if False:"
+    }
+  ]
+}
