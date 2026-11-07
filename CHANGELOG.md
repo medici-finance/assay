@@ -23,6 +23,18 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.77 — 2026-11-07
+
+### Added
+- `forgeread/adapters/pager`: one shared, forge-neutral cursor walk with adaptive page-size backoff, a caller-supplied transient classifier and request accounting. It carries no transport or credential, so the desk tools, statusgen and the future forge client can share it.
+
+### Fixed
+- `author-brief`: the phase README carries each numbered item under its own `##` heading, and `## Dependency waves` is never folded into `## Critical path`; the "Write the README first" step shows the minimal `## Briefs` / `## Critical path` / `## Dependency waves` skeleton.
+- `deskboard actions` and `deskboard prs` no longer fail on a repository with many open pull requests: the open-PR reads now walk the queue in pages of 25 and, when the forge answers a page with a 504, an empty 200 or cut-off JSON, retry that same page at half the size (floor 6, at most 4 smaller retries per walk) before reporting could-not-check. Authentication, permission and rate-limit answers are still never retried, and a queue larger than the 100-change cap is still reported as truncated.
+
+### Changed
+- Compress the hosted ARM64 release artifact at level 1. Its checked image archive and receipt are restored byte-for-byte by the existing download step.
+
 ## v1.0.76 — 2026-11-06
 
 ### Added
