@@ -31,14 +31,6 @@ do not add highlight bullets to it directly.
 ### Fixed
 - `deskboard actions` and `deskboard prs` no longer fail on a repository with many open pull requests: the open-PR reads now walk the queue in pages of 25 and, when the forge answers a page with a 504, an empty 200 or cut-off JSON, retry that same page at half the size (floor 6, at most 4 smaller retries per walk) before reporting could-not-check. Authentication, permission and rate-limit answers are still never retried, and a queue larger than the 100-change cap is still reported as truncated.
 
-### Changed
-- Add explicit operator initialization and replay of known read-only refresh accounting, with a declarative restricted runtime SQL role profile.
-- Add the canonical PostgreSQL read-only refresh Gate and per-attempt authority, with shared generation fencing, transaction-bound observation completion, explicit finite accounting and conservative retry holds.
-- Bind runtime fixture completion to the canonical explicit data clock and qualify populated-scope denial cleanup through the restricted PostgreSQL login without decoding observations or widening role grants.
-- Evaluate bound cross-repository execution evidence against its configured source history while retaining the tracking snapshot's acceptance definition. Missing or inconsistent bindings keep coverage held.
-- Keep completion data time in an explicit trusted application clock domain, fence held owners on populated scopes, and document the lifetime reservation cap.
-- Repair statusgen/36 verification: separate performance samples from the baseline worktree, keep replacement-ref mutation tests discriminating under admitted Git settings, and test the inputs parser and lint adapter independently of unrelated acceptance records.
-
 ## v1.0.77 — 2026-11-07
 
 ### Fixed
