@@ -8,12 +8,14 @@ unblocks: ["forge-neutral/56"]
 split-from: forge-neutral/40
 effort: L
 gate: human
+decision-issue: 5424
+ruling: "https://github.com/medici-finance/assay/issues/5424#issuecomment-6672660827"
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Review the demonstrated separation between operator profile initialization and restricted runtime SQL access. Accepting this library and synthetic role proof grants no operational role, credential, policy value or activation."
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 3
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -29,12 +31,20 @@ sources:
 - docs/library-first.md
 - docs/go-engineering.md
 - "Inspected foundation36 1ddfb16e68ebb7be54d4dc5a606a07e74e2a7259, Store52 e7b084ba2f10e90feee8470ebab8c52942f05233 and Gate54 d114102a6e4c7de0d78c235dcbca2801676c4a4c; feature availability is not mainline delivery or acceptance."
+- "Implementation genuinely consumes qualified local Gate54 30d838267e055397a35b07b0fe264a16302f8e41, containing published native53 622bec858f5ba7c7e9fc3ab91ff780e7d368e7d1 and corrected Store52 bfea138c74ae784ecc034f273076bd5866f4dddd. Gate54 publication and acceptance remain separately gated."
+- "Qualified staging pickup consumes canonical Gate54 36e150d39ea494742c256b56df9fe6706e313aaa, the helper-qualified descendant of 7e141264a28e928d9a74eb6d0bbcd05dfb7efc3d with identical runtime. Its explicit trusted refresh.Clock binds source/coordinator data evaluation only; database time independently owns leases, accounting windows and retry floors. Publication and acceptance remain separately held."
 consumers:
-- "workflow/store and its canonical numbered Goose migration: follow-up forge-neutral/55 (operator-only initialization, replay and SQL role contract)"
-- "workflow/internal/refreshcodec: follow-up forge-neutral/55 (reuse its canonical profile encoding; no second encoding)"
-- "workflow/internal/pgtest and workflow/pgtestfixture: follow-up forge-neutral/55 (owned synthetic role support only)"
-- "tools/desk/internal/deskkit/mirror_joined_test.go: follow-up forge-neutral/55 (actual provisioned read-through fixture)"
-- "workflow/README.md, spec/coordination-store-v1.md, docs/contracts.md and existing PostgreSQL CI: follow-up forge-neutral/55"
+- "workflow/store/refresh_provision.go: fixed-here (operator-only initialization and immutable replay)"
+- "workflow/store/refresh_role_profile.go: fixed-here (declarative operator and restricted-runtime SQL profile)"
+- "workflow/store/migrations/00004_refresh_initialization.sql: fixed-here (same Goose ledger, immutable provenance and bounded terminal eviction)"
+- "workflow/internal/refreshcodec/codec.go: fixed-here (reuse canonical profile encoding)"
+- "workflow/internal/pgtest/fixture.go: fixed-here (owned ephemeral synthetic role support only)"
+- "workflow/pgtestfixture/fixture.go: fixed-here (exact production-declared manifest on owned test roles)"
+- "tools/desk/internal/deskkit/mirror_joined_test.go: fixed-here (actual operator-provisioned restricted-login read-through fixture)"
+- "workflow/README.md: fixed-here (typed provisioning and role boundaries)"
+- "spec/coordination-store-v1.md: fixed-here (same canonical schema owner)"
+- "docs/contracts.md: fixed-here (same semantic owner and explicit trust-boundary row)"
+- ".github/workflows/assay-workflow.yml: fixed-here (dedicated native joined proof requires nonempty DSN and exact named PASS)"
 - "authenticated caller mapping and read-only handlers: follow-up forge-neutral/56 (qualified R3 producer remains required)"
 - "retention, complete mirror acceptance and tool migration: out-of-scope (already owned by full37; this contribution delivers none of them)"
 - "workflow claims, execution, outbox and reconstruction: out-of-scope (no dependency on their delivery)"
@@ -65,7 +75,7 @@ files:
 - `changelog/mirror-refresh-provisioning.md` (planned)
 
 facts:
-- The actual /54 constructor `DB.Refresh` takes its existing MirrorStore, explicit RefreshConfig and CallerAuthority. It creates no profile or usage record. Every operation holds on missing, unreadable, mismatched or unknown admission/source/caller accounting.
+- The actual /54 constructor `DB.Refresh` takes its existing MirrorStore, explicit RefreshConfig, CallerAuthority and trusted refresh.Clock shared with the source/coordinator. That data clock does not enter profile encoding or operator provisioning; database time independently owns leases, accounting windows and retry floors. It creates no profile or usage record. Every operation holds on missing, unreadable, mismatched or unknown admission/source/caller accounting.
 - RefreshConfig binds SourceID, AdmissionID, access/configuration/policy epochs, refresh Limits, NativeLimits and PollInterval. Values are supplied by trusted composition. Shared profiles require kernel FailureBackoff zero; the Gate alone owns shared retry eligibility.
 - Native budget usage counts charged/reserved attempt slots, not scan calls, measured HTTP entries or provider quota points. A known zero HTTP result can still retain a charged slot; operator baselines must preserve those distinct units.
 - Source, admission and caller usage already share R2 PostgreSQL, the private pool, one Goose manifest and canonical refreshcodec profile bytes. Existing runtime window rollover is not permission to initialize or reconcile unknown accounting.
@@ -91,6 +101,17 @@ merge or acceptance; it must contain the actual current migrations, codec, const
 and guards, not an authoring-only port. Core R2 provisioning can then proceed locally.
 Final joined delivery consumes the completed qualified native/SQL owners and retains all
 publication, independent verification and activation gates.
+
+The implementation reuses the canonical private DB pool, refreshcodec and Goose
+ledger. Its additive initialization migration also guards the runtime's existing
+eligible-terminal fill deletion below direct SQL. The role manifest is rendered
+only; actual grants and ephemeral LOGIN credentials are confined to the marked
+disposable fixture during qualification. The joined native fixture uses that
+restricted login, the operator API and the existing admitted SDK/mapper/coordinator
+path; its positive path uses no SeedRefresh initialization. The committed bounded
+production controls cover known inputs, replay, atomicity, two-process source
+fencing, declared runtime grants, effective role escapes, owned cleanup and the
+dedicated joined CI proof. Author-side checks do not supply independent Evidence.
 
 ## Human decision
 
