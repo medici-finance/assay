@@ -1,0 +1,1 @@
+- Evaluate bound cross-repository execution evidence against its configured source history while retaining the tracking snapshot's acceptance definition. Missing or inconsistent bindings keep coverage held.
