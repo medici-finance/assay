@@ -114,3 +114,197 @@ The wrong-but-plausible delivery is the mutation named in each Verify row. Each 
 ## Review
 
 Gate: human, derived from the declared risks. Independent review checks compatibility and consumer-flow evidence. No reviewer/worker stamp, release permission or acceptance receipt is created by this authoring change.
+
+
+## Proposed receipt adapter — pending human ruling
+
+**Status:** authoring proposal, 7 November 2026. This appendix does not deliver this
+brief, change its Task/Verify contract, fill Evidence or approve a design. The
+Human decision section above still blocks governed implementation. The decision
+issue is the ruling venue; this proposal is the concrete material to attach there.
+
+### Architecture pickup and source coverage
+
+Manual bootstrap at source commit `5142af8c66f4671d7cb3c575d5b65d5eadd6275b`:
+brief `assay:assay:milestone-support:06`, authored revision 1. The dispatch packet
+records the same commit, and the local worktree head matched it before editing.
+The following are inspected source contracts, rather than new approvals:
+
+- [Milestone identity, receipt and history contract](../../../spec/milestone-v1.md),
+  especially §§2, 6 and 10 and the combined graph implementation boundary.
+- [Brief compatibility](../../../spec/brief-v1.md#compatibility-and-canonical-writes)
+  (the section titled “Compatibility and canonical writes”) and §4.5 Evidence;
+  [stream ownership](../../../spec/stream-v1.md); [design approval](../../../spec/lifecycle-v1.md#44-design-approval-gate).
+- [Decision records and ruling corroboration](../../../spec/registers-v1.md#7-decisions-register),
+  §§7.4–7.5; [verification domain](../../../spec/verification-domain-v1.md);
+  [evidence provenance](../../../spec/evidence-provenance-v1.md), especially duty separation.
+- [Semantic owners](../../contracts.md), rows S-verification-domain,
+  S-evidence-coverage, S-eligibility and S-decision-acceptance;
+  [library direction](../../library-first.md) and [engineering catalogue](../../go-engineering.md).
+  The large contract/index documents were inspected in relevant sections; this is
+  affected-context coverage, not a whole-repository architecture audit.
+
+Observed implementation: `statusgen/workref` and `statusgen/readercaps` now exist;
+`statusgen/evaluation/milestonegraph.go` exposes `BuildMilestoneGraph`, and
+`statusgen/milestonegraph.go` maps source snapshots to it. The graph deliberately
+never satisfies a milestone start gate from completion alone. The reader advertisement
+in `statusgen/briefschemaversions.go` lists syntax/preflight only, with no milestone
+acceptance capability. The board records /05 as verified; that is dependency status,
+not evidence of this brief's acceptance behavior.
+
+`statusgen/domain/records.go`, `assess.go` and `provenance.go` expose `Candidate`,
+`BindAcceptance`, `Assess`, `Assessment.CheckCurrent`, `Corroborate` and `EvaluateDuty`.
+A domain acceptance binding is a definition binding, not a human acceptance.
+`WorkIdentity` is brief-only; it must not receive an `m-` reference or a fabricated
+workflow instance. `EvaluateDuty` requires trusted selected provenance, and no
+production selector is installed by that package. A selected claim's shape or digest
+alone cannot establish its authenticity.
+
+`statusgen/decisionruling.go:resolveRulingOn` checks same-repository issue/comment
+binding, mapped human author, bot exclusion, unedited text and record identity.
+Its successful result intentionally does not distinguish approval from rejection.
+It is package-main code, not an importable public SDK. `tools/desk/internal` is also
+unavailable to statusgen. The current `workflow/store` exists (unlike the brief's
+older authoring baseline); its existence grants no acceptance-store integration and
+it remains outside this delivery.
+
+**Disposition: continue authoring; hold implementation.** Existing public libraries
+cover identity, candidate binding, coverage and duty comparisons. The aggregate
+milestone receipt and decision-content adapter still require the ruling below.
+No dependency, binary, service or new credential holder is proposed. Before
+implementation, refresh the current source and claim/PR overlap and obtain the ruling
+on [the existing decision issue](https://github.com/medici-finance/assay/issues/5705).
+
+### Bounded design to rule on
+
+Use existing repository Evidence artifacts and the existing human decision-issue
+mechanism. Add a pure aggregate adapter in the statusgen module, with host mapping
+in the planned `statusgen/milestoneacceptance.go`. Proposed aggregate types belong
+to the S-verification-domain owner; they are separate from brief `WorkIdentity` and
+from its existing wire schema. Names and a wire-format allocation remain proposed
+until the ruling; no operational declaration or support advertisement is added here.
+
+A receipt is a content-addressed evidence manifest plus an exact human comment
+pointer, not a new approval database. The manifest is a repository-tracked Evidence
+artifact selected explicitly by the existing evidence producer, linked from the
+milestone's Coverage evidence. Its path is an explicit repository-relative locator;
+there is no directory scan for “latest acceptance.” Existing brief Evidence sections
+and execution witnesses remain the verification records; a manifest references them
+without rewriting their results or granting the producer acceptance authority.
+
+| Bound value | Proposed exact pointer/comparison |
+|---|---|
+| Promise | Canonical typed milestone ID and positive contract-version, resolved by `workref` using the declaring root's registry; retain original spelling for diagnostics. |
+| Contract source | Owning repository identity, full source commit, repository-relative milestone path and content digest. Contract-version and source commit are separate values. |
+| Assessed subject | Explicit list of repository/artifact candidates using `domain.Candidate` where applicable, artifact digests, environment/configuration manifest identity, interface and workload/profile identity. No branch, ambient HEAD or default environment substitutes for a missing value. |
+| Contributors | Canonical brief identity/UUID, authored revision, owning source commit/path, and exact completed Evidence/Verify-row/witness pointers. Resolve optional brief selectors at that snapshot; never substitute a newer revision. |
+| Prerequisites | Exact prerequisite milestone version, receipt manifest digest and decision comment pointer, together with the consuming environment/interface/profile compatibility required by the promise. Mere historical acceptance in another profile is insufficient. |
+| Criteria | Exactly the criterion IDs in the bound contract, each with explicit result, observation time, verifier/provenance reference and immutable evidence pointer (repository, commit, path, row/anchor and digest). Missing, duplicate, extra or failed results cannot be treated as a complete pass. |
+| Authority | Exact existing policy/decision source commit/path/digest identifying the outcome's acceptance authority and required duty separation; plus a same-repository issue number and comment ID. Owner/team metadata supplies no authority. |
+| Currency | Supplied observation time, selected evaluator/policy identity, existing context/applicability bounds where required, and complete current decision/revocation observations. No implicit freshness duration or live probe. |
+
+The manifest's canonical bytes exclude the later decision pointer, avoiding a digest
+cycle. The human's unedited issue comment explicitly identifies the milestone,
+contract-version, source commit/path, manifest digest and disposition (`accept`,
+`reject`, `hold` or `revoke`). The normalized receipt pairs that manifest with the
+comment's repository/issue/comment identity and observed content digest. A revision
+of either requires a new artifact/comment; it cannot edit the accepted history.
+This is a proposed payload over an existing mechanism, not a minted signature or a
+claim that issue comments themselves are permanently immutable.
+
+Reuse the ruling resolver's authentication/binding checks through its existing
+host seam; any necessary extraction preserves all legacy DR and brief behavior.
+Milestone issue binding is explicit and distinct from a DR design-decision marker.
+Do not widen `resolveRulingOn` and then presume that any passing DR comment accepts a
+milestone. The new content adapter must match the explicit disposition and every
+subject field against the selected manifest. Free prose, issue closure, PR approval,
+`decided-by`, completed contributors and a corroboration PASS are each insufficient.
+An unknown payload version remains could-not-check.
+
+Host adapters establish trusted observations and authority, using existing admitted
+forge reads only; the pure aggregate receives normalized explicit values and returns
+history plus current applicability, reasons and coverage. It performs no I/O, token
+lookup, claim, lifecycle advance, acceptance write or effect admission. Existing
+coverage and current-subject checks remain independent of duty/authentication checks.
+Use `domain.Assess`/`EvaluateDuty` for actual brief-bound evidence only when their
+required selected records exist. Missing trusted lineage is unknown, not an assertion
+of independence, and no milestone-as-brief coercion is allowed. Aggregate decisions
+must retain the outcome's existing human/risk and verifier separation policy.
+
+### Historical acceptance and present availability
+
+Keep the original accepted receipt addressable. A later authorized revocation points
+to that exact receipt and subject, through a new unedited comment in the same decision
+mechanism. Supersession also names the replaced receipt; ordering by timestamp alone
+must not silently choose among conflicting decisions. Missing decision pages, missing
+revocation coverage or an unresolved conflicting successor makes current applicability
+unknown. A known revocation prevents current satisfaction while preserving history.
+A revocation for another receipt cannot erase this one.
+
+Expose historical acceptance independently from present `supported`, `blocked` and
+`unknown` applicability. Incomplete work or an observed failed criterion is a known
+blocker; inaccessible evidence or unsupported semantics is unknown. Retain both lists
+when both occur. All work done with no qualifying receipt remains acceptance outstanding.
+New contract versions, changed source/subject or a different environment/profile require
+a fresh applicable assessment and decision; no acceptance is inherited. Evidence that
+was accepted but is now unavailable is historical acceptance with current could-not-check.
+Retirement/withdrawal decisions are consulted without deleting identity or history.
+
+/06 returns these typed observations only. /07 owns readiness integration; /10 owns
+current dispatch/pickup admission. Neither this proposal nor a future pure “supported”
+result can authorize execution, merge, release or deployment.
+
+### Acceptance cases for the post-ruling implementation
+
+These are proposed case details for the existing two Verify rows, not new executable
+checks or reported results. The original commands and Evidence remain unchanged.
+
+| Existing future test | Case and expected discrimination |
+|---|---|
+| `TestMilestoneAcceptSubject` | All contributors done, no receipt: acceptance outstanding. An exact authorized accept with complete independent evidence is the positive control; a reject/hold comment passing actor corroboration never accepts. |
+| `TestMilestoneAcceptSubject` | Independently change promise version, source commit/path, candidate, brief revision, prerequisite receipt, criterion result, environment or profile: no current acceptance; unavailable observations remain unknown. Plant “latest evidence” substitution at a second contributor and require the production adapter to reject it. |
+| `TestMilestoneAcceptSubject` | Wrong human, bot, edited/deleted/unrelated comment, unauthorized policy, missing trusted selector, shared accountable lineage or forged selected provenance: no acceptance. Bypass an outer check to show the inner subject/provenance check still refuses. |
+| `TestMilestoneRevocation` | Preserve accepted history after an exact authorized revocation while denying present satisfaction. Wrong-target revocation cannot revoke another receipt; a missing revocation page cannot prove absence. |
+| `TestMilestoneRevocation` | Preserve history after evidence becomes stale/unavailable, a subject/profile changes, or a new contract version appears. Unknown current applicability and known blockers remain distinct; history is never rewritten to show current acceptance. |
+| Both tests | Unrequired legacy streams retain behavior; unsupported required receipt semantics remain unknown/refused at the consumer boundary. No test fixture counts as a human acceptance or a live observation. |
+
+After the ruling, implement these through the actual adapter and record compiling
+mutations in the already declared `06-mutations.json`. Show fail-first results before
+opening the implementation PR. No such runtime test or mutation is claimed by this
+proposal; the named tests are still absent at this source revision.
+
+### Consumer census and transition
+
+| Consumer | Disposition |
+|---|---|
+| This brief's decision/design appendix and changelog | fixed-here: authoring material only; no shared runtime value changes. |
+| `statusgen/milestoneacceptance.go`, its tests/fixtures and `statusgen/domain` aggregate types | follow-up /06 after ruling; preserve existing brief wire/identity contracts. |
+| `statusgen/decisionruling.go` and existing DR/brief ruling consumers | follow-up /06 only for shared authentication extraction needed by the adapter; preserve all checks and explicit no-content-verdict semantics. Alias/workflow subject expansion remains /09. |
+| `statusgen/milestones.go`, `evaluation.BuildMilestoneGraph`, reader capability advertisement | out-of-scope for this authoring change; delivered loader/graph remain held and acceptance remains unadvertised. Any newly required seam is inventoried before implementation. |
+| `spec/milestone-v1.md` receipt boundary | follow-up /06: update canonical semantics only after the ruling; this appendix is a proposal under the existing contract. |
+| `evaluation.EvaluateEligibility`, statusgen Next-up/eligibility and milestone graph gate mapping | follow-up /07; consume one typed receipt assessment without re-deriving acceptance. |
+| Desk dispatch/pickup and trailer/claim readers | follow-up /10 and /08 respectively; no active worker scope change here. |
+| Board/deskboard, historian/export, selected-outcome trace | follow-up /11, /12 and /13; preserve history and unknown coverage, consume the canonical result. |
+| `workflow/store`, verifier scheduling, existing Evidence publication/role custody | out-of-scope; reuse their records/ports where delivered, without activating a new store or changing admission. |
+| `docs/streams/delivery-profiles/spec.md` and its /07 real-runner qualification | follow-up under that stream: profile qualification evidence must bind the exact profile and cannot accept itself; no fake-to-real acceptance inheritance. |
+
+### Decision block
+
+**Owner:** the maintainer authorized by the existing /06 decision issue, linked above. This design gate approves how /06 will be implemented;
+it does not accept any milestone outcome.
+
+1. **Accept the bounded adapter proposal (recommended):** authorize the explicit
+   manifest/comment binding, aggregate types under S-verification-domain, distinct
+   accept/reject/hold/revoke content check, unchanged actor and duty boundaries,
+   immutable history/current-applicability separation, and no effect admission.
+2. **Request corrections:** name the pointer, subject, authority, revocation or
+   consumer rule to change; implementation remains held for a revised proposal.
+3. **Hold:** leave /06 at its current lifecycle state and specify what evidence or
+   ownership resolution is needed before another proposal.
+
+Exact ruling needed: an unedited human comment on the existing decision issue naming
+`milestone-support/06`, the proposal PR and its head, selecting one option and stating
+any corrections. If accepted, transcribe the ruling into a decision-v1 DR record with
+alternatives, consequences and its corroboratable ruling link, and cite it via the
+brief's `design:` before governed implementation. Do not create an approved DR,
+fill `decided-by`, record Evidence or advance a lifecycle token from this proposal.
