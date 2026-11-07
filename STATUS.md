@@ -115,8 +115,6 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **DRIVE NOT APPLIED.** drive manifest(s) rejected: build-less-brittle, desktools-v2. The board generated normally with **zero** drive boost — a malformed, expired, or over-concurrent drive manifest is fail-neutral by design and can never freeze the board (see `--lint` WARN lines).
 
-> **Already delivered or re-homed — held out of dispatch (1):** forge-neutral/54 → already-merged-unflipped (merged PR #5485, Brief: trailer). Each is a board-honesty finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose brief file is gone); reconcile or retire the row to clear it.
-
 > **Already delivered, flip held by the reconcile's lint hold — held out of dispatch (3):** forge-neutral/48 → already-merged-unflipped (merged PR #5387, Brief: trailer; flip held: forge-neutral/brief-48: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/forge-neutral/README.md: decision-gate hold (lifecycle-v1 §4.5): forge-neutral/48 is gate: human and this change moves it to implemented (it was todo at the base), but decision issue #5384 has no recorded ruling (frontmatter ruling: is absent) — once a human rules on #5384, link the ruling comment in ruling:. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.), forge-neutral/52 → already-merged-unflipped (merged PR #5423, Brief: trailer; flip held: forge-neutral/brief-52: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/forge-neutral/README.md: decision-gate hold (lifecycle-v1 §4.5): forge-neutral/52 is gate: human and this change moves it to implemented (it was todo at the base), but decision issue #5401 has no recorded ruling (frontmatter ruling: is absent) — once a human rules on #5401, link the ruling comment in ruling:. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.), graph-execution/36 → already-merged-unflipped (merged PR #5418, Brief: trailer; flip held: graph-execution/brief-36: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/graph-execution/README.md: decision-gate hold (lifecycle-v1 §4.5): graph-execution/36 is gate: human and this change moves it to implemented (it was todo at the base), but decision issue #5405 has no recorded ruling (frontmatter ruling: is absent) — once a human rules on #5405, link the ruling comment in ruling:. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.). Fix: the reconcile's lint hold refuses to write this row, so reconciling cannot clear it — clear the problem the hold names: cite the approved design-decision record in the brief's `design:` (lifecycle-v1 §4.4), or record the human ruling in `ruling:` (lifecycle-v1 §4.5); the next reconcile then writes the row. Do not re-dispatch it.
 
 _Next-up: 20 of 49 eligible — 29 held back (14 by per-stream caps, 15 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
@@ -150,7 +148,7 @@ _Held by per-stream caps: 14 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (15 for the desk · 48 for the driver · 58 for workers · 18 for an operator · 45 runner-pending — of 188 total; 4 could-not-check)
+## Awaiting verification / review (17 for the desk · 48 for the driver · 58 for workers · 18 for an operator · 45 runner-pending — of 190 total; 4 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
@@ -345,12 +343,14 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 12 [exec:strong] | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ e4d474af8bca (claude-opus-5-5) | — |
 | desktools-v2 | 14 [exec:strong] | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ 91f04b81ba06 (claude-opus-5-5) | — |
 
-### Desk-actionable (15)
+### Desk-actionable (17)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
 | desk-tools | 39 [exec:strong] | implemented | 17000 | 32 | — | verify-desk | triage, then re-bucket | — | — |
+| forge-neutral | 54 [exec:strong] | implemented | 12500 | 21 | — | verify-desk | triage, then re-bucket | — | — |
 | statusgen | 36 [exec:strong] | implemented | 12500 | 23 | — | verify-desk | triage, then re-bucket | — | — |
+| forge-neutral | 55 [exec:strong] | implemented | 10000 | 16 | — | verify-desk | triage, then re-bucket | — | — |
 | desk-containers | 26 | implemented | 3500 | 5 | — | verify-desk | dispatch one judge | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2550 | 1 | — | verify-desk | dispatch one judge | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2510 | 1 | — | verify-desk | triage, then re-bucket | — | — |
@@ -804,8 +804,8 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 51 Store-injected mirror read-through coordinator and shared refresh gate port — todo (wave 3)
 - 52 Canonical PostgreSQL mirror store without execution dependencies — todo (wave 3)
 - 53 Qualified native mirror attempt accounting and retry metadata — todo (wave 5)
-- 54 Canonical PostgreSQL refresh gate and admitted read-through integration — todo (wave 6)
-- 55 Operator provisioning of known read-only refresh profiles — todo (wave 7)
+- 54 Canonical PostgreSQL refresh gate and admitted read-through integration — implemented (wave 6)
+- 55 Operator provisioning of known read-only refresh profiles — implemented (wave 7)
 - 56 Read-only forge serving behind qualified caller authority — todo (wave 8)
 - 57 Qualified local read-only caller authority and current-state producer — todo (wave 4)
 
