@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,6 +28,17 @@ func TestWitnessAdapterFailureIsNotEmpty(t *testing.T) {
 // refs/replace/ ref over a tree changes neither the tree listing nor the
 // replaced-object listing's report that it exists.
 func TestWitnessAdapterIgnoresReplaceRefs(t *testing.T) {
+	// The fixture must expose replacement objects to the unprotected control
+	// and to a broken adapter, including inside an admitted Verify row.
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		if strings.HasPrefix(key, "GIT_") {
+			t.Setenv(key, "")
+			if err := os.Unsetenv(key); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	root := t.TempDir()
 	gv2Git(t, root, "init", "-q", "-b", "main")
 	gv2Git(t, root, "config", "commit.gpgsign", "false")
