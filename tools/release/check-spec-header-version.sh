@@ -1,74 +1,50 @@
 #!/usr/bin/env bash
-# check-spec-header-version.sh — refuse to cut a release whose spec/brief-v1.md
-# header names a stale statusgen version (assay#1192).
+# tools/release/check-spec-header-version.sh — refuse to cut a release whose
+# spec/brief-v1.md header names a stale statusgen version. A transparent adapter: it runs
 #
-# WHY. spec/brief-v1.md's `Describes reference implementation:` line names a
-# `statusgen` version by hand. #302 (2026-09-02) did a one-time freshen
-# (v0.8.0 -> v0.22.0, per brief-13's own drift-class `facts:`) but added no
-# mechanical floor, so the header drifted silently again — it still read
-# v0.22.0 while the released umbrella tag had moved dozens of releases ahead
-# (v1.0.9 when #1192 was filed, v1.0.12 by the time this script landed). This
-# is the still-missing second half of brief-13's Task 4 (brief-13, cited on
-# assay#1192's own tracker entry): "a release-time check ... that the spec
-# header matches the version being cut."
+#   deskchangelog check-spec-header -- <vX.Y.Z> [spec-file]
 #
-# CONTRACT. Reads the `Describes reference implementation:` line's `statusgen`
-# version token out of the spec file and compares it, byte for byte (leading
-# `v` included), to the tag being cut. THREE-STATE: a header line that is
-# missing or carries no parseable vX.Y.Z token is a could-not-check FAILURE
-# (exit 2), never a quiet pass — matching the umbrella scheme's own
-# fail-closed convention for an unreadable version (statusgen/versiongate.go,
-# plugins/assay/scripts/stamp-plugin-version.sh).
+# (every argument an operand) and exits with its status: 0 match · 1 mismatch (the
+# release-blocking case) · 2 usage, a malformed tag, or could-not-check (an unreadable
+# file, a missing header line, an unparseable version — never a quiet pass). 127 when
+# no deskchangelog can be found or built.
 #
-# USAGE
-#   check-spec-header-version.sh <vX.Y.Z> [spec-file]
+# spec-file defaults to spec/brief-v1.md, resolved against the CURRENT working
+# directory. The check itself lives in tools/desk/cmd/deskchangelog (desktools-v2/52);
+# tools/release/stamp-spec-header-version.sh writes the line this proves.
 #
-# spec-file defaults to spec/brief-v1.md, resolved against the CURRENT
-# working directory — the release workflow runs this from the repo root right
-# after checkout, same convention as tools/changelog/check.sh (no --root flag).
-#
-# EXIT CODES   0 match · 1 mismatch (the release-blocking case) · 2 usage or
-# could-not-check (unreadable file, unparseable line, malformed tag).
-#
-# Unit-tested offline by check-spec-header-version.test.sh.
+# Which deskchangelog runs: the tree under check decides. When this checkout carries
+# tools/desk/cmd/deskchangelog, the adapter builds it with `go build` into a temporary
+# directory removed afterwards and runs that build; a deskchangelog on PATH is never used
+# then, and a missing go or a failed build exits 127. Only a tree without the source (an
+# installed desk-tools bundle) runs the deskchangelog on PATH.
 set -euo pipefail
 
-version_re='^v[0-9]+\.[0-9]+\.[0-9]+$'
-
-usage() {
-  echo "usage: $0 <vX.Y.Z> [spec-file]" >&2
-  exit 2
-}
-
-[[ $# -ge 1 && $# -le 2 ]] || usage
-tag="$1"
-file="${2:-spec/brief-v1.md}"
-
-if [[ ! "$tag" =~ $version_re ]]; then
-  echo "FAIL usage: tag must be vMAJOR.MINOR.PATCH (got '$tag')" >&2
-  exit 2
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+desk_dir="$(cd "$here/.." && pwd)/desk"
+if [ -d "$desk_dir/cmd/deskchangelog" ]; then
+  # This tree carries the source, so its own build decides; PATH is never consulted.
+  if ! command -v go >/dev/null 2>&1; then
+    echo "error: this tree carries ${desk_dir}/cmd/deskchangelog, but go is not installed, so it cannot be built; nothing was checked." >&2
+    echo "       A deskchangelog on PATH is not used for a tree that has the source." >&2
+    exit 127
+  fi
+  build_dir="$(mktemp -d "${TMPDIR:-/tmp}/deskchangelog.XXXXXX")"
+  trap 'rm -rf "$build_dir"' EXIT
+  if ! go -C "$desk_dir" build -buildvcs=false -o "$build_dir/deskchangelog" ./cmd/deskchangelog; then
+    echo "error: building deskchangelog from ${desk_dir} failed; nothing was checked." >&2
+    echo "       A deskchangelog on PATH is not used for a tree that has the source." >&2
+    exit 127
+  fi
+  bin="$build_dir/deskchangelog"
+elif command -v deskchangelog >/dev/null 2>&1; then
+  # No source here (an installed desk-tools bundle): the deskchangelog on PATH.
+  bin=deskchangelog
+else
+  echo "error: deskchangelog is not on PATH, and this tree has no ${desk_dir}/cmd/deskchangelog to build it from." >&2
+  echo "       Install the desk-tools release, or run from an assay checkout with Go installed." >&2
+  exit 127
 fi
-
-if [[ ! -r "$file" ]]; then
-  echo "FAIL could-not-check: cannot read $file" >&2
-  exit 2
-fi
-
-line=$(grep -m1 'Describes reference implementation:' "$file" || true)
-if [[ -z "$line" ]]; then
-  echo "FAIL could-not-check: $file has no 'Describes reference implementation:' line" >&2
-  exit 2
-fi
-
-have=$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' <<<"$line" | head -1 || true)
-if [[ -z "$have" ]]; then
-  echo "FAIL could-not-check: could not parse a vX.Y.Z token out of: $line" >&2
-  exit 2
-fi
-
-if [[ "$have" != "$tag" ]]; then
-  echo "FAIL $file names statusgen $have, but this release is cutting $tag — run tools/release/stamp-spec-header-version.sh $tag (the release does this on dispatch), or update the 'Describes reference implementation:' line in $file to $tag, before releasing (brief-13 task 4, assay#1192)" >&2
-  exit 1
-fi
-
-echo "ok   $file names statusgen $have, matches $tag"
+rc=0
+"$bin" check-spec-header -- "$@" || rc=$?
+exit "$rc"

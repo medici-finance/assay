@@ -333,7 +333,16 @@ jobs:
       # authoritative. (The push-path step below queries the REST API by
       # ${{ github.repository }} and needs no git state, but the checkout is
       # harmless there.)
+      #
+      # persist-credentials:false — the spec header gate at the end of this job
+      # compiles repo Go (deskchangelog), so the read token is kept out of
+      # .git/config. The two steps that ask origin (the tag-exists probe and
+      # the manifest gate's ls-remote + fetch) each carry it as an explicit
+      # per-command header instead, the same Basic scheme the tag push and the
+      # changelog roll use.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Dispatch only — on the tag-push path the tag necessarily already exists
       # (its push is what started the run), so this check must never run there.
@@ -343,13 +352,19 @@ jobs:
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
           ATTEMPT: ${{ github.run_attempt }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # The checkout persisted no credential, so the probe carries the read
+          # token as a per-command header; the encoded value is masked first.
+          basic=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
+          echo "::add-mask::${basic}"
           # --exit-code: 0 = found, 2 = genuinely absent, anything else = the
           # question was not answered. Treating an unreachable origin as "absent"
           # would fail OPEN, so a broken lookup refuses.
           set +e
-          git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1
+          git -c http.extraheader="AUTHORIZATION: basic ${basic}" \
+            ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1
           rc=$?
           set -e
           case "$rc" in
@@ -444,15 +459,23 @@ jobs:
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
           EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          all=$(git ls-remote --tags origin 'refs/tags/v*' \
+          # The checkout persisted no credential: ls-remote and fetch carry the
+          # read token as a per-command header, masked first. GH_TOKEN is then
+          # unset so stamp-plugin-version.sh below never sees it.
+          basic=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
+          echo "::add-mask::${basic}"
+          unset GH_TOKEN
+          all=$(git -c http.extraheader="AUTHORIZATION: basic ${basic}" ls-remote --tags origin 'refs/tags/v*' \
                 | sed -n 's#.*[[:space:]]refs/tags/\(v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$#\1#p' \
                 | sort -u)
           prev=$({ printf '%s\n' "$all" | grep -vx -- "$TAG" || true; printf '%s\n' "$TAG"; } \
                  | grep -v '^$' | sort -uV | grep -x -B1 -- "$TAG" | grep -vx -- "$TAG" || true)
           if [ -n "$prev" ]; then
-            git fetch --no-tags --depth=1 origin "refs/tags/${prev}:refs/tags/${prev}"
+            git -c http.extraheader="AUTHORIZATION: basic ${basic}" \
+              fetch --no-tags --depth=1 origin "refs/tags/${prev}:refs/tags/${prev}"
             echo "previous umbrella tag on origin: $prev"
           else
             echo "no previous umbrella tag on origin — first release."
@@ -462,6 +485,33 @@ jobs:
           else
             bash plugins/assay/scripts/stamp-plugin-version.sh gate --tag "$TAG" --prev "$prev"
           fi
+
+      # check-spec-header-version.sh below is an adapter onto deskchangelog
+      # (desktools-v2/52): in a tree that carries tools/desk/cmd/deskchangelog it
+      # builds the command from this checkout and runs that build, and without
+      # Go it exits 127, so the toolchain must be on PATH before the gate.
+      # Same pinned, digest-checked install as the other jobs; push path only,
+      # like the gate it serves.
+      - name: Install Go
+        if: github.event_name == 'push'
+        env:
+          # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl. Pinned
+          # to GO_VERSION above; bump both together — a GO_VERSION change without
+          # a matching digest fails this step CLOSED rather than trusting the
+          # fetch.
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          # Verify BEFORE unpacking into a PATH-prepended dir: an unverified
+          # toolchain there would shadow the system go/sha256sum/curl/git for
+          # every later step of this run.
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
 
       # SPEC HEADER VERSION GATE (#1192) — tag-push path only. The ruling on
       # #1192 (option a, `stamp`) has the release write the tag being cut into
@@ -919,6 +969,41 @@ jobs:
           fi
           echo "python3 present: $(python3 --version 2>&1)"
 
+      # Installed BEFORE the changelog steps below: aggregate.py and
+      # credit-identity.sh are adapters onto deskchangelog (desktools-v2/52),
+      # which in a tree that carries tools/desk/cmd/deskchangelog build the
+      # command from this checkout and exit 127 without Go. This step holds no
+      # token; it stays its own step, outside the credits step's GH_TOKEN.
+      - name: Install Go
+        env:
+          # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl. Pinned
+          # to GO_VERSION above; bump both together — a GO_VERSION change without
+          # a matching digest fails this step CLOSED rather than trusting the
+          # fetch.
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          # Verify BEFORE unpacking into a PATH-prepended dir: an unverified
+          # toolchain there would shadow the system go/sha256sum/curl/git for
+          # every later step of this run.
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      # Own cache directories are never shared with the test/mutation jobs.
+      # Missing or rejected remote input starts a correct cold build. Restored
+      # right after Install Go (it needs `go env`) and BEFORE the changelog
+      # steps, so the deskchangelog builds there use the job's own
+      # GOCACHE/GOMODCACHE, not the runner's defaults.
+      - name: Restore release Go cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -c 'from tools.release import go_cache; go_cache.main("restore")'
+
       # CHANGELOG discipline — EXTERNAL-CONTRIBUTOR CREDIT (contributor-trust/09).
       # A change that arrived from a fork is credited nowhere unless somebody
       # remembered to write the handle into the bullet — and on the proxy path
@@ -926,12 +1011,14 @@ jobs:
       # authorship is already in git and on the pull request; this step stops
       # throwing it away at aggregate time.
       #
-      # THE SPLIT. aggregate.py makes no network call — that is what keeps its
-      # unit suite offline and testable. So the GIT half (fragment -> adding
-      # commit -> merge commit -> pull-request number) is `aggregate.py credits`,
-      # and the FORGE half (number -> author login, is that identity external,
-      # did the body opt out) is HERE, writing a map file the aggregate steps
-      # only ever READ.
+      # THE SPLIT. aggregate.py makes no forge call — that is what keeps its
+      # unit suite offline and testable. (It is an adapter onto deskchangelog,
+      # built from this checkout with the Go installed above; that build may
+      # fetch Go modules, which is the only network it uses.) So the GIT half
+      # (fragment -> adding commit -> merge commit -> pull-request number) is
+      # `aggregate.py credits`, and the FORGE half (number -> author login, is
+      # that identity external, did the body opt out) is HERE, writing a map
+      # file the aggregate steps only ever READ.
       #
       # FAIL-OPEN, ALWAYS. No `set -e`, and the step ends `exit 0`: a fragment
       # whose pull request cannot be resolved, whose author cannot be read, or
@@ -998,7 +1085,13 @@ jobs:
               echo "could not credit ${frag}: the author of #${pr} could not be read: $(tr '\n' ' ' < "$err" | head -c 300)"
               continue
             fi
-            verdict="$(bash tools/changelog/credit-identity.sh classify "$login" "$body" 2>/dev/null || echo skip:unknown)"
+            # A failed classify is never silent: its stderr reaches this log
+            # (127 = go missing or deskchangelog failed to build from this
+            # checkout), and the fragment still fails closed to skip:unknown.
+            if ! verdict="$(bash tools/changelog/credit-identity.sh classify "$login" "$body")"; then
+              echo "could not classify ${frag} (#${pr}): credit-identity.sh failed (see the error above); not crediting"
+              verdict=skip:unknown
+            fi
             # One legible line per fragment, so a dry run says WHO was read and
             # WHAT was decided, not only the outcome.
             echo "resolved ${frag} (#${pr}): login=${login} verdict=${verdict}"
@@ -1012,7 +1105,10 @@ jobs:
                 echo "not crediting ${frag} (#${pr}): ${verdict}"
                 ;;
             esac
-          done < <(python3 tools/changelog/aggregate.py credits changelog 2>/dev/null)
+          # stderr is NOT discarded: if the feeder fails (127 = go missing or
+          # deskchangelog failed to build), its error line stays in this log
+          # and the map is left empty, which credits nobody.
+          done < <(python3 tools/changelog/aggregate.py credits changelog)
 
           echo "credits map (fragment -> credit value):"
           cat "$map"
@@ -1043,45 +1139,28 @@ jobs:
           fi
           notes="${RUNNER_TEMP}/highlights.md"
           # aggregate.py exits 2 with a clear message when there is nothing to
-          # aggregate — surface that as the release refusal.
+          # aggregate — surface that as the release refusal. Any other non-zero
+          # exit is a tool failure, not an empty changelog: 127 is the adapter's
+          # "go is missing or deskchangelog failed to build" (its error line is
+          # in the log just above), so the refusal names the exit instead of
+          # blaming the fragments.
           # --credits is a READ of the map the credit step wrote. With no map, an
           # empty map, or a map crediting nobody, the output is byte-identical
           # to the same call without it.
-          if ! python3 tools/changelog/aggregate.py highlights changelog CHANGELOG.md \
-                --credits "${CREDITS_MAP}" > "$notes"; then
+          hl_rc=0
+          python3 tools/changelog/aggregate.py highlights changelog CHANGELOG.md \
+            --credits "${CREDITS_MAP}" > "$notes" || hl_rc=$?
+          if [ "$hl_rc" -eq 2 ]; then
             echo "::error::no changelog fragments to aggregate — refusing to cut a release with no descriptive highlights. Add a fragment (changelog/<slug>.md) first (driver direction 2026-08-31; see changelog/README.md)."
+            exit 1
+          fi
+          if [ "$hl_rc" -ne 0 ]; then
+            echo "::error::aggregating the release highlights failed (aggregate.py rc=${hl_rc}); see the error above. Refusing to cut. rc=127 means go was missing or deskchangelog failed to build from this checkout, not that changelog/ is empty."
             exit 1
           fi
           echo "Aggregated fragment highlights to lift into the release body:"
           cat "$notes"
           echo "notes_path=$notes" >> "$GITHUB_OUTPUT"
-
-      - name: Install Go
-        env:
-          # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl. Pinned
-          # to GO_VERSION above; bump both together — a GO_VERSION change without
-          # a matching digest fails this step CLOSED rather than trusting the
-          # fetch.
-          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
-        run: |
-          set -euo pipefail
-          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
-          echo "fetching $url"
-          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
-          # Verify BEFORE unpacking into a PATH-prepended dir: an unverified
-          # toolchain there would shadow the system go/sha256sum/curl/git for
-          # every later step of this run.
-          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
-          mkdir -p "${HOME}/go-toolchain"
-          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
-          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
-
-      # Own cache directories are never shared with the test/mutation jobs.
-      # Missing or rejected remote input starts a correct cold build.
-      - name: Restore release Go cache
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 -c 'from tools.release import go_cache; go_cache.main("restore")'
 
       # PLUGIN MANIFEST STAMP (#789). The tree the tag is cut from must carry
       # plugin version X.Y.Z for tag vX.Y.Z — in plugin.json, the marketplace
@@ -2154,7 +2233,13 @@ jobs:
               echo "could not credit ${frag}: the author of #${pr} could not be read: $(tr '\n' ' ' < "$err" | head -c 300)"
               continue
             fi
-            verdict="$(bash tools/changelog/credit-identity.sh classify "$login" "$body" 2>/dev/null || echo skip:unknown)"
+            # A failed classify is never silent: its stderr reaches this log
+            # (127 = go missing or deskchangelog failed to build from this
+            # checkout), and the fragment still fails closed to skip:unknown.
+            if ! verdict="$(bash tools/changelog/credit-identity.sh classify "$login" "$body")"; then
+              echo "could not classify ${frag} (#${pr}): credit-identity.sh failed (see the error above); not crediting"
+              verdict=skip:unknown
+            fi
             # One legible line per fragment, so a dry run says WHO was read and
             # WHAT was decided, not only the outcome.
             echo "resolved ${frag} (#${pr}): login=${login} verdict=${verdict}"
@@ -2168,7 +2253,10 @@ jobs:
                 echo "not crediting ${frag} (#${pr}): ${verdict}"
                 ;;
             esac
-          done < <(python3 tools/changelog/aggregate.py credits changelog 2>/dev/null)
+          # stderr is NOT discarded: if the feeder fails (127 = go missing or
+          # deskchangelog failed to build), its error line stays in this log
+          # and the map is left empty, which credits nobody.
+          done < <(python3 tools/changelog/aggregate.py credits changelog)
 
           echo "credits map (fragment -> credit value):"
           cat "$map"
@@ -2244,6 +2332,10 @@ jobs:
             # legitimately: a concurrent roll (a hand-filed PR, or a re-run of
             # this job) may already have landed the section and cleared the
             # fragments. Treat that as done, not as a failure.
+            # aggregate.py is an adapter onto deskchangelog (desktools-v2/52):
+            # it builds the command from the tree just reset to, with the Go
+            # this job installed, as the deskinstall `go run` calls in the
+            # manifest bump below do. rc=127 is that build failing or go missing.
             roll_rc=0
             python3 tools/changelog/aggregate.py roll changelog CHANGELOG.md "$RELEASE_TAG" "$day" \
               --credits "${CREDITS_MAP}" || roll_rc=$?

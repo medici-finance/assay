@@ -13,6 +13,7 @@ statusgen/registers.go | git-tree-read | register discovery reads tree paths; un
 statusgen/verifyrows.go | git-tree-read | advisory text inside a lint message; no git read
 statusgen/verifyrun.go | runner-at-split | splits a git author email at the at-sign for a local-part identity; not a Runner cell
 statusgen/witnessdigest.go | record-field-key | witnessdigest verb output struct: prints library results as JSON, computes nothing itself
+tools/desk/cmd/deskchangelog/check.go | git-tree-read | changelog gate lists proxy fragments under changelog/ at the base tip; unrelated to witnesses
 tools/desk/cmd/deskevidence/decisiongate.go | git-tree-read | decision-gate file listing; unrelated to witnesses
 tools/desk/cmd/deskevidence/outcome.go | git-tree-read | outcome record file listing; not a witness digest
 tools/desk/cmd/deskevidence/outcomerecord.go | git-tree-read | outcome record blob reads; not a witness digest
