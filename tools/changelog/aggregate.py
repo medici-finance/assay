@@ -71,9 +71,10 @@ roll <fragment-dir> <changelog> <tag> <date> [--at-ref <ref>] [--clear]
     Exit codes (the release workflow's retry loop reads them):
       0  rolled
       1  an I/O failure while clearing fragments
-      2  nothing to aggregate, or a usage error (file left untouched)
-      3  <changelog> already has a ``## <tag>`` section: refused, EVERY file
-         left untouched (a roll already landed; the caller treats it as done)
+      2  nothing to aggregate (checked FIRST, so a retry after a concurrent
+         roll still reads 2), or a usage error (file left untouched)
+      3  there ARE fragments to aggregate but <changelog> already has a
+         ``## <tag>`` section: refused, EVERY file left untouched
       4  --at-ref could not be resolved (files left untouched)
 
     Without --at-ref and --clear the CALLER is responsible for ``git rm``-ing
@@ -548,14 +549,6 @@ def _has_tag_section(lines, tag):
 def cmd_roll(fragment_dir, changelog_path, tag, date, credits_path=None,
              at_ref=None, clear=False):
     lines = _read_lines(changelog_path)
-    # Refuse a second roll of the same tag BEFORE touching anything: a section
-    # for <tag> means an earlier roll already landed, and writing another one
-    # would duplicate the heading.
-    if _has_tag_section(lines, tag):
-        sys.stderr.write(
-            "changelog: %s already has a '## %s' section — refusing to roll it "
-            "twice; no file was changed.\n" % (changelog_path, tag))
-        return EXIT_DUPLICATE_TAG
     names = None
     if at_ref is not None:
         try:
@@ -567,8 +560,19 @@ def cmd_roll(fragment_dir, changelog_path, tag, date, credits_path=None,
             return EXIT_BAD_REF
     collected, total = _collect(
         fragment_dir, changelog_path, load_credits(credits_path), names)
+    # Nothing to aggregate (rc 2) wins over the duplicate-section refusal: a
+    # retry after a concurrent roll finds no fragments AND the tag's section, and
+    # the release workflow already reads rc 2 as "already rolled, done".
     if total == 0:
         return _refuse_empty()
+    # Refuse a second roll of the same tag BEFORE touching anything: a section
+    # for <tag> means an earlier roll already landed, and writing another one
+    # would duplicate the heading.
+    if _has_tag_section(lines, tag):
+        sys.stderr.write(
+            "changelog: %s already has a '## %s' section — refusing to roll it "
+            "twice; no file was changed.\n" % (changelog_path, tag))
+        return EXIT_DUPLICATE_TAG
     highlights = _render(collected)
 
     # Locate the ## Unreleased heading.
