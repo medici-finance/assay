@@ -2229,9 +2229,11 @@ jobs:
       # of the same name can never win. If the tag were missing, `roll` fails
       # CLOSED (rc 4) rather than aggregating everything.
       #
-      # `roll` also refuses (rc 3, nothing touched) when CHANGELOG.md already has
-      # a `## <tag>` section. On a retry that means a concurrent roll already
-      # landed, exactly like rc 2 — both are "done".
+      # `roll` also refuses (rc 3, nothing touched) when there ARE fragments at
+      # the tag but CHANGELOG.md already has a `## <tag>` section. That is not a
+      # completed roll: the fragments at the tag are still on disk. It is an
+      # error on every attempt. Only rc 2 (nothing left to aggregate) on a retry
+      # means a concurrent roll already landed.
       - name: CHANGELOG discipline — write the aggregated section and clear fragments
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
@@ -2252,19 +2254,18 @@ jobs:
             git reset --hard FETCH_HEAD
 
             # aggregate.py exits 2 (leaving the file untouched) only when there
-            # is nothing to aggregate, and 3 (also leaving every file untouched)
-            # when CHANGELOG.md already has a `## <tag>` section. On attempt 1
-            # neither can happen — the aggregate-and-require step in `release`
-            # already proved the fragment set non-empty, and the tag is new — so
-            # either is a real error. On a RETRY both CAN happen legitimately: a
-            # concurrent roll (a hand-filed PR, or a re-run of this job) may
-            # already have landed the section and cleared the fragments. Treat
-            # that as done, not as a failure. rc 4 (the tag ref did not resolve)
-            # is never "done": it falls through to the error below.
+            # is nothing to aggregate. On attempt 1 that cannot happen — the
+            # aggregate-and-require step in `release` already proved the fragment
+            # set non-empty — so it is a real error. On a RETRY it CAN happen
+            # legitimately: a concurrent roll (a hand-filed PR, or a re-run of
+            # this job) may already have landed the section and cleared the
+            # fragments. Treat that as done. rc 3 (fragments at the tag AND the
+            # section already present) and rc 4 (the tag ref did not resolve) are
+            # never "done": they fall through to the error below.
             roll_rc=0
             python3 tools/changelog/aggregate.py roll changelog CHANGELOG.md "$RELEASE_TAG" "$day" \
               --credits "${CREDITS_MAP}" --at-ref "refs/tags/${RELEASE_TAG}" --clear || roll_rc=$?
-            if { [ "$roll_rc" -eq 2 ] || [ "$roll_rc" -eq 3 ]; } && [ "$attempt" -gt 1 ]; then
+            if [ "$roll_rc" -eq 2 ] && [ "$attempt" -gt 1 ]; then
               echo "nothing left to aggregate at the new head (rc=${roll_rc}) — a concurrent roll already landed ${RELEASE_TAG}. Done."
               exit 0
             fi
