@@ -172,6 +172,7 @@ COPY forgeread/go.mod /tmp/modsrc/forgeread/
 COPY gitquiet/go.mod /tmp/modsrc/gitquiet/
 COPY gitcore/go.mod /tmp/modsrc/gitcore/
 COPY perfrec/go.mod /tmp/modsrc/perfrec/
+COPY workflow/go.mod /tmp/modsrc/workflow/
 RUN set -eu; \
     export GOWORK=off GOFLAGS=-mod=readonly GOTOOLCHAIN=local; \
     cd /tmp/modsrc/tools/desk; \
