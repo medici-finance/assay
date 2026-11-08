@@ -33,7 +33,7 @@ consumers:
   - "tools/desk/README.md: fixed-here (new `deskapps` section)"
   - "docs/desk-tools/deskapps.md: fixed-here (new per-verb doc)"
   - "plugins/assay/skills/install/SKILL.md: follow-up apps-installer/07"
-version: 1
+version: 2
 id: 566d5440-7cb6-4731-9aea-d153ee6b16c8
 ---
 
@@ -153,9 +153,9 @@ facts:
 | 9 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestBindingsWritten' -count=1 -v 2>&1 \| grep -cE -e 'REVIEWER_APP=example-act' -e 'WORKER_APP=example-act' -e 'READ_APP=example-read'` | ≥ 3 | check:ci |
 | 10 | `grep -cE -e '^## Measured' docs/desk-tools/deskapps.md && grep -cE -e 'throttle' -e 'org owner' -e 'Enterprise Server' docs/desk-tools/deskapps.md` | 1 then ≥ 3 | check:ci |
 | 11 | `cd tools/desk && go test ./cmd/deskapps/ -run 'Mutation' -count=1` | exit 0 — both mutants are caught by rows 5 and 6 | check:ci |
-| 12 | `statusgen --root . --consumers --brief apps-installer/02` | exit 0 (routing claims corroborated against the diff) | check:ci |
+| 12 | `o=$(statusgen --root . --consumers --brief apps-installer/02 --delivery 08d96323a459d4f30a5ba2244d6e1109d7464b3a --base ca81ea0a960387bb34f9dbc22b188802097d5251 2>&1) && printf '%s\n' "$o" \| grep -q '^summary: 3 corroborated, 0 disproved, 1 unchecked'` | exit 0 (routing claims corroborated against the diff); the one UNCHECKED entry, the out-of-repo `apps.env` format, stays the reviewer's call | check:ci |
 | 13 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestRunInitManifestAndTierMutuallyExclusive' -count=1 -v` | exit 0 — `--manifest` together with an explicit `--tier` is refused, at the flag layer, before any manifest file is read or port bound; stderr names "mutually exclusive" | check:ci |
-| 14 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestLoadManifestFileRefusesRedirectURL\|TestRunInitManifestBadFileReportsAndExits' -count=1 -v` | exit 0 — a manifest carrying its own top-level `redirect_url` is refused with a clear error naming `redirect_url`, both at the loader (`LoadManifestFile`) and end-to-end through `deskapps init --manifest` (non-zero exit, nothing written) | check:ci |
+| 14 | `cd tools/desk && o=$(go test ./cmd/deskapps/ -run '^TestLoadManifestFileRefusesRedirectURL$' -count=1 -v 2>&1) && printf '%s\n' "$o" \| grep -qF -- '--- PASS: TestLoadManifestFileRefusesRedirectURL' && o=$(go test ./cmd/deskapps/ -run '^TestRunInitManifestBadFileReportsAndExits$' -count=1 -v 2>&1) && printf '%s\n' "$o" \| grep -qF -- '--- PASS: TestRunInitManifestBadFileReportsAndExits'` | exit 0 — a manifest carrying its own top-level `redirect_url` is refused with a clear error naming `redirect_url`, both at the loader (`LoadManifestFile`) and end-to-end through `deskapps init --manifest` (non-zero exit, nothing written) | check:ci |
 | 15 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestLoadManifestFileRefusesHookURL' -count=1 -v` | exit 0 — a manifest carrying `hook_attributes.url` is refused with a clear error naming `hook_attributes.url`, the same way and for the same reason as `redirect_url` | check:ci |
 | 16 | `cd tools/desk && go test ./cmd/deskapps/ -run 'OmitsHookAttr' -count=1 -v` | exit 0 — neither the `--tier` nor the `--manifest` path emits a `hook_attributes` key in the posted manifest JSON (assay#1260) | check:ci |
 | 17 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestPemNeverWrittenOnOrgOwnerMismatch' -count=1 -v` | exit 0 — a `/callback` with a valid `state` and a FOREIGN App's `code` on the org-owned path writes NO PEM and NO `apps.env` record, and re-arms the row (the owner layer catching the fault the nonce cannot) | check:ci |
