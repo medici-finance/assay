@@ -148,13 +148,13 @@ _Held by per-stream caps: 14 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (17 for the desk · 49 for the driver · 59 for workers · 17 for an operator · 45 runner-pending — of 191 total; 4 could-not-check)
+## Awaiting verification / review (17 for the desk · 48 for the driver · 60 for workers · 17 for an operator · 45 runner-pending — of 191 total; 4 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
-### Awaiting human gate (49)
+### Awaiting human gate (48)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -185,7 +185,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | apps-installer | 08 [exec:strong] | implemented | 2040 | 0 | — | driver | close the sign-off card | — | — |
 | measured-status | 02 [exec:strong] | implemented | 2040 | 0 | — | driver | human action, cite #4730 | — | — |
 | windows-port | 08 [exec:strong] | implemented | 2040 | 2 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#1795 — rows 3-14, 16, 17 mis-specified for the execution witness; row 18 vacuous on merged main; row 17 live human run and the NAMED, NOT DERIVED 365-day --pat-expiry-days ceiling (provision.go:88) await the human gate | — | — |
-| contributor-trust | 09 [exec:strong] | implemented | 2000 | 0 | — | driver | human action, cite medici-finance/assay#5728 | — | — |
 | forge-neutral | 11 [exec:strong] | implemented | 2000 | 0 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#1554 | — | — |
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | driver | human action, cite medici-finance/assay#997 | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1530 | 1 | — | driver | human action, cite medici-finance/assay#1794 | — | — |
@@ -208,7 +207,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 09 | implemented | 1000 | 0 | — | driver | resolve the recorded blocker before sign-off: hold (no recognised kind), no blocker ref recorded | — | — |
 | statusgen | 16 [exec:strong] | implemented | 1000 | 0 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3398 | — | — |
 
-### Awaiting implementer rework (59)
+### Awaiting implementer rework (60)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -238,6 +237,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 10 [exec:strong] | implemented | 2060 | 0 | — | worker | fix, cite medici-finance/assay#4904 | — | — |
 | measured-status | 01 | implemented | 2040 | 0 | — | worker | fix, cite #4170 | — | — |
 | desktools-v2 | 45 [exec:strong] | implemented | 2010 | 2 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
+| contributor-trust | 09 [exec:strong] | implemented | 2000 | 0 | — | worker | fix, cite medici-finance/assay#5770 | — | — |
 | desk-containers | 10 [exec:strong] | implemented | 2000 | 2 | — | worker | fix, cite medici-finance/assay#2142 | — | — |
 | desk-supervision | 13 [exec:strong] | implemented | 2000 | 2 | — | worker | fix, cite medici-finance/assay#1922 | — | — |
 | desk-supervision | 24 [exec:strong] | implemented | 2000 | 2 | — | worker | fix, cite #4823 | — | — |
