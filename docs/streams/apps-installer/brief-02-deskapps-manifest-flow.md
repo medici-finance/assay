@@ -1131,6 +1131,10 @@ RISK-VALUE: DERIVED — allowedInvocationCeiling = 6 @ tools/desk/internal/forge
 
 No deliverable defect was observed.
 
+#### Correction — 2026-11-08 rework
+
+The verdict line below says 14 rows are not run. The count is 15: rows 1–9, 11 and 13–17, rows 3 and 9 included, as the row accounting above states. 1 credited (row 10) + 1 check definition (row 12) + 15 not run = 17 rows.
+
 **VERIFY: BLOCKED** — at merged main 2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f the closed-bracket container witness (verdict=match) credits 1 of 17 rows (row 10); 14 rows, rows 3 and 9 included, are not run on the image module-cache gap (medici-finance/assay#4683); row 12 exits 2 by check definition (medici-finance/assay#2810); the live measurements remain open (medici-finance/assay#2811).
 
 ## Review
