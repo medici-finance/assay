@@ -281,14 +281,16 @@ nothing measured.
     on its exit status alone — the run says so on that row, and the output hash is what a
     reviewer weighs for the rest. `verifyrun` narrows the unproven set; it does not close it.
 
-50. **A Verify row whose Expect is a clean repo-wide statusgen lint is credited when `statusgen --lint --acceptance-forge` is clean at the pinned revision, witnessed in the host lane.** Ruling: https://github.com/medici-finance/assay/issues/4823#issuecomment-6725046323
+51. **A Verify row whose Expect is a clean repo-wide statusgen lint is credited when `statusgen --lint --acceptance-forge` is clean at the pinned revision, witnessed in the host lane.** Ruling: https://github.com/medici-finance/assay/issues/4823#issuecomment-6725046323
 
     The offline lint re-audits every `verified` or `done` brief that carries an
     `Acceptance-Transition:` record, and that record's approval can be read only from the
-    forge. Offline, each such brief is a PROBLEM (`could-not-check human authority:
-    --acceptance-forge is required`), so once any transitioned brief is closed, a row that
-    runs the bare repo-wide lint cannot pass anywhere off the forge. The authoritative CI
-    lint already runs with `--acceptance-forge` ([protected paths](protected-paths.md)).
+    forge. Offline, each such brief is a PROBLEM, for example `could-not-check human
+    authority: --acceptance-forge is required`, or `could-not-check repository authority:
+    …` in a checkout without a usable github.com origin. So once any transitioned brief is
+    closed, a row that runs the bare repo-wide lint cannot pass anywhere off the forge. The
+    authoritative CI lint already runs with `--acceptance-forge`
+    ([protected paths](protected-paths.md)).
 
     What this rule changes, and what it does not:
 
@@ -297,16 +299,30 @@ nothing measured.
       lint read the recorded one, and it corroborates that record afresh on every run.
     - **What counts.** The same pinned statusgen release, at the revision the row's witness
       names, run with `--acceptance-forge` in the host lane (a network-off `check:ci`
-      sandbox cannot reach the forge), exits 0 with `LINT: PASS`. The approval read uses
-      the credential the protected-paths contract names, never a stored forge login.
-    - **What does not count.** A forge-enabled run that reports any PROBLEM is `fail`, not
-      credit. A run whose forge read could not complete is `could-not-run`, not credit. A
-      row whose Expect asks for something other than a clean repo-wide lint (one brief's
-      lint, a named NOTICE, a problem count) is outside this rule.
+      sandbox cannot reach the forge), exits 0 with `LINT: PASS`.
+    - **Which credential reads the approval.** The run is made under a verifier-admission
+      signal (an admitted `statusgen verifyrun`, a `DESK_LOOP` naming a verify loop, or a
+      working repository holding the verifier attestation file) or with
+      `GH_TOKEN`/`GITHUB_TOKEN` set explicitly. Under those conditions the binary reads the
+      approval with that credential only and never falls back to a stored forge login. The
+      binary does not enforce this outside them, so a run made outside them is not credited.
+    - **What does not count.** A forge-enabled run with any PROBLEM that names an authority
+      read it could not complete (`could-not-check repository authority: …`, `human approval
+      could not be corroborated: …`) is `could-not-run`, even when other PROBLEMs are
+      present: the weaker state of knowledge wins, as in rule 37. A run with any other
+      PROBLEM is `fail`. Neither is credit, though the lint exits 1 for both. A row whose
+      Expect asks for something other than a clean repo-wide lint (one brief's lint, a named
+      NOTICE, a problem count) is outside this rule.
     - **The row is not rewritten.** The Verify row keeps its authored command, because
       editing a protected row needs its own transition. The Evidence entry records the
-      forge-enabled run (command, exit, revision) beside the row's offline witness and
-      cites this rule.
+      forge-enabled run beside the row's offline witness and cites this rule. It uses the
+      rule-36 witness columns: the command as run, `<state> exit=<code>` with the state
+      decided as above, the `sha256:` fingerprint of the combined output, the date, and a
+      Runner derived from the executing identity as rule 36 derives it, never captioned.
+      Under it the entry keeps the run's primary output, including the `LINT: PASS` line
+      and the stderr line `acceptance transition: reading approval <url>` for each approval
+      read. That line shows the corroboration ran rather than being skipped. No tool writes
+      this entry, so a reviewer re-runs the command and compares the fingerprint.
 
 ## Derived status cells
 
