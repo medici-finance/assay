@@ -354,6 +354,7 @@ func TestModCacheNeverAmbient(t *testing.T) {
 	t.Setenv("GOMODCACHE", filepath.Join(host, "gomodcache"))
 	t.Setenv("GOPATH", filepath.Join(host, "gopath"))
 	t.Setenv("HOME", filepath.Join(host, "userhome"))
+	goTelemetryOff(t)
 	got := strings.Join(origAmbientModuleCaches(), "\n") + "\n"
 	for _, want := range []string{
 		filepath.Join(host, "gomodcache") + "\n",
@@ -367,6 +368,25 @@ func TestModCacheNeverAmbient(t *testing.T) {
 }
 
 var origAmbientModuleCaches = ambientModuleCaches
+
+// goTelemetryOff sets Go telemetry to off in the current HOME's user config
+// directory. A go command run under a HOME inside t.TempDir otherwise leaves a
+// telemetry child process writing there after it returns, which races the
+// TempDir cleanup ("directory not empty").
+func goTelemetryOff(t *testing.T) {
+	t.Helper()
+	cfg, err := os.UserConfigDir()
+	if err != nil {
+		return // the go command finds no config directory either
+	}
+	dir := filepath.Join(cfg, "go", "telemetry")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "mode"), []byte("off"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // regression: #4683
 // TestModCacheFromSourceOnly is the defect-class guard: an execution
