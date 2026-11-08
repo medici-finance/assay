@@ -166,3 +166,7 @@ graph-execution/20 (existing runner contract) -> 10 offline Pi investigation (wa
 
 The second arrow is an advisory handoff, not a new hard dependency on core runtime work.
 No live trial or performance/savings claim is created by this authoring change.
+
+## Desk-instance amendment — 25 October 2026
+
+The [requested instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) amends unfinished owner briefs without changing lifecycle status or completed Evidence. R2/R3 exact instance ownership and approximate role pacing → standing clients (graph-execution/27) → desired-population adapter (desk-containers/33) → lifecycle/Kubernetes consumers. API contract work can proceed against the declared versioned shape; runtime activation still requires its actual dependencies and independent qualification. Paused instances and draining predecessors remain part of pickup/retirement inventory.

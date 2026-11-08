@@ -17,13 +17,16 @@ exec-tier-why: "Cross-component protocol, recovery and authority boundaries requ
 domain: "complicated"
 outcome: "none"
 consumers: ["loopadmin/supervisor: follow-up agent-execution/03 (this brief; flips to fixed-here when the implementation edits the path)", "loopadmin/adapters/localharness: follow-up agent-execution/03 (this brief; flips to fixed-here when the implementation edits the path)", "workflow/executionqualification: follow-up agent-execution/04", "tools/desk/internal/cellop: follow-up agent-execution/05", "tools/desk/cmd/cellctl: out-of-scope (resolved argv and enrollment remain graph-execution/27; no new builder)"]
-version: 1
+version: 3
 id: "1740cfc2-3d30-4c26-b8b2-a4a369e3df7a"
 gate-why: "Extends the actual process-launch gate beside inference credentials; the operator confirms the resolved profile, effective mount/environment restrictions and independent custody boundary before adoption."
 decision-trigger: "spec"
 ---
 
 # Brief 03 — Enforce qualified profiles and workspace readiness in local execution
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -58,12 +61,18 @@ Contract-consumption: agent-execution/01 supplies the qualified execution-profil
 - Preserve existing work identity, coordination/effect owners, historical Evidence and independent acceptance. Stop at implemented; a non-implementer owns verification.
 - Refresh source, claims and active PRs at pickup. Missing prerequisites or contradictory contracts require a recorded hold, not a replacement implementation.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
+
 ## Task
 
 1. Consume /01 and /02 in the implemented shared supervisor/local adapter for both standing-desk and workflow modes. Resolve the approved harness/model/backend tuple; validate effective preparation and current authority before invoking the one existing process runner. Refuse required unsupported capabilities or stale receipts before creating a child.
 2. Bind observed harness/model/backend and receipt identity to the existing invocation/journal, using its cell PostgreSQL storage and existing stop/budget rules. Never introduce another journal engine, profile argv builder or credential injection path. Workflow fields remain optional in standing mode.
 3. Supply the workspace port from the existing profile-bound Git/resource adapter. Reconcile partial setup, preserve restored unpublished files and route release holds to existing retirement owners. Keep profile configuration outside the writable candidate domain. Explicitly test denied host-home, credential/socket and uncontrolled writable-mount access in synthetic profile fixtures.
 4. Qualify the real supervisor/adapter code with fixture executables and synthetic credentials, bypassing its upper gate to prove the adapter refusal independently. Run the original runner conformance suite and the named new mutation tests. Produce a scrubbed qualification report with exact versions and limitations; no model/provider calls or live enrollment.
+
+- **Instance amendment:** Consume delivered /01 and extend its supported desk-instance/generation binding in the existing runner contract, then enforce approved instance/generation/profile/readiness on the local production adapter below the caller. Distinct worker/review instances may launch with separate writable workspaces and approximate role work estimates; a stale same-instance owner or profile swap refuses. Preserve parent/child attribution, singleton other roles and zero extra idle requests.
 
 ## Interface contract
 
@@ -79,6 +88,7 @@ These named tests, fixtures and mutations are deliverables of this brief; they h
 | 2 | check:ci +flow +mutation | `(cd loopadmin && execution_out=$(mktemp) && trap 'rm -f "$execution_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestLocalPreparedLaunchBoundaryBypass$" ./... > "$execution_out" && grep -q -- "--- PASS: TestLocalPreparedLaunchBoundaryBypass " "$execution_out")` | exit 0; named PASS; with supervisor validation bypassed, the adapter still rejects profile/mount/credential-domain widening; mutation: accept a profile with an unauthorized writable mount — the named test must fail |
 | 3 | check:ci +flow +mutation | `(cd loopadmin && execution_out=$(mktemp) && trap 'rm -f "$execution_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestLocalPreparedLaunchRestoreAndUnknown$" ./... > "$execution_out" && grep -q -- "--- PASS: TestLocalPreparedLaunchRestoreAndUnknown " "$execution_out")` | exit 0; named PASS; restored unpublished files survive, missing readiness holds and an unknown launch is not replaced; mutation: reprepare by overwriting an already restored workspace — the named test must fail |
 | 4 | check:ci | `statusgen --consumers --brief agent-execution/03 --base $(git merge-base origin/main HEAD)` | exit 0; declared implementation sites and follow-up references corroborate; out-of-scope judgments remain UNCHECKED and reviewer-owned; completeness is not proved |
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd loopadmin && GOWORK=off go test -count=1 -v ./adapters/localharness/... -run '^TestDeskInstanceReadiness$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceReadiness ' "$o")` | Named test executes (zero matching tests is not a pass); Mixed-profile peers launch through the real supervisor/adapter; wrong workspace/instance/generation refuses with upper checks bypassed. Mutation: validate role alone makes the test fail. |
 
 ## Pre-mortem and dispatch checks
 

@@ -218,3 +218,7 @@ Attempts: (1) 2026-11-06T16:02:11Z to 2026-11-06T16:04:13Z, the host verifyrun w
 
 ## Review
 Gate: model. All four risk answers are no: the transitions only add stops and stop only the named roles through the per-role `down <cell> <role...>`, after the drain has waited them idle and re-measured the idle signal per mode, and only after re-verifying the window's live identity against its receipt (a mismatch or stale receipt refuses), so a sibling's or another cell's window is not closed; the cell-wide `down` is never used here; abandonment needs an interactive confirm on a plan that lists every abandoned item as an unknown outcome. The reviewer checks rows 2, 4 and 5, the last one being the guarantee that the interim mechanism stays replaceable.
+
+## Desk-instance follow-on — 8 November 2026
+
+The [instance amendment](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) adds instance-targeted drain, a separate stop-new-admission barrier and per-instance handoff records through **desk-containers/19**, consuming this completed delivery and /33's instance selectors. Existing Task, Verify, version and Evidence are unchanged; they do not establish multi-instance drain qualification. /19 owns that behaviour and its Verify row. This is routing only, not a reopening or delivery claim.

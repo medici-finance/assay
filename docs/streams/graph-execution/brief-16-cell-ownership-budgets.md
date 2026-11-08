@@ -458,3 +458,7 @@ remain subsequent distinct acts.
 
 This reconciliation changes no Task, original Verify definition, Evidence, dependency
 or accepted policy. It installs no runtime/backend and claims no test execution.
+
+## Desk-instance follow-on — 8 November 2026
+
+The [instance amendment](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) adds instance-aware work/authority records and best-effort role pacing through **graph-execution/19**, consuming this completed delivery. Existing Task, Verify, version and Evidence are unchanged; they do not establish multi-instance pacing qualification. /19 owns that behaviour and its Verify row. This is routing only, not a reopening or delivery claim.

@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Confirm the supported compatibility window, sanitized source and consumer inventory, and public protocol fields before consumers depend on them. Publication of private source or credential material is excluded."
 issues: []
 schema: brief-v2
-version: 2
+version: 4
 id: 3dd33603-816a-4f85-9960-0ea8d18d1245
 authored: 2026-10-20 by cell-api authoring
 decision-trigger: spec
@@ -44,6 +44,9 @@ consumers:
 ---
 
 # Brief 01 — Publish the deskd contract and source handoff inventory
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -101,6 +104,10 @@ keeps acceptance pending; it grants no time-based default or activation authorit
 - Preserve the single R2 PostgreSQL runtime, R3 isolation, R4 role authority and R6 forge mirror. A service, terminal, restored file or cached result grants no authority.
 - Keep this stream parked until admitted. Stop at implemented; independent verification, human acceptance and operational cutover remain distinct.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
+
 ## Task
 
 1. Publish the versioned cell API contract, independent literal fixtures and supported old/new client matrix. Inventory reads, ETags, null/unknown coverage, errors, SSE event kinds/cursors/resync, terminal output, local presentation markers, human named actions and agent tool discovery. Every legacy surface gets one disposition: preserve, translate, explicitly unsupported while legacy retained, or separately gated. Unknown mandatory schemas fail explicitly.
@@ -112,6 +119,8 @@ keeps acceptance pending; it grants no time-based default or activation authorit
 4. Apply the README refactor map: take service/contracts/adapters, reshape storage and authority wiring, retain unsupported callers. Public code and fixtures build without the private tree. No visibility/license change, private history copy or source-work closure; all reusable implementation lands in Assay.
 
 5. Register only the new transport responsibility in docs/contracts.md and docs/library-first.md. Publish the handoff/compatibility guide and regenerate contract fixtures. Keep admission and deployment gates intact.
+
+- **Instance amendment:** Extend the existing contract/source inventory with qualified desk-instance IDs, execution generation, desired revision, predecessor/successor, estimated role occupancy/target, freshness and optional instance refill target. Use the existing required-extension/version negotiation; old readers cannot flatten a required population to one role. Inventory every CLI/MCP/cockpit and lifecycle consumer, preserving completed cell-op Evidence.
 
 ## Interface and acceptance contract
 
@@ -153,6 +162,7 @@ and omitted consumers remain a review obligation. These are future delivery inpu
 | 3 | check:ci +dereference +neighbour +mutation | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 90s -count=1 -v -run '^TestHandoffCoverage$' ./cellapi/... > "$o" && grep -F -- '--- PASS: TestHandoffCoverage ' "$o")` | exit 0; named PASS. Published dispositions resolve to public contracts plus source-owner receipt metadata; a planted second consumer or live source obligation prevents complete/retirable output. |
 | 4 | check:ci +dereference | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && statusgen --root . --consumers --brief cell-api/01 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed implementation delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required consumers stay held and omitted consumers require review. |
 | 5 | check | `statusgen --root . --lint` | exit 0; no PROBLEM; no generated lifecycle cell or historical Evidence hand-edited. |
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cellapi/... -run '^TestDeskInstanceContract$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceContract ' "$o")` | Named test executes (zero matching tests is not a pass); Schema/public client carries distinct peers and paused/draining state; old required-capability reader refuses and unknown fields retain existing extension rules. Mutation: key response members by role makes the test fail. |
 
 ## Threat model and detection
 

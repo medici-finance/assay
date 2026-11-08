@@ -179,3 +179,7 @@ RISK-VALUE: N/A — exit codes 3 and 6 @ tools/desk/internal/deskkit/exitcodes.g
 
 ## Review
 Gate: human (see gate-why). All four risk answers are no; the gate is for the safety-plumbing path. Rows 1, 2 and 5 exercise the Guard; row 4b exercises the skill-layer check with the Guard absent. The reviewer checks that the two layers are proven independently.
+
+## Desk-instance follow-on — 8 November 2026
+
+The [instance amendment](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) adds an instance-targeted stop mapping through **desk-containers/33**, consuming this completed delivery. Existing Task, Verify, version and Evidence are unchanged; they do not establish instance-stop qualification. /33 owns the instance pause/role-stop mapping, its Verify row and the ruling-applicability check. This is routing only, not a reopening or delivery claim.
