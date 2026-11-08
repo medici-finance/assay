@@ -40,7 +40,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/milestoneacceptance.go` (planned) (planned), `statusgen/milestoneacceptance_test.go` (planned), `statusgen/decisionruling.go`, `statusgen/domain/`, `statusgen/testdata/milestone-support/06/` (planned), `spec/milestone-v1.md`, `changelog/milestone-support-06.md` (planned), `statusgen/testdata/milestone-support/06-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/milestoneacceptance.go` (planned), `statusgen/milestoneacceptance_test.go` (planned), `statusgen/decisionruling.go`, `statusgen/domain/`, `statusgen/testdata/milestone-support/06/` (planned), `spec/milestone-v1.md`, `changelog/milestone-support-06.md` (planned), `statusgen/testdata/milestone-support/06-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.
@@ -203,6 +203,12 @@ without rewriting their results or granting the producer acceptance authority.
 | Authority | Exact existing policy/decision source commit/path/digest identifying the outcome's acceptance authority and required duty separation; plus a same-repository issue number and comment ID. Owner/team metadata supplies no authority. |
 | Currency | Supplied observation time, selected evaluator/policy identity, existing context/applicability bounds where required, and complete current decision/revocation observations. No implicit freshness duration or live probe. |
 
+The contract and authority policy source commits must be reachable from the
+declaring root's protected default branch. A producer-selected unmerged policy or
+contract cannot establish authority or relax duty separation. Unavailable protected
+branch/reachability observations remain unknown. Test both an unmerged authority
+policy and an unmerged contract while bypassing the outer admission check.
+
 The manifest's canonical bytes exclude the later decision pointer, avoiding a digest
 cycle. The human's unedited issue comment explicitly identifies the milestone,
 contract-version, source commit/path, manifest digest and disposition (`accept`,
@@ -240,6 +246,12 @@ must not silently choose among conflicting decisions. Missing decision pages, mi
 revocation coverage or an unresolved conflicting successor makes current applicability
 unknown. A known revocation prevents current satisfaction while preserving history.
 A revocation for another receipt cannot erase this one.
+
+Revocation and supersession use the same bound authority policy as acceptance.
+Authenticate and authorize each candidate decision before it can count as a
+revocation, successor or conflict. Quarantine unauthorized comments; they cannot
+force an accepted receipt to unknown merely by being present. Test an unauthorized
+revocation and forged conflicting successor against a valid accepted receipt.
 
 Expose historical acceptance independently from present `supported`, `blocked` and
 `unknown` applicability. Incomplete work or an observed failed criterion is a known
@@ -303,8 +315,10 @@ it does not accept any milestone outcome.
    ownership resolution is needed before another proposal.
 
 Exact ruling needed: an unedited human comment on the existing decision issue naming
-`milestone-support/06`, the proposal PR and its head, selecting one option and stating
-any corrections. If accepted, transcribe the ruling into a decision-v1 DR record with
+`milestone-support/06`, the proposal PR and its head, and `DR-milestone-support-06`, selecting one option and stating
+any corrections. The reserved record id is `DR-milestone-support-06`; naming it in the human comment
+satisfies the existing record-naming condition without changing the resolver. If
+accepted, transcribe the ruling into that decision-v1 DR record with
 alternatives, consequences and its corroboratable ruling link, and cite it via the
 brief's `design:` before governed implementation. Do not create an approved DR,
 fill `decided-by`, record Evidence or advance a lifecycle token from this proposal.
