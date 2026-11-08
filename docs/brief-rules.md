@@ -281,6 +281,33 @@ nothing measured.
     on its exit status alone — the run says so on that row, and the output hash is what a
     reviewer weighs for the rest. `verifyrun` narrows the unproven set; it does not close it.
 
+50. **A Verify row whose Expect is a clean repo-wide statusgen lint is credited when `statusgen --lint --acceptance-forge` is clean at the pinned revision, witnessed in the host lane.** Ruling: https://github.com/medici-finance/assay/issues/4823#issuecomment-6725046323
+
+    The offline lint re-audits every `verified` or `done` brief that carries an
+    `Acceptance-Transition:` record, and that record's approval can be read only from the
+    forge. Offline, each such brief is a PROBLEM (`could-not-check human authority:
+    --acceptance-forge is required`), so once any transitioned brief is closed, a row that
+    runs the bare repo-wide lint cannot pass anywhere off the forge. The authoritative CI
+    lint already runs with `--acceptance-forge` ([protected paths](protected-paths.md)).
+
+    What this rule changes, and what it does not:
+
+    - **It says what credits the row. It does not change the lint.** The offline PROBLEM
+      stays as it is, and `--acceptance-forge` still grants no approval: it only lets the
+      lint read the recorded one, and it corroborates that record afresh on every run.
+    - **What counts.** The same pinned statusgen release, at the revision the row's witness
+      names, run with `--acceptance-forge` in the host lane (a network-off `check:ci`
+      sandbox cannot reach the forge), exits 0 with `LINT: PASS`. The approval read uses
+      the credential the protected-paths contract names, never a stored forge login.
+    - **What does not count.** A forge-enabled run that reports any PROBLEM is `fail`, not
+      credit. A run whose forge read could not complete is `could-not-run`, not credit. A
+      row whose Expect asks for something other than a clean repo-wide lint (one brief's
+      lint, a named NOTICE, a problem count) is outside this rule.
+    - **The row is not rewritten.** The Verify row keeps its authored command, because
+      editing a protected row needs its own transition. The Evidence entry records the
+      forge-enabled run (command, exit, revision) beside the row's offline witness and
+      cites this rule.
+
 ## Derived status cells
 
 Rules 36-37 say what the Evidence record IS. The rules here say what every lifecycle

@@ -293,6 +293,8 @@ lint/coverage/status paths and `brief`, `verifyrun --check`, `verifyclosure`,
 `flip`): its production child audits, outcome check and lint receive it explicitly
 in argv. No environment variable enables these reads. Without opt-in, transitioned
 records remain held while unamended records retain their existing offline behavior.
+A Verify row that expects a clean repo-wide lint is credited by the forge-enabled
+run, as [brief-rules rule 50](brief-rules.md) states.
 Each authoritative evaluation corroborates the ruling afresh; there is no local
 approval cache or supplied approval boolean.
 
