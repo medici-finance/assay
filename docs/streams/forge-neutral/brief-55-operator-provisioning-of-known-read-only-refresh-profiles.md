@@ -309,6 +309,19 @@ RISK-VALUE: DERIVED — runtime update of `unknown_hold` on refresh_budgets at w
 
 **VERIFY: BLOCKED** — row 8 (check:ci) was not run to a verdict because the pinned verify-runner image's module cache does not match this source's tools/desk go.sum (#4683). Under the approved acceptance transition, rows 1-7, 9 and 10 pass. Rows 1-7 and 10 are red at the pre-delivery base. Row 9, the whole-suite regression gate, is green at base, as disclosed above.
 
+### Corrective note on the 2026-11-08 run (row 9 credit withdrawn) — 2026-11-08 claude-opus-5-5-verifier
+
+- Row 9 is risk-bearing. The brief's risk line answers `sensitive-data: yes`, which makes every Verify row risk-bearing and gives every row a fail-first obligation.
+- Row 9 was green at base 33b78e4273a2 and green at head 010c13c16ff9. It therefore does not discriminate, and it is uncredited.
+- The regression-gate credit given to row 9 in this run's notes and in this run's verdict line above is withdrawn. The row-strength defect is filed as #5752.
+- No row was re-run for this note. The witness tables above are unchanged.
+- Row 8 stays not run: the pinned verify-runner image's module cache does not match this source's tools/desk go.sum (#4683).
+- Rows 1-7 and 10 stay credited, which is 8 of 10 rows. Each is red at base 33b78e4273a2 and passes at head.
+- The outcome record landed on 2026-11-07 (55-20261107T223922Z) also credited row 9. That record and this run's earlier blocked record are both superseded by a new record.
+- The credited host invocation used `--acceptance-record <descriptor> --acceptance-forge` together with `--fail-first --base 33b78e4273a2`.
+
+**VERIFY: FAIL** — row 9 is a risk-bearing row that does not discriminate: it is green at base 33b78e4273a2 and green at head (#5752). Row 8 (check:ci) was not run because the pinned verify-runner image's module cache does not match this source's tools/desk go.sum (#4683). Rows 1-7 and 10 pass and are red at base (8 of 10 credited).
+
 ## Review
 
 Gate: human. Independent verification and acceptance follow the concrete implementation and role proof; operator provisioning, credential selection, serving and activation remain separate acts.
