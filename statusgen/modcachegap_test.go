@@ -229,14 +229,15 @@ func TestRunnerDockerfileWritesBakedRoots(t *testing.T) {
 		t.Fatal(err)
 	}
 	df := string(raw)
-	m := regexp.MustCompile(`printf '%s\\n' ([^>]+) > (\S+);`).FindStringSubmatch(df)
-	if m == nil {
-		t.Fatal("the Dockerfile writes no baked-roots manifest")
+	// The image copies the source's own manifest (#4683) to the path verifyrun
+	// reads, and downloads modules for exactly the roots it lists.
+	if !strings.Contains(df, "COPY "+moduleRootsManifest+" "+bakedModuleRootsFile+"\n") {
+		t.Fatalf("the Dockerfile does not copy %s to %s", moduleRootsManifest, bakedModuleRootsFile)
 	}
-	if m[2] != bakedModuleRootsFile {
-		t.Errorf("the Dockerfile writes %s, verifyrun reads %s", m[2], bakedModuleRootsFile)
+	listed, ok := bakedModuleRoots(filepath.Join("..", filepath.FromSlash(moduleRootsManifest)))
+	if !ok {
+		t.Fatalf("%s lists no module roots", moduleRootsManifest)
 	}
-	listed := strings.Fields(m[1])
 	var copied []string
 	for _, c := range regexp.MustCompile(`(?m)^COPY (\S+)/go\.mod (\S+)/go\.sum /tmp/modsrc/`).FindAllStringSubmatch(df, -1) {
 		copied = append(copied, c[1])

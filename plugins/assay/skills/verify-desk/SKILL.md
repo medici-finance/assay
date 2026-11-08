@@ -171,10 +171,16 @@ with no edit to the home between the steps:
 
 1. Host open: `statusgen verifyrun --open-bracket --root <home> --brief <path> --out
    <receipt>`, with `<receipt>` outside the home. It runs the check, digests the home's
-   tree and writes the receipt. A refused check writes nothing.
+   tree and writes the receipt. A refused check writes nothing. When the home lists Go
+   module roots in `images/verify-runner/go-module-roots.txt`, add `--module-cache
+   <dir>`, a new empty directory outside the home (never the host's own module cache):
+   the step downloads those modules there against the home's `go.sum` and prints the
+   container flags that mount the cache read-only. A failed download is could-not-check;
+   never fall back to the image's baked cache.
 2. Container run: `statusgen verifyrun --sandbox=container-netns --brief <path>
    --admission-receipt <receipt> --container-image-digest sha256:<64 hex> --witness
-   <file>`, with the receipt mounted read-only and `<file>` a new file outside the home.
+   <file>`, with the receipt mounted read-only, the flags the open step printed, and
+   `<file>` a new file outside the home.
    It refuses before any row unless the mounted root digests to the receipt's tree, and
    refuses after the rows if they changed it, writing no attestation or `Tree-Digest`.
    Without a receipt it refuses outright.
