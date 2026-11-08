@@ -24,6 +24,8 @@ decision-issue: 4512
 ruling: "https://github.com/medici-finance/assay/issues/4512#issuecomment-6420851894"
 design: DR-witness-read-sets
 issues: [2026]
+delivery:
+  - {in: "assay#5127", covers: partial, note: "the read-set judgement behind the go compile-input floor, the verifyrun read-set token and the deskevidence refusal only, with judgement off while no recorder ships (readSetRecorderShipped = false); the recorder and Verify rows 14, 16, 21, 23, 25 and 26 remain owed"}
 regression-of: medici-finance/assay#2304
 schema: brief-v2
 version: 1
