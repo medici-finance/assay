@@ -283,7 +283,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	}
 	// The Evidence binding, or under --outcome-only the check that this run's Evidence
 	// append is exactly the one the verdict gate refuses (outcomeonly.go, #5759).
-	if err := gateOutcomeEvidence(outcomeOnly, evidenceRoot, landedRoot, fg, fr, closureRef, receipt, outcome, commitContent); err != nil {
+	if err := gateOutcomeEvidence(outcomeOnly, evidenceRoot, landedRoot, targetRepoPath, fg, fr, closureRef, receipt, outcome, commitContent); err != nil {
 		return err
 	}
 	if err := outcomeObservationBindingFn(evidenceRoot, fg, fr, closureRef, receipt, outcome); err != nil {

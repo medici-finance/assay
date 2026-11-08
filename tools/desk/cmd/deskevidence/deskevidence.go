@@ -684,7 +684,18 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// verified or done brief is recorded in the outcome record only, never appended
 	// to Evidence — statusgen evidenceverdict reads the latest verdict with the
 	// protected-closure lint's own selector (verdictgate.go). Before any write.
-	if err := gateNonDecisiveVerdict(targetRepoPath, landedRoot, remoteContent, commitContent, remoteExists); err != nil {
+	// The status is the target branch's: the board files its tip changed since the
+	// home's HEAD are read once here (fail closed) and reused by the decision gate.
+	var boardEdits []boardEdit
+	boardRead := false
+	if isBriefFile(targetRepoPath) {
+		edits, herr := decisionGateBranchBoardFn(fg, fr, landedRoot, closureRef, targetRepoPath)
+		if herr != nil {
+			return herr
+		}
+		boardEdits, boardRead = edits, true
+	}
+	if err := gateNonDecisiveVerdict(targetRepoPath, landedRoot, boardEdits, remoteContent, commitContent, remoteExists); err != nil {
 		return err
 	}
 	introduced, lerr := lintDiffFn(landedRoot, targetRepoPath, commitContent)
@@ -703,9 +714,12 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// commit fixed at dispatch, behind the target branch, so the board files the branch
 	// changed since are read at its tip and judged in place of the home's (S-2266-6);
 	// when that cannot be done the landing is could-not-check.
-	boardEdits, herr := decisionGateBranchBoardFn(fg, fr, landedRoot, closureRef, targetRepoPath)
-	if herr != nil {
-		return herr
+	if !boardRead {
+		edits, herr := decisionGateBranchBoardFn(fg, fr, landedRoot, closureRef, targetRepoPath)
+		if herr != nil {
+			return herr
+		}
+		boardEdits = edits
 	}
 	gateRefused, gerr := decisionGateDiffFn(landedRoot, targetRepoPath, remoteContent, remoteExists, commitContent, boardEdits)
 	if gerr != nil {

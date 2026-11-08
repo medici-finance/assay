@@ -17,9 +17,17 @@ package main
 // The mode is accepted ONLY when the verdict gate would refuse this run's
 // Evidence append: a non-decisive outcome (blocked or needs-context, never a
 // verify-fail) on a brief whose board status is verified or done, read by the
-// same statusgen check. Every other record keeps the Evidence binding, and a
+// same statusgen check against the target branch tip's board (verdictgate.go's
+// evidenceVerdictAtTip), never the admitted home's older one. The mode skips
+// only the proof that Evidence landed; the receipt-completeness clause every new
+// record carries (admittedRunComplete: repo, brief, hex source and run, issue,
+// target) still runs. Every other record keeps the Evidence binding, and a
 // record that states evidence_withheld without the mode is refused, so the
 // reason key can never stand in for landed Evidence.
+//
+// Fields read: the record's evidence_withheld, outcome and sha, and the admitted
+// receipt's binding (repo, brief, source, run) and issue. sha is compared with
+// the receipt's brief source. No witness, Runner cell or revision is judged.
 
 import (
 	"encoding/json"
@@ -64,9 +72,13 @@ func nonDecisiveVerdictWord(outcome string) string {
 }
 
 // checkOutcomeOnly admits an outcome-only record, or refuses it naming why.
-// root is the tree the board status is read at (the landed closure root).
-func checkOutcomeOnly(root string, receipt deskkit.VerifierReceipt, outcome deskkit.WakeReceipt, raw []byte) error {
+// root is the landed closure root; tip is the target branch's board, staged over
+// root for the status read (decisionGateBranchBoardFn).
+func checkOutcomeOnly(root string, fr deskkit.ForgeRepo, tip []boardEdit, receipt deskkit.VerifierReceipt, outcome deskkit.WakeReceipt, raw []byte) error {
 	const mode = "refused: --outcome-only records a non-decisive re-run of a verified or done brief, whose Evidence append is refused"
+	if err := admittedRunComplete(fr, receipt); err != nil {
+		return err
+	}
 	reason, ok := evidenceWithheld(raw)
 	if !ok || reason != evidenceWithheldReason {
 		return deskkit.Refused(mode + "; the record must state \"" + evidenceWithheldKey + "\":\"" + evidenceWithheldReason + "\"")
@@ -85,7 +97,7 @@ func checkOutcomeOnly(root string, receipt deskkit.VerifierReceipt, outcome desk
 	if brief == "" {
 		return deskkit.Refused(mode + "; the admitted receipt names no brief")
 	}
-	verdict, why, err := evidenceVerdictCheckFn(root, brief, nil, nil, false, word)
+	verdict, why, err := evidenceVerdictAtTip(root, tip, brief, nil, nil, false, word)
 	if err != nil {
 		return err
 	}
@@ -101,9 +113,15 @@ func checkOutcomeOnly(root string, receipt deskkit.VerifierReceipt, outcome desk
 
 // gateOutcomeEvidence is the outcome record's Evidence step: the Evidence binding
 // for an ordinary record, checkOutcomeOnly under --outcome-only.
-func gateOutcomeEvidence(outcomeOnly bool, evidenceRoot, landedRoot string, fg deskkit.Forge, fr deskkit.ForgeRepo, closureRef string, receipt deskkit.VerifierReceipt, outcome deskkit.WakeReceipt, raw []byte) error {
+func gateOutcomeEvidence(outcomeOnly bool, evidenceRoot, landedRoot, targetRepoPath string, fg deskkit.Forge, fr deskkit.ForgeRepo, closureRef string, receipt deskkit.VerifierReceipt, outcome deskkit.WakeReceipt, raw []byte) error {
 	if outcomeOnly {
-		return checkOutcomeOnly(landedRoot, receipt, outcome, raw)
+		// The board status that lets this record withhold Evidence is the target
+		// branch's, read at its tip; a tip that cannot be read is could-not-check.
+		tip, err := decisionGateBranchBoardFn(fg, fr, landedRoot, closureRef, targetRepoPath)
+		if err != nil {
+			return err
+		}
+		return checkOutcomeOnly(landedRoot, fr, tip, receipt, outcome, raw)
 	}
 	if _, ok := evidenceWithheld(raw); ok {
 		return deskkit.Refused("refused: the outcome record states " + evidenceWithheldKey +

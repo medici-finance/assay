@@ -14,6 +14,23 @@ package main
 // regression) and a PASS still land; an implemented brief's BLOCKED run is
 // untouched. The refused run is recorded in the outcome record only:
 // `--outcome-record <file> --outcome-only` (outcomeonly.go).
+//
+// The rule is a whitelist: every verdict other than PASS and FAIL (BLOCKED,
+// NEEDS-CONTEXT, PARTIAL, HELD, any other word) is refused on a verified or
+// done brief, the same set the lint refuses.
+//
+// Where the status is read. The landing root is the admitted verifier home,
+// pinned at the dispatch commit and so behind the target branch for a brief
+// target (landedClosureTree returns it unchanged). The status this gate and the
+// outcome-only check act on is the branch's: every board file the branch tip
+// changed since the home's HEAD (decisionGateBranchBoardFn, the decision gate's
+// own read) is staged over the home for the one statusgen call and put back
+// after (evidenceVerdictAtTip). A tip that cannot be read, or a status that
+// cannot be resolved, is could-not-check and refuses the landing.
+//
+// Fields read: a brief's board status and the latest VERIFY verdict of its
+// Evidence, through statusgen. No Runner cell, witness record or revision is
+// read here.
 
 import (
 	"os"
@@ -102,21 +119,35 @@ func evidenceVerdictCheckAt(root, briefPath string, before, after []byte, hasBef
 		"statusgen evidenceverdict could not evaluate whether this run's verdict may be appended to "+briefPath+" at "+absRoot+": "+detail, nil)
 }
 
+// evidenceVerdictAtTip is the ONLY caller of evidenceVerdictCheckFn: it stages
+// tip (the target branch's board files) over root, asks statusgen, and puts
+// every touched file back. TestVerdictCheckOnlyAtTip holds that to one call
+// site, so no reader can ask the question against the home's stale board.
+func evidenceVerdictAtTip(root string, tip []boardEdit, briefPath string, before, after []byte, hasBefore bool, verdict string) (closureVerdict, string, error) {
+	restore, err := stageBoardEdits(root, tip)
+	if err != nil {
+		return closureCouldNotErr, "", err
+	}
+	defer restore()
+	return evidenceVerdictCheckFn(root, briefPath, before, after, hasBefore, verdict)
+}
+
 // gateNonDecisiveVerdict refuses an Evidence landing on a brief file whose board
-// status is verified or done when the landing's latest recorded verdict is
-// neither PASS nor FAIL. It is a no-op for any other target.
-func gateNonDecisiveVerdict(targetRepoPath, root string, before, after []byte, exists bool) error {
+// status (at the target branch tip, tip staged over root) is verified or done
+// when the landing's latest recorded verdict is any verdict other than PASS or
+// FAIL. It is a no-op for any other target.
+func gateNonDecisiveVerdict(targetRepoPath, root string, tip []boardEdit, before, after []byte, exists bool) error {
 	if !isBriefFile(targetRepoPath) {
 		return nil
 	}
-	verdict, reason, err := evidenceVerdictCheckFn(root, targetRepoPath, before, after, exists, "")
+	verdict, reason, err := evidenceVerdictAtTip(root, tip, targetRepoPath, before, after, exists, "")
 	if err != nil {
 		return err
 	}
 	if verdict != closureNotAccepted {
 		return nil
 	}
-	msg := "refused: landing " + targetRepoPath + " would append a non-decisive verdict to a brief that is already verified or done"
+	msg := "refused: landing " + targetRepoPath + " would append a verdict other than PASS or FAIL to a brief that is already verified or done"
 	if reason != "" {
 		msg += " — " + reason
 	}

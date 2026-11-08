@@ -10,7 +10,34 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-var vgSource = strings.Repeat("a", 40)
+var (
+	vgSource = strings.Repeat("a", 40)
+	vgRun    = strings.Repeat("c", 64)
+)
+
+// ooReceipt is the complete admitted receipt the outcome-only fixtures land under.
+func ooReceipt() deskkit.VerifierReceipt {
+	return deskkit.VerifierReceipt{
+		Binding: deskkit.VerifierBinding{Repo: fixtureRepo, Brief: vgBrief, Source: vgSource, Run: vgRun},
+		Issue:   7,
+	}
+}
+
+// vgReadme is the vg stream board with vg/01 at status.
+func vgReadme(status string) string {
+	return "---\nstream: vg\nstatus: active\npriority: P1\ntrack: platform\n---\n\n# VG\n\n## Briefs\n\n" +
+		"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n" +
+		"|---|-------|------|--------|--------|----------|----------|\n" +
+		"| 01 | [t](./brief-01-gate.md) | 0 | S | " + status + " | 2026-08-13 human:alex | 2026-08-13 human:alex |\n"
+}
+
+// tipBoard stubs the target branch tip's board read to hold vg/01 at status.
+func tipBoard(t *testing.T, status string) {
+	t.Helper()
+	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) {
+		return []boardEdit{{Path: "docs/streams/vg/README.md", Content: []byte(vgReadme(status))}}, nil
+	}
+}
 
 // ooRecord is a complete vg/01 outcome record; withheld "" omits the reason key.
 func ooRecord(t *testing.T, outcome, sha, withheld string) string {
@@ -29,15 +56,11 @@ func ooRecord(t *testing.T, outcome, sha, withheld string) string {
 func ooBoard(t *testing.T, status string) (root string, evidenceBound *int) {
 	t.Helper()
 	root = rootWithFile(t, vgBrief, vgBriefText(vgPriorRun))
-	readme := "---\nstream: vg\nstatus: active\npriority: P1\ntrack: platform\n---\n\n# VG\n\n## Briefs\n\n" +
-		"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n" +
-		"|---|-------|------|--------|--------|----------|----------|\n" +
-		"| 01 | [t](./brief-01-gate.md) | 0 | S | " + status + " | 2026-08-13 human:alex | 2026-08-13 human:alex |\n"
-	if err := os.WriteFile(filepath.Join(root, "docs", "streams", "vg", "README.md"), []byte(readme), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "docs", "streams", "vg", "README.md"), []byte(vgReadme(status)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) {
-		return deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{Brief: vgBrief, Source: vgSource}}, nil
+		return ooReceipt(), nil
 	}
 	n := 0
 	outcomeEvidenceBindingFn = func(string, deskkit.Forge, deskkit.ForgeRepo, string, deskkit.VerifierReceipt, string) error {
@@ -121,7 +144,83 @@ func TestOutcomeOnlyShapeRefused(t *testing.T) {
 			if !strings.Contains(errBuf.String(), c.want) {
 				t.Fatalf("refusal %q does not name %q", errBuf.String(), c.want)
 			}
+			if asked != 0 {
+				t.Fatalf("statusgen was asked %d time(s); a record of the wrong shape is refused before the status read", asked)
+			}
 		})
+	}
+}
+
+// regression: #5759
+//
+// TestOutcomeOnlyIncompleteReceipt: withholding Evidence skips only the proof that
+// Evidence landed, never the receipt-completeness clause every new record carries.
+func TestOutcomeOnlyIncompleteReceipt(t *testing.T) {
+	for name, mutate := range map[string]func(*deskkit.VerifierReceipt){
+		"other-repo":   func(r *deskkit.VerifierReceipt) { r.Binding.Repo = "example-org/other" },
+		"no-run":       func(r *deskkit.VerifierReceipt) { r.Binding.Run = "" },
+		"short-source": func(r *deskkit.VerifierReceipt) { r.Binding.Source = vgSource[:39] },
+		"no-issue":     func(r *deskkit.VerifierReceipt) { r.Issue = 0 },
+		"non-hex-run":  func(r *deskkit.VerifierReceipt) { r.Binding.Run = strings.Repeat("z", 64) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, errBuf := setupFake(t)
+			realVerdictCheck(t)
+			root, bound := ooBoard(t, "verified")
+			rec := ooReceipt()
+			mutate(&rec)
+			verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) {
+				return rec, nil
+			}
+			code := ooRun(t, root, ooRecord(t, "blocked", vgSource, evidenceWithheldReason), true)
+			if code != deskkit.ExitRefused || len(f.writes) != 0 || *bound != 0 {
+				t.Fatalf("incomplete receipt: exit = %d writes = %d binding = %d, want refused before any write; stderr %q",
+					code, len(f.writes), *bound, errBuf.String())
+			}
+			if !strings.Contains(errBuf.String(), "outcome record has") {
+				t.Fatalf("refusal does not name the incomplete run: %q", errBuf.String())
+			}
+		})
+	}
+}
+
+// regression: #5759
+//
+// TestOutcomeOnlyTipStatus: the status that lets a record withhold Evidence is the
+// target branch's. The home (pinned at dispatch) still reads verified; the tip
+// reads implemented, so the run's Evidence would land and the record is refused.
+func TestOutcomeOnlyTipStatus(t *testing.T) {
+	f, errBuf := setupFake(t)
+	realVerdictCheck(t)
+	root, bound := ooBoard(t, "verified")
+	tipBoard(t, "implemented")
+	code := ooRun(t, root, ooRecord(t, "blocked", vgSource, evidenceWithheldReason), true)
+	if code != deskkit.ExitRefused || len(f.writes) != 0 || *bound != 0 {
+		t.Fatalf("home verified, tip implemented: exit = %d writes = %d binding = %d, want refused; stderr %q",
+			code, len(f.writes), *bound, errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "land the Evidence first") {
+		t.Fatalf("refusal does not say why: %q", errBuf.String())
+	}
+	if raw, _ := os.ReadFile(filepath.Join(root, "docs", "streams", "vg", "README.md")); string(raw) != vgReadme("verified") {
+		t.Fatalf("the staged tip board was not put back:\n%s", raw)
+	}
+}
+
+// regression: #5759
+//
+// TestOutcomeOnlyTipUnreadable: a tip board that cannot be read is could-not-check,
+// never a pass on the home's board.
+func TestOutcomeOnlyTipUnreadable(t *testing.T) {
+	f, _ := setupFake(t)
+	realVerdictCheck(t)
+	root, bound := ooBoard(t, "verified")
+	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) {
+		return nil, deskkit.Unverifiable("fixture: tip unreadable", nil)
+	}
+	code := ooRun(t, root, ooRecord(t, "blocked", vgSource, evidenceWithheldReason), true)
+	if code != deskkit.ExitUnverifiable || len(f.writes) != 0 || *bound != 0 {
+		t.Fatalf("unreadable tip: exit = %d writes = %d binding = %d, want %d (could-not-check)", code, len(f.writes), *bound, deskkit.ExitUnverifiable)
 	}
 }
 

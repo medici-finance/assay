@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -55,18 +56,24 @@ const vgPriorRun = "2026-08-12 verifier run.\n\nVERIFY: PASS\n"
 // word. It returns the run() exit code and the fake forge.
 func vgLanding(t *testing.T, status, word string) (int, *fakeForge, string) {
 	t.Helper()
+	return vgLandingAt(t, status, "", vgPriorRun, vgPriorRun+"\n2026-11-01 re-run.\n\nVERIFY: "+word+"\n")
+}
+
+// vgLandingAt lands after's Evidence over a remote brief holding before's, on a
+// home board reading status; a non-empty tip stubs the target branch tip's board
+// to read vg/01 at tip.
+func vgLandingAt(t *testing.T, status, tip, before, after string) (int, *fakeForge, string) {
+	t.Helper()
 	f, errBuf := setupFake(t)
 	realVerdictCheck(t)
-	after := vgBriefText(vgPriorRun + "\n2026-11-01 re-run.\n\nVERIFY: " + word + "\n")
-	root := rootWithFile(t, vgBrief, after)
-	readme := "---\nstream: vg\nstatus: active\npriority: P1\ntrack: platform\n---\n\n# VG\n\n## Briefs\n\n" +
-		"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n" +
-		"|---|-------|------|--------|--------|----------|----------|\n" +
-		"| 01 | [t](./brief-01-gate.md) | 0 | S | " + status + " | 2026-08-13 human:alex | 2026-08-13 human:alex |\n"
-	if err := os.WriteFile(filepath.Join(root, "docs", "streams", "vg", "README.md"), []byte(readme), 0o644); err != nil {
+	root := rootWithFile(t, vgBrief, vgBriefText(after))
+	if err := os.WriteFile(filepath.Join(root, "docs", "streams", "vg", "README.md"), []byte(vgReadme(status)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f.setFile(vgBrief, vgBriefText(vgPriorRun))
+	if tip != "" {
+		tipBoard(t, tip)
+	}
+	f.setFile(vgBrief, vgBriefText(before))
 	code := run([]string{fixtureRepo, "main", "--root", root, "--evidence-file", vgBrief})
 	return code, f, errBuf.String()
 }
@@ -115,6 +122,86 @@ func TestImplBlockedLands(t *testing.T) {
 	code, f, stderr := vgLanding(t, "implemented", "BLOCKED")
 	if code != deskkit.ExitOK || len(f.writes) != 1 {
 		t.Fatalf("implemented + BLOCKED landing exit = %d writes = %d, want it to land unchanged; stderr %q", code, len(f.writes), stderr)
+	}
+}
+
+// regression: #5759
+//
+// TestTipVerifiedBlockedRefused: the home (pinned at dispatch) reads implemented,
+// the target branch tip reads verified. The landing lands on the tip, so its
+// BLOCKED append is refused.
+func TestTipVerifiedBlockedRefused(t *testing.T) {
+	code, f, stderr := vgLandingAt(t, "implemented", "verified", vgPriorRun, vgPriorRun+"\n2026-11-01 re-run.\n\nVERIFY: BLOCKED\n")
+	if code != deskkit.ExitRefused || len(f.writes) != 0 {
+		t.Fatalf("home implemented, tip verified, BLOCKED: exit = %d writes = %d, want refused; stderr %q", code, len(f.writes), stderr)
+	}
+	if !strings.Contains(stderr, `"verified"`) {
+		t.Fatalf("refusal does not name the tip's status: %q", stderr)
+	}
+}
+
+// TestUnchangedVerdictLands: a landing whose latest verdict is the one the brief
+// already records (same word, same count) records no new verdict and lands, at
+// the deskevidence level as in statusgen.
+func TestUnchangedVerdictLands(t *testing.T) {
+	prior := vgPriorRun + "\n2026-11-01 re-run.\n\nVERIFY: BLOCKED\n"
+	code, f, stderr := vgLandingAt(t, "verified", "", prior, prior+"\nA note on the runner image.\n")
+	if code != deskkit.ExitOK || len(f.writes) != 1 {
+		t.Fatalf("unchanged latest verdict: exit = %d writes = %d, want it to land; stderr %q", code, len(f.writes), stderr)
+	}
+}
+
+// TestBriefPathBlockedRefused: the --brief-path route (an Evidence fragment
+// merged into the brief) is gated on the merged bytes, like a whole-file landing.
+func TestBriefPathBlockedRefused(t *testing.T) {
+	f, errBuf := setupFake(t)
+	realVerdictCheck(t)
+	root := rootWithFile(t, vgBrief, vgBriefText(vgPriorRun))
+	if err := os.WriteFile(filepath.Join(root, "docs", "streams", "vg", "README.md"), []byte(vgReadme("verified")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.setFile(vgBrief, vgBriefText(vgPriorRun))
+	fragment := writeRepoFile(t, "row.md", "\n2026-11-01 re-run.\n\nVERIFY: BLOCKED\n")
+	code := run([]string{fixtureRepo, "main", "--root", root, "--evidence-file", fragment, "--brief-path", vgBrief})
+	if code != deskkit.ExitRefused || len(f.writes) != 0 {
+		t.Fatalf("--brief-path BLOCKED fragment on a verified brief: exit = %d writes = %d, want refused; stderr %q",
+			code, len(f.writes), errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "--outcome-only") {
+		t.Fatalf("refusal is not the verdict gate's: %q", errBuf.String())
+	}
+}
+
+// regression: #5759
+//
+// TestVerdictCheckOnlyAtTip: the verdict question is asked in exactly one place,
+// evidenceVerdictAtTip, which stages the target branch tip's board first. A second
+// call of evidenceVerdictCheckFn anywhere in this package's non-test sources would
+// read the home's board, which is behind the tip; this census turns it red.
+func TestVerdictCheckOnlyAtTip(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(files)
+	var sites []string
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		raw, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(string(raw), "\n") {
+			if strings.Contains(line, "evidenceVerdictCheckFn(") {
+				sites = append(sites, name+":"+strings.TrimSpace(line))
+			}
+		}
+	}
+	want := "verdictgate.go:return evidenceVerdictCheckFn(root, briefPath, before, after, hasBefore, verdict)"
+	if len(sites) != 1 || sites[0] != want {
+		t.Fatalf("evidenceVerdictCheckFn call sites = %q, want exactly [%q] (ask through evidenceVerdictAtTip)", sites, want)
 	}
 }
 

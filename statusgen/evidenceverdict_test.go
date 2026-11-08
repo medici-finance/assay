@@ -130,8 +130,89 @@ func TestEvVerdictWordFlag(t *testing.T) {
 }
 
 func TestEvVerdictNoBoard(t *testing.T) {
-	if code, _, _ := evRun(t, filepath.Join(t.TempDir(), "missing"), "--verdict", "BLOCKED"); code == evidenceverdictExitNotLandable {
-		t.Fatalf("a missing board must never read as refused")
+	if code, out, _ := evRun(t, filepath.Join(t.TempDir(), "missing"), "--verdict", "BLOCKED"); code != evidenceverdictExitCouldNotCheck {
+		t.Fatalf("a missing board: exit = %d, want %d (could-not-check, never rounded to either answer); out=%q",
+			code, evidenceverdictExitCouldNotCheck, out)
+	}
+}
+
+// regression: #5759
+//
+// TestEvVerdictUnresolvedFailsClosed: every input whose status or verdict this
+// subcommand cannot resolve is could-not-check (exit 2) — never landable, never
+// refused. One row per way the answer can go unresolved, so a new rounding at any
+// of these sites turns this table red.
+func TestEvVerdictUnresolvedFailsClosed(t *testing.T) {
+	type row struct {
+		name  string
+		setup func(t *testing.T) (root string, args []string)
+		want  string
+	}
+	plant := func(t *testing.T, rel, text string) string {
+		t.Helper()
+		root, _ := evAfter(t, "verified", "PASS")
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return root
+	}
+	rows := []row{
+		{"board unreadable", func(t *testing.T) (string, []string) {
+			return filepath.Join(t.TempDir(), "missing"), []string{"--brief-path", evBriefRel, "--verdict", "BLOCKED"}
+		}, "cannot read the board"},
+		{"brief absent at root", func(t *testing.T) (string, []string) {
+			root, _ := evAfter(t, "verified", "PASS")
+			return root, []string{"--brief-path", "docs/streams/vc/brief-02-absent.md", "--verdict", "BLOCKED"}
+		}, "no brief file"},
+		{"brief id does not parse", func(t *testing.T) (string, []string) {
+			root := plant(t, "docs/streams/vc/brief-x.md", "# no id\n")
+			return root, []string{"--brief-path", "docs/streams/vc/brief-x.md", "--verdict", "BLOCKED"}
+		}, "id does not parse"},
+		{"no board row", func(t *testing.T) (string, []string) {
+			root := plant(t, "docs/streams/vc/brief-03-orphan.md", "# orphan\n")
+			return root, []string{"--brief-path", "docs/streams/vc/brief-03-orphan.md", "--verdict", "BLOCKED"}
+		}, "no board row"},
+		{"--after unreadable", func(t *testing.T) (string, []string) {
+			root, _ := evAfter(t, "verified", "PASS")
+			return root, []string{"--brief-path", evBriefRel, "--after", filepath.Join(t.TempDir(), "gone.md")}
+		}, "could-not-check"},
+		{"--before unreadable", func(t *testing.T) (string, []string) {
+			root, after := evAfter(t, "verified", "BLOCKED")
+			return root, []string{"--brief-path", evBriefRel, "--after", after, "--before", filepath.Join(t.TempDir(), "gone.md")}
+		}, "could-not-check"},
+	}
+	for _, r := range rows {
+		t.Run(r.name, func(t *testing.T) {
+			root, args := r.setup(t)
+			code, out, errOut := captureEvVerdict(t, append([]string{"--root", root}, args...))
+			if code != evidenceverdictExitCouldNotCheck {
+				t.Fatalf("exit = %d, want %d (could-not-check); out=%q err=%q", code, evidenceverdictExitCouldNotCheck, out, errOut)
+			}
+			if strings.Contains(out, "landable") {
+				t.Fatalf("an unresolved answer printed a landing verdict: %q", out)
+			}
+			if !strings.Contains(errOut, r.want) {
+				t.Fatalf("stderr %q does not name %q", errOut, r.want)
+			}
+		})
+	}
+}
+
+// regression: #5759
+//
+// TestEvVerdictWhitelist: the rule is a whitelist — on a verified brief, every
+// verdict word other than PASS and FAIL is refused, PARTIAL and HELD included.
+func TestEvVerdictWhitelist(t *testing.T) {
+	root, _ := evAfter(t, "verified", "PASS")
+	for _, w := range []string{"BLOCKED", "NEEDS-CONTEXT", "PARTIAL", "HELD"} {
+		code, out, _ := evRun(t, root, "--verdict", w)
+		if code != evidenceverdictExitNotLandable {
+			t.Fatalf("--verdict %s: exit = %d, want refused; out=%q", w, code, out)
+		}
+		if !strings.Contains(out, "other than PASS or FAIL") {
+			t.Fatalf("--verdict %s: refusal %q does not state the whitelist rule", w, out)
+		}
 	}
 }
 

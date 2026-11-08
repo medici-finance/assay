@@ -15,24 +15,32 @@ package main
 // selector flipLatestPass uses — so "the latest recorded verdict" means the same
 // thing here and in the lint. The status is the brief's board row.
 //
-// Decision (one brief, one tree):
+// Decision (one brief, one tree). The rule is a whitelist: on a verified or
+// done brief, every verdict other than PASS and FAIL is refused — BLOCKED,
+// NEEDS-CONTEXT, PARTIAL and HELD alike, exactly the verdicts the lint refuses.
 //
+//   - the brief's status cannot be resolved → could-not-check (exit 2): no
+//     brief file at --brief-path under --root, a file name whose brief id does
+//     not parse, or a stream board with no row for that id. None of these is
+//     "the status is not verified", so none is rounded to landable;
 //   - status neither verified nor done → landable (an implemented brief's
 //     BLOCKED run lands as it always has);
 //   - the latest verdict is PASS or FAIL → landable (a fresh PASS, or a
 //     reproducing FAIL, which is a real regression signal);
 //   - the latest verdict is unchanged by this landing (same word, same count
 //     as --before) → landable: this landing records no new verdict;
-//   - otherwise → NOT landable (exit 1): the run belongs in the outcome
-//     record only.
+//   - otherwise → NOT landable (exit 1): any verdict other than PASS or
+//     FAIL belongs in the outcome record only.
 //
 // --verdict asks the same question for a verdict word with no Evidence text
 // (the outcome-only record's check in deskevidence): exit 1 means an Evidence
 // append of that verdict would be refused, so its outcome record may land
 // without one.
 //
-// THREE-STATE (common-clause C4): an unreadable board, file or Evidence is
-// could-not-check (exit 2), never rounded to either answer.
+// THREE-STATE (common-clause C4): an unreadable board, file or Evidence, and a
+// status that cannot be resolved, is could-not-check (exit 2), never rounded to
+// either answer. boardStatusForBriefPath returns an error, never a "not found"
+// flag, so no caller can read an unresolved status as a status.
 
 import (
 	"errors"
@@ -56,8 +64,10 @@ Usage:
 
 Reads the board and the given brief text; runs nothing and writes nothing. Exit 1 when the
 brief's board status is verified or done and the run's verdict (the latest recorded verdict
-in --after's Evidence, or --verdict) is neither PASS nor FAIL: such a run belongs in the
-outcome record only. Exit 0 otherwise. Exit 2 when the board or the brief text cannot be read.
+in --after's Evidence, or --verdict) is any verdict other than PASS or FAIL: such a run
+belongs in the outcome record only. Exit 0 otherwise. Exit 2 when the board or the brief
+text cannot be read, or the brief's board status cannot be resolved (no brief file at the
+path, an id that does not parse, no board row for it).
 
 Flags:
   --brief-path <path>  the brief file, relative to --root (required)
@@ -104,10 +114,10 @@ func runEvidenceverdict(args []string, stdout, stderr *os.File) int {
 		fmt.Fprintf(stderr, "statusgen evidenceverdict: could-not-check — cannot read the board at %s: %v\n", root, err)
 		return evidenceverdictExitCouldNotCheck
 	}
-	key, status, found := boardStatusForBriefPath(streams, absRoot, rel)
-	if !found {
-		fmt.Fprintf(stdout, "%s: landable — no board row records its status\n", rel)
-		return evidenceverdictExitLandable
+	key, status, err := boardStatusForBriefPath(streams, absRoot, rel)
+	if err != nil {
+		fmt.Fprintf(stderr, "statusgen evidenceverdict: could-not-check — %v\n", err)
+		return evidenceverdictExitCouldNotCheck
 	}
 	if status != "verified" && status != "done" {
 		fmt.Fprintf(stdout, "%s: landable — status %q\n", key, status)
@@ -142,33 +152,34 @@ func runEvidenceverdict(args []string, stdout, stderr *os.File) int {
 		fmt.Fprintf(stdout, "%s: landable — status %q, verdict VERIFY: %s\n", key, status, word)
 		return evidenceverdictExitLandable
 	}
-	fmt.Fprintf(stdout, "%s: NOT landable — status %q, this run's verdict is VERIFY: %s; a BLOCKED or could-not-check re-run of a verified brief is recorded in the outcome record only\n",
+	fmt.Fprintf(stdout, "%s: NOT landable — status %q, this run's verdict is VERIFY: %s; a re-run of a verified or done brief whose verdict is any verdict other than PASS or FAIL is recorded in the outcome record only\n",
 		key, status, word)
 	return evidenceverdictExitNotLandable
 }
 
 // boardStatusForBriefPath finds the board row whose brief file is rel (relative
-// to absRoot) and returns its key and lower-cased Status.
-func boardStatusForBriefPath(streams []*Stream, absRoot, rel string) (key, status string, found bool) {
+// to absRoot) and returns its key and lower-cased Status. Every way the status
+// can go unresolved is an error, so a caller cannot round it to a status.
+func boardStatusForBriefPath(streams []*Stream, absRoot, rel string) (key, status string, err error) {
 	for _, s := range streams {
 		for _, p := range briefFilePaths(s) {
-			r, err := filepath.Rel(realPath(absRoot), realPath(p))
-			if err != nil || filepath.ToSlash(r) != rel {
+			r, rerr := filepath.Rel(realPath(absRoot), realPath(p))
+			if rerr != nil || filepath.ToSlash(r) != rel {
 				continue
 			}
 			_, num, ok := expectedBriefID(p)
 			if !ok {
-				return "", "", false
+				return "", "", fmt.Errorf("%s: the brief id does not parse from its file name, so its board status cannot be resolved", rel)
 			}
 			for _, b := range s.Briefs {
 				if b.Num == num {
-					return s.Name + "/" + num, strings.ToLower(strings.TrimSpace(b.Status)), true
+					return s.Name + "/" + num, strings.ToLower(strings.TrimSpace(b.Status)), nil
 				}
 			}
-			return "", "", false
+			return "", "", fmt.Errorf("%s: stream %s has no board row for brief %s, so its status cannot be resolved", rel, s.Name, num)
 		}
 	}
-	return "", "", false
+	return "", "", fmt.Errorf("%s: no brief file at this path under %s, so its board status cannot be resolved", rel, absRoot)
 }
 
 // realPath is the absolute, symlink-resolved form of p (p's absolute form when
