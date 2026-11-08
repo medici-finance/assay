@@ -470,7 +470,10 @@ func latestPassRunFrom(lines []string, start, end int, read func(from int) error
 		return start, nil
 	}
 	from, ok := heldRunFrom(lines, start, end)
-	if !ok || from == start || read(from) != nil {
+	if !ok || from == start {
+		return 0, err
+	}
+	if rerr := read(from); rerr != nil {
 		return 0, err
 	}
 	return from, nil
