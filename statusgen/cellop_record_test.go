@@ -25,9 +25,6 @@ func TestCellopCompletionRecord(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, name), raw, 0o644); err != nil {
-		t.Fatal(err)
-	}
 	board := `---
 stream: desk-containers
 status: active
@@ -45,7 +42,29 @@ track: platform
 	}
 	// Only the existing parser/flip plan is under test. Human acceptance and
 	// decision authority are separate gates; this makes no network call or write.
-	_, planned, local, err := closeVerifyFlipPlan(root, "desk-containers/15", time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC))
+	at := time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC)
+	brief := filepath.Join(dir, name)
+	// The record as landed closes on a later VERIFY: FAIL entry: the latest
+	// run is not a PASS, so the one-step close must refuse rather than stamp
+	// the earlier PASS run (#5229).
+	if err := os.WriteFile(brief, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := closeVerifyFlipPlan(root, "desk-containers/15", at); err == nil || !strings.Contains(err.Error(), "VERIFY: FAIL, not PASS") {
+		t.Fatalf("completion reader must refuse a record whose latest verdict is a FAIL; got %v", err)
+	}
+	// The retained verifier record itself — every entry up to the later FAIL
+	// entry — must stay consumable.
+	const failEntry = "### Non-implementer execution witness — 2026-11-01"
+	fs, fe := strings.Index(string(raw), failEntry), strings.Index(string(raw), "\n## Review")
+	if fs < 0 || fe < fs {
+		t.Fatal("later FAIL entry or Review section missing from the retained record")
+	}
+	record := string(raw)[:fs] + string(raw)[fe+1:]
+	if err := os.WriteFile(brief, []byte(record), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, planned, local, err := closeVerifyFlipPlan(root, "desk-containers/15", at)
 	if err != nil {
 		t.Fatalf("completion reader refused retained verifier record: %v", err)
 	}
@@ -115,7 +134,7 @@ track: platform
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(retained) != string(raw) {
+	if string(retained) != record {
 		t.Fatal("planning changed retained evidence")
 	}
 }

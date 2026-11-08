@@ -1510,8 +1510,8 @@
     {
       "name": "#4294 run: a narrowed re-read that fails is admitted",
       "file": "verifyflip.go",
-      "old": "if qerr != nil {\n\t\t\treturn flipPass{}, err",
-      "new": "if false && qerr != nil {\n\t\t\treturn flipPass{}, err"
+      "old": "if rerr := read(from); rerr != nil {",
+      "new": "if rerr := read(from); false && rerr != nil {"
     },
     {
       "name": "#4294 run: the run is never narrowed to the latest heading",

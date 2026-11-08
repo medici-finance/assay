@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -136,6 +137,9 @@ type bracketReceipt struct {
 	RunnerSource string          `json:"runner_source"`
 	RunnerTree   string          `json:"runner_tree"`
 	OnBehalfOf   string          `json:"on_behalf_of"`
+	// ModuleCache is the module cache the open step downloaded for the home
+	// (--module-cache, #4683); nil when the open step downloaded none.
+	ModuleCache *receiptModuleCache `json:"module_cache,omitempty"`
 }
 
 // receiptRunnerRe is the shape of a runner token executingRunner derives: a
@@ -246,6 +250,12 @@ func readBracketReceipt(path, home, brief string) (bracketReceipt, string, strin
 	if err := receiptRunnerProblem(r); err != nil {
 		return r, "", "", err
 	}
+	if err := receiptModuleCacheProblem(r.ModuleCache); err != nil {
+		return r, "", "", err
+	}
+	if err := moduleCacheRequirementProblem(home, r.ModuleCache); err != nil {
+		return r, "", "", err
+	}
 	b, err := checkBinding(r.Check)
 	if err != nil {
 		return r, "", "", fmt.Errorf("unreadable check output in the receipt: %w", err)
@@ -283,6 +293,29 @@ func readBracketReceipt(path, home, brief string) (bracketReceipt, string, strin
 		return r, "", "", fmt.Errorf("the receipt admits brief %s, but this run's brief is %s", b.Brief, brief)
 	}
 	return r, line, b.Brief, nil
+}
+
+// bindingOwners is the lower-case forge owners of every repository a check
+// binds: its repo, the source repo of a cross-repository receipt, and each
+// declared sibling. The open step's module screen refuses any module path
+// under one of them (moduleEgressProblem).
+func bindingOwners(b attestation.Binding) ([]string, error) {
+	repos := []string{b.Repo, b.SourceRepo}
+	siblings, err := attestation.ParseSiblingSources(b.SiblingSources)
+	if err != nil {
+		return nil, err
+	}
+	for r := range siblings {
+		repos = append(repos, r)
+	}
+	var owners []string
+	for _, r := range repos {
+		if o, _, ok := strings.Cut(r, "/"); ok && o != "" && !slices.Contains(owners, strings.ToLower(o)) {
+			owners = append(owners, strings.ToLower(o))
+		}
+	}
+	slices.Sort(owners)
+	return owners, nil
 }
 
 // checkBinding reads the Binding of a `deskdispatch --check-verifier` receipt.
@@ -349,6 +382,7 @@ func crossRepoBindingProblem(b attestation.Binding, home, brief string) error {
 type containerAdmit struct {
 	attestation, tree string
 	cell              bracketReceipt // Runner, RunnerSource, RunnerTree, OnBehalfOf
+	moduleCache       string         // the receipt's module cache digest, "" with none
 }
 
 // containerAdmission is the container half: the host's receipt replaces
@@ -366,8 +400,15 @@ func containerAdmission(receiptPath, root, brief string) (containerAdmit, error)
 	if tree != r.Tree {
 		return containerAdmit{}, fmt.Errorf("container admission refused; no Verify rows executed: the mounted root %s digests to %s, not the %s the host recorded at the open step. The container is not running the admitted home", root, tree, r.Tree)
 	}
+	moduleCache := ""
+	if r.ModuleCache != nil {
+		if err := containerModuleCacheProblem(root, r.ModuleCache); err != nil {
+			return containerAdmit{}, fmt.Errorf("container admission refused; no Verify rows executed: %w", err)
+		}
+		moduleCache = r.ModuleCache.Digest
+	}
 	cell := bracketReceipt{Check: r.Check, Runner: r.Runner, RunnerSource: r.RunnerSource, RunnerTree: r.RunnerTree, OnBehalfOf: r.OnBehalfOf}
-	return containerAdmit{attestation: line, tree: tree, cell: cell}, nil
+	return containerAdmit{attestation: line, tree: tree, cell: cell, moduleCache: moduleCache}, nil
 }
 
 // relWithin returns p's slash path relative to root when p lies inside root,
@@ -484,9 +525,14 @@ func homeTreeDigest(root string) (string, error) {
 
 // containerWitnessLines are the lines a container run writes under its
 // witness table: Tree-Digest between the table and the attestation line (Task
-// 3), the image digest beside it, the attestation last.
-func containerWitnessLines(image, tree, attestation string) string {
-	return treeDigestPrefix + tree + "\n" + containerImagePrefix + image + "\n" + attestation + "\n"
+// 3), the image digest beside it, then the open step's module cache digest
+// when the receipt carries one (#4683), the attestation last.
+func containerWitnessLines(image, tree, moduleCache, attestation string) string {
+	lines := treeDigestPrefix + tree + "\n" + containerImagePrefix + image + "\n"
+	if moduleCache != "" {
+		lines += moduleCachePrefix + moduleCache + "\n"
+	}
+	return lines + attestation + "\n"
 }
 
 // writeContainerWitness writes a container run's witness to its own new file
@@ -511,13 +557,26 @@ func writeContainerWitness(path, home, table string) error {
 // writes the receipt file only when the host derives an executing identity
 // for the home and the host check admits it, as version 1 for this home and
 // brief, or as version 2 with this home as its admitted deliverable home.
-func runOpenBracket(home, brief, out string, stdout, stderr io.Writer, historyOut ...string) int {
+//
+// With moduleCache it also downloads the home's Go module roots into that new
+// directory and records the cache in the receipt (prepareModuleCache); a home
+// that lists module roots (moduleRootsManifest) is refused without one, since
+// its container rows would otherwise resolve from the image's baked cache.
+func runOpenBracket(home, brief, out, moduleCache string, stdout, stderr io.Writer, historyOut ...string) int {
 	refuse := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "statusgen verifyrun --open-bracket: refused, no receipt written: "+format+"\n", a...)
 		return verifyrunExitCouldNot
 	}
 	if rel, ok := relWithin(home, out); ok {
 		return refuse("--out %s sits inside the home (%s); the receipt must be outside it", out, rel)
+	}
+	if _, listed := bakedModuleRoots(filepath.Join(home, filepath.FromSlash(moduleRootsManifest))); listed && moduleCache == "" {
+		return refuse("could-not-check — the home lists Go module roots in %s, so its container rows resolve modules from the tree under verification, never from the image's baked cache: pass --module-cache <new directory outside the home> and mount it as the open step prints", moduleRootsManifest)
+	}
+	if moduleCache != "" {
+		if p := moduleCachePathProblem(home, moduleCache); p != "" {
+			return refuse("%s", p)
+		}
 	}
 	// The Runner cell is derived here, on the host, where the home's git
 	// directory and the roster are readable. The container reads it from the
@@ -566,6 +625,27 @@ func runOpenBracket(home, brief, out string, stdout, stderr io.Writer, historyOu
 	if err != nil {
 		return refuse("%v", err)
 	}
+	var mc *receiptModuleCache
+	if moduleCache != "" {
+		b, err := checkBinding(check)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		owners, err := bindingOwners(b)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		got, err := prepareModuleCache(home, moduleCache, owners, stdout)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		// The download ran in the home's module roots; the tree the receipt
+		// binds is the one the download left.
+		if after, err := homeTreeDigest(home); err != nil || after != tree {
+			return refuse("could-not-check — the home's tree changed during the module download (%s, then %s)", tree, after)
+		}
+		mc = &got
+	}
 	opened := nowFunc().UTC().Format(time.RFC3339)
 	if len(historyOut) > 0 && historyOut[0] != "" {
 		binding, err := checkBinding(check)
@@ -582,11 +662,23 @@ func runOpenBracket(home, brief, out string, stdout, stderr io.Writer, historyOu
 	quoted := func(s string) string { b, _ := json.Marshal(s); return string(b) }
 	body := `{"check":` + string(check) + `,"tree":"` + tree + `","opened":"` + opened +
 		`","runner":` + quoted(cell.Runner) + `,"runner_source":` + quoted(cell.RunnerSource) +
-		`,"runner_tree":` + quoted(cell.RunnerTree) + `,"on_behalf_of":` + quoted(cell.OnBehalfOf) + `}` + "\n"
+		`,"runner_tree":` + quoted(cell.RunnerTree) + `,"on_behalf_of":` + quoted(cell.OnBehalfOf)
+	if mc != nil {
+		m, err := json.Marshal(mc)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		body += `,"module_cache":` + string(m)
+	}
+	body += `}` + "\n"
 	if err := os.WriteFile(out, []byte(body), 0o644); err != nil {
 		return refuse("%v", err)
 	}
 	fmt.Fprintf(stdout, "opened %s tree=%s runner=%s (%s) receipt=%s\n", opened, tree, cell.Runner, cell.RunnerSource, out)
+	if mc != nil {
+		fmt.Fprintf(stdout, "module-cache %s digest=%s roots=%s\n", moduleCache, mc.Digest, strings.Join(mc.Roots, ","))
+		fmt.Fprintf(stdout, "container flags: %s\n", strings.Join(containerModuleCacheFlags(moduleCache), " "))
+	}
 	return verifyrunExitPass
 }
 
@@ -614,6 +706,7 @@ type containerBlock struct {
 	attestation string
 	brief       string // the attestation's home-relative brief
 	tree        string
+	moduleCache string   // the Module-Cache value, "" when the run recorded none
 	rows        []string // the table rows between its own header and Tree-Digest
 }
 
@@ -636,15 +729,24 @@ func findContainerBlock(text string) (containerBlock, error) {
 		}
 	}
 	n := len(lines)
-	if n < 4 || !strings.HasPrefix(lines[n-3], treeDigestPrefix) || !strings.HasPrefix(lines[n-2], containerImagePrefix) || !strings.HasPrefix(lines[n-1], attestationPrefix) {
+	// The trailer is Tree-Digest, Container-Image, an optional Module-Cache
+	// and the attestation; ti is the Tree-Digest line's index.
+	ti, moduleCache := n-3, ""
+	if n >= 2 && strings.HasPrefix(lines[n-2], moduleCachePrefix) {
+		ti, moduleCache = n-4, strings.TrimPrefix(lines[n-2], moduleCachePrefix)
+		if !sha256DigestRe.MatchString(moduleCache) {
+			return containerBlock{}, fmt.Errorf("malformed %q", lines[n-2])
+		}
+	}
+	if ti < 1 || !strings.HasPrefix(lines[ti], treeDigestPrefix) || !strings.HasPrefix(lines[ti+1], containerImagePrefix) || !strings.HasPrefix(lines[n-1], attestationPrefix) {
 		return containerBlock{}, fmt.Errorf("the witness does not end with the %s, %sand attestation lines a container run records", strings.TrimSpace(treeDigestPrefix), containerImagePrefix)
 	}
-	tree := strings.TrimPrefix(lines[n-3], treeDigestPrefix)
+	tree := strings.TrimPrefix(lines[ti], treeDigestPrefix)
 	if !sha256DigestRe.MatchString(tree) {
-		return containerBlock{}, fmt.Errorf("malformed %q", lines[n-3])
+		return containerBlock{}, fmt.Errorf("malformed %q", lines[ti])
 	}
-	if !sha256DigestRe.MatchString(strings.TrimPrefix(lines[n-2], containerImagePrefix)) {
-		return containerBlock{}, fmt.Errorf("malformed %q", lines[n-2])
+	if !sha256DigestRe.MatchString(strings.TrimPrefix(lines[ti+1], containerImagePrefix)) {
+		return containerBlock{}, fmt.Errorf("malformed %q", lines[ti+1])
 	}
 	att, ok := parseContainerAttestation(lines[n-1])
 	if !ok {
@@ -660,7 +762,7 @@ func findContainerBlock(text string) (containerBlock, error) {
 	}
 	containerRows, ownHeader := 0, false
 	var rows []string
-	for i := n - 4; i >= 0 && strings.HasPrefix(lines[i], "|"); i-- {
+	for i := ti - 1; i >= 0 && strings.HasPrefix(lines[i], "|"); i-- {
 		if isWitnessHeaderLine(lines[i]) {
 			ownHeader = true
 			break
@@ -681,7 +783,7 @@ func findContainerBlock(text string) (containerBlock, error) {
 		// table's Tree-Digest, image and attestation lines.
 		return containerBlock{}, fmt.Errorf("the container rows above the %sline carry no witness table header of their own, so the bracket's span would start at another table", treeDigestPrefix)
 	}
-	return containerBlock{lines: lines, attestation: lines[n-1], brief: att.brief, tree: tree, rows: rows}, nil
+	return containerBlock{lines: lines, attestation: lines[n-1], brief: att.brief, tree: tree, moduleCache: moduleCache, rows: rows}, nil
 }
 
 // containerRowRunnerProblem is the close step's check of the Runner cell of
@@ -700,7 +802,14 @@ func containerRowRunnerProblem(rows []string, want string) string {
 		if cells == nil {
 			return fmt.Sprintf("the container table carries a row that is not a witness row: %q", row)
 		}
-		if cell := strings.TrimSpace(cells[witnessCellRunner]); cell != want {
+		// The row's read-set token is the container's own record of what that
+		// row read (build-less-brittle/15); the host derives no such token, so
+		// the cell compares without it and must match byte for byte otherwise.
+		// Only a token verifyrun writes, at the position it writes it, is
+		// removed (review S21): any other token-shaped text stays in the cell
+		// and refuses the close, so the tree and principal readers, which read
+		// the whole cell, see what this check compared.
+		if cell := stripWriterReadSetToken(strings.TrimSpace(cells[witnessCellRunner])); cell != want {
 			return fmt.Sprintf("row %s's Runner cell %q is not the cell the host derived and recorded at the open step, %q", strings.TrimSpace(cells[0]), cell, want)
 		}
 	}
@@ -756,6 +865,16 @@ func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stder
 	}
 	if tree != block.tree {
 		return refuse("the home's tree digest %s is not the witness's Tree-Digest %s: the witness was not taken on this home", tree, block.tree)
+	}
+	// The module cache the rows resolved from is the open step's: the
+	// witness's Module-Cache line is present exactly when the receipt carries
+	// a module cache, and names its digest.
+	wantCache := ""
+	if receipt.ModuleCache != nil {
+		wantCache = receipt.ModuleCache.Digest
+	}
+	if block.moduleCache != wantCache {
+		return refuse("the witness's %s%q is not the receipt's module cache %q: the rows did not run on the cache the open step downloaded", moduleCachePrefix, block.moduleCache, wantCache)
 	}
 	// The Runner cell is re-derived on the host, from the same sources the
 	// open step read, never taken from the receipt or the witness: a receipt
@@ -1040,6 +1159,12 @@ func spanBindingProblem(span []string, bracket string) string {
 	}
 	if image := spanImage(span); !sha256DigestRe.MatchString(image) {
 		return fmt.Sprintf("its own span's %s %s is not a sha256:<64 hex> digest", strings.TrimSpace(containerImagePrefix), image)
+	}
+	switch caches := spanModuleCaches(span); {
+	case len(caches) > 1:
+		return fmt.Sprintf("its own span holds %d %s lines, not at most one", len(caches), strings.TrimSpace(moduleCachePrefix))
+	case len(caches) == 1 && !sha256DigestRe.MatchString(caches[0]):
+		return fmt.Sprintf("its own span's %s %s is not a sha256:<64 hex> digest", strings.TrimSpace(moduleCachePrefix), caches[0])
 	}
 	b := bracketLineRe.FindStringSubmatch(strings.TrimSpace(bracket))
 	if b == nil {
