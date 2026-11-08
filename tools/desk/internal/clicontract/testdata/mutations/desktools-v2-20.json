@@ -1,5 +1,5 @@
 {
-  "test": "KUBECONFIG=/dev/null go test -count=1 -timeout 90s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLITierDomainBoundary)$' ./cmd/deskboard/",
+  "test": "KUBECONFIG=/dev/null go test -count=1 -timeout 180s -run '^(TestCLIHelpOffline|TestCLIHelpDoesNotDiscoverManifests|TestCLIConfigFlow|TestCLILegacyForms|TestCLITierDomainBoundary)$' ./cmd/deskboard/",
   "control": {
     "name": "CONTROL: refusal exit changes",
     "file": "cmd/deskboard/main.go",
@@ -42,6 +42,18 @@
       "file": "cmd/deskboard/main.go",
       "old": "VersionTemplate: \"{{.Version}}\\n\"",
       "new": "VersionTemplate: \"{{.Name}} version {{.Version}}\\n\""
+    },
+    {
+      "name": "entrypoint discovers manifests before help is parsed",
+      "file": "cmd/deskboard/main.go",
+      "old": "selected := perfrec.ResolveContext(perfrec.ContextInput{})",
+      "new": "if n := startup(os.Stderr); n != 0 {\n\t\tos.Exit(n)\n\t}\n\tselected := perfrec.ResolveContext(perfrec.ContextInput{})"
+    },
+    {
+      "name": "version verb runs activation discovery",
+      "file": "cmd/deskboard/main.go",
+      "old": "RunE: func(*cobra.Command, []string) error { fmt.Fprintln(stdout, versionLine()); return nil }",
+      "new": "RunE: func(*cobra.Command, []string) error { startup(stderr); fmt.Fprintln(stdout, versionLine()); return nil }"
     },
     {
       "name": "tier admission moved into CLI only",

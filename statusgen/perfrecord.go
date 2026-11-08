@@ -59,7 +59,7 @@ const perfDefaultVerb = "regen"
 // flags against the flag set main() really registers.
 var (
 	perfSubcommands = []string{
-		"version", "init", "verifyrun", "verifyclosure", "verifyflip", "mergecheck",
+		"version", "init", "verifyrun", "verifyclosure", "evidenceverdict", "verifyflip", "mergecheck",
 		"shardcheck", "phantoms", "enforcement-status", "backfill", "reconcile", "outcomes",
 		"regen", "conform", "patterns", "instance", "runtime-resource", "migrate", "brief",
 		"newbrief", "lint", "verify-gate-close", "context",
