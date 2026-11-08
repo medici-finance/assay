@@ -180,6 +180,18 @@
       "file": "../../.github/workflows/release-object-qualification.yml",
       "old": "except Exception as error:\n              raise SystemExit('qualification refused at producer: '+type(error).__name__) from None",
       "new": "except KeyError as error:\n              raise SystemExit('qualification refused at producer: '+type(error).__name__) from None"
+    },
+    {
+      "name": "missing-key-misreported-as-prefix-scope",
+      "file": "../../tools/release/qualification.py",
+      "old": "checks['outsidePrefixMissingKeyReadRefused']",
+      "new": "checks['outsidePrefixDenied']"
+    },
+    {
+      "name": "missing-key-overclaims-scope-proof",
+      "file": "../../tools/release/qualification.py",
+      "old": "'publisherPrefixScopeProven':False",
+      "new": "'publisherPrefixScopeProven':True"
     }
   ]
 }

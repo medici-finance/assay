@@ -185,7 +185,9 @@ def receive(env,aws,receipt):
                                    '--key',key+'.publisher-denied','--body',str(bundle))
         checks['deleteDenied']=denied(store,'s3api','delete-object','--bucket',store.bucket,'--key',key)
         checks['listObjectsDenied']=denied(store,'s3api','list-objects-v2','--bucket',store.bucket)
-        checks['outsidePrefixDenied']=denied(store,'s3api','get-object','--bucket',store.bucket,
+        # A missing key may return 403 even to a reader with overbroad GetObject.
+        # Retain the refusal, but never present it as proof of prefix read scope.
+        checks['outsidePrefixMissingKeyReadRefused']=denied(store,'s3api','get-object','--bucket',store.bucket,
                  '--key','qualification-denied/'+meta['run'],str(scratch/'forbidden'))
         checks['tls']=tls_controls(store);checks['network']=network_controls()
-        write_receipt(receipt,summary('publisher',meta,checks,{'bundleBytes':size,'executionAttempt':env['GITHUB_RUN_ATTEMPT'],'qualificationElapsedSeconds':time.monotonic()-started}))
+        write_receipt(receipt,summary('publisher',meta,checks,{'publisherPrefixScopeProven':False,'bundleBytes':size,'executionAttempt':env['GITHUB_RUN_ATTEMPT'],'qualificationElapsedSeconds':time.monotonic()-started}))

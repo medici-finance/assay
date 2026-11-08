@@ -78,6 +78,33 @@ class QualificationTest(unittest.TestCase):
    self.assertNotIn('private-endpoint-do-not-print',result.stdout+result.stderr)
    self.assertNotIn('Traceback',result.stderr)
    self.assertIn('RuntimeError',result.stderr)
+ def test_missing_key_refusal_never_proves_publisher_read_scope(self):
+  # Deliberately overbroad reader: any existing key is readable, but a missing
+  # key without ListBucket returns AccessDenied just like S3. Run receive's
+  # real bundle and receipt path so relabeling cannot merely hide a green claim.
+  import shutil
+  with tempfile.TemporaryDirectory() as directory:
+   root=Path(directory);env=self.env();env.update(RUNNER_TEMP=str(root),PRODUCER_ATTEMPT='1')
+   meta=q.t.metadata('medici-finance/assay','123','1','a'*40,'a'*40,'v0.0.0')
+   with patch.object(q,'FIXTURE_BYTES',4096):q.make_fixture(root/'inputs',meta)
+   prepared=q.t.prepare(root/'inputs',root/'source.tar.gz',meta)
+   env.update(EXPECTED_BUNDLE_SHA256=prepared['bundle_sha256'],EXPECTED_MANIFEST_SHA256=prepared['manifest_sha256'],EXPECTED_BUNDLE_BYTES=str(prepared['bundle_bytes']))
+   class OverbroadStore:
+    aws=Path('/fake/aws');endpoint='https://fixture.invalid';bucket='fixture';env={}
+    def __init__(self,*args):pass
+    def download(self,key,path,size):shutil.copyfile(root/'source.tar.gz',path)
+   def s3(args,**kwargs):
+    if 'get-object' in args and args[args.index('--key')+1]=='qualification-denied/known-existing':
+     return subprocess.CompletedProcess(args,0,'','')
+    return subprocess.CompletedProcess(args,254,'','An error occurred (AccessDenied) when calling operation')
+   with patch.object(q.platform,'system',return_value='Linux'),patch.object(q.platform,'machine',return_value='x86_64'),patch.object(q.t,'Store',OverbroadStore),patch.object(q.subprocess,'run',side_effect=s3),patch.object(q,'tls_controls',return_value={}),patch.object(q,'network_controls',return_value={}):
+    q.receive(env,'/fake/aws',root/'receipt.json')
+    with self.assertRaises(ValueError):q.denied(OverbroadStore(),'s3api','get-object','--key','qualification-denied/known-existing')
+   receipt=json.loads((root/'receipt.json').read_text())
+   self.assertNotIn('outsidePrefixDenied',receipt['checks'])
+   self.assertTrue(receipt['checks']['outsidePrefixMissingKeyReadRefused'])
+   self.assertIs(receipt['publisherPrefixScopeProven'],False)
+
  def test_success_report_is_not_release_authority(self):
   meta=q.t.metadata('medici-finance/assay','1','1','a'*40,'a'*40,'v0.0.0')
   out=q.summary('producer',meta,{})

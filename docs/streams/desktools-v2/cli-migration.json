@@ -2956,8 +2956,8 @@
         "tools/release/README.md"
       ],
       "parser": "Python argparse",
-      "complexity": "simple",
-      "basis": "retained upload/download protocol and bundle/credential domain",
+      "complexity": "complex",
+      "basis": "retained two verbs and twelve coordinate/path/proof flags; parser migration remains pending",
       "owner": "desktools-v2/78",
       "state": "pending"
     },
