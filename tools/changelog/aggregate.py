@@ -98,7 +98,6 @@ is Added, Fixed, Changed — matching the existing CHANGELOG.md sections.
 
 import os
 import re
-import subprocess
 import sys
 
 # Canonical bucket order for emission (matches the existing CHANGELOG.md).
@@ -270,6 +269,37 @@ def _git_ok(repo, args):
             return fh.close() is None
     except OSError:
         return False
+
+
+# The shell's "command not found" exit status: git itself could not be run.
+_SHELL_NOT_FOUND = 127
+
+
+def _git_bytes(repo, args, stderr_only=False):
+    """Run `git -C <repo> <args>` through os.popen; return (exit code, stdout bytes).
+
+    os.popen does not raise on a non-zero exit, so the status comes from
+    close(): None means exit 0, anything else is the (shifted) wait status.
+    Output is read as raw bytes so a path that is not valid UTF-8 survives for
+    the caller to decode. With stderr_only the child's stdout is discarded and
+    its stderr is returned instead (for a failure diagnostic). `args` is
+    trusted shell text: the caller quotes every interpolated value with _shq.
+
+    A shell exit of 127 (git could not be run) raises FileNotFoundError here,
+    the one place that reads the status, so no caller can mistake it for an
+    ordinary git failure: it is an OSError like the one an argv spawn raises.
+    """
+    redirect = "2>&1 >/dev/null" if stderr_only else "2>/dev/null"
+    cmd = "git -C %s %s %s" % (_shq(repo), args, redirect)
+    with os.popen(cmd) as fh:
+        data = fh.buffer.read()
+        status = fh.close()
+    if status is None:
+        return 0, data
+    rc = (status >> 8) or 1
+    if rc == _SHELL_NOT_FOUND:
+        raise FileNotFoundError("git not found (shell exit %d)" % rc)
+    return rc, data
 
 
 def _resolve_fragment_pr(repo, relpath):
@@ -506,29 +536,29 @@ def _fragments_at_ref(fragment_dir, ref):
     if not ref or ref.startswith("-"):
         raise RefError("not a usable ref: %r" % ref)
     try:
-        top = subprocess.run(
-            ["git", "-C", fragment_dir, "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True)
+        rc, out = _git_bytes(fragment_dir, "rev-parse --show-toplevel")
     except OSError as exc:
         raise RefError("cannot run git: %s" % exc)
-    if top.returncode != 0 or not top.stdout.strip():
+    top = os.fsdecode(out).strip()
+    if rc != 0 or not top:
         raise RefError("%s is not inside a git work tree" % fragment_dir)
-    root = top.stdout.strip()
+    root = top
     rel = os.path.relpath(os.path.realpath(fragment_dir), os.path.realpath(root))
     rel = "." if rel in ("", ".") else rel.replace(os.sep, "/")
     spec = "" if rel == "." else rel + "/"
+    ls_args = "ls-tree -z --name-only %s -- %s" % (
+        _shq(ref + "^{commit}"), _shq(spec or "."))
     try:
-        ls = subprocess.run(
-            ["git", "-C", root, "ls-tree", "-z", "--name-only",
-             ref + "^{commit}", "--", spec or "."],
-            capture_output=True)
+        rc, out = _git_bytes(root, ls_args)
+        if rc != 0:
+            # Re-run for the diagnostic only: stdout is dropped, stderr kept.
+            _rc, err = _git_bytes(root, ls_args, stderr_only=True)
+            raise RefError("git cannot resolve %r to a commit: %s" % (
+                ref, err.decode("utf-8", "replace").strip()))
     except OSError as exc:
         raise RefError("cannot run git: %s" % exc)
-    if ls.returncode != 0:
-        raise RefError("git cannot resolve %r to a commit: %s" % (
-            ref, ls.stderr.decode("utf-8", "replace").strip()))
     at_ref = set()
-    for raw in ls.stdout.split(b"\0"):
+    for raw in out.split(b"\0"):
         if not raw:
             continue
         path = raw.decode("utf-8", "surrogateescape")
