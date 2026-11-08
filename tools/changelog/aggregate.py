@@ -49,13 +49,37 @@ highlights/roll ... --credits <map-file>
     ``opt-out``), or a missing map file credits nobody — and then the output is
     BYTE-IDENTICAL to the same run without ``--credits``.
 
-roll <fragment-dir> <changelog> <tag> <date>
+roll <fragment-dir> <changelog> <tag> <date> [--at-ref <ref>] [--clear]
     Rewrite <changelog> in place: replace the ``## Unreleased`` section body
     with the standing pointer note, and insert a fresh ``## <tag> — <date>``
-    section carrying the aggregated highlights directly beneath it. Exit 2 (and
-    leave the file untouched) when there is nothing to aggregate. The CALLER is
-    responsible for ``git rm``-ing the aggregated fragment files in the same
-    commit; this module only rewrites the changelog.
+    section carrying the aggregated highlights directly beneath it.
+
+    --at-ref <ref>
+        Aggregate only the fragments that exist BOTH at <ref> (the release tag:
+        its ``changelog/`` tree, read with ``git ls-tree``) and in the working
+        tree. A fragment that merged after <ref> is left untouched on disk for
+        the next cut, so it is neither filed under the wrong version nor lost.
+        An unresolvable <ref> (or a <fragment-dir> outside a git work tree)
+        fails CLOSED with exit 4 — it never falls back to "all fragments".
+    --clear
+        After the section is written, remove exactly the fragment files that
+        were aggregated (never ``README.md``) and print ``removed <path>`` for
+        each. The caller then stages ``git add -A changelog CHANGELOG.md``
+        instead of a blanket delete that would also take unaggregated
+        fragments.
+
+    Exit codes (the release workflow's retry loop reads them):
+      0  rolled
+      1  an I/O failure while clearing fragments
+      2  nothing to aggregate (checked FIRST, so a retry after a concurrent
+         roll still reads 2), or a usage error (file left untouched)
+      3  there ARE fragments to aggregate but <changelog> already has a
+         ``## <tag>`` section: refused, EVERY file left untouched
+      4  --at-ref could not be resolved (files left untouched)
+
+    Without --at-ref and --clear the CALLER is responsible for ``git rm``-ing
+    the aggregated fragment files in the same commit; this module then only
+    rewrites the changelog.
 
 The cutover fold
 ----------------
@@ -74,6 +98,7 @@ is Added, Fixed, Changed — matching the existing CHANGELOG.md sections.
 
 import os
 import re
+import subprocess
 import sys
 
 # Canonical bucket order for emission (matches the existing CHANGELOG.md).
@@ -382,15 +407,17 @@ def cmd_credits(fragment_dir):
     return 0
 
 
-def _collect(fragment_dir, changelog_path, credits=None):
+def _collect(fragment_dir, changelog_path, credits=None, names=None):
     """Gather (bucket -> sorted unique entries) from every fragment plus the
     residual ## Unreleased fold. Returns an ordered dict-like {bucket: [entries]}
-    restricted to non-empty buckets, and a flat count."""
+    restricted to non-empty buckets, and a flat count. ``names``, when given,
+    restricts the fragments read to exactly those filenames (the --at-ref set);
+    None reads them all."""
     buckets = {b: [] for b in BUCKETS}
 
     # 1) Fragment files, in filename-sorted order for determinism.
     credits = credits or {}
-    for name in _fragment_names(fragment_dir):
+    for name in (_fragment_names(fragment_dir) if names is None else names):
         path = os.path.join(fragment_dir, name)
         suffix = credits.get(name)
         for bucket, entry in _parse_bullets(_read_lines(path)):
@@ -428,6 +455,12 @@ def _render(collected):
     return "\n\n".join(blocks)
 
 
+# Exit codes of `roll` beyond 0/2 (2 = nothing to aggregate, which the release
+# workflow's retry loop reads and which must not be reused).
+EXIT_DUPLICATE_TAG = 3
+EXIT_BAD_REF = 4
+
+
 def _refuse_empty():
     sys.stderr.write(
         "changelog: nothing to aggregate — no fragment files under the "
@@ -456,14 +489,92 @@ def cmd_highlights(fragment_dir, changelog_path, credits_path=None):
     return 0
 
 
-def cmd_roll(fragment_dir, changelog_path, tag, date, credits_path=None):
+class RefError(Exception):
+    """--at-ref could not be turned into a fragment list."""
+
+
+def _fragments_at_ref(fragment_dir, ref):
+    """The fragment filenames that exist at <ref> AND in the working tree.
+
+    Reads the top level of the fragment directory at <ref>^{commit} with
+    ``git ls-tree`` (flat fragments only, like the working-tree reader), then
+    intersects with what is on disk. Raises RefError on anything that stops the
+    list being trustworthy: the ref is empty or option-shaped, the directory is
+    not inside a git work tree, or git cannot resolve the ref. The caller turns
+    that into a refusal — there is deliberately no fallback to "all fragments".
+    """
+    if not ref or ref.startswith("-"):
+        raise RefError("not a usable ref: %r" % ref)
+    try:
+        top = subprocess.run(
+            ["git", "-C", fragment_dir, "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True)
+    except OSError as exc:
+        raise RefError("cannot run git: %s" % exc)
+    if top.returncode != 0 or not top.stdout.strip():
+        raise RefError("%s is not inside a git work tree" % fragment_dir)
+    root = top.stdout.strip()
+    rel = os.path.relpath(os.path.realpath(fragment_dir), os.path.realpath(root))
+    rel = "." if rel in ("", ".") else rel.replace(os.sep, "/")
+    spec = "" if rel == "." else rel + "/"
+    try:
+        ls = subprocess.run(
+            ["git", "-C", root, "ls-tree", "-z", "--name-only",
+             ref + "^{commit}", "--", spec or "."],
+            capture_output=True)
+    except OSError as exc:
+        raise RefError("cannot run git: %s" % exc)
+    if ls.returncode != 0:
+        raise RefError("git cannot resolve %r to a commit: %s" % (
+            ref, ls.stderr.decode("utf-8", "replace").strip()))
+    at_ref = set()
+    for raw in ls.stdout.split(b"\0"):
+        if not raw:
+            continue
+        path = raw.decode("utf-8", "surrogateescape")
+        if spec and path.startswith(spec):
+            path = path[len(spec):]
+        if "/" not in path:
+            at_ref.add(path)
+    return [n for n in _fragment_names(fragment_dir) if n in at_ref]
+
+
+def _has_tag_section(lines, tag):
+    """True when a ``## <tag>`` heading (bare, or followed by `` — <date>``)
+    is already in the changelog."""
+    want = re.compile(r"^##\s+" + re.escape(tag) + r"(\s|$)")
+    return any(want.match(ln) for ln in lines)
+
+
+def cmd_roll(fragment_dir, changelog_path, tag, date, credits_path=None,
+             at_ref=None, clear=False):
+    lines = _read_lines(changelog_path)
+    names = None
+    if at_ref is not None:
+        try:
+            names = _fragments_at_ref(fragment_dir, at_ref)
+        except RefError as exc:
+            sys.stderr.write(
+                "changelog: --at-ref %s: %s — refusing to roll; no file was "
+                "changed.\n" % (at_ref, exc))
+            return EXIT_BAD_REF
     collected, total = _collect(
-        fragment_dir, changelog_path, load_credits(credits_path))
+        fragment_dir, changelog_path, load_credits(credits_path), names)
+    # Nothing to aggregate (rc 2) wins over the duplicate-section refusal: a
+    # retry after a concurrent roll finds no fragments AND the tag's section, and
+    # the release workflow already reads rc 2 as "already rolled, done".
     if total == 0:
         return _refuse_empty()
+    # Refuse a second roll of the same tag BEFORE touching anything: a section
+    # for <tag> means an earlier roll already landed, and writing another one
+    # would duplicate the heading.
+    if _has_tag_section(lines, tag):
+        sys.stderr.write(
+            "changelog: %s already has a '## %s' section — refusing to roll it "
+            "twice; no file was changed.\n" % (changelog_path, tag))
+        return EXIT_DUPLICATE_TAG
     highlights = _render(collected)
 
-    lines = _read_lines(changelog_path)
     # Locate the ## Unreleased heading.
     idx = None
     for i, ln in enumerate(lines):
@@ -494,33 +605,51 @@ def cmd_roll(fragment_dir, changelog_path, tag, date, credits_path=None):
     )
     with open(changelog_path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(rebuilt).rstrip("\n") + "\n")
+    if clear:
+        # Exactly the files that fed the section — the --at-ref set, or every
+        # fragment when no ref was given. README.md is never among them.
+        for name in (_fragment_names(fragment_dir) if names is None else names):
+            path = os.path.join(fragment_dir, name)
+            try:
+                os.remove(path)
+            except OSError as exc:
+                sys.stderr.write("changelog: could not remove %s: %s\n" % (path, exc))
+                return 1
+            sys.stdout.write("removed %s\n" % path)
     return 0
 
 
-def _take_credits(args):
-    """Strip an optional `--credits <file>` from a positional argument list.
+def _take_flags(args):
+    """Strip the optional flags from a positional argument list.
 
-    Returns (remaining-positionals, credits-path-or-None), or (None, None) when
-    the flag is malformed — the caller then prints its usage.
+    Returns (remaining-positionals, {"credits": path|None, "at_ref": ref|None,
+    "clear": bool}), or (None, None) when a value flag is malformed — the caller
+    then prints its usage.
     """
     rest = []
-    credits_path = None
+    opts = {"credits": None, "at_ref": None, "clear": False}
+    value_flags = {"--credits": "credits", "--at-ref": "at_ref"}
     i = 0
     while i < len(args):
         a = args[i]
-        if a == "--credits":
+        if a in value_flags:
             if i + 1 >= len(args):
                 return None, None
-            credits_path = args[i + 1]
+            opts[value_flags[a]] = args[i + 1]
             i += 2
             continue
-        if a.startswith("--credits="):
-            credits_path = a.split("=", 1)[1]
+        name, eq, val = a.partition("=")
+        if eq and name in value_flags:
+            opts[value_flags[name]] = val
+            i += 1
+            continue
+        if a == "--clear":
+            opts["clear"] = True
             i += 1
             continue
         rest.append(a)
         i += 1
-    return rest, credits_path
+    return rest, opts
 
 
 def main(argv):
@@ -529,7 +658,14 @@ def main(argv):
             "usage: aggregate.py <unreleased-bullets|highlights|roll|credits> ...\n")
         return 2
     cmd = argv[1]
-    args, credits_path = _take_credits(argv[2:])
+    args, opts = _take_flags(argv[2:])
+    if opts is None:
+        args = None
+        opts = {"credits": None, "at_ref": None, "clear": False}
+    credits_path = opts["credits"]
+    if cmd != "roll" and (opts["at_ref"] is not None or opts["clear"]):
+        sys.stderr.write("aggregate.py: --at-ref and --clear apply to `roll` only\n")
+        return 2
     if cmd == "unreleased-bullets":
         if args is None or len(args) != 1:
             sys.stderr.write("usage: aggregate.py unreleased-bullets <changelog>\n")
@@ -551,9 +687,13 @@ def main(argv):
         if args is None or len(args) != 4:
             sys.stderr.write(
                 "usage: aggregate.py roll <fragment-dir> <changelog> <tag> <date> "
-                "[--credits <map-file>]\n")
+                "[--credits <map-file>] [--at-ref <ref>] [--clear]\n"
+                "exit: 0 rolled; 2 nothing to aggregate (checked first) / usage; "
+                "3 fragments to aggregate but '## <tag>' section already present; "
+                "4 --at-ref unresolvable\n")
             return 2
-        return cmd_roll(args[0], args[1], args[2], args[3], credits_path)
+        return cmd_roll(args[0], args[1], args[2], args[3], credits_path,
+                        opts["at_ref"], opts["clear"])
     sys.stderr.write("aggregate.py: unknown subcommand %r\n" % cmd)
     return 2
 
