@@ -1365,6 +1365,100 @@ Tally: 15 of 16 rows pass (1-10, 12-16), 0 fail, 1 not counted (11, vacuous chec
 
 **VERIFY: BLOCKED** — 15/16 rows pass on the execution witnesses, 0 fail. Row 11 is a check-definition defect (#1306): both of its named tests are absent from cmd/deskfile, so its exit 0 is vacuous. Row 12 passes on the second container bracket; its first-bracket fail is the runner container's missing init process, which leaves deskwt's TestLegacyDeadlineTree unable to confirm cleanup. Status stays implemented.
 
+### Non-implementer verifier re-run: 2026-11-08, host witness plus container-netns bracket, merged main 2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f
+
+The 2026-11-06 re-run above stopped on row 11 alone at 8f5bb307de31. This re-run, under desk tools v1.0.78, was woken by a change to the item's inputs.
+
+Source: 2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f. Between 8f5bb307de31 and this source, trace.go, runtool.go, scrub.go,
+trace-mutations.json, trace_test.go and cmd/deskfile are unchanged. exitcodes.go gained one unexported DeskError field
+(`transientRead`, #3096) that Error() does not render; it moves `RefusedWithCause` from line 186 to line 192.
+tools/desk/go.mod and go.sum changed (a794cc997): new indirect requirements (pgx/v5, goose/v3 and others) and version
+bumps (go-winio v0.6.3, go-isatty v0.0.24, logr v1.4.4, yaml/v3 v3.0.5). The delivering change is
+1003557e167b97c74534d83bf5e47811118fa39c (#729). The brief's four risk answers are all no and no Verify row carries a
+risk-bearing, live, mutating or end-to-end tag (rows 5 and 16 carry `+mutation`, which the fail-first selector does not
+match), so no row owes a fail-first witness and none was run.
+
+Admission: `deskdispatch --check-verifier` exit 0 for this detached home at the source above (desk-tools v1.0.78,
+runtime darwin-arm64) before any row ran. Two disjoint row selections cover all 16 rows.
+
+- Rows 1-4 and 6-15 (container-netns): `statusgen verifyrun --open-bracket` on the host (receipt outside the home,
+  opened 07:59:39Z), then `statusgen verifyrun --sandbox=container-netns --rows 1,2,3,4,6,7,8,9,10,11,12,13,14,15`
+  inside `docker run --init --network none --read-only --cap-drop ALL --security-opt no-new-privileges` on the pinned
+  verify-runner v1.0.75 image, run as its linux/arm64 manifest sha256:576cb2e4 (the per-platform digest of index
+  sha256:732786a3; go1.27.3, git 2.56.0, statusgen v1.0.75). The home and its common git directory were mounted
+  read-only at their own paths; uid 501 with a read-only /etc/passwd entry, GOPROXY=off, GOTOOLCHAIN=local,
+  KUBECONFIG=/dev/null, a tmpfs HOME and /tmp, no forge credential and no injected git identity. `--close-bracket`
+  closed it at 08:00:37Z and `--bracket-digest` reads verdict=match. The second table below, with its Tree-Digest,
+  Container-Image, attestation and Admission-Bracket lines, is that witness file's bytes.
+- Rows 5 and 16 (host, darwin/arm64, go1.27.3, statusgen v1.0.78, KUBECONFIG=/dev/null, real module and build caches,
+  no forge credential in the row environment): the first table below is the tool's own write-mode
+  `statusgen verifyrun --rows 5,16` output, written into this section from the home after the bracket had closed, and
+  left as written (08:00:45Z-08:02:43Z).
+
+Host load (1/5/15-minute averages): 4.71 / 3.39 / 3.29 just before the bracket opened, 12.33 / 5.92 / 4.25 at the
+host rows' start.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestTraceNeverPrintsACredential$' -count=1` | pass exit=0 | sha256:716c3d7403d7 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 16 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/trace-mutations.json` | pass exit=0 | sha256:04236cdafc57 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5831 run=fdeef54374316606784530dc932d2c815db557c59b35dd2617dc49bef71e8b80 source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f brief=docs/streams/desk-tools/brief-21-desk-trace-and-cause-carrying-errors.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | could-not-run exit=1 sandbox=container-netns — image module cache predates go.sum (github.com/go-logr/logr v1.4.4 vs v1.4.3; github.com/mattn/go-isatty v0.0.24 vs v0.0.20; go.yaml.in/yaml/v3 v3.0.5 vs v3.0.4; and 1 more): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:853a3d2d8aa8 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestToolRunSaidSkipsPreambleAndCarriesTheToolsOwnMessage$' -count=1 && go test ./internal/deskkit/ -run '^TestToolRunFailShapeAndCarriedDetail$' -count=1` | could-not-run exit=1 sandbox=container-netns — image module cache does not match go.sum (github.com/jackc/pgx/v5 v5.12.0 vs none; github.com/mattn/go-isatty v0.0.24 vs v0.0.20; github.com/pressly/goose/v3 v3.29.0 vs none): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:76e820f8d7c0 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestReportErrorOffIsByteIdentical$' -count=1 && go test ./internal/deskkit/ -run '^TestReportErrorOnPrintsChainCommandsAndTimings$' -count=1` | could-not-run exit=1 sandbox=container-netns — image module cache does not match go.sum (github.com/jackc/pgx/v5 v5.12.0 vs none; github.com/mattn/go-isatty v0.0.24 vs v0.0.20; github.com/pressly/goose/v3 v3.29.0 vs none): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:f385d7c1be0b | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestScrubRedactsEveryTransportShape$' -count=1` | could-not-run exit=1 sandbox=container-netns — image module cache does not match go.sum (github.com/jackc/pgx/v5 v5.12.0 vs none; github.com/mattn/go-isatty v0.0.24 vs v0.0.20; github.com/pressly/goose/v3 v3.29.0 vs none): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:f385d7c1be0b | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestRefusedWithCauseStaysARefusal$' -count=1 && go test ./internal/deskkit/ -run '^TestTraceEnabledReadsTheEnvSpellings$' -count=1` | could-not-run exit=1 sandbox=container-netns — image module cache does not match go.sum (github.com/jackc/pgx/v5 v5.12.0 vs none; github.com/mattn/go-isatty v0.0.24 vs v0.0.20; github.com/pressly/goose/v3 v3.29.0 vs none): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:f385d7c1be0b | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestClaimAcquireFailureNamesTheClaimToolsOwnMessage$' -count=1 && go test ./cmd/deskdispatch/ -run '^TestGitOutFailureCarriesGitStderr$' -count=1` | could-not-run exit=1 sandbox=container-netns — image module cache predates go.sum (github.com/mattn/go-isatty v0.0.24 vs v0.0.20): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:8acf4dffc366 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestWorktreeCreateFailureCarriesDeskwtStderrAndTheCommandLine$' -count=1 && go test ./cmd/deskdispatch/ -run '^TestTraceIsOffByDefaultAndOutputIsUnchanged$' -count=1` | could-not-run exit=1 sandbox=container-netns — image module cache predates go.sum (github.com/mattn/go-isatty v0.0.24 vs v0.0.20): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:8acf4dffc366 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestRunGitFailureCarriesStderrCommandAndExitStatus$' -count=1 && go test ./cmd/deskwt/ -run '^TestDeskwtTraceOffIsByteIdenticalAndOnCarriesTheCommand$' -count=1` | could-not-run exit=1 sandbox=container-netns — image module cache predates go.sum (github.com/mattn/go-isatty v0.0.24 vs v0.0.20): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:11f2e297c410 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/desktoken/ -run '^TestTokenPathNoticeIsPrintedOnStderrNotStdout$' -count=1` | could-not-run exit=1 sandbox=container-netns — image module cache predates go.sum (github.com/mattn/go-isatty v0.0.24 vs v0.0.20): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:5e2c01711bc5 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && go test ./cmd/deskfile/ -run '^TestDedupeSearchOutageNamesTheAPIStatus$' -count=1 && go test ./cmd/deskfile/ -run '^TestGhStderrStripsControlBytes$' -count=1` | could-not-run exit=1 sandbox=container-netns — image module cache predates go.sum (github.com/mattn/go-isatty v0.0.24 vs v0.0.20): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:cdd16e61ed8a | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/desk && go test -timeout 300s ./internal/deskkit/... ./cmd/deskdispatch/... ./cmd/deskwt/... ./cmd/desktoken/... ./cmd/deskfile/... -count=1` | could-not-run exit=1 sandbox=container-netns — image module cache does not match go.sum (github.com/jackc/pgx/v5 v5.12.0 vs none; github.com/mattn/go-isatty v0.0.24 vs v0.0.20; github.com/pressly/goose/v3 v3.29.0 vs none): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:ad204db06f54 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestS2' -count=1 && go test ./internal/deskkit/ -run 'TestCorpus' -count=1` | could-not-run exit=1 sandbox=container-netns — image module cache does not match go.sum (github.com/jackc/pgx/v5 v5.12.0 vs none; github.com/mattn/go-isatty v0.0.24 vs v0.0.20; github.com/pressly/goose/v3 v3.29.0 vs none): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:f385d7c1be0b | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `cd tools/desk && gofmt -l internal/deskkit/trace.go internal/deskkit/runtool.go internal/deskkit/scrub.go internal/deskkit/exitcodes.go cmd/deskdispatch cmd/deskwt cmd/desktoken cmd/deskfile > /tmp/dt21-fmt.out; test ! -s /tmp/dt21-fmt.out` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 15 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:1c3a789ccc20 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:1d843a770e690a7bd01d131ad76d41f0ed001b69b9bdc86fdb9bd443b1d0db82
+Container-Image: sha256:576cb2e49407447769b79a32af370a23e1c108d62842b8f1772a809d1d3b7617
+Verification-Attestation: medici-finance/assay#5831 run=fdeef54374316606784530dc932d2c815db557c59b35dd2617dc49bef71e8b80 source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f brief=docs/streams/desk-tools/brief-21-desk-trace-and-cause-carrying-errors.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=fdeef54374316606784530dc932d2c815db557c59b35dd2617dc49bef71e8b80 source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f tree=sha256:1d843a770e690a7bd01d131ad76d41f0ed001b69b9bdc86fdb9bd443b1d0db82 witness=sha256:5850e26229e48616f80a3f79e5f97cf6a6b59714a4ee9578885408d7b240d7c1 opened=2026-11-08T07:59:39Z closed=2026-11-08T08:00:37Z before=receipt after=check-verifier
+
+How each row is counted:
+
+- Rows 5 and 16 pass on the host witness (exit 0).
+- Rows 14 and 15 pass on the container-netns witness (exit 0).
+- Rows 1-4 and 6-13: not run. The pinned v1.0.75 image's baked module cache predates this source's tools/desk go.sum
+  (for example go-isatty v0.0.24 against v0.0.20, and pgx/v5 v5.12.0 absent), so under GOPROXY=off each row stopped on
+  module resolution before its check ran, and verifyrun itself recorded each as could-not-run with that cause. This
+  is the known image gap #4683. None of these rows is counted as failed; they need a verify-runner image whose module
+  cache matches this go.sum.
+- Row 11 is also a check-definition defect that still stands at this source: cmd/deskfile declares
+  TestDedupeSearchPropagatesTheForgeDiagnosis and TestDedupeSearchControlBytesStrippedByBackend
+  (cmd/deskfile/trace_test.go lines 25 and 62) and neither test the row names, so even in a matching image its exit 0
+  would be vacuous. The check-definition repair is still #1306, the earlier blocker.
+
+Risk-bearing values (enumerated over trace.go, runtool.go, scrub.go and exitcodes.go at this source):
+
+- `traceStepCap = 200` @ tools/desk/internal/deskkit/trace.go:54 (ledger size, a reversible operational knob).
+- `envTruthy` spellings `"1", "true", "yes", "on"` @ tools/desk/internal/deskkit/trace.go:98 (reversible).
+- `redactedMarker = "<redacted>"` @ tools/desk/internal/deskkit/scrub.go:51 (reversible display text).
+- `reURLUserinfo`, `reAuthHeader`, `reSecretEnvAssign` @ tools/desk/internal/deskkit/scrub.go:33, :38, :44-45.
+  These rank first: a credential printed into a trace that is then shared cannot be withdrawn by a redeploy.
+- `RefusedWithCause` builds `Code: ExitRefused` @ tools/desk/internal/deskkit/exitcodes.go:192, with
+  `ExitRefused = 5` @ exitcodes.go:51 (a changed code would let a caller treat a refusal as something else,
+  reversible by an edit).
+
+RISK-VALUE: DERIVED — reURLUserinfo = `://([^:/@\s]*):([^@\s]+)@` @ tools/desk/internal/deskkit/scrub.go:33 — RFC 3986 userinfo is `user:password` ending at the first `@` before the host, the user part may be empty, and a literal `@` inside a password must be percent-encoded, so `[^:/@\s]*` covers every user part (including the empty one of the password-only form) and `[^@\s]+` after the colon spans the whole password of any well-formed URL.
+RISK-VALUE: DERIVED — RefusedWithCause Code = ExitRefused (5) @ tools/desk/internal/deskkit/exitcodes.go:192 — the brief's ground rule "no exit code changes" and its design fact that RefusedWithCause stays a refusal require the same code `Refused` returns (exitcodes.go:178).
+RISK-VALUE: NAMED, NOT DERIVED — reSecretEnvAssign name keywords TOKEN|SECRET|PASSWORD|PASSWD|APIKEY|API_KEY|PRIVATE_KEY|CREDENTIAL|PAT @ tools/desk/internal/deskkit/scrub.go:44-45 — a keyword list is a heuristic with no closed derivation; a credential variable named outside it (for example one ending in _AUTH or _KEY) is caught only if its value matches a body-scanner token shape. Completeness is tracked by #1616.
+RISK-VALUE: NAMED, NOT DERIVED — reAuthHeader = `(?i)(authorization\s*[:=]\s*)(token |bearer |basic )?\S+` @ tools/desk/internal/deskkit/scrub.go:38 — it redacts only the first whitespace-free run after the optional scheme word, which covers the three named schemes; for any other scheme word the scheme is redacted and the credential after it is left to the body-scanner shapes. No spec text fixes the scheme set (#1616).
+
+Tally: 4 of 16 rows pass (5, 14, 15, 16), 0 fail, 12 not run (1-4 and 6-13, image module cache gap #4683; row 11 is also vacuous, #1306).
+
+**VERIFY: BLOCKED** — 4/16 rows pass (5, 14, 15, 16), 0 fail, 12 not run. Rows 1-4 and 6-13 stopped on module resolution in the pinned v1.0.75 verify-runner image, whose baked module cache predates this source's tools/desk go.sum (#4683). Row 11 remains a check-definition defect (#1306): both of its named tests are absent from cmd/deskfile. Status stays implemented.
+
 ## Review
 
 Gate: model (all four risk answers no). Model-gated because the two hazards this change
