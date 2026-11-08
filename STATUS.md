@@ -17,7 +17,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [cell-api](docs/streams/cell-api/README.md) | P2 | active | 0/9 | 2026-11-06 |  |
 | [cellctl-windows](docs/streams/cellctl-windows/README.md) | P1 | active | 0/8 | 2026-11-06 |  |
 | [comms-core](docs/streams/comms-core/README.md) | P1 | active | 0/4 | 2026-11-01 |  |
-| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-11-07 |  |
+| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-11-08 |  |
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 1/9 | 2026-11-08 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/11 | 2026-11-02 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 3/32 | 2026-11-08 |  |
@@ -245,7 +245,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | windows-port | 12 | implemented | 1540 | 1 | — | worker | fix, cite medici-finance/assay#5011 | — | — |
 | windows-port | 15 [exec:strong] | implemented | 1540 | 1 | — | worker | fix, cite #3569 | — | — |
 | forge-gitlab | 13 [exec:strong] | implemented | 1530 | 1 | — | worker | fix, cite #4823 | — | — |
-| composability | 01 | implemented | 1510 | 1 | — | worker | fix, cite medici-finance/assay#5527 | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1510 | 1 | — | worker | fix, cite medici-finance/assay#1306 | — | — |
 | desktools-go-git | 06 | verified | 1510 | 1 | — | worker | fix, cite medici-finance/assay#2337 | 2026-10-30 assay-verifier-app[bot] @ 40925e8233c8 (forge-identity) | — |
 | desktools-v2 | 19 [exec:strong] | implemented | 1510 | 1 | — | worker | fix, cite medici-finance/assay#4117 | — | — |
@@ -255,6 +254,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 23 [exec:strong] | implemented | 1510 | 1 | — | worker | fix, cite medici-finance/assay#4560 | — | — |
 | desktools-v2 | 44 [exec:strong] | implemented | 1510 | 1 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | desktools-v2 | 47 [exec:strong] | implemented | 1510 | 1 | — | worker | fix, cite medici-finance/assay#4560 | — | — |
+| composability | 01 | implemented | 1500 | 1 | — | worker | fix, cite medici-finance/assay#5527 | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1060 | 0 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | iso-9001 | 06 [exec:strong] | implemented | 1060 | 0 | — | worker | fix, cite #4823 | — | — |
 | desk-tools | 02 | implemented | 1010 | 0 | — | worker | fix, cite medici-finance/assay#1792 — row 5 is a prose PR-body check the witness cannot execute (check-definition); row 1 environment flake #612/#1232; row 4 vacuous post-merge self-diff (#1657 class) | — | — |
@@ -353,8 +353,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 57 [exec:strong] | implemented | 10000 | 16 | — | verify-desk | triage, then re-bucket | — | — |
 | desk-containers | 26 | implemented | 3500 | 5 | — | verify-desk | dispatch one judge | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2560 | 1 | — | verify-desk | dispatch one judge | — | — |
-| composability | 02 | implemented | 2510 | 3 | — | verify-desk | triage, then re-bucket | — | — |
 | desktools-v2 | 46 [exec:strong] | implemented | 2510 | 3 | — | verify-desk | triage, then re-bucket | — | — |
+| composability | 02 | implemented | 2500 | 3 | — | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | — | verify-desk | dispatch one judge | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2060 | 2 | — | verify-desk | triage, then re-bucket | — | — |
