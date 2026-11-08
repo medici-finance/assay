@@ -174,6 +174,12 @@
       "file": "tools/release/qualification.py",
       "old": "FIXTURE_BYTES = 20 << 20",
       "new": "FIXTURE_BYTES = 1 << 20"
+    },
+    {
+      "name": "workflow-private-error-redaction",
+      "file": ".github/workflows/release-object-qualification.yml",
+      "old": "except Exception as error:\n              raise SystemExit('qualification refused at producer: '+type(error).__name__) from None",
+      "new": "except KeyError as error:\n              raise SystemExit('qualification refused at producer: '+type(error).__name__) from None"
     }
   ]
 }

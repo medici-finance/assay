@@ -66,6 +66,18 @@ class QualificationTest(unittest.TestCase):
    env=dict(os.environ,RUNNER_TEMP=str(root),PATH=str(bin)+os.pathsep+os.environ['PATH'])
    result=subprocess.run(['bash','tools/release/install-object-client.sh',str(root/'release-aws')],env=env,capture_output=True)
    self.assertNotEqual(result.returncode,0);self.assertFalse(marker.exists())
+ def test_workflow_errors_do_not_print_private_arguments(self):
+  import re,sys,textwrap
+  raw=Path('.github/workflows/release-object-qualification.yml').read_text()
+  blocks=re.findall(r"          python3 -B - <<'PY'\n(.*?)          PY",raw,re.S)
+  self.assertEqual(len(blocks),2)
+  for block,fn in zip(blocks,('produce','receive')):
+   code=textwrap.dedent(block).replace('from tools.release.qualification import '+fn,'def '+fn+'(*args): raise RuntimeError("private-endpoint-do-not-print")')
+   result=subprocess.run([sys.executable,'-c',code],env=dict(os.environ,RUNNER_TEMP='/tmp/fixture'),capture_output=True,text=True)
+   self.assertNotEqual(result.returncode,0)
+   self.assertNotIn('private-endpoint-do-not-print',result.stdout+result.stderr)
+   self.assertNotIn('Traceback',result.stderr)
+   self.assertIn('RuntimeError',result.stderr)
  def test_success_report_is_not_release_authority(self):
   meta=q.t.metadata('medici-finance/assay','1','1','a'*40,'a'*40,'v0.0.0')
   out=q.summary('producer',meta,{})
