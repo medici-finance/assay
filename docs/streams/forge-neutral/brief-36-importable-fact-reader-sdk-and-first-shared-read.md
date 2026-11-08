@@ -260,6 +260,10 @@ Container-Image: sha256:3cb0014a71faf50db03e13189af8e2505a310473e41111c24c559e5d
 Verification-Attestation: medici-finance/assay#5700 run=a308e12b10b25d6c80e420920a1b545400e3d0231ac7ffeae48bc4eb9acb9a4a source=5142af8c66f4671d7cb3c575d5b65d5eadd6275b brief=docs/streams/forge-neutral/brief-36-importable-fact-reader-sdk-and-first-shared-read.md model=claude-opus-5-5 tier=strong
 Admission-Bracket: run=a308e12b10b25d6c80e420920a1b545400e3d0231ac7ffeae48bc4eb9acb9a4a source=5142af8c66f4671d7cb3c575d5b65d5eadd6275b tree=sha256:a45db11d4bffc3f40f29c060e503274a3912aafbbb7aaded88ea20c181f1c3cf witness=sha256:073c65e238e9e87bc413d1deca764a3043c564bc80b8c4f1482b5459bcb7dfb2 opened=2026-11-07T23:44:12Z closed=2026-11-07T23:49:38Z before=receipt after=check-verifier
 
+#### Correction — 2026-11-08 rework
+
+medici-finance/assay#3662 is the brief's pre-implementation design decision (the option-1 ruling recorded on 2026-11-01). It is closed, and it does not track the post-verification gate:human sign-off. That sign-off is tracked in the open issue medici-finance/assay#5721, which is the outcome record's blocker_ref.
+
 **VERIFY: PASS** — 11 of 11 rows pass at 5142af8c66f4 and all 11 are red at base 323d7f080cb3 in the container-netns fail-first witness; gate:human sign-off remains with the human.
 
 ## Review
