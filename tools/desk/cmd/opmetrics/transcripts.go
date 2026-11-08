@@ -67,6 +67,11 @@ type TranscriptRead struct {
 	// Unparseable counts lines that were not valid JSON. Reported so a silently
 	// half-read transcript cannot masquerade as a quiet day.
 	Unparseable int
+	// Dispatch is the main-session subagent dispatch count on the day, by origin;
+	// Agents is one entry per subagent run that started on the day (dispatch.go).
+	// Counts only — no prompt or report text survives the scan.
+	Dispatch DispatchTally
+	Agents   []AgentRun
 }
 
 // scanBufMax is the per-line ceiling for the transcript scanner. Transcript lines
@@ -82,6 +87,13 @@ type rawRecord struct {
 	IsMeta      *bool           `json:"isMeta"`
 	UserType    string          `json:"userType"`
 	Message     json.RawMessage `json:"message"`
+	// Dispatch attribution (dispatch.go). turnOrigin and origin.kind are harness
+	// vocabulary; agentId groups a subagent's sidechain records into one run.
+	TurnOrigin string `json:"turnOrigin"`
+	Origin     *struct {
+		Kind string `json:"kind"`
+	} `json:"origin"`
+	AgentID string `json:"agentId"`
 }
 
 type rawMessage struct {
@@ -157,7 +169,19 @@ type fileScan struct {
 	// SessionKey is the file's dedup key across roots — its records' own
 	// sessionId when present, else the base name. Never emitted; used only to
 	// count a session that was synced to two profiles ONCE.
+	//
+	// A subagent transcript (<session>/subagents/agent-<id>.jsonl) carries its
+	// PARENT's sessionId, so its key is sessionId + "#agent-" + agentId. Keyed on
+	// the bare sessionId it collided with the parent: the walk visits the
+	// <session>/ directory before <session>.jsonl, so the subagent file claimed
+	// the key first and the parent transcript — every operator turn and every
+	// dispatch in it — was skipped as a "re-synced copy".
 	SessionKey string
+	// AgentFile marks a subagent transcript. It contributes runs, not a session
+	// span: a subagent is not a session.
+	AgentFile bool
+	Dispatch  DispatchTally
+	Agents    []AgentRun
 }
 
 // scanTranscriptFile parses one *.jsonl transcript into its operator turns on the
@@ -175,6 +199,8 @@ func scanTranscriptFile(path string, day time.Time) (fileScan, error) {
 	dayStart := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
 	dayEnd := dayStart.AddDate(0, 0, 1)
 
+	ds := newDispatchScan(dayStart, dayEnd)
+
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), scanBufMax)
 	for sc.Scan() {
@@ -189,6 +215,10 @@ func scanTranscriptFile(path string, day time.Time) (fileScan, error) {
 		}
 		if fsr.SessionKey == "" && r.SessionID != "" {
 			fsr.SessionKey = r.SessionID
+			if r.IsSidechain != nil && *r.IsSidechain && r.AgentID != "" {
+				fsr.SessionKey = r.SessionID + "#agent-" + r.AgentID
+				fsr.AgentFile = true
+			}
 		}
 		ts, terr := time.Parse(time.RFC3339, r.Timestamp)
 		if terr != nil {
@@ -206,6 +236,7 @@ func scanTranscriptFile(path string, day time.Time) (fileScan, error) {
 		if ts.After(span.Last) {
 			span.Last = ts
 		}
+		ds.observe(r, ts)
 
 		text, ok := operatorText(r)
 		if !ok {
@@ -226,7 +257,9 @@ func scanTranscriptFile(path string, day time.Time) (fileScan, error) {
 	if fsr.SessionKey == "" {
 		fsr.SessionKey = fileKey
 	}
-	if !span.First.IsZero() {
+	fsr.Dispatch = ds.tally
+	fsr.Agents = ds.runs()
+	if !span.First.IsZero() && !fsr.AgentFile {
 		fsr.Span = span
 		fsr.HasSpan = true
 	}
@@ -260,6 +293,8 @@ func readOneRoot(dir string, day time.Time, out *TranscriptRead, seen map[string
 		out.Files++
 		out.Messages = append(out.Messages, fsr.Messages...)
 		out.Unparseable += fsr.Unparseable
+		out.Dispatch.add(fsr.Dispatch)
+		out.Agents = append(out.Agents, fsr.Agents...)
 		if fsr.HasSpan {
 			out.Spans = append(out.Spans, fsr.Span)
 		}

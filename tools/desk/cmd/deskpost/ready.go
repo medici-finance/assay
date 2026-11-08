@@ -110,7 +110,8 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		}
 
 		// Public-repo gate: refuse an outward write unless the repo is authorized
-		// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
+		// (private, or a listed allowed-repos entry whose :public or :internal tag is at least
+		// as exposed as the live visibility — see deskkit.PublicRepoGate).
 		if gerr := deskkit.PublicRepoGate(client, owner, name); gerr != nil {
 			return fromErr("ready", repo, pr, head, gerr)
 		}

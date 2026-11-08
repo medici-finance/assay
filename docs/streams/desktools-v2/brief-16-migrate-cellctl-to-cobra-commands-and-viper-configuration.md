@@ -7,7 +7,7 @@ why: >-
   keeping launch plans, model selection and credential boundaries compatible.
 wave: 2
 depends: ["desktools-v2/15"]
-unblocks: ["desktools-v2/17", "desktools-v2/18", "desktools-v2/19", "desktools-v2/20", "desktools-v2/21", "desktools-v2/22", "desktools-v2/23", "desktools-v2/24", "desktools-v2/25", "desktools-v2/26", "desktools-v2/27", "desktools-v2/28", "desktools-v2/29", "desktools-v2/30", "desktools-v2/31", "desktools-v2/32", "desktools-v2/33", "desktools-v2/34", "desktools-v2/35", "desktools-v2/36", "desktools-v2/37", "desktools-v2/38", "desktools-v2/39", "desktools-v2/40", "desktools-v2/41", "desktools-v2/42", "desktools-v2/43", "desktools-v2/44", "desktools-v2/45", "desktools-v2/46", "desktools-v2/47", "desktools-v2/48", "desktools-v2/49", "desktools-v2/50", "desktools-v2/51", "desktools-v2/52", "desktools-v2/53", "desktools-v2/54", "desktools-v2/55", "desktools-v2/56", "desktools-v2/57", "comms-core/04", "desktools-v2/78", "desktools-v2/79", "desktools-v2/80", "desk-containers/31"]
+unblocks: ["desktools-v2/17", "desktools-v2/18", "desktools-v2/19", "desktools-v2/20", "desktools-v2/21", "desktools-v2/22", "desktools-v2/23", "desktools-v2/24", "desktools-v2/25", "desktools-v2/26", "desktools-v2/27", "desktools-v2/28", "desktools-v2/29", "desktools-v2/30", "desktools-v2/31", "desktools-v2/32", "desktools-v2/33", "desktools-v2/34", "desktools-v2/35", "desktools-v2/36", "desktools-v2/37", "desktools-v2/38", "desktools-v2/39", "desktools-v2/40", "desktools-v2/41", "desktools-v2/42", "desktools-v2/43", "desktools-v2/44", "desktools-v2/45", "desktools-v2/46", "desktools-v2/47", "desktools-v2/48", "desktools-v2/49", "desktools-v2/50", "desktools-v2/51", "desktools-v2/52", "desktools-v2/53", "desktools-v2/54", "desktools-v2/55", "desktools-v2/56", "desktools-v2/57", "comms-core/04", "desktools-v2/78", "desktools-v2/79", "desktools-v2/80", "desk-containers/31", "performance-collection/01"]
 effort: "L"
 gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "yes"}
@@ -17,7 +17,7 @@ design: DR-cellctl-cobra
 issues: [2111]
 schema: "brief-v2"
 outcome: none
-version: 2
+version: 3
 id: "962d7195-764d-47e8-b1d3-83d289fb061c"
 authored: "2026-10-03 by coordinator"
 sources:
@@ -115,7 +115,7 @@ coordinate overlapping files with the extraction owner when both changes are in 
 | 4 | check | `cd tools/desk && go test -count=1 ./cmd/cellctl/... ./internal/cli/...` | exit 0; all existing launcher, custody, hook, cadence and model-policy regressions retained; no empty package/test selection |
 | 5 | check +flow | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/cellctl -run '^TestCLINonHelpParity$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLINonHelpParity " "$f"` | exit 0 with TestCLINonHelpParity PASS; current Go binary matches the pre-migration Go fixture transcripts for non-help commands through the existing fake/DRY_RUN harness, with no live launch or oracle-versus-itself comparison |
 | 6 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every inherited floor seed still runs and passes |
-| 7 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
+| 7 | check | `f=$(mktemp) && statusgen --root . --consumers --brief desktools-v2/16 --delivery e7b14f343b6798b7980df1d0d9117509841e3224 --base 4232320131bfb97b31dcf62aa6d36f7dbf60049c > "$f" && cat "$f" && grep -Fxq 'summary: 5 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing' "$f"` | exit 0; no declared consumer routing disproved by the change |
 | 8 | check +mutation | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-16.json` | exit 0 and the last line reads `Totals: N caught, 0 NOT CAUGHT, 0 could-not-mutate.` with N equal to the spec's mutation count; the harness proves the baseline green and its positive control caught, then plants: help running after the roster echo or cell load, an undeclared config key binding, one legacy flag form dropped, and a refusal moved out of the domain check into the adapter; each reddens the cellctl owner tests |
 
 ## Pre-mortem

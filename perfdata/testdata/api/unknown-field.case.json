@@ -1,0 +1,22 @@
+{
+  "description": "Unknown batch fields are refused, never ignored.",
+  "context": {
+    "authenticatedSource": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "consentRevision": "r1",
+    "allowedProfiles": [
+      "tool"
+    ],
+    "now": "2026-10-02T12:00:00.000Z",
+    "replayHorizonHours": 168,
+    "known": {},
+    "commit": "ok"
+  },
+  "receipt": {
+    "schema": "performance-receipt-v1",
+    "batchDigest": "b35cc7147b6db85fe2855f3daafb79eb0d7640509ff48d01558dde77f328b165",
+    "committed": false,
+    "status": "rejected",
+    "reason": "schema",
+    "results": []
+  }
+}

@@ -151,10 +151,16 @@ func runTreeSelected(args []string, sink func(perfrec.Context)) (code int) {
 		}
 		die("--cells-root requires an absolute registry path and a command")
 	}
+	// Preparation preserves its former argparse usage exit. Other cellctl verbs
+	// retain their existing usage code.
+	usageExit := 3
+	if i := verbIndex(args); i < len(args) && args[i] == "compat-prepare" {
+		usageExit = 2
+	}
 	// The pre-migration command-line shape, checked before anything parses or echoes.
 	if err := legacyShape(buildRoot(), args); err != nil {
 		fmt.Fprintf(os.Stderr, "cellctl: %v\nRun 'cellctl --help' for usage.\n", err)
-		return 3
+		return usageExit
 	}
 	i := verbIndex(args)
 	if i < len(args) {
@@ -194,7 +200,7 @@ func runTreeSelected(args []string, sink func(perfrec.Context)) (code int) {
 		IO:              cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr},
 		Version:         versionLine(),
 		VersionTemplate: "{{.Version}}\n",
-		UsageExit:       3,
+		UsageExit:       usageExit,
 		// Single-dash long flags are the Go flag package's spelling, which only scratch read.
 		GoFlagCompat: scratchLine(args),
 	})
@@ -453,7 +459,7 @@ func buildRoot() *cobra.Command {
 	declared = nil
 	root := cli.NewRoot("cellctl", "start, stop and scaffold an Assay CELL on one laptop")
 	root.Long = "cellctl starts, stops and scaffolds an Assay CELL on one laptop (the laptop route).\n\n" +
-		"Every command takes the cell as its first argument.\n\n" + helpConcepts
+		"Lifecycle commands take the cell as their first argument; compat-prepare takes --cell.\n\n" + helpConcepts
 	root.Example = "  cellctl ls\n  cellctl new mycell --kind house --repo ~/src/repo --roots 'o/r=/abs/path'\n  cellctl up mycell\n  cellctl --cells-root /abs/registry show mycell"
 	declare(root, cli.Binding{Key: "cells-root", Kind: cli.String, Flag: "cells-root", Persistent: true,
 		Usage: "absolute path of the cell registry to use for this run (overrides CELLS_ROOT)"})
@@ -481,8 +487,8 @@ func buildRoot() *cobra.Command {
 		return cmd.Help()
 	}
 	root.AddCommand(
-		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(),
-		smokeCmd(), statusCmd(), attachCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
+		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(), pauseCmd(), resumeCmd(), drainCmd(),
+		smokeCmd(), statusCmd(), attachCmd(), compatPrepareCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), hotfixCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(), scrubbedRunCmd(),
 	)
 	// The cellopfixture build adds the fixture verb and the stand-ins; the release build adds nothing.
@@ -774,11 +780,15 @@ func upCmd() *cobra.Command {
 
 func downCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "down <cell>",
-		Short: "tear a cell's session down",
+		Use:   "down <cell> [role...]",
+		Short: "tear a cell's session down, or stop only the named roles",
 		Long: "Tear the session (and this cell's deskd) down. What `up` opened in a non-tmux cockpit is closed where that\n" +
 			"cockpit offers a verb for it, and named for you to close by hand where it does not. A container or scrubbed\n" +
-			"cell accepts no host cockpit or deskd flags.",
+			"cell accepts no host cockpit or deskd flags.\n\n" +
+			"With role arguments, down stops exactly the named roles (the per-role interim stop). Each must already be\n" +
+			"paused or drained; a role that is not is refused role-busy and down never pauses it. For each it stops the\n" +
+			"cadence, re-measures the idle signal, re-verifies the surface against its receipt and closes that one\n" +
+			"window, tab or terminal, on this terminal's confirm. It never closes the session or a sibling's surface.",
 		Annotations: map[string]string{leadingArgsKey: "1"},
 		Args:        cobra.ArbitraryArgs,
 	}
@@ -795,6 +805,14 @@ func downCmd() *cobra.Command {
 				die("compatibility down refuses host cockpit/deskd flags")
 			}
 			c.kubeDown(cmd, args[1:])
+			return nil
+		}
+		if len(args) > 1 && c.Kind != "container" && c.Kind != "scrubbed" {
+			// down <cell> <role...>: the per-role interim stop, never the session.
+			if cmd.Flags().Changed("keep-deskd") || cmd.Flags().Changed("cockpit") {
+				die("down <cell> <role...> stops only the named roles; it takes no --keep-deskd or --cockpit")
+			}
+			cmdDownRoles(cmd, c, args[1:])
 			return nil
 		}
 		cmdDown(cell, resolve(set, nil), args[1:], given)

@@ -211,3 +211,48 @@ enforced.
 | Contract | Enforced boundary and attribution limit |
 |---|---|
 | drainloop declared-effect recovery | Before every Apply, reconcile the authoritative receipt; require durable EFFECT-INTENT (or an atomic intent/claim-generation handoff), then record completion. The adapter-specific idempotency/fencing guarantee depends on the provider's actual dedupe and ownership enforcement. Unknown outcomes hold wherever deduplication or authoritative absence cannot be enforced; stale pending generations reconcile or hold. Bypasses are only attributed, never an unconditional exactly-once guarantee. |
+
+### GE/16 record-contract preparation
+
+The passive Cell checkpoint and operator-incarnation contracts are not active
+enforcement layers. The pure record comparison in drainloop is exercised through
+an offline fake boundary; no dispatch, launch, live effect or credential path calls
+it. Current operator custody, signature authentication, durable ownership and
+reservation transactions, real provider fencing and restore admission remain
+required implementation/qualification. Existing human gates and the whole GE/16
+Verify table stand; these tests are not independent acceptance Evidence.
+
+
+### GE/16 store-neutral admission seam
+
+The Cell library now couples ownership, reservations and effect intent through the
+existing coordination authority's `CellStore` transaction and adapts the existing
+transactional journal with `CellJournal`. An unqualified/non-durable required
+adapter refuses. `CheckEffect` is a contract for a separately enforcing provider
+inside its atomic apply/dedupe boundary; a check-before-unrestricted-write wrapper
+supplies no fencing guarantee. Current incarnation, authenticated capability and
+independent reset/usage sources are explicit trusted ports, not installed services.
+
+Offline tests exercise a test-only sync/rename filesystem fixture, a separate fake
+provider and actual processes sharing retained intents after cache loss/restarts.
+Production PostgreSQL, signing/control custody, actual provider restrictions and
+legacy credential cutover remain consumer/profile qualifications. No runtime
+backend or live effect path is activated. Human activation gates remain binding;
+implementation tests are not independent accepted Verify Evidence.
+
+
+The Cell/group ownership generation and each work-item claim generation remain
+distinct. `CellState.Claims` is the existing claim authority's current per-item
+record, not a second lease: `CellJournal.Generation(item)` reads that claim, and
+both admission and the independent effect check require its exact original work,
+attempt, Cell owner and claim generation. A current Cell tuple cannot revive a
+released or transferred item claim; reevaluation identity remains separate.
+
+
+The added resolution port independently fences an old writer, then proves absence
+and known usage. Retirement and usage settlement commit together; unknowns hold.
+Fresh attempts retain original-work charges and cannot reuse retired request
+lineage. Signed request phase and the injected authority clock constrain admission
+and provider checks. Full semantics live in the
+[checkpoint contract](../spec/cell-checkpoint-v1.md#store-neutral-transaction-and-accounting-seam).
+The concrete resolution/profile source is not installed.

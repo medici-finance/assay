@@ -277,5 +277,48 @@ RISK-VALUE: NAMED, NOT DERIVED — defect-labels default = "bug,defect,incident"
 
 **VERIFY: BLOCKED** — 8/9 rows exit 0, 0 acceptance obligations failed, row 4 could-not-check (the muhar derived-build regression from #3272 still breaks the harness for this cross-module spec, tracked on #4117); gate: model
 
+### Non-implementer verifier re-run — 2026-11-06 claude-opus-5-5 verifier at bc078e9179c8 (8/9 rows exit 0; row 4 mutation harness still broken at merged main, #4117)
+
+Fresh non-implementer run on merged main bc078e9179c8 in a detached home, offline (KUBECONFIG=/dev/null, GOPROXY=off, GOTOOLCHAIN=local, no forge credential in the run environment, normal HOME), go1.27.2 darwin/arm64, statusgen v1.0.75, git 2.56.0. `deskdispatch --check-verifier` admitted the run (exit 0) before the first row and again after this section was written. The witness below is the bytes `statusgen verifyrun` wrote, unchanged. No row is classed check:ci, so no container bracket applies. qualgen has no commit since 6dfb616ef546 (its last change, 35c5ff081, predates the 2026-10-29 run). The muhar command and the desktools-v2-19 mutation spec have no commit since the 2026-10-29 run; the commits since then that touch the clicontract mutations directory change other briefs' specs only. No commit on main names #4117 as fixed.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd qualgen && go test -count=1 -v . -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd qualgen && go test -count=1 -v . -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd qualgen && go test -count=1 -v . -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-19.json` | fail exit=1 | sha256:f4bb7cd9a1cb | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd qualgen && go test -count=1 ./...` | pass exit=0 | sha256:a0f69ac41d02 | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd qualgen && GOOS=windows go vet .` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/19 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:e95b3f26ae1f | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:87e9f739ff31 | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:aa21a4eea11a | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5618 run=2546c2f3381bc67c1a05c9e17c0526036e860fcc6911e97f714d5d0be43da010 source=bc078e9179c862dde02b367d35177f8ffdf1b421 brief=docs/streams/desktools-v2/brief-19-migrate-qualgen-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+
+Key output per row (the witness keeps only an output digest; sha256:e3b0c44298fc is the empty output of rows 1, 2, 3 and 6, whose commands send the test log to a file):
+- Rows 1, 2 and 3: exit 0, so each log carried exactly one top-level PASS line for its test.
+- Row 4: exit 1. muhar's own exit status was 2. The baseline printed `ok github.com/medici-finance/assay/qualgen`, then the derived compile check failed with `directory ../../qualgen outside main module or its selected dependencies` and `FAIL ./../../qualgen [setup failed]`, then `HARNESS BROKEN — run discarded.` and `positive control could not be validated (mutated package does not compile) — discard the run`. No Totals line was printed and no mutation was planted or judged. This is the instrument defect the 2026-10-21 and later sections recorded (#4117): the build muhar derives does not follow the spec's leading cd into the qualgen module. It is not a qualgen finding.
+- Row 5: exit 0; 11 `ok` package lines and no FAIL line, including `ok github.com/medici-finance/assay/qualgen 6.901s`.
+- Row 6: exit 0; no output.
+- Row 7: exit 0; printed `--- PASS: TestCLIOwnerMigrated (1.66s)`.
+- Row 8: exit 0; last line `seed passes=26`.
+- Row 9: exit 0. verifyrun appended the witness only after every row ran, so the home's brief matched merged main when the row ran; the diff was empty and the row is vacuous (the known shape, #1915).
+
+The row 4 detail and the row 5, 7 and 8 lines come from a supplemental re-run of those exact commands in the same home straight after the witness, with logs written outside the home. That re-run earns no credit; it only shows what the digests stand for. After every run, git status in the home (ignored files included) showed only this brief changed.
+
+`statusgen verifyrun --check` on this brief: exit 1, `8 pass, 1 fail, 0 could-not-run/missing (of 9 Verify rows); 0 author-added with no acceptance credit`; the fail is row 4's witness.
+
+Fail-first: the selection set is empty. The brief-wide risk block is all "no", and none of the 9 Verify rows' Command or Expect text matches the risk-bearing row tag (risk-bearing, live, mutating or end-to-end) that statusgen's fail-first selection uses (riskBearingRowRe @ statusgen/unrun.go:106, applied in failFirstRiskyIDs @ statusgen/failfirst.go:131). No row is risk-bearing, so no base run is owed.
+
+Row accounting: 9 required rows. 8 checked-clean (rows 1-3 and 5-9; row 9 vacuous). 0 failed acceptance obligations. 1 could-not-run: row 4. Its witness reads fail exit=1, but the harness discarded itself before any mutation was planted, so the row gives no acceptance result. Row 4 needs the muhar fix tracked on #4117, or a build field in the spec, then a fresh dispatch once that lands.
+
+Risk-bearing values. The enumeration covers the delivery diff (8122f1904, #3152) and later qualgen changes up to bc078e9179c8. qualgen is unchanged since 6dfb616ef546, so the set matches the earlier sections. Every line below was re-read at this commit.
+RISK-VALUE: DERIVED — ciWriterToken = "ci" @ qualgen/report.go:38, bound only through the env setting quality-writer (env QUALGEN_QUALITY_WRITER, no flag, no default) @ qualgen/cli.go:230. The pre-migration code at 5a657ba5824d used the same authority (getenv(ciWriterEnv) == ciWriterToken, report.go line 47). The binding has no flag source, so a quality-writer flag is refused as an unknown flag; unset and empty both resolve to "", which does not authorize the committed-view write.
+RISK-VALUE: DERIVED — exitUsage = 2 @ qualgen/cli.go:35. The old dispatcher returned 2 on a usage error, as Go's flag package does. cli-contract.md line 23 says an unknown input exits 2 (ExitUsage).
+RISK-VALUE: DERIVED — DefaultBlockMin = 4 @ qualgen/taxonomy.go:40 and DefaultChurnWindowDays = 14 @ qualgen/churn.go:22. The migration did not change either value, and both are still the mine defaults, as in the old FlagSet. They are reversible metric knobs.
+RISK-VALUE: NAMED, NOT DERIVED — defect-labels default = "bug,defect,incident" @ qualgen/cli.go:195. PR #3226 added it after this brief's delivery, so it is outside this brief's contract. It is a reversible label filter and is active only with fix-source. Deriving it belongs to that change's own brief.
+
+**VERIFY: BLOCKED** — 8/9 rows exit 0, 0 acceptance obligations failed, row 4 could-not-run (the muhar derived-build defect tracked on #4117 still discards the harness for this cross-module spec); gate: model
+
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.

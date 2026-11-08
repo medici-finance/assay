@@ -2,8 +2,8 @@
 brief: assay:assay:forge-neutral:40
 title: "Authenticated forge serving and role executor custody"
 why: "A shared cache increases the number of callers that can reach private forge data and write paths. Caller authentication, source admission and a separate role executor must be enforced at actual served boundaries so a cached answer or agent-supplied role cannot become authority."
-wave: 6
-depends: ["forge-neutral/39", "graph-execution/16", "desktools-v2/58", "desktools-v2/59"]
+wave: 9
+depends: ["forge-neutral/39", "graph-execution/16", "desktools-v2/58", "desktools-v2/59", "forge-neutral/56"]
 unblocks: ["forge-neutral/41", "forge-neutral/42", "cell-api/03"]
 effort: L
 gate: human
@@ -13,10 +13,12 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 4
+version: 9
 id: 2b089f0c-6ce5-4e2f-a5bf-d62842845b29
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - docs/streams/forge-neutral/brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md
+  - "Requested shared read-through and failure-cache behavior, 2026-11-03; no activation grant"
   - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
@@ -31,10 +33,10 @@ exec-tier-why: Cross-component identity, privacy, concurrency and failure semant
 domain: complicated
 consumers:
   - "tools/desk/internal/credential/: follow-up forge-neutral/40 (consume /58\u201359 inside the role executor; no second minter/cache)"
-  - "tools/desk/internal/forgeservice/auth/: follow-up forge-neutral/40"
-  - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/40"
+  - "tools/desk/internal/forgeservice/auth/: follow-up forge-neutral/40 (consume57 local read-only producer; remaining write/executor custody only)"
+  - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/40 (consume56 mirror-query handler; remaining executor/effect routes only)"
   - "tools/desk/internal/forgeexecutor/: follow-up forge-neutral/40"
-  - "tools/desk/cmd/forgeserve/: follow-up forge-neutral/40"
+  - "tools/desk/cmd/forgeserve/: follow-up forge-neutral/40 (consume56 read-only query entrypoint; no duplicate query launcher)"
   - "tools/desk/cmd/forge-executor/: follow-up forge-neutral/40"
   - "tools/desk/internal/deskkit/forgeresolve.go: follow-up forge-neutral/40"
   - "tools/desk/internal/deskkit/outboundforge.go: follow-up forge-neutral/40"
@@ -55,6 +57,7 @@ consumers:
 files: `tools/desk/internal/forgeservice/auth/` (planned), `tools/desk/internal/forgeservice/server/` (planned), `tools/desk/internal/forgeexecutor/` (planned), `tools/desk/cmd/forgeserve/` (planned), `tools/desk/cmd/forge-executor/` (planned), `tools/desk/internal/deskkit/forgeresolve.go`, `tools/desk/internal/deskkit/outboundforge.go`, `tools/desk/go.mod`, `tools/desk/go.sum`, `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `changelog/forge-service-auth.md` (planned), `tools/desk/internal/forgeservice/auth/reviewcustody_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
+- forge-neutral/54 owns the canonical shared Gate, AttemptAuthority and admitted read-through join. This authenticated-serving consumer reuses that owner and adds no second refresh implementation.
 - ForgeFor resolves provider from operator repository configuration and hands its backend an already-admitted role credential. It refuses ambient fallback.
 - graph-execution/16 owns incarnation/ownership restoration. This brief consumes that contract, not a second key/lease authority.
 - The initial query process must not hold publisher keys. Per-role executor process isolation is required before a managed agent can receive a write capability.
@@ -94,6 +97,25 @@ Acceptance remains pending. This implementation-evidence decision
 does not prevent authoring or independent offline fixture work. Existing mirror retention and
 webhook payload decisions are not answered by this section.
 
+## Bounded read-only contribution and later consumption
+
+forge-neutral/55 owns explicit known R2 profile/accounting provisioning; forge-neutral/56
+owns the qualified mirror-query handler and the existing planned read-only forgeserve
+query entrypoint. This full parent depends on56 so it consumes
+that read-only owner rather than implementing a second handler concurrently. It retains
+all existing prerequisites, complete Tasks, seven Verify Class/Command pairs, Evidence
+and gates, and adds its remaining executor/custody/effect obligations later. No edge from56
+back to this full parent,41 or GE19 is introduced.
+
+The canonical shared Gate and AttemptAuthority remain owned by forge-neutral/54. This parent consumes that boundary through56 and adds no refresh owner.
+
+The actual R3 caller/current-state/custody producer must be qualified independently of
+this parent’s write/executor implementation. Passive records and client Scope fields do
+not satisfy that prerequisite. Missing producer/profile is NEEDS_CONTEXT; resolve the
+ratified mechanism inconsistency at its canonical owner without inventing an issuer.
+
+The canonical earlier local R3 caller/current-state/custody producer is `forge-neutral/57`. Consume its actual qualified read-only source/profile through56; this parent does not supply that prerequisite and retains its distinct write/executor authority and complete acceptance.
+
 ## Ground rules
 
 - CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
@@ -131,6 +153,10 @@ This is an amendment to unfinished implementation acceptance. Preserve every pri
 obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
 authoring change claims no implementation or operational adoption.
 
+## Read-through and failure-cache amendment — 3 November 2026
+
+Enforce the [read-through/failure-cache contract](../../proposals/non-ci-architecture/22-forge-service-and-source-queries.md) at authenticated query ingress: after current admission, an insufficient cache answer invokes or joins the existing admitted read owner within bounds and can satisfy the original request. Authorize before every success/in-flight/failure-cache lookup and recheck delivery; keys include actual source admission and access/configuration epoch plus exact typed query inputs. No caller chooses a stronger role or causes an effect by missing a receipt. Failure cooldown never becomes complete-empty or permission. Extend rows 1 and 4 with cold fills, cached failures, changed/revoked epochs and distinct admissions; a failure or canceled waiter cannot poison a differently qualified reader. Keep publisher custody and activation held exactly as before.
+
 ## Interface contract
 
 Use forge-service-v1 from 39, mirror admission/freshness from 37, event hints/demand from 38,
@@ -149,10 +175,10 @@ boundary and independent expectation, not another implementation of the same che
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestMountedForgeAuthorization$' ./internal/forgeservice/... > "$r" && grep -F -- '--- PASS: TestMountedForgeAuthorization ' "$r")` | exit 0; named PASS. Actual served permitted request succeeds; unauthenticated/wrong audience, forged role, a capability minted by the caller without the signing key, wrong host/cell/admission, expired/revoked grants fail. Cached bodies/counts/errors/pagination cannot reveal the private canary. Bypassing middleware must fail the oracle. |
+| 1 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestMountedForgeAuthorization$' ./internal/forgeservice/... > "$r" && grep -F -- '--- PASS: TestMountedForgeAuthorization ' "$r")` | exit 0; named PASS. Actual served permitted request succeeds; unauthenticated/wrong audience, forged role, a capability minted by the caller without the signing key, wrong host/cell/admission, expired/revoked grants fail. Cached bodies/counts/errors/pagination cannot reveal the private canary. Bypassing middleware must fail the oracle. Success, in-flight and failure-cache paths all authorize before lookup and at shared-fill delivery; cold misses can fill through the admitted source. New-fill quotas use the authenticated stable caller/admission, never caller-selected request ids; local quota refusal cannot poison the shared source-failure entry. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestExecutorIndependentAuthority$' ./internal/forgeexecutor/... > "$r" && grep -F -- '--- PASS: TestExecutorIndependentAuthority ' "$r")` | exit 0; named PASS. Send directly to the executor, bypassing ingress: valid scoped worker comment reaches only its provider account; reviewer escalation, changed payload/candidate, stale incarnation/generation, stop and expiry cause zero provider effects; replay of a valid capability cannot cause a second effect. Provider scope independently refuses an out-of-installation target when the application gate is bypassed. |
 | 3 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeCredentialContainment$' ./internal/forgeservice/... > "$r" && grep -F -- '--- PASS: TestForgeCredentialContainment ' "$r")` | exit 0; named PASS. Real disposable process boundary hides executor custody from the client/query process, preserves represented/executing identities, and contains no credentials in results/logs/snapshots. A fake credential inventory alone is not a process-isolation pass. |
-| 4 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestAccessEpochAndRevocation$' ./internal/forgeservice/... > "$r" && grep -F -- '--- PASS: TestAccessEpochAndRevocation ' "$r")` | exit 0; named PASS. Warm cache -> revoke/increment access epoch or expire entitlement lease -> next in-bound query/operation refuses within the configured contract; old SQL generation after rollback cannot reactivate a grant. New permitted epoch remains a positive control. |
+| 4 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestAccessEpochAndRevocation$' ./internal/forgeservice/... > "$r" && grep -F -- '--- PASS: TestAccessEpochAndRevocation ' "$r")` | exit 0; named PASS. Warm cache -> revoke/increment access epoch or expire entitlement lease -> next in-bound query/operation refuses within the configured contract; old SQL generation after rollback cannot reactivate a grant. New permitted epoch remains a positive control. A failure cached for A or an old access/configuration epoch cannot poison admitted B or a new epoch; revocation still refuses before cached failure details or data. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/40` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
 | 6 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewServingCustody$' ./internal/forgeservice/... > "$o" && grep -F -- '--- PASS: TestReviewServingCustody ' "$o")` | exit 0; named PASS. Permitted review-context/queue path succeeds while changed admission/expiry refuses even for reused bytes/counts; saved context cannot authorize a role write or bypass the executor recheck. |
 
@@ -218,3 +244,13 @@ exit, named result, positive and failing control, and date. No result is asserte
 Gate: human. Inspect actual dependency/import and credential reachability, private data and
 count isolation, current authority and unknown outcomes. Tests cannot authorize provisioning
 credentials, switching a managed writer, answering a human decision or changing a merge policy.
+
+## Read-through coordinator ownership — 3 November 2026
+
+This brief's future authenticated serving composition consumes
+assay:assay:forge-neutral:51 through currently admitted source/store ports and the
+canonical R2 refresh-gate adapter. Trusted caller identity, access/configuration
+epochs and finite policy come from this existing custody boundary, never a request.
+The coordinator's fake-gate profile proves neither cross-process durability nor
+authenticated remote access. Production serving and executor custody stay held
+behind every existing Task/Verify obligation and human gate.

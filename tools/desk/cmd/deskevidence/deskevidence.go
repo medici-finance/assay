@@ -226,6 +226,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// path RecordName derives from its bytes, retiring the shared appended
 	// docs/streams/verify-outcomes.jsonl log this flag replaces. Mutually exclusive with
 	// --evidence-file/--brief-path.
+	// --outcome-only (#5759) lands an --outcome-record that names no Evidence: accepted only
+	// for a BLOCKED or could-not-check re-run of a verified or done brief, whose Evidence
+	// append the verdict gate refuses (outcomeonly.go).
+	outcomeOnly := fs.Bool("outcome-only", false, "with --outcome-record: record a non-decisive re-run of a verified or done brief whose Evidence append is refused; the record states evidence_withheld and its sha is the admitted observation commit")
 	outcomeRecord := fs.String("outcome-record", "", "local JSON file holding ONE new verify-outcome record to commit at the path RecordName derives; with --root, an absolute file outside --root (mutually exclusive with --evidence-file/--brief-path)")
 	// --root binds the LOCAL read of a repo-relative --evidence-file to an explicit
 	// checkout, instead of the current working directory. #1709: a writeguard can reset a
@@ -278,7 +282,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		if *evidenceFile != "" || *briefPath != "" {
 			return deskkit.Refused("refused: --outcome-record is mutually exclusive with --evidence-file/--brief-path")
 		}
-		return cmdOutcomeRecordWrite(*outcomeRecord, repoSlug, owner, name, branch, *root, ac)
+		return cmdOutcomeRecordWrite(*outcomeRecord, repoSlug, owner, name, branch, *root, *outcomeOnly, ac)
+	}
+	if *outcomeOnly {
+		return deskkit.Refused("refused: --outcome-only is valid only with --outcome-record")
 	}
 
 	if *evidenceFile == "" {
@@ -408,6 +415,15 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	if !underDocsStreams(targetRepoPath) {
 		return deskkit.Refused("refused: target path " + targetRepoPath +
 			" resolves outside docs/streams/ — deskevidence only writes under that tree")
+	}
+	// A witness row naming a read-set file lands only with that file in one
+	// commit (the read-set introduction binding); refuse before any forge call.
+	readSetRoot := evidenceRoot
+	if readSetRoot == "" {
+		readSetRoot = "."
+	}
+	if rerr := refuseUnpairedReadSets(localContent, readSetRoot, targetRepoPath); rerr != nil {
+		return rerr
 	}
 
 	// The source was admitted independently of the conditional-write destination.
@@ -603,8 +619,8 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 
 	// Public-repo write gate. deskevidence writes a file directly to a remote branch — an
 	// outward write. A public target is authorized only by a listed `:public` allowed-repos
-	// entry and an internal one only by `:internal` (deskkit.PublicRepoGate); any other
-	// non-private target refuses.
+	// entry and an internal one by `:internal` (a `:public` mislabel is tolerated; see
+	// deskkit.PublicRepoGate); any other non-private target refuses.
 	// The gate's visibility read goes through the SAME forge backend already resolved above
 	// (fg) — never a second, hardcoded GitHub-only client (assay#1054): a GitLab-resolved
 	// repo must have its visibility answered by GitLab's own API, not GitHub's, and fg is
@@ -673,6 +689,24 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	if err := outcomeGuardFn(lintRoot, landedRoot, targetRepoPath, remoteContent, commitContent, fg, fr, closureRef); err != nil {
 		return err
 	}
+	// Non-decisive verdict gate (#5759): a BLOCKED or could-not-check re-run of a
+	// verified or done brief is recorded in the outcome record only, never appended
+	// to Evidence — statusgen evidenceverdict reads the latest verdict with the
+	// protected-closure lint's own selector (verdictgate.go). Before any write.
+	// The status is the target branch's: the board files its tip changed since the
+	// home's HEAD are read once here (fail closed) and reused by the decision gate.
+	var boardEdits []boardEdit
+	boardRead := false
+	if isBriefFile(targetRepoPath) {
+		edits, herr := decisionGateBranchBoardFn(fg, fr, landedRoot, closureRef, targetRepoPath)
+		if herr != nil {
+			return herr
+		}
+		boardEdits, boardRead = edits, true
+	}
+	if err := gateNonDecisiveVerdict(targetRepoPath, landedRoot, boardEdits, remoteContent, commitContent, remoteExists); err != nil {
+		return err
+	}
 	introduced, lerr := lintDiffFn(landedRoot, targetRepoPath, commitContent)
 	if lerr != nil {
 		return lerr
@@ -689,9 +723,12 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// commit fixed at dispatch, behind the target branch, so the board files the branch
 	// changed since are read at its tip and judged in place of the home's (S-2266-6);
 	// when that cannot be done the landing is could-not-check.
-	boardEdits, herr := decisionGateBranchBoardFn(fg, fr, landedRoot, closureRef, targetRepoPath)
-	if herr != nil {
-		return herr
+	if !boardRead {
+		edits, herr := decisionGateBranchBoardFn(fg, fr, landedRoot, closureRef, targetRepoPath)
+		if herr != nil {
+			return herr
+		}
+		boardEdits = edits
 	}
 	gateRefused, gerr := decisionGateDiffFn(landedRoot, targetRepoPath, remoteContent, remoteExists, commitContent, boardEdits)
 	if gerr != nil {

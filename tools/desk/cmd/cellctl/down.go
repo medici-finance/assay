@@ -84,6 +84,8 @@ func cmdDown(cell string, v *cli.Values, extra []string, given bool) {
 	case "orca":
 		c.downOrca()
 	}
+	// Every surface the cell opened is gone with its session: no receipt may outlive it.
+	c.removeAllSurfaceReceipts()
 	if !keep && c.Deskd == "1" {
 		if exec.Command("pkill", "-f", "deskd --config "+c.CellsCfg).Run() == nil {
 			fmt.Println("[cell] deskd stopped")

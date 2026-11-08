@@ -77,7 +77,7 @@ M1–M6/C1–C4 and implemented-brief status remain unchanged.
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Semantic-owner index in docs/contracts.md — one meaning, one home](brief-01-semantic-owner-index.md) | 0 | M | done | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1671 @ d44d6ef3292216341ec8b82741cfc925e3e1c79c) |
-| 02 | [design-fit: in every new brief — owner, contract, retires, weight, why-add](brief-02-design-fit-in-briefs.md) | 1 | M | verified | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
+| 02 | [design-fit: in every new brief — owner, contract, retires, weight, why-add](brief-02-design-fit-in-briefs.md) | 1 | M | done | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | 2026-11-02 assay-reviewer-app[bot] (approved PR #1842 @ 43c692117f860a2dcdcf15dff523251d5642e768) |
 | 03 | [Weight counter and CI ratchet (a Go test, not a verb)](brief-03-weight-ratchet.md) | 0 | M | done | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) | 2026-09-27 assay-reviewer-app[bot] (approved PR #1672 @ 0662681ce2588e4a156968be794de94595c53952) |
 | 04 | [Intake files by error class; a recurring class triggers a design brief, not another point fix](brief-04-intake-by-error-class.md) | 2 | M | verified | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | 05 | [Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight](brief-05-worker-two-strikes-and-weight.md) | 3 | M | verified | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
@@ -85,7 +85,7 @@ M1–M6/C1–C4 and implemented-brief status remain unchanged.
 | 07 | [Rule register (owner, invariant, justifying issue, catch source) and the monthly rule diet](brief-07-rule-register-and-diet.md) | 1 | M | done | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1846 @ adc753ecdf5f19417405408fc813ba4997270bdb) |
 | 08 | [Hotspot metric (churn × complexity, temporal coupling) from git history, and the brittle mark](brief-08-hotspot-metric-and-brittle-mark.md) | 1 | M | done | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1850 @ 47604cb9c363336ba0ee46717ae7120979b4a859) |
 | 09 | [Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept](brief-09-brittle-investigation.md) | 3 | M | verified | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
-| 10 | [Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning](brief-10-fitness-functions.md) | 2 | M | verified | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
+| 10 | [Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning](brief-10-fitness-functions.md) | 2 | M | done | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | 2026-11-02 assay-reviewer-app[bot] (approved PR #1930 @ d16e13702ba88e58abb3d3814ec7723904e7c9ef) |
 | 11 | [Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge](brief-11-regression-test-ratchet.md) | 4 | M | verified | 2026-10-19 assay-verifier-app[bot] @ ecb8c74a4ae8 (claude-opus-5-5) | — |
 | 12 | [The refactor oracle: what a redesign is coded against — intent, failure modes, triaged characterization tests, invariants, and an acceptance rule](brief-12-refactor-oracle.md) | 5 | M | implemented | — | — |
 | 13 | [Incident-time refactor by an agent, with one human residue: the strong-tier session runs the investigation, assembles the oracle, drafts the refactor PR, and asks the driver exactly one typed decision, only for what the record does not settle](brief-13-incident-refactor-by-agent.md) | 6 | L | todo | — | — |
@@ -167,6 +167,40 @@ from git history rather than complexity alone, a mark that binds to an actionabl
 investigation, and executable architecture rules. The "no logic in main()" shape rule belongs
 to a separate desk-tool redesign and is deliberately not here; the rule that is here is "one shared
 meaning, one implementation".
+
+## Batch re-witness
+
+Named by build-less-brittle/15 (Task step 9). It has not been run; the verify desk runs it
+after the implementation merges.
+
+- **Who runs it.** The verify desk, as a non-implementing identity, with writing-form
+  `verifyrun` under the read-set recorder on a Linux host (a container qualifies).
+- **Which revision.** The first main commit that contains the merge of the implementation PR
+  for build-less-brittle/15 (not the docs PR that authored the brief), the same commit for every
+  row.
+- **Per-brief trees.**
+One fresh detached worktree per brief
+  at that revision. Each brief's rows run in a tree that is clean apart from that brief's own
+  Evidence and read-set files, so no witness is `+dirty` from another brief's edits. When its
+  rows finish, the brief's Evidence rows and read-set files are committed together, in one
+  commit, to a per-brief branch. Nothing is pushed to main or merged yet.
+- **Bound.** The briefs at `verified` whose only hold is `wrong-revision`, as listed by
+  `statusgen --coverage --json` at that revision before the run starts (133 at 5ddf5a317).
+  Nothing is added mid-batch.
+- **Pre-landing checks.**
+Nothing lands until the pre-landing checks pass
+  over the whole batch. They run after every brief's branch exists, over all of them merged
+  into one batch tree: the dry-run release count with the batch's witnesses, recorded in the
+  batch's Evidence PR; and a re-run at the main head of ten released claims whose rows are not
+  go rows. That re-run is the one check behind non-go rows, which have no compile-input floor.
+  Any re-run that disagrees with its released witness stops the batch: no brief lands, and the
+  disagreement is filed as a finding.
+- **Landing.** Only after both checks pass, through the ordinary Evidence-PR flow. Each brief's
+  rows and read-set files keep their one-commit pairing.
+- **Failures.** A row that fails takes the ordinary red path and is never re-run to green.
+- **Exclusions.** History-reading rows and rows that run a prebuilt tool gain nothing from the
+  re-witness: their read sets record a history entry or an untraceable exec, so their scope stays
+  conservative either way.
 
 ## Shared conventions
 

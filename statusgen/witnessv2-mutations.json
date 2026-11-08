@@ -1,5 +1,5 @@
 {
- "test": "go test . ./evaluation -run 'Witness|GitV2|Coverage|TreeDiff' -skip 'WitnessSkewOldReader|WitnessV1Unchanged|WitnessKeyRefusals|WitnessDigestOneOwner|WitnessReaderCensus|FixtureBriefMissingWitness|CandidateCoverage' -count=1 -timeout 280s",
+ "test": "go test . ./evaluation -run 'Witness|GitV2|Coverage|TreeDiff|IntroIgnoresCommitDate' -skip 'WitnessSkewOldReader|WitnessV1Unchanged|WitnessKeyRefusals|WitnessDigestOneOwner|WitnessReaderCensus|FixtureBriefMissingWitness|CandidateCoverage' -count=1 -timeout 280s",
  "control": {
   "name": "CONTROL \u2014 the v2 judge never compares a recorded blob digest (a changed input still releases)",
   "file": "evaluation/witness.go",
@@ -352,8 +352,8 @@
   {
    "name": "tree listing failure read as an empty listing",
    "file": "coverage_witness.go",
-   "old": "out, err := witnessGit(r.root, \"ls-tree\", \"-r\", \"-z\", \"--full-tree\", \"--end-of-options\", rev).Output()\n\tif err != nil {\n\t\treturn nil, false\n\t}",
-   "new": "out, err := witnessGit(r.root, \"ls-tree\", \"-r\", \"-z\", \"--full-tree\", \"--end-of-options\", rev).Output()\n\tif err != nil {\n\t\treturn nil, true\n\t}"
+   "old": "if err := cmd.Wait(); err != nil {\n\t\treturn nil, \"\", false\n\t}",
+   "new": "if err := cmd.Wait(); err != nil {\n\t\treturn nil, \"\", true\n\t}"
   },
   {
    "name": "implementerAttributed reads the text after the @ marker",
@@ -492,6 +492,192 @@
    "file": "evaluation/witness.go",
    "old": "\t\t\t\t\tif flag != 0 && rest == \"\" && i < len(words) {",
    "new": "\t\t\t\t\tif false && flag != 0 && rest == \"\" && i < len(words) {"
+  },
+  {
+   "name": "budget: a charge over the evaluation's observation budget taken (review S12)",
+   "file": "readset_adapter.go",
+   "old": "\tif n > observeEvalBytes-s.observed {",
+   "new": "\tif false && n > observeEvalBytes-s.observed {"
+  },
+  {
+   "name": "budget: the read-set file read again for every token row (review S12)",
+   "file": "readset_adapter.go",
+   "old": "\tr, ok := s.files[p]\n",
+   "new": "\tr, ok := s.files[p]\n\tok = false\n"
+  },
+  {
+   "name": "budget: a row sharing a read-set file not charged its content (review S12)",
+   "file": "readset_adapter.go",
+   "old": "\tif why := s.charge(int64(len(r.content))); why != \"\" {\n\t\treturn nil, false, why\n",
+   "new": "\tif why := s.charge(0); why != \"\" {\n\t\treturn nil, false, why\n"
+  },
+  {
+   "name": "budget: a brief's history bytes not charged to the evaluation (review S13)",
+   "file": "readset_adapter.go",
+   "old": "\tif why := s.charge(total); why != \"\" {",
+   "new": "\tif why := s.charge(0); why != \"\" {"
+  },
+  {
+   "name": "budget: a touching commit's key comparison not charged (review S11)",
+   "file": "readset_adapter.go",
+   "old": "\t\tif why := s.charge(cost); why != \"\" {",
+   "new": "\t\tif why := s.charge(0); why != \"\" {"
+  },
+  {
+   "name": "budget: the introduction walk keeps every row, not only the wanted keys (review S11)",
+   "file": "readset_adapter.go",
+   "old": "\t\t\tif !wanted[key] {",
+   "new": "\t\t\tif false && !wanted[key] {"
+  },
+  {
+   "name": "budget: a row with two introducers read as introduced once (review S11)",
+   "file": "readset_adapter.go",
+   "old": "!inParent && in.n < 2 {",
+   "new": "!inParent && in.n < 1 {"
+  },
+  {
+   "name": "budget: a go tool run not counted as it starts (review S14)",
+   "file": "readset_adapter.go",
+   "old": "\ts.floorRuns++\n\treturn \"\"\n",
+   "new": "\treturn \"\"\n"
+  },
+  {
+   "name": "budget: a failed export not charged its bytes (review S14)",
+   "file": "readset_adapter.go",
+   "old": "\ts.exported += n\n\tif err != nil {",
+   "new": "\tif err == nil {\n\t\ts.exported += n\n\t}\n\tif err != nil {"
+  },
+  {
+   "name": "budget: a floor whose export fails not charged its time (review S14)",
+   "file": "readset_adapter.go",
+   "old": "\tdefer func() { s.floorSpent += time.Since(start) }()\n",
+   "new": "\tdefer func() {}()\n"
+  },
+  {
+   "name": "budget: a climbing link target not checked before the export writes (review S14)",
+   "file": "readset_adapter.go",
+   "old": "\t\tif e.Mode == \"120000\" && !linkTargetInTree(targets[e.OID]) {",
+   "new": "\t\tif false && e.Mode == \"120000\" && !linkTargetInTree(targets[e.OID]) {"
+  },
+  {
+   "name": "budget: a floor go tool run's output read whole (review S15)",
+   "file": "readset_adapter.go",
+   "old": "\tif left := c.max - int64(c.buf.Len()); int64(len(p)) > left {",
+   "new": "\tif left := c.max - int64(c.buf.Len()); false && int64(len(p)) > left {"
+  },
+  {
+   "name": "floor: a working directory linked outside the tree run (review f-floor-branches-unpinned)",
+   "file": "readset_adapter.go",
+   "old": "\tif _, ok := inRoots(roots, real); !ok {",
+   "new": "\tif _, ok := inRoots(roots, real); false && !ok {"
+  },
+  {
+   "name": "time: the observations' clock never compared with the limit (review S16, f-observe-wall-uncharged)",
+   "file": "readset_adapter.go",
+   "old": "\tif s.now().After(s.deadline) {",
+   "new": "\tif false && s.now().After(s.deadline) {"
+  },
+  {
+   "name": "time: a history walk not cut short at the limit (review f-observe-wall-uncharged)",
+   "file": "readset_adapter.go",
+   "old": "\t\tif late = s.overdue(); late != \"\" {",
+   "new": "\t\tif late = \"\"; late != \"\" {"
+  },
+  {
+   "name": "time: a token row observed past the limit (review S16)",
+   "file": "readset_adapter.go",
+   "old": "\t\tif why := s.overdue(); why != \"\" {\n\t\t\tf.o.Problem = why",
+   "new": "\t\tif why := \"\"; why != \"\" {\n\t\t\tf.o.Problem = why"
+  },
+  {
+   "name": "time: the brief's batch check started past the limit (review S16)",
+   "file": "readset_adapter.go",
+   "old": "\tif why := s.overdue(); why != \"\" {\n\t\tfor o := range specOf {",
+   "new": "\tif why := \"\"; why != \"\" {\n\t\tfor o := range specOf {"
+  },
+  {
+   "name": "processes: a batch check started for every token row (review S16)",
+   "file": "readset_adapter.go",
+   "old": "\t\tspecs = append(specs, spec)\n",
+   "new": "\t\tspecs = append(specs, spec)\n\t\tcoverageRepo{root: s.root}.ObjectSizes([]string{spec})\n"
+  },
+  {
+   "name": "processes: the history walked when no row's read-set file exists (review f-observe-wall-uncharged)",
+   "file": "readset_adapter.go",
+   "old": "\tif present {\n",
+   "new": "\tif present || true {\n"
+  },
+  {
+   "name": "time: a judgement never reads the caller's limit (review S17)",
+   "file": "evaluation/readset.go",
+   "old": "\tif x.readSetDeadline == nil {\n\t\treturn \"\"",
+   "new": "\tif true {\n\t\treturn \"\""
+  },
+  {
+   "name": "time: a changed path compared past the limit (review S17)",
+   "file": "evaluation/readset.go",
+   "old": "\tfor _, p := range changed {\n\t\tif why := x.readSetOverdue(); why != \"\" {",
+   "new": "\tfor _, p := range changed {\n\t\tif why := \"\"; why != \"\" {"
+  },
+  {
+   "name": "time: the attribute check run past the limit (review S17)",
+   "file": "evaluation/readset.go",
+   "old": "\tif why := x.readSetOverdue(); why != \"\" {\n\t\treturn \"\", ReasonReadSetBounds",
+   "new": "\tif why := \"\"; why != \"\" {\n\t\treturn \"\", ReasonReadSetBounds"
+  },
+  {
+   "name": "work: a revision's listing read again for every directory lookup (review S17)",
+   "file": "evaluation/readset.go",
+   "old": "\tif got, ok := x.rsSorted[rev]; ok {",
+   "new": "\tif got, ok := x.rsSorted[rev]; false && ok {"
+  },
+  {
+   "name": "work: a repeated go-run entry counted once per repeat (review S17)",
+   "file": "evaluation/readset.go",
+   "old": "\t\tif seen[e] {\n\t\t\tcontinue // a repeated entry is judged once",
+   "new": "\t\tif false && seen[e] {\n\t\t\tcontinue // a repeated entry is judged once"
+  },
+  {
+   "name": "release: a stat-ed directory replaced by a file counted as present (review f-recorded-dir-kind-change-released)",
+   "file": "evaluation/readset.go",
+   "old": "d != \".\" && !holdsBelow(tf, d) {",
+   "new": "d != \".\" && !holds(tf, d) {"
+  },
+  {
+   "name": "time: a merge's parents read with no clock (review S19)",
+   "file": "readset_adapter.go",
+   "old": "stop := func() bool { late = s.overdue(); return late != \"\" }",
+   "new": "stop := func() bool { return false }"
+  },
+  {
+   "name": "switch: the read-set judgement shipped with no recorder (review S20)",
+   "file": "readset_platform.go",
+   "old": "const readSetRecorderShipped = false",
+   "new": "const readSetRecorderShipped = true"
+  },
+  {
+   "name": "switch: the judge honours a token although no recorder is declared (review S20)",
+   "file": "evaluation/readset.go",
+   "old": "if !ok || digest == \"\" || !x.readSetsRecorded {",
+   "new": "if !ok || digest == \"\" {"
+  },
+  {
+   "name": "switch: --coverage and the callers declare a recorder with no observation wired (review S20)",
+   "file": "coverage.go",
+   "old": "\topts := coverageOptions{Patterns: patterns}\n",
+   "new": "\topts := coverageOptions{Patterns: patterns}\n\topts.readSets = newReadSetSource(root)\n"
+  },
+  {
+   "name": "switch: an unjudged token goes unnamed (review S20)",
+   "file": "evaluation/coverage_api.go",
+   "old": "\t\tif note := x.tokenNotJudged(b.Witnesses[r.ID]); note != \"\" {",
+   "new": "\t\tif note := x.tokenNotJudged(b.Witnesses[r.ID]); false && note != \"\" {"
+  },
+  {
+   "name": "switch: the judge told a recorder ships while no observation is wired (review S20)",
+   "file": "coverage.go",
+   "old": "\tif opts.readSets != nil {\n\t\tin.ReadSetsRecorded = true\n",
+   "new": "\tin.ReadSetsRecorded = true\n\tif opts.readSets != nil {\n"
   }
  ]
 }

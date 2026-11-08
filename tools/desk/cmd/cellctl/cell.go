@@ -328,9 +328,12 @@ func expandVar(s string, e *Env) (int, string) {
 // defaults it asserts, and the variable environment every later step reads.
 type Cell struct {
 	launchStarted time.Time
-	Cadence       *cadenceOptions
-	cadenceLease  *cellcadence.Lease
-	Env           *Env
+	// pendingSurfaces is each role's surface as its cockpit opened it, bound into the role's
+	// surface receipt once the role's lease confirms the start (role_surface.go).
+	pendingSurfaces map[string]surfaceReceipt
+	Cadence         *cadenceOptions
+	cadenceLease    *cellcadence.Lease
+	Env             *Env
 
 	Name string
 	Dir  string
