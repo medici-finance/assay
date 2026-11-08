@@ -368,6 +368,43 @@ if [ "$(basename "$AGG")" = "aggregate.py" ]; then
     bad "R3c option-shaped ref (rc: $rc)"; printf '%s\n' "$out"
   fi
 
+  # R3d: a ref carrying shell metacharacters is quoted, never interpreted: git
+  #      cannot resolve it (rc 4) and the injected command does not run.
+  rollrepo
+  evil="v0.2.0';touch $D/pwned;'"
+  out="$(python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref "$evil" 2>&1)"; rc=$?
+  evil2='$(touch '"$D"'/pwned2)'
+  out2="$(python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref "$evil2" 2>&1)"; rc2=$?
+  if [ "$rc" = 4 ] && [ "$rc2" = 4 ] && [ ! -e "$D/pwned" ] && [ ! -e "$D/pwned2" ] \
+     && [ -e "$D/changelog/early-one.md" ]; then
+    ok "R3d shell-shaped ref is quoted, not run (rc 4, no side effect)"
+  else
+    bad "R3d shell-shaped ref (rc: $rc rc2: $rc2)"; printf '%s\n%s\n' "$out" "$out2"; ls "$D"
+  fi
+
+  # R3e: git not runnable at all fails closed (rc 4), files unchanged. The
+  #      shell reports a missing git as exit 127, which must not read as success.
+  rollrepo
+  py="$(command -v python3)"
+  out="$(PATH=/nonexistent "$py" "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 --clear 2>&1)"; rc=$?
+  if [ "$rc" = 4 ] && [ -e "$D/changelog/early-one.md" ] && ! grep -q 'v0.2.0' "$D/CHANGELOG.md"; then
+    ok "R3e git not runnable fails closed (rc 4, files unchanged)"
+  else
+    bad "R3e git missing (rc: $rc)"; printf '%s\n' "$out"
+  fi
+
+  # R3f: a work tree whose path holds a space and a single quote still
+  #      resolves: every path handed to git is quoted, so the roll succeeds.
+  rollrepo
+  odd="$(mktemp -d "${TMPDIR:-/tmp}/clagg-XXXXXX")/it's a dir"
+  mv "$D" "$odd"; D="$odd"
+  out="$(python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 2>&1)"; rc=$?
+  if [ "$rc" = 0 ] && grep -q 'early-one' "$D/CHANGELOG.md" && ! grep -q 'late-one' "$D/CHANGELOG.md"; then
+    ok "R3f quoted work-tree path resolves at the ref"
+  else
+    bad "R3f odd work-tree path (rc: $rc)"; printf '%s\n' "$out"
+  fi
+
   # R4: a duplicate `## <tag>` section is refused (exit 3), every file unchanged.
   rollrepo
   python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 >/dev/null 2>&1
