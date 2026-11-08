@@ -1556,7 +1556,9 @@ func runWitnessesWith(plan shellPlan, root string, rows []verifyRow, runner, run
 // would execute is recorded could-not-run with the reason, never run. It also
 // reads, once, which of the tree's module requirements the image's baked
 // module cache lacks (#4683, modcachegap.go): a row that then exits non-zero
-// naming one of them stopped on module resolution, so it is could-not-run.
+// naming one of them stopped on module resolution, so it is could-not-run; so
+// is a non-zero row that captured no output at all (#5766), whose cause the
+// gap can neither confirm nor exclude.
 func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRow, runner, runnerSource, tree, date string, timeout time.Duration, ci bool) []witness {
 	refused := ""
 	var gaps []modGap
@@ -1620,8 +1622,8 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 		case sandbox == sandboxContainerNetns:
 			rowSandbox = sandbox
 			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan, r.Shell)
-			if hit := gapsNamedIn(res.output, gaps); !res.couldNotRun && res.exit != 0 && len(hit) > 0 {
-				res.couldNotRun, res.reason = true, modCacheGapNote(hit)
+			if why, ok := modGapReclass(res, gaps); ok {
+				res.couldNotRun, res.reason = true, why
 			}
 		case r.Class == classCheckCI:
 			rowSandbox = sandboxUnshare
