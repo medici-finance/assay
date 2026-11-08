@@ -1427,10 +1427,11 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 			// hasVerifyPass marker is the fail-closed gate — WHICH briefs are eligible
 			// is loosened here; WHAT evidence is required is not.
 			if row.Status == "implemented" && hasVerifyPass(bf.Evidence) {
-				if date, runner := evidenceVerifierInfo(bf.Evidence); date == "" || runner == "" {
-					// The one-step close refuses a record whose latest PASS
-					// run cannot stamp the Verified cell (#5229), so no card
-					// offers that close.
+				if _, _, _, serr := latestPassSpan(bf.Evidence); serr != nil {
+					// The one-step close refuses a record whose latest
+					// verdict run latestPassSpan cannot select (#5229), so
+					// no card offers that close. The Date/Runner read stays
+					// a close-time gate, not an emission gate.
 					continue
 				}
 				if held, _ := verifyPassHeldContradiction(bf.Evidence); held {

@@ -115,9 +115,10 @@ func TestStampFallbackNamesLatestRun(t *testing.T) {
 }
 
 // TestGateCardOnlyWhereCloseCanStamp pins the implemented-gate card to the
-// close it offers: a record whose latest PASS run cannot stamp the Verified
-// cell (lp/03: a later FAIL; lp/04: no PASS; lp/07: rows that do not read as
-// one run) gets no card, since its one-step close refuses.
+// close it offers: a record whose latest verdict run latestPassSpan refuses
+// (lp/03: a later FAIL) or that has no PASS (lp/04) gets no card, since its
+// one-step close refuses. The Date/Runner read (lp/07) stays a close-time
+// gate, not an emission gate (TestVerifyIssuesNonIrreversibleAtImplemented).
 // regression: #5229
 func TestGateCardOnlyWhereCloseCanStamp(t *testing.T) {
 	root := loadLPRoot(t)
@@ -134,7 +135,7 @@ func TestGateCardOnlyWhereCloseCanStamp(t *testing.T) {
 			t.Errorf("%s: no sign-off card for a record its close stamps", b)
 		}
 	}
-	for _, b := range []string{"lp/03", "lp/04", "lp/07"} {
+	for _, b := range []string{"lp/03", "lp/04"} {
 		if got[b] {
 			t.Errorf("%s: sign-off card raised for a record its close refuses", b)
 		}
