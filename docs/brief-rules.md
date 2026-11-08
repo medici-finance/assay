@@ -281,6 +281,63 @@ nothing measured.
     on its exit status alone — the run says so on that row, and the output hash is what a
     reviewer weighs for the rest. `verifyrun` narrows the unproven set; it does not close it.
 
+51. **A Verify row whose Expect is a clean repo-wide statusgen lint is credited when `statusgen --lint --acceptance-forge` is clean at the pinned revision, witnessed in the host lane.** Ruling: https://github.com/medici-finance/assay/issues/4823#issuecomment-6725046323
+
+    The offline lint re-audits every `verified` or `done` brief that carries an
+    `Acceptance-Transition:` record, and that record's approval can be read only from the
+    forge. Offline, each such brief is a PROBLEM, for example `could-not-check human
+    authority: --acceptance-forge is required`, or `could-not-check repository authority:
+    …` in a checkout without a usable github.com origin. So once any transitioned brief is
+    closed, a row that runs the bare repo-wide lint cannot pass anywhere off the forge. The
+    authoritative CI lint already runs with `--acceptance-forge`
+    ([protected paths](protected-paths.md)).
+
+    What this rule changes, and what it does not:
+
+    - **It says what credits the row. It does not change the lint.** The offline PROBLEM
+      stays as it is, and `--acceptance-forge` still grants no approval: it only lets the
+      lint read the recorded one, and it corroborates that record afresh on every run.
+    - **What counts.** The same pinned statusgen release, at the revision the row's witness
+      names, run with `--acceptance-forge` in the host lane (a network-off `check:ci`
+      sandbox cannot reach the forge), exits 0 with `LINT: PASS`.
+    - **Which credential reads the approval.** The run is made under a verifier-admission
+      signal (an admitted `statusgen verifyrun`, a `DESK_LOOP` naming a verify loop, or a
+      working repository holding the verifier attestation file) or with
+      `GH_TOKEN`/`GITHUB_TOKEN` set explicitly. Under those conditions the binary reads the
+      approval with that credential only and never falls back to a stored forge login. The
+      binary does not enforce this outside them, so a run made outside them is not credited.
+    - **What does not count.** A forge-enabled run is `could-not-run` when any PROBLEM
+      says an authority read did not complete: `could-not-check repository authority: …`,
+      or `human approval could not be corroborated: …` because the record could not be read
+      from the checkout or the forge did not answer: no forge client, a fetch error, an
+      HTTP error on the comment other than not-found or gone, any HTTP error on the issue,
+      or a payload that did not parse. That holds even when other
+      PROBLEMs are present: the weaker state of knowledge wins, as in rule 37. A read that
+      completed and refuted the approval is `fail`. That covers a malformed ruling link; a
+      comment that is deleted or never existed (not-found or gone), edited, bot-authored, or by an unmapped or
+      wrong author; a comment on another repository, issue or pull request, or on an issue
+      without the record's marker; a record the comment does not name; and an approval
+      that does not name the exact transition payload. Any other PROBLEM is also `fail`.
+      Neither is credit, though the lint exits 1 for both. A row whose Expect asks for
+      something other than a clean repo-wide lint (one brief's lint, a named NOTICE, a
+      problem count) is outside this rule.
+    - **The row is not rewritten.** The Verify row keeps its authored command, because
+      editing a protected row needs its own transition. The Evidence entry records the
+      forge-enabled run beside the row's offline witness and cites this rule.
+    - **The record is not a rule-36 witness, and it is not written as a table row.** No tool
+      writes it. `statusgen` reads every `|` table row in an `## Evidence` section, so a
+      row in the witness columns would become the Verify row's newest witness, recording a
+      command the row does not carry. `verifyrun --check` would then report the row
+      `could-not-run`, and the witness gate would refuse the close. Record the run as
+      prose or a fenced block outside any table, with no line starting with `|`. State
+      the command as run, its exit status and the state decided above, the revision, the
+      date, who ran it, and the `sha256:` fingerprint of the combined output. Include the
+      run's primary output too: the `LINT: PASS` line, and the stderr line
+      `acceptance transition: reading approval <url>` for each approval read, which shows
+      the corroboration ran rather than being skipped. The identity is as stated by whoever
+      records the run, not derived, so a reviewer re-runs the command and compares the
+      fingerprint.
+
 ## Derived status cells
 
 Rules 36-37 say what the Evidence record IS. The rules here say what every lifecycle

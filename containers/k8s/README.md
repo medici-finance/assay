@@ -137,7 +137,8 @@ for it in that release's `checksums.txt`. Each manifest's `image:` line cites it
 and `check.sh --base` binds them: it requires the record's bytes to hash to the
 SHA-256 pinned in `check.py` (`RECORD_SHA256`, the value stated above, which
 this README must also state), validates the record with the release's own
-contract validator (`tools/release/images_contract.py`) and rejects any role
+contract validator (`tools/release/images_contract.py`), explicitly allowing
+the pre-deskd image set `LEGACY_NAMES` that this pinned record predates, and rejects any role
 reference that is not exactly the one the record holds for that role (a digest no
 release recorded, another role's digest, or a recorded digest under another
 tag). `testdata/mutations.py` plants each of those at every role, plus a

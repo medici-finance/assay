@@ -21,12 +21,27 @@ roll remains a separate downstream job under its own existing identity.
    prepared source revision and its archive; preserve any local stamp commits
    in a Git bundle for the final tag.
 2. In the approved release job, verify the build inputs and use those exact
-   Linux statusgen and desk-tools bytes for all images. Build desk-tools first,
+   Linux statusgen and desk-tools bytes for every image that carries them
+   (deskd carries neither: it compiles from source inside its `docker build`,
+   with modules held to `deskd/go.sum`). Build desk-tools first,
    desk-base from that newly built version, and the five desks from that base.
-   Build assay-harness with the same binaries and prepared plugin source, and
+   Build assay-harness with the same binaries and prepared plugin source, then
+   deskd from `images/deskd/Dockerfile` with `deskd/` as its only build context
+   and the source revision as its `REVISION` build argument, and
    verify-runner from the release statusgen plus its digest-pinned Go base and
    the Debian packages (Python libraries and row tools) pinned in
    `images/verify-runner/Dockerfile`.
+   Before every image build, on the publisher and on the native ARM64 runner,
+   the release clears all BuildKit exec cache mounts
+   (`docker builder prune --all --force --filter type=exec.cachemount`), and a
+   failed prune stops the release. It then builds with `--no-cache`. Cache
+   mounts outlive the build that wrote them and are shared by target path
+   across builds on one daemon, and the instruction cache's key for a `RUN`
+   step does not cover its cache mounts' contents. On a non-ephemeral runner,
+   a mount or a cached layer an earlier build left behind (another ref, a dry
+   run) would otherwise feed a published binary. Every build goes through that
+   one path, and the tests refuse a build call that bypasses it or drops
+   `--no-cache`.
    verify-runner is multi-arch: it is built once for `linux/amd64` and once for
    `linux/arm64`, each from the matching `statusgen-linux-<arch>` release
    binary, and each build's OS/architecture is read back before any check.
@@ -46,10 +61,14 @@ roll remains a separate downstream job under its own existing identity.
    this release, the archive checksum, a single Docker save manifest naming
    only the expected tag, and a single config whose digest is the receipt's
    image ID. After the load it re-reads the platform and image ID. Any
-   mismatch stops the release before a registry write. The other eight images
+   mismatch stops the release before a registry write. The other nine images
    stay `linux/amd64`.
-3. Check statusgen's version in all nine images, and in both runner
-   platforms. Execute the release-owned
+3. Check statusgen's version in every image that carries it (all except deskd),
+   and in both runner platforms. deskd has no statusgen: its check reads the
+   image config, requires a numeric non-root user and an
+   `org.opencontainers.image.revision` label equal to the source revision, and
+   runs `/deskd --help` with no pull, network, capabilities or new privileges on a
+   read-only root, which must exit 0 and print its usage. Execute the release-owned
    `images/verify-runner/check.py` inside each built runner platform: import PyYAML and
    jsonschema, parse YAML, validate a Draft 2020-12 schema, and prove that a
    valid instance passes and an invalid one raises a validation error. It also
@@ -72,7 +91,7 @@ roll remains a separate downstream job under its own existing identity.
    no pulls, network, mounts or credentials; it runs as user 1000:1000 with a
    read-only root, all capabilities dropped, no new privileges, default seccomp
    and bounded memory, CPU, process count and temporary storage. Run the existing layer-secret
-   gate on the shared desk base and all five desks. All checks precede the first
+   gate on the shared desk base, all five desks and deskd. All checks precede the first
    push. A failure stops the same job before any tag or GitHub release write.
 4. Serialize the publication job on the resolved umbrella version before registry
    absence checks, including dispatches with or without a leading `v`.
@@ -103,15 +122,16 @@ future workflow runs; an already-running release keeps its original job graph.
 ## Published reference artifacts
 
 `release-images.json` has schema `release-images-v1`, the umbrella `version`,
-`source_revision`, release `repository`, and exactly nine `images` records:
+`source_revision`, release `repository`, and exactly ten `images` records:
 
 - desk-tools, assay-harness and desk-base;
 - intake-desk, worker-desk, pr-review-desk, verify-desk and the-desk;
+- deskd;
 - verify-runner.
 
 Each record has `name`, `platform` and a complete
 `<repository>:<umbrella-tag>@sha256:<registry-manifest-digest>` reference.
-`platform` is `linux/amd64` for eight images; verify-runner records
+`platform` is `linux/amd64` for nine images; verify-runner records
 `linux/amd64,linux/arm64` and its digest is the image index (manifest list)
 digest, not a per-platform one. One reference then serves both host
 architectures: the engine selects the native platform, and the index bytes the
@@ -119,6 +139,10 @@ digest covers name each per-platform manifest digest, so the pin stays
 immutable for both. Records from releases before the multi-arch runner carry
 `linux/amd64` for verify-runner; the contract still accepts them when a consumer
 validates an older release, while a new release must record both platforms.
+Records from releases before deskd carry the other nine images only. By default
+the contract refuses them; a consumer validating such a pinned record passes
+`names=(NAMES, LEGACY_NAMES)` to `validate()`, which accepts exactly the current
+ten names or exactly the legacy nine.
 `verify-runner-image.txt` contains exactly its matching reference plus a newline.
 Both files are listed in `checksums.txt`. `tools/release/images_contract.py`
 rejects missing/duplicate images, wrong tags, repositories, platforms or source
