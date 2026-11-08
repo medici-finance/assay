@@ -606,6 +606,11 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 	}
 	var candidates []candidate
 	var errs []error
+	// unmeasured names each entry too large to walk inside the inventory bound. Such
+	// an entry is kept, and the sweep reports partial, but it is contained: unlike
+	// any other failed inspection it does not withdraw authority from the rest of the
+	// plan, so one oversized task cannot stop every other task being reclaimed.
+	var unmeasured []error
 	for _, e := range entries {
 		if e.Name() == "owner" || e.Name() == "preparation.json" || e.Name() == maintenanceLockName || strings.HasPrefix(e.Name(), maintenanceStampName) || e.Name() == sweepLockName || strings.HasPrefix(e.Name(), sweepLockName+".holder") {
 			continue
@@ -615,13 +620,21 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 		seen := pins{}
 		pinErr := s.pin(seen, e.Name())
 		size, allGit, sizeErr := s.measure(e.Name())
+		// Only the bound running out on a pinned entry is contained; a pin failure,
+		// an identity change or a stopped walk still fails the whole plan closed.
+		overLimit := pinErr == nil && errors.Is(sizeErr, deskkit.ErrScanLimit)
 		sizeErr = errors.Join(sizeErr, pinErr)
+		// An over-limit entry's bytes are what the walk counted before it stopped: a
+		// lower bound, so the budget arithmetic below can only under-reclaim.
 		row := Entry{ID: e.Name(), Action: "keep", Bytes: size}
 		rep.Bytes += size
 		r, readErr := s.record(e.Name())
 		if readErr != nil {
 			row.Reason = "unverified ownership; inventory only"
-			if sizeErr != nil {
+			if overLimit {
+				row.Reason = overLimitReason
+				unmeasured = append(unmeasured, fmt.Errorf("%s: %w", e.Name(), sizeErr))
+			} else if sizeErr != nil {
 				row.Reason = "could-not-check unverified tree"
 				errs = append(errs, sizeErr)
 			}
@@ -646,6 +659,9 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 				// the worktree stays; every other task keeps its whole tree.
 				abandoned := receiptErr != nil && r.State != "resumable"
 				switch {
+				case overLimit && walkErr == nil:
+					row.Reason = overLimitReason
+					unmeasured = append(unmeasured, fmt.Errorf("%s: %w", e.Name(), sizeErr))
 				case sizeErr != nil || walkErr != nil:
 					row.Reason = "could-not-check tree"
 					errs = append(errs, errors.Join(sizeErr, walkErr))
@@ -704,10 +720,13 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 		}
 	}()
 	// Incomplete accounting grants no reclamation authority, even for earlier
-	// fully observed candidates. Their leases close through the defer above.
+	// fully observed candidates. Their leases close through the defer above. The one
+	// contained exception is an entry over the inventory bound (unmeasured): it is
+	// itself kept and never a candidate, and the bytes it hides only lower the totals
+	// the budget rules read, so the remaining candidates may still be reclaimed.
 	if len(errs) > 0 {
 		rep.Partial = true
-		return rep, errors.Join(errs...)
+		return rep, errors.Join(append(errs, unmeasured...)...)
 	}
 	// Oldest retained diagnostics leave first. Successful acknowledged tasks need no
 	// local evidence; failed/recovered records retain exit status, receipt and bounded tail.
@@ -872,6 +891,7 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 		}
 		rep.Reclaimed += row.Reclaimed
 	}
+	errs = append(errs, unmeasured...)
 	rep.Partial = len(errs) > 0
 	if apply {
 		rep.OverBudget = rep.Bytes+growthWritten-rep.Reclaimed > p.MaxBytes
@@ -991,6 +1011,11 @@ func (s *Store) abandonedBuild(r Record, p Policy, seen pins) ([]string, int64, 
 	}
 	return build, total, nil
 }
+
+// overLimitReason keeps an entry whose walk ran past the inventory bound, either the
+// entry count or the fixed directory depth. Its size and Git content are unknown, so it
+// is never reclaimed by this sweep. The remedy differs by limit, so both are named.
+const overLimitReason = "over the maintenance inventory limit (entries or depth); not measured, retained (ASSAY_MAINTENANCE_ENTRY_LIMIT raises the entry bound; a tree past the depth limit needs owner-assisted layout correction)"
 
 var errNotRealDir = errors.New("scratch path crosses a link or non-directory")
 

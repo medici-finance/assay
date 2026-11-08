@@ -1556,7 +1556,9 @@ func runWitnessesWith(plan shellPlan, root string, rows []verifyRow, runner, run
 // would execute is recorded could-not-run with the reason, never run. It also
 // reads, once, which of the tree's module requirements the image's baked
 // module cache lacks (#4683, modcachegap.go): a row that then exits non-zero
-// naming one of them stopped on module resolution, so it is could-not-run.
+// naming one of them stopped on module resolution, so it is could-not-run; so
+// is a non-zero row that captured no output at all (#5766), whose cause the
+// gap can neither confirm nor exclude.
 func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRow, runner, runnerSource, tree, date string, timeout time.Duration, ci bool) []witness {
 	refused := ""
 	var gaps []modGap
@@ -1620,8 +1622,8 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 		case sandbox == sandboxContainerNetns:
 			rowSandbox = sandbox
 			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan, r.Shell)
-			if hit := gapsNamedIn(res.output, gaps); !res.couldNotRun && res.exit != 0 && len(hit) > 0 {
-				res.couldNotRun, res.reason = true, modCacheGapNote(hit)
+			if why, ok := modGapReclass(res, gaps); ok {
+				res.couldNotRun, res.reason = true, why
 			}
 		case r.Class == classCheckCI:
 			rowSandbox = sandboxUnshare
@@ -1997,6 +1999,20 @@ Flags:
   --history-out <file>  with --open-bracket, export complete admitted HEAD history
                     to a new Git object pack outside the home. Mount it read-only in
                     the container; no host config, hooks or credentials travel.
+  --module-cache <dir>  with --open-bracket, run go mod download for each Go
+                    module root the home lists in
+                    images/verify-runner/go-module-roots.txt, bound to its
+                    go.sum and the checksum database, into this new empty
+                    directory outside the home (never the host's own module
+                    cache), and record its digest in the receipt. Required
+                    when the home lists module roots. A failed download is
+                    could-not-check with no receipt; the image's baked cache
+                    is never a fall-back. The step prints the container flags
+                    the run needs: --network none, --read-only, the cache
+                    mounted read-only at /go/pkg/mod, GOPROXY=off and
+                    GOTOOLCHAIN=local. The container run checks the mount,
+                    the environment and the digest before any row, and its
+                    witness records Module-Cache: <digest> (#4683).
   --history-pack <file>  with container-netns --fail-first, import that pack
                     into private scratch for baseline checkouts. Its source must
                     equal the admitted source. Head rows still run on --root.
@@ -2187,6 +2203,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	openBracket := fs.Bool("open-bracket", false, "host open step of a container run: run the admission check, digest the home and write the receipt to --out")
 	openOut := fs.String("out", "", "with --open-bracket: the receipt file to write, outside the home")
 	historyOut := fs.String("history-out", "", "with --open-bracket: export admitted HEAD history to a new Git object pack outside the home")
+	moduleCacheDir := fs.String("module-cache", "", "with --open-bracket: download the home's Go module roots into this new directory outside the home and record its digest in the receipt")
 	historyPack := fs.String("history-pack", "", "container-netns --fail-first: read-only admitted-source Git object pack for isolated baseline checkouts")
 	closeBracket := fs.Bool("close-bracket", false, "host close step of a container run: re-check admission and the tree digest, then append Admission-Bracket to --witness")
 	witnessFile := fs.String("witness", "", "container-netns: the new file outside the home the witness is written to; with --close-bracket or --bracket-digest: that file")
@@ -2316,6 +2333,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// The container bracket (desktools-v2/71): the close step is its own mode,
 	// and a row-running container-netns invocation needs the host's receipt
 	// and image digest before anything else happens.
+	if *moduleCacheDir != "" && !*openBracket {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --module-cache only applies to --open-bracket")
+		return verifyrunExitUsageError
+	}
 	if *historyOut != "" && !*openBracket {
 		fmt.Fprintln(stderr, "statusgen verifyrun: --history-out only applies to --open-bracket")
 		return verifyrunExitUsageError
@@ -2348,7 +2369,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitUsageError
 		}
 		if *openBracket {
-			return runOpenBracket(*rootDir, path, *openOut, stdout, stderr, *historyOut)
+			return runOpenBracket(*rootDir, path, *openOut, *moduleCacheDir, stdout, stderr, *historyOut)
 		}
 		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, stdout, stderr)
 	}
@@ -2709,7 +2730,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			fmt.Fprintf(stderr, "statusgen verifyrun: the rows changed the mounted home (tree %s before the rows, %s after, %v); no witness written\n", containerTree, after, err)
 			return verifyrunExitCouldNot
 		}
-		table += "\n" + containerWitnessLines(*imageDigest, containerTree, attestation)
+		table += "\n" + containerWitnessLines(*imageDigest, containerTree, container.moduleCache, attestation)
 	} else if attestation != "" {
 		table += "\n" + attestation + "\n"
 	}

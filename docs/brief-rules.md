@@ -671,7 +671,14 @@ passing run — which is why they are lint rules and not review vigilance.
       on-behalf-of annotation for the repo the rows are written into — runs
       the admission check, digests the home's tree and writes the receipt
       (check JSON, `tree`, `opened`, `runner`, `runner_source`,
-      `runner_tree`, `on_behalf_of`) outside the home; (2) in the container, `verifyrun --sandbox=container-netns
+      `runner_tree`, `on_behalf_of`) outside the home — when the home lists Go
+      module roots in `images/verify-runner/go-module-roots.txt` it also
+      requires `--module-cache <dir>`, a new empty directory outside the home
+      and outside the host's own module cache, downloads each root's modules
+      there against its committed `go.sum` with checksum verification on,
+      records the cache's digest as the receipt's `module_cache` (a failed
+      download is could-not-check with no receipt, never the image's baked
+      cache) and prints the container flags that mount it read-only; (2) in the container, `verifyrun --sandbox=container-netns
       --admission-receipt <receipt> --container-image-digest sha256:<64 hex>
       --witness <file>` never runs admission or derives an identity itself,
       refuses `could-not-attribute` before any row when the receipt names no
@@ -682,8 +689,12 @@ passing run — which is why they are lint rules and not review vigilance.
       environment), refuses before any row unless its mounted root digests
       to the receipt's `tree` and the receipt admits this brief, refuses after
       the rows if they changed that tree (then no attestation or
-      `Tree-Digest` is written), and writes the witness table, then
-      `Tree-Digest:`, `Container-Image:` and the `Verification-Attestation:`
+      `Tree-Digest` is written), under a `module_cache` receipt refuses before
+      any row unless the cache at GOMODCACHE is mounted read-only, digests to
+      the receipt's, and runs with `GOPROXY=off`, `GOTOOLCHAIN=local` and no
+      checksum-loosening setting, and writes the witness table, then
+      `Tree-Digest:`, `Container-Image:`, `Module-Cache:` (with a
+      `module_cache` receipt) and the `Verification-Attestation:`
       line to a new file outside the home; (3) on the host, `verifyrun
       --close-bracket --root <home> --brief <path> --admission-receipt
       <receipt> --witness <file>` re-runs the check and appends one
@@ -691,7 +702,8 @@ passing run — which is why they are lint rules and not review vigilance.
       opened=… closed=… before=receipt after=check-verifier` line only when the
       check re-admits the run the witness names, the Runner cell it
       re-derives on the host (runner, source, tree token, annotation) equals
-      the receipt's and every row's Runner cell is exactly that cell, and the
+      the receipt's and every row's Runner cell is exactly that cell, the
+      witness's `Module-Cache` is the receipt's (none when it has none), and the
       home still digests to
       both the receipt's `tree` and the witness's `Tree-Digest`, read only
       from the span that ends at the append position (a span with more than

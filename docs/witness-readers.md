@@ -20,6 +20,7 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `statusgen/citationcorroborate.go` | reads informational fields only | identity token and Result cell for attribution and the verifier floor; takes the whole token, never splits on the marker |
 | `statusgen/containerbracket.go` | migrates in statusgen/37 | bracket of container-run witness cells carries the v1 tree token; the v2 form is written by statusgen/37 |
 | `statusgen/coverage.go` | judges through the library | hands the Runner cell and the record reader to the library; judges nothing itself |
+| `statusgen/coverage_crossrepo.go` | judges through the library | selects the bound source checkout and requires every latest row to have closed source-only container scope; passes applicability to the existing evaluator |
 | `statusgen/coverage_json.go` | judges through the library | hands the Runner cell and the record reader to the library; judges nothing itself |
 | `statusgen/coverage_witness.go` | judges through the library | hands the Runner cell and the record reader to the library; judges nothing itself |
 | `statusgen/deliveryfiles.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record |

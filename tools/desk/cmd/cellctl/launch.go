@@ -331,7 +331,7 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 				die("cursor cadence: %v", err)
 			}
 		}
-		argv = cursorLaunchArgv(role, model, session, wt)
+		argv = c.cursorLaunchArgv(role, model, wt)
 		env = cursorLaunchEnv(env)
 	} else {
 		env = envSet(env, "CLAUDE_CONFIG_DIR", cfg)

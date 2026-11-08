@@ -151,10 +151,16 @@ func runTreeSelected(args []string, sink func(perfrec.Context)) (code int) {
 		}
 		die("--cells-root requires an absolute registry path and a command")
 	}
+	// Preparation preserves its former argparse usage exit. Other cellctl verbs
+	// retain their existing usage code.
+	usageExit := 3
+	if i := verbIndex(args); i < len(args) && args[i] == "compat-prepare" {
+		usageExit = 2
+	}
 	// The pre-migration command-line shape, checked before anything parses or echoes.
 	if err := legacyShape(buildRoot(), args); err != nil {
 		fmt.Fprintf(os.Stderr, "cellctl: %v\nRun 'cellctl --help' for usage.\n", err)
-		return 3
+		return usageExit
 	}
 	i := verbIndex(args)
 	if i < len(args) {
@@ -194,7 +200,7 @@ func runTreeSelected(args []string, sink func(perfrec.Context)) (code int) {
 		IO:              cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr},
 		Version:         versionLine(),
 		VersionTemplate: "{{.Version}}\n",
-		UsageExit:       3,
+		UsageExit:       usageExit,
 		// Single-dash long flags are the Go flag package's spelling, which only scratch read.
 		GoFlagCompat: scratchLine(args),
 	})
@@ -453,7 +459,7 @@ func buildRoot() *cobra.Command {
 	declared = nil
 	root := cli.NewRoot("cellctl", "start, stop and scaffold an Assay CELL on one laptop")
 	root.Long = "cellctl starts, stops and scaffolds an Assay CELL on one laptop (the laptop route).\n\n" +
-		"Every command takes the cell as its first argument.\n\n" + helpConcepts
+		"Lifecycle commands take the cell as their first argument; compat-prepare takes --cell.\n\n" + helpConcepts
 	root.Example = "  cellctl ls\n  cellctl new mycell --kind house --repo ~/src/repo --roots 'o/r=/abs/path'\n  cellctl up mycell\n  cellctl --cells-root /abs/registry show mycell"
 	declare(root, cli.Binding{Key: "cells-root", Kind: cli.String, Flag: "cells-root", Persistent: true,
 		Usage: "absolute path of the cell registry to use for this run (overrides CELLS_ROOT)"})
@@ -482,7 +488,7 @@ func buildRoot() *cobra.Command {
 	}
 	root.AddCommand(
 		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(), pauseCmd(), resumeCmd(), drainCmd(), cycleCmd(),
-		smokeCmd(), statusCmd(), attachCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
+		smokeCmd(), statusCmd(), attachCmd(), compatPrepareCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), hotfixCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(), scrubbedRunCmd(),
 	)
 	// The cellopfixture build adds the fixture verb and the stand-ins; the release build adds nothing.
