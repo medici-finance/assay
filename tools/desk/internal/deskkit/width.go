@@ -99,6 +99,12 @@ type widthPolicy struct {
 	// rather than a second copy of its numbers.
 	WriteTool  string
 	chargedCap func() int
+	// Gate is the enforcement entry point one item's landing write goes through, and
+	// GatePR the PR bucket it names: 0 is the unnumbered bucket, -1 a different PR per item
+	// (the per-PR meters are then per target and a loop-level read cannot name them).
+	// ReadLoopCapacity reads this gate's own plan, never a copy of its caps.
+	Gate   MeterGate
+	GatePR int
 	// WritesPerItem is how many charged outward writes finishing ONE item costs.
 	WritesPerItem int
 	// TokenBound marks a role whose agents hold a shared App token open for sustained
@@ -211,6 +217,8 @@ var widthPolicies = map[string]widthPolicy{
 		Default:        8,
 		DeclaredMax:    12,
 		WriteTool:      "deskpr",
+		Gate:           GatePRCreate,
+		GatePR:         0,
 		chargedCap:     func() int { return RateLimitPerPRPerHour },
 		WritesPerItem:  1,
 		TokenBound:     false,
@@ -227,6 +235,8 @@ var widthPolicies = map[string]widthPolicy{
 		Default:       5,
 		DeclaredMax:   10,
 		WriteTool:     "deskpost",
+		Gate:          GateWriteAt,
+		GatePR:        -1,
 		chargedCap:    func() int { return RateLimitPerRepoPerHour },
 		WritesPerItem: 1,
 		TokenBound:    true,
@@ -239,6 +249,8 @@ var widthPolicies = map[string]widthPolicy{
 		Default:       6,
 		DeclaredMax:   6,
 		WriteTool:     "deskevidence",
+		Gate:          GateWriteAt,
+		GatePR:        0,
 		chargedCap:    func() int { return UnnumberedCapFor("deskevidence") },
 		WritesPerItem: 2,
 		TokenBound:    false,
@@ -255,6 +267,8 @@ var widthPolicies = map[string]widthPolicy{
 		Default:       1,
 		DeclaredMax:   1,
 		WriteTool:     "deskpr",
+		Gate:          GatePRCreate,
+		GatePR:        0,
 		chargedCap:    func() int { return RateLimitPerPRPerHour },
 		WritesPerItem: 1,
 		TokenBound:    false,
@@ -267,6 +281,8 @@ var widthPolicies = map[string]widthPolicy{
 		Default:       1,
 		DeclaredMax:   1,
 		WriteTool:     "deskpr",
+		Gate:          GatePRCreate,
+		GatePR:        0,
 		chargedCap:    func() int { return RateLimitPerPRPerHour },
 		WritesPerItem: 1,
 		TokenBound:    false,
@@ -488,4 +504,113 @@ func EffectiveWidth(loop string, requested, activeNow int, breakerOpen bool) (in
 		return max, nil
 	}
 	return requested, nil
+}
+
+// ---- Landing capacity ----
+
+// ProviderCapacityUnknown labels what a LoopCapacity cannot see. The meters are this host's
+// audit ledger; the forge's own write quota and other hosts' writes are not observed, so
+// they are reported as unknown rather than assumed to be spare.
+const ProviderCapacityUnknown = "unknown: forge write quota and other hosts' writes are not observed by this read"
+
+// LoopCapacity is a dated read of how many more items of a loop's work the enforced meters
+// will land on one repo. It is a read model: it charges, reserves and changes nothing.
+type LoopCapacity struct {
+	Loop string
+	Repo string
+	At   time.Time
+	// Snapshot is the gate's own meter reading for the landing target.
+	Snapshot *MeterSnapshot
+	// WritesPerItem is the charged cost of landing one item (from the policy row).
+	WritesPerItem int
+	// InFlight is the count of items already dispatched whose landing writes are not yet
+	// charged; each reserves WritesPerItem of the remaining writes. InFlightSource says where
+	// the count came from.
+	InFlight       int
+	InFlightSource string
+	// Items is how many FURTHER items fit in the remaining writes after the in-flight
+	// reservations. 0 when any meter refuses now.
+	Items int
+	// Proposed / ProposedCost: the caller's queued items and what landing them would charge.
+	Proposed     int
+	ProposedCost int
+	// Blocked is true when the gate refuses now (an exhausted budget or an open breaker).
+	Blocked  bool
+	Provider string
+}
+
+// ReadLoopCapacity reads `loop`'s landing gate on `repo` at `now`. inFlight < 0 means the
+// caller has no count: every slot of the loop's resolved width is then assumed to hold an
+// item that has not landed yet, the conservative reading. An unreadable meter is an error,
+// never a zero.
+func ReadLoopCapacity(loop, repo string, inFlight, proposed int, now time.Time) (*LoopCapacity, error) {
+	canonical, p, err := policyFor(loop)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(repo) == "" {
+		return nil, Refused(fmt.Sprintf("refused: a landing-capacity read for %s needs a repo; "+
+			"the meters are per repo and a repo-less read would describe the tool-wide fallback instead", canonical))
+	}
+	if p.WritesPerItem < 1 {
+		return nil, Unverifiable(fmt.Sprintf("%s has no per-item write cost; capacity cannot be derived", canonical), nil)
+	}
+	t := MeterTarget{Gate: p.Gate, Tool: p.WriteTool, Repo: repo, PR: p.GatePR}
+	if p.GatePR < 0 {
+		t.PR, t.SharedOnly = 1, true // any numbered PR: only the shared meters are read
+	}
+	snap, err := ReadMeters(t, now)
+	if err != nil {
+		return nil, err
+	}
+	c := &LoopCapacity{Loop: canonical, Repo: repo, At: now, Snapshot: snap,
+		WritesPerItem: p.WritesPerItem, InFlight: inFlight, InFlightSource: "caller-supplied",
+		Proposed: proposed, Blocked: !snap.Admits, Provider: ProviderCapacityUnknown}
+	if inFlight < 0 {
+		w, _, werr := ResolvedWidthAt(canonical, now)
+		if werr != nil {
+			return nil, werr
+		}
+		c.InFlight = w
+		c.InFlightSource = fmt.Sprintf("assumed: every slot of the resolved width (%d) holds an unlanded item", w)
+	}
+	if proposed > 0 {
+		c.ProposedCost = proposed * p.WritesPerItem
+	}
+	if !c.Blocked {
+		free := snap.Remaining - c.InFlight*p.WritesPerItem
+		if free > 0 {
+			c.Items = free / p.WritesPerItem
+		}
+	}
+	return c, nil
+}
+
+// WidenBound is the widest width throughput advice may name for a loop: the current width
+// unless every bound leaves room. It is bounded by the roster maximum, the actionable
+// lanes (the in-flight items plus the WAITING model-dispatchable depth — held and
+// continuation work is never passed in) and the landing capacity; a blocked or unread
+// capacity never widens. why names the binding bound when the answer is "no wider".
+func WidenBound(width, maxWidth, waiting int, c *LoopCapacity) (target int, why string) {
+	if c == nil {
+		return width, "landing capacity was not read"
+	}
+	if c.Blocked {
+		return width, fmt.Sprintf("the landing write budget on %s refuses now", c.Repo)
+	}
+	if waiting < 0 {
+		waiting = 0
+	}
+	actionable := c.InFlight + waiting
+	target, why = maxWidth, "the roster maximum"
+	if actionable < target {
+		target, why = actionable, "the actionable depth"
+	}
+	if land := c.InFlight + c.Items; land < target {
+		target, why = land, fmt.Sprintf("landing capacity on %s (%d more item(s) after %d reserved)", c.Repo, c.Items, c.InFlight)
+	}
+	if target < width {
+		target = width
+	}
+	return target, why
 }

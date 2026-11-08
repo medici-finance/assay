@@ -492,30 +492,7 @@ func allowRepoWideAt(tool, repo string, now time.Time, createsOnly bool) error {
 	if err != nil {
 		return err
 	}
-	if repo == "" {
-		// Same fail-closed fallback as AllowWriteAt: no repo, no reasoning about blast
-		// radius, so the tightest scope applies.
-		if err := checkToolBudget(tool, now, mine); err != nil {
-			return err
-		}
-		return checkBreaker(tool, "", 0, now, mine)
-	}
-	if createsOnly {
-		if err := checkPRCreateBudget(repo, now, mine); err != nil {
-			return err
-		}
-	} else if err := checkRepoWideBudget(tool, repo, now, mine); err != nil {
-		return err
-	}
-	// Maintenance writes do not consume the creation counter, but they still share
-	// the aggregate outward-write ceiling with creates.
-	if err := checkRepoBudget(tool, repo, now, mine); err != nil {
-		return err
-	}
-	if err := checkBreakerRepo(tool, repo, now, mine); err != nil {
-		return err
-	}
-	return checkBreakerBackstop(tool, now, mine)
+	return runPlan(repoWidePlan(tool, repo, createsOnly), now, mine)
 }
 
 // AllowWriteAt is AllowWrite with an injectable clock — the testable core. It applies
@@ -536,25 +513,7 @@ func AllowWriteAt(tool, repo string, pr int, now time.Time) error {
 		return err
 	}
 
-	// No branch here leaves a caller ungated — see AllowWrite's contract. An empty repo
-	// falls back to the tool-wide budget (the retired single tier); a zero PR is a
-	// narrower scope within the repo, not an exemption from one.
-	if repo == "" {
-		if err := checkToolBudget(tool, now, mine); err != nil {
-			return err
-		}
-	} else {
-		if err := checkPRBudget(tool, repo, pr, now, mine); err != nil {
-			return err
-		}
-		if err := checkRepoBudget(tool, repo, now, mine); err != nil {
-			return err
-		}
-	}
-	if err := checkBreaker(tool, repo, pr, now, mine); err != nil {
-		return err
-	}
-	return checkBreakerBackstop(tool, now, mine)
+	return runPlan(writeAtPlan(tool, repo, pr), now, mine)
 }
 
 // pointsFor loads `tool`'s audit lines, reduced to what the meters need and ordered
@@ -579,21 +538,8 @@ func AllowWriteAt(tool, repo string, pr int, now time.Time) error {
 // unchanged) rather than failing this read closed — the write GATE is where an
 // unattributable key is refused (RequireCanonicalToolKey), not the counting read.
 func pointsFor(tool string, now time.Time) ([]auditPoint, error) {
-	want := CanonicalToolKeyOr(tool)
-	if mine, ok := boundedPointsFor(want, now); ok {
-		sortPoints(mine)
-		return mine, nil
-	}
-	entries, err := LoadEntries()
-	if err != nil {
-		return nil, err // already an Unverifiable *DeskError
-	}
-	mine, err := pointsFrom(entries, want, tool)
-	if err != nil {
-		return nil, err
-	}
-	sortPoints(mine)
-	return mine, nil
+	mine, _, err := readPoints(tool, now)
+	return mine, err
 }
 
 // auditPoint is one of `tool`'s audit lines reduced to what the meters need.
@@ -704,19 +650,8 @@ func checkPRBudget(tool, repo string, pr int, now time.Time, mine []auditPoint) 
 	// numbered PR always uses the base cap. Either way the tier stays the per-PR tier, well
 	// under the per-repo 100 — an override RAISES a specific tool's unnumbered ceiling, it
 	// never lets the write fall through to a wider tier (the #439 fail-open shape).
-	limit := RateLimitPerPRPerHour
-	if pr == 0 {
-		limit = unnumberedCapFor(tool)
-	}
-	count, over, freeAt, retryAfter := chargedInWindow(now, mine, limit, func(e auditPoint) bool {
-		if e.repo != repo {
-			return false
-		}
-		if pr == 0 {
-			return e.pr == nil || *e.pr == 0
-		}
-		return e.pr != nil && *e.pr == pr
-	})
+	limit := prLimit(tool, pr)
+	count, over, freeAt, retryAfter := chargedInWindow(now, mine, limit, prScope(repo, pr))
 	if !over {
 		return nil
 	}
@@ -731,9 +666,7 @@ func checkPRBudget(tool, repo string, pr int, now time.Time, mine []auditPoint) 
 
 // checkRepoBudget applies the rolling-hour per-repo write budget.
 func checkRepoBudget(tool, repo string, now time.Time, mine []auditPoint) error {
-	count, over, freeAt, retryAfter := chargedInWindow(now, mine, RateLimitPerRepoPerHour, func(e auditPoint) bool {
-		return e.repo == repo
-	})
+	count, over, freeAt, retryAfter := chargedInWindow(now, mine, RateLimitPerRepoPerHour, repoScope(repo))
 	if !over {
 		return nil
 	}
@@ -744,9 +677,7 @@ func checkRepoBudget(tool, repo string, now time.Time, mine []auditPoint) error 
 // checkPRCreateBudget excludes known maintenance verbs. Legacy create/pr-create
 // and missing or unknown verbs remain charged rather than creating an unmetered lane.
 func checkPRCreateBudget(repo string, now time.Time, mine []auditPoint) error {
-	count, over, freeAt, retryAfter := chargedInWindow(now, mine, RateLimitPerPRPerHour, func(e auditPoint) bool {
-		return e.repo == repo && e.verb != "update" && e.verb != "edit"
-	})
+	count, over, freeAt, retryAfter := chargedInWindow(now, mine, RateLimitPerPRPerHour, prCreateScope(repo))
 	if !over {
 		return nil
 	}
@@ -767,9 +698,7 @@ func checkRepoWideBudget(tool, repo string, now time.Time, mine []auditPoint) er
 	// deskfile's PR-bound writes are the one class kept out of this fixed bucket: they are
 	// counted by AllowPRBoundWrite's own tier (see prBoundPoint). Every other write, of every
 	// tool, is counted here as before.
-	count, over, freeAt, retryAfter := chargedInWindow(now, mine, RateLimitPerPRPerHour, func(e auditPoint) bool {
-		return e.repo == repo && !prBoundPoint(e)
-	})
+	count, over, freeAt, retryAfter := chargedInWindow(now, mine, RateLimitPerPRPerHour, repoWideScope(repo))
 	if !over {
 		return nil
 	}
@@ -783,7 +712,7 @@ func checkRepoWideBudget(tool, repo string, now time.Time, mine []auditPoint) er
 // precisely the retired single-tier RateLimitPerHour behaviour, so a scope-less caller is
 // held to the base cap rather than escaping the meter (see AllowWrite).
 func checkToolBudget(tool string, now time.Time, mine []auditPoint) error {
-	count, over, freeAt, retryAfter := chargedInWindow(now, mine, RateLimitPerPRPerHour, func(auditPoint) bool { return true })
+	count, over, freeAt, retryAfter := chargedInWindow(now, mine, RateLimitPerPRPerHour, anyScope)
 	if !over {
 		return nil
 	}
@@ -848,18 +777,13 @@ func breakerOpen(tool string, run, trip int, last, now time.Time, target, advice
 // targets. checkBreakerBackstop below closes it; AllowWrite* call sites run BOTH, and
 // the tiers are conjunctive like every other meter in this file.
 func checkBreaker(tool, repo string, pr int, now time.Time, mine []auditPoint) error {
-	scope := func(auditPoint) bool { return true }
+	scope := anyScope
 	target := tool + " (no repo scope)"
 	if repo != "" {
+		scope = prScope(repo, pr)
 		if pr == 0 {
-			scope = func(e auditPoint) bool {
-				return e.repo == repo && (e.pr == nil || *e.pr == 0)
-			}
 			target = repo + " (writes carrying no PR/issue number)"
 		} else {
-			scope = func(e auditPoint) bool {
-				return e.repo == repo && e.pr != nil && *e.pr == pr
-			}
 			target = fmt.Sprintf("%s#%d", repo, pr)
 		}
 	}
@@ -875,7 +799,7 @@ func checkBreaker(tool, repo string, pr int, now time.Time, mine []auditPoint) e
 // checkBreakerRepo is checkBreaker's scope for a repo-wide call site (AllowWriteRepoWide):
 // the write cannot name a PR bucket in advance, so its breaker run is the whole repo.
 func checkBreakerRepo(tool, repo string, now time.Time, mine []auditPoint) error {
-	run, last, _ := breakerRun(mine, func(e auditPoint) bool { return e.repo == repo })
+	run, last, _ := breakerRun(mine, repoScope(repo))
 	if run < BreakerTrip {
 		return nil
 	}
@@ -926,7 +850,7 @@ func BreakerOpenRepoWideAt(tool, repo string, now time.Time) (open bool, err err
 // the misdirected advice #447 documented; attribution is the only actionable thing this
 // message can offer.
 func checkBreakerBackstop(tool string, now time.Time, mine []auditPoint) error {
-	run, last, members := breakerRun(mine, func(auditPoint) bool { return true })
+	run, last, members := breakerRun(mine, anyScope)
 	if run < BreakerBackstopTrip {
 		return nil
 	}
@@ -965,4 +889,287 @@ func roundUpToSecond(d time.Duration) time.Duration {
 		d += time.Second - d%time.Second
 	}
 	return d
+}
+
+// ---- Shared meter scopes and gate plans ----
+//
+// Each scope below is the ONE spelling of a bucket. The enforcing check* functions above and
+// the read-only ReadMeters below both take their scope from here, and both walk the same
+// gate plan, so a capacity reading cannot describe a bucket the gate does not count, or miss
+// one it does.
+
+func anyScope(auditPoint) bool { return true }
+
+// prScope is the (repo, pr) bucket. pr == 0 is the UNNUMBERED bucket: nil and zero are one
+// encoding of "no number" (see checkPRBudget).
+func prScope(repo string, pr int) func(auditPoint) bool {
+	return func(e auditPoint) bool {
+		if e.repo != repo {
+			return false
+		}
+		if pr == 0 {
+			return e.pr == nil || *e.pr == 0
+		}
+		return e.pr != nil && *e.pr == pr
+	}
+}
+
+// prLimit is the per-PR tier's cap for (tool, pr): the unnumbered override for pr == 0.
+func prLimit(tool string, pr int) int {
+	if pr == 0 {
+		return unnumberedCapFor(tool)
+	}
+	return RateLimitPerPRPerHour
+}
+
+func repoScope(repo string) func(auditPoint) bool {
+	return func(e auditPoint) bool { return e.repo == repo }
+}
+
+func prCreateScope(repo string) func(auditPoint) bool {
+	return func(e auditPoint) bool { return e.repo == repo && e.verb != "update" && e.verb != "edit" }
+}
+
+func repoWideScope(repo string) func(auditPoint) bool {
+	return func(e auditPoint) bool { return e.repo == repo && !prBoundPoint(e) }
+}
+
+// planMeter is one meter of a gate plan. check is the gate's own enforcing check; scope and
+// limit are the same values that check counts with, exposed so a read can report the count.
+type planMeter struct {
+	tier      string
+	target    string
+	breaker   bool
+	perTarget bool // the bucket is one target's (a PR), not shared by every target of the gate
+	limit     int
+	scope     func(auditPoint) bool
+	check     func(now time.Time, mine []auditPoint) error
+}
+
+// writeAtPlan is AllowWriteAt's meters, in the order it applies them. An empty repo falls
+// back to the tool-wide budget (the retired single tier); a zero PR is a narrower scope
+// within the repo, not an exemption from one. No branch leaves a caller ungated.
+func writeAtPlan(tool, repo string, pr int) []planMeter {
+	var plan []planMeter
+	if repo == "" {
+		plan = append(plan, planMeter{tier: "tool-wide", target: tool + " (no repo scope)",
+			limit: RateLimitPerPRPerHour, scope: anyScope,
+			check: func(now time.Time, mine []auditPoint) error { return checkToolBudget(tool, now, mine) }})
+		plan = append(plan, planMeter{tier: "breaker", target: tool + " (no repo scope)", breaker: true,
+			limit: BreakerTrip, scope: anyScope,
+			check: func(now time.Time, mine []auditPoint) error { return checkBreaker(tool, "", pr, now, mine) }})
+	} else {
+		target := fmt.Sprintf("%s#%d", repo, pr)
+		if pr == 0 {
+			target = repo + " (no PR number)"
+		}
+		plan = append(plan,
+			planMeter{tier: "per-PR", target: target, perTarget: pr != 0,
+				limit: prLimit(tool, pr), scope: prScope(repo, pr),
+				check: func(now time.Time, mine []auditPoint) error { return checkPRBudget(tool, repo, pr, now, mine) }},
+			planMeter{tier: "per-repo", target: repo, limit: RateLimitPerRepoPerHour, scope: repoScope(repo),
+				check: func(now time.Time, mine []auditPoint) error { return checkRepoBudget(tool, repo, now, mine) }},
+			planMeter{tier: "breaker", target: target, breaker: true, perTarget: pr != 0,
+				limit: BreakerTrip, scope: prScope(repo, pr),
+				check: func(now time.Time, mine []auditPoint) error { return checkBreaker(tool, repo, pr, now, mine) }})
+	}
+	return append(plan, backstopMeter(tool))
+}
+
+// repoWidePlan is allowRepoWideAt's meters, in the order it applies them.
+func repoWidePlan(tool, repo string, createsOnly bool) []planMeter {
+	if repo == "" {
+		// Same fail-closed fallback as AllowWriteAt: no repo, no reasoning about blast
+		// radius, so the tightest scope applies.
+		return []planMeter{
+			{tier: "tool-wide", target: tool + " (no repo scope)", limit: RateLimitPerPRPerHour, scope: anyScope,
+				check: func(now time.Time, mine []auditPoint) error { return checkToolBudget(tool, now, mine) }},
+			{tier: "breaker", target: tool + " (no repo scope)", breaker: true, limit: BreakerTrip, scope: anyScope,
+				check: func(now time.Time, mine []auditPoint) error { return checkBreaker(tool, "", 0, now, mine) }},
+		}
+	}
+	first := planMeter{tier: "repo-wide", target: repo, limit: RateLimitPerPRPerHour, scope: repoWideScope(repo),
+		check: func(now time.Time, mine []auditPoint) error { return checkRepoWideBudget(tool, repo, now, mine) }}
+	if createsOnly {
+		first = planMeter{tier: "new-PR", target: repo, limit: RateLimitPerPRPerHour, scope: prCreateScope(repo),
+			check: func(now time.Time, mine []auditPoint) error { return checkPRCreateBudget(repo, now, mine) }}
+	}
+	return []planMeter{
+		first,
+		// Maintenance writes do not consume the creation counter, but they still share
+		// the aggregate outward-write ceiling with creates.
+		{tier: "per-repo", target: repo, limit: RateLimitPerRepoPerHour, scope: repoScope(repo),
+			check: func(now time.Time, mine []auditPoint) error { return checkRepoBudget(tool, repo, now, mine) }},
+		{tier: "breaker", target: repo, breaker: true, limit: BreakerTrip, scope: repoScope(repo),
+			check: func(now time.Time, mine []auditPoint) error { return checkBreakerRepo(tool, repo, now, mine) }},
+		backstopMeter(tool),
+	}
+}
+
+func backstopMeter(tool string) planMeter {
+	return planMeter{tier: "backstop", target: tool + " (every target)", breaker: true,
+		limit: BreakerBackstopTrip, scope: anyScope,
+		check: func(now time.Time, mine []auditPoint) error { return checkBreakerBackstop(tool, now, mine) }}
+}
+
+// runPlan applies a gate plan: the first refusing meter's refusal, else nil.
+func runPlan(plan []planMeter, now time.Time, mine []auditPoint) error {
+	for _, m := range plan {
+		if err := m.check(now, mine); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ---- Read-only capacity view ----
+
+// MeterGate names the enforcement entry point a landing goes through. The reading is only
+// meaningful against the gate the write actually calls, so the caller names it.
+type MeterGate string
+
+const (
+	GateWriteAt  MeterGate = "write-at"  // AllowWrite / AllowWriteAt(tool, repo, pr)
+	GateRepoWide MeterGate = "repo-wide" // AllowWriteRepoWide / AllowWriteRepoWideAt(tool, repo)
+	GatePRCreate MeterGate = "pr-create" // AllowPRCreate / AllowPRCreateAt(repo), tool deskpr
+)
+
+// Meter states. Exhausted and open are both "the gate refuses now"; half-open is a cooled
+// breaker that admits exactly one probe attempt.
+const (
+	MeterAvailable = "available"
+	MeterExhausted = "exhausted"
+	MeterOpen      = "open"
+	MeterHalfOpen  = "half-open"
+)
+
+// MeterTarget is one landing target: the gate, the tool whose bucket it charges, and the
+// repo/PR it writes. SharedOnly reads only the meters every target of the gate shares and
+// lists the per-target buckets it did not read, for a caller that has no target yet.
+type MeterTarget struct {
+	Gate       MeterGate
+	Tool       string
+	Repo       string
+	PR         int
+	SharedOnly bool
+}
+
+// MeterReading is one meter of the gate plan as it stood at the reading's instant. For a
+// budget Used is the charged count in the rolling hour and Limit the cap; for a breaker Used
+// is the consecutive non-progress run and Limit the trip.
+type MeterReading struct {
+	Tier      string
+	Target    string
+	Breaker   bool
+	Used      int
+	Limit     int
+	Remaining int // budget only: Limit-Used, never below 0; -1 on a breaker
+	State     string
+	FreeAt    time.Time // when an exhausted/open meter frees; zero otherwise
+}
+
+// MeterSnapshot is a dated read of one target's enforced meters. It is a read model only:
+// it appends nothing, charges nothing, reserves nothing and changes no limit.
+type MeterSnapshot struct {
+	Target MeterTarget
+	At     time.Time
+	// Read names the ledger arm that answered (LedgerReadBounded or LedgerReadWhole).
+	Read string
+	// Scope is what the counts cover: this host's local audit ledger. Other hosts and the
+	// provider's own quota are not in it, and the snapshot never claims they are.
+	Scope  string
+	Meters []MeterReading
+	// Admits is the gate's own verdict on one more write, from the gate's own checks.
+	Admits bool
+	// Remaining is the number of further charged writes this host's ledger admits before a
+	// meter refuses: the smallest budget remainder, 0 when any meter refuses now, at most 1
+	// when a breaker is half-open. With SharedOnly it is an upper bound (see Unread).
+	Remaining int
+	// FreeAt is the latest free-at instant among the refusing meters: the gate admits
+	// again no earlier than this. Zero when Admits.
+	FreeAt time.Time
+	// Unread lists the per-target meters SharedOnly skipped.
+	Unread []string
+}
+
+// LedgerScope labels every MeterSnapshot's counts.
+const LedgerScope = "this host's audit ledger only; other hosts and provider quota not observed"
+
+// ReadMeters evaluates `t`'s gate plan read-only at `now`. An unreadable or malformed ledger is
+// an error (Unverifiable), never a zero or a spare-capacity reading.
+func ReadMeters(t MeterTarget, now time.Time) (*MeterSnapshot, error) {
+	tool := t.Tool
+	if t.Gate == GatePRCreate {
+		tool = "deskpr"
+	}
+	tool, err := RequireCanonicalToolKey(tool)
+	if err != nil {
+		return nil, err
+	}
+	var plan []planMeter
+	switch t.Gate {
+	case GateWriteAt:
+		plan = writeAtPlan(tool, t.Repo, t.PR)
+	case GateRepoWide:
+		plan = repoWidePlan(tool, t.Repo, false)
+	case GatePRCreate:
+		plan = repoWidePlan(tool, t.Repo, true)
+	default:
+		return nil, Refused(fmt.Sprintf("refused: unknown meter gate %q", t.Gate))
+	}
+	mine, arm, err := readPoints(tool, now)
+	if err != nil {
+		return nil, err
+	}
+	t.Tool = tool
+	snap := &MeterSnapshot{Target: t, At: now, Read: arm, Scope: LedgerScope, Admits: true, Remaining: -1}
+	for _, m := range plan {
+		if t.SharedOnly && m.perTarget {
+			snap.Unread = append(snap.Unread, m.tier+" "+m.target)
+			continue
+		}
+		r := MeterReading{Tier: m.tier, Target: m.target, Breaker: m.breaker, Limit: m.limit, State: MeterAvailable}
+		refusal := m.check(now, mine)
+		if refusal != nil && !IsRateLimited(refusal) {
+			return nil, refusal
+		}
+		if m.breaker {
+			run, last, _ := breakerRun(mine, m.scope)
+			r.Used, r.Remaining = run, -1
+			switch {
+			case refusal != nil:
+				r.State, r.FreeAt = MeterOpen, last.Add(BreakerCooldown)
+			case run >= m.limit:
+				r.State = MeterHalfOpen
+			}
+		} else {
+			count, over, freeAt, _ := chargedInWindow(now, mine, m.limit, m.scope)
+			r.Used, r.Remaining = count, m.limit-count
+			if r.Remaining < 0 {
+				r.Remaining = 0
+			}
+			if over {
+				r.State, r.FreeAt = MeterExhausted, freeAt
+			}
+		}
+		snap.Meters = append(snap.Meters, r)
+		left := r.Remaining
+		switch r.State {
+		case MeterOpen, MeterExhausted:
+			left = 0
+			snap.Admits = false
+			if r.FreeAt.After(snap.FreeAt) {
+				snap.FreeAt = r.FreeAt
+			}
+		case MeterHalfOpen:
+			left = 1
+		}
+		if left >= 0 && (snap.Remaining < 0 || left < snap.Remaining) {
+			snap.Remaining = left
+		}
+	}
+	if snap.Remaining < 0 {
+		snap.Remaining = 0 // a plan with no budget meter read is never spare capacity
+	}
+	return snap, nil
 }
