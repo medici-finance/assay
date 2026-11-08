@@ -133,6 +133,39 @@ Supplemental host observations, no acceptance credit; each was run outside the w
 | S9a | row 9's command with only the Evidence edit in the tree | exit 0 | 0 corroborated, 0 disproved, 13 unchecked: the brief is in the diff but its consumers lines are unchanged since the merge-base | 2026-11-01 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
 | S9b | `statusgen --root . --consumers --delivery 0ce631327963a306078f6965a595685c8944b1e4 --base eeaa65d08810d6b9db1422b9ffb2f4bdc779cb8b --brief desktools-v2/47` | exit 0 | 13 corroborated, 0 disproved, 0 unchecked. All 13 are follow-ups naming this brief; the delivery diff touches the 4 command packages and the registry, and none of the 8 consumer documents | 2026-11-01 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdisable ./cmd/deskmigrate ./cmd/deskaudit ./cmd/deskversion -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 4` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdisable ./cmd/deskmigrate ./cmd/deskaudit ./cmd/deskversion -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 4` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdisable ./cmd/deskmigrate ./cmd/deskaudit ./cmd/deskversion -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 4` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-47.json` | pass exit=0 | sha256:be446fe1e1dc | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskdisable/... ./cmd/deskmigrate/... ./cmd/deskaudit/... ./cmd/deskversion/...` | pass exit=0 | sha256:c0da43f3c528 | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskdisable ./cmd/deskmigrate ./cmd/deskaudit ./cmd/deskversion` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/47 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:255fe463102e | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:d38ad0057184 | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:aa21a4eea11a | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5632 run=a43de77f9f58bed250590ed3905a23f4e37e86c7b4bae0830ca1bb2e650c11d9 source=bc078e9179c862dde02b367d35177f8ffdf1b421 brief=docs/streams/desktools-v2/brief-47-migrate-the-small-admin-verbs-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+Re-verification at bc078e9179c8 (statusgen v1.0.75, host verifyrun, all rows class check, no check:ci row). `statusgen verifyrun --check` reports 9 pass, 0 fail, 0 could-not-run/missing of 9 Verify rows. Fail-first: no row is risk-bearing (the risk block is all "no" and no row's Command or Expect carries a risk-bearing, live, mutating or end-to-end tag), so the fail-first base run has no row to run.
+
+Supplemental host observations, no acceptance credit; each was run outside the witness:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| S4 | row 4's command, rerun to read its last line | exit 0 | `Totals: 12 caught, 0 NOT CAUGHT, 0 could-not-mutate.`; the spec declares 12 mutations | 2026-11-06 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| S8 | row 8's command, rerun to read its last line | exit 0 | `seed passes=26` | 2026-11-06 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| S9a | row 9's command with only the Evidence edit in the tree | exit 0 | 0 corroborated, 0 disproved, 13 unchecked: the brief is in the diff but its consumers lines are unchanged since the merge-base | 2026-11-06 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| S9b | `statusgen --root . --consumers --delivery 0ce631327963a306078f6965a595685c8944b1e4 --base eeaa65d08810d6b9db1422b9ffb2f4bdc779cb8b --brief desktools-v2/47` | exit 0 | 13 corroborated, 0 disproved, 0 unchecked | 2026-11-06 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| S9c | row 9's command in a clean scratch clone of the admitted source bc078e9179c8 | exit 0 | output digest sha256:aa21a4eea11a, equal to the row 9 witness; last line `consumers: no brief files in the diff against bc078e9179c862dde02b367d35177f8ffdf1b421 — nothing to corroborate` | 2026-11-06 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+
+Risk-bearing values, enumerated over the non-test diff of the delivering merge (#4996, 0ce631327963 against first parent eeaa65d08810) in the four command packages:
+
+- RISK-VALUE: DERIVED — UsageExit = deskkit.ExitRefused (5, exitcodes.go:51) @ tools/desk/cmd/deskaudit/main.go:184, tools/desk/cmd/deskdisable/main.go:190, tools/desk/cmd/deskmigrate/main.go:176, tools/desk/cmd/deskversion/main.go:178 — at the first parent each package returned deskkit.ExitRefused when its old parser refused the command line, and the ground rules require exit codes kept, so a parse refusal staying at 5 is the right value. Reversible by an edit.
+- tailMax = 10000 @ tools/desk/cmd/deskaudit/main.go:213 is carried over unchanged from the first parent (line 110 there), so it is not introduced or changed by this item.
+
+Attempts: one run of the Verify table (2026-11-06T18:11:20Z to 2026-11-06T18:13:42Z, 9 rows), credited.
+
+**VERIFY: BLOCKED** — rows 1 to 8 observed passing; row 9 exited 0 but checked nothing at the admitted source, so it carries no acceptance credit (S9c reproduces its witness digest and ends `consumers: no brief files in the diff against bc078e9179c862dde02b367d35177f8ffdf1b421 — nothing to corroborate`). Row 9 still names no pinned delivery; its definition repair is tracked in medici-finance/assay#4560. Nothing observed fails the brief.
 
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.

@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarryElement|TestHeldContainerFence|TestVerifyflip|TestHeldRecounted' -count=1 -timeout 300s",
+  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarryElement|TestHeldContainerFence|TestVerifyflip|TestHeldWitnessNonZero|TestHeldNonZero|TestHeldRecounted' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — supersession drops every earlier hold (the S1 defect)",
     "file": "heldscope.go",
@@ -1510,8 +1510,8 @@
     {
       "name": "#4294 run: a narrowed re-read that fails is admitted",
       "file": "verifyflip.go",
-      "old": "if qerr != nil {\n\t\t\treturn flipPass{}, err",
-      "new": "if false && qerr != nil {\n\t\t\treturn flipPass{}, err"
+      "old": "if rerr := read(from); rerr != nil {",
+      "new": "if rerr := read(from); false && rerr != nil {"
     },
     {
       "name": "#4294 run: the run is never narrowed to the latest heading",
@@ -1962,6 +1962,12 @@
       "file": "heldscope.go",
       "old": "\t\t\tif c == '\"' || c == '\\'' {\n\t\t\t\tst.quote = c\n\t\t\t} else if c == '>' {",
       "new": "\t\t\tif c == '>' {"
+    },
+    {
+      "name": "#5541: the cover reads a verifyrun pass at a non-zero exit as not clean again",
+      "file": "heldscope.go",
+      "old": "if !exit && heldWitnessPassRe.MatchString(strings.TrimSpace(cell)) {",
+      "new": "if false && heldWitnessPassRe.MatchString(strings.TrimSpace(cell)) {"
     }
   ]
 }

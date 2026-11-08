@@ -132,6 +132,7 @@ type observedBrief struct {
 // observations it judged, keyed by brief id.
 func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptions) (map[string]Coverage, map[string]observedBrief) {
 	observed := map[string]observedBrief{}
+	crossSources := map[string]*crossCoverage{}
 	revision := opts.Revision
 	if revision == "" {
 		revision = currentTreeRevision(root)
@@ -148,6 +149,9 @@ func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptio
 				continue
 			}
 			obs, texts := observeBriefTexts(root, path, s.Name+"/"+num, bf)
+			if source := coverageCrossSource(root, path, bf.Evidence, &obs); source != nil {
+				crossSources[obs.ID] = source
+			}
 			observed[obs.ID] = observedBrief{Path: path, Obs: obs, WitnessTexts: texts}
 			in.Briefs = append(in.Briefs, obs)
 		}
@@ -174,7 +178,14 @@ func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptio
 	if root != "" {
 		repo = newMemoRepo(newCoverageRepo(root))
 	}
-	return evaluation.EvaluateCoverage(in, repo), observed
+	coverage := evaluation.EvaluateCoverage(in, repo)
+	for id, source := range crossSources {
+		selected := in
+		selected.Revision = source.revision
+		selected.Briefs = []evaluation.BriefObservation{source.observation}
+		coverage[id] = evaluation.EvaluateCoverage(selected, source.repo)[id]
+	}
+	return coverage, observed
 }
 
 // observeBrief reads one brief file's coverage-relevant observations: its

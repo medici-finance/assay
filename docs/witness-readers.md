@@ -20,6 +20,7 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `statusgen/citationcorroborate.go` | reads informational fields only | identity token and Result cell for attribution and the verifier floor; takes the whole token, never splits on the marker |
 | `statusgen/containerbracket.go` | migrates in statusgen/37 | bracket of container-run witness cells carries the v1 tree token; the v2 form is written by statusgen/37 |
 | `statusgen/coverage.go` | judges through the library | hands the Runner cell and the record reader to the library; judges nothing itself |
+| `statusgen/coverage_crossrepo.go` | judges through the library | selects the bound source checkout and requires every latest row to have closed source-only container scope; passes applicability to the existing evaluator |
 | `statusgen/coverage_json.go` | judges through the library | hands the Runner cell and the record reader to the library; judges nothing itself |
 | `statusgen/coverage_witness.go` | judges through the library | hands the Runner cell and the record reader to the library; judges nothing itself |
 | `statusgen/deliveryfiles.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record |
@@ -57,11 +58,13 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `tools/desk/cmd/deskevidence/outcome.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/outcomebinding.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/outcomejoin.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
+| `tools/desk/cmd/deskevidence/outcomeonly.go` | migrates in statusgen/37 | admits an outcome-only verify-outcome record: reads the record's `evidence_withheld`, `outcome` and `sha`, and the admitted receipt's binding (repo, brief, source, run) and issue; compares `sha` with the receipt's brief source; judges no witness, Runner cell or revision; migrates with the record in statusgen/37 |
 | `tools/desk/cmd/deskevidence/outcomerecord.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/plainread.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/principalstamp.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/receiptvalidate.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/rowattribution.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
+| `tools/desk/cmd/deskevidence/verdictgate.go` | reads informational fields only | names `--outcome-record` in its refusal text; reads a brief's board status and the latest VERIFY verdict word of its Evidence through `statusgen evidenceverdict`; never reads a Runner cell, witness record or revision |
 | `tools/desk/cmd/deskevidence/verifiedgate.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskperf/main.go` | reads informational fields only | usage text naming the verify-outcome register that `deskperf reruns` reads; reads no cell, record or revision itself |
 | `tools/desk/cmd/deskperf/reruns.go` | reads informational fields only | reads a verify-outcome record's `attempts`, `started`, `finished` and timestamp to count re-runs and join their windows to perf rows; never a revision, tree token, record id or staleness verdict |

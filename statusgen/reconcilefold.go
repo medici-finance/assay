@@ -246,8 +246,8 @@ func humanSignoff(reviewed string) string {
 	return "human:" + m[1]
 }
 
-// reconcileFlipSource is the forge read decideModelFlip uses for the fold;
-// tests replace it.
+// reconcileFlipSource serves both approval and Evidence-shape reads with the
+// credential selected for the REST reader. Tests replace it.
 var reconcileFlipSource = liveModelFlipSource
 
 // foldApprovals asks decideModelFlip about every gate:model brief that would
@@ -255,7 +255,7 @@ var reconcileFlipSource = liveModelFlipSource
 // the brief's version, not Undecided. flipDone yields an approval naming the
 // reviewer, PR and head; flipRefused yields none (the brief stays verified);
 // flipUnchecked marks the brief Undecided.
-func foldApprovals(root string, in *LifecycleInput, data []reconcileFoldData) map[string]ApprovalInfo {
+func foldApprovals(root string, in *LifecycleInput, data []reconcileFoldData, client *ghClient) map[string]ApprovalInfo {
 	out := map[string]ApprovalInfo{}
 	if !in.LookedAt {
 		return out
@@ -266,7 +266,7 @@ func foldApprovals(root string, in *LifecycleInput, data []reconcileFoldData) ma
 		prsByBrief[key] = append(prsByBrief[key], pr)
 	}
 	rev := modelReviewer()
-	src := reconcileFlipSource(rev.Forge)
+	src := reconcileFlipSource(rev.Forge, client.token)
 	for _, d := range data {
 		id := d.ident.ID
 		if d.ident.Gate != "model" {
@@ -419,7 +419,7 @@ func wireFoldInputs(in *LifecycleInput, boardRoot string, client *ghClient, repo
 		}
 	}
 
-	in.Approvals = foldApprovals(boardRoot, in, data)
+	in.Approvals = foldApprovals(boardRoot, in, data, client)
 
 	if len(in.Undecided) > 0 {
 		ids := make([]string, 0, len(in.Undecided))
