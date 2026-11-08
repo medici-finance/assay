@@ -306,23 +306,37 @@ nothing measured.
       `GH_TOKEN`/`GITHUB_TOKEN` set explicitly. Under those conditions the binary reads the
       approval with that credential only and never falls back to a stored forge login. The
       binary does not enforce this outside them, so a run made outside them is not credited.
-    - **What does not count.** A forge-enabled run with any PROBLEM that names an authority
-      read it could not complete (`could-not-check repository authority: …`, `human approval
-      could not be corroborated: …`) is `could-not-run`, even when other PROBLEMs are
-      present: the weaker state of knowledge wins, as in rule 37. A run with any other
-      PROBLEM is `fail`. Neither is credit, though the lint exits 1 for both. A row whose
-      Expect asks for something other than a clean repo-wide lint (one brief's lint, a named
-      NOTICE, a problem count) is outside this rule.
+    - **What does not count.** A forge-enabled run is `could-not-run` when any PROBLEM
+      says an authority read did not complete: `could-not-check repository authority: …`,
+      or `human approval could not be corroborated: …` because the record could not be read
+      from the checkout or the forge did not answer: no forge client, a fetch error, an
+      HTTP error on the comment other than not-found or gone, any HTTP error on the issue,
+      or a payload that did not parse. That holds even when other
+      PROBLEMs are present: the weaker state of knowledge wins, as in rule 37. A read that
+      completed and refuted the approval is `fail`. That covers a malformed ruling link; a
+      comment that is deleted or never existed (not-found or gone), edited, bot-authored, or by an unmapped or
+      wrong author; a comment on another repository, issue or pull request, or on an issue
+      without the record's marker; a record the comment does not name; and an approval
+      that does not name the exact transition payload. Any other PROBLEM is also `fail`.
+      Neither is credit, though the lint exits 1 for both. A row whose Expect asks for
+      something other than a clean repo-wide lint (one brief's lint, a named NOTICE, a
+      problem count) is outside this rule.
     - **The row is not rewritten.** The Verify row keeps its authored command, because
       editing a protected row needs its own transition. The Evidence entry records the
-      forge-enabled run beside the row's offline witness and cites this rule. It uses the
-      rule-36 witness columns: the command as run, `<state> exit=<code>` with the state
-      decided as above, the `sha256:` fingerprint of the combined output, the date, and a
-      Runner derived from the executing identity as rule 36 derives it, never captioned.
-      Under it the entry keeps the run's primary output, including the `LINT: PASS` line
-      and the stderr line `acceptance transition: reading approval <url>` for each approval
-      read. That line shows the corroboration ran rather than being skipped. No tool writes
-      this entry, so a reviewer re-runs the command and compares the fingerprint.
+      forge-enabled run beside the row's offline witness and cites this rule.
+    - **The record is not a rule-36 witness, and it is not written as a table row.** No tool
+      writes it. `statusgen` reads every `|` table row in an `## Evidence` section, so a
+      row in the witness columns would become the Verify row's newest witness, recording a
+      command the row does not carry. `verifyrun --check` would then report the row
+      `could-not-run`, and the witness gate would refuse the close. Record the run as
+      prose or a fenced block outside any table, with no line starting with `|`. State
+      the command as run, its exit status and the state decided above, the revision, the
+      date, who ran it, and the `sha256:` fingerprint of the combined output. Include the
+      run's primary output too: the `LINT: PASS` line, and the stderr line
+      `acceptance transition: reading approval <url>` for each approval read, which shows
+      the corroboration ran rather than being skipped. The identity is as stated by whoever
+      records the run, not derived, so a reviewer re-runs the command and compares the
+      fingerprint.
 
 ## Derived status cells
 
