@@ -72,6 +72,55 @@ its own Apps, its own `deskd` port, and its own tmux session. They share nothing
 
 ---
 
+## Choosing a cell kind
+
+Pick the kind before `cellctl new`. Only the operator can make this choice, so a session setting up
+a cell asks rather than picking one. The kind decides whose roster the desks read and how many desks
+can run at once, and changing it later means building a new cell directory.
+
+| The operator wants | Kind | Roster and Apps | Desks at once |
+|---|---|---|---|
+| Their own desks on the repos already in `~/.config/assay` | `house` | the operator's, by symlink | all roles |
+| A second cell beside the house cell: another repo set, its own roster and Apps, every desk running | `k8s` with `DESKD=0` — **the default for a second cell** | the cell's own, in the cell directory's `home/.config/assay` | all roles |
+| A cell that serves cross-org reads through a persistent `deskd` | `k8s` (`DESKD` unset or `1`) | the cell's own | all roles |
+| A harness that must inherit nothing from the launching shell | `scrubbed` | the cell's own, one repo only | **one role** |
+| An existing container deployment | `container` | the container's | per the launcher |
+
+Two points are easy to miss:
+
+- **A scrubbed cell runs one desk.** It is single-occupancy by construction (see
+  [The session lock](#the-session-lock--two-independent-layers)). `cellctl up` on a scrubbed cell
+  starts only the first entry in `ROLES`. Choose it when isolation matters more than a parallel desk
+  pool, and say so to the operator when you choose it.
+- **`k8s` with `DESKD=0` is written by hand today.** `cellctl new --kind k8s` requires the deskd App
+  PEM and `--orgs`. To get the no-deskd shape, write the directory from
+  [What a cell is, on a laptop](#what-a-cell-is-on-a-laptop) without `bin/` and `index/`, and give
+  `cell.env` these lines:
+
+  ```bash
+  CELL=<cell>
+  CELL_KIND=k8s
+  CELL_FORGE=github
+  CELL_REPO=<checkout>
+  CELL_ROOTS=<owner>/<repo>=<checkout>
+  CELLS_CONFIG=<cells-root>/<cell>/cells-<cell>.yaml
+  ROLES="the-desk pr-review-desk verify-desk intake-desk worker-desk"
+  DESKD=0
+  ```
+
+  Fill `home/.config/assay/roster.env` and `apps.env` for this cell's repos and Apps only (see the
+  hand steps under `cellctl new`). `cellctl check <cell>` reports the deskd App key and `--orgs`
+  rows as `n/a` when `DESKD=0`.
+
+**Key file names.** `desktoken` looks for an App's private key as `<app-slug>.pem` in the config
+home, as well as the `<role>-app.pem` names used in this document. If a cell has only the role-named
+symlinks, every mint for an App whose `apps.env` names it by slug fails with `private key not found`.
+Link both names to the one key file. Before the first `up`, prove each role from the cell's own
+config: run `desktoken <role> --repo <owner>/<repo>` with `HOME` set to the cell's `home` directory
+and `ASSAY_CONFIG_HOME` set to its `home/.config/assay`.
+
+---
+
 ## Why the session keeps the real `HOME`
 
 This section applies to the **house** and **k8s** host launch paths. A container launcher assigns

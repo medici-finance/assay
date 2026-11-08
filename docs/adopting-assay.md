@@ -466,6 +466,9 @@ resolves. So if you run desks, land this pin on main before the first boot:
 
 `cellctl` comes with desk-tools (#850) — it is one of the extracted files, so nothing extra is
 needed to obtain it; see `docs/cellctl.md` for what it does and its own `--version` check.
+Before scaffolding a cell, ask the operator which kind they want. The table is in
+`docs/cellctl.md` §"Choosing a cell kind". A `scrubbed` cell runs one desk at a time, so never pick
+it without saying so.
 
 Configuration is at the **config-home only** (`~/.config/assay/`) — the same roster file the acting
 tools read everywhere (§3 `configure-roster`, failure mode 1); the environment is never a transport

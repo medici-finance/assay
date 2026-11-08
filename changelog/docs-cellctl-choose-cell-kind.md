@@ -1,0 +1,2 @@
+### Changed
+- `docs/cellctl.md` has a new "Choosing a cell kind" section with a decision table: which roster each kind reads and how many desks each can run at once. It states that a scrubbed cell runs one role, shows how to hand-write a `k8s` cell with `DESKD=0` (its own roster, every desk, no deskd), and notes that `desktoken` looks up keys as `<app-slug>.pem`. `docs/adopting-assay.md` now says to ask the operator which kind to build before scaffolding a cell (#5875).
