@@ -138,11 +138,11 @@ func TestEvVerdictNoBoard(t *testing.T) {
 
 // regression: #5759
 //
-// TestEvVerdictUnresolvedFailsClosed: every input whose status or verdict this
+// TestEvVerdictUnresolved: every input whose status or verdict this
 // subcommand cannot resolve is could-not-check (exit 2) — never landable, never
 // refused. One row per way the answer can go unresolved, so a new rounding at any
 // of these sites turns this table red.
-func TestEvVerdictUnresolvedFailsClosed(t *testing.T) {
+func TestEvVerdictUnresolved(t *testing.T) {
 	type row struct {
 		name  string
 		setup func(t *testing.T) (root string, args []string)
