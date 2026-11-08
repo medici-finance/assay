@@ -1,183 +1,183 @@
 {
-  "test": "python3 -B -m unittest discover -s tools/release -p transport_test.py && python3 -B -m unittest discover -s tools/release -p qualification_test.py",
+  "test": "cd ../.. && python3 -B -m unittest discover -s tools/release -p transport_test.py && python3 -B -m unittest discover -s tools/release -p qualification_test.py",
   "control": {
     "name": "distinct broken healthy reader",
-    "file": "tools/release/transport.py",
+    "file": "../../tools/release/transport.py",
     "old": "def _regular(path):",
     "new": "def _regular(path):\n    raise ValueError('distinct broken-reader control')"
   },
   "mutations": [
     {
       "name": "arm64-roster-omission",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "'statusgen-linux-arm64', ",
       "new": ""
     },
     {
       "name": "checksum-roster-omission",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "'build-inputs.sha256', ",
       "new": ""
     },
     {
       "name": "bundle-digest",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "bundle.stat().st_size != expected_size or sha256_file(bundle) != expected_digest",
       "new": "bundle.stat().st_size != expected_size"
     },
     {
       "name": "manifest-digest",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "if hashlib.sha256(manifest).hexdigest() != expected_manifest:",
       "new": "if False:"
     },
     {
       "name": "run-source-version",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "or any(decoded.get(k) != v for k, v in meta.items())",
       "new": "or False"
     },
     {
       "name": "archive-member-name",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "or entry.name != record['name']",
       "new": "or False"
     },
     {
       "name": "member-digest",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "if h.hexdigest() != record['sha256']:",
       "new": "if False:"
     },
     {
       "name": "explicit-credentials",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "if not key.strip() or not secret.strip():",
       "new": "if False:"
     },
     {
       "name": "https-only",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "parsed.scheme != 'https' or ",
       "new": ""
     },
     {
       "name": "absolute-ca-file",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "ca.is_absolute() and not ca.is_symlink() and ca.is_file()",
       "new": "not ca.is_symlink() and ca.is_file()"
     },
     {
       "name": "metadata-fallback-off",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "AWS_EC2_METADATA_DISABLED='true'",
       "new": "AWS_EC2_METADATA_DISABLED='false'"
     },
     {
       "name": "shared-credentials-off",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "AWS_SHARED_CREDENTIALS_FILE='/dev/null'",
       "new": "AWS_SHARED_CREDENTIALS_FILE='/ambient'"
     },
     {
       "name": "producer-attempt-output",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "handoff_attempt=meta['attempt']",
       "new": "handoff_attempt='wrong-attempt'"
     },
     {
       "name": "upload-length-confirmation",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "not isinstance(got, dict) or type(got.get('ContentLength')) is not int or got['ContentLength'] != Path(bundle).stat().st_size",
       "new": "False"
     },
     {
       "name": "trailing-check-position",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "plain.seek(payload_end)",
       "new": "plain.seek(0, 2)"
     },
     {
       "name": "trailing-padding-bound",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "len(padding) > 512 + 10240",
       "new": "False"
     },
     {
       "name": "trailing-nonzero-data",
-      "file": "tools/release/transport.py",
+      "file": "../../tools/release/transport.py",
       "old": "or any(padding)",
       "new": "or False"
     },
     {
       "name": "admission-scope",
-      "file": "tools/release/qualification.py",
+      "file": "../../tools/release/qualification.py",
       "old": "if any(env.get(k)!=v for k,v in required.items()):",
       "new": "if False:"
     },
     {
       "name": "source-binding",
-      "file": "tools/release/qualification.py",
+      "file": "../../tools/release/qualification.py",
       "old": "if env.get('QUALIFICATION_SOURCE') != env.get('GITHUB_SHA'):",
       "new": "if False:"
     },
     {
       "name": "publisher-producer-attempt",
-      "file": "tools/release/qualification.py",
+      "file": "../../tools/release/qualification.py",
       "old": "meta['attempt']=env['PRODUCER_ATTEMPT']",
       "new": "meta['attempt']=env['GITHUB_RUN_ATTEMPT']"
     },
     {
       "name": "typed-denial",
-      "file": "tools/release/qualification.py",
+      "file": "../../tools/release/qualification.py",
       "old": "if result.returncode and pattern.search(result.stderr): return True",
       "new": "if result.returncode: return True"
     },
     {
       "name": "positive-is-not-refusal",
-      "file": "tools/release/qualification.py",
+      "file": "../../tools/release/qualification.py",
       "old": "raise ValueError('a required transport refusal was accepted')",
       "new": "return True"
     },
     {
       "name": "producer-label",
-      "file": ".github/workflows/release-object-qualification.yml",
+      "file": "../../.github/workflows/release-object-qualification.yml",
       "old": "runs-on: assay-release-object-builder",
       "new": "runs-on: general-ci"
     },
     {
       "name": "publisher-label",
-      "file": ".github/workflows/release-object-qualification.yml",
+      "file": "../../.github/workflows/release-object-qualification.yml",
       "old": "runs-on: assay-release-object-publisher",
       "new": "runs-on: general-ci"
     },
     {
       "name": "trusted-digest-output",
-      "file": ".github/workflows/release-object-qualification.yml",
+      "file": "../../.github/workflows/release-object-qualification.yml",
       "old": "EXPECTED_BUNDLE_SHA256: ${{ needs.producer.outputs.bundle_sha256 }}",
       "new": "EXPECTED_BUNDLE_SHA256: ${{ secrets.UNTRUSTED_DIGEST }}"
     },
     {
       "name": "trusted-attempt-output",
-      "file": ".github/workflows/release-object-qualification.yml",
+      "file": "../../.github/workflows/release-object-qualification.yml",
       "old": "PRODUCER_ATTEMPT: ${{ needs.producer.outputs.handoff_attempt }}",
       "new": "PRODUCER_ATTEMPT: ${{ github.run_attempt }}"
     },
     {
       "name": "client-checksum",
-      "file": "tools/release/install-object-client.sh",
+      "file": "../../tools/release/install-object-client.sh",
       "old": " | sha256sum -c -",
       "new": " | cat"
     },
     {
       "name": "multipart-fixture",
-      "file": "tools/release/qualification.py",
+      "file": "../../tools/release/qualification.py",
       "old": "FIXTURE_BYTES = 20 << 20",
       "new": "FIXTURE_BYTES = 1 << 20"
     },
     {
       "name": "workflow-private-error-redaction",
-      "file": ".github/workflows/release-object-qualification.yml",
+      "file": "../../.github/workflows/release-object-qualification.yml",
       "old": "except Exception as error:\n              raise SystemExit('qualification refused at producer: '+type(error).__name__) from None",
       "new": "except KeyError as error:\n              raise SystemExit('qualification refused at producer: '+type(error).__name__) from None"
     }

@@ -131,4 +131,4 @@ No whole-file proposal should replace the current live workflow.
 
 The random multipart-sized inputs and version-shaped fixture member names are not release assets. Trusted producer job outputs bind the exact source, run, original producer attempt, hashes and size. A publisher-only rerun retains that producer attempt. The receipt is proof of the named checks only; failed or omitted checks are not qualification. Required cluster placement/admission and return-to-zero evidence remain operator gates, and the workflow cannot change runner capacity or release settings.
 
-Run the retained release tests plus `qualification_test.py` and the canonical `qualification-mutations.json` harness. The existing Go CI regression reader executes the entire Python test roster on PRs and main. No existing release workflow was edited.
+Run the retained release tests plus `qualification_test.py` and the canonical `tools/desk/internal/regression/release-object-qualification-mutations.json` harness (run from `tools/desk`). The existing Go CI regression reader executes the entire Python test roster on PRs and main. No existing release workflow was edited.
