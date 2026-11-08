@@ -291,6 +291,17 @@ they resolve must already be on disk. Which modules that is comes from the sourc
 under verification, never from the image: the roots are listed in the tree's own
 `images/verify-runner/go-module-roots.txt` (#4683).
 
+That list covers the whole tree. Every tracked Go module whose `go.sum` names a
+module is listed, or is named on a `# not provisioned: <root> — <reason>` line.
+`deskd` is the one such module: it requires this repository's own `tools/desk`
+module by version from the public proxy, which the module screen below refuses,
+so rows that build it cannot run offline in this lane. The statusgen test
+`TestModuleRootsCoverTree` fails when a module with requirements is added and not
+listed. Without it, that module's offline rows would stop on module resolution,
+and the pre-row gap check, which reads only the listed roots, could not name the
+cause. `TestRunnerCopiesReplaceTargets` holds the image's Dockerfile to copy the
+`go.mod` of every directory a listed root replaces a module with.
+
 **Admitted runs: a fresh cache per bracket.** When the verified home lists module
 roots, `statusgen verifyrun --open-bracket` requires `--module-cache <dir>`, a new
 empty directory outside the home that is not the host's own module cache. On the

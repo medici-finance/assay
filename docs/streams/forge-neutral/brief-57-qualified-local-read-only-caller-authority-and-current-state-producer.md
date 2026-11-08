@@ -15,7 +15,7 @@ decision-issue: 5428
 ruling: https://github.com/medici-finance/assay/issues/5428#issuecomment-6631318014
 issues: []
 schema: brief-v2
-version: 13
+version: 14
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
@@ -131,6 +131,23 @@ startup cancellation remains conservatively held, and no production serve,
 authorization, ownership, deadline or custody predicate changes. Preserve all
 original Task, Verify, Evidence and human decision obligations.
 
+## Verifier custody-packet production
+
+Rows 3 and 7 consume the owned source-bound custody packet, and its only producer is
+`testdata/qualify_fixture.py`. A verifier cannot credit either row while the packet
+comes from outside the row, so each row now runs that producer itself: a fresh
+detached linked worktree of HEAD, a new private work directory, the verifier's own Go,
+Python and container CLI, the host architecture as the declared Linux platform, and
+one explicit local engine named by `AUTH57_ENGINE_ENDPOINT` (a `unix://` socket; no
+default is selected). The producer's own checks are unchanged: a clean immutable
+source, a matching engine platform, a named custody PASS with no SKIP, every compiling
+production control caught with exact bytes restored, and exact owned cleanup. Row 3
+then requires the named custody PASS in the flow receipt; row 7 requires the controls
+PASS line in the controls receipt. Each producing row runs the whole qualification,
+so the verifier passes a per-row `--timeout` of at least 30m. The packet and image are
+disposable fixtures; no operational key, credential, registry or remote engine is
+read. This changes how the rows obtain their input, not what either row asserts.
+
 ## Actual-source and mechanism prerequisite
 
 The concrete Task1 proposal is [forge-local-authority-v1](../../../spec/forge-local-authority-v1.md). It is a draft assessment, not a selected operational profile or accepted custody mechanism. It names the actual cellcontainer source/consumer seam before any runtime edit. All original Task and Verify obligations remain.
@@ -198,11 +215,11 @@ These are prospective implementation commands. Qualification uses the actual sel
 |---|---|---|---|
 | 1 | check +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeLocalAuthorityClaims$' ./internal/forgeservice/auth > "$o" && grep -F -- '--- PASS: TestForgeLocalAuthorityClaims ' "$o")` | Named PASS; Actual producer binds every declared local claim; forged/foreign cell, audience, repository, source/admission, operation, role and epoch refuse. Removing each binding fails an independent runtime witness. |
 | 2 | check +flow +mutation +neighbour | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeLocalAuthorityCurrent$' ./internal/forgeservice/auth > "$o" && grep -F -- '--- PASS: TestForgeLocalAuthorityCurrent ' "$o")` | Named PASS; Actual current-state source refuses revoked, expired, restored/stale incarnation, unavailable and changed epochs, including changes during I/O and final release. Previously valid authority cannot be replayed after restart. |
-| 3 | check +dereference +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeLocalAuthorityCustody$' ./internal/forgeservice/auth > "$o" && grep -F -- '--- PASS: TestForgeLocalAuthorityCustody ' "$o")` | Named PASS; Actual independently isolated producer/profile denies sibling-role signing-key reads, current-state writes and grant upgrades; positive in-scope local verification works. Same-UID ACL-only or mock proof is rejected/unqualified. No operational key/role is touched. |
+| 3 | check +dereference +flow +mutation | `(e="${AUTH57_ENGINE_ENDPOINT:?UNQUALIFIED: explicit local engine endpoint required}" && w=$(mktemp -d) && s="$w/source" && trap 'git worktree remove --force "$s" 2>/dev/null; rm -rf "$w"' 0 && git worktree add -q --detach "$s" HEAD && python3 "$s/tools/desk/internal/forgeservice/auth/testdata/qualify_fixture.py" --source "$s" --work "$w/q" --go "$(command -v go)" --python "$(command -v python3)" --docker "$(command -v docker)" --endpoint "$e" --platform "linux/$(go env GOARCH)" --module-cache "$(go env GOMODCACHE)" --go-cache "$(go env GOCACHE)" && grep -F -- '--- PASS: TestForgeLocalAuthorityCustody ' "$w/q/actual-flow.stdout")` | Named PASS; Actual independently isolated producer/profile denies sibling-role signing-key reads, current-state writes and grant upgrades; positive in-scope local verification works. Same-UID ACL-only or mock proof is rejected/unqualified. No operational key/role is touched. The row itself builds the owned source-bound packet through `qualify_fixture.py` on a fresh linked worktree of HEAD against the verifier-named local engine `AUTH57_ENGINE_ENDPOINT` (a `unix://` socket); unset endpoint, SKIP or a hand-supplied packet does not pass. |
 | 4 | check +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeLocalAuthorityLaunch$' ./internal/forgeservice/auth > "$o" && grep -F -- '--- PASS: TestForgeLocalAuthorityLaunch ' "$o")` | Named PASS; Existing launcher composes only explicit qualified local profile. Missing/unknown configuration makes zero listener/source/key discovery calls; no default endpoint, remote login or effect grant. |
 | 5 | check +dereference +flow | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeLocalAuthorityCompatibility$' ./internal/forgeservice/auth > "$o" && grep -F -- '--- PASS: TestForgeLocalAuthorityCompatibility ' "$o")` | Named PASS; Dereference actual retained21/22 requirements and selected primitive/producer contract against closed witnesses for local versus external caller classes, all claims, custody and revocation. Raw primitive presence/default TTL does not qualify the profile. |
 | 6 | check:ci +dereference +flow | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeLocalAuthorityCI$' ./internal/forgeservice/auth > "$o" && grep -F -- '--- PASS: TestForgeLocalAuthorityCI ' "$o")` | Named PASS; Actual workflow reaches every primitive/launcher/current-state/custody input and requires qualified named containment PASS. Missing producer/profile and ordinary skips are explicitly unqualified. |
-| 7 | check +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && python3 internal/forgeservice/auth/testdata/local_authority_mutations.py > "$o" && cat "$o" && grep -F -- 'PASS: local authority production controls killed; exact bytes restored' "$o")` | Owned clean linked feature worktree; every named production guard fault compiles and fails its independent passing runtime witness. Exact bytes restore; absent containment/setup failures do not count. |
+| 7 | check +mutation | `(e="${AUTH57_ENGINE_ENDPOINT:?UNQUALIFIED: explicit local engine endpoint required}" && w=$(mktemp -d) && s="$w/source" && trap 'git worktree remove --force "$s" 2>/dev/null; rm -rf "$w"' 0 && git worktree add -q --detach "$s" HEAD && python3 "$s/tools/desk/internal/forgeservice/auth/testdata/qualify_fixture.py" --source "$s" --work "$w/q" --go "$(command -v go)" --python "$(command -v python3)" --docker "$(command -v docker)" --endpoint "$e" --platform "linux/$(go env GOARCH)" --module-cache "$(go env GOMODCACHE)" --go-cache "$(go env GOCACHE)" && cat "$w/q/production-controls.stdout" && grep -F -- 'PASS: local authority production controls killed; exact bytes restored' "$w/q/production-controls.stdout")` | Owned clean linked feature worktree; every named production guard fault compiles and fails its independent passing runtime witness. Exact bytes restore; absent containment/setup failures do not count. The packet is produced inside the row as in row 3, never hand-supplied; the controls run only after the named custody PASS. |
 | 8 | check +dereference | `GOWORK=off go -C statusgen run . --root .. --consumers --brief forge-neutral/57 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | Actual producer/profile/launcher edges corroborate or remain explicitly held. Bind independently established immutable delivery/base for post-merge verification; mocks and routing are not auth, deployment or parent acceptance. Any forge lookup uses the verifier's explicit managed identity. |
 
 ## Evidence
