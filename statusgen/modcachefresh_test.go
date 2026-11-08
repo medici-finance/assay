@@ -461,7 +461,7 @@ func TestModEgressParity(t *testing.T) {
 	if p := modEgressParityProblem(string(raw)); p != "" {
 		t.Fatal(p)
 	}
-	planted := strings.Replace(string(raw), "|filippo[.]io)/'", "|filippo[.]io|example[.]net)/'", 1)
+	planted := strings.Replace(string(raw), "APPROVED='^(", "APPROVED='^(example[.]net|", 1)
 	if planted == string(raw) {
 		t.Fatal("the planted stager did not change APPROVED")
 	}
@@ -537,3 +537,38 @@ func TestModEgressPatterns(t *testing.T) {
 }
 
 var origOperatorPrivateModulePatterns = operatorPrivateModulePatterns
+
+// regression: #4683
+// TestModEgressMainRoots: the module paths the listed roots on main could
+// request pass the open step's screen, dario.cat/mergo (gitcore, qualgen,
+// statusgen, tools/desk) and gitlab.com/gitlab-org/api/client-go (tools/desk)
+// among them, while a path under a neighbouring prefix that is not approved
+// still refuses.
+func TestModEgressMainRoots(t *testing.T) {
+	orig := operatorPrivateModulePatterns
+	operatorPrivateModulePatterns = func() []string { return nil }
+	t.Cleanup(func() { operatorPrivateModulePatterns = orig })
+	owners := []string{"medici-finance"}
+	for _, p := range []string{"dario.cat/mergo", "gitlab.com/gitlab-org/api/client-go"} {
+		if w := modulePathEgressProblem(p, owners, nil); w != "" {
+			t.Errorf("%s refused: %s", p, w)
+		}
+	}
+	for _, p := range []string{
+		"dario.cats/mergo", "sub.dario.cat/mergo",
+		"gitlab.com/gitlab-org/apix/y", "gitlab.com/gitlab-org/cli",
+		"gitlab.com/someone/api/client-go", "gitlab.com/x",
+	} {
+		if w := modulePathEgressProblem(p, owners, nil); w != "not on the approved public set" {
+			t.Errorf("%s: got %q, want the unapproved refusal", p, w)
+		}
+	}
+	roots, ok := bakedModuleRoots(filepath.Join("..", filepath.FromSlash(moduleRootsManifest)))
+	if !ok {
+		t.Fatalf("%s names no root", moduleRootsManifest)
+	}
+	env := moduleDownloadEnv(t.TempDir(), t.TempDir())
+	if err := moduleEgressProblem("..", roots, owners, env); err != nil {
+		t.Fatal(err)
+	}
+}
