@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/medici-finance/assay/statusgen/evaluation"
 	"github.com/medici-finance/assay/statusgen/verifyqueue"
 	"os"
 	"regexp"
@@ -583,7 +582,7 @@ func unrunAwaitRows(rows []verifyRowCells, evidence string) []unrunAwaitRow {
 		u := unrunAwaitRow{cells: r}
 		settled := false
 		for _, er := range evRows[id] {
-			prose := inlineCodeRe.ReplaceAllString(evaluation.StripReadSetToken(er.Text), "")
+			prose := inlineCodeRe.ReplaceAllString(stripWriterReadSetTokens(er.Text), "")
 			if clusterMarkerRe.MatchString(er.Text) {
 				u.clusterParked = true
 				continue

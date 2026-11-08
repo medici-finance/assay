@@ -6,7 +6,12 @@ package main
 // row's Runner cell carries a could-not-check token and no read-set file is
 // written, so the witness keeps today's conservative scope.
 
-import "github.com/medici-finance/assay/statusgen/evaluation"
+import (
+	"regexp"
+	"strings"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
+)
 
 // readSetRecorderShipped is THE switch for read-set judgement (review S20).
 // It is false while this build carries no recorder: no caller observes a
@@ -28,3 +33,42 @@ var honourReadSets = readSetRecorderShipped
 func readSetOffLinuxToken(goos string) string {
 	return evaluation.ReadSetCellToken("", "recorder is Linux-only ("+goos+")")
 }
+
+// writerReadsRe is the closed grammar of the read-set tokens verifyrun
+// writes (review S21), whichever host wrote the row: a sha256 digest, the
+// recorder-absent reason, or the off-Linux reason naming a GOOS. None of
+// them can carry an `@`, a tree, a principal or a hand-written reason.
+var writerReadsRe = regexp.MustCompile(`\(reads (?:sha256:[0-9a-f]{64}|could-not-check: (?:` +
+	regexp.QuoteMeta(evaluation.ReasonNoRecorder) + `|recorder is Linux-only \([a-z0-9]+\)))\)`)
+
+// writerReadsAtRe is writerReadsRe as the whole of a cell's first
+// parenthetical, which is where runnerCellWithReads writes it.
+var writerReadsAtRe = regexp.MustCompile(`^` + writerReadsRe.String())
+
+// stripWriterReadSetToken removes a Runner cell's read-set token only where
+// and as verifyrun writes it (runnerCellWithReads): one space and a token of
+// writerReadsRe, as the cell's FIRST parenthetical, right after
+// `<runner> @ <tree>` and ahead of the on-behalf-of and source parentheticals.
+// Any other token-shaped text (another position, a free-text reason, a
+// token naming a tree or principal) stays in the cell, so a check comparing
+// the stripped cell and the tree and principal readers, which read the whole
+// cell, see the same identity, tree and principal (review S21).
+func stripWriterReadSetToken(cell string) string {
+	first := strings.IndexByte(cell, '(')
+	if first < 1 || cell[first-1] != ' ' {
+		return cell
+	}
+	if m := writerReadsAtRe.FindString(cell[first:]); m != "" {
+		return cell[:first-1] + cell[first+len(m):]
+	}
+	return cell
+}
+
+// stripWriterReadSetTokens removes every writer-shaped token (one space and
+// a token of writerReadsRe) from a whole Evidence row's text. A token-shaped
+// span with any other content stays in the text.
+func stripWriterReadSetTokens(text string) string {
+	return writerReadsSpanRe.ReplaceAllString(text, "")
+}
+
+var writerReadsSpanRe = regexp.MustCompile(` ` + writerReadsRe.String())
