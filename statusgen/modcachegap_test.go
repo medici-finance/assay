@@ -181,6 +181,7 @@ func stubBakedRoots(t *testing.T, roots, cache string) {
 // own reasons (noisy, no module named) stays fail; a passing row passes, and no
 // row moves toward pass. The unshare lane never reclassifies, and with no
 // manifest, or no gap, nothing is reclassified.
+// regression: #5766
 func TestContainerRowStoppedOnMissingModule(t *testing.T) {
 	stubIfaces(t, netnoneIfaces)
 	root, cache := t.TempDir(), t.TempDir()
@@ -284,6 +285,7 @@ func TestContainerRowStoppedOnMissingModule(t *testing.T) {
 // through. A non-zero row is reclassified when its output names a missing
 // module or is empty; nothing else is, and a row that exits 0, is already
 // could-not-run, or runs with no gap is left alone.
+// regression: #5766
 func TestModGapReclassChokePoint(t *testing.T) {
 	gaps := []modGap{{Root: "tools/desk", Path: "golang.org/x/text", Want: "v0.43.0", Have: []string{"v0.41.0"}}}
 	for _, tc := range []struct {
