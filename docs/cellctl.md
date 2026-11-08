@@ -81,10 +81,10 @@ can run at once, and changing it later means building a new cell directory.
 | The operator wants | Kind | Roster and Apps | Desks at once |
 |---|---|---|---|
 | Their own desks on the repos already in `~/.config/assay` | `house` | the operator's, by symlink | all roles |
-| A second cell beside the house cell: another repo set, its own roster and Apps, every desk running | `k8s` with `DESKD=0` — **the default for a second cell** | the cell's own, in the cell directory's `home/.config/assay` | all roles |
+| A second cell beside the house cell: another repo set, its own roster and Apps, every desk running | `k8s` with `DESKD=0` — **recommended for a second cell** | the cell's own, in the cell directory's `home/.config/assay`, when launched with `ASSAY_CONFIG_HOME` unset or pointing there (see below) | all roles |
 | A cell that serves cross-org reads through a persistent `deskd` | `k8s` (`DESKD` unset or `1`) | the cell's own | all roles |
 | A harness that must inherit nothing from the launching shell | `scrubbed` | the cell's own, one repo only | **one role** |
-| An existing container deployment | `container` | the container's | per the launcher |
+| An existing container deployment | `container` | the container's | one via `up` (the-desk); other roles by explicit `cellctl desk` |
 
 Two points are easy to miss:
 
@@ -94,8 +94,9 @@ Two points are easy to miss:
   pool, and say so to the operator when you choose it.
 - **`k8s` with `DESKD=0` is written by hand today.** `cellctl new --kind k8s` requires the deskd App
   PEM and `--orgs`. To get the no-deskd shape, write the directory from
-  [What a cell is, on a laptop](#what-a-cell-is-on-a-laptop) without `bin/` and `index/`, and give
-  `cell.env` these lines:
+  [What a cell is, on a laptop](#what-a-cell-is-on-a-laptop) without `bin/` and `index/`. Create
+  `home`, `home/.config` and `home/.config/assay` mode 0700, as `cellctl new` does: that directory
+  holds the roster, `apps.env`, the key links and the token cache. Give `cell.env` these lines:
 
   ```bash
   CELL=<cell>
@@ -112,12 +113,30 @@ Two points are easy to miss:
   hand steps under `cellctl new`). `cellctl check <cell>` reports the deskd App key and `--orgs`
   rows as `n/a` when `DESKD=0`.
 
-**Key file names.** `desktoken` looks for an App's private key as `<app-slug>.pem` in the config
-home, as well as the `<role>-app.pem` names used in this document. If a cell has only the role-named
-symlinks, every mint for an App whose `apps.env` names it by slug fails with `private key not found`.
-Link both names to the one key file. Before the first `up`, prove each role from the cell's own
-config: run `desktoken <role> --repo <owner>/<repo>` with `HOME` set to the cell's `home` directory
-and `ASSAY_CONFIG_HOME` set to its `home/.config/assay`.
+**Key file names.** `desktoken` reads one key file per role: `<app-name>.pem`, where `<app-name>`
+is the role's `<ROLE>_APP` binding (the environment first, then `apps.env`) and defaults to
+`<role>-app`. A `<PREFIX>_PEM` variable naming a key path takes precedence over the file; `<PREFIX>`
+is the App name upper-cased, `-` as `_`, any trailing `_APP` dropped, so `<ROLE>_PEM` for the
+default name. A role that `apps.env` binds to an App by its slug therefore reads
+`<slug>.pem`, never the `<role>-app.pem` link this document shows, and a cell that carries only the
+role-named links fails that mint with `private key not found`. Name each key link after its role's
+binding; linking both names to the one key file also works.
+
+**Launch from a shell that does not point elsewhere.** The desk verbs look for `apps.env`, the App
+keys and the token cache in `ASSAY_CONFIG_HOME` before `$HOME/.config/assay`, and write the token
+cache to the first of those. A host launch of a `k8s` cell passes the launching shell's
+`ASSAY_CONFIG_HOME` through to its role windows; the shim swaps only `HOME`. The roster is always
+read from `$HOME/.config/assay`. So when the launching shell exports `ASSAY_CONFIG_HOME` for another
+config home, this cell's desks read this cell's roster but mint as the other config home's Apps.
+Run `cellctl check`, `desk` and `up` for this cell from a shell where `ASSAY_CONFIG_HOME` is unset
+or set to the cell's `home/.config/assay`. `cellctl check` does not test this yet (#5877).
+
+Before the first `up`, prove each role in the environment its window will get. In the shell you will
+launch from, first confirm that `printenv ASSAY_CONFIG_HOME` prints nothing or the cell's
+`home/.config/assay`. Then run `desktoken <role> --repo <owner>/<repo>` with only `HOME` set to the
+cell's `home` directory, leaving `ASSAY_CONFIG_HOME` as that shell has it. Do not set
+`ASSAY_CONFIG_HOME` for the proof alone: a proof run in an environment the desks never get passes
+even when the launch reads another config home.
 
 ---
 
