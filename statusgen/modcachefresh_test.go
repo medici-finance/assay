@@ -346,11 +346,16 @@ func TestModCacheNeverAmbient(t *testing.T) {
 	}
 	// The production ambient list names the host's GOMODCACHE, GOPATH caches
 	// and the default under HOME.
-	t.Setenv("GOMODCACHE", "/host/gomodcache")
-	t.Setenv("GOPATH", "/host/gopath")
-	t.Setenv("HOME", "/host/home")
+	host := t.TempDir()
+	t.Setenv("GOMODCACHE", filepath.Join(host, "gomodcache"))
+	t.Setenv("GOPATH", filepath.Join(host, "gopath"))
+	t.Setenv("HOME", filepath.Join(host, "userhome"))
 	got := strings.Join(origAmbientModuleCaches(), "\n") + "\n"
-	for _, want := range []string{"/host/gomodcache\n", "/host/gopath/pkg/mod\n", "/host/home/go/pkg/mod\n"} {
+	for _, want := range []string{
+		filepath.Join(host, "gomodcache") + "\n",
+		filepath.Join(host, "gopath", "pkg", "mod") + "\n",
+		filepath.Join(host, "userhome", "go", "pkg", "mod") + "\n",
+	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("ambient caches %q do not name %q", got, want)
 		}
