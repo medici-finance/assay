@@ -1,8 +1,8 @@
 # Automatic desk instances and rolling replacement
 
 **Requested architecture amendment, 25 October 2026.** This records the operator's
-requested direction and amends unfinished work; completed briefs receive routing
-notes only, with their new obligations carried by an unfinished owner. It implements or activates nothing;
+requested direction and amends unfinished work; completed briefs are left unchanged,
+and their new obligations are carried by an unfinished owner that depends on them. It implements or activates nothing;
 revision-bound architecture, custody, implementation and deployment gates remain.
 Source pickup: public Assay main `57196d5da`, fetched 25 October 2026. Current cellctl
 still keys house worktrees, leases and cadence checkpoints by role. Existing item
@@ -206,13 +206,13 @@ transport is qualified, the existing supported transport remains explicit.
 
 | Owner | Applied brief amendment |
 |---|---|
-| R2 exact ownership and runtime facts; approximate role pacing | graph-execution/19; shared supervisor journal /26, which also carries the delta for completed /16 (routing note only there) |
+| R2 exact ownership and runtime facts; approximate role pacing | graph-execution/19; shared supervisor journal /26, which also carries the delta for completed /16 (/16 itself unchanged) |
 | Standing clients and claim/usage policy | graph-execution/27 |
 | Config, naming, desired-population adapter and cell-op extension | new desk-containers/33; consumes /27 and completed /15; parallel to compatibility /31 |
-| Stops, lifecycle and replacement | desk-containers/33 carries the instance stop/drain delta for completed /16 and /18 (routing notes only there); replacement /19 |
+| Stops, lifecycle and replacement | desk-containers/33 carries the instance stop/drain delta for completed /15–/18 (those briefs unchanged); replacement /19 |
 | Status, diagnostics, logs, upgrade, GC and repair consumers | desk-containers/07, /20–25 |
-| Qualified profile, readiness, recovery and projection | delivered agent-execution/01 consumed; extension in /03, with /02, /04–05, /09 |
-| Managed Kubernetes/operator and independent journey | desk-containers/28–29; compatibility /06 preserved |
+| Qualified profile, readiness, recovery and projection | delivered agent-execution/01 consumed unchanged; extension in /03, with /02, /04–05, /09 |
+| Managed Kubernetes/operator and independent journey | desk-containers/28–29; completed /06 unchanged; its managed delta is in /28 |
 | Served contracts, authorization, thin clients and cutover | cell-api/01–04, /06–07 |
 | Role/group transport routing | amendment 24 retains its existing owners; no transport implementation in this amendment |
 

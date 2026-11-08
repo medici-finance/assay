@@ -3,7 +3,7 @@ brief: assay:assay:desk-containers:33
 title: Automatic desk instances and desired population through the shared runtime
 why: Operators need multiple independently configured workers and reviewers without duplicate work, deliberately multiplied role targets or up restarting desks intentionally left paused.
 wave: 9
-depends: ["graph-execution/27", "desk-containers/15"]
+depends: ["graph-execution/27", "desk-containers/15", "desk-containers/16", "desk-containers/17", "desk-containers/18"]
 unblocks: ["desk-containers/19", "desk-containers/20", "desk-containers/22", "desk-containers/28"]
 effort: M
 gate: human
@@ -12,12 +12,13 @@ gate-why: Changes desired-population, instance identity and legacy-to-managed ow
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 3
+version: 4
 authored: 2026-10-25 by Assay architecture authoring session
 sources:
   - docs/proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md
   - "freshness-checked 2026-10-25 @ 57196d5da (fetched public main; launcher, cadence, width and existing claim/admission seams inspected)"
   - "2026-11-04 routing: instance stop and drain deltas moved here from completed desk-containers/16 and /18; parallel compatibility brief desk-containers/31 (shared cellctl files, no ordering edge) noted under Ground rules"
+  - "2026-11-08 routing: the completed seam, stop, up and drain briefs are left unchanged on main (no routing notes); the Definition of Done below carries their instance deltas"
 exec-tier: strong
 exec-tier-why: Desired-state convergence, concurrent name allocation and cross-module instance ownership require design judgment.
 domain: complicated
@@ -168,6 +169,20 @@ Named tests must execute; zero matches or required-case skips fail independent v
 | I6 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDrainDeskInstance$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDrainDeskInstance ' "$o")` | Named PASS (zero matching tests is not a pass); an old worker stops taking new dispatch but finishes its held task while an unpaused peer continues; identity mismatch and drain timeout keep the targeted owner and report hold. Mutation: close role-wide surfaces or report an unknown stop as drained; the test fails. |
 | I7 | check +dereference | `statusgen --root . --lint` | exit 0; independent verifier additionally resolves named implementation consumers against the landed delivery and its actual first parent; unchecked required integration remains held. |
 | I8 | check:ci +dereference | `statusgen --consumers --brief desk-containers/33 --base $(git merge-base origin/main HEAD)` | exit 0; declared implementation sites and follow-up references corroborate; out-of-scope judgments remain UNCHECKED and reviewer-owned; completeness is not proved |
+
+## Definition of Done
+
+Tasks 1–7 land with the I1–I8 rows independently witnessed on merged main. The shipped
+code and docs of the completed briefs this one depends on stay intact while gaining the
+instance deltas: the /15 cell-op seam carries instance ID, generation and desired revision
+through its existing required-capability rules, and an incapable reader refuses rather than
+flattening; /17's `up` converges the desired population, preserving paused, stopped and
+draining members, without changing its singleton behavior; /16's machine/cell/role STOP
+meanings are unchanged beside the new instance-targeted stop; /18's drain/pause/resume keep
+every plan/TTY and foreign-stop restriction while accepting exact-instance selectors and a
+separate stop-new-admission barrier. Those briefs' Evidence is consumed, never rewritten.
+Public config/CLI docs and the changelog describe the population encoding and selectors.
+Implementation is not activation; the human gate above still binds enrollment.
 
 ## Evidence
 

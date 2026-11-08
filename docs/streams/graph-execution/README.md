@@ -395,7 +395,7 @@ The historical critical-path sketch retains the former /12 → /18 edge for hist
 
 ## Desk-instance amendment — 25 October 2026
 
-The [requested instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) amends unfinished owner briefs (completed ones receive routing notes only) without changing lifecycle status or completed Evidence. R2/R3 exact instance ownership and approximate role pacing → standing clients (graph-execution/27) → desired-population adapter (desk-containers/33) → lifecycle/Kubernetes consumers. API contract work can proceed against the declared versioned shape; runtime activation still requires its actual dependencies and independent qualification. Paused instances and draining predecessors remain part of pickup/retirement inventory.
+The [requested instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) amends unfinished owner briefs (completed ones are left unchanged; unfinished or new owner briefs carry their deltas) without changing lifecycle status or completed Evidence. R2/R3 exact instance ownership and approximate role pacing → standing clients (graph-execution/27) → desired-population adapter (desk-containers/33) → lifecycle/Kubernetes consumers. API contract work can proceed against the declared versioned shape; runtime activation still requires its actual dependencies and independent qualification. Paused instances and draining predecessors remain part of pickup/retirement inventory.
 
 ## Merge decision amendment — 2026-10-26
 
