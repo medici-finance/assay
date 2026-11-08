@@ -1039,6 +1039,12 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 			if heldOccurrenceNegated(clean, cuts, h) {
 				continue
 			}
+			// Free prose naming a state word is not a hold: on a non-table
+			// line only a HELD marker, a row result or a RISK-VALUE verdict
+			// is read (heldScanScope rule 6, #4721 ruling A).
+			if heldProseLine(line, read) && !heldProseSignal(clean, h) {
+				continue
+			}
 			// Prose beside a results table that says what an exit code
 			// means ("could-not-check → exit 6") is not a disposition; the
 			// row's own result cell is (heldScanScope rule 2, #1894).
