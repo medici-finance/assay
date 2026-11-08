@@ -228,6 +228,87 @@ RISK-VALUE: DERIVED — runtime update of `unknown_hold` on refresh_budgets at w
 
 **VERIFY: BLOCKED** — rows 7 and 10 are check-definition defects in the Verify table (#5698): row 7 stops at a setup precondition a detached post-merge home cannot meet, and row 10's merge-base base equals HEAD after the merge; row 8 (check:ci) not run to a verdict because the pinned verify-runner image's module cache does not match this source's tools/desk go.sum (#4683); rows 1-6 and 9 pass with rows 1-6 red at the pre-delivery base.
 
+Acceptance-Changes: 7=Command,10=Command
+Verification-Table: delivery=ef8316b8814dc2625ba701089909ddd8a399e96a base=ae3e2b12ded2c8202264a90df9d666d202842aa7 original=e5783147c8e96af62779601af8aa71f31667e567
+Acceptance-Transition: amendment=85898e42b80ec4114f0a0621dc7166fefbf066e4 approval=https://github.com/medici-finance/assay/issues/5724#issuecomment-6715508823
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPGRefreshProvision$' ./store > "$o" && grep -F -- '--- PASS: TestPGRefreshProvision ' "$o")` | pass exit=0 | sha256:447af6a7bf7a | 2026-11-08 | assay-verifier-app[bot] @ 010c13c16ff9b531242982a02bf86cc8e1f3ab5d (on-behalf-of human:ian) (forge-identity) | base=33b78e4273a2 red rc=1 · head=010c13c16ff9b531242982a02bf86cc8e1f3ab5d |
+| 2 | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPGRefreshProvisionReplay$' ./store > "$o" && grep -F -- '--- PASS: TestPGRefreshProvisionReplay ' "$o")` | pass exit=0 | sha256:82a839d41d48 | 2026-11-08 | assay-verifier-app[bot] @ 010c13c16ff9b531242982a02bf86cc8e1f3ab5d (on-behalf-of human:ian) (forge-identity) | base=33b78e4273a2 red rc=1 · head=010c13c16ff9b531242982a02bf86cc8e1f3ab5d |
+| 3 | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPGRefreshProvisionProcesses$' ./store > "$o" && grep -F -- '--- PASS: TestPGRefreshProvisionProcesses ' "$o")` | pass exit=0 | sha256:1523b82321ea | 2026-11-08 | assay-verifier-app[bot] @ 010c13c16ff9b531242982a02bf86cc8e1f3ab5d (on-behalf-of human:ian) (forge-identity) | base=33b78e4273a2 red rc=1 · head=010c13c16ff9b531242982a02bf86cc8e1f3ab5d |
+| 4 | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPGRefreshRuntimePrivileges$' ./store > "$o" && grep -F -- '--- PASS: TestPGRefreshRuntimePrivileges ' "$o")` | pass exit=0 | sha256:22c87e65de60 | 2026-11-08 | assay-verifier-app[bot] @ 010c13c16ff9b531242982a02bf86cc8e1f3ab5d (on-behalf-of human:ian) (forge-identity) | base=33b78e4273a2 red rc=1 · head=010c13c16ff9b531242982a02bf86cc8e1f3ab5d |
+| 5 | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPGRefreshProvisionSchema$' ./store > "$o" && grep -F -- '--- PASS: TestPGRefreshProvisionSchema ' "$o")` | pass exit=0 | sha256:1de408836efe | 2026-11-08 | assay-verifier-app[bot] @ 010c13c16ff9b531242982a02bf86cc8e1f3ab5d (on-behalf-of human:ian) (forge-identity) | base=33b78e4273a2 red rc=1 · head=010c13c16ff9b531242982a02bf86cc8e1f3ab5d |
+| 6 | `(cd tools/desk && test -n "$ASSAY_TEST_POSTGRES_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -race -v -run '^TestMirrorProvisionedReadThrough$' ./internal/deskkit > "$o" && grep -F -- '--- PASS: TestMirrorProvisionedReadThrough ' "$o")` | pass exit=0 | sha256:c8e2b258a223 | 2026-11-08 | assay-verifier-app[bot] @ 010c13c16ff9b531242982a02bf86cc8e1f3ab5d (on-behalf-of human:ian) (forge-identity) | base=33b78e4273a2 red rc=1 · head=010c13c16ff9b531242982a02bf86cc8e1f3ab5d |
+| 7 | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && python3 store/testdata/provision_mutations.py --delivery ef8316b8814dc2625ba701089909ddd8a399e96a --base 33b78e4273a2c68395a7cff18d8d831bca9b882f > "$o" && cat "$o" && grep -F -- 'PASS: provision production controls killed; exact bytes restored' "$o")` | pass exit=0 | sha256:a0bed627f9c4 | 2026-11-08 | assay-verifier-app[bot] @ 010c13c16ff9b531242982a02bf86cc8e1f3ab5d (on-behalf-of human:ian) (forge-identity) | base=33b78e4273a2 red rc=2 · head=010c13c16ff9b531242982a02bf86cc8e1f3ab5d |
+| 9 | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && GOWORK=off go vet ./... && GOWORK=off go test -count=1 -race ./...)` | pass exit=0 | sha256:195da1377d07 | 2026-11-08 | assay-verifier-app[bot] @ 010c13c16ff9b531242982a02bf86cc8e1f3ab5d (on-behalf-of human:ian) (forge-identity) | base=33b78e4273a2 green rc=0 · head=010c13c16ff9b531242982a02bf86cc8e1f3ab5d |
+| 10 | `GOWORK=off go -C statusgen run . --root .. --consumers --brief forge-neutral/55 --delivery ef8316b8814dc2625ba701089909ddd8a399e96a --base 33b78e4273a2c68395a7cff18d8d831bca9b882f` | pass exit=0 | sha256:392829b413c0 | 2026-11-08 | assay-verifier-app[bot] @ 010c13c16ff9b531242982a02bf86cc8e1f3ab5d (on-behalf-of human:ian) (forge-identity) | base=33b78e4273a2 red rc=1 · head=010c13c16ff9b531242982a02bf86cc8e1f3ab5d |
+Verification-Attestation: medici-finance/assay#5739 run=0eb01102d5d5baed8975f122f7fceae90411908b11fce8794453a3b35345fe87 source=010c13c16ff9b531242982a02bf86cc8e1f3ab5d brief=docs/streams/forge-neutral/brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 8 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestWorkflowRefreshProvisionCI$' ./internal/deskkit > "$o" && grep -F -- '--- PASS: TestWorkflowRefreshProvisionCI ' "$o")` | could-not-run exit=1 sandbox=container-netns — image module cache does not match go.sum (github.com/jackc/pgx/v5 v5.12.0 vs none; github.com/mattn/go-isatty v0.0.24 vs v0.0.20; github.com/pressly/goose/v3 v3.29.0 vs none): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:2b5e70b31771 | 2026-11-08 | assay-verifier-app[bot] @ 010c13c16ff9 (on-behalf-of human:ian) (forge-identity) | base=33b78e4273a2 red rc=1 · head=010c13c16ff9 |
+Tree-Digest: sha256:8915e2f3720611c806e5863dea9bcdba311ab9590a50c4ef09315b09cffd6f79
+Container-Image: sha256:576cb2e49407447769b79a32af370a23e1c108d62842b8f1772a809d1d3b7617
+Verification-Attestation: medici-finance/assay#5739 run=0eb01102d5d5baed8975f122f7fceae90411908b11fce8794453a3b35345fe87 source=010c13c16ff9b531242982a02bf86cc8e1f3ab5d brief=docs/streams/forge-neutral/brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=0eb01102d5d5baed8975f122f7fceae90411908b11fce8794453a3b35345fe87 source=010c13c16ff9b531242982a02bf86cc8e1f3ab5d tree=sha256:8915e2f3720611c806e5863dea9bcdba311ab9590a50c4ef09315b09cffd6f79 witness=sha256:85a4332acff56bf14eae6306c65d89bb2750c8e06fbe35cb0476b4fa97a4e505 opened=2026-11-08T01:44:17Z closed=2026-11-08T01:47:55Z before=receipt after=check-verifier
+
+#### Re-verification notes — 2026-11-08 acceptance transition
+
+Verifier notes: non-implementer, claude-opus-5-5, tier strong, statusgen/desk-tools v1.0.78 on the host, darwin arm64, KUBECONFIG=/dev/null, normal HOME, and no forge identity exported by the verifier.
+
+- **Source and delivery.** The source is 010c13c16ff9 on main. The delivering change is #5485, merge ef8316b8814d. Its first parent, 33b78e4273a2, is the fail-first base.
+- **Verify-table amendment.** The amendment is merge 85898e42b80e (#5706), which moved the brief from version 3 to 4. It changed only the Command cells of rows 7 and 10.
+- **Approval.** The approval of that transition is https://github.com/medici-finance/assay/issues/5724#issuecomment-6715508823.
+- **Re-derivation.** `deskpathguard rederive` reported 10 rows, 0 author-added. The original table is e5783147c8e9 at merge-base ae3e2b12ded2.
+- **Database.** Database rows ran against a disposable local PostgreSQL container created for this run only. No live infrastructure was touched.
+- **Earlier records.** Outcome records from earlier attempts are void and superseded by this run.
+
+Attempts:
+
+1. **Host run, 01:37:04Z to 01:40:10Z.** One verifyrun of rows 1-7, 9 and 10 ran with the Acceptance-Transition record above. It used `--acceptance-forge` for the approval read and `--fail-first --base 33b78e4273a2`. This is the credited host witness: the table above with the Base column and `Acceptance-Changes: 7=Command,10=Command`.
+2. **Row 8 container run, 01:44:17Z to 01:47:55Z.** Row 8 (check:ci) ran inside the container-netns admission bracket on the same source. It used the pinned verify-runner v1.0.75 image, linux/arm64 manifest, named in its Container-Image line. The baseline history came from `--open-bracket --history-out` and was used for the container fail-first. `--bracket-digest` reported verdict=match. The container got no extra environment beyond the git safe.directory setting and GOCACHE.
+
+Fail-first at base 33b78e4273a2:
+
+- Rows 1-7 and 10 are red at base and pass at head.
+- Row 8 is red at base and was not run to a verdict at head (see below).
+- Row 9 is green at both, so it does not discriminate. It is the whole-module vet and race suite, and its Expect cell is a whole-suite exit-0 regression gate: exit 0 on the disposable container with no skipped integration credit. That cell carries no fail-first obligation. Rows 1-7 discriminate the delivered controls, and row 9 is the regression gate around them. A green base is therefore expected for this row, and row 9 is credited as a regression gate with this disclosure. verifyrun folds the host run's exit code to 1 because of this row.
+
+Row 7 under the amended command:
+
+- `provision_mutations.py --delivery ef8316b8814d --base 33b78e4273a2` exited 0 in the detached post-merge home and printed its success line. Its base run is red (rc=2).
+- Supplemental check, no acceptance credit: the same command was re-run on the same source and database from 01:40:35Z to 01:41:57Z, with output kept. It printed 19 `KILLED` lines, one per named fault. Each fault compiled and failed at its named runtime assertion. The faults include known-baseline, immutable-replay, atomic-initialization, cross-process-source-fence, effective-membership, lower-eviction, owned-role-binding, provenance-immutability and dedicated-native-ci.
+- The script restored the exact original bytes. The brief's Evidence edit was the only change left in the home tree.
+
+Row 10 under the amended command:
+
+- The command now uses the explicit immutable bounds `--delivery ef8316b8814d --base 33b78e4273a2`, so its result no longer depends on the working-tree diff.
+- Supplemental check, no acceptance credit: the same command was re-run with output kept, using local history only and no forge reads. It reported 12 corroborated, 0 disproved and 2 unchecked, exit 0. The 2 unchecked entries are both out-of-scope entries, which is a reviewer judgement.
+- Its limit line says the gate judges only the listed entries, so an omitted consumer would not be seen.
+
+Row 8 was not run to a verdict:
+
+- Inside the pinned image, verifyrun stopped the row at module resolution, before its check ran. The reason it gave is that the image module cache does not match this source's tools/desk go.sum. For example, github.com/jackc/pgx/v5 v5.12.0 and github.com/pressly/goose/v3 v3.29.0 are absent from the cache.
+- This is the known runner-image gap #4683, and row 8 is the only row without acceptance credit in this run.
+
+Risk-bearing values were enumerated over the delivered diff and ranked:
+
+- Ranked first: the identifier length bound, the digest size, the timestamp resolution, the source fills bound, the runtime delete grant and the runtime budget update grant.
+- Ranked lower:
+  - the advisory lock key width, which is the first 8 bytes of sha256 of the source id (refresh_provision.go:137);
+  - the 64 KiB manifest cap (refresh_role_profile.go:105), which is an operational limit.
+- The amendment adds no literal. Irreversible: no. All cited lines were re-read at source 010c13c16ff9.
+
+RISK-VALUE: DERIVED — `len(s) <= 63` at workflow/store/refresh_role_profile.go:43 is PostgreSQL NAMEDATALEN 64 less the terminator. A longer role name would be truncated and could alias another role.
+RISK-VALUE: DERIVED — `octet_length(identity_hash)=32` at workflow/store/migrations/00004_refresh_initialization.sql:4 is the sha256 digest size produced by `sha256.Sum256(r.identity)` at workflow/store/refresh_provision.go:161.
+RISK-VALUE: DERIVED — `t.Nanosecond()%1000 == 0` at workflow/store/refresh_provision.go:62 matches timestamptz microsecond resolution, so an accepted instant replays exactly.
+RISK-VALUE: DERIVED — the source fills bound `0` in `initialUsage(p.Source.Usage, 0, ...)` at workflow/store/refresh_provision.go:71 is correct because refresh_budgets declares no fills column (workflow/store/refresh_role_profile.go:33).
+RISK-VALUE: DERIVED — runtime `delete: true` on refresh_fills at workflow/store/refresh_role_profile.go:36 is bounded below SQL by the refresh_eviction_guard trigger (workflow/store/migrations/00004_refresh_initialization.sql:16-28). Its mutation was killed in the row-7 run.
+RISK-VALUE: DERIVED — runtime update of `unknown_hold` on refresh_budgets at workflow/store/refresh_role_profile.go:33 cannot clear it, because workflow/store/migrations/00003_refresh.sql:111 raises 'unknown budget reset'.
+
+**VERIFY: BLOCKED** — row 8 (check:ci) was not run to a verdict because the pinned verify-runner image's module cache does not match this source's tools/desk go.sum (#4683). Under the approved acceptance transition, rows 1-7, 9 and 10 pass. Rows 1-7 and 10 are red at the pre-delivery base. Row 9, the whole-suite regression gate, is green at base, as disclosed above.
+
 ## Review
 
 Gate: human. Independent verification and acceptance follow the concrete implementation and role proof; operator provisioning, credential selection, serving and activation remain separate acts.
