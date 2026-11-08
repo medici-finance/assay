@@ -676,6 +676,13 @@ Evidence landing itself refuses, retain the diagnostic and file the landing bloc
 no outcome in its place. A nonzero process exit alone does not decide which obligation failed,
 and an exit 0 alone establishes neither row coverage nor qualification.
 
+A BLOCKED or could-not-check re-run of a verified brief is recorded in the outcome record only;
+only a reproducing FAIL or a fresh PASS earns an Evidence append. `deskevidence` refuses that
+Evidence append on a verified or done brief; land the run with
+`--outcome-record <file> --outcome-only`, whose record states
+`"evidence_withheld":"non-decisive-verdict-on-verified-brief"` and names the admitted
+observation commit as its `sha`, and open no Evidence PR.
+
 ## On VERIFY: FAIL — a Change Failure, filed not buried
 
 **First, is it a STALE row rather than a Change Failure?** A large share of FAILs are the same
