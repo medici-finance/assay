@@ -42,6 +42,12 @@
       "file": "internal/kubecompat/preparation/core.py",
       "old": "if not args.prepare:",
       "new": "if False:"
+    },
+    {
+      "name": "domain imports modules from the caller working directory",
+      "file": "internal/kubecompat/preparation/run.go",
+      "old": "\"python3\", \"-I\", \"-B\", \"-c\"",
+      "new": "\"python3\", \"-B\", \"-c\""
     }
   ]
 }

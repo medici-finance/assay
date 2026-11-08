@@ -30,10 +30,13 @@ func prepEnvironment(t *testing.T, report bool, uid int) []string {
 	if report {
 		body += "print(sys.stdin.read(), end='')\n"
 	} else {
+		// Re-exec the real interpreter with the flags cellctl passed, so the
+		// child's sys.path (and so its import isolation) is the production one.
 		replacement := fmt.Sprintf("LAUNCHER = Path(%q)", launcher)
-		body += fmt.Sprintf("os.geteuid = lambda: %d\nos.getegid = lambda: 999\n", uid)
-		body += fmt.Sprintf("source = sys.argv[-1].replace(%q, %q)\n", "LAUNCHER = Path('/usr/local/lib/assay/desk-session.py')", replacement)
-		body += "exec(compile(source, '<preparation-fixture>', 'exec'), {'__name__': '__main__'})\n"
+		prelude := fmt.Sprintf("import os\nos.geteuid = lambda: %d\nos.getegid = lambda: 999\n", uid)
+		body += "at = sys.argv.index('-c')\n"
+		body += fmt.Sprintf("source = %q + sys.argv[at + 1].replace(%q, %q)\n", prelude, "LAUNCHER = Path('/usr/local/lib/assay/desk-session.py')", replacement)
+		body += fmt.Sprintf("os.execv(%q, [%q, *sys.argv[1:at], '-c', source])\n", python, python)
 	}
 	if err := os.WriteFile(filepath.Join(root, "python3"), []byte(body), 0o755); err != nil {
 		t.Fatal(err)
@@ -111,6 +114,70 @@ func testCompatPreparationLegacyForms(t *testing.T) {
 	}
 }
 
+// prepVolume builds a synthetic cold work volume and the arguments that select it.
+func prepVolume(t *testing.T, role string) (work, marker string, args []string) {
+	t.Helper()
+	work = filepath.Join(t.TempDir(), "cold work é")
+	if err := os.MkdirAll(filepath.Join(work, "repository"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	agent := filepath.Join(work, "agent")
+	marker = filepath.Join(work, "agent-started")
+	if err := os.WriteFile(agent, []byte("#!/bin/sh\ntouch '"+marker+"'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := filepath.Join(work, "package.json")
+	if err := os.WriteFile(manifest, []byte(`{"name":"@anthropic-ai/claude-code","version":"2.1.228"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	instructions := filepath.Join(work, "role.md")
+	if err := os.WriteFile(instructions, []byte("synthetic role"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args = append(prepArgs(role), "--work", work, "--agent", agent, "--version-manifest", manifest, "--instructions", instructions)
+	return work, marker, args
+}
+
+// testCompatPreparationCwdShadow runs plan, prepare and readback from inside the
+// writable work volume, which holds stdlib-named modules the domain and the
+// in-process launcher import. None of them may load.
+// regression: S1 python-import-isolation (#5708)
+func testCompatPreparationCwdShadow(t *testing.T) {
+	t.Helper()
+	bin := cellctlBinary(t)
+	work, _, args := prepVolume(t, "worker-desk")
+	imported := filepath.Join(t.TempDir(), "shadow-imported")
+	for _, name := range []string{"json", "re", "subprocess", "fcntl", "hashlib", "select", "termios"} {
+		plant := fmt.Sprintf("open(%q, 'a').write(%q)\n", imported, name+"\n")
+		if err := os.WriteFile(filepath.Join(work, name+".py"), []byte(plant), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	env := prepEnvironment(t, false, 999)
+	run := func(extra ...string) cliRun {
+		cmd := exec.Command(bin, append(append([]string{}, args...), extra...)...)
+		cmd.Env, cmd.Dir = env, work
+		var out, errb strings.Builder
+		cmd.Stdout, cmd.Stderr = &out, &errb
+		code := 0
+		if err := cmd.Run(); err != nil {
+			ee, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatal(err)
+			}
+			code = ee.ExitCode()
+		}
+		return cliRun{Code: code, Stdout: out.String(), Stderr: errb.String()}
+	}
+	for _, mode := range [][]string{nil, {"--prepare"}, {"--readback"}} {
+		got := run(mode...)
+		if raw, err := os.ReadFile(imported); err == nil {
+			t.Fatalf("mode %v imported work-volume modules: %q (%+v)", mode, raw, got)
+		}
+		prepJSON(t, got)
+	}
+}
+
 // TestCLICompatPreparation exercises real preparation through the compiled CLI,
 // the embedded domain, and the existing image launcher against synthetic files.
 func TestCLICompatPreparation(t *testing.T) {
@@ -135,26 +202,10 @@ assert ast.dump(ast.Module(body=source.body[1:], type_ignores=[])) == ast.dump(e
 			t.Fatal(err, string(out))
 		}
 	})
+	t.Run("cwd-modules-not-imported", testCompatPreparationCwdShadow)
 	for _, role := range []string{"the-desk", "intake-desk", "worker-desk", "pr-review-desk", "verify-desk"} {
 		t.Run(role, func(t *testing.T) {
-			work := filepath.Join(t.TempDir(), "cold work é")
-			if err := os.MkdirAll(filepath.Join(work, "repository"), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			agent := filepath.Join(work, "agent")
-			marker := filepath.Join(work, "agent-started")
-			if err := os.WriteFile(agent, []byte("#!/bin/sh\ntouch '"+marker+"'\n"), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			manifest := filepath.Join(work, "package.json")
-			if err := os.WriteFile(manifest, []byte(`{"name":"@anthropic-ai/claude-code","version":"2.1.228"}`), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			instructions := filepath.Join(work, "role.md")
-			if err := os.WriteFile(instructions, []byte("synthetic role"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			args := append(prepArgs(role), "--work", work, "--agent", agent, "--version-manifest", manifest, "--instructions", instructions)
+			work, marker, args := prepVolume(t, role)
 			env := prepEnvironment(t, false, 999)
 			before := snapshotTree(t, work)
 			plan := prepJSON(t, execIn(t, bin, env, args...))

@@ -38,7 +38,9 @@ func Run(ctx context.Context, options Options, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "held: compatibility preparation inputs unavailable")
 		return 78
 	}
-	child := exec.CommandContext(ctx, "python3", "-B", "-c", core+"\nraise SystemExit(main())\n")
+	// -I keeps the caller's working directory (the writable work volume) and
+	// PYTHON* variables off the import path; -c alone would put the cwd first.
+	child := exec.CommandContext(ctx, "python3", "-I", "-B", "-c", core+"\nraise SystemExit(main())\n")
 	child.Stdin = bytes.NewReader(raw)
 	child.Stdout, child.Stderr = stdout, stderr
 	if err := child.Run(); err != nil {
