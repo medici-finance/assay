@@ -284,6 +284,10 @@ def _git_bytes(repo, args, stderr_only=False):
     the caller to decode. With stderr_only the child's stdout is discarded and
     its stderr is returned instead (for a failure diagnostic). `args` is
     trusted shell text: the caller quotes every interpolated value with _shq.
+
+    A shell exit of 127 (git could not be run) raises FileNotFoundError here,
+    the one place that reads the status, so no caller can mistake it for an
+    ordinary git failure: it is an OSError like the one an argv spawn raises.
     """
     redirect = "2>&1 >/dev/null" if stderr_only else "2>/dev/null"
     cmd = "git -C %s %s %s" % (_shq(repo), args, redirect)
@@ -292,7 +296,10 @@ def _git_bytes(repo, args, stderr_only=False):
         status = fh.close()
     if status is None:
         return 0, data
-    return (status >> 8) or 1, data
+    rc = (status >> 8) or 1
+    if rc == _SHELL_NOT_FOUND:
+        raise FileNotFoundError("git not found (shell exit %d)" % rc)
+    return rc, data
 
 
 def _resolve_fragment_pr(repo, relpath):
@@ -532,8 +539,6 @@ def _fragments_at_ref(fragment_dir, ref):
         rc, out = _git_bytes(fragment_dir, "rev-parse --show-toplevel")
     except OSError as exc:
         raise RefError("cannot run git: %s" % exc)
-    if rc == _SHELL_NOT_FOUND:
-        raise RefError("cannot run git: not found")
     top = os.fsdecode(out).strip()
     if rc != 0 or not top:
         raise RefError("%s is not inside a git work tree" % fragment_dir)
@@ -545,8 +550,6 @@ def _fragments_at_ref(fragment_dir, ref):
         _shq(ref + "^{commit}"), _shq(spec or "."))
     try:
         rc, out = _git_bytes(root, ls_args)
-        if rc == _SHELL_NOT_FOUND:
-            raise RefError("cannot run git: not found")
         if rc != 0:
             # Re-run for the diagnostic only: stdout is dropped, stderr kept.
             _rc, err = _git_bytes(root, ls_args, stderr_only=True)

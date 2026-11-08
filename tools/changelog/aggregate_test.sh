@@ -382,15 +382,24 @@ if [ "$(basename "$AGG")" = "aggregate.py" ]; then
     bad "R3d shell-shaped ref (rc: $rc rc2: $rc2)"; printf '%s\n%s\n' "$out" "$out2"; ls "$D"
   fi
 
-  # R3e: git not runnable at all fails closed (rc 4), files unchanged. The
-  #      shell reports a missing git as exit 127, which must not read as success.
+  # R3e: git that cannot be run fails closed (rc 4, files unchanged) AND is
+  #      reported as "cannot run git": the shell's exit 127 must not pass for
+  #      "not a work tree" or "cannot resolve the ref". Both git calls are
+  #      covered: (a) no git on PATH, so rev-parse gets 127; (b) a stand-in git
+  #      that answers rev-parse but exits 127 on ls-tree.
   rollrepo
-  py="$(command -v python3)"
+  py="$(command -v python3)"; realgit="$(command -v git)"
   out="$(PATH=/nonexistent "$py" "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 --clear 2>&1)"; rc=$?
-  if [ "$rc" = 4 ] && [ -e "$D/changelog/early-one.md" ] && ! grep -q 'v0.2.0' "$D/CHANGELOG.md"; then
-    ok "R3e git not runnable fails closed (rc 4, files unchanged)"
+  fake="$(mktemp -d "${TMPDIR:-/tmp}/clagg-XXXXXX")"
+  printf '#!/bin/sh\ncase " $* " in *" ls-tree "*) exit 127;; esac\nexec "%s" "$@"\n' "$realgit" > "$fake/git"
+  chmod +x "$fake/git"
+  outb="$(PATH="$fake:$PATH" python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 --clear 2>&1)"; rcb=$?
+  if [ "$rc" = 4 ] && grep -q 'cannot run git' <<<"$out" \
+     && [ "$rcb" = 4 ] && grep -q 'cannot run git' <<<"$outb" \
+     && [ -e "$D/changelog/early-one.md" ] && ! grep -q 'v0.2.0' "$D/CHANGELOG.md"; then
+    ok "R3e git not runnable fails closed as 'cannot run git' (rc 4, files unchanged)"
   else
-    bad "R3e git missing (rc: $rc)"; printf '%s\n' "$out"
+    bad "R3e git not runnable (rc: $rc rcb: $rcb)"; printf '%s\n%s\n' "$out" "$outb"
   fi
 
   # R3f: a work tree whose path holds a space and a single quote still
@@ -403,6 +412,26 @@ if [ "$(basename "$AGG")" = "aggregate.py" ]; then
     ok "R3f quoted work-tree path resolves at the ref"
   else
     bad "R3f odd work-tree path (rc: $rc)"; printf '%s\n' "$out"
+  fi
+
+  # R3g: a fragment dir whose name holds a single quote and a dollar sign is
+  #      quoted as the ls-tree path spec: the roll reads it at the ref and the
+  #      text in the name never runs.
+  newcase
+  fd="$D/frag's \$(touch pwned3)"
+  mkdir -p "$fd"
+  echo '- `spec-early` shipped.' > "$fd/spec-early.md"
+  git -C "$D" init -q
+  git -C "$D" add -A
+  git -C "$D" -c user.name=t -c user.email=t@example.invalid commit -q -m seed
+  git -C "$D" tag v0.2.0
+  echo '- `spec-late` shipped after the tag.' > "$fd/spec-late.md"
+  out="$(cd "$D" && python3 "$AGG" roll "$fd" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 2>&1)"; rc=$?
+  if [ "$rc" = 0 ] && grep -q 'spec-early' "$D/CHANGELOG.md" && ! grep -q 'spec-late' "$D/CHANGELOG.md" \
+     && [ ! -e "$D/pwned3" ]; then
+    ok "R3g quoted fragment-dir path spec resolves at the ref"
+  else
+    bad "R3g odd fragment-dir name (rc: $rc)"; printf '%s\n' "$out"
   fi
 
   # R4: a duplicate `## <tag>` section is refused (exit 3), every file unchanged.
