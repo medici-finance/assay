@@ -1018,6 +1018,68 @@ VERIFY rows: 8 of 13 pass under the witness (rows 2, 3, 4, 5, 8, 9, 10, 12). Row
 
 **VERIFY: BLOCKED** — no product failure observed. 8 of 13 rows pass under an admitted network-off witness at 1bfcf9a4dcb5. Rows 6 and 7 have an Expect-versus-command mismatch, and row 13 has no cmd: span (medici-finance/assay#1927). Row 11 cannot pass on merged main as written (medici-finance/assay#1281). Row 1 could not run within this lane's 12-minute timeout; a supplemental re-run fails only on environment gaps outside desklabel (medici-finance/assay#4683 tracks the lane's module-cache gap).
 
+### Non-implementer verifier run — 2026-11-08 claude-opus-5-5-verifier — desk tools v1.0.78 re-verification
+
+The 2026-11-01 block above, at 1bfcf9a4dcb5, credited rows 2, 3, 4, 5, 8, 9, 10 and 12. This block adds a fresh witness run at merged main 2e1ddcbd72c2 and edits nothing above. A verify-outcome record from a 2026-11-06 run at 4cf9795597f6 was never landed; it is void, and this run writes a fresh one.
+
+Admission: `deskdispatch --check-verifier` exited 0 from the admitted home before any row, and again after the Evidence edit. Both runs bound run=d4330d619cf46668fb906979110ecec5e4329318684415704c72eadf40bf85bb, source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f, model claude-opus-5-5, tier strong, runtime darwin-arm64 (medici-finance/assay#5834), with tool v1.0.78. `deskpathguard rederive` found 13 rows, 0 author-added, base 2e1ddcbd72c2, so the Verify table is the one the earlier blocks ran. `tools/desk/cmd/desklabel` has no commits since 1bfcf9a4dcb5. The only change to this brief in that range is the Evidence commit 49211fd86. The delivering change is medici-finance/assay#1180, merged as 2d29666225b7.
+
+Witness lanes. Rows 1-12 ran in one admission bracket (opened 2026-11-08T07:59:14Z, closed 2026-11-08T08:10:04Z) as `statusgen verifyrun --sandbox=container-netns --rows 1,2,3,4,5,6,7,8,9,10,11,12 --timeout 25m`. The image is the linux/arm64 manifest of the pinned verify-runner v1.0.75 image index; its digest is in the Container-Image line below, and its own `statusgen --version` prints v1.0.75. It ran native arm64 on an arm64 host, through the default docker context (the OrbStack engine on this host). The container ran with `--network none`, all capabilities dropped, `no-new-privileges`, the host user id, `GOPROXY=off`, `GOSUMDB=off`, `GOTOOLCHAIN=local`, `GOFLAGS=-mod=readonly` and `KUBECONFIG=/dev/null`, and with no forge token. The home, the repository's git directory and the host Go module cache were mounted read-only. HOME, TMPDIR and GOCACHE were writable scratch directories outside the home, with a copy of the roster file and no other configuration. `statusgen verifyrun --bracket-digest` on the closed witness reported `verdict=match`.
+
+Row 13 ran on the host after the bracket closed, as `statusgen verifyrun --rows 13`, which wrote the second table below itself. A prose-led row cannot sit in a container table, so it is a separate host table. The home was clean at 2e1ddcbd72c2 for every run until this Evidence edit.
+
+Attempts: one run of the table, in the two lanes above, under one admission. No step was repeated.
+
+Fail-first: no row is risk-bearing. Every frontmatter risk answer is `no`, and the row tags are `check:ci`, `check:ci +dereference`, `check:ci +flow`, `check` and `check +mutation`. So no `--fail-first` witness is owed, and none was run.
+
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | fail exit=1 sandbox=container-netns | sha256:7ebc8186c72b | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/desklabel/... -count=1` | pass exit=0 sandbox=container-netns | sha256:bc2e9e9e3f01 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -count=1 && go test ./internal/deskkit/ -run TestForgeNoPassthrough -count=1` | pass exit=0 sandbox=container-netns | sha256:fdbc59ba4f30 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestApplyIssueLabelsBothBackends -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:efb9adbb604a | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/desklabel/... -run TestDesklabelAppliesOwnedLabelGitHub -count=1 -v && go test ./cmd/desklabel/... -run TestDesklabelAppliesOwnedLabelGitLab -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:25b4bcb5ac48 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/desklabel/... -run TestDesklabelRefusesUnownedLabel -count=1 -v` | fail exit=0 sandbox=container-netns | sha256:abaa2a0e5308 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/desklabel/... -run TestDesklabelRefusesHumanDecidedForEveryRole -count=1 -v` | fail exit=0 sandbox=container-netns | sha256:0a2e267454de | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/desklabel/... -run TestDesklabelSharedVocabularyAnyRole -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:dd2dc671c7ec | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `test -d tools/desk/cmd/desklabel && { grep -rn -e 'flag.String("as"' -e '"--as"' tools/desk/cmd/desklabel --include='*.go' \|\| [ $? -eq 1 ]; } \| { grep -v _test.go \|\| [ $? -eq 1 ]; } \| wc -l` | pass exit=0 sandbox=container-netns | sha256:9a271f2a916b | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./internal/forgeban/... -count=1` | pass exit=0 sandbox=container-netns | sha256:931fdd8283d3 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/15` | fail exit=2 sandbox=container-netns | sha256:861ae96be0e0 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `grep -c 'desklabel' tools/desk/README.md` | pass exit=0 sandbox=container-netns | sha256:1121cfccd591 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:1d843a770e690a7bd01d131ad76d41f0ed001b69b9bdc86fdb9bd443b1d0db82
+Container-Image: sha256:576cb2e49407447769b79a32af370a23e1c108d62842b8f1772a809d1d3b7617
+Verification-Attestation: medici-finance/assay#5834 run=d4330d619cf46668fb906979110ecec5e4329318684415704c72eadf40bf85bb source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f brief=docs/streams/forge-neutral/brief-15-desklabel-role-keyed.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=d4330d619cf46668fb906979110ecec5e4329318684415704c72eadf40bf85bb source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f tree=sha256:1d843a770e690a7bd01d131ad76d41f0ed001b69b9bdc86fdb9bd443b1d0db82 witness=sha256:c1e2920048204238496f9740653bb1ec80423786741d4cf6fdcf8f61870e2f27 opened=2026-11-08T07:59:14Z closed=2026-11-08T08:10:04Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 13 | `desklabel` | could-not-run exit=- — prose-led-command: not executed; the first span desklabel is a lone word mentioned ahead of the command span, not a command. Mark the command with a cmd: code span | sha256: | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5834 run=d4330d619cf46668fb906979110ecec5e4329318684415704c72eadf40bf85bb source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f brief=docs/streams/forge-neutral/brief-15-desklabel-role-keyed.md model=claude-opus-5-5 tier=strong
+
+
+Rows, credited only from the two witness tables above:
+- Rows 2, 3, 4, 5, 8, 9, 10 and 12: pass under the container witness.
+- Row 1: fail exit=1 under the container witness, after about ten minutes and inside the 25-minute timeout. The witness keeps only an output digest, so this run does not name the failing packages, and no supplemental re-run was made: this dispatch runs Verify rows only through verifyrun. The desklabel and forgeban packages that row 1 also covers pass on their own in rows 2 and 10. The image used here ships jq 1.6 (its `jq --version`), and the run had `GOPROXY=off` with a read-only module cache. Earlier blocks traced row 1's failures to those gaps in the runner image, outside desklabel (medici-finance/assay#4683). Row 1 is not credited, and it is not counted as a product failure.
+- Rows 6 and 7: the witness cells read `fail exit=0 sandbox=container-netns`, and verifyrun's console adds `exit 0, expected 5`. The Expect cell asks for exit 5, the desklabel refusal code. The row's command is `go test`, which exits 0 when the test asserting exit 5 passes, so a passing command cannot meet that Expect (medici-finance/assay#1927). This is a defect in how the rows are written, and the product is not implicated. Row 2's passing package run includes both tests.
+- Row 11: fail exit=2 under the container witness, as in every earlier block. Those blocks traced it to the consumers check finding the brief absent from the diff against merged main, with no Verification-Table marker naming the delivery. The row cannot pass on merged main as written (medici-finance/assay#1281).
+- Row 13: not run, prose-led with no cmd: span, per the host witness (medici-finance/assay#1927). `statusgen verifyrun --check` reports row 13 as `fail — the witness records a failure` although the newest row-13 witness is could-not-run with an empty Output digest; `--check` appears to bind row 13 to an older witness (medici-finance/assay#4340).
+
+`statusgen verifyrun --check` on the edited brief: 8 pass, 5 fail, 0 could-not-run/missing (of 13 Verify rows); 0 author-added with no acceptance credit; exit 1.
+
+The issue states above are cited from the earlier blocks and were not re-read in this run.
+
+Risk values, re-read at 2e1ddcbd72c2 against the cited lines; each still matches:
+RISK-VALUE: DERIVED — human-decided Owner = ownerNone ("no role") @ tools/desk/cmd/desklabel/vocabulary.go:128 — decisionLabels = {"needs-decision", "human-decided"} @ tools/desk/cmd/deskclose/github.go:36 makes it the record of a human ruling; permits() case ownerNone returns false for every role (vocabulary.go:147-156).
+RISK-VALUE: DERIVED — superseded? and the disposition rows Owner = roleWorker ("worker") @ vocabulary.go:112-118 — labelProposed = "superseded?" @ tools/desk/cmd/deskclose/superseded.go:57 is the worker's proposal.
+RISK-VALUE: DERIVED — authorization-needed / approval-needed Owner = roleReviewer ("reviewer") @ vocabulary.go:122,124 — labelBeforeFlip / labelAfterFlip @ tools/desk/cmd/deskflip/flip.go:115-116, the reviewer-run ready-flip pair.
+RISK-VALUE: DERIVED — helpWantedLabel = "help wanted" @ vocabulary.go:57 and the topology decision labels Owner = ownerShared ("shared") @ vocabulary.go:96,101 — the escalation vocabulary every role must be able to raise.
+No risk value is NAMED, NOT DERIVED, so no question issue is owed.
+
+VERIFY rows: 8 of 13 pass under the witness (rows 2, 3, 4, 5, 8, 9, 10, 12). Rows 6 and 7 read fail only because their Expect cells cannot be met. Row 1 reads fail on runner-image gaps outside desklabel. Row 11 fails as a check-definition gap. Row 13 is not run.
+
+**VERIFY: BLOCKED** — no product failure observed. 8 of 13 rows pass under an admitted network-off witness at 2e1ddcbd72c2. Rows 6 and 7 have an Expect-versus-command mismatch, and row 13 has no cmd: span (medici-finance/assay#1927). Row 11 cannot pass on merged main as written (medici-finance/assay#1281). Row 1 exits 1 in this lane; earlier blocks traced that to runner-image gaps outside desklabel (medici-finance/assay#4683).
+
 ## Review
 Gate: **model** (from frontmatter — all four risk answers are `no`; see the note in
 `## Context`). Reviewer records verdict + date in the stream README table, and confirms the
