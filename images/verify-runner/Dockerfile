@@ -150,20 +150,26 @@ RUN set -eu; \
     rm -f /tmp/yq; \
     test "$(yq --version)" = 'yq (https://github.com/mikefarah/yq/) version v4.54.1'
 
-# Go module cache for tools/desk (which also holds the gopkg.in/yaml.v3 module
-# the containers/k8s YAML adapter runs on) and for statusgen, which tools/desk
-# tests build from source. Only module files are copied; the downloads are
-# checked against each module's go.sum. Rows need no proxy, and the cache stays
-# read-only and world-readable for a non-root row user.
+# Go module cache for tools/desk (which also requires the gopkg.in/yaml.v3
+# module the containers/k8s YAML adapter runs on) and for statusgen, which
+# tools/desk tests build from source. Only module files are copied; the
+# downloads are checked against each module's go.sum. Rows need no proxy, and
+# the cache stays read-only and world-readable for a non-root row user.
+#
+# The roots come from the source's own images/verify-runner/go-module-roots.txt,
+# copied in and read by the loop below: it is the one list, also read by
+# `statusgen verifyrun --open-bracket --module-cache`, so no root is named here.
 #
 # The cache matches the go.mod files of THIS build's source. A tree verified
 # later may require versions this cache does not hold, and offline rows cannot
-# fetch them (#4683). go-module-roots.txt records the roots baked here, one per
-# line; a container-netns `statusgen verifyrun` reads it, compares each root's
-# go.mod in the verified tree with this cache, and records a row that stops on
-# a missing module as could-not-run, naming the module and both versions.
-# Every root downloaded below is listed in it, and only those.
+# fetch them (#4683). The open step therefore downloads the verified tree's own
+# module set into a fresh cache that the run mounts read-only over /go/pkg/mod.
+# A run without that mount still reads go-module-roots.txt, compares each
+# root's go.mod in the verified tree with this cache, and records a row that
+# stops on a missing module as could-not-run, naming the module and both
+# versions.
 ENV GOMODCACHE=/go/pkg/mod
+COPY images/verify-runner/go-module-roots.txt /usr/local/share/verify-runner/go-module-roots.txt
 COPY tools/desk/go.mod tools/desk/go.sum /tmp/modsrc/tools/desk/
 COPY statusgen/go.mod statusgen/go.sum /tmp/modsrc/statusgen/
 COPY comms/go.mod /tmp/modsrc/comms/
@@ -175,14 +181,10 @@ COPY perfrec/go.mod /tmp/modsrc/perfrec/
 COPY workflow/go.mod /tmp/modsrc/workflow/
 RUN set -eu; \
     export GOWORK=off GOFLAGS=-mod=readonly GOTOOLCHAIN=local; \
-    cd /tmp/modsrc/tools/desk; \
-    go mod download; \
-    go mod download gopkg.in/yaml.v3; \
-    cd /tmp/modsrc/statusgen; \
-    go mod download; \
-    cd /; \
-    mkdir -p /usr/local/share/verify-runner; \
-    printf '%s\n' tools/desk statusgen > /usr/local/share/verify-runner/go-module-roots.txt; \
+    while read -r root; do \
+        case "$root" in ''|'#'*) continue ;; esac; \
+        (cd "/tmp/modsrc/$root" && go mod download); \
+    done < /usr/local/share/verify-runner/go-module-roots.txt; \
     rm -rf /tmp/modsrc /root/.cache
 
 COPY .release-images/verify-runner/statusgen-linux-${TARGETARCH} /usr/local/bin/statusgen
