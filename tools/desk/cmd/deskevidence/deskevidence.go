@@ -226,6 +226,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// path RecordName derives from its bytes, retiring the shared appended
 	// docs/streams/verify-outcomes.jsonl log this flag replaces. Mutually exclusive with
 	// --evidence-file/--brief-path.
+	// --outcome-only (#5759) lands an --outcome-record that names no Evidence: accepted only
+	// for a BLOCKED or could-not-check re-run of a verified or done brief, whose Evidence
+	// append the verdict gate refuses (outcomeonly.go).
+	outcomeOnly := fs.Bool("outcome-only", false, "with --outcome-record: record a non-decisive re-run of a verified or done brief whose Evidence append is refused; the record states evidence_withheld and its sha is the admitted observation commit")
 	outcomeRecord := fs.String("outcome-record", "", "local JSON file holding ONE new verify-outcome record to commit at the path RecordName derives; with --root, an absolute file outside --root (mutually exclusive with --evidence-file/--brief-path)")
 	// --root binds the LOCAL read of a repo-relative --evidence-file to an explicit
 	// checkout, instead of the current working directory. #1709: a writeguard can reset a
@@ -278,7 +282,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		if *evidenceFile != "" || *briefPath != "" {
 			return deskkit.Refused("refused: --outcome-record is mutually exclusive with --evidence-file/--brief-path")
 		}
-		return cmdOutcomeRecordWrite(*outcomeRecord, repoSlug, owner, name, branch, *root, ac)
+		return cmdOutcomeRecordWrite(*outcomeRecord, repoSlug, owner, name, branch, *root, *outcomeOnly, ac)
+	}
+	if *outcomeOnly {
+		return deskkit.Refused("refused: --outcome-only is valid only with --outcome-record")
 	}
 
 	if *evidenceFile == "" {
@@ -671,6 +678,13 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		closureRef = landedHead
 	}
 	if err := outcomeGuardFn(lintRoot, landedRoot, targetRepoPath, remoteContent, commitContent, fg, fr, closureRef); err != nil {
+		return err
+	}
+	// Non-decisive verdict gate (#5759): a BLOCKED or could-not-check re-run of a
+	// verified or done brief is recorded in the outcome record only, never appended
+	// to Evidence — statusgen evidenceverdict reads the latest verdict with the
+	// protected-closure lint's own selector (verdictgate.go). Before any write.
+	if err := gateNonDecisiveVerdict(targetRepoPath, landedRoot, remoteContent, commitContent, remoteExists); err != nil {
 		return err
 	}
 	introduced, lerr := lintDiffFn(landedRoot, targetRepoPath, commitContent)
