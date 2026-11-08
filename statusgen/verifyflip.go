@@ -758,7 +758,12 @@ func flipDateRunnerRows(lines []string) (rows [][2]string, at []int) {
 		if len(cells) < 2+trail {
 			continue
 		}
-		rows = append(rows, [2]string{strings.TrimSpace(cells[len(cells)-2-trail]), strings.TrimSpace(cells[len(cells)-1-trail])})
+		// A row's read-set token (build-less-brittle/15) names that row's own
+		// recorded inputs, so it differs row to row by design; it is not part
+		// of the run's runner and sha agreement, nor of the stamp. Only a token
+		// verifyrun writes, where it writes it, is removed (review S21); any
+		// other token-shaped text stays and takes part in that agreement.
+		rows = append(rows, [2]string{strings.TrimSpace(cells[len(cells)-2-trail]), stripWriterReadSetToken(strings.TrimSpace(cells[len(cells)-1-trail]))})
 		at = append(at, i)
 	}
 	return rows, at

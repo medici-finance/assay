@@ -145,6 +145,7 @@ var approvedPublicModulePrefixes = []string{
 	"go.opentelemetry.io/", "go.etcd.io/", "go.yaml.in/", "honnef.co/",
 	"gotest.tools/", "sigs.k8s.io/", "k8s.io/", "cloud.google.com/",
 	"modernc.org/", "rsc.io/", "lukechampine.com/", "filippo.io/",
+	"dario.cat/", "gitlab.com/gitlab-org/api/",
 }
 
 // githubPublicModuleRe is stage-cache.sh's GHPUB: a github.com path is public

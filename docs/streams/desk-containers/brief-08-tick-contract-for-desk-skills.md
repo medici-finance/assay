@@ -1262,6 +1262,74 @@ RISK-VALUE: NAMED, NOT DERIVED — R = 60 @ plugins/assay/references/tick-contra
 
 Status stays implemented.
 
+### Non-implementer verifier re-run (container bracket) — 2026-11-08, admitted source 2e1ddcbd72c2
+
+A fresh claude-opus-5-5 verifier (tier strong) ran this pass. It did not implement this brief. `deskdispatch --check-verifier` (v1.0.78) admitted it with exit 0 before any row ran (attestation medici-finance/assay#5784, capability verifier-attestation checked-clean, runtime darwin-arm64), and again with exit 0 after the Evidence below was written. The home stayed clean (`git status --porcelain` empty) after every execution step.
+
+Why this re-pass: the inputs changed between d497f2a732e4 and 2e1ddcbd72c2. In that range this brief gained the 2026-11-06 Evidence section, and this stream's README changed rows for other briefs. tick-contract.md, tick-summary.sh, tick-summary.test.sh, GUARDRAILS.md and the five desk bodies are byte-unchanged in the range. Other plugin files the lints walk did change (version bumps, references/cursor.md, the author-brief skill).
+
+Execution witness for rows 1 to 8, 13 and 14: the container admission bracket.
+
+1. On the host, `statusgen verifyrun --open-bracket` (v1.0.78) recorded the home tree digest at 05:30:48Z.
+2. In the container, the rows ran from 05:30:55Z to 05:31:57Z under these settings:
+   - the published runner image ghcr.io/medici-finance/verify-runner:v1.0.75, run natively as linux/arm64. The release pins the image index sha256:732786a33ebf…; the local copy's repository digests list that index and its arm64 manifest, and the run named the arm64 manifest, which is the Container-Image line below;
+   - `--network none` (interfaces lo and an idle tunl0 only), a read-only root, uid 501, and an exec-enabled tmpfs at /tmp;
+   - read-only bind mounts for the home, the repository's git directory and a copy of the roster file, which the container copied into its throwaway HOME;
+   - KUBECONFIG=/dev/null, GOPROXY=off, GOSUMDB=off, GOTOOLCHAIN=local and GOFLAGS=-mod=readonly.
+3. The in-container statusgen (v1.0.75) printed a warning that the image module cache does not match go.sum for 13 modules (the image gap medici-finance/assay#4683). No row stopped on it: all ten selected rows passed.
+4. On the host, `--close-bracket` closed the bracket at 05:32:06Z. `--bracket-digest` then reported `verdict=match` with `span-lines=tree-digest:1,container-image:1,attestation:1`.
+
+The block directly below is the closed witness file, byte for byte.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `out=$(cd tools/skillslint && go run . --root ../.. 2>&1) && test -f plugins/assay/references/tick-contract.md && grep -qF 'HOUSE-VALUES: PASS' <<<"$out" && grep -qF 'GUARDRAILS: PASS' <<<"$out" && echo row1-ok` | pass exit=0 sandbox=container-netns | sha256:686d4c747abd | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `out=$(cd tools/skillslint && go run . --root ../.. 2>&1) && grep -qF 'GUARDRAILS: PASS' <<<"$out" && exp=$(for s in the-desk worker-desk pr-review-desk verify-desk intake-desk; do echo plugins/assay/skills/$s/SKILL.md; done) && [ "$(awk '/^## guardrail: tick-mode$/{s=1;next} /^## guardrail: /{s=0} s && /^- site: /{print $3}' .claude/guardrails/GUARDRAILS.md)" = "$exp" ] && for s in the-desk worker-desk pr-review-desk verify-desk intake-desk; do [ "$(grep -cx '## Tick mode' plugins/assay/skills/$s/SKILL.md)" = 1 ] && continue; exit 1; done && echo row2-ok` | pass exit=0 sandbox=container-netns | sha256:c3d2f14d764c | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `out=$(cd tools/harnesslint && go run . --vocab ../../docs/streams/harness-portability/README.md bodies ../../plugins/assay/skills 2>&1) && grep -qF 'checked-clean: bodies' <<<"$out" && for s in the-desk worker-desk pr-review-desk verify-desk intake-desk; do grep -qx '## Tick mode' plugins/assay/skills/$s/SKILL.md && continue; exit 1; done && echo row3-ok` | pass exit=0 sandbox=container-netns | sha256:5e74e0896fd3 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `out=$(cd tools/harnesslint && go run . --vocab ../../docs/streams/harness-portability/README.md bindings ../../plugins/assay/references 2>&1); grep -qF 'skipped (declared non-matrix-reference): ../../plugins/assay/references/tick-contract.md' <<<"$out" && ! grep -qF 'references/tick-contract.md:' <<<"$out" && echo row4-ok` | pass exit=0 sandbox=container-netns | sha256:5efc1a78b982 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `for s in the-desk worker-desk pr-review-desk verify-desk intake-desk; do f=plugins/assay/skills/$s/SKILL.md; [ "$(grep -cF '](../../references/tick-contract.md)' "$f")" = 1 ] && test -f "plugins/assay/skills/$s/../../references/tick-contract.md" && ! grep -qF 'tick role=' "$f" && ! grep -qF 'swept=<n>' "$f" && continue; exit 1; done && echo row5-ok` | pass exit=0 sandbox=container-netns | sha256:577c3f1e99cf | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `out=$(bash plugins/assay/scripts/tick-summary.test.sh 2>&1) && grep -qE '^[1-9][0-9]* passed, 0 failed$' <<<"$out" && echo row6-ok` | pass exit=0 sandbox=container-netns | sha256:3fda034391a6 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `for c in rejects-zero-for-unknown rejects-unknown-outcome; do out=$(bash plugins/assay/scripts/tick-summary.test.sh --case "$c" 2>&1) && grep -qE '^[1-9][0-9]* passed, 0 failed$' <<<"$out" && continue; exit 1; done && echo row7-ok` | pass exit=0 sandbox=container-netns | sha256:f843f9a42fd2 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `git merge-base --is-ancestor 21a3e1474c617a0a87a38e8453364c792d0000d6 HEAD && for s in the-desk worker-desk pr-review-desk verify-desk intake-desk; do f=plugins/assay/skills/$s/SKILL.md; d=$(git show 21a3e1474c617a0a87a38e8453364c792d0000d6:"$f") && grep -qx '## Tick mode' <<<"$d" && [ "$(git show ef7bfc2292b5f9a6ddf438591bfd6b42d30f00b4:"$f")" = "$(awk '/^## Tick mode$/{s=1;next} s&&/^## /{s=0} !s' <<<"$d")" ] && continue; exit 1; done && echo row8-ok` | pass exit=0 sandbox=container-netns | sha256:b902bb9c0d81 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `out=$(statusgen --root . --lint 2>&1); test -f docs/streams/desk-containers/brief-08-tick-contract-for-desk-skills.md && grep -q '^LINT: ' <<<"$out" && ! grep -qE '^PROBLEM: .*desk-containers/(brief-)?08' <<<"$out" && echo row13-ok` | pass exit=0 sandbox=container-netns | sha256:58df9e8afe23 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `out=$(statusgen --root . --consumers --brief assay:assay:desk-containers:08 --delivery 21a3e1474c617a0a87a38e8453364c792d0000d6 --base ef7bfc2292b5f9a6ddf438591bfd6b42d30f00b4 2>&1) && grep -qE '^summary: [1-9][0-9]* corroborated, 0 disproved, ' <<<"$out" && echo row14-ok` | pass exit=0 sandbox=container-netns | sha256:868063584705 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:1d843a770e690a7bd01d131ad76d41f0ed001b69b9bdc86fdb9bd443b1d0db82
+Container-Image: sha256:576cb2e49407447769b79a32af370a23e1c108d62842b8f1772a809d1d3b7617
+Verification-Attestation: medici-finance/assay#5784 run=89ea8fcfc7f2ef7156bebd91f90f801027268d2cb8a36cafee4f4a3309bcf291 source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f brief=docs/streams/desk-containers/brief-08-tick-contract-for-desk-skills.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=89ea8fcfc7f2ef7156bebd91f90f801027268d2cb8a36cafee4f4a3309bcf291 source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f tree=sha256:1d843a770e690a7bd01d131ad76d41f0ed001b69b9bdc86fdb9bd443b1d0db82 witness=sha256:84df2f502a68cfb9eca6803a02df5827a48b08f0af9e5454fa1c81ad9aaace14 opened=2026-11-08T05:30:48Z closed=2026-11-08T05:32:06Z before=receipt after=check-verifier
+
+Host witness for rows 9 to 12, from `statusgen verifyrun --rows 9,10,11,12 --dry-run` (v1.0.78) at the same source, 05:32:13Z. The tool exited 2, and it did not write the table into the brief. The block directly below is the tool's table, byte for byte, followed by the attestation line.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 9 | `# PRODUCTION-ONLY online lane, not runnable offline` | could-not-run exit=- — prose-led-command: not executed; the marked command # PRODUCTION-ONLY online lane, not runnable offline is a `cmd:`-marked shell comment (a command starting `#` is ignored by the shell: it exits 0 with no output and measures nothing), not a command. Replace the cmd:-marked comment with the command that performs the check | sha256: | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `# PRODUCTION-ONLY online lane, not runnable offline` | could-not-run exit=- — prose-led-command: not executed; the marked command # PRODUCTION-ONLY online lane, not runnable offline is a `cmd:`-marked shell comment (a command starting `#` is ignored by the shell: it exits 0 with no output and measures nothing), not a command. Replace the cmd:-marked comment with the command that performs the check | sha256: | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `# PRODUCTION-ONLY online lane, not runnable offline` | could-not-run exit=- — prose-led-command: not executed; the marked command # PRODUCTION-ONLY online lane, not runnable offline is a `cmd:`-marked shell comment (a command starting `#` is ignored by the shell: it exits 0 with no output and measures nothing), not a command. Replace the cmd:-marked comment with the command that performs the check | sha256: | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `# PRODUCTION-ONLY online lane, not runnable offline` | could-not-run exit=- — prose-led-command: not executed; the marked command # PRODUCTION-ONLY online lane, not runnable offline is a `cmd:`-marked shell comment (a command starting `#` is ignored by the shell: it exits 0 with no output and measures nothing), not a command. Replace the cmd:-marked comment with the command that performs the check | sha256: | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5784 run=89ea8fcfc7f2ef7156bebd91f90f801027268d2cb8a36cafee4f4a3309bcf291 source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f brief=docs/streams/desk-containers/brief-08-tick-contract-for-desk-skills.md model=claude-opus-5-5 tier=strong
+
+Fail-first. statusgen selects row 12 as the risk-bearing row (its Expect names a live operator window). On the host at 05:32:23Z, `--rows 9,10,11,12 --fail-first --base ef7bfc2292b5f9a6ddf438591bfd6b42d30f00b4 --dry-run` exited 2 before any row ran, with this refusal:
+
+```
+statusgen verifyrun: --fail-first: --base "ef7bfc2292b5f9a6ddf438591bfd6b42d30f00b4" is refused: the base predates the brief: it does not hold docs/streams/desk-containers/brief-08-tick-contract-for-desk-skills.md, which the merge-base does, so the Verify rows did not exist on that tree and a red there is not about this change (pass a later ancestor of the merge-base)
+```
+
+`git log --diff-filter=A` shows the brief, tick-contract.md and tick-summary.sh were all added by the delivering squash 21a3e1474c61. No earlier ancestor contains the brief, so no base is admissible, and I passed no other one. This is the self-delivered shape tracked in medici-finance/assay#4689. No fail-first witness exists for row 12.
+
+Row-by-row accounting at 2e1ddcbd72c2. No supplemental probes ran in this pass. The deliverables are byte-unchanged since d497f2a732e4, where the 2026-11-06 pass recorded the base reds and the mutation probes.
+
+- **Rows 1 to 8, 13 and 14** pass: exit 0 each in the container bracket (verdict=match). Each output digest equals the one recorded at d497f2a732e4.
+- **Rows 9 to 12** are not run. They are PRODUCTION-ONLY online-lane rows (a `cmd:`-marked comment, not a command), and this network-off verifier has no cell running the loop image. None has ever run. The earlier blocker still applies: owed under medici-finance/assay#1920.
+
+Risk-bearing values, re-read at 2e1ddcbd72c2 (the two files are byte-unchanged, so the lines are the same). VERSION = "1" (tick-summary.sh:52) and ROLES (:56) are closed-set identifiers. ASSAY_TICK, COUNT/OUTCOMES and R carry load.
+RISK-VALUE: DERIVED — ASSAY_TICK = "1" @ plugins/assay/references/tick-contract.md:40 — exact equality is the only rule under which no inherited truthy value arms tick mode; it follows the precedent at statusgen/telemetry.go:65.
+RISK-VALUE: DERIVED — COUNT = '([0-9]+|-)' @ plugins/assay/scripts/tick-summary.sh:67 — "-" is the only spelling of an unknown count, so a blind pass cannot print a measured 0; the OUTCOMES literal at tick-summary.sh:59 closes the outcome set at four words (ok, noop, refused and the blind-pass outcome); row 7 passes in the bracket and the 2026-11-06 mutations of both literals reddened it.
+RISK-VALUE: NAMED, NOT DERIVED — R = 60 @ plugins/assay/references/tick-contract.md:99 — whether 60 s covers the exit-path forge writes depends on cell write latency, which cannot be measured offline; online row 11 is the test; routed on medici-finance/assay#1916.
+
+Status stays implemented. Owed: online-lane rows 9 to 12 (medici-finance/assay#1920) and the row 12 fail-first witness (medici-finance/assay#4689).
+
+**VERIFY: BLOCKED** — at 2e1ddcbd72c2: 10 of 14 rows pass in the container bracket, 0 fail, rows 9 to 12 not run (no cell).
+
 ## Review
 
 Gate: model (all four risk answers no). The change is additive prose plus a shell checker and its

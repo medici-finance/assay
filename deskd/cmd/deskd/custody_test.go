@@ -86,9 +86,7 @@ func TestServiceExcludesFreeTextCommentPath(t *testing.T) {
 // must happen before any listener exists — so the test asserts a non-zero exit
 // within a second, not merely an error somewhere in the log.
 func TestRefusedStartOffLoopback(t *testing.T) {
-	bin := buildDeskd(t)
-	cmd := exec.Command(bin, "--addr", "0.0.0.0:0", "--auth", "loopback", "--config", "config/cells.yaml")
-	cmd.Dir = repoRoot(t)
+	cmd := deskdCmd(t, "--addr", "0.0.0.0:0", "--auth", "loopback", "--config", "config/cells.yaml")
 	cmd.Env = append(os.Environ(), "DESKD_GITHUB_TOKEN=not-a-real-token")
 	out, err := runWithTimeout(t, cmd, 10*time.Second)
 	if err == nil {
@@ -106,9 +104,7 @@ func TestRefusedStartOffLoopback(t *testing.T) {
 // above: the default loopback bind is unaffected, so P3 cannot be satisfied by
 // a check that refuses everything.
 func TestLoopbackBindStillStarts(t *testing.T) {
-	bin := buildDeskd(t)
-	cmd := exec.Command(bin, "--addr", "127.0.0.1:0", "--auth", "loopback", "--config", "config/cells.yaml", "--once")
-	cmd.Dir = repoRoot(t)
+	cmd := deskdCmd(t, "--addr", "127.0.0.1:0", "--auth", "loopback", "--config", "config/cells.yaml", "--once")
 	cmd.Env = append(os.Environ(), "DESKD_GITHUB_TOKEN=not-a-real-token", "DESKD_API_UNREACHABLE=1")
 	out, _ := runWithTimeout(t, cmd, 30*time.Second)
 	// --once polls and exits; the poll fails without network, which is a
@@ -119,15 +115,25 @@ func TestLoopbackBindStillStarts(t *testing.T) {
 	}
 }
 
-func buildDeskd(t *testing.T) string {
+// deskdCmd builds cmd/deskd and returns a command running it from the module
+// root with args. It is the ONE way these tests run the binary: it points the
+// state file deskd writes by default (the index, ./deskd-index.db) into
+// t.TempDir(), so a test run leaves the tree as it found it. The state flags
+// come first, so a caller's own --index wins (the flag package keeps the last
+// value).
+func deskdCmd(t *testing.T, args ...string) *exec.Cmd {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "deskd")
-	cmd := exec.Command("go", "build", "-o", bin, "./cmd/deskd")
-	cmd.Dir = repoRoot(t)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "deskd")
+	build := exec.Command("go", "build", "-o", bin, "./cmd/deskd")
+	build.Dir = repoRoot(t)
+	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("go build ./cmd/deskd: %v\n%s", err, out)
 	}
-	return bin
+	state := []string{"--index", filepath.Join(dir, "deskd-index.db")}
+	cmd := exec.Command(bin, append(state, args...)...)
+	cmd.Dir = repoRoot(t)
+	return cmd
 }
 
 // runWithTimeout runs cmd, returning its combined output and its exit error.
