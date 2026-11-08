@@ -451,6 +451,14 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	verifiedClosureCheckFn = func(string, string) (closureVerdict, string, error) { return closureAccepted, "", nil }
 	t.Cleanup(func() { verifiedClosureCheckFn = oldClosure })
 
+	// The non-decisive verdict gate (#5759) defaults to "landable" for the same reason;
+	// verdictgate_test.go restores the real statusgen-backed check.
+	oldVerdict := evidenceVerdictCheckFn
+	evidenceVerdictCheckFn = func(string, string, []byte, []byte, bool, string) (closureVerdict, string, error) {
+		return closureAccepted, "", nil
+	}
+	t.Cleanup(func() { evidenceVerdictCheckFn = oldVerdict })
+
 	var errBuf bytes.Buffer
 	oldOut, oldErr := stdout, stderr
 	stdout = &bytes.Buffer{}

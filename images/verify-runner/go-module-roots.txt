@@ -1,0 +1,20 @@
+# Go module roots whose modules the verify-runner lane provisions (#4683): the
+# image bakes them, and `statusgen verifyrun --open-bracket --module-cache`
+# downloads them for the tree under verification. One home-relative root per
+# line. Every tracked module whose go.sum names a module is listed here, or
+# named on a "not provisioned:" line with the reason; the statusgen test
+# TestModuleRootsCoverTree holds that.
+tools/desk
+statusgen
+qualgen
+workflow
+gitcore
+cellconfig
+tools/freshness
+tools/intake-eval
+tools/loopresolve
+tools/metrics-harvest
+tools/pairedversions
+tools/plugindrift
+tools/skillslint
+# not provisioned: deskd — it requires this repository's own tools/desk module by version from the public proxy, which the open step's module screen refuses by design; rows that build deskd cannot run offline in this lane.
