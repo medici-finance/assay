@@ -19,6 +19,8 @@ domain: complicated
 outcome: none
 gate-why: "Changes which human decision and verification receipts satisfy milestone acceptance; incorrect actor, subject or revision binding could accept unapproved scope."
 decision-trigger: spec
+design: DR-milestone-support-06
+ruling: "https://github.com/medici-finance/assay/issues/5705#issuecomment-6715755830"
 sources:
   - docs/streams/milestone-support/README.md
   - spec/milestone-v1.md
@@ -116,12 +118,18 @@ The wrong-but-plausible delivery is the mutation named in each Verify row. Each 
 Gate: human, derived from the declared risks. Independent review checks compatibility and consumer-flow evidence. No reviewer/worker stamp, release permission or acceptance receipt is created by this authoring change.
 
 
-## Proposed receipt adapter — pending human ruling
+## Receipt adapter design and recorded ruling
 
-**Status:** authoring proposal, 7 November 2026. This appendix does not deliver this
-brief, change its Task/Verify contract, fill Evidence or approve a design. The
-Human decision section above still blocks governed implementation. The decision
-issue is the ruling venue; this proposal is the concrete material to attach there.
+**Design approved, implementation outstanding.** The driver accepted
+`DR-milestone-support-06` and the bounded proposal at
+`ffaaf82ff0ab3e09e779ca7fa34ef00ac91804ea` in the
+[unedited human ruling](https://github.com/medici-finance/assay/issues/5705#issuecomment-6715755830).
+[DR-milestone-support-06](../decisions/DR-milestone-support-06.md) records the
+approval, including protected-default-branch source checks and authorized
+revocation/supersession with unauthorized comments quarantined. No implementation,
+Task/Verify change, Evidence or lifecycle credit is claimed. The proposal below
+records the reviewed design; its pending-ruling statements are superseded only by
+this exact approval. Independent review and implementation checks remain required.
 
 ### Architecture pickup and source coverage
 
