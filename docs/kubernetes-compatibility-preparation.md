@@ -140,7 +140,8 @@ delete history, reset it or switch volumes to erase an unknown predecessor.
 If preparation succeeded but its output was lost, run the same selection with
 `--readback` instead of `--prepare`. It revalidates the installed inputs and
 existing unused prepared state and prints the same bindings without writing,
-installing or invoking a child. Changed inputs, foreign/corrupt state or a role
+installing or running the image initializer or agent. The Go command invokes only
+the embedded Python preparation domain for this readback. Changed inputs, foreign/corrupt state or a role
 that has already booted remain held; readback never reinitializes a volume.
 
 Retain the helper's non-secret JSON privately with volume identity, role,

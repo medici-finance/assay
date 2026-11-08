@@ -459,7 +459,7 @@ func buildRoot() *cobra.Command {
 	declared = nil
 	root := cli.NewRoot("cellctl", "start, stop and scaffold an Assay CELL on one laptop")
 	root.Long = "cellctl starts, stops and scaffolds an Assay CELL on one laptop (the laptop route).\n\n" +
-		"Every command takes the cell as its first argument.\n\n" + helpConcepts
+		"Lifecycle commands take the cell as their first argument; compat-prepare takes --cell.\n\n" + helpConcepts
 	root.Example = "  cellctl ls\n  cellctl new mycell --kind house --repo ~/src/repo --roots 'o/r=/abs/path'\n  cellctl up mycell\n  cellctl --cells-root /abs/registry show mycell"
 	declare(root, cli.Binding{Key: "cells-root", Kind: cli.String, Flag: "cells-root", Persistent: true,
 		Usage: "absolute path of the cell registry to use for this run (overrides CELLS_ROOT)"})
