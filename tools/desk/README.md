@@ -1078,12 +1078,14 @@ exclusive; ordinary `--check` still opens no connection and judges the whole ran
 `--check-remote` is also the preflight for the public-repo write gate. Offline
 `--check` cannot read live visibility, so it reports that gate as not checked and
 names `--check-remote` as the mode that runs it. `--check-remote` runs the real gate
-and refuses with the same text and exit code (5) as the live create. A GitLab
-`internal` project still listed `:public` therefore shows up here, before any push.
-That refusal names the `:internal` replacement entry and says that, if the `:public`
-entry was written before the `:internal` token existed, it predates the token. The gate
-cannot know that: a repo listed `:public` that later became internal reads the same. The operator edits `ASSAY_ALLOWED_REPOS`. No verb
-rewrites it from a live read, because it is an authorization control.
+and refuses with the same text and exit code (5) as the live create. An entry that no
+longer authorizes the live visibility therefore shows up here, before any push: for
+example a project that became public while still listed `:internal`. The refusal names
+the cause and the replacement entry. (A GitLab `internal` project listed `:public`
+passes: the gate ranks exposure and tolerates that mislabel. `:internal` is the accurate
+entry; see the allowed-repos section for why a `:public` label should be changed.) The operator
+edits `ASSAY_ALLOWED_REPOS`. No verb rewrites it from a live read, because it is an
+authorization control.
 
 A successful remote check is a snapshot, not permission to ignore a later refusal.
 Run ordinary create from the same owned branch with a fresh body file; it rechecks
@@ -3968,16 +3970,21 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
   board run), not a cosmetic one. Patterns are display-only, in `AllowedRepoScope()`.
 - **Writes to a public repo require an explicit `:public` allowed-repos entry, and writes to
   an `internal` repo an explicit `:internal` one** — the public-repo write gate
-  (`PublicRepoGate`). The authorization is REPOSITORY-scoped, decided once by a human
-  out-of-band: a public repo listed as `owner/name:public` (an internal repo listed as
-  `owner/name:internal`) is a place the desk may write, and every gated write passes on it.
+  (`PublicRepoGate`). The gate ranks exposure private < internal < public (the same rank as
+  the verifier cross-repo check) and passes a live read only when the entry's token is not
+  `:private` and ranks at least as exposed as the live visibility, so nothing passes that is
+  more exposed than its entry states. It therefore also tolerates a `:public` entry on a
+  live-internal repo; that is a mislabel, not an equal choice (see below). The authorization
+  is REPOSITORY-scoped, decided once by a human out-of-band: a public repo listed as
+  `owner/name:public` (an internal repo listed as `owner/name:internal`) is a place the desk
+  may write, and every gated write passes on it.
   The gate runs in `deskpr` (create / update / edit), `deskpost` (comment / ready / review),
   `deskreply`, `deskevidence` and `deskrelease cut` — the commands
   `deskkit.PublicRepoGateVerbs` lists and the refusal names. Tracker writes such as
   `deskfile` do not run it. A repo that is absent, matched only by an `owner/*` pattern (patterns carry
-  no visibility policy), tagged `:private`, carrying no visibility token, or tagged with the
-  other non-private token (`:internal` on a live-public repo, `:public` on a live-internal
-  one) **refuses** (exit 5) with the remedy in the message. `internal` is visible to every
+  no visibility policy), tagged `:private`, carrying no visibility token, or tagged
+  `:internal` on a live-public repo **refuses** (exit 5) with its cause and the remedy in
+  the message. `internal` is visible to every
   account on the forge instance, so it is never treated as private: an `:internal` repo is
   risk-classed, self-containment scanned and stamped with the neutral on-behalf-of form
   exactly like a `:public` one. This replaces the former per-item `+1` reaction
@@ -3986,25 +3993,32 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
   unit. A draft PR is inert until a human merges it, so the repository-level decision plus
   the merge gate buy everything the per-item ceremony did; **merge remains the human's.**
   - Both reads are load-bearing at once. The gate reads the **live** visibility from the
-    forge AND the **configured** `:public` / `:internal` claim, and they must AGREE: a repo flipped to
-    public after the set was written still refuses (the configured claim disagrees), and a
-    stale roster claiming `:public` for a repo the forge reports otherwise never authorizes
-    on the stale claim (the live read disagrees). A live read that fails or returns an
-    unrecognised value is **unverifiable** (exit 6, fail closed) — never guessed private.
-  - **A `:public` entry on a live-internal repo may predate the `:internal` token.** Earlier
-    versions had no `:internal` token, so `:public` was the tag such a repo got. The gate
-    cannot tell that entry from one written while the repo was public, before it became
-    internal. It refuses like any mismatch. The refusal says that, if the entry was
-    written before the token existed, it predates it, and it names the
-    `owner/name:internal` replacement. Nothing migrates the entry: the operator edits
-    it. `deskpr create --check-remote` surfaces the mismatch before a live create.
-    `deskroster` has no check that reads repo visibility from the forge, so it does not
-    report this mismatch.
+    forge AND the **configured** `:public` / `:internal` claim, and the claim must cover the
+    live read: a repo flipped to public after the set was written while listed `:private`
+    or `:internal` still refuses (the configured claim is less exposed than the live
+    read), and a stale roster claim never authorizes a repo the forge reports as more
+    exposed than the claim. A live read that fails or returns an unrecognised value is
+    **unverifiable** (exit 6, fail closed) — never guessed private.
+  - **A `:public` entry on a live-internal repo is a tolerated mislabel.** Earlier versions
+    had no `:internal` token, so `:public` was the tag such a repo got. The write gate still
+    passes it, because an internal repo's audience is narrower than the entry states, and
+    its refusals never name `:public` as an internal repo's remedy. `:internal` is the
+    accurate token: a `:public` label on an internal repo is reported as drift by
+    `deskboard policydrift`, and it over-ranks the repo as a verifier cross-repo source,
+    which ranks the configured visibility alone, so a public tracking repo could then
+    publish that repo's binding. Operators with such an entry should change it to
+    `:internal`; nothing migrates it.
+    `deskpr create --check-remote` surfaces any entry that does not authorize the live
+    visibility before a live create. `deskroster` has no check that reads repo visibility
+    from the forge, so it does not report such an entry; `deskboard policydrift` reports
+    a configured visibility that differs from the forge's.
   - **Migration from the retired sentinel.** The former standing-per-repo authorization —
     a human-maintained opt-out list file under `~/.config/assay/` (respectively
     `$XDG_CONFIG_HOME/assay/`) — is gone: its reader has been removed, so the file no longer
     has any effect. An operator who maintained one moves each `owner/name` line into
-    `ASSAY_ALLOWED_REPOS` as `owner/name:public`. The tools never wrote, and never deleted,
+    `ASSAY_ALLOWED_REPOS` with the token that matches the repository's live visibility:
+    `owner/name:public` for a public repository, `owner/name:internal` for an internal
+    one. The tools never wrote, and never deleted,
     that file; it is the operator's to remove.
 
 **The desk writes where it does not watch.** The write gates use `IsAllowedRepo`, which a

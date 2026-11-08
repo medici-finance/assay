@@ -88,6 +88,7 @@ COPY perfrec/ /src/perfrec/
 COPY gitquiet/ /src/gitquiet/
 COPY gitcore/ /src/gitcore/
 COPY deskcore /src/deskcore/
+COPY workflow/ /src/workflow/
 
 # statusgen — its own module, stamped with main.statusgenVersion.
 WORKDIR /src/statusgen

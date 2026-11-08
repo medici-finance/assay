@@ -105,8 +105,9 @@ import (
 //     cell that reads, as a whole, as a recognised clean outcome (heldOutcome:
 //     ok, PASS, exit 0 or the like, followed only by neutral details such as
 //     a non-zero test count or a duration; a bare 0 only as a whole Exit
-//     cell), and no other cell of them or of any unrecognised column holds
-//     visible text. A column that names an expectation and nothing else
+//     cell; verifyrun's own passing Result cell "pass exit=N" at any
+//     observed exit, heldWitnessPassRe, #5541), and no other cell of them or
+//     of any unrecognised column holds visible text. A column that names an expectation and nothing else
 //     (Expected exit, Pass criteria; heldExpectColumnRe, anchored) is never
 //     read for the outcome; a header that only contains the word (Verdict vs
 //     Expect, Matches expected?, Meets criteria) is an unrecognised column
@@ -1438,6 +1439,7 @@ var (
 	heldWitnessTrailerRes = []*regexp.Regexp{
 		regexp.MustCompile(`^Tree-Digest: sha256:[0-9a-f]{64}$`),
 		regexp.MustCompile(`^Container-Image: sha256:[0-9a-f]{64}$`),
+		regexp.MustCompile(`^Module-Cache: sha256:[0-9a-f]{64}$`),
 		regexp.MustCompile(`^Verification-Attestation: [A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[0-9]+ run=[0-9a-f]{64} (?:source-repo=[A-Za-z0-9._-]+/[A-Za-z0-9._-]+ )?source=[0-9a-f]{40} (?:tracking-source=[0-9a-f]{40} )?brief=[A-Za-z0-9._/-]+ model=[A-Za-z0-9._:\[\]-]+ tier=[a-z]+$`),
 		regexp.MustCompile(`^Admission-Bracket: run=[0-9a-f]{64} source=[0-9a-f]{40} tree=sha256:[0-9a-f]{64} witness=sha256:[0-9a-f]{64} opened=[0-9TZ:+.-]+ closed=[0-9TZ:+.-]+ before=receipt after=check-verifier$`),
 	}
@@ -2069,6 +2071,18 @@ var (
 		regexp.MustCompile(`^sandbox=(?:unshare|container-netns)(?:[ \t,;]|$)`),
 		heldOutcomeRe,
 	}
+	// heldWitnessPassRe is the whole Result cell statusgen verifyrun writes
+	// for a passing witness row (witness.row): the state token pass, the
+	// observed exit code, and the optional sandbox token (#5541). The pass
+	// is verifyrun's own verdict against the row's Expect cell, so an Expect
+	// that names a non-zero exit ("exit 2") records "pass exit=2". The exit
+	// code after pass is the observed code, not a second outcome, so the
+	// cell reads as clean whatever the code is. A bare "pass" already reads
+	// clean, so this admits no verdict the grammar did not. The cell is
+	// compared as the tool writes it, trimmed of space only: "PASS exit=2",
+	// "passed exit=2", a note after it, or "fail exit=0" stay outside it and
+	// are read by heldOutcomeRe's closed grammar as before.
+	heldWitnessPassRe = regexp.MustCompile(`^pass exit=[0-9]+(?: sandbox=(?:unshare|container-netns))?$`)
 	// heldDigestRe is the Output cell statusgen verifyrun writes for every
 	// witness row: the first 12 hex digits of the sha256 of the row's captured
 	// output (hashOutput), never caller text.
@@ -2100,6 +2114,9 @@ var (
 // render as nothing or hide text (<!-- -->, <br>, &nbsp;, a backslash escape,
 // a zero-width space), none of which the grammar admits.
 func heldOutcome(cell string, exit bool) heldCellState {
+	if !exit && heldWitnessPassRe.MatchString(strings.TrimSpace(cell)) {
+		return heldCellPass
+	}
 	cell = heldStrikeRe.ReplaceAllString(cell, "")
 	n := strings.Trim(heldNorm(cell), "`*_ ")
 	if n == "" {

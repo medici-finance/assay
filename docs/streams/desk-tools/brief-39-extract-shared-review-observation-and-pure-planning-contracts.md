@@ -8,6 +8,8 @@ unblocks: ["forge-neutral/39", "desk-tools/40", "desk-tools/41", "graph-executio
 effort: M
 gate: human
 decision-issue: 4521
+design: DR-desk-tools-39
+ruling: "https://github.com/medici-finance/assay/issues/4521#issuecomment-6615602021"
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
@@ -154,8 +156,9 @@ consumer, not a dependency on future workflow/controller delivery.
 
 ## Implementation pickup — remaining amendment, 23 October 2026
 
-Continue at public main `4a4b8e4f3`. The original extraction and observation contract already
-shipped in PR #3593; reuse reviewflow/PlanObservation and the existing command adapters.
+Continue at public main `4a4b8e4f3`. The original reviewflow extraction and command
+adapters shipped in PR #3570; PR #3593 added the observation contract on that shared
+package. Reuse reviewflow/PlanObservation and the existing command adapters.
 The remaining merged amendment is the explicit candidate-plus-priority/capacity join and
 TestReviewPriorityJoin, not another classifier or a second queue. The source is the merged
 planner amendment in PR #4218, with docs/library-first.md, docs/contracts.md and
@@ -169,3 +172,33 @@ is preserved and checked by the existing regression suite. The original fixed-he
 for those adapters describe the inherited extraction, not new edits in this follow-up.
 No status cell, historical Evidence or human gate is changed. Existing lifecycle reconciliation
 holds for the earlier delivery are disclosed rather than bypassed or repaired by a new stamp.
+
+## Delivery reconciliation — 2026-11-03
+
+Source inspection on main `3342a32ab90440ce7f2f6bf8957b83de626d70dd` confirms three
+implementation layers are present: classification/planning extraction and command
+adapters in #3570 (`8c2f9706c9d5b26b14ad3a8123878563896e27fd`), the observation
+contract in #3593 (`790003516`), and candidate-plus-priority/capacity amendment #4235, merged as
+`f9cba0a88d39085831c86717aab04736c562a774`. The latter includes selection implementation
+`646808813` and qualified tie-breaking regression `e6dde9128`.
+
+| Original obligation | Delivered source to assess independently |
+|---|---|
+| Task 1: typed observation and full population | #3593: `spec/review-observation-v1.md`, `schemas/review-observation-v1.json`, `tools/desk/internal/reviewflow/observation.go`: `BuildObservation` |
+| Task 2: existing classification/planning extraction and command adapters | #3570 (`8c2f9706c9d5b26b14ad3a8123878563896e27fd`): `tools/desk/internal/reviewflow/classify.go`, `actiontable.go`, `coalesce.go`, `idlegate.go`, `humangate.go`, `reviews.go`, `checks.go`, `input.go`; adapters in `tools/desk/cmd/deskboard/board.go` and `tools/desk/cmd/reviewloop/flow.go`; `changelog/desk-tools-39.md` |
+| Tasks 2–3: additive observation/planning APIs and legal boundary | #3593: `tools/desk/internal/reviewflow/observation.go`: `PlanObservation`; #4235: `tools/desk/internal/reviewflow/selection.go`: `PlanCandidates`; collection stays outside this owner |
+| Task 4: compatibility, authority and intended behavior | `tools/desk/internal/reviewtest/observation_contract_test.go`, `tools/desk/internal/reviewtest/observation_boundary_test.go`, `tools/desk/internal/reviewtest/selection_test.go`: named contract, boundary and priority-join tests |
+| Task 5 and candidate amendment | existing source contracts, command adapters and selection amendment; consumer routing and implementation acceptance still require the original checks and review |
+
+The record-specific human ruling is now bound through `DR-desk-tools-39` and
+the frontmatter `design:`/`ruling:` fields:
+https://github.com/medici-finance/assay/issues/4521#issuecomment-6615602021
+
+No second extraction or classifier is needed. After this metadata lands, the
+native `statusgen reconcile` command can assess implemented against the actual
+merged deliveries. No generated board row is hand-edited in this change. Do not
+substitute consumer routing for delivery qualification.
+
+All four original Verify rows, Evidence and the existing human gate are unchanged. Named tests were inspected as source, not run as
+independent verification. Runtime collection/adoption remains with the declared
+follow-on briefs, and final human acceptance stays separate.

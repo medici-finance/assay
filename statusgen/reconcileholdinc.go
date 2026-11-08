@@ -308,8 +308,10 @@ type designGateState struct {
 	e     *lintEnv
 	head  []string
 	known map[string]bool
-	parts [][]string
-	next  []string
+	// delivery is what the pull request under judgment delivers, read once.
+	delivery gateDelivery
+	parts    [][]string
+	next     []string
 }
 
 func designGateIncremental(e *lintEnv, r statusKeyedLintRule) ([]string, holdRuleState) {
@@ -320,9 +322,10 @@ func designGateIncremental(e *lintEnv, r statusKeyedLintRule) ([]string, holdRul
 	if !ok {
 		return head, &reuseState{cur: head} // unreadable register: the gate reports the shape PROBLEMs only
 	}
-	st := &designGateState{e: e, head: head, known: known, parts: make([][]string, len(e.streams))}
+	delivery, _ := prDeliveryFn(e.root)
+	st := &designGateState{e: e, head: head, known: known, delivery: delivery, parts: make([][]string, len(e.streams))}
 	for i, s := range e.streams {
-		st.parts[i] = designGateStreamProblems(s, known)
+		st.parts[i] = designGateStreamProblems(s, known, delivery)
 	}
 	return st.concat(-1, nil), st
 }
@@ -341,7 +344,7 @@ func (st *designGateState) concat(si int, part []string) []string {
 func (st *designGateState) before(*holdMove) {}
 
 func (st *designGateState) after(m *holdMove) ([]string, bool) {
-	st.next = designGateStreamProblems(st.e.streams[m.si], st.known)
+	st.next = designGateStreamProblems(st.e.streams[m.si], st.known, st.delivery)
 	return st.concat(m.si, st.next), true
 }
 

@@ -128,20 +128,48 @@ RUN set -eu; \
     test "$(kubeconform -v)" = v0.8.0; \
     test "$(gitleaks version)" = 8.30.1
 
-# Go module cache for tools/desk (which also holds the gopkg.in/yaml.v3 module
-# the containers/k8s YAML adapter runs on) and for statusgen, which tools/desk
-# tests build from source. Only module files are copied; the downloads are
-# checked against each module's go.sum. Rows need no proxy, and the cache stays
-# read-only and world-readable for a non-root row user.
+# mikefarah yq (#5531), the Go YAML processor rows call as `yq` to convert Job
+# templates and fixtures; check.py proves it runs and is the mikefarah build.
+# It is a single static binary, not an archive: the download is compared with
+# the sha256 pinned below for this platform before it is installed, and a
+# mismatch, an unpinned platform or a version other than v4.54.1 fails the
+# build. Each sha256 is the SHA-256 column of the upstream release's checksums
+# file, matched against the downloaded asset when it was pinned. Risk summary:
+# issue #5531. tools/desk/internal/deskkit/verifyrunner_yq_test.go holds the pin
+# and the check in place.
+RUN set -eu; \
+    case "${TARGETARCH:-}" in \
+      amd64) yq_sha=8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f ;; \
+      arm64) yq_sha=189088da0c6429ec5178dfaab1a114805f6cab0b61b165ab236efedf1d57a71b ;; \
+      *) echo "verify-runner: no pinned yq checksum for '${TARGETARCH:-}'" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 -o /tmp/yq \
+      "https://github.com/mikefarah/yq/releases/download/v4.54.1/yq_linux_${TARGETARCH}"; \
+    echo "${yq_sha}  /tmp/yq" | sha256sum -c -; \
+    install -o 0 -g 0 -m 0755 /tmp/yq /usr/local/bin/yq; \
+    rm -f /tmp/yq; \
+    test "$(yq --version)" = 'yq (https://github.com/mikefarah/yq/) version v4.54.1'
+
+# Go module cache for tools/desk (which also requires the gopkg.in/yaml.v3
+# module the containers/k8s YAML adapter runs on) and for statusgen, which
+# tools/desk tests build from source. Only module files are copied; the
+# downloads are checked against each module's go.sum. Rows need no proxy, and
+# the cache stays read-only and world-readable for a non-root row user.
+#
+# The roots come from the source's own images/verify-runner/go-module-roots.txt,
+# copied in and read by the loop below: it is the one list, also read by
+# `statusgen verifyrun --open-bracket --module-cache`, so no root is named here.
 #
 # The cache matches the go.mod files of THIS build's source. A tree verified
 # later may require versions this cache does not hold, and offline rows cannot
-# fetch them (#4683). go-module-roots.txt records the roots baked here, one per
-# line; a container-netns `statusgen verifyrun` reads it, compares each root's
-# go.mod in the verified tree with this cache, and records a row that stops on
-# a missing module as could-not-run, naming the module and both versions.
-# Every root downloaded below is listed in it, and only those.
+# fetch them (#4683). The open step therefore downloads the verified tree's own
+# module set into a fresh cache that the run mounts read-only over /go/pkg/mod.
+# A run without that mount still reads go-module-roots.txt, compares each
+# root's go.mod in the verified tree with this cache, and records a row that
+# stops on a missing module as could-not-run, naming the module and both
+# versions.
 ENV GOMODCACHE=/go/pkg/mod
+COPY images/verify-runner/go-module-roots.txt /usr/local/share/verify-runner/go-module-roots.txt
 COPY tools/desk/go.mod tools/desk/go.sum /tmp/modsrc/tools/desk/
 COPY statusgen/go.mod statusgen/go.sum /tmp/modsrc/statusgen/
 COPY comms/go.mod /tmp/modsrc/comms/
@@ -150,16 +178,13 @@ COPY forgeread/go.mod /tmp/modsrc/forgeread/
 COPY gitquiet/go.mod /tmp/modsrc/gitquiet/
 COPY gitcore/go.mod /tmp/modsrc/gitcore/
 COPY perfrec/go.mod /tmp/modsrc/perfrec/
+COPY workflow/go.mod /tmp/modsrc/workflow/
 RUN set -eu; \
     export GOWORK=off GOFLAGS=-mod=readonly GOTOOLCHAIN=local; \
-    cd /tmp/modsrc/tools/desk; \
-    go mod download; \
-    go mod download gopkg.in/yaml.v3; \
-    cd /tmp/modsrc/statusgen; \
-    go mod download; \
-    cd /; \
-    mkdir -p /usr/local/share/verify-runner; \
-    printf '%s\n' tools/desk statusgen > /usr/local/share/verify-runner/go-module-roots.txt; \
+    while read -r root; do \
+        case "$root" in ''|'#'*) continue ;; esac; \
+        (cd "/tmp/modsrc/$root" && go mod download); \
+    done < /usr/local/share/verify-runner/go-module-roots.txt; \
     rm -rf /tmp/modsrc /root/.cache
 
 COPY .release-images/verify-runner/statusgen-linux-${TARGETARCH} /usr/local/bin/statusgen

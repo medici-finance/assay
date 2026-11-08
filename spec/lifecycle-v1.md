@@ -433,7 +433,19 @@ decided, never what they decided.
   Where the base revision cannot be resolved or its board cannot be read, this layer
   MUST fail closed (a PROBLEM) while any `gate: human` brief after the change sits at
   `implemented` or later, and MAY report a notice otherwise. A relabel or drop judged
-  against an unreadable base is left to layer two.
+  against an unreadable base is left to layer two. On a pull request, the brief that reconcile
+  credits to the pull request on merge is judged as moved to `implemented`. That brief is the
+  one named by a body carrying exactly one `Brief:` trailer, joined to the board id as the row
+  spells it, and only when its row stands at `todo` or `in-progress`, the statuses reconcile
+  writes from. A body with no trailer or with several, a value reconcile cannot join, and a
+  row at `blocked`, `withdrawn`, `implemented` or later are not judged as moved. Neither is a
+  brief whose `delivery:` list declares that pull request a partial delivery, or one whose
+  partial claim cannot be resolved (reconcile derives it unknown and moves nothing); the
+  latter MAY be reported as a notice. Only the boards in the linted tree are read, so a
+  delivery credited to a brief in another stream root is not judged. A differential run
+  MUST NOT judge the base tree against the pull request's delivery. The design-approval gate (section 4.4) judges that move
+  the same way. A pull request event whose payload cannot be read is a PROBLEM, whether or
+  not the tree has a base to judge against.
 - **Layer two (network).** The linked comment is fetched and MUST pass every condition of
   the design-decision ruling-link check (`registers-v1.md` §7.5): an unedited comment by a
   login mapped to a human, never a bot, on the brief's recorded decision issue. The issue

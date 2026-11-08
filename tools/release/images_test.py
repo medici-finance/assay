@@ -606,8 +606,8 @@ def native_transport_problems(text):
     Every download step in the job must read all release-build-* artifacts,
     merged, into the job's input directory, with no other input, and there
     must be at least one. The native image's upload holds exactly
-    UPLOAD_INPUTS, under its own artifact name and uncompressed, and its path
-    holds exactly the NATIVE_UPLOAD_PATHS lines.
+    UPLOAD_INPUTS, under its own artifact name and with compression level 1,
+    and its path holds exactly the NATIVE_UPLOAD_PATHS lines.
     """
     entries, unread = workflow_keys.read(text)
     problems = workflow_keys.unread_problems(unread)
@@ -621,7 +621,8 @@ def native_transport_problems(text):
         problems.append('the native arm64 upload must fail when it finds no files')
     native = [step for name, step in step_entries(entries, 'runner-arm64')
               if name == 'Upload checked native arm64 image']
-    if len(native) != 1 or not upload_held(native[0], 'runner-arm64', 'release-runner-arm64', None) \
+    if len(native) != 1 or not upload_held(native[0], 'runner-arm64', 'release-runner-arm64',
+                                          None, compression='1') \
             or upload_patterns(text, native[0], 'runner-arm64') != list(NATIVE_UPLOAD_PATHS):
         problems.append('the native arm64 upload must hold exactly its own artifact')
     return problems
@@ -660,12 +661,12 @@ def with_inputs(step, job):
     return {entry.key: entry.value for entry in step if entry.path == ('jobs', job, 'steps', 'with')}
 
 
-def upload_held(step, job, name, empty='error'):
-    """Whether upload STEP sends artifact NAME uncompressed, keeps it seven days,
-    holds no other input and, unless EMPTY is None, fails on no files."""
+def upload_held(step, job, name, empty='error', *, compression='0'):
+    """Whether upload STEP sends artifact NAME with the required compression level,
+    keeps it seven days, holds no other input and, unless EMPTY is None, fails on no files."""
     inputs = with_inputs(step, job)
     return (uses_action(step, job, 'actions/upload-artifact') and sorted(inputs) == list(UPLOAD_INPUTS)
-            and inputs['name'] == name and inputs['compression-level'] == '0'
+            and inputs['name'] == name and inputs['compression-level'] == compression
             and inputs['if-no-files-found'] == (empty or inputs['if-no-files-found'])
             and inputs['retention-days'] == '7')
 
@@ -920,6 +921,40 @@ def move_step(text, job, name, before):
     lines = text.splitlines(True)
     step = ''.join(lines[starts[0] - 1:end - 1])
     return mutate_job(''.join(lines[:starts[0] - 1] + lines[end - 1:]), job, before, step + before)
+
+
+class ModuleCopyTest(unittest.TestCase):
+    def test_image_sources_include_local_module_closure(self):
+        repo = HERE.parents[1]
+        env = dict(os.environ, GOWORK='off', GOTOOLCHAIN='local')
+        pending = [repo / 'tools/desk', repo / 'statusgen']
+        modules = set()
+        while pending:
+            module = pending.pop().resolve()
+            if module in modules:
+                continue
+            modules.add(module)
+            data = json.loads(subprocess.check_output(
+                ['go', 'mod', 'edit', '-json', str(module / 'go.mod')],
+                cwd=repo, env=env, text=True))
+            pending.extend(module / item['New']['Path']
+                           for item in data.get('Replace', [])
+                           if not item['New'].get('Version'))
+        for name in ('Dockerfile', 'images/assay-harness/Dockerfile',
+                     'images/verify-runner/Dockerfile'):
+            copied = set()
+            for line in (repo / name).read_text().splitlines():
+                if not line.startswith('COPY ') or line.startswith('COPY --from='):
+                    continue
+                for source in line.split()[1:-1]:
+                    path = repo / source
+                    if path.name == 'go.mod':
+                        copied.add(path.parent.resolve())
+                    elif (path / 'go.mod').is_file():
+                        copied.add(path.resolve())
+            with self.subTest(dockerfile=name):
+                missing = sorted(str(path.relative_to(repo)) for path in modules - copied)
+                self.assertEqual(missing, [], 'local module manifests missing from image: ' + name)
 
 
 class ImagesTest(unittest.TestCase):
@@ -2097,8 +2132,11 @@ if args[:2] == ['image', 'inspect']:
                 whole),
             'upload-extra-input': ('artifacts', darwin, level, level + '          overwrite: true\n', whole),
             'native-upload-extra-input': (
-                'runner-arm64', 'Upload checked native arm64 image', level, level + '          overwrite: true\n',
-                native_out),
+                'runner-arm64', 'Upload checked native arm64 image', '          compression-level: 1\n',
+                '          compression-level: 1\n          overwrite: true\n', native_out),
+            'native-upload-wrong-compression': (
+                'runner-arm64', 'Upload checked native arm64 image', '          compression-level: 1\n',
+                '          compression-level: 0\n', native_out),
             'native-download-extra-input': (
                 'release', 'Download checked native arm64 image', '          path: ' + NATIVE_IN + '\n',
                 '          path: ' + NATIVE_IN + '\n          pattern: release-*\n',

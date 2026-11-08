@@ -430,6 +430,11 @@
       "pattern": "deskd/internal/humanid/mutate-policy.py",
       "class": "test",
       "reason": "offline mutation qualification of startup identity invariants with automatic source restoration; never an operator CLI"
+    },
+    {
+      "pattern": "tools/desk/internal/kubecompat/preparation/core.py",
+      "reason": "desk-containers/31 embedded preparation domain loaded by the Go preparation.Run bridge; JSON data only, no argv parser, shebang or standalone main guard; never installed separately",
+      "class": "library"
     }
   ],
   "entrypoints": [
@@ -2899,19 +2904,21 @@
       "path": "containers/k8s/compatibility/prepare.py",
       "kind": "script",
       "module": "python3",
-      "release": "source-mounted operator preparation adapter; not included in the published role images",
+      "release": "source-mounted delegate plus reviewed Linux AMD64 cellctl binary; neither is included in the v1.0.65 role images",
       "consumers": [
         "docs/kubernetes-compatibility-preparation.md",
         "containers/k8s/components/compatibility-cellctl/README.md",
         "containers/k8s/compatibility/prepare.test.py",
         "tools/desk/internal/kubecompat/profile_contract_test.go",
-        "docs/streams/desk-containers/brief-31-operate-trusted-compatibility-kubernetes-desks-through-cellctl.md"
+        "docs/streams/desk-containers/brief-31-operate-trusted-compatibility-kubernetes-desks-through-cellctl.md",
+        "tools/desk/cmd/cellctl/kube_compat_preparation_test.go"
       ],
-      "parser": "Python argparse; 11 options including mutually exclusive prepare/readback modes",
+      "parser": "Transparent exec delegate; cellctl compat-prepare owns Cobra/Viper parsing of the 11 options",
       "complexity": "simple",
-      "basis": "169 lines at a504b956; bounded cold-volume preparation; no runtime or work authority",
+      "basis": "8-line delegate; bounded cold-volume preparation domain embedded in cellctl; image launcher owns history and identity",
       "owner": "desk-containers/31",
-      "state": "pending"
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/cellctl"
     },
     {
       "executable": "perfdata",

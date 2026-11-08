@@ -23,6 +23,56 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.78 — 2026-11-07
+
+### Added
+- `forgeread/adapters/pager`: one shared, forge-neutral cursor walk with adaptive page-size backoff, a caller-supplied transient classifier and request accounting. It carries no transport or credential, so the desk tools, statusgen and the future forge client can share it.
+
+### Fixed
+- `deskboard actions` and `deskboard prs` no longer fail on a repository with many open pull requests: the open-PR reads now walk the queue in pages of 25 and, when the forge answers a page with a 504, an empty 200 or cut-off JSON, retry that same page at half the size (floor 6, at most 4 smaller retries per walk) before reporting could-not-check. Authentication, permission and rate-limit answers are still never retried, and a queue larger than the 100-change cap is still reported as truncated.
+
+## v1.0.77 — 2026-11-07
+
+### Fixed
+- `author-brief`: the phase README carries each numbered item under its own `##` heading, and `## Dependency waves` is never folded into `## Critical path`; the "Write the README first" step shows the minimal `## Briefs` / `## Critical path` / `## Dependency waves` skeleton.
+
+### Changed
+- Compress the hosted ARM64 release artifact at level 1. Its checked image archive and receipt are restored byte-for-byte by the existing download step.
+
+## v1.0.76 — 2026-11-06
+
+### Added
+- Author an offline Pi Durable runner investigation with real process-recovery tests, expected code omissions, and explicit go/no-go/unknown criteria; retain the existing runtime and activation owners.
+- Brief desktools-v2/81 plans running approved acceptance-transition rows inside a closed `--sandbox=container-netns` admission bracket, under the existing receipt, tree-digest and credit rules.
+- Install mikefarah yq v4.54.1 in the verify-runner image, fetched over https and checked against a per-architecture sha256 pin before install, so rows that call `yq` can run offline; the release capability probe now runs `yq` and requires its version line to name mikefarah, and a static test rejects an unpinned or unchecked yq, a check masked by a redefined command or a PATH change, any other instruction naming `yq`, and a final-stage ENV that sets PATH.
+- `statusgen --lint` now judges a pull request that delivers a `gate: human` brief before it merges. On a `pull_request` event it reads the pull request's body the way reconcile credits it: exactly one `Brief:` trailer, joined to the board id as the row spells it. That brief counts as moved to `implemented` when its row is at `todo` or `in-progress`, the statuses reconcile writes from. The decision-gate hold (lifecycle-v1 §4.5) then refuses the PR if that brief has no `decision-issue:` and `ruling:`. The design-approval gate (§4.4) refuses it if a post-cutover risk-gated brief has no `design:`. Previously those keys were found missing only after the merge, when reconcile's lint hold held the row. A body with no trailer or with several, a value reconcile cannot join, a row at `blocked`, `withdrawn`, `implemented` or later, a declared partial delivery, and runs outside a pull request event are unchanged. A partial claim that cannot be resolved is not judged and is reported as a notice. An unreadable event payload fails closed, with or without `.git`.
+
+### Fixed
+- Bind desk-tools/40 to its design decision issue while preserving pending approval and verification holds.
+- Bind desk-tools/50 to its recorded design approval while preserving pending independent verification and lifecycle acceptance; clarify local-record and latent native-dispatch trust limits.
+- Escape pipeline delimiters in four historical statusgen/02 Evidence command cells so Markdown and the table parser retain the original date and verifier columns. Commands, observations, dates and actors are unchanged; this records no new verification.
+- Keep same-day conflicting verification actors inconclusive (each same-day entry is compared with every other, and an unreadable runner stays in the denominator), recognize an explicitly named single bot alias only when the label does not lead with a different forge login, and clarify inherited missing-witness notices without changing lifecycle stamps or verification gates.
+- Statusgen uses the selected GitHub credential for reconciliation’s nested Evidence and approval reads, including when supplied through `--token-file`.
+- `cellctl scratch sweep` no longer reclaims nothing when one task is too large to walk inside the maintenance inventory limit: that task is kept and named, and the rest of the plan still runs, so ordinary reclaimable tasks beside it are reclaimed. The sweep still reports partial accounting, and the oversized task is never reclaimed without a complete walk.
+- `statusgen reconcile` now says why it cannot read a run's brief version: the refusal carries git's own reason, and a cross-repository run with no `tracking-source=` is told that this commit is the one it must name (its `source=` sha is never re-pointed or read in the tracking repository).
+- `statusgen verifyflip`, close-verify and the verify-gate card no longer refuse a
+  later strict **VERIFY: PASS** because an earlier, superseded run still says HELD.
+  The held scan's cover now reads the Result cell `statusgen verifyrun` writes for a
+  passing row that expects a non-zero exit (`pass exit=2`) as a clean re-run, so the
+  latest PASS run supersedes the earlier hold as it already did for `pass exit=0`.
+
+### Changed
+- Allow immutable consumer checks to resolve unchanged in-tree symlinks after bounded archive validation, retaining changed-link, containment, board-input, submodule and incomplete-snapshot refusals.
+- Plan fixed-delivery verification with separate main health; assign binding, acceptance, review context, continuation and historical recovery to existing briefs, add reciprocal dependencies and qualification ownership, and retain original Verify/Evidence without implementing runtime.
+- Standing Cursor desks start a native `/loop` in the interactive chat. An explicit cell cadence duration selects bounded headless passes.
+- The public-repo write gate (`PublicRepoGate`, run by `deskpr`, `deskpost`, `deskreply`, `deskevidence` and `deskrelease cut`) now ranks exposure private < internal < public instead of requiring the allowed-repos token to equal the live visibility. An explicit, non-private entry authorizes a live read when its token is at least as exposed as the live value, so the gate now tolerates a `:public` entry on a live-internal project. That entry is a mislabel, not an equal choice: `:internal` is the accurate token, a `:public` label on an internal repo is reported as drift by `deskboard policydrift`, and it over-ranks the repo as a verifier cross-repo source (a public tracking repo could then publish its binding), so operators with such an entry should change it to `:internal`. A live-internal refusal names only `:internal` as the remedy. A live-public repo still passes only on `:public`; `:internal` on a live-public repo, `:private`, a missing token, an `owner/*` pattern-only match and an absent entry still refuse (exit 5), and a failed or unrecognised live read is still exit 6. Each refusal now names its cause. The "may predate the `:internal` token" sentence is gone from the refusal.
+- desktools-v2/81 brief: the container-netns transition bracket's close step now refuses a dropped acceptance plan in both directions (no `--acceptance-record` over a receipt or witness preamble carrying a plan, and a record over a receipt with none), and Verify row 3 pins both refusals with mutations.
+
+## v1.0.75 — 2026-11-05
+
+### Changed
+- Add explicit local mirror-query caller grants, live current-state checks and protected launcher composition, with a source-bound isolated fixture and production fault controls. Operational credentials, restore qualification and activation remain separate.
+
 ## v1.0.74 — 2026-11-05
 
 ### Added

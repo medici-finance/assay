@@ -65,8 +65,9 @@ roll remains a separate downstream job under its own existing identity.
    script is a `root:root` regular file, executable, with no set-user-id or
    set-group-id bit, that neither its group nor others can write, and,
    executed directly with no argument, prints its usage and exits 2. It runs
-   the row tools `jq`, `shellcheck` and `tmux` from `PATH`, so a release whose
-   runner lacks one stops before any push. The probe
+   the row tools `jq`, `shellcheck`, `tmux` and `yq` from `PATH`, so a release
+   whose runner lacks one stops before any push; `yq --version` must also name
+   mikefarah, since rows reject any other program called `yq`. The probe
    prints Python and distribution versions into the release build log. It uses
    no pulls, network, mounts or credentials; it runs as user 1000:1000 with a
    read-only root, all capabilities dropped, no new privileges, default seccomp
@@ -245,6 +246,13 @@ cover them; their risk summary (publisher, exact versions and release dates, per
 persistence, transitive packages) is recorded on #4771. The `jq` pin is a
 `bookworm-security` version, which the archive drops once superseded, so that build fails
 closed and needs a reviewed pin update sooner than the others.
+`yq` is not a Debian package: bookworm's `yq` is a different program. The Dockerfile
+fetches mikefarah yq's static release binary over https, checks it against a per-architecture
+sha256 pin (amd64 and arm64) before installing it root-owned at `/usr/local/bin/yq`, and
+fails closed on any other architecture or a mismatch
+([issue 5531](https://github.com/medici-finance/assay/issues/5531)). A version bump
+updates the version and both checksums together, and `verifyrunner_yq_test.go` must list
+the new trio; its risk summary is recorded on #5531.
 Apt resolves transitive dependencies from the base suite during the approved build;
 `/usr/local/share/verify-runner/packages.txt` records every installed Debian package
 and version in the immutable image, including transitive dependencies and Python.
@@ -278,23 +286,58 @@ pair in both Dockerfiles in one change.
 
 ## Runner Go module cache
 
-Rows run with no network, a read-only root and `GOPROXY=off`, so the image bakes
-the Go modules they resolve: its Dockerfile runs `go mod download` for
-`tools/desk` and `statusgen` from the release's own `go.mod` and `go.sum`, and
-records those roots, one per line, in
-`/usr/local/share/verify-runner/go-module-roots.txt`. The cache is pinned by the
-image digest like everything else in the image; nothing is mounted or fetched at
-row time.
+Rows run with no network, a read-only root and `GOPROXY=off`, so the Go modules
+they resolve must already be on disk. Which modules that is comes from the source
+under verification, never from the image: the roots are listed in the tree's own
+`images/verify-runner/go-module-roots.txt` (#4683).
 
-The cache matches the source the release was built from, not a tree verified
-later. When main moves a requirement after a release, a row that builds that
-module in an older image stops on module resolution before its check runs
-(#4683). A container-netns `statusgen verifyrun` reads the roots file, compares
+**Admitted runs: a fresh cache per bracket.** When the verified home lists module
+roots, `statusgen verifyrun --open-bracket` requires `--module-cache <dir>`, a new
+empty directory outside the home that is not the host's own module cache. On the
+host, before the container starts, it runs `go mod download` for each listed root
+against that root's committed `go.mod` and `go.sum`, with checksum verification
+on (`GOSUMDB=sum.golang.org`, `GOFLAGS=-mod=readonly`, `GOENV=off`). The download
+environment is built from nothing: a scratch `HOME` and build cache, `PATH`, and
+the pins above; no host Go, git, proxy or credential setting reaches it.
+
+Before the first request it screens every module path a root could send to the
+public proxy (each require not replaced by a directory, each replacement that
+names a version, and each path its `go.sum` lists) with the same approved public
+set as `images/verify-runner/stage-cache.sh` (`APPROVED` and `GHPUB`, held equal
+by a parity test). A path under the verified repository's owner, in any case, a
+path matching the operator's `GOPRIVATE`, `GONOPROXY` or `GONOSUMDB`, or one off
+the approved set is could-not-check, with nothing sent to the proxy, no cache
+directory and no receipt. It then prints one line naming the proxy, the checksum
+database, the roots and the cache before it downloads anything. The cache path may
+hold no comma, quote, whitespace or control character, since it is written into
+the container's `--mount` option list. It refuses if the download changes either file, records
+the cache's digest and roots in the receipt as `module_cache`, and prints the
+container flags the run needs: `--network none --read-only`, the cache mounted
+read-only at `/go/pkg/mod`, and `GOMODCACHE=/go/pkg/mod`, `GOPROXY=off`,
+`GOTOOLCHAIN=local`, `GOFLAGS=-mod=readonly`. A failed download is could-not-check
+with no receipt. The image's baked cache is never a fall-back.
+
+The container run refuses before any row unless GOMODCACHE is set and outside the
+verified root, `GOPROXY=off` and `GOTOOLCHAIN=local` hold, no checksum-loosening
+setting is present (`GONOSUMDB`, `GOINSECURE`, `GOPRIVATE`, `GONOPROXY`,
+`GOSUMDB=off`; `GONOSUMCHECK` and `GOFLAGS` with `-insecure` are refused too, as
+legacy settings the current Go toolchain does not read), the root and the cache
+are both mounted read-only, and the cache digests to the receipt's. It writes the
+digest as a `Module-Cache: sha256:<64 hex>` line between `Container-Image:` and the
+attestation, inside the bracket's digested span, and the close step refuses a
+witness whose `Module-Cache` is missing or is not the receipt's. On a home that
+lists module roots, both the container run and the close step also refuse a
+receipt that carries no `module_cache`, or one recorded for other roots, so a
+receipt edited after the open step cannot drop the requirement.
+
+**The baked cache.** The image still bakes a cache for unbracketed runs: its
+Dockerfile copies the release's `go-module-roots.txt` to
+`/usr/local/share/verify-runner/go-module-roots.txt` and runs `go mod download` for
+each root it lists, from the release's own `go.mod` and `go.sum`. That cache
+matches the source the release was built from, not a tree verified later. A
+container-netns run also reads the roots file in the image, compares
 each root's `go.mod` in the verified tree with the cache before any row, and
-prints the gap once. A row that exits non-zero naming a missing module is
-recorded could-not-run with `image module cache predates go.sum (<module> <want>
-vs <have>)` rather than as a failure; rows that do not touch a missing module
-keep their own verdict. The remedy is to run in the image of a release whose
-`go.mod` and `go.sum` for those roots match the verified tree, normally the
-first release that contains the verified commit. A requirement bump on main
-that no release contains yet cannot be verified offline until the next release.
+prints the gap once. A row that exits non-zero naming a missing module is recorded
+could-not-run with `image module cache predates go.sum (<module> <want> vs <have>)`
+rather than as a failure; rows that do not touch a missing module keep their own
+verdict.

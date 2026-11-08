@@ -1,0 +1,1 @@
+- Repair statusgen/36 verification: separate performance samples from the baseline worktree, keep replacement-ref mutation tests discriminating under admitted Git settings, and test the inputs parser and lint adapter independently of unrelated acceptance records.
