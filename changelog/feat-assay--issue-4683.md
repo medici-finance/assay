@@ -1,0 +1,2 @@
+### Fixed
+- The verify-runner module-roots list now covers every Go module in the tree that has requirements of its own (qualgen, workflow, gitcore, cellconfig and the small tools modules), so their offline rows resolve from the open step's module cache. deskd is recorded as not provisioned, with the reason. A statusgen test fails when a module with a go.sum is added and not listed, and another checks that the image copies every replaced module's go.mod.
