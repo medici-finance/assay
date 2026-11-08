@@ -954,8 +954,6 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 	inFence := false
 	var codeScan inlineCodeScan
 	scope := heldScanScope(evidence, latestRun)
-	tableDepth := 0
-	var tableLex heldHTMLLex
 	var hits []int
 	var quotes []string
 	for i, line := range strings.Split(evidence, "\n") {
@@ -968,9 +966,6 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 		if inFence {
 			continue
 		}
-		// A line inside an HTML table, its own tags or not, is table text.
-		// The depth is updated after the line is masked, below.
-		inTable := tableDepth > 0
 		if trimmed == "" {
 			if isBlankLine(line) {
 				codeScan.blank()
@@ -986,7 +981,6 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 		// masker, so a backtick or "<" in it leaves the scan as uncertain as
 		// it is in the rendered text.
 		masked := codeScan.mask(line)
-		tableDepth, tableLex = heldHTMLTableDepth(tableDepth, line, masked, tableLex)
 		read := scope.lines[i]
 		if strings.HasPrefix(trimmed, ">") || read.skip {
 			continue
@@ -1036,14 +1030,6 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 			if cuts == nil && read.key == "" && len(read.blank) == 0 && heldRiskDefinition(clean, h) {
 				continue
 			}
-			// Prose that only recounts a state word — a zero tally, a mutation
-			// sentence, a past flip hold citing its tracker — is not a
-			// disposition (heldScanScope rule 6, #4721). A table line, a
-			// line inside an HTML table, a struck line and every other prose
-			// shape stay read.
-			if cuts == nil && !heldProseExempt(line, read, inTable) && heldRecounted(clean, line, h) {
-				continue
-			}
 			// A negated or zero-counted occurrence ("no could-not-check",
 			// "summary: 0 HELD") is not a live disposition at all — it is
 			// excused outright, the same as a routed one, without needing a
@@ -1051,6 +1037,12 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 			// surroundings only (heldOccurrenceNegated), so a negated mention
 			// never excuses a different, genuine occurrence elsewhere.
 			if heldOccurrenceNegated(clean, cuts, h) {
+				continue
+			}
+			// Free prose naming a state word is not a hold: on a non-table
+			// line only a HELD marker, a row result or a RISK-VALUE verdict
+			// is read (heldScanScope rule 6, #4721 ruling A).
+			if heldProseLine(line, read) && !heldProseSignal(clean, h) {
 				continue
 			}
 			// Prose beside a results table that says what an exit code
@@ -1094,16 +1086,6 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 		return true, quotes[k]
 	}
 	return false, ""
-}
-
-// heldProseExempt reports whether line is, or may render as, a table row or
-// cell: it is read in its result cells or whole, never for rule 6's recounted
-// prose. Any pipe, even one inside a code span or escaped, keeps the line out
-// of rule 6 — the fail-closed side of where a GFM table row splits — and so
-// does a line between an HTML table's open and close tags (inTable).
-func heldProseExempt(line string, read heldLineRead, inTable bool) bool {
-	return inTable || read.key != "" || len(read.blank) > 0 || heldTableLine(line) ||
-		strings.Contains(line, "|") || heldHTMLTableRe.MatchString(line)
 }
 
 // evidenceVerifierInfo returns the date and the Runner cell, verbatim, of the
