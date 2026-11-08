@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Bounded production faults in a clean owned linked worktree; no live setup.
+"""Bounded production faults in a checkout of the delivery; no live setup.
+
+Usage: provision_mutations.py --delivery <full sha> --base <full sha>
+
+Runs in a clean detached or branch checkout, linked or not. The delivery and its
+first-parent base are pinned explicitly: the delivery must be this checkout's HEAD
+or an ancestor of it, and the base must be the delivery's first parent. Only the
+files the faults mutate must be unmodified; other working-tree edits are ignored.
 
 Each control must compile, then fail at its named runtime assertion. Fixture or
 compiler failure is invalid evidence. Original source bytes are always restored.
@@ -8,7 +15,9 @@ Only the explicit disposable PostgreSQL test DSN is consumed by the Go harness.
 
 import os
 from pathlib import Path
+import re
 import subprocess
+import sys
 import tempfile
 
 
@@ -31,12 +40,28 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
+def git(*arguments):
+    result = run(["git", *arguments])
+    return result.returncode, result.stdout.decode().strip()
+
+
+def pinned(arguments):
+    """Return (delivery, base) from exactly `--delivery <sha> --base <sha>`."""
+    require(len(arguments) == 4 and arguments[0] == "--delivery" and arguments[2] == "--base",
+            "usage: --delivery <full sha> --base <full sha>")
+    delivery, base = arguments[1], arguments[3]
+    for sha in (delivery, base):
+        require(re.fullmatch(r"[0-9a-f]{40}", sha), "full 40-hex delivery and base required")
+    code, parent = git("rev-parse", "--verify", "--quiet", delivery + "^{commit}^1")
+    require(code == 0 and parent == base, "base is not the delivery's first parent")
+    require(git("merge-base", "--is-ancestor", delivery, "HEAD")[0] == 0,
+            "delivery is not HEAD or an ancestor of it")
+    return delivery, base
+
+
 def main():
+    delivery, base = pinned(sys.argv[1:])
     require(os.environ.get("ASSAY_TEST_POSTGRES_DSN"), "explicit disposable test DSN required")
-    require((REPO / ".git").is_file(), "owned linked worktree required")
-    require(run(["git", "status", "--porcelain"]).stdout == b"", "clean feature worktree required")
-    branch = run(["git", "branch", "--show-current"]).stdout.decode().strip()
-    require(branch.startswith("codex/"), "owned feature branch required")
     core = "workflow/store/refresh_provision.go"
     role = "workflow/store/refresh_role_profile.go"
     migration = "workflow/store/migrations/00004_refresh_initialization.sql"
@@ -120,7 +145,10 @@ def main():
          "tools/desk", "./internal/deskkit", "^TestWorkflowRefreshProvisionCI$",
          "dedicated provisioned-role join lacks required execution proof"),
     ]
-    snapshots = {name: (REPO / name).read_bytes() for name in {f[1] for f in faults}}
+    paths = sorted({f[1] for f in faults})
+    code, dirty = git("status", "--porcelain", "--", *paths)
+    require(code == 0 and dirty == "", "faulted files must be unmodified")
+    snapshots = {name: (REPO / name).read_bytes() for name in paths}
     # A qualifying baseline must run the same assertions successfully first.
     baselines = [
         ("workflow", "./store", "^TestPGRefresh(Provision|ProvisionReplay|ProvisionSchema|RuntimePrivileges|RuntimeHeldCompletion|RuntimeDataClock)$"),
@@ -156,7 +184,7 @@ def main():
             (REPO / path).write_bytes(original)
         require(all((REPO / path).read_bytes() == original for path, original in snapshots.items()),
                 "exact source restoration failed")
-    print("PASS: provision production controls killed; exact bytes restored", flush=True)
+    print(f"PASS: provision production controls killed; exact bytes restored (delivery {delivery}, base {base})", flush=True)
 
 
 if __name__ == "__main__":

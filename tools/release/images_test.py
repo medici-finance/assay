@@ -923,6 +923,40 @@ def move_step(text, job, name, before):
     return mutate_job(''.join(lines[:starts[0] - 1] + lines[end - 1:]), job, before, step + before)
 
 
+class ModuleCopyTest(unittest.TestCase):
+    def test_image_sources_include_local_module_closure(self):
+        repo = HERE.parents[1]
+        env = dict(os.environ, GOWORK='off', GOTOOLCHAIN='local')
+        pending = [repo / 'tools/desk', repo / 'statusgen']
+        modules = set()
+        while pending:
+            module = pending.pop().resolve()
+            if module in modules:
+                continue
+            modules.add(module)
+            data = json.loads(subprocess.check_output(
+                ['go', 'mod', 'edit', '-json', str(module / 'go.mod')],
+                cwd=repo, env=env, text=True))
+            pending.extend(module / item['New']['Path']
+                           for item in data.get('Replace', [])
+                           if not item['New'].get('Version'))
+        for name in ('Dockerfile', 'images/assay-harness/Dockerfile',
+                     'images/verify-runner/Dockerfile'):
+            copied = set()
+            for line in (repo / name).read_text().splitlines():
+                if not line.startswith('COPY ') or line.startswith('COPY --from='):
+                    continue
+                for source in line.split()[1:-1]:
+                    path = repo / source
+                    if path.name == 'go.mod':
+                        copied.add(path.parent.resolve())
+                    elif (path / 'go.mod').is_file():
+                        copied.add(path.resolve())
+            with self.subTest(dockerfile=name):
+                missing = sorted(str(path.relative_to(repo)) for path in modules - copied)
+                self.assertEqual(missing, [], 'local module manifests missing from image: ' + name)
+
+
 class ImagesTest(unittest.TestCase):
     def test_proof_joined(self):
         suite = HERE.parents[1] / 'images/verify-runner/source_proof_test.py'
