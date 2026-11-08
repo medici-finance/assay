@@ -124,3 +124,11 @@ The cache and batching delta is mirrored in `release.yml.proposed` and
 `ci/staged-workflows/release.yml`, preserving each proposal's other changes.
 The old changelog proposal is a historical snapshot, not a promotion source.
 No whole-file proposal should replace the current live workflow.
+
+## Fixture-only object qualification
+
+`release-object-qualification.yml` is a separate main-only, protected-environment workflow. It does not cut a tag, build release assets, publish a release or change release routing. Its producer and publisher use the original `transport.py` bundle/credential domain and checksum-pinned job-local object client. `qualification.py` supplies fixture/control functions called explicitly by the workflow, with no independent CLI or implicit network execution. The client adapter remains with its pending CLI migration owner; no parser migration is claimed here.
+
+The random multipart-sized inputs and version-shaped fixture member names are not release assets. Trusted producer job outputs bind the exact source, run, original producer attempt, hashes and size. A publisher-only rerun retains that producer attempt. The receipt is proof of the named checks only; failed or omitted checks are not qualification. Required cluster placement/admission and return-to-zero evidence remain operator gates, and the workflow cannot change runner capacity or release settings.
+
+Run the retained release tests plus `qualification_test.py` and the canonical `qualification-mutations.json` harness. The existing Go CI regression reader executes the entire Python test roster on PRs and main. No existing release workflow was edited.

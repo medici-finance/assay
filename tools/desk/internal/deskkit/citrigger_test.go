@@ -600,7 +600,7 @@ func ciCrossModuleRegistry() []ciEntry {
 		{
 			test: "tools/desk/internal/regression/releasecache_test.go", module: "tools/desk",
 			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
-			reads:      []string{"tools/release", ".github/workflows/release.yml", "ci/staged-workflows/release.yml"},
+			reads:      []string{"tools/release", ".github/workflows/release.yml", "ci/staged-workflows/release.yml", ".github/workflows/release-object-qualification.yml"},
 			runInvokes: deskShardInvokes,
 			why:        "the unconditional build-test floor executes release cache provenance, image artifact contracts, archive, and workflow fixtures",
 		},

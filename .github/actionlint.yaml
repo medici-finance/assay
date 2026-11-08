@@ -1,0 +1,4 @@
+self-hosted-runner:
+  labels:
+    - assay-release-object-builder
+    - assay-release-object-publisher
