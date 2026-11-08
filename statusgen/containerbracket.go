@@ -802,7 +802,14 @@ func containerRowRunnerProblem(rows []string, want string) string {
 		if cells == nil {
 			return fmt.Sprintf("the container table carries a row that is not a witness row: %q", row)
 		}
-		if cell := strings.TrimSpace(cells[witnessCellRunner]); cell != want {
+		// The row's read-set token is the container's own record of what that
+		// row read (build-less-brittle/15); the host derives no such token, so
+		// the cell compares without it and must match byte for byte otherwise.
+		// Only a token verifyrun writes, at the position it writes it, is
+		// removed (review S21): any other token-shaped text stays in the cell
+		// and refuses the close, so the tree and principal readers, which read
+		// the whole cell, see what this check compared.
+		if cell := stripWriterReadSetToken(strings.TrimSpace(cells[witnessCellRunner])); cell != want {
 			return fmt.Sprintf("row %s's Runner cell %q is not the cell the host derived and recorded at the open step, %q", strings.TrimSpace(cells[0]), cell, want)
 		}
 	}
