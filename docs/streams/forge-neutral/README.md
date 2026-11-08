@@ -257,7 +257,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 51 | [Store-injected mirror read-through coordinator and shared refresh gate port](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md) | 3 | M | todo | — | — |
 | 52 | [Canonical PostgreSQL mirror store without execution dependencies](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md) | 3 | L | todo | — | — |
 | 53 | [Qualified native mirror attempt accounting and retry metadata](brief-53-qualified-native-mirror-attempt-accounting-and-retry-metadata.md) | 5 | L | todo | — | — |
-| 54 | [Canonical PostgreSQL refresh gate and admitted read-through integration](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md) | 6 | L | implemented | — | — |
+| 54 | [Canonical PostgreSQL refresh gate and admitted read-through integration](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md) | 6 | L | done | 2026-11-07 assay-verifier-app[bot] @ 5142af8c66f4 (on-behalf-of human:ian) (forge-identity) | 2026-11-08 human:reviewer |
 | 55 | [Operator provisioning of known read-only refresh profiles](brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md) | 7 | L | implemented | — | — |
 | 56 | [Read-only forge serving behind qualified caller authority](brief-56-read-only-forge-serving-behind-qualified-caller-authority.md) | 8 | L | todo | — | — |
 | 57 | [Qualified local read-only caller authority and current-state producer](brief-57-qualified-local-read-only-caller-authority-and-current-state-producer.md) | 4 | L | implemented | — | — |
