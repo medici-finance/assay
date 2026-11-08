@@ -2091,6 +2091,15 @@ samples are unknown, never zero. No tool installation or live role restart occur
 
 ## Trusted compatibility Kubernetes desks
 
+`cellctl compat-prepare --cell <name> --role <role> --agent-version <exact> --model <id>`
+plans local cold-volume preparation without consulting the cell registry. It uses
+only explicit flags and defaults, with no environment/config inputs. `--prepare`
+creates the retained descriptor/history; `--readback` reads an unused preparation.
+Both require the authorized UID/GID 999 preparation context and preinstalled inputs.
+Follow the [preparation guide](kubernetes-compatibility-preparation.md) for the
+reviewed source build and companion binary/delegate placement in existing role
+images. This local command makes no cluster or model call and grants no activation.
+
 `CELL_KIND=k8s` keeps its existing local launch path unless the cell explicitly
 sets `CELL_KUBERNETES_CONFIG` to an absolute `cell-kube-compat-v1` JSON file.
 The closed schema and unresolved example are in

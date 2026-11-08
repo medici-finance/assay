@@ -1439,6 +1439,7 @@ var (
 	heldWitnessTrailerRes = []*regexp.Regexp{
 		regexp.MustCompile(`^Tree-Digest: sha256:[0-9a-f]{64}$`),
 		regexp.MustCompile(`^Container-Image: sha256:[0-9a-f]{64}$`),
+		regexp.MustCompile(`^Module-Cache: sha256:[0-9a-f]{64}$`),
 		regexp.MustCompile(`^Verification-Attestation: [A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[0-9]+ run=[0-9a-f]{64} (?:source-repo=[A-Za-z0-9._-]+/[A-Za-z0-9._-]+ )?source=[0-9a-f]{40} (?:tracking-source=[0-9a-f]{40} )?brief=[A-Za-z0-9._/-]+ model=[A-Za-z0-9._:\[\]-]+ tier=[a-z]+$`),
 		regexp.MustCompile(`^Admission-Bracket: run=[0-9a-f]{64} source=[0-9a-f]{40} tree=sha256:[0-9a-f]{64} witness=sha256:[0-9a-f]{64} opened=[0-9TZ:+.-]+ closed=[0-9TZ:+.-]+ before=receipt after=check-verifier$`),
 	}
