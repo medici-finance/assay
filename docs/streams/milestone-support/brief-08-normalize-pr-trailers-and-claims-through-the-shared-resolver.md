@@ -20,6 +20,7 @@ outcome: none
 gate-why: "Changes PR/claim-to-work binding; an alias collision or lost repository scope could associate a foreign owner or authorization with the wrong work."
 decision-trigger: spec
 design: DR-milestone-support-08
+decision-issue: 5704
 ruling: "https://github.com/medici-finance/assay/issues/5704#issuecomment-6715665207"
 sources:
   - docs/streams/milestone-support/README.md
@@ -32,7 +33,7 @@ consumers:
   - "tools/desk/internal/deskkit/trailer.go: follow-up milestone-support/08 (this delivery; replace with fixed-here in implementation)"
   - "tools/desk/internal/deskkit/briefauthoring.go: follow-up milestone-support/08 (this delivery; replace with fixed-here in implementation)"
   - "tools/desk/internal/deskkit/claimstore.go: follow-up milestone-support/08 (this delivery; replace with fixed-here in implementation)"
-  - "tools/desk/internal/gitcore/claimref.go: follow-up milestone-support/08 (this delivery; replace with fixed-here in implementation)"
+  - "gitcore/claimref.go: follow-up milestone-support/08 (this delivery; replace with fixed-here in implementation)"
   - "tools/desk/cmd/deskpr/: follow-up milestone-support/08 (this delivery; replace with fixed-here in implementation)"
   - "tools/desk/cmd/deskfile/: follow-up milestone-support/08 (this delivery; replace with fixed-here in implementation)"
   - "tools/desk/cmd/deskclaim-ref/: follow-up milestone-support/08 (this delivery; replace with fixed-here in implementation)"
@@ -102,6 +103,58 @@ records this bounded approval. The original Task and Verify rows below remain th
 implementation contract; no implementation, lifecycle advance or Evidence credit is
 claimed here. The proposal text below records what was reviewed; its earlier
 pending-ruling statements are superseded only by this exact approval and conditions.
+
+#### Census correction after the ruling (Task 1 pickup obligations)
+
+Review of the ruled proposal found that the consumer census below is incomplete as a
+census of direct calls. The ruled design text is left unedited. The callers below
+are recorded here as Task 1 obligations: each needs an explicit fixed-here, follow-up
+or out-of-scope disposition before any shared trailer, authoring or claim-payload
+helper changes. This note changes no step, case or decision.
+
+Direct callers missing from the table, at the ruled source and still present at
+current main:
+
+- `tools/desk/cmd/deskdispatch/phantom.go` (`crossRepoRepresents`, `ParseTrailers`):
+  the cross-repo duplicate-dispatch reader. It compares the trailer value with
+  `strings.EqualFold`, so it is also a case-fold site for the strict-spelling
+  safeguard.
+- `tools/desk/cmd/deskpr/titleprefix.go` (`ParseTrailers`, `SplitCrossRepoBriefTrailer`,
+  and the package's `splitBriefTrailer` wrapper), `tools/desk/cmd/deskpr/edit.go`
+  (`trailerLink`, `ParseTrailers`) and `tools/desk/cmd/deskpr/decisiongatebanner.go`
+  (`withDecisionGateBanner`, `ParseTrailers` and `splitBriefTrailer`).
+- `tools/desk/internal/deskkit/apptrailergate.go` and `tools/desk/internal/deskkit/autolane.go`
+  (`ParseTrailers`, used for trailer presence and kind only).
+- `tools/desk/internal/deskkit/pendingchangebatch.go` and `tools/desk/cmd/verifyloop/pending.go`
+  (`CompleteChangedFilesOf`, the changed-file completeness helper).
+
+Claim-payload readers the same-payload compatibility tests (step 4) must cover:
+
+- `tools/desk/cmd/deskclaim-ref/claim.go` (`fieldOf`, first match per key) and
+  `tools/desk/cmd/deskclaim-ref/alias.go`.
+- `tools/desk/cmd/desksupervise/live.go`: a positional parse of the first five message
+  fields, plus `state=`/`age=`/`owner=`/`branch=` field patterns over `show` output.
+- `tools/desk/cmd/deskdispatch/dispatch.go` (`claimStateFieldRe`, `claimAgeFieldRe` over
+  `show` output).
+- The bash wire peer, dispatch-claim.sh, that `claimMessage` in `claim.go` names as
+  sharing the message grammar. It is not in this repository, so its compatibility
+  remains could-not-check here and must be established at pickup.
+
+How this list was produced: `git grep -n -E` for direct calls of
+`SplitBriefTrailer`, `CanonicalBriefID`, `SplitAuthorsTrailer`, `SplitCrossRepoBriefTrailer`,
+`ParseTrailers`, `ResolveWorkTrailer`, `BriefAuthoringOnly`, `CompleteChangedFiles`,
+`CompleteChangedFilesOf` and `RepresentedBriefs` under `tools/desk`, excluding test files
+and the unrelated `testledger` function of the same name; then a search for
+`owner=`/`state=`/`branch=` message readers and `fieldOf` callers under `tools/`. Every other
+non-test Go hit is already a file in the table. Transitive callers still need the refresh
+the table's intro requires.
+
+Two path and owner notes. The table's closing line roots desk paths at `tools/desk/`;
+`gitcore/claimref.go` is the exception, the repository-root `gitcore` module (the
+frontmatter `consumers:` entry now names it there). Shared `workref` interpretation is
+owned by semantic-owner row S-context-handoff in `docs/contracts.md`, which leaves
+claims/trailer activation to this brief. Both S-claim and S-context-handoff therefore bind
+the implementation.
 
 #### Architecture pickup
 
