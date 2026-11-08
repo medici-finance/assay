@@ -14,3 +14,5 @@ track: platform
 | 03 | [PASS run, later FAIL run](./brief-03-pass-then-fail.md) | 0 | M | implemented | — | — |
 | 04 | [FAIL run only](./brief-04-no-pass.md) | 0 | M | implemented | — | — |
 | 05 | [Earlier below-floor PASS run, later PASS run](./brief-05-pass-then-pass.md) | 0 | M | implemented | — | — |
+| 06 | [Verdict-first FAIL run, later PASS run without a sha](./brief-06-fail-first-then-loose-pass.md) | 0 | M | implemented | — | — |
+| 07 | [PASS run without a sha whose rows disagree on the date](./brief-07-loose-pass-rows-disagree.md) | 0 | M | implemented | — | — |

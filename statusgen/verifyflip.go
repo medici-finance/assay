@@ -444,19 +444,73 @@ func flipLatestPass(evidence string) (flipPass, error) {
 	// check on its own rows; an ambiguous heading (heldRunFrom) keeps the
 	// first refusal. RunStart stays the verdict-bounded start: the provenance
 	// check keeps judging every line from there, never fewer.
-	p, err := flipReadRun(lines, start, start, end)
-	if err != nil {
-		from, ok := heldRunFrom(lines, start, end)
-		if !ok || from == start {
-			return flipPass{}, err
+	var p flipPass
+	if _, err := latestPassRunFrom(lines, start, end, func(from int) error {
+		q, err := flipReadRun(lines, start, from, end)
+		if err == nil {
+			p = q
 		}
-		q, qerr := flipReadRun(lines, start, from, end)
-		if qerr != nil {
-			return flipPass{}, err
-		}
-		p = q
+		return err
+	}); err != nil {
+		return flipPass{}, err
 	}
 	return p, nil
+}
+
+// latestPassRunFrom is the run boundary every reader of the latest PASS run
+// shares (#4294, #5229): read is tried on [start, end), the span latestPassSpan
+// bounds; when it refuses and an entry heading lies in the span, it is tried
+// once more from the latest such heading (heldRunFrom), so an earlier entry's
+// tail is never read as this run. It returns the first line of the run read
+// accepted, or read's first refusal: when the retry also refuses, when no
+// heading narrows the span, or when the heading boundary is ambiguous.
+func latestPassRunFrom(lines []string, start, end int, read func(from int) error) (int, error) {
+	err := read(start)
+	if err == nil {
+		return start, nil
+	}
+	from, ok := heldRunFrom(lines, start, end)
+	if !ok || from == start || read(from) != nil {
+		return 0, err
+	}
+	return from, nil
+}
+
+// flipReadLooseRun reads lines [from, end) as a run whose Runner cells lack
+// the `<login> @ <sha>` form, and nothing else wrong: at least one Date/Runner
+// row, every row dated with one calendar date no later than today, and every
+// Runner cell the same text, none of which reads `<login> @ <sha>`. It returns
+// that date and Runner cell; any other shape refuses, as flipReadRun would.
+func flipReadLooseRun(lines []string, from, end int) (date, runner string, err error) {
+	rows, _ := flipDateRunnerRows(lines[from:end])
+	if len(rows) == 0 {
+		return "", "", refuseFlip("runner mismatch: no Date/Runner rows are recorded for the latest PASS")
+	}
+	date, runner = rows[0][0], rows[0][1]
+	if !flipDateRe.MatchString(date) {
+		return "", "", refuseFlip("bad date: the latest PASS is dated %q, not YYYY-MM-DD", date)
+	}
+	if _, perr := time.Parse("2006-01-02", date); perr != nil {
+		return "", "", refuseFlip("bad date: the latest PASS is dated %q, not a calendar date", date)
+	}
+	if today := flipToday(); date > today {
+		return "", "", refuseFlip("bad date: the latest PASS is dated %s, after today (%s UTC)", date, today)
+	}
+	for _, r := range rows {
+		if !flipRowDated(r) {
+			return "", "", refuseFlip("runner mismatch: a row of the latest PASS has no Date or Runner")
+		}
+		if r[0] != date {
+			return "", "", refuseFlip("date mismatch: rows of the latest PASS carry %q and %q", date, r[0])
+		}
+		if r[1] != runner {
+			return "", "", refuseFlip("runner mismatch: rows of the latest PASS read %q and %q", runner, r[1])
+		}
+	}
+	if flipRunnerRe.MatchString(runner) {
+		return "", "", refuseFlip("runner mismatch: the latest PASS run reads <login> @ <sha> but did not read as one run")
+	}
+	return date, runner, nil
 }
 
 // latestPassSpan is the run selection every reader of "the recorded verify

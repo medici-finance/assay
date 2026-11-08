@@ -39,6 +39,8 @@ func TestCloseStampsLatestPassRun(t *testing.T) {
 		{"earlier below-floor PASS, later PASS", "lp/05", want, nil},
 		{"PASS run, later FAIL run", "lp/03", "", []string{"lp/03", "VERIFY: FAIL, not PASS", "latest strict **VERIFY: PASS** run only"}},
 		{"no PASS run", "lp/04", "", []string{"lp/04", "has no **VERIFY: PASS** marker"}},
+		{"verdict-first FAIL run, later loose PASS run", "lp/06", "2026-07-20 opus-verifier", nil},
+		{"loose PASS run whose rows disagree", "lp/07", "", []string{"lp/07", "no verifier date/runner"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := loadLPRoot(t)
@@ -81,6 +83,64 @@ func TestGateCardNamesLatestPassRun(t *testing.T) {
 	}
 }
 
+// TestStampFallbackNamesLatestRun pins evidenceVerifierInfo's fallback (the
+// latest PASS run's rows lack `@ sha`, so flipLatestPass refuses) to the run
+// flipLatestPass would select: an earlier entry's rows inside the span are
+// never stamped, and a run whose rows do not read as one run stamps nothing.
+// regression: #5229
+func TestStampFallbackNamesLatestRun(t *testing.T) {
+	tbl := "| # | Result | Date | Runner |\n|---|---|---|---|\n"
+	row := func(n, date, runner string) string { return "| " + n + " | ok | " + date + " | " + runner + " |\n" }
+	for _, tc := range []struct{ name, ev, date, runner string }{
+		{"verdict-first FAIL entry above the PASS entry",
+			"### Run — 2026-07-18\n\n**VERIFY: FAIL**\n\n" + tbl + row("1", "2026-07-18", "opus-verifier") +
+				"\n### Run — 2026-07-20\n\n" + tbl + row("1", "2026-07-20", "opus-verifier") + "\n**VERIFY: PASS**\n",
+			"2026-07-20", "opus-verifier"},
+		{"one loose run", "### Run\n\n" + tbl + row("1", "2026-07-20", "opus-verifier") + row("2", "2026-07-20", "opus-verifier") + "\n**VERIFY: PASS**\n",
+			"2026-07-20", "opus-verifier"},
+		{"rows disagree on the date", "### Run\n\n" + tbl + row("1", "2026-07-20", "opus-verifier") + row("2", "2026-07-21", "opus-verifier") + "\n**VERIFY: PASS**\n", "", ""},
+		{"rows disagree on the runner", "### Run\n\n" + tbl + row("1", "2026-07-20", "opus-verifier") + row("2", "2026-07-20", "sonnet-verifier") + "\n**VERIFY: PASS**\n", "", ""},
+		{"strict and loose rows mixed", "### Run\n\n" + tbl + row("1", "2026-07-20", "opus-verifier @ 2222222bbbbb") + row("2", "2026-07-20", "opus-verifier") + "\n**VERIFY: PASS**\n", "", ""},
+		{"a placeholder date", "### Run\n\n" + tbl + row("1", "—", "opus-verifier") + row("2", "2026-07-20", "opus-verifier") + "\n**VERIFY: PASS**\n", "", ""},
+		{"not a calendar date", "### Run\n\n" + tbl + row("1", "2026-02-30", "opus-verifier") + "\n**VERIFY: PASS**\n", "", ""},
+		{"a future date", "### Run\n\n" + tbl + row("1", "2999-01-01", "opus-verifier") + "\n**VERIFY: PASS**\n", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d, r := evidenceVerifierInfo(tc.ev)
+			if d != tc.date || r != tc.runner {
+				t.Errorf("evidenceVerifierInfo = (%q, %q), want (%q, %q)", d, r, tc.date, tc.runner)
+			}
+		})
+	}
+}
+
+// TestGateCardOnlyWhereCloseCanStamp pins the implemented-gate card to the
+// close it offers: a record whose latest PASS run cannot stamp the Verified
+// cell (lp/03: a later FAIL; lp/04: no PASS; lp/07: rows that do not read as
+// one run) gets no card, since its one-step close refuses.
+// regression: #5229
+func TestGateCardOnlyWhereCloseCanStamp(t *testing.T) {
+	root := loadLPRoot(t)
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, iss := range verifyIssues(root, streams, map[string]bool{}) {
+		got[iss.Brief] = true
+	}
+	for _, b := range []string{"lp/01", "lp/02", "lp/05", "lp/06"} {
+		if !got[b] {
+			t.Errorf("%s: no sign-off card for a record its close stamps", b)
+		}
+	}
+	for _, b := range []string{"lp/03", "lp/04", "lp/07"} {
+		if got[b] {
+			t.Errorf("%s: sign-off card raised for a record its close refuses", b)
+		}
+	}
+}
+
 // stampRowReaders are the only functions outside tests that may call the raw
 // Date/Runner row reader flipDateRunnerRows. Each reads lines a run selector
 // already bounded, or asks only whether a span holds such a row; none names a
@@ -90,7 +150,8 @@ func TestGateCardNamesLatestPassRun(t *testing.T) {
 var stampRowReaders = map[string]bool{
 	"latestPassSpan":       true, // rows after the latest PASS: a refusal
 	"flipReadRun":          true, // the span latestPassSpan bounds
-	"evidenceVerifierInfo": true, // the span latestPassSpan bounds
+	"evidenceVerifierInfo": true, // the run latestPassRunFrom bounds
+	"flipReadLooseRun":     true, // the run latestPassRunFrom bounds
 	"coverageCrossSource":  true, // flipLatestPass's own run
 	"heldCreditedAbove":    true, // existence only, never a runner
 	"heldRunDated":         true, // existence and completeness only

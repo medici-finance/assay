@@ -1085,14 +1085,16 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 // evidenceVerifierInfo returns the date and the Runner cell, verbatim, of the
 // run the latest strict **VERIFY: PASS** in Evidence closes: the sign-off
 // card's "recorded model verify pass" and the one-step human close's Verified
-// stamp. The run is the one latestPassSpan bounds — the selection
-// flipLatestPass (verifyflip, the reconcile fold) reads — so no reader names
-// an earlier run, whatever that run's verdict (#5229). Where flipLatestPass
-// reads the run (its rows agree on one `<login> @ <sha>`), its own run is
-// read, entry-heading re-read included; otherwise the span's first dated row
-// is. It returns empty strings when latestPassSpan refuses: no verdict, a
-// latest verdict that is not the strict PASS, Date/Runner rows after that
-// PASS, or no dated row in its run.
+// stamp. The run is selected exactly as flipLatestPass (verifyflip, the
+// reconcile fold) selects it: the span latestPassSpan bounds, narrowed to the
+// latest entry heading by latestPassRunFrom when the span does not read as one
+// run, so no reader names an earlier run, whatever that run's verdict (#5229).
+// A run is read when its rows agree on one date and one `<login> @ <sha>`
+// (flipReadRun), or when they agree on one date and one Runner cell that does
+// not read `<login> @ <sha>` (flipReadLooseRun: real records exist whose
+// Runner cell lacks the sha). It returns empty strings otherwise: no verdict,
+// a latest verdict that is not the strict PASS, Date/Runner rows after that
+// PASS, an ambiguous entry boundary, or rows that do not read as one run.
 //
 // Rows are read by flipDateRunnerRows: Date and Runner counted from the RIGHT
 // of each data row (a command's unescaped | cannot shift them), past any
@@ -1104,17 +1106,21 @@ func evidenceVerifierInfo(evidence string) (date, runner string) {
 	if err != nil {
 		return "", ""
 	}
-	run := lines[start:end]
-	if p, perr := flipLatestPass(evidence); perr == nil {
-		run = strings.Split(p.Run, "\n")
-	}
-	rows, _ := flipDateRunnerRows(run)
-	for _, r := range rows {
-		if r[0] != "" && r[0] != "—" && r[1] != "" {
-			return r[0], r[1]
+	if _, err := latestPassRunFrom(lines, start, end, func(from int) error {
+		if p, err := flipReadRun(lines, start, from, end); err == nil {
+			rows, _ := flipDateRunnerRows(strings.Split(p.Run, "\n"))
+			date, runner = rows[0][0], rows[0][1]
+			return nil
 		}
+		d, r, err := flipReadLooseRun(lines, from, end)
+		if err == nil {
+			date, runner = d, r
+		}
+		return err
+	}); err != nil {
+		return "", ""
 	}
-	return "", ""
+	return date, runner
 }
 
 // unrunRowsText returns the UNRUN rows from an Evidence section as a single string
@@ -1421,6 +1427,12 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 			// hasVerifyPass marker is the fail-closed gate — WHICH briefs are eligible
 			// is loosened here; WHAT evidence is required is not.
 			if row.Status == "implemented" && hasVerifyPass(bf.Evidence) {
+				if date, runner := evidenceVerifierInfo(bf.Evidence); date == "" || runner == "" {
+					// The one-step close refuses a record whose latest PASS
+					// run cannot stamp the Verified cell (#5229), so no card
+					// offers that close.
+					continue
+				}
 				if held, _ := verifyPassHeldContradiction(bf.Evidence); held {
 					// A PASS line is not a flip signal while a non-deferred
 					// row still reads HELD/could-not-check — no card is
@@ -1720,7 +1732,7 @@ func closeVerifyFlipPlan(root, briefID string, now time.Time) (readme string, up
 		}
 		date, runner := evidenceVerifierInfo(bf.Evidence)
 		if date == "" || runner == "" {
-			return "", nil, "", fmt.Errorf("refusing: brief %s has **VERIFY: PASS** but no verifier date/runner found in Evidence table — need a table with Date and Runner columns to stamp the Verified cell", briefID)
+			return "", nil, "", fmt.Errorf("refusing: brief %s has **VERIFY: PASS** but no verifier date/runner found in Evidence table — the latest PASS run needs Date/Runner rows that agree on one date and one runner to stamp the Verified cell", briefID)
 		}
 		verifiedStamp := date + " " + runner
 		// The cell this path is about to WRITE comes from the brief file's
