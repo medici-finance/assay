@@ -91,8 +91,10 @@ whole activation.
      next cut) and `--clear` (remove exactly the fragments it aggregated and
      print each path; the caller stages `git add -A changelog CHANGELOG.md`).
      `--at-ref` fails closed (exit 4) on an unresolvable ref, and `roll` refuses
-     (exit 3, nothing touched) when `CHANGELOG.md` already has a `## <tag>`
-     section. Exit 2 stays "nothing to aggregate". See #2605.
+     (exit 3, nothing touched) when there are fragments to aggregate and
+     `CHANGELOG.md` already has a `## <tag>` section. An empty set is checked
+     first and stays exit 2 ("nothing to aggregate"), whether or not the section
+     exists. See #2605.
 
    None of the tag-cut, signing, asset-upload, or immutable-release logic is
    touched; only the two changelog steps change.

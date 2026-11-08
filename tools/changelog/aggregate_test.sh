@@ -425,7 +425,7 @@ if [ "$(basename "$AGG")" = "aggregate.py" ]; then
   if [ "$rc1" = 2 ] && [ "$rc2" = 2 ] && [ -e "$D/changelog/x.md" ]; then
     ok "R5 --clear/--at-ref refused outside roll"
   else
-    bad "R5 flags outside roll (rc: $rc1)"
+    bad "R5 flags outside roll (rc: $rc1 rc2: $rc2)"
   fi
 else
   echo "ok   - R1..R5 at-ref/clear/duplicate (skipped for retired impl)"; pass=$((pass+1))

@@ -688,8 +688,9 @@ def main(argv):
             sys.stderr.write(
                 "usage: aggregate.py roll <fragment-dir> <changelog> <tag> <date> "
                 "[--credits <map-file>] [--at-ref <ref>] [--clear]\n"
-                "exit: 0 rolled; 2 nothing to aggregate / usage; 3 '## <tag>' "
-                "section already present; 4 --at-ref unresolvable\n")
+                "exit: 0 rolled; 2 nothing to aggregate (checked first) / usage; "
+                "3 fragments to aggregate but '## <tag>' section already present; "
+                "4 --at-ref unresolvable\n")
             return 2
         return cmd_roll(args[0], args[1], args[2], args[3], credits_path,
                         opts["at_ref"], opts["clear"])
