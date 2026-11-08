@@ -260,7 +260,8 @@ func cmdEdit(args []string) (err error) {
 	}
 
 	// Public-repo gate: refuse an outward write unless the repo is authorized
-	// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
+	// (private, or a listed allowed-repos entry whose :public or :internal tag is at least
+	// as exposed as the live visibility — see deskkit.PublicRepoGate).
 	owner, name := splitOwnerRepo(facts.repo)
 	// The gate's visibility read goes through the SAME forge backend already resolved above
 	// (forgeForFn's fg) — never a second, hardcoded GitHub-only client (assay#1054): a
@@ -357,7 +358,7 @@ func cmdEdit(args []string) (err error) {
 // body; here the false result can only describe the PR's CURRENT body, where it means the
 // migration case (a pre-trailer PR may gain a link) rather than a violation.
 func trailerLink(body []byte) (string, bool) {
-	if strings.HasPrefix(strings.TrimLeft(string(body), " \t\r\n"), deskkit.ScanBodyMarker) {
+	if isScanCarrierBody(body) {
 		return "", false
 	}
 	trs, err := deskkit.ParseTrailers(body)

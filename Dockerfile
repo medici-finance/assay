@@ -74,6 +74,7 @@ COPY perfrec/ ./perfrec/
 COPY gitquiet/ ./gitquiet/
 COPY gitcore/ ./gitcore/
 COPY deskcore ./deskcore/
+COPY workflow/ ./workflow/
 COPY statusgen/go.mod statusgen/go.sum ./statusgen/
 COPY tools/desk/go.mod ./tools/desk/
 RUN cd statusgen && go mod download

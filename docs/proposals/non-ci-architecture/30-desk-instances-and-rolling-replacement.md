@@ -205,10 +205,10 @@ transport is qualified, the existing supported transport remains explicit.
 
 | Owner | Applied brief amendment |
 |---|---|
-| R2 exact ownership and runtime facts; approximate role pacing | graph-execution/16, /19; shared supervisor journal /26 |
+| R2 exact ownership and runtime facts; approximate role pacing | graph-execution/19 (consumes completed /16); shared supervisor journal /26 |
 | Standing clients and claim/usage policy | graph-execution/27 |
 | Config, naming, desired-population adapter and cell-op extension | new desk-containers/33; consumes /27 and completed /15 |
-| Stops, lifecycle and replacement | desk-containers/16, /18, /19 |
+| Stops, lifecycle and replacement | instance stop mapping in desk-containers/33; instance drain and replacement in /19 (both consume completed /16 and /18) |
 | Status, diagnostics, logs, upgrade, GC and repair consumers | desk-containers/07, /20–25 |
 | Qualified profile, readiness, recovery and projection | delivered agent-execution/01 consumed; extension in /03, with /02, /04–05, /09 |
 | Managed Kubernetes/operator and independent journey | desk-containers/28–29; compatibility /06 preserved |
@@ -283,3 +283,12 @@ is now desk-containers/33 throughout this proposal and its unfinished consumers.
 The correction is tracked by #5030. The original proposal remains open for independent
 supersession review. Its approximate pacing clarification and exact ownership/safety
 requirements are retained, and no implementation or activation is claimed.
+
+## Delivered-owner routing — 8 November 2026
+
+Desk-containers/16, desk-containers/18 and graph-execution/16 completed delivery before this
+amendment landed. Their Task, Verify, version and Evidence are left as delivered, with forward
+pointers only. The instance stop mapping and its ruling-applicability check move to
+desk-containers/33. Instance drain and the stop-new-admission barrier move to desk-containers/19.
+Instance-aware work records and best-effort role pacing move to graph-execution/19. No completed
+delivery is reopened.

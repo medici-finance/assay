@@ -11,10 +11,39 @@ its full first-parent SHA. Both pins belong in the authored Verify command. The 
 requires complete local history and delivery ancestry, reads the delivered tree and routes,
 and evaluates inherited claims against that delivery's own diff. It runs no old binary,
 executes no snapshot code and opens no network connection. Missing history, an ambiguous
-brief, a noncommit/moving delivery spelling, an invalid parent range, links/submodules or
+brief, a noncommit/moving delivery spelling, an invalid parent range, unsafe links/submodules or
 archive-omitted blobs are could-not-check (exit 2). With both pins on the command line it
 does not choose a historical commit for the author: identifying the actual delivery remains
 an independently reviewed claim.
+
+Every evaluated delivery writes a separate `PRODUCER-DELIVERY: COULD-NOT-CHECK`
+qualification to stderr. The stdout report stays byte-identical, preserving its header
+and pinned report hashes. The routing counts on stdout and exit status concern declared consumer routes
+only. In particular, `follow-up` corroborates that a target brief exists and references
+back; it does not require that the selected diff contains the producer's implementation.
+Two different producer deliveries can therefore corroborate the same follow-up routes.
+Even `fixed-here` establishes path changes, not producer identity or implementation
+completeness. Independently inspect the actual delivery mapping and relevant changes
+before using these results as acceptance evidence. This limit also applies when the
+delivery pin is derived from committed Evidence below.
+
+## Unchanged links inside the delivered tree
+
+An unrelated symlink no longer makes every historical consumer check unreadable.
+Only an unchanged link whose complete target chain names existing entries inside
+that same immutable snapshot may resolve. Changed links, absolute or escaping
+links, broken, cyclic or excessive-depth chains, submodules, and links on board inputs (`docs`,
+`docs/streams/**` and `docs/archive/**`) remain could-not-check. Link targets come
+from the delivered archive, never the current checkout or a file outside it.
+
+The bounded archive reader writes regular files exclusively and never creates
+filesystem links. It checks the complete entry roster, rejects special or duplicate archive
+entries and missing blobs (including `export-ignore` omissions), and resolves path
+components in order so a parent step after a directory alias cannot hide an escape.
+Every chain must resolve inside the immutable tree. The extracted regular-file names
+and types must match the tree exactly on the host, or the result is could-not-check.
+Site patterns match tracked entries and their directories, never paths through aliases.
+There is no skip or borrowed-file fallback. SHA bounds and acceptance limits are unchanged.
 
 ## A bare `--consumers --brief <id>` on merged main
 

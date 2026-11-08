@@ -10,8 +10,9 @@ variables, the ci-config-project runbook, and token custody.
 
 1. **§0 tier ladder** — decide what the edition you run can claim, before provisioning.
 2. **§2 provisioning** — a human runs `tools/create-fleet-gitlab.sh`: the service accounts (the
-   automation principals of the two-principals prerequisite), the protected `main`, and the desk
-   labels (the GitLab form of the `create-labels` primitive).
+   automation principals of the two-principals prerequisite), the protected `main`, the desk
+   labels (the GitLab form of the `create-labels` primitive), and the §2c board-push credential
+   where the forge can mint a project access token.
 3. **The shared half, from [`docs/adopting-assay.md`](adopting-assay.md)** — the turnkey
    `assay:install` skill on Claude Code, or its CORE primitives by hand. It needs **no `gh` and no
    `glab`**: the pinned binaries are fetched over plain HTTPS and sha256-verified against
@@ -19,7 +20,8 @@ variables, the ci-config-project runbook, and token custody.
    skill's *CORE primitives per forge* table names which primitives are forge-neutral and how the
    rest are expressed here.
 4. **§2a runner, §2c `STATUSGEN_PUSH_TOKEN`, §2e `STATUSGEN_ROSTER_ENV`** — the human acts the
-   scaffolded `.gitlab-ci.yml` needs before its first pipeline can prove anything.
+   scaffolded `.gitlab-ci.yml` needs before its first pipeline can prove anything. §2c is a
+   by-hand step only where step 2 could not mint the token; its summary says so by name.
 
 `glab` is an optional convenience CLI for a human's own reads. No install step in either file
 requires it. The one tool here that drives `glab` is the later PAT renewal (§2g), a human-run
@@ -263,7 +265,7 @@ defaults to `https://gitlab.com` (point it at your self-managed instance otherwi
 `--avatars-dir`, `--no-avatars` and `--avatars-only` control the avatar step below (give
 `--avatars-dir` or `--no-avatars`, not both); `--tier` and the `--status-check-*` pair are §2b's.
 Flags take `--flag value` or `--flag=value`; an unknown flag or a bad value (a `--tier` outside
-free/premium/ultimate, a `--pat-expiry-days` that is not a whole number of days, 1 or more, a
+free/premium/ultimate, a `--pat-expiry-days` that is not a whole number of days from 1 to 365, a
 plain-http `--gitlab-url` off loopback) exits 2 before anything is read or sent. Run
 `tools/create-fleet-gitlab.sh --help` for the full reference.
 
@@ -370,9 +372,13 @@ the GitLab issue/orphan lane as could-not-check rather than empty. **It is a DIS
 the write boundary `ASSAY_ALLOWED_REPOS`** — a green write-lane preflight says nothing about
 it, and `ASSAY_ALLOWED_REPOS` already listing the adopter project does not set it.
 (A project whose GitLab visibility is `internal` is tagged `:internal` in
-`ASSAY_ALLOWED_REPOS` — `mygroup/myproject:ci:internal` — not `:public` and not `:private`: the
-public-repo write gate requires the tag to name the visibility the forge reports, and an
-`internal` project keeps every public-repo requirement, `ASSAY_HUMAN_LOGIN_MAP` included.)
+`ASSAY_ALLOWED_REPOS` — `mygroup/myproject:ci:internal` — not `:private`: the public-repo write
+gate requires the tag to be at least as exposed as the visibility the forge reports.
+`:internal` is the accurate tag. The write gate tolerates an existing `:public` entry on an
+internal project, but that is a mislabel: `deskboard policydrift` reports it as drift, and it
+over-ranks the project as a verifier cross-repo source (a public tracking repo could then
+publish its binding), so change it to `:internal`. An `internal` project keeps every public-repo
+requirement, `ASSAY_HUMAN_LOGIN_MAP` included.)
 
 - **Required value shape.** A comma-separated list of `<group>/<project>` slugs — the scan
   scope. It must contain **at least the adopter project itself** (the same slug that appears
@@ -461,6 +467,17 @@ already-correct rule is a no-op, a force-push-only difference is a `PATCH`, and 
 delete-and-recreate is unavoidable a refused re-create immediately re-applies the rule that
 was read. It then reads all three fields back and prints them, so a wrong rule (a repair at
 `merge_access_level=30` lets every Developer bot merge) is visible at provisioning time.
+Both reads classify **every** push entry on its own, as a role, user, group or deploy-key entry
+(a deploy-key or group entry carries an `access_level` too, and is never read as a role grant).
+A rule with a second entry is never taken as already correct. The read-back prints every entry
+as `push_entries=`, and any entry outside the intended set (the board-writer's user entry where
+the Premium form named it, otherwise a role entry at `0`) is a recorded failure. So is a
+read-back without that per-user entry: a forge has been seen to answer the per-user write 201
+and then not hold the entry. Where a delete-and-recreate would be needed but the existing rule
+holds an entry a restore cannot reproduce exactly (a group, a deploy key, an entry the run cannot
+classify, or several role entries on the free-tier form), the step deletes nothing, leaves that
+rule in place and records a failure naming the entries: set the rule by hand under **Settings >
+Repository > Protected branches** and re-run to confirm.
 On some self-managed instances the intended "push = No one" fields do not stick and
 read-back stays Maintainer (`40`); treat **that printed read-back** as the live control,
 not the script's request body. Approval settings are read back the same way, because on
@@ -585,6 +602,33 @@ one here.
 
 ## 2c. Board-push credential — `STATUSGEN_PUSH_TOKEN`
 
+**Provisioned by §2 where the forge allows it.** With `--project`, `deskfleet provision` and
+`deskgitlab create` (the script) mint this credential as the last project step: a project access
+token named `assay-statusgen-push`, scope `write_repository` only, role Maintainer, expiring
+after `--pat-expiry-days`, stored as the masked **and** protected variable below and read back
+by those two flags. The value is never printed or written to disk. The step:
+
+- is a no-op when the variable already exists (a fresh token is a rotation, not a
+  re-provision), and a recorded failure when that existing variable is not both masked and
+  protected;
+- never uses a role-fleet token in its place. Where the forge refuses to mint a project access
+  token, it records a failure naming the manual step and the refusal's cause (a 403 or 404 means
+  this forge or tier has none, as on gitlab.com Free; a 400 or 401 is a request or credential
+  problem): do the rest of this section by hand;
+- reports a token it minted but could not store by name and id, and does not revoke it.
+  Revoke it under **Settings > Access tokens**: a re-run after that failure mints another token
+  of the same name;
+- leaves the board-writer at Developer and does not change who may push `main`. When the
+  read-back push rule admits no Maintainer it prints a NOTICE: the regen push will be refused
+  (`scope`) and the board regenerates through a human-merged MR. The rule this step writes
+  admits no role, so on a provisioned project this NOTICE is the expected state on every run,
+  not a fault. Widening that rule is a human decision;
+- does not renew the token. It expires after `--pat-expiry-days` (default 7, at most 365), after
+  which the regen push fails, and a re-run is a no-op while the variable exists. To rotate, use
+  `deskfleet push-token rotate` ("Rotating it" below). A longer lifetime for this token
+  is a larger `--pat-expiry-days` on the run that mints it; that flag also sets the expiry of any
+  role tokens the same run mints.
+
 The scaffolded `statusgen-regen` job (`.gitlab-ci.yml`, generated by `statusgen init --forge
 gitlab`) cannot push the regenerated `STATUS.md` with the job's own `CI_JOB_TOKEN` — GitLab's
 default job token has no push scope. The job needs a **separate** masked **and protected**
@@ -671,10 +715,122 @@ the job's other git calls still use the runner's credential, and no header value
 printed. If git cannot list the keys, the job prints a could-not-check NOTICE and pushes
 anyway; a refused push is then classified as above.
 
+**The runner's job-token rewrite.** A runner can also put the job token in a
+`url.<scheme>://gitlab-ci-token:<token>@<host>/.insteadOf` rewrite, so that other projects
+on the same instance clone with it. git applies that rewrite to the board remote, which the
+job builds without userinfo, and URL userinfo is used before any credential helper is
+asked. The board push would again go out as the job token and get a 403, and the extraheader
+reset above prints nothing because no header is involved. For each board push (the dry run
+included) the job asks git where the URL resolves. If the result carries userinfo, it pushes
+with a `url.*.pushInsteadOf` pin back to the same URL without it, and says so. The pin is
+applied only when the resolved URL keeps the destination's scheme and host (port included): a
+rewrite that points the board remote at a different host is not pinned, because the pin would
+send the board credential there. That push goes out as the rewrite says and fails, and the job
+prints a NOTICE. Neither URL is printed. A push to a remote NAME whose push URL carries userinfo cannot be pinned this way,
+so the job prints a NOTICE asking for a URL instead. A credential helper the runner scopes to
+the instance URL is already covered: the job's empty `credential.helper=` reset clears
+URL-scoped helpers too.
+
+**An older embedded copy.** `.gitlab-ci.yml` carries `statusgen/pushcred.sh` and
+`statusgen/boardadd.sh` embedded as the `.statusgen-pushcred` and `.statusgen-boardadd`
+anchors, and `statusgen init` never overwrites an existing file. Upgrading the pinned
+statusgen therefore does not update the anchors, and the pipeline keeps the older board-push
+behaviour. `statusgen --lint` and a re-run of `statusgen init` name each anchor that differs
+from the running statusgen's copy. Refresh them with
+`statusgen migrate gitlab-anchors --root .` (add `--dry-run` first to see which would change),
+then review `git diff .gitlab-ci.yml` and commit it. Only the two anchor blocks change. The
+command reads and writes only a regular file: a `.gitlab-ci.yml` that is a symbolic link is
+refused (exit 5) and nothing is written. A file scaffolded before the anchors existed (its
+`statusgen-regen` job carries the board push inline, with neither anchor key) has nothing to
+refresh; `statusgen --lint` names it with a NOTICE, and the remedy is the regeneration below. The
+upgrade migration that ships with this fix runs the same command. Before a release carries the
+`gitlab-anchors` target, a `.gitlab-ci.yml` still in its unmodified scaffolded form can be
+regenerated instead: remove it, run `statusgen init --forge gitlab` (it writes only the
+missing file), then review the diff and commit.
+
 The runners section above used to send the reader to the per-role fleet credential section
 by a wrong number — the section that actually holds the per-role rotation rules is §5, and
 its subject is a different credential entirely. Read `STATUSGEN_PUSH_TOKEN` from this
 subsection instead.
+
+### Rotating it — `deskfleet push-token`
+
+`deskfleet push-token` rotates this credential in one process and checks it between rotations.
+The new value lives only in the forge and in that process's memory: it is never printed,
+logged, put in a command's argv, an environment variable or a file, and no flag takes a value.
+
+```
+deskfleet push-token rotate --project <path-or-id> --rotator-token-file <file> --token-name <name> [--days N] [--min-days N] [--create] [--dry-run]
+deskfleet push-token check  --project <path-or-id> --reader-token-file <file> --token-name <name> [--min-days N]
+```
+
+**Scope.** The verb handles a **project-level** variable and a **project access token** only. A
+group-level `STATUSGEN_PUSH_TOKEN`, or a group access token, which this section also allows, is
+out of its scope: rotate those by hand.
+
+**Who runs it.** `rotate` runs as the person who holds the rotator credential: a personal
+token at Maintainer with `api` scope, in an owner-only file named by `--rotator-token-file` (the
+same custody check as §5's token files). It is not a desk or CI identity. `rotate` refuses while
+the desk loop's session marker `DESK_LOOP` is set; that check is advisory, because the marker is
+self-declared. `GITLAB_API_BASE` must be set and must end in `/api/v4`.
+
+**Defaults.** These follow the recorded decision (`docs/streams/decisions/DR-forge-gitlab-18.md`):
+
+- the new token lives 30 days (`--days`, at most 90);
+- the proof needs at least `--min-days` (default 7) left, and an expiry no earlier than one
+  day before the requested date;
+- a variable created by `--create` is created masked and hidden where the instance supports
+  hidden variables, and masked and protected otherwise;
+- when the new token's own self-introspection answers 403 for insufficient scope, the by-id read
+  and the push probe below stand as the proof. Any other self-introspection failure fails.
+
+**The procedure.** Run `rotate --dry-run` first: it names every step and makes no request. A
+real run then:
+
+1. reads the project, its protected default branch, the project-level variable (it must be
+   masked, protected and scoped `*`) and the one active token named `--token-name` (scopes
+   exactly `[write_repository]`, Maintainer). Any failed check refuses with exit 5 and writes
+   nothing; a read that fails exits 6;
+2. rotates that token. GitLab revokes the predecessor in the same call;
+3. writes the new value into the variable, sending masked, protected and scope `*` on every
+   write, because GitLab resets any flag a write omits. A transport error or a 5xx is retried twice;
+4. reads the variable back and compares every flag, the hidden state and (when the variable is
+   not hidden) the value;
+5. proves the new token three ways: its record by id (active, not revoked, exact scopes, the
+   expiry above), its own self-introspection, and a receive-pack advertisement
+   (`<web root>/<project path>.git/info/refs?service=git-receive-pack`) on the API host, with the
+   credential in the `Authorization` header. A clone URL from a response is never used, and a
+   redirect is a failure.
+
+Exit 0 means rotated and proven by all three probes. The outcomes that are not 0:
+
+| Line | Exit | What happened | What to do |
+|---|---|---|---|
+| `refused: …` | 5 | a precondition failed; nothing was written | fix what the line names, re-run |
+| `rotate-refused` | 1 | the forge refused the rotate; nothing was written. A second `rotate` running at the same time ends here | `push-token check` confirms the other run's install |
+| `rotate-response-lost` | 1 | the rotate was sent but its answer was lost: the predecessor may be revoked and the new value is unrecoverable | re-run `rotate`; it finds the one active token by name and rotates it again |
+| `could-not-check: …` | 6 | a preflight read (the project, the branch, the variable, or any page of the access-token list) failed or was cut short; nothing was written | re-run once the forge answers |
+| `rotated-not-installed` | 1 | the variable write failed after three attempts. The line says which state it left: the variable holds the revoked predecessor, the variable does not exist, or an earlier create attempt's answer was lost and the variable may now exist | re-run what the line names: `rotate`, or `rotate --create` when the variable does not exist |
+| `contained: revoked <id>` | 1 | the read-back disagreed on the field named, or could not be read at all; the new token was revoked at once and the revoke confirmed, so the variable holds a dead value | fix (or confirm) the variable's flags, then `rotate --create` |
+| `containment-failed: revoke <id> by hand` | 6 | the read-back disagreed or could not be read, and the revoke could not be confirmed: the variable may hold a LIVE token with unverified flags | revoke that id under **Settings > Access tokens** now, fix the flags, then `rotate --create` |
+| `by-id`, `self` or `push: FAIL field …` | 1 | a proof probe failed on the field named (an expiry more than one day either side of the requested date fails `expires_at`) | read the field; re-run `rotate` once it is fixed |
+| `by-id: could-not-check` | 1 | the new token's record could not be read inside the proof; the rotate is not proven | `push-token check` once the forge answers |
+
+**After an expiry or a containment.** An expired or revoked token is no longer active, so a plain
+`rotate` refuses with zero active tokens. `rotate --create` creates the token (and, if it is
+missing, the variable) instead, and then installs and proves it the same way.
+
+**A pipeline already running.** A `statusgen-regen` job that started before the rotation holds
+the old value; its push fails with a credential class from the table above, and the next run on
+the default branch picks up the new value.
+
+**`check` between rotations.** `check` reads only: no POST, PUT or DELETE. It runs under a
+separate reader credential (a read-only API scope at Maintainer is enough) in an owner-only
+file named by `--reader-token-file`, finds the one active token by name and runs the by-id probe
+against `--min-days`. Exit 0 healthy; 1 below the threshold, revoked, inactive or wrongly scoped
+(`no-active-token` when there is none, the count when there are several); 6 when a read fails.
+It shares the by-id comparator with `rotate`, so it is an out-of-band monitor, not an independent
+check of that comparator.
 
 ## 2d. Source-pin lane — GitLab + native Windows (channel D)
 
@@ -993,6 +1149,9 @@ comment for the full endpoint list):
 | Require green pipelines before merge | `PUT api/v4/projects/:id` | `only_allow_merge_if_pipeline_succeeds: true` |
 | Require all threads resolved before merge | `PUT api/v4/projects/:id` | `only_allow_merge_if_all_discussions_are_resolved: true` — the merge-hold marker thread's server-side half (§0.1); Free tier, read back the same way as the pipeline flag above |
 | Create the desk labels | `POST api/v4/projects/:id/labels` | one call per label, idempotent (a duplicate name answers 409, or 400 "already exists"); the queue-legibility pair `authorization-needed` / `approval-needed`, the `review-request` dispatch token, and one `raised-by:<role>` per filing role |
+| Check for the board-push variable | `GET api/v4/projects/:id/variables/STATUSGEN_PUSH_TOKEN` | 404 means "not set yet"; an existing one is a no-op, checked for `masked` and `protected` |
+| Mint the board-push token | `POST api/v4/projects/:id/access_tokens` | `name: assay-statusgen-push`, `scopes: [write_repository]`, `access_level: 40`, `expires_at` = today + `--pat-expiry-days`; a refusal is a recorded failure naming the §2c manual step |
+| Store the board-push token | `POST api/v4/projects/:id/variables` | `key: STATUSGEN_PUSH_TOKEN`, `masked: true`, `protected: true`; read back by `GET` on the same variable |
 
 Every endpoint above is reachable at the **Premium** tier — nothing the script calls
 requires Ultimate.
@@ -1096,6 +1255,8 @@ Carried verbatim in spirit from spec.md §5 — this doc does not relax any of i
   written before the command prints the path, so the verb's own read after its own rotation
   cannot return the pre-rotation token. A rotation that finds the link gone after its write
   fails at mint time rather than leaving a layout that reads stale later. (#1112)
+- **The board-push credential is not a role PAT.** `STATUSGEN_PUSH_TOKEN` rotates through
+  `deskfleet push-token` (§2c, "Rotating it"), never through the role-PAT path above or §2g.
 - **Audit events** (Premium+) should be reviewed periodically for rotation/use anomalies.
 
 ## 5a. Hardening checklist — `repohardenguard` on GitLab

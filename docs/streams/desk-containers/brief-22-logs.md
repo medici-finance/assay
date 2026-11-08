@@ -7,7 +7,7 @@ why: >-
   lock error, and each one had to be read from its own pane. `logs` reads a role's window
   through the cockpit's own API and prints it, for one role or all of them, so the console
   cockpit can show it too.
-wave: 11
+wave: 10
 depends: ["desk-containers/15", "desk-containers/18", "desk-containers/33"]
 unblocks: []
 effort: S

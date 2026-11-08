@@ -730,6 +730,86 @@ Kills the session and this cell's `deskd` — matched on its own `--config` path
 torn down whichever cockpit resolves, and what a non-tmux cockpit opened is closed where that
 cockpit offers a verb for it and **named for you to close by hand where it does not**.
 
+`cellctl down <cell> <role>` closes **one** role. It applies only to a role that is already paused
+or drained: a role that is not is refused `role-busy` before any plan is shown, and `down` never
+pauses it for you, so declining the confirm leaves the cell exactly as it was. Run
+`cellctl pause <cell> <role>` (or `drain`) first. It stops that role's cadence alone, re-measures the role idle, re-verifies the role's
+surface identity against the live cockpit, and issues exactly one single-surface close
+(`tmux kill-window -t <id>`, `herdr tab close <tab>`, `orca terminal close --terminal <h>`). It never
+closes a session, a workspace, a sibling's window or another cell's. A role with no surface receipt,
+or a cockpit build without the close verb, is refused `per-role-close-unsupported`, and only the
+cell-wide `down` can close it.
+
+### Lifecycle — `pause`, `resume`, `drain`
+
+```bash
+cellctl pause  <cell> [role...]
+cellctl resume <cell> [--foreign <stop>]
+cellctl drain  <cell> [role...] [--timeout 20m] [--handoff-wait 60s] [--now]
+```
+
+These verbs are adapters onto the runner-lifecycle states and transitions in the cell operator
+surface proposal (`docs/proposals/non-ci-architecture/21-cell-operator-surface.md`, §Lifecycle
+states and transitions). The role states are `running`, `pausing`, `paused`, `draining`, `drained`
+and `stopped`, and anything that proposal does not define is refused. The verbs' meaning is the
+transitions, not the files behind them.
+
+- **`pause`** stops new work at the next tick boundary: no new cadence pass, dispatch or claim. Work
+  already running finishes. Pausing a paused role does nothing.
+- **`resume`** lifts only the stops `pause` created, each checked by identity. A stop that someone
+  else set, such as `DISABLED`, `STOP`, `STOP.<role>` or a cell stop that existed before the pause,
+  stays where it is, and the result names it. `--foreign <stop>` lifts one of those by name, and only
+  on the operator's terminal confirm.
+- **`drain`** pauses, then waits for each targeted role to be idle. It polls at most every 10s and
+  stops waiting at `--timeout`. It then collects each role's handoff record and stops the roles
+  through the per-role `down` above. A drain never cancels an external effect already in flight. If
+  work is still running at the timeout, the drain exits 1 (`partial`, `role-busy`), leaves those
+  roles up and paused, and names `drain <cell> --now` and `resume <cell>` in `next[]`. If the idle
+  signal cannot be read, the drain ends `could-not-check` and stops nothing.
+- **`drain --now`** waits only `--handoff-wait` for handoff records. It then plans the stop of every
+  targeted role and lists each claim still held as **abandoned: an unknown outcome to reconcile**,
+  in the plan, in the result's `actions[]` and in the role's handoff record. It is applied only by
+  the interactive confirm.
+
+**The idle signal, per mode.** A cadence-mode role is idle between passes when it holds no dispatch
+claim. For an interactive role, the checkpoint stays `running` for as long as the harness lives, so
+it says nothing about idleness. cellctl measures the claims and the harness's extra children, and
+reports the harness turn itself as **could-not-check**, which is never treated as idle. As a result,
+an interactive role is stopped only through the operator's terminal confirm, on a plan stating that
+harness idleness was not measured.
+
+**Expect `drain --now` for an interactive role.** The harness's long-lived helpers are recorded
+once, when its lease confirms. Any process the harness starts after that, such as a tool server
+it keeps open, counts as an extra child for the rest of the session. A timed drain of such a role
+therefore usually ends at `--timeout` with `partial`/`role-busy`. That is the safe direction: it
+never reads a busy harness as idle. Check the role yourself and finish with `drain <cell> <role>
+--now`.
+
+**Every state change needs a terminal** on stdin and stdout. Off a terminal, each of these verbs is
+refused `not-interactive` and changes nothing, and `--plan` prints what would be done. A transition
+request recorded in a file under the cell is a request, never authority. Only `pause`, a timed
+`drain` and a per-role stop of a role already paused or drained are ever taken from a record. The
+stop is taken only after the role re-measures idle, whatever the record says about it. `resume`,
+`start`, `restart`, `drain --now` and a foreign-stop lift always need the terminal. Every verb emits
+the `cell-op-v1` result (`--json`).
+
+**The handoff record.** A desk asked to drain writes a short record of the claims it held, the PRs it
+was driving, the decision it was waiting on and what it was doing. The next boot reads it before the
+first sweep. The shape is stated once, in
+[`plugins/assay/references/handoff-note.md`](../plugins/assay/references/handoff-note.md). If the
+desk writes no record by the deadline, cellctl writes a fallback naming what it measured.
+
+**Interim mechanism.** Today the transitions are implemented on the existing stop flags and cadence,
+behind one internal interface in `tools/desk/cmd/cellctl/lifecycle.go`:
+
+- a pause is a cell stop flag in the config home, created only when absent and recorded with its
+  identity;
+- the per-mode idle signal is the cadence checkpoint plus the dispatch claims;
+- the handoff record is `run/handoff/<role>.md` under the cell.
+
+This is the first implementation, not the design. The runner lifecycle and its coordination store
+replace it, and the proposal above records that migration.
+
 **List:** `cellctl ls` prints the cells under the cells root. No cells is not an error.
 
 **Persisting a `cell.env` change:** `cellctl set <cell> KEY=VALUE [...]` — see *Pinned models* below
@@ -2011,12 +2091,22 @@ samples are unknown, never zero. No tool installation or live role restart occur
 
 ## Trusted compatibility Kubernetes desks
 
+`cellctl compat-prepare --cell <name> --role <role> --agent-version <exact> --model <id>`
+plans local cold-volume preparation without consulting the cell registry. It uses
+only explicit flags and defaults, with no environment/config inputs. `--prepare`
+creates the retained descriptor/history; `--readback` reads an unused preparation.
+Both require the authorized UID/GID 999 preparation context and preinstalled inputs.
+Follow the [preparation guide](kubernetes-compatibility-preparation.md) for the
+reviewed source build and companion binary/delegate placement in existing role
+images. This local command makes no cluster or model call and grants no activation.
+
 `CELL_KIND=k8s` keeps its existing local launch path unless the cell explicitly
 sets `CELL_KUBERNETES_CONFIG` to an absolute `cell-kube-compat-v1` JSON file.
 The closed schema and unresolved example are in
 `containers/k8s/compatibility/`. The example pins the published v1.0.65 role images
 for `linux/amd64`, but is not deployable: agent, initialization and actual operator
-values need qualification. A missing or invalid explicit profile makes no API operation. There is no ambient context discovery,
+values need qualification. A missing or invalid explicit profile makes no API
+operation. There is no ambient context discovery,
 credential-plugin execution, proxy, insecure TLS or redirect fallback.
 
 Use the opt-in `containers/k8s/components/compatibility-cellctl` root only after
@@ -2040,6 +2130,13 @@ for the child so cell-scoped STOP and role/claim controls retain their owners; n
 plugin enable command or second agent invocation runs during boot. Explicit
 `desk-session --prepare` creates cold history only where no history exists.
 Ordinary boot never invents first-boot permission from absent history.
+
+The [custodian preparation guide](kubernetes-compatibility-preparation.md) gives
+the approved-input inventory, descriptor/preparation/readback commands and exact
+profile/workload mapping for all five roles. `launch_id` is the canonical
+descriptor hash retained in `.assay-compat/state.json`, not a descriptor field or
+the checksum of its pretty-printed JSON. Preparation and offline configuration
+checks do not authorize the live sequence below.
 
 For a prepared cell named `example`, the bounded sequence is:
 

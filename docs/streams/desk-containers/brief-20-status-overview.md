@@ -67,7 +67,7 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
 2. Rebuild `status` text and `--json` on it, keeping the existing line as the prefix.
 3. Docs; changelog fragment.
 
-- **Instance amendment:** Render /31 instance-aware results: cell/role/name/instance/generation, desired versus observed state, profile, paused/draining predecessors and successor readiness, estimated role occupancy/target, freshness and optional instance refill target. Preserve aggregate and individual unknowns and independent effect/acceptance dimensions. Role-only legacy output is explicitly limited rather than collapsing required instance data.
+- **Instance amendment:** Render /33 instance-aware results: cell/role/name/instance/generation, desired versus observed state, profile, paused/draining predecessors and successor readiness, estimated role occupancy/target, freshness and optional instance refill target. Preserve aggregate and individual unknowns and independent effect/acceptance dimensions. Role-only legacy output is explicitly limited rather than collapsing required instance data.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |

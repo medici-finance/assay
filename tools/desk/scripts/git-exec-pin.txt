@@ -1,0 +1,14 @@
+# git-exec ratchet pin, read by scripts/count-git-exec.sh.
+#
+# The one non-comment line is the git-exec site count the gate allows. It is the exact
+# count measured on the base commit the pin was set on (c2ac8845a9ea, by this same
+# script: 51 direct spawns + 154 seam call sites). The gate fails when the tree grows
+# above it.
+#
+# Lower it, in the same change, whenever a change removes sites (the script prints a
+# NOTE). Never raise it to admit a new site: route the new git work through
+# internal/gitcore, or through internal/gitexec's audited allowlist, which the count
+# excludes. internal/gitexec/ratchet_test.go also re-measures the PR's base tree with
+# the head's script and fails if the head count exceeds the base count, so a raised
+# pin alone cannot let a site in.
+205

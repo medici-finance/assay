@@ -3,8 +3,8 @@ brief: assay:assay:desk-containers:33
 title: Automatic desk instances and desired population through the shared runtime
 why: Operators need multiple independently configured workers and reviewers without duplicate work, deliberately multiplied role targets or up restarting desks intentionally left paused.
 wave: 9
-depends: ["graph-execution/27", "desk-containers/15"]
-unblocks: ["desk-containers/18", "desk-containers/20", "desk-containers/22", "desk-containers/28"]
+depends: ["graph-execution/27", "desk-containers/15", "desk-containers/16"]
+unblocks: ["desk-containers/19", "desk-containers/20", "desk-containers/22", "desk-containers/28"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
@@ -12,7 +12,7 @@ gate-why: Changes desired-population, instance identity and legacy-to-managed ow
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-10-25 by Assay architecture authoring session
 sources:
   - docs/proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md
@@ -25,7 +25,8 @@ consumers:
   - "tools/desk/cmd/cellctl/: follow-up desk-containers/33 (configuration, automatic names, up convergence and cell-op extension)"
   - "tools/desk/internal/cellop/: follow-up desk-containers/33 (required instance contract negotiation)"
   - "loopadmin/ standing clients and instance ownership: out-of-scope (consumed from graph-execution/26–27, not reimplemented)"
-  - "tools/desk/cmd/cellctl/ lifecycle: follow-up desk-containers/18 and desk-containers/19"
+  - "tools/desk/cmd/cellctl/ instance stop mapping: follow-up desk-containers/33 (moved from completed desk-containers/16)"
+  - "tools/desk/cmd/cellctl/ instance drain and replacement: follow-up desk-containers/19"
   - "managed Kubernetes renderer/operator: follow-up desk-containers/28"
   - "served schema/public client: follow-up cell-api/01"
 ---
@@ -92,6 +93,10 @@ uses an isolated branch and draft PR; no live cluster, model/provider call or cr
 provisioning. Independent verification records Evidence. Refresh current claims and affected
 active PRs before changing the selected contracts; keep historical Evidence and human gates.
 
+## Instance stop ruling applicability — 26 October 2026
+
+The recorded ruling on medici-finance/assay#4401 predates the instance-targeted scope. Preserve the existing human gate: implementation must confirm that ruling covers the instance mapping or obtain an explicit scoped ruling. Stronger-stop precedence and existing safety controls remain unchanged.
+
 ## Task
 
 1. Publish the exact versioned desired-population encoding in operator-owned cell.env:
@@ -115,12 +120,13 @@ active PRs before changing the selected contracts; keep historical Evidence and 
    carrying instance ID/generation, desired revision, profile and replacement relationship
    alongside retained role identity. A reader unable to represent required instance state
    refuses rather than flattening to one role. Do not reopen completed /15 or /17 Evidence.
-   Document the stable consumer contract for /18–24, /28 and cell-api/01.
+   Document the stable consumer contract for /19–24, /28 and cell-api/01.
 5. Test actual cellconfig → cellctl → standing-client/supervisor flow with fixture
    harnesses and disposable coordination. Keep legacy singleton/goldens compatible where
    behavior is unchanged; record deliberate new-output/oracle differences and widen CI
    paths for every module/fixture the consumer checks read. Update public config/CLI docs
    and changelog. Do not add another implementation of role capacity or item claims.
+6. (Moved from completed desk-containers/16, 8 November 2026.) Preserve existing machine/cell/role STOP meanings and add the instance-targeted stop mapping through the common lifecycle owner. An instance pause holds only its new assignments; role/cell stops hold every matching instance. Resume removes only the stop it owns, and up never removes a pause to satisfy population. Desired paused and runtime persistent stops are both respected.
 
 ## Verify
 
@@ -134,6 +140,7 @@ Named tests must execute; zero matches or required-case skips fail independent v
 | I3 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDeskPopulationUp$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskPopulationUp ' "$o")` | Actual config/client/supervisor fixture preserves paused/draining peers, reuses instance IDs and rejects stale generation below caller; independent role pacing includes both repositories, tolerates transient over/under and corrects after refresh. Mutation: clear pause, key lease by role or use only each instance's own work as the role estimate fails. |
 | I4 | check +flow +neighbour | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./internal/cellop/... -run '^TestDeskInstanceReaders$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceReaders ' "$o")` | Named PASS; real result/plan plus adjacent reader retains instance/generation/desired revision, stale plans refuse and incapable reader cannot flatten required population; singleton output remains supported. |
 | I5 | check +dereference | `statusgen --root . --lint` | exit 0; independent verifier additionally resolves named implementation consumers against the landed delivery and its actual first parent; unchecked required integration remains held. |
+| I6 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDeskInstanceStops$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceStops ' "$o")` | Named test executes (zero matching tests is not a pass); Pause one of two workers, verify the peer can work, then role-stop both; resume cannot lift a foreign stop and repeated up preserves the paused member. Mutation: use only the role stop path for an instance makes the test fail. |
 
 ## Evidence
 

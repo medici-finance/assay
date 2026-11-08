@@ -434,7 +434,7 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) { return nil, nil }
 	t.Cleanup(func() { decisionGateBranchBoardFn = oldBranchBoard })
 	oldLanded := landedClosureFn
-	landedClosureFn = func(root, target string, before, after []byte, exists bool, f deskkit.Forge, r deskkit.ForgeRepo, branch string) (string, string, func(), error) {
+	landedClosureFn = func(root, target string, before, after []byte, exists bool, f deskkit.Forge, r deskkit.ForgeRepo, branch string, _ deskkit.VerifierReceipt) (string, string, func(), error) {
 		return root, "", func() {}, nil
 	}
 	t.Cleanup(func() { landedClosureFn = oldLanded })
@@ -450,6 +450,14 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	oldClosure := verifiedClosureCheckFn
 	verifiedClosureCheckFn = func(string, string) (closureVerdict, string, error) { return closureAccepted, "", nil }
 	t.Cleanup(func() { verifiedClosureCheckFn = oldClosure })
+
+	// The non-decisive verdict gate (#5759) defaults to "landable" for the same reason;
+	// verdictgate_test.go restores the real statusgen-backed check.
+	oldVerdict := evidenceVerdictCheckFn
+	evidenceVerdictCheckFn = func(string, string, []byte, []byte, bool, string) (closureVerdict, string, error) {
+		return closureAccepted, "", nil
+	}
+	t.Cleanup(func() { evidenceVerdictCheckFn = oldVerdict })
 
 	var errBuf bytes.Buffer
 	oldOut, oldErr := stdout, stderr

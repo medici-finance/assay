@@ -200,6 +200,52 @@ func TestDeskdImageContractCI(t *testing.T) {
 	ciAssertPublicLayoutRow(t, "tools/desk/internal/cellapi/deskdimage_test.go")
 }
 
+// TestWorkflowFoundationCI keeps this contract reader live without tools.yml.
+func TestWorkflowFoundationCI(t *testing.T) {
+	ciAssertPublicLayoutRow(t, "workflow/store/foundation_test.go")
+	ciAssertPublicLayoutRow(t, "workflow/store/mirror_test.go")
+	const name = ".github/workflows/assay-workflow.yml"
+	raw, err := os.ReadFile(filepath.Join("../../../..", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, found := ciWorkflowJobLines(t, string(raw), name, "test")
+	if !found || !regexp.MustCompile(`(?m)^    runs-on: ubuntu-latest[ \t]*$`).MatchString(strings.Join(job, "\n")) {
+		t.Fatal(name + ": PostgreSQL service qualification requires the admitted Ubuntu Docker host; the regular builder has no Docker daemon")
+	}
+}
+
+// TestWorkflowRefreshCI requires the dedicated explicit PostgreSQL environment
+// and a named joined PASS: ordinary no-DSN skips do not qualify this integration.
+func TestWorkflowRefreshCI(t *testing.T) {
+	ciAssertPublicLayoutRow(t, "workflow/store/refresh_schema_test.go")
+	ciAssertPublicLayoutRow(t, "tools/desk/internal/deskkit/mirror_joined_test.go")
+	raw, err := os.ReadFile("../../../../.github/workflows/assay-workflow.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"ASSAY_TEST_POSTGRES_DSN: postgresql://", `test -n "$ASSAY_TEST_POSTGRES_DSN"`, "go test -count=1 -race -timeout=180s -v -run '^TestMirrorPersistedReadThroughJoin$' ./internal/deskkit", `grep -F -- '--- PASS: TestMirrorPersistedReadThroughJoin ' "$out"`} {
+		if !strings.Contains(string(raw), required) {
+			t.Fatal("dedicated PostgreSQL integration lacks required execution proof", required)
+		}
+	}
+}
+
+// regression: F-provision-ci-execution-proof
+func TestWorkflowRefreshProvisionCI(t *testing.T) {
+	ciAssertPublicLayoutRow(t, "workflow/store/refresh_provision_test.go")
+	ciAssertPublicLayoutRow(t, "tools/desk/internal/deskkit/mirror_joined_test.go")
+	raw, e := os.ReadFile("../../../../.github/workflows/assay-workflow.yml")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, required := range []string{`test -n "$ASSAY_TEST_POSTGRES_DSN"`, "go test -count=1 -race -timeout=180s -v -run '^TestMirrorProvisionedReadThrough$' ./internal/deskkit", `grep -F -- '--- PASS: TestMirrorProvisionedReadThrough ' "$provisioned"`} {
+		if !strings.Contains(string(raw), required) {
+			t.Fatal("dedicated provisioned-role join lacks required execution proof", required)
+		}
+	}
+}
+
 // ciAssertPublicLayoutRow runs one registry row's event reachability and read
 // coverage against the workflow in the public source layout, without the
 // house-only tools.yml fixture the full sweep above skips on.
@@ -336,6 +382,34 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{test: "workflow/store/refresh_provision_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
+			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
+			reads:      []string{"spec/coordination-store-v1.md", "forgeread/mirror/", "forgeread/refresh/"},
+			runInvokes: []string{"cd workflow", "go test -count=1 -race -timeout=180s ./..."},
+			why:        "operator initialization catalog/known-state controls read the canonical schema and existing refresh/kernel owners"},
+
+		{test: "workflow/store/refresh_schema_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
+			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
+			reads:      []string{"spec/coordination-store-v1.md", "forgeread/mirror/", "forgeread/refresh/", ".github/workflows/assay-workflow.yml"},
+			runInvokes: []string{"cd workflow", "go test -count=1 -race -timeout=180s ./..."},
+			why:        "canonical refresh schema, lower SQL controls and pure coordinator/kernel dependencies run against an explicit disposable database"},
+		{test: "tools/desk/internal/deskkit/mirror_joined_test.go", module: "tools/desk", workflow: ".github/workflows/assay-workflow.yml",
+			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
+			reads:      []string{"workflow/", "forgeread/", "tools/desk/", ".github/workflows/assay-workflow.yml"},
+			runInvokes: []string{"cd tools/desk", "go test -count=1 -race -timeout=180s -v -run '^TestMirrorPersistedReadThroughJoin$' ./internal/deskkit", "grep -F -- '--- PASS: TestMirrorPersistedReadThroughJoin '", "go test -count=1 -race -timeout=180s -v -run '^TestMirrorProvisionedReadThrough$' ./internal/deskkit", "grep -F -- '--- PASS: TestMirrorProvisionedReadThrough '"},
+			why:        "actual native SDK/source/coordinator/SQL Store join requires the selected PostgreSQL service and named PASS; a missing fixture or skipped test is not evidence"},
+		{test: "workflow/store/mirror_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
+			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
+			reads:      []string{"spec/coordination-store-v1.md", "forgeread/go.mod", "forgeread/mirror/", ".github/workflows/assay-workflow.yml"},
+			runInvokes: []string{"cd workflow", "go test -count=1 -race -timeout=180s ./..."},
+			why:        "the canonical SQL mirror consumes the kernel, conformance helpers, schema and workflow through executable controls"},
+
+		{test: "workflow/store/foundation_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
+			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
+			reads:      []string{"spec/coordination-store-v1.md", ".github/workflows/assay-workflow.yml"},
+			runInvokes: []string{"cd workflow", "go test -count=1 -race -timeout=180s ./..."},
+			why:        "the canonical PostgreSQL foundation contract and workflow are executable inputs, not build-only documentation"},
+
 		{test: "gitcore/ackguard_test.go", module: "gitcore", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads: []string{"gitcore/", "tools/desk/"}, runInvokes: []string{`*/gitcore|gitcore) extra="GOWORK=off go test -count=1 -timeout=300s . ./gittest"`},
 			why: "the lifted Git owner retains desk and public-owner source coverage; actual source CI execution is required"},
@@ -367,7 +441,8 @@ func ciCrossModuleRegistry() []ciEntry {
 		{test: "tools/desk/internal/deskkit/declaredscope_corpus_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads: []string{"docs/streams"}, runInvokes: deskShardInvokes,
 			why: "the Context files: ratchet (#3697) parses every brief and its list under docs/streams; a docs-only diff is exactly the one that adds a refused declaration, and the unfiltered desk shards run it on every pull request"},
-		{test: "tools/desk/internal/kubecompat/profile_contract_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"containers/k8s/compatibility/cellctl-config.schema.json", "containers/k8s/compatibility/desk-session.py"}, runInvokes: deskShardInvokes, why: "Pins compatibility source/schema coverage and actual Go/Python launch hash parity; workflow has no path filter"},
+		{test: "tools/desk/cmd/cellctl/kube_compat_preparation_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"containers/k8s/compatibility/prepare.py", "containers/k8s/compatibility/desk-session.py"}, runInvokes: deskShardInvokes, why: "Compiled preparation CLI checks the exact delegate and image-owned initializer against cold synthetic volumes; workflow has no path filter"},
+		{test: "tools/desk/internal/kubecompat/profile_contract_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"containers/k8s/compatibility/cellctl-config.schema.json", "containers/k8s/compatibility/desk-session.py", "containers/k8s/compatibility/prepare.py", "containers/k8s/compatibility/prepare.test.py"}, runInvokes: deskShardInvokes, why: "Pins compatibility source/schema, actual Go/Python hash parity and cold-preparation flow; workflow has no path filter"},
 
 		{test: "perfrec/v4_schema_test.go", module: "perfrec", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"schemas/perf-v4.json"},
@@ -473,15 +548,55 @@ func ciCrossModuleRegistry() []ciEntry {
 			why:        "the deskd build contract parses the root Makefile and the deskd Dockerfile and ignore file; the unconditional build-test floor runs it on any edit to them",
 		},
 		{
+			test: "tools/desk/internal/forgeservice/auth/testdata/qualify_fixture.py", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: ciJobRef{id: "forge-local-authority", check: "forge-local-authority"}, pushJob: ciJobRef{id: "forge-local-authority", check: "forge-local-authority"},
+			reads:      []string{"tools/desk", "comms", "forgeread", "deskcore", "perfrec", "gitquiet", "gitcore", ".github/workflows/ci.yml", "docs/proposals/non-ci-architecture/21-cell-operator-surface.md", "docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md", "spec/operator-incarnation-v1.md", "spec/forge-local-authority-v1.md"},
+			runInvokes: []string{"qualify_fixture.py", "--endpoint unix:///var/run/docker.sock", "--platform linux/amd64"},
+			why:        "the actual hosted source-bound Docker entrypoint compiles the authority owner and existing module replacements, requires named custody and compiling fault PASS, and checks exact cleanup; missing profile or ordinary skips do not qualify",
+		},
+		{
+			test: "tools/desk/internal/forgeservice/auth/qualification_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{"docs/proposals/non-ci-architecture/21-cell-operator-surface.md", "docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md", "spec/operator-incarnation-v1.md", "spec/forge-local-authority-v1.md", ".github/workflows/ci.yml", ".github/workflows/assay-workflow.yml", "tools/desk/internal/forgeservice/auth/testdata/qualify_fixture.py"},
+			runInvokes: deskShardInvokes,
+			why:        "the unconditional Go floor checks controlling local/external/restore requirements and the actual required source-bound custody workflow; ordinary Dockerless skips remain explicitly unqualified",
+		},
+		{
 			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",
 			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads: []string{
 				"tools/forge-import-check/check_env_imports.go",
 				"tools/forge-import-check/check_env_imports_test.go",
-				"docs/streams",
+				"forgeread/refresh", "docs/streams", "forgeread", "schemas",
 			},
 			runInvokes: deskShardInvokes,
 			why:        "the unconditional build-test floor executes both authored import-check commands against compiler-valid syntax fixtures",
+		},
+		{
+			test: "tools/desk/internal/deskkit/mirror_attempts_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{"forgeread", "forgeread/mirror", "forgeread/refresh", "tools/desk/internal/deskkit/mirrorsource.go", "tools/desk/internal/deskkit/forge_github.go", "tools/desk/internal/deskkit/forge_gitlab.go", "tools/desk/go.mod", ".github/workflows/ci.yml"},
+			runInvokes: deskShardInvokes,
+			why:        "the unconditional desk floor qualifies typed native receipt owners, actual closed operations, pinned SDK configuration and their CI reader coverage",
+		},
+		{
+			test: "forgeread/service/reviewmapping_test.go", module: "forgeread",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads: []string{"schemas"}, runInvokes: deskShardInvokes,
+			why: "the existing unconditional regression reader invokes the complete review-mapping suite, including canonical schema vocabulary and scalar-bound controls",
+		},
+		{
+			test: "forgeread/service/contract_test.go", module: "forgeread",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads: []string{"schemas"}, runInvokes: deskShardInvokes,
+			why: "the existing unconditional regression reader invokes the named contract suite, including committed schema field/tag conformance",
+		},
+		{
+			test: "forgeread/service/boundaries_test.go", module: "forgeread",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{"forgeread", "tools/forge-import-check"},
+			runInvokes: deskShardInvokes,
+			why:        "the unconditional desk regression reader executes the actual named service/client suites, including this source-checker and dependency-closure consumer; it asserts every named PASS",
 		},
 		{
 			test: "tools/desk/internal/regression/releasecache_test.go", module: "tools/desk",
@@ -540,6 +655,14 @@ func ciCrossModuleRegistry() []ciEntry {
 			reads:      []string{".github/workflows/ci.yml"},
 			runInvokes: deskShardInvokes,
 			why:        "the scope-skip and matrix-leg guards read ci.yml, so every ci.yml change must run them",
+		},
+		{
+			test:   "tools/desk/internal/deskkit/labelcancel_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{".github/workflows"},
+			runInvokes: deskShardInvokes,
+			why:        "the label-cancel guard reads every workflow, so any workflow change must run it (#3939)",
 		},
 		{
 			test:   "tools/desk/internal/regression/manifest_test.go",
@@ -2405,6 +2528,7 @@ func globToRegexp(g string) (*regexp.Regexp, error) {
 // gone, or that the scanner no longer flags, is a hard failure — so the list
 // cannot rot into a blanket suppression.
 var ciRegistryOptOut = map[string]string{
+	"forgeread/refresh/boundary_test.go":                          "reads only its own module source and dependency graph; command Dir parent is the forgeread module root, not a cross-module source read; shared checker is exercised by the registered mirrorimports regression reader",
 	"tools/desk/internal/reviewtest/perf_test.go":                 `moduleRoot is tools/desk; command probe binaries, own-module legacy perf fixtures, and disposable homes only. No source from another module is read; CI runs the desk module on every PR`,
 	"tools/desk/internal/reviewtest/observation_contract_test.go": `Own-module production source overlays, fixtures and command probes only; all other reads are disposable fixtures. No sibling-module source is read.`,
 	"tools/desk/internal/reviewtest/qualification_test.go":        `filepath.Join("..", "..") from internal/reviewtest resolves to tools/desk, its own module. The test compiles command test binaries and reads its own testdata; all other files are disposable fixtures. It reads Git revision/status metadata but no sibling-module source. ci.yml runs go test ./... for tools/desk on every PR`,
@@ -2775,12 +2899,17 @@ runs:
 // public entries must not inherit that skip.
 // regression: #2686
 func TestRegressionCIEntrypoints(t *testing.T) {
-	count := 0
+	count, serviceCount := 0, 0
 	for _, e := range ciCrossModuleRegistry() {
-		if !strings.HasPrefix(e.test, "tools/desk/internal/regression/") {
+		serviceEntry := e.test == "forgeread/service/boundaries_test.go" || e.test == "forgeread/service/contract_test.go" || e.test == "forgeread/service/reviewmapping_test.go"
+		if !strings.HasPrefix(e.test, "tools/desk/internal/regression/") && !serviceEntry {
 			continue
 		}
-		count++
+		if serviceEntry {
+			serviceCount++
+		} else {
+			count++
+		}
 		raw, err := os.ReadFile(filepath.Join("../../../..", e.workflow))
 		if err != nil {
 			t.Fatal(err)
@@ -2805,6 +2934,9 @@ func TestRegressionCIEntrypoints(t *testing.T) {
 	}
 	if count != 6 {
 		t.Fatalf("floor has %d CI registry entries, want 6 (manifest, shell, Evidence, changelog, mirror import and release cache suites)", count)
+	}
+	if serviceCount != 3 {
+		t.Fatalf("service schema/boundary CI entry count=%d, want 3", serviceCount)
 	}
 }
 

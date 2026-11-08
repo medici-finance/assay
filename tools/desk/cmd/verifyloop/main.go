@@ -115,7 +115,13 @@ func runMeasured(args []string, performance verifyPerformance) int {
 		}
 		// The boot just admitted each root's prerequisite record, so this pass binds every
 		// run to one (example-stream/50). A plan entered without the boot has no record to bind.
-		return loopengine.ExitCodeOf(cmdPlanWorld(args[1:], performance, planWorldGate()))
+		// cmdPlanWorld RETURNS its refusal and prints none of it (buildPlan prints nothing by
+		// contract); the exit code alone never says why (#5029). Print it here, once.
+		err = cmdPlanWorld(args[1:], performance, planWorldGate())
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+		}
+		return loopengine.ExitCodeOf(err)
 	default:
 		fmt.Fprintf(os.Stderr, "verifyloop: unknown subcommand %q\n\n%s", args[0], usage)
 		return deskkit.ExitRefused

@@ -223,6 +223,9 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// serves: coverage — a stream with no product tag can never be scoped;
 	// NOTICE it so the taxonomy stays complete as streams are added.
 	notices = append(notices, servesCoverageNotices(streams)...)
+	// GitLab CI half: an embedded pushcred/boardadd anchor older than this
+	// statusgen keeps the pipeline on an older board-push script (#5004).
+	notices = append(notices, gitlabAnchorDriftNotices(root)...)
 	// checkStreams drives WHICH briefs are validated (product-scoped under
 	// --changed/--scope); `edgeStreams` (the full house set plus archived streams)
 	// resolves cross-stream depends:/unblocks: refs so a valid dependency on an
@@ -631,11 +634,10 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	notices = append(notices, verifyPortabilityNotices(checkStreams)...)
 	// Missing EXECUTION WITNESS (ground-truth/01, #284): a brief the README
 	// calls verified/done whose Evidence carries no record that a Verify row was
-	// actually executed. NOTICE this phase for the same reason the rule above is
-	// one — every brief closed before the witness existed lacks one by
-	// construction, and hand-writing witnesses into closed briefs to green the
-	// gate would manufacture exactly the evidence the witness exists to replace.
-	// Flip to a hard problem once the active streams are backfilled.
+	// actually executed. A NOTICE over the inherited corpus: absence alone
+	// proves neither non-execution nor closure age, and hand-writing witnesses
+	// into closed briefs would manufacture the evidence the witness replaces.
+	// New closures are gated separately by witnessAbsenceGateChecks below.
 	notices = append(notices, witnessNotices(checkStreams)...)
 	// CONTRADICTED status cell (ground-truth/02, #284): a brief the README
 	// calls verified/done whose own Evidence carries a witness recording a
@@ -1351,6 +1353,12 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
 		exitProcess(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
 	}
+	// `statusgen rowread` — the read-only forge lane a Verify row reads through
+	// (rowread.go, #4700): a closed set of read kinds over deskread, which holds
+	// the credential in its own process. Read-only, own flag namespace.
+	if len(os.Args) > 1 && os.Args[1] == "rowread" {
+		exitProcess(runRowread(os.Args[2:], os.Stdout, os.Stderr))
+	}
 
 	// `statusgen verifyclosure` — the READ-ONLY board question "does this tree
 	// present a lint-valid `verified` closure for one brief?" (verifyclosure.go).
@@ -1365,6 +1373,14 @@ func main() {
 	// in the verify-outcomes sidecar is warranted (deskevidence's sidecar gate).
 	if len(os.Args) > 1 && os.Args[1] == "verifyclosure" {
 		exitProcess(runVerifyclosure(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
+	// `statusgen evidenceverdict` — the READ-ONLY landing question "may this
+	// run's verdict be appended to this brief's Evidence?" (evidenceverdict.go):
+	// a non-decisive verdict on a verified or done brief belongs in the outcome
+	// record only. deskevidence asks it before any Evidence write.
+	if len(os.Args) > 1 && os.Args[1] == "evidenceverdict" {
+		exitProcess(runEvidenceverdict(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen verifyflip` — the sanctioned implemented → verified README flip
@@ -1643,7 +1659,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, verifyflip, mergecheck, shardcheck, conform, brief, context, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, evidenceverdict, verifyflip, mergecheck, shardcheck, conform, brief, context, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			exitProcess(2)
 		}
@@ -2590,24 +2606,20 @@ func main() {
 			changedPaths = append(changedPaths, r.Paths...)
 		}
 	}
-	// Differential register lint: --diff-base makes --lint compare the
-	// register at the base against the working tree, firing PROBLEM only for
-	// diff-introduced problems. Meaningful only in lint mode — an ordinary
-	// regen/check/record has no PR base to diff against.
-	if *diffBaseFlag != "" {
-		if mode != "lint" {
-			fmt.Fprintln(os.Stderr, "statusgen: --diff-base is only valid with --lint")
-			exitProcess(2)
-		}
-		exitProcess(runDiffLintRoots(resolvedRoots, *diffBaseFlag, budgetSpecs, *changedFile, *scopeFlag))
+	// Validate the differential-mode option before any reader preflight.
+	if *diffBaseFlag != "" && mode != "lint" {
+		fmt.Fprintln(os.Stderr, "statusgen: --diff-base is only valid with --lint")
+		exitProcess(2)
 	}
-	// Brief-reading version gate (derived-board/06 §6): a STAMPED statusgen below
-	// v1.0.0 refuses to read a brief-v2 tree (exit 6), pointing at
-	// assay:upgrade-assay. An unstamped local build reports "dev" and behaves as
-	// latest, so running from source is never gated. This is the SEPARATE, release-
-	// boundary control alongside parseBriefFile's #271 fail-closed trap.
+	// Capability and retained release-boundary refusals cover both ordinary
+	// and differential readers before they inspect the selected records.
 	if gate := refuseIfTreeTooNew(resolvedRoots, statusgenVersion, os.Stderr); gate != 0 {
 		exitProcess(gate)
+	}
+	// Differential register lint compares the base and current register; it
+	// does not bypass mandatory-capability admission.
+	if *diffBaseFlag != "" {
+		exitProcess(runDiffLintRoots(resolvedRoots, *diffBaseFlag, budgetSpecs, *changedFile, *scopeFlag))
 	}
 	code := runRoots(resolvedRoots, mode, budgetSpecs, changedPaths, *scopeFlag)
 	// Opt-in telemetry (gtm/08): only after an ordinary lint/write run, and only

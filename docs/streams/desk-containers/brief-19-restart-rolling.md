@@ -9,15 +9,15 @@ why: >-
   Restart is a sequence of runner-lifecycle transitions, not a mechanism of its own, so the
   verb is a thin adapter: it composes `drain` and `up` and inherits whatever implements
   those transitions, interim today and the lifecycle contract later.
-wave: 11
-depends: ["desk-containers/17", "desk-containers/18"]
+wave: 10
+depends: ["desk-containers/17", "desk-containers/18", "desk-containers/33"]
 unblocks: ["desk-containers/23"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 3
+version: 4
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "Driver request 2026-10-14: a `restart <cell>` that cycles the desks; the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): restart is a runner-lifecycle sequence and cellctl is an adapter"
@@ -71,12 +71,13 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
 ## Task
 1. Implement `restart` as above; register it; docs; changelog fragment.
 
-- **Instance amendment:** For qualified worker/review replacement, compose /18 admission barrier and /31 desired-entry binding with successor start before predecessor drain completion. Persist/reuse one replacement intent; old tasks/claims stay with the predecessor and its observed work informs approximate role pacing. New profile selection uses existing qualified configuration, not arbitrary provider input. Report successor failure or old drain timeout as partial; do not silently resume old admission. Keep sequential restart for singleton/non-overlap profiles and all existing plan/TTY/batch protections.
+- **Instance amendment:** For qualified worker/review replacement, compose the instance stop-new-admission barrier below and /33 desired-entry binding with successor start before predecessor drain completion. Persist/reuse one replacement intent; old tasks/claims stay with the predecessor and its observed work informs approximate role pacing. New profile selection uses existing qualified configuration, not arbitrary provider input. Report successor failure or old drain timeout as partial; do not silently resume old admission. Keep sequential restart for singleton/non-overlap profiles and all existing plan/TTY/batch protections.
+- **Instance drain (moved from completed desk-containers/18, 8 November 2026):** Use /33 instance selectors/results and per-instance lifecycle/handoff records. Role/cell selectors expand explicitly, while instance stop verifies exact instance/generation/process or Pod UID and never closes a peer. Expose a durable stop-new-admission barrier separately from waiting for drain so replacement can overlap successor startup. Active children retain their item claims and contribute observed work to approximate pacing; unknown effects remain held independently. Preserve all existing plan/TTY and foreign-stop restrictions.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartRolling' -count=1 -v` | `--- PASS` — the singleton/non-overlap profile records drain r1, up r1, drain r2, up r2, …, the-desk last; qualified worker/review replacement additionally satisfies I1 without waiting for predecessor child completion |
+| 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartRolling' -count=1 -v` | `--- PASS` — the singleton/non-overlap profile records drain r1, up r1, drain r2, up r2, …, the-desk last, and at no point are two different roles drained together; qualified worker/review replacement additionally satisfies I1 without waiting for predecessor child completion |
 | 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartStopsOnFailure' -count=1 -v` | `--- PASS` — when role 2's `up` fails, roles 3+ are never drained and the result names role 2's error |
 | 2b | check +mutation | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartNowBatchPlan' -count=1 -v` | `--- PASS` — `--now --plan` writes per-role plans plus a batch plan binding their digests; two concurrent applies of the batch: exactly one proceeds; a drifted role is refused `plan-stale` and later roles are untouched; a consumed role plan stops the sequence (never skip-and-continue); a step not started before expiry is not run (`partial`); a mutant that skips consumed roles fails |
 | 2c | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartRefusesOffTTY' -count=1 -v` | `--- PASS` — `restart <cell>` and `restart <cell> --now`, each with stdin or stdout not a TTY, are refused `not-interactive`, and no role is drained |
@@ -85,6 +86,7 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
 | 4 | check | `statusgen --root . --lint` | exit 0 |
 | 4a | check | `statusgen --root . --consumers --brief desk-containers/19` | exit 0 — the `consumers:` routing holds against the branch diff |
 | I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestReplaceDeskOverlap$' > "$o" 2>&1 && grep -F -- '--- PASS: TestReplaceDeskOverlap ' "$o")` | Named test executes (zero matching tests is not a pass); Hold an old child open; successor starts first, old instance takes no new item, and temporary shared-work overshoot is permitted and converges after refreshed observations/completions. Concurrent/retried replace creates one successor; failed start and drain timeout remain explicit. Mutation: wait for old completion before successor start, omit its observed busy children from role pacing, or duplicate its claim makes the test fail. |
+| I2 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDrainDeskInstance$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDrainDeskInstance ' "$o")` | Named test executes (zero matching tests is not a pass); An old worker stops new dispatch but finishes its held task while an unpaused peer continues; identity mismatch and drain timeout preserve the targeted owner and report hold. Mutation: close role-wide surfaces or report unknown stop as drained makes the test fail. |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item

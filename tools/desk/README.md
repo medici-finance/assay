@@ -77,7 +77,7 @@ changed or discarded.
 | `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, the `desk-decided` label and body block agree with no standing `Undeclared-desk-decision:` finding, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
 | `deskpost` | `review`, `security-review`, `comment`, `ready` — as the reviewer App; `finish` posts a verdict, confirms it at the reviewed head and releases the review claim in one command | outward write | yes |
 | `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push); each takes `--check`, an OFFLINE gate run — every local check the write path runs, stopped before any token mint or connection; `--decided <file>` on `create`/`edit` declares a desk-taken reversible default as a `## Desk-decided` body section (decision:/alternative:/cost: triples) plus the `desk-decided` label — see "Desk-decided: the merge is the gate" below | outward write | yes |
-| `deskreply` | PR reply comment under the **worker** identity; `--workpad` upserts ONE marked progress comment per PR (find the worker's own newest unresolved comment carrying the workpad marker and edit it in place, or create the first one) instead of always posting a new reply — `--dry-run` (plain reply or `--workpad`) reports what would post without writing | outward write | yes |
+| `deskreply` | PR reply comment under the **worker** identity; `--workpad` upserts ONE marked progress comment per PR (find the worker's own newest unresolved comment carrying the workpad marker and edit it in place, or create the first one) instead of always posting a new reply — `--dry-run` (plain reply or `--workpad`) reports what would post without writing; `--kind mr` names the merge request where a GitLab number also names an issue (without it that number refuses could-not-check, exit 6), and `--kind issue` is refused because the verb replies only on your own PR | outward write | yes |
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
 | `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` (the documented human-ruled BATCH lane) — the issue-CLOSING gate (a fetched human authorization or nothing); plus two identity+structure lanes that cite no artifact because they close nothing belonging to another party: `self-withdraw` (the authoring App's own draft, pinned by login AND bot id) and `verify-gate-refire` (the verifier session reopens + re-closes a closed `verify-gate` card) | outward write | yes |
 | `desklabel` | `add`, `rm` — set or clear ONE label on an issue or change as the session's own App role, against a closed role-keyed vocabulary (shared escalation set for any role — the topology decision-owed labels read from the topology loader, plus `help wanted`; `superseded?`/`disposition:*` worker-owned; `authorization-needed`/`approval-needed` reviewer-owned; `human-decided` refused for every role; anything else refused, exit 5). The check runs before any forge call; the target kind comes from the seam's own read (`--kind issue|mr` for a GitLab both-resolve); present/absent = no-op; `--dry-run` stops before the write. `vocabulary` prints the table | outward write | yes |
@@ -93,7 +93,7 @@ changed or discarded.
 | `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop; fires the `after_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (logged, non-fatal) when it releases or lands a claim | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
 | `opmetrics` | (no verbs) — operator-layer collector: reads transcripts/beacons/claims, writes one **aggregates-only** day-file | local-only (strictly read-only against every input) | no |
 | `deskusage` | `record` reported counts at worker completion; `summary --by item\|tier [--json]` aggregates only; never reads transcripts, prompts, stdin or tool output | local-only counts write, outside Git worktrees; no network | no |
-| `deskperf` | `report` (command costs ranked by accumulated invocation wall within separate timing cohorts, readable durations, outcomes and CPU/HTTP coverage; existing per-tool details, top-N slowest and forge-call views), `boot` (deskboot's per-step cost, per role) — reads the opt-in local perf history; see [Local performance history](#local-performance-history--deskperf) | read-only (local perf files; no network; the shared kill-switch guard still writes its audit row) | no |
+| `deskperf` | `report` (command costs ranked by accumulated invocation wall within separate timing cohorts, readable durations, outcomes and CPU/HTTP coverage; existing per-tool details, top-N slowest and forge-call views), `boot` (deskboot's per-step cost, per role), `reruns` (verification re-runs per brief from the verify-outcome register, joined to verifier perf rows) — reads the opt-in local perf history; see [Local performance history](#local-performance-history--deskperf) | read-only (local perf files, plus the verify-outcome register and brief file under `--root` for `reruns`; no network; the shared kill-switch guard still writes its audit row) | no |
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `maintain objects` inventories and compacts the common Git directory offline; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); inspection takes `--dry-run` | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
@@ -136,8 +136,9 @@ tools do not record them yet, so they are accepted and ignored. None of the five
 environment variable or configuration key. `deskrelease cut` is the exception to Cobra
 parsing: it takes its argv raw, so the cut parser is still the only parser, and any word it
 does not recognise is refused (exit 5) and audited. That includes a flag written before
-`cut` and a help word: `cut -h` and `cut --help` are refused like any other flag. The verb's
-help is `deskrelease help cut`.
+`cut` and a help word beside any other word (`cut <tag> --help`, `cut -h extra`). The help
+word alone is the verb's help: `cut -h`, `cut --help` and `deskrelease help cut` all print it
+and exit 0 before the startup, the kill switch or any audit write.
 
 Read it by **class**: read-only tools only query GitHub and print; outward-write tools
 can change something on GitHub and are the only ones the rate meters gate; local-only
@@ -352,7 +353,7 @@ scan-explain: rule=high-entropy-run line=42 length=40 shape=Qx…Dz (base64)
 ```
 
 — the rule id (`high-entropy-run`, `decrypted-k8s-secret`, `pem-block`, `sops-block`,
-`github-token`, `aws-key-id`, `jwt`), the 1-based line of the first offending span, its
+`github-token`, `aws-key-id`, `jwt`, `url-userinfo`), the 1-based line of the first offending span, its
 length, and a REDACTED shape (first two and last two characters, the middle elided, plus a
 character-class summary). **The explain line never prints the offending span itself — the
 refusal must not become the leak.** Without `--explain` the refusal message is byte-for-byte
@@ -610,6 +611,15 @@ code or its output. Per-invocation agent usage (tokens, cost) is the agent runne
   Rules: `docs/telemetry.md`.
 - `deskperf boot [--days N] [--role R] [--json]` — `deskboot`'s per-step p50 / p90 / max, in
   boot order, and the summed boot cost per role.
+- `deskperf reruns --root <repo> [--brief <stream>/<NN>] [--days N] [--json]` — verification
+  re-runs as waste. Counts every verify-outcome record of a brief under `--root` (each one
+  re-validated; a record that fails is listed invalid with its path, never counted; a record
+  without `attempts` is one `unrecorded` run), then joins each attempt window to workflow perf
+  rows with role `verify` and the brief's qualified work ref (the verify-desk passes it with
+  `--perf-work`). It prints the total, the uncredited-plus-discarded part and its share. A
+  pruned, missing or ambiguous measure prints `could-not-check` or `ambiguous` with its reason,
+  never 0; rows outside every window print as `unassigned`. Exit 6 when the register has no
+  record for `--brief`.
 
 `--days` defaults to 7 and refuses anything above it (exit 5): there is no eighth day to read.
 An empty history is a REFUSAL (exit 6) that names its reason — logging off, or on but nothing
@@ -1064,6 +1074,18 @@ judges every commit actually new to that destination, then stops before write
 budget, push or PR creation. It refuses unknown, divergent or unreadable remote
 state and new foreign authors or committers. The two check modes are mutually
 exclusive; ordinary `--check` still opens no connection and judges the whole range.
+
+`--check-remote` is also the preflight for the public-repo write gate. Offline
+`--check` cannot read live visibility, so it reports that gate as not checked and
+names `--check-remote` as the mode that runs it. `--check-remote` runs the real gate
+and refuses with the same text and exit code (5) as the live create. An entry that no
+longer authorizes the live visibility therefore shows up here, before any push: for
+example a project that became public while still listed `:internal`. The refusal names
+the cause and the replacement entry. (A GitLab `internal` project listed `:public`
+passes: the gate ranks exposure and tolerates that mislabel. `:internal` is the accurate
+entry; see the allowed-repos section for why a `:public` label should be changed.) The operator
+edits `ASSAY_ALLOWED_REPOS`. No verb rewrites it from a live read, because it is an
+authorization control.
 
 A successful remote check is a snapshot, not permission to ignore a later refusal.
 Run ordinary create from the same owned branch with a fresh body file; it rechecks
@@ -3798,6 +3820,48 @@ install, a release, or CI.
 - CI and `make` targets never see an overlay and are not checked by it; a gate that must refuse
   a hotfix refuses the stamp itself (the `statusgen` version gate reads it as its base release).
 
+### Hotfix cut — shipping an urgent fix as the next plain patch
+
+The overlay above bridges one machine for a few days. The release is what ships the fix to
+everyone, and it retires the overlay. A hotfix is cut as the **next plain patch release**
+through the existing release path: no separate lane, no suffixed tag, no skipped check. For
+one urgent fix, in this order:
+
+1. **The fix is merged to `main`, and `main` is green** at the commit that will be tagged. The
+   fix's PR carries its `changelog/` fragment as usual; the release refuses to cut with nothing
+   to aggregate.
+2. **Optional: bridge one machine with the overlay** while the release is cut:
+
+   ```bash
+   cellctl hotfix install <tool> --source <40-hex merged sha> --dry-run   # decides the source rule only
+   sudo cellctl hotfix install <tool> --source <40-hex merged sha>
+   ```
+
+   The entry expires (72h by default, never more than 168h) and a shim points at it only from
+   the next `cellctl desk` / `cellctl up`. It never replaces the release; skip this step when
+   the fix can wait for the cut.
+3. **Cut the next plain `vX.Y.Z` patch** with the `release` workflow's manual dispatch. Between
+   releases `main` already carries the next patch version, so that is the version to name. Run
+   it with `dry_run` set to `true` explicitly first (the input defaults to `false`), then, after
+   a green dry run, the real cut with the same version. Both runs wait for approval on the
+   `release` environment, and both dispatches and both approvals are the driver's. The
+   [`cut-release`](../../plugins/assay/skills/cut-release/SKILL.md) skill holds the full order,
+   including how to confirm the dry run cut no tag.
+4. **Move every pin to the new release in one re-pin change** per repository, linking the fix:
+   `plugins/assay/paired-versions.yaml` here (checked by `make paired-versions`) and each
+   consumer's `.assay-versions` (checked by `deskpins --check`). Every sha256 comes from the
+   published release's `checksums.txt`; never pin a partial set.
+5. **Install the new pins** on each machine, by the same human act as any install
+   ([Install / upgrade](#install--upgrade), or `deskinstall --manifest <re-pinned manifest>
+   --dest <dir>`).
+6. **Clear the overlay:** `sudo cellctl hotfix clear`. Moving the pin has already retired any
+   hotfix built over the old pin: `deskboot` refuses it with `hotfix outlived its pin` until
+   the next `cellctl desk` / `cellctl up` points its shim back at the pinned binary. The clear
+   removes the inert entry and its binary.
+
+**Cost.** A cut is about an hour of wall time, of which the approval wait is a minor part.
+A fix that cannot wait that long is what step 2 is for.
+
 ### Guard, the two meters, and repo scope
 
 Every tool in the [Tool reference](#tool-reference) table calls `deskkit.Guard()` first
@@ -3906,14 +3970,21 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
   board run), not a cosmetic one. Patterns are display-only, in `AllowedRepoScope()`.
 - **Writes to a public repo require an explicit `:public` allowed-repos entry, and writes to
   an `internal` repo an explicit `:internal` one** — the public-repo write gate
-  (`PublicRepoGate`). The authorization is REPOSITORY-scoped, decided once by a human
-  out-of-band: a public repo listed as `owner/name:public` (an internal repo listed as
-  `owner/name:internal`) is a place the desk may write, and every write verb passes on it
-  (create / review / ready / reply / evidence / release — `PublicRepoGate` is the single
-  choke point). A repo that is absent, matched only by an `owner/*` pattern (patterns carry
-  no visibility policy), tagged `:private`, carrying no visibility token, or tagged with the
-  other non-private token (`:internal` on a live-public repo, `:public` on a live-internal
-  one) **refuses** (exit 5) with the remedy in the message. `internal` is visible to every
+  (`PublicRepoGate`). The gate ranks exposure private < internal < public (the same rank as
+  the verifier cross-repo check) and passes a live read only when the entry's token is not
+  `:private` and ranks at least as exposed as the live visibility, so nothing passes that is
+  more exposed than its entry states. It therefore also tolerates a `:public` entry on a
+  live-internal repo; that is a mislabel, not an equal choice (see below). The authorization
+  is REPOSITORY-scoped, decided once by a human out-of-band: a public repo listed as
+  `owner/name:public` (an internal repo listed as `owner/name:internal`) is a place the desk
+  may write, and every gated write passes on it.
+  The gate runs in `deskpr` (create / update / edit), `deskpost` (comment / ready / review),
+  `deskreply`, `deskevidence` and `deskrelease cut` — the commands
+  `deskkit.PublicRepoGateVerbs` lists and the refusal names. Tracker writes such as
+  `deskfile` do not run it. A repo that is absent, matched only by an `owner/*` pattern (patterns carry
+  no visibility policy), tagged `:private`, carrying no visibility token, or tagged
+  `:internal` on a live-public repo **refuses** (exit 5) with its cause and the remedy in
+  the message. `internal` is visible to every
   account on the forge instance, so it is never treated as private: an `:internal` repo is
   risk-classed, self-containment scanned and stamped with the neutral on-behalf-of form
   exactly like a `:public` one. This replaces the former per-item `+1` reaction
@@ -3922,16 +3993,32 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
   unit. A draft PR is inert until a human merges it, so the repository-level decision plus
   the merge gate buy everything the per-item ceremony did; **merge remains the human's.**
   - Both reads are load-bearing at once. The gate reads the **live** visibility from the
-    forge AND the **configured** `:public` / `:internal` claim, and they must AGREE: a repo flipped to
-    public after the set was written still refuses (the configured claim disagrees), and a
-    stale roster claiming `:public` for a repo the forge reports otherwise never authorizes
-    on the stale claim (the live read disagrees). A live read that fails or returns an
-    unrecognised value is **unverifiable** (exit 6, fail closed) — never guessed private.
+    forge AND the **configured** `:public` / `:internal` claim, and the claim must cover the
+    live read: a repo flipped to public after the set was written while listed `:private`
+    or `:internal` still refuses (the configured claim is less exposed than the live
+    read), and a stale roster claim never authorizes a repo the forge reports as more
+    exposed than the claim. A live read that fails or returns an unrecognised value is
+    **unverifiable** (exit 6, fail closed) — never guessed private.
+  - **A `:public` entry on a live-internal repo is a tolerated mislabel.** Earlier versions
+    had no `:internal` token, so `:public` was the tag such a repo got. The write gate still
+    passes it, because an internal repo's audience is narrower than the entry states, and
+    its refusals never name `:public` as an internal repo's remedy. `:internal` is the
+    accurate token: a `:public` label on an internal repo is reported as drift by
+    `deskboard policydrift`, and it over-ranks the repo as a verifier cross-repo source,
+    which ranks the configured visibility alone, so a public tracking repo could then
+    publish that repo's binding. Operators with such an entry should change it to
+    `:internal`; nothing migrates it.
+    `deskpr create --check-remote` surfaces any entry that does not authorize the live
+    visibility before a live create. `deskroster` has no check that reads repo visibility
+    from the forge, so it does not report such an entry; `deskboard policydrift` reports
+    a configured visibility that differs from the forge's.
   - **Migration from the retired sentinel.** The former standing-per-repo authorization —
     a human-maintained opt-out list file under `~/.config/assay/` (respectively
     `$XDG_CONFIG_HOME/assay/`) — is gone: its reader has been removed, so the file no longer
     has any effect. An operator who maintained one moves each `owner/name` line into
-    `ASSAY_ALLOWED_REPOS` as `owner/name:public`. The tools never wrote, and never deleted,
+    `ASSAY_ALLOWED_REPOS` with the token that matches the repository's live visibility:
+    `owner/name:public` for a public repository, `owner/name:internal` for an internal
+    one. The tools never wrote, and never deleted,
     that file; it is the operator's to remove.
 
 **The desk writes where it does not watch.** The write gates use `IsAllowedRepo`, which a
@@ -5138,7 +5225,9 @@ bouncing Evidence PRs for:
 - `inputs` must name every backticked path the brief's `## Context` `files:` block declares —
   read from the brief AT the record's own `sha`, never the working tree — with one `file:<path>`
   key per declared file (or one nested under a declared directory); a path absent at that sha (a
-  `(planned)` deliverable) is not required.
+  `(planned)` deliverable) is not required. A `../<sibling>/` declaration is covered by its
+  `repo-source:` pin, or in a single-repository run by its `declared:<decl>` = `unbound` marker
+  (see **Context `files:` shapes a verifier home records** below).
 - `blocker_ref` must be an actual reference — `#<N>`, `<owner>/<repo>#<N>`, or a forge issue/PR/run
   URL, parsed and read through the configured forge API — never free text or an `action: …`
   sentence.
@@ -5370,7 +5459,7 @@ this tool does. Same structural argument as `deskrelease`.
 ```bash
 deskgit fetch                 # refs/remotes/origin/* only (no tags)
 deskgit fetch --prune         # + drop stale remote-tracking refs (never a symbolic one)
-deskgit fetch --pr <N>        # pull/<N>/head -> local branch pr<N>   (N digits only)
+deskgit fetch --pr <N>        # pull/<N>/head -> local branch pr<N>   (N digits only; GitLab: merge-requests/<N>/head)
 deskgit fetch --branch <B>    # origin's <B> -> local branch <B>      (see --branch guards)
 deskgit fetch --as <role>     # any fetch mode above, authenticated from <role>'s token file
 deskgit push --as <role>      # push the CURRENT branch to origin, authenticated
@@ -5389,6 +5478,13 @@ closed). The same shape was later reproduced on `--pr` — a differently-cased l
 replaced by an unrelated commit at exit 0 — which is why the check is keyed on the destination
 ref rather than the flag. An **exact**-spelling destination on an existing branch is unaffected
 and still subject to git's normal fast-forward rules.
+
+**`--pr` asks the forge for its own ref (#5448).** GitHub serves a pull request's head at
+`refs/pull/<N>/head`; GitLab serves a merge request's head at `refs/merge-requests/<iid>/head`.
+The forge is resolved once from the gated origin (`ASSAY_REPO_FORGES`, then the origin host
+through the well-known table), and that one answer picks both the `--pr` source ref and the
+`--as` credential arm, with or without `--as`. Anything not resolved to GitLab keeps
+`refs/pull/<N>/head`, so GitHub behaviour is unchanged. Either way the local branch is `pr<N>`.
 
 **fetch runs in-process — no git child.** The old shape of this verb was a fixed `git fetch`
 argv plus a stack of pins against what argv cannot close (config- and environment-supplied
@@ -5567,8 +5663,21 @@ and worktree included) applied. For fetch it is the single origin URL the gate a
 origin repo, have a host of exactly `github.com` (no lookalike, subdomain, trailing dot,
 userinfo trick or self-hosted instance), and not be cleartext `http://`. If any URL fails, the
 verb is refused (exit 5) and nothing is minted. A repo the roster maps to another forge
-(`ASSAY_REPO_FORGES`) is refused the same way. A **local-path origin is refused** under `--as`:
+(`ASSAY_REPO_FORGES`) is refused the same way for push. A **local-path origin is refused** under `--as`:
 it has no host to bind a GitHub token to. Plain `deskgit fetch` (no `--as`) is unaffected.
+
+**`fetch --as` on a GitLab-served repo (#5028).** When the forge map (`ASSAY_REPO_FORGES`, then
+the origin host through the well-known table) resolves the repo to GitLab, `fetch --as <role>`
+takes the GitLab arm instead of refusing: `deskkit.CheckoutGitRead` checks the session role,
+requires exactly one plain `https` origin on the configured instance's host and port
+(`GITLAB_API_BASE`; unset is exit 6, never a gitlab.com default), and reads the role's
+provisioned GitLab custody token through `deskkit.ResolveRoleCredential` (never minted). The
+token rides the in-memory hand-off as `oauth2` basic auth, to the gated origin URL only. A
+forge nothing resolves stays on the GitHub arm and is refused (exit 5) unless its origin is on
+github.com. GitHub behaviour is unchanged. `push --as` still speaks only GitHub. The identity
+binding above holds on the GitLab arm too, and is checked again inside `CheckoutGitRead`: `--as`
+must equal the role `$DESK_LOOP` binds, so a cross-role `--as` exits 5 before any custody file
+is read.
 
 *Layer 2, the answer point.* The credential is bound where it is answered, not only where
 destinations are listed. For **fetch** that is the in-memory hand-off itself: the token is
@@ -6018,7 +6127,7 @@ absolute-sounding claims about matchers are what produced #1538:
 |---|---|
 | verbs | `cut <tag>` only. No delete, force, move, override, or waiver verb exists. |
 | tag validation | two independent layers: a refspec-metacharacter screen (`:` `+` `^` `~` `@` `*` `?` `[` `\`, whitespace, control chars) and the anchored pattern `^(desk-tools\|statusgen)/v[0-9]+\.[0-9]+\.[0-9]+$`. Each refuses with its own reason. |
-| argv | **exactly** `<tag>` (+ optional `--dry-run`). Any extra operand or unknown flag is REFUSED (exit 5, audited), never ignored. That includes a help word after the tag and a flag written before `cut`. That includes `cut -h` and `cut --help`; the verb's help is `deskrelease help cut`. `cut` takes its argv raw from the command tree, so this parser is the only one that reads it. |
+| argv | **exactly** `<tag>` (+ optional `--dry-run`). Any extra operand or unknown flag is REFUSED (exit 5, audited), never ignored. That includes a help word after the tag or beside any other word, and a flag written before `cut`. The help word ALONE (`cut -h`, `cut --help`) is the verb's help, like `deskrelease help cut`: exit 0, answered before any config read, lock or audit write. `cut` takes its argv raw from the command tree, so this parser is the only one that reads it. |
 | input | argv only — never stdin, never an environment variable. |
 | `--dry-run` | validates, reads the remote, and stops **before** `POST /git/refs`. **When the tag is still free** — the case the flag is for — exit 0, audited `result=dryrun` — a class **neither rate-limit meter counts** (#214). It used to audit `noop`, which the non-progress breaker counts, so five rehearsals opened a 15-minute breaker against the real cut: checking whether a release was safe could lock the release out. A dry run is still *subject* to both meters; it just does not feed them, and it is IGNORED rather than treated as progress, so it cannot reset a breaker a real refusal loop opened either. Against a tag that already **exists**, the stop is never reached: the row below settles the invocation first, and the rehearsal audits `noop`/`refused`/`unverifiable` like the real thing. |
 | transport | `POST /repos/{owner}/{repo}/git/refs`. `git push` is never executed; no local checkout is touched, so a `git -C` variance and a stale sibling clone are both impossible. |
@@ -6373,6 +6482,12 @@ before a row runs.
 For `deskevidence`, keep `--root <deliverable-home>` and select the **tracking** repository
 and branch; only the isolated tracking brief's Evidence and permitted index row may
 change. Refresh landed Evidence bytes in `BriefRoot` without moving either admitted HEAD.
+A verified outcome then checks its closure at the exact landed tracking commit. The
+`BriefRoot` clone's own `origin/main` is not the tracking repository's fetched main, so
+`deskevidence` fetches that repository's `main` (and a non-`main` landing branch) through
+the clone's HTTPS origin into private `refs/deskevidence-fetch/*` refs under the session's
+token role, and uses that `main` as the landed baseline. No other ref moves. An origin
+that is not plain HTTPS, or a failed fetch, refuses the verified landing.
 The native/interim adapters carry the same two-repository binding through queue, launch
 and landing; native ACP's filesystem fence remains the deliverable home. Container
 execution retains its existing single-root mount boundary, so `--in-container` refuses
@@ -6395,8 +6510,38 @@ record carries one `repo-source:<owner/name>` key per bound sibling. Each siblin
 declared paths are covered only by that sibling's own key; delivery PRs in a bound sibling
 must be ancestors of that sibling's commit. A sibling without a single configured root at
 its fetched `origin/main`, or one a public tracking repository may not name, stays
-unbound, and its paths still refuse the record; prepare prints one `NOTICE` per unbound
-sibling naming it and why.
+unbound, and in a cross-repository run its paths still refuse the record; prepare prints
+one `NOTICE` per unbound sibling naming it and why.
+
+**Context `files:` shapes a verifier home records (#5097).** Three shapes no longer
+refuse the outcome record. This narrows a refusal; everything else stays refused.
+
+- **A sibling path in a single-repository run.** When the run binds no repository at all
+  (no `repo-source:` key), each `../<sibling>/<path>` declaration is recorded as
+  `declared:<decl>` = `unbound`. It is never resolved against the home tree. No wake
+  reader resolves that key, so the receipt is could-not-check, never unchanged, until a
+  local input changes. A marker beside any `repo-source:` key, a marker for a path the
+  brief does not declare as a sibling, or any other value refuses. A cross-repository run
+  with an unbound sibling still refuses.
+- **A trailing `**` glob.** `<dir>/**` (one final segment, after a literal directory
+  with no other glob character) selects every file below `<dir>` at any depth, keyed
+  `scope:<dir>/**`. Mid-path `**`, `**` glued to a name, a bare `**` and a sibling's
+  bare `../<name>/**` still refuse. `../<name>/<dir>/**` is a sibling declaration.
+- **One trailing sentence.** A single line at column zero, after a list whose last line
+  was a `- ` bullet or ended in `.`, and the block's last line, is an annotation when it is
+  a plain sentence: printable ASCII, at least four words, a capitalised first word of
+  letters, one final `.`, no list or quote marker, none of
+  `` ` * _ { } [ ] < > | \ , ; + ( ) : " # ? ! = $ & @ % ~ `` and no `..`. A word holding
+  `/` or `.` must name a declared path or a directory above one, and every declared path
+must hold a `/` and must not end in `.` (a short name, or an unbackticked inline tail that
+kept the closing full stop, refuses the block). The sentence declares
+  nothing. Any further line in the same block refuses, as does a sentence the rules do not
+  fit.
+
+Malformed entries inside the list still refuse: an empty path, an absolute path, any `..`
+other than the exact `../<sibling>/<path>` form, a `.git` segment, whitespace or control
+characters, `\ : < >`, `...`, an unclosed quote, annotation or brace, an unsupported tail,
+and every fence, HTML and heading ambiguity.
 
 Fetch every declared sibling root (and check out its `origin/main`) before prepare: a
 sibling bound at a stale `origin/main` makes a later Evidence landing refuse any of that
@@ -6854,7 +6999,7 @@ review event posted at the *same* head — so a head-only re-read reports "still
 flips over a live withdrawal. Both gates re-run against a freshly read review list
 immediately before the mutation.
 
-**A standing `CHANGES_REQUESTED` at head blocks — with TWO exemptions: the check-only CR, and the documented body-edit re-verification (below).**
+**A standing `CHANGES_REQUESTED` at head blocks — with THREE exemptions: the check-only CR, the documented body-edit re-verification, and the marked security fail (all below).**
 An APPROVE posted at an *unchanged* head cannot be a re-verification: there is nothing new to
 verify, and the forge's self-approval block only keys on the PR *author*, so it has nothing to
 say about a third-party App re-posting at the same head. That default stands. It had no path,
@@ -6914,6 +7059,43 @@ trimmed — `printf '%s' "$(gh api repos/<owner>/<repo>/pulls/<N> --jq .body | t
 Whether CI is green stays `checks-green`'s decision; the citation never substitutes for it. On
 the board, an admitted row reads approved at head (with the class named in its note) instead of
 `SUSPECT-APPROVAL`; every near-miss keeps the `SUSPECT-APPROVAL` suppression.
+
+**The third exemption: the marked security fail.** Rule 2 routes a CR carrying
+`Security-Review: fail` to the security lane first, so neither exemption above ever clears it: a
+correctness APPROVE never clears a security fail, and a security fail carrying
+`Blocked-On-Check:` / `External-Prereq-Only:` always refuses. A security pass never clears a
+correctness CR either. The fail clears at the same head only when all of these hold
+(`internal/deskkit/securitybodycr.go`, shared by `deskflip` and `deskboard`):
+
+- the fail declares `Blocked-On-Body: <finding-id> <body-digest>`, read by the same parser as the
+  correctness lane's. At `deskflip`, an unmarked fail standing as a CHANGES_REQUESTED at the head
+  is cleared only by a new commit; `deskpost ready` does not apply that rule;
+- the reviewer posted a `Security-Review: pass` at the head after the last fail, on a review in a
+  state that carries a standing pass: APPROVED or COMMENTED (`deskkit.SecurityPassStateStands`).
+  The decision reads the newest such pass, and it must carry `Body-Reread-Digest: <digest>`
+  equal to the live body's digest. `deskpost ready` keeps its own list of the same two states,
+  and a test pins the two lists to each other. A DISMISSED, PENDING or CHANGES_REQUESTED review
+  carrying the pass clears nothing, and a later one does not displace a standing pass before it.
+  Every security fail between the two must be marked and at the head: a later unmarked fail
+  blocks, and a later fail at another commit stands;
+- neither the fail, nor a later fail in the chain, nor a pass at head after the fail
+  carries a correctness `Verdict:`
+  line (read as `deskpost ready`'s lane classifier reads it). Rule 1 drops every security-marked
+  body, so clearing a body that speaks for both lanes would drop its correctness half;
+- the forge records a body edit later than the last fail, and the re-read digest differs from
+  every fail's recorded digest.
+
+A clearance applies only at its own head. Rule 2 reads a CR at the current head, and the shared
+decision admits only a pass at that head. After a content-preserving head move the condition
+`security-verdict` keeps the fail standing (a fail stands across a head move, and a pass counts
+only at the head) until a pass at the new head. Inside rule 2, `deskflip` also requires that
+condition's reduction to read a pass at head. That is a second layer that errs safe: when the
+decision clears, no fail follows the clearing pass, so the reduction reads a pass at head too.
+
+The gate cannot check that the marker is true, that the fail's whole basis was the PR body. That
+is the reviewer's claim; the later pass and the forge's body-edit record back it up. On the board,
+the lift no longer requires the suppressed-approve shape (the fail can be the last decisive
+review), only that the reviewer's last correctness verdict at head is an APPROVED.
 
 **An already-ready PR gets a pure no-op, or a full re-gate — never an ungated relabel.**
 Writing `approval-needed` is not bookkeeping: it asserts to everyone reading the queue that
@@ -7143,7 +7325,9 @@ brief's frontmatter `brief:` id), `kit`, `branch` (null for a detached review or
 dispatch), `pr`, `session_tag`, `tier` (`--tier`, recorded as its canonical lower-case token:
 `any` | `strong`), `brief_exec_tier` and
 `brief_effort` (the brief's frontmatter values), `model_stamp` (`applied` | `pending` |
-`skipped`) and `attempt_local`.
+`skipped`), `attempt_local` and `dispatch_instructions_sha256` (the sha256 of the role
+dispatch-instruction text the prompt quoted, null when it quoted none;
+`docs/cellctl-role-context.md` §"Dispatched agents").
 
 - A frontmatter value that is absent, unreadable or outside its grammar or vocabulary is
   null, never guessed and never recorded as the text it was.
@@ -7235,6 +7419,7 @@ enforces it: a line whose field is outside its grammar is never written.
 | `tier`, `brief_exec_tier` | `any` \| `strong` |
 | `brief_effort` | `S` \| `M` \| `L` |
 | `model_stamp` | `applied` \| `pending` \| `skipped` |
+| `dispatch_instructions_sha256` | 64 lowercase hex characters |
 
 No space, control character or invisible format character fits any row. No markdown link, URL
 with a scheme, mention or markup fits any row except `claim_key` and `dispatch_ref`: the
@@ -7417,7 +7602,8 @@ class, and the checkable condition that must change before re-running is worth a
 `plan`, `classifyItem` reads the evaluated state (`deskkit.WakeReceipt.EvaluateWake`, computed at
 scan time in `briefscan.go` against an already-authorized, offline, probe-free reader): a complete
 unchanged receipt is a visible **`wait`** bucket (naming its blocker + next actor), excluded from
-dispatch; a changed relevant input / tool / Verify definition / completed action wakes it; an
+dispatch; a changed relevant input / Verify definition / completed action wakes it (a tool-version
+change on its own holds, #2310 — the tool alone does not move a blocker); an
 unreadable declared input is **could-not-check**, never rounded up to unchanged; a legacy or
 incomplete receipt stays dispatchable for one classification pass. A partial hold dispatches the
 newly-runnable rows while recording the held rows as explicitly unrun, and no partial result flips
@@ -7681,6 +7867,31 @@ still present, so a v1 reader keeps working. The one new block is
     "recurrence_candidates": 1                 // CANDIDATES — a prompt to look, not a finding
   },
 
+  // Read by statusgen's autonomy ladder (rung 3). Population: main-session
+  // Agent/Task dispatches on the day, each attributed to the origin of the prompt
+  // record that started its turn (see "the dispatch split" below).
+  "dispatch": {
+    "status": "ok",                            // could-not-check: transcripts blind, or
+                                               // dispatch-origin-unrecorded (both sides null)
+    "total_dispatches": 9,
+    "loop_initiated": 4,                       // scheduled | peer | task_notification | auto_continuation
+    "operator_initiated": 2,                   // human
+    "unattributed": 3                          // sdk, or no origin stamp; never folded into a side
+  },
+
+  // Read by the ladder's rung 4. Population: subagent RUNS (sidechain records grouped
+  // by session + agent) whose first record is on the day. All four counts share it.
+  "token_efficiency": {
+    "status": "ok",
+    "reason": "",                              // the gh reason when merged_prs is null
+    "subagent_tokens": 3255,                   // input + output + cache-creation + cache-read, per message id once
+    "merged_prs": 5,                           // same source as intervention.merged_prs
+    "noop_dispatches": 2,                      // runs whose report OPENS as a no-op (heuristic)
+    "total_dispatches": 4,                     // the run count
+    "reports_unread": 1,                       // runs with no report text to classify
+    "noop_classifier": "opmetrics-noop/1"      // the no-op ruler's version
+  },
+
   "unmeasured": ["prompt-blockage", "operator-think-time"],
 
   "trend": {                                   // present only with --trend N
@@ -7697,7 +7908,31 @@ still present, so a v1 reader keeps working. The one new block is
 `reason` codes: `transcripts-unreadable` · `no-transcript-files` ·
 `no-operator-messages` · `gh-json-not-supplied` · `gh-json-unreadable` ·
 `no-merged-prs` · `no-latency-samples` · `roster-dir-unreadable` ·
-`claims-dir-unreadable` · `no-prior-day-files`.
+`claims-dir-unreadable` · `no-prior-day-files` · `dispatch-origin-unrecorded`.
+
+### The dispatch split and the no-op count
+
+The `dispatch` and `token_efficiency` blocks were added inside `opmetrics/2` without a
+schema bump: both are new top-level keys, no existing key changed, and a reader that
+predates them sees them absent and reports the ladder rungs unmeasured, as before.
+
+- **Origin is read, never guessed.** The harness stamps each prompt record with
+  `turnOrigin` (or `origin.kind`). `human` is operator; `scheduled`, `peer`,
+  `task_notification` and `auto_continuation` are loop; anything else is
+  unattributed. A tool result does not start a turn and does not change the origin.
+- **No-op is a versioned heuristic.** A run counts as a no-op when its final report
+  (its handback message, else its last assistant text) opens with a closed phrase
+  list such as "already merged", "nothing to do" or "no changes needed", optionally
+  after a short subject ("This dispatch was a no-op."). The match is anchored to the
+  start of the opening line, found by skipping leading heading, emphasised-label and
+  rule lines and stripping a leading `**Label:**` and list or quote markers. The same
+  phrase later in the report ("the helper already exists so I reused it") does not
+  count. Change the list or the skipped line shapes only with a bump to
+  `noop_classifier`.
+- **Blind is all-null.** When the transcripts cannot be read, both blocks are
+  could-not-check and every count in them is null, `merged_prs` included.
+- **What leaves the file is a count.** No prompt, report, agent id or tool input is
+  emitted; `TestLeakEmittedKeysAreAllowlisted` pins the full key list.
 
 ### `classifierVersion` — the ruler, versioned
 

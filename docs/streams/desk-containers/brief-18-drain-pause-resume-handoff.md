@@ -10,15 +10,15 @@ why: >-
   `cellctl` verbs that are adapters onto the transition vocabulary, running on today's stop
   flags and cadence supervisor as an explicitly interim implementation. The verbs keep their
   meaning when the lifecycle contract replaces the mechanism underneath.
-wave: 10
-depends: ["desk-containers/15", "desk-containers/16", "desk-containers/17", "desk-containers/33"]
+wave: 9
+depends: ["desk-containers/15", "desk-containers/16", "desk-containers/17"]
 unblocks: ["desk-containers/19", "desk-containers/21", "desk-containers/22", "desk-containers/29"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 3
+version: 1
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "Driver request 2026-10-14: a `drain <cell>` that drains the loops first and then shuts down, with a handoff note; the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): these are runner-lifecycle states/transitions; cellctl verbs are adapters; today's STOP-flag/cadence mechanism is the interim first implementation, not the design"
@@ -44,9 +44,6 @@ consumers:
 ---
 
 # Brief 18 — `drain`, `pause`, `resume` adapters and the handoff record
-
-> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
-
 
 ## Context
 files:
@@ -115,17 +112,11 @@ facts:
 - Do not let the verbs' observable meaning depend on the interim mechanism. Tests assert transitions and states, not flag-file paths, except in the one `lifecycle.go` test that pins the interim mapping.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
-## Desk-instance scope — 25 October 2026
-
-Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
-
 ## Task
 1. Implement the transition interface and the interim mechanism in `lifecycle.go`.
 2. Implement `pause`/`resume`/`drain` as adapters over it, adopting the desk-containers/15 result and plan contract.
 3. Add the handoff step and boot read through the one reference.
 4. Docs, labelling the mechanism interim and pointing to amendment 21; changelog fragment.
-
-- **Instance amendment:** Use /31 instance selectors/results and per-instance lifecycle/handoff records. Role/cell selectors expand explicitly, while instance stop verifies exact instance/generation/process or Pod UID and never closes a peer. Expose a durable stop-new-admission barrier separately from waiting for drain so /19 can overlap successor startup. Active children retain their item claims and contribute observed work to approximate pacing; unknown effects remain held independently. Preserve all existing plan/TTY and foreign-stop restrictions.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
@@ -145,11 +136,89 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
 | 8j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainEmitsCellOpV1' -count=1 -v` | `--- PASS` — `drain --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 8 | check | `statusgen --root . --lint` | exit 0 |
 | 8a | check | `statusgen --root . --consumers --brief desk-containers/18` | exit 0 — the `consumers:` routing holds against the branch diff |
-| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDrainDeskInstance$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDrainDeskInstance ' "$o")` | Named test executes (zero matching tests is not a pass); An old worker stops new dispatch but finishes its held task while an unpaused peer continues; identity mismatch and drain timeout preserve the targeted owner and report hold. Mutation: close role-wide surfaces or report unknown stop as drained makes the test fail. |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestLifecycleTransitions' -count=1 -v` | pass exit=0 | sha256:6f749d3b9dc8 | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (on-behalf-of human:ian) (forge-identity) |
+| 1b | `go -C tools/desk test ./cmd/cellctl/ -run 'TestResumeLeavesForeignStops' -count=1 -v` | pass exit=0 | sha256:f93342d52683 | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (on-behalf-of human:ian) (forge-identity) |
+| 1c | `go -C tools/desk test ./cmd/cellctl/ -run 'TestPauseResumeDrainRefuseOffTTY' -count=1 -v` | pass exit=0 | sha256:90ae24282093 | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (on-behalf-of human:ian) (forge-identity) |
+| 1d | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRecordedResumeNotExecuted' -count=1 -v` | pass exit=0 | sha256:e001bd578f52 | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (on-behalf-of human:ian) (forge-identity) |
+| 1e | `go -C tools/desk test ./cmd/cellctl/ -run 'TestPerRoleDownClosesOneSurface' -count=1 -v` | pass exit=0 | sha256:3ca11c421db4 | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (on-behalf-of human:ian) (forge-identity) |
+| 1f | `go -C tools/desk test ./cmd/cellctl/ -run 'TestIdleSignalPerMode' -count=1 -v` | pass exit=0 | sha256:f4db737cd1e7 | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainWaitsForInFlight' -count=1 -v` | pass exit=0 | sha256:c8fe047dd460 | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainTimeoutDoesNotStop' -count=1 -v` | pass exit=0 | sha256:b4cdf075c7df | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainNowInteractiveOnly' -count=1 -v` | pass exit=0 | sha256:10bb4cc30c90 | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestInterimMappingPinned' -count=1 -v` | pass exit=0 | sha256:59a1f367c1d1 | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -l 'references/handoff-note.md' plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/verify-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/intake-desk/SKILL.md \| wc -l` | pass exit=0 | sha256:30179a803d48 | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (on-behalf-of human:ian) (forge-identity) |
+| 8j | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainEmitsCellOpV1' -count=1 -v` | pass exit=0 | sha256:8c9855f88125 | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --lint` | fail exit=1 | sha256:ac01c2a37623 | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (on-behalf-of human:ian) (forge-identity) |
+| 8a | `statusgen --root . --consumers --brief desk-containers/18` | fail exit=2 | sha256:d04035fe091d | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5465 run=c025b650af3c039e1374312441177591f5990be77acb8a54cb8a0e61823c404c source=06b5fd87c1f08931928d3aaf26ab1a59cff33b35 brief=docs/streams/desk-containers/brief-18-drain-pause-resume-handoff.md model=claude-opus-5-5 tier=strong
+
+Verifier notes, rows 8 and 8a (the witness rows above carry each command's real exit). Row 8 exited 1 on two PROBLEMs, both on other briefs (desk-tools/37 and desktools-v2/65), each reading "protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"; no PROBLEM names desk-containers/18. That is the instrument's own could-not-check, not an observed failure of this brief, so row 8 is BLOCKED. Row 8a exited 2 with "--consumers: COULD-NOT-CHECK: assay:assay:desk-containers:18 is not in the diff against 06b5fd87c1f08931928d3aaf26ab1a59cff33b35, and the brief's delivery could not be derived"; the command as written cannot see an already-merged delivery from merged main, so row 8a is BLOCKED.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 7 | On a disposable house cell with stub desks holding one fixture claim: `cellctl drain <cell> --timeout 2m` while the claim releases after 30s | claim releases; handoff record per role; cell stopped with surfaces closed and receipts removed; cadence status shows no unfinished; a following `cellctl up <cell>` exits 0 and each desk reports reading its record | could-not-run: the row needs an interactive operator terminal (drain off a TTY is refused not-interactive by this brief's own contract, row 1c) plus a disposable house cell with stub desks and a live cockpit; this dispatched verifier has no TTY and is not authorized to create a cell or open cockpit windows on the host. Next actor: the driver or an interactive operator session | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (model verifier) (on-behalf-of human:ian) |
+| supp-a | supplemental, no acceptance credit: `muhar -j 1 --spec cmd/cellctl/lifecycle-mutations.json` run from tools/desk of a git-archive copy of 06b5fd87c1f0 outside the home | healthy harness, every mutant caught | exit 0; "Harness healthy: baseline GREEN, positive control CAUGHT."; "Totals: 23 caught, 0 NOT CAUGHT, 0 could-not-mutate." (covers the mutants rows 1, 1b, 1c, 1d, 1e, 1f, 2, 3, 4, 5 and 8j name) | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (model verifier) (on-behalf-of human:ian) |
+| supp-b | supplemental, no acceptance credit: `statusgen --root . --lint --acceptance-forge` (forge reads as the verifier App) | exit 0 | exit 0; "LINT: PASS" | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (model verifier) (on-behalf-of human:ian) |
+| supp-c | supplemental, no acceptance credit: `statusgen --root . --consumers --brief desk-containers/18 --delivery 2cbd6178f8400bcb95faae97047a4f38e08be490 --base 560daf9068b8631d945400bf1aa714d0add889f9` (merge of PR 5415 and its first parent) | exit 0 | exit 0; "summary: 6 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing"; the 2 unchecked are the two out-of-scope routes | 2026-11-04 | assay-verifier-app[bot] @ 06b5fd87c1f0 (model verifier) (on-behalf-of human:ian) |
+
+Risk-bearing values. Trigger: not fired (risk answers all present and no, not irreversible, no risk-classed path); enumerated anyway over the cellctl non-test Go files to which the delivery diff 560daf9068b8..2cbd6178f840 adds lines. Entries: drainPollMax = 10 * time.Second @ tools/desk/cmd/cellctl/drain.go:23; drainDefaultTimeout = 20 * time.Minute @ tools/desk/cmd/cellctl/drain.go:24; drainDefaultHandoffWait = 60 * time.Second @ tools/desk/cmd/cellctl/drain.go:25; poll floor 10 * time.Millisecond @ tools/desk/cmd/cellctl/drain.go:35; cadenceStopWait = 20 * time.Second @ tools/desk/cmd/cellctl/cadence.go:407; STOP file mode 0600 @ tools/desk/cmd/cellctl/cadence.go:444; lease poll 100 * time.Millisecond @ tools/desk/cmd/cellctl/cadence.go:470; pause flag mode 0o600 @ tools/desk/cmd/cellctl/lifecycle.go:303; private file mode 0o600 @ tools/desk/cmd/cellctl/lifecycle.go:821; private dir mode 0o700 @ tools/desk/cmd/cellctl/lifecycle.go:817. Rank: every entry is a reversible operational knob (an edit and a release undoes it); the file modes rank first because a wider mode would let another account read or plant lifecycle records, then the stop wait, then the drain timings.
+RISK-VALUE: DERIVED — private file mode = 0o600 @ tools/desk/cmd/cellctl/lifecycle.go:821 — the brief requires receipts written 0600 with O_CREAT|O_EXCL|O_NOFOLLOW into a 0700 cell-owned directory; owner-only read/write is the narrowest mode the owning account can still rewrite, and the same line carries O_EXCL and oNoFollow.
+RISK-VALUE: DERIVED — private dir mode = 0o700 @ tools/desk/cmd/cellctl/lifecycle.go:817 — the brief names a cell-owned 0700 directory; owner-only traversal keeps other accounts from listing or racing the temporary name.
+RISK-VALUE: DERIVED — cadenceStopWait = 20 * time.Second @ tools/desk/cmd/cellctl/cadence.go:407 — the brief's per-role stop step 1 is "the role's STOP file, a 20 s lease wait", the bound cell-wide down already used; the idle re-measure runs after it.
+RISK-VALUE: DERIVED — drainPollMax = 10 * time.Second @ tools/desk/cmd/cellctl/drain.go:23 — the brief says drain polls "at most every 10s"; drainPollCap takes a tenth of the bound, capped at this value.
+
+Attempts: (1) 2026-11-04T20:30:50Z to 2026-11-04T20:33:39Z, direct runs of rows 1 to 8a into scratch logs for diagnosis, discarded (superseded by the witness run); (2) 2026-11-04T20:43:56Z to 2026-11-04T20:46:16Z, the host verifyrun witness above, rows 1, 1b, 1c, 1d, 1e, 1f, 2, 3, 4, 5, 6, 8j, 8, 8a, credited.
+
+**VERIFY: BLOCKED** — 12 of 15 rows pass exit 0 (1, 1b, 1c, 1d, 1e, 1f, 2, 3, 4, 5, 6, 8j); row 7 could-not-run (needs an interactive operator and a disposable house cell); rows 8 and 8a are instrument could-not-check (forge authority reads and delivery derivation), both green in supplemental probes that carry no acceptance credit; no obligation was observed to fail.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestLifecycleTransitions' -count=1 -v` | pass exit=0 | sha256:c390fe905d9d | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 1b | `go -C tools/desk test ./cmd/cellctl/ -run 'TestResumeLeavesForeignStops' -count=1 -v` | pass exit=0 | sha256:b9a46b30e9d0 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 1c | `go -C tools/desk test ./cmd/cellctl/ -run 'TestPauseResumeDrainRefuseOffTTY' -count=1 -v` | pass exit=0 | sha256:f66ffa671d55 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 1d | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRecordedResumeNotExecuted' -count=1 -v` | pass exit=0 | sha256:5a6f29abd9ad | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 1e | `go -C tools/desk test ./cmd/cellctl/ -run 'TestPerRoleDownClosesOneSurface' -count=1 -v` | pass exit=0 | sha256:609fb3ead1b2 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 1f | `go -C tools/desk test ./cmd/cellctl/ -run 'TestIdleSignalPerMode' -count=1 -v` | pass exit=0 | sha256:12d4678f5c9d | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainWaitsForInFlight' -count=1 -v` | pass exit=0 | sha256:7e444cddb504 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainTimeoutDoesNotStop' -count=1 -v` | pass exit=0 | sha256:789dfa80c45d | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainNowInteractiveOnly' -count=1 -v` | pass exit=0 | sha256:1454d7face9b | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestInterimMappingPinned' -count=1 -v` | pass exit=0 | sha256:b79afef1f175 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -l 'references/handoff-note.md' plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/verify-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/intake-desk/SKILL.md \| wc -l` | pass exit=0 | sha256:30179a803d48 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cellctl drain <cell> --timeout 2m` | could-not-run exit=- — unsubstituted placeholder(s) <cell> — the row cannot run as written | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 8j | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainEmitsCellOpV1' -count=1 -v` | pass exit=0 | sha256:b04513cae736 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --lint` | fail exit=1 | sha256:8376d4047ff2 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+| 8a | `statusgen --root . --consumers --brief desk-containers/18` | fail exit=2 | sha256:745a2dd6363b | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5586 run=90d8ebb644917e03b7b044f248521d63c4fc1df913158387ab5ecac6800bc1ab source=e9410e9e13540d3f9565de9d986334ea4b644bce brief=docs/streams/desk-containers/brief-18-drain-pause-resume-handoff.md model=claude-opus-5-5 tier=strong
+
+Verifier notes, 2026-11-06 run at merged main e9410e9e1354 (claude-opus-5-5, installed statusgen v1.0.75, darwin-arm64 host, normal HOME, no forge variable set, KUBECONFIG=/dev/null). No row is classed check:ci, so every row ran on the host and no container bracket applies. Row 7 was not run: its command keeps the `<cell>` placeholder, and it needs an interactive operator terminal (drain off a TTY is refused not-interactive by this brief's own row 1c) plus a disposable house cell with stub desks and a live cockpit, which a dispatched verifier does not have; next actor is an interactive operator session. Row 8 exited 1 on two PROBLEMs, both on other briefs (desk-tools/37 and desktools-v2/65), each saying the protected-table acceptance transition needs --acceptance-forge to confirm human authority; no PROBLEM names desk-containers/18. The row is offline as written, so that exit is the instrument's limit, not a defect of this brief. Row 8a exited 2: on merged main the brief is not in the working diff and carries no committed Verification-Table marker, so the delivery cannot be derived; next actor is the brief author, to pin the row to its delivery range as medici-finance/assay#3574 provides (supp-e shows that form passing).
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| supp-d | supplemental, no acceptance credit: `statusgen --root . --lint`, re-run by hand after the witness only to read its output (offline, same environment) | exit 0 | exit 1; "LINT: FAIL 2 problem(s)"; the only PROBLEMs are desk-tools/37 and desktools-v2/65 (acceptance transition needs --acceptance-forge); none names desk-containers/18 | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (model verifier) (on-behalf-of human:ian) |
+| supp-e | supplemental, no acceptance credit: `statusgen --root . --consumers --brief desk-containers/18 --delivery 2cbd6178f8400bcb95faae97047a4f38e08be490 --base 560daf9068b8631d945400bf1aa714d0add889f9` (merge of PR 5415 and its first parent) | exit 0 | exit 0; "summary: 6 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing"; the 2 unchecked are the two out-of-scope routes | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (model verifier) (on-behalf-of human:ian) |
+| supp-f | supplemental, no acceptance credit: fail-first probe, `statusgen verifyrun --fail-first --base 560daf9068b8631d945400bf1aa714d0add889f9 --rows 6 --dry-run` on this brief | base selection | exit 0; "--fail-first: no risk-bearing row among the selected rows; every row is recorded not-selected at base"; nothing written. The table has no risk-bearing row by the tool's rule (brief-wide risk answers all no; row tags are only +mutation, +flow, +dereference) | 2026-11-06 | assay-verifier-app[bot] @ e9410e9e1354 (model verifier) (on-behalf-of human:ian) |
+
+Risk-bearing values. Trigger: not fired (all four risk answers present and no, not irreversible, no risk-classed path); enumerated anyway over the non-test Go files the delivery diff 560daf9068b8..2cbd6178f840 changes, re-read at e9410e9e1354. Entries: drainPollMax = 10 * time.Second @ tools/desk/cmd/cellctl/drain.go:23; drainDefaultTimeout = 20 * time.Minute @ tools/desk/cmd/cellctl/drain.go:24; drainDefaultHandoffWait = 60 * time.Second @ tools/desk/cmd/cellctl/drain.go:25; poll floor 10 * time.Millisecond @ tools/desk/cmd/cellctl/drain.go:35; cadenceStopWait = 20 * time.Second @ tools/desk/cmd/cellctl/cadence.go:407; STOP file mode 0600 @ tools/desk/cmd/cellctl/cadence.go:444; lease poll 100 * time.Millisecond @ tools/desk/cmd/cellctl/cadence.go:470; pause flag mode 0o600 @ tools/desk/cmd/cellctl/lifecycle.go:303; config dir mode 0o700 @ tools/desk/cmd/cellctl/lifecycle.go:298; private dir mode 0o700 @ tools/desk/cmd/cellctl/lifecycle.go:817; private file mode 0o600 @ tools/desk/cmd/cellctl/lifecycle.go:821. Rank: every entry is a reversible operational knob (an edit and a release undoes it); the file modes rank first because a wider mode would let another account read or plant lifecycle records, then the stop wait, then the drain timings.
+RISK-VALUE: DERIVED — private file mode = 0o600 @ tools/desk/cmd/cellctl/lifecycle.go:821 — the brief requires receipts written 0600 with O_CREAT|O_EXCL|O_NOFOLLOW into a cell-owned 0700 directory; owner-only read/write is the narrowest mode the owning account can still rewrite, and the same call carries O_EXCL and oNoFollow.
+RISK-VALUE: DERIVED — private dir mode = 0o700 @ tools/desk/cmd/cellctl/lifecycle.go:817 — the brief names a cell-owned 0700 directory; owner-only traversal keeps other accounts from listing it or racing the temporary name.
+RISK-VALUE: DERIVED — cadenceStopWait = 20 * time.Second @ tools/desk/cmd/cellctl/cadence.go:407 — the brief's per-role stop step 1 is "the role's STOP file, a 20 s lease wait", the bound cell-wide down already used; the idle re-measure runs after it.
+RISK-VALUE: DERIVED — drainPollMax = 10 * time.Second @ tools/desk/cmd/cellctl/drain.go:23 — the brief says drain polls "at most every 10s"; drainPollCap takes a tenth of the bound, capped at this value.
+RISK-VALUE: DERIVED — drainDefaultHandoffWait = 60 * time.Second @ tools/desk/cmd/cellctl/drain.go:25 — the brief says "drain --now stops after a 60s handoff bound".
+
+Attempts: (1) 2026-11-06T16:02:11Z to 2026-11-06T16:04:13Z, the host verifyrun witness above, 14 rows executed (1, 1b, 1c, 1d, 1e, 1f, 2, 3, 4, 5, 6, 8j, 8, 8a; row 7 not executed, placeholder), credited. The supplemental probes above ran after it and discharge no row. `statusgen verifyrun --check` on this brief: 12 pass, 2 fail (8, 8a), 1 could-not-run/missing (7) of 15 Verify rows, exit 2.
+
+**VERIFY: BLOCKED** — 12 of 15 rows pass exit 0 (1, 1b, 1c, 1d, 1e, 1f, 2, 3, 4, 5, 6, 8j); row 7 not run (placeholder `<cell>`; needs an interactive operator and a disposable house cell); rows 8 (exit 1, PROBLEMs only on two other briefs' forge-gated acceptance transitions) and 8a (exit 2, delivery not derivable from merged main) are instrument limits of the rows as written, not observed failures of this brief; no acceptance obligation was observed to fail.
+
 ## Review
 Gate: model. All four risk answers are no: the transitions only add stops and stop only the named roles through the per-role `down <cell> <role...>`, after the drain has waited them idle and re-measured the idle signal per mode, and only after re-verifying the window's live identity against its receipt (a mismatch or stale receipt refuses), so a sibling's or another cell's window is not closed; the cell-wide `down` is never used here; abandonment needs an interactive confirm on a plan that lists every abandoned item as an unknown outcome. The reviewer checks rows 2, 4 and 5, the last one being the guarantee that the interim mechanism stays replaceable.
+
+## Desk-instance follow-on — 8 November 2026
+
+The [instance amendment](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) adds instance-targeted drain, a separate stop-new-admission barrier and per-instance handoff records through **desk-containers/19**, consuming this completed delivery and /33's instance selectors. Existing Task, Verify, version and Evidence are unchanged; they do not establish multi-instance drain qualification. /19 owns that behaviour and its Verify row. This is routing only, not a reopening or delivery claim.

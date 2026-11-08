@@ -129,7 +129,7 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
    detach/reconnect/status/stop operator guide, compatibility limitations, and exact profile
    prerequisites in docs/cellctl.md and docs/docker.md. Publish no deployed-support claim.
 
-- **Instance amendment:** Consume /31 desired population in cell.env to render/pre-provision one managed workload and retained writable workspace per instance, reusing role images and scoped identities. Include cell in human/Kubernetes locators with validated name limits and cell/role/instance/generation metadata. Start/attach/control uses /09 and exact UID receipts; repeated up preserves names/IDs and paused peers. Keep compatibility /06 manifests intact and operator-only provisioning separate from desk launch.
+- **Instance amendment:** Consume /33 desired population in cell.env to render/pre-provision one managed workload and retained writable workspace per instance, reusing role images and scoped identities. Include cell in human/Kubernetes locators with validated name limits and cell/role/instance/generation metadata. Start/attach/control uses /09 and exact UID receipts; repeated up preserves names/IDs and paused peers. Keep compatibility /06 manifests intact and operator-only provisioning separate from desk launch.
 
 ## Operator image and component acceptance
 

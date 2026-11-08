@@ -223,6 +223,12 @@ v1/v2/v3 after /63–65; later storage/transport/reporting preserves their cover
 A local record/read/report path needs no server or database. Leave collection's admission
 state to its own ruling and keep credential work independent; do not reopen /61 or imply deployment/collection activation.
 
+Collection/01 delivery, 1 November 2026: the local `performance-event-v1` contract, spool and
+offline report are implemented in the separate `perfdata` module. Human acceptance is pending.
+Its storage target is a separate optional performance database (/03), and transport is /04–05.
+Neither is built, and neither touches the operational store. Collection owns the meaning of
+collection only.
+
 ## Extensible contracts and perf-v4 — requested amendment, 21 October 2026
 
 Apply the [JSON transition policy](29-extensible-json-contracts.md) across the existing
@@ -254,4 +260,4 @@ ranked provider-cost model is an estimate to qualify, not a new activation/cost 
 
 ## Desk instances amendment — requested 25 October 2026
 
-The instance delta extends existing R2/R3 owners before managed multi-instance activation. graph-execution/16 and /26 provide approximate role pacing and exact instance ownership; /27 binds standing clients; desk-containers/33 adds desired population and naming, then /18–19 and /28–29 consume it. R7 contract/projection work may proceed against that versioned interface without activating apply or requiring workflow adoption. Existing package gates and active-work approvals retain their scope. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.
+The instance delta extends existing R2/R3 owners before managed multi-instance activation. graph-execution/19 and /26 provide approximate role pacing and exact instance ownership over completed graph-execution/16; /27 binds standing clients; desk-containers/33 adds desired population, naming and the instance stop mapping, then /19–20, /22 and /28–29 consume it. R7 contract/projection work may proceed against that versioned interface without activating apply or requiring workflow adoption. Existing package gates and active-work approvals retain their scope. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.
