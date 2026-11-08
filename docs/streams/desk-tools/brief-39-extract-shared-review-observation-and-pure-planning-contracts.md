@@ -173,7 +173,7 @@ RISK-VALUE: DERIVED — `ObservationSchema = "review-observation-v1"` @ tools/de
 RISK-VALUE: DERIVED — `SelectionEvaluator = "review-selection-v1"` @ tools/desk/internal/reviewflow/selection.go:9 — the evaluator spec/review-observation-v1.md line 161 requires for selection.
 RISK-VALUE: DERIVED — `capacity < 0` refusal @ tools/desk/internal/reviewflow/selection.go:94 — spec/review-observation-v1.md line 180 makes zero capacity valid (it preserves every row and source depth), so 0 is the correct lower bound and only negative values are refused.
 
-**VERIFY: BLOCKED** — rows 1, 2 and 4 not run to a verdict: the pinned verify-runner image's module cache predates the tools/desk go.sum (#4683). Row 3's consumers check could not take its diff on merged main (exit 2) and needs a pinned delivery/base amendment (#4560). No acceptance obligation was observed failing.
+**VERIFY: BLOCKED** — rows 1, 2 and 4 not run to a verdict: the pinned verify-runner image's module cache predates the tools/desk go.sum (#4683). Row 3's consumers check exited 2 (COULD-NOT-CHECK: the delivery could not be derived, and the refusal branch taken was not captured) and needs a pinned delivery/base amendment (#4560). No acceptance obligation was observed failing.
 
 ## Review
 
