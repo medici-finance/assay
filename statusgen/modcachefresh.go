@@ -2,11 +2,18 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	pathpkg "path"
 	"path/filepath"
+	"regexp"
+	"slices"
+	"sort"
 	"strings"
+	"unicode"
 )
 
 // The open step's module cache (#4683). The verify-runner image bakes a Go
@@ -16,13 +23,18 @@ import (
 // that cause). This file derives the cache from the tree under verification
 // instead:
 //
-//  1. host open: with --module-cache <dir>, `verifyrun --open-bracket` runs
+//  1. host open: with --module-cache <dir>, `verifyrun --open-bracket` screens
+//     every module path the home's roots could request (moduleEgressProblem),
+//     names the proxy, checksum database and roots on stdout, then runs
 //     `go mod download` for every root the home's own moduleRootsManifest
 //     lists, into that new directory, bound to each root's go.sum and to the
 //     checksum database, and records the cache's digest and roots in the
-//     receipt (receiptModuleCache). Any download failure refuses the open step
-//     with no receipt: there is no fall-back to the image's baked cache;
-//  2. container: the run reads the receipt and, before any row, refuses
+//     receipt (receiptModuleCache). Any screen or download failure refuses the
+//     open step with no receipt: there is no fall-back to the image's baked
+//     cache;
+//  2. container: the run reads the receipt, which must carry the cache
+//     exactly when the home lists module roots (moduleCacheRequirementProblem,
+//     also run at close), and, before any row, refuses
 //     unless GOMODCACHE is a read-only mount that digests to the receipt's
 //     cache, the root file system is read-only, and the module environment
 //     keeps GOPROXY=off, GOTOOLCHAIN=local and checksum verification on
@@ -88,34 +100,215 @@ var ambientModuleCaches = func() []string {
 	return out
 }
 
-// moduleDownloadEnv is the environment of the open step's downloads: the
-// host's, with every Go, git and proxy setting removed, then the pinned ones
-// (the same set the cluster backend's stage-cache.sh pins). Checksum
-// verification stays on: GOSUMDB is the public database, and GONOSUMDB,
-// GONOSUMCHECK, GOINSECURE, GOPRIVATE, GONOPROXY and GOFLAGS=-insecure cannot
+// The open step's download endpoints: the public module proxy and checksum
+// database, the same pins as the cluster backend's stage-cache.sh. The
+// download environment pins them and the announcement names them.
+const (
+	moduleDownloadProxy = "https://proxy.golang.org"
+	moduleDownloadSumDB = "sum.golang.org"
+)
+
+// moduleDownloadEnv is the environment of the open step's downloads, built
+// from nothing (never from the caller's environment): PATH and the platform's
+// temp and system-root settings, a scratch HOME and GOCACHE (so no .netrc, git
+// or go configuration of the host's is read), then the pinned Go settings (the
+// same set the cluster backend's stage-cache.sh pins). Checksum verification
+// stays on: GOSUMDB is the public database, and no setting that loosens it can
 // arrive from the host, nor from its go env file (GOENV=off).
-func moduleDownloadEnv(cache string) []string {
+func moduleDownloadEnv(cache, scratch string) []string {
 	var env []string
-	for _, kv := range os.Environ() {
-		k, _, _ := strings.Cut(kv, "=")
-		switch {
-		case strings.HasPrefix(k, "GO"), strings.HasPrefix(k, "GIT_"), strings.HasPrefix(k, "CGO_"):
-			continue
-		case strings.EqualFold(k, "http_proxy"), strings.EqualFold(k, "https_proxy"), strings.EqualFold(k, "all_proxy"), strings.EqualFold(k, "no_proxy"):
-			continue
+	for _, k := range []string{"PATH", "TMPDIR", "SystemRoot"} {
+		if v := os.Getenv(k); v != "" {
+			env = append(env, k+"="+v)
 		}
-		env = append(env, kv)
 	}
 	return append(env,
+		"HOME="+scratch,
+		"GOCACHE="+filepath.Join(scratch, "gocache"),
 		"GOENV=off",
 		"GOMODCACHE="+cache,
 		"GOWORK=off",
 		"GOFLAGS=-mod=readonly",
 		"GOTOOLCHAIN=local",
-		"GOPROXY=https://proxy.golang.org",
-		"GOSUMDB=sum.golang.org",
+		"GOPROXY="+moduleDownloadProxy,
+		"GOSUMDB="+moduleDownloadSumDB,
 		"GOVCS=*:off",
 	)
+}
+
+// approvedPublicModulePrefixes is the approved public set of stage-cache.sh's
+// APPROVED pattern, the cluster backend's screen of the same download:
+// public vanity hosts whose module paths may be sent to the public proxy.
+// TestModEgressParity holds the two lists equal.
+var approvedPublicModulePrefixes = []string{
+	"golang.org/x/", "google.golang.org/", "gopkg.in/", "go.uber.org/",
+	"go.opentelemetry.io/", "go.etcd.io/", "go.yaml.in/", "honnef.co/",
+	"gotest.tools/", "sigs.k8s.io/", "k8s.io/", "cloud.google.com/",
+	"modernc.org/", "rsc.io/", "lukechampine.com/", "filippo.io/",
+}
+
+// githubPublicModuleRe is stage-cache.sh's GHPUB: a github.com path is public
+// unless it sits under an owner the screen refuses.
+var githubPublicModuleRe = regexp.MustCompile(`^github\.com/[A-Za-z0-9_.-]+/`)
+
+// goModEditJSON parses one go.mod with Go's own parser (`go mod edit -json`),
+// which runs no module code and makes no request. A var so tests can fail it.
+var goModEditJSON = func(gomod string, env []string) ([]byte, error) {
+	cmd := exec.Command("go", "mod", "edit", "-json", gomod)
+	cmd.Env = env
+	return cmd.Output()
+}
+
+// operatorPrivateModulePatterns are the host's GOPRIVATE, GONOPROXY and
+// GONOSUMDB patterns, from the environment and from the user's go env file.
+// The download environment drops them, so the screen honours them instead: a
+// path the operator marked private is never sent. A var so tests fix it.
+var operatorPrivateModulePatterns = func() []string {
+	keys := []string{"GOPRIVATE", "GONOPROXY", "GONOSUMDB"}
+	var out []string
+	for _, k := range keys {
+		out = append(out, splitModulePatterns(os.Getenv(k))...)
+	}
+	if raw, err := exec.Command("go", append([]string{"env"}, keys...)...).Output(); err == nil {
+		for _, l := range strings.Split(string(raw), "\n") {
+			out = append(out, splitModulePatterns(l)...)
+		}
+	}
+	return out
+}
+
+func splitModulePatterns(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// matchModulePattern reports whether pattern, a GOPRIVATE-style glob, matches
+// a prefix of path's elements, as the go command matches it.
+func matchModulePattern(pattern, path string) bool {
+	n := strings.Count(strings.TrimSuffix(pattern, "/"), "/") + 1
+	elems := strings.Split(path, "/")
+	if len(elems) < n {
+		return false
+	}
+	ok, err := pathpkg.Match(strings.TrimSuffix(pattern, "/"), strings.Join(elems[:n], "/"))
+	return err == nil && ok
+}
+
+// moduleEgressProblem is the screen the open step runs before any request,
+// the host twin of stage-cache.sh's: every module path the roots could send
+// to the public proxy (each root's requires that are not replaced by a
+// directory, every replacement that names a module version, and every module
+// in its go.sum) must be on the approved public set or a github.com path, and
+// none may sit under an owner of the repositories the check binds, nor match
+// the operator's own private patterns. Anything else is could-not-check with
+// nothing sent. owners are lower-case forge owners.
+func moduleEgressProblem(home string, roots, owners []string, env []string) error {
+	private := operatorPrivateModulePatterns()
+	why := map[string]string{}
+	for _, r := range roots {
+		dir := filepath.Join(home, filepath.FromSlash(r))
+		paths, err := moduleRequestPaths(dir, env)
+		if err != nil {
+			return fmt.Errorf("could-not-check — module root %s: %v; nothing was sent to the proxy", r, err)
+		}
+		for _, p := range paths {
+			if w := modulePathEgressProblem(p, owners, private); w != "" {
+				why[p] = w
+			}
+		}
+	}
+	if len(why) == 0 {
+		return nil
+	}
+	var bad []string
+	for p, w := range why {
+		bad = append(bad, p+" ("+w+")")
+	}
+	sort.Strings(bad)
+	return fmt.Errorf("could-not-check — module paths outside the approved public set, nothing was sent to the proxy: %s", strings.Join(bad, ", "))
+}
+
+// modulePathEgressProblem is why one module path may not be sent, "" when it
+// may.
+func modulePathEgressProblem(p string, owners, private []string) string {
+	lc := strings.ToLower(p)
+	for _, o := range owners {
+		if strings.HasPrefix(lc, "github.com/"+o+"/") {
+			return "under the verified repository's owner " + o
+		}
+	}
+	for _, pat := range private {
+		if matchModulePattern(pat, p) {
+			return "matches the operator's private pattern " + pat
+		}
+	}
+	for _, a := range approvedPublicModulePrefixes {
+		if strings.HasPrefix(p, a) {
+			return ""
+		}
+	}
+	if githubPublicModuleRe.MatchString(p) {
+		return ""
+	}
+	return "not on the approved public set"
+}
+
+// moduleRequestPaths is the module paths `go mod download` in dir could ask
+// the proxy for: go.mod's requires not replaced by a directory, every
+// replacement naming a module version, and every module go.sum names.
+func moduleRequestPaths(dir string, env []string) ([]string, error) {
+	raw, err := goModEditJSON(filepath.Join(dir, "go.mod"), env)
+	if err != nil {
+		return nil, fmt.Errorf("go.mod does not parse (%v)", err)
+	}
+	var m struct {
+		Require []struct{ Path, Version string }
+		Replace []struct {
+			Old, New struct{ Path, Version string }
+		}
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, fmt.Errorf("go.mod does not parse (%v)", err)
+	}
+	set := map[string]bool{}
+	dirReplaced := func(path, version string) bool {
+		for _, rp := range m.Replace {
+			if rp.Old.Path == path && (rp.Old.Version == "" || rp.Old.Version == version) && rp.New.Version == "" {
+				return true
+			}
+		}
+		return false
+	}
+	for _, r := range m.Require {
+		if !dirReplaced(r.Path, r.Version) {
+			set[r.Path] = true
+		}
+	}
+	for _, rp := range m.Replace {
+		if rp.New.Version != "" {
+			set[rp.New.Path] = true
+		}
+	}
+	sum, err := os.ReadFile(filepath.Join(dir, "go.sum"))
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range strings.Split(string(sum), "\n") {
+		if f := strings.Fields(l); len(f) > 0 {
+			set[f[0]] = true
+		}
+	}
+	var out []string
+	for p := range set {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // moduleCachePathProblem refuses a --module-cache directory the open step may
@@ -125,6 +318,11 @@ func moduleDownloadEnv(cache string) []string {
 func moduleCachePathProblem(home, cache string) string {
 	if !filepath.IsAbs(cache) {
 		return fmt.Sprintf("--module-cache %s is not an absolute path", cache)
+	}
+	// The path is written into the printed --mount value, whose options are
+	// comma-separated: a comma, quote, space or control character could add one.
+	if i := strings.IndexFunc(cache, func(r rune) bool { return r == ',' || r == '"' || unicode.IsSpace(r) || unicode.IsControl(r) }); i >= 0 {
+		return fmt.Sprintf("--module-cache %q carries %q; the path is written into the container's --mount option list, so it may hold no comma, quote, whitespace or control character", cache, cache[i:i+1])
 	}
 	if rel, ok := relWithin(home, cache); ok {
 		return fmt.Sprintf("--module-cache %s sits inside the home (%s); the cache must be outside it", cache, rel)
@@ -150,10 +348,12 @@ func moduleCachePathProblem(home, cache string) string {
 
 // prepareModuleCache is the open step's download: `go mod download` for every
 // root the home's moduleRootsManifest lists, into cache, then the cache's
-// digest. Each root's go.mod and go.sum must be byte-identical afterwards, so
-// the set downloaded is the one go.sum names. Any failure is returned, and the
-// caller writes no receipt.
-func prepareModuleCache(home, cache string) (receiptModuleCache, error) {
+// digest. Before any request the module paths are screened
+// (moduleEgressProblem) and the network target is announced on stdout. Each
+// root's go.mod and go.sum must be byte-identical afterwards, so the set
+// downloaded is the one go.sum names. Any failure is returned, and the caller
+// writes no receipt.
+func prepareModuleCache(home, cache string, owners []string, stdout io.Writer) (receiptModuleCache, error) {
 	manifest := filepath.Join(home, filepath.FromSlash(moduleRootsManifest))
 	roots, ok := bakedModuleRoots(manifest)
 	if !ok {
@@ -167,10 +367,22 @@ func prepareModuleCache(home, cache string) (receiptModuleCache, error) {
 			return receiptModuleCache{}, fmt.Errorf("%s lists %q, which is not a home-relative module root", moduleRootsManifest, r)
 		}
 	}
+	if len(owners) == 0 {
+		return receiptModuleCache{}, fmt.Errorf("could-not-check — the check names no repository owner to screen module paths against; nothing was sent to the proxy")
+	}
+	scratch, err := os.MkdirTemp("", "verifyrun-moddl-")
+	if err != nil {
+		return receiptModuleCache{}, err
+	}
+	defer os.RemoveAll(scratch)
+	env := moduleDownloadEnv(cache, scratch)
+	if err := moduleEgressProblem(home, roots, owners, env); err != nil {
+		return receiptModuleCache{}, err
+	}
+	fmt.Fprintf(stdout, "module-download proxy=%s sumdb=%s roots=%s cache=%s\n", moduleDownloadProxy, moduleDownloadSumDB, strings.Join(roots, ","), cache)
 	if err := os.MkdirAll(cache, 0o755); err != nil {
 		return receiptModuleCache{}, err
 	}
-	env := moduleDownloadEnv(cache)
 	for _, r := range roots {
 		dir := filepath.Join(home, filepath.FromSlash(r))
 		var before [2][]byte
@@ -196,6 +408,25 @@ func prepareModuleCache(home, cache string) (receiptModuleCache, error) {
 		return receiptModuleCache{}, fmt.Errorf("could-not-check — %v", err)
 	}
 	return receiptModuleCache{Digest: digest, Roots: roots}, nil
+}
+
+// moduleCacheRequirementProblem binds a receipt's module cache to the home it
+// admits, at every stage that reads a receipt (readBracketReceipt: the
+// container run and the close): a home that lists module roots needs a
+// receipt carrying the cache downloaded for exactly those roots, and a home
+// that lists none needs a receipt carrying none. A receipt from an open step
+// that predates the cache, or one edited after it, refuses here.
+func moduleCacheRequirementProblem(home string, mc *receiptModuleCache) error {
+	roots, listed := bakedModuleRoots(filepath.Join(home, filepath.FromSlash(moduleRootsManifest)))
+	switch {
+	case listed && mc == nil:
+		return fmt.Errorf("could-not-check — the home lists Go module roots in %s, but the receipt carries no module_cache; its rows would resolve from the image's baked cache. Re-open the bracket with --module-cache", moduleRootsManifest)
+	case !listed && mc != nil:
+		return fmt.Errorf("the receipt carries a module cache, but the home lists no Go module roots in %s", moduleRootsManifest)
+	case listed && !slices.Equal(roots, mc.Roots):
+		return fmt.Errorf("the receipt's module cache was downloaded for roots %s, but the home lists %s in %s", strings.Join(mc.Roots, ","), strings.Join(roots, ","), moduleRootsManifest)
+	}
+	return nil
 }
 
 // lastLines is the last n non-empty lines of s, joined with " / ".
@@ -253,6 +484,10 @@ func containerModuleCacheProblem(root string, mc *receiptModuleCache) error {
 	if v := os.Getenv("GOTOOLCHAIN"); v != "local" {
 		return fmt.Errorf("GOTOOLCHAIN is %q; a container run under a module-cache receipt keeps GOTOOLCHAIN=local", v)
 	}
+	// GONOSUMDB, GOINSECURE, GOPRIVATE, GONOPROXY and GOSUMDB=off are the live
+	// checksum and proxy controls. GONOSUMCHECK and GOFLAGS -insecure are not
+	// settings of the current go command; they are refused as legacy,
+	// defensive refusals only.
 	for _, k := range []string{"GONOSUMDB", "GONOSUMCHECK", "GOINSECURE", "GOPRIVATE", "GONOPROXY"} {
 		if v := os.Getenv(k); v != "" {
 			return fmt.Errorf("%s is set (%q); go.sum verification stays on in the container", k, v)

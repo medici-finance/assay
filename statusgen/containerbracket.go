@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -252,6 +253,9 @@ func readBracketReceipt(path, home, brief string) (bracketReceipt, string, strin
 	if err := receiptModuleCacheProblem(r.ModuleCache); err != nil {
 		return r, "", "", err
 	}
+	if err := moduleCacheRequirementProblem(home, r.ModuleCache); err != nil {
+		return r, "", "", err
+	}
 	b, err := checkBinding(r.Check)
 	if err != nil {
 		return r, "", "", fmt.Errorf("unreadable check output in the receipt: %w", err)
@@ -289,6 +293,29 @@ func readBracketReceipt(path, home, brief string) (bracketReceipt, string, strin
 		return r, "", "", fmt.Errorf("the receipt admits brief %s, but this run's brief is %s", b.Brief, brief)
 	}
 	return r, line, b.Brief, nil
+}
+
+// bindingOwners is the lower-case forge owners of every repository a check
+// binds: its repo, the source repo of a cross-repository receipt, and each
+// declared sibling. The open step's module screen refuses any module path
+// under one of them (moduleEgressProblem).
+func bindingOwners(b attestation.Binding) ([]string, error) {
+	repos := []string{b.Repo, b.SourceRepo}
+	siblings, err := attestation.ParseSiblingSources(b.SiblingSources)
+	if err != nil {
+		return nil, err
+	}
+	for r := range siblings {
+		repos = append(repos, r)
+	}
+	var owners []string
+	for _, r := range repos {
+		if o, _, ok := strings.Cut(r, "/"); ok && o != "" && !slices.Contains(owners, strings.ToLower(o)) {
+			owners = append(owners, strings.ToLower(o))
+		}
+	}
+	slices.Sort(owners)
+	return owners, nil
 }
 
 // checkBinding reads the Binding of a `deskdispatch --check-verifier` receipt.
@@ -600,7 +627,15 @@ func runOpenBracket(home, brief, out, moduleCache string, stdout, stderr io.Writ
 	}
 	var mc *receiptModuleCache
 	if moduleCache != "" {
-		got, err := prepareModuleCache(home, moduleCache)
+		b, err := checkBinding(check)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		owners, err := bindingOwners(b)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		got, err := prepareModuleCache(home, moduleCache, owners, stdout)
 		if err != nil {
 			return refuse("%v", err)
 		}

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/deskcore/attestation"
 )
 
 // The open step's module cache (#4683). Every test here runs on fixtures: the
@@ -257,11 +259,11 @@ func TestModCacheHardLineFlags(t *testing.T) {
 		}
 	}
 
-	for k, v := range map[string]string{"GONOSUMDB": "*", "GONOSUMCHECK": "1", "GOINSECURE": "*", "GOPRIVATE": "*", "GONOPROXY": "*", "GOFLAGS": "-insecure", "GOSUMDB": "off", "GOPROXY": "direct", "GOMODCACHE": "/ambient", "GIT_CONFIG_GLOBAL": "/x", "HTTPS_PROXY": "http://proxy.invalid"} {
+	for k, v := range map[string]string{"GONOSUMDB": "*", "GONOSUMCHECK": "1", "GOINSECURE": "*", "GOPRIVATE": "*", "GONOPROXY": "*", "GOFLAGS": "-insecure", "GOSUMDB": "off", "GOPROXY": "direct", "GOMODCACHE": "/ambient", "GIT_CONFIG_GLOBAL": "/x", "HTTPS_PROXY": "http://proxy.invalid", "HOME": "/host/home", "NETRC": "/host/.netrc", "FORGE_TOKEN": "fixture-token"} {
 		t.Setenv(k, v)
 	}
-	env := strings.Join(moduleDownloadEnv("/fresh/cache"), "\n") + "\n"
-	for _, want := range []string{"GOMODCACHE=/fresh/cache\n", "GOSUMDB=sum.golang.org\n", "GOPROXY=https://proxy.golang.org\n", "GOTOOLCHAIN=local\n", "GOFLAGS=-mod=readonly\n", "GOENV=off\n", "GOWORK=off\n", "GOVCS=*:off\n"} {
+	env := strings.Join(moduleDownloadEnv("/fresh/cache", "/scratch"), "\n") + "\n"
+	for _, want := range []string{"GOMODCACHE=/fresh/cache\n", "GOSUMDB=sum.golang.org\n", "GOPROXY=https://proxy.golang.org\n", "GOTOOLCHAIN=local\n", "GOFLAGS=-mod=readonly\n", "GOENV=off\n", "GOWORK=off\n", "GOVCS=*:off\n", "HOME=/scratch\n", "GOCACHE=/scratch/gocache\n"} {
 		if !strings.Contains(env, want) {
 			t.Errorf("download env lacks %q", want)
 		}
@@ -271,7 +273,9 @@ func TestModCacheHardLineFlags(t *testing.T) {
 			t.Errorf("download env carries %q:\n%s", bad, env)
 		}
 	}
-	for _, bad := range []string{"GOMODCACHE=/ambient", "GIT_CONFIG_GLOBAL", "HTTPS_PROXY", "GOPROXY=direct"} {
+	// The environment is built from nothing: no host HOME (its .netrc, git and
+	// go configuration), no forge credential, nothing but PATH and the pins.
+	for _, bad := range []string{"GOMODCACHE=/ambient", "GIT_CONFIG_GLOBAL", "HTTPS_PROXY", "GOPROXY=direct", "/host/home", "NETRC", "fixture-token"} {
 		if strings.Contains(env, bad) {
 			t.Errorf("download env carries the host's %q", bad)
 		}
@@ -424,3 +428,92 @@ func bakedModuleCacheProblem(df string) string {
 	}
 	return ""
 }
+
+// regression: #4683
+// TestModEgressParity: the open step's approved public set is the cluster
+// stager's (stage-cache.sh APPROVED and GHPUB), so the two screens of the same
+// download cannot drift apart; a planted stager with one more host goes red.
+func TestModEgressParity(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "images", "verify-runner", "stage-cache.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := modEgressParityProblem(string(raw)); p != "" {
+		t.Fatal(p)
+	}
+	planted := strings.Replace(string(raw), "|filippo[.]io)/'", "|filippo[.]io|example[.]net)/'", 1)
+	if planted == string(raw) {
+		t.Fatal("the planted stager did not change APPROVED")
+	}
+	if p := modEgressParityProblem(planted); !strings.Contains(p, "example.net/") {
+		t.Fatalf("parity blind to a planted extra host: %q", p)
+	}
+}
+
+// modEgressParityProblem compares stage-cache.sh's APPROVED and GHPUB with
+// approvedPublicModulePrefixes and githubPublicModuleRe.
+func modEgressParityProblem(script string) string {
+	m := regexp.MustCompile(`(?m)^APPROVED='\^\(([^)]*)\)/'$`).FindStringSubmatch(script)
+	if m == nil {
+		return "stage-cache.sh carries no APPROVED='^(...)/' line"
+	}
+	var hosts []string
+	for _, h := range strings.Split(m[1], "|") {
+		hosts = append(hosts, strings.ReplaceAll(h, "[.]", ".")+"/")
+	}
+	if got, want := strings.Join(hosts, " "), strings.Join(approvedPublicModulePrefixes, " "); got != want {
+		return fmt.Sprintf("stage-cache.sh APPROVED is %q, the open step's set is %q", got, want)
+	}
+	g := regexp.MustCompile(`(?m)^GHPUB='([^']*)'$`).FindStringSubmatch(script)
+	if g == nil || strings.ReplaceAll(g[1], "[.]", `\.`) != githubPublicModuleRe.String() {
+		return fmt.Sprintf("stage-cache.sh GHPUB %q is not the open step's %q", g, githubPublicModuleRe.String())
+	}
+	return ""
+}
+
+// regression: #4683
+// TestModEgressPatterns: the screen matches the operator's private patterns as
+// the go command does (a glob over a prefix of path elements), refuses the
+// verified repository's owners in any case, and reads the patterns from the
+// environment the download environment drops.
+func TestModEgressPatterns(t *testing.T) {
+	for _, c := range []struct {
+		pattern, path string
+		want          bool
+	}{
+		{"github.com/acme-corp/*", "github.com/acme-corp/lib/v2", true},
+		{"github.com/acme-corp", "github.com/acme-corp/lib", true},
+		{"*.corp.example", "git.corp.example/x", true},
+		{"github.com/acme-corp/*", "github.com/acme-corpx/lib", false},
+		{"github.com/acme-corp/lib/sub", "github.com/acme-corp/lib", false},
+	} {
+		if got := matchModulePattern(c.pattern, c.path); got != c.want {
+			t.Errorf("matchModulePattern(%q, %q) = %v, want %v", c.pattern, c.path, got, c.want)
+		}
+	}
+	if w := modulePathEgressProblem("github.com/EXAMPLE-ORG/x", []string{"example-org"}, nil); !strings.Contains(w, "owner") {
+		t.Errorf("an owner path in upper case: %q", w)
+	}
+	for _, p := range []string{"golang.org/x/text", "github.com/spf13/cobra"} {
+		if w := modulePathEgressProblem(p, []string{"example-org"}, nil); w != "" {
+			t.Errorf("%s refused: %s", p, w)
+		}
+	}
+	if w := modulePathEgressProblem("golang.org/x/text", nil, []string{"golang.org/x"}); !strings.Contains(w, "private pattern") {
+		t.Errorf("an operator-private approved path: %q", w)
+	}
+	t.Setenv("GOPRIVATE", "a.example/*")
+	t.Setenv("GONOPROXY", "b.example")
+	t.Setenv("GONOSUMDB", "")
+	got := strings.Join(origOperatorPrivateModulePatterns(), ",")
+	for _, want := range []string{"a.example/*", "b.example"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("operator patterns %q lack %q", got, want)
+		}
+	}
+	if owners, err := bindingOwners(attestation.Binding{Repo: "Example-Org/one", SourceRepo: "other/two", SiblingSources: "third/x@" + strings.Repeat("a", 40)}); err != nil || strings.Join(owners, ",") != "example-org,other,third" {
+		t.Errorf("binding owners %v, %v", owners, err)
+	}
+}
+
+var origOperatorPrivateModulePatterns = operatorPrivateModulePatterns
