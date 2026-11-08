@@ -1,0 +1,2 @@
+### Fixed
+- `statusgen verify-gate-close` (and the implemented-gate sign-off card) now take the verifier date and runner from the latest `**VERIFY: PASS**` run under `## Evidence`, the same run `verifyflip` selects, instead of the first Date/Runner table. A brief whose first run failed and a later run passed is stamped with the passing run. The one-step `implemented` close path now refuses when the latest verdict is a FAIL, when the Evidence section has an unterminated `<!--`, or when Date/Runner rows follow the PASS line, matching `verifyflip`.

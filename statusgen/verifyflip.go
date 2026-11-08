@@ -432,11 +432,49 @@ type flipPass struct {
 // error is a *flipRefusal. The reconcile fold (reconcilefold.go) derives
 // `verified` from it, so the board and verifyflip read one PASS the same way.
 func flipLatestPass(evidence string) (flipPass, error) {
+	lines, start, end, err := latestPassSpan(evidence)
+	if err != nil {
+		return flipPass{}, err
+	}
+	// The run is the latest PASS run only (#4294). It is read from the verdict
+	// before it; when that span does not read as one run and an entry heading
+	// lies in it, the run is read again from the latest such heading, so the
+	// tail of an earlier entry whose verdict sits at its top (its rows, its
+	// BLOCKED bullet) is not read as this run's. The re-read must pass every
+	// check on its own rows; an ambiguous heading (heldRunFrom) keeps the
+	// first refusal. RunStart stays the verdict-bounded start: the provenance
+	// check keeps judging every line from there, never fewer.
+	p, err := flipReadRun(lines, start, start, end)
+	if err != nil {
+		from, ok := heldRunFrom(lines, start, end)
+		if !ok || from == start {
+			return flipPass{}, err
+		}
+		q, qerr := flipReadRun(lines, start, from, end)
+		if qerr != nil {
+			return flipPass{}, err
+		}
+		p = q
+	}
+	return p, nil
+}
+
+// latestPassSpan is the run selection every reader of "the recorded verify
+// pass" shares: flipLatestPass reads the run it bounds, and
+// evidenceVerifierInfo (the sign-off card and the one-step human close stamp)
+// reads the same run's first dated row, so no reader names an earlier run
+// (#5229). It returns the comment-stripped Evidence lines and the span
+// [start, end) of the latest strict PASS run: start is the line after the
+// verdict before it (0 when none), end the PASS marker's own line. It refuses,
+// as a *flipRefusal, when the latest unstruck verdict of any word is not the
+// strict bold PASS, when Date/Runner rows follow that PASS, or when live
+// content follows it under a protected table.
+func latestPassSpan(evidence string) (lines []string, start, end int, err error) {
 	stripped, unterminated := stripRowComments(evidence)
 	if unterminated >= 0 {
-		return flipPass{}, refuseFlip("Evidence carries an unterminated <!-- — the record cannot be read as written")
+		return nil, 0, 0, refuseFlip("Evidence carries an unterminated <!-- — the record cannot be read as written")
 	}
-	lines := strings.Split(stripped, "\n")
+	lines = strings.Split(stripped, "\n")
 	toks := flipVerdictTokens(lines)
 	li := -1
 	for i, t := range toks {
@@ -445,16 +483,16 @@ func flipLatestPass(evidence string) (flipPass, error) {
 		}
 	}
 	if li < 0 {
-		return flipPass{}, refuseFlip("verdict mismatch: Evidence records no VERIFY verdict")
+		return nil, 0, 0, refuseFlip("verdict mismatch: Evidence records no VERIFY verdict")
 	}
 	last := toks[li]
 	if last.word != "PASS" {
-		return flipPass{}, refuseFlip("verdict mismatch: the latest recorded verdict is VERIFY: %s, not PASS", last.word)
+		return nil, 0, 0, refuseFlip("verdict mismatch: the latest recorded verdict is VERIFY: %s, not PASS", last.word)
 	}
 	if !last.strict {
-		return flipPass{}, refuseFlip("non-strict PASS: the latest verdict is not the strict **VERIFY: PASS** marker — record the canonical bold marker; the gate is not loosened")
+		return nil, 0, 0, refuseFlip("non-strict PASS: the latest verdict is not the strict **VERIFY: PASS** marker — record the canonical bold marker; the gate is not loosened")
 	}
-	start := 0
+	start = 0
 	for i := li - 1; i >= 0; i-- {
 		if toks[i].line < last.line {
 			start = toks[i].line + 1
@@ -465,7 +503,7 @@ func flipLatestPass(evidence string) (flipPass, error) {
 	// rows above this PASS belong to the run before it. Rows after the latest
 	// PASS mean the convention does not hold here: refuse, never guess.
 	if after, _ := flipDateRunnerRows(lines[last.line+1:]); len(after) > 0 {
-		return flipPass{}, refuseFlip("runner mismatch: %d Date/Runner row(s) follow the latest PASS — record each run's rows after the previous verdict and before its own", len(after))
+		return nil, 0, 0, refuseFlip("runner mismatch: %d Date/Runner row(s) follow the latest PASS — record each run's rows after the previous verdict and before its own", len(after))
 	}
 	if len(protectedMarkers(normalizedProtectedEvidence(stripped))) > 0 {
 		// A newer unfinished protected record must not borrow this PASS.
@@ -474,31 +512,11 @@ func flipLatestPass(evidence string) (flipPass, error) {
 		for _, line := range strings.Split(stripCode(stripped), "\n")[last.line+1:] {
 			line = strings.TrimSpace(strikethroughRe.ReplaceAllString(line, ""))
 			if line != "" && !strings.HasPrefix(line, ">") {
-				return flipPass{}, refuseFlip("protected table: live content follows the latest PASS; complete the current run before closing")
+				return nil, 0, 0, refuseFlip("protected table: live content follows the latest PASS; complete the current run before closing")
 			}
 		}
 	}
-	// The run is the latest PASS run only (#4294). It is read from the verdict
-	// before it; when that span does not read as one run and an entry heading
-	// lies in it, the run is read again from the latest such heading, so the
-	// tail of an earlier entry whose verdict sits at its top (its rows, its
-	// BLOCKED bullet) is not read as this run's. The re-read must pass every
-	// check on its own rows; an ambiguous heading (heldRunFrom) keeps the
-	// first refusal. RunStart stays the verdict-bounded start: the provenance
-	// check keeps judging every line from there, never fewer.
-	p, err := flipReadRun(lines, start, start, last.line)
-	if err != nil {
-		from, ok := heldRunFrom(lines, start, last.line)
-		if !ok || from == start {
-			return flipPass{}, err
-		}
-		q, qerr := flipReadRun(lines, start, from, last.line)
-		if qerr != nil {
-			return flipPass{}, err
-		}
-		p = q
-	}
-	return p, nil
+	return lines, start, last.line, nil
 }
 
 // flipReadRun reads lines [from, end) as the run the strict PASS on line end
