@@ -24,19 +24,24 @@ def run(*args, capture=False):
                           stdout=subprocess.PIPE if capture else None).stdout
 
 
-# BuildKit cache mounts (RUN --mount=type=cache) outlive the build that wrote
-# them and are shared by target path across every build on the daemon. Release
-# builds run on a non-ephemeral runner, so a mount written by an earlier build
-# (another ref, a dry run) must never feed a published image. Every release
-# image build goes through docker_build, which clears all exec cache mounts
-# first and stops the release if that fails; tests refuse any other build call.
+# Release builds run on a non-ephemeral runner, and two kinds of BuildKit state
+# outlive the build that wrote them: cache mounts (RUN --mount=type=cache),
+# shared by target path across every build on the daemon, and the instruction
+# cache, whose key for a RUN step does not cover the contents of its cache
+# mounts. Either could carry an earlier build's output (another ref, a dry run,
+# a build outside this module) into a published image. Every release image
+# build goes through docker_build, which clears all exec cache mounts first
+# (stopping the release if that fails) and then builds with --no-cache, so no
+# cached layer is reused and every step runs against empty mounts. Tests refuse
+# any other build call.
 PRUNE_CACHE_MOUNTS = ("docker", "builder", "prune", "--all", "--force",
                       "--filter", "type=exec.cachemount")
+NO_CACHE = "--no-cache"
 
 
 def docker_build(*args):
     run(*PRUNE_CACHE_MOUNTS)
-    run("docker", "build", *args)
+    run("docker", "build", NO_CACHE, *args)
 
 
 def build_images(root, version, source, prefix, verify_image, artifacts, out, publish, *, native):

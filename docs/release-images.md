@@ -34,11 +34,14 @@ roll remains a separate downstream job under its own existing identity.
    Before every image build, on the publisher and on the native ARM64 runner,
    the release clears all BuildKit exec cache mounts
    (`docker builder prune --all --force --filter type=exec.cachemount`), and a
-   failed prune stops the release. Cache mounts outlive the build that wrote
-   them and are shared by target path across builds on one daemon. On a
-   non-ephemeral runner, a mount an earlier build left behind (another ref, a
-   dry run) would otherwise feed a published binary. Every build goes through
-   that one path, and the tests refuse a build call that bypasses it.
+   failed prune stops the release. It then builds with `--no-cache`. Cache
+   mounts outlive the build that wrote them and are shared by target path
+   across builds on one daemon, and the instruction cache's key for a `RUN`
+   step does not cover its cache mounts' contents. On a non-ephemeral runner,
+   a mount or a cached layer an earlier build left behind (another ref, a dry
+   run) would otherwise feed a published binary. Every build goes through that
+   one path, and the tests refuse a build call that bypasses it or drops
+   `--no-cache`.
    verify-runner is multi-arch: it is built once for `linux/amd64` and once for
    `linux/arm64`, each from the matching `statusgen-linux-<arch>` release
    binary, and each build's OS/architecture is read back before any check.

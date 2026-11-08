@@ -1458,6 +1458,10 @@ if args[:2] == ['image', 'inspect']:
             self.assertEqual(len(builds), 10 if case is self else 1)
             self.assertEqual([calls[i - 1] for i in builds], [prune] * len(builds))
             self.assertEqual(sum(c == prune for c in calls), len(builds))
+            # The prune leaves the instruction cache, whose RUN keys ignore
+            # cache-mount contents, so no build may reuse a cached layer.
+            self.assertEqual(images.NO_CACHE, '--no-cache')
+            self.assertEqual([calls[i][1] for i in builds], ['--no-cache'] * len(builds))
 
         # A failed prune stops the release before any build, push or metadata write.
         case = self.fresh()
