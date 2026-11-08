@@ -325,12 +325,17 @@ if [ "$(basename "$AGG")" = "aggregate.py" ]; then
     bad "R1 at-ref roll + clear (rc: $rc)"; printf '%s\n' "$out"; printf '%s\n' "$sec"
   fi
 
-  # R2: a post-ref fragment stays on disk, out of the section, and unlisted.
-  if [ -e "$D/changelog/late-one.md" ] && ! grep -q 'late-one' "$D/CHANGELOG.md" \
+  # R2: a post-ref fragment stays on disk, out of the section and unlisted,
+  #     while the at-ref fragments ARE rolled — a no-op roll cannot satisfy this.
+  rollrepo
+  out="$(python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 --clear 2>&1)"; rc=$?
+  sec="$(awk '/^## v0.2.0/{f=1;next} /^## /{f=0} f' "$D/CHANGELOG.md")"
+  if [ "$rc" = 0 ] && grep -q 'early-one' <<<"$sec" && ! grep -q 'late-one' "$D/CHANGELOG.md" \
+     && [ -e "$D/changelog/late-one.md" ] && [ ! -e "$D/changelog/early-one.md" ] \
      && ! grep -q 'removed .*late-one' <<<"$out"; then
     ok "R2 post-ref fragment stays on disk and out of the section"
   else
-    bad "R2 post-ref fragment untouched"; ls "$D/changelog"
+    bad "R2 post-ref fragment untouched (rc: $rc)"; ls "$D/changelog"
   fi
 
   # R3: an unresolvable ref fails closed (exit 4), nothing changed, no fallback.
@@ -388,6 +393,19 @@ if [ "$(basename "$AGG")" = "aggregate.py" ]; then
     bad "R4b duplicate tag, no flags (rc: $rc)"
   fi
 
+  # R4d: tag section present AND nothing to aggregate -> rc 2 (not 3), files
+  #      unchanged. A retry after a concurrent roll must read 2.
+  newcase
+  printf '# Changelog\n\n## Unreleased\n\n## v0.2.0 — 2026-02-02\n\n### Added\n- rolled\n\n## v0.1.0 — 2026-01-01\n' > "$D/CHANGELOG.md"
+  printf 'readme\n' > "$D/changelog/README.md"
+  before="$(cat "$D/CHANGELOG.md")"
+  python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-03 >/dev/null 2>&1; rc1=$?
+  if [ "$rc1" = 2 ] && [ "$before" = "$(cat "$D/CHANGELOG.md")" ] && [ -e "$D/changelog/README.md" ]; then
+    ok "R4d duplicate tag with no fragments reads rc 2, files unchanged"
+  else
+    bad "R4d empty set + existing section (rc: $rc1)"
+  fi
+
   # R4c: a tag that merely PREFIXES an existing heading is not a duplicate.
   newcase
   printf '# Changelog\n\n## Unreleased\n\n## v0.2.10 — 2026-01-05\n\n### Added\n- seed\n' > "$D/CHANGELOG.md"
@@ -407,7 +425,7 @@ if [ "$(basename "$AGG")" = "aggregate.py" ]; then
   if [ "$rc1" = 2 ] && [ "$rc2" = 2 ] && [ -e "$D/changelog/x.md" ]; then
     ok "R5 --clear/--at-ref refused outside roll"
   else
-    bad "R5 flags outside roll (rc: $rc1/$rc2)"
+    bad "R5 flags outside roll (rc: $rc1 rc2: $rc2)"
   fi
 else
   echo "ok   - R1..R5 at-ref/clear/duplicate (skipped for retired impl)"; pass=$((pass+1))
