@@ -20,6 +20,7 @@ outcome: none
 gate-why: "Changes which human decision and verification receipts satisfy milestone acceptance; incorrect actor, subject or revision binding could accept unapproved scope."
 decision-trigger: spec
 design: DR-milestone-support-06
+decision-issue: 5705
 ruling: "https://github.com/medici-finance/assay/issues/5705#issuecomment-6715755830"
 sources:
   - docs/streams/milestone-support/README.md
