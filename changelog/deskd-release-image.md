@@ -1,0 +1,2 @@
+### Added
+- The umbrella release now builds, checks and publishes the `deskd` service image with the other release images, and `release-images.json` records its immutable `linux/amd64` reference. Before any push the release checks that the image runs as a numeric non-root user, carries the source revision label and prints its usage, and runs the layer-secret gate on it. Pinned records from earlier releases still validate when a consumer explicitly allows the pre-deskd image set.

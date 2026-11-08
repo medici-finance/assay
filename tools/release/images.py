@@ -9,7 +9,9 @@ import subprocess
 import tarfile
 
 DESKS = ("intake-desk", "worker-desk", "pr-review-desk", "verify-desk", "the-desk")
-NAMES = ("desk-tools", "assay-harness", "desk-base", *DESKS, "verify-runner")
+# deskd is the service image cell-api/08 defines (images/deskd/, context deskd/).
+# It carries no statusgen, so check_deskd replaces check_version for it.
+NAMES = ("desk-tools", "assay-harness", "desk-base", *DESKS, "deskd", "verify-runner")
 # verify-runner's platforms (#4323); the other images are linux/amd64. These
 # equal images_contract's values, which the release step validates against.
 RUNNER_PLATFORMS = ("linux/amd64", "linux/arm64")
@@ -122,18 +124,23 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
         run("docker", "build", "--platform", "linux/amd64", "--build-arg",
             f"BASE_IMAGE={refs['desk-base']}", "-t", refs[name],
             "-f", root / f"containers/{name}/Dockerfile", root)
+    # deskd's build context is its own public module, never the repository root.
+    run("docker", "build", "--platform", "linux/amd64", "--build-arg", f"REVISION={source}",
+        "-t", refs["deskd"], "-f", root / "images/deskd/Dockerfile", root / "deskd")
     # ARM64 is built and checked on a native runner. Import its exact checked
     # image; this publisher must never register an emulator or execute ARM64.
     import_native_runner(native, version, source, runner_refs["linux/arm64"])
     platform = "linux/amd64"
     ref = runner_refs[platform]
     build_runner(root, platform, ref)
-    checks = [(name, ref, "linux/amd64") for name, ref in refs.items() if name != "verify-runner"]
+    checks = [(name, ref, "linux/amd64") for name, ref in refs.items()
+              if name not in ("verify-runner", "deskd")]
     checks.append(("verify-runner " + platform, ref, platform))
     for name, ref, platform in checks:
         check_version(name, ref, platform, version)
     check_runner(root, runner_refs["linux/amd64"], "linux/amd64")
-    for name in ("desk-base", *DESKS):
+    check_deskd(refs["deskd"], source)
+    for name in ("desk-base", *DESKS, "deskd"):
         run("sh", root / "containers/scripts/layer-secret-scan.sh", refs[name])
     if not publish:
         print("Dry build complete: no image pushed and no pinnable-reference artifacts written.")
@@ -163,6 +170,26 @@ def check_version(name, ref, platform, version):
               "--entrypoint", "statusgen", ref, "--version", capture=True).strip()
     if got != version:
         raise ValueError(f"{name} statusgen version {got!r} != {version}")
+
+
+def check_deskd(ref, source):
+    """deskd has no statusgen: check its user, revision label and usage instead."""
+    config = json.loads(run("docker", "image", "inspect", "--format", "{{json .Config}}",
+                            ref, capture=True))
+    user = config.get("User") or ""
+    if not re.fullmatch(r"[0-9]+(?::[0-9]+)?", user) or any(int(p) == 0 for p in user.split(":")):
+        raise ValueError(f"deskd image user {user!r} is not a numeric non-root user")
+    revision = (config.get("Labels") or {}).get("org.opencontainers.image.revision")
+    if revision != source:
+        raise ValueError(f"deskd image revision label {revision!r} != {source}")
+    # Go's flag package prints usage to stderr and exits 0 for --help.
+    args = ["docker", "run", "--rm", "--pull", "never", "--network", "none",
+            "--platform", "linux/amd64", "--read-only", "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges", ref, "--help"]
+    print("+ " + " ".join(args), flush=True)
+    result = subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if result.returncode != 0 or "Usage of" not in result.stdout or "-addr" not in result.stdout:
+        raise ValueError(f"deskd image did not print its usage (exit {result.returncode})")
 
 
 def build_runner(root, platform, ref):
