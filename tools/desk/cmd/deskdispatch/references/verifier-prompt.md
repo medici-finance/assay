@@ -78,7 +78,7 @@ refuses.
   `Verification-Table` marker required by the protected-table closure contract.
 - Run EVERY Verify row. Record `command → exit code → key output line` — real observed
   output, never a claim.
-- **A `check:ci` row the host cannot sandbox runs in the container lane.** Where the default `unshare --net` sandbox is unavailable (a non-Linux host such as darwin, or a Linux host with unprivileged user namespaces disabled), run the row inside the closed admission bracket that `docs/brief-rules.md` rule 45 and the verify-desk skill's "Pre-work admission" section define, within one dispatch and with no edit to the home between the steps: (1) on the host, `statusgen verifyrun --open-bracket --root <home> --brief <path> --out <receipt>`, with `<receipt>` outside the home; (2) in a `--network none` container with the receipt mounted read-only, `statusgen verifyrun --sandbox=container-netns --brief <path> --admission-receipt <receipt> --container-image-digest sha256:<64 hex> --witness <file>`, with `<file>` a new file outside the home; (3) on the host, `statusgen verifyrun --close-bracket --root <home> --brief <path> --admission-receipt <receipt> --witness <file>`. Land the closed witness file's bytes, its `Admission-Bracket:` line included, as the Evidence block, after `statusgen verifyrun --bracket-digest --witness <file>` reports `verdict=match`. Record the row as could-not-run only when the installed statusgen has no `--open-bracket` or a bracket step refuses, quoting the refusal. Never substitute a locally built binary in an admitted run.
+- **A `check:ci` row the host cannot sandbox runs in the container lane.** Where the default `unshare --net` sandbox is unavailable (a non-Linux host such as darwin, or a Linux host with unprivileged user namespaces disabled), run the row inside the closed admission bracket that `docs/brief-rules.md` rule 45 and the verify-desk skill's "Pre-work admission" section define, within one dispatch and with no edit to the home between the steps: (1) on the host, `statusgen verifyrun --open-bracket --root <home> --brief <path> --out <receipt>`, with `<receipt>` outside the home, adding `--module-cache <dir>` (a new empty directory outside the home, never the host's own module cache) when the home lists Go module roots in `images/verify-runner/go-module-roots.txt`; (2) in a `--network none` container with the receipt mounted read-only and with the container flags the open step prints (the module cache mounted read-only, `GOPROXY=off`, `GOTOOLCHAIN=local`), `statusgen verifyrun --sandbox=container-netns --brief <path> --admission-receipt <receipt> --container-image-digest sha256:<64 hex> --witness <file>`, with `<file>` a new file outside the home; (3) on the host, `statusgen verifyrun --close-bracket --root <home> --brief <path> --admission-receipt <receipt> --witness <file>`. Land the closed witness file's bytes, its `Admission-Bracket:` line included, as the Evidence block, after `statusgen verifyrun --bracket-digest --witness <file>` reports `verdict=match`. Record the row as could-not-run only when the installed statusgen has no `--open-bracket` or a bracket step refuses, quoting the refusal. Never substitute a locally built binary in an admitted run.
 - A row that cannot run (no toolchain, no environment) is recorded as EXPLICITLY unrun,
   with the reason. It is never silently skipped and never assumed to pass.
   Add `could-not-run` accounting for that row. Include every required row in the totals and
@@ -198,6 +198,20 @@ retain the unavailable rows separately. Observed absence can fail an obligation 
 presence; inability to inspect that artifact is **VERIFY: BLOCKED** if no other obligation failed.
 A runner launch failure, unknown baseline or empty re-derivation establishes no acceptance
 result. A zero process exit establishes neither coverage nor installed-runner qualification.
+
+### Attempts
+
+Every run of the Verify table in this dispatch, full or partial, is one attempt. Report each one
+in order for the outcome record's `attempts` list: its `started` and `finished` (RFC3339 UTC),
+its `rows_run`, and a disposition and reason from these closed sets only. `credited` takes no
+reason; there is at most one, and it is the last attempt. `uncredited` takes `local-build` (a
+locally built binary in an admitted run), `not-credited` (`--credit` printed
+`credit=not-credited`) or `credit-unchecked` (`credit=could-not-check`). `discarded` takes
+`env-fault` (an environmental cause failed rows and the run was thrown away and re-run; give its
+`cause_ref`) or `superseded` (replaced by a later attempt for any other stated cause).
+Discarding a run never deletes its entry. The list records what was run, not what was kept.
+The count measures environment waste, not the verifier. It changes nothing about what is
+credited.
 
 ## 6. What a verifier may and may not flip
 

@@ -104,10 +104,28 @@
       "new": "if !handled && code == -1 {"
     },
     {
-      "name": "deskrelease: cut -h alone answered as help (the audited cut refusal is skipped)",
+      "name": "deskrelease: cut -h and cut --help refused again (the help word reaches the startup, the kill switch and the audited cut refusal)",
       "file": "cmd/deskrelease/main.go",
-      "old": "\t\t\tmark()\n\t\t\t// Kill switch FIRST among the acts",
-      "new": "\t\t\tmark()\n\t\t\tif len(rest) == 1 && (rest[0] == \"-h\" || rest[0] == \"--help\") {\n\t\t\t\treturn cmd.Help()\n\t\t\t}\n\t\t\t// Kill switch FIRST among the acts"
+      "old": "\t\t\tif isHelpWord(rest) {\n",
+      "new": "\t\t\tif false && isHelpWord(rest) {\n"
+    },
+    {
+      "name": "deskrelease: cut help reads the roster first (the startup runs before cut -h is answered)",
+      "file": "cmd/deskrelease/main.go",
+      "old": "\t\t\tif isHelpWord(rest) {\n\t\t\t\treturn cmd.Help()\n",
+      "new": "\t\t\tif isHelpWord(rest) {\n\t\t\t\tif pre != nil {\n\t\t\t\t\tpre(errw)\n\t\t\t\t}\n\t\t\t\treturn cmd.Help()\n"
+    },
+    {
+      "name": "deskrelease: a help word beside another word answered as help (cut -h extra skips the audited cut refusal)",
+      "file": "cmd/deskrelease/main.go",
+      "old": "return len(rest) == 1 && (rest[0] == \"-h\" || rest[0] == \"--help\")",
+      "new": "return len(rest) >= 1 && (rest[0] == \"-h\" || rest[0] == \"--help\")"
+    },
+    {
+      "name": "deskrelease: a second verb takes its argv raw with no help detection (version -h stops being help)",
+      "file": "cmd/deskrelease/main.go",
+      "old": "Use: \"version\", Short: \"print the version\", Hidden: true, Args: cobra.NoArgs,",
+      "new": "Use: \"version\", Short: \"print the version\", Hidden: true, DisableFlagParsing: true, Args: cobra.NoArgs,"
     }
   ]
 }

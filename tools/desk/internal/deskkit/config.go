@@ -48,7 +48,8 @@ const (
 	// Enterprise and GitLab `internal`). It is NOT private: every consumer that asks
 	// "is this private?" answers no, so it is risk-classed, scanned and stamped exactly
 	// like a public repo. It exists so the configured claim can NAME what the forge
-	// reports — the public-repo write gate requires the two to agree — rather than
+	// reports — the public-repo write gate requires the claim to be at least as exposed
+	// as the live read, and `deskboard policydrift` requires the two to agree — rather than
 	// forcing an internal repo to be mislabelled `:public`. Appended after Private so
 	// no existing value is renumbered.
 	VisibilityInternal

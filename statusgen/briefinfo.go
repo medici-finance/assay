@@ -421,6 +421,7 @@ var briefAttributionSchemas = map[string]bool{
 	briefSchemaCurrent: true, // brief-v1
 	briefSchemaV2:      true, // brief-v2
 	briefSchemaV3:      true, // brief-v3
+	briefSchemaV4:      true, // brief-v4: same Evidence section and history
 }
 
 // briefAttributionSchemaList is the sorted, comma-joined supported set, for the

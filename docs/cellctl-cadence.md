@@ -52,9 +52,15 @@ does not own or mutate native Goal state.
 Explicit `--cadence` / `CELL_CADENCE` durations select the existing headless supervisor;
 `--cadence off` or saved `CELL_CADENCE=off` explicitly selects interactive mode.
 A tick budget requires an explicit cadence; `off` ignores a saved budget. Codex tick
-launches disable native Goals and never receive the standing bootstrap. Claude and
-Cursor keep their existing behavior. Defaults do not rewrite cell.env or change
-already-running sessions.
+launches disable native Goals and never receive the standing bootstrap.
+
+Interactive Cursor desks opened by `desk` or `up` use Cursor's built-in
+`/loop` skill during role boot. The loop wakes the same chat for its due sweep,
+with normal operator input and approvals in that chat. Use the updated Cursor
+bundle in the role worktree so the boot can read the
+[interactive cadence binding](../plugins/assay/references/cursor.md#interactive-desk-cadence).
+An explicit duration still selects the headless supervisor. Changes to these
+launch defaults apply the next time a session starts.
 
 The same bootstrap covers host and scrubbed Codex desk argv. Native container cells
 run an independently pinned image entrypoint with its own paused/handoff contract;
@@ -290,7 +296,9 @@ cell launcher. A local initialization receipt is bound to cell/configuration,
 profile and binary generation; it grants no role lease, stop exemption or storage
 allowance. Every launch still checks current role authority and storage custody.
 Scratch completion records outcomes and evidence without sweeping historical data.
-Explicit `cellctl scratch <cell> sweep --apply` owns reclamation.
+The scratch sweep owns reclamation: an explicit `cellctl scratch <cell> sweep --apply`,
+or the periodic sweep a running desk supervisor starts beside its child (see
+[Periodic maintenance](cellctl-scratch.md#periodic-maintenance)).
 
 Managed Go-cache preparation and final process enrollment never recursively inventory
 the cache. Fresh clean accounting, current free-space headroom and owned root metadata
@@ -310,4 +318,4 @@ or permission for live enrollment is introduced.
 
 In cache-enabled cadence, the existing supervisor triggers cache maintenance after each completed pass and again at the next due boundary, so normal build writes and accounting aging during the interval do not require manual clean between passes. Fresh clean accounting avoids a recursive scan. A needed refresh waits the existing two-second filesystem timestamp margin before measurement, then uses the same cache clean owner, unlocked inventory and final custody revalidation. The supervisor keeps its role lease and heartbeat while maintenance runs. Its checkpoint records `maintenance` as `checked-clean` or `could-not-check`; failures preserve the next enrollment’s ordinary fail-closed refusal. Uncertain child shutdown never triggers maintenance. This is between-pass work, outside startup and Finish, with no new service or scheduler.
 
-Interactive mode (`--cadence off`) has no between-pass supervisor. Missing, dirty, stale or corrupt accounting there still requires the operator to run `cellctl cache <cell> clean` after writes settle before retrying. First startup also retains bounded admission and its corrective maintenance refusal. Scratch retention still requires explicit operator sweep. See the [scope reconciliation](https://github.com/medici-finance/assay/issues/4172#issuecomment-6354063056).
+Interactive mode (`--cadence off`) has no between-pass supervisor. Missing, dirty, stale or corrupt accounting there still requires the operator to run `cellctl cache <cell> clean` after writes settle before retrying. First startup also retains bounded admission and its corrective maintenance refusal. Scratch retention does not: the desk process runs the periodic scratch sweep beside the interactive child as well, and writes nothing to its terminal ([Periodic maintenance](cellctl-scratch.md#periodic-maintenance)). See the [scope reconciliation](https://github.com/medici-finance/assay/issues/4172#issuecomment-6354063056).

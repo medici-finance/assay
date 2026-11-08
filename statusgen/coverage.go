@@ -152,6 +152,7 @@ type observedBrief struct {
 // observations it judged, keyed by brief id.
 func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptions) (map[string]Coverage, map[string]observedBrief) {
 	observed := map[string]observedBrief{}
+	crossSources := map[string]*crossCoverage{}
 	revision := opts.Revision
 	if revision == "" {
 		revision = currentTreeRevision(root)
@@ -168,7 +169,12 @@ func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptio
 				continue
 			}
 			obs, texts := observeBriefTexts(root, path, s.Name+"/"+num, bf)
-			if opts.readSets != nil {
+			// A cross-repository brief is judged against its source checkout
+			// with read sets off (below), so its witnesses are not observed
+			// against this root's read-set files, history or go floor.
+			if source := coverageCrossSource(root, path, bf.Evidence, &obs); source != nil {
+				crossSources[obs.ID] = source
+			} else if opts.readSets != nil {
 				opts.readSets.observeBrief(path, obs.BriefRel, obs.Witnesses)
 			}
 			observed[obs.ID] = observedBrief{Path: path, Obs: obs, WitnessTexts: texts}
@@ -203,7 +209,20 @@ func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptio
 	if root != "" {
 		repo = newMemoRepo(newCoverageRepo(root))
 	}
-	return evaluation.EvaluateCoverage(in, repo), observed
+	coverage := evaluation.EvaluateCoverage(in, repo)
+	for id, source := range crossSources {
+		selected := in
+		selected.Revision = source.revision
+		selected.Briefs = []evaluation.BriefObservation{source.observation}
+		// The read-set source observes this root, not the source checkout,
+		// so a cross-repository read set is never judged: its row keeps the
+		// scope it has without one.
+		selected.ReadSetsRecorded = false
+		selected.GoFloors = nil
+		selected.ReadSetDeadline = nil
+		coverage[id] = evaluation.EvaluateCoverage(selected, source.repo)[id]
+	}
+	return coverage, observed
 }
 
 // observeBrief reads one brief file's coverage-relevant observations: its

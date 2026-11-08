@@ -215,21 +215,21 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 34 | [Pinned golangci-lint across every Go module](brief-34-pinned-golangci-lint-across-every-go-module.md) | 1 | M | todo | — | — |
 | 35 | [Go security analysis with gosec and govulncheck](brief-35-go-security-analysis-with-gosec-and-govulncheck.md) | 2 | L | todo | — | — |
 | 36 | [The scheduled board reconcile's PR class becomes generated output — auto-approve lane (default) or direct-CI single-writer, per the driver's ruling on #2688](brief-36-reconcile-generated-class.md) | 1 | S | implemented | — | — |
-| 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | implemented | — | — |
+| 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | verified | 2026-11-01 assay-verifier-app[bot] @ ab6803d9f65c (claude-opus-5-5) | — |
 | 38 | [Correct desk performance attribution and counter coverage](brief-38-correct-desk-performance-attribution-and-counter-coverage.md) | 2 | M | implemented | — | — |
-| 39 | [Extract shared review observation and pure planning contracts](brief-39-extract-shared-review-observation-and-pure-planning-contracts.md) | 2 | M | todo | — | — |
+| 39 | [Extract shared review observation and pure planning contracts](brief-39-extract-shared-review-observation-and-pure-planning-contracts.md) | 2 | M | implemented | — | — |
 | 40 | [Deliver one review queue observation and offline planning bridge](brief-40-deliver-one-review-queue-observation-and-offline-planning-bridge.md) | 3 | M | todo | — | — |
 | 41 | [Share exact-source review preparation context](brief-41-share-exact-source-review-preparation-context.md) | 3 | M | todo | — | — |
 | 42 | [Narrow issue discovery projections before enrichment](brief-42-narrow-issue-discovery-projections-before-enrichment.md) | 3 | M | in-progress | — | — |
 | 43 | [Migrate review callers with qualified versions and rollback](brief-43-migrate-review-callers-with-qualified-versions-and-rollback.md) | 4 | M | todo | — | — |
 | 44 | [Qualify complete workflow cost and last-consumer retirement](brief-44-qualify-complete-workflow-cost-and-last-consumer-retirement.md) | 5 | M | todo | — | — |
 | 45 | [Expose the canonical verification queue to its consumers](brief-45-expose-the-canonical-verification-queue-to-its-consumers.md) | 1 | M | implemented | — | — |
-| 46 | [Reuse accepted verification inputs to stop repeated PASS dispatch](brief-46-reuse-accepted-verification-inputs-to-stop-repeated-pass-dispatch.md) | 2 | M | todo | — | — |
-| 47 | [Resume interrupted Evidence landing through the existing sanctioned paths](brief-47-resume-interrupted-evidence-landing-through-the-existing-sanctioned-paths.md) | 3 | M | todo | — | — |
+| 46 | [Reuse accepted verification inputs to stop repeated PASS dispatch](brief-46-reuse-accepted-verification-inputs-to-stop-repeated-pass-dispatch.md) | 3 | M | todo | — | — |
+| 47 | [Resume interrupted Evidence landing through the existing sanctioned paths](brief-47-resume-interrupted-evidence-landing-through-the-existing-sanctioned-paths.md) | 4 | M | todo | — | — |
 | 48 | [Report remaining landing capacity from the enforced budget owners](brief-48-report-remaining-landing-capacity-from-the-enforced-budget-owners.md) | 2 | M | todo | — | — |
 | 49 | [Deduplicate verifier filings by their canonical work identity](brief-49-deduplicate-verifier-filings-by-their-canonical-work-identity.md) | 1 | M | todo | — | — |
 | 50 | [Bind verifier environment evidence to the run admission](brief-50-bind-verifier-environment-evidence-to-the-run-admission.md) | 1 | M | todo | — | — |
-| 51 | [Drive the verifier skill from the current queue and landing contract](brief-51-drive-the-verifier-skill-from-the-current-queue-and-landing-contract.md) | 4 | M | todo | — | — |
+| 51 | [Drive the verifier skill from the current queue and landing contract](brief-51-drive-the-verifier-skill-from-the-current-queue-and-landing-contract.md) | 5 | M | todo | — | — |
 | 52 | [Link decision and verification cards without conflating their authority](brief-52-link-decision-and-verification-cards-without-conflating-their-authority.md) | 1 | M | todo | — | — |
 | 53 | [Rename pr-review-desk to review-desk without breaking live windows or adopters](brief-53-rename-pr-review-desk-to-review-desk.md) | 1 | L | todo | — | — |
 | 55 | [Adopt parity-checked prune mutation selection](brief-55-adopt-parity-checked-prune-mutation-selection.md) | 1 | M | todo | — | — |
@@ -463,3 +463,31 @@ threshold recorded as `not set`, and a review finding class, "claims a relaxatio
 a change asserting a widening the ladder does not back. The rung row is a fixed contract
 because downstream tools parse it. It is `gate: human` with a creation-time decision, and
 nothing in it changes any gate's behaviour.
+
+## Fixed-delivery completion amendment — 2026-10-27
+
+Use the [controlling proposal and owner map](../../proposals/fixed-delivery-verification/README.md#ownership-assignments-made-in-this-pr).
+The earlier flow-refresh waves are the 2026-10-17 snapshot; current typed dependencies
+include statusgen's admitted fixed-delivery contract. /45, /49 and /50 are already in
+v1.0.63 source ancestry and owe their existing independent acceptance/integration rather
+than duplicate implementation. /46, /47 and /51 remain unfinished and are amended here.
+
+```text
+statusgen/36 -> /37 -> desk-tools/46 -> desk-tools/47 -> desk-tools/51
+statusgen/36 -> /37 -> /29 ------------------------> desk-tools/51
+statusgen/37 -> /38 -------------------------------> desk-tools/51 -> handoff/06
+```
+
+/46 also retains /45; /51 retains /45–50 and /52. /46 is wave 3 after /37, /47 wave 4,
+and /51 wave 5 after its actual tool/context dependencies. /48 capacity and /52 card
+purpose remain declared prerequisites; no second limiter or approval meaning is added.
+/47 also unblocks handoff/02's durable recovery and statusgen/35's historical corpus;
+/46 unblocks handoff/05's exact-subject recheck. /51's tools/skill version qualification
+feeds handoff/06 rather than an additional qualification stage.
+
+/46 owns accepted D/A/run scheduling identity, /47 remaining sanctioned effects, and
+/51 the released context-versus-tests lane/action contract. The ready-flip code and
+authoring integration belong to amended statusgen/29 and existing PR 4139. Review owns
+context readiness; Verify accepts the admitted delivery; existing CI owns main health.
+Human/risk, custody and activation limits remain. No actual implementation or dispatch
+occurs here, and original Verify tables and Evidence remain unchanged.

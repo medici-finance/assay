@@ -60,9 +60,9 @@ They do not exist in Cursor.
 The in-editor agent is a supported install surface. Headless `cursor-agent` is the
 smoke/automation surface (HP/13); blocked live smoke does not mean "do not copy skills."
 
-Every mechanism and degradation cell below cites the measured Cursor capability matrix
-(HP/12, documentary + public-docs sweep, 2026-08-26 — **no live Cursor environment**;
-the rows a live install must settle stay flagged `[needs: live-install confirmation]`).
+The Cursor capability matrix (HP/12) records the documentary sweep from 2026-08-26.
+Rows that still need a live check are marked `[needs: live-install confirmation]`.
+The interactive cadence row also has a live test recorded under Freshness.
 
 Source of the capability set: the closed vocabulary block in
 [`../../../docs/streams/harness-portability/README.md`](../../../docs/streams/harness-portability/README.md).
@@ -94,7 +94,7 @@ background agents run in isolated git worktrees natively. So more skills `run` h
 | `capability:session-notifications` | Headless: `cursor-agent -p --output-format json\|stream-json` returns a structured completion signal the caller reads directly (§2.7 `supported`). IDE: `stop`/`subagentStop` hook events + in-app agent-complete signals (§2.7 `supported`). Judge liveness by these signals and elapsed time, never by an empty output file. |
 | `capability:stop-worker` | IDE: stop a background/subagent from the agent list; headless: terminate the `cursor-agent` child process driving the run (§2.5/§2.6). Whether a headless parallel worker is individually addressable for a targeted stop is `[needs: live-install confirmation]` (§2.5) — where it is not, the per-run stop reaches its worker as the cooperative STOP.run.<key> flag alone (Guard refuses that run's next desk verb), the convenience floor stated in-session; the flag layer is never degraded. |
 | `capability:durable-monitor` | **No confirmed durable cross-turn wake signal.** The §2.7 completion signals are per-turn, not a re-arming poll, and `cursor-agent` session continuation (`--resume`) has `partial`/unconfirmed durability across process restarts (§2.6) — so there is no verified re-arming monitor that survives a session restart. A durable wake-signal is a **convenience**, not one of the three never-degrade guarantees (isolation / evidence / gates) → the convenience floor applies: the capability **degrades** unless a live install confirms a durable poll (`[needs: live-install confirmation]`, §2.6/§2.7). The skill falls back to the **event-driven + fixed-cadence board sweep** (the same backstop Claude Code pairs with its Monitor — the fixed-cadence sweep is the real liveness safeguard, the durable monitor only ever best-effort) and **states the gap in-session**. The durable liveness home is the always-on observability service, not the harness. |
-| `capability:cadence-tick` | **No confirmed in-session recurring prompt (§2.6/§2.7): the tick comes from OUTSIDE the session.** Neither the IDE agent nor headless `cursor-agent` is confirmed to re-prompt a standing session on a clock (`[needs: live-install confirmation]`), so a standing window cannot arm this capability itself. The binding is the **cell launcher's interval / an outer scheduler** — a cron or container job that invokes the role in tick mode every cadence interval (`cursor-agent -p … --tick`, or `ASSAY_TICK=1` in the job's environment; the trigger, bounded pass and summary line are [`tick-contract.md`](./tick-contract.md)), where each fire IS one "fresh sweep → drain → one quiet line" pass. The cadence and the prompt are the role body's, unchanged. A standing window with no such outer schedule reports `cadence-tick: could-not-check — no in-session scheduler` at boot and FILES it, exactly as the role's boot step says — it never runs keystroke-driven in silence. This is the fixed-cadence sweep the `durable-monitor` row already falls back to; it is a **convenience** (never one of the three never-degrade guarantees), so the capability **degrades** to the outer schedule, stated in-session, unless a live install confirms a native scheduled prompt. |
+| `capability:cadence-tick` | Local interactive desks use Cursor's built-in `/loop` skill to wake the same chat. Follow [Interactive desk cadence](#interactive-desk-cadence) during role boot. Headless desk ticks get their cadence from the caller and run one bounded pass under [the tick contract](./tick-contract.md). |
 
 **Resident-rules channel** (not one of the five dispatch capabilities, but the
 load-bearing delivery mechanism): Cursor reads **`AGENTS.md` natively** and
@@ -106,6 +106,27 @@ Assay's only hook is a session-start resident-rules injection, which Cursor does
 headless hook-drop caveat (§2.4) is a watch-item for future hook use, never a current
 blocker. (The shared `AGENTS.md` fragment and the generated `.cursor/rules` rule are
 produced by `tools/harnessgen`, which arrives with the tool de-house follow-on.)
+
+## Interactive desk cadence
+
+During a standing role's boot, complete the role's required preflight and arm
+one fixed-interval loop before the first queue sweep. Use the role's own sweep
+prompt and interval. Use a 30-minute interval when the role gives no interval.
+
+1. Use Cursor's built-in [`/loop` skill](https://cursor.com/docs/skills#built-in-cursor-skills).
+   Follow its local monitored-shell procedure using the shell tool's output
+   notification. Check this chat for an active matching watcher before arming.
+   Reuse a confirmed watcher that already wakes this chat for the same sweep.
+   Keep separate event and completion watchers where the role calls for them.
+2. The role's normal first sweep counts as the immediate run. Each later wake
+   runs the due sweep in the same chat, under the role's current stop flags,
+   width, and approval gates. Coalesce wakes for a sweep already handled or in
+   progress. Return control to the chat while waiting for the next wake.
+3. Read back the watched task, interval, and sweep prompt before reporting the
+   loop armed. If the skill or watched-shell notification is unavailable, or
+   the watcher cannot be confirmed, report `cadence-tick: could-not-check`
+   and follow the role's escalation procedure. Stop the watcher on an operator
+   stop request. Headless tick launches follow the tick contract above.
 
 ## Degradation — per skill (Cursor, both surfaces, headless-first)
 
@@ -146,8 +167,12 @@ permitted degradation, always stated.
 
 ## Freshness
 
-This binding is behavioural fact about a live harness, measured documentarily on
-2026-08-26 with no live environment. It is registered in `freshness.yaml`
-(harness-portability/12) so it expires on a clock, and the
-`[needs: live-install confirmation]` rows are re-measured once a Cursor environment
-exists (the live smoke is the stream's external head, human:<name>'s).
+The broader documentary review is registered in `freshness.yaml`
+(harness-portability/12). The rows marked `[needs: live-install confirmation]`
+remain open for live smoke testing.
+
+Interactive cadence was tested live on 2026-11-05 with Cursor CLI
+`2026.11.05-86047df`. In a fresh cell with a disposable 45-second verify desk,
+Cursor invoked `/loop` at boot. One shell approval let the timer start, and
+two scheduled wakes reached the original chat without further input.
+[Live test evidence](https://github.com/medici-finance/assay/pull/5521#validation)

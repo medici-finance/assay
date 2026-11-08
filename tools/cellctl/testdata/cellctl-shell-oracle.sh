@@ -2851,7 +2851,9 @@ up_tmux(){
   fi
   local role name
   for role in $roles; do
-    case "$role" in pr-review-desk) name=review;; the-desk) name=the-desk;; *) name="${role%-desk}";; esac
+    # Cell-qualified window names (desk-containers/18): never a collision across cells on the
+    # shared tmux server.
+    name="$CELL-$role"
     if [[ "$have_session" == "1" ]]; then
       tmux new-window -t "$SESSION" -n "$name" -c "$CELL_DIR" "$(role_cmd "$role" "$cfg"); echo '[$role] exited'; exec \$SHELL"
     else
@@ -2862,7 +2864,7 @@ up_tmux(){
     # window into the fetch lock's retry loop at the same moment.
     sleep 2
   done
-  tmux select-window -t "$SESSION:the-desk" 2>/dev/null || true
+  tmux select-window -t "$SESSION:$CELL-the-desk" 2>/dev/null || true
   echo "[cell] $SESSION up: ${FIRST_NAME:+$FIRST_NAME +}$roles (config=$cfg)"
   echo "[cell] attach: tmux attach -t $SESSION   ·   down: cellctl down $CELL"
   [[ "$attach" == "1" ]] && exec tmux attach -t "$SESSION"

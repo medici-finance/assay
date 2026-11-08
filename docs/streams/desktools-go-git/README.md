@@ -42,7 +42,7 @@ linked-worktree replacement) is a named follow-on stream, out of scope here. See
 | 05 | [migrate fetch + retire bespoke hardening (deskgit / deskadvisory / deskmerge)](brief-05-migrate-fetch-retire-hardening.md) | 4 | M | implemented | — | — |
 | 06 | [migrate push + retire ambient-credential machinery + preflight transport probe](brief-06-migrate-push-retire-ambient.md) | 4 | M | verified | 2026-10-30 assay-verifier-app[bot] @ 40925e8233c8 (forge-identity) | — |
 | 07 | [deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest](brief-07-deskmerge-exception-fence.md) | 3 | M | done | 2026-09-15 sonnet-5-verifier (6/6 rows PASS incl. an independently re-derived baseline; risk-value DERIVED) | 2026-09-15 assay-reviewer-app[bot] (approved PR #1126 @ c0c908b5a423c4b202bc23e69d546dd237292f2c) |
-| 08 | [flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on](brief-08-flip-gate-and-cve-floor.md) | 5 | M | todo | — | — |
+| 08 | [flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on](brief-08-flip-gate-and-cve-floor.md) | 5 | M | verified | 2026-11-06 assay-verifier-app[bot] @ 8592383261fb (forge-identity) | — |
 <!-- statusgen:briefs:end -->
 
 Brief 01 implemented via PR [#79](https://github.com/medici-finance/assay/pull/79) (counter baseline: 117 git-exec sites).

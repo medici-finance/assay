@@ -21,9 +21,11 @@ package deskkit
 // changed nothing observable at the wire.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/medici-finance/assay/forgeread/adapters"
 	"strconv"
 	"strings"
 	"time"
@@ -884,18 +886,20 @@ type OpenChange struct {
 	HeadCommittedAt string `json:",omitempty"`
 }
 
-// OpenChanges is the result of the bulk open-change read: the changes plus whether the read
-// came back exactly at the page cap, so the board can state a TRUNCATED population in-band
+// OpenChanges is the result of the bulk open-change read: the changes plus whether the forge
+// holds more than the cap, so the board can state a TRUNCATED population in-band
 // rather than printing a confident count over an unknown remainder (an absence that reads
 // like an answer). Consumer: cmd/deskboard's fetchOpenPRs, which maps TruncatedAtCap onto its
 // Header.PRPopulation.
 type OpenChanges struct {
 	// Changes are the open changes, newest first, up to Cap of them.
 	Changes []OpenChange
-	// TruncatedAtCap is true when the read returned exactly Cap changes — the forge may be
-	// holding more, so every count derived from Changes is a FLOOR, not a total.
+	// TruncatedAtCap is true when the forge may be holding more than Cap changes, so every
+	// count derived from Changes is a FLOOR, not a total. A backend that pages with the
+	// forge's own more-pages signal (GitHub) sets it when the walk stopped at Cap with more
+	// reported; a backend that cannot tell sets it when the read returned exactly Cap.
 	TruncatedAtCap bool
-	// Cap is the page cap the read was bounded to (the `first:`/`per_page` ceiling).
+	// Cap is the ceiling the read was bounded to (the total changes read, across pages).
 	Cap int
 }
 
@@ -913,9 +917,10 @@ type ReviewQueue struct {
 	Visibility string `json:",omitempty"`
 	// Changes are the open changes, newest first, up to Cap of them, each with its reviews.
 	Changes []QueuedChange
-	// TruncatedAtCap is true when the read returned exactly Cap changes (see OpenChanges).
+	// TruncatedAtCap is true when the forge may be holding more than Cap changes (see
+	// OpenChanges).
 	TruncatedAtCap bool
-	// Cap is the page cap the read was bounded to.
+	// Cap is the ceiling the read was bounded to.
 	Cap int
 }
 
@@ -1714,6 +1719,12 @@ func validateGateName(gate string) (string, error) {
 // per-tool inventory. It is FROZEN: an addition requires a consuming tool in the same
 // change.
 type Forge interface {
+	// ChangesUpdatedSince and IssuesUpdatedSince are bounded incremental source
+	// observations consumed by MirrorReadSource. An incomplete list is never an
+	// inventory; review/check coverage remains outside these endpoint reads.
+	ChangesUpdatedSince(context.Context, ForgeRepo, adapters.UpdateQuery) (adapters.ChangeUpdates, error)
+	IssuesUpdatedSince(context.Context, ForgeRepo, adapters.UpdateQuery) (adapters.IssueUpdates, error)
+
 	// --- Reads ---
 
 	// GetPullRequest reads a change's head/state/draft/node-id/changed-file-count/author.

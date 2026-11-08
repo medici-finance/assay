@@ -6,6 +6,7 @@
 //	     [--perf-profile workflow] [--group-by tool|work|session|agent|deskRole|role]
 //	     [--session-id ID] [--agent-id ID] [--desk-role ROLE] [--assigned-role ROLE] [--work JSON]
 //		deskperf boot   [--days N] [--role R] [--json]
+//		deskperf reruns --root <repo> [--brief <stream>/<NN>] [--days N] [--json]
 //		deskperf --version
 //		deskperf -h | --help
 //
@@ -13,7 +14,8 @@
 // opposite promises: the audit ledger never loses a row and is read by the budget and
 // idempotency paths; the perf history is opt-in, pruned to 7 UTC days on write, and read by
 // nobody but a human or a desk. deskperf's own code reads only <state dir>/perf/ and never
-// audit.jsonl. The one exception is the shared kill-switch guard (deskkit.Guard) every desk
+// audit.jsonl — plus, for `reruns` alone, the verify-outcome register and the named brief file
+// under --root and that checkout's own origin URL (local files; no forge read). The one exception is the shared kill-switch guard (deskkit.Guard) every desk
 // verb runs under: it writes its audit row, and reads the ledger tail when disarmed. Apart
 // from that row deskperf writes nothing, and it opens no network connection.
 //
@@ -71,6 +73,16 @@ usage:
       leaves out legacy/perf-v2 records, which carry no attribution
   deskperf boot [--days N] [--role R] [--json]
       deskboot's per-step p50 / p90 / max and the summed boot cost, per role
+  deskperf reruns --root <repo> [--brief <stream>/<NN>] [--days N] [--json]
+      verification re-runs as waste, from the verify-outcome register under --root
+      (every record, re-validated; a record that fails is listed invalid, never
+      counted). With --brief: "<stream>/<NN>: <runs> verification runs, <U>
+      uncredited, <D> discarded, <R> unrecorded", then a cost block joining each
+      attempt window to workflow perf rows (role verify, work ref kind brief, repo
+      = the root's origin, brief = the brief file's qualified id): the total, the
+      uncredited-plus-discarded part and its share. A pruned, missing or ambiguous
+      measure prints could-not-check or ambiguous with its reason, never 0.
+      Without --brief: one count line per brief, most runs first
   deskperf --version      print the build stamp
   deskperf -h | --help    this text
 
@@ -84,7 +96,8 @@ IDs; grouping/filtering those requires explicit workflow permission. No argv or 
 is recorded, and nothing leaves the machine. deskperf only reads it.
 
 exit: 0 ok · 3 disabled (kill switch/stop flag) · 5 refused (bad flags, or no record
-matches the filter) · 6 unverifiable (no perf history to read)`
+matches the filter) · 6 unverifiable (no perf history to read; for reruns: no register
+record for --brief, a missing brief file or unmappable brief id, or no readable origin)`
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
@@ -115,6 +128,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = cmdReport(args[1:], stdout, stderr)
 	case "boot":
 		err = cmdBoot(args[1:], stdout, stderr)
+	case "reruns":
+		err = cmdReruns(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "deskperf: unknown subcommand %q\n\n%s\n", args[0], usage)
 		return deskkit.ExitRefused
@@ -165,18 +180,22 @@ func load(days int) (deskkit.PerfHistory, error) {
 		return h, deskkit.Unverifiable("cannot read the perf history directory", err)
 	}
 	if len(h.Records) == 0 {
-		if !deskkit.PerfEnabled() {
-			return h, deskkit.Unverifiable(fmt.Sprintf(
-				"no perf history: local perf logging is off (ASSAY_TELEMETRY is not 1) — "+
-					"%d day file(s) and no record in the last %d day(s). Export ASSAY_TELEMETRY=1 "+
-					"in the desk's environment to start recording.", h.DayFiles, days), nil)
-		}
-		return h, deskkit.Unverifiable(fmt.Sprintf(
-			"no perf history: local perf logging is on (ASSAY_TELEMETRY=1) but no wrapped verb "+
-				"has recorded in the last %d day(s) (%d day file(s), %d unparseable line(s) skipped)",
-			days, h.DayFiles, h.Skipped), nil)
+		return h, deskkit.Unverifiable(emptyHistoryReason(h, days), nil)
 	}
 	return h, nil
+}
+
+// emptyHistoryReason is the one reason text for an empty perf window: `load`'s refusal and
+// `reruns`' could-not-check (no perf rows) state both print it.
+func emptyHistoryReason(h deskkit.PerfHistory, days int) string {
+	if !deskkit.PerfEnabled() {
+		return fmt.Sprintf("no perf history: local perf logging is off (ASSAY_TELEMETRY is not 1) — "+
+			"%d day file(s) and no record in the last %d day(s). Export ASSAY_TELEMETRY=1 "+
+			"in the desk's environment to start recording.", h.DayFiles, days)
+	}
+	return fmt.Sprintf("no perf history: local perf logging is on (ASSAY_TELEMETRY=1) but no wrapped verb "+
+		"has recorded in the last %d day(s) (%d day file(s), %d unparseable line(s) skipped)",
+		days, h.DayFiles, h.Skipped)
 }
 
 // noMatch is the refusal for a filter that matched nothing in a NON-empty history.

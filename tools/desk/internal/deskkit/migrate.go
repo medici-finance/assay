@@ -52,7 +52,7 @@ const StatusgenBinEnv = "STATUSGEN_BIN"
 // understand, and running it blind is exactly the silent-misread the closed set
 // exists to stop.
 var statusgenRegenSupportedVerbs = map[string]map[string]bool{
-	"migrate": {"brief-v1-to-v2": true},
+	"migrate": {"brief-v1-to-v2": true, "gitlab-anchors": true},
 }
 
 // MigrationsDir is the conventional directory, under a migration root, holding one
@@ -361,7 +361,7 @@ func runStatusgenRegen(root, migID string, sr *StatusgenRegen, dryRun bool) (Ste
 			got = sr.Args[0]
 		}
 		return StepAction{}, Refused(fmt.Sprintf(
-			"migration %s statusgen-regen verb %q names unknown target %q (known: brief-v1-to-v2)", migID, sr.Verb, got))
+			"migration %s statusgen-regen verb %q names unknown target %q (known: brief-v1-to-v2, gitlab-anchors)", migID, sr.Verb, got))
 	}
 
 	bin, err := resolveStatusgenBinary()

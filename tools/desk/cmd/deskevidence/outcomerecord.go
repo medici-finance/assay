@@ -64,7 +64,11 @@ var nowFn = time.Now
 // absolute one pathWithin places inside it (symlink aliases included) is refused here, before
 // the file is read or the forge is touched. The dispatcher names the directory to use in the
 // verifier prompt. Without --root the path is read as given, unchanged.
-func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string, ac *auditCtx) error {
+//
+// outcomeOnly (--outcome-only, #5759) lands a record that names no Evidence, accepted only for
+// a non-decisive re-run of a verified or done brief whose Evidence append is refused
+// (outcomeonly.go).
+func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string, outcomeOnly bool, ac *auditCtx) error {
 	if root != "" && (!filepath.IsAbs(localFile) || pathWithin(root, localFile)) {
 		return deskkit.Refused("refused: with --root, --outcome-record must be an absolute file OUTSIDE --root " +
 			"(the verifier home; a record inside it refuses admission) — write it to the dispatcher-named " +
@@ -101,6 +105,10 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: --outcome-record ts %s is more than %s ahead of now", rec.TS, deskkit.MaxClockSkew))
 	}
+	// ParseJoinInput also runs deskkit.CheckAttempts (issue #4163): an `attempts` list
+	// is validated here and then lands byte-for-byte with the rest of the record; a refused one
+	// is exit 5 before anything is written. No redaction applies: an attempt carries no
+	// identifier beyond cause_ref, which takes blocker_ref's grammar.
 	join, jerr := deskkit.ParseJoinInput(rec.Raw)
 	if jerr != nil {
 		return jerr
@@ -273,7 +281,9 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if landedHead != "" {
 		closureRef = landedHead
 	}
-	if err := outcomeEvidenceBindingFn(evidenceRoot, fg, fr, closureRef, receipt, outcome.SHA); err != nil {
+	// The Evidence binding, or under --outcome-only the check that this run's Evidence
+	// append is exactly the one the verdict gate refuses (outcomeonly.go, #5759).
+	if err := gateOutcomeEvidence(outcomeOnly, evidenceRoot, landedRoot, targetRepoPath, fg, fr, closureRef, receipt, outcome, commitContent); err != nil {
 		return err
 	}
 	if err := outcomeObservationBindingFn(evidenceRoot, fg, fr, closureRef, receipt, outcome); err != nil {

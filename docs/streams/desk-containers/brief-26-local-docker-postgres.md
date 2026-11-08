@@ -14,6 +14,9 @@ depends: []
 unblocks: ["desk-containers/27"]
 effort: M
 gate: human
+decision-issue: 2940
+design: DR-desk-containers-26
+ruling: "https://github.com/medici-finance/assay/issues/2940#issuecomment-6668052413"
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: >-
   This brief designs the custody of new credentials: the database superuser password, a

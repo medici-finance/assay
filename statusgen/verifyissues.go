@@ -921,7 +921,7 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 	if !hasVerifyPass(evidence) {
 		return false, ""
 	}
-	return unroutedHeldLine(evidence)
+	return unroutedHeldLine(evidence, false)
 }
 
 // unroutedHeldLine is verifyPassHeldContradiction's line scan WITHOUT the
@@ -946,10 +946,14 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 // or, once that entry re-ran EVERY row key of EVERY earlier entry so, any
 // held line of an earlier entry but a table line it cannot key (#3841) — and
 // otherwise the first held line in the whole section refuses, as before.
-func unroutedHeldLine(evidence string) (bool, string) {
+// Those are rules 3a and 3b. Rule 3c (the latest PASS run only, #4294) is read
+// only when latestRun is true: flipHeldRefusal passes it for verifyflip and
+// the reconcile fold, whose witness check reads the same run; every other
+// caller passes false.
+func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 	inFence := false
 	var codeScan inlineCodeScan
-	scope := heldScanScope(evidence)
+	scope := heldScanScope(evidence, latestRun)
 	var hits []int
 	var quotes []string
 	for i, line := range strings.Split(evidence, "\n") {
@@ -1078,71 +1082,45 @@ func unroutedHeldLine(evidence string) (bool, string) {
 	return false, ""
 }
 
-// evidenceVerifierInfo extracts the date and runner from the first data row of an
-// Evidence table. Returns empty strings when no Date or Runner column is found.
-// The Evidence table convention is:
+// evidenceVerifierInfo returns the date and the Runner cell, verbatim, of the
+// run the latest strict **VERIFY: PASS** in Evidence closes: the sign-off
+// card's "recorded model verify pass" and the one-step human close's Verified
+// stamp. The run is selected exactly as flipLatestPass (verifyflip, the
+// reconcile fold) selects it: the span latestPassSpan bounds, narrowed to the
+// latest entry heading by latestPassRunFrom when the span does not read as one
+// run, so no reader names an earlier run, whatever that run's verdict (#5229).
+// A run is read when its rows agree on one date and one `<login> @ <sha>`
+// (flipReadRun), or when they agree on one date and one Runner cell that does
+// not read `<login> @ <sha>` (flipReadLooseRun: real records exist whose
+// Runner cell lacks the sha). It returns empty strings otherwise: no verdict,
+// a latest verdict that is not the strict PASS, Date/Runner rows after that
+// PASS, an ambiguous entry boundary, or rows that do not read as one run.
 //
-//	| # | Command | Exit | Result | Date | Runner |
-//	|---|---------|------|--------|------|--------|
-//	| 1 | ...     | 0    | ...    | 2026-07-09 | opus-verifier |
-//
-// Because splitRow splits on an UNESCAPED | (commands often contain an unescaped
-// pipe character, which GFM and splitRow alike read as a real cell delimiter),
-// the column indices from the header may not align with data rows. This function
-// works around that by reading Date and Runner counted from the RIGHT of each
-// data row: Runner is the last cell (by convention) and Date the one before it,
-// after skipping any columns the header places to the right of Runner (a
-// fail-first witness table's trailing Base).
-// It validates against the header row to confirm the table structure is recognized.
+// Rows are read by flipDateRunnerRows: Date and Runner counted from the RIGHT
+// of each data row (a command's unescaped | cannot shift them), past any
+// column the header places after Runner (a fail-first table's Base), in
+// tables whose header names Date and Runner. The Runner cell is taken whole,
+// qualifiers included.
 func evidenceVerifierInfo(evidence string) (date, runner string) {
-	stripped, _ := stripRowComments(evidence)
-	lines := strings.Split(stripped, "\n")
-	tableFound := false
-	trail := 0 // header columns to the RIGHT of Runner (a fail-first table's Base)
-	for i := 0; i < len(lines); i++ {
-		line := strings.TrimSpace(lines[i])
-		if !strings.HasPrefix(line, "|") {
-			tableFound = false
-			continue
-		}
-		if separatorRowRe.MatchString(strings.Trim(line, "|")) {
-			continue
-		}
-		// Header row (immediately followed by a separator) — confirm this table
-		// names Date and Runner columns (anywhere, not at a fixed index).
-		if i+1 < len(lines) && separatorRowRe.MatchString(strings.Trim(strings.TrimSpace(lines[i+1]), "|")) {
-			hasDate, hasRunner := false, false
-			hdr := splitRow(line)
-			trail = 0
-			for j, c := range hdr {
-				switch strings.ToLower(strings.TrimSpace(c)) {
-				case "date":
-					hasDate = true
-				case "runner":
-					hasRunner = true
-					trail = len(hdr) - 1 - j
-				}
-			}
-			tableFound = hasDate && hasRunner
-			i++ // skip separator
-			continue
-		}
-		if !tableFound {
-			continue
-		}
-		// Data row: read Date from second-to-last cell, Runner from last cell.
-		// This survives splitRow miscounting when cell content contains |.
-		cells := splitRow(line)
-		if len(cells) < 2+trail {
-			continue
-		}
-		d := strings.TrimSpace(cells[len(cells)-2-trail])
-		r := strings.TrimSpace(cells[len(cells)-1-trail])
-		if d != "" && d != "—" && r != "" {
-			return d, r
-		}
+	lines, start, end, err := latestPassSpan(evidence)
+	if err != nil {
+		return "", ""
 	}
-	return "", ""
+	if _, err := latestPassRunFrom(lines, start, end, func(from int) error {
+		if p, err := flipReadRun(lines, start, from, end); err == nil {
+			rows, _ := flipDateRunnerRows(strings.Split(p.Run, "\n"))
+			date, runner = rows[0][0], rows[0][1]
+			return nil
+		}
+		d, r, err := flipReadLooseRun(lines, from, end)
+		if err == nil {
+			date, runner = d, r
+		}
+		return err
+	}); err != nil {
+		return "", ""
+	}
+	return date, runner
 }
 
 // unrunRowsText returns the UNRUN rows from an Evidence section as a single string
@@ -1449,6 +1427,13 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 			// hasVerifyPass marker is the fail-closed gate — WHICH briefs are eligible
 			// is loosened here; WHAT evidence is required is not.
 			if row.Status == "implemented" && hasVerifyPass(bf.Evidence) {
+				if _, _, _, serr := latestPassSpan(bf.Evidence); serr != nil {
+					// The one-step close refuses a record whose latest
+					// verdict run latestPassSpan cannot select (#5229), so
+					// no card offers that close. The Date/Runner read stays
+					// a close-time gate, not an emission gate.
+					continue
+				}
 				if held, _ := verifyPassHeldContradiction(bf.Evidence); held {
 					// A PASS line is not a flip signal while a non-deferred
 					// row still reads HELD/could-not-check — no card is
@@ -1740,9 +1725,15 @@ func closeVerifyFlipPlan(root, briefID string, now time.Time) (readme string, up
 		if err := closeVerifyHeldRefusal(briefID, row.Status, bf.Evidence); err != nil {
 			return "", nil, "", err
 		}
+		// The stamp is the latest strict PASS run's (latestPassSpan, the
+		// selection verifyflip reads), never an earlier run's: a later FAIL,
+		// a loose-form latest verdict or rows after the PASS refuse (#5229).
+		if _, _, _, serr := latestPassSpan(bf.Evidence); serr != nil {
+			return "", nil, "", fmt.Errorf("refusing: brief %s status is %q and its latest recorded verify run cannot stamp the Verified cell: %v — the stamp is taken from the latest strict **VERIFY: PASS** run only; re-run the Verify table to a recorded **VERIFY: PASS** before the human sign-off", briefID, row.Status, serr)
+		}
 		date, runner := evidenceVerifierInfo(bf.Evidence)
 		if date == "" || runner == "" {
-			return "", nil, "", fmt.Errorf("refusing: brief %s has **VERIFY: PASS** but no verifier date/runner found in Evidence table — need a table with Date and Runner columns to stamp the Verified cell", briefID)
+			return "", nil, "", fmt.Errorf("refusing: brief %s has **VERIFY: PASS** but no verifier date/runner found in Evidence table — the latest PASS run needs Date/Runner rows that agree on one date and one runner to stamp the Verified cell", briefID)
 		}
 		verifiedStamp := date + " " + runner
 		// The cell this path is about to WRITE comes from the brief file's
@@ -1798,8 +1789,27 @@ func closeVerifyFlipPlan(root, briefID string, now time.Time) (readme string, up
 // one. There the verifier who resolves a hold strikes the earlier line through
 // (`~~…~~`, which the scan strips) or routes it to a named follow-up; an
 // unstruck, unrouted hold refuses by design.
+//
+// Rule 3c (the latest PASS run only, #4294) is NOT read here: close-verify
+// runs no witness check on the run 3c would stop at, so it keeps rules 3a and
+// 3b. verifyflip and the reconcile fold read 3c through flipHeldRefusal.
 func closeVerifyHeldRefusal(briefID, status, evidence string) error {
-	held, why := unroutedHeldLine(evidence)
+	return heldRefusal(briefID, status, evidence, false)
+}
+
+// flipHeldRefusal is closeVerifyHeldRefusal with rule 3c read as well: when the
+// last entry is the PASS run verifyflip credits, holds before its heading are
+// not read (#4294, the maintainer's scope ruling). Only verifyflip and the
+// reconcile fold call it; both refuse unless that run carries a passing
+// witness for every Verify row (closureRunWitnesses), which is what makes
+// stopping at its heading safe.
+func flipHeldRefusal(briefID, status, evidence string) error {
+	return heldRefusal(briefID, status, evidence, true)
+}
+
+// heldRefusal is the refusal both reads share, so their text cannot drift.
+func heldRefusal(briefID, status, evidence string, latestRun bool) error {
+	held, why := unroutedHeldLine(evidence, latestRun)
 	if !held {
 		return nil
 	}

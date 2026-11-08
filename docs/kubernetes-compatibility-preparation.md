@@ -41,120 +41,113 @@ package/toolchain use the deployment owner's existing procedure. This guide
 supplies no cluster-access command or permission to create a preparation Pod.
 If that context or the approved inputs do not exist, stop there.
 
-Preinstall the approved package at `/work/.npm-global`, its approved role
-instructions at `/work/role.md`, and the approved work repository/toolchain at
-`/work/repository`. These are the paths in the operator example. If the approved
-layout differs, review the descriptor/profile paths together before preparation.
-No install or agent version command runs in the steps below. Checksums measure
-the installed inputs; they do not establish that those inputs were approved.
+Use the approved package at `/work/.npm-global` and approved work
+repository/toolchain at `/work/repository`. The helper can use the image's baked
+role instructions or separately reviewed `/work/role.md`; carry its actual paths
+into the operator profile. If the approved layout differs, review those paths
+together before preparation. Checksums measure the installed inputs; they do not
+establish that those inputs were approved.
 
-In that preparation context, this snippet asks only for **already approved,
-non-secret selections**. It verifies the installed version and creates a new
-descriptor exclusively. It will not overwrite a descriptor or existing history.
-An initialization identifier is generated once for this cold preparation; it is
-a non-secret identity, not a credential or a substitute for preparation.
+Use the bounded [preparation delegate](../containers/k8s/compatibility/prepare.py)
+and its companion `cellctl` binary in that context. `cellctl compat-prepare` owns
+all argument parsing through the existing Cobra/Viper foundation. It sends typed
+inputs to the embedded preparation domain, which calls the image-owned launcher
+at `/usr/local/lib/assay/desk-session.py`. That launcher still owns the history and
+hash format. The delegate contains no second parser.
 
-```sh
-python3 - <<'PY'
-import hashlib
-import json
-import os
-from pathlib import Path
-import re
-
-work = Path('/work')
-if os.geteuid() != 999 or os.getegid() != 999:
-    raise SystemExit('held: preparation requires workload UID/GID 999')
-if os.path.lexists(work / '.assay-compat'):
-    raise SystemExit('held: history exists; do not reset or reinitialize it')
-with open('/dev/tty', 'r') as terminal_in, open('/dev/tty', 'w') as terminal_out:
-    def approved(prompt):
-        print(prompt, end='', file=terminal_out, flush=True)
-        return terminal_in.readline().strip()
-    cell = approved('Approved cell name: ')
-    role = approved('Approved role: ')
-    version = approved('Approved exact Claude package version: ')
-    model = approved('Approved model identifier: ')
-roles = {'the-desk', 'intake-desk', 'worker-desk', 'pr-review-desk', 'verify-desk'}
-if not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,62}', cell) or role not in roles:
-    raise SystemExit('held: invalid cell or role')
-if not version or not model or version in {'latest', '*'}:
-    raise SystemExit('held: approved exact version and model required')
-agent = work / '.npm-global/bin/claude'
-manifest = work / '.npm-global/lib/node_modules/@anthropic-ai/claude-code/package.json'
-instructions = work / 'role.md'
-repository = work / 'repository'
-package = json.loads(manifest.read_text())
-if package.get('name') != '@anthropic-ai/claude-code' or package.get('version') != version:
-    raise SystemExit('held: installed package differs from approved version')
-if not agent.is_file() or not os.access(agent, os.X_OK) or not repository.is_dir():
-    raise SystemExit('held: installed executable or approved work directory missing')
-descriptor = {
-    'schema': 'cell-kube-compat-v1', 'cell': cell, 'role': role,
-    'initialization_id': os.urandom(32).hex(),
-    'agent': str(agent), 'agent_sha256': hashlib.sha256(agent.read_bytes()).hexdigest(),
-    'agent_version': version, 'version_manifest': str(manifest), 'model': model,
-    'instructions': str(instructions),
-    'instructions_sha256': hashlib.sha256(instructions.read_bytes()).hexdigest(),
-    'workdir': str(repository),
-    'initial_prompt': 'Read /opt/assay/plugin/skills/' + role +
-        '/SKILL.md and run that role under its existing STOP, claim and human gates.'
-}
-os.umask(0o077)
-with (work / 'compat-launch.json').open('x') as target:
-    json.dump(descriptor, target, ensure_ascii=False, indent=2)
-    target.write('\n')
-print('Descriptor written; cold history is not prepared yet.')
-PY
-```
-
-Review the descriptor against the approved inputs before continuing. It has no
-`launch_id` member: the launcher computes that value as the SHA-256 of its
-canonical descriptor encoding. Adding a `launch_id` field makes the descriptor
-invalid. Hashing the pretty-printed file with `sha256sum` gives the wrong value.
-
-Run the existing launcher once, in the same preparation context:
+Build the companion from the reviewed source revision, using the existing approved
+Go toolchain and cached dependencies. In that source checkout, record the exact
+revision before building the static Linux AMD64 binary outside the tree:
 
 ```sh
-/usr/local/bin/desk-session --prepare --profile /work/compat-launch.json --work /work
+git rev-parse HEAD
+mkdir -p /tmp/assay-preparation
+(cd tools/desk && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOWORK=off \
+  GOPROXY=off GOTOOLCHAIN=local go build -trimpath \
+  -o /tmp/assay-preparation/cellctl ./cmd/cellctl)
+shasum -a 256 /tmp/assay-preparation/cellctl containers/k8s/compatibility/prepare.py
 ```
 
-Expected: exit 0 and
-`checked-clean: cold compatibility history prepared; no agent invoked`.
-It writes `/work/.assay-compat/state.json` with state `prepared`, empty `pod_uid`
-and `agent_pid` zero. It does not print the launch identity. An existing history,
-interrupted write, missing input or any failure is a hold: retain the files and
-diagnostic for the custodian. Never delete history, generate another identity or
-retry with a fresh volume to erase an unknown predecessor.
+Record the source revision and both checksums with the preparation handoff.
+Copy or mount that binary read-only at `/opt/assay-preparation/cellctl` and the
+matching delegate read-only at `/opt/assay-preparation/prepare.py`. Neither is baked
+into the existing v1.0.65 role images. The binary embeds the preparation domain;
+no additional Python source mount or image release is required. Use the existing
+Python 3 interpreter in the image. Missing/mismatched companion placement holds
+preparation; do not fall back to an old standalone parser.
 
-Read back through the image-owned launcher's existing validators, without starting
-an agent. Run this immediately after preparation, before any boot:
+The preparation command starts no agent, installs no package and makes no cluster
+or model call. The existing `assay-desks` namespace and five paused StatefulSets
+remain the deployment layout. Start with Claude; this helper does not claim a
+qualified Codex argv/credential profile. Both the direct command
+`/opt/assay-preparation/cellctl compat-prepare` and the delegate below accept the
+same eleven long options, using `--name value` or `--name=value`. Parse failures
+remain exit 2; domain refusals remain exit 78. Use complete option names; the shared
+parser does not provide argparse's incidental unique-prefix abbreviations.
+
+The image's existing installer can provision the exact Claude package version
+under `/work/.npm-global` in the already authorized preparation context. For
+example, this selects version **2.1.228**, rather than its floating `latest`
+default. It is an explicit network-reaching operator act; it is not part of the
+helper or ordinary boot:
 
 ```sh
-python3 - <<'PY'
-import importlib.util
-import json
-from pathlib import Path
-
-spec = importlib.util.spec_from_file_location('desk_session', '/usr/local/lib/assay/desk-session.py')
-launcher = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(launcher)
-history = Path('/work/.assay-compat')
-if any((history / name).exists() for name in ['uncommitted', '.state-next']):
-    raise SystemExit('held: interrupted history write')
-descriptor, launch_id = launcher.profile(Path('/work/compat-launch.json'))
-state = launcher.read(history / 'state.json')
-launcher.state(state, descriptor, launch_id)
-if state['state'] != 'prepared':
-    raise SystemExit('held: this is not an unused cold preparation')
-print(json.dumps({'descriptor': descriptor, 'launch_id': launch_id}, indent=2))
-PY
+printf '%s\n' 'Installing @anthropic-ai/claude-code@2.1.228 from https://registry.npmjs.org'
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org \
+  AGENT_CLI_PACKAGE=@anthropic-ai/claude-code AGENT_CLI_VERSION=2.1.228 install-agent-cli
 ```
 
-Retain this non-secret handoff output privately with the volume identity, role,
+The work repository/toolchain must still be preinstalled on the role's retained
+volume. By default the helper uses the image's baked role SKILL.md as its pinned
+instructions; `--instructions /work/role.md` selects separately reviewed appended
+instructions instead. Package and model selections must match the approved
+profile; measuring installed bytes does not approve them.
+
+For a worker desk using Claude Sonnet 5.5, first inspect the read-only plan:
+
+```sh
+python3 /opt/assay-preparation/prepare.py --cell assay --role worker-desk \
+  --agent-version 2.1.228 --model claude-sonnet-5-5
+```
+
+The explicit model ID is from the [model catalogue](https://platform.claude.com/docs/en/models/overview).
+It is an example selection for the initial Claude setup, not evidence that a
+model credential works or that a role's work has been accepted. Repeat for each
+of the five roles using its approved cell/model and retained volume.
+
+Only in that same authorized cold preparation context, run:
+
+```sh
+python3 /opt/assay-preparation/prepare.py --cell assay --role worker-desk \
+  --agent-version 2.1.228 --model claude-sonnet-5-5 --prepare
+```
+
+The helper checks UID/GID 999, installed package/version, executable, instructions
+and work directory, then exclusively writes `/work/compat-launch.json` and calls
+the existing launcher's `--prepare`. It generates a fresh non-secret
+initialization identity and reads the canonical launch ID back through the
+image-owned validators. No manual hash or ID construction is needed.
+
+Success is exit 0 and JSON containing `descriptor`, `launch_id` and
+`workload_env` with the two actual binding values. Its retained state is
+`prepared`, with empty `pod_uid` and zero `agent_pid`. The descriptor itself has
+no `launch_id` member: that value is its canonical hash, not the checksum of a
+pretty-printed file. The helper refuses existing descriptors, any existing or
+unknown history, floating package/model aliases and concurrent preparation. A
+failed or interrupted preparation remains held, with its files retained. Never
+delete history, reset it or switch volumes to erase an unknown predecessor.
+
+If preparation succeeded but its output was lost, run the same selection with
+`--readback` instead of `--prepare`. It revalidates the installed inputs and
+existing unused prepared state and prints the same bindings without writing,
+installing or running the image initializer or agent. The Go command invokes only
+the embedded Python preparation domain for this readback. Changed inputs, foreign/corrupt state or a role
+that has already booted remain held; readback never reinitializes a volume.
+
+Retain the helper's non-secret JSON privately with volume identity, role,
 preparer, time, approved-input references and exact image reference. It is input
-for the operator configuration, not independent execution or acceptance evidence.
-Do not copy signing/model credentials or the full retained volume into a handoff.
+for operator configuration, not independent execution or acceptance evidence.
+Do not copy credentials or the retained volume into a handoff.
 
 ## Carry the prepared values into the adopting configuration
 
@@ -239,6 +232,6 @@ private custody channel. The worker can then reconcile the real component/profil
 bindings and final delivery with /31's requirements. The independent verifier
 owns Verify rows and lifecycle; /15's verification is still a separate dependency.
 The final implementation merge and its first parent must be identified for the
-consumer check and /32 handoff. This documentation change is not that delivery.
+consumer check and /32 handoff. This preparation checkpoint is not that delivery.
 Effective permissions, network/transcript custody, useful model work, deployment
 and target acceptance remain the separately authorized qualification in /32.

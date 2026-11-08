@@ -16,7 +16,7 @@
     {
       "name": "a second, unrelated flag literal in another binary is packed the same way",
       "file": "cmd/deskperf/report.go",
-      "old": "fs.String(\"desk-role\", \"\", \"v3 workflow originating desk filter\")",
+      "old": "fs.String(deskRoleFlag, \"\", \"v3 workflow originating desk filter\")",
       "new": "fs.String(\"de\"+\"sk-role\"+\"userArenaStateGC\", \"\", \"v3 workflow originating desk filter\")"
     }
   ]
