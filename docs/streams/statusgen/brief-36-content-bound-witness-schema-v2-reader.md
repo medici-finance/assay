@@ -304,7 +304,7 @@ Verifier assay-verifier-app[bot], model claude-opus-5-5 (tier strong), non-imple
 
 - Rows 1-4, 7-11, 13 and 16-22 (`check:ci`, container bracket, bracket-digest `verdict=match`): pass at head; fail-first red at base, pass at head for every one.
 - Rows 5, 6, 14, 15 (host): pass at head, exit 0; fail-first red at base, rc=1 each.
-- Row 23 (host): pass at head, exit 0; fail-first red at base, rc=2.
+- Row 23 (host): the witness records exit 0 at head and rc=2 at base, but this row is the brief's provisional pre-merge command. Its Expect says "pre-merge only" and asks for the delivery and first-parent pins at implementation, which were never set. On merged main, `git merge-base` of the mainline ref and HEAD is HEAD itself once the mainline ref is current, so the diff is empty and the command exits 2 (`--consumers: COULD-NOT-CHECK`). The head pass depends on the state of the mainline ref, and the base rc=2 is that same could-not-check exit. Neither discriminates the delivery, so row 23 is not credited. With the delivery base pinned (`--base c288fd881e7f`), the command exits 0 with `7 corroborated, 0 disproved, 2 unchecked` (reviewer re-run on #5732). Recorded on #5684 beside row 12.
 - Row 12 (host): pass at head, exit 0, output sha256:8706b5a40dc8. Fail-first is green at base: verifyrun reports `row 12: non-discriminating — green at base c288fd881e7f and pass at head; it passes with or without the change (if the change is already merged, pass --base <the parent of the delivering merge>)`, and the base used is that parent. The row compares the binary built from the tree under test against a fixed release tag (v1.0.52, never re-pinned). At the delivery base the tree-under-test binary is the code before this brief, so it meets the 1.10x budget whether or not the change is present. The row cannot go red at the base, so it does not discriminate. This is a check-definition defect in the row, recorded on #5684.
 
 Risk-bearing literals, enumerated (id = literal @ file:line):
@@ -330,9 +330,9 @@ RISK-VALUE: V4 — DERIVED. The brief's Human decision and its environment rule 
 RISK-VALUE: V5 — DERIVED. The brief's Review list requires an `informational.commit` to be a full 40- or 64-hex object id.
 RISK-VALUE: V6 — DERIVED. The brief's Schema marker states `<record-id>` is the full 64-hex id with no prefix resolution.
 
-Attempts: 1, container bracket with `--fail-first` over the 17 `check:ci` rows (17 rows run); 2, host run with `--fail-first` over the 6 host rows (6 rows run). Row accounting over 23 Verify rows: 23 pass at head, 0 not run; fail-first red at base for 22 rows; row 12 green at base. `statusgen verifyrun --check`: 23 pass, 0 fail, 0 missing of 23 Verify rows. The verdict follows the fail-first rule: a risk-bearing row green at the delivery base does not discriminate.
+Attempts: 1, container bracket with `--fail-first` over the 17 `check:ci` rows (17 rows run); 2, host run with `--fail-first` over the 6 host rows (6 rows run). Row accounting over 23 Verify rows: 21 credited; row 12 green at base (non-discriminating); row 23 a provisional pre-merge command whose result on merged main depends on the mainline ref (not credited); 0 not run. `statusgen verifyrun --check`: 23 pass, 0 fail, 0 missing of 23 Verify rows. The verdict follows the fail-first rule: a risk-bearing row green at the delivery base does not discriminate.
 
-**VERIFY: FAIL** — row 12 is green at the delivery base c288fd881e7f (non-discriminating): its perf comparison is against a fixed release tag, so the pre-change tree meets the 1.10x budget too; recorded on #5684. All 23 rows pass at head and the other 22 are red at base.
+**VERIFY: FAIL** — row 12 is green at the delivery base c288fd881e7f (non-discriminating): its perf comparison is against a fixed release tag, so the pre-change tree meets the 1.10x budget too; recorded on #5684. Row 23 is still the brief's provisional pre-merge command, and on merged main it cannot discriminate the delivery (also recorded on #5684). The other 21 rows pass at head and are red at base.
 
 ## Review
 
