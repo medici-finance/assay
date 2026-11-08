@@ -1,1 +1,2 @@
 - Prepare the bounded design and acceptance cases for shared PR-trailer and claim reference resolution; production changes remain subject to the existing human decision gate.
+- Record the exact human design approval and its required subject-token and spelling safeguards.

@@ -19,6 +19,8 @@ domain: complicated
 outcome: none
 gate-why: "Changes PR/claim-to-work binding; an alias collision or lost repository scope could associate a foreign owner or authorization with the wrong work."
 decision-trigger: spec
+design: DR-milestone-support-08
+ruling: "https://github.com/medici-finance/assay/issues/5704#issuecomment-6715665207"
 sources:
   - docs/streams/milestone-support/README.md
   - spec/milestone-v1.md
@@ -88,13 +90,18 @@ Before changing the governed boundary, present the concrete implementation/desig
 
 Default if no answer: none — blocks until answered
 
-### Bounded design for the pending ruling
+### Bounded design and recorded ruling
 
-**Proposal only, inspected 7 November 2026.** This section prepares the decision
-above. It does not approve a design, implement reference support, advance this
-brief, or supply Verify/Evidence credit. The original Task and Verify rows below
-remain the implementation contract. Record accept, corrections or hold through the
-[existing decision issue](https://github.com/medici-finance/assay/issues/5704); acceptance must identify the reviewed proposal revision.
+**Design approved, implementation outstanding.** The driver accepted the proposal at
+`5e8f7424a78027d9988801182e9ac8a82ba4977f` through the
+[unedited human ruling](https://github.com/medici-finance/assay/issues/5704#issuecomment-6715665207).
+The approval requires duplicate or note-injected subject tokens to be rejected, and
+spellings refused by the strict resolver never to be admitted through legacy
+normalization. [DR-milestone-support-08](../decisions/DR-milestone-support-08.md)
+records this bounded approval. The original Task and Verify rows below remain the
+implementation contract; no implementation, lifecycle advance or Evidence credit is
+claimed here. The proposal text below records what was reviewed; its earlier
+pending-ruling statements are superseded only by this exact approval and conditions.
 
 #### Architecture pickup
 
