@@ -21,7 +21,9 @@ roll remains a separate downstream job under its own existing identity.
    prepared source revision and its archive; preserve any local stamp commits
    in a Git bundle for the final tag.
 2. In the approved release job, verify the build inputs and use those exact
-   Linux statusgen and desk-tools bytes for all images. Build desk-tools first,
+   Linux statusgen and desk-tools bytes for every image that carries them
+   (deskd carries neither: it compiles from source inside its `docker build`,
+   with modules held to `deskd/go.sum`). Build desk-tools first,
    desk-base from that newly built version, and the five desks from that base.
    Build assay-harness with the same binaries and prepared plugin source, then
    deskd from `images/deskd/Dockerfile` with `deskd/` as its only build context
@@ -29,6 +31,14 @@ roll remains a separate downstream job under its own existing identity.
    verify-runner from the release statusgen plus its digest-pinned Go base and
    the Debian packages (Python libraries and row tools) pinned in
    `images/verify-runner/Dockerfile`.
+   Before every image build, on the publisher and on the native ARM64 runner,
+   the release clears all BuildKit exec cache mounts
+   (`docker builder prune --all --force --filter type=exec.cachemount`), and a
+   failed prune stops the release. Cache mounts outlive the build that wrote
+   them and are shared by target path across builds on one daemon. On a
+   non-ephemeral runner, a mount an earlier build left behind (another ref, a
+   dry run) would otherwise feed a published binary. Every build goes through
+   that one path, and the tests refuse a build call that bypasses it.
    verify-runner is multi-arch: it is built once for `linux/amd64` and once for
    `linux/arm64`, each from the matching `statusgen-linux-<arch>` release
    binary, and each build's OS/architecture is read back before any check.

@@ -28,6 +28,28 @@ VERSION = 'v1.2.3'
 SOURCE = 'a' * 40
 
 
+def raw_docker_builds(source):
+    """Line numbers of docker build argument lists outside images.docker_build."""
+    import ast
+    found, inside = [], set()
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == 'docker_build':
+            inside.update(id(n) for n in ast.walk(node))
+    for node in ast.walk(tree):
+        items = node.args if isinstance(node, ast.Call) else node.elts if isinstance(node, (ast.List, ast.Tuple)) else None
+        if items is None or id(node) in inside:
+            continue
+        words = []
+        for item in items:
+            if not (isinstance(item, ast.Constant) and isinstance(item.value, str)):
+                break
+            words.append(item.value)
+        if words[:1] == ['docker'] and 'build' in words[1:3]:
+            found.append(node.lineno)
+    return found
+
+
 NATIVE_CONFIG = b'{"architecture":"arm64","os":"linux"}'
 NATIVE_ID = 'sha256:' + hashlib.sha256(NATIVE_CONFIG).hexdigest()
 
@@ -1017,6 +1039,7 @@ with open(os.environ['CALLS'], 'a') as f: f.write(json.dumps(args)+'\\n')
 mode = os.environ.get('MODE', '')
 def digest(ref): return 'sha256:' + hashlib.sha256(ref.encode()).hexdigest()
 ARCHES = {'linux/amd64': '-linux-amd64', 'linux/arm64': '-linux-arm64'}
+if args[:2] == ['builder', 'prune']: sys.exit(1 if mode == 'prune-fail' else 0)
 if args[:1] == ['info']:
     print('linux/amd64' if mode == 'native-wrong-host' else 'linux/aarch64'); sys.exit(0)
 if args[:1] == ['save']:
@@ -1056,7 +1079,7 @@ if args[:2] == ['image', 'inspect'] and args[3] == '{{json .Config}}':
     revision = 'b'*40 if mode == 'deskd-wrong-revision' else 'a'*40
     print(json.dumps({'User': user, 'Labels': {'org.opencontainers.image.revision': revision}})); sys.exit(0)
 if args[0] == 'run' and args[-1] == '--help':
-    if mode != 'deskd-no-usage': print('Usage of /deskd:\\n  -addr string', file=sys.stderr)
+    print('deskd: no usage here' if mode == 'deskd-no-usage' else 'Usage of /deskd:\\n  -addr string', file=sys.stderr)
     sys.exit(0)
 if args[:2] == ['image', 'inspect'] and args[3] == '{{.Os}}/{{.Architecture}}':
     platform = next(p for p, suffix in ARCHES.items() if args[-1].endswith(suffix))
@@ -1336,6 +1359,8 @@ if args[:2] == ['image', 'inspect']:
                 self.assertFalse(any('"push"' in s for s in case.recorded()))
                 self.assertFalse((case.out / 'release-images.json').exists())
                 self.assertFalse((case.out / 'verify-runner-image.txt').exists())
+                if mode == 'deskd-no-usage':
+                    self.assertIn('deskd: no usage here', result.stderr)
 
     # regression: cell-api/09
     def test_deskd_contract_compatibility(self):
@@ -1410,6 +1435,51 @@ if args[:2] == ['image', 'inspect']:
                 self.assertEqual(set(contract.validate(*args, names=both)), set(contract.LEGACY_NAMES))
                 with self.assertRaises(ValueError):
                     contract.validate(*args)
+
+    # regression: cell-api/09 f-sec-1
+    def test_release_builds_clear_cache_mounts(self):
+        spec = importlib.util.spec_from_file_location('images', HERE / 'images.py')
+        images = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(images)
+        prune = list(images.PRUNE_CACHE_MOUNTS[1:])
+        self.assertEqual(prune, ['builder', 'prune', '--all', '--force', '--filter', 'type=exec.cachemount'])
+
+        def parsed(case):
+            return [json.loads(s) if s.startswith('[') else s for s in case.recorded()]
+
+        # Every image build, publisher and native ARM64 job alike, starts on
+        # cleared cache mounts: the call right before each build is the prune.
+        native = self.fresh()
+        results = [self.invoke(), native.invoke_native()]
+        for case, result in zip((self, native), results):
+            self.assertEqual(result.returncode, 0, result.stderr)
+            calls = parsed(case)
+            builds = [i for i, c in enumerate(calls) if isinstance(c, list) and c[:1] == ['build']]
+            self.assertEqual(len(builds), 10 if case is self else 1)
+            self.assertEqual([calls[i - 1] for i in builds], [prune] * len(builds))
+            self.assertEqual(sum(c == prune for c in calls), len(builds))
+
+        # A failed prune stops the release before any build, push or metadata write.
+        case = self.fresh()
+        result = case.invoke(True, 'prune-fail')
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn('prune', result.stderr)
+        self.assertEqual([c for c in parsed(case) if isinstance(c, list) and c[:1] in (['build'], ['push'])], [])
+        self.assertFalse((case.out / 'release-images.json').exists())
+
+        # The guard covers the class: no build call may bypass docker_build. A
+        # planted second build that does is caught; the shipped module has none.
+        source = (HERE / 'images.py').read_text()
+        self.assertEqual(raw_docker_builds(source), [])
+        planted = source.replace('    check_runner_platform(ref, platform)\n',
+                                 '    check_runner_platform(ref, platform)\n'
+                                 '    run("docker", "build", "-t", ref, root)\n', 1)
+        self.assertNotEqual(planted, source)
+        self.assertEqual(len(raw_docker_builds(planted)), 1)
+        spelled = source.replace('    check_runner_platform(ref, platform)\n',
+                                 '    check_runner_platform(ref, platform)\n'
+                                 '    subprocess.run(["docker", "buildx", "build", root])\n', 1)
+        self.assertEqual(len(raw_docker_builds(spelled)), 1)
 
     def fresh(self):
         """Another copy of this test's fixture, in a temporary root of its own."""

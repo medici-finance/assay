@@ -24,6 +24,21 @@ def run(*args, capture=False):
                           stdout=subprocess.PIPE if capture else None).stdout
 
 
+# BuildKit cache mounts (RUN --mount=type=cache) outlive the build that wrote
+# them and are shared by target path across every build on the daemon. Release
+# builds run on a non-ephemeral runner, so a mount written by an earlier build
+# (another ref, a dry run) must never feed a published image. Every release
+# image build goes through docker_build, which clears all exec cache mounts
+# first and stops the release if that fails; tests refuse any other build call.
+PRUNE_CACHE_MOUNTS = ("docker", "builder", "prune", "--all", "--force",
+                      "--filter", "type=exec.cachemount")
+
+
+def docker_build(*args):
+    run(*PRUNE_CACHE_MOUNTS)
+    run("docker", "build", *args)
+
+
 def build_images(root, version, source, prefix, verify_image, artifacts, out, publish, *, native):
     if not re.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version):
         raise ValueError("a bare umbrella vMAJOR.MINOR.PATCH is required")
@@ -110,22 +125,22 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
         shutil.copyfile(path, stage / "desk-tools" / path.name)
         (stage / "desk-tools" / path.name).chmod(path.stat().st_mode)
     (bins / "bugs-gc").unlink()
-    run("docker", "build", "--platform", "linux/amd64", *stamps,
+    docker_build("--platform", "linux/amd64", *stamps,
         "--build-arg", "BINARY_STAGE=released", "-t", refs["desk-tools"],
         "-f", root / "Dockerfile", root)
-    run("docker", "build", "--platform", "linux/amd64", "--build-arg", "BINARY_STAGE=released",
+    docker_build("--platform", "linux/amd64", "--build-arg", "BINARY_STAGE=released",
         "--build-arg", f"ASSAY_VERSION={version}", "--build-arg", f"SOURCE_REVISION={source}",
         "--build-arg", "SOURCE_URL=https://github.com/" + prefix.removeprefix("ghcr.io/"),
         "-t", refs["assay-harness"], "-f", root / "images/assay-harness/Dockerfile", root)
-    run("docker", "build", "--platform", "linux/amd64", *stamps,
+    docker_build("--platform", "linux/amd64", *stamps,
         "--build-arg", f"DESK_TOOLS_IMAGE={refs['desk-tools']}",
         "-t", refs["desk-base"], "-f", root / "containers/base/Dockerfile", root)
     for name in DESKS:
-        run("docker", "build", "--platform", "linux/amd64", "--build-arg",
+        docker_build("--platform", "linux/amd64", "--build-arg",
             f"BASE_IMAGE={refs['desk-base']}", "-t", refs[name],
             "-f", root / f"containers/{name}/Dockerfile", root)
     # deskd's build context is its own public module, never the repository root.
-    run("docker", "build", "--platform", "linux/amd64", "--build-arg", f"REVISION={source}",
+    docker_build("--platform", "linux/amd64", "--build-arg", f"REVISION={source}",
         "-t", refs["deskd"], "-f", root / "images/deskd/Dockerfile", root / "deskd")
     # ARM64 is built and checked on a native runner. Import its exact checked
     # image; this publisher must never register an emulator or execute ARM64.
@@ -189,12 +204,16 @@ def check_deskd(ref, source):
     print("+ " + " ".join(args), flush=True)
     result = subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     if result.returncode != 0 or "Usage of" not in result.stdout or "-addr" not in result.stdout:
-        raise ValueError(f"deskd image did not print its usage (exit {result.returncode})")
+        # The output is the binary's own text from a --network none run; keep
+        # a bounded tail so the release log alone can diagnose the failure.
+        tail = result.stdout[-2000:]
+        raise ValueError(f"deskd image did not print its usage (exit {result.returncode}); "
+                         f"output tail: {tail!r}")
 
 
 def build_runner(root, platform, ref):
     # Each platform must push as ONE manifest, not a provenance/SBOM index.
-    run("docker", "build", "--platform", platform,
+    docker_build("--platform", platform,
         "--provenance=false", "--sbom=false", "-t", ref,
         "-f", root / "images/verify-runner/Dockerfile", root)
     check_runner_platform(ref, platform)
