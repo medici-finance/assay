@@ -295,6 +295,8 @@ in argv. No environment variable enables these reads. Without opt-in, transition
 records remain held while unamended records retain their existing offline behavior.
 Each authoritative evaluation corroborates the ruling afresh; there is no local
 approval cache or supplied approval boolean.
+A Verify row that expects a clean repo-wide lint is credited by the forge-enabled
+run, as [brief-rules rule 51](brief-rules.md) states.
 
 Before promoting a transitioned brief, the adopting repository must upgrade its
 pinned binary and explicitly enable `--acceptance-forge` on **every authoritative
