@@ -240,7 +240,7 @@ func TestFlowCapacity(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		mustContain(t, out, "advice: no widening", "9 held on a human decision/action, 4 continuation")
+		mustContain(t, out, "advice: no widening", "9 held on a human decision/action, 4 continuation", "reported only")
 		mustLack(t, out, "may widen")
 
 		// 8 in flight (assumed: the width) + 2 waiting = 10 lanes of work; held items add none.
@@ -280,5 +280,18 @@ func TestFlowCapacity(t *testing.T) {
 		}
 		mustContain(t, out, "repo acme/beta: gate pr-create", "advice: no widening — bound by the landing write budget on acme/beta refuses now")
 		mustLack(t, out, "may widen")
+	})
+
+	t.Run("argument checks", func(t *testing.T) {
+		newCapLedger(t)
+		out, err := capRun(t, now, "--role", "worker-desk", "--repo", alpha, "--in-flight", "-2")
+		if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || out != "" {
+			t.Fatalf("--in-flight below -1 must be refused before any reading, got %v / %q", err, out)
+		}
+		out, err = capRun(t, now, "--help")
+		if err != nil {
+			t.Fatal(err)
+		}
+		mustContain(t, out, "-in-flight", "-continuation")
 	})
 }

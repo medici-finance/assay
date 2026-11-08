@@ -104,15 +104,15 @@ func TestBoundedPointsForMatchesFullParseVerdicts(t *testing.T) {
 		f    func(mine []auditPoint) error
 	}
 	probes := []probe{
-		{"breaker pr=11", func(m []auditPoint) error { return checkBreaker(tool, repo, 11, now, m) }},
-		{"breaker pr=22", func(m []auditPoint) error { return checkBreaker(tool, repo, 22, now, m) }},
-		{"breaker pr=33", func(m []auditPoint) error { return checkBreaker(tool, repo, 33, now, m) }},
-		{"breaker repo-wide", func(m []auditPoint) error { return checkBreakerRepo(tool, repo, now, m) }},
-		{"breaker backstop", func(m []auditPoint) error { return checkBreakerBackstop(tool, now, m) }},
-		{"budget pr=33", func(m []auditPoint) error { return checkPRBudget(tool, repo, 33, now, m) }},
-		{"budget repo", func(m []auditPoint) error { return checkRepoBudget(tool, repo, now, m) }},
-		{"budget repo-wide", func(m []auditPoint) error { return checkRepoWideBudget(tool, repo, now, m) }},
-		{"budget tool-wide", func(m []auditPoint) error { return checkToolBudget(tool, now, m) }},
+		{"breaker pr=11", func(m []auditPoint) error { return checkBreaker(tool, repo, 11, BreakerTrip, now, m) }},
+		{"breaker pr=22", func(m []auditPoint) error { return checkBreaker(tool, repo, 22, BreakerTrip, now, m) }},
+		{"breaker pr=33", func(m []auditPoint) error { return checkBreaker(tool, repo, 33, BreakerTrip, now, m) }},
+		{"breaker repo-wide", func(m []auditPoint) error { return checkBreakerRepo(tool, repo, BreakerTrip, now, m) }},
+		{"breaker backstop", func(m []auditPoint) error { return checkBreakerBackstop(tool, BreakerBackstopTrip, now, m) }},
+		{"budget pr=33", func(m []auditPoint) error { return checkPRBudget(tool, repo, 33, RateLimitPerPRPerHour, now, m) }},
+		{"budget repo", func(m []auditPoint) error { return checkRepoBudget(tool, repo, RateLimitPerRepoPerHour, now, m) }},
+		{"budget repo-wide", func(m []auditPoint) error { return checkRepoWideBudget(tool, repo, RateLimitPerPRPerHour, now, m) }},
+		{"budget tool-wide", func(m []auditPoint) error { return checkToolBudget(tool, RateLimitPerPRPerHour, now, m) }},
 	}
 	tripped := 0
 	for _, p := range probes {
@@ -132,7 +132,7 @@ func TestBoundedPointsForMatchesFullParseVerdicts(t *testing.T) {
 	}
 
 	// And the end-to-end gate, which is what a caller actually sees.
-	if a, b := AllowWriteAt(tool, repo, 11, now), checkBreaker(tool, repo, 11, now, oracle); (a == nil) != (b == nil) {
+	if a, b := AllowWriteAt(tool, repo, 11, now), checkBreaker(tool, repo, 11, BreakerTrip, now, oracle); (a == nil) != (b == nil) {
 		t.Fatalf("AllowWriteAt disagrees with the whole-parse breaker on the tripped target: %v vs %v", a, b)
 	}
 }

@@ -39,7 +39,7 @@ func runCapacity(w io.Writer, args []string) error {
 	continuation := fs.Int("continuation", 0, "Continuation items (resume/rework) waiting; they use the reserved slots, not new dispatch lanes")
 	for _, a := range args {
 		if a == "-h" || a == "--help" || a == "help" {
-			fs.SetOutput(os.Stdout)
+			fs.SetOutput(w)
 			fs.Usage()
 			return nil
 		}
@@ -63,6 +63,9 @@ func runCapacity(w io.Writer, args []string) error {
 	}
 	if *held < 0 || *continuation < 0 {
 		return deskkit.Refused("refused: --held and --continuation are counts and cannot be negative")
+	}
+	if *inFlight < -1 {
+		return deskkit.Refused("refused: --in-flight is a count; omit it (or pass -1) to assume the resolved width")
 	}
 
 	now := capacityNow().UTC()
@@ -111,7 +114,8 @@ func runCapacity(w io.Writer, args []string) error {
 	}
 	fmt.Fprintf(w, "provider/cross-host capacity: %s\n", deskkit.ProviderCapacityUnknown)
 	if *held > 0 || *continuation > 0 {
-		fmt.Fprintf(w, "not dispatch lanes: %d held on a human decision/action, %d continuation (uses the %d reserved slot(s))\n",
+		fmt.Fprintf(w, "not dispatch lanes: %d held on a human decision/action, %d continuation (uses the %d reserved slot(s)); "+
+			"reported only — their landing writes are reserved only through --in-flight\n",
 			*held, *continuation, reserved)
 	}
 

@@ -236,9 +236,8 @@ func TestThroughput_AdviceIsAnExactCommandOrSaysWhyNot(t *testing.T) {
 		}
 		return
 	}
-	if strings.Contains(rep.Advice, "no widening — bound by") {
-		return // a landing or depth bound, stated
-	}
+	// The fixture's ledger is empty, so neither landing nor depth binds: the advice must be the
+	// exact widening command, never a "no widening" line that would skip the checks below.
 	cmd := "deskroster set --role " + s.Loop + " --width "
 	i := strings.Index(rep.Advice, cmd)
 	if i < 0 {
