@@ -197,6 +197,49 @@ RISK-VALUE: DERIVED — packetMaxAge = 7 * 24 * time.Hour @ tools/desk/cmd/deskd
 
 **VERIFY: BLOCKED** — 4/7 rows pass at source 011f14965ef2; rows 3, 6 and 7 could-not-check (row 3 needs a lane with a git directory, a forge origin and a non-root user, #4327, #4322; row 6 is pre-merge only; row 7's lint is red on desktools-v2/65, #4823); no obligation of this brief observed failing.
 
+### Postmerge verification, 2026-11-08, source 2e1ddcbd72
+
+Re-verification by a non-implementer verifier (model claude-opus-5-5, tier any) under desk tools v1.0.78, at source 2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f, which contains the delivery of PR #4073 (merge 6cdcf0c06afa, first parent 924cd4cfb6fd). Admission passed (`deskdispatch --check-verifier`, exit 0, verifier attestation checked clean). Rows 4, 6 and 7 ran on the host through `statusgen verifyrun`, which wrote the table below. The `check:ci` rows 1, 2, 3 and 5 ran through the container bracket on darwin/arm64 (`--sandbox=container-netns`, network none, home mounted read-only, the linux/arm64 manifest of the pinned verify-runner image), witnessed in the second table.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `git diff origin/main -- tools/desk/internal/deskkit/verifiersource.go tools/desk/internal/deskkit/verifierattestation.go tools/desk/internal/deskkit/verifyoutcomes.go \| wc -l` | pass exit=0 | sha256:4eff2db4bada | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --root . --consumers --brief desktools-v2/72 --base $(git merge-base origin/main HEAD)` | fail exit=2 | sha256:5599fce38a2d | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `statusgen --root . --lint` | fail exit=1 | sha256:95e2008f0eee | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5829 run=0d1d65f29ecd555164d06b6451b86ad569ab640e64fbb3af08ea5463b7f79742 source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f brief=docs/streams/desktools-v2/brief-72-land-verifier-outcome-records-from-a-dispatcher-named-path-outside-the-home.md model=claude-opus-5-5 tier=any
+
+Container witness for the check:ci rows:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestVerifierOutcomePath$' -count=1 -v` | could-not-run exit=1 sandbox=container-netns — image module cache predates go.sum (github.com/mattn/go-isatty v0.0.24 vs v0.0.20): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:2260846baebe | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestOutcomeRecordOutsideRoot$' -count=1 -v` | could-not-run exit=1 sandbox=container-netns — image module cache predates go.sum (github.com/mattn/go-isatty v0.0.24 vs v0.0.20): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:4fcba3fd16ff | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskevidence/ ./cmd/deskdispatch/ ./internal/deskkit/ -count=1` | could-not-run exit=1 sandbox=container-netns — image module cache does not match go.sum (github.com/jackc/pgx/v5 v5.12.0 vs none; github.com/mattn/go-isatty v0.0.24 vs v0.0.20; github.com/pressly/goose/v3 v3.29.0 vs none): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:2d79f0a994ab | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check` | could-not-run exit=1 sandbox=container-netns — image module cache predates go.sum (github.com/mattn/go-isatty v0.0.24 vs v0.0.20): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:20d1fed66f2d | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:1d843a770e690a7bd01d131ad76d41f0ed001b69b9bdc86fdb9bd443b1d0db82
+Container-Image: sha256:576cb2e49407447769b79a32af370a23e1c108d62842b8f1772a809d1d3b7617
+Verification-Attestation: medici-finance/assay#5829 run=0d1d65f29ecd555164d06b6451b86ad569ab640e64fbb3af08ea5463b7f79742 source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f brief=docs/streams/desktools-v2/brief-72-land-verifier-outcome-records-from-a-dispatcher-named-path-outside-the-home.md model=claude-opus-5-5 tier=any
+Admission-Bracket: run=0d1d65f29ecd555164d06b6451b86ad569ab640e64fbb3af08ea5463b7f79742 source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f tree=sha256:1d843a770e690a7bd01d131ad76d41f0ed001b69b9bdc86fdb9bd443b1d0db82 witness=sha256:646fe7d83a8ffab1ae8c4984154479bd4db926079ca4cb117618ee365a063db4 opened=2026-11-08T07:58:48Z closed=2026-11-08T07:59:57Z before=receipt after=check-verifier
+
+Row notes:
+
+- Row 4 passes: the three named deskkit files are unchanged against origin/main (0 lines).
+- Rows 1, 2, 3 and 5 are not run: the pinned runner image's module cache predates the verified tree's go.sum (github.com/mattn/go-isatty v0.0.24 vs v0.0.20; row 3 also lacks pgx/v5 and goose/v3), so each row stopped on module resolution before its test ran. This is the known image gap, #4683. None of them is a failure of this brief. The earlier lane gap on row 3 (#4327, #4322) is superseded by this one.
+- Row 6 is not run as specified: its Expect is stated for the pre-merge implementation branch. On merged main `git merge-base origin/main HEAD` is HEAD itself, and the command exits 2. A supplemental read with the delivery pinned (`--delivery 6cdcf0c06afa --base 924cd4cfb6fd`) exits 0 with 3 follow-ups corroborated (the deskdispatch and deskevidence changes and the verify-desk skill and Cursor mirror), 0 disproved, and 2 unchecked out-of-scope judgments. That read carries no credit.
+- Row 7 exits 1. The PROBLEM lines are acceptance-transition checks on desk-tools/37, desktools-v2/65 and forge-neutral/54, each needing `--acceptance-forge` for a human-authority read that this offline lane does not make. None names desktools-v2/72. The lint has stayed red on desktools-v2/65 since the earlier run (#4823), and that still holds.
+- Fail-first: `--fail-first --base 924cd4cfb6fd --dry-run` over rows 4, 6 and 7 reports no risk-bearing row among the selected rows (the brief's risk fields are all `no`, and no row carries a risk-bearing, live, mutating or end-to-end tag), so no fail-first witness is owed.
+- Supplemental mutation probes (no credit; run on an exported copy of the source, offline module cache): replacing the claim-key refusal in `outcomeClaimDir` with a sanitize-and-accept makes `TestVerifierOutcomePath` fail on its traversal-shaped-claim-key subtest on both branches (user cache and beside `--prompt-file`). Dropping `|| pathWithin(root, localFile)` from the deskevidence guard makes `TestOutcomeRecordOutsideRoot` fail on its absolute-path-inside-the-home and symlink-alias subtests. Both row-1 and row-2 tests detect their mutation.
+
+Accounting: 7 rows; 1 pass (row 4); 5 not run (rows 1, 2, 3, 5 on the image gap; row 6 pre-merge only); row 7 exits 1 on other briefs; 0 failed obligations of this brief.
+
+RISK-VALUE: DERIVED — outcomeDirName = "outcomes" @ tools/desk/cmd/deskdispatch/outcomepath.go:25; user-cache subpath assay/outcomes @ :60
+RISK-VALUE: DERIVED — outcome dir mode 0o700 (MkdirAll @ tools/desk/cmd/deskdispatch/outcomepath.go:135, Chmod @ :141)
+RISK-VALUE: DERIVED — group/world-writable refusal mask 0o022 @ tools/desk/cmd/deskdispatch/outcomepath.go:164
+RISK-VALUE: DERIVED — packetMaxAge = 7 * 24 * time.Hour @ tools/desk/cmd/deskdispatch/packet.go:154
+
+**VERIFY: BLOCKED** — 1/7 rows pass at source 2e1ddcbd72c2 (row 4); rows 1, 2, 3 and 5 are not run on the runner image's module-cache gap (#4683); row 6 is not run because its Expect is pre-merge only; row 7 exits 1 on lint PROBLEMs in other briefs (desk-tools/37, desktools-v2/65, forge-neutral/54; #4823), none naming this brief; no obligation of this brief observed failing.
+
+
 ## Review
 
 Gate: model. Independent correctness review of the exact head.
