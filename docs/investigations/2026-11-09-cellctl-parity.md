@@ -36,7 +36,10 @@ configured cases.
 The existing KUBECONFIG mutation still causes a named divergent scrubbed desk
 comparison. The PostgreSQL runner's controls reject absent inputs, an unrelated
 Compose error and credential use planted in a second file. Row 10 retains the
-whole-package run and also requires the delivery's named database test.
+whole-package run and also requires the delivery's named database test. It names
+the physical temporary directory before Go fixtures run, preserving cache
+validation's rejection of symlink path components on macOS. Docker container,
+volume and network inspection errors remain failures, separate from empty results.
 
 ## Acceptance transition handoff
 

@@ -41,6 +41,10 @@ case "$row" in
 10)
   need go
   test -s tools/desk/cmd/cellctl/celldb_test.go
+  # Go fixtures must name the physical temp directory: macOS /var is a symlink,
+  # which the cache custody positive control deliberately refuses.
+  TMPDIR=$(cd "${TMPDIR:-/tmp}" && pwd -P)
+  export TMPDIR
   go -C tools/desk test ./cmd/cellctl/ -run '^TestCellDB$' -timeout 120s -count=1 -v >"$work/celldb.out" 2>&1
   cat "$work/celldb.out"
   grep -F -e '--- PASS: TestCellDB (' "$work/celldb.out"

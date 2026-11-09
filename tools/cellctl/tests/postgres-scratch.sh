@@ -37,9 +37,13 @@ python3 -I -c 'import secrets; print(secrets.token_urlsafe(32))' >"$ASSAY_PG_SEC
 export ASSAY_PG_HOST_PORT
 ASSAY_PG_HOST_PORT=$(python3 -I -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
 docker info >/dev/null
-test -z "$(docker ps -aq --filter "label=com.docker.compose.project=$project")" || { echo 'scratch project already exists; refusing' >&2; exit 1; }
-test -z "$(docker volume ls -q --filter "label=com.docker.compose.project=$project")" || { echo 'scratch volume already exists; refusing' >&2; exit 1; }
-test -z "$(docker network ls -q --filter "label=com.docker.compose.project=$project")" || { echo 'scratch network already exists; refusing' >&2; exit 1; }
+# Keep inspection failure separate from an inspected empty result.
+containers=$(docker ps -aq --filter "label=com.docker.compose.project=$project")
+test -z "$containers" || { echo 'scratch project already exists; refusing' >&2; exit 1; }
+volumes=$(docker volume ls -q --filter "label=com.docker.compose.project=$project")
+test -z "$volumes" || { echo 'scratch volume already exists; refusing' >&2; exit 1; }
+networks=$(docker network ls -q --filter "label=com.docker.compose.project=$project")
+test -z "$networks" || { echo 'scratch network already exists; refusing' >&2; exit 1; }
 image=$(compose config --images)
 docker image inspect "$image" >/dev/null || { echo 'could-not-check: pinned image is not cached; no pull performed' >&2; exit 6; }
 go -C tools/desk build -o "$work/cellctl" ./cmd/cellctl

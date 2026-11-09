@@ -40,6 +40,7 @@ reject 10 'missing delivery test (base shape)'
 scratch=$(dirname "$runner")/postgres-scratch.sh
 cat >"$work/bin/docker" <<'EOF'
 #!/usr/bin/env bash
+if [[ "${DOCKER_FAIL:-}" == "${1:-}" ]]; then exit 9; fi
 case "$*" in
   'context inspect '*) echo unix:///example-fixture.sock;;
   info|'ps -aq '*|'volume ls -q '*) ;;
@@ -63,10 +64,18 @@ network_guard() {
   test "$rc" -eq 1 && grep -F 'scratch network already exists; refusing' "$work/network.out" && test ! -e "$FENCE_MARK"
 }
 network_guard "$scratch"
-sed '/test -z.*docker network ls -q/d' "$scratch" >"$work/no-network-guard.sh"
+# shellcheck disable=SC2016 # Match literal shell source, never expand its variables.
+sed -e '/^networks=$(docker network ls -q/d' -e '/^test -z "$networks"/d' "$scratch" >"$work/no-network-guard.sh"
 if network_guard "$work/no-network-guard.sh"; then
   echo 'FAIL: removed network guard was not detected' >&2; exit 1
 fi
 test -s "$FENCE_MARK"
 printf 'ok network guard mutation detected before any real daemon effect\n'
+rm "$FENCE_MARK"
+for inspection in ps volume network; do
+  rc=0
+  (cd "$work/repo" && DOCKER_CONTEXT=fixture DOCKER_FAIL="$inspection" bash "$scratch") >"$work/inspection.out" 2>&1 || rc=$?
+  test "$rc" -eq 9 && test ! -e "$FENCE_MARK"
+  printf 'ok rejected failed %s inspection\n' "$inspection"
+done
 printf 'ok PostgreSQL Verify controls\n'
