@@ -80,6 +80,19 @@ func openRunState(path string) (*runState, error) {
 	if err != nil {
 		return nil, err
 	}
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		_ = f.Close()
+		return nil, fmt.Errorf("opened state descriptor is not a regular file")
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o022 != 0 {
+		_ = f.Close()
+		return nil, fmt.Errorf("state file is group/world writable; use a private caller-owned file")
+	}
 	if err := deskkit.TryLockExclusive(f); err != nil {
 		_ = f.Close()
 		return nil, fmt.Errorf("writer lock: %w", err)
@@ -345,10 +358,26 @@ func stateIdentity(s spec, o options) (string, error) {
 			return "", err
 		}
 		files[goPath] = true
-		cmd := exec.Command("go", append([]string{"list", "-deps", "-test", "-json"}, args...)...)
+		cmd := exec.Command("go", "env", "-json")
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), assigns...)
 		out, err := trackedOutput(cmd, false)
+		if err != nil {
+			return "", err
+		}
+		var settings map[string]string
+		if err := json.Unmarshal(out, &settings); err != nil {
+			return "", err
+		}
+		if resolvedFlags := settings["GOFLAGS"]; strings.TrimSpace(resolvedFlags) != "" {
+			if _, _, _, err := stateGoArgs("go test " + resolvedFlags + " ."); err != nil {
+				return "", fmt.Errorf("resolved GOFLAGS inputs: %w", err)
+			}
+		}
+		cmd = exec.Command("go", append([]string{"list", "-deps", "-test", "-json"}, args...)...)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), assigns...)
+		out, err = trackedOutput(cmd, false)
 		if err != nil {
 			return "", fmt.Errorf("resolve Go compilation inputs: %w", err)
 		}
@@ -376,17 +405,6 @@ func stateIdentity(s spec, o options) (string, error) {
 					files[sum] = true
 				}
 			}
-		}
-		cmd = exec.Command("go", "env", "-json")
-		cmd.Dir = root
-		cmd.Env = append(os.Environ(), assigns...)
-		out, err = trackedOutput(cmd, false)
-		if err != nil {
-			return "", err
-		}
-		var settings map[string]string
-		if err := json.Unmarshal(out, &settings); err != nil {
-			return "", err
 		}
 		// GOGCCFLAGS contains a freshly minted work directory. Its meaningful
 		// inputs are already bound by the target/toolchain and inherited CGO flags.

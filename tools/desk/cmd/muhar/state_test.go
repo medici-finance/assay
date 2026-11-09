@@ -289,6 +289,24 @@ func TestStateRejectsNewTree(t *testing.T) {
 		}
 	})
 
+	t.Run("unsafe-state", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Unix file permission bits")
+		}
+		path := filepath.Join(t.TempDir(), "shared.jsonl")
+		writeFixture(t, path, "")
+		if err := os.Chmod(path, 0o666); err != nil {
+			t.Fatal(err)
+		}
+		state, err := openRunState(path)
+		if state != nil {
+			state.close()
+		}
+		if err == nil || !strings.Contains(err.Error(), "group/world writable") {
+			t.Fatalf("shared writable state accepted: %v", err)
+		}
+	})
+
 	t.Run("Go-inputs", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("POSIX toolchain shim")
@@ -328,6 +346,19 @@ func TestStateRejectsNewTree(t *testing.T) {
 		if err != nil || scheduled != base {
 			t.Fatalf("scheduling changed identity: %v", err)
 		}
+
+		t.Run("goenv-flags", func(t *testing.T) {
+			config := filepath.Join(t.TempDir(), "goenv")
+			writeFixture(t, config, "GOFLAGS=-overlay=unbound.json\n")
+			t.Setenv("GOENV", config)
+			t.Setenv("GOFLAGS", "")
+			if err := os.Unsetenv("GOFLAGS"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := stateIdentity(s, o); err == nil || !strings.Contains(err.Error(), "cannot resolve external inputs") {
+				t.Fatalf("unbound configured overlay accepted: %v", err)
+			}
+		})
 		t.Run("external-flags", func(t *testing.T) {
 			t.Setenv("GOFLAGS", "-overlay="+filepath.Join(t.TempDir(), "overlay.json"))
 			if _, err := stateIdentity(s, o); err == nil || !strings.Contains(err.Error(), "cannot resolve external inputs") {

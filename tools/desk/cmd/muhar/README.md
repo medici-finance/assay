@@ -486,6 +486,11 @@ a flag error prints nothing to stdout. (Tracked as
 
 ## Using muhar as a CI gate
 
+With `-state`, the state file is trusted verdict input. Never restore it from a
+cache or artifact writable by an untrusted branch. Keep it in a private,
+caller-owned directory. Its identity digest detects incompatible inputs; it does
+not authenticate the observations stored in the file.
+
 Exit 0 only says the instrument worked, so a gate has to check the totals line
 too. This is the pattern this repository's own workflows use:
 
@@ -544,6 +549,11 @@ muhar -spec mutations.json -state "$RUN_STATE_DIR/shipping.jsonl"
 # After SIGINT/SIGTERM, repeat the same command and path.
 ```
 
+The state file is trusted verdict input: never resume from an untrusted branch's
+cache or artifact. The opened descriptor must be a regular file; on Unix an
+existing group- or world-writable file is refused. Windows access control remains
+the caller's responsibility.
+
 There is no manifest state path or shared default. The caller owns retention,
 permissions and removal; separate specs, shards, modes or changed inputs need
 separate paths. One invocation holds a nonblocking exclusive file lock through
@@ -576,10 +586,13 @@ flags are bound through the spec. The complete-tree input set is intentionally
 conservative: even an unrelated fixture edit invalidates reuse. Keep generated
 logs/output outside the tree. File symlinks are read through; directory symlinks
 refuse because a complete input inventory cannot be proved. `-j` is scheduling
-and does not change identity. External-input flags (`-overlay`, `-modfile`, `-pgo`,
-`-toolexec`, `-exec`), unknown Go flags and shell compositions containing Go
-including inherited/command-local GOFLAGS inputs, and command-local PATH overrides refuse with `-state`; plain Go commands expose a provable compilation closure. Set PATH for the whole invocation instead.
-Absolute/relative paths to a Go executable refuse with `-state`; put the selected Go executable on PATH. Other shell suites use the conservative tree inventory; their external data and
+and does not change identity. With `-state`, external-input flags (`-overlay`, `-modfile`, `-pgo`,
+`-toolexec`, `-exec`) and unknown Go flags are refused. The same check applies to
+GOFLAGS from the environment, a command-local assignment or the go env file.
+Go shell compositions and command-local PATH overrides also refuse. Set PATH for
+the whole invocation, with the chosen Go executable named `go`; absolute or
+relative paths to a Go executable are unsupported with `-state`.
+Other shell suites use the conservative tree inventory; their external data and
 executables must remain stable under the caller's control.
 
 The environment binding is intentionally conservative: shell variables such as
