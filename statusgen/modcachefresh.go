@@ -208,8 +208,11 @@ func matchModulePattern(pattern, path string) bool {
 // in its go.sum) must be on the approved public set or a github.com path, and
 // none may match the operator's own private patterns. Owner paths default to
 // denial; only the exact public Assay repository can use the host-only proof
-// below, with exact committed module/version/checksum binding. No request is
-// made until all paths pass the local screen. owners are lower-case forge owners.
+// below, with exact committed module/version/checksum binding. That proof
+// applies to every Assay path whatever the owners are: an adopter outside the
+// Assay owner also needs it, so its Assay requirements now cost one
+// unauthenticated GET and refuse when that GET fails. No request is made until
+// all paths pass the local screen. owners are lower-case forge owners.
 func moduleEgressProblem(home string, roots, owners []string, env []string, stdout io.Writer) (*receiptPublicAssay, error) {
 	private := operatorPrivateModulePatterns()
 	why := map[string]string{}
@@ -391,7 +394,16 @@ func prepareModuleCache(home, cache string, owners []string, stdout io.Writer) (
 	}
 	defer os.RemoveAll(scratch)
 	env := moduleDownloadEnv(cache, scratch)
-	proof, err := moduleEgressProblem(home, roots, owners, env, stdout)
+	// Each root's go.mod and go.sum are read once, before the screen, and the
+	// screen reads a private copy of exactly those bytes. The download below is
+	// then bound to the screened bytes on both sides, so neither the screen nor
+	// the proof's network round trip can open a window in which the files the
+	// screen passed and the files the download reads differ.
+	snaps, screened, err := snapshotModuleRoots(home, roots, filepath.Join(scratch, "screened"))
+	if err != nil {
+		return receiptModuleCache{}, err
+	}
+	proof, err := moduleEgressProblem(screened, roots, owners, env, stdout)
 	if err != nil {
 		return receiptModuleCache{}, err
 	}
@@ -401,18 +413,17 @@ func prepareModuleCache(home, cache string, owners []string, stdout io.Writer) (
 	}
 	for _, r := range roots {
 		dir := filepath.Join(home, filepath.FromSlash(r))
-		var before [2][]byte
-		for i, f := range []string{"go.mod", "go.sum"} {
+		before := snaps[r]
+		for i, f := range moduleRootFiles {
 			b, err := os.ReadFile(filepath.Join(dir, f))
-			if err != nil {
-				return receiptModuleCache{}, fmt.Errorf("could-not-check — module root %s: %v; the download is bound to each root's go.mod and go.sum", r, err)
+			if err != nil || !bytes.Equal(b, before[i]) {
+				return receiptModuleCache{}, fmt.Errorf("could-not-check — module root %s changed its %s after the egress screen; nothing was downloaded for it and no receipt was written", r, f)
 			}
-			before[i] = b
 		}
 		if out, err := goModDownload(dir, env); err != nil {
 			return receiptModuleCache{}, fmt.Errorf("could-not-check — `go mod download` for %s failed (%v): %s. No receipt was written and the image's baked cache is not a substitute", r, err, lastLines(string(out), 5))
 		}
-		for i, f := range []string{"go.mod", "go.sum"} {
+		for i, f := range moduleRootFiles {
 			b, err := os.ReadFile(filepath.Join(dir, f))
 			if err != nil || !bytes.Equal(b, before[i]) {
 				return receiptModuleCache{}, fmt.Errorf("could-not-check — `go mod download` for %s changed its %s; the download must be bound to the source's go.sum as committed", r, f)
@@ -424,6 +435,37 @@ func prepareModuleCache(home, cache string, owners []string, stdout io.Writer) (
 		return receiptModuleCache{}, fmt.Errorf("could-not-check — %v", err)
 	}
 	return receiptModuleCache{Digest: digest, Roots: roots, PublicAssay: proof}, nil
+}
+
+// moduleRootFiles are the two files of a module root the download is bound to.
+var moduleRootFiles = [2]string{"go.mod", "go.sum"}
+
+// snapshotModuleRoots reads every root's go.mod and go.sum once and writes a
+// copy of exactly those bytes under dst, at the same home-relative paths, for
+// the egress screen to read. It returns the bytes per root and dst.
+func snapshotModuleRoots(home string, roots []string, dst string) (map[string][2][]byte, string, error) {
+	snaps := map[string][2][]byte{}
+	for _, r := range roots {
+		var snap [2][]byte
+		for i, f := range moduleRootFiles {
+			b, err := os.ReadFile(filepath.Join(home, filepath.FromSlash(r), f))
+			if err != nil {
+				return nil, "", fmt.Errorf("could-not-check — module root %s: %v; the download is bound to each root's go.mod and go.sum, and nothing was sent to the proxy", r, err)
+			}
+			snap[i] = b
+		}
+		out := filepath.Join(dst, filepath.FromSlash(r))
+		if err := os.MkdirAll(out, 0o700); err != nil {
+			return nil, "", err
+		}
+		for i, f := range moduleRootFiles {
+			if err := os.WriteFile(filepath.Join(out, f), snap[i], 0o600); err != nil {
+				return nil, "", err
+			}
+		}
+		snaps[r] = snap
+	}
+	return snaps, dst, nil
 }
 
 // moduleCacheRequirementProblem binds a receipt's module cache to the home it

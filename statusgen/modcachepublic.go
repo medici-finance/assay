@@ -118,6 +118,13 @@ func publicAssayBindings(dir, root string, env []string) ([]publicAssayModule, e
 	if err := json.Unmarshal(parsed, &mod); err != nil {
 		return nil, err
 	}
+	// A require is bound unless a directory replaces it. A require replaced by
+	// another module version is still bound: go.sum then holds
+	// the replacement's checksums, not the Assay version's, so the
+	// root refuses. That false refusal is deliberate and fails closed; the
+	// request screen (moduleRequestPaths) also still lists the original path,
+	// and dropping its binding would admit that path with no proof at all.
+	// TestPublicAssayForkReplaceRefuses pins it.
 	for _, r := range mod.Require {
 		local := false
 		for _, rp := range mod.Replace {

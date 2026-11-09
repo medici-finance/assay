@@ -253,3 +253,105 @@ func TestPublicAssayReceiptWithoutDependency(t *testing.T) {
 		t.Fatal("public dependency with no committed checksums admitted")
 	}
 }
+
+// publicAssayRoot plants one root that requires the public Assay tools/desk
+// module at v1.0.0 with both committed checksums.
+func publicAssayRoot(t *testing.T, fx containerFixture) (gomod, gosum string) {
+	t.Helper()
+	path := "github.com/medici-finance/assay/tools/desk"
+	gomod = "module example.com/client\n\ngo 1.27.0\n\nrequire " + path + " v1.0.0\n"
+	gosum = path + " v1.0.0 " + publicAssayFixtureSum() + "\n" + path + " v1.0.0/go.mod " + publicAssayFixtureSum() + "\n"
+	plantRoot(t, fx, gomod, gosum)
+	return gomod, gosum
+}
+
+func noOperatorPrivate(t *testing.T) {
+	t.Helper()
+	orig := operatorPrivateModulePatterns
+	operatorPrivateModulePatterns = func() []string { return nil }
+	t.Cleanup(func() { operatorPrivateModulePatterns = orig })
+}
+
+// regression: #4683
+// TestPublicAssayNonOwnerProof: the proof is required for Assay paths whatever
+// the verified owner is. An adopter outside the Assay owner makes the same
+// unauthenticated GET before any download, and a refused GET (here 403, the
+// anonymous rate limit) refuses the root with nothing downloaded.
+func TestPublicAssayNonOwnerProof(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		admit  bool
+	}{{"rate limited", http.StatusForbidden, false}, {"proven", http.StatusOK, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := newContainerFixture(t)
+			withModuleRoots(t, fx)
+			publicAssayRoot(t, fx)
+			noOperatorPrivate(t)
+			count := stubPublicAssay(t, tc.status, publicAssayMetadata)
+			dl := stubDownload(t)
+			stubAmbient(t)
+			receipt, err := prepareModuleCache(fx.home, filepath.Join(t.TempDir(), "cache"), []string{"example-org"}, io.Discard)
+			if *count != 1 {
+				t.Fatalf("proof calls=%d, want 1 for a non-owner adopter", *count)
+			}
+			if !tc.admit {
+				if err == nil || len(dl.calls) != 0 {
+					t.Fatalf("refused proof: err=%v downloads=%v", err, dl.calls)
+				}
+				return
+			}
+			if err != nil || len(dl.calls) != 1 || receipt.PublicAssay == nil {
+				t.Fatalf("proven: err=%v downloads=%v receipt=%+v", err, dl.calls, receipt)
+			}
+		})
+	}
+}
+
+// regression: #4683
+// TestPublicAssayForkReplaceRefuses: a require replaced by another module
+// version stays bound to the Assay version it names. go.sum then holds only
+// the fork's checksums, so the root refuses before any proof or download. The
+// refusal is a deliberate fail-closed false refusal: the request screen still
+// lists the original path, and dropping its binding would admit it unproven.
+func TestPublicAssayForkReplaceRefuses(t *testing.T) {
+	fx := newContainerFixture(t)
+	withModuleRoots(t, fx)
+	path := "github.com/medici-finance/assay/tools/desk"
+	fork := "github.com/example-org/desk"
+	plantRoot(t, fx, "module example.com/client\n\ngo 1.27.0\n\nrequire "+path+" v1.0.0\n\nreplace "+path+" => "+fork+" v1.2.3\n",
+		fork+" v1.2.3 "+publicAssayFixtureSum()+"\n"+fork+" v1.2.3/go.mod "+publicAssayFixtureSum()+"\n")
+	noOperatorPrivate(t)
+	count := stubPublicAssay(t, http.StatusOK, publicAssayMetadata)
+	dl := stubDownload(t)
+	stubAmbient(t)
+	_, err := prepareModuleCache(fx.home, filepath.Join(t.TempDir(), "cache"), []string{"medici-finance"}, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), path+" v1.0.0") || *count != 0 || len(dl.calls) != 0 {
+		t.Fatalf("fork replacement: err=%v proof calls=%d downloads=%v", err, *count, dl.calls)
+	}
+}
+
+// regression: #4683
+// TestPublicAssayScreenWindow: the download is bound to the bytes the screen
+// read. A root edited while the proof's request is in flight (here: an owner
+// path planted in go.mod and go.sum) refuses with nothing downloaded.
+func TestPublicAssayScreenWindow(t *testing.T) {
+	fx := newContainerFixture(t)
+	withModuleRoots(t, fx)
+	gomod, gosum := publicAssayRoot(t, fx)
+	noOperatorPrivate(t)
+	dir := filepath.Join(fx.home, "tools", "desk")
+	orig := publicAssayHTTP
+	publicAssayHTTP = publicAssayDoer(func(*http.Request) (*http.Response, error) {
+		putFile(t, filepath.Join(dir, "go.mod"), gomod+"require github.com/medici-finance/secret v1.0.0\n")
+		putFile(t, filepath.Join(dir, "go.sum"), gosum+"github.com/medici-finance/secret v1.0.0 "+publicAssayFixtureSum()+"\n")
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(publicAssayMetadata))}, nil
+	})
+	t.Cleanup(func() { publicAssayHTTP = orig })
+	dl := stubDownload(t)
+	stubAmbient(t)
+	_, err := prepareModuleCache(fx.home, filepath.Join(t.TempDir(), "cache"), []string{"medici-finance"}, io.Discard)
+	if err == nil || len(dl.calls) != 0 {
+		t.Fatalf("edited after the screen: err=%v downloads=%v", err, dl.calls)
+	}
+}
