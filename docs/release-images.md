@@ -318,8 +318,9 @@ under verification, never from the image: the roots are listed in the tree's own
 That list covers the whole tree. Every tracked Go module whose `go.sum` names a
 module is listed, or is named on a `# not provisioned: <root> — <reason>` line.
 `deskd` is the one such module: it requires this repository's own `tools/desk`
-module by version from the public proxy, which the module screen below refuses,
-so rows that build it cannot run offline in this lane. The statusgen test
+module by version from the public proxy. The cluster stager still refuses that
+owner path, and the host-only public proof does not provision this omitted root;
+rows that build it cannot run offline in this lane. The statusgen test
 `TestModuleRootsCoverTree` fails when a module with requirements is added and not
 listed. Without it, that module's offline rows would stop on module resolution,
 and the pre-row gap check, which reads only the listed roots, could not name the
@@ -342,7 +343,38 @@ set as `images/verify-runner/stage-cache.sh` (`APPROVED` and `GHPUB`, held equal
 by a parity test). A path under the verified repository's owner, in any case, a
 path matching the operator's `GOPRIVATE`, `GONOPROXY` or `GONOSUMDB`, or one off
 the approved set is could-not-check, with nothing sent to the proxy, no cache
-directory and no receipt. It then prints one line naming the proxy, the checksum
+directory and no receipt.
+
+The host `--module-cache` lane has one bounded exception for module paths rooted
+at `github.com/medici-finance/assay` (the exact repository, including its nested
+modules). Before any module download it announces and performs an unauthenticated
+GET of `https://api.github.com/repos/medici-finance/assay`. It requires the fixed
+repository and owner IDs, canonical name and URL, `private=false` and
+`visibility=public`; redirects, unavailable or ambiguous metadata refuse. Each
+exception version must have both its module and go.mod checksums committed in the
+source's `go.sum`. The receipt records repository identity, metadata digest and
+the root/module/version/checksums; container admission and close recheck that
+source binding without network. Operator private patterns always win; other owner
+paths retain denial. This exception is not added to the cluster stager, which
+continues to refuse owner paths. It does not add VCS fallback or network to rows.
+
+The proof applies to every `github.com/medici-finance/assay` path whatever the
+verified owner is, so it is also a new requirement for adopters outside that
+owner. Before this exception, such an adopter's Assay requirements passed the
+screen as ordinary `github.com` paths with no extra request. Now its open step
+also makes the unauthenticated GET above, which counts against GitHub's shared
+anonymous rate limit. It refuses with nothing downloaded when that GET returns
+403 (the rate limit included), any other non-200 status or a network failure,
+and when the root's `go.sum` carries only the `/go.mod` checksum for an Assay
+version it requests. A require that a versioned `replace` points at another
+module still binds the Assay version it names, so such a root refuses until
+`go.sum` also carries that version's checksums.
+
+The screen reads a copy of each root's `go.mod` and `go.sum` taken once before
+it starts, and the download is bound to those bytes: a root whose files differ
+from the screened copy just before or just after its download refuses.
+
+It then prints one line naming the proxy, the checksum
 database, the roots and the cache before it downloads anything. The cache path may
 hold no comma, quote, whitespace or control character, since it is written into
 the container's `--mount` option list. It refuses if the download changes either file, records
