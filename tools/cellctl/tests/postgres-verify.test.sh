@@ -13,7 +13,9 @@ if [[ -z "${ASSAY_PG_SECRETS_DIR:-}" ]]; then echo 'required variable ASSAY_PG_S
 exit 0
 EOF
 chmod +x "$work/bin/docker"
-export PATH="$work/bin:$PATH"
+# shellcheck source=SCRIPTDIR/private-path.sh
+source "$(dirname "$runner")/private-path.sh"
+private_path "$work/bin"
 reject() {
   if (cd "$work/repo" && bash "$runner" "$1") >"$work/out" 2>&1; then
     echo "FAIL: accepted $2" >&2; cat "$work/out"; exit 1
@@ -91,7 +93,8 @@ distinct_projects() {
   test "$n" -eq 2
 }
 distinct_projects "$scratch"
-sed 's/^project=.*/project=assay-postgres-scratch/' "$scratch" >"$work/shared-project.sh"
+# Keep the prefix so the distinct-count comparison, not the pattern, must reject it.
+sed 's/^project=.*/project=assay-postgres-scratch-shared/' "$scratch" >"$work/shared-project.sh"
 if distinct_projects "$work/shared-project.sh"; then
   echo 'FAIL: shared-project mutation was not detected' >&2; exit 1
 fi

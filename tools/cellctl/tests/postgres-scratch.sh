@@ -83,7 +83,9 @@ DRY_RUN=1 run_cell desk example-cell worker-desk >"$work/plan"
 cat "$work/plan"
 grep -F -x "[dry-run] env ASSAY_CELL_DB_DSN=$dsn (cell database, from CELL_DB_DSN)" "$work/plan"
 grep -F -x "[dry-run] env PGPASSFILE=$work/example-cell.pgpass (cell database credential file, from CELL_DB_PASSFILE)" "$work/plan"
-export ASSAY_CELL_DB_DSN="$dsn" PGPASSFILE="$work/example-cell.pgpass"
-who=$(psql "$ASSAY_CELL_DB_DSN" --no-password -X -At -v ON_ERROR_STOP=1 -c 'select current_user')
+# Connect with only the composed variables: an ambient PGPASSWORD, PGSERVICE or
+# PGSSLMODE must not change or outrank the cell's credential file.
+who=$(env -i PATH="$PATH" HOME="$work/home" ASSAY_CELL_DB_DSN="$dsn" PGPASSFILE="$work/example-cell.pgpass" \
+  psql "$dsn" --no-password -X -At -v ON_ERROR_STOP=1 -c 'select current_user')
 printf '%s\n' "$who"
 test "$who" = cell_example_cell
