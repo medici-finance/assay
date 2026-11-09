@@ -57,6 +57,7 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `tools/desk/cmd/deskevidence/decisiongate.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/deskevidence.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/landed.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
+| `tools/desk/cmd/deskevidence/main.go` | reads informational fields only | usage text naming the `--outcome-record` landing shape and its flags; reads no Runner cell, witness record or revision |
 | `tools/desk/cmd/deskevidence/origin.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/outcome.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/outcomebinding.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
@@ -67,6 +68,7 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `tools/desk/cmd/deskevidence/principalstamp.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/readset.go` | reads informational fields only | reads the read-set digest a Runner cell names and the local file at that path, and refuses the landing before any forge call; never a revision, a tree token or a staleness verdict (build-less-brittle/15) |
 | `tools/desk/cmd/deskevidence/receiptvalidate.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
+| `tools/desk/cmd/deskevidence/routeflags.go` | reads informational fields only | names `--outcome-record` as a landing route and lists the command-line flags each route honours; reads no Runner cell, witness record or revision |
 | `tools/desk/cmd/deskevidence/rowattribution.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/verdictgate.go` | reads informational fields only | names `--outcome-record` in its refusal text; reads a brief's board status and the latest VERIFY verdict word of its Evidence through `statusgen evidenceverdict`; never reads a Runner cell, witness record or revision |
 | `tools/desk/cmd/deskevidence/verifiedgate.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
