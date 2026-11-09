@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -104,7 +105,7 @@ func validID(id string) bool {
 	if !strings.Contains(id, "--") {
 		return false
 	}
-	if strings.ContainsAny(id, " ~^:?*[\\") {
+	if strings.ContainsAny(id, " ~^:?*[\\") || strings.IndexFunc(id, unicode.IsSpace) >= 0 {
 		return false
 	}
 	if strings.Contains(id, "..") || strings.Contains(id, "@{") {
@@ -120,12 +121,23 @@ func validID(id string) bool {
 // script (tools/dispatch-claim.sh) and its REST-minted tags. The grammar is exact: a bash
 // `dispatch-claim.sh show` parses this out of a Go-minted tag, and this tool's reader parses it
 // out of a bash/REST-minted one. Do not reorder or re-space the fields.
-func claimMessage(id, owner, state, branch, note string) string {
+func claimMessage(id, owner, state, branch, note string) (string, error) {
+	// Each field occupies one wire token. Reject structural whitespace at this
+	// sole builder, including direct callers below argument-level validation.
+	for _, field := range []string{id, owner, state, branch} {
+		if strings.IndexFunc(field, unicode.IsSpace) >= 0 {
+			return "", deskkit.Refused("refused: claim fields must contain no whitespace")
+		}
+	}
+
 	msg := "dispatch-claim " + id + " owner=" + owner + " state=" + state + " branch=" + dashIfEmpty(branch)
 	if note != "" {
 		msg += " note=" + sanitizeNote(note)
 	}
-	return msg
+	if _, present, err := deskkit.DecodeClaimSubject(msg); err != nil || present {
+		return "", deskkit.Refused("refused: legacy claim fields cannot supply subject metadata")
+	}
+	return msg, nil
 }
 
 // fieldOf pulls `key=value` out of a space-separated claim message (bash `field_of`).
@@ -191,10 +203,16 @@ func dashOrValue(s string) string {
 
 // semantic: S-claim
 func cmdAcquire(id, owner, branch string) int {
+	msg, err := claimMessage(id, owner, "claimed", branch, "")
+	if err != nil {
+		errf("%v", err)
+		return exitRefused
+	}
+
 	if rc, stop := checkAliases(id, "pre"); stop {
 		return rc
 	}
-	switch store.CreateIfAbsent(id, claimMessage(id, owner, "claimed", branch, "")) {
+	switch store.CreateIfAbsent(id, msg) {
 	case deskkit.ClaimWriteApplied:
 		if rc, stop := checkAliases(id, "post"); stop {
 			return rc
@@ -246,6 +264,12 @@ func cmdAcquire(id, owner, branch string) int {
 }
 
 func cmdProgress(id, owner, branch string) int {
+	msg, err := claimMessage(id, owner, "dispatched", branch, "")
+	if err != nil {
+		errf("%v", err)
+		return exitRefused
+	}
+
 	ref, status := store.Read(id)
 	switch status {
 	case deskkit.ClaimReadFree:
@@ -267,7 +291,7 @@ func cmdProgress(id, owner, branch string) int {
 	if rc, stop := checkAliases(id, "pre"); stop {
 		return rc
 	}
-	switch store.UpdateFrom(id, ref.Version, claimMessage(id, owner, "dispatched", branch, "")) {
+	switch store.UpdateFrom(id, ref.Version, msg) {
 	case deskkit.ClaimWriteApplied:
 		logf("progressed %s (state=dispatched branch=%s owner=%s) — TTL now %dm", id, dashIfEmpty(branch), owner, dispatchedTTL())
 		return exitOK
@@ -331,7 +355,11 @@ func cmdSteal(id, owner, reason string) int {
 	if rc, stop := checkAliases(id, "pre"); stop {
 		return rc
 	}
-	msg := claimMessage(id, owner, "claimed", "", reason)
+	msg, err := claimMessage(id, owner, "claimed", "", reason)
+	if err != nil {
+		errf("%v", err)
+		return exitRefused
+	}
 	ref, status := store.Read(id)
 	switch status {
 	case deskkit.ClaimReadUnverifiable:

@@ -140,7 +140,7 @@ func LocalWorkCatalog(root, repository string) (WorkCatalog, error) {
 // host must supply a qualified complete writer census before negotiated effects;
 // this change does not activate /10 or /14 by claiming syntax implies support.
 func LocalWorkPeers() ([]readercaps.Observation, bool) {
-	return []readercaps.Observation{{State: readercaps.Current, Advertisement: ReaderCapabilities(ReleaseTagOrDev(), "desk-tools")}}, false
+	return []readercaps.Observation{{State: readercaps.Current, Advertisement: ReaderCapabilities(ReleaseTagOrDev(), "desktools")}}, false
 }
 
 func CheckLocalWorkTrailer(body []byte, root string) error {

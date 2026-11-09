@@ -92,7 +92,7 @@ func TestSelectedClaimCAS(t *testing.T) {
 	}
 	f := newStore()
 	s := &subjectClaimStore{ClaimStore: f, selected: selected, peers: peers, complete: true, repository: "medici-finance/assay"}
-	msg := claimMessage(selected.ClaimKey, "worker", "claimed", "", "")
+	msg := claimTestMessage(selected.ClaimKey, "worker", "claimed", "", "")
 	if s.CreateIfAbsent(selected.ClaimKey, msg) != deskkit.ClaimWriteApplied {
 		t.Fatal("create")
 	}
@@ -101,7 +101,7 @@ func TestSelectedClaimCAS(t *testing.T) {
 		t.Fatal("read")
 	}
 	// A second actor wins after our read. Exact-old CAS must not restore worker.
-	newer, _ := deskkit.EncodeClaimSubject(claimMessage(selected.ClaimKey, "other", "dispatched", "feat/other", ""), selected.Subject)
+	newer, _ := deskkit.EncodeClaimSubject(claimTestMessage(selected.ClaimKey, "other", "dispatched", "feat/other", ""), selected.Subject)
 	f.UpdateFrom(selected.ClaimKey, ref.Version, newer)
 	changed := f.claims[selected.ClaimKey]
 	if s.UpdateFrom(selected.ClaimKey, ref.Version, msg) != deskkit.ClaimWriteRejected || f.claims[selected.ClaimKey] != changed {
@@ -126,21 +126,21 @@ func TestClaimAliasHolds(t *testing.T) {
 	s := &subjectClaimStore{ClaimStore: f, selected: work, peers: peers, complete: true, repository: "medici-finance/assay"}
 	f.seedClaim("old--stream--08", "holder", "claimed", "", 0)
 	before := f.claims["old--stream--08"]
-	if s.CreateIfAbsent(work.ClaimKey, claimMessage(work.ClaimKey, "worker", "claimed", "", "")) == deskkit.ClaimWriteApplied || len(f.claims) != 1 || f.claims["old--stream--08"] != before {
+	if s.CreateIfAbsent(work.ClaimKey, claimTestMessage(work.ClaimKey, "worker", "claimed", "", "")) == deskkit.ClaimWriteApplied || len(f.claims) != 1 || f.claims["old--stream--08"] != before {
 		t.Fatal("historical live alias overwritten or second claim admitted")
 	}
 	if !strings.Contains(s.TransportCause(), "holder") {
 		t.Fatal("alias holder not reported")
 	}
 	f.readFails = true
-	if s.CreateIfAbsent(work.ClaimKey, claimMessage(work.ClaimKey, "worker", "claimed", "", "")) != deskkit.ClaimWriteUnverifiable {
+	if s.CreateIfAbsent(work.ClaimKey, claimTestMessage(work.ClaimKey, "worker", "claimed", "", "")) != deskkit.ClaimWriteUnverifiable {
 		t.Fatal("missing enumeration granted create")
 	}
 	f.readFails = false
 	delete(f.claims, "old--stream--08")
 	race := &aliasRaceStore{fakeStore: f, alias: "old--stream--08"}
 	s.ClaimStore = race
-	if s.CreateIfAbsent(work.ClaimKey, claimMessage(work.ClaimKey, "worker", "claimed", "", "")) != deskkit.ClaimWriteUnverifiable {
+	if s.CreateIfAbsent(work.ClaimKey, claimTestMessage(work.ClaimKey, "worker", "claimed", "", "")) != deskkit.ClaimWriteUnverifiable {
 		t.Fatal("post-create alias race admitted worker")
 	}
 	if race.removed {
@@ -148,7 +148,7 @@ func TestClaimAliasHolds(t *testing.T) {
 	}
 	// An incomplete writer census still holds with the upper preflight bypassed.
 	s.complete = false
-	if s.UpdateFrom(work.ClaimKey, f.claims[work.ClaimKey].sha, claimMessage(work.ClaimKey, "worker", "dispatched", "feat/work", "")) == deskkit.ClaimWriteApplied {
+	if s.UpdateFrom(work.ClaimKey, f.claims[work.ClaimKey].sha, claimTestMessage(work.ClaimKey, "worker", "dispatched", "feat/work", "")) == deskkit.ClaimWriteApplied {
 		t.Fatal("incomplete mixed writer set admitted write")
 	}
 }

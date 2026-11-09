@@ -23,8 +23,18 @@ func TestStrictCrossRepoMatch(t *testing.T) {
 	if _, ok := crossRepoRepresents(good, "repo:stream/08"); !ok {
 		t.Fatal("strict cross-repo link lost")
 	}
+	// The legacy profile itself is unchanged: accepted raw stream spelling
+	// remains accepted and matches itself, without case-folding a refused alias.
+	legacy := good
+	legacy.Body = "Cross-repo-brief: repo:STREAM/08"
+	if _, ok := crossRepoRepresents(legacy, "repo:STREAM/08"); !ok {
+		t.Fatal("accepted legacy spelling lost")
+	}
 	bad := good
 	bad.Body = "Cross-repo-brief: REPO:stream/08"
+	if _, ok := crossRepoRepresents(bad, "REPO:stream/08"); ok {
+		t.Fatal("refused alias matched itself")
+	}
 	if _, ok := crossRepoRepresents(bad, "repo:stream/08"); ok {
 		t.Fatal("case-fold admitted strict-refused alias")
 	}

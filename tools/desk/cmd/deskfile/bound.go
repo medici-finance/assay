@@ -315,7 +315,7 @@ func verifyBinding(pr prRef, briefArg string) (boundBinding, error) {
 	if deskkit.NegotiatedWorkSyntax(briefArg) {
 		// This forge-bound writer has not yet acquired the complete operation
 		// capability observation. Do not erase a refused selector/root via the
-		// historical unqualified filing-key path (owned by desk-tools/49).
+		// historical unqualified filing-key path; its deduplication owner stays separate.
 		if _, err := workref.Parse(briefArg, workref.TypedBrief); err != nil {
 			return boundBinding{}, deskkit.Refused("refused: work reference: " + err.Error())
 		}

@@ -65,3 +65,34 @@ returns incomplete coverage. Trailer, filing and local loop entrypoints hold new
 semantics while the claim command can exercise the fully selected store adapter
 with an admitted host observation. Qualification and complete consumer activation
 remain /10 and /14; no supported fleet rollout is asserted by source tests.
+
+## Continuation from the admitted source (A1)
+
+A negotiated acquisition binds the immutable source commit selected at admission.
+That commit remains part of the subject throughout progress; the worker's evolving
+branch HEAD is a different observation and cannot replace it. A progress invocation
+must use the acquiring snapshot (or an admitted host observation of that exact
+snapshot), plus current actor, repository and writer-capability admission. The
+claim payload is compared with that independently supplied selection; it cannot
+supply its own source authority. Exact store-version CAS remains required.
+
+The current local loader observes its invocation's checked-out HEAD. Therefore
+progress invoked from a later worker HEAD deliberately holds; running from the
+retained acquiring snapshot supplies the original selection. The production-path
+continuation test changes a real checkout's HEAD, observes that hold without any
+claim write, then supplies the retained admitted catalog and observes progress
+with the original subject unchanged. No commit comparison is removed.
+
+Before activation, the dispatch/pickup owner must carry the admitted source locator
+and selected subject through continuation rather than rediscover them from the
+worker's mutable checkout. Qualification must exercise worker commits, unavailable
+admitted snapshots, wrong actor, conflicting version and CAS races. This contract
+is an activation prerequisite of /10 and /14, not a new operational flag, automatic
+payload fallback or claim that the current CLI persists that observation. All
+negotiated effects remain held until the complete writer set is qualified.
+
+The cross-repository phantom reader intentionally retains the strict legacy
+cross-repository grammar: both original link spellings must pass that profile
+before exact comparison. Case variants that this profile refuses cannot suppress
+dispatch by case folding; no historical accepted transport key is changed. The
+existing claim store remains the independent exclusion boundary.

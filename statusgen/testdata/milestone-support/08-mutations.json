@@ -154,6 +154,42 @@
       "module": "tools/desk",
       "package": "./internal/deskkit",
       "test": "TestClaimSubjectTokens"
+    },
+    {
+      "name": "legacy-field-whitespace",
+      "target": "tools/desk/cmd/deskclaim-ref/claim.go",
+      "old": "if strings.IndexFunc(field, unicode.IsSpace) >= 0 {",
+      "new": "if false && strings.IndexFunc(field, unicode.IsSpace) >= 0 {",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestLegacyFieldWhitespace"
+    },
+    {
+      "name": "claim-key-whitespace",
+      "target": "tools/desk/cmd/deskclaim-ref/claim.go",
+      "old": " || strings.IndexFunc(id, unicode.IsSpace) >= 0",
+      "new": " || false && strings.IndexFunc(id, unicode.IsSpace) >= 0",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestLegacyFieldWhitespace"
+    },
+    {
+      "name": "legacy-note-subject-token",
+      "target": "tools/desk/cmd/deskclaim-ref/claim.go",
+      "old": "if _, present, err := deskkit.DecodeClaimSubject(msg); err != nil || present {",
+      "new": "if _, present, err := deskkit.DecodeClaimSubject(msg); false && (err != nil || present) {",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestLegacyFieldWhitespace"
+    },
+    {
+      "name": "admission-commit-erased",
+      "target": "tools/desk/cmd/deskclaim-ref/workclaim.go",
+      "old": "if err != nil || !present || subject != s.selected.Subject {",
+      "new": "if err != nil || !present || subject.UUID != s.selected.Subject.UUID || subject.Version != s.selected.Subject.Version || subject.Repository != s.selected.Subject.Repository || subject.Path != s.selected.Subject.Path {",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestAdmittedSourceProgress"
     }
   ]
 }
