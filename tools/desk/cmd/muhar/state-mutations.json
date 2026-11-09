@@ -58,8 +58,8 @@
     {
       "name": "inherited external flags unbound",
       "file": "cmd/muhar/state.go",
-      "old": "if strings.TrimSpace(goFlags) != \"\" {",
-      "new": "if false {"
+      "old": "if resolvedFlags := settings[\"GOFLAGS\"]; strings.TrimSpace(resolvedFlags) != \"\" {",
+      "new": "if resolvedFlags := settings[\"GOFLAGS\"]; false {"
     },
     {
       "name": "identity interruption misreported",
