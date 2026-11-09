@@ -145,6 +145,15 @@
       "module": "tools/desk",
       "package": "./internal/loopengine",
       "test": "TestLocalSubjectHold"
+    },
+    {
+      "name": "legacy-note-is-not-metadata",
+      "target": "tools/desk/internal/deskkit/workselection.go",
+      "old": "return (strings.HasPrefix(field, \"subject\") && strings.Contains(field, \"=\")) || strings.Contains(field, \"subject-v\")",
+      "new": "return strings.HasPrefix(field, \"subject\") || strings.Contains(field, \"subject-v\")",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestClaimSubjectTokens"
     }
   ]
 }

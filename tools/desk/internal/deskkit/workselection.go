@@ -164,7 +164,7 @@ func EncodeClaimSubject(message string, subject BriefSubject) (string, error) {
 		return "", Refused("invalid claim payload prefix")
 	}
 	for _, field := range fields[5:] {
-		if strings.HasPrefix(field, "subject") || strings.Contains(field, "subject-v") {
+		if claimSubjectField(field) {
 			return "", Refused("duplicate or note-injected claim subject token")
 		}
 	}
@@ -183,12 +183,9 @@ func EncodeClaimSubject(message string, subject BriefSubject) (string, error) {
 // but rejects duplicate, misplaced, malformed and note-injected subject tokens.
 func DecodeClaimSubject(message string) (subject BriefSubject, present bool, err error) {
 	fields := strings.Fields(message)
-	if !claimSubjectPrefix(fields) {
-		return subject, false, Refused("invalid claim payload prefix")
-	}
 	token := ""
 	for i, field := range fields {
-		if !strings.HasPrefix(field, "subject") && !strings.Contains(field, "subject-v") {
+		if !claimSubjectField(field) {
 			continue
 		}
 		if i != 5 || token != "" || !strings.HasPrefix(field, subjectToken) {
@@ -201,6 +198,9 @@ func DecodeClaimSubject(message string) (subject BriefSubject, present bool, err
 	}
 	if token == "" {
 		return subject, false, nil
+	}
+	if !claimSubjectPrefix(fields) {
+		return subject, false, Refused("invalid claim payload prefix")
 	}
 	raw, e := base64.RawURLEncoding.DecodeString(token)
 	if e != nil || len(raw) > 2048 {
@@ -276,4 +276,10 @@ func claimSubjectPrefix(fields []string) bool {
 		}
 	}
 	return fields[3] == "state=claimed" || fields[3] == "state=dispatched"
+}
+
+// Reserve metadata keys, while retaining ordinary historical note prose such as
+// "discuss the subject". A versioned subject token embedded in note= still holds.
+func claimSubjectField(field string) bool {
+	return (strings.HasPrefix(field, "subject") && strings.Contains(field, "=")) || strings.Contains(field, "subject-v")
 }

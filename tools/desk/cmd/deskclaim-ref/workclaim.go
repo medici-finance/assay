@@ -159,15 +159,6 @@ func legacySubjectHold(message string) bool {
 	if _, selected := store.(*subjectClaimStore); selected {
 		return false
 	}
-	reserved := false
-	for _, field := range strings.Fields(message) {
-		if strings.HasPrefix(field, "subject") || strings.Contains(field, "subject-v") {
-			reserved = true
-		}
-	}
-	if !reserved {
-		return false
-	}
 	_, present, err := deskkit.DecodeClaimSubject(message)
 	return present || err != nil
 }

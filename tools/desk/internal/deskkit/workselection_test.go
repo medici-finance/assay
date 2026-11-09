@@ -100,7 +100,7 @@ func TestClaimSubjectTokens(t *testing.T) {
 			t.Errorf("duplicate/note/unknown token admitted: %s", bad)
 		}
 	}
-	if _, present, err := DecodeClaimSubject(base + " note=historical"); err != nil || present {
+	if _, present, err := DecodeClaimSubject(base + " note=discuss the subject"); err != nil || present {
 		t.Fatal("historical payload no longer readable")
 	}
 	if _, err := EncodeClaimSubject(base+" note=reason "+token, subject); err == nil {
