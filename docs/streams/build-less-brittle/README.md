@@ -90,7 +90,7 @@ M1–M6/C1–C4 and implemented-brief status remain unchanged.
 | 12 | [The refactor oracle: what a redesign is coded against — intent, failure modes, triaged characterization tests, invariants, and an acceptance rule](brief-12-refactor-oracle.md) | 5 | M | implemented | — | — |
 | 13 | [Incident-time refactor by an agent, with one human residue: the strong-tier session runs the investigation, assembles the oracle, drafts the refactor PR, and asks the driver exactly one typed decision, only for what the record does not settle](brief-13-incident-refactor-by-agent.md) | 6 | L | todo | — | — |
 | 14 | [Bind consumer acceptance obligations to immutable delivery provenance before post-merge dispatch](brief-14-bind-consumer-acceptance-obligations-to-immutable-delivery-provenance-before-post-merge-dispatch.md) | 0 | M | verified | 2026-10-26 assay-verifier-app[bot] @ e07782de22a5 (forge-identity) | — |
-| 15 | [Witness inputs are recorded, not parsed](brief-15-witness-inputs-are-recorded-not-parsed.md) | 0 | L | implemented | — | — |
+| 15 | [Witness inputs are recorded, not parsed](brief-15-witness-inputs-are-recorded-not-parsed.md) | 0 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarryElement|TestHeldContainerFence|TestVerifyflip|TestHeldWitnessNonZero|TestHeldNonZero' -count=1 -timeout 300s",
+  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarryElement|TestHeldContainerFence|TestVerifyflip|TestHeldWitnessNonZero|TestHeldNonZero|TestHeldProse' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — supersession drops every earlier hold (the S1 defect)",
     "file": "heldscope.go",
@@ -1602,6 +1602,54 @@
       "file": "heldscope.go",
       "old": "if !exit && heldWitnessPassRe.MatchString(strings.TrimSpace(cell)) {",
       "new": "if false && heldWitnessPassRe.MatchString(strings.TrimSpace(cell)) {"
+    },
+    {
+      "name": "#4721 ruling A: a state word not all in lower case is no longer a marker (edge 1a-i)",
+      "file": "heldscope.go",
+      "old": "if w := clean[h[0]:h[1]]; strings.ToLower(w) != w {",
+      "new": "if w := clean[h[0]:h[1]]; false && strings.ToLower(w) != w {"
+    },
+    {
+      "name": "#4721 ruling A: a prose line naming a row is no longer a row result (edge 2a)",
+      "file": "heldscope.go",
+      "old": "return heldNamesRowNumRe.MatchString(clean) || heldVerdictLineRe.MatchString(clean)",
+      "new": "return heldVerdictLineRe.MatchString(clean)"
+    },
+    {
+      "name": "#4721 ruling A: a verdict line (RISK-VALUE or VERIFY) is no longer read at any case",
+      "file": "heldscope.go",
+      "old": "|| heldVerdictLineRe.MatchString(clean)\n",
+      "new": "\n"
+    },
+    {
+      "name": "#4721 ruling A: the row name needs a space (Row3 and R3 no longer name a row)",
+      "file": "heldscope.go",
+      "old": "`(?i)\\b(?:rows?[ \\t]*\\d+|r\\d+)\\b`",
+      "new": "`(?i)\\b(?:rows?[ \\t]+\\d+)\\b`"
+    },
+    {
+      "name": "#4721 ruling A: every prose occurrence is dropped, signals included",
+      "file": "verifyissues.go",
+      "old": "if heldProseLine(line, read) && !heldProseSignal(clean, h) {",
+      "new": "if heldProseLine(line, read) {"
+    },
+    {
+      "name": "#4721 ruling A: the prose gate is gone (free prose reads as a hold again)",
+      "file": "verifyissues.go",
+      "old": "if heldProseLine(line, read) && !heldProseSignal(clean, h) {",
+      "new": "if false && heldProseLine(line, read) && !heldProseSignal(clean, h) {"
+    },
+    {
+      "name": "#4721 ruling A: a line carrying a pipe is gated as prose",
+      "file": "heldscope.go",
+      "old": "&& !strings.Contains(line, \"|\") && !heldHTMLTableRe",
+      "new": "&& !heldHTMLTableRe"
+    },
+    {
+      "name": "#4721 ruling A: an HTML table line is gated as prose",
+      "file": "heldscope.go",
+      "old": "&& !heldHTMLTableRe.MatchString(line)\n}",
+      "new": "\n}"
     }
   ]
 }

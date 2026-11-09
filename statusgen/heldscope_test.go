@@ -365,7 +365,10 @@ func TestHeldScopeWholeSuperseded(t *testing.T) {
 		{"row named only in prose", two("Row 3 HELD — the restore drill was never run.") + rerun2, false},
 		{"untabled row in a note", eight("- row 9 could-not-check: runner offline.") + final, false},
 		{"row-less note", two("- could-not-check: integration suite") + rerun2, false},
-		{"hold in an HTML comment", two("<!-- could-not-check: runner offline -->") + rerun2, false},
+		// The marker spelling keeps this case on the comment rule: the
+		// lower-case word is free prose (#4721, ruling A) and is not read
+		// even when the comment is mis-closed.
+		{"hold in an HTML comment", two("<!-- COULD-NOT-CHECK: runner offline -->") + rerun2, false},
 		{"hold in a multi-line comment", two("<!--\nrow 3 HELD — runner offline\n-->") + rerun2, false},
 		{"hold in a comment ended by --!>",
 			two("<!--\nrow 3 HELD — runner offline\n--!>\n-->") + rerun2, false},
