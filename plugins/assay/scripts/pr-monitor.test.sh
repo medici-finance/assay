@@ -17,7 +17,8 @@
 #          truncation rate-limit-stops-cycle pacing-honoured portability
 #          origin-forms origin-degraded mint-per-repo mint-failed
 #          mint-seed-failed role-unusable mint-bad-custody mint-reread-race
-#          role-mapping bare-gh-lint forge-gitlab-seed forge-aware-delegation
+#          role-mapping bare-gh-lint mint-forge-pin-lint forge-gitlab-seed
+#          forge-aware-delegation
 set -uo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -556,6 +557,41 @@ if want bare-gh-lint; then
   bare=$(bare_gh_calls "$SCRIPT")
   check "$([[ -z "$bare" ]] && echo 0 || echo 1)" \
     "no gh call in the script runs without a same-line GH_TOKEN= (no ambient read)" "bare: $bare"
+fi
+
+# unpinned_mints <file> — every desktoken INVOCATION (at line start, after `$(`, or
+# after an env prefix like ASSAY_CONFIG_ECHO=full) that does not pin --forge github.
+# A shipped script's only reader is `gh` (GitHub only); a mint left to follow the
+# roster's forge hands it another forge's credential.
+unpinned_mints() {
+  grep -nE '(^[[:space:]]*|\$\(|[A-Z_]+=[^[:space:]]*[[:space:]]+)desktoken[[:space:]]' "$1" \
+    | grep -vE '^[0-9]+:[[:space:]]*#' | grep -vF -- '--forge github' || true
+}
+
+# regression: #5889
+if want mint-forge-pin-lint; then
+  echo "mint-forge-pin-lint — every shipped script's desktoken mint pins --forge github (its reader is gh)"
+  planted="$TMPROOT/planted-unpinned-mint.sh"
+  printf '%s\n' 'out=$(ASSAY_CONFIG_ECHO=full desktoken "$ROLE" --repo "$repo")' > "$planted"
+  printf '%s\n' 'tok=$(desktoken worker --repo o/r)' >> "$planted"
+  check "$([[ "$(unpinned_mints "$planted" | grep -c .)" == 2 ]] && echo 0 || echo 1)" \
+    "the lint catches both planted unpinned mints" "got: $(unpinned_mints "$planted")"
+  printf '%s\n' 'out=$(ASSAY_CONFIG_ECHO=full desktoken "$ROLE" --forge github --repo "$repo")' \
+    '  # desktoken <role> --repo <slug> (prose)' 'MINT_WHY="desktoken $ROLE exited $rc"' \
+    'command -v desktoken >/dev/null' > "$planted.ok"
+  check "$([[ -z "$(unpinned_mints "$planted.ok")" ]] && echo 0 || echo 1)" \
+    "the lint passes a pinned mint, prose and diagnostics" "flagged: $(unpinned_mints "$planted.ok")"
+  scripts_dir="${PR_MONITOR_TEST_SCRIPTS_DIR:-$HERE}"
+  n=0; found=""
+  for s in "$scripts_dir"/*.sh; do
+    case "$s" in (*.test.sh) continue ;; esac
+    [[ -f "$s" ]] || continue
+    n=$((n + 1))
+    hit=$(unpinned_mints "$s")
+    [[ -n "$hit" ]] && found="$found $(basename "$s"):$hit"
+  done
+  check "$([[ "$n" -gt 0 && -z "$found" ]] && echo 0 || echo 1)" \
+    "no shipped script mints for gh without --forge github ($n scanned)" "unpinned:$found"
 fi
 
 # ============================================================== role-mapping ==
