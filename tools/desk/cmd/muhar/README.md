@@ -352,7 +352,7 @@ built. When the control fails any of these checks, the whole run is
 `HARNESS BROKEN`.
 
 After each mutation the original bytes are written back, whatever the verdict.
-(One exception: see [Interrupting a run](#interrupting-a-run).)
+(Uncatchable kills cannot run restoration; see [Interrupting a run](#interrupting-a-run).)
 
 ## Flags
 
@@ -413,6 +413,59 @@ After each mutation the original bytes are written back, whatever the verdict.
 
 If a worker's copy cannot be made, the run is `HARNESS BROKEN` (exit 2). It
 never falls back to sharing one tree.
+
+### Sharing a host budget
+
+The budget is opt-in. Set **both** `MUHAR_LEASE_DIR` (an existing absolute
+shared directory) and `MUHAR_TOTAL_SLOTS` (a positive integer) in every
+participating process. For example, after an operator creates a suitable
+private shared directory:
+
+```sh
+MUHAR_LEASE_DIR=/path/to/shared-muhar-leases MUHAR_TOTAL_SLOTS=2 muhar -j 0 -spec mutations.json
+```
+
+Independent roles on the same host must use the same directory and total.
+Both unset preserves the existing behavior. Partial, empty, non-positive,
+unreadable or invalid configuration refuses before the baseline. There is no
+implicit directory, total or change to existing cells. A requested worker pool
+larger than the total is clamped and echoed on stderr; the harness still caps
+workers at the mutation count and uses one worker without isolated workspaces.
+No mutation is dropped, reordered or sharded to fit capacity.
+
+One OS-backed exclusive slot lock admits each independently progressing
+worker before its own schemata setup or mutation build. Workspace preparation,
+first schemata setup, baseline and control acquire and release their own slot.
+Selection runs between the baseline and control leases: its discovery,
+coverage builds, coverage tests and pristine-set proofs each acquire their own
+slot. A worker never holds one slot while waiting for another. Workers poll
+nonblocking locks, and a waiting worker stops when the shared mutation queue
+is drained. Empty slot files are harmless: a file's existence proves no holder.
+
+Stderr distinguishes `waiting for a host slot` from command execution and
+reports `queue-wait=...` when admitted or when the queue drains. Baseline
+measurement and build/test deadlines start after admission; queue time cannot
+become a mutation timeout or a `CAUGHT` result. Admission and resource errors
+stay nondefinitive; preflight admission failure discards the run.
+
+Locks release on completion, harness failure and catchable SIGINT/SIGTERM.
+The signal handler kills tracked suite, build and discovery process groups
+before ordinary source, workspace and cache cleanup unwinds. Unix kills the
+whole group; Windows retains its existing top-process-only kill limitation.
+**SIGKILL and OOM kills cannot run cleanup:** OS lock descriptors close, but
+suite process groups may continue leaseless until they exit. During that
+interval the configured total can be exceeded. Lease descriptors are not
+inherited by suite children. Stop or wait for those orphan suites before
+starting replacement work. Do not delete live slot files: replacing an inode
+can admit two owners of the same slot. For recovery, stop the affected run,
+inspect its suites, repair directory permissions/configuration, then retry;
+never switch directories to evade a held lease.
+
+Containers are covered only when they explicitly share this same lock
+filesystem and compatible OS locking semantics with all participating runs.
+Separate container filesystems are **could-not-check** for a host-wide bound.
+The budget limits muhar workers, not the internal process count or CPU usage
+of an arbitrary suite command or unrelated Go work.
 
 ### Splitting one spec across machines (`-shard`)
 
@@ -521,18 +574,14 @@ from `tools/desk` with no `root`, so their `file` paths are relative to
 
 ### Interrupting a run
 
-When `muhar` receives SIGINT or SIGTERM, it kills every suite and build command
-it has running (on Unix each runs in its own process group, so the whole group
-goes, children included; on Windows only the top process is killed), deletes its temporary build cache and exits `130`. With `-j 1`, a mutation that is in place at that
-moment is **not** restored: the mutant stays in your working tree. After
-interrupting a sequential run, check `git status` (or `git diff`) and restore
-the file. The same applies to a run with one mutation or none, whatever `-j`
-says, because that run is in place too (see
-[Parallel runs](#parallel-runs--j)). Otherwise, with `-j` > 1 the mutants live
-in the temporary copies, so your tree is not touched. The copies themselves
-(`muhar-<n>-*` directories under the system temporary directory) are left
-behind; delete them. (Tracked as
-[#2646](https://github.com/medici-finance/assay/issues/2646).)
+When `muhar` receives SIGINT or SIGTERM, it kills every tracked suite, build
+and discovery command (Unix process groups, children included; Windows only
+the top process), then unwinds source restoration, temporary workspaces,
+coverage output, the build cache and host leases before returning `130`.
+Check `git diff` after an interrupted in-place run, especially if the storage
+could not accept restoration. SIGKILL/OOM cannot unwind source restoration or
+temporary-directory cleanup; inspect the source and orphan suites before
+retrying. The host-budget section above describes the lock-descriptor limit.
 
 ## See also
 

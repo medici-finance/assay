@@ -151,7 +151,8 @@ func (c *Cell) scrubbedComposeEnv(role, harness, session string) ComposedEnv {
 		}
 		ce.Pairs = append(ce.Pairs, k+"="+v)
 	}
-	ce.Pairs = c.muharBudgetEnv(c.cacheEnv(ce.Pairs))
+	ce.Pairs = c.muharBudgetEnv(ce.Pairs)
+	ce.Pairs = c.cacheEnv(ce.Pairs)
 	ce.Sorted = append([]string(nil), ce.Pairs...)
 	sort.Strings(ce.Sorted)
 	return ce

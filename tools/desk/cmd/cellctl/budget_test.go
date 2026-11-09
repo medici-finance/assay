@@ -54,4 +54,10 @@ func TestMuharBudgetEnv(t *testing.T) {
 			}
 		}
 	}
+	c := codexEnvironmentCell(t)
+	c.Env.Put("MUHAR_LEASE_DIR", "")
+	got := c.muharBudgetEnv(nil)
+	if !slices.Contains(got, "MUHAR_LEASE_DIR=") || slices.Contains(got, "MUHAR_TOTAL_SLOTS=") {
+		t.Fatal("empty/partial input lost its explicit presence")
+	}
 }

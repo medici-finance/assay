@@ -4,12 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -57,6 +62,15 @@ func TestBudgetWork(t *testing.T) {
 	if dir == "" {
 		return
 	}
+	sentinel, err := os.OpenFile(filepath.Join(dir, fmt.Sprintf("suite-%d.lock", os.Getpid())), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sentinel.Close()
+	if err := deskkit.TryLockExclusive(sentinel); err != nil {
+		t.Fatal(err)
+	}
+	defer deskkit.UnlockFile(sentinel)
 	fixtureCount(dir, 1)
 	time.Sleep(45 * time.Millisecond)
 	fixtureCount(dir, -1)
@@ -202,7 +216,11 @@ func TestBudgetReleases(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("release probe: %v %s", err, out)
 	}
-	for _, signal := range []os.Signal{os.Interrupt} {
+	if runtime.GOOS == "windows" {
+		return
+	} // Windows has no catchable console Signal API.
+	for _, signal := range []os.Signal{os.Interrupt, syscall.SIGTERM} {
+		dir := t.TempDir()
 		c, _, stderr := budgetFixture(t, dir, "4")
 		if err := c.Start(); err != nil {
 			t.Fatal(err)
@@ -222,13 +240,34 @@ func TestBudgetReleases(t *testing.T) {
 			_ = c.Process.Kill()
 			t.Fatal("signal did not finish")
 		}
-		if !strings.Contains(stderr.String(), "muhar:") && c.ProcessState.ExitCode() != 130 {
+		if c.ProcessState.ExitCode() != 130 {
 			t.Fatalf("interrupt status=%v stderr=%s", c.ProcessState, stderr)
 		}
 		probe := exec.Command(os.Args[0], "-test.run=^TestBudgetProbe$")
-		probe.Env = append(os.Environ(), "MUHAR_PROBE="+dir)
+		probe.Env = append(os.Environ(), "MUHAR_PROBE="+dir, "MUHAR_PROBE_TOTAL=2")
 		if out, err := probe.CombinedOutput(); err != nil {
 			t.Fatalf("signal release: %v %s", err, out)
+		}
+		sentinels, err := filepath.Glob(filepath.Join(dir, "suite-*.lock"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sentinels) == 0 {
+			t.Fatal("no suite process was observed before signal")
+		}
+		for _, p := range sentinels {
+			f, err := os.OpenFile(p, os.O_RDWR, 0600)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = deskkit.TryLockExclusive(f)
+			if err == nil {
+				_ = deskkit.UnlockFile(f)
+			}
+			_ = f.Close()
+			if err != nil {
+				t.Fatalf("suite child still running after %v: %v", signal, err)
+			}
 		}
 	}
 }
@@ -238,22 +277,39 @@ func TestBudgetProbe(t *testing.T) {
 	if dir == "" {
 		return
 	}
-	f, err := os.OpenFile(filepath.Join(dir, "slot-0.lock"), os.O_RDWR, 0600)
-	if err != nil {
-		t.Fatal(err)
+	total := 1
+	if value := os.Getenv("MUHAR_PROBE_TOTAL"); value != "" {
+		total, _ = strconv.Atoi(value)
 	}
-	defer f.Close()
-	err = deskkit.TryLockExclusive(f)
-	if (err != nil) != (os.Getenv("MUHAR_BUSY") == "1") {
-		t.Fatalf("slot ownership=%v", err)
-	}
-	if err == nil {
-		_ = deskkit.UnlockFile(f)
+	for i := 0; i < total; i++ {
+		f, err := os.OpenFile(filepath.Join(dir, fmt.Sprintf("slot-%d.lock", i)), os.O_RDWR, 0600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = deskkit.TryLockExclusive(f)
+		if (err != nil) != (os.Getenv("MUHAR_BUSY") == "1") {
+			_ = f.Close()
+			t.Fatalf("slot ownership=%v", err)
+		}
+		if err == nil {
+			_ = deskkit.UnlockFile(f)
+		}
+		_ = f.Close()
 	}
 }
 
 // regression: F-muhar-budget
 func TestBudgetBadConfig(t *testing.T) {
+	for _, jobs := range []int{1, 2, 7} {
+		b := &hostBudget{total: 2}
+		want := jobs
+		if want > 2 {
+			want = 2
+		}
+		if got := b.clamp(jobs); got != want {
+			t.Errorf("clamp(%d)=%d want=%d", jobs, got, want)
+		}
+	}
 	dir := t.TempDir()
 	for _, values := range []map[string]string{
 		{"MUHAR_LEASE_DIR": dir}, {"MUHAR_TOTAL_SLOTS": "1"}, {"MUHAR_LEASE_DIR": "", "MUHAR_TOTAL_SLOTS": "1"},
@@ -281,4 +337,145 @@ func TestBudgetBadConfig(t *testing.T) {
 	if err == nil {
 		t.Fatal("unreadable slot silently accepted")
 	}
+}
+
+// regression: F-muhar-budget
+func TestBudgetSelector(t *testing.T) {
+	dir := t.TempDir()
+	budget, err := loadBudget(context.Background(), func(k string) (string, bool) {
+		if k == "MUHAR_LEASE_DIR" {
+			return dir, true
+		}
+		return "2", true
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs := &coverSelector{budget: budget}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "value.txt"), []byte("original"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// This is the actual command path used by go-list, coverage builds, test
+	// discovery and concurrent single-test coverage, with eight competing calls.
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cmd := exec.Command(os.Args[0], "-test.run=^TestBudgetWork$")
+			cmd.Dir = root
+			cmd.Env = append(os.Environ(), "MUHAR_FIXTURE="+dir)
+			_, err := cs.output(cmd, true)
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := fixtureCount(dir, 0)
+	if c.Peak != 2 || c.Calls != 8 {
+		t.Fatalf("selector work=%+v", c)
+	}
+	// A proof command that cannot run breaks Prepare; it cannot be mislabeled
+	// as a red pristine set and silently fall back to the full command.
+	m := Mutation{Name: "proof", File: "value.go", Old: "return 1", New: "return 2"}
+	if err := os.WriteFile(filepath.Join(root, m.File), []byte("package p\nfunc F() int { return 1 }\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cs = &coverSelector{budget: budget, log: &bytes.Buffer{}, jobs: 2, muts: []Mutation{m}, cmd: goTestCmd{pkgs: []string{"."}},
+		pkgs: []testPkg{{importPath: "p"}}, tests: []testRef{{pkg: 0, name: "TestF"}}, blocks: map[string][]cblock{"value.go": {{l1: 2, l2: 2, tests: []int{0}}}},
+		timedTest: func(string, []string, time.Duration) CommandResult {
+			return CommandResult{Err: errors.New("proof resource failure")}
+		}}
+	if err := cs.proveSets(root); err == nil {
+		t.Fatal("proof resource failure became a definitive red")
+	}
+}
+
+// regression: F-muhar-budget
+func TestBudgetDrained(t *testing.T) {
+	dir := t.TempDir()
+	var log bytes.Buffer
+	b, err := loadBudget(context.Background(), func(k string) (string, bool) {
+		if k == "MUHAR_LEASE_DIR" {
+			return dir, true
+		}
+		return "1", true
+	}, &log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release, err := b.acquire()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	var pending atomic.Bool
+	pending.Store(true)
+	done := make(chan error, 1)
+	go func() {
+		r, err := b.acquireWhile(pending.Load)
+		if r != nil {
+			r()
+		}
+		done <- err
+	}()
+	// Still holding the only slot, drain the queue. The waiter must exit
+	// without waiting for this lease's release or reserving another mutation.
+	time.Sleep(35 * time.Millisecond)
+	pending.Store(false)
+	select {
+	case err := <-done:
+		if !errors.Is(err, errNoBudgetWork) {
+			t.Fatalf("drained=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("drained worker waited for an unnecessary lease")
+	}
+}
+
+// regression: F-muhar-budget
+func TestBudgetError(t *testing.T) {
+	dir := t.TempDir()
+	b, err := loadBudget(context.Background(), func(k string) (string, bool) {
+		if k == "MUHAR_LEASE_DIR" {
+			return dir, true
+		}
+		return "1", true
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Removing a slot is an operational error, never permission to switch pools.
+	if err := os.Remove(filepath.Join(dir, "slot-0.lock")); err != nil {
+		t.Fatal(err)
+	}
+	h := &Harness{Budget: b, RunTest: func(string, time.Duration) CommandResult { t.Fatal("unadmitted baseline ran"); return CommandResult{} }}
+	if rep := h.Run(); !rep.Broken || len(rep.Results) != 0 {
+		t.Fatalf("admission error produced verdicts: %+v", rep)
+	}
+	b, err = loadBudget(context.Background(), func(k string) (string, bool) {
+		if k == "MUHAR_LEASE_DIR" {
+			return dir, true
+		}
+		return "1", true
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h = &Harness{Budget: b, RunTest: func(string, time.Duration) CommandResult { return CommandResult{Err: errors.New("resource failure")} }}
+	if rep := h.Run(); !rep.Broken {
+		t.Fatal("resource failure did not break baseline")
+	}
+	r, err := b.acquire()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r()
 }

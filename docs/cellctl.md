@@ -421,6 +421,34 @@ worktree, the shims, the pinned model and the `/assay:<role>` first prompt are t
 
 ---
 
+## Host mutation work budget
+
+`MUHAR_LEASE_DIR` and `MUHAR_TOTAL_SLOTS` opt muhar runs into one host-wide
+worker budget. Configure both explicitly in each participating cell's
+`cell.env` (or through `cellctl set`); existing cells receive no new default.
+All roles and independent cells sharing the host budget must name the same
+existing absolute lease directory and positive total. Cellctl forwards only
+configured inputs, including explicitly empty values so muhar can refuse an
+invalid pair. It does not create a directory, invent a total or manage locks.
+
+The same composition supplies host Claude/Cursor windows, Codex command
+subprocesses, scrubbed allowlists and dry-run environment lines. A partial,
+empty, invalid or inaccessible pair is refused by muhar before any work.
+A pool exceeding the total is clamped with a stderr diagnostic; baseline,
+control, selector and worker builds still run, and the complete mutation list
+keeps its original order. Stderr reports waiting and `queue-wait` separately
+from build/test timing. Both inputs unset retain current behavior.
+
+Stop the affected muhar run before repairing permissions or configuration.
+Normal completion and catchable SIGINT/SIGTERM release locks after child
+cleanup; never unlink live slot files to recover capacity. SIGKILL/OOM closes
+parent lock descriptors while suite process groups can remain alive and
+leaseless, temporarily exceeding the budget. Inspect and stop or wait for
+orphan suites before replacement work. Windows retains top-process-only
+cleanup. Containers require an explicitly shared lock filesystem with
+compatible locking semantics; without that, host-wide coverage is
+could-not-check. See [muhar's lease and recovery contract](../tools/desk/cmd/muhar/README.md#sharing-a-host-budget).
+
 ## Scrubbed cells — `--kind scrubbed`
 
 Cell-owned Kimi/provider credentials and an optional Herdr display are described in
@@ -463,7 +491,7 @@ The launch is `env -i` plus an explicit allowlist — the parent shell contribut
 default. This is the exact list `cellctl` exports (`scrubbedEnvKeys` in
 `tools/desk/cmd/cellctl/env.go` is the single source this table, the `[plan]` lines below, and the
 live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares the same set, and
-`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it). The cell database pointer and GitLab endpoint rows are
+`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it). The mutation-budget, cell database pointer and GitLab endpoint rows are
 Go-only additions,
 present only when the cell declares them; parity fixtures do not configure them.
 
@@ -491,6 +519,8 @@ present only when the cell declares them; parity fixtures do not configure them.
 | LANG | passed through from the parent |
 | ASSAY_CELL_DB_DSN | `CELL_DB_DSN`, when `cell.env` carries one |
 | PGPASSFILE | `CELL_DB_PASSFILE`, when `cell.env` carries `CELL_DB_DSN` |
+| MUHAR_LEASE_DIR | Explicit configured shared absolute lease directory; absent when unset |
+| MUHAR_TOTAL_SLOTS | Explicit configured positive host total; absent when unset |
 | GITLAB_API_BASE | GitLab cells only: nonempty `cell.env` `GITLAB_API_BASE`, else its nonempty `FORGE_API_BASE`; inherited values and compiled defaults are excluded |
 
 A configured cell-owned provider adds its endpoint, token and model aliases to the final

@@ -570,23 +570,27 @@ func (h *Harness) runParallel(jobs int) Report {
 		wg.Add(1)
 		go func(w int, root string) {
 			defer wg.Done()
-			// Take work before polling. A worker with no remaining mutation exits
-			// immediately, without waiting for a lease it will never use.
-			i, ok := <-next
-			if !ok {
+			// Poll without reserving work. Once the shared queue drains, a
+			// worker still waiting for capacity has nothing left to admit.
+			release, err := h.Budget.acquireWhile(func() bool { return len(next) > 0 })
+			if errors.Is(err, errNoBudgetWork) {
 				return
 			}
-			release, err := h.Budget.acquire()
 			if err != nil {
 				workerErrors[w] = err
+				return
+			}
+			i, ok := <-next
+			if !ok {
+				release()
 				return
 			}
 			defer release()
 			st := first
 			if w > 0 {
 				st = h.schemataFor(root, plan)
+				defer st.cleanup()
 			}
-			defer st.cleanup()
 			for {
 				if h.Budget != nil && h.Budget.ctx.Err() != nil {
 					workerErrors[w] = h.Budget.ctx.Err()

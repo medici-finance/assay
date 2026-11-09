@@ -75,13 +75,28 @@ func (b *hostBudget) clamp(jobs int) int {
 // acquire polls nonblocking locks while holding NO other slot. It returns one
 // release function for one independently progressing worker/command, never a
 // reservation for a future pool. Queue time ends before build/test timing starts.
-func (b *hostBudget) acquire() (func(), error) {
+var errNoBudgetWork = errors.New("no pending mutation work")
+
+func (b *hostBudget) acquire() (func(), error) { return b.acquireWhile(nil) }
+
+// needed is observed before every poll, so a worker which has not acquired a
+// slot stops as soon as other workers drain the queue. It reserves no mutation.
+func (b *hostBudget) acquireWhile(needed func() bool) (func(), error) {
+	if needed != nil && !needed() {
+		return nil, errNoBudgetWork
+	}
 	if b == nil {
 		return func() {}, nil
 	}
 	start := time.Now()
 	waiting := false
 	for {
+		if needed != nil && !needed() {
+			if waiting {
+				b.note("muhar: budget: queue drained after queue-wait=%s\n", time.Since(start).Round(time.Millisecond))
+			}
+			return nil, errNoBudgetWork
+		}
 		if err := b.ctx.Err(); err != nil {
 			return nil, err
 		}

@@ -73,6 +73,9 @@ func trackedOutput(cmd *exec.Cmd, combined bool) ([]byte, error) {
 		cmd.Stderr = &stderr
 	}
 	setProcessGroup(cmd)
+	// Commands made with exec.Command have no context watcher; registry owns
+	// interruption. exec.Cmd refuses a non-nil Cancel on these commands.
+	cmd.Cancel = nil
 	if err := liveGroups.start(cmd); err != nil {
 		return nil, err
 	}
