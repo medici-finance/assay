@@ -1,6 +1,6 @@
 //go:build windows
 
-package cellprocess
+package process
 
 import (
 	"errors"

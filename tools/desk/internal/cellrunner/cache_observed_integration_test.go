@@ -1,6 +1,6 @@
 //go:build darwin || linux
 
-package cellprocess
+package cellrunner
 
 import (
 	"context"
@@ -31,7 +31,7 @@ func TestCacheObservedIntegration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			argv, env := fixture(t, "sleep")
+			argv, env := []string{"/bin/sleep", "60"}, []string{}
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 			called := false
