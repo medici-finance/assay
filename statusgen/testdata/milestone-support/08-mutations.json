@@ -109,6 +109,42 @@
       "module": "tools/desk",
       "package": "./cmd/desksupervise",
       "test": "TestSubjectPayloadReader"
+    },
+    {
+      "name": "dispatch-selector-erased",
+      "target": "tools/desk/cmd/deskdispatch/dispatch.go",
+      "old": "if deskkit.NegotiatedWorkSyntax(item) || strings.Contains(item, \":\") {",
+      "new": "if false && (deskkit.NegotiatedWorkSyntax(item) || strings.Contains(item, \":\")) {",
+      "module": "tools/desk",
+      "package": "./cmd/deskdispatch",
+      "test": "TestClaimKeySubjectSpelling"
+    },
+    {
+      "name": "cross-root-case-fold",
+      "target": "tools/desk/cmd/deskdispatch/phantom.go",
+      "old": "validCrossLink(t.Value) && validCrossLink(xrLink) && t.Value == xrLink",
+      "new": "strings.EqualFold(strings.TrimSpace(t.Value), xrLink)",
+      "module": "tools/desk",
+      "package": "./cmd/deskdispatch",
+      "test": "TestStrictCrossRepoMatch"
+    },
+    {
+      "name": "filing-legacy-fallback",
+      "target": "tools/desk/cmd/deskfile/bound.go",
+      "old": "if deskkit.NegotiatedWorkSyntax(briefArg) {",
+      "new": "if false && deskkit.NegotiatedWorkSyntax(briefArg) {",
+      "module": "tools/desk",
+      "package": "./cmd/deskfile",
+      "test": "TestBoundSubjectHold"
+    },
+    {
+      "name": "local-scope-overclaim",
+      "target": "tools/desk/internal/loopengine/claim.go",
+      "old": "if deskkit.NegotiatedWorkSyntax(it.ID) {",
+      "new": "if false && deskkit.NegotiatedWorkSyntax(it.ID) {",
+      "module": "tools/desk",
+      "package": "./internal/loopengine",
+      "test": "TestLocalSubjectHold"
     }
   ]
 }
