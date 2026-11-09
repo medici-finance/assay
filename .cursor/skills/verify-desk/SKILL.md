@@ -172,10 +172,16 @@ with no edit to the home between the steps:
 
 1. Host open: `statusgen verifyrun --open-bracket --root <home> --brief <path> --out
    <receipt>`, with `<receipt>` outside the home. It runs the check, digests the home's
-   tree and writes the receipt. A refused check writes nothing.
+   tree and writes the receipt. A refused check writes nothing. When the home lists Go
+   module roots in `images/verify-runner/go-module-roots.txt`, add `--module-cache
+   <dir>`, a new empty directory outside the home (never the host's own module cache):
+   the step downloads those modules there against the home's `go.sum` and prints the
+   container flags that mount the cache read-only. A failed download is could-not-check;
+   never fall back to the image's baked cache.
 2. Container run: `statusgen verifyrun --sandbox=container-netns --brief <path>
    --admission-receipt <receipt> --container-image-digest sha256:<64 hex> --witness
-   <file>`, with the receipt mounted read-only and `<file>` a new file outside the home.
+   <file>`, with the receipt mounted read-only, the flags the open step printed, and
+   `<file>` a new file outside the home.
    It refuses before any row unless the mounted root digests to the receipt's tree, and
    refuses after the rows if they changed it, writing no attestation or `Tree-Digest`.
    Without a receipt it refuses outright.
@@ -669,6 +675,13 @@ Evidence-first outcome path below with `outcome: blocked` and a complete wake re
 Evidence landing itself refuses, retain the diagnostic and file the landing blocker; publish
 no outcome in its place. A nonzero process exit alone does not decide which obligation failed,
 and an exit 0 alone establishes neither row coverage nor qualification.
+
+A BLOCKED or could-not-check re-run of a verified brief is recorded in the outcome record only;
+only a reproducing FAIL or a fresh PASS earns an Evidence append. `deskevidence` refuses that
+Evidence append on a verified or done brief; land the run with
+`--outcome-record <file> --outcome-only`, whose record states
+`"evidence_withheld":"non-decisive-verdict-on-verified-brief"` and names the admitted
+observation commit as its `sha`, and open no Evidence PR.
 
 ## On VERIFY: FAIL — a Change Failure, filed not buried
 

@@ -847,6 +847,172 @@ Accounting: one container attempt, credited, no discarded runs. rows_passed=11 r
 
 **VERIFY: FAIL** — 11/15 pass in one container-netns bracket at e9410e9e1354; rows 2, 8 and 15 fail on Linux on the oracle's GNU-stat mode probe (#4317), and row 4 fails on every platform on the conditional `ASSAY_TELEMETRY` plan key (#4316).
 
+### Non-implementer verifier re-run — 2026-11-08 assay-verifier-app[bot] @ d725ec020dd6 (claude-opus-5-5)
+
+This is a fresh verify pass on merged main d725ec020dd66d4ff160ff8c02abbab6bb117631, in a clean detached worktree cut at that commit, under desk tools v1.0.78. The verifier did not implement this item and reused no results from earlier runs. Admission (`deskdispatch --check-verifier`, record medici-finance/assay#5719) passed before any row ran, at each bracket open, and at each bracket close. Gate: model; all four risk answers are no. A change to the item's inputs woke this pass. Since the previous pass (e9410e9e1354), the only change under tools/desk/cmd/cellctl is the Cursor launch prompt (cursor.go and launch.go, commit 77b7fca44). tools/cellctl is byte-identical, so `scrubbed_mode_is` and `SCRUBBED_ENV_KEYS` are unchanged.
+
+Expected values, taken from the brief before any row ran: every row exits 0, and row 13 prints 1.
+
+How the rows ran. All 15 rows ran in one closed admission bracket, under the interim container-lane ruling.
+- The host opened the bracket with `statusgen verifyrun --open-bracket --history-out`.
+- The container ran `statusgen verifyrun --sandbox=container-netns --fail-first --base 4e213c78271b --history-pack` over the whole table, with no `--rows` filter.
+- The image was the pinned verify-runner v1.0.75, passed as its native linux/arm64 manifest sha256:576cb2e49407 (index sha256:732786a33ebf). It ran on OrbStack with `--network none`, a read-only root, all capabilities dropped, no-new-privileges, uid 501 and `GOPROXY=off`.
+- The worktree and its git common directory were bind-mounted read-only at their host paths, so row 14's `git merge-base` resolved. At this source it resolves to HEAD itself.
+- The fail-first base is 4e213c78271b, the first parent of the squash commit 58a019271393 (#1263) that delivered this item.
+- The host closed the bracket with `--close-bracket`. `--bracket-digest` reports `verdict=match`, with one Tree-Digest line, one Container-Image line and one attestation line in the span.
+
+The witness follows as the tool wrote it.
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `shellcheck tools/cellctl/testdata/cellctl-shell-oracle.sh` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=d725ec020dd6 |
+| 2 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-pass` | fail exit=1 sandbox=container-netns | sha256:0a1529f2d106 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=d725ec020dd6 |
+| 3 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case env-scrub` | pass exit=0 sandbox=container-netns | sha256:060acf87d1cd | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=d725ec020dd6 |
+| 4 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case plan-grammar` | fail exit=1 sandbox=container-netns | sha256:364ee6d8863b | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=d725ec020dd6 |
+| 5 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case smoke-ready` | pass exit=0 sandbox=container-netns | sha256:ffe0fc02199a | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=d725ec020dd6 |
+| 6 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case smoke-not-ready` | pass exit=0 sandbox=container-netns | sha256:75434b257259 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=d725ec020dd6 |
+| 7 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case lock` | pass exit=0 sandbox=container-netns | sha256:98d859828b9a | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=4e213c78271b unproven · head=d725ec020dd6 |
+| 8 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-pem` | fail exit=1 sandbox=container-netns | sha256:9e2de1430e83 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=d725ec020dd6 |
+| 9 | `bash tools/cellctl/tests/house-cell.test.sh` | pass exit=0 sandbox=container-netns | sha256:42357ffdc08e | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=d725ec020dd6 |
+| 10 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-roster` | pass exit=0 sandbox=container-netns | sha256:98f07031cd37 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=d725ec020dd6 |
+| 11 | `d=$(mktemp -d); mkdir -p "$d/x"; printf 'CELL_KIND=scrubbed\nCELL_REPO=%s\nCELL_REPO_SLUG=example-org/example-repo\nCELL_HARNESS=codex\n' "$PWD" > "$d/x/cell.env"; b="$(mktemp -d)/cellctl"; (cd tools/desk && go build -o "$b" ./cmd/cellctl); CELLS_ROOT="$d" "$b" check x; test $? -eq 1` | could-not-run exit=1 sandbox=container-netns — image module cache predates go.sum (github.com/go-logr/logr v1.4.4 vs v1.4.3; github.com/mattn/go-isatty v0.0.24 vs v0.0.20; go.yaml.in/yaml/v3 v3.0.5 vs v3.0.4; and 1 more): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:417b8b234625 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=d725ec020dd6 |
+| 12 | `for k in HOME ZDOTDIR PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR DESK_LOOP DESK_SESSION DESK_ROOTS; do grep -qF "\| $k \|" docs/cellctl.md \|\| { echo "missing env row: $k"; exit 1; }; done` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=d725ec020dd6 |
+| 13 | `grep -c '^## Scrubbed cells' docs/cellctl.md` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=d725ec020dd6 |
+| 14 | `statusgen --consumers --root . --base $(git merge-base origin/main HEAD)` | pass exit=0 sandbox=container-netns | sha256:d81b3da6cc78 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=d725ec020dd6 |
+| 15 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-home-mode` | fail exit=1 sandbox=container-netns | sha256:30695d9a04b1 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=d725ec020dd6 |
+Tree-Digest: sha256:a47c4a328abb105b6dbe7c122b78f65f9f4f830c2d85185e933fcfeb1628424a
+Container-Image: sha256:576cb2e49407447769b79a32af370a23e1c108d62842b8f1772a809d1d3b7617
+Verification-Attestation: medici-finance/assay#5719 run=a99af4c9fc48b32a69afdcddf43dd1827c7da59751a9ed1bf7d5928f30333b00 source=d725ec020dd66d4ff160ff8c02abbab6bb117631 brief=docs/streams/desk-containers/brief-09-scrubbed-host-cell.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=a99af4c9fc48b32a69afdcddf43dd1827c7da59751a9ed1bf7d5928f30333b00 source=d725ec020dd66d4ff160ff8c02abbab6bb117631 tree=sha256:a47c4a328abb105b6dbe7c122b78f65f9f4f830c2d85185e933fcfeb1628424a witness=sha256:366b7621ec88473c31d3dda725ae192d9f5ccd667c6d1db1386de53ef14ad0e5 opened=2026-11-08T00:33:53Z closed=2026-11-08T00:38:54Z before=receipt after=check-verifier
+
+What each failing or unrun row means. These diagnostics give no acceptance credit. They ran on a `git archive` copy of tools/cellctl at d725ec020dd6, outside the worktree, both in the same image and on the darwin host. The row 11 probe ran on the darwin host from the worktree, with scratch outside it.
+- **Rows 2, 8 and 15 fail on Linux. This is an implementation defect in the shell oracle, which the previous pass cited as #4317.**
+  - Failing assertions: row 2 `check-pass: exits 0 on a fully-provisioned scrubbed cell`, `reports all preconditions met`, `PEM row ok` and `config home mode 0700 row ok`; row 8 `check-pem: a regular 0600 PEM is ok`; row 15 `check-home-mode: 0700 config home is ok`.
+  - Cause: `scrubbed_mode_is` (tools/cellctl/testdata/cellctl-shell-oracle.sh:1678-1682) runs `stat -f '%Lp' "$p" || stat -c '%a' "$p"`. Under GNU coreutils in the image, `stat -f` means filesystem mode, so it prints a filesystem report for the path instead of the file mode. The captured mode is therefore never exactly `700` or `600`.
+  - On the darwin host (BSD stat), the same three cases exit 0.
+- **Row 4 fails on every platform. This is an implementation defect, which the previous pass cited as #4316.**
+  - Failing assertion: `plan-grammar: [plan] env KEY set equals SCRUBBED_ENV_KEYS minus the inactive harness var`.
+  - Cause: `SCRUBBED_ENV_KEYS` (oracle :2023) lists `ASSAY_TELEMETRY`, but the oracle prints that plan line only when the launching shell exports the variable.
+  - In the image, the case exits 1 with the variable unset and exits 0 with `ASSAY_TELEMETRY=0` exported. On the darwin host, with the variable removed, it also exits 1.
+- **Row 11 did not reach its check. This is a limit of the instrument, not an implementation result.**
+  - The module cache in the pinned v1.0.75 image predates tools/desk go.sum at this source. verifyrun names github.com/go-logr/logr v1.4.4 vs v1.4.3, github.com/mattn/go-isatty v0.0.24 vs v0.0.20, go.yaml.in/yaml/v3 v3.0.5 vs v3.0.4, and one more.
+  - Under `GOPROXY=off`, `go build` stopped on module resolution, and verifyrun recorded the row as could-not-run.
+  - What it needs: a verify-runner image whose module cache matches the verified tree (a release at or after this commit), re-pinned for the container lane.
+  - Supplemental host probe, no credit: the same command on the darwin host, with its own module cache, exits 0 with 8 MISS rows and no `is not a known kind` line. That matches the row's Expect.
+- Rows 1, 3, 5, 6, 7, 9, 10, 12, 13 and 14 pass. Row 13's output digest, sha256:4355a46b19d3, is the sha256 of `1` followed by a newline.
+
+Fail-first. The tool selected row 7 as risk-bearing, because its Expect contains the word "live". No other row matches, and all four brief-wide risk answers are no. At base 4e213c78271b, row 7 is `unproven`. The suite tools/cellctl/tests/scrubbed-cell.test.sh does not exist before the delivering commit, so the row exits 127 there, and the tool records it as not run rather than red. Every ancestor of the delivery lacks the suite, so no admissible base can show this row red. At head, the row passes.
+
+RISK-BEARING VALUE. Risk metadata is present, and all four answers are no, including irreversible: no. The literals enumerated over the deliverable at d725ec020dd6 (the Go launcher under tools/desk/cmd/cellctl and the shell oracle) are:
+- pem-mode = 0o600 @ tools/desk/cmd/cellctl/check.go:515 (oracle :1719, `scrubbed_mode_is "$f" 600`)
+- config-home-mode = 0o700 @ tools/desk/cmd/cellctl/check.go:475 (oracle :1695, `scrubbed_mode_is "$CELL_CONFIG" 700`)
+- run-dir mode = 0o700 @ tools/desk/cmd/cellctl/check.go:557
+- scrubbedPathTail = "/usr/bin:/bin:/usr/sbin:/sbin" @ tools/desk/cmd/cellctl/envkeys.go:89 (oracle :2079)
+- SCRUBBED_ENV_KEYS (20 keys) @ tools/cellctl/testdata/cellctl-shell-oracle.sh:2023
+- lock refusal exit code 4 @ tools/desk/cmd/cellctl/lock.go:28
+- smoke prompt "Reply with the single word READY and nothing else." @ tools/desk/cmd/cellctl/smoke.go:58
+- One more literal from the wake change, outside this item's scrubbed-kind contract: the Cursor interactive-desk prompt suffix @ tools/desk/cmd/cellctl/cursor.go:21, a reversible piece of launch text.
+
+Ranking, highest first:
+1. The two custody modes. A widened mode exposes an App private key, and a key once read stays read even after the mode is fixed.
+2. The PATH tail and the allowlist. A mistake here leaks parent authority into the harness, and an edit plus a redeploy fixes it.
+3. The exit code, the smoke prompt and the Cursor prompt text. These are reversible caller contracts.
+
+- RISK-VALUE: DERIVED — pem-mode = 0o600 @ tools/desk/cmd/cellctl/check.go:515 — owner read and write is the narrowest mode that still lets the owning user's desk tools read an App private key; any group or other bit lets a second local principal read it. The oracle's probe for this value is broken on Linux (#4317, rows 2 and 8).
+- RISK-VALUE: DERIVED — config-home-mode = 0o700 @ tools/desk/cmd/cellctl/check.go:475 — owner list and traverse is the least the owner needs on the directory that holds the keys; a group or world bit exposes key names and mtimes, as the brief's facts state. The oracle's probe for this value is broken on Linux in the same way (#4317, rows 2 and 15).
+- RISK-VALUE: DERIVED — scrubbedPathTail = "/usr/bin:/bin:/usr/sbin:/sbin" @ tools/desk/cmd/cellctl/envkeys.go:89 — the four standard system directories and nothing from the parent PATH. This is the brief's seven-element contract minus the shim, the desk-tools bindir and the harness dir; row 3 passed and asserts it.
+- The allowlist, exit code 4, the smoke prompt and the Cursor prompt text rank lower and can be reversed by an edit and a redeploy, so no derivation is owed.
+
+Accounting: this dispatch ran the Verify table twice.
+- Before either run, the verifier stopped one container start under the first bracket before any row ran, because its container environment carried a Go module flag that earlier passes did not use. It wrote no witness and ran no rows, so it is not counted as an attempt.
+- Attempt 1 ran all 15 rows under the first bracket (closed, `verdict=match`). It mounted the wrong git directory, so row 14's `git merge-base` failed in the container (`gitfile does not point to a valid repository`) and the row read exit 2. Discarded, superseded by attempt 2; its witness is not landed.
+- Attempt 2 is the witness above, run under a fresh bracket with the git common directory mounted. Credited.
+
+Result: rows_passed=10, rows_total=15. Rows 2, 4, 8 and 15 fail on implementation defects (#4317 for rows 2, 8 and 15; #4316 for row 4). Row 11 is could-not-run because of the image module cache. This run does not change the board row, which stays `implemented`.
+
+**VERIFY: FAIL** — 10/15 pass in one container-netns bracket at d725ec020dd6; rows 2, 8 and 15 fail on Linux on the oracle's GNU-stat mode probe (#4317), row 4 fails on every platform on the conditional `ASSAY_TELEMETRY` plan key (#4316), and row 11 is could-not-run because the module cache in the pinned v1.0.75 image predates tools/desk go.sum.
+
+### Non-implementer verifier re-run — 2026-11-08 assay-verifier-app[bot] @ 61e68411ff93 (claude-opus-5-5)
+
+This is a fresh verify pass on merged main 61e68411ff93f1aa3f2a955b505f2f77ec046c20, in a clean detached worktree cut at that commit, under desk tools v1.0.78. The verifier did not implement this item and reused no results from earlier runs. Admission (`deskdispatch --check-verifier`, record medici-finance/assay#5763) passed before any row ran, at the bracket open, and at the bracket close. Gate: model; all four risk answers are no. A change to the item's inputs woke this pass. Since the previous pass (d725ec020dd6), no commit has changed tools/cellctl, tools/desk/cmd/cellctl, docs/cellctl.md or tools/desk go.mod and go.sum; the only commit in that range that touches this brief is the previous pass's own Evidence landing.
+
+Expected values, taken from the brief before any row ran: every row exits 0, and row 13 prints 1.
+
+How the rows ran. All 15 rows ran in one closed admission bracket, under the interim container-lane ruling.
+- The host opened the bracket with `statusgen verifyrun --open-bracket --history-out`.
+- The container ran `statusgen verifyrun --sandbox=container-netns --fail-first --base 4e213c78271b --history-pack` over the whole table, with no `--rows` filter.
+- The image was the pinned verify-runner v1.0.75, passed as its native linux/arm64 manifest sha256:576cb2e49407 (index sha256:732786a33ebf). It ran on OrbStack with `--network none`, a read-only root, all capabilities dropped, no-new-privileges, uid 501 and `GOPROXY=off`.
+- The worktree and its git common directory were bind-mounted read-only at their host paths, so row 14's `git merge-base` resolved. At this source it resolves to HEAD itself.
+- The fail-first base is 4e213c78271b, the first parent of the squash commit 58a019271393 (#1263) that delivered this item.
+- The host closed the bracket with `--close-bracket`. `--bracket-digest` reports `verdict=match`, with one Tree-Digest line, one Container-Image line and one attestation line in the span.
+
+The witness follows as the tool wrote it.
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `shellcheck tools/cellctl/testdata/cellctl-shell-oracle.sh` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=61e68411ff93 |
+| 2 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-pass` | fail exit=1 sandbox=container-netns | sha256:0a1529f2d106 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=61e68411ff93 |
+| 3 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case env-scrub` | pass exit=0 sandbox=container-netns | sha256:060acf87d1cd | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=61e68411ff93 |
+| 4 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case plan-grammar` | fail exit=1 sandbox=container-netns | sha256:364ee6d8863b | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=61e68411ff93 |
+| 5 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case smoke-ready` | pass exit=0 sandbox=container-netns | sha256:ffe0fc02199a | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=61e68411ff93 |
+| 6 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case smoke-not-ready` | pass exit=0 sandbox=container-netns | sha256:75434b257259 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=61e68411ff93 |
+| 7 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case lock` | pass exit=0 sandbox=container-netns | sha256:98d859828b9a | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=4e213c78271b unproven · head=61e68411ff93 |
+| 8 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-pem` | fail exit=1 sandbox=container-netns | sha256:9e2de1430e83 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=61e68411ff93 |
+| 9 | `bash tools/cellctl/tests/house-cell.test.sh` | pass exit=0 sandbox=container-netns | sha256:42357ffdc08e | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=61e68411ff93 |
+| 10 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-roster` | pass exit=0 sandbox=container-netns | sha256:98f07031cd37 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=61e68411ff93 |
+| 11 | `d=$(mktemp -d); mkdir -p "$d/x"; printf 'CELL_KIND=scrubbed\nCELL_REPO=%s\nCELL_REPO_SLUG=example-org/example-repo\nCELL_HARNESS=codex\n' "$PWD" > "$d/x/cell.env"; b="$(mktemp -d)/cellctl"; (cd tools/desk && go build -o "$b" ./cmd/cellctl); CELLS_ROOT="$d" "$b" check x; test $? -eq 1` | could-not-run exit=1 sandbox=container-netns — image module cache predates go.sum (github.com/go-logr/logr v1.4.4 vs v1.4.3; github.com/mattn/go-isatty v0.0.24 vs v0.0.20; go.yaml.in/yaml/v3 v3.0.5 vs v3.0.4; and 1 more): the row stopped on module resolution before its check ran. Re-run in the verify-runner image of a release whose tools/desk go.mod and go.sum match the verified tree, normally the first release that contains the verified commit | sha256:7df78fb87152 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=61e68411ff93 |
+| 12 | `for k in HOME ZDOTDIR PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR DESK_LOOP DESK_SESSION DESK_ROOTS; do grep -qF "\| $k \|" docs/cellctl.md \|\| { echo "missing env row: $k"; exit 1; }; done` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=61e68411ff93 |
+| 13 | `grep -c '^## Scrubbed cells' docs/cellctl.md` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=61e68411ff93 |
+| 14 | `statusgen --consumers --root . --base $(git merge-base origin/main HEAD)` | pass exit=0 sandbox=container-netns | sha256:30703b16d802 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=61e68411ff93 |
+| 15 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-home-mode` | fail exit=1 sandbox=container-netns | sha256:30695d9a04b1 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=61e68411ff93 |
+Tree-Digest: sha256:ffaa7f4a37cf0580d85783bba3c4883b885b88d4157d133c7295d824a09d289a
+Container-Image: sha256:576cb2e49407447769b79a32af370a23e1c108d62842b8f1772a809d1d3b7617
+Verification-Attestation: medici-finance/assay#5763 run=cfd06cc4d42178e372d551d08151031935258ead86ac855e5a6b28011d304217 source=61e68411ff93f1aa3f2a955b505f2f77ec046c20 brief=docs/streams/desk-containers/brief-09-scrubbed-host-cell.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=cfd06cc4d42178e372d551d08151031935258ead86ac855e5a6b28011d304217 source=61e68411ff93f1aa3f2a955b505f2f77ec046c20 tree=sha256:ffaa7f4a37cf0580d85783bba3c4883b885b88d4157d133c7295d824a09d289a witness=sha256:3a2066f88579fc9e992bb894d5fb36bb1b3244021317566d359eb72e1a128ecb opened=2026-11-08T03:05:30Z closed=2026-11-08T03:08:38Z before=receipt after=check-verifier
+
+What each failing or unrun row means. These diagnostics give no acceptance credit. They ran on a `git archive` copy of tools/cellctl at 61e68411ff93, outside the worktree, both in the same image and on the darwin host. The row 11 probe ran on the darwin host from the worktree, with scratch outside it.
+- **Rows 2, 8 and 15 fail on Linux. This is an implementation defect in the shell oracle, cited by earlier passes as #4317.**
+  - Failing assertions, reproduced in the image: row 2 `check-pass: exits 0 on a fully-provisioned scrubbed cell`, `reports all preconditions met`, `PEM row ok` and `config home mode 0700 row ok`; row 8 `check-pem: a regular 0600 PEM is ok`; row 15 `check-home-mode: 0700 config home is ok`.
+  - Cause: `scrubbed_mode_is` (tools/cellctl/testdata/cellctl-shell-oracle.sh:1678-1682) runs `stat -f '%Lp' "$p" || stat -c '%a' "$p"` inside one command substitution. Under GNU coreutils in the image, `stat -f` means filesystem status and `%Lp` is read as a second file operand: it prints a filesystem report for the path and exits 1, so the `||` arm also runs and its mode is appended after that report. The captured value is never exactly `700` or `600`.
+  - On the darwin host (BSD stat), the same three cases exit 0.
+- **Row 4 fails on every platform. This is an implementation defect, cited by earlier passes as #4316.**
+  - Failing assertion: `plan-grammar: [plan] env KEY set equals SCRUBBED_ENV_KEYS minus the inactive harness var`.
+  - Cause: `SCRUBBED_ENV_KEYS` (oracle :2023) lists `ASSAY_TELEMETRY`, but the oracle prints that plan line only when the launching shell exports the variable.
+  - In the image, the case exits 1 with the variable unset and exits 0 with `ASSAY_TELEMETRY=0` exported. On the darwin host, with the variable removed from the environment, it also exits 1.
+- **Row 11 did not reach its check. This is a limit of the instrument, not an implementation result.**
+  - The module cache in the pinned v1.0.75 image predates tools/desk go.sum at this source. verifyrun names github.com/go-logr/logr v1.4.4 vs v1.4.3, github.com/mattn/go-isatty v0.0.24 vs v0.0.20, go.yaml.in/yaml/v3 v3.0.5 vs v3.0.4, and one more.
+  - Under `GOPROXY=off`, `go build` stopped on module resolution, and verifyrun recorded the row as could-not-run.
+  - What it needs: a verify-runner image whose module cache matches the verified tree (a release at or after this commit), re-pinned for the container lane.
+  - Supplemental host probe, no credit: the same command on the darwin host, with its own module cache and `GOPROXY=off`, exits 0 with 8 MISS rows and no `is not a known kind` line. That matches the row's Expect.
+- Rows 1, 3, 5, 6, 7, 9, 10, 12, 13 and 14 pass. Row 13's output digest, sha256:4355a46b19d3, is the sha256 of `1` followed by a newline.
+
+Fail-first. The tool selected row 7 as risk-bearing, because its Expect contains the word "live". No other row matches, and all four brief-wide risk answers are no. At base 4e213c78271b, row 7 is `unproven`. The suite tools/cellctl/tests/scrubbed-cell.test.sh does not exist before the delivering commit, so the row exits 127 there, and the tool records it as not run rather than red. Every ancestor of the delivery lacks the suite, so no admissible base can show this row red. At head, the row passes.
+
+RISK-BEARING VALUE. Risk metadata is present, and all four answers are no, including irreversible: no. The literals enumerated over the deliverable at 61e68411ff93 (the Go launcher under tools/desk/cmd/cellctl and the shell oracle) are:
+- pem-mode = 0o600 @ tools/desk/cmd/cellctl/check.go:515 (oracle :1719, `scrubbed_mode_is "$f" 600`)
+- config-home-mode = 0o700 @ tools/desk/cmd/cellctl/check.go:475 (oracle :1695, `scrubbed_mode_is "$CELL_CONFIG" 700`)
+- run-dir mode = 0o700 @ tools/desk/cmd/cellctl/check.go:557
+- scrubbedPathTail = "/usr/bin:/bin:/usr/sbin:/sbin" @ tools/desk/cmd/cellctl/envkeys.go:89 (oracle :2079)
+- SCRUBBED_ENV_KEYS (20 keys) @ tools/cellctl/testdata/cellctl-shell-oracle.sh:2023
+- lock refusal exit code 4 @ tools/desk/cmd/cellctl/lock.go:28
+- smoke prompt "Reply with the single word READY and nothing else." @ tools/desk/cmd/cellctl/smoke.go:58
+
+Ranking, highest first:
+1. The two custody modes. A widened mode exposes an App private key, and a key once read stays read even after the mode is fixed.
+2. The PATH tail and the allowlist. A mistake here leaks parent authority into the harness, and an edit plus a redeploy fixes it.
+3. The exit code and the smoke prompt. These are reversible caller contracts.
+
+- RISK-VALUE: DERIVED — pem-mode = 0o600 @ tools/desk/cmd/cellctl/check.go:515 — owner read and write is the narrowest mode that still lets the owning user's desk tools read an App private key; any group or other bit lets a second local principal read it. The oracle's probe for this value is broken on Linux (#4317, rows 2 and 8).
+- RISK-VALUE: DERIVED — config-home-mode = 0o700 @ tools/desk/cmd/cellctl/check.go:475 — owner list and traverse is the least the owner needs on the directory that holds the keys; a group or world bit exposes key names and mtimes, as the brief's facts state. The oracle's probe for this value is broken on Linux in the same way (#4317, rows 2 and 15).
+- RISK-VALUE: DERIVED — scrubbedPathTail = "/usr/bin:/bin:/usr/sbin:/sbin" @ tools/desk/cmd/cellctl/envkeys.go:89 — the four standard system directories and nothing from the parent PATH. This is the brief's seven-element contract minus the shim, the desk-tools bindir and the harness dir; row 3 passed and asserts it.
+- The allowlist, exit code 4 and the smoke prompt rank lower and can be reversed by an edit and a redeploy, so no derivation is owed.
+
+Accounting: this dispatch ran the Verify table once. Attempt 1 ran all 15 rows under one bracket (closed, `verdict=match`) and is the witness above. Credited.
+
+Result: rows_passed=10, rows_total=15. Rows 2, 4, 8 and 15 fail on implementation defects (#4317 for rows 2, 8 and 15; #4316 for row 4). Row 11 is could-not-run because of the image module cache. This run does not change the board row, which stays `implemented`.
+
+**VERIFY: FAIL** — 10/15 pass in one container-netns bracket at 61e68411ff93; rows 2, 8 and 15 fail on Linux on the oracle's GNU-stat mode probe (#4317), row 4 fails on every platform on the conditional `ASSAY_TELEMETRY` plan key (#4316), and row 11 is could-not-run because the module cache in the pinned v1.0.75 image predates tools/desk go.sum.
+
 ## Review
 Gate: model (all four risk answers no — a new cell kind plus three verbs on a host launcher;
 it composes an environment with STRICTLY LESS of the operator's authority than the existing

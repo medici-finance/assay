@@ -594,5 +594,169 @@ RISK-VALUE: reversible knob, ranked last, no derivation owed — UNRESOLVED = "u
 
 **VERIFY: BLOCKED** — all 16 rows ran and passed on the version 2 table, and no acceptance obligation was observed to fail. The item stays where it is because its Verify table is protected and was amended after delivery (rows 1-8, 10, 12, 13 and 15, by f6d3a9570e1b, #5206). Closure needs the human-approved acceptance-transition run: a record carrying `Acceptance-Transition: amendment=<sha> approval=<comment URL>` and a `statusgen verifyrun --acceptance-forge` run with forge read access. The coordinate-only record refused with `protected table: current Verify section differs from immutable delivery`. Next actor: the desk confirms the driver's approval comment for that amendment exists, then dispatches a transition run that can read it. Status stays `implemented`.
 
+### Non-implementer verifier re-run — 2026-11-08, merged main d725ec020dd66d4ff160ff8c02abbab6bb117631
+
+Run by a fresh, non-implementer verifier (claude-opus-5-5, strong tier) under attestation medici-finance/assay#5718. This re-run was woken by a change to the item's inputs. Admission: `deskdispatch --check-verifier` admitted the run at the source above (exit 0), with the home clean, before any row ran. The witness below was written by one invocation of the installed `statusgen verifyrun` (release binary v1.0.78, not a build from this tree), run on the host (darwin arm64), offline (`KUBECONFIG=/dev/null`) and with no forge read access in its environment. No row is classed check:ci, so the container bracket does not apply.
+
+What changed since the 2026-11-06 run at 7ded00183785: one commit outside this brief touched a delivered path. 847d5cee66d5 (perf(release): compress the hosted ARM64 image artifact) changed one line of the release workflow, `compression-level: 0` to `compression-level: 1` at line 1618, in the native ARM64 image upload step. That line is not part of this item's work and moves no line any row or risk value reads. Every other delivered path (aggregate.py, aggregate_test.sh, credit-identity.sh, both READMEs) is byte-identical to 7ded00183785. The brief changed only by the 2026-11-06 Evidence landing. Its Verify section is unchanged, and `deskpathguard rederive` reports 16 rows and 0 author-added rows.
+
+Every row ran and every row passed on its current command. Each output hash equals the 2026-11-06 hash for the same row.
+
+The earlier blocker is unchanged. The table is still the version 2 table, amended after delivery by d52059b2c5a8 (on main's history, landed by the two-parent merge f6d3a9570e1b, #5206). The same coordinate-only record as before (delivery=c856fec8136b, base=a906f6200ed1, original=a906f6200ed1), passed as `--acceptance-record` with `--dry-run`, again refused before any row ran: `protected table: current Verify section differs from immutable delivery` (exit 2). This dispatch was given no approval comment URL and runs with no forge read access, so a `--acceptance-forge` transition run was not attempted. The witness below records the current table's rows without a `Verification-Table` marker, and it closes nothing alone.
+
+Fail-first: `statusgen verifyrun --fail-first --base a906f6200ed11b573bc7c8f6ae2a506bb0b29f1d --dry-run` (exit 0) reported `--fail-first: no risk-bearing row in this table; every row is recorded not-selected at base`. The brief's own fail-first evidence is row 2, which runs the suite against the retired engine at this commit.
+
+After the witness, the verifier ran the rows once more by hand at the same commit and compared the output with each Expect cell. This hand pass earns no witness credit. Rows 4-6 share row 3's command and output.
+
+- Row 1: `aggregate_test: 16 passed, 0 failed`, then `rc=0`, with no `FAIL` line.
+- Row 2 (retired engine): `aggregate_test: 4 passed, 12 failed`, suite exit 1, and the command exits 0. The FAIL lines include A1-A4, C1-C7 and F1. No line reads `rc=0`.
+- Rows 3-6: suite exit 0, with these lines:
+  - `ok   - C1 external-authored fragment: bullets carry the 'thanks @<login>' credit`
+  - `ok   - C2 roster-authored fragment is NOT credited (negative control)`
+  - `ok   - C2b an unlisted [bot] login is never credited`
+  - `ok   - C3 the opt-out marker suppresses the credit`
+  - `ok   - C4 unresolvable fragment aggregates uncredited, exit 0`
+- Row 7: aggregate.py exits 2 with `changelog: nothing to aggregate — …`, and the row prints `rc=2`.
+- Row 8: the `_resolve_fragment_pr` guard matches, and the count prints `3`. The imports are `import os`, `import re` and `import sys` at aggregate.py lines 75-77, with no from-import, importlib or dunder import.
+- Row 9: three `fetch-depth: 0` lines in the release workflow, at lines 905, 1644 and 2060.
+- Row 10: changelog README line 92, `**You need not credit the contributor by hand.** At release time the aggregator`.
+- Row 11: changelog README line 115, and tools/changelog README lines 266, 271, 281, 284 and 296.
+- Row 12: `check_test: 30 passed, 0 failed`, then `rc=0`.
+- Row 13: exit 0 and four lines. The line `never-merged.md` is followed by a tab and `unresolved`. The other three fragments resolve to 4242, 4343 and 5151.
+- Row 14: `pull-requests: read` at release workflow lines 140, 887 and 2050, plus two comment lines (977, 2133).
+- Row 15: exit 1, no output.
+- Row 16: the witness hash (51c94f57e6d9) was taken on the clean tree, before the witness was appended, and equals the 2026-11-06 clean-tree hash. With this Evidence in the working tree the bare command reads the uncommitted brief as the diff, so the fail-first dry run recorded a different hash (e56eb95d286b). A supplemental pinned probe (`--delivery c856fec8136b… --base a906f6200ed1…`, no acceptance credit) exits 0 and prints `summary: 5 corroborated, 0 disproved, 2 unchecked`, and no entry is marked disproved.
+- Rows 1-6 and 13 build the git-ignored fixture repository under tools/changelog/testdata. It was removed from the home after the witness run and again after the fail-first dry run, before the protected-record probe and before admission was checked again.
+
+Supplemental observation, no acceptance credit, carried from the 2026-10-30 run and unchanged: on a merge-commit landing the resolver prefers the adding commit's own subject to the landing merge's (tools/changelog/aggregate.py:287-291). A contributor-written `(#N)` subject can therefore name the wrong pull request's author. No Verify row covers it, and it is handed to the desk to file if no issue exists yet.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/changelog && if grep -q -e 'C5 credits resolves' aggregate_test.sh; then ./aggregate_test.sh; rc=$?; echo rc=$rc; exit $rc; else exit 3; fi` | pass exit=0 | sha256:6d597efc52ad | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/changelog && if grep -q -e 'C1 external-authored' aggregate_test.sh; then AGG_IMPL=testdata/old-aggregate.py ./aggregate_test.sh; rc=$?; echo rc=$rc; test "$rc" != 0; else exit 3; fi` | pass exit=0 | sha256:12b73c62ce82 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/changelog && out=$(./aggregate_test.sh 2>&1); rc=$?; printf '%s\n' "$out"; test "$rc" = 0 && grep -q -E '^ok +- C1 ' <<<"$out"` | pass exit=0 | sha256:e981a3aff3fe | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/changelog && out=$(./aggregate_test.sh 2>&1); rc=$?; printf '%s\n' "$out"; test "$rc" = 0 && grep -q -E '^ok +- C2 ' <<<"$out"` | pass exit=0 | sha256:e981a3aff3fe | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/changelog && out=$(./aggregate_test.sh 2>&1); rc=$?; printf '%s\n' "$out"; test "$rc" = 0 && grep -q -E '^ok +- C3 ' <<<"$out"` | pass exit=0 | sha256:e981a3aff3fe | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/changelog && out=$(./aggregate_test.sh 2>&1); rc=$?; printf '%s\n' "$out"; test "$rc" = 0 && grep -q -E '^ok +- C4 ' <<<"$out"` | pass exit=0 | sha256:e981a3aff3fe | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/changelog && out=$(python3 aggregate.py highlights testdata-none CHANGELOG-none --credits testdata-none.map 2>&1); rc=$?; case $out in *'nothing to aggregate'*) echo "rc=$rc"; test "$rc" = 2 ;; *) echo "rc=other:$rc"; exit 1 ;; esac` | pass exit=0 | sha256:9830ce9d4090 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/changelog && git -C ../.. grep -q -e '_resolve_fragment_pr' -- tools/changelog/aggregate.py && git -C ../.. grep -h -c 'import ' -- tools/changelog/aggregate.py` | pass exit=0 | sha256:1121cfccd591 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `git -C . grep -n 'fetch-depth' -- .github/workflows/release.yml` | pass exit=0 | sha256:27f822550549 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `grep -n -i 'need not credit the contributor by hand' changelog/README.md` | pass exit=0 | sha256:342c54e810d3 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `grep -n -i 'opt-out' changelog/README.md tools/changelog/README.md` | pass exit=0 | sha256:bdf000160195 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/changelog && ./check_test.sh && python3 aggregate.py credits testdata-none >/dev/null; rc=$?; echo rc=$rc; exit $rc` | pass exit=0 | sha256:e1dec2cfa6c1 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `cd tools/changelog && test -x testdata/make-credits-fixture.sh && ./testdata/make-credits-fixture.sh >/dev/null && out=$(python3 aggregate.py credits testdata/credits-fixture-repo/changelog 2>&1) && printf '%s\n' "$out" && grep -q -E '^never-merged[.]md[[:space:]]+unresolved$' <<<"$out"` | pass exit=0 | sha256:9d69237515e7 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `git -C . grep -n 'pull-requests: read' -- .github/workflows/release.yml` | pass exit=0 | sha256:494d67b56663 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 15 | `if git -C . grep -q 'pull-requests: read' -- .github/workflows/release.yml; then git -C . grep -n 'pull-requests: write' -- .github/workflows/release.yml; else exit 3; fi` | pass exit=1 | sha256:e3b0c44298fc | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+| 16 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:09` | pass exit=0 | sha256:51c94f57e6d9 | 2026-11-08 | assay-verifier-app[bot] @ d725ec020dd6 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5718 run=fed58aedaf825ddb3e37cb94033458b87dd8783329f5251387a147bb005409c1 source=d725ec020dd66d4ff160ff8c02abbab6bb117631 brief=docs/streams/contributor-trust/brief-09-external-contributor-credit.md model=claude-opus-5-5 tier=strong
+
+Risk-value enumeration, read at d725ec020dd6. The frontmatter answers `no` to every risk question, including irreversible, but the work touches the release workflow, so the step applies. No literal of this item changed since the last run. The one new literal on a delivered path, `compression-level: 1` at .github/workflows/release.yml:1618, belongs to the ARM64 image upload, not to this item, and is a reversible artifact setting. Literals introduced by #941, #949 and #980 that are still on main, each re-read at its line:
+
+1. pull-requests = read @ .github/workflows/release.yml:887 (artifacts job, the credit resolution) and :2050 (changelog-roll job).
+2. _MERGE_PR_RE = `^Merge pull request #(\d+) ` @ tools/changelog/aggregate.py:100.
+3. _SQUASH_PR_RE = `\(#(\d+)\)\s*$` @ tools/changelog/aggregate.py:101.
+4. _LOGIN_RE = `^@[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$` @ tools/changelog/aggregate.py:106.
+5. fetch-depth = 0 @ .github/workflows/release.yml:905 and :2060.
+6. OPT_OUT_MARKER = `<!-- changelog-credit: no -->` @ tools/changelog/credit-identity.sh:46, matched as a whole line by `grep -qxF` at line 83.
+7. The bot patterns `*'[bot]'` and `app/*` → `skip:bot` @ tools/changelog/credit-identity.sh:116 and :117.
+8. UNRESOLVED = "unresolved" @ tools/changelog/aggregate.py:95.
+9. CREDIT_SUFFIX = " — thanks %s" @ tools/changelog/aggregate.py:91.
+10. curl --retry 3 @ .github/workflows/release.yml:982 and :2138 (the credit steps).
+
+Ranking. The hardest thing to undo is a published release that thanks the wrong person, because a changelog section is forward-only. That puts entries 2-4 and 7 first. Entry 1 comes next, since a widened scope exposes write access for as long as it lasts. Entries 5 and 6 follow. Entries 8-10 are a sentinel, wording and a retry count, all reversible with an edit, so they rank last.
+
+RISK-VALUE: DERIVED — _MERGE_PR_RE = `^Merge pull request #(\d+) ` @ tools/changelog/aggregate.py:100 — the forge writes a merge-commit landing's subject as "Merge pull request #N from owner/branch". The pattern is anchored at the start and needs a trailing space, so it reads only that leading token. The literal is right; the order it is consulted in is the supplemental observation above.
+RISK-VALUE: DERIVED — _SQUASH_PR_RE = `\(#(\d+)\)\s*$` @ tools/changelog/aggregate.py:101 — a squash landing's default subject ends "<title> (#N)", and the end anchor stops a `(#M)` inside the title from being read. Cases C6 and C7 cover a squash landing followed by an unrelated later merge. The literal is right for a squash landing; it also matches a contributor's branch commit, per the supplemental observation above.
+RISK-VALUE: DERIVED — _LOGIN_RE = `^@[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$` @ tools/changelog/aggregate.py:106 — forge logins are 1 to 39 characters: alphanumerics and single hyphens, never leading, trailing or doubled. One leading alphanumeric plus at most 38 more gives 39 at most, and the lookahead rejects a hyphen not followed by an alphanumeric.
+RISK-VALUE: DERIVED — `*'[bot]'` / `app/*` → skip:bot @ tools/changelog/credit-identity.sh:116-117 — the forge renders an App's login as `<slug>[bot]` over REST and as `app/<slug>` in other views, so no App login is thanked, whether or not the roster lists it. Case C2b covers an unlisted `[bot]` login.
+RISK-VALUE: DERIVED — pull-requests = read @ .github/workflows/release.yml:887 — the forge half only reads a pull request's author and body, which the read scope covers. Row 15 confirms the workflow has no `pull-requests: write` anywhere.
+RISK-VALUE: DERIVED — fetch-depth = 0 @ .github/workflows/release.yml:905 — 0 is the checkout action's full-history setting. The resolver walks back to each fragment's adding commit and the commit that landed it, which a shallow clone cannot reach. The changelog-roll job has the same value at :2060.
+RISK-VALUE: DERIVED — OPT_OUT_MARKER = `<!-- changelog-credit: no -->` @ tools/changelog/credit-identity.sh:46 — byte-identical to the marker the contributor docs give (changelog README line 119, tools/changelog README line 300), so a contributor who follows the docs is matched.
+RISK-VALUE: reversible knob, ranked last, no derivation owed — UNRESOLVED = "unresolved" @ tools/changelog/aggregate.py:95; CREDIT_SUFFIX = " — thanks %s" @ tools/changelog/aggregate.py:91 (configurable wording, by design); curl --retry 3 @ .github/workflows/release.yml:982.
+
+**VERIFY: BLOCKED** — all 16 rows ran and passed on the version 2 table at d725ec020dd6, and no acceptance obligation was observed to fail. The blocker from the 2026-11-06 run still stands: the Verify table is protected and was amended after delivery (rows 1-8, 10, 12, 13 and 15, by f6d3a9570e1b, #5206), and the coordinate-only record again refused with `protected table: current Verify section differs from immutable delivery`. Closure needs a human-approved acceptance-transition run: a record carrying `Acceptance-Transition: amendment=<sha> approval=<comment URL>` and a `statusgen verifyrun --acceptance-forge` run with forge read access. Next actor: the desk confirms the driver's approval comment for that amendment exists, then dispatches a transition run that can read it. Status stays `implemented`.
+
+### Non-implementer verifier re-run — 2026-11-08, merged main 61e68411ff93f1aa3f2a955b505f2f77ec046c20, acceptance-transition run
+
+Run by a fresh, non-implementer verifier (claude-opus-5-5, strong tier) under attestation medici-finance/assay#5762. This re-run was woken by a change to the item's inputs. Admission: `deskdispatch --check-verifier` admitted the run at the source above (exit 0), with the home clean, before any row ran. The witness below was written by one host invocation of the installed `statusgen verifyrun` (release binary v1.0.78, not a build from this tree) on darwin arm64, offline (`KUBECONFIG=/dev/null`), with `--acceptance-record <descriptor> --acceptance-forge --rows 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16`. The descriptor file sat outside the home. The forge read was scoped to that one process for the approval lookup, and admitted rows ran under the pinned row-environment strip (#4612). No row is classed check:ci, so the container bracket does not apply and no container run was made; the host selection covers the whole table.
+
+Acceptance transition. The driver approved the amendment of rows 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 13 and 15 in a comment on #5728 (amendment f6d3a9570e1b, the two-parent merge of #5206). The descriptor binds delivery=c856fec8136b (#941), base=a906f6200ed1 (its parent) and original=a247bec9993c (#935, the stream's authoring commit, an ancestor of base). The earlier runs' coordinate-only records named a906f6200ed1 as original; this run uses the approved coordinates. The runner read the approval, accepted the descriptor before any row ran, and wrote the `Acceptance-Changes`, `Verification-Table` and `Acceptance-Transition` lines below itself. `deskpathguard rederive` reports 16 rows and 0 author-added rows.
+
+What changed since the 2026-11-08 run at d725ec020dd6: #5701 (fix/2605-roll-at-tag) and #5703 changed four delivered paths. aggregate.py gained `roll --at-ref <ref>` and `--clear` with exit codes 3 and 4, aggregate_test.sh gained the R cases, the tools/changelog README documents them, and the release workflow's changelog-roll step now passes `--at-ref "refs/tags/${RELEASE_TAG}" --clear`. Commit dec477ef4 (in #5701) added `import subprocess` at aggregate.py:101, used at lines 509 and 521 for `git rev-parse` and `git ls-tree` in `_fragments_at_ref`. credit-identity.sh and the changelog README are byte-identical to d725ec020dd6.
+
+Result. Fifteen rows pass. Row 8 fails its acceptance obligation. Its command exits 0 and prints `4`, and verifyrun records `fail exit=0` with `no output line equals "3"`. The Expect is `output is 3 or fewer (the module gained no network or forge import; it still stands on os, re and sys)`. The four import lines are `import os`, `import re`, `import subprocess` and `import sys` at aggregate.py lines 99-102. The new import runs local git only and opens no network connection, but the row asserts a count of 3 or fewer and a module that stands on os, re and sys alone, and neither holds at this commit. The module's own docstring (aggregate.py:220) still says it reaches git through os.popen with no new dependency. This item's delivery did not cause the failure; the later change dec477ef4 regressed the obligation. The remedy is either to route `_fragments_at_ref` through the module's existing os.popen helper, or a reviewed definition repair of row 8 through a new approved amendment.
+
+Fail-first: run once before the transition run, as `statusgen verifyrun --fail-first --base a906f6200ed11b573bc7c8f6ae2a506bb0b29f1d --dry-run` (exit 1, from row 8 at head). It reported `--fail-first: no risk-bearing row in this table; every row is recorded not-selected at base`. The brief's own fail-first evidence is row 2, which runs the suite against the retired engine at this commit.
+
+Primary-output inspection. After the witness, the verifier ran supplemental probes at the same commit and compared them with each Expect cell. They earn no acceptance credit. Rows whose output hash equals the d725ec020dd6 hash for the same row (7, 10, 12, 13, 14, 15, 16) printed byte-identical output.
+
+- Rows 1 and 3-6 (same suite): `aggregate_test: 27 passed, 0 failed`, exit 0, no `FAIL` line, one `thanks` line, and `ok` lines for C1, C2, C2b, C3, C4, C5, C6 and C7. Row 1 then prints `rc=0`.
+- Row 2 (retired engine): `aggregate_test: 5 passed, 13 failed`, suite exit 1, so the row prints `rc=1` and exits 0. The FAIL lines are A1-A4, C1-C7, F1 and R6. No line contains `rc=0`.
+- Row 7: aggregate.py exits 2 with `changelog: nothing to aggregate — …`, and the row prints `rc=2`.
+- Row 8: the `_resolve_fragment_pr` guard matches (aggregate.py:275), and the count prints `4`, as above.
+- Row 9: `fetch-depth: 0` at release workflow lines 905, 1644 and 2060, plus a comment line at 2226.
+- Row 10: changelog README line 92, `**You need not credit the contributor by hand.** At release time the aggregator`.
+- Row 11: changelog README line 115, and tools/changelog README lines 275, 280, 290, 293 and 305.
+- Row 12: `check_test: 30 passed, 0 failed`, and `aggregate.py credits testdata-none` exits 0, so the row prints `rc=0`.
+- Row 13: four lines, each a fragment name, a tab and a value: `merged-via-merge-commit.md` 4242, `merged-via-squash.md` 4343, `never-merged.md` `unresolved`, `squash-then-unrelated-merge.md` 5151.
+- Row 14: `pull-requests: read` at release workflow lines 140, 887 and 2050, plus two comment lines (977, 2133).
+- Row 15: exit 1, no output.
+- Row 16: the witness hash (51c94f57e6d9) was taken on the clean tree and equals the clean-tree hash of the two earlier runs. A supplemental pinned probe (`--delivery c856fec8136b… --base a906f6200ed1…`) exits 0 and prints `summary: 5 corroborated, 0 disproved, 2 unchecked`; no entry is marked disproved.
+- Rows 1-6 and 13 build the git-ignored fixture repository under tools/changelog/testdata. It was removed from the home after the fail-first dry run (before the transition run) and after each probe.
+
+Supplemental observation, no acceptance credit, carried from the 2026-10-30 run and unchanged: on a merge-commit landing the resolver prefers the adding commit's own subject to the landing merge's (now tools/changelog/aggregate.py:312-316). A contributor-written `(#N)` subject can therefore name the wrong pull request's author. No Verify row covers it.
+
+Acceptance-Changes: 1=Command,2=Command,3=Command,4=Command,5=Command,6=Command,7=Command,8=Command,10=Command,12=Command,13=Command,15=Command
+Verification-Table: delivery=c856fec8136b2ca3ff22ec8f63c2c27ed10b4cc8 base=a906f6200ed11b573bc7c8f6ae2a506bb0b29f1d original=a247bec9993cb2c36bb62b7e9cb4adc6eb50f035
+Acceptance-Transition: amendment=f6d3a9570e1bbef78be930c19235c443a9e89369 approval=https://github.com/medici-finance/assay/issues/5728#issuecomment-6715531769
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/changelog && if grep -q -e 'C5 credits resolves' aggregate_test.sh; then ./aggregate_test.sh; rc=$?; echo rc=$rc; exit $rc; else exit 3; fi` | pass exit=0 | sha256:cbae60c1cf29 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/changelog && if grep -q -e 'C1 external-authored' aggregate_test.sh; then AGG_IMPL=testdata/old-aggregate.py ./aggregate_test.sh; rc=$?; echo rc=$rc; test "$rc" != 0; else exit 3; fi` | pass exit=0 | sha256:b244ca74c0db | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/changelog && out=$(./aggregate_test.sh 2>&1); rc=$?; printf '%s\n' "$out"; test "$rc" = 0 && grep -q -E '^ok +- C1 ' <<<"$out"` | pass exit=0 | sha256:51047c0b2994 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/changelog && out=$(./aggregate_test.sh 2>&1); rc=$?; printf '%s\n' "$out"; test "$rc" = 0 && grep -q -E '^ok +- C2 ' <<<"$out"` | pass exit=0 | sha256:51047c0b2994 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/changelog && out=$(./aggregate_test.sh 2>&1); rc=$?; printf '%s\n' "$out"; test "$rc" = 0 && grep -q -E '^ok +- C3 ' <<<"$out"` | pass exit=0 | sha256:51047c0b2994 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/changelog && out=$(./aggregate_test.sh 2>&1); rc=$?; printf '%s\n' "$out"; test "$rc" = 0 && grep -q -E '^ok +- C4 ' <<<"$out"` | pass exit=0 | sha256:51047c0b2994 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/changelog && out=$(python3 aggregate.py highlights testdata-none CHANGELOG-none --credits testdata-none.map 2>&1); rc=$?; case $out in *'nothing to aggregate'*) echo "rc=$rc"; test "$rc" = 2 ;; *) echo "rc=other:$rc"; exit 1 ;; esac` | pass exit=0 | sha256:9830ce9d4090 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/changelog && git -C ../.. grep -q -e '_resolve_fragment_pr' -- tools/changelog/aggregate.py && git -C ../.. grep -h -c 'import ' -- tools/changelog/aggregate.py` | fail exit=0 | sha256:7de1555df0c2 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `git -C . grep -n 'fetch-depth' -- .github/workflows/release.yml` | pass exit=0 | sha256:6ffff039d11b | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `grep -n -i 'need not credit the contributor by hand' changelog/README.md` | pass exit=0 | sha256:342c54e810d3 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `grep -n -i 'opt-out' changelog/README.md tools/changelog/README.md` | pass exit=0 | sha256:3f3ff3c937db | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/changelog && ./check_test.sh && python3 aggregate.py credits testdata-none >/dev/null; rc=$?; echo rc=$rc; exit $rc` | pass exit=0 | sha256:e1dec2cfa6c1 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `cd tools/changelog && test -x testdata/make-credits-fixture.sh && ./testdata/make-credits-fixture.sh >/dev/null && out=$(python3 aggregate.py credits testdata/credits-fixture-repo/changelog 2>&1) && printf '%s\n' "$out" && grep -q -E '^never-merged[.]md[[:space:]]+unresolved$' <<<"$out"` | pass exit=0 | sha256:9d69237515e7 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `git -C . grep -n 'pull-requests: read' -- .github/workflows/release.yml` | pass exit=0 | sha256:494d67b56663 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 15 | `if git -C . grep -q 'pull-requests: read' -- .github/workflows/release.yml; then git -C . grep -n 'pull-requests: write' -- .github/workflows/release.yml; else exit 3; fi` | pass exit=1 | sha256:e3b0c44298fc | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+| 16 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:09` | pass exit=0 | sha256:51c94f57e6d9 | 2026-11-08 | assay-verifier-app[bot] @ 61e68411ff93f1aa3f2a955b505f2f77ec046c20 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5762 run=9cfd7a50878d72183225530e388ef4cd2a13e3bc82a8d0d9b2c18c1df20b1f16 source=61e68411ff93f1aa3f2a955b505f2f77ec046c20 brief=docs/streams/contributor-trust/brief-09-external-contributor-credit.md model=claude-opus-5-5 tier=strong
+
+Risk-value enumeration, read at 61e68411ff93. The frontmatter answers `no` to every risk question, including irreversible, but the work touches the release workflow, so the step applies. No literal of this item changed since the last run; the lines moved. Literals introduced by #941, #949 and #980 that are still on main, each re-read at its current line:
+
+1. pull-requests = read @ .github/workflows/release.yml:887 (artifacts job, the credit resolution) and :2050 (changelog-roll job).
+2. _MERGE_PR_RE = `^Merge pull request #(\d+) ` @ tools/changelog/aggregate.py:125.
+3. _SQUASH_PR_RE = `\(#(\d+)\)\s*$` @ tools/changelog/aggregate.py:126.
+4. _LOGIN_RE = `^@[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$` @ tools/changelog/aggregate.py:131.
+5. fetch-depth = 0 @ .github/workflows/release.yml:905 and :2060.
+6. OPT_OUT_MARKER = `<!-- changelog-credit: no -->` @ tools/changelog/credit-identity.sh:46, matched as a whole line by `grep -qxF` at line 83.
+7. The bot patterns `*'[bot]'` and `app/*` → `skip:bot` @ tools/changelog/credit-identity.sh:116 and :117.
+8. UNRESOLVED = "unresolved" @ tools/changelog/aggregate.py:120.
+9. CREDIT_SUFFIX = " — thanks %s" @ tools/changelog/aggregate.py:116.
+10. curl --retry 3 @ .github/workflows/release.yml:982 and :2138 (the credit steps).
+
+The later change #5701 added EXIT_DUPLICATE_TAG = 3 and EXIT_BAD_REF = 4 @ tools/changelog/aggregate.py:460-461. They belong to the roll pinning, not to this item, and are reversible exit codes.
+
+Ranking. The hardest thing to undo is a published release that thanks the wrong person, because a changelog section is forward-only. That puts entries 2-4 and 7 first. Entry 1 comes next, since a widened scope exposes write access for as long as it lasts. Entries 5 and 6 follow. Entries 8-10 are a sentinel, wording and a retry count, all reversible with an edit, so they rank last.
+
+RISK-VALUE: DERIVED — _MERGE_PR_RE = `^Merge pull request #(\d+) ` @ tools/changelog/aggregate.py:125 — the forge writes a merge-commit landing's subject as "Merge pull request #N from owner/branch". The pattern is anchored at the start and needs a trailing space, so it reads only that leading token. The literal is right; the order it is consulted in is the supplemental observation above.
+RISK-VALUE: DERIVED — _SQUASH_PR_RE = `\(#(\d+)\)\s*$` @ tools/changelog/aggregate.py:126 — a squash landing's default subject ends "<title> (#N)", and the end anchor stops a `(#M)` inside the title from being read. Cases C6 and C7 cover a squash landing followed by an unrelated later merge. The literal is right for a squash landing; it also matches a contributor's branch commit, per the supplemental observation above.
+RISK-VALUE: DERIVED — _LOGIN_RE = `^@[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$` @ tools/changelog/aggregate.py:131 — forge logins are 1 to 39 characters: alphanumerics and single hyphens, never leading, trailing or doubled. One leading alphanumeric plus at most 38 more gives 39 at most, and the lookahead rejects a hyphen not followed by an alphanumeric.
+RISK-VALUE: DERIVED — `*'[bot]'` / `app/*` → skip:bot @ tools/changelog/credit-identity.sh:116-117 — the forge renders an App's login as `<slug>[bot]` over REST and as `app/<slug>` in other views, so no App login is thanked, whether or not the roster lists it. Case C2b covers an unlisted `[bot]` login.
+RISK-VALUE: DERIVED — pull-requests = read @ .github/workflows/release.yml:887 — the forge half only reads a pull request's author and body, which the read scope covers. Row 15 confirms the workflow has no `pull-requests: write` anywhere.
+RISK-VALUE: DERIVED — fetch-depth = 0 @ .github/workflows/release.yml:905 — 0 is the checkout action's full-history setting. The resolver walks back to each fragment's adding commit and the commit that landed it, which a shallow clone cannot reach. The changelog-roll job has the same value at :2060.
+RISK-VALUE: DERIVED — OPT_OUT_MARKER = `<!-- changelog-credit: no -->` @ tools/changelog/credit-identity.sh:46 — byte-identical to the marker the contributor docs give (changelog README line 119, tools/changelog README line 309), so a contributor who follows the docs is matched.
+RISK-VALUE: reversible knob, ranked last, no derivation owed — UNRESOLVED = "unresolved" @ tools/changelog/aggregate.py:120; CREDIT_SUFFIX = " — thanks %s" @ tools/changelog/aggregate.py:116 (configurable wording, by design); curl --retry 3 @ .github/workflows/release.yml:982.
+
+**VERIFY: FAIL** — row 8: the acceptance-transition run at 61e68411ff93 accepted the approved descriptor and ran all 16 rows. Fifteen passed. Row 8 prints `4`, not `3` or fewer, because dec477ef4 (#5701) added `import subprocess` at tools/changelog/aggregate.py:101. The item does not advance; the failure is routed as a bug. Status stays `implemented`.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

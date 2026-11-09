@@ -28,6 +28,28 @@ VERSION = 'v1.2.3'
 SOURCE = 'a' * 40
 
 
+def raw_docker_builds(source):
+    """Line numbers of docker build argument lists outside images.docker_build."""
+    import ast
+    found, inside = [], set()
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == 'docker_build':
+            inside.update(id(n) for n in ast.walk(node))
+    for node in ast.walk(tree):
+        items = node.args if isinstance(node, ast.Call) else node.elts if isinstance(node, (ast.List, ast.Tuple)) else None
+        if items is None or id(node) in inside:
+            continue
+        words = []
+        for item in items:
+            if not (isinstance(item, ast.Constant) and isinstance(item.value, str)):
+                break
+            words.append(item.value)
+        if words[:1] == ['docker'] and 'build' in words[1:3]:
+            found.append(node.lineno)
+    return found
+
+
 NATIVE_CONFIG = b'{"architecture":"arm64","os":"linux"}'
 NATIVE_ID = 'sha256:' + hashlib.sha256(NATIVE_CONFIG).hexdigest()
 
@@ -923,6 +945,40 @@ def move_step(text, job, name, before):
     return mutate_job(''.join(lines[:starts[0] - 1] + lines[end - 1:]), job, before, step + before)
 
 
+class ModuleCopyTest(unittest.TestCase):
+    def test_image_sources_include_local_module_closure(self):
+        repo = HERE.parents[1]
+        env = dict(os.environ, GOWORK='off', GOTOOLCHAIN='local')
+        pending = [repo / 'tools/desk', repo / 'statusgen']
+        modules = set()
+        while pending:
+            module = pending.pop().resolve()
+            if module in modules:
+                continue
+            modules.add(module)
+            data = json.loads(subprocess.check_output(
+                ['go', 'mod', 'edit', '-json', str(module / 'go.mod')],
+                cwd=repo, env=env, text=True))
+            pending.extend(module / item['New']['Path']
+                           for item in data.get('Replace', [])
+                           if not item['New'].get('Version'))
+        for name in ('Dockerfile', 'images/assay-harness/Dockerfile',
+                     'images/verify-runner/Dockerfile'):
+            copied = set()
+            for line in (repo / name).read_text().splitlines():
+                if not line.startswith('COPY ') or line.startswith('COPY --from='):
+                    continue
+                for source in line.split()[1:-1]:
+                    path = repo / source
+                    if path.name == 'go.mod':
+                        copied.add(path.parent.resolve())
+                    elif (path / 'go.mod').is_file():
+                        copied.add(path.resolve())
+            with self.subTest(dockerfile=name):
+                missing = sorted(str(path.relative_to(repo)) for path in modules - copied)
+                self.assertEqual(missing, [], 'local module manifests missing from image: ' + name)
+
+
 class ImagesTest(unittest.TestCase):
     def test_proof_joined(self):
         suite = HERE.parents[1] / 'images/verify-runner/source_proof_test.py'
@@ -948,7 +1004,7 @@ class ImagesTest(unittest.TestCase):
         scan.parent.mkdir(parents=True)
         scan.write_text('''#!/bin/sh
 printf 'scan %s\\n' "$1" >> "$CALLS"
-[ "${MODE:-}" != scan-fail ]
+case "${MODE:-}:$1" in scan-fail:*|deskd-scan-fail:*/deskd:*) exit 1;; esac
 ''')
         self.inputs = self.root / 'inputs'
         self.inputs.mkdir()
@@ -983,6 +1039,7 @@ with open(os.environ['CALLS'], 'a') as f: f.write(json.dumps(args)+'\\n')
 mode = os.environ.get('MODE', '')
 def digest(ref): return 'sha256:' + hashlib.sha256(ref.encode()).hexdigest()
 ARCHES = {'linux/amd64': '-linux-amd64', 'linux/arm64': '-linux-arm64'}
+if args[:2] == ['builder', 'prune']: sys.exit(1 if mode == 'prune-fail' else 0)
 if args[:1] == ['info']:
     print('linux/amd64' if mode == 'native-wrong-host' else 'linux/aarch64'); sys.exit(0)
 if args[:1] == ['save']:
@@ -1016,6 +1073,13 @@ if args[:2] == ['manifest', 'inspect']:
 if args[:2] == ['manifest', 'create']: sys.exit(0)
 if args[:2] == ['manifest', 'push']:
     if mode != 'index-no-digest': print('sha256:' + 'c'*64)
+    sys.exit(0)
+if args[:2] == ['image', 'inspect'] and args[3] == '{{json .Config}}':
+    user = {'deskd-root-user': '0:0', 'deskd-named-user': 'deskd', 'deskd-no-user': ''}.get(mode, '65532:65532')
+    revision = 'b'*40 if mode == 'deskd-wrong-revision' else 'a'*40
+    print(json.dumps({'User': user, 'Labels': {'org.opencontainers.image.revision': revision}})); sys.exit(0)
+if args[0] == 'run' and args[-1] == '--help':
+    print('deskd: no usage here' if mode == 'deskd-no-usage' else 'Usage of /deskd:\\n  -addr string', file=sys.stderr)
     sys.exit(0)
 if args[:2] == ['image', 'inspect'] and args[3] == '{{.Os}}/{{.Architecture}}':
     platform = next(p for p, suffix in ARCHES.items() if args[-1].endswith(suffix))
@@ -1104,10 +1168,10 @@ if args[:2] == ['image', 'inspect']:
         self.assertFalse((self.out / 'release-images.json').exists())
         calls = self.recorded()
         self.assertFalse(any('"push"' in s or '"manifest"' in s for s in calls))
-        self.assertEqual(sum(s.startswith('scan ') for s in calls), 6)
+        self.assertEqual(sum(s.startswith('scan ') for s in calls), 7)
         # The native job checks arm64; this job checks eight amd64 images
-        # and the amd64 runner, plus its capability probe.
-        self.assertEqual(sum('"run"' in s for s in calls), 10)
+        # and the amd64 runner, plus its capability probe and deskd's usage.
+        self.assertEqual(sum('"run"' in s for s in calls), 11)
         self.assertIn('DESK_TOOLS_IMAGE=ghcr.io/example/assay/desk-tools:v1.2.3', '\n'.join(calls))
         self.assertEqual((self.root / '.release-images/harness/statusgen').read_bytes(),
                          (self.inputs / 'statusgen-linux-amd64').read_bytes())
@@ -1167,7 +1231,7 @@ if args[:2] == ['image', 'inspect']:
         refs = contract.validate(manifest, VERSION, SOURCE,
                                  (self.out / 'verify-runner-image.txt').read_text(), 'example/assay',
                                  runner_platforms=strict)
-        self.assertEqual(len(refs), 9)
+        self.assertEqual(len(refs), 10)
         # regression: #4323 — the runner reference pins the index digest the
         # registry returned, and its record names both platforms.
         runner = next(i for i in manifest['images'] if i['name'] == 'verify-runner')
@@ -1178,7 +1242,7 @@ if args[:2] == ['image', 'inspect']:
         calls = self.recorded()
         parsed = [json.loads(s) if s.startswith('[') else [] for s in calls]
         pushes = [i for i, c in enumerate(parsed) if c[:1] == ['push']]
-        self.assertEqual(len(pushes), 10)
+        self.assertEqual(len(pushes), 11)
         self.assertEqual([parsed[i][1] for i in pushes][-2:],
                          ['ghcr.io/example/verify-runner:v1.2.3-linux-amd64',
                           'ghcr.io/example/verify-runner:v1.2.3-linux-arm64'])
@@ -1201,7 +1265,7 @@ if args[:2] == ['image', 'inspect']:
         self.assertLessEqual({'ghcr.io/example/verify-runner:v1.2.3',
                               'ghcr.io/example/verify-runner:v1.2.3-linux-amd64',
                               'ghcr.io/example/verify-runner:v1.2.3-linux-arm64'}, absent)
-        self.assertEqual(len(absent), 11)
+        self.assertEqual(len(absent), 12)
         # An amd64-only runner record is a legacy consumer record: the default
         # contract still admits it, the producer's strict call does not.
         legacy = copy.deepcopy(manifest)
@@ -1228,6 +1292,198 @@ if args[:2] == ['image', 'inspect']:
                 if mutate == 'desk-multiarch': broken['images'][0]['platform'] = contract.RUNNER_PLATFORM
                 with self.assertRaises(ValueError):
                     contract.validate(broken, VERSION, SOURCE, runner, 'example/assay', runner_platforms=strict)
+
+    # regression: cell-api/09
+    def test_deskd_release_record(self):
+        deskd = 'ghcr.io/example/assay/deskd:v1.2.3'
+        root = self.root.resolve()
+
+        def deskd_calls(case):
+            calls = [json.loads(s) if s.startswith('[') else s for s in case.recorded()]
+            return calls, {
+                'build': [i for i, c in enumerate(calls) if isinstance(c, list) and c[:1] == ['build'] and deskd in c],
+                'config': [i for i, c in enumerate(calls) if isinstance(c, list) and c[:4] == ['image', 'inspect', '--format', '{{json .Config}}']],
+                'usage': [i for i, c in enumerate(calls) if isinstance(c, list) and c[:1] == ['run'] and deskd in c],
+                'scan': [i for i, c in enumerate(calls) if c == 'scan ' + deskd],
+                'push': [i for i, c in enumerate(calls) if isinstance(c, list) and c[:1] == ['push']],
+            }
+
+        # A dry run builds and checks deskd from cell-api/08's definition and pushes nothing.
+        result = self.invoke()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls, at = deskd_calls(self)
+        self.assertEqual(len(at['build']), 1)
+        build = calls[at['build'][0]]
+        self.assertEqual(build[build.index('--platform') + 1], 'linux/amd64')
+        self.assertEqual(build[build.index('-f') + 1], str(root / 'images/deskd/Dockerfile'))
+        self.assertEqual(build[-1], str(root / 'deskd'))
+        self.assertIn('REVISION=' + SOURCE, build)
+        self.assertEqual([len(at['config']), len(at['usage']), len(at['scan'])], [1, 1, 1])
+        usage = calls[at['usage'][0]]
+        self.assertEqual(usage[usage.index('--network') + 1], 'none')
+        self.assertEqual(usage[usage.index('--pull') + 1], 'never')
+        self.assertEqual(usage[-2:], [deskd, '--help'])
+        self.assertNotIn('statusgen', usage)
+        self.assertEqual(at['push'], [])
+        self.assertFalse(any(isinstance(c, list) and c[:1] == ['manifest'] for c in calls))
+        self.assertFalse((self.out / 'release-images.json').exists())
+
+        # A publish records deskd as linux/amd64 with a registry digest, after every check.
+        case = self.fresh()
+        result = case.invoke(True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        manifest = json.loads((case.out / 'release-images.json').read_text())
+        record = [i for i in manifest['images'] if i['name'] == 'deskd']
+        self.assertEqual(record, [{'name': 'deskd', 'platform': 'linux/amd64',
+                                   'ref': deskd + '@sha256:' + hashlib.sha256(deskd.encode()).hexdigest()}])
+        refs = contract.validate(manifest, VERSION, SOURCE, (case.out / 'verify-runner-image.txt').read_text(),
+                                 'example/assay', runner_platforms=(contract.RUNNER_PLATFORM,))
+        self.assertEqual(refs['deskd'], record[0]['ref'])
+        calls, at = deskd_calls(case)
+        self.assertIn(deskd, [calls[i][1] for i in at['push']])
+        checks = at['build'] + at['config'] + at['usage'] + at['scan']
+        self.assertEqual(len(checks), 4)
+        self.assertLess(max(checks), min(at['push']))
+
+        # Each deskd refusal stops before any push or metadata write.
+        modes = ['deskd-root-user', 'deskd-named-user', 'deskd-no-user',
+                 'deskd-wrong-revision', 'deskd-no-usage', 'deskd-scan-fail']
+        cases = {mode: self.fresh() for mode in modes}
+        with ThreadPoolExecutor(max_workers=min(len(modes), os.cpu_count() or 1)) as pool:
+            results = dict(zip(modes, pool.map(lambda mode: cases[mode].invoke(True, mode), modes)))
+        for mode in modes:
+            with self.subTest(mode=mode):
+                case, result = cases[mode], results[mode]
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertIn('deskd', result.stderr)
+                self.assertFalse(any('"push"' in s for s in case.recorded()))
+                self.assertFalse((case.out / 'release-images.json').exists())
+                self.assertFalse((case.out / 'verify-runner-image.txt').exists())
+                if mode == 'deskd-no-usage':
+                    self.assertIn('deskd: no usage here', result.stderr)
+
+    # regression: cell-api/09
+    def test_deskd_contract_compatibility(self):
+        spec = importlib.util.spec_from_file_location('images', HERE / 'images.py')
+        images = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(images)
+        self.assertEqual(set(images.NAMES), set(contract.NAMES))
+        self.assertEqual(set(contract.LEGACY_NAMES), set(contract.NAMES) - {'deskd'})
+        both = (contract.NAMES, contract.LEGACY_NAMES)
+
+        def record(names):
+            items = []
+            for name in sorted(names):
+                path = 'example/verify-runner' if name == 'verify-runner' else 'example/assay/' + name
+                platform = contract.RUNNER_PLATFORM if name == 'verify-runner' else 'linux/amd64'
+                digest = hashlib.sha256(name.encode()).hexdigest()
+                items.append({'name': name, 'platform': platform,
+                              'ref': f'ghcr.io/{path}:{VERSION}@sha256:{digest}'})
+            return {'schema': 'release-images-v1', 'version': VERSION, 'source_revision': SOURCE,
+                    'repository': 'example/assay', 'images': items}
+
+        def check(manifest, **kwargs):
+            runner = next(i['ref'] for i in manifest['images'] if i['name'] == 'verify-runner') + '\n'
+            return contract.validate(manifest, VERSION, SOURCE, runner, 'example/assay', **kwargs)
+
+        def deskd_entry(manifest):
+            return next(i for i in manifest['images'] if i['name'] == 'deskd')
+
+        complete = record(contract.NAMES)
+        self.assertEqual(len(check(complete)), 10)
+        # The default is strict: only the current ten-image set passes.
+        refused = {}
+        refused['ten-without-deskd'] = copy.deepcopy(complete)
+        deskd_entry(refused['ten-without-deskd']).update(
+            next(i for i in complete['images'] if i['name'] == 'desk-tools'))
+        refused['nine-image'] = record(contract.LEGACY_NAMES)
+        refused['bare-tag'] = copy.deepcopy(complete)
+        deskd_entry(refused['bare-tag'])['ref'] = f'ghcr.io/example/assay/deskd:{VERSION}'
+        refused['wrong-repository'] = copy.deepcopy(complete)
+        entry = deskd_entry(refused['wrong-repository'])
+        entry['ref'] = entry['ref'].replace('example/assay/deskd', 'other/assay/deskd')
+        refused['arm64'] = copy.deepcopy(complete)
+        deskd_entry(refused['arm64'])['platform'] = 'linux/arm64'
+        refused['multiarch'] = copy.deepcopy(complete)
+        deskd_entry(refused['multiarch'])['platform'] = contract.RUNNER_PLATFORM
+        for name, manifest in refused.items():
+            with self.subTest(default=name), self.assertRaises(ValueError):
+                check(manifest)
+        # A consumer of an older record opts in by name, and nothing else loosens.
+        self.assertEqual(len(check(record(contract.LEGACY_NAMES), names=both)), 9)
+        self.assertEqual(len(check(complete, names=both)), 10)
+        mixed = record(contract.LEGACY_NAMES - {'the-desk'} | {'deskd'})
+        duplicate = copy.deepcopy(complete)
+        duplicate['images'].append(duplicate['images'][0])
+        unknown = record(contract.LEGACY_NAMES)
+        unknown['images'].append(dict(unknown['images'][0], name='unknown'))
+        for name, manifest in {'mixed': mixed, 'duplicate': duplicate, 'unknown': unknown,
+                               'bare-tag': refused['bare-tag']}.items():
+            with self.subTest(both=name), self.assertRaises(ValueError):
+                check(manifest, names=both)
+        for names in (contract.NAMES, (), 'deskd', (frozenset(),), (['deskd'],), ({1},)):
+            with self.subTest(names=names), self.assertRaises(ValueError):
+                check(complete, names=names)
+        # The real bytes of both pinned pre-deskd records pass only with the legacy set.
+        root = HERE.parents[1]
+        for path in ('containers/k8s/release-images.json',
+                     'containers/k8s/components/compatibility-cellctl/candidate-release-images.json'):
+            with self.subTest(pinned=path):
+                pinned = json.loads((root / path).read_bytes())
+                runner = next(i['ref'] for i in pinned['images'] if i['name'] == 'verify-runner') + '\n'
+                args = (pinned, pinned['version'], pinned['source_revision'], runner, 'medici-finance/assay')
+                self.assertEqual(set(contract.validate(*args, names=both)), set(contract.LEGACY_NAMES))
+                with self.assertRaises(ValueError):
+                    contract.validate(*args)
+
+    # regression: cell-api/09 f-sec-1
+    def test_release_builds_clear_cache_mounts(self):
+        spec = importlib.util.spec_from_file_location('images', HERE / 'images.py')
+        images = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(images)
+        prune = list(images.PRUNE_CACHE_MOUNTS[1:])
+        self.assertEqual(prune, ['builder', 'prune', '--all', '--force', '--filter', 'type=exec.cachemount'])
+
+        def parsed(case):
+            return [json.loads(s) if s.startswith('[') else s for s in case.recorded()]
+
+        # Every image build, publisher and native ARM64 job alike, starts on
+        # cleared cache mounts: the call right before each build is the prune.
+        native = self.fresh()
+        results = [self.invoke(), native.invoke_native()]
+        for case, result in zip((self, native), results):
+            self.assertEqual(result.returncode, 0, result.stderr)
+            calls = parsed(case)
+            builds = [i for i, c in enumerate(calls) if isinstance(c, list) and c[:1] == ['build']]
+            self.assertEqual(len(builds), 10 if case is self else 1)
+            self.assertEqual([calls[i - 1] for i in builds], [prune] * len(builds))
+            self.assertEqual(sum(c == prune for c in calls), len(builds))
+            # The prune leaves the instruction cache, whose RUN keys ignore
+            # cache-mount contents, so no build may reuse a cached layer.
+            self.assertEqual(images.NO_CACHE, '--no-cache')
+            self.assertEqual([calls[i][1] for i in builds], ['--no-cache'] * len(builds))
+
+        # A failed prune stops the release before any build, push or metadata write.
+        case = self.fresh()
+        result = case.invoke(True, 'prune-fail')
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn('prune', result.stderr)
+        self.assertEqual([c for c in parsed(case) if isinstance(c, list) and c[:1] in (['build'], ['push'])], [])
+        self.assertFalse((case.out / 'release-images.json').exists())
+
+        # The guard covers the class: no build call may bypass docker_build. A
+        # planted second build that does is caught; the shipped module has none.
+        source = (HERE / 'images.py').read_text()
+        self.assertEqual(raw_docker_builds(source), [])
+        planted = source.replace('    check_runner_platform(ref, platform)\n',
+                                 '    check_runner_platform(ref, platform)\n'
+                                 '    run("docker", "build", "-t", ref, root)\n', 1)
+        self.assertNotEqual(planted, source)
+        self.assertEqual(len(raw_docker_builds(planted)), 1)
+        spelled = source.replace('    check_runner_platform(ref, platform)\n',
+                                 '    check_runner_platform(ref, platform)\n'
+                                 '    subprocess.run(["docker", "buildx", "build", root])\n', 1)
+        self.assertEqual(len(raw_docker_builds(spelled)), 1)
 
     def fresh(self):
         """Another copy of this test's fixture, in a temporary root of its own."""

@@ -1,0 +1,794 @@
+package evaluation
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
+
+// readset_test.go — build-less-brittle/15: a witness's recorded read set
+// replaces the scope it speaks for, and every guard around it still binds.
+// Each fixture is a witness commit W (the tree the row ran on), an Evidence
+// commit E that adds the read-set file, and an item commit T on top of E that
+// changes only the paths a test names.
+
+const (
+	rsBrief   = "docs/streams/s/brief-01-x.md"
+	rsBriefID = "s/01"
+	rsCommand = "cd tools/x && go test ./..."
+)
+
+// rsRepo is fakeRepo with W an ancestor of every later commit: the merge base
+// of (a, b) is a, so the landing check finds W's own tree on T's history.
+type rsRepo struct{ *fakeRepo }
+
+func (rsRepo) MergeBase(string, string) History { return HistoryRelated }
+func (rsRepo) MergeBaseAll(a, _ string) ([]string, bool) {
+	return []string{a}, true
+}
+
+type rsFx struct {
+	t       *testing.T
+	repo    *fakeRepo
+	tree    map[string]fakeEntry
+	attrs   map[string][]string
+	entries []string
+	header  func(*ReadSetHeader)
+	// token: "sha256" (default), "none" or a could-not-check reason.
+	token   string
+	dirty   bool
+	runCmd  string // the command the witness ran ("" = rsCommand)
+	obs     func(*ReadSetObservation)
+	floors  GoFloorMap
+	src     GoFloorSource     // when set, used in place of floors
+	repoFor func(rsRepo) Repo // when set, wraps the repository the claim reads
+	// deadline is CoverageInput.ReadSetDeadline (nil: no time limit).
+	deadline func() string
+	// verbatim writes the entries as given, unsorted and repeated, the way
+	// a file not made by FormatReadSet may hold them.
+	verbatim bool
+	// unrecorded judges as a build with no read-set recorder does
+	// (CoverageInput.ReadSetsRecorded false).
+	unrecorded bool
+	W, E, T    string
+	digest     string
+	runner     string
+	content    []byte
+}
+
+func newRsFx(t *testing.T) *rsFx {
+	return &rsFx{
+		t:    t,
+		repo: newFakeRepo(),
+		tree: map[string]fakeEntry{
+			"tools/x/go.mod":                  {"100644", "module x\n\ngo 1.22\n"},
+			"tools/x/a.go":                    {"100644", "package x\n\nfunc A() int { return 1 }\n"},
+			"tools/x/b.go":                    {"100644", "package x\n\nfunc B() int { return 2 }\n"},
+			"tools/x/a_test.go":               {"100644", "package x\n"},
+			"tools/x/testdata/in.txt":         {"100644", "fixture-1\n"},
+			"tools/y/y.go":                    {"100644", "package y\n\nconst Y = 1\n"},
+			".claude-plugin/marketplace.json": {"100644", "{\"v\":1}\n"},
+			".assay-surfaces":                 {"100644", "surface\n"},
+			".gitattributes":                  {"100644", "*.go text\n"},
+			"STATUS.md":                       {"100644", "board\n"},
+			"docs/streams/s/README.md":        {"100644", "readme\n"},
+			"docs/streams/s/notes.md":         {"100644", "notes\n"},
+			rsBrief:                           {"100644", "brief\n"},
+		},
+		attrs: map[string][]string{},
+		entries: []string{
+			"read tools/x/go.mod",
+			"read tools/x/a.go",
+			"read tools/x/b.go",
+			"read tools/x/a_test.go",
+			"read tools/x/testdata/in.txt",
+			"list tools/x",
+		},
+		token: "sha256",
+	}
+}
+
+func rsRow() VerifyRow { return VerifyRow{ID: "1", Command: rsCommand, Expect: "exit 0"} }
+
+// build commits W and E; item(change) then commits T.
+func (fx *rsFx) build() {
+	fx.W = fx.repo.commit(nil, "run", fx.tree, fx.attrs)
+	h := ReadSetHeader{Commit: fx.W, Command: ReadSetCommandDigest(rsCommand), Brief: rsBrief, Row: "1"}
+	if fx.header != nil {
+		fx.header(&h)
+	}
+	fx.content = FormatReadSet(h, fx.entries)
+	if fx.verbatim {
+		fx.content = []byte(string(FormatReadSet(h, nil)) + strings.Join(fx.entries, "\n") + "\n")
+	}
+	fx.digest = ReadSetDigest(fx.content)
+	treeE := cloneTree(fx.tree)
+	treeE[ReadSetPath("docs/streams/s", fx.digest)] = fakeEntry{"100644", string(fx.content)}
+	treeE[rsBrief] = fakeEntry{"100644", "brief\n\n## Evidence\nrow\n"}
+	fx.E = fx.repo.commit([]string{fx.W}, "evidence", treeE, fx.attrs)
+	fx.repo.expectAt[fx.W] = rsRow().Expect
+	fx.runner = "local @ " + fx.W
+	switch fx.token {
+	case "sha256":
+		fx.runner += " " + ReadSetCellToken(fx.digest, "")
+	case "none":
+	default:
+		fx.runner += " " + ReadSetCellToken("", fx.token)
+	}
+}
+
+// item commits T = E with change applied and returns the row's claim at T.
+func (fx *rsFx) item(change func(tree map[string]fakeEntry, attrs map[string][]string)) Claim {
+	fx.t.Helper()
+	if fx.W == "" {
+		fx.build()
+	}
+	tree := cloneTree(fx.repo.commits[fx.E].tree)
+	attrs := cloneAttrs(fx.attrs)
+	if change != nil {
+		change(tree, attrs)
+	}
+	fx.T = fx.repo.commit([]string{fx.E}, "item", tree, attrs)
+	return fx.claimAt(fx.T)
+}
+
+func (fx *rsFx) claimAt(rev string) Claim {
+	fx.t.Helper()
+	tree := fx.W
+	if fx.dirty {
+		tree += "+dirty"
+	}
+	runner := strings.Replace(fx.runner, "@ "+fx.W, "@ "+tree, 1)
+	cmd := fx.runCmd
+	if cmd == "" {
+		cmd = rsCommand
+	}
+	o := &ReadSetObservation{Content: fx.content, Found: true, IntroFound: true, IntroRunner: runner, IntroFile: true}
+	if fx.obs != nil {
+		fx.obs(o)
+	}
+	w := Witness{Command: cmd, State: StatePass, Tree: tree, Runner: runner, Result: "pass", ReadSet: o}
+	b := BriefObservation{ID: rsBriefID, BriefRel: rsBrief, VerifyRows: []VerifyRow{rsRow()}, Witnesses: map[string][]Witness{"1": {w}}}
+	in := CoverageInput{Revision: rev, Briefs: []BriefObservation{b}, GoFloors: fx.floors, ReadSetDeadline: fx.deadline, ReadSetsRecorded: !fx.unrecorded}
+	if fx.src != nil {
+		in.GoFloors = fx.src
+	}
+	var repo Repo = rsRepo{fx.repo}
+	if fx.repoFor != nil {
+		repo = fx.repoFor(rsRepo{fx.repo})
+	}
+	cs := EvaluateCoverage(in, repo)[rsBriefID].Claims
+	if len(cs) == 0 {
+		fx.t.Fatal("no claim")
+	}
+	return cs[0]
+}
+
+func edit(p, content string) func(map[string]fakeEntry, map[string][]string) {
+	return func(t map[string]fakeEntry, _ map[string][]string) { t[p] = fakeEntry{"100644", content} }
+}
+
+func edits(fs ...func(map[string]fakeEntry, map[string][]string)) func(map[string]fakeEntry, map[string][]string) {
+	return func(t map[string]fakeEntry, a map[string][]string) {
+		for _, f := range fs {
+			f(t, a)
+		}
+	}
+}
+
+// unreadOnly changes the three paths no row of this fixture reads.
+var unreadOnly = edits(
+	edit(".claude-plugin/marketplace.json", "{\"v\":2}\n"),
+	edit(".assay-surfaces", "surface-2\n"),
+	edit(".gitattributes", "*.go text\n*.md text\n"),
+)
+
+func wantResult(t *testing.T, name string, c Claim, result string, contains ...string) {
+	t.Helper()
+	if c.Result != result {
+		t.Errorf("%s: want %s, got %s: %s", name, result, c.Result, c.Reason)
+		return
+	}
+	if result != ResultPass && c.Released {
+		t.Errorf("%s: a %s claim is released", name, result)
+	}
+	for _, s := range contains {
+		if !strings.Contains(c.Reason, s) {
+			t.Errorf("%s: the reason %q does not contain %q", name, c.Reason, s)
+		}
+	}
+}
+
+func wantReleased(t *testing.T, name string, c Claim) {
+	t.Helper()
+	if c.Result != ResultPass || !c.Released {
+		t.Errorf("%s: want a release, got %s: %s", name, c.Result, c.Reason)
+	}
+}
+
+// regression: #2026
+func TestReadSetReleasesUnreadPathChange(t *testing.T) {
+	wantReleased(t, "read set, unread paths changed", newRsFx(t).item(unreadOnly))
+	// The same witness without a read set keeps today's scope and is held:
+	// the release above is the read set's doing.
+	fx := newRsFx(t)
+	fx.token = "none"
+	wantResult(t, "no read set", fx.item(unreadOnly), ResultWrongRevision)
+}
+
+// regression: #2026
+func TestReadSetRefusesChangedDependency(t *testing.T) {
+	fx := newRsFx(t)
+	fx.entries = append(fx.entries, "read tools/y/y.go")
+	wantReleased(t, "unread paths only", fx.item(unreadOnly))
+	c := fx.item(edits(unreadOnly, edit("tools/y/y.go", "package y\n\nconst Y = 2\n")))
+	wantResult(t, "depended-on file changed", c, ResultWrongRevision,
+		"differs between the witness's tree and the item's and the witness speaks for it", "tools/y/y.go")
+}
+
+// regression: #2026
+func TestReadSetFloorCatchesUnderRecordedGoInput(t *testing.T) {
+	goRun := GoRunEntry(GoRun{Dir: "tools/x", Args: []string{"go", "test", "./..."}})
+	floor := GoFloor{Files: []string{"tools/x/go.mod", "tools/x/a.go", "tools/x/b.go", "tools/x/a_test.go"}}
+	under := func(fx *rsFx) {
+		// The record omits tools/x/b.go, a file the package compiles.
+		var kept []string
+		for _, e := range fx.entries {
+			if e != "read tools/x/b.go" {
+				kept = append(kept, e)
+			}
+		}
+		fx.entries = append(kept, goRun)
+	}
+	changeB := edit("tools/x/b.go", "package x\n\nfunc B() int { return 3 }\n")
+
+	// The upper layer alone (the tree-wise comparison of the recorded set)
+	// releases: b.go is not recorded and is the only change.
+	upper := newRsFx(t)
+	under(upper)
+	upper.entries = upper.entries[:len(upper.entries)-1]
+	wantReleased(t, "upper layer alone", upper.item(changeB))
+
+	fx := newRsFx(t)
+	under(fx)
+	fx.build()
+	fx.floors = map[string]GoFloor{GoFloorKey(fx.W, goRun): floor}
+	wantResult(t, "floor", fx.item(changeB), ResultWrongRevision, ReasonFloorOmits, "tools/x/b.go")
+
+	// A floor that the record covers does not refuse an unrelated change.
+	ok := newRsFx(t)
+	ok.entries = append(ok.entries, goRun)
+	ok.build()
+	ok.floors = map[string]GoFloor{GoFloorKey(ok.W, goRun): floor}
+	wantReleased(t, "covered floor", ok.item(unreadOnly))
+
+	// A floor that could not be computed is could-not-check.
+	bad := newRsFx(t)
+	bad.entries = append(bad.entries, goRun)
+	bad.build()
+	bad.floors = map[string]GoFloor{GoFloorKey(bad.W, goRun): {Problem: "go list failed"}}
+	wantResult(t, "floor problem", bad.item(unreadOnly), ResultCouldNotCheck, "go list failed")
+}
+
+// regression: #2026
+func TestReadSetMissingFailsClosed(t *testing.T) {
+	cases := map[string]func(*ReadSetObservation){
+		"file absent": func(o *ReadSetObservation) { o.Found, o.Content = false, nil },
+		"other digest": func(o *ReadSetObservation) {
+			o.Content = append(append([]byte(nil), o.Content...), "read tools/y/y.go\n"...)
+		},
+		"never observed":  nil,
+		"absent at exact": func(o *ReadSetObservation) { o.Found = false },
+		"empty but found": func(o *ReadSetObservation) { o.Content = nil },
+	}
+	for name, mut := range cases {
+		fx := newRsFx(t)
+		if mut != nil {
+			fx.obs = mut
+		} else {
+			fx.obs = func(o *ReadSetObservation) { *o = ReadSetObservation{} }
+		}
+		var c Claim
+		if name == "absent at exact" {
+			fx.build()
+			c = fx.claimAt(fx.W)
+		} else {
+			c = fx.item(unreadOnly)
+		}
+		if c.Result != ResultCouldNotCheck || c.Reason != ReasonReadSetUnreadable || c.Released {
+			t.Errorf("%s: want could-not-check %q, got %s: %s", name, ReasonReadSetUnreadable, c.Result, c.Reason)
+		}
+	}
+}
+
+// regression: #2026
+func TestReadSetDirtyWitnessStillRefuses(t *testing.T) {
+	fx := newRsFx(t)
+	fx.dirty = true
+	wantResult(t, "+dirty witness", fx.item(unreadOnly), ResultWrongRevision, "uncommitted edits (+dirty)")
+}
+
+// regression: #2026
+func TestReadSetEditedRowStillRefuses(t *testing.T) {
+	fx := newRsFx(t)
+	fx.runCmd = "cd tools/x && go test -run Old ./..."
+	c := fx.item(unreadOnly)
+	if c.Released || !strings.Contains(c.Reason, "the witness records a different command than the Verify row now carries") {
+		t.Errorf("edited row: got %s: %s", c.Result, c.Reason)
+	}
+}
+
+// regression: #2026
+func TestReadSetHistoryReadNeedsExactRevision(t *testing.T) {
+	fx := newRsFx(t)
+	fx.entries = append(fx.entries, EntryHistory)
+	c := fx.item(unreadOnly)
+	wantResult(t, "history at another revision", c, ResultWrongRevision, ReasonReadSetHistory)
+	wantReleased(t, "history at the exact revision", fx.claimAt(fx.W))
+}
+
+// regression: #2026
+func TestReadSetNegativeInputsRefuse(t *testing.T) {
+	fx := newRsFx(t)
+	wantResult(t, "file added to a listed directory", fx.item(edit("tools/x/c.go", "package x\n")), ResultWrongRevision,
+		"tools/x/c.go", "listed the directory tools/x")
+
+	ab := newRsFx(t)
+	ab.entries = append(ab.entries, "absent tools/y/config.json")
+	wantReleased(t, "absent path still absent", ab.item(unreadOnly))
+	wantResult(t, "absent path now exists", ab.item(edit("tools/y/config.json", "{}\n")), ResultWrongRevision,
+		"tools/y/config.json", "found it absent")
+}
+
+// regression: #2026
+func TestReadSetContentAttributeChangeRefuses(t *testing.T) {
+	fx := newRsFx(t)
+	eol := func(p string) func(map[string]fakeEntry, map[string][]string) {
+		return func(tr map[string]fakeEntry, a map[string][]string) {
+			tr[".gitattributes"] = fakeEntry{"100644", "*.go text\n" + p + " eol=crlf\n"}
+			a[p] = []string{"text: set", "eol: crlf"}
+		}
+	}
+	wantResult(t, "eol on a recorded path", fx.item(eol("tools/x/a.go")), ResultWrongRevision, "tools/x/a.go", "content attributes")
+	wantReleased(t, "eol on an unrecorded path", fx.item(eol("tools/y/y.go")))
+}
+
+// regression: #2026
+func TestLegacyWitnessKeepsConservativeScope(t *testing.T) {
+	market := edit(".claude-plugin/marketplace.json", "{\"v\":2}\n")
+	for _, tok := range []string{"none", "recorder is Linux-only (darwin)"} {
+		fx := newRsFx(t)
+		fx.token = tok
+		wantResult(t, "token "+tok, fx.item(market), ResultWrongRevision, ".claude-plugin/marketplace.json")
+	}
+	// The same witness with a read set is released by the same change.
+	wantReleased(t, "read set", newRsFx(t).item(market))
+}
+
+// regression: #2026
+func TestReadSetAddedAfterWitnessIgnored(t *testing.T) {
+	market := edit(".claude-plugin/marketplace.json", "{\"v\":2}\n")
+	cases := map[string]func(*rsFx){
+		// The introducing commit's row had no token and no file: a later
+		// commit added both at once.
+		"token and file added later": func(fx *rsFx) {
+			fx.obs = func(o *ReadSetObservation) { o.IntroRunner, o.IntroFile = "local @ "+fx.W, false }
+		},
+		"file committed after the row": func(fx *rsFx) {
+			fx.obs = func(o *ReadSetObservation) { o.IntroFile = false }
+		},
+		"introduction not found": func(fx *rsFx) {
+			fx.obs = func(o *ReadSetObservation) { o.IntroFound = false }
+		},
+		"header names another row": func(fx *rsFx) {
+			fx.header = func(h *ReadSetHeader) { h.Row = "2" }
+		},
+		"header names another commit": func(fx *rsFx) {
+			fx.header = func(h *ReadSetHeader) { h.Commit = strings.Repeat("a", 40) }
+		},
+		"header names another command": func(fx *rsFx) {
+			fx.header = func(h *ReadSetHeader) { h.Command = ReadSetCommandDigest("true") }
+		},
+		"header names another brief": func(fx *rsFx) {
+			fx.header = func(h *ReadSetHeader) { h.Brief = "docs/streams/s/brief-02-y.md" }
+		},
+		"only exempt paths": func(fx *rsFx) {
+			fx.entries = []string{"read " + rsBrief, "read STATUS.md", "read docs/streams/s/notes.md"}
+		},
+	}
+	for name, set := range cases {
+		fx := newRsFx(t)
+		set(fx)
+		wantResult(t, name, fx.item(market), ResultWrongRevision, ".claude-plugin/marketplace.json")
+	}
+}
+
+// regression: #2026
+func TestReadSetStatComparesContent(t *testing.T) {
+	fx := newRsFx(t)
+	fx.entries = []string{"read tools/x/a.go", "stat tools/x/testdata/in.txt"}
+	wantReleased(t, "stat-ed file unchanged", fx.item(unreadOnly))
+	// Same size, same mode, other content.
+	wantResult(t, "stat-ed file changed", fx.item(edit("tools/x/testdata/in.txt", "fixture-2\n")), ResultWrongRevision,
+		"tools/x/testdata/in.txt", "differs between the witness's tree and the item's")
+}
+
+// regression: #2026
+func TestReadSetGoRunWithoutFloorCouldNotCheck(t *testing.T) {
+	fx := newRsFx(t)
+	fx.entries = append(fx.entries, GoRunEntry(GoRun{Dir: "tools/x", Args: []string{"go", "test", "./..."}}))
+	wantResult(t, "no floor", fx.item(unreadOnly), ResultCouldNotCheck, ReasonFloorMissing)
+
+	// A go-run outside the build family (go env) needs no floor.
+	env := newRsFx(t)
+	env.entries = append(env.entries, GoRunEntry(GoRun{Dir: ".", Args: []string{"go", "env", "GOROOT"}}))
+	wantReleased(t, "go env", env.item(unreadOnly))
+
+	// `go -C dir test` is still a test.
+	if g := (GoRun{Args: []string{"go", "-C", "tools/x", "test", "./..."}}); !g.BuildFamily() {
+		t.Error("go -C dir test is not read as build-family")
+	}
+}
+
+// regression: #2026
+func TestReadSetExemptPathsSubtracted(t *testing.T) {
+	fx := newRsFx(t)
+	fx.entries = append(fx.entries, "read "+rsBrief, "read docs/streams/s/notes.md", "read STATUS.md")
+	c := fx.item(edits(
+		edit(rsBrief, "brief, edited\n"),
+		edit("docs/streams/s/notes.md", "notes 2\n"),
+		edit("STATUS.md", "board 2\n"),
+	))
+	wantReleased(t, "exempt paths changed", c)
+	if !strings.Contains(c.Reason, "3 recorded reads exempt") {
+		t.Errorf("the reason %q does not state the exempt count", c.Reason)
+	}
+	wantResult(t, "a non-exempt recorded path changed", fx.item(edit("tools/x/a.go", "package x\n\nfunc A() int { return 9 }\n")),
+		ResultWrongRevision, "tools/x/a.go")
+}
+
+func TestReadSetTokenRoundTrip(t *testing.T) {
+	d := strings.Repeat("ab", 32)
+	cell := "verifyrun @ 0123456789ab " + ReadSetCellToken(d, "") + " (on behalf of x)"
+	if got, _, ok := ReadSetToken(cell); !ok || got != d {
+		t.Errorf("digest token: got %q %v", got, ok)
+	}
+	if got := StripReadSetToken(cell); got != "verifyrun @ 0123456789ab (on behalf of x)" {
+		t.Errorf("strip: %q", got)
+	}
+	cnc := "verifyrun @ 0123456789ab " + ReadSetCellToken("", "recorder is Linux-only (darwin)")
+	if _, why, ok := ReadSetToken(cnc); !ok || why != "recorder is Linux-only (darwin)" {
+		t.Errorf("could-not-check token: got %q %v", why, ok)
+	}
+	if m := runnerTreeRe.FindStringSubmatch(cell); m == nil || m[1] != "0123456789ab" {
+		t.Errorf("the tree token parser no longer reads the cell: %v", m)
+	}
+	odd := ReadSetCellToken("", "a | b\n(c (d)) e(")
+	if _, why, ok := ReadSetToken("r @ 0123456789ab " + odd); !ok || strings.ContainsAny(why, "|\n") {
+		t.Errorf("sanitised reason does not round-trip: %q -> %q %v", odd, why, ok)
+	}
+	h := ReadSetHeader{Commit: strings.Repeat("c", 40), Command: ReadSetCommandDigest("x"), Brief: rsBrief, Row: "3"}
+	content := FormatReadSet(h, []string{"read b", "read a", "read a", EntryHistory})
+	gh, entries, err := ParseReadSet(content)
+	if err != nil || gh != h || strings.Join(entries, ",") != "history,read a,read b" {
+		t.Errorf("parse: %v %+v %v", err, gh, entries)
+	}
+	for _, bad := range []string{"read /etc/passwd", "read ../x", "write a", "read a/../b"} {
+		if _, _, err := ParseReadSet(FormatReadSet(h, []string{bad})); err == nil {
+			t.Errorf("entry %q parsed", bad)
+		}
+	}
+}
+
+// countingFloors is a GoFloorSource that counts the floors it is asked for.
+type countingFloors struct {
+	floor GoFloor
+	asked []string
+}
+
+func (c *countingFloors) GoFloor(commit, entry string) (GoFloor, bool) {
+	c.asked = append(c.asked, GoFloorKey(commit, entry))
+	return c.floor, true
+}
+
+// regression: #2026
+// TestFloorAskedOnlyAdmitted — the floor is computed only for a read set the
+// library has admitted: a read set refused at admission (added after the
+// witness, or naming another commit) never asks for one, so a recorded go
+// invocation in it reaches nothing; an admitted one asks exactly for its
+// own entry at the witness commit.
+func TestFloorAskedOnlyAdmitted(t *testing.T) {
+	goRun := GoRunEntry(GoRun{Dir: "tools/x", Args: []string{"go", "test", "./..."}})
+	floor := GoFloor{Files: []string{"tools/x/go.mod", "tools/x/a.go", "tools/x/b.go", "tools/x/a_test.go"}}
+	market := edit(".claude-plugin/marketplace.json", "{\"v\":2}\n")
+	refused := map[string]func(*rsFx){
+		"file committed after the row": func(fx *rsFx) {
+			fx.obs = func(o *ReadSetObservation) { o.IntroFile = false }
+		},
+		"header names another commit": func(fx *rsFx) {
+			fx.header = func(h *ReadSetHeader) { h.Commit = strings.Repeat("a", 40) }
+		},
+	}
+	for name, set := range refused {
+		fx := newRsFx(t)
+		fx.entries = append(fx.entries, goRun)
+		set(fx)
+		src := &countingFloors{floor: floor}
+		fx.src = src
+		wantResult(t, name, fx.item(market), ResultWrongRevision, ".claude-plugin/marketplace.json")
+		if len(src.asked) != 0 {
+			t.Errorf("%s: the floor was asked for %v before the read set was admitted", name, src.asked)
+		}
+	}
+	{ // a file whose content is not its digest is never admitted either
+		fx := newRsFx(t)
+		fx.entries = append(fx.entries, goRun)
+		fx.obs = func(o *ReadSetObservation) {
+			o.Content = append(append([]byte(nil), o.Content...), "read tools/y/y.go\n"...)
+		}
+		src := &countingFloors{floor: floor}
+		fx.src = src
+		if c := fx.item(market); c.Released || c.Result != ResultCouldNotCheck {
+			t.Errorf("other digest: want could-not-check, not released; got %s: %s", c.Result, c.Reason)
+		}
+		if len(src.asked) != 0 {
+			t.Errorf("other digest: the floor was asked for %v before the read set was admitted", src.asked)
+		}
+	}
+	fx := newRsFx(t)
+	fx.entries = append(fx.entries, goRun)
+	src := &countingFloors{floor: floor}
+	fx.src = src
+	wantReleased(t, "admitted", fx.item(market))
+	if len(src.asked) == 0 || src.asked[0] != GoFloorKey(fx.W, goRun) {
+		t.Errorf("admitted read set: floor asked for %v, want its entry at the witness commit", src.asked)
+	}
+}
+
+// unlisted is rsRepo whose tree listing fails at the revisions fail names.
+type unlisted struct {
+	rsRepo
+	fail func(rev string) bool
+}
+
+func (u unlisted) TreeFiles(rev string) []string {
+	if u.fail(rev) {
+		return nil
+	}
+	return u.rsRepo.TreeFiles(rev)
+}
+
+// regression: #2026
+// TestReadSetFailedListingCouldNotCheck — a tree listing that could not be
+// read is could-not-check, never "the listed directory is unchanged" nor "the
+// stat-ed directory is gone": a file added to a listed directory, with the
+// listing failing at either revision or both, is never released.
+func TestReadSetFailedListingCouldNotCheck(t *testing.T) {
+	added := edit("tools/x/c.go", "package x\n")
+	for name, side := range map[string]func(fx *rsFx, rev string) bool{
+		"both sides":    func(*rsFx, string) bool { return true },
+		"the witness's": func(fx *rsFx, rev string) bool { return rev == fx.W },
+		"the item's":    func(fx *rsFx, rev string) bool { return rev == fx.T },
+	} {
+		fx := newRsFx(t)
+		fx.repoFor = func(r rsRepo) Repo { return unlisted{r, func(rev string) bool { return side(fx, rev) }} }
+		wantResult(t, "listing fails on "+name, fx.item(added), ResultCouldNotCheck, "could not be listed")
+	}
+	// A stat-ed directory whose listing fails is could-not-check, not gone.
+	fx := newRsFx(t)
+	fx.entries = []string{"read tools/x/a.go", "dir tools/x/testdata"}
+	fx.repoFor = func(r rsRepo) Repo { return unlisted{r, func(rev string) bool { return rev == fx.T }} }
+	wantResult(t, "stat-ed directory, listing fails", fx.item(edit("tools/x/testdata/in.txt", "fixture-2\n")), ResultCouldNotCheck, "could not be listed")
+}
+
+// regression: #2026
+// TestReadSetReleaseControlsPinned — the refusals between an admitted read
+// set and a release each bind on their own: an introducing row whose token
+// names another digest, a witness tree that never landed on the item's
+// history, and a stat-ed directory the item's tree no longer holds, removed
+// or replaced by a file.
+func TestReadSetReleaseControlsPinned(t *testing.T) {
+	market := edit(".claude-plugin/marketplace.json", "{\"v\":2}\n")
+	intro := newRsFx(t)
+	intro.obs = func(o *ReadSetObservation) {
+		o.IntroRunner = "local @ " + intro.W + " " + ReadSetCellToken(strings.Repeat("ef", 32), "")
+	}
+	wantResult(t, "introducing row names another digest", intro.item(market), ResultWrongRevision, ".claude-plugin/marketplace.json")
+
+	never := newRsFx(t)
+	never.repoFor = func(r rsRepo) Repo { return unlanded{r} }
+	wantResult(t, "witness tree never landed", never.item(market), ResultWrongRevision, "never landed")
+
+	gone := newRsFx(t)
+	gone.entries = []string{"read tools/x/a.go", "dir tools/x/testdata"}
+	wantReleased(t, "stat-ed directory still present", gone.item(edit("tools/x/testdata/in.txt", "fixture-2\n")))
+	wantResult(t, "stat-ed directory removed", gone.item(func(tr map[string]fakeEntry, _ map[string][]string) {
+		delete(tr, "tools/x/testdata/in.txt")
+	}), ResultWrongRevision, "which no longer exists", "tools/x/testdata")
+	wantResult(t, "stat-ed directory now a file", gone.item(func(tr map[string]fakeEntry, _ map[string][]string) {
+		delete(tr, "tools/x/testdata/in.txt")
+		tr["tools/x/testdata"] = fakeEntry{"100644", "now a file\n"}
+	}), ResultWrongRevision, "which no longer exists", "tools/x/testdata")
+}
+
+// unlanded is rsRepo on which no commit of the item's history holds the
+// witness's tree: the merge base is the item itself and nothing lies between.
+type unlanded struct{ rsRepo }
+
+func (unlanded) MergeBaseAll(_, b string) ([]string, bool)      { return []string{b}, true }
+func (unlanded) RevList(string, []string, int) ([]string, bool) { return nil, true }
+
+// regression: #2026
+// TestFloorReasonTextAndBudget — recorded go-run text and the floor's problem
+// reach a reason with no control byte, line break or cell separator; and a
+// read set recording more build invocations than the floor computes is
+// could-not-check before any floor is asked for.
+func TestFloorReasonTextAndBudget(t *testing.T) {
+	odd := GoRunEntry(GoRun{Dir: "tools/x", Args: []string{"go", "test", "./x\x1b[2J\n|y"}})
+	fx := newRsFx(t)
+	fx.entries = append(fx.entries, odd)
+	fx.src = &countingFloors{floor: GoFloor{Problem: "go list failed: \x1b]0;t\x07 a | b\nc"}}
+	c := fx.item(unreadOnly)
+	wantResult(t, "odd go-run text", c, ResultCouldNotCheck, "could not be computed")
+	if strings.ContainsAny(c.Reason, "\x1b\x07\n|") {
+		t.Errorf("the reason carries a control byte or separator: %q", c.Reason)
+	}
+
+	many := newRsFx(t)
+	for i := 0; i <= maxFloorRuns; i++ {
+		many.entries = append(many.entries, GoRunEntry(GoRun{Dir: "tools/x", Args: []string{"go", "test", "-run", "T" + strings.Repeat("x", i), "./..."}}))
+	}
+	src := &countingFloors{floor: GoFloor{Files: []string{"tools/x/go.mod"}}}
+	many.src = src
+	wantResult(t, "over the floor budget", many.item(unreadOnly), ResultCouldNotCheck, "go build invocations")
+	if len(src.asked) != 0 {
+		t.Errorf("floors were asked for over the budget: %d", len(src.asked))
+	}
+}
+
+// regression: #2026
+// TestReadSetBoundsCouldNotCheck — a read set the caller could not observe
+// within its bounds is could-not-check with the caller's reason, never
+// today's scope, whatever else the observation holds; and a reason carries
+// no bidirectional format character or Unicode line separator.
+func TestReadSetBoundsCouldNotCheck(t *testing.T) {
+	fx := newRsFx(t)
+	fx.obs = func(o *ReadSetObservation) { o.Problem = "a historic version holds 9 bytes\u202e, over the cap" }
+	c := fx.item(unreadOnly)
+	wantResult(t, "an observation over the caller's bounds", c, ResultCouldNotCheck, ReasonReadSetBounds, "over the cap")
+	if strings.ContainsRune(c.Reason, 0x202e) {
+		t.Errorf("the reason carries a bidirectional override: %q", c.Reason)
+	}
+	for _, r := range []rune{0x061c, 0x200e, 0x200f, 0x202a, 0x202e, 0x2066, 0x2069, 0x2028, 0x2029} {
+		if got := reasonText("a" + string(r) + "b"); strings.ContainsRune(got, r) {
+			t.Errorf("reasonText kept U+%04X: %q", r, got)
+		}
+	}
+	if got := reasonText("plain é text"); got != "plain é text" {
+		t.Errorf("reasonText changed ordinary text: %q", got)
+	}
+}
+
+// rsTimeLimit is the reason a test's read-set deadline gives once past it.
+const rsTimeLimit = "the evaluation's read-set work already used its time limit of 2m0s"
+
+// tickingDeadline is a ReadSetDeadline within its limit for the first trip-1
+// reads and past it from the trip-th on (trip 0 never trips), with the number
+// of reads so far.
+func tickingDeadline(trip int) (func() string, *int) {
+	n := new(int)
+	return func() string {
+		*n++
+		if trip > 0 && *n >= trip {
+			return rsTimeLimit
+		}
+		return ""
+	}, n
+}
+
+// regression: #2026
+// TestCoverageReadSetDeadline — a judgement reads the caller's time limit
+// (CoverageInput.ReadSetDeadline) before it starts, before each changed path
+// it compares and before the attribute check: past it the claim is
+// could-not-check with the limit named, never today's scope and never a
+// release.
+func TestCoverageReadSetDeadline(t *testing.T) {
+	market := edit(".claude-plugin/marketplace.json", "{\"v\":2}\n")
+	fx := newRsFx(t)
+	fx.deadline = func() string { return rsTimeLimit }
+	wantResult(t, "past the limit from the start", fx.item(market), ResultCouldNotCheck, ReasonReadSetBounds, "time limit of 2m0s")
+
+	// Thirty unread paths change: within the limit the claim is released;
+	// tripping at the third read falls inside the changed-path loop.
+	var many []func(map[string]fakeEntry, map[string][]string)
+	for i := 0; i < 30; i++ {
+		many = append(many, edit(fmt.Sprintf("other/f%02d.txt", i), "x\n"))
+	}
+	paths := newRsFx(t)
+	var reads *int
+	paths.deadline, reads = tickingDeadline(0)
+	wantReleased(t, "thirty unread paths within the limit", paths.item(edits(many...)))
+	if *reads < 30 {
+		t.Errorf("the judgement read the limit %d times for thirty changed paths, want once per path", *reads)
+	}
+	paths.deadline, _ = tickingDeadline(3)
+	wantResult(t, "past the limit among the changed paths", paths.claimAt(paths.T), ResultCouldNotCheck, ReasonReadSetBounds, "time limit")
+
+	// A .gitattributes change: the last read is the one before the attribute
+	// check, one more than three changed paths without it read.
+	plain := newRsFx(t)
+	var plainReads *int
+	plain.deadline, plainReads = tickingDeadline(0)
+	wantReleased(t, "three unread paths within the limit", plain.item(edits(
+		edit(".claude-plugin/marketplace.json", "{\"v\":2}\n"),
+		edit(".assay-surfaces", "surface-2\n"),
+		edit("other/z.txt", "x\n"),
+	)))
+	attrs := newRsFx(t)
+	attrs.deadline, reads = tickingDeadline(0)
+	wantReleased(t, "attributes change within the limit", attrs.item(unreadOnly))
+	if *reads != *plainReads+1 {
+		t.Errorf("the judgement read the limit %d times with a .gitattributes change and %d without, want one more read before the attribute check", *reads, *plainReads)
+	}
+	attrs.deadline, _ = tickingDeadline(*reads)
+	wantResult(t, "past the limit at the attribute check", attrs.claimAt(attrs.T), ResultCouldNotCheck, ReasonReadSetBounds, "time limit")
+}
+
+// listCount is rsRepo counting its tree listings.
+type listCount struct {
+	rsRepo
+	n *int
+}
+
+func (l listCount) TreeFiles(rev string) []string {
+	*l.n++
+	return l.rsRepo.TreeFiles(rev)
+}
+
+// regression: #2026
+// TestCoverageReadSetRepeats — a judgement's work follows the changed paths'
+// depth, never the read set's size or the tree's: a read set repeating its
+// list, dir and absent entries thousands of times, over a tree of a thousand
+// files, lists each revision as often as a read set naming each once; and
+// repeated go-run entries are one invocation, asked of the floor once.
+func TestCoverageReadSetRepeats(t *testing.T) {
+	changes := edits(
+		edit("tools/x/gen/f0001.txt", "y\n"), edit("tools/x/gen/f0002.txt", "y\n"),
+		edit("tools/x/gen/f0003.txt", "y\n"), edit("tools/x/gen/f0004.txt", "y\n"),
+	)
+	listings := func(repeat int) int {
+		fx := newRsFx(t)
+		for i := 0; i < 1000; i++ {
+			fx.tree[fmt.Sprintf("tools/x/gen/f%04d.txt", i)] = fakeEntry{"100644", "x\n"}
+		}
+		for i := 0; i < repeat; i++ {
+			fx.entries = append(fx.entries, "list tools/x", "list tools/x/gen", "dir tools/x/gen", "absent tools/x/gen/none")
+		}
+		for i := 0; i < 2000; i++ {
+			fx.entries = append(fx.entries, fmt.Sprintf("list tools/q%04d", i))
+		}
+		fx.verbatim = true
+		n := 0
+		fx.repoFor = func(r rsRepo) Repo { return listCount{r, &n} }
+		wantReleased(t, fmt.Sprintf("%d repeats", repeat), fx.item(changes))
+		return n
+	}
+	once, repeated := listings(1), listings(2000)
+	t.Logf("tree listings: %d for entries named once, %d for entries repeated 2000 times", once, repeated)
+	if repeated != once || once > 4 {
+		t.Errorf("entries repeated 2000 times listed the trees %d times and named once %d: want the same few", repeated, once)
+	}
+
+	goRun := GoRunEntry(GoRun{Dir: "tools/x", Args: []string{"go", "test", "./..."}})
+	fx := newRsFx(t)
+	fx.verbatim = true
+	for i := 0; i <= 2*maxFloorRuns; i++ {
+		fx.entries = append(fx.entries, goRun)
+	}
+	src := &countingFloors{floor: GoFloor{Files: []string{"tools/x/go.mod", "tools/x/a.go"}}}
+	fx.src = src
+	wantReleased(t, "a go-run entry repeated", fx.item(unreadOnly))
+	if len(src.asked) != 1 {
+		t.Errorf("the floor was asked %d times for one repeated go-run entry, want once", len(src.asked))
+	}
+}
