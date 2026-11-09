@@ -201,10 +201,10 @@
       "test": "TestMilestoneAcceptSubject"
     },
     {
-      "name": "host-unknown-fields-accepted",
+      "name": "host-malformed-successor-dropped",
       "target": "statusgen/milestoneacceptance.go",
-      "old": "d.DisallowUnknownFields()",
-      "new": "// planted omission of strict field check",
+      "old": "d.Unavailable = true",
+      "new": "d.Unavailable = false",
       "module": "statusgen",
       "package": ".",
       "test": "TestMilestoneRevocation"
