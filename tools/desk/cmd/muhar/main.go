@@ -2,7 +2,7 @@
 //
 // Usage:
 //
-//	muhar -spec mutations.json [-j N] [-shard i/n] [-select]
+//	muhar -spec mutations.json [-j N] [-shard i/n] [-select] [-state PATH]
 //
 // -j is how many mutations to have in flight at once. The default, 1, runs the
 // sweep sequentially in place — the historical behaviour. -j 0 sizes the pool to

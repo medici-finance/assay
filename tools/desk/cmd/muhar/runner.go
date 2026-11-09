@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -73,8 +74,8 @@ func runGoArgs(root string, args []string, env []string, timeout time.Duration) 
 
 // runBounded runs one command in its own process group, killed as a group at
 // the deadline, and classifies the exit: TimedOut for the deadline or a go
-// test binary's own timeout panic, Failed for any other non-zero exit, Err
-// when the command could not run at all.
+// test binary's own timeout panic, Failed for an ordinary non-zero exit, Err
+// when the command could not run or an external signal killed it.
 // The caller builds the command so its argv[0] stays a literal at the exec
 // site, where the repo's exec-site checker can resolve it.
 func runBounded(root string, env []string, timeout time.Duration, build func(context.Context) *exec.Cmd) CommandResult {
@@ -106,6 +107,9 @@ func runBounded(root string, env []string, timeout time.Duration, build func(con
 	}
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
+		if cmd.ProcessState.ExitCode() < 0 {
+			return CommandResult{Err: fmt.Errorf("command terminated by an external signal: %w", err)}
+		}
 		if seen.found() {
 			return CommandResult{TimedOut: true}
 		}

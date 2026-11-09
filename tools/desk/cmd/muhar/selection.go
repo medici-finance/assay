@@ -410,8 +410,7 @@ func (cs *coverSelector) Prepare(root string) error {
 	if err != nil {
 		return err
 	}
-	selectTemps.add(tmp)
-	defer func() { selectTemps.remove(tmp) }()
+	defer func() { _ = os.RemoveAll(tmp) }()
 	buildFlags, runFlags := cs.coverFlags()
 
 	listFilter := cs.cmd.run
@@ -636,33 +635,6 @@ func (cs *coverSelector) coverFlags() (build, run []string) {
 	}
 	build = append(build, "-covermode="+mode)
 	return build, append(run, "-test.timeout="+timeout)
-}
-
-// selectTemps tracks the coverage pass's temp dir so an interrupt can remove
-// it: os.Exit in main's signal handler skips Prepare's deferred cleanup.
-var selectTemps = &tempSet{dirs: map[string]bool{}}
-
-type tempSet struct {
-	mu   sync.Mutex
-	dirs map[string]bool
-}
-
-func (t *tempSet) add(d string) { t.mu.Lock(); t.dirs[d] = true; t.mu.Unlock() }
-
-func (t *tempSet) remove(d string) {
-	t.mu.Lock()
-	delete(t.dirs, d)
-	t.mu.Unlock()
-	_ = os.RemoveAll(d)
-}
-
-// removeAll deletes every tracked dir; main's signal handler calls it.
-func (t *tempSet) removeAll() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	for d := range t.dirs {
-		_ = os.RemoveAll(d)
-	}
 }
 
 // resolveAlways maps the spec's always-run names to tests. A name the suite

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -250,6 +251,44 @@ func TestStateRejectsNewTree(t *testing.T) {
 			}
 		})
 	}
+	t.Run("runner-build", func(t *testing.T) {
+		f := newStateFixture(t)
+		s, code := loadSpec(f.spec, os.Stderr)
+		if code != 0 {
+			t.Fatal(code)
+		}
+		path := filepath.Join(t.TempDir(), "muhar")
+		writeFixture(t, path, "classifier one")
+		original := runnerExecutable
+		runnerExecutable = func() (string, error) { return path, nil }
+		defer func() { runnerExecutable = original }()
+		o := options{spec: f.spec, state: f.state}
+		base, err := stateIdentity(s, o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeFixture(t, path, "classifier two")
+		changed, err := stateIdentity(s, o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if base == changed {
+			t.Fatal("changed runner classifier reused identity")
+		}
+	})
+	t.Run("command-words", func(t *testing.T) {
+		for _, command := range []string{"cargo test", "cargo test && true", "echo mango fruit"} {
+			if _, _, goCmd, err := stateGoArgs(command); err != nil || goCmd {
+				t.Fatalf("non-Go command %q classified as Go: %v", command, err)
+			}
+		}
+		for _, command := range []string{"/custom/bin/go test .", "./go test .", "'/custom/bin/go' test . && true", "go test . && true"} {
+			if _, _, _, err := stateGoArgs(command); err == nil {
+				t.Fatalf("unresolved Go command accepted: %s", command)
+			}
+		}
+	})
+
 	t.Run("Go-inputs", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("POSIX toolchain shim")
@@ -340,19 +379,20 @@ func TestStateRejectsNewTree(t *testing.T) {
 func TestStateSkipsNoErrors(t *testing.T) {
 	f := newStateFixture(t)
 	bin := muharTestBinary(t)
-	s, code := loadSpec(f.spec, os.Stderr)
-	if code != 0 {
-		t.Fatal(code)
+	if out, code := runStateCmd(t, bin, f); code != 0 {
+		t.Fatalf("seed header %d: %s", code, out)
+	}
+	header := readStateLines(t, f.state)[0]
+	raw, _ := json.Marshal(header)
+	writeFixture(t, f.state, string(raw)+"\n")
+	if err := os.Remove(f.trace); err != nil {
+		t.Fatal(err)
 	}
 	state, err := openRunState(f.state)
 	if err != nil {
 		t.Fatal(err)
 	}
-	id, err := stateIdentity(s, options{spec: f.spec, state: f.state})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := state.bind(id); err != nil {
+	if err := state.bind(header.Identity); err != nil {
 		t.Fatal(err)
 	}
 	records := []stateEntry{{Kind: "broken", Verdict: "HARNESS BROKEN", Complete: true}, {Kind: "interrupted", Index: 0, Verdict: "CAUGHT", Complete: true}, {Kind: "mutation", Index: 0, Verdict: "CAUGHT", Complete: false, Selection: "full command"}, {Kind: "mutation", Index: 1, Verdict: "CAUGHT", Complete: true, Error: "infrastructure error", Selection: "full command"}, {Kind: "mutation", Index: 2, Verdict: "COULD_NOT_MUTATE", Complete: true, Selection: "full command"}}
@@ -381,6 +421,33 @@ func TestStateSkipsNoErrors(t *testing.T) {
 			t.Errorf("reused error instead of executing %s", want)
 		}
 	}
+	t.Run("external-signal", func(t *testing.T) {
+		root := t.TempDir()
+		writeFixture(t, filepath.Join(root, "value.txt"), "one")
+		state, err := openRunState(filepath.Join(t.TempDir(), "signal.jsonl"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.close()
+		if err := state.bind("signal-case"); err != nil {
+			t.Fatal(err)
+		}
+		h := Harness{Root: root, State: state, MutationTimeout: time.Second, Mutations: []Mutation{{Name: "killed", File: "value.txt", Old: "one", New: "two"}}, RunTest: func(root string, limit time.Duration) CommandResult {
+			return runShell(root, "kill -KILL $$", os.Environ(), limit)
+		}}
+		result, err := h.completedMutation(root, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Result != CouldNotMutate || result.Err == nil || !strings.Contains(result.Err.Error(), "external signal") {
+			t.Fatalf("externally killed suite became a verdict: %+v", result)
+		}
+		records := readStateLines(t, state.file.Name())
+		if len(records) != 2 || records[1].definitive() {
+			t.Fatalf("external signal reused: %+v", records)
+		}
+	})
+
 	t.Run("restore-error", func(t *testing.T) {
 		root := t.TempDir()
 		path := filepath.Join(root, "value.txt")
@@ -484,4 +551,62 @@ func TestStateEndToEnd(t *testing.T) {
 			t.Fatalf("indices = %v", got)
 		}
 	})
+	t.Run("selection-timing", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			root := t.TempDir()
+			writeFixture(t, filepath.Join(root, "value.txt"), "one")
+			state, err := openRunState(filepath.Join(t.TempDir(), "timing.jsonl"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer state.close()
+			if err := state.bind("timing-case"); err != nil {
+				t.Fatal(err)
+			}
+			h := Harness{Root: root, State: state, Selector: stateDelaySelector{}, Mutations: []Mutation{{Name: "uncovered", File: "value.txt", Old: "one", New: "two"}}}
+			if _, err := h.completedMutation(root, nil, 0); err != nil {
+				t.Fatal(err)
+			}
+			r := readStateLines(t, state.file.Name())[1]
+			if r.TestNS != 0 || r.Selection != "skip: uncovered" {
+				t.Fatalf("selection decision counted as a test: %+v", r)
+			}
+		})
+	})
+	t.Run("schemata-timing", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			root := t.TempDir()
+			writeFixture(t, filepath.Join(root, "value.txt"), "one")
+			state, err := openRunState(filepath.Join(t.TempDir(), "schema.jsonl"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer state.close()
+			if err := state.bind("schema-case"); err != nil {
+				t.Fatal(err)
+			}
+			h := Harness{Root: root, State: state, Mutations: []Mutation{{Name: "schema", File: "value.txt", Old: "one", New: "two"}}, Build: func(string, Mutation, time.Duration) CommandResult { time.Sleep(time.Second); return CommandResult{} }, RunTest: func(string, time.Duration) CommandResult { time.Sleep(3 * time.Second); return CommandResult{} }, SchemaRun: func(string, string, string, time.Duration) CommandResult {
+				time.Sleep(2 * time.Second)
+				return CommandResult{}
+			}}
+			tree := &schemaTree{ids: map[string]bool{schemaID(0): true}}
+			if _, err := h.completedMutation(root, tree, 0); err != nil {
+				t.Fatal(err)
+			}
+			r := readStateLines(t, state.file.Name())[1]
+			if r.Selection != "schemata fallback -> full command" || r.TestNS != int64(5*time.Second) || r.BuildNS != int64(time.Second) {
+				t.Fatalf("schemata fallback misreported: %+v", r)
+			}
+		})
+	})
+
+}
+
+type stateDelaySelector struct{}
+
+func (stateDelaySelector) Prepare(string) error          { return nil }
+func (stateDelaySelector) Narrows(Mutation, []byte) bool { return true }
+func (stateDelaySelector) For(Mutation, []byte) Selection {
+	time.Sleep(time.Hour)
+	return Selection{Skip: true}
 }

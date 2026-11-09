@@ -348,12 +348,12 @@ func (h *Harness) runOne(root string, m Mutation) (result Result, runErr error) 
 			return CouldNotMutate, fmt.Errorf("mutated package does not compile")
 		}
 	}
-	start := time.Now()
-	defer func() {
-		if h.observation != nil {
-			h.observation.Test += time.Since(start)
+	if h.observation != nil {
+		h.observation.Selection = "full command"
+		if h.observation.Schema {
+			h.observation.Selection = "schemata fallback -> full command"
 		}
-	}()
+	}
 	test := h.Test
 	if h.Selector != nil {
 		// Decided only AFTER the edit is proven on disk, so a selection can
@@ -373,6 +373,9 @@ func (h *Harness) runOne(root string, m Mutation) (result Result, runErr error) 
 			if sel.Skip {
 				h.observation.Selection = "skip: uncovered"
 			}
+			if h.observation.Schema {
+				h.observation.Selection = "schemata fallback -> " + h.observation.Selection
+			}
 		}
 		if sel.Skip {
 			return NotCaught, nil
@@ -381,16 +384,13 @@ func (h *Harness) runOne(root string, m Mutation) (result Result, runErr error) 
 			test = sel.Test
 		}
 		if sel.TestWithTimeout != nil {
-			return classifyTest(sel.TestWithTimeout(root, limit), limit)
+			return classifyTest(h.observeTest(func() CommandResult { return sel.TestWithTimeout(root, limit) }), limit)
 		}
 	}
 	if h.RunTest == nil && test != nil {
-		if test(root) {
-			return Caught, nil
-		}
-		return NotCaught, nil
+		return classifyTest(h.observeTest(func() CommandResult { return CommandResult{Failed: test(root)} }), limit)
 	}
-	return classifyTest(h.runTest(root, limit), limit)
+	return classifyTest(h.observeTest(func() CommandResult { return h.runTest(root, limit) }), limit)
 }
 
 // suiteTimeout is the reason a suite run that hit its limit is CAUGHT. It is a

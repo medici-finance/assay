@@ -66,6 +66,36 @@
       "file": "cmd/muhar/main.go",
       "old": "if interrupted.Load() {\n\t\t\tcode = 130\n\t\t}",
       "new": "if false { code = 130 }"
+    },
+    {
+      "name": "externally killed suite cached",
+      "file": "cmd/muhar/runner.go",
+      "old": "if cmd.ProcessState.ExitCode() < 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "changed classifier reused",
+      "file": "cmd/muhar/state.go",
+      "old": "values = append(values, runnerID)",
+      "new": "_ = runnerID"
+    },
+    {
+      "name": "non-Go command rejected",
+      "file": "cmd/muhar/state.go",
+      "old": "goCommandWord.MatchString(command)",
+      "new": "strings.Contains(command, \"go \")"
+    },
+    {
+      "name": "schema fallback misreported",
+      "file": "cmd/muhar/harness.go",
+      "old": "h.observation.Selection = \"schemata fallback -> full command\"",
+      "new": "h.observation.Selection = \"schemata: full command\""
+    },
+    {
+      "name": "selection time counted as test",
+      "file": "cmd/muhar/harness.go",
+      "old": "sel := h.Selector.For(m, orig)",
+      "new": "sel := h.Selector.For(m, orig); if h.observation != nil { h.observation.Test += time.Hour }"
     }
   ]
 }

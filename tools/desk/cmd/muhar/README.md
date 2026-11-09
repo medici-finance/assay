@@ -358,13 +358,15 @@ See [Interrupting a run](#interrupting-a-run) for signal cleanup.
 
 ```
   -j int
-    	mutations in flight at once (1 = sequential, in place; 0 = one per CPU, capped at 2 to bound peak memory) (default 1)
+    mutations in flight at once (default 1; 0 = one per CPU, capped at 2)
+  -select
+    run tests selected by coverage of the mutated function (opt-in)
   -shard string
-    	run only this invocation's share of the spec: "i/n" (0-based shard i of n; the n shards partition the spec's mutations). Baseline + control still run in full per shard.
-  -state string
-	caller-owned resumable JSONL state path
+    run this invocation's share, i/n (0-based); baseline/control still run
   -spec string
-    	path to the mutation spec JSON
+    path to the mutation spec JSON (required)
+  -state string
+    caller-owned resumable JSONL state path
 ```
 
 `-spec` is required.
@@ -556,15 +558,16 @@ with its original zero-based spec `index`, literal `verdict`, `complete`,
 `build_ns`, `test_ns`, `selection`, optional `error`, and `timeout` classification
 (`build` or `test`; absent means no timeout). Test timeouts also retain `limit_ns`
 so a resumed report preserves their exact reason. Durations are nanoseconds;
-selection describes the full command, selected Go arguments, uncovered skip or
-schemata path. Shared schemata preparation is outside per-mutation build time.
+selection describes the full command, selected Go arguments, uncovered skip,
+schemata path or schemata fallback into the classic command. Test duration counts
+only command execution; coverage-selection decisions are excluded. Shared schemata preparation is outside per-mutation build time.
 Each JSON line is written under the writer lock and synced before the mutation
 is considered complete. A malformed line or partial trailing line refuses the
 whole retry before baseline/control; recover the tail offline or use a new path.
 
 Identity covers the exact spec bytes, canonical root, all source/test/fixture
 files under that root (excluding `.git` metadata and the selected state file),
-mutation/control files, runner schema, runner Go version, inherited environment
+mutation/control files, runner schema, the running muhar executable digest, runner Go version, inherited environment
 (excluding disposable cache/temp paths), `-select` and the literal `-shard` mode.
 For a plain `go test`, it also hashes the selected package compilation closure's
 source, tests, embedded and native files, dependency metadata, Go executable,
@@ -576,13 +579,21 @@ refuse because a complete input inventory cannot be proved. `-j` is scheduling
 and does not change identity. External-input flags (`-overlay`, `-modfile`, `-pgo`,
 `-toolexec`, `-exec`), unknown Go flags and shell compositions containing Go
 including inherited/command-local GOFLAGS inputs, and command-local PATH overrides refuse with `-state`; plain Go commands expose a provable compilation closure. Set PATH for the whole invocation instead.
-Other shell suites use the conservative tree inventory; their external data and
+Absolute/relative paths to a Go executable refuse with `-state`; put the selected Go executable on PATH. Other shell suites use the conservative tree inventory; their external data and
 executables must remain stable under the caller's control.
+
+The environment binding is intentionally conservative: shell variables such as
+`TERM_SESSION_ID`, `OLDPWD` and `SHLVL` remain inputs because a suite can read
+them. A retry from a different shell refuses unless its bound environment is
+identical. Use a stable launcher/environment for resumable work; removing unknown
+variables would weaken the identity contract. Rebuilding or replacing muhar also
+requires a new state path, even when its display version is unchanged.
 
 Every retry reruns baseline, selection preparation and positive control. Only
 complete `CAUGHT` and `NOT_CAUGHT` mutation records with no infrastructure error
 are reused; a complete test timeout is a definitive `CAUGHT`. `COULD_NOT_MUTATE`,
-`HARNESS BROKEN`, interrupted and error observations are rerun. The final report
+`HARNESS BROKEN`, interrupted and error observations are rerun. A suite killed by an external signal
+(including an OOM kill on Unix) is an infrastructure error and is not reusable. The final report
 combines resumed and new observations in spec order and keeps ordinary stdout
 and stderr reporting. An identity/schema mismatch refuses before any mutation.
 

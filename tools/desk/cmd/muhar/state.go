@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -22,6 +23,26 @@ import (
 )
 
 const stateSchema = 1
+
+var runnerExecutable = os.Executable
+
+// Bind the classifier actually executing this run, including unstamped builds.
+func runnerIdentity() (string, error) {
+	path, err := runnerExecutable()
+	if err != nil {
+		return "", err
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = file.Close() }()
+	digest := sha256.New()
+	if _, err := io.Copy(digest, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(digest.Sum(nil)), nil
+}
 
 // State owns observations, never verdict production. The locked inode is kept
 // for the entire invocation; it is never renamed or replaced under a waiter.
@@ -150,6 +171,7 @@ func (s *runState) append(r stateEntry) error {
 type mutationTiming struct {
 	Build, Test        time.Duration
 	Timeout, Selection string
+	Schema             bool
 }
 
 func (h *Harness) stopped() bool { return h.Interrupted != nil && h.Interrupted() }
@@ -183,6 +205,7 @@ func (h *Harness) completedMutation(root string, st *schemaTree, i int) (Mutatio
 			out := h.SchemaRun(root, overlay, selector, timeout)
 			timing.Test += time.Since(start)
 			timing.Selection = "schemata: full command"
+			timing.Schema = true
 			return out
 		}
 	}
@@ -192,6 +215,7 @@ func (h *Harness) completedMutation(root string, st *schemaTree, i int) (Mutatio
 			red := h.SchemaTest(root, overlay, selector)
 			timing.Test += time.Since(start)
 			timing.Selection = "schemata: full command"
+			timing.Schema = true
 			return red
 		}
 	}
@@ -278,6 +302,11 @@ func stateIdentity(s spec, o options) (string, error) {
 	}
 	// Bind source locations too: tests may observe their absolute working path.
 	values := []string{fmt.Sprint(stateSchema), runtime.Version(), root, s.Test, s.Build, o.shard, fmt.Sprint(o.useSelect)}
+	runnerID, err := runnerIdentity()
+	if err != nil {
+		return "", fmt.Errorf("runner identity: %w", err)
+	}
+	values = append(values, runnerID)
 	raw, err := os.ReadFile(o.spec)
 	if err != nil {
 		return "", err
@@ -415,7 +444,7 @@ func stateIdentity(s spec, o options) (string, error) {
 func stateGoArgs(command string) (args, assigns []string, isGo bool, err error) {
 	toks, e := shellWords(command)
 	if e != nil {
-		if strings.Contains(command, "go ") {
+		if goCommandWord.MatchString(command) {
 			return nil, nil, false, fmt.Errorf("-state cannot resolve Go shell composition: %w", e)
 		}
 		return nil, nil, false, nil
@@ -431,8 +460,11 @@ func stateGoArgs(command string) (args, assigns []string, isGo bool, err error) 
 		assigns = append(assigns, toks[0])
 		toks = toks[1:]
 	}
+	if len(toks) > 0 && goExecutable(toks[0]) && toks[0] != "go" {
+		return nil, nil, false, fmt.Errorf("-state needs the Go executable named go on PATH; absolute or relative Go executable paths are unsupported")
+	}
 	if len(toks) < 2 || toks[0] != "go" || toks[1] != "test" {
-		if strings.Contains(command, "go ") {
+		if goCommandWord.MatchString(command) {
 			return nil, nil, false, fmt.Errorf("-state requires a plain go test command to resolve Go inputs")
 		}
 		return nil, assigns, false, nil
@@ -474,4 +506,26 @@ func stateGoArgs(command string) (args, assigns []string, isGo bool, err error) 
 		}
 	}
 	return args, assigns, true, nil
+}
+
+// Recognize shell command words, never a language name ending in "go".
+// Opaque compositions containing a Go executable fail closed. Plain commands
+// are classified from argv[0]'s base name by the shared token reader above.
+var goCommandWord = regexp.MustCompile(`(?i)(^|[[:space:];|&])['"]?([^[:space:];|&'"]*/)?go(\.exe)?['"]?([[:space:]]|$)`)
+
+func goExecutable(path string) bool {
+	name := filepath.Base(path)
+	if runtime.GOOS == "windows" {
+		name = strings.ToLower(name)
+	}
+	return name == "go" || name == "go.exe"
+}
+
+func (h *Harness) observeTest(run func() CommandResult) CommandResult {
+	if h.observation == nil {
+		return run()
+	}
+	start := time.Now()
+	defer func() { h.observation.Test += time.Since(start) }()
+	return run()
 }
