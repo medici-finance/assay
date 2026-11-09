@@ -352,11 +352,13 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// binding or --outcome-only check, the observation binding, the outbound scan, the
 	// public-repo gate, the closure and lint-diff guards and receipt validation — and before the
 	// write budget and the write. The on-behalf-of principal is resolved here too, so a record a
-	// real run would refuse for a missing principal refuses its dry-run as well.
+	// real run would refuse for a missing principal refuses its dry-run as well. It is resolved
+	// ONCE, here, and the write path below reuses it.
+	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("", repoSlug)
+	if oerr != nil {
+		return oerr
+	}
 	if dryRun {
-		if _, oerr := deskkit.OnBehalfOfCommitSuffix("", repoSlug); oerr != nil {
-			return oerr
-		}
 		mode := "outcome record"
 		if outcomeOnly {
 			mode = "outcome-only record"
@@ -372,11 +374,6 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 
 	if werr := evidenceWriteBudget(toolName, repoSlug, 0); werr != nil {
 		return werr
-	}
-
-	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("", repoSlug)
-	if oerr != nil {
-		return oerr
 	}
 
 	writeInput := deskkit.WriteFileInput{

@@ -510,6 +510,12 @@
       "file": "cmd/deskevidence/routeflags.go",
       "old": "if !honoured[f.Name] {",
       "new": "if false && !honoured[f.Name] {"
+    },
+    {
+      "name": "SEC-5881-01: skip the immutability check under --dry-run",
+      "file": "cmd/deskevidence/outcomerecord.go",
+      "old": "\tif remoteExists {",
+      "new": "\tif !dryRun && remoteExists {"
     }
   ]
 }

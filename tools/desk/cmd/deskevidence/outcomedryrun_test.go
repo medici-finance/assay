@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"flag"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -179,6 +182,45 @@ func TestOutcomeDryRunGatesFire(t *testing.T) {
 		}
 		assertNoWrite(t, f, *budget)
 	})
+	t.Run("identical record no-op", func(t *testing.T) {
+		f, errBuf := setupFake(t)
+		budget := countBudget(t)
+		line := completeFail(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`)
+		name, err := deskkit.RecordName([]byte(line))
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.setFile(name, line+"\n")
+		code := run([]string{fixtureRepo, "main", "--outcome-record", writeRepoFile(t, "record.json", line+"\n"), "--dry-run"})
+		if code != deskkit.ExitOK {
+			t.Fatalf("exit = %d, want the no-op; stderr %q", code, errBuf.String())
+		}
+		assertNoWrite(t, f, *budget)
+		if out := stdout.(*bytes.Buffer).String(); !strings.Contains(out, "noop:") {
+			t.Fatalf("identical record under --dry-run did not report the no-op:\n%s", out)
+		}
+	})
+	t.Run("unresolvable principal", func(t *testing.T) {
+		f, errBuf := setupFake(t)
+		budget := countBudget(t)
+		// The roster names no bless login, so the on-behalf-of principal cannot be resolved:
+		// a real landing refuses, and so must its dry run.
+		home := os.Getenv("HOME")
+		roster := strings.Replace(fixtureRoster, "ASSAY_BLESS_LOGIN=ada:2001\n", "", 1)
+		if err := os.WriteFile(filepath.Join(home, ".config", "assay", "roster.env"), []byte(roster), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		deskkit.ReloadConfig()
+		line := completeFail(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`)
+		code := run([]string{fixtureRepo, "main", "--outcome-record", writeRepoFile(t, "record.json", line+"\n"), "--dry-run"})
+		if code != deskkit.ExitRefused || !strings.Contains(errBuf.String(), "on-behalf-of principal") {
+			t.Fatalf("exit = %d stderr %q, want the on-behalf-of principal refusal", code, errBuf.String())
+		}
+		assertNoWrite(t, f, *budget)
+		if strings.Contains(stdout.(*bytes.Buffer).String(), "dry-run plan") {
+			t.Fatal("dry run printed a plan for a record whose principal cannot be resolved")
+		}
+	})
 	t.Run("future ts", func(t *testing.T) {
 		f, _ := setupFake(t)
 		budget := countBudget(t)
@@ -216,7 +258,26 @@ func TestUnhonouredFlagRefused(t *testing.T) {
 		routeEvidenceFile:  {"--evidence-file", "docs/streams/x/brief.md"},
 		routeOutcomeRecord: {"--outcome-record", "/nonexistent/record.json"},
 	}
+	cases := map[string]int{}
 	for route, honours := range routeHonours {
+		// A flag no route declares yet (a future flag) is refused on every route.
+		t.Run(route+"/undeclared-flag", func(t *testing.T) {
+			fs := flag.NewFlagSet("deskevidence", flag.ContinueOnError)
+			fs.Bool("future-flag", false, "")
+			for _, fl := range honours {
+				fs.String(fl, "", "")
+			}
+			if err := fs.Parse([]string{"--future-flag"}); err != nil {
+				t.Fatal(err)
+			}
+			err := refuseUnhonouredFlags(fs, route)
+			if err == nil || !strings.Contains(err.Error(), "--future-flag has no effect on the "+route) {
+				t.Fatalf("undeclared flag on %s: err = %v, want refused", route, err)
+			}
+			if err := fs.Parse([]string{}); err != nil {
+				t.Fatal(err)
+			}
+		})
 		own := map[string]bool{}
 		for _, fl := range honours {
 			own[fl] = true
@@ -226,10 +287,15 @@ func TestUnhonouredFlagRefused(t *testing.T) {
 				continue
 			}
 			// The two routes' selector flags are already mutually exclusive, refused by
-			// their own check; --outcome-only off its route has its own refusal too.
-			if fl == "evidence-file" || fl == "brief-path" || fl == "outcome-record" || fl == "outcome-only" {
+			// their own check. --outcome-only off its route keeps its own, earlier refusal.
+			if fl == "evidence-file" || fl == "brief-path" || fl == "outcome-record" {
 				continue
 			}
+			want := "--" + fl + " has no effect"
+			if fl == "outcome-only" {
+				want = "--outcome-only is valid only with --outcome-record"
+			}
+			cases[route]++
 			t.Run(route+"/"+fl, func(t *testing.T) {
 				f, errBuf := setupFake(t)
 				mints := 0
@@ -241,13 +307,18 @@ func TestUnhonouredFlagRefused(t *testing.T) {
 					args = append(args, "--"+fl)
 				}
 				code := run(args)
-				if code != deskkit.ExitRefused || !strings.Contains(errBuf.String(), "--"+fl+" has no effect") {
+				if code != deskkit.ExitRefused || !strings.Contains(errBuf.String(), want) {
 					t.Fatalf("--%s on %s: exit = %d stderr %q, want refused as ignored", fl, route, code, errBuf.String())
 				}
 				if mints != 0 || len(f.hits) != 0 {
 					t.Fatalf("--%s on %s: refused after %d mint(s) and forge hits %v; want before either", fl, route, mints, f.hits)
 				}
 			})
+		}
+	}
+	for route := range routeHonours {
+		if cases[route] == 0 {
+			t.Errorf("route %s exercised no flag it does not honour through run()", route)
 		}
 	}
 }
