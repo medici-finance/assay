@@ -342,7 +342,22 @@ set as `images/verify-runner/stage-cache.sh` (`APPROVED` and `GHPUB`, held equal
 by a parity test). A path under the verified repository's owner, in any case, a
 path matching the operator's `GOPRIVATE`, `GONOPROXY` or `GONOSUMDB`, or one off
 the approved set is could-not-check, with nothing sent to the proxy, no cache
-directory and no receipt. It then prints one line naming the proxy, the checksum
+directory and no receipt.
+
+The host `--module-cache` lane has one bounded exception for module paths rooted
+at `github.com/medici-finance/assay` (the exact repository, including its nested
+modules). Before any module download it announces and performs an unauthenticated
+GET of `https://api.github.com/repos/medici-finance/assay`. It requires the fixed
+repository and owner IDs, canonical name and URL, `private=false` and
+`visibility=public`; redirects, unavailable or ambiguous metadata refuse. Each
+exception version must have both its module and go.mod checksums committed in the
+source's `go.sum`. The receipt records repository identity, metadata digest and
+the root/module/version/checksums; container admission and close recheck that
+source binding without network. Operator private patterns always win; other owner
+paths retain denial. This exception is not added to the cluster stager, which
+continues to refuse owner paths. It does not add VCS fallback or network to rows.
+
+It then prints one line naming the proxy, the checksum
 database, the roots and the cache before it downloads anything. The cache path may
 hold no comma, quote, whitespace or control character, since it is written into
 the container's `--mount` option list. It refuses if the download changes either file, records

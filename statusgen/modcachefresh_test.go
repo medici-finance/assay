@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -568,7 +569,7 @@ func TestModEgressMainRoots(t *testing.T) {
 		t.Fatalf("%s names no root", moduleRootsManifest)
 	}
 	env := moduleDownloadEnv(t.TempDir(), t.TempDir())
-	if err := moduleEgressProblem("..", roots, owners, env); err != nil {
+	if _, err := moduleEgressProblem("..", roots, owners, env, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 }
