@@ -82,6 +82,10 @@ COPY comms/ /src/comms/
 # `replace` to a sibling directory; same sibling layout as forgeread.
 COPY perfrec/ /src/perfrec/
 
+# loopadmin — the shared process runner (graph-execution/26) tools/desk resolves through
+# `replace ../../loopadmin`; same sibling layout as forgeread.
+COPY loopadmin/ /src/loopadmin/
+
 # gitquiet — the stdlib-only quiet-Git test template statusgen and tools/desk each resolve through a
 # `replace` to a sibling directory (their test builds import it); same sibling layout as forgeread.
 # `go mod download` reads each replaced module's go.mod, so the directory must exist in this stage.

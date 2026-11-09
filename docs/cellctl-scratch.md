@@ -179,7 +179,8 @@ paths without truncating required source or canonical quality evidence.
 From `tools/desk`:
 
 ```sh
-go test ./internal/cellscratch ./cmd/cellctl ./internal/cellprocess -run 'TestScratch|TestObserved|TestRun|TestCadenceExecutes|TestInteractiveOwner' -count=1 -timeout 45s
+go test ./internal/cellscratch ./cmd/cellctl ./internal/cellrunner -run 'TestScratch|TestObserved|TestRun|TestCadenceExecutes|TestInteractiveOwner' -count=1 -timeout 45s
+(cd ../../loopadmin && go test ./process -run 'TestObserved|TestRun|TestCacheObservedRoutes' -count=1 -timeout 45s)
 go run ./cmd/muhar -spec internal/cellscratch/mutations.json
 ```
 

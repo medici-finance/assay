@@ -1,21 +1,23 @@
-// Package cellprocess executes a single harness invocation and
-// cleans up its owned process group/job before another cadence turn can start.
-// It is process supervision, not a sandbox against a hostile harness escaping
-// its group or delegating work to an unrelated pre-existing service.
-package cellprocess
+// Package process is loopadmin's one process runner. It executes a single
+// harness invocation and cleans up its owned process group/job before another
+// turn can start. It is process supervision, not a sandbox against a hostile
+// harness escaping its group or delegating work to an unrelated pre-existing
+// service.
+//
+// Launch admission (for the desk: Go-cache custody and its enrollment
+// telemetry) is supplied by the caller as a Custody. Every public launch route
+// passes through that one admission boundary; a Runner without custody refuses
+// to launch.
+package process
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"io"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
-
-	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
 )
 
 const pipeWait = 500 * time.Millisecond
@@ -28,6 +30,37 @@ type processTree interface {
 	close() error
 }
 
+// Custody admits one launch before its child starts. Admit sees the child's
+// exact environment. A refusal (non-nil error) means no process is started.
+type Custody interface {
+	Admit(env []string) (Admission, error)
+}
+
+// Admission is one admitted launch. Finish is called exactly once after the
+// child and its tree are handled; clean is false when cleanup could not be
+// proved, so the custodian must keep its dirty ownership state. A Finish
+// error makes the launch result uncertain.
+type Admission interface {
+	Finish(clean bool) error
+}
+
+// Runner launches processes under one Custody.
+type Runner struct {
+	custody Custody
+}
+
+// ErrNoCustody is returned when a launch is attempted without a launch
+// custodian. It is a refusal before launch, never an uncertain result.
+var ErrNoCustody = errors.New("process launch requires a launch custodian")
+
+// New returns a Runner bound to custody. A nil custody is refused.
+func New(custody Custody) (*Runner, error) {
+	if custody == nil {
+		return nil, ErrNoCustody
+	}
+	return &Runner{custody: custody}, nil
+}
+
 // Run preserves argv, env and dir, supplies EOF on stdin, and never invokes a
 // shell. A nil env is an empty environment, not permission to inherit secrets.
 // Cancellation kills the owned tree and Wait reaps the direct child. Descendants
@@ -35,16 +68,16 @@ type processTree interface {
 // A true uncertain means cleanup could not be proved; callers must retain their
 // dirty ownership state and refuse further turns. Windows needs native runtime
 // verification in addition to cross-compilation.
-func Run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer) (exitCode int, uncertain bool, err error) {
-	return withCache(env, func() (int, bool, error) {
+func (r *Runner) Run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer) (exitCode int, uncertain bool, err error) {
+	return r.withCustody(env, func() (int, bool, error) {
 		return run(ctx, argv, env, dir, stdout, stderr, newProcessTree)
 	})
 }
 
 // RunInteractive preserves stdin and terminal foreground ownership in addition
 // to Run's containment guarantees. It imposes no execution deadline.
-func RunInteractive(ctx context.Context, argv, env []string, dir string, stdin *os.File, stdout, stderr io.Writer) (int, bool, error) {
-	return withCache(env, func() (int, bool, error) {
+func (r *Runner) RunInteractive(ctx context.Context, argv, env []string, dir string, stdin *os.File, stdout, stderr io.Writer) (int, bool, error) {
+	return r.withCustody(env, func() (int, bool, error) {
 		return run(ctx, argv, env, dir, stdout, stderr, func(cmd *exec.Cmd) (processTree, error) {
 			if stdin != nil {
 				cmd.Stdin = stdin
@@ -55,14 +88,14 @@ func RunInteractive(ctx context.Context, argv, env []string, dir string, stdin *
 }
 
 // RunInteractiveObserved enrolls a child before accepting its completion.
-func RunInteractiveObserved(ctx context.Context, argv, env []string, dir string, stdin *os.File, stdout, stderr io.Writer, started func(int) error) (int, bool, error) {
-	return RunInteractive(observeLaunch(ctx, started), argv, env, dir, stdin, stdout, stderr)
+func (r *Runner) RunInteractiveObserved(ctx context.Context, argv, env []string, dir string, stdin *os.File, stdout, stderr io.Writer, started func(int) error) (int, bool, error) {
+	return r.RunInteractive(observeLaunch(ctx, started), argv, env, dir, stdin, stdout, stderr)
 }
 
 // RunObserved goes through Run's public custody boundary. Observation must never
 // create a second route around launch admission or cache ownership.
-func RunObserved(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, started func(int) error) (int, bool, error) {
-	return Run(observeLaunch(ctx, started), argv, env, dir, stdout, stderr)
+func (r *Runner) RunObserved(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, started func(int) error) (int, bool, error) {
+	return r.Run(observeLaunch(ctx, started), argv, env, dir, stdout, stderr)
 }
 
 type observerKey struct{}
@@ -75,26 +108,20 @@ func observeLaunch(ctx context.Context, started func(int) error) context.Context
 }
 
 // One custody boundary covers cadence, interactive and detached tmux wrappers.
-// A crash or uncertain child cleanup leaves a durable active-cache record.
-func withCache(env []string, child func() (int, bool, error)) (int, bool, error) {
-	began := time.Now()
-	lease, err := cellcache.Acquire(env)
-	enabled := false
-	for _, value := range env {
-		if k, v, ok := strings.Cut(value, "="); ok && k == "ASSAY_TELEMETRY" {
-			enabled = v == "1"
-		}
+// A crash or uncertain child cleanup leaves the custodian's dirty record.
+func (r *Runner) withCustody(env []string, child func() (int, bool, error)) (int, bool, error) {
+	if r == nil || r.custody == nil {
+		return -1, false, ErrNoCustody
 	}
-	phaseCode := deskkit.ExitOK
-	if err != nil {
-		phaseCode = deskkit.ExitCodeOf(err)
-	}
-	deskkit.PerfStepEnabled(enabled, "cellctl", "launch-cache-enrollment", time.Since(began), phaseCode)
+	admission, err := r.custody.Admit(env)
 	if err != nil {
 		return -1, false, err
 	}
 	code, uncertain, err := child()
-	finishErr := lease.Finish(!uncertain)
+	var finishErr error
+	if admission != nil {
+		finishErr = admission.Finish(!uncertain)
+	}
 	return code, uncertain || finishErr != nil, errors.Join(err, finishErr)
 }
 

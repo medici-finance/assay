@@ -1,4 +1,4 @@
-package cellprocess
+package process
 
 import (
 	"bytes"
@@ -213,7 +213,7 @@ func TestInteractivePreservesStdin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer input.Close()
+	defer func() { _ = input.Close() }()
 	if _, err := input.WriteString("interactive input\n"); err != nil {
 		t.Fatal(err)
 	}
