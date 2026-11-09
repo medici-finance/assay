@@ -48,6 +48,12 @@
       "file": "cmd/muhar/state.go",
       "old": "\"GOTELEMETRYDIR\", \"GOGCCFLAGS\"",
       "new": "\"GOTELEMETRYDIR\""
+    },
+    {
+      "name": "external package source omitted",
+      "file": "cmd/muhar/state.go",
+      "old": "files[resolve(p.Dir, name)] = true",
+      "new": "if within(root, p.Dir) { files[resolve(p.Dir, name)] = true }"
     }
   ]
 }
