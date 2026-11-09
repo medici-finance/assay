@@ -1,2 +1,0 @@
-### Fixed
-- The module screen that runs before `statusgen verifyrun --open-bracket --module-cache` downloads anything, and its twin in the verify-runner image's `stage-cache.sh`, now approve two more public prefixes: `dario.cat/` and `gitlab.com/gitlab-org/api/`. The modules on main that need them (`dario.cat/mergo` and `gitlab.com/gitlab-org/api/client-go`) are no longer refused, so the listed module roots can be downloaded. A statusgen test screens every listed root on main and checks that neighbouring unapproved prefixes are still refused.

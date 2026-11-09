@@ -5197,6 +5197,18 @@ digest and path), never an edit of an existing one. The verified-outcome closure
 (`guardVerifiedOutcomes`, `gateVerifiedSidecarLanding`) apply to a `verified` record exactly as
 they applied to an added log line; `verify-fail` is never gated.
 
+**`--dry-run`** (#4554). With `--outcome-record`, plain or with `--outcome-only`, `--dry-run`
+runs every gate the real landing runs (parse, admission, `evidence_withheld`, wake, Evidence
+binding, immutability read, closure, attribution, receipts), then prints the planned target
+path, branch and record digest and exits 0. It makes no commits-API write and spends no write
+budget. Before #4554 this route parsed `--dry-run` and ignored it, so a dry run committed the
+record for real.
+
+**Flags a route does not read are refused.** Each landing shape declares the flags it honours.
+A flag set on the command line that the selected shape does not read (for example
+`--append-only`, `--allow-shrink` or `--row` with `--outcome-record`) is refused (exit 5) before
+mint or any forge call. Before #4554 it was accepted and ignored.
+
 **Committed closure history.** A new `verified` outcome (including a direct per-file
 Evidence write) runs full lint, identity attribution, the pending-record lint diff
 and closure acceptance in a disposable checkout of the exact target commit.
