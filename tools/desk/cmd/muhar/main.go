@@ -322,8 +322,10 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 	go func() {
 		select {
 		case <-sig:
-			cancel()
+			// Close admission/start custody before waking lease waiters. No early
+			// return can exit the parent ahead of the child-group kill.
 			liveGroups.killAll()
+			cancel()
 		case <-done:
 		}
 	}()
