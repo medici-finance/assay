@@ -277,15 +277,39 @@ func TestStateRejectsNewTree(t *testing.T) {
 		}
 	})
 	t.Run("command-words", func(t *testing.T) {
-		for _, command := range []string{"cargo test", "cargo test && true", "echo mango fruit"} {
+		for _, command := range []string{"cargo test", "cargo test && true", "(cargo test)", "echo $(cargo test)", "`cargo test`", "{cargo test;}", "!cargo test", "echo mango fruit"} {
 			if _, _, goCmd, err := stateGoArgs(command); err != nil || goCmd {
 				t.Fatalf("non-Go command %q classified as Go: %v", command, err)
 			}
 		}
-		for _, command := range []string{"/custom/bin/go test .", "./go test .", "'/custom/bin/go' test . && true", "go test . && true"} {
+		for _, command := range []string{"/custom/bin/go test .", "./go test .", "'/custom/bin/go' test . && true", "go test . && true", "(go test .)", "echo $(go test .)", "`go test .`", "{go test .;}", "!go test .", "echo <(go test .)"} {
 			if _, _, _, err := stateGoArgs(command); err == nil {
 				t.Fatalf("unresolved Go command accepted: %s", command)
 			}
+		}
+	})
+
+	t.Run("descriptor-type", func(t *testing.T) {
+		read, write, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = read.Close() }()
+		defer func() { _ = write.Close() }()
+		if err := validateStateFile(read); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Fatalf("non-regular descriptor accepted: %v", err)
+		}
+	})
+	t.Run("descriptor-error", func(t *testing.T) {
+		file, err := os.CreateTemp(t.TempDir(), "closed-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := validateStateFile(file); err == nil {
+			t.Fatal("closed descriptor accepted")
 		}
 	})
 
@@ -453,29 +477,45 @@ func TestStateSkipsNoErrors(t *testing.T) {
 		}
 	}
 	t.Run("external-signal", func(t *testing.T) {
-		root := t.TempDir()
-		writeFixture(t, filepath.Join(root, "value.txt"), "one")
-		state, err := openRunState(filepath.Join(t.TempDir(), "signal.jsonl"))
-		if err != nil {
-			t.Fatal(err)
+		for _, signal := range []string{"KILL", "TERM"} {
+
+			root := t.TempDir()
+			writeFixture(t, filepath.Join(root, "value.txt"), "one")
+			state, err := openRunState(filepath.Join(t.TempDir(), "signal.jsonl"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer state.close()
+			if err := state.bind("signal-case"); err != nil {
+				t.Fatal(err)
+			}
+			h := Harness{Root: root, State: state, MutationTimeout: time.Second, Mutations: []Mutation{{Name: "killed", File: "value.txt", Old: "one", New: "two"}}, RunTest: func(root string, limit time.Duration) CommandResult {
+				return runShell(root, "kill -"+signal+" $$", os.Environ(), limit)
+			}}
+			result, err := h.completedMutation(root, nil, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Result != CouldNotMutate || result.Err == nil || !strings.Contains(result.Err.Error(), "SIGKILL/SIGTERM") {
+				t.Fatalf("externally killed suite became a verdict: %+v", result)
+			}
+			records := readStateLines(t, state.file.Name())
+			if len(records) != 2 || records[1].definitive() {
+				t.Fatalf("external signal reused: %+v", records)
+			}
 		}
-		defer state.close()
-		if err := state.bind("signal-case"); err != nil {
-			t.Fatal(err)
-		}
-		h := Harness{Root: root, State: state, MutationTimeout: time.Second, Mutations: []Mutation{{Name: "killed", File: "value.txt", Old: "one", New: "two"}}, RunTest: func(root string, limit time.Duration) CommandResult {
-			return runShell(root, "kill -KILL $$", os.Environ(), limit)
-		}}
-		result, err := h.completedMutation(root, nil, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if result.Result != CouldNotMutate || result.Err == nil || !strings.Contains(result.Err.Error(), "external signal") {
-			t.Fatalf("externally killed suite became a verdict: %+v", result)
-		}
-		records := readStateLines(t, state.file.Name())
-		if len(records) != 2 || records[1].definitive() {
-			t.Fatalf("external signal reused: %+v", records)
+	})
+
+	t.Run("fault-signals", func(t *testing.T) {
+		for _, signal := range []string{"ABRT", "SEGV"} {
+			out := runShell(t.TempDir(), "ulimit -c 0; kill -"+signal+" $$", os.Environ(), time.Second)
+			if out.Err != nil || out.TimedOut || !out.Failed {
+				t.Fatalf("fault signal %s lost ordinary failure semantics: %+v", signal, out)
+			}
+			result, err := classifyTest(out, time.Second)
+			if result != Caught || err != nil {
+				t.Fatalf("fault signal %s changed verdict: %s %v", signal, result, err)
+			}
 		}
 	})
 

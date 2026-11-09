@@ -46,7 +46,7 @@
 //
 //	{
 //	  "root": "/abs/path/to/checkout",   // optional; relative file paths resolve here
-//	  "test": "go test ./...",           // suite command; NON-ZERO exit == mutation caught
+//	  "test": "go test ./...",           // suite command; ordinary NON-ZERO exit == mutation caught
 //	  "control": {                        // a mutation the suite MUST catch
 //	    "name": "value-conservation invariant",
 //	    "file": "config/Example/Core.json",

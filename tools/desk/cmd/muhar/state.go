@@ -69,6 +69,21 @@ type stateEntry struct {
 	Selection  string `json:"selection,omitempty"`
 }
 
+// Validate the descriptor we will lock/read, independently of the path screen.
+func validateStateFile(f *os.File) error {
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("stat opened state file: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("opened state descriptor is not a regular file")
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("state file is group/world writable; use a private caller-owned file")
+	}
+	return nil
+}
+
 func openRunState(path string) (*runState, error) {
 	if info, err := os.Stat(path); err == nil && !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("state path must be a regular file")
@@ -80,18 +95,9 @@ func openRunState(path string) (*runState, error) {
 	if err != nil {
 		return nil, err
 	}
-	info, err := f.Stat()
-	if err != nil {
+	if err := validateStateFile(f); err != nil {
 		_ = f.Close()
 		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		_ = f.Close()
-		return nil, fmt.Errorf("opened state descriptor is not a regular file")
-	}
-	if runtime.GOOS != "windows" && info.Mode().Perm()&0o022 != 0 {
-		_ = f.Close()
-		return nil, fmt.Errorf("state file is group/world writable; use a private caller-owned file")
 	}
 	if err := deskkit.TryLockExclusive(f); err != nil {
 		_ = f.Close()
@@ -518,7 +524,7 @@ func stateGoArgs(command string) (args, assigns []string, isGo bool, err error) 
 // Recognize shell command words, never a language name ending in "go".
 // Opaque compositions containing a Go executable fail closed. Plain commands
 // are classified from argv[0]'s base name by the shared token reader above.
-var goCommandWord = regexp.MustCompile(`(?i)(^|[[:space:];|&])['"]?([^[:space:];|&'"]*/)?go(\.exe)?['"]?([[:space:]]|$)`)
+var goCommandWord = regexp.MustCompile(`(?i)(^|[[:space:];|&(){}!$<>\x60])['"]?([^[:space:];|&(){}!$<>\x60'"]*/)?go(\.exe)?['"]?([[:space:];|&(){}!$<>\x60]|$)`)
 
 func goExecutable(path string) bool {
 	name := filepath.Base(path)

@@ -328,7 +328,7 @@ The spec is one JSON object. Fields not listed here are ignored.
 
 | Field | Required | Meaning |
 |---|---|---|
-| `test` | yes | The suite command, run with `sh -c`. After the mutant builds, a non-zero test exit means `CAUGHT`; a timeout is also `CAUGHT` and is marked on that mutant's line. It may use pipes and `&&`. |
+| `test` | yes | The suite command, run with `sh -c`. After the mutant builds, an ordinary non-zero test exit means `CAUGHT`; a timeout is also `CAUGHT` and is marked on that mutant's line. It may use pipes and `&&`. |
 | `build` | no | Optional build command. When set, it runs before the suite for every mutation, whatever the file. If omitted, a `.go` mutation is checked with `go test -vet=off -c` for its package, carrying the leading `NAME=value` environment assignments and the build flags (`-tags`, `-race`, `-gcflags` and the like) from `test`; test-run flags such as `-run`, `-count` and `-timeout` are dropped. It compiles without executing tests or package initializers. A `test` that is not a plain `go test` command, or that carries a flag `muhar` does not know (or `-C`), uses the mutated package alone, with no flags; set `build` when that needs extra tags or a broader build. A build failure is `COULD_NOT_MUTATE`, and the suite is not run. Non-Go mutations have no automatic build step. |
 | `timeout` | no | Object with `multiplier` (default `5`), `floor` (default `20s`) and optional `baseline` limit (default `30m`). The pristine suite must finish within `baseline`. The per-mutation limit is `max(floor, measured baseline × multiplier)`, and each phase of a mutation gets all of it: the build, the suite, and with `schemata` the schema run and any classic fallback. No phase runs on what an earlier one left over. A suite killed at the limit is `CAUGHT`, flagged `TIMEOUT` on its line, because it had the whole limit and did not terminate. A build timeout is `COULD_NOT_MUTATE`. A positive control caught only by a timeout makes the run `HARNESS BROKEN`: the control must turn the suite red, and a suite that asserts nothing still times out when it is slow enough. |
 | `control` | yes | A mutation object (below) the suite **must** catch. `control.name` and `control.old` must be non-empty, or `muhar` exits 1 before running anything. |
@@ -358,13 +358,13 @@ See [Interrupting a run](#interrupting-a-run) for signal cleanup.
 
 ```
   -j int
-    mutations in flight at once (default 1; 0 = one per CPU, capped at 2)
+    mutations in flight at once (1 = sequential, in place; 0 = one per CPU, capped at 2 to bound peak memory)
   -select
-    run tests selected by coverage of the mutated function (opt-in)
+    run each mutation against only the tests that execute the mutated function (plus the spec's select.always list); opt-in
   -shard string
-    run this invocation's share, i/n (0-based); baseline/control still run
+    run only this invocation's share of the spec: "i/n" (0-based shard i of n; the n shards partition the spec's mutations). Baseline + control still run in full per shard.
   -spec string
-    path to the mutation spec JSON (required)
+    `path` to the mutation spec JSON (required)
   -state string
     caller-owned resumable JSONL state path
 ```
@@ -463,7 +463,7 @@ report is only the two `HARNESS BROKEN` lines.
 
 | Verdict | Means | What to do |
 |---|---|---|
-| `CAUGHT` | The mutation was proven on disk and its test command exited non-zero, or ran for the whole per-mutation limit without finishing. A timeout is marked on the per-mutant line. | Nothing: the behaviour is tested, or the mutant did not terminate within its measured bound. |
+| `CAUGHT` | The mutation was proven on disk and its test command exited with an ordinary non-zero status, or ran for the whole per-mutation limit without finishing. A timeout is marked on the per-mutant line. | Nothing: the behaviour is tested, or the mutant did not terminate within its measured bound. |
 | `NOT_CAUGHT` | The mutation was proven on disk and the test command exited 0. | A real finding. Add a test that fails with this edit in place, then re-run. |
 | `COULD_NOT_MUTATE` | The edit could not be planted or proven, or the mutated Go package could not be built, so the suite did not judge it. The reason is printed on the line. | Fix the spec or source. This is **not** a pass: that behaviour was not checked. |
 | `HARNESS BROKEN` | The baseline was red or timed out, the control could not be planted, built or caught, or a `-j` copy could not be made. | Fix the suite, the control or the environment. Ignore everything else about this run. |
@@ -589,7 +589,8 @@ refuse because a complete input inventory cannot be proved. `-j` is scheduling
 and does not change identity. With `-state`, external-input flags (`-overlay`, `-modfile`, `-pgo`,
 `-toolexec`, `-exec`) and unknown Go flags are refused. The same check applies to
 GOFLAGS from the environment, a command-local assignment or the go env file.
-Go shell compositions and command-local PATH overrides also refuse. Set PATH for
+Go shell compositions (including subshells, substitutions, braces and bang forms)
+and command-local PATH overrides also refuse. Set PATH for
 the whole invocation, with the chosen Go executable named `go`; absolute or
 relative paths to a Go executable are unsupported with `-state`.
 Other shell suites use the conservative tree inventory; their external data and
@@ -605,8 +606,12 @@ requires a new state path, even when its display version is unchanged.
 Every retry reruns baseline, selection preparation and positive control. Only
 complete `CAUGHT` and `NOT_CAUGHT` mutation records with no infrastructure error
 are reused; a complete test timeout is a definitive `CAUGHT`. `COULD_NOT_MUTATE`,
-`HARNESS BROKEN`, interrupted and error observations are rerun. A suite killed by an external signal
-(including an OOM kill on Unix) is an infrastructure error and is not reusable. The final report
+`HARNESS BROKEN`, interrupted and error observations are rerun. A directly observed Unix suite process terminated by `SIGKILL` or `SIGTERM`
+is an infrastructure error and is not reusable. Other fault signals keep their
+ordinary failed-test classification. A wrapper such as `go test` can convert a
+child's OOM or signal death into an ordinary exit 1; that hidden signal is not
+detected or qualified by this rule. This tool does not claim OOM detection
+through arbitrary wrappers. The final report
 combines resumed and new observations in spec order and keeps ordinary stdout
 and stderr reporting. An identity/schema mismatch refuses before any mutation.
 

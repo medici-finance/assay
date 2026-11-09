@@ -3,6 +3,7 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
 )
@@ -22,4 +23,18 @@ func killProcessGroup(cmd *exec.Cmd) error {
 		return nil
 	}
 	return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+}
+
+// Only directly observed resource/termination signals are non-definitive.
+// A wrapper that converts a child's death to a regular exit hides that signal.
+func resourceSignal(state *os.ProcessState) bool {
+	if state == nil {
+		return false
+	}
+	status, ok := state.Sys().(syscall.WaitStatus)
+	if !ok {
+		return false
+	}
+	signal := status.Signal()
+	return status.Signaled() && (signal == syscall.SIGKILL || signal == syscall.SIGTERM)
 }

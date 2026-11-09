@@ -70,7 +70,7 @@
     {
       "name": "externally killed suite cached",
       "file": "cmd/muhar/runner.go",
-      "old": "if cmd.ProcessState.ExitCode() < 0 {",
+      "old": "if resourceSignal(cmd.ProcessState) {",
       "new": "if false {"
     },
     {
@@ -96,6 +96,36 @@
       "file": "cmd/muhar/harness.go",
       "old": "sel := h.Selector.For(m, orig)",
       "new": "sel := h.Selector.For(m, orig); if h.observation != nil { h.observation.Test += time.Hour }"
+    },
+    {
+      "name": "shell Go form accepted",
+      "file": "cmd/muhar/state.go",
+      "old": "(^|[[:space:];|&(){}!$<>\\x60])",
+      "new": "(^|[[:space:];|&])"
+    },
+    {
+      "name": "opened descriptor type ignored",
+      "file": "cmd/muhar/state.go",
+      "old": "if !info.Mode().IsRegular() {\n\t\treturn fmt.Errorf(\"opened state descriptor is not a regular file\")",
+      "new": "if false {\n\t\treturn fmt.Errorf(\"opened state descriptor is not a regular file\")"
+    },
+    {
+      "name": "opened descriptor error ignored",
+      "file": "cmd/muhar/state.go",
+      "old": "return fmt.Errorf(\"stat opened state file: %w\", err)",
+      "new": "return nil"
+    },
+    {
+      "name": "shared writable state accepted",
+      "file": "cmd/muhar/state.go",
+      "old": "if runtime.GOOS != \"windows\" && info.Mode().Perm()&0o022 != 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "fault signal becomes infra error",
+      "file": "cmd/muhar/process_unix.go",
+      "old": "return status.Signaled() && (signal == syscall.SIGKILL || signal == syscall.SIGTERM)",
+      "new": "return status.Signaled() || (signal == syscall.SIGKILL || signal == syscall.SIGTERM)"
     }
   ]
 }
