@@ -297,8 +297,9 @@ func readBracketReceipt(path, home, brief string) (bracketReceipt, string, strin
 
 // bindingOwners is the lower-case forge owners of every repository a check
 // binds: its repo, the source repo of a cross-repository receipt, and each
-// declared sibling. The open step's module screen refuses any module path
-// under one of them (moduleEgressProblem).
+// declared sibling. The raw module screen refuses paths under these owners;
+// the host open step can admit the public Assay repository only after fresh
+// identity/visibility proof and exact committed module bindings (moduleEgressProblem).
 func bindingOwners(b attestation.Binding) ([]string, error) {
 	repos := []string{b.Repo, b.SourceRepo}
 	siblings, err := attestation.ParseSiblingSources(b.SiblingSources)
