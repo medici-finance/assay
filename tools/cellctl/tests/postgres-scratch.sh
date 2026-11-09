@@ -17,8 +17,8 @@ case "$endpoint" in unix:///*) ;; *) echo 'could-not-check: scratch requires a l
 # Pin the checked destination; DOCKER_CONTEXT otherwise outranks DOCKER_HOST.
 export DOCKER_HOST="$endpoint"
 unset DOCKER_CONTEXT
-project=assay-postgres-scratch
 work=$(mktemp -d)
+project="assay-postgres-scratch-$(python3 -I -c 'import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:16])' "$work")"
 started=0
 compose() { docker compose -p "$project" -f "$root/containers/postgres/compose.yaml" "$@"; }
 finish() {

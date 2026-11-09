@@ -1968,7 +1968,7 @@ merge_role_worktree(){
 }
 
 # ---------------------------------------------------------------- codex harness
-# Expected standing prompt is a literal fixture, reviewed independently of Go.
+# Expected standing prompt is an independent literal fixture.
 # Never source the production composer here: a production text change must diverge.
 oracle_codex_prompt(){
   sed "s/@ROLE@/$1/g" "$(dirname "$SELF")/codex-standing-prompt.txt"

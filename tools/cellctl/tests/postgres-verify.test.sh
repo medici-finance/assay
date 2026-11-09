@@ -41,6 +41,7 @@ scratch=$(dirname "$runner")/postgres-scratch.sh
 cat >"$work/bin/docker" <<'EOF'
 #!/usr/bin/env bash
 if [[ "${DOCKER_FAIL:-}" == "${1:-}" ]]; then exit 9; fi
+if [[ -n "${DOCKER_LOG:-}" ]]; then printf '%s\n' "$*" >>"$DOCKER_LOG"; fi
 case "$*" in
   'context inspect '*) echo unix:///example-fixture.sock;;
   info|'ps -aq '*|'volume ls -q '*) ;;
@@ -78,4 +79,21 @@ for inspection in ps volume network; do
   test "$rc" -eq 9 && test ! -e "$FENCE_MARK"
   printf 'ok rejected failed %s inspection\n' "$inspection"
 done
+distinct_projects() {
+  : >"$work/docker.log"
+  local first second r1=0 r2=0 n
+  (cd "$work/repo" && DOCKER_CONTEXT=fixture DOCKER_LOG="$work/docker.log" bash "$1") >"$work/first.out" 2>&1 & first=$!
+  (cd "$work/repo" && DOCKER_CONTEXT=fixture DOCKER_LOG="$work/docker.log" bash "$1") >"$work/second.out" 2>&1 & second=$!
+  wait "$first" || r1=$?
+  wait "$second" || r2=$?
+  test "$r1" -eq 1 && test "$r2" -eq 1 || return 1
+  n=$(grep -o 'label=com.docker.compose.project=assay-postgres-scratch-[0-9a-f]*' "$work/docker.log" | sort -u | wc -l) || return 1
+  test "$n" -eq 2
+}
+distinct_projects "$scratch"
+sed 's/^project=.*/project=assay-postgres-scratch/' "$scratch" >"$work/shared-project.sh"
+if distinct_projects "$work/shared-project.sh"; then
+  echo 'FAIL: shared-project mutation was not detected' >&2; exit 1
+fi
+printf 'ok simultaneous fixtures own distinct projects; shared-project mutation detected\n'
 printf 'ok PostgreSQL Verify controls\n'

@@ -41,12 +41,20 @@ the physical temporary directory before Go fixtures run, preserving cache
 validation's rejection of symlink path components on macOS. Docker container,
 volume and network inspection errors remain failures, separate from empty results.
 
+Sibling routing: the older standalone `harness.test.sh` feature-row expectations
+and the `harness.test.sh` / `scrubbed-cell.test.sh` Codex config-get stubs need a
+separate behavioral-suite fixture refresh. Those suites also carry older live
+launch/version assumptions. This change repairs the complete 200-cell parity
+fixture and does not claim those broader suites passed.
+
 ## Acceptance transition handoff
 
 The proposed v2 changes only Commands in rows `3,5,9,10,12`; original row IDs,
 Class, Expect, order, surrounding command prose and all Evidence are retained.
-The scratch flow creates the literal `assay-postgres-scratch` project only after
-proving it has no existing containers, volumes or networks. It uses a cached pinned image,
+The scratch flow derives a unique `assay-postgres-scratch-` project from its owned
+temporary-directory identity, so simultaneous runs cannot own the same project.
+It creates it only after proving there are no existing containers, volumes or
+networks. It uses a cached pinned image,
 `--pull never`, a fresh volume, a free loopback port, synthetic configuration and
 runtime-only generated credentials, then tears down its own resources.
 
