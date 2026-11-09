@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -568,7 +569,52 @@ func TestModEgressMainRoots(t *testing.T) {
 		t.Fatalf("%s names no root", moduleRootsManifest)
 	}
 	env := moduleDownloadEnv(t.TempDir(), t.TempDir())
-	if err := moduleEgressProblem("..", roots, owners, env); err != nil {
+	if _, err := moduleEgressProblem("..", roots, owners, env, io.Discard); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// regression: #4683
+// TestModEgressPublicOwned: the raw screen never grants an owner exemption.
+// Public paths become eligible only in moduleEgressProblem after source binding
+// and fresh repository proof; neighbours and malformed paths still refuse.
+func TestModEgressPublicOwned(t *testing.T) {
+	owners := []string{"medici-finance"}
+	for _, p := range []string{
+		"github.com/medici-finance/assay/tools/desk",
+		"github.com/medici-finance/assay/deskcore",
+		"github.com/medici-finance/assay/statusgen",
+	} {
+		if w := modulePathEgressProblem(p, owners, nil); !strings.Contains(w, "owner") {
+			t.Errorf("%s admitted without public proof: %q", p, w)
+		}
+	}
+	for _, p := range []string{
+		"github.com/medici-finance/assay",
+		"github.com/medici-finance/assay-other/x",
+		"github.com/medici-finance/assay-internal/tools/x",
+		"github.com/medici-finance/assay2/x",
+		"github.com/medici-finance/assayx/y",
+		"github.com/medici-finance/private-lib",
+		"github.com/Medici-Finance/assay/tools/desk",
+		"github.com/medici-finance/assay/../assay-other/x",
+		"github.com/medici-finance/assay/./x",
+		"github.com/medici-finance/assay//x",
+		"github.com/medici-finance/assay/x/",
+		"github.com/medici-finance/assay/.x",
+		"github.com/medici-finance/assay/x y",
+	} {
+		if w := modulePathEgressProblem(p, owners, nil); !strings.Contains(w, "owner") {
+			t.Errorf("%s: got %q, want the owner refusal", p, w)
+		}
+	}
+	for _, p := range []string{"git.example.net/medici-finance/assay/x", "example.org/assay/x"} {
+		if w := modulePathEgressProblem(p, owners, nil); w != "not on the approved public set" {
+			t.Errorf("%s: got %q, want the unapproved refusal", p, w)
+		}
+	}
+	w := modulePathEgressProblem("github.com/medici-finance/assay/tools/desk", owners, []string{"github.com/medici-finance"})
+	if w == "" {
+		t.Errorf("an operator-marked public-owned path: %q", w)
 	}
 }
