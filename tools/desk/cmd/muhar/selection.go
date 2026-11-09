@@ -272,6 +272,7 @@ type cblock struct {
 }
 
 type coverSelector struct {
+	budget *hostBudget
 	cmd    goTestCmd
 	always []string
 	files  []string // every spec-relative file the control and mutations name
@@ -321,13 +322,22 @@ type listedPkg struct {
 	Error        *struct{ Err string }
 }
 
+func (cs *coverSelector) output(cmd *exec.Cmd, combined bool) ([]byte, error) {
+	release, err := cs.budget.acquire()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	return trackedOutput(cmd, combined)
+}
+
 func (cs *coverSelector) goList(root string, patterns []string) ([]listedPkg, error) {
 	cmd := exec.Command("go", append([]string{"list", "-e", "-json"}, patterns...)...)
 	cmd.Dir = root
 	cmd.Env = cs.env
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	out, err := cs.output(cmd, false)
 	if err != nil {
 		return nil, fmt.Errorf("go list %v: %v: %s", patterns, err, strings.TrimSpace(stderr.String()))
 	}
@@ -430,13 +440,13 @@ func (cs *coverSelector) Prepare(root string) error {
 			"-coverpkg="+strings.Join(coverpkg, ","), "-o", bin, p.ImportPath)...)
 		build.Dir = root
 		build.Env = cs.env
-		if out, err := build.CombinedOutput(); err != nil {
+		if out, err := cs.output(build, true); err != nil {
 			return fmt.Errorf("coverage build of %s: %v: %s", p.ImportPath, err, strings.TrimSpace(string(out)))
 		}
 		list := exec.Command(bin, "-test.list", listFilter)
 		list.Dir = p.Dir
 		list.Env = cs.env
-		out, err := list.Output()
+		out, err := cs.output(list, false)
 		if err != nil {
 			return fmt.Errorf("list tests of %s: %v", p.ImportPath, err)
 		}
@@ -481,7 +491,7 @@ func (cs *coverSelector) Prepare(root string) error {
 					"-test.count=1", "-test.coverprofile=" + prof}, runFlags...)...)
 				run.Dir = cs.pkgs[t.pkg].dir
 				run.Env = cs.env
-				out, err := run.CombinedOutput()
+				out, err := cs.output(run, true)
 				if err != nil {
 					results <- res{id: id, err: fmt.Errorf("%s fails when run alone on pristine source (%v) — a narrowed run could go red for a reason that is not the mutation:\n%s",
 						t.name, err, tail(out, 20))}
@@ -575,6 +585,7 @@ func (cs *coverSelector) proveSets(root string) error {
 	}
 	sort.Strings(keys)
 	red := make([]bool, len(keys))
+	admissionErrors := make([]error, len(keys))
 	ids := make(chan int)
 	var wg sync.WaitGroup
 	jobs := cs.jobs
@@ -586,7 +597,19 @@ func (cs *coverSelector) proveSets(root string) error {
 		go func() {
 			defer wg.Done()
 			for i := range ids {
-				red[i] = cs.goTest(root, sets[keys[i]])
+				release, err := cs.budget.acquire()
+				if err != nil {
+					admissionErrors[i] = err
+					continue
+				}
+				if cs.timedTest != nil {
+					out := cs.timedTest(root, sets[keys[i]], 0)
+					admissionErrors[i] = out.Err
+					red[i] = out.Failed || out.TimedOut
+				} else {
+					red[i] = cs.goTest(root, sets[keys[i]])
+				}
+				release()
 			}
 		}()
 	}
@@ -595,6 +618,11 @@ func (cs *coverSelector) proveSets(root string) error {
 	}
 	close(ids)
 	wg.Wait()
+	for _, err := range admissionErrors {
+		if err != nil {
+			return fmt.Errorf("selection proof admission: %w", err)
+		}
+	}
 	nred := 0
 	for i, k := range keys {
 		if red[i] {

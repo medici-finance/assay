@@ -33,11 +33,11 @@ type processRegistry struct {
 func (r *processRegistry) start(cmd *exec.Cmd) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return context.Canceled
+	}
 	if err := cmd.Start(); err != nil {
 		return err
-	}
-	if r.closed {
-		_ = killProcessGroup(cmd)
 	}
 	r.procs[cmd] = struct{}{}
 	return nil
@@ -57,6 +57,31 @@ func (r *processRegistry) killAll() {
 	for cmd := range r.procs {
 		_ = killProcessGroup(cmd)
 	}
+}
+
+// stopped distinguishes cancellation from a genuine suite failure (CAUGHT).
+func (r *processRegistry) stopped() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.closed }
+
+// trackedOutput gives discovery, coverage, schemata and module edits the same
+// process-group custody as bounded suites. Admission belongs to their caller.
+func trackedOutput(cmd *exec.Cmd, combined bool) ([]byte, error) {
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	if combined {
+		cmd.Stderr = &stdout
+	} else if cmd.Stderr == nil {
+		cmd.Stderr = &stderr
+	}
+	setProcessGroup(cmd)
+	if err := liveGroups.start(cmd); err != nil {
+		return nil, err
+	}
+	err := cmd.Wait()
+	liveGroups.done(cmd)
+	if liveGroups.stopped() {
+		return stdout.Bytes(), context.Canceled
+	}
+	return stdout.Bytes(), err
 }
 
 func runShell(root, command string, env []string, timeout time.Duration) CommandResult {
@@ -98,6 +123,9 @@ func runBounded(root string, env []string, timeout time.Duration, build func(con
 	}
 	err := cmd.Wait()
 	liveGroups.done(cmd)
+	if liveGroups.stopped() {
+		return CommandResult{Err: context.Canceled}
+	}
 	if ctx.Err() == context.DeadlineExceeded {
 		return CommandResult{TimedOut: true}
 	}
@@ -106,6 +134,9 @@ func runBounded(root string, env []string, timeout time.Duration, build func(con
 	}
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
+		if exitErr.ExitCode() < 0 {
+			return CommandResult{Err: err}
+		}
 		if seen.found() {
 			return CommandResult{TimedOut: true}
 		}

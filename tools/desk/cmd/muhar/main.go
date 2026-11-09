@@ -69,6 +69,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -258,7 +259,7 @@ func versionLine() string {
 }
 
 // bindings are every setting muhar declares: flags and defaults only. muhar has no
-// configuration file and reads no environment variable for them.
+// configuration file; the separate host budget reads two explicit environment inputs.
 func bindings() []cli.Binding {
 	return []cli.Binding{
 		{Key: "spec", Kind: cli.String, Flag: "spec",
@@ -310,7 +311,33 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 // sweep is the run itself: read and check the spec, then baseline, control and mutations.
-func sweep(o options, stdout, stderr io.Writer) int {
+func sweep(o options, stdout, stderr io.Writer) (code int) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sig)
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-sig:
+			cancel()
+			liveGroups.killAll()
+		case <-done:
+		}
+	}()
+	defer func() {
+		if ctx.Err() != nil {
+			code = 130
+		}
+	}()
+	budget, err := loadBudget(ctx, os.LookupEnv, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, "muhar: budget:", err)
+		return 1
+	}
+
 	if o.spec == "" {
 		fmt.Fprintln(stderr, "muhar: -spec is required")
 		return 1
@@ -336,7 +363,7 @@ func sweep(o options, stdout, stderr io.Writer) int {
 			i, n, len(s.Mutations), total, i, n)
 	}
 
-	n := resolveJobs(o.jobs, runtime.NumCPU())
+	n := budget.clamp(resolveJobs(o.jobs, runtime.NumCPU()))
 	if n < 1 {
 		fmt.Fprintln(stderr, "muhar: -j must be >= 0")
 		return 1
@@ -349,8 +376,7 @@ func sweep(o options, stdout, stderr io.Writer) int {
 	// compile-time constant, not a knob). One throwaway cache for the WHOLE
 	// run — mutants of one package share most build artifacts, so per-run
 	// keeps the intra-run speedup — removed when the run ends, whatever the
-	// exit path: the defer covers every return, and the interrupt handler below,
-	// which ends the process with os.Exit (skipping defers), removes it itself.
+	// exit path: interruption kills child groups and unwinds normal cleanup.
 	gocache, err := os.MkdirTemp("", "assay-mutant-gocache-*")
 	if err != nil {
 		fmt.Fprintf(stderr, "muhar: create per-run GOCACHE: %v\n", err)
@@ -361,20 +387,11 @@ func sweep(o options, stdout, stderr io.Writer) int {
 	// build runs in its own process group, which a terminal Ctrl-C does not
 	// reach, so kill those groups first: an interrupted run leaves no suite
 	// running behind it.
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sig)
-	go func() {
-		<-sig
-		liveGroups.killAll()
-		_ = os.RemoveAll(gocache)
-		selectTemps.removeAll() // -select's coverage binaries, if a pass is running
-		os.Exit(130)            // the interrupt ends the process; nothing returns to the caller
-	}()
 
 	runEnv := envWithGOCACHE(os.Environ(), gocache)
 	h := &Harness{
 		Root:      s.Root,
+		Budget:    budget,
 		Control:   s.Control,
 		Mutations: s.Mutations,
 		Jobs:      n,
@@ -394,17 +411,12 @@ func sweep(o options, stdout, stderr io.Writer) int {
 		}
 		env := envWithGOCACHE(os.Environ(), gocache)
 		h.Selector = newCoverSelector(s, cmd, n, env, stderr, func(root string, args []string) bool {
-			c := exec.Command("go", args...)
-			if root != "" {
-				c.Dir = root
-			}
-			c.Env = env
-			c.Stdout = stderr
-			c.Stderr = stderr
-			return c.Run() != nil // non-zero exit during the pristine selection proof
+			out := runGoArgs(root, args, env, 0)
+			return out.Failed || out.TimedOut || out.Err != nil // pristine proof
 		}, func(root string, args []string, timeout time.Duration) CommandResult {
 			return runGoArgs(root, withTimeout(args, timeout), env, timeout)
 		})
+		h.Selector.(*coverSelector).budget = budget
 	}
 	// Mutant schemata (#2635), for a spec that opts in: eligible mutants share
 	// one build per worker and are picked per run by an environment selector,
@@ -442,7 +454,7 @@ func sweep(o options, stdout, stderr io.Writer) int {
 					cmd.Dir = root
 				}
 				cmd.Env = env
-				b, err := cmd.CombinedOutput()
+				b, err := trackedOutput(cmd, true)
 				all.Write(b)
 				if err != nil {
 					clean = false
@@ -471,6 +483,9 @@ func sweep(o options, stdout, stderr io.Writer) int {
 	}
 
 	rep := h.Run()
+	if ctx.Err() != nil {
+		return 130
+	}
 	fmt.Fprint(stdout, rep.Summary())
 	if rep.Broken {
 		return 2
