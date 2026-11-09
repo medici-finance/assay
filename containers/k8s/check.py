@@ -11,6 +11,10 @@ import subprocess
 import sys
 import tempfile
 
+# Self-test fixture imports must leave an admitted verifier's source tree intact
+# in every mode, including source-secret checks that never read image records.
+sys.dont_write_bytecode = True
+
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 LABEL = 'app.kubernetes.io/name'
@@ -30,6 +34,11 @@ class Unavailable(Exception):
 def need(condition, message):
     if not condition:
         raise Invalid(message)
+
+
+def bytecode_state():
+    return {path: (path.stat().st_mtime_ns, path.read_bytes())
+            for path in HERE.rglob('*.pyc')}
 
 
 def run(args, data=None, cwd=ROOT):
@@ -105,7 +114,6 @@ def recorded_images(raw=None):
     safe_file(readme)
     need(RECORD_SHA256 in readme.read_text(encoding='utf-8'),
          'README.md does not state the pinned release image record sha256')
-    sys.dont_write_bytecode = True
     sys.path.insert(0, str(ROOT / 'tools/release'))
     try:
         from images_contract import LEGACY_NAMES, NAMES, validate
@@ -496,6 +504,7 @@ def main():
     mode.add_argument('--source-secrets', action='store_true')
     parser.add_argument('--self-test', action='store_true')
     args = parser.parse_args()
+    bytecode_before = bytecode_state() if args.self_test else None
     if args.compatibility_cellctl:
         docs = compatibility_render()
         component = HERE / 'components/compatibility-cellctl'
@@ -584,6 +593,11 @@ def main():
                         print('rejected: excluded-example-' + ('base64' if encoded else 'credential'))
                     else:
                         raise Invalid('unrendered credential positive control escaped')
+
+    if args.self_test:
+        need(bytecode_state() == bytecode_before,
+             'self-test changed Python bytecode in the source tree')
+        print('checked-clean: self-test created or changed no Python bytecode')
 
 
 
