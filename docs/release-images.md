@@ -318,7 +318,8 @@ under verification, never from the image: the roots are listed in the tree's own
 That list covers the whole tree. Every tracked Go module whose `go.sum` names a
 module is listed, or is named on a `# not provisioned: <root> — <reason>` line.
 `deskd` is the one such module: it requires this repository's own `tools/desk`
-module by version from the public proxy, which the module screen below refuses,
+module by version from the public proxy. The module screen below admits that
+path under its public-owned exemption (`OWNPUB`), but `deskd` is not yet listed,
 so rows that build it cannot run offline in this lane. The statusgen test
 `TestModuleRootsCoverTree` fails when a module with requirements is added and not
 listed. Without it, that module's offline rows would stop on module resolution,
@@ -338,12 +339,13 @@ the pins above; no host Go, git, proxy or credential setting reaches it.
 Before the first request it screens every module path a root could send to the
 public proxy (each require not replaced by a directory, each replacement that
 names a version, and each path its `go.sum` lists) with the same approved public
-set as `images/verify-runner/stage-cache.sh` (`APPROVED`, `OWNPUB` and `GHPUB`,
-held equal by a parity test). A path under the verified repository's owner, in any
+set as `images/verify-runner/stage-cache.sh` (`APPROVED`, `OWNPUB`, `GHPUB` and
+`CANON`, held equal by a parity test). A path under the verified repository's owner, in any
 case, is refused unless it sits under a module prefix of a repository proven public
 that shares the owner (`OWNPUB`, matched case-sensitively; today only
 `github.com/medici-finance/assay/`, so a look-alike neighbour such as
-`assay-other` or `assayx` is still refused). Such a refused owner path, a path
+`assay-other` or `assayx` is still refused) and is canonical (`CANON`: no empty,
+`.` or `..` element, so no such path can name a neighbour through the prefix). Such a refused owner path, a path
 matching the operator's `GOPRIVATE`, `GONOPROXY` or `GONOSUMDB` (which refuses an
 `OWNPUB` path too), or one off the approved set is could-not-check, with nothing sent to the proxy, no cache
 directory and no receipt. It then prints one line naming the proxy, the checksum

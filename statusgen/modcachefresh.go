@@ -157,11 +157,20 @@ var githubPublicModuleRe = regexp.MustCompile(`^github\.com/[A-Za-z0-9_.-]+/`)
 // under one of these prefixes, matched case-sensitively as module paths are, is
 // exempt from the owner refusal and from nothing else: the operator's private
 // patterns still refuse it. The trailing slash keeps every neighbouring
-// repository of the same owner refused. TestModEgressParity holds the two
-// lists equal.
+// repository of the same owner refused. A path is exempt only when it is also
+// canonical (canonicalModulePathRe), so a "..", "." or empty element cannot
+// carry a neighbouring repository's path past the prefix. TestModEgressParity
+// holds the two lists equal.
 var publicOwnedModulePrefixes = []string{
 	"github.com/medici-finance/assay/",
 }
+
+// canonicalModulePathRe is stage-cache.sh's CANON: slash-separated elements,
+// each non-empty, of letters, digits and "-._~", never beginning or ending with
+// a dot, so no element is "." or "..". It is the element rule of the go
+// command's module.CheckPath, restated because statusgen does not depend on
+// golang.org/x/mod; only the owner-refusal exemption reads it.
+var canonicalModulePathRe = regexp.MustCompile(`^[A-Za-z0-9_~-]([A-Za-z0-9._~-]*[A-Za-z0-9_~-])?(/[A-Za-z0-9_~-]([A-Za-z0-9._~-]*[A-Za-z0-9_~-])?)*$`)
 
 // goModEditJSON parses one go.mod with Go's own parser (`go mod edit -json`),
 // which runs no module code and makes no request. A var so tests can fail it.
@@ -252,7 +261,7 @@ func modulePathEgressProblem(p string, owners, private []string) string {
 	lc := strings.ToLower(p)
 	publicOwned := false
 	for _, a := range publicOwnedModulePrefixes {
-		if strings.HasPrefix(p, a) {
+		if strings.HasPrefix(p, a) && canonicalModulePathRe.MatchString(p) {
 			publicOwned = true
 		}
 	}

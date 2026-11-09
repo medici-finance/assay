@@ -450,9 +450,11 @@ func bakedModuleCacheProblem(df string) string {
 }
 
 // regression: #4683
-// TestModEgressParity: the open step's approved public set is the cluster
-// stager's (stage-cache.sh APPROVED and GHPUB), so the two screens of the same
-// download cannot drift apart; a planted stager with one more host goes red.
+// TestModEgressParity: the open step's approved public set, public-owned
+// prefixes and canonical-path rule are the cluster stager's (stage-cache.sh
+// APPROVED, OWNPUB, GHPUB and CANON), so the two screens of the same download
+// cannot drift apart; a planted stager with one more host or one more
+// public-owned prefix goes red, as does one with no OWNPUB or CANON line.
 func TestModEgressParity(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "images", "verify-runner", "stage-cache.sh"))
 	if err != nil {
@@ -479,11 +481,15 @@ func TestModEgressParity(t *testing.T) {
 	if p := modEgressParityProblem(reverted); !strings.Contains(p, "OWNPUB") {
 		t.Fatalf("parity blind to a stager without OWNPUB: %q", p)
 	}
+	uncanon := regexp.MustCompile(`(?m)^CANON=.*\n`).ReplaceAllString(string(raw), "")
+	if p := modEgressParityProblem(uncanon); !strings.Contains(p, "CANON") {
+		t.Fatalf("parity blind to a stager without CANON: %q", p)
+	}
 }
 
-// modEgressParityProblem compares stage-cache.sh's APPROVED, OWNPUB and GHPUB
-// with approvedPublicModulePrefixes, publicOwnedModulePrefixes and
-// githubPublicModuleRe.
+// modEgressParityProblem compares stage-cache.sh's APPROVED, OWNPUB, GHPUB and
+// CANON with approvedPublicModulePrefixes, publicOwnedModulePrefixes,
+// githubPublicModuleRe and canonicalModulePathRe.
 func modEgressParityProblem(script string) string {
 	m := regexp.MustCompile(`(?m)^APPROVED='\^\(([^)]*)\)/'$`).FindStringSubmatch(script)
 	if m == nil {
@@ -510,6 +516,10 @@ func modEgressParityProblem(script string) string {
 	g := regexp.MustCompile(`(?m)^GHPUB='([^']*)'$`).FindStringSubmatch(script)
 	if g == nil || strings.ReplaceAll(g[1], "[.]", `\.`) != githubPublicModuleRe.String() {
 		return fmt.Sprintf("stage-cache.sh GHPUB %q is not the open step's %q", g, githubPublicModuleRe.String())
+	}
+	c := regexp.MustCompile(`(?m)^CANON='([^']*)'$`).FindStringSubmatch(script)
+	if c == nil || c[1] != canonicalModulePathRe.String() {
+		return fmt.Sprintf("stage-cache.sh CANON %q is not the open step's %q", c, canonicalModulePathRe.String())
 	}
 	return ""
 }
@@ -596,10 +606,11 @@ func TestModEgressMainRoots(t *testing.T) {
 	}
 }
 
-// regression: #5239
+// regression: #4683
 // TestModEgressPublicOwned: the public Assay module paths pass the screen
 // under their own owner, while private and unknown paths of that owner,
-// look-alike neighbours, another case, and an operator pattern refuse.
+// look-alike neighbours, another case, a non-canonical path under the public
+// prefix, and an operator pattern refuse.
 func TestModEgressPublicOwned(t *testing.T) {
 	owners := []string{"medici-finance"}
 	for _, p := range []string{
@@ -619,6 +630,12 @@ func TestModEgressPublicOwned(t *testing.T) {
 		"github.com/medici-finance/assayx/y",
 		"github.com/medici-finance/private-lib",
 		"github.com/Medici-Finance/assay/tools/desk",
+		"github.com/medici-finance/assay/../assay-other/x",
+		"github.com/medici-finance/assay/./x",
+		"github.com/medici-finance/assay//x",
+		"github.com/medici-finance/assay/x/",
+		"github.com/medici-finance/assay/.x",
+		"github.com/medici-finance/assay/x y",
 	} {
 		if w := modulePathEgressProblem(p, owners, nil); !strings.Contains(w, "owner") {
 			t.Errorf("%s: got %q, want the owner refusal", p, w)
