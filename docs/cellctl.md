@@ -2063,6 +2063,14 @@ per kind × forge {github, gitlab}. `new` has no dry run, so parity there is a b
 whole tree each implementation scaffolds — paths, mode bits and file contents. `PARITY_ONLY=<substring>`
 narrows a run to one cell or one verb.
 
+The oracle follows the current dry-run and custody contracts: host `down` plans
+without tearing down, Codex re-entry commands carry the cell root, and scrubbed
+Herdr displays a privately owned tmux session while scrubbed Orca is refused.
+Its standing Codex prompt is a literal fixture beside the shell script, never
+read from the production composer. The baseline matrix has no stored width
+overrides or existing house cadence checkpoints; the oracle refuses those
+configured cases rather than guessing their state. Go behavior tests cover them.
+
 **The machine-wide defaults file is outside the matrix too.** `$CELLS_ROOT/defaults.env` exists
 only in the Go program — the oracle neither reads nor writes it. A cells root without the file
 resolves every key as the oracle does, so the dry-run cells of the matrix still diff clean. The
