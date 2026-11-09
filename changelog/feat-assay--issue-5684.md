@@ -1,0 +1,1 @@
+- Propose discriminating statusgen/36 performance and pinned delivery consumer checks while retaining their original acceptance obligations; a second protected amendment remains held for shared-owner support.
