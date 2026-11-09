@@ -39,6 +39,7 @@ ASSAY_PG_HOST_PORT=$(python3 -I -c 'import socket; s=socket.socket(); s.bind(("1
 docker info >/dev/null
 test -z "$(docker ps -aq --filter "label=com.docker.compose.project=$project")" || { echo 'scratch project already exists; refusing' >&2; exit 1; }
 test -z "$(docker volume ls -q --filter "label=com.docker.compose.project=$project")" || { echo 'scratch volume already exists; refusing' >&2; exit 1; }
+test -z "$(docker network ls -q --filter "label=com.docker.compose.project=$project")" || { echo 'scratch network already exists; refusing' >&2; exit 1; }
 image=$(compose config --images)
 docker image inspect "$image" >/dev/null || { echo 'could-not-check: pinned image is not cached; no pull performed' >&2; exit 6; }
 go -C tools/desk build -o "$work/cellctl" ./cmd/cellctl

@@ -35,4 +35,38 @@ for plant in 'POSTGRES_PASSWORD: synthetic' 'PGPASSWORD=synthetic'; do
 done
 rm "$work/repo/containers/postgres/second.sh"
 reject 10 'missing delivery test (base shape)'
+# The scratch project must be wholly absent, including a leftover network.
+# Stub every daemon operation and stop at the build if the guard is removed.
+scratch=$(dirname "$runner")/postgres-scratch.sh
+cat >"$work/bin/docker" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  'context inspect '*) echo unix:///example-fixture.sock;;
+  info|'ps -aq '*|'volume ls -q '*) ;;
+  'network ls -q '*) echo synthetic-leftover-network;;
+  *'config --images') echo postgres:example;;
+  'image inspect '*) ;;
+  *) exit 2;;
+esac
+EOF
+cat >"$work/bin/go" <<'EOF'
+#!/usr/bin/env bash
+printf 'unguarded build\n' >"$FENCE_MARK"
+exit 77
+EOF
+printf '#!/usr/bin/env bash\nexit 0\n' >"$work/bin/psql"
+chmod +x "$work/bin/docker" "$work/bin/go" "$work/bin/psql"
+export FENCE_MARK="$work/build-reached"
+network_guard() {
+  local rc=0
+  (cd "$work/repo" && DOCKER_CONTEXT=fixture bash "$1") >"$work/network.out" 2>&1 || rc=$?
+  test "$rc" -eq 1 && grep -F 'scratch network already exists; refusing' "$work/network.out" && test ! -e "$FENCE_MARK"
+}
+network_guard "$scratch"
+sed '/test -z.*docker network ls -q/d' "$scratch" >"$work/no-network-guard.sh"
+if network_guard "$work/no-network-guard.sh"; then
+  echo 'FAIL: removed network guard was not detected' >&2; exit 1
+fi
+test -s "$FENCE_MARK"
+printf 'ok network guard mutation detected before any real daemon effect\n'
 printf 'ok PostgreSQL Verify controls\n'

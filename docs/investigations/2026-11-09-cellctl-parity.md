@@ -43,7 +43,7 @@ whole-package run and also requires the delivery's named database test.
 The proposed v2 changes only Commands in rows `3,5,9,10,12`; original row IDs,
 Class, Expect, order, surrounding command prose and all Evidence are retained.
 The scratch flow creates the literal `assay-postgres-scratch` project only after
-proving it has no existing containers or volumes. It uses a cached pinned image,
+proving it has no existing containers, volumes or networks. It uses a cached pinned image,
 `--pull never`, a fresh volume, a free loopback port, synthetic configuration and
 runtime-only generated credentials, then tears down its own resources.
 
