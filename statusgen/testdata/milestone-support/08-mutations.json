@@ -190,6 +190,24 @@
       "module": "tools/desk",
       "package": "./cmd/deskclaim-ref",
       "test": "TestAdmittedSourceProgress"
+    },
+    {
+      "name": "opaque-header-is-not-subject",
+      "target": "tools/desk/internal/deskkit/workselection.go",
+      "old": "if i < 5 && prefixValid {",
+      "new": "if false && i < 5 && prefixValid {",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestLegacyFieldWhitespace"
+    },
+    {
+      "name": "malformed-header-token-hidden",
+      "target": "tools/desk/internal/deskkit/workselection.go",
+      "old": "if i < 5 && prefixValid {",
+      "new": "if i < 5 {",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestClaimSubjectTokens"
     }
   ]
 }

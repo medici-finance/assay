@@ -183,8 +183,14 @@ func EncodeClaimSubject(message string, subject BriefSubject) (string, error) {
 // but rejects duplicate, misplaced, malformed and note-injected subject tokens.
 func DecodeClaimSubject(message string) (subject BriefSubject, present bool, err error) {
 	fields := strings.Fields(message)
+	prefixValid := claimSubjectPrefix(fields)
 	token := ""
 	for i, field := range fields {
+		// A well-formed header's opaque values are not metadata tokens. If the
+		// header is malformed, a misplaced subject token still refuses below.
+		if i < 5 && prefixValid {
+			continue
+		}
 		if !claimSubjectField(field) {
 			continue
 		}
@@ -199,7 +205,7 @@ func DecodeClaimSubject(message string) (subject BriefSubject, present bool, err
 	if token == "" {
 		return subject, false, nil
 	}
-	if !claimSubjectPrefix(fields) {
+	if !prefixValid {
 		return subject, false, Refused("invalid claim payload prefix")
 	}
 	raw, e := base64.RawURLEncoding.DecodeString(token)

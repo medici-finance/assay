@@ -68,6 +68,16 @@ func TestLegacyFieldWhitespace(t *testing.T) {
 	if fieldOf(f.claims[key].msg, "owner") != "worker" || fieldOf(f.claims[key].msg, "branch") != "feat/next" {
 		t.Fatal("valid legacy fields changed")
 	}
+	// Whitespace-free opaque values may mention a metadata key as ordinary
+	// content; only a separate wire token is a subject extension.
+	if rc := run("acquire", "repo--stream--10", "--repo", "medici-finance/assay", "--owner", "subject-v1=fixture", "--branch", "feat/subject-v1=fixture"); rc != exitOK {
+		t.Fatalf("valid opaque legacy values refused: %d %s", rc, se.String())
+	}
+	msg := f.claims["repo--stream--10"].msg
+	if fieldOf(msg, "owner") != "subject-v1=fixture" || fieldOf(msg, "branch") != "feat/subject-v1=fixture" {
+		t.Fatal("opaque legacy field value changed")
+	}
+
 }
 
 // regression: #5915

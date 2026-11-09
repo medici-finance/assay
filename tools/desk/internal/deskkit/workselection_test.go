@@ -95,7 +95,7 @@ func TestClaimSubjectTokens(t *testing.T) {
 		t.Fatal("historical five fields changed")
 	}
 	token := strings.Fields(message)[5]
-	for _, bad := range []string{message + " " + token, base + " note=reason " + token, base + " note=" + token, base + " subject-v1=", base + " subject-v2=unknown"} {
+	for _, bad := range []string{message + " " + token, base + " note=reason " + token, base + " note=" + token, base + " subject-v1=", base + " subject-v2=unknown", strings.Join(strings.Fields(base)[:4], " ") + " " + token} {
 		if _, _, err := DecodeClaimSubject(bad); err == nil {
 			t.Errorf("duplicate/note/unknown token admitted: %s", bad)
 		}
