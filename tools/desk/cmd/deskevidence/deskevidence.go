@@ -282,10 +282,17 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		if *evidenceFile != "" || *briefPath != "" {
 			return deskkit.Refused("refused: --outcome-record is mutually exclusive with --evidence-file/--brief-path")
 		}
-		return cmdOutcomeRecordWrite(*outcomeRecord, repoSlug, owner, name, branch, *root, *outcomeOnly, ac)
+		// A flag this route does not read is refused, never ignored (routeflags.go, #4554).
+		if ferr := refuseUnhonouredFlags(fs, routeOutcomeRecord); ferr != nil {
+			return ferr
+		}
+		return cmdOutcomeRecordWrite(*outcomeRecord, repoSlug, owner, name, branch, *root, *outcomeOnly, *dryRun, ac)
 	}
 	if *outcomeOnly {
 		return deskkit.Refused("refused: --outcome-only is valid only with --outcome-record")
+	}
+	if ferr := refuseUnhonouredFlags(fs, routeEvidenceFile); ferr != nil {
+		return ferr
 	}
 
 	if *evidenceFile == "" {
