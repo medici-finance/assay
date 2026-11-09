@@ -197,6 +197,52 @@ RISK-VALUE: DERIVED — packetMaxAge = 7 * 24 * time.Hour @ tools/desk/cmd/deskd
 
 **VERIFY: BLOCKED** — 4/7 rows pass at source 011f14965ef2; rows 3, 6 and 7 could-not-check (row 3 needs a lane with a git directory, a forge origin and a non-root user, #4327, #4322; row 6 is pre-merge only; row 7's lint is red on desktools-v2/65, #4823); no obligation of this brief observed failing.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `git diff origin/main -- tools/desk/internal/deskkit/verifiersource.go tools/desk/internal/deskkit/verifierattestation.go tools/desk/internal/deskkit/verifyoutcomes.go \| wc -l` | pass exit=0 | sha256:4eff2db4bada | 2026-11-09 | assay-verifier-app[bot] @ b1f0161efb61 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --root . --consumers --brief desktools-v2/72 --base $(git merge-base origin/main HEAD)` | fail exit=2 | sha256:7212cc619ded | 2026-11-09 | assay-verifier-app[bot] @ b1f0161efb61 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `statusgen --root . --lint` | fail exit=1 | sha256:56609f1e4154 | 2026-11-09 | assay-verifier-app[bot] @ b1f0161efb61 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5887 run=87a5e71551349cf9395975ead2df56ab9f495a56336be92d6547d416a80b06f2 source=b1f0161efb6121b8ba9e7089011a7d6499c12ab7 brief=docs/streams/desktools-v2/brief-72-land-verifier-outcome-records-from-a-dispatcher-named-path-outside-the-home.md model=claude-opus-5-5 tier=any
+
+### Postmerge verification, 2026-11-09, source b1f0161efb
+
+Verifier: claude-opus-5-5, tier any, non-implementer, against merged main source b1f0161efb61 (attestation medici-finance/assay#5887), desk-tools and statusgen v1.0.80, darwin arm64 host. Delivery: commit da4c268ac2 through merge 6cdcf0c06a (PR #4073). deskdispatch --check-verifier exited 0 before the bracket opened and again on the finished Evidence.
+
+The table above is the host verifyrun witness for rows 4, 6 and 7, run after the container bracket closed. Rows 1, 2, 3 and 5 (check:ci) ran once through the admitted container-netns lane. verifyrun --open-bracket ran on the host with --module-cache on a new empty directory, opened 2026-11-09T14:27:39Z. Its module download for all 13 listed roots succeeded and it printed the container flags. The container run used the linux/arm64 manifest sha256:7ed3c93a77e6 of the pinned v1.0.80 runner index sha256:cdb261e28942, on the native platform, with exactly those flags: --network none, --read-only, the cache mounted read-only at /go/pkg/mod, GOPROXY=off, GOTOOLCHAIN=local, GOFLAGS=-mod=readonly. It also mounted the home and the receipt read-only, used a /tmp tmpfs, ran as uid 1000, and passed --rows 1,2,3,5 and --timeout 40m. verifyrun --close-bracket on the host exited 0, and verifyrun --bracket-digest reported verdict=match with span-lines tree-digest:1, container-image:1, attestation:1. No attempt was discarded. The container rows now run under v1.0.80: the module-cache step is no longer refused (medici-finance/assay#4683, medici-finance/assay#5882). The closed container witness follows verbatim.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestVerifierOutcomePath$' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:8ea5dab65432 | 2026-11-09 | assay-verifier-app[bot] @ b1f0161efb61 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestOutcomeRecordOutsideRoot$' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:76429ac47f9e | 2026-11-09 | assay-verifier-app[bot] @ b1f0161efb61 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskevidence/ ./cmd/deskdispatch/ ./internal/deskkit/ -count=1` | fail exit=1 sandbox=container-netns | sha256:3a4de9d24997 | 2026-11-09 | assay-verifier-app[bot] @ b1f0161efb61 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check` | pass exit=0 sandbox=container-netns | sha256:54208d57d196 | 2026-11-09 | assay-verifier-app[bot] @ b1f0161efb61 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:8785a3e34ef6c8419a553b145d27516f08fb3057973130adb2fec2cae60bae08
+Container-Image: sha256:7ed3c93a77e66707c6668f423b604f0b53ec66cf654a8c33a385136fd6005fcd
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#5887 run=87a5e71551349cf9395975ead2df56ab9f495a56336be92d6547d416a80b06f2 source=b1f0161efb6121b8ba9e7089011a7d6499c12ab7 brief=docs/streams/desktools-v2/brief-72-land-verifier-outcome-records-from-a-dispatcher-named-path-outside-the-home.md model=claude-opus-5-5 tier=any
+Admission-Bracket: run=87a5e71551349cf9395975ead2df56ab9f495a56336be92d6547d416a80b06f2 source=b1f0161efb6121b8ba9e7089011a7d6499c12ab7 tree=sha256:8785a3e34ef6c8419a553b145d27516f08fb3057973130adb2fec2cae60bae08 witness=sha256:b3ebde07a4149f395008bf71c35af067e2e9aff60acd8d3ddb890abfb7ef72fd opened=2026-11-09T14:27:39Z closed=2026-11-09T14:31:11Z before=receipt after=check-verifier
+
+Row notes:
+
+- Row 1: pass in the container lane, exit 0, the named test passes. The Expect's mutation clause was not re-run in this pass, because this dispatch runs every test command through verifyrun only. The 2026-10-29 and 2026-10-30 passes record that mutation failing as wanted at earlier sources.
+- Row 2: pass in the container lane, exit 0, the named test passes. The mutation clause was not re-run in this pass, for the same reason. deskevidence.go and outcomerecord.go changed after source 011f14965ef2, so the earlier mutation result is from an older version of the guard.
+- Row 3: exit 1 in the container lane, so the row is not credited. The lane gap that the 2026-10-29 and 2026-10-30 passes traced still applies. The home is a linked worktree whose git directory lies outside the mounted tree (#4327), and the container has no forge origin (#4322). This pass ran as uid 1000, a non-root user, which removes the third cause the 2026-10-30 pass named. verifyrun keeps no row output, and this pass ran no test command by hand, so it does not name the failing tests. It does not separate a lane failure from a code failure, and it attributes no failure to this delivery.
+- Row 4: pass, exit 0. The Expect discriminates only pre-merge on the implementation branch. On merged main the diff against origin/main is empty by construction, so this pass does not discriminate on its own.
+- Row 5: pass in the container lane, exit 0.
+- Row 6: exit 2 on merged main; verifyrun --check reads it as "fail — the witness records a failure". The Expect is pre-merge only, on the implementation branch, so no post-merge pass is credited for it.
+- Row 7: exit 1; verifyrun --check reads it as "fail — the witness records a failure". Under the ruling on medici-finance/assay#4823 (https://github.com/medici-finance/assay/issues/4823#issuecomment-6725046323), a clean repo-wide lint row needs statusgen --root . --lint --acceptance-forge clean at the source in the host lane. An admitted run makes no forge read, so this row is not accepted by --check (medici-finance/assay#4700).
+
+Fail-first: the brief's risk block is all no, and no row's Command or Expect carries a risk-bearing, live, mutating or end-to-end tag. No row is risk-bearing, so no fail-first witness is owed.
+
+Accounting: 7 rows. Rows 1, 2, 4 and 5 pass (row 4 is pass by construction on merged main). Rows 3, 6 and 7 are not credited: row 3 in the lane, #4327 and #4322; row 6 is pre-merge only; row 7 needs a forge read, #4700. verifyrun --check: 4 pass, 3 fail, 0 not run or missing, of 7.
+
+RISK-VALUE: DERIVED — outcomeDirName = "outcomes" @ tools/desk/cmd/deskdispatch/outcomepath.go:25, with cache subpath assay/outcomes @ :60 — Task 1 names exactly these two forms: outcomes/{claim key} beside --prompt-file, else assay/outcomes/{claim key} under the user cache directory.
+RISK-VALUE: DERIVED — directory mode 0o700 @ tools/desk/cmd/deskdispatch/outcomepath.go:135 and :141 — Task 1 creates the directory owner-only, and 0o700 grants the owner alone.
+RISK-VALUE: DERIVED — refusal mask 0o022 @ tools/desk/cmd/deskdispatch/outcomepath.go:164 — the group-write and other-write bits, so a base another user can write to, where that user could swap the per-claim leaf, is refused.
+RISK-VALUE: DERIVED — packetMaxAge = 7 * 24 * time.Hour @ tools/desk/cmd/deskdispatch/packet.go:154 — Task 1 asks for the same week-based pruning as packets; the allocator reuses this constant, so the two cannot drift.
+
+**VERIFY: BLOCKED** — 4/7 rows pass at source b1f0161efb61, and the container rows now run under v1.0.80. Rows 3, 6 and 7 are not credited: row 3 exited 1 in a lane with no git directory or forge origin (#4327, #4322); row 6 is pre-merge only; row 7 needs the forge read the #4823 ruling requires (#4700). No obligation of this brief was observed failing because of this delivery.
+
 ## Review
 
 Gate: model. Independent correctness review of the exact head.
