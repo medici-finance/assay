@@ -30,12 +30,12 @@ sources:
   - docs/library-first.md
   - "freshness-checked 2026-10-22 @ a631d47ea71b3270ab33ba08af47d3dde8c9e7d5"
 consumers:
-  - "statusgen/milestoneacceptance.go: follow-up milestone-support/06 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/milestoneacceptance_test.go: follow-up milestone-support/06 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/decisionruling.go: follow-up milestone-support/06 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/domain/: follow-up milestone-support/06 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/testdata/milestone-support/06/: follow-up milestone-support/06 (this delivery; replace with fixed-here in implementation)"
-  - "spec/milestone-v1.md: follow-up milestone-support/06 (this delivery; replace with fixed-here in implementation)"
+  - "statusgen/milestoneacceptance.go: fixed-here milestone-support/06 (receipt adapter implementation)"
+  - "statusgen/milestoneacceptance_test.go: fixed-here milestone-support/06 (receipt adapter implementation)"
+  - "statusgen/decisionruling.go: fixed-here milestone-support/06 (receipt adapter implementation)"
+  - "statusgen/domain/: fixed-here milestone-support/06 (receipt adapter implementation)"
+  - "statusgen/testdata/milestone-support/06/: fixed-here milestone-support/06 (receipt adapter implementation)"
+  - "spec/milestone-v1.md: fixed-here milestone-support/06 (receipt adapter implementation)"
   - "docs/streams/milestone-support/brief-07-evaluate-milestone-readiness-through-the-canonical-eligibility-api.md: follow-up milestone-support/07 (consumes this delivery; exact runtime readers enumerated at pickup)"
 ---
 
@@ -331,3 +331,33 @@ accepted, transcribe the ruling into that decision-v1 DR record with
 alternatives, consequences and its corroboratable ruling link, and cite it via the
 brief's `design:` before governed implementation. Do not create an approved DR,
 fill `decided-by`, record Evidence or advance a lifecycle token from this proposal.
+
+
+### Implementation pickup — 9 November 2026
+
+Manual bootstrap at `aae4fbf71bca3419f1ac7ece8e83e8e5a651983e`, brief revision 1.
+The live unedited ruling and approved DR above were refreshed at pickup; main matched
+this source revision and no overlapping milestone implementation PR was observed.
+Inspected current `workref`, `readercaps`, `domain` record/assessment/provenance APIs,
+`MilestoneRecord` loader, graph adapter and `resolveRulingOn`; module/import boundaries,
+`docs/library-first.md`, `docs/go-engineering.md` and S-verification-domain,
+S-evidence-coverage, S-eligibility and S-decision-acceptance remain controlling.
+Disposition: **continue** within the approved bounded adapter. No dependency, binary,
+store, signer, installed pin, capability advertisement or effect authority is added.
+
+Updated implementation census:
+
+| Reader or producer | Disposition |
+|---|---|
+| `domain.AssessMilestone`, `MilestoneManifest` and normalized receipt observations | fixed-here: aggregate meaning under S-verification-domain, distinct from brief wire records. |
+| `readMilestoneAcceptance`, existing `MilestoneRecord` loader, `resolveRulingOn`, domain Assess/EvaluateDuty/Corroborate | fixed-here: direct production consumer flow; existing authentication and verification owners retained. |
+| Canonical milestone receipt documentation, named tests, fixture and `06-mutations.json` | fixed-here; no independent verification credit is recorded. |
+| Eligibility, Next-up and combined graph start gates | follow-up /07: consume the typed receipt assessment; existing holds remain. |
+| PR trailers/claims; workflow/human-ruling aliases; dispatch/pickup | follow-up /08, /09, /10 respectively. |
+| Board/deskboard, historian/export and selected-outcome trace | follow-up /11, /12, /13; preserve history and unknown coverage. |
+| Reader qualification, release/adoption | follow-up /14; no runtime support advertisement here. |
+| Trusted source/provenance composition, workflow store and evidence publication | out-of-scope for activation; hosts must establish selected records, protected default-branch provenance and acceptor lineage. Missing trusted observations remain unknown. |
+
+Coverage is the affected receipt boundary, not a whole-repository architecture audit.
+Tests use frozen source and authenticated forge fixtures; no cluster/live-state check,
+new production selector, outcome acceptance, lifecycle update or Evidence is claimed.

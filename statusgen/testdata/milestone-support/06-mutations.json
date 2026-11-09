@@ -1,0 +1,141 @@
+{
+  "schema": "milestone-mutations-v1",
+  "runner": "python3 statusgen/testdata/milestone-support/06-mutate.py",
+  "cases": [
+    {
+      "name": "completion-is-acceptance",
+      "target": "statusgen/domain/milestone.go",
+      "old": "if historicalOK {",
+      "new": "if historicalOK && len(accepted)==0 { out.History=append(out.History,MilestoneHistory{Manifest:digest}) }; if historicalOK {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "reject-accepts",
+      "target": "statusgen/domain/milestone.go",
+      "old": "case \"reject\", \"hold\": // An actor corroboration pass alone is not acceptance.",
+      "new": "case \"reject\", \"hold\": accepted = append(accepted,d)",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "latest-second-evidence",
+      "target": "statusgen/domain/milestone.go",
+      "old": "if !reflect.DeepEqual(o.Contributor, c) {",
+      "new": "if o.Contributor.Brief != c.Brief {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "inner-protected-sources",
+      "target": "statusgen/domain/milestone.go",
+      "old": "if state != Present {",
+      "new": "if false && state != Present {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "current-subject-inherits",
+      "target": "statusgen/domain/milestone.go",
+      "old": "if in.CurrentMilestone != m.Milestone || in.CurrentContract != m.Contract || !reflect.DeepEqual(in.CurrentSubject, m.Subject) {",
+      "new": "if false {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "criteria-set-shrinks",
+      "target": "statusgen/domain/milestone.go",
+      "old": "if idx < 0 {\n\t\t\tout.Blockers = append(out.Blockers, \"criterion-missing\")",
+      "new": "if idx < 0 {\n            continue\n\t\t\tout.Blockers = append(out.Blockers, \"criterion-missing\")",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "criterion-map-ignored",
+      "target": "statusgen/domain/milestone.go",
+      "old": "if !mapped || !slices.Contains(c.Evidence, c.Provenance) {",
+      "new": "if false && (!mapped || !slices.Contains(c.Evidence, c.Provenance)) {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "duty-overlap-ignored",
+      "target": "statusgen/domain/milestone.go",
+      "old": "} else if duty.State != \"satisfied\" {",
+      "new": "} else if false && duty.State != \"satisfied\" {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "profile-ignored",
+      "target": "statusgen/domain/milestone.go",
+      "old": "if p.Environment != m.Subject.Environment || p.Interface != m.Subject.Interface || p.Profile != m.Subject.Profile {",
+      "new": "if false {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "lineage-inferred",
+      "target": "statusgen/domain/milestone.go",
+      "old": "if len(d.Lineage) == 0 {",
+      "new": "if false && len(d.Lineage) == 0 {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "revocation-ignored",
+      "target": "statusgen/domain/milestone.go",
+      "old": "out.Blockers = append(out.Blockers, \"receipt-revoked\")",
+      "new": "out.Blockers = append(out.Blockers, \"receipt-ignored\")\n                out.History[i].Revoked=false",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRevocation"
+    },
+    {
+      "name": "history-erased",
+      "target": "statusgen/domain/milestone.go",
+      "old": "out.History[i].Revoked = true",
+      "new": "out.History[i].Manifest = \"\"\n                out.History[i].Revoked = true",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRevocation"
+    },
+    {
+      "name": "unauthorized-comments-poison",
+      "target": "statusgen/domain/milestone.go",
+      "old": "if d.Authenticated && !authorized {",
+      "new": "if false && d.Authenticated && !authorized {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRevocation"
+    },
+    {
+      "name": "incomplete-thread-accepted",
+      "target": "statusgen/domain/milestone.go",
+      "old": "if !in.DecisionsComplete {",
+      "new": "if false && !in.DecisionsComplete {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRevocation"
+    },
+    {
+      "name": "unavailable-evidence-current",
+      "target": "statusgen/domain/milestone.go",
+      "old": "if idx < 0 || in.Evidence[idx].State != Present {",
+      "new": "if false && (idx < 0 || in.Evidence[idx].State != Present) {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRevocation"
+    }
+  ]
+}

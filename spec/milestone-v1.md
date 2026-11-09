@@ -456,3 +456,81 @@ contract on the §4 example (`statusgen/testdata/milestone-support/05/`);
 `statusgen/testdata/milestone-support/05-mutations.json` holds their executable mutation
 controls. Exporting milestone nodes from `--graph`, stream and deskboard views, dispatch
 checks, acceptance binding and readiness are later work.
+
+## Receipt adapter implementation — milestone-support/06
+
+The approved [DR-milestone-support-06](../docs/streams/decisions/DR-milestone-support-06.md)
+is implemented by `domain.AssessMilestone` and the statusgen host seam
+`readMilestoneAcceptance` in `milestoneacceptance.go`. The public domain API accepts
+explicit normalized values and returns immutable historical receipt references plus
+present `supported`, `blocked` or `unknown` applicability, with both blockers and
+unknowns retained. It grants no effect admission. Readiness integration remains /07;
+dispatch/pickup remains /10. No acceptance capability is advertised or activated.
+
+An explicitly selected repository Evidence file contains `MilestoneManifest` with
+schema `milestone-receipt-v1`. Its bytes are compact JSON with sorted object keys,
+array order preserved, standard encoding/json escaping and positive integer version
+selectors; its SHA-256 digest excludes the later human decision pointer. The host
+requires those exact canonical bytes and their selected digest. No directory scan,
+branch, ambient HEAD, newest artifact or implicit profile is a fallback. The Coverage
+Evidence path links this explicit manifest; it is not an approval store.
+
+The manifest fields are `schema`, `milestone` (typed versioned reference), `contract`
+(an EvidencePointer), `subject`, `contributors`, `prerequisites`, `criteria`,
+`authority`, `observed-at` and `evaluator`. An EvidencePointer identifies repository,
+full commit, root-relative path, digest and row/anchor; snapshot hosts confine paths
+and establish anchor/record provenance. The subject contains exact domain Candidates,
+artifact digests, environment/configuration manifest digests, interface and profile.
+Contributors carry canonical brief identity, UUID, authored revision, source and exact
+Evidence pointers. The protected contract supplies the contributor pins, criterion
+set and criterion-to-contributor mapping; the producer cannot shrink any set.
+Each criterion records result, observation time, verifier, provenance pointer and
+immutable evidence. The selected provenance must match that criterion's contributor,
+verifier, time and environment. Prerequisites bind exact milestone version, manifest
+digest, decision pointer and environment/interface/profile; this bounded adapter
+requires exact profile equality and invents no compatibility conversion.
+
+The host obtains the existing `MilestoneRecord` at the manifest's contract snapshot,
+and the authority policy selected by its Acceptance authority section. The policy
+artifact uses `milestone-authority-v1`: `schema`, authorized `humans`, existing
+`duty` policy and mandatory `separate-acceptor`. Its source pointer is external to
+its bytes, avoiding a self-digest cycle. Both source commits require an observation
+proving reachability from the declaring root's protected default branch. An observed
+unmerged source blocks; unavailable protection/reachability is unknown. The pure core
+checks these independently of host admission. Owner/team metadata grants no authority.
+
+The entire unedited human comment is a `MilestoneDecisionPayload` JSON object:
+`schema: milestone-decision-v1`, `milestone`, exact `contract`, `manifest` digest,
+`disposition` and optional `replaces` decision pointer. Dispositions are `accept`,
+`reject`, `hold`, `revoke` and `supersede`. A successor must name its exact replaced
+repository/issue/comment/content-digest pointer. The same-repository issue explicitly
+carries `<!-- milestone-decision: <canonical milestone@version> -->`; DR/brief markers
+are insufficient. Existing `resolveRulingOn` authentication, author mapping, bot,
+parent-issue, unedited-comment and named-record checks all remain in use, with a
+separate milestone issue-binding predicate. Its legacy consumers are unchanged.
+Duplicate/unknown payload fields are refused and unknown versions remain unknown.
+Actor corroboration, discussion prose, issue closure and completed work never accept.
+
+Trusted host composition supplies exact historical verification records and selected
+provenance. Actual brief evidence uses `domain.Assess`, `EvaluateDuty` and `Corroborate`;
+no milestone is coerced into WorkIdentity or given a fabricated workflow instance.
+The existing identity owner must select the acceptor's accountable lineage; a login,
+key or issuer is insufficient. Missing selectors, lineage or evidence-only criteria
+without delivered trusted brief provenance remain unknown. No production selector is
+installed here, and a caller that echoes manifest claims is not a trusted composition.
+
+Authorized revocations/successors use the bound acceptance policy and exact original
+receipt. Unauthorized comments, including malformed forged successors, are quarantined
+before they can become conflicts. Different-target revocations do not revoke this
+receipt; conflicting authorized successors make present applicability unknown alongside
+known holds. Complete decision-thread coverage is mandatory; missing pages cannot prove
+no revocation. Accepted history remains addressable after revocation, evidence loss,
+expiry or subject change. Current applicability additionally checks every selected
+Evidence pointer, exact source/subject, explicit evaluator and time bounds, prerequisite
+availability and shared `readercaps.Assess`; no freshness duration is defaulted.
+
+`TestMilestoneAcceptSubject` and `TestMilestoneRevocation` exercise the real host,
+loader, ruling and verification seams. `testdata/milestone-support/06-mutations.json`
+records executable compiling faults, including the planted second-contributor evidence
+substitution and protected-source checks below the host seam. Fixture observations
+are not human outcome acceptance or live-state qualification.
