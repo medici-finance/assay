@@ -62,8 +62,9 @@ const moduleCachePrefix = "Module-Cache: "
 // it: the cache's tree digest (homeTreeDigest) and the roots it was downloaded
 // for.
 type receiptModuleCache struct {
-	Digest string   `json:"digest"`
-	Roots  []string `json:"roots"`
+	Digest      string              `json:"digest"`
+	Roots       []string            `json:"roots"`
+	PublicAssay *receiptPublicAssay `json:"public_assay,omitempty"`
 }
 
 // goModDownload runs `go mod download` in dir under exactly env. A var so tests
@@ -152,26 +153,6 @@ var approvedPublicModulePrefixes = []string{
 // unless it sits under an owner the screen refuses.
 var githubPublicModuleRe = regexp.MustCompile(`^github\.com/[A-Za-z0-9_.-]+/`)
 
-// publicOwnedModulePrefixes is stage-cache.sh's OWNPUB: the module paths of a
-// repository proven public that shares its owner with private ones. A path
-// under one of these prefixes, matched case-sensitively as module paths are, is
-// exempt from the owner refusal and from nothing else: the operator's private
-// patterns still refuse it. The trailing slash keeps every neighbouring
-// repository of the same owner refused. A path is exempt only when it is also
-// canonical (canonicalModulePathRe), so a "..", "." or empty element cannot
-// carry a neighbouring repository's path past the prefix. TestModEgressParity
-// holds the two lists equal.
-var publicOwnedModulePrefixes = []string{
-	"github.com/medici-finance/assay/",
-}
-
-// canonicalModulePathRe is stage-cache.sh's CANON: slash-separated elements,
-// each non-empty, of letters, digits and "-._~", never beginning or ending with
-// a dot, so no element is "." or "..". It is the element rule of the go
-// command's module.CheckPath, restated because statusgen does not depend on
-// golang.org/x/mod; only the owner-refusal exemption reads it.
-var canonicalModulePathRe = regexp.MustCompile(`^[A-Za-z0-9_~-]([A-Za-z0-9._~-]*[A-Za-z0-9_~-])?(/[A-Za-z0-9_~-]([A-Za-z0-9._~-]*[A-Za-z0-9_~-])?)*$`)
-
 // goModEditJSON parses one go.mod with Go's own parser (`go mod edit -json`),
 // which runs no module code and makes no request. A var so tests can fail it.
 var goModEditJSON = func(gomod string, env []string) ([]byte, error) {
@@ -225,48 +206,54 @@ func matchModulePattern(pattern, path string) bool {
 // to the public proxy (each root's requires that are not replaced by a
 // directory, every replacement that names a module version, and every module
 // in its go.sum) must be on the approved public set or a github.com path, and
-// none may sit under an owner of the repositories the check binds (unless it is
-// a module of a repository proven public, publicOwnedModulePrefixes), nor match
-// the operator's own private patterns. Anything else is could-not-check with
-// nothing sent. owners are lower-case forge owners.
-func moduleEgressProblem(home string, roots, owners []string, env []string) error {
+// none may match the operator's own private patterns. Owner paths default to
+// denial; only the exact public Assay repository can use the host-only proof
+// below, with exact committed module/version/checksum binding. No request is
+// made until all paths pass the local screen. owners are lower-case forge owners.
+func moduleEgressProblem(home string, roots, owners []string, env []string, stdout io.Writer) (*receiptPublicAssay, error) {
 	private := operatorPrivateModulePatterns()
 	why := map[string]string{}
+	var bindings []publicAssayModule
 	for _, r := range roots {
 		dir := filepath.Join(home, filepath.FromSlash(r))
 		paths, err := moduleRequestPaths(dir, env)
 		if err != nil {
-			return fmt.Errorf("could-not-check — module root %s: %v; nothing was sent to the proxy", r, err)
+			return nil, fmt.Errorf("could-not-check — module root %s: %v; nothing was sent to the proxy", r, err)
 		}
 		for _, p := range paths {
+			if isPublicAssayModule(p) && !operatorPrivateModule(p, private) {
+				continue // only provisionally admitted: proof below precedes every download
+			}
 			if w := modulePathEgressProblem(p, owners, private); w != "" {
 				why[p] = w
 			}
 		}
+		b, err := publicAssayBindings(dir, r, env)
+		if err != nil {
+			return nil, fmt.Errorf("could-not-check — %v; nothing was sent to the proxy", err)
+		}
+		bindings = append(bindings, b...)
 	}
 	if len(why) == 0 {
-		return nil
+		if len(bindings) == 0 {
+			return nil, nil
+		}
+		return provePublicAssay(bindings, stdout)
 	}
 	var bad []string
 	for p, w := range why {
 		bad = append(bad, p+" ("+w+")")
 	}
 	sort.Strings(bad)
-	return fmt.Errorf("could-not-check — module paths outside the approved public set, nothing was sent to the proxy: %s", strings.Join(bad, ", "))
+	return nil, fmt.Errorf("could-not-check — module paths outside the approved public set, nothing was sent to the proxy: %s", strings.Join(bad, ", "))
 }
 
 // modulePathEgressProblem is why one module path may not be sent, "" when it
 // may.
 func modulePathEgressProblem(p string, owners, private []string) string {
 	lc := strings.ToLower(p)
-	publicOwned := false
-	for _, a := range publicOwnedModulePrefixes {
-		if strings.HasPrefix(p, a) && canonicalModulePathRe.MatchString(p) {
-			publicOwned = true
-		}
-	}
 	for _, o := range owners {
-		if !publicOwned && strings.HasPrefix(lc, "github.com/"+o+"/") {
+		if strings.HasPrefix(lc, "github.com/"+o+"/") {
 			return "under the verified repository's owner " + o
 		}
 	}
@@ -274,9 +261,6 @@ func modulePathEgressProblem(p string, owners, private []string) string {
 		if matchModulePattern(pat, p) {
 			return "matches the operator's private pattern " + pat
 		}
-	}
-	if publicOwned {
-		return ""
 	}
 	for _, a := range approvedPublicModulePrefixes {
 		if strings.HasPrefix(p, a) {
@@ -407,7 +391,8 @@ func prepareModuleCache(home, cache string, owners []string, stdout io.Writer) (
 	}
 	defer os.RemoveAll(scratch)
 	env := moduleDownloadEnv(cache, scratch)
-	if err := moduleEgressProblem(home, roots, owners, env); err != nil {
+	proof, err := moduleEgressProblem(home, roots, owners, env, stdout)
+	if err != nil {
 		return receiptModuleCache{}, err
 	}
 	fmt.Fprintf(stdout, "module-download proxy=%s sumdb=%s roots=%s cache=%s\n", moduleDownloadProxy, moduleDownloadSumDB, strings.Join(roots, ","), cache)
@@ -438,7 +423,7 @@ func prepareModuleCache(home, cache string, owners []string, stdout io.Writer) (
 	if err != nil {
 		return receiptModuleCache{}, fmt.Errorf("could-not-check — %v", err)
 	}
-	return receiptModuleCache{Digest: digest, Roots: roots}, nil
+	return receiptModuleCache{Digest: digest, Roots: roots, PublicAssay: proof}, nil
 }
 
 // moduleCacheRequirementProblem binds a receipt's module cache to the home it
@@ -456,6 +441,9 @@ func moduleCacheRequirementProblem(home string, mc *receiptModuleCache) error {
 		return fmt.Errorf("the receipt carries a module cache, but the home lists no Go module roots in %s", moduleRootsManifest)
 	case listed && !slices.Equal(roots, mc.Roots):
 		return fmt.Errorf("the receipt's module cache was downloaded for roots %s, but the home lists %s in %s", strings.Join(mc.Roots, ","), strings.Join(roots, ","), moduleRootsManifest)
+	}
+	if mc != nil {
+		return publicAssayReceiptProblem(home, roots, mc.PublicAssay)
 	}
 	return nil
 }

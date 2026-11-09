@@ -318,9 +318,9 @@ under verification, never from the image: the roots are listed in the tree's own
 That list covers the whole tree. Every tracked Go module whose `go.sum` names a
 module is listed, or is named on a `# not provisioned: <root> — <reason>` line.
 `deskd` is the one such module: it requires this repository's own `tools/desk`
-module by version from the public proxy. The module screen below admits that
-path under its public-owned exemption (`OWNPUB`), but `deskd` is not yet listed,
-so rows that build it cannot run offline in this lane. The statusgen test
+module by version from the public proxy. The cluster stager still refuses that
+owner path, and the host-only public proof does not provision this omitted root;
+rows that build it cannot run offline in this lane. The statusgen test
 `TestModuleRootsCoverTree` fails when a module with requirements is added and not
 listed. Without it, that module's offline rows would stop on module resolution,
 and the pre-row gap check, which reads only the listed roots, could not name the
@@ -339,16 +339,26 @@ the pins above; no host Go, git, proxy or credential setting reaches it.
 Before the first request it screens every module path a root could send to the
 public proxy (each require not replaced by a directory, each replacement that
 names a version, and each path its `go.sum` lists) with the same approved public
-set as `images/verify-runner/stage-cache.sh` (`APPROVED`, `OWNPUB`, `GHPUB` and
-`CANON`, held equal by a parity test). A path under the verified repository's owner, in any
-case, is refused unless it sits under a module prefix of a repository proven public
-that shares the owner (`OWNPUB`, matched case-sensitively; today only
-`github.com/medici-finance/assay/`, so a look-alike neighbour such as
-`assay-other` or `assayx` is still refused) and is canonical (`CANON`: no empty,
-`.` or `..` element, so no such path can name a neighbour through the prefix). Such a refused owner path, a path
-matching the operator's `GOPRIVATE`, `GONOPROXY` or `GONOSUMDB` (which refuses an
-`OWNPUB` path too), or one off the approved set is could-not-check, with nothing sent to the proxy, no cache
-directory and no receipt. It then prints one line naming the proxy, the checksum
+set as `images/verify-runner/stage-cache.sh` (`APPROVED` and `GHPUB`, held equal
+by a parity test). A path under the verified repository's owner, in any case, a
+path matching the operator's `GOPRIVATE`, `GONOPROXY` or `GONOSUMDB`, or one off
+the approved set is could-not-check, with nothing sent to the proxy, no cache
+directory and no receipt.
+
+The host `--module-cache` lane has one bounded exception for module paths rooted
+at `github.com/medici-finance/assay` (the exact repository, including its nested
+modules). Before any module download it announces and performs an unauthenticated
+GET of `https://api.github.com/repos/medici-finance/assay`. It requires the fixed
+repository and owner IDs, canonical name and URL, `private=false` and
+`visibility=public`; redirects, unavailable or ambiguous metadata refuse. Each
+exception version must have both its module and go.mod checksums committed in the
+source's `go.sum`. The receipt records repository identity, metadata digest and
+the root/module/version/checksums; container admission and close recheck that
+source binding without network. Operator private patterns always win; other owner
+paths retain denial. This exception is not added to the cluster stager, which
+continues to refuse owner paths. It does not add VCS fallback or network to rows.
+
+It then prints one line naming the proxy, the checksum
 database, the roots and the cache before it downloads anything. The cache path may
 hold no comma, quote, whitespace or control character, since it is written into
 the container's `--mount` option list. It refuses if the download changes either file, records

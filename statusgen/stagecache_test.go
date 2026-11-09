@@ -95,13 +95,12 @@ func requireStageCacheHost(t *testing.T) {
 	}
 }
 
-// stageCacheAdmitted and stageCacheRefused are the stager's half of
-// TestModEgressPublicOwned: the public Assay module passes under its own
-// owner; neighbours, another case and non-canonical paths under the public
-// prefix refuse with nothing downloaded.
+// The cluster lane has no public-repository proof. Its owner refusal remains
+// in force even for public Assay modules; only the host bracket can prove them.
 var (
-	stageCacheAdmitted = []string{"github.com/medici-finance/assay/tools/desk"}
+	stageCacheAdmitted = []string{"github.com/example-org/public-lib"}
 	stageCacheRefused  = []string{
+		"github.com/medici-finance/assay/tools/desk",
 		"github.com/medici-finance/assay-other/x",
 		"github.com/medici-finance/assayx/y",
 		"github.com/Medici-Finance/assay/tools/desk",
@@ -133,9 +132,8 @@ func stageCacheFailures(t *testing.T, script string) []string {
 }
 
 // regression: #4683
-// TestStageCachePublicOwned: the stager admits the public Assay module under
-// its own owner and refuses its neighbours, another case and non-canonical
-// paths before any download.
+// TestStageCachePublicOwned: without host-side identity/visibility proof,
+// the cluster stager refuses every owner path before download.
 func TestStageCachePublicOwned(t *testing.T) {
 	requireStageCacheHost(t)
 	if bad := stageCacheFailures(t, stageCacheEntrypoint); len(bad) != 0 {
@@ -144,9 +142,8 @@ func TestStageCachePublicOwned(t *testing.T) {
 }
 
 // regression: #4683
-// TestStageCachePublicOwnedMutants: a stager with the canonical check dropped
-// admits exactly the non-canonical cases, and one with no exemption refuses
-// the public module, so the cases above can fail.
+// TestStageCachePublicOwnedMutants: dropping the owner refusal or inserting
+// an unproven public-prefix bypass makes the real script admit refused paths.
 func TestStageCachePublicOwnedMutants(t *testing.T) {
 	requireStageCacheHost(t)
 	raw, err := os.ReadFile(stageCacheEntrypoint)
@@ -154,25 +151,27 @@ func TestStageCachePublicOwnedMutants(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := string(raw)
-	const exempt = `if printf '%s' "$p" | grep -q -E -e "$OWNPUB" && printf '%s' "$p" | grep -q -E -e "$CANON"; then continue; fi`
-	mutants := []struct {
-		name, after string
-		want        []string
-	}{
-		{"no-canon", `if printf '%s' "$p" | grep -q -E -e "$OWNPUB"; then continue; fi`, []string{
-			"github.com/medici-finance/assay/../assay-other/x",
-			"github.com/medici-finance/assay/./x",
-			"github.com/medici-finance/assay//x",
-			"github.com/medici-finance/assay/.x",
-		}},
-		{"no-exemption", `:`, []string{"github.com/medici-finance/assay/tools/desk"}},
+	const owner = `case $lc in "github.com/$OWNER_LC/"*) BAD="$BAD $p"; continue ;; esac`
+	const anchor = `  lc=$(printf '%s' "$p" | tr '[:upper:]' '[:lower:]')`
+	var publicPaths []string
+	for _, p := range stageCacheRefused {
+		if strings.HasPrefix(p, "github.com/medici-finance/assay/") {
+			publicPaths = append(publicPaths, p)
+		}
 	}
-	if n := strings.Count(src, exempt); n != 1 {
-		t.Fatalf("mutation anchor found %d times, want 1", n)
+	mutants := []struct {
+		name, before, after string
+		want                []string
+	}{
+		{"owner-refusal-dropped", owner, ":", stageCacheRefused},
+		{"unproven-public-prefix", anchor, `  case $p in github.com/medici-finance/assay/*) continue ;; esac` + "\n" + anchor, publicPaths},
 	}
 	for _, m := range mutants {
+		if n := strings.Count(src, m.before); n != 1 {
+			t.Fatalf("%s: mutation anchor found %d times, want 1", m.name, n)
+		}
 		script := filepath.Join(t.TempDir(), "stage-cache.sh")
-		putFile(t, script, strings.Replace(src, exempt, m.after, 1))
+		putFile(t, script, strings.Replace(src, m.before, m.after, 1))
 		bad := stageCacheFailures(t, script)
 		if len(bad) != len(m.want) {
 			t.Errorf("%s: %d cases failed, want exactly %v: %q", m.name, len(bad), m.want, bad)

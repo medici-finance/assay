@@ -17,4 +17,4 @@ tools/metrics-harvest
 tools/pairedversions
 tools/plugindrift
 tools/skillslint
-# not provisioned: deskd — it requires this repository's own tools/desk module by version from the public proxy, which the open step's module screen admits under its public-owned exemption (stage-cache.sh OWNPUB), but deskd is not listed yet; rows that build deskd cannot run offline in this lane.
+# not provisioned: deskd — it requires this repository's own tools/desk module by version from the public proxy, which the cluster stager still refuses under the repository owner; the host-only public proof does not provision deskd in this lane.

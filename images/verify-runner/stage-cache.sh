@@ -85,15 +85,9 @@ PIN_SHA=$(git -c safe.directory="$CLONE" -C "$CLONE" rev-parse --verify 'refs/re
 # --- the module set: every declared module path, before any proxy request -------------------
 # Approved: the module is declared in this clone (a workspace-local module), or its path is on
 # a public vanity host from the list below, or is a github.com path outside the target repo's
-# own owner, or is a module of a repository proven public that shares that owner (OWNPUB,
-# matched case-sensitively; the trailing slash keeps every neighbouring repository refused) and
-# is canonical (CANON: no empty, "." or ".." element can carry another repository's path past
-# that prefix).
-# Anything else, or any other path under the owner of the target repo (private by default), is
-# could-not-check and is never sent to the public proxy.
+# own owner. Anything else, or any path under the owner of the target repo (private by
+# default), is could-not-check and is never sent to the public proxy.
 APPROVED='^(golang[.]org/x|google[.]golang[.]org|gopkg[.]in|go[.]uber[.]org|go[.]opentelemetry[.]io|go[.]etcd[.]io|go[.]yaml[.]in|honnef[.]co|gotest[.]tools|sigs[.]k8s[.]io|k8s[.]io|cloud[.]google[.]com|modernc[.]org|rsc[.]io|lukechampine[.]com|filippo[.]io|dario[.]cat|gitlab[.]com/gitlab-org/api)/'
-OWNPUB='^(github[.]com/medici-finance/assay)/'
-CANON='^[A-Za-z0-9_~-]([A-Za-z0-9._~-]*[A-Za-z0-9_~-])?(/[A-Za-z0-9_~-]([A-Za-z0-9._~-]*[A-Za-z0-9_~-])?)*$'
 GHPUB='^github[.]com/[A-Za-z0-9_.-]+/'
 OWNER_LC=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
 
@@ -132,7 +126,6 @@ DECLARED=$(printf '%s' "$DECLARED" | sort -u)
 BAD=
 for p in $DECLARED; do
   if printf '%s\n' "$OWN" | grep -q -x -F -e "$p"; then continue; fi
-  if printf '%s' "$p" | grep -q -E -e "$OWNPUB" && printf '%s' "$p" | grep -q -E -e "$CANON"; then continue; fi
   lc=$(printf '%s' "$p" | tr '[:upper:]' '[:lower:]')
   case $lc in "github.com/$OWNER_LC/"*) BAD="$BAD $p"; continue ;; esac
   if printf '%s' "$p" | grep -q -E -e "$APPROVED"; then continue; fi

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -450,11 +451,9 @@ func bakedModuleCacheProblem(df string) string {
 }
 
 // regression: #4683
-// TestModEgressParity: the open step's approved public set, public-owned
-// prefixes and canonical-path rule are the cluster stager's (stage-cache.sh
-// APPROVED, OWNPUB, GHPUB and CANON), so the two screens of the same download
-// cannot drift apart; a planted stager with one more host or one more
-// public-owned prefix goes red, as does one with no OWNPUB or CANON line.
+// TestModEgressParity: the open step's approved public set is the cluster
+// stager's (stage-cache.sh APPROVED and GHPUB), so the two screens of the same
+// download cannot drift apart; a planted stager with one more host goes red.
 func TestModEgressParity(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "images", "verify-runner", "stage-cache.sh"))
 	if err != nil {
@@ -470,26 +469,10 @@ func TestModEgressParity(t *testing.T) {
 	if p := modEgressParityProblem(planted); !strings.Contains(p, "example.net/") {
 		t.Fatalf("parity blind to a planted extra host: %q", p)
 	}
-	ownPlant := strings.Replace(string(raw), "OWNPUB='^(", "OWNPUB='^(github[.]com/example-org/x|", 1)
-	if ownPlant == string(raw) {
-		t.Fatal("the planted stager did not change OWNPUB")
-	}
-	if p := modEgressParityProblem(ownPlant); !strings.Contains(p, "github.com/example-org/x/") {
-		t.Fatalf("parity blind to a planted extra public-owned prefix: %q", p)
-	}
-	reverted := regexp.MustCompile(`(?m)^OWNPUB=.*\n`).ReplaceAllString(string(raw), "")
-	if p := modEgressParityProblem(reverted); !strings.Contains(p, "OWNPUB") {
-		t.Fatalf("parity blind to a stager without OWNPUB: %q", p)
-	}
-	uncanon := regexp.MustCompile(`(?m)^CANON=.*\n`).ReplaceAllString(string(raw), "")
-	if p := modEgressParityProblem(uncanon); !strings.Contains(p, "CANON") {
-		t.Fatalf("parity blind to a stager without CANON: %q", p)
-	}
 }
 
-// modEgressParityProblem compares stage-cache.sh's APPROVED, OWNPUB, GHPUB and
-// CANON with approvedPublicModulePrefixes, publicOwnedModulePrefixes,
-// githubPublicModuleRe and canonicalModulePathRe.
+// modEgressParityProblem compares stage-cache.sh's APPROVED and GHPUB with
+// approvedPublicModulePrefixes and githubPublicModuleRe.
 func modEgressParityProblem(script string) string {
 	m := regexp.MustCompile(`(?m)^APPROVED='\^\(([^)]*)\)/'$`).FindStringSubmatch(script)
 	if m == nil {
@@ -502,24 +485,9 @@ func modEgressParityProblem(script string) string {
 	if got, want := strings.Join(hosts, " "), strings.Join(approvedPublicModulePrefixes, " "); got != want {
 		return fmt.Sprintf("stage-cache.sh APPROVED is %q, the open step's set is %q", got, want)
 	}
-	o := regexp.MustCompile(`(?m)^OWNPUB='\^\(([^)]*)\)/'$`).FindStringSubmatch(script)
-	if o == nil {
-		return "stage-cache.sh carries no OWNPUB='^(...)/' line"
-	}
-	var owned []string
-	for _, h := range strings.Split(o[1], "|") {
-		owned = append(owned, strings.ReplaceAll(h, "[.]", ".")+"/")
-	}
-	if got, want := strings.Join(owned, " "), strings.Join(publicOwnedModulePrefixes, " "); got != want {
-		return fmt.Sprintf("stage-cache.sh OWNPUB is %q, the open step's set is %q", got, want)
-	}
 	g := regexp.MustCompile(`(?m)^GHPUB='([^']*)'$`).FindStringSubmatch(script)
 	if g == nil || strings.ReplaceAll(g[1], "[.]", `\.`) != githubPublicModuleRe.String() {
 		return fmt.Sprintf("stage-cache.sh GHPUB %q is not the open step's %q", g, githubPublicModuleRe.String())
-	}
-	c := regexp.MustCompile(`(?m)^CANON='([^']*)'$`).FindStringSubmatch(script)
-	if c == nil || c[1] != canonicalModulePathRe.String() {
-		return fmt.Sprintf("stage-cache.sh CANON %q is not the open step's %q", c, canonicalModulePathRe.String())
 	}
 	return ""
 }
@@ -601,16 +569,15 @@ func TestModEgressMainRoots(t *testing.T) {
 		t.Fatalf("%s names no root", moduleRootsManifest)
 	}
 	env := moduleDownloadEnv(t.TempDir(), t.TempDir())
-	if err := moduleEgressProblem("..", roots, owners, env); err != nil {
+	if _, err := moduleEgressProblem("..", roots, owners, env, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 }
 
 // regression: #4683
-// TestModEgressPublicOwned: the public Assay module paths pass the screen
-// under their own owner, while private and unknown paths of that owner,
-// look-alike neighbours, another case, a non-canonical path under the public
-// prefix, and an operator pattern refuse.
+// TestModEgressPublicOwned: the raw screen never grants an owner exemption.
+// Public paths become eligible only in moduleEgressProblem after source binding
+// and fresh repository proof; neighbours and malformed paths still refuse.
 func TestModEgressPublicOwned(t *testing.T) {
 	owners := []string{"medici-finance"}
 	for _, p := range []string{
@@ -618,8 +585,8 @@ func TestModEgressPublicOwned(t *testing.T) {
 		"github.com/medici-finance/assay/deskcore",
 		"github.com/medici-finance/assay/statusgen",
 	} {
-		if w := modulePathEgressProblem(p, owners, nil); w != "" {
-			t.Errorf("%s refused: %s", p, w)
+		if w := modulePathEgressProblem(p, owners, nil); !strings.Contains(w, "owner") {
+			t.Errorf("%s admitted without public proof: %q", p, w)
 		}
 	}
 	for _, p := range []string{
@@ -647,7 +614,7 @@ func TestModEgressPublicOwned(t *testing.T) {
 		}
 	}
 	w := modulePathEgressProblem("github.com/medici-finance/assay/tools/desk", owners, []string{"github.com/medici-finance"})
-	if !strings.Contains(w, "private pattern") {
+	if w == "" {
 		t.Errorf("an operator-marked public-owned path: %q", w)
 	}
 }
