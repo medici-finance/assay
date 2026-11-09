@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,7 +18,7 @@ func TestPublicAssayModuleCache(t *testing.T) {
 	stubPublicAssay(t, http.StatusOK, publicAssayMetadata)
 	fx := newContainerFixture(t)
 	withModuleRoots(t, fx)
-	plantRoot(t, fx, "module example.com/client\n\ngo 1.27.0\n\nrequire github.com/medici-finance/assay/tools/desk v0.0.0-20260908135545-8217692d48e4\n", "github.com/medici-finance/assay/tools/desk v0.0.0-20260908135545-8217692d48e4 h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\ngithub.com/medici-finance/assay/tools/desk v0.0.0-20260908135545-8217692d48e4/go.mod h1:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA=\n")
+	plantRoot(t, fx, "module example.com/client\n\ngo 1.27.0\n\nrequire github.com/medici-finance/assay/tools/desk v0.0.0-20260908135545-8217692d48e4\n", "github.com/medici-finance/assay/tools/desk v0.0.0-20260908135545-8217692d48e4 "+publicAssayFixtureSum()+"\ngithub.com/medici-finance/assay/tools/desk v0.0.0-20260908135545-8217692d48e4/go.mod "+publicAssayFixtureSum()+"\n")
 	orig := operatorPrivateModulePatterns
 	operatorPrivateModulePatterns = func() []string { return nil }
 	t.Cleanup(func() { operatorPrivateModulePatterns = orig })
@@ -105,8 +106,8 @@ func TestPublicAssayScopeAndPrivateDenials(t *testing.T) {
 		{name: "operator private repository", path: good, private: "github.com/medici-finance/assay"},
 		{name: "operator private owner", path: good, private: "github.com/medici-finance/*"},
 		{name: "missing checksums", path: good},
-		{name: "go mod checksum alone", path: good, sum: good + " " + version + "/go.mod h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"},
-		{name: "wrong version checksums", path: good, sum: good + " v1.0.0 h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"},
+		{name: "go mod checksum alone", path: good, sum: good + " " + version + "/go.mod " + publicAssayFixtureSum() + "\n"},
+		{name: "wrong version checksums", path: good, sum: good + " v1.0.0 " + publicAssayFixtureSum() + "\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			count := stubPublicAssay(t, 200, publicAssayMetadata)
@@ -122,7 +123,7 @@ func TestPublicAssayScopeAndPrivateDenials(t *testing.T) {
 			withModuleRoots(t, fx)
 			sum := tc.sum
 			if tc.private != "" {
-				sum = good + " " + version + " h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n" + good + " " + version + "/go.mod h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"
+				sum = good + " " + version + " " + publicAssayFixtureSum() + "\n" + good + " " + version + "/go.mod " + publicAssayFixtureSum() + "\n"
 			}
 			plantRoot(t, fx, "module example.com/client\n\ngo 1.27.0\n\nrequire "+tc.path+" "+version+"\n", sum)
 			dl := stubDownload(t)
@@ -149,7 +150,7 @@ func TestPublicAssayProofBeforeDownloadAndReceipt(t *testing.T) {
 	withModuleRoots(t, fx)
 	path := "github.com/medici-finance/assay/tools/desk"
 	v := "v1.0.0"
-	sum := path + " " + v + " h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n" + path + " " + v + "/go.mod h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"
+	sum := path + " " + v + " " + publicAssayFixtureSum() + "\n" + path + " " + v + "/go.mod " + publicAssayFixtureSum() + "\n"
 	plantRoot(t, fx, "module example.com/client\n\ngo 1.27.0\n\nrequire "+path+" "+v+"\n", sum)
 	orig := operatorPrivateModulePatterns
 	operatorPrivateModulePatterns = func() []string { return nil }
@@ -201,7 +202,7 @@ func TestPublicAssayProofBeforeDownloadAndReceipt(t *testing.T) {
 		t.Fatal("no source-bound proof in receipt")
 	}
 	b := receipt.ModuleCache.PublicAssay.Modules[0]
-	if !reflect.DeepEqual(b, publicAssayModule{Root: "tools/desk", Path: path, Version: v, Sum: "h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", GoModSum: "h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}) {
+	if !reflect.DeepEqual(b, publicAssayModule{Root: "tools/desk", Path: path, Version: v, Sum: publicAssayFixtureSum(), GoModSum: publicAssayFixtureSum()}) {
 		t.Fatalf("wrong binding %+v", b)
 	}
 	if err := moduleCacheRequirementProblem(fx.home, receipt.ModuleCache); err != nil {
@@ -225,4 +226,9 @@ func TestPublicAssayHTTPEnvelope(t *testing.T) {
 	if !ok || tr.Proxy != nil || tr.TLSClientConfig != nil {
 		t.Fatal("proof client inherits proxy/TLS overrides")
 	}
+}
+
+// Fixture checksum of 32 zero bytes: structurally valid h1 data, no credential.
+func publicAssayFixtureSum() string {
+	return "h1:" + base64.StdEncoding.EncodeToString(make([]byte, 32))
 }
