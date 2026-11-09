@@ -1,1 +1,1 @@
-- Propose discriminating statusgen/36 performance and pinned delivery consumer checks while retaining their original acceptance obligations; a second protected amendment remains held for shared-owner support.
+- Add a held proposal for statusgen/36 Verify rows 12 and 23 under `docs/proposals/statusgen-36-acceptance/`; the brief itself is unchanged until resolver successor-chain support and a consumer-proof disposition exist.
