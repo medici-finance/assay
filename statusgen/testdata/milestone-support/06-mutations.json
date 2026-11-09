@@ -145,6 +145,105 @@
       "module": "statusgen",
       "package": ".",
       "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "host-coverage-link-ignored",
+      "target": "statusgen/milestoneacceptance.go",
+      "old": "if !linked {",
+      "new": "if false && !linked {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "host-edited-successor-dropped",
+      "target": "statusgen/milestoneacceptance.go",
+      "old": "d.Unavailable = outcome.Reason == rulingUnresolvable || outcome.Reason == rulingDeleted || possibleRulingChange",
+      "new": "d.Unavailable = (outcome.Reason == rulingUnresolvable || outcome.Reason == rulingDeleted) && (possibleRulingChange || !possibleRulingChange)",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRevocation"
+    },
+    {
+      "name": "host-deleted-successor-dropped",
+      "target": "statusgen/milestoneacceptance.go",
+      "old": "d.Unavailable = outcome.Reason == rulingUnresolvable || outcome.Reason == rulingDeleted || possibleRulingChange",
+      "new": "d.Unavailable = outcome.Reason == rulingUnresolvable || possibleRulingChange",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRevocation"
+    },
+    {
+      "name": "host-unauthorized-edits-poison",
+      "target": "statusgen/milestoneacceptance.go",
+      "old": "outcome.ObservedHuman != \"\" && slices.Contains(in.Policy.Humans, \"human:\"+outcome.ObservedHuman)",
+      "new": "outcome.ObservedHuman != \"\" || slices.Contains(in.Policy.Humans, \"human:\"+outcome.ObservedHuman)",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRevocation"
+    },
+    {
+      "name": "host-edited-payload-disappears",
+      "target": "statusgen/milestoneacceptance.go",
+      "old": "outcome.Reason == rulingEditedComment || (outcome.Reason == rulingRecordNotNamed",
+      "new": "(outcome.Reason == rulingEditedComment && strings.Contains(outcome.ObservedBody,\"milestone-decision-\")) || (outcome.Reason == rulingRecordNotNamed",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRevocation"
+    },
+    {
+      "name": "host-refusals-all-unavailable",
+      "target": "statusgen/milestoneacceptance.go",
+      "old": "d.Unavailable = outcome.Reason == rulingUnresolvable || outcome.Reason == rulingDeleted || possibleRulingChange",
+      "new": "d.Unavailable = true || possibleRulingChange",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "host-unknown-fields-accepted",
+      "target": "statusgen/milestoneacceptance.go",
+      "old": "d.DisallowUnknownFields()",
+      "new": "// planted omission of strict field check",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRevocation"
+    },
+    {
+      "name": "overlap-restriction-discarded",
+      "target": "statusgen/domain/milestone.go",
+      "old": "restrictedSuccessors = append(restrictedSuccessors, d)",
+      "new": "out.Quarantined = append(out.Quarantined,d.Pointer)",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRevocation"
+    },
+    {
+      "name": "parent-directory-pointer",
+      "target": "statusgen/domain/milestone.go",
+      "old": "p.Path == \".\" || p.Path == \"..\" ||",
+      "new": "p.Path == \".\" ||",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "reason-duplicates-retained",
+      "target": "statusgen/domain/milestone.go",
+      "old": "out.Unknowns = slices.Compact(out.Unknowns)",
+      "new": "// planted repeated reason codes",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRevocation"
+    },
+    {
+      "name": "reason-order-unstable",
+      "target": "statusgen/domain/milestone.go",
+      "old": "slices.Sort(out.Unknowns)",
+      "new": "// planted unstable reason order",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRevocation"
     }
   ]
 }

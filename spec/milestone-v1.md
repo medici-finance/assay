@@ -522,7 +522,11 @@ installed here, and a caller that echoes manifest claims is not a trusted compos
 
 Authorized revocations/successors use the bound acceptance policy and exact original
 receipt. Unauthorized comments, including malformed forged successors, are quarantined
-before they can become conflicts. Different-target revocations do not revoke this
+before they can become conflicts. A same-issue observation from a mapped policy
+human whose comment is edited or whose recognized decision payload is malformed
+retains an unknown hold; it never authenticates or accepts that changed content.
+An exact authorized restricting successor with overlapping contributor lineage also
+holds current applicability, while separation remains mandatory for acceptance. Different-target revocations do not revoke this
 receipt; conflicting authorized successors make present applicability unknown alongside
 known holds. Complete decision-thread coverage is mandatory; missing pages cannot prove
 no revocation. Accepted history remains addressable after revocation, evidence loss,

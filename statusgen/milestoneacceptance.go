@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/medici-finance/assay/statusgen/domain"
@@ -143,7 +144,12 @@ func readMilestoneAcceptance(req milestoneAcceptanceRequest, sources milestoneRe
 		})
 		d := domain.MilestoneDecision{Pointer: domain.DecisionPointer{Repository: link.Repo, Issue: link.Issue, Comment: link.CommentID}}
 		if outcome.Reason != rulingOK {
-			d.Unavailable = outcome.Reason == rulingUnresolvable || outcome.Reason == rulingDeleted
+			// An edited authorized comment has unknowable original intent.
+			// A recognized but malformed decision also cannot prove absence of
+			// a restricting successor. Retain a hold, never authenticate it.
+			policyHuman := outcome.ObservedHuman != "" && slices.Contains(in.Policy.Humans, "human:"+outcome.ObservedHuman)
+			possibleRulingChange := policyHuman && (outcome.Reason == rulingEditedComment || (outcome.Reason == rulingRecordNotNamed && strings.Contains(outcome.ObservedBody, "milestone-decision-")))
+			d.Unavailable = outcome.Reason == rulingUnresolvable || outcome.Reason == rulingDeleted || possibleRulingChange
 			in.Decisions = append(in.Decisions, d)
 			continue
 		}

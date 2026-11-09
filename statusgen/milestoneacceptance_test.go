@@ -245,6 +245,14 @@ func msNotSupported(t *testing.T, a domain.MilestoneAssessment) {
 	}
 }
 
+func msReason(t *testing.T, a domain.MilestoneAssessment, code string) {
+	t.Helper()
+	msNotSupported(t, a)
+	if !slices.Contains(a.Blockers, code) && !slices.Contains(a.Unknowns, code) {
+		t.Fatalf("want reason %s: %+v", code, a)
+	}
+}
+
 // regression: milestone-support/06
 func TestMilestoneAcceptSubject(t *testing.T) {
 	msSupported(t, msSetup(t).run(t))
@@ -326,6 +334,8 @@ func TestMilestoneAcceptSubject(t *testing.T) {
 			f.req.Current.Requirements.Required = []readercaps.Operation{{Operation: "accept", Schemas: []string{domain.MilestoneReceiptSchema}, Semantics: []string{"future@9"}}}
 		},
 	}
+	expected := map[string]string{"no-receipt": "acceptance-outstanding", "reject": "acceptance-outstanding", "hold": "acceptance-outstanding", "profile": "current-subject", "environment": "current-subject", "configuration": "current-subject", "interface": "current-subject", "candidate": "current-subject", "version": "current-subject", "source-commit": "current-subject", "source-path": "current-subject", "prerequisite-profile": "prerequisite-profile", "swapped-criterion-proof": "criterion-provenance", "missing-criterion": "criterion-missing", "extra-criterion": "contract-set", "duplicate-criterion": "receipt-canonical", "failed-criterion": "criterion-failed", "criterion-verifier": "criterion-provenance", "brief-revision": "contributor-revision", "brief-uuid": "contributor-binding", "latest-second-contributor": "contributor-binding", "wrong-prerequisite": "prerequisite-receipt", "work-remaining": "work-remaining", "withdrawn": "work-remaining", "wrong-actor": "acceptance-outstanding", "bot": "acceptance-outstanding", "edited": "decision-unavailable", "deleted": "decision-unavailable", "wrong-issue": "acceptance-outstanding", "failed-brief-witness": "brief-evidence-support", "missing-selector": "provenance-uncorroborated", "forged-provenance": "provenance-not-selected", "shared-lineage": "principal-overlap", "acceptor-is-verifier": "acceptance-outstanding", "unmerged-policy": "authority-unmerged", "unmerged-contract": "contract-unmerged", "unknown-protection": "contract-protected-source-unknown", "unsupported-semantics": "receipt-capability"}
+
 	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {
 			f := msSetup(t)
@@ -336,7 +346,15 @@ func TestMilestoneAcceptSubject(t *testing.T) {
 				f.decision(170, "accept", nil, "driver-login")
 			}
 			a := f.run(t)
-			msNotSupported(t, a)
+			if expected[name] == "" {
+				t.Fatalf("case has no reason assertion: %s", name)
+			}
+			msReason(t, a, expected[name])
+			if name == "wrong-issue" || name == "bot" || name == "wrong-actor" {
+				if len(a.Quarantined) != 1 || slices.Contains(a.Unknowns, "decision-unavailable") {
+					t.Fatalf("refusal mapping changed: %+v", a)
+				}
+			}
 			if name == "no-receipt" && !a.AcceptanceOutstanding {
 				t.Fatalf("completion became acceptance: %+v", a)
 			}
@@ -354,7 +372,7 @@ func TestMilestoneAcceptSubject(t *testing.T) {
 				in.AuthorityProtected = domain.Missing
 			}
 			a := domain.AssessMilestone(f.m, in)
-			msNotSupported(t, a)
+			msReason(t, a, kind+"-unmerged")
 			if len(a.History) != 0 {
 				t.Fatalf("unmerged source established authority: %+v", a)
 			}
@@ -364,19 +382,19 @@ func TestMilestoneAcceptSubject(t *testing.T) {
 		f := msSetup(t)
 		in := msCoreInputs(t, f)
 		in.Policy.Milestone = "example:widgets:build:m-02@1"
-		msNotSupported(t, domain.AssessMilestone(f.m, in))
+		msReason(t, domain.AssessMilestone(f.m, in), "authority-policy")
 	})
 	t.Run("inner-policy-issue", func(t *testing.T) {
 		f := msSetup(t)
 		in := msCoreInputs(t, f)
 		in.Decisions[0].Pointer.Issue = 99
-		msNotSupported(t, domain.AssessMilestone(f.m, in))
+		msReason(t, domain.AssessMilestone(f.m, in), "decision-binding")
 	})
 	t.Run("coverage-selection", func(t *testing.T) {
 		f := msSetup(t)
 		f.req.Manifest.Path = "evidence/unlinked.json"
 		f.s.raw[f.req.Manifest] = msJSON(f.m)
-		msNotSupported(t, f.run(t))
+		msReason(t, f.run(t), "receipt-not-in-coverage")
 	})
 
 	t.Run("inner-missing-lineage", func(t *testing.T) {
@@ -394,21 +412,21 @@ func TestMilestoneAcceptSubject(t *testing.T) {
 		c := f.s.comments[170]
 		c.body = strings.Replace(c.body, "milestone-decision-v1", "milestone-decision-v9", 1)
 		f.s.comments[170] = c
-		msNotSupported(t, f.run(t))
+		msReason(t, f.run(t), "decision-binding")
 	})
 	t.Run("discussion-is-not-accept", func(t *testing.T) {
 		f := msSetup(t)
 		c := f.s.comments[170]
 		c.body = "Approved example:widgets:build:m-01@1 in discussion"
 		f.s.comments[170] = c
-		msNotSupported(t, f.run(t))
+		msReason(t, f.run(t), "acceptance-outstanding")
 	})
 	t.Run("duplicate-payload-key", func(t *testing.T) {
 		f := msSetup(t)
 		c := f.s.comments[170]
 		c.body = strings.Replace(c.body, `"disposition":"accept"`, `"disposition":"reject","disposition":"accept"`, 1)
 		f.s.comments[170] = c
-		msNotSupported(t, f.run(t))
+		msReason(t, f.run(t), "decision-unavailable")
 	})
 	t.Run("untrusted-current-envelope", func(t *testing.T) {
 		f := msSetup(t)
@@ -420,6 +438,20 @@ func TestMilestoneAcceptSubject(t *testing.T) {
 		if !a.AcceptanceOutstanding {
 			t.Fatal("inherited producer decision")
 		}
+	})
+
+	t.Run("pointer-path-class", func(t *testing.T) {
+		for _, bad := range []string{"..", ".", "../file", "dir/../../file", "/absolute", "dir\\file"} {
+			p := msSetup(t).m.Contract
+			p.Path = bad
+			if e := p.Validate(); e == nil {
+				t.Fatalf("unsafe pointer path accepted: %q", bad)
+			}
+		}
+		f := msSetup(t)
+		f.m.Contributors[0].Source.Path = ".."
+		f.publish()
+		msReason(t, f.run(t), "receipt-canonical")
 	})
 
 }
@@ -498,6 +530,87 @@ func TestMilestoneRevocation(t *testing.T) {
 		c.body = strings.Replace(c.body, `"disposition":"revoke"`, `"unknown":"revoke"`, 1)
 		f.s.comments[171] = c
 		msSupported(t, f.run(t))
+	})
+
+	for _, disposition := range []string{"revoke", "supersede"} {
+		changes := map[string]func(*msComment){
+			"edited":         func(c *msComment) { c.updated = "2026-11-09T13:00:00Z" },
+			"edited-content": func(c *msComment) { c.updated = "2026-11-09T13:00:00Z"; c.body = "corrected discussion" },
+			"deleted":        func(c *msComment) { c.status = 404 },
+			"malformed": func(c *msComment) {
+				c.body = strings.Replace(c.body, `"disposition":`, `"unexpected":true,"disposition":`, 1)
+			},
+			"missing-record": func(c *msComment) {
+				c.body = strings.Replace(c.body, "example:widgets:build:m-01@1", "example:widgets:build:m-99@1", 1)
+			},
+		}
+		for name, change := range changes {
+			t.Run(disposition+"-"+name, func(t *testing.T) {
+				f := msSetup(t)
+				f.decision(171, disposition, &ptr, "driver-login")
+				c := f.s.comments[171]
+				change(&c)
+				f.s.comments[171] = c
+				a := f.run(t)
+				msReason(t, a, "decision-unavailable")
+				if a.State != "unknown" || len(a.History) != 1 || a.History[0].Decision != ptr || a.History[0].Revoked || a.History[0].Superseded {
+					t.Fatalf("untrusted successor rewrote acceptance history: %+v", a)
+				}
+			})
+		}
+		t.Run(disposition+"-outsider-edited", func(t *testing.T) {
+			f := msSetup(t)
+			f.decision(171, disposition, &ptr, "other-login")
+			c := f.s.comments[171]
+			c.updated = "2026-11-09T13:00:00Z"
+			f.s.comments[171] = c
+			msSupported(t, f.run(t))
+		})
+		t.Run(disposition+"-overlap", func(t *testing.T) {
+			f := msSetup(t)
+			in := msCoreInputs(t, f)
+			f.decision(171, disposition, &ptr, "driver-login")
+			c := f.s.comments[171]
+			var payload domain.MilestoneDecisionPayload
+			_ = json.Unmarshal([]byte(c.body), &payload)
+			successor := in.Decisions[0]
+			successor.Pointer.Comment = 171
+			successor.Pointer.Digest = domain.ContentDigest([]byte(c.body))
+			successor.Payload = payload
+			successor.Lineage = []string{"principal:author"}
+			in.Decisions = append(in.Decisions, successor)
+			a := domain.AssessMilestone(f.m, in)
+			msReason(t, a, "successor-lineage-conflict")
+			if a.State != "unknown" || len(a.History) != 1 || a.History[0].Decision != ptr {
+				t.Fatalf("overlap restriction erased history: %+v", a)
+			}
+			wrong := ptr
+			wrong.Comment = 999
+			in.Decisions[1].Payload.Replaces = &wrong
+			msSupported(t, domain.AssessMilestone(f.m, in))
+		})
+	}
+	t.Run("stable-reasons", func(t *testing.T) {
+		f := msSetup(t)
+		in := msCoreInputs(t, f)
+		in.ContractProtected = domain.CouldNotCheck
+		in.AuthorityProtected = domain.CouldNotCheck
+		in.Evidence = nil
+		want := []string{"acceptance-outstanding", "authority-protected-source-unknown", "contract-protected-source-unknown", "evidence-unavailable"}
+		for i := 0; i < 16; i++ {
+			a := domain.AssessMilestone(f.m, in)
+			if !reflect.DeepEqual(a.Unknowns, want) {
+				t.Fatalf("unknown order/duplicates: %+v", a)
+			}
+		}
+		in.ContractProtected = domain.Missing
+		in.AuthorityProtected = domain.Missing
+		for i := 0; i < 16; i++ {
+			a := domain.AssessMilestone(f.m, in)
+			if !reflect.DeepEqual(a.Blockers, []string{"authority-unmerged", "contract-unmerged"}) {
+				t.Fatalf("blocker order/duplicates: %+v", a)
+			}
+		}
 	})
 
 	t.Run("wrong-target", func(t *testing.T) {

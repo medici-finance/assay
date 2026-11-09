@@ -36,7 +36,7 @@ type EvidencePointer struct {
 }
 
 func (p EvidencePointer) Validate() error {
-	if !repoRE.MatchString(p.Repository) || !objectRE.MatchString(p.Commit) || !digestRE.MatchString(p.Digest) || p.Path == "" || p.Path == "." || path.IsAbs(p.Path) || path.Clean(p.Path) != p.Path || strings.HasPrefix(p.Path, "../") || strings.ContainsAny(p.Path, "\\\x00") {
+	if !repoRE.MatchString(p.Repository) || !objectRE.MatchString(p.Commit) || !digestRE.MatchString(p.Digest) || p.Path == "" || p.Path == "." || p.Path == ".." || path.IsAbs(p.Path) || path.Clean(p.Path) != p.Path || strings.HasPrefix(p.Path, "../") || strings.ContainsAny(p.Path, "\\\x00") {
 		return refuse("milestone-pointer")
 	}
 	return nil
@@ -305,6 +305,8 @@ type MilestoneAssessment struct {
 func (a *MilestoneAssessment) problem(e error) {
 	if r, ok := e.(*Refusal); ok && r.State == "could-not-check" {
 		a.Unknowns = append(a.Unknowns, r.Code)
+	} else if r, ok := e.(*Refusal); ok {
+		a.Blockers = append(a.Blockers, r.Code)
 	} else {
 		a.Blockers = append(a.Blockers, e.Error())
 	}
@@ -314,8 +316,15 @@ func (a *MilestoneAssessment) problem(e error) {
 // selection and protected-branch proofs remain adapter responsibilities. No
 // observation, supported result or historical receipt authorizes an effect.
 // semantic: S-verification-domain
-func AssessMilestone(m MilestoneManifest, in MilestoneInputs) MilestoneAssessment {
-	out := MilestoneAssessment{History: []MilestoneHistory{}, State: "unknown", AcceptanceOutstanding: true, Blockers: []string{}, Unknowns: []string{}, Quarantined: []DecisionPointer{}}
+func AssessMilestone(m MilestoneManifest, in MilestoneInputs) (out MilestoneAssessment) {
+	// Normalize every return, including an early refusal, for stable reports.
+	defer func() {
+		slices.Sort(out.Blockers)
+		out.Blockers = slices.Compact(out.Blockers)
+		slices.Sort(out.Unknowns)
+		out.Unknowns = slices.Compact(out.Unknowns)
+	}()
+	out = MilestoneAssessment{History: []MilestoneHistory{}, State: "unknown", AcceptanceOutstanding: true, Blockers: []string{}, Unknowns: []string{}, Quarantined: []DecisionPointer{}}
 	if e := m.Validate(); e != nil {
 		out.problem(e)
 		return out
@@ -475,6 +484,7 @@ func AssessMilestone(m MilestoneManifest, in MilestoneInputs) MilestoneAssessmen
 	historicalOK := len(out.Blockers) == 0 && len(out.Unknowns) == 0
 	var accepted []MilestoneDecision
 	var successors []MilestoneDecision
+	var restrictedSuccessors []MilestoneDecision
 	for _, d := range in.Decisions {
 		authorized := d.Actor.Kind == "human" && slices.Contains(in.Policy.Humans, d.Actor.ID)
 		if d.Authenticated && !authorized {
@@ -487,6 +497,14 @@ func AssessMilestone(m MilestoneManifest, in MilestoneInputs) MilestoneAssessmen
 		}
 		if !d.Authenticated || !authorized {
 			out.Quarantined = append(out.Quarantined, d.Pointer)
+			continue
+		}
+		p := d.Payload
+		if d.Pointer.Validate() != nil || d.Pointer.Repository != m.Contract.Repository || d.Pointer.Issue != in.Policy.DecisionIssue || p.Schema != MilestoneDecisionSchema {
+			out.Unknowns = append(out.Unknowns, "decision-binding")
+			continue
+		}
+		if p.Milestone != m.Milestone || p.Contract != m.Contract || p.Manifest != digest {
 			continue
 		}
 		if len(d.Lineage) == 0 {
@@ -504,17 +522,14 @@ func AssessMilestone(m MilestoneManifest, in MilestoneInputs) MilestoneAssessmen
 			}
 		}
 		if overlap {
-			out.Quarantined = append(out.Quarantined, d.Pointer)
+			if (p.Disposition == "revoke" || p.Disposition == "supersede") && p.Replaces != nil {
+				restrictedSuccessors = append(restrictedSuccessors, d)
+			} else {
+				out.Quarantined = append(out.Quarantined, d.Pointer)
+			}
 			continue
 		}
-		p := d.Payload
-		if d.Pointer.Validate() != nil || d.Pointer.Repository != m.Contract.Repository || d.Pointer.Issue != in.Policy.DecisionIssue || p.Schema != MilestoneDecisionSchema {
-			out.Unknowns = append(out.Unknowns, "decision-binding")
-			continue
-		}
-		if p.Milestone != m.Milestone || p.Contract != m.Contract || p.Manifest != digest {
-			continue
-		}
+
 		switch p.Disposition {
 		case "accept":
 			if p.Replaces == nil {
@@ -545,6 +560,11 @@ func AssessMilestone(m MilestoneManifest, in MilestoneInputs) MilestoneAssessmen
 		out.Unknowns = append(out.Unknowns, "conflicting-acceptances")
 	}
 	for i := range out.History {
+		for _, d := range restrictedSuccessors {
+			if *d.Payload.Replaces == out.History[i].Decision {
+				out.Unknowns = append(out.Unknowns, "successor-lineage-conflict")
+			}
+		}
 		var replacements []MilestoneDecision
 		for _, d := range successors {
 			if *d.Payload.Replaces == out.History[i].Decision {
@@ -592,6 +612,9 @@ func AssessMilestone(m MilestoneManifest, in MilestoneInputs) MilestoneAssessmen
 		if idx < 0 || in.Evidence[idx].State != Present {
 			out.Unknowns = append(out.Unknowns, "evidence-unavailable")
 		}
+	}
+	if out.AcceptanceOutstanding {
+		out.Unknowns = append(out.Unknowns, "acceptance-outstanding")
 	}
 	if len(out.Blockers) > 0 {
 		out.State = "blocked"

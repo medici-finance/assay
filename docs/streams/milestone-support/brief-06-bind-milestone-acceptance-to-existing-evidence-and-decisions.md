@@ -43,7 +43,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/milestoneacceptance.go` (planned), `statusgen/milestoneacceptance_test.go` (planned), `statusgen/decisionruling.go`, `statusgen/domain/`, `statusgen/testdata/milestone-support/06/` (planned), `spec/milestone-v1.md`, `changelog/milestone-support-06.md` (planned), `statusgen/testdata/milestone-support/06-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/milestoneacceptance.go`, `statusgen/milestoneacceptance_test.go`, `statusgen/decisionruling.go`, `statusgen/domain/`, `statusgen/testdata/milestone-support/06/`, `spec/milestone-v1.md`, `changelog/milestone-support-06.md`, `statusgen/testdata/milestone-support/06-mutations.json` — The receipt adapter and its tests are delivered in the draft implementation; independent verification and Evidence remain pending.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.
@@ -121,7 +121,7 @@ Gate: human, derived from the declared risks. Independent review checks compatib
 
 ## Receipt adapter design and recorded ruling
 
-**Design approved, implementation outstanding.** The driver accepted
+**Design approved; draft implementation delivered, independent verification pending.** The driver accepted
 `DR-milestone-support-06` and the bounded proposal at
 `ffaaf82ff0ab3e09e779ca7fa34ef00ac91804ea` in the
 [unedited human ruling](https://github.com/medici-finance/assay/issues/5705#issuecomment-6715755830).
@@ -184,7 +184,7 @@ No dependency, binary, service or new credential holder is proposed. Before
 implementation, refresh the current source and claim/PR overlap and obtain the ruling
 on [the existing decision issue](https://github.com/medici-finance/assay/issues/5705).
 
-### Bounded design to rule on
+### Approved bounded design — historical proposal
 
 Use existing repository Evidence artifacts and the existing human decision-issue
 mechanism. Add a pure aggregate adapter in the statusgen module, with host mapping
@@ -361,3 +361,16 @@ Updated implementation census:
 Coverage is the affected receipt boundary, not a whole-repository architecture audit.
 Tests use frozen source and authenticated forge fixtures; no cluster/live-state check,
 new production selector, outcome acceptance, lifecycle update or Evidence is claimed.
+
+
+### Review repair pickup — 9 November 2026
+
+Continued the same draft implementation after live ownership/review/claim checks at
+`67d9cd121`, then merged main `a7e2f320f` into the owned feature branch. That upstream
+delta contains only the separately held statusgen/36 proposal and its changelog;
+it changes none of the receipt APIs, approved authority, semantic contracts or Go
+engineering guidance. Disposition: **continue** under the same DR and consumer census.
+Review repairs include the real `readercaps` pure dependency in the hermetic domain
+snapshot, restrictive treatment of uncertain authorized successors and overlapping
+revocation lineage, pointer-path validation, canonical reason lists and host mutation
+controls. Original Task, Verify definitions, Evidence and lifecycle remain unchanged.
