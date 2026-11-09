@@ -76,14 +76,18 @@ const witnessHeaderFailFirst = "| # | Command | Result | Output | Date | Runner 
 
 // failFirst is one row's base-run record.
 type failFirst struct {
-	Base  string // short base SHA, "" when the row was not run at base
-	State string // red | green | unproven | not-selected
-	Head  string // the head tree token the same witness row ran on
-	Exit  int    // base exit code, -1 when nothing ran
+	Base         string // short base SHA, "" when the row was not run at base
+	State        string // red | green | unproven | not-selected
+	Head         string // the head tree token the same witness row ran on
+	Exit         int    // base exit code, -1 when nothing ran
+	OutputDigest string // full sha256 of opt-in retained primary output
+	LogName      string // generated filename within the caller's base-log directory
 }
 
 // failFirstCellRe reads a Base cell back.
 var failFirstCellRe = regexp.MustCompile(`\bbase=([0-9a-f]{7,40}|-)\s+(red|green|unproven|not-selected)\b(?:\s+rc=(-|\d+))?(?:\s*·\s*head=([^\s|]+))?`)
+
+var baseOutputCellRe = regexp.MustCompile(`\soutput=(sha256:[0-9a-f]{64}) log=(row-[0-9]{6}\.log)$`)
 
 // failFirstCell renders a Base cell.
 func failFirstCell(base, state string, exit int, head string) string {
@@ -114,6 +118,13 @@ func failFirstOf(text string) (failFirst, bool) {
 	}
 	if m[3] != "" && m[3] != "-" {
 		fmt.Sscanf(m[3], "%d", &f.Exit)
+	}
+	if strings.Contains(cells[witnessCellBase], "output=") || strings.Contains(cells[witnessCellBase], "log=") {
+		metadata := baseOutputCellRe.FindStringSubmatch(strings.TrimSpace(cells[witnessCellBase]))
+		if metadata == nil || (f.State != baseRed && f.State != baseGreen) || strings.Count(cells[witnessCellBase], "output=") != 1 || strings.Count(cells[witnessCellBase], "log=") != 1 {
+			return failFirst{}, false
+		}
+		f.OutputDigest, f.LogName = metadata[1], metadata[2]
 	}
 	return f, true
 }
@@ -344,7 +355,7 @@ func sameCommit(root, rev, mergeBase string) bool {
 // the risky rows there under the same sandbox mode and the same CI flag as the
 // head run (a row --ci skips at head is skipped at base too, and recorded
 // not-selected), and removes the worktree. Rows not in risky are recorded not-selected and never run.
-func runFailFirstBase(plan shellPlan, sandbox, root, base string, rows []verifyRow, risky map[string]bool, timeout time.Duration, ci bool) (map[string]failFirst, error) {
+func runFailFirstBase(plan shellPlan, sandbox, root, base string, rows []verifyRow, risky map[string]bool, timeout time.Duration, ci bool, logs ...*baseOutputLog) (map[string]failFirst, error) {
 	short := base
 	if len(short) > treeSHALen {
 		short = short[:treeSHALen]
@@ -372,6 +383,15 @@ func runFailFirstBase(plan shellPlan, sandbox, root, base string, rows []verifyR
 	if _, err := gitOut(root, "worktree", "add", "--detach", "--quiet", wt, base); err != nil {
 		return nil, fmt.Errorf("checking out the base %s: %w", short, err)
 	}
+	var retained *baseOutputLog
+	var captureErr error
+	if len(logs) > 0 && logs[0] != nil {
+		retained = logs[0]
+		plan.captureOutput = func(id string, output []byte) error {
+			captureErr = retained.record(id, output)
+			return captureErr
+		}
+	}
 	for _, w := range runWitnessesSandboxed(plan, sandbox, wt, sel, "", "", "", "", timeout, ci) {
 		f := failFirst{Base: short, Exit: w.Exit}
 		switch w.State {
@@ -385,7 +405,15 @@ func runFailFirstBase(plan shellPlan, sandbox, root, base string, rows []verifyR
 		default:
 			f.State = baseUnproven
 		}
+		if retained != nil {
+			if record, ok := retained.rows[w.ID]; ok {
+				f.OutputDigest, f.LogName = record.digest, record.name
+			}
+		}
 		out[w.ID] = f
+	}
+	if captureErr != nil {
+		return nil, fmt.Errorf("retaining base primary output: %w", captureErr)
 	}
 	return out, nil
 }

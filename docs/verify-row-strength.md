@@ -152,6 +152,30 @@ missing), which proves nothing about this change. A non-risk-bearing row
 that is non-discriminating is reported as a NOTICE and never blocks. `verifyrun --fail-first`
 exits 1 when a risk-bearing row is non-discriminating and 2 when one could not run at base.
 
+### Retaining base primary output
+
+When a contract requires a particular base diagnostic, an exit code alone cannot establish it.
+Use `--fail-first --base-log /absolute/path/to/new-directory` to retain the base rows' combined
+stdout and stderr. The directory must be new, outside the execution home, and reached without
+symlink or parent-traversal components. The runner creates it with owner-only permissions and
+writes generated per-row files exclusively; it never overwrites an existing log. A destination
+or write failure is could-not-check, rather than a successful fail-first witness.
+If the platform cannot establish the required private directory/file modes, retention
+fails closed; this does not affect runs without the option.
+
+Each completed base execution's `Base` cell also records its full output SHA-256 and generated log
+filename. Read the retained bytes and compare their digest before crediting a required diagnostic;
+the tool still does not interpret arbitrary prose in the contract. A hash or nonzero exit by itself
+does not establish that the intended assertion failed. Skipped/unexecuted rows have no output
+record. Without `--base-log`, existing witnesses and behavior are unchanged.
+
+The retained files contain raw row output. Keep them under the verification evidence's existing
+custody, outside the source checkout, and retain them before disposing of an execution container.
+This option adds no mount, credential, network access or automatic publication. Its hashes bind
+the recorded bytes; file permissions and exclusive creation do not prevent a same-user writer
+from changing a file later. Existing `--check` and bracket-digest handling remain compatible;
+independent primary-output inspection remains required.
+
 ### What the base check does not prove
 
 The gate proves that the base is the merge-base, or an older commit that held the brief file at
