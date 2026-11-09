@@ -338,10 +338,14 @@ the pins above; no host Go, git, proxy or credential setting reaches it.
 Before the first request it screens every module path a root could send to the
 public proxy (each require not replaced by a directory, each replacement that
 names a version, and each path its `go.sum` lists) with the same approved public
-set as `images/verify-runner/stage-cache.sh` (`APPROVED` and `GHPUB`, held equal
-by a parity test). A path under the verified repository's owner, in any case, a
-path matching the operator's `GOPRIVATE`, `GONOPROXY` or `GONOSUMDB`, or one off
-the approved set is could-not-check, with nothing sent to the proxy, no cache
+set as `images/verify-runner/stage-cache.sh` (`APPROVED`, `OWNPUB` and `GHPUB`,
+held equal by a parity test). A path under the verified repository's owner, in any
+case, is refused unless it sits under a module prefix of a repository proven public
+that shares the owner (`OWNPUB`, matched case-sensitively; today only
+`github.com/medici-finance/assay/`, so a look-alike neighbour such as
+`assay-other` or `assayx` is still refused). Such a refused owner path, a path
+matching the operator's `GOPRIVATE`, `GONOPROXY` or `GONOSUMDB` (which refuses an
+`OWNPUB` path too), or one off the approved set is could-not-check, with nothing sent to the proxy, no cache
 directory and no receipt. It then prints one line naming the proxy, the checksum
 database, the roots and the cache before it downloads anything. The cache path may
 hold no comma, quote, whitespace or control character, since it is written into

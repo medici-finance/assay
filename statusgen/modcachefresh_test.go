@@ -468,10 +468,22 @@ func TestModEgressParity(t *testing.T) {
 	if p := modEgressParityProblem(planted); !strings.Contains(p, "example.net/") {
 		t.Fatalf("parity blind to a planted extra host: %q", p)
 	}
+	ownPlant := strings.Replace(string(raw), "OWNPUB='^(", "OWNPUB='^(github[.]com/example-org/x|", 1)
+	if ownPlant == string(raw) {
+		t.Fatal("the planted stager did not change OWNPUB")
+	}
+	if p := modEgressParityProblem(ownPlant); !strings.Contains(p, "github.com/example-org/x/") {
+		t.Fatalf("parity blind to a planted extra public-owned prefix: %q", p)
+	}
+	reverted := regexp.MustCompile(`(?m)^OWNPUB=.*\n`).ReplaceAllString(string(raw), "")
+	if p := modEgressParityProblem(reverted); !strings.Contains(p, "OWNPUB") {
+		t.Fatalf("parity blind to a stager without OWNPUB: %q", p)
+	}
 }
 
-// modEgressParityProblem compares stage-cache.sh's APPROVED and GHPUB with
-// approvedPublicModulePrefixes and githubPublicModuleRe.
+// modEgressParityProblem compares stage-cache.sh's APPROVED, OWNPUB and GHPUB
+// with approvedPublicModulePrefixes, publicOwnedModulePrefixes and
+// githubPublicModuleRe.
 func modEgressParityProblem(script string) string {
 	m := regexp.MustCompile(`(?m)^APPROVED='\^\(([^)]*)\)/'$`).FindStringSubmatch(script)
 	if m == nil {
@@ -483,6 +495,17 @@ func modEgressParityProblem(script string) string {
 	}
 	if got, want := strings.Join(hosts, " "), strings.Join(approvedPublicModulePrefixes, " "); got != want {
 		return fmt.Sprintf("stage-cache.sh APPROVED is %q, the open step's set is %q", got, want)
+	}
+	o := regexp.MustCompile(`(?m)^OWNPUB='\^\(([^)]*)\)/'$`).FindStringSubmatch(script)
+	if o == nil {
+		return "stage-cache.sh carries no OWNPUB='^(...)/' line"
+	}
+	var owned []string
+	for _, h := range strings.Split(o[1], "|") {
+		owned = append(owned, strings.ReplaceAll(h, "[.]", ".")+"/")
+	}
+	if got, want := strings.Join(owned, " "), strings.Join(publicOwnedModulePrefixes, " "); got != want {
+		return fmt.Sprintf("stage-cache.sh OWNPUB is %q, the open step's set is %q", got, want)
 	}
 	g := regexp.MustCompile(`(?m)^GHPUB='([^']*)'$`).FindStringSubmatch(script)
 	if g == nil || strings.ReplaceAll(g[1], "[.]", `\.`) != githubPublicModuleRe.String() {
@@ -570,5 +593,44 @@ func TestModEgressMainRoots(t *testing.T) {
 	env := moduleDownloadEnv(t.TempDir(), t.TempDir())
 	if err := moduleEgressProblem("..", roots, owners, env); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// regression: #5239
+// TestModEgressPublicOwned: the public Assay module paths pass the screen
+// under their own owner, while private and unknown paths of that owner,
+// look-alike neighbours, another case, and an operator pattern refuse.
+func TestModEgressPublicOwned(t *testing.T) {
+	owners := []string{"medici-finance"}
+	for _, p := range []string{
+		"github.com/medici-finance/assay/tools/desk",
+		"github.com/medici-finance/assay/deskcore",
+		"github.com/medici-finance/assay/statusgen",
+	} {
+		if w := modulePathEgressProblem(p, owners, nil); w != "" {
+			t.Errorf("%s refused: %s", p, w)
+		}
+	}
+	for _, p := range []string{
+		"github.com/medici-finance/assay",
+		"github.com/medici-finance/assay-other/x",
+		"github.com/medici-finance/assay-internal/tools/x",
+		"github.com/medici-finance/assay2/x",
+		"github.com/medici-finance/assayx/y",
+		"github.com/medici-finance/private-lib",
+		"github.com/Medici-Finance/assay/tools/desk",
+	} {
+		if w := modulePathEgressProblem(p, owners, nil); !strings.Contains(w, "owner") {
+			t.Errorf("%s: got %q, want the owner refusal", p, w)
+		}
+	}
+	for _, p := range []string{"git.example.net/medici-finance/assay/x", "example.org/assay/x"} {
+		if w := modulePathEgressProblem(p, owners, nil); w != "not on the approved public set" {
+			t.Errorf("%s: got %q, want the unapproved refusal", p, w)
+		}
+	}
+	w := modulePathEgressProblem("github.com/medici-finance/assay/tools/desk", owners, []string{"github.com/medici-finance"})
+	if !strings.Contains(w, "private pattern") {
+		t.Errorf("an operator-marked public-owned path: %q", w)
 	}
 }

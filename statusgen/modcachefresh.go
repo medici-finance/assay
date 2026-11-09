@@ -152,6 +152,17 @@ var approvedPublicModulePrefixes = []string{
 // unless it sits under an owner the screen refuses.
 var githubPublicModuleRe = regexp.MustCompile(`^github\.com/[A-Za-z0-9_.-]+/`)
 
+// publicOwnedModulePrefixes is stage-cache.sh's OWNPUB: the module paths of a
+// repository proven public that shares its owner with private ones. A path
+// under one of these prefixes, matched case-sensitively as module paths are, is
+// exempt from the owner refusal and from nothing else: the operator's private
+// patterns still refuse it. The trailing slash keeps every neighbouring
+// repository of the same owner refused. TestModEgressParity holds the two
+// lists equal.
+var publicOwnedModulePrefixes = []string{
+	"github.com/medici-finance/assay/",
+}
+
 // goModEditJSON parses one go.mod with Go's own parser (`go mod edit -json`),
 // which runs no module code and makes no request. A var so tests can fail it.
 var goModEditJSON = func(gomod string, env []string) ([]byte, error) {
@@ -205,7 +216,8 @@ func matchModulePattern(pattern, path string) bool {
 // to the public proxy (each root's requires that are not replaced by a
 // directory, every replacement that names a module version, and every module
 // in its go.sum) must be on the approved public set or a github.com path, and
-// none may sit under an owner of the repositories the check binds, nor match
+// none may sit under an owner of the repositories the check binds (unless it is
+// a module of a repository proven public, publicOwnedModulePrefixes), nor match
 // the operator's own private patterns. Anything else is could-not-check with
 // nothing sent. owners are lower-case forge owners.
 func moduleEgressProblem(home string, roots, owners []string, env []string) error {
@@ -238,8 +250,14 @@ func moduleEgressProblem(home string, roots, owners []string, env []string) erro
 // may.
 func modulePathEgressProblem(p string, owners, private []string) string {
 	lc := strings.ToLower(p)
+	publicOwned := false
+	for _, a := range publicOwnedModulePrefixes {
+		if strings.HasPrefix(p, a) {
+			publicOwned = true
+		}
+	}
 	for _, o := range owners {
-		if strings.HasPrefix(lc, "github.com/"+o+"/") {
+		if !publicOwned && strings.HasPrefix(lc, "github.com/"+o+"/") {
 			return "under the verified repository's owner " + o
 		}
 	}
@@ -247,6 +265,9 @@ func modulePathEgressProblem(p string, owners, private []string) string {
 		if matchModulePattern(pat, p) {
 			return "matches the operator's private pattern " + pat
 		}
+	}
+	if publicOwned {
+		return ""
 	}
 	for _, a := range approvedPublicModulePrefixes {
 		if strings.HasPrefix(p, a) {
