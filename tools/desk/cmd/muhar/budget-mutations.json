@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/muhar -run '^TestBudget' -count=1 -timeout=45s",
+  "test": "go test ./cmd/muhar ./internal/arch -run '^(TestBudget|TestOneImplementationPerMeaning)' -count=1 -timeout=45s",
   "control": {
     "name": "CONTROL: host clamp disabled",
     "file": "cmd/muhar/budget.go",
@@ -54,6 +54,18 @@
       "file": "cmd/muhar/runner.go",
       "old": "cmd.Cancel = nil",
       "new": "// cmd.Cancel = nil"
+    },
+    {
+      "name": "host owner marker omitted",
+      "file": "cmd/muhar/budget.go",
+      "old": "// semantic: S-host-mutation-work\nfunc (b *hostBudget) acquireWhile",
+      "new": "// host owner marker omitted\nfunc (b *hostBudget) acquireWhile"
+    },
+    {
+      "name": "second host owner declared",
+      "file": "cmd/muhar/budget.go",
+      "old": "func (b *hostBudget) acquire() (func(), error) {",
+      "new": "// semantic: S-host-mutation-work\nfunc (b *hostBudget) acquire() (func(), error) {"
     }
   ]
 }

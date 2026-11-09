@@ -81,6 +81,7 @@ func (b *hostBudget) acquire() (func(), error) { return b.acquireWhile(nil) }
 
 // needed is observed before every poll, so a worker which has not acquired a
 // slot stops as soon as other workers drain the queue. It reserves no mutation.
+// semantic: S-host-mutation-work
 func (b *hostBudget) acquireWhile(needed func() bool) (func(), error) {
 	if needed != nil && !needed() {
 		return nil, errNoBudgetWork
