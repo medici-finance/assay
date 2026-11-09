@@ -568,7 +568,7 @@ mutation/control files, runner schema, runner Go version, inherited environment
 (excluding disposable cache/temp paths), `-select` and the literal `-shard` mode.
 For a plain `go test`, it also hashes the selected package compilation closure's
 source, tests, embedded and native files, dependency metadata, Go executable,
-the resolved Go environment, compiler/tool binaries and file modes. Build/test commands and their
+the resolved Go environment, compiler/tool binaries and file modes. Generated GCC work-directory flags are excluded; their target/toolchain and inherited CGO inputs remain bound. Build/test commands and their
 flags are bound through the spec. The complete-tree input set is intentionally
 conservative: even an unrelated fixture edit invalidates reuse. Keep generated
 logs/output outside the tree. File symlinks are read through; directory symlinks

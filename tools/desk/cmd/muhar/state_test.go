@@ -234,6 +234,15 @@ func TestStateRejectsNewTree(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		same, err := stateIdentity(s, o)
+		if err != nil || same != base {
+			t.Fatalf("unchanged Go inputs changed identity: %v", err)
+		}
+		o.jobs = 2
+		scheduled, err := stateIdentity(s, o)
+		if err != nil || scheduled != base {
+			t.Fatalf("scheduling changed identity: %v", err)
+		}
 		for _, which := range []string{"toolchain", "compiled-test", "dependency-metadata", "external-source", "external-metadata"} {
 			path := shim
 			if which == "compiled-test" {
@@ -262,6 +271,10 @@ func TestStateRejectsNewTree(t *testing.T) {
 				t.Fatalf("identity ignored %s", which)
 			}
 			writeFixture(t, path, string(old))
+			restored, err := stateIdentity(s, o)
+			if err != nil || restored != base {
+				t.Fatalf("restored %s did not restore identity: %v", which, err)
+			}
 		}
 	})
 }

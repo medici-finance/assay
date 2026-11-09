@@ -23,7 +23,7 @@
       "name": "error observation reused",
       "file": "cmd/muhar/state.go",
       "old": "if complete && r.definitive() {",
-      "new": "if true {"
+      "new": "if complete || r.definitive() {"
     },
     {
       "name": "resumed verdict changed",
@@ -42,6 +42,12 @@
       "file": "cmd/muhar/harness.go",
       "old": "if err := os.WriteFile(path, orig, info.Mode().Perm()); err != nil {",
       "new": "if err := os.WriteFile(path, orig, info.Mode().Perm()); err != nil && false {"
+    },
+    {
+      "name": "volatile Go environment bound",
+      "file": "cmd/muhar/state.go",
+      "old": "\"GOTELEMETRYDIR\", \"GOGCCFLAGS\"",
+      "new": "\"GOTELEMETRYDIR\""
     }
   ]
 }

@@ -348,7 +348,9 @@ func stateIdentity(s spec, o options) (string, error) {
 		if err := json.Unmarshal(out, &settings); err != nil {
 			return "", err
 		}
-		for _, k := range []string{"GOCACHE", "GOTMPDIR", "GOTELEMETRYDIR"} {
+		// GOGCCFLAGS contains a freshly minted work directory. Its meaningful
+		// inputs are already bound by the target/toolchain and inherited CGO flags.
+		for _, k := range []string{"GOCACHE", "GOTMPDIR", "GOTELEMETRYDIR", "GOGCCFLAGS"} {
 			delete(settings, k)
 		}
 		for _, k := range []string{"GOMOD", "GOWORK", "GOENV"} {
