@@ -261,7 +261,7 @@ type MilestoneEvidenceObservation struct {
 	Pointer EvidencePointer
 	State   Completeness
 }
-type MilestonePrerequisiteObservation struct {
+type MilestonePrereqObservation struct {
 	Receipt    MilestonePrerequisite
 	Historical bool
 	State      string
@@ -274,7 +274,7 @@ type MilestoneInputs struct {
 	ContractProtected  Completeness
 	AuthorityProtected Completeness
 	Briefs             []MilestoneBriefObservation
-	Prerequisites      []MilestonePrerequisiteObservation
+	Prerequisites      []MilestonePrereqObservation
 	Decisions          []MilestoneDecision
 	DecisionsComplete  bool
 	Evidence           []MilestoneEvidenceObservation
@@ -465,7 +465,7 @@ func AssessMilestone(m MilestoneManifest, in MilestoneInputs) MilestoneAssessmen
 		if p.Environment != m.Subject.Environment || p.Interface != m.Subject.Interface || p.Profile != m.Subject.Profile {
 			out.Blockers = append(out.Blockers, "prerequisite-profile")
 		}
-		idx = slices.IndexFunc(in.Prerequisites, func(o MilestonePrerequisiteObservation) bool { return o.Receipt == p })
+		idx = slices.IndexFunc(in.Prerequisites, func(o MilestonePrereqObservation) bool { return o.Receipt == p })
 		if idx < 0 || !in.Prerequisites[idx].Historical {
 			out.Unknowns = append(out.Unknowns, "prerequisite-receipt")
 		}
@@ -580,7 +580,7 @@ func AssessMilestone(m MilestoneManifest, in MilestoneInputs) MilestoneAssessmen
 		out.Unknowns = append(out.Unknowns, "current-applicability")
 	}
 	for _, p := range m.Prerequisites {
-		idx := slices.IndexFunc(in.Prerequisites, func(o MilestonePrerequisiteObservation) bool { return o.Receipt == p })
+		idx := slices.IndexFunc(in.Prerequisites, func(o MilestonePrereqObservation) bool { return o.Receipt == p })
 		if idx < 0 || in.Prerequisites[idx].State == "unknown" {
 			out.Unknowns = append(out.Unknowns, "prerequisite-current")
 		} else if in.Prerequisites[idx].State != "supported" {

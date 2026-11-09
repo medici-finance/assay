@@ -28,7 +28,7 @@ type milestoneReceiptSources interface {
 	Protected(domain.EvidencePointer) domain.Completeness
 	Contract(domain.EvidencePointer) (MilestoneRecord, domain.EvidencePointer, workref.Context, workref.Registry, bool, error)
 	Brief(domain.MilestoneContributor) (domain.MilestoneBriefObservation, error)
-	Prerequisite(domain.MilestonePrerequisite) (domain.MilestonePrerequisiteObservation, error)
+	Prerequisite(domain.MilestonePrerequisite) (domain.MilestonePrereqObservation, error)
 	DecisionLineage(domain.Actor) ([]string, error)
 	Decisions(repo string, issue int) ([]rulingLink, bool, error)
 }

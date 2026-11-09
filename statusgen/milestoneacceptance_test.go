@@ -55,7 +55,7 @@ type msSources struct {
 	owner         workref.Context
 	registry      workref.Registry
 	briefs        []domain.MilestoneBriefObservation
-	prerequisites []domain.MilestonePrerequisiteObservation
+	prerequisites []domain.MilestonePrereqObservation
 	comments      map[int64]msComment
 	complete      bool
 	missing       map[domain.EvidencePointer]bool
@@ -86,13 +86,13 @@ func (s *msSources) Brief(c domain.MilestoneContributor) (domain.MilestoneBriefO
 	}
 	return domain.MilestoneBriefObservation{}, fmt.Errorf("unavailable")
 }
-func (s *msSources) Prerequisite(p domain.MilestonePrerequisite) (domain.MilestonePrerequisiteObservation, error) {
+func (s *msSources) Prerequisite(p domain.MilestonePrerequisite) (domain.MilestonePrereqObservation, error) {
 	for _, o := range s.prerequisites {
 		if o.Receipt.Milestone == p.Milestone {
 			return o, nil
 		}
 	}
-	return domain.MilestonePrerequisiteObservation{}, fmt.Errorf("unavailable")
+	return domain.MilestonePrereqObservation{}, fmt.Errorf("unavailable")
 }
 func (s *msSources) DecisionLineage(actor domain.Actor) ([]string, error) {
 	return []string{actor.ID, "principal:driver"}, nil
@@ -209,7 +209,7 @@ func msSetup(t *testing.T) *msFixture {
 	}
 	prereq := domain.MilestonePrerequisite{Milestone: "example:widgets:build:m-02@1", Manifest: domain.ContentDigest([]byte("prerequisite receipt")), Decision: domain.DecisionPointer{Repository: "example-org/widgets", Issue: 18, Comment: 180, Digest: domain.ContentDigest([]byte("prerequisite decision"))}, Environment: env, Interface: m.Subject.Interface, Profile: m.Subject.Profile}
 	m.Prerequisites = append(m.Prerequisites, prereq)
-	s.prerequisites = []domain.MilestonePrerequisiteObservation{{Receipt: prereq, Historical: true, State: "supported"}}
+	s.prerequisites = []domain.MilestonePrereqObservation{{Receipt: prereq, Historical: true, State: "supported"}}
 	f := &msFixture{m: m, s: s}
 	f.req = milestoneAcceptanceRequest{DecisionIssue: 17, Current: domain.MilestoneInputs{CurrentContract: cp, CurrentMilestone: m.Milestone, CurrentSubject: m.Subject, ObservedAt: msAt, ValidUntil: "2026-11-10T12:00:00Z", Evaluator: m.Evaluator, Requirements: readercaps.Requirements{Schema: readercaps.RequirementsSchema, Required: []readercaps.Operation{}}}}
 	f.publish()
