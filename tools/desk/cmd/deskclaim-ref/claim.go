@@ -216,6 +216,10 @@ func cmdAcquire(id, owner, branch string) int {
 		errf("unverifiable: creating %s/%s was rejected and the claim could not be read%s", refPrefix, id, causeSuffix())
 		return exitUnverifiable
 	}
+	if legacySubjectHold(ref.Msg) {
+		errf("unverifiable: selected subject required to reclaim a negotiated claim")
+		return exitUnverifiable
+	}
 	state := fieldOf(ref.Msg, "state")
 	hbranch := fieldOf(ref.Msg, "branch")
 	hage, aok := ageMinutes(ref.Date)
@@ -249,6 +253,10 @@ func cmdProgress(id, owner, branch string) int {
 		return exitRefused
 	case deskkit.ClaimReadUnverifiable:
 		errf("unverifiable: could not read the claim on %s%s", id, causeSuffix())
+		return exitUnverifiable
+	}
+	if legacySubjectHold(ref.Msg) {
+		errf("unverifiable: selected subject required to advance a negotiated claim")
 		return exitUnverifiable
 	}
 	if holder := fieldOf(ref.Msg, "owner"); holder != "" && holder != owner {
@@ -346,6 +354,10 @@ func cmdSteal(id, owner, reason string) int {
 			errf("unverifiable: could not mint the replacement claim for %s%s", id, causeSuffix())
 			return exitUnverifiable
 		}
+	}
+	if legacySubjectHold(ref.Msg) {
+		errf("unverifiable: selected subject required to replace a negotiated claim")
+		return exitUnverifiable
 	}
 	// Held: replace the current tag with an explicit-old CAS update. A stale old means another
 	// desk moved it first — the steal loses cleanly rather than clobbering (closing the
