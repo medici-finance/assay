@@ -358,6 +358,22 @@ source binding without network. Operator private patterns always win; other owne
 paths retain denial. This exception is not added to the cluster stager, which
 continues to refuse owner paths. It does not add VCS fallback or network to rows.
 
+The proof applies to every `github.com/medici-finance/assay` path whatever the
+verified owner is, so it is also a new requirement for adopters outside that
+owner. Before this exception, such an adopter's Assay requirements passed the
+screen as ordinary `github.com` paths with no extra request. Now its open step
+also makes the unauthenticated GET above, which counts against GitHub's shared
+anonymous rate limit. It refuses with nothing downloaded when that GET returns
+403 (the rate limit included), any other non-200 status or a network failure,
+and when the root's `go.sum` carries only the `/go.mod` checksum for an Assay
+version it requests. A require that a versioned `replace` points at another
+module still binds the Assay version it names, so such a root refuses until
+`go.sum` also carries that version's checksums.
+
+The screen reads a copy of each root's `go.mod` and `go.sum` taken once before
+it starts, and the download is bound to those bytes: a root whose files differ
+from the screened copy just before or just after its download refuses.
+
 It then prints one line naming the proxy, the checksum
 database, the roots and the cache before it downloads anything. The cache path may
 hold no comma, quote, whitespace or control character, since it is written into
