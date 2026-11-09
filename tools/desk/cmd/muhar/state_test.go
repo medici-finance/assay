@@ -165,6 +165,52 @@ func TestStateResume(t *testing.T) {
 	if !bytes.Equal(trace, fresh) {
 		t.Fatal("torn tail ran command")
 	}
+	t.Run("identity-interrupt", func(t *testing.T) {
+		root := t.TempDir()
+		scratch := t.TempDir()
+		marker := filepath.Join(scratch, "pulse")
+		writeFixture(t, filepath.Join(root, "go.mod"), "module example.test/interrupt\n\ngo 1.27.0\n")
+		writeFixture(t, filepath.Join(root, "p.go"), "package p\nfunc Value() int { return 1 }\n")
+		realGo, err := exec.LookPath("go")
+		if err != nil {
+			t.Fatal(err)
+		}
+		shim := filepath.Join(scratch, "go")
+		writeFixture(t, shim, "#!/bin/sh\nif [ \"$1\" = list ]; then\n (while :; do echo pulse >> "+shellQuote(marker)+"; sleep 0.03; done) &\n wait\nfi\nexec "+shellQuote(realGo)+" \"$@\"\n")
+		if err := os.Chmod(shim, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		g := stateFixture{root: root, spec: filepath.Join(scratch, "spec.json"), state: filepath.Join(scratch, "run.jsonl")}
+		raw, _ := json.Marshal(spec{Root: root, Test: "go test -count=1 .", Control: Mutation{Name: "control", File: "p.go", Old: "return 1", New: "return 0"}})
+		writeFixture(t, g.spec, string(raw))
+		child := stateCommand(bin, g)
+		child.Env = append(os.Environ(), "PATH="+scratch+string(os.PathListSeparator)+os.Getenv("PATH"))
+		if err := child.Start(); err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = child.Process.Kill() }()
+		waitStateFile(t, marker)
+		stopStateCmd(t, child)
+		before, _ := os.ReadFile(marker)
+		time.Sleep(100 * time.Millisecond)
+		after, _ := os.ReadFile(marker)
+		if !bytes.Equal(before, after) {
+			t.Fatal("identity discovery child survived interrupt")
+		}
+		state, err := openRunState(g.state)
+		if err != nil {
+			t.Fatalf("interrupt retained state writer lock: %v", err)
+		}
+		defer state.close()
+		if err := state.bind("after-discovery-interrupt"); err != nil {
+			t.Fatal(err)
+		}
+		pristine, _ := os.ReadFile(filepath.Join(root, "p.go"))
+		if strings.Contains(string(pristine), "return 0") {
+			t.Fatal("identity discovery planted a mutation")
+		}
+	})
+
 }
 
 // regression: F-state-identity
@@ -242,6 +288,17 @@ func TestStateRejectsNewTree(t *testing.T) {
 		scheduled, err := stateIdentity(s, o)
 		if err != nil || scheduled != base {
 			t.Fatalf("scheduling changed identity: %v", err)
+		}
+		t.Run("external-flags", func(t *testing.T) {
+			t.Setenv("GOFLAGS", "-overlay="+filepath.Join(t.TempDir(), "overlay.json"))
+			if _, err := stateIdentity(s, o); err == nil || !strings.Contains(err.Error(), "cannot resolve external inputs") {
+				t.Fatalf("unbound inherited overlay accepted: %v", err)
+			}
+		})
+		prefixed := s
+		prefixed.Test = "GOFLAGS='-overlay=unbound.json' go test -count=1 ."
+		if _, err := stateIdentity(prefixed, o); err == nil || !strings.Contains(err.Error(), "cannot resolve external inputs") {
+			t.Fatalf("unbound command overlay accepted: %v", err)
 		}
 		for _, which := range []string{"toolchain", "compiled-test", "dependency-metadata", "external-source", "external-metadata"} {
 			path := shim

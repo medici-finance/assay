@@ -575,7 +575,7 @@ logs/output outside the tree. File symlinks are read through; directory symlinks
 refuse because a complete input inventory cannot be proved. `-j` is scheduling
 and does not change identity. External-input flags (`-overlay`, `-modfile`, `-pgo`,
 `-toolexec`, `-exec`), unknown Go flags and shell compositions containing Go
-and command-local PATH overrides refuse with `-state`; plain Go commands expose a provable compilation closure. Set PATH for the whole invocation instead.
+including inherited/command-local GOFLAGS inputs, and command-local PATH overrides refuse with `-state`; plain Go commands expose a provable compilation closure. Set PATH for the whole invocation instead.
 Other shell suites use the conservative tree inventory; their external data and
 executables must remain stable under the caller's control.
 

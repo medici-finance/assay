@@ -300,6 +300,17 @@ func stateIdentity(s spec, o options) (string, error) {
 		return "", err
 	}
 	if isGo {
+		goFlags := os.Getenv("GOFLAGS")
+		for _, assignment := range assigns {
+			if name, value, _ := strings.Cut(assignment, "="); name == "GOFLAGS" {
+				goFlags = value
+			}
+		}
+		if strings.TrimSpace(goFlags) != "" {
+			if _, _, _, err := stateGoArgs("go test " + goFlags + " ."); err != nil {
+				return "", fmt.Errorf("GOFLAGS inputs: %w", err)
+			}
+		}
 		goPath, err := exec.LookPath("go")
 		if err != nil {
 			return "", err

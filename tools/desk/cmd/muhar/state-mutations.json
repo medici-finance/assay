@@ -54,6 +54,18 @@
       "file": "cmd/muhar/state.go",
       "old": "files[resolve(p.Dir, name)] = true",
       "new": "if within(root, p.Dir) { files[resolve(p.Dir, name)] = true }"
+    },
+    {
+      "name": "inherited external flags unbound",
+      "file": "cmd/muhar/state.go",
+      "old": "if strings.TrimSpace(goFlags) != \"\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "identity interruption misreported",
+      "file": "cmd/muhar/main.go",
+      "old": "if interrupted.Load() {\n\t\t\tcode = 130\n\t\t}",
+      "new": "if false { code = 130 }"
     }
   ]
 }

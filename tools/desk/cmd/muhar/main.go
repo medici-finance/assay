@@ -313,7 +313,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 // sweep is the run itself: read and check the spec, then baseline, control and mutations.
-func sweep(o options, stdout, stderr io.Writer) int {
+func sweep(o options, stdout, stderr io.Writer) (code int) {
 	if o.spec == "" {
 		fmt.Fprintln(stderr, "muhar: -spec is required")
 		return 1
@@ -322,6 +322,27 @@ func sweep(o options, stdout, stderr io.Writer) int {
 	if code != 0 {
 		return code
 	}
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sig)
+	var interrupted atomic.Bool
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-sig:
+			interrupted.Store(true)
+			liveGroups.killAll()
+		case <-done:
+		}
+	}()
+
+	defer func() {
+		if interrupted.Load() {
+			code = 130
+		}
+	}()
+
 	var state *runState
 	var err error
 	if o.state != "" {
@@ -393,20 +414,6 @@ func sweep(o options, stdout, stderr io.Writer) int {
 	// build runs in its own process group, which a terminal Ctrl-C does not
 	// reach, so kill those groups first: an interrupted run leaves no suite
 	// running behind it.
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sig)
-	var interrupted atomic.Bool
-	done := make(chan struct{})
-	defer close(done)
-	go func() {
-		select {
-		case <-sig:
-			interrupted.Store(true)
-			liveGroups.killAll()
-		case <-done:
-		}
-	}()
 
 	runEnv := envWithGOCACHE(os.Environ(), gocache)
 	h := &Harness{
