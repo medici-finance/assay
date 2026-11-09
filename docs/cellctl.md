@@ -113,14 +113,18 @@ Two points are easy to miss:
   hand steps under `cellctl new`). `cellctl check <cell>` reports the deskd App key and `--orgs`
   rows as `n/a` when `DESKD=0`.
 
-**Key file names.** `desktoken` reads one key file per role: `<app-name>.pem`, where `<app-name>`
-is the role's `<ROLE>_APP` binding (the environment first, then `apps.env`) and defaults to
-`<role>-app`. A `<PREFIX>_PEM` variable naming a key path takes precedence over the file; `<PREFIX>`
+**Key file names.** The desk verbs do not all find a key the same way. `desktoken`, and the verbs
+that mint through it, read one key file per role: `<app-name>.pem`, where `<app-name>` is the
+role's `<ROLE>_APP` binding (the environment first, then `apps.env`) and defaults to `<role>-app`.
+A `<PREFIX>_PEM` environment variable naming a key path takes precedence over the file; `<PREFIX>`
 is the App name upper-cased, `-` as `_`, any trailing `_APP` dropped, so `<ROLE>_PEM` for the
-default name. A role that `apps.env` binds to an App by its slug therefore reads
-`<slug>.pem`, never the `<role>-app.pem` link this document shows, and a cell that carries only the
-role-named links fails that mint with `private key not found`. Name each key link after its role's
-binding; linking both names to the one key file also works.
+default name. Some verbs read a fixed, role-named key whatever the binding: `deskpost` mints the
+reviewer from `REVIEWER_PEM`, else `reviewer-app.pem`, and the verifier signing verbs
+(`deskverdict`, `verifyloop`) read `VERIFIER_PEM`, else `verifier-app.pem`. So a role that
+`apps.env` binds to an App by its slug needs its one key file under both names: `<slug>.pem` for
+`desktoken`, and `<role>-app.pem` for the fixed-name verbs. A cell that carries only one of the two
+fails the other lookup (`private key not found` from `desktoken`, `cannot read reviewer App key`
+from `deskpost`).
 
 **Launch from a shell that does not point elsewhere.** This applies to every `k8s` cell, with or
 without `deskd`. A host launch builds each role window's environment from the launching shell; with
@@ -134,13 +138,22 @@ resolvers read these variables ahead of the cell's own `apps.env` and key files:
   token cache, and the token cache is written to the first of those.
 - `<ROLE>_APP`: read from the environment before `apps.env`. It picks the App name a role mints as,
   and so the `<PREFIX>` of every variable below.
-- `<PREFIX>_APP_ID` and `<PREFIX>_INSTALL_ID`: read from the environment before `apps.env`.
+- `<PREFIX>_APP_ID`: read from the environment before `apps.env`.
+- `<PREFIX>_INSTALL_ID`: read from the environment only; when it is unset, `desktoken` looks the
+  installation up on the forge.
 - `<PREFIX>_PEM`: a key path that takes precedence over `<app-name>.pem`.
+- The role-keyed `<ROLE>_APP_ID`, `<ROLE>_INSTALL_ID` (or the per-owner
+  `<ROLE>_INSTALL_ID_<OWNER>`) and `<ROLE>_PEM` that the fixed-name verbs read whatever the
+  binding: `deskpost` reads `REVIEWER_APP_ID` and the install ids from the environment before
+  `apps.env`, and `REVIEWER_PEM` from the environment; the verifier signing verbs read
+  `VERIFIER_PEM` from the environment.
 - `<PREFIX>_TOKEN`: a token-cache path. A cached token there that is still inside the reuse window
   is handed out as the role's token without checking which App minted it; a stale one is replaced
   by a fresh mint written to that path.
-- `GH_TOKEN`: the shim passes an explicit one through untouched. A verb that mints its own role
-  token honours it only once it is shown to be the role's App, but a `gh` child uses it as is.
+- `GH_TOKEN`, `GITHUB_TOKEN` and `GH_ENTERPRISE_TOKEN`: the shim passes an explicit one through
+  untouched. A verb that mints its own role token honours an inherited `GH_TOKEN` only once it is
+  shown to be the role's App, but a `gh` child uses these as is, and so do `deskadvisory` and
+  `deskclaim-ref` run without `--token-file`.
 
 So a launching shell that exports any of these for another cell or config home makes this cell's
 desks read this cell's roster but mint as, or reuse the cached token of, another App. Run
@@ -151,8 +164,9 @@ this yet (#5877).
 Before the first `up`, prove each role in the environment its window will get. In the shell you will
 launch from, first confirm that none of the variables above is set for anything but this cell:
 `printenv ASSAY_CONFIG_HOME` prints nothing or this cell's `home/.config/assay`, and
-`env | cut -d= -f1 | grep -E '_(APP|APP_ID|INSTALL_ID|PEM|TOKEN)$'` (names only, so no token is
-printed; it also matches `GH_TOKEN`) lists no variable that belongs to another cell or App.
+`env | cut -d= -f1 | grep -E '_(APP|APP_ID|PEM|TOKEN|INSTALL_ID(_[A-Z0-9_]+)?)$'` (names only, so
+no token is printed; it also matches `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and the
+per-owner install ids) lists no variable that belongs to another cell or App.
 Then run `desktoken <role> --repo <owner>/<repo>` with only `HOME` set to the cell's `home`
 directory, leaving the rest of that shell's environment as it is. Do not set or clear any of these
 variables for the proof alone: a proof run in an environment the desks never get passes even when
@@ -491,14 +505,18 @@ resolved once (`command -v`) before the launch switches to `env -i`, and named r
 inherited wholesale.
 
 The App PEM reaches the tools through the cell, never the parent shell: exporting
-`ASSAY_CONFIG_HOME` is the whole custody path, since the desk tools resolve a role's key from
-`<config-home>/<app-name>.pem`: `<role>-app.pem` for an unbound role, or the name its `<ROLE>_APP`
-binding in `apps.env` gives (see "Key file names" under
-[Choosing a cell kind](#choosing-a-cell-kind)). `check` proves every PEM present under the cell's
-config home (or named by its `apps.env`) is a regular, non-symlink, mode-0600 file — a house-style symlink into the
-operator's real config home is a MISS on this kind, by design — and that the config-home directory
-itself is mode 0700 (a group- or world-readable directory holding 0600 PEMs still exposes their
-names and mtimes).
+`ASSAY_CONFIG_HOME` is the whole custody path, since the desk tools resolve a role's key under
+`<config-home>`: `desktoken` reads `<app-name>.pem` (`<role>-app.pem` for an unbound role, or the
+name its `<ROLE>_APP` binding in `apps.env` gives), while `deskpost` and the verifier signing verbs
+read `<role>-app.pem` whatever the binding, so a bound role's key carries both names (see "Key file
+names" under [Choosing a cell kind](#choosing-a-cell-kind)). `check` proves every `*-app.pem`
+directly under the cell's config home, and every key path a `_PEM=` line in its `apps.env` names,
+is a regular, non-symlink, mode-0600 file — a house-style symlink into the operator's real config
+home is a MISS on this kind, by design — and that the config-home directory itself is mode 0700 (a
+group- or world-readable directory holding 0600 PEMs still exposes their names and mtimes). A bound
+role's `<slug>.pem` whose name does not end in `-app.pem` is not among the files `check` inspects:
+give it its second name as a hard link (`ln`) to the checked `<role>-app.pem`, never a symlink or a
+separate copy, so the one inode `check` passed is the key `desktoken` reads.
 
 ### `smoke` — a one-shot, tool-free, read-only readiness probe
 
