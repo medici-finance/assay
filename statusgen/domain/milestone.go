@@ -208,6 +208,8 @@ type MilestoneDefinition struct {
 type MilestoneAuthority struct {
 	Schema           string          `json:"schema"`
 	Source           EvidencePointer `json:"-"`
+	Milestone        string          `json:"milestone"`
+	DecisionIssue    int             `json:"decision-issue"`
 	Humans           []string        `json:"humans"`
 	Duty             DutyPolicy      `json:"duty"`
 	SeparateAcceptor bool            `json:"separate-acceptor"`
@@ -321,7 +323,7 @@ func AssessMilestone(m MilestoneManifest, in MilestoneInputs) MilestoneAssessmen
 	digest, _ := m.Digest()
 	def := in.Definition
 	resolved, e := workref.Resolve(m.Milestone, &in.Owner, in.Registry, workref.TypedMilestone)
-	if e != nil || resolved.Identity.String()+"@"+strconv.FormatUint(resolved.Revision, 10) != def.Milestone {
+	if e != nil || resolved.Identity.String()+"@"+strconv.FormatUint(resolved.Revision, 10) != def.Milestone || m.Milestone != def.Milestone {
 		out.Blockers = append(out.Blockers, "contract-identity")
 		return out
 	}
@@ -342,7 +344,7 @@ func AssessMilestone(m MilestoneManifest, in MilestoneInputs) MilestoneAssessmen
 	if !def.CoverageKnown {
 		out.Unknowns = append(out.Unknowns, "contract-coverage")
 	}
-	if in.Policy.Schema != MilestoneAuthoritySchema || len(in.Policy.Humans) == 0 || !in.Policy.SeparateAcceptor {
+	if in.Policy.Schema != MilestoneAuthoritySchema || in.Policy.Milestone != def.Milestone || in.Policy.DecisionIssue < 1 || len(in.Policy.Humans) == 0 || !in.Policy.SeparateAcceptor {
 		out.Unknowns = append(out.Unknowns, "authority-policy")
 	}
 	for _, human := range in.Policy.Humans {
@@ -506,7 +508,7 @@ func AssessMilestone(m MilestoneManifest, in MilestoneInputs) MilestoneAssessmen
 			continue
 		}
 		p := d.Payload
-		if d.Pointer.Validate() != nil || d.Pointer.Repository != m.Contract.Repository || p.Schema != MilestoneDecisionSchema {
+		if d.Pointer.Validate() != nil || d.Pointer.Repository != m.Contract.Repository || d.Pointer.Issue != in.Policy.DecisionIssue || p.Schema != MilestoneDecisionSchema {
 			out.Unknowns = append(out.Unknowns, "decision-binding")
 			continue
 		}

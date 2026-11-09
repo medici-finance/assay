@@ -492,7 +492,8 @@ requires exact profile equality and invents no compatibility conversion.
 
 The host obtains the existing `MilestoneRecord` at the manifest's contract snapshot,
 and the authority policy selected by its Acceptance authority section. The policy
-artifact uses `milestone-authority-v1`: `schema`, authorized `humans`, existing
+artifact uses `milestone-authority-v1`: `schema`, exact `milestone`, bound
+`decision-issue`, authorized `humans`, existing
 `duty` policy and mandatory `separate-acceptor`. Its source pointer is external to
 its bytes, avoiding a self-digest cycle. Both source commits require an observation
 proving reachability from the declaring root's protected default branch. An observed

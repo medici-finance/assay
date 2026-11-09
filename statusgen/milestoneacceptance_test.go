@@ -159,7 +159,7 @@ func msSetup(t *testing.T) *msFixture {
 	cp := msPointer("docs/streams/build/milestones/m-01-build.md", contract)
 	s.raw[cp] = contract
 	s.protected[cp] = domain.Present
-	policy := domain.MilestoneAuthority{Schema: domain.MilestoneAuthoritySchema, Humans: []string{"human:driver"}, Duty: domain.DutyPolicy{Duty: "verify", Against: []string{"author"}, MinProof: "attested"}, SeparateAcceptor: true}
+	policy := domain.MilestoneAuthority{Schema: domain.MilestoneAuthoritySchema, Milestone: "example:widgets:build:m-01@1", DecisionIssue: 17, Humans: []string{"human:driver"}, Duty: domain.DutyPolicy{Duty: "verify", Against: []string{"author"}, MinProof: "attested"}, SeparateAcceptor: true}
 	pb := msJSON(policy)
 	ap := msPointer("evidence/authority.json", pb)
 	s.raw[ap] = pb
@@ -360,6 +360,25 @@ func TestMilestoneAcceptSubject(t *testing.T) {
 			}
 		})
 	}
+	t.Run("inner-policy-subject", func(t *testing.T) {
+		f := msSetup(t)
+		in := msCoreInputs(t, f)
+		in.Policy.Milestone = "example:widgets:build:m-02@1"
+		msNotSupported(t, domain.AssessMilestone(f.m, in))
+	})
+	t.Run("inner-policy-issue", func(t *testing.T) {
+		f := msSetup(t)
+		in := msCoreInputs(t, f)
+		in.Decisions[0].Pointer.Issue = 99
+		msNotSupported(t, domain.AssessMilestone(f.m, in))
+	})
+	t.Run("coverage-selection", func(t *testing.T) {
+		f := msSetup(t)
+		f.req.Manifest.Path = "evidence/unlinked.json"
+		f.s.raw[f.req.Manifest] = msJSON(f.m)
+		msNotSupported(t, f.run(t))
+	})
+
 	t.Run("inner-missing-lineage", func(t *testing.T) {
 		f := msSetup(t)
 		in := msCoreInputs(t, f)

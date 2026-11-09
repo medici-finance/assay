@@ -131,8 +131,8 @@
     {
       "name": "failed-criterion-ignored",
       "target": "statusgen/domain/milestone.go",
-      "old": "if c.Result == \"fail\" {",
-      "new": "if false && c.Result == \"fail\" {",
+      "old": "if c.Result == \"fail\" {\n\t\t\tout.Blockers = append(out.Blockers, \"criterion-failed\")\n\t\t} else if c.Result != \"pass\" {",
+      "new": "if false {\n\t\t\tout.Blockers = append(out.Blockers, \"criterion-failed\")\n\t\t} else if c.Result != \"pass\" && c.Result != \"fail\" {",
       "module": "statusgen",
       "package": ".",
       "test": "TestMilestoneAcceptSubject"

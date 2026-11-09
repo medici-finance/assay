@@ -57,7 +57,7 @@ func readMilestoneAcceptance(req milestoneAcceptanceRequest, sources milestoneRe
 		return held("receipt-payload")
 	}
 	canonical, err := manifest.Canonical()
-	if err != nil || !bytes.Equal(raw, canonical) {
+	if err != nil || !bytes.Equal(raw, canonical) || req.Manifest.Repository != manifest.Contract.Repository {
 		return held("receipt-canonical")
 	}
 	record, authority, owner, registry, known, err := sources.Contract(manifest.Contract)
@@ -87,6 +87,20 @@ func readMilestoneAcceptance(req milestoneAcceptanceRequest, sources milestoneRe
 		return held("authority-payload")
 	}
 	in.Policy.Source = authority
+	if req.DecisionIssue != in.Policy.DecisionIssue {
+		return held("authority-decision-issue")
+	}
+	linked := false
+	for _, c := range record.Criteria {
+		for _, p := range c.Evidence {
+			if p == req.Manifest.Path {
+				linked = true
+			}
+		}
+	}
+	if !linked {
+		return held("receipt-not-in-coverage")
+	}
 	// All trust-bearing collections are replaced, never inherited from a caller's
 	// current-subject envelope or echoed from the manifest.
 	in.Briefs = nil
