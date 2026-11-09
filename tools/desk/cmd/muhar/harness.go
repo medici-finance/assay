@@ -189,6 +189,11 @@ func applyEdit(content string, m Mutation) (string, error) {
 // mutation was caught); it is a func so the core logic is exercisable without
 // spawning a real process.
 type Harness struct {
+	State       *runState
+	Indices     []int
+	Interrupted func() bool
+	observation *mutationTiming
+
 	Root            string                 // directory relative File paths resolve against
 	Test            func(root string) bool // true == suite FAILED (mutation caught) against the tree at root
 	RunTest         func(root string, timeout time.Duration) CommandResult
@@ -319,7 +324,14 @@ func (h *Harness) runOne(root string, m Mutation) (Result, error) {
 	}
 
 	if h.Build != nil {
+		start := time.Now()
 		built := h.Build(root, m, limit)
+		if h.observation != nil {
+			h.observation.Build += time.Since(start)
+			if built.TimedOut {
+				h.observation.Timeout = "build"
+			}
+		}
 		if built.TimedOut {
 			return CouldNotMutate, fmt.Errorf("mutated package build timed out after %s", limit)
 		}
@@ -330,6 +342,12 @@ func (h *Harness) runOne(root string, m Mutation) (Result, error) {
 			return CouldNotMutate, fmt.Errorf("mutated package does not compile")
 		}
 	}
+	start := time.Now()
+	defer func() {
+		if h.observation != nil {
+			h.observation.Test += time.Since(start)
+		}
+	}()
 	test := h.Test
 	if h.Selector != nil {
 		// Decided only AFTER the edit is proven on disk, so a selection can
@@ -341,6 +359,15 @@ func (h *Harness) runOne(root string, m Mutation) (Result, error) {
 		// from the mutated code, so a narrowed CAUGHT can be one the full command
 		// survives).
 		sel := h.Selector.For(m, orig)
+		if h.observation != nil {
+			h.observation.Selection = sel.Description
+			if h.observation.Selection == "" {
+				h.observation.Selection = "full command"
+			}
+			if sel.Skip {
+				h.observation.Selection = "skip: uncovered"
+			}
+		}
 		if sel.Skip {
 			return NotCaught, nil
 		}
@@ -397,6 +424,7 @@ func (h *Harness) preflight(root string) Report {
 	// makes every later "caught" meaningless.
 	start := time.Now()
 	base := h.runTest(root, policy.baseline)
+	baselineTime := time.Since(start)
 	if base.TimedOut {
 		rep.Broken = true
 		rep.BrokenReason = fmt.Sprintf("baseline timed out after %s — discard the run", policy.baseline)
@@ -412,7 +440,7 @@ func (h *Harness) preflight(root string) Report {
 		rep.BrokenReason = "baseline suite is RED on pristine source — cannot distinguish a caught mutation from a pre-existing failure; discard the run"
 		return rep
 	}
-	h.MutationTimeout = policy.mutantLimit(time.Since(start))
+	h.MutationTimeout = policy.mutantLimit(baselineTime)
 	rep.BaselineGreen = true
 
 	// Selection's coverage pass needs the green pristine tree the baseline
@@ -429,7 +457,17 @@ func (h *Harness) preflight(root string) Report {
 	// (3) Positive control: a mutation the suite MUST catch. If it is not
 	// caught, the harness is not mutating (or the suite cannot see the source)
 	// and the whole run is worthless — exactly the #34 failure, made loud.
-	cres, cerr := h.runOne(root, h.Control)
+	control := *h
+	timing := &mutationTiming{Selection: "full command"}
+	control.observation = timing
+	start = time.Now()
+	cres, cerr := control.runOne(root, h.Control)
+	controlTime := time.Since(start)
+	if h.State != nil && !h.stopped() {
+		if err := h.State.append(stateEntry{Kind: "phases", BaselineNS: baselineTime.Nanoseconds(), ControlNS: controlTime.Nanoseconds(), BuildNS: timing.Build.Nanoseconds(), TestNS: timing.Test.Nanoseconds(), Selection: timing.Selection}); err != nil {
+			return Report{Broken: true, BrokenReason: "state phases: " + err.Error()}
+		}
+	}
 	rep.ControlResult = cres
 	var killed suiteTimeout
 	if cres == Caught && errors.As(cerr, &killed) {
@@ -480,9 +518,15 @@ func (h *Harness) Run() Report {
 		// The instrument is proven. Now every NotCaught is a real finding.
 		_, st := h.schemataSetup(h.Root)
 		defer st.cleanup()
-		for i, m := range h.Mutations {
-			res, err := h.runMutation(h.Root, st, i)
-			rep.Results = append(rep.Results, MutationResult{Mutation: m, Result: res, Err: err})
+		for i := range h.Mutations {
+			if h.stopped() {
+				break
+			}
+			result, err := h.completedMutation(h.Root, st, i)
+			if err != nil {
+				return Report{Broken: true, BrokenReason: err.Error()}
+			}
+			rep.Results = append(rep.Results, result)
 		}
 		return rep
 	}
@@ -527,6 +571,7 @@ func (h *Harness) runParallel(jobs int) Report {
 	// Results are indexed by spec position, never appended, so the report is
 	// byte-identical to a sequential run whatever order the workers finish in.
 	rep.Results = make([]MutationResult, len(h.Mutations))
+	resultErrors := make([]error, len(h.Mutations))
 	next := make(chan int)
 	var wg sync.WaitGroup
 	for w := 0; w < jobs; w++ {
@@ -539,9 +584,12 @@ func (h *Harness) runParallel(jobs int) Report {
 			}
 			defer st.cleanup()
 			for i := range next {
-				m := h.Mutations[i]
-				res, err := h.runMutation(root, st, i)
-				rep.Results[i] = MutationResult{Mutation: m, Result: res, Err: err}
+				if h.stopped() {
+					continue
+				}
+				result, err := h.completedMutation(root, st, i)
+				resultErrors[i] = err
+				rep.Results[i] = result
 			}
 		}(w, roots[w])
 	}
@@ -550,6 +598,11 @@ func (h *Harness) runParallel(jobs int) Report {
 	}
 	close(next)
 	wg.Wait()
+	for _, err := range resultErrors {
+		if err != nil {
+			return Report{Broken: true, BrokenReason: err.Error()}
+		}
+	}
 	return rep
 }
 

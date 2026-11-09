@@ -1,0 +1,35 @@
+{
+  "test": "go test ./cmd/muhar -run '^TestState' -count=1 -timeout=90s",
+  "control": {
+    "name": "state header schema invalid",
+    "file": "cmd/muhar/state.go",
+    "old": "Schema: stateSchema, Identity: identity",
+    "new": "Schema: 0, Identity: identity"
+  },
+  "mutations": [
+    {
+      "name": "completed record executed twice",
+      "file": "cmd/muhar/state.go",
+      "old": "if r, ok := h.State.records[index]; ok {",
+      "new": "if r, ok := h.State.records[index]; ok && false {"
+    },
+    {
+      "name": "different input identity accepted",
+      "file": "cmd/muhar/state.go",
+      "old": "r.Identity != identity",
+      "new": "false"
+    },
+    {
+      "name": "error observation reused",
+      "file": "cmd/muhar/state.go",
+      "old": "if r.definitive() {",
+      "new": "if true {"
+    },
+    {
+      "name": "resumed verdict changed",
+      "file": "cmd/muhar/state.go",
+      "old": "result := NotCaught",
+      "new": "result := Caught"
+    }
+  ]
+}

@@ -20,7 +20,7 @@ exec-tier: strong
 exec-tier-why: "Resume correctness depends on source identity, interruption cleanup and durable-state invariants that a green final report alone cannot prove."
 domain: complicated
 consumers:
-  - "tools/desk/cmd/muhar/README.md: follow-up desk-tools/56 (this brief; flips to fixed-here when the state contract is documented)"
+  - "tools/desk/cmd/muhar/README.md: fixed-here (documents the state schema, identity, cleanup and operator-owned path contract)"
 ---
 
 # Brief 56 — Make mutation reports resumable and measurable

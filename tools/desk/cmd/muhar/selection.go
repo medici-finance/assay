@@ -99,6 +99,8 @@ type selectSpec struct {
 
 // Selection is what the selector decided for one mutation.
 type Selection struct {
+	Description string
+
 	// Skip: no selected test executes the mutated function; the verdict is NOT
 	// CAUGHT without a suite run. Never Caught — skipping cannot produce red.
 	Skip bool
@@ -327,7 +329,7 @@ func (cs *coverSelector) goList(root string, patterns []string) ([]listedPkg, er
 	cmd.Env = cs.env
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	out, err := trackedOutput(cmd, false)
 	if err != nil {
 		return nil, fmt.Errorf("go list %v: %v: %s", patterns, err, strings.TrimSpace(stderr.String()))
 	}
@@ -430,13 +432,13 @@ func (cs *coverSelector) Prepare(root string) error {
 			"-coverpkg="+strings.Join(coverpkg, ","), "-o", bin, p.ImportPath)...)
 		build.Dir = root
 		build.Env = cs.env
-		if out, err := build.CombinedOutput(); err != nil {
+		if out, err := trackedOutput(build, true); err != nil {
 			return fmt.Errorf("coverage build of %s: %v: %s", p.ImportPath, err, strings.TrimSpace(string(out)))
 		}
 		list := exec.Command(bin, "-test.list", listFilter)
 		list.Dir = p.Dir
 		list.Env = cs.env
-		out, err := list.Output()
+		out, err := trackedOutput(list, false)
 		if err != nil {
 			return fmt.Errorf("list tests of %s: %v", p.ImportPath, err)
 		}
@@ -481,7 +483,7 @@ func (cs *coverSelector) Prepare(root string) error {
 					"-test.count=1", "-test.coverprofile=" + prof}, runFlags...)...)
 				run.Dir = cs.pkgs[t.pkg].dir
 				run.Env = cs.env
-				out, err := run.CombinedOutput()
+				out, err := trackedOutput(run, true)
 				if err != nil {
 					results <- res{id: id, err: fmt.Errorf("%s fails when run alone on pristine source (%v) — a narrowed run could go red for a reason that is not the mutation:\n%s",
 						t.name, err, tail(out, 20))}
@@ -845,11 +847,11 @@ func (cs *coverSelector) For(m Mutation, orig []byte) Selection {
 		m.Name, d.picked, len(cs.tests), d.covering, d.picked-d.covering)
 	args := d.args
 	if cs.timedTest != nil {
-		return Selection{TestWithTimeout: func(root string, timeout time.Duration) CommandResult {
+		return Selection{Description: "go " + strings.Join(args, " "), TestWithTimeout: func(root string, timeout time.Duration) CommandResult {
 			return cs.timedTest(root, withTimeout(args, timeout), timeout)
 		}}
 	}
-	return Selection{Test: func(root string) bool { return cs.goTest(root, args) }}
+	return Selection{Description: "go " + strings.Join(args, " "), Test: func(root string) bool { return cs.goTest(root, args) }}
 }
 
 func withTimeout(args []string, timeout time.Duration) []string {

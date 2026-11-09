@@ -352,7 +352,7 @@ built. When the control fails any of these checks, the whole run is
 `HARNESS BROKEN`.
 
 After each mutation the original bytes are written back, whatever the verdict.
-(One exception: see [Interrupting a run](#interrupting-a-run).)
+See [Interrupting a run](#interrupting-a-run) for signal cleanup.
 
 ## Flags
 
@@ -361,6 +361,8 @@ After each mutation the original bytes are written back, whatever the verdict.
     	mutations in flight at once (1 = sequential, in place; 0 = one per CPU, capped at 2 to bound peak memory) (default 1)
   -shard string
     	run only this invocation's share of the spec: "i/n" (0-based shard i of n; the n shards partition the spec's mutations). Baseline + control still run in full per shard.
+  -state string
+	caller-owned resumable JSONL state path
   -spec string
     	path to the mutation spec JSON
 ```
@@ -523,16 +525,66 @@ from `tools/desk` with no `root`, so their `file` paths are relative to
 
 When `muhar` receives SIGINT or SIGTERM, it kills every suite and build command
 it has running (on Unix each runs in its own process group, so the whole group
-goes, children included; on Windows only the top process is killed), deletes its temporary build cache and exits `130`. With `-j 1`, a mutation that is in place at that
-moment is **not** restored: the mutant stays in your working tree. After
-interrupting a sequential run, check `git status` (or `git diff`) and restore
-the file. The same applies to a run with one mutation or none, whatever `-j`
-says, because that run is in place too (see
-[Parallel runs](#parallel-runs--j)). Otherwise, with `-j` > 1 the mutants live
-in the temporary copies, so your tree is not touched. The copies themselves
-(`muhar-<n>-*` directories under the system temporary directory) are left
-behind; delete them. (Tracked as
-[#2646](https://github.com/medici-finance/assay/issues/2646).)
+goes, children included; on Windows only the top process is killed). It waits
+for the commands to finish, restores any planted source, removes its temporary
+workspaces and build cache, releases the state lock, then exits `130`. A completed
+state record remains available to a later invocation; an interrupted mutation
+has no reusable record. SIGKILL, a power loss, or an external writer can still
+prevent source restoration. Check the working tree after such a termination.
+
+### Resuming and measuring a sweep (`-state PATH`)
+
+Pass an operator-owned path for this run, outside the tree under test and outside
+any disposable per-run directory:
+
+```sh
+muhar -spec mutations.json -state "$RUN_STATE_DIR/shipping.jsonl"
+# After SIGINT/SIGTERM, repeat the same command and path.
+```
+
+There is no manifest state path or shared default. The caller owns retention,
+permissions and removal; separate specs, shards, modes or changed inputs need
+separate paths. One invocation holds a nonblocking exclusive file lock through
+the existing cross-platform desk lock adapter. A second writer refuses before
+writing or running a command. Do not replace or remove a locked state file.
+
+The version 1 format is UTF-8 JSONL: a `header` record contains `schema` and a
+SHA-256 `identity`; each `phases` record measures this invocation's pristine
+`baseline_ns` and positive `control_ns` wall durations, plus control `build_ns`,
+`test_ns` and `selection`. Every completed mutation appends a `mutation` record
+with its original zero-based spec `index`, literal `verdict`, `complete`,
+`build_ns`, `test_ns`, `selection`, optional `error`, and `timeout` classification
+(`build` or `test`; absent means no timeout). Test timeouts also retain `limit_ns`
+so a resumed report preserves their exact reason. Durations are nanoseconds;
+selection describes the full command, selected Go arguments, uncovered skip or
+schemata path. Shared schemata preparation is outside per-mutation build time.
+Each JSON line is written under the writer lock and synced before the mutation
+is considered complete. A malformed line or partial trailing line refuses the
+whole retry before baseline/control; recover the tail offline or use a new path.
+
+Identity covers the exact spec bytes, canonical root, all source/test/fixture
+files under that root (excluding `.git` metadata and the selected state file),
+mutation/control files, runner schema, runner Go version, inherited environment
+(excluding disposable cache/temp paths), `-select` and the literal `-shard` mode.
+For a plain `go test`, it also hashes the selected package compilation closure's
+source, tests, embedded and native files, dependency metadata, Go executable,
+and resolved Go environment/toolchain settings. Build/test commands and their
+flags are bound through the spec. The complete-tree input set is intentionally
+conservative: even an unrelated fixture edit invalidates reuse. Keep generated
+logs/output outside the tree. File symlinks are read through; directory symlinks
+refuse because a complete input inventory cannot be proved. `-j` is scheduling
+and does not change identity. External-input flags (`-overlay`, `-modfile`, `-pgo`,
+`-toolexec`, `-exec`), unknown Go flags and shell compositions containing Go
+refuse with `-state`; plain Go commands expose a provable compilation closure.
+Other shell suites use the conservative tree inventory; their external data and
+executables must remain stable under the caller's control.
+
+Every retry reruns baseline, selection preparation and positive control. Only
+complete `CAUGHT` and `NOT_CAUGHT` mutation records with no infrastructure error
+are reused; a complete test timeout is a definitive `CAUGHT`. `COULD_NOT_MUTATE`,
+`HARNESS BROKEN`, interrupted and error observations are rerun. The final report
+combines resumed and new observations in spec order and keeps ordinary stdout
+and stderr reporting. An identity/schema mismatch refuses before any mutation.
 
 ## See also
 

@@ -79,6 +79,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -235,6 +236,7 @@ type options struct {
 	jobs      int
 	shard     string
 	useSelect bool
+	state     string
 }
 
 // sweepFn is the typed handler the command tree calls; the contract tests replace it to
@@ -261,6 +263,7 @@ func versionLine() string {
 // configuration file and reads no environment variable for them.
 func bindings() []cli.Binding {
 	return []cli.Binding{
+		{Key: "state", Kind: cli.String, Flag: "state", Usage: "caller-owned resumable JSONL state path"},
 		{Key: "spec", Kind: cli.String, Flag: "spec",
 			Usage: "`path` to the mutation spec JSON (required)"},
 		{Key: "j", Kind: cli.Int, Flag: "j", Short: "j", Default: 1,
@@ -293,7 +296,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			if onResolve != nil {
 				onResolve(v)
 			}
-			o := options{spec: v.String("spec"), jobs: v.Int("j"), shard: v.String("shard"), useSelect: v.Bool("select")}
+			o := options{spec: v.String("spec"), jobs: v.Int("j"), shard: v.String("shard"), useSelect: v.Bool("select"), state: v.String("state")}
 			if code := sweepFn(o, stdout, stderr); code != 0 {
 				return exitErr(code)
 			}
@@ -319,6 +322,29 @@ func sweep(o options, stdout, stderr io.Writer) int {
 	if code != 0 {
 		return code
 	}
+	var state *runState
+	var err error
+	if o.state != "" {
+		state, err = openRunState(o.state)
+		if err != nil {
+			fmt.Fprintln(stderr, "muhar: state:", err)
+			return 1
+		}
+		defer state.close()
+		identity, err := stateIdentity(s, o)
+		if err != nil {
+			fmt.Fprintln(stderr, "muhar: state identity:", err)
+			return 1
+		}
+		if err := state.bind(identity); err != nil {
+			fmt.Fprintln(stderr, "muhar: state:", err)
+			return 1
+		}
+	}
+	indices := make([]int, len(s.Mutations))
+	for i := range indices {
+		indices[i] = i
+	}
 	// Sharding narrows the mutation list — and ONLY the mutation list. The
 	// baseline and the positive control are untouched, so every shard still
 	// proves the instrument before reporting a single verdict. Echo the
@@ -332,6 +358,12 @@ func sweep(o options, stdout, stderr io.Writer) int {
 		}
 		total := len(s.Mutations)
 		s.Mutations = shardSelect(s.Mutations, i, n)
+		indices = nil
+		for idx := 0; idx < total; idx++ {
+			if idx%n == i {
+				indices = append(indices, idx)
+			}
+		}
 		fmt.Fprintf(stderr, "muhar: shard %d/%d — running %d of %d mutations (indices ≡ %d mod %d); the other shards own the rest\n",
 			i, n, len(s.Mutations), total, i, n)
 	}
@@ -349,8 +381,8 @@ func sweep(o options, stdout, stderr io.Writer) int {
 	// compile-time constant, not a knob). One throwaway cache for the WHOLE
 	// run — mutants of one package share most build artifacts, so per-run
 	// keeps the intra-run speedup — removed when the run ends, whatever the
-	// exit path: the defer covers every return, and the interrupt handler below,
-	// which ends the process with os.Exit (skipping defers), removes it itself.
+	// exit path, including interruption: child processes are killed first, then
+	// the sweep unwinds source/workspace and cache cleanup before returning 130.
 	gocache, err := os.MkdirTemp("", "assay-mutant-gocache-*")
 	if err != nil {
 		fmt.Fprintf(stderr, "muhar: create per-run GOCACHE: %v\n", err)
@@ -364,17 +396,22 @@ func sweep(o options, stdout, stderr io.Writer) int {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sig)
+	var interrupted atomic.Bool
+	done := make(chan struct{})
+	defer close(done)
 	go func() {
-		<-sig
-		liveGroups.killAll()
-		_ = os.RemoveAll(gocache)
-		selectTemps.removeAll() // -select's coverage binaries, if a pass is running
-		os.Exit(130)            // the interrupt ends the process; nothing returns to the caller
+		select {
+		case <-sig:
+			interrupted.Store(true)
+			liveGroups.killAll()
+		case <-done:
+		}
 	}()
 
 	runEnv := envWithGOCACHE(os.Environ(), gocache)
 	h := &Harness{
-		Root:      s.Root,
+		Root:  s.Root,
+		State: state, Indices: indices, Interrupted: interrupted.Load,
 		Control:   s.Control,
 		Mutations: s.Mutations,
 		Jobs:      n,
@@ -394,14 +431,8 @@ func sweep(o options, stdout, stderr io.Writer) int {
 		}
 		env := envWithGOCACHE(os.Environ(), gocache)
 		h.Selector = newCoverSelector(s, cmd, n, env, stderr, func(root string, args []string) bool {
-			c := exec.Command("go", args...)
-			if root != "" {
-				c.Dir = root
-			}
-			c.Env = env
-			c.Stdout = stderr
-			c.Stderr = stderr
-			return c.Run() != nil // non-zero exit during the pristine selection proof
+			out := runGoArgs(root, args, env, 0)
+			return out.Failed || out.TimedOut || out.Err != nil // pristine proof
 		}, func(root string, args []string, timeout time.Duration) CommandResult {
 			return runGoArgs(root, withTimeout(args, timeout), env, timeout)
 		})
@@ -442,7 +473,7 @@ func sweep(o options, stdout, stderr io.Writer) int {
 					cmd.Dir = root
 				}
 				cmd.Env = env
-				b, err := cmd.CombinedOutput()
+				b, err := trackedOutput(cmd, true)
 				all.Write(b)
 				if err != nil {
 					clean = false
@@ -471,6 +502,9 @@ func sweep(o options, stdout, stderr io.Writer) int {
 	}
 
 	rep := h.Run()
+	if interrupted.Load() {
+		return 130
+	}
 	fmt.Fprint(stdout, rep.Summary())
 	if rep.Broken {
 		return 2

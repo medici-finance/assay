@@ -304,3 +304,23 @@ func goBuildFromTest(test, pkg string) (string, bool) {
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
+
+// trackedOutput gives discovery and coverage commands the same interruption
+// ownership as suite commands. Wait reaps them before source restoration.
+func trackedOutput(cmd *exec.Cmd, combined bool) ([]byte, error) {
+	setProcessGroup(cmd)
+	// These discovery commands have no context deadline; interruption is owned
+	// by liveGroups. exec.Cmd rejects Cancel on commands without a context.
+	cmd.Cancel = nil
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if combined {
+		cmd.Stderr = &out
+	}
+	if err := liveGroups.start(cmd); err != nil {
+		return nil, err
+	}
+	err := cmd.Wait()
+	liveGroups.done(cmd)
+	return out.Bytes(), err
+}
