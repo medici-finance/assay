@@ -1,3 +1,0 @@
-### Fixed
-- `pr-monitor.sh` no longer sends a non-GitHub forge's credential to GitHub. With `deskmonitor` installed, a legacy cycle is handed to `deskmonitor pr`, which reads each repo through the forge the roster maps it to; an exit outside 0/1/2 is reported as `MONITOR-DEGRADED ... could-not-check`. Without it, the script's own GitHub-only reader mints with `desktoken --forge github`, so a repo mapped to another forge is could-not-check at the mint (no read, no baseline) instead of a 401 on every cycle.
-- `inbound-monitor.sh` pins its `gh` reader's mint to `--forge github` in the same way, and a test lint now refuses any shipped script that mints for `gh` without that pin.

@@ -1,2 +1,0 @@
-### Fixed
-- `scanloop run` no longer reports an unwatched surface as a clean drain. The poller-identity probe resolves each owner through the forge-aware resolver (`deskkit.ResolveRoleCredential`), so a GitLab-served repo gets its custody credential instead of the GitHub-only transport's refusal dressed as a "gh keyring fallback". The pass now exits could-not-check (6, as `plan` does) when the monitor is still NOT ARMED afterwards or when the probe was refused a credential.
