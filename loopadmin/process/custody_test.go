@@ -16,6 +16,7 @@ type recordingCustody struct {
 	finished []bool
 	refuse   error
 	finish   error
+	nilAdmit bool
 }
 
 type recordingAdmission struct{ c *recordingCustody }
@@ -23,6 +24,9 @@ type recordingAdmission struct{ c *recordingCustody }
 func (c *recordingCustody) Admit([]string) (Admission, error) {
 	if c.refuse != nil {
 		return nil, c.refuse
+	}
+	if c.nilAdmit {
+		return nil, nil
 	}
 	c.admitted++
 	return recordingAdmission{c}, nil
@@ -79,6 +83,14 @@ func TestRunnerCustodyBoundary(t *testing.T) {
 	called := false
 	if _, uncertain, err := r.RunObserved(context.Background(), argv, env, t.TempDir(), io.Discard, io.Discard, func(int) error { called = true; return nil }); uncertain || !errors.Is(err, refusal) || called {
 		t.Fatalf("refused custody launched: called=%v uncertain=%v err=%v", called, uncertain, err)
+	}
+
+	// An admit with no Admission to finish is a contract error before launch:
+	// Finish is owed exactly once, so the launch must not run unfinished.
+	r, _ = New(&recordingCustody{nilAdmit: true})
+	called = false
+	if _, uncertain, err := r.RunObserved(context.Background(), argv, env, t.TempDir(), io.Discard, io.Discard, func(int) error { called = true; return nil }); uncertain || !errors.Is(err, ErrNoAdmission) || called {
+		t.Fatalf("nil admission launched: called=%v uncertain=%v err=%v", called, uncertain, err)
 	}
 
 	c := &recordingCustody{}

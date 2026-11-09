@@ -32,6 +32,7 @@ type processTree interface {
 
 // Custody admits one launch before its child starts. Admit sees the child's
 // exact environment. A refusal (non-nil error) means no process is started.
+// An accepted launch must return a non-nil Admission (ErrNoAdmission otherwise).
 type Custody interface {
 	Admit(env []string) (Admission, error)
 }
@@ -52,6 +53,12 @@ type Runner struct {
 // ErrNoCustody is returned when a launch is attempted without a launch
 // custodian. It is a refusal before launch, never an uncertain result.
 var ErrNoCustody = errors.New("process launch requires a launch custodian")
+
+// ErrNoAdmission is returned when a custodian admits a launch without an
+// Admission to finish. Finish is owed exactly once per launch, so a nil
+// Admission is a custodian contract error and nothing is started. A custodian
+// with nothing to record returns a no-op Admission, never nil.
+var ErrNoAdmission = errors.New("launch custodian admitted without an admission to finish")
 
 // New returns a Runner bound to custody. A nil custody is refused.
 func New(custody Custody) (*Runner, error) {
@@ -117,11 +124,11 @@ func (r *Runner) withCustody(env []string, child func() (int, bool, error)) (int
 	if err != nil {
 		return -1, false, err
 	}
-	code, uncertain, err := child()
-	var finishErr error
-	if admission != nil {
-		finishErr = admission.Finish(!uncertain)
+	if admission == nil {
+		return -1, false, ErrNoAdmission
 	}
+	code, uncertain, err := child()
+	finishErr := admission.Finish(!uncertain)
 	return code, uncertain || finishErr != nil, errors.Join(err, finishErr)
 }
 

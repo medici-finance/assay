@@ -44,30 +44,33 @@ func (cacheCustody) Admit(env []string) (process.Admission, error) {
 	return lease, nil
 }
 
-var runner = func() *process.Runner {
-	r, err := process.New(cacheCustody{})
+// runner is loopadmin's process runner bound to cacheCustody. New refuses
+// only a nil custodian, so the error is unreachable; it is still checked.
+var runner = must(process.New(cacheCustody{}))
+
+func must[T any](v T, err error) T {
 	if err != nil {
 		panic(err)
 	}
-	return r
-}()
+	return v
+}
 
-// Run is process.Runner.Run under the desk's cache custody.
+// Run is the runner's Run under the desk's cache custody.
 func Run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer) (int, bool, error) {
 	return runner.Run(ctx, argv, env, dir, stdout, stderr)
 }
 
-// RunInteractive is process.Runner.RunInteractive under the desk's cache custody.
+// RunInteractive is the runner's RunInteractive under the desk's cache custody.
 func RunInteractive(ctx context.Context, argv, env []string, dir string, stdin *os.File, stdout, stderr io.Writer) (int, bool, error) {
 	return runner.RunInteractive(ctx, argv, env, dir, stdin, stdout, stderr)
 }
 
-// RunObserved is process.Runner.RunObserved under the desk's cache custody.
+// RunObserved is the runner's RunObserved under the desk's cache custody.
 func RunObserved(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, started func(int) error) (int, bool, error) {
 	return runner.RunObserved(ctx, argv, env, dir, stdout, stderr, started)
 }
 
-// RunInteractiveObserved is process.Runner.RunInteractiveObserved under the
+// RunInteractiveObserved is the runner's RunInteractiveObserved under the
 // desk's cache custody.
 func RunInteractiveObserved(ctx context.Context, argv, env []string, dir string, stdin *os.File, stdout, stderr io.Writer, started func(int) error) (int, bool, error) {
 	return runner.RunInteractiveObserved(ctx, argv, env, dir, stdin, stdout, stderr, started)
