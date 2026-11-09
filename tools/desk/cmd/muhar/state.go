@@ -49,6 +49,12 @@ type stateEntry struct {
 }
 
 func openRunState(path string) (*runState, error) {
+	if info, err := os.Stat(path); err == nil && !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("state path must be a regular file")
+	} else if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, err
@@ -96,7 +102,17 @@ func (s *runState) bind(identity string) error {
 		case "mutation":
 			// A later failed attempt invalidates any earlier completion at this index.
 			delete(s.records, r.Index)
-			if r.definitive() {
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(line, &fields); err != nil {
+				return err
+			}
+			complete := true
+			for _, key := range []string{"index", "verdict", "complete", "build_ns", "test_ns", "selection"} {
+				if value, ok := fields[key]; !ok || bytes.Equal(value, []byte("null")) {
+					complete = false
+				}
+			}
+			if complete && r.definitive() {
 				s.records[r.Index] = r
 			}
 		case "phases", "broken", "interrupted":
@@ -245,6 +261,13 @@ func stateIdentity(s spec, o options) (string, error) {
 				}
 			}
 			if !d.IsDir() {
+				info, err := os.Stat(path)
+				if err != nil {
+					return err
+				}
+				if !info.Mode().IsRegular() {
+					return fmt.Errorf("state identity input is not a regular file: %s", path)
+				}
 				files[path] = true
 			}
 			return nil
@@ -340,6 +363,11 @@ func stateIdentity(s spec, o options) (string, error) {
 				}
 			}
 		}
+		if toolDir := settings["GOTOOLDIR"]; toolDir != "" {
+			if err := addTree(toolDir); err != nil {
+				return "", err
+			}
+		}
 		toolSettings, _ := json.Marshal(settings)
 		values = append(values, string(toolSettings))
 	}
@@ -360,7 +388,12 @@ func stateIdentity(s spec, o options) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("identity input %s: %w", path, err)
 		}
+		info, err := os.Stat(path)
+		if err != nil {
+			return "", err
+		}
 		put([]byte(path))
+		put([]byte(info.Mode().String()))
 		put(b)
 	}
 	return hex.EncodeToString(digest.Sum(nil)), nil
@@ -378,6 +411,9 @@ func stateGoArgs(command string) (args, assigns []string, isGo bool, err error) 
 		name, _, _ := strings.Cut(toks[0], "=")
 		if !envName.MatchString(name) {
 			break
+		}
+		if name == "PATH" {
+			return nil, nil, false, fmt.Errorf("-state cannot resolve a command-local PATH; set PATH for the invocation instead")
 		}
 		assigns = append(assigns, toks[0])
 		toks = toks[1:]

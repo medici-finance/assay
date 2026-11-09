@@ -209,8 +209,11 @@ func TestStateRejectsNewTree(t *testing.T) {
 			t.Skip("POSIX toolchain shim")
 		}
 		root := t.TempDir()
-		writeFixture(t, filepath.Join(root, "go.mod"), "module example.test/state\n\ngo 1.27.0\n")
-		writeFixture(t, filepath.Join(root, "p.go"), "package p\nfunc Value() int { return 1 }\n")
+		dep := t.TempDir()
+		writeFixture(t, filepath.Join(dep, "go.mod"), "module example.test/dep\n\ngo 1.27.0\n")
+		writeFixture(t, filepath.Join(dep, "dep.go"), "package dep\nfunc Value() int { return 1 }\n")
+		writeFixture(t, filepath.Join(root, "go.mod"), "module example.test/state\n\ngo 1.27.0\nrequire example.test/dep v0.0.0\nreplace example.test/dep => "+filepath.ToSlash(dep)+"\n")
+		writeFixture(t, filepath.Join(root, "p.go"), "package p\nimport \"example.test/dep\"\nfunc Value() int { return dep.Value() }\n")
 		writeFixture(t, filepath.Join(root, "p_test.go"), "package p\nimport \"testing\"\nfunc TestValue(t *testing.T) { if Value()!=1 {t.Fatal(\"bad\")} }\n")
 		specPath := filepath.Join(root, "spec.json")
 		writeFixture(t, specPath, `{"test":"go test -count=1 ."}`)
@@ -231,13 +234,19 @@ func TestStateRejectsNewTree(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, which := range []string{"toolchain", "compiled-test", "dependency-metadata"} {
+		for _, which := range []string{"toolchain", "compiled-test", "dependency-metadata", "external-source", "external-metadata"} {
 			path := shim
 			if which == "compiled-test" {
 				path = filepath.Join(root, "p_test.go")
 			}
 			if which == "dependency-metadata" {
 				path = filepath.Join(root, "go.mod")
+			}
+			if which == "external-source" {
+				path = filepath.Join(dep, "dep.go")
+			}
+			if which == "external-metadata" {
+				path = filepath.Join(dep, "go.mod")
 			}
 			old, _ := os.ReadFile(path)
 			comment := "\n// changed\n"
@@ -282,6 +291,15 @@ func TestStateSkipsNoErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// A syntactically valid line with a completion flag still is not complete
+	// when required timing fields are absent.
+	_, err = state.file.WriteString(`{"kind":"mutation","index":2,"verdict":"CAUGHT","complete":true,"selection":"full command"}` + "\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.file.Sync(); err != nil {
+		t.Fatal(err)
+	}
 	state.close()
 	out, code := runStateCmd(t, bin, f)
 	if code != 0 {
@@ -293,6 +311,40 @@ func TestStateSkipsNoErrors(t *testing.T) {
 			t.Errorf("reused error instead of executing %s", want)
 		}
 	}
+	t.Run("restore-error", func(t *testing.T) {
+		root := t.TempDir()
+		path := filepath.Join(root, "value.txt")
+		writeFixture(t, path, "original")
+		state, err := openRunState(filepath.Join(t.TempDir(), "restore.jsonl"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer state.close()
+		if err := state.bind("restore-case"); err != nil {
+			t.Fatal(err)
+		}
+		h := Harness{Root: root, State: state, Mutations: []Mutation{{Name: "restore", File: "value.txt", Old: "original", New: "changed"}}, Test: func(string) bool {
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(path, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			return true
+		}}
+		result, err := h.completedMutation(root, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Result != CouldNotMutate || result.Err == nil || !strings.Contains(result.Err.Error(), "restore") {
+			t.Fatalf("restore error became definitive: %+v", result)
+		}
+		records := readStateLines(t, state.file.Name())
+		if len(records) != 2 || records[1].definitive() {
+			t.Fatalf("restore error reusable: %+v", records)
+		}
+	})
+
 }
 
 // regression: F-state-end-to-end
@@ -326,6 +378,10 @@ func TestStateEndToEnd(t *testing.T) {
 	second, code := runStateCmd(t, bin, f, "-j", "1")
 	if code != 0 || second != resumed {
 		t.Fatalf("resume parity %d\n%s\n%s", code, second, resumed)
+	}
+	normal, err := exec.Command(bin, "-spec", f.spec).Output()
+	if err != nil || string(normal) != resumed {
+		t.Fatalf("ordinary report parity %v\n%s\n%s", err, normal, resumed)
 	}
 	otherState := f.state
 	f.state = filepath.Join(t.TempDir(), "full.jsonl")

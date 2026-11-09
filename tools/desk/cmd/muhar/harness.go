@@ -285,7 +285,7 @@ func resolve(root, path string) string {
 // terminate), and that verdict is only true when the suite had the whole limit.
 // A suite cut short because the build used up part of its time would otherwise
 // be counted CAUGHT without proving anything.
-func (h *Harness) runOne(root string, m Mutation) (Result, error) {
+func (h *Harness) runOne(root string, m Mutation) (result Result, runErr error) {
 	limit := h.MutationTimeout
 	path := resolve(root, m.File)
 	orig, err := os.ReadFile(path)
@@ -302,11 +302,17 @@ func (h *Harness) runOne(root string, m Mutation) (Result, error) {
 	if err != nil {
 		return CouldNotMutate, fmt.Errorf("mutation %q: stat %s: %w", m.Name, path, err)
 	}
+	// Restore even a partially failed write. A failed restoration is never a
+	// definitive observation, so it must not enter the resumable result set.
+	defer func() {
+		if err := os.WriteFile(path, orig, info.Mode().Perm()); err != nil {
+			result = CouldNotMutate
+			runErr = fmt.Errorf("mutation %q: restore %s: %w", m.Name, path, err)
+		}
+	}()
 	if err := os.WriteFile(path, []byte(mutated), info.Mode().Perm()); err != nil {
 		return CouldNotMutate, fmt.Errorf("mutation %q: write %s: %w", m.Name, path, err)
 	}
-	// Always restore, whatever happens next.
-	defer func() { _ = os.WriteFile(path, orig, info.Mode().Perm()) }()
 
 	// PROVE the edit landed on disk, not merely in memory. This is the check
 	// the #34 harness lacked: had it re-read the file it would have seen its

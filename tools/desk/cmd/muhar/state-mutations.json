@@ -22,7 +22,7 @@
     {
       "name": "error observation reused",
       "file": "cmd/muhar/state.go",
-      "old": "if r.definitive() {",
+      "old": "if complete && r.definitive() {",
       "new": "if true {"
     },
     {
@@ -30,6 +30,18 @@
       "file": "cmd/muhar/state.go",
       "old": "result := NotCaught",
       "new": "result := Caught"
+    },
+    {
+      "name": "external compiler input omitted",
+      "file": "cmd/muhar/state.go",
+      "old": "if path != statePath {",
+      "new": "if path != statePath && within(root, path) {"
+    },
+    {
+      "name": "restore error becomes definitive",
+      "file": "cmd/muhar/harness.go",
+      "old": "if err := os.WriteFile(path, orig, info.Mode().Perm()); err != nil {",
+      "new": "if err := os.WriteFile(path, orig, info.Mode().Perm()); err != nil && false {"
     }
   ]
 }
