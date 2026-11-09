@@ -471,6 +471,57 @@ Verification-Attestation: medici-finance/assay#5801 run=53005313c678eec3fb94c978
 
 **VERIFY: BLOCKED** — at merged source 2e1ddcbd72c2, row 5 passed on the host; rows 1-4 (check:ci) were not run because the pinned verify-runner v1.0.75 image's module cache lacks modules this source's tools/desk/go.mod now requires (medici-finance/assay#4683). No obligation failed. The gate is model, and all risk answers are no.
 
+### Re-verification, 2026-11-09, at merged source b1f0161efb6121b8ba9e7089011a7d6499c12ab7
+
+Verification-Table: delivery=74f50d985cc1224c252a348c65d3639fe2a08aa2 base=08d807836774857e8b735e1e4ef0563f6d553d01 original=08d807836774857e8b735e1e4ef0563f6d553d01
+
+Independent verifier pass (claude-opus-5-5, strong tier, not the implementer) at merged main b1f0161efb6121b8ba9e7089011a7d6499c12ab7 under desk tools v1.0.80, woken by a change to the item's inputs. Admission (deskdispatch --check-verifier) returned exit 0 before any row ran; the attestation it bound (medici-finance/assay#5884) is named on both witnesses below. Re-derived on the home at this source: the delivery is still merge 74f50d985cc1224c252a348c65d3639fe2a08aa2 (#3811), on HEAD's first-parent chain; its parents 8121208a6a4f and f23d5828a7f2 have the single merge base 08d807836774. The Verify section at that base, at both parents, at the delivery and at this source hashes identically, so the marker above names the merge base as both base and original. deskpathguard rederive reported 5 rows, 0 author-added. Since the previous re-verification's source 2e1ddcbd72c2, the only change under tools/desk/internal/deskkit/ is one added table entry in citrigger_test.go (not an activation source or test), and tools/desk/go.mod and go.sum are unchanged. Host: darwin/arm64, statusgen v1.0.80, git 2.56.0, KUBECONFIG=/dev/null, no GitHub access variable in the run environment.
+
+Fail-first: no row is risk-bearing. The brief-wide risk block answers no to all four questions, and no Verify row carries a risk-bearing, live, mutating or end-to-end tag, so no fail-first witness is required and none was taken.
+
+Rows 1-4 are check:ci rows. This host has no unshare network sandbox, so they ran in the container admission bracket, selected with --rows 1,2,3,4: host open, container run, host close, with no edit to the home between the steps. The image gap that stopped the previous re-verification (medici-finance/assay#4683) is closed by v1.0.80's module provisioning: the open step was given --module-cache with a new empty directory outside every worktree, downloaded the modules for all 13 roots that images/verify-runner/go-module-roots.txt lists (bound to their go.sum and the checksum database), and recorded the cache digest in the receipt. The container used the pinned v1.0.80 verify-runner image index sha256:cdb261e2894214dc828e9f3841b90e87e789b54a8435faa2629f4faf98d40dfe through its linux/arm64 manifest sha256:7ed3c93a77e66707c6668f423b604f0b53ec66cf654a8c33a385136fd6005fcd (native on this host: go1.27.3 linux/arm64, git 2.56.0, statusgen v1.0.80). It was started with exactly the flags the open step printed (--network none, --read-only, the module cache mounted read-only at /go/pkg/mod, GOMODCACHE=/go/pkg/mod, GOPROXY=off, GOTOOLCHAIN=local, GOFLAGS=-mod=readonly), plus the home and its git directory mounted read-only, the receipt mounted read-only, a writable directory outside the home for the witness, and a tmpfs for /tmp, HOME and the Go build cache. No preflight probe ran, no Verify row was attempted outside the bracket, and no attempt was discarded.
+
+The container step admitted the home (its tree digest equalled the one recorded at the open step and the Module-Cache digest equalled the receipt's) and all four rows passed. The close step, run from inside the home, appended the Admission-Bracket line. statusgen verifyrun --bracket-digest on the witness then reported verdict=match with span-lines=tree-digest:1,container-image:1,attestation:1. The block below is that file's bytes, unchanged.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestActivationSnapshotMatchesFreshDiscovery$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestActivationSnapshotMatchesFreshDiscovery ' "$out")` | pass exit=0 sandbox=container-netns | sha256:2e73709737b8 | 2026-11-09 | assay-verifier-app[bot] @ b1f0161efb61 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestActivationSnapshotIsNotAuthority$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestActivationSnapshotIsNotAuthority ' "$out")` | pass exit=0 sandbox=container-netns | sha256:4c7e121da6a7 | 2026-11-09 | assay-verifier-app[bot] @ b1f0161efb61 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestActivationSnapshotCorruptionAndBounds$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestActivationSnapshotCorruptionAndBounds ' "$out")` | pass exit=0 sandbox=container-netns | sha256:a62143b2c17b | 2026-11-09 | assay-verifier-app[bot] @ b1f0161efb61 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCompiledStartupDiscoveryWorkload$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestCompiledStartupDiscoveryWorkload ' "$out")` | pass exit=0 sandbox=container-netns | sha256:24474591e938 | 2026-11-09 | assay-verifier-app[bot] @ b1f0161efb61 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:8785a3e34ef6c8419a553b145d27516f08fb3057973130adb2fec2cae60bae08
+Container-Image: sha256:7ed3c93a77e66707c6668f423b604f0b53ec66cf654a8c33a385136fd6005fcd
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#5884 run=11ab3a684ceaffbe09165ede29153bdc6cd6708b28b857ecc93957fc8abe7b27 source=b1f0161efb6121b8ba9e7089011a7d6499c12ab7 brief=docs/streams/desktools-v2/brief-60-bound-component-activation-discovery-and-reuse-validated-manifest-snapshots.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=11ab3a684ceaffbe09165ede29153bdc6cd6708b28b857ecc93957fc8abe7b27 source=b1f0161efb6121b8ba9e7089011a7d6499c12ab7 tree=sha256:8785a3e34ef6c8419a553b145d27516f08fb3057973130adb2fec2cae60bae08 witness=sha256:9d16f3d1cadd8783328d7f527a8a4015a676500fe0defea4ec63ee880b368f4e opened=2026-11-09T13:55:46Z closed=2026-11-09T13:57:21Z before=receipt after=check-verifier
+
+Row 5 is a host row (check, not check:ci). It ran on the home after the bracket closed and before any Evidence prose was added, through statusgen verifyrun --rows 5, which appended the table and attestation line below; they are verifyrun's own lines, unchanged. It exited 0 with output sha256:e86a30b1c98c, the same output digest the previous re-verification recorded at source 2e1ddcbd72c2. The two out-of-scope consumer claims (tools/desk/cmd/ and statusgen/) remain review items: the delivery diff 8121208a6a4f..74f50d985cc1 touches 13 paths and none is under either directory, so both claims hold as stated.
+
+Observed result per row:
+- Row 1: pass exit=0 sandbox=container-netns, output sha256:2e73709737b8. The command ends in grep -F for the named PASS line, so exit 0 means the line for TestActivationSnapshotMatchesFreshDiscovery was present.
+- Row 2: pass exit=0 sandbox=container-netns, output sha256:4c7e121da6a7. Exit 0 of the trailing grep means the named PASS line for TestActivationSnapshotIsNotAuthority was present.
+- Row 3: pass exit=0 sandbox=container-netns, output sha256:a62143b2c17b. Exit 0 of the trailing grep means the named PASS line for TestActivationSnapshotCorruptionAndBounds was present.
+- Row 4: pass exit=0 sandbox=container-netns, output sha256:24474591e938. Exit 0 of the trailing grep means the named PASS line for TestCompiledStartupDiscoveryWorkload was present.
+- Row 5: pass exit=0, output sha256:e86a30b1c98c; the out-of-scope entries are reviewed above.
+
+Risk-bearing values. The enumeration covers the delivery diff (activationindex.go, activation.go and the delivered deskkit test files) and the brief's Deliverables; the activation sources are unchanged since the previous re-verification's source, and the lines below were re-read at this source:
+- manifestRevision = "activation-discovery/1" @ tools/desk/internal/deskkit/activationindex.go:17
+- manifestLimit = 1 << 20 @ tools/desk/internal/deskkit/activationindex.go:18
+- the one-slot bound, a single slot *manifestSnapshot field @ tools/desk/internal/deskkit/activationindex.go:127
+- test limits and fixture sizes in activationstartup_test.go and activationbench_test.go (test-only knobs, ranked last)
+
+All are reversible, and the item is marked irreversible: no. Ranked by what breaks if wrong: manifestLimit, then manifestRevision, then the slot count.
+
+RISK-VALUE: DERIVED — manifestLimit = 1 << 20 @ tools/desk/internal/deskkit/activationindex.go:18 — the brief's declared fallback fixes "one slot and 1 MiB source/payload limits", and 1 << 20 bytes is exactly 1 MiB. It is applied at lines 72, 89, 97, 139 and 167, and every over-limit path falls back to fresh reference discovery, so the value bounds memory and cannot change an activation result.
+RISK-VALUE: DERIVED — manifestRevision = "activation-discovery/1" @ tools/desk/internal/deskkit/activationindex.go:17 — the derivation-revision tag the snapshot contract requires; it is hashed into every source digest (line 65) and compared on decode (line 182), so a mismatch falls back to fresh discovery, and the slot is process-local.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 5 | `statusgen --root . --consumers --brief desktools-v2/60` | pass exit=0 | sha256:e86a30b1c98c | 2026-11-09 | assay-verifier-app[bot] @ b1f0161efb61 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5884 run=11ab3a684ceaffbe09165ede29153bdc6cd6708b28b857ecc93957fc8abe7b27 source=b1f0161efb6121b8ba9e7089011a7d6499c12ab7 brief=docs/streams/desktools-v2/brief-60-bound-component-activation-discovery-and-reuse-validated-manifest-snapshots.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: PASS** — 5 of 5 rows pass with admitted witnesses at merged source b1f0161efb61. Rows 1-4 passed network-off inside a closed admission bracket with a provisioned module cache (verdict=match), and row 5 passed on the host as written. No row is risk-bearing, so no fail-first witness is required. The gate is model, and all risk answers are no.
+
 ## Review
 
 Gate: model; all risk answers are no. Reject false-zero, stale-hit, silently changed legacy semantics or unmeasured savings claims.
