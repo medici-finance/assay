@@ -294,7 +294,11 @@ func TestMilestoneAcceptSubject(t *testing.T) {
 		"edited":             func(f *msFixture) { c := f.s.comments[170]; c.updated = "2026-11-09T13:00:00Z"; f.s.comments[170] = c },
 		"deleted":            func(f *msFixture) { c := f.s.comments[170]; c.status = 404; f.s.comments[170] = c },
 		"wrong-issue":        func(f *msFixture) { c := f.s.comments[170]; c.parent = 19; f.s.comments[170] = c },
-		"missing-selector":   func(f *msFixture) { f.s.briefs[0].Selector = nil },
+		"failed-brief-witness": func(f *msFixture) {
+			o := &f.s.briefs[0].Observations
+			o.Coverage.Briefs[0].Witnesses["1"][0].Tree = strings.Repeat("9", 40)
+		},
+		"missing-selector": func(f *msFixture) { f.s.briefs[0].Selector = nil },
 		"forged-provenance": func(f *msFixture) {
 			f.s.briefs[0].Claims = append([]domain.Provenance(nil), f.s.briefs[0].Claims...)
 			f.s.briefs[0].Claims[0].Responsible = "principal:forged"
@@ -435,7 +439,7 @@ func TestMilestoneRevocation(t *testing.T) {
 	f.decision(171, "revoke", &ptr, "driver-login")
 	a := f.run(t)
 	msNotSupported(t, a)
-	if len(a.History) != 1 || !a.History[0].Revoked || a.History[0].Decision != ptr || a.State != "blocked" {
+	if len(a.History) != 1 || !a.History[0].Revoked || a.History[0].Decision != ptr || a.History[0].Manifest != baseline.History[0].Manifest || a.State != "blocked" {
 		t.Fatalf("revocation erased history: %+v", a)
 	}
 	cases := map[string]func(*msFixture){

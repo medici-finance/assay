@@ -48,15 +48,6 @@
       "test": "TestMilestoneAcceptSubject"
     },
     {
-      "name": "criteria-set-shrinks",
-      "target": "statusgen/domain/milestone.go",
-      "old": "if idx < 0 {\n\t\t\tout.Blockers = append(out.Blockers, \"criterion-missing\")",
-      "new": "if idx < 0 {\n            continue\n\t\t\tout.Blockers = append(out.Blockers, \"criterion-missing\")",
-      "module": "statusgen",
-      "package": ".",
-      "test": "TestMilestoneAcceptSubject"
-    },
-    {
       "name": "criterion-map-ignored",
       "target": "statusgen/domain/milestone.go",
       "old": "if !mapped || !slices.Contains(c.Evidence, c.Provenance) {",
@@ -136,6 +127,24 @@
       "module": "statusgen",
       "package": ".",
       "test": "TestMilestoneRevocation"
+    },
+    {
+      "name": "failed-criterion-ignored",
+      "target": "statusgen/domain/milestone.go",
+      "old": "if c.Result == \"fail\" {",
+      "new": "if false && c.Result == \"fail\" {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
+    },
+    {
+      "name": "brief-support-ignored",
+      "target": "statusgen/domain/milestone.go",
+      "old": "if assessment.State != \"supported\" {",
+      "new": "if false && assessment.State != \"supported\" {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneAcceptSubject"
     }
   ]
 }
