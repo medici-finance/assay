@@ -495,7 +495,7 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 	return 0
 }
 
-// loadSpec reads and checks the mutation spec: the only configuration muhar reads.
+// loadSpec reads and checks the mutation spec; host admission has its own explicit inputs.
 func loadSpec(path string, stderr io.Writer) (spec, int) {
 	var s spec
 	raw, err := os.ReadFile(path)

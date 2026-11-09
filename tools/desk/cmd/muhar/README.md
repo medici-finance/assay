@@ -565,9 +565,9 @@ from `tools/desk` with no `root`, so their `file` paths are relative to
   [Parallel runs](#parallel-runs--j)), the mutations are written into your own
   tree and restored after each one. Commit or stash your work first, so `git status` after a run shows
   anything left behind.
-- `muhar` makes no network calls and writes nothing outside the tree under test
-  and its temporary directories. Whatever your test command does is up to the
-  test command.
+- `muhar` makes no network calls. It writes to the tree under test, its
+  temporary directories and, when opted in, the explicit shared lease
+  directory. Whatever your test command does is up to the test command.
 - **A spec is code.** Its `test` field runs with `sh -c` with `muhar`'s
   environment. Treat a `mutations.json` like a script. In CI, do not run a
   spec from an untrusted fork's pull request in a job that has secrets.
