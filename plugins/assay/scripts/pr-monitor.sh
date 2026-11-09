@@ -17,7 +17,7 @@
 #      depend on whoever happens to be logged in. So this one UNSETS
 #      GH_TOKEN/GITHUB_TOKEN at the top (an inherited token is never a read
 #      identity) and, for EACH repo, mints that repo's installation token for the
-#      session's role with `desktoken <role> --repo <owner>/<repo>` INSIDE the
+#      session's role with `desktoken <role> --forge github --repo <owner>/<repo>` INSIDE the
 #      poll (the role comes from $DESK_LOOP). The token file's content is handed
 #      to that single `gh pr list` as `GH_TOKEN=... gh ...` and is never exported,
 #      never printed, never reused for another repo. A mint that fails — no role
@@ -93,9 +93,15 @@ prints one line per change:
   PR-EVENT: <slug>#<num> <kind> <old> -> <new>
     kind ∈ opened | pushed | draft-flip | state | merge-state | closed
 
+Forge-aware read: when `deskmonitor` is on PATH, a legacy cycle is run by
+`deskmonitor pr` (same arguments, knobs, state files, output and exit codes), which
+reads each repo through the forge the roster maps it to. Its exit outside 0/1/2 is
+reported as `MONITOR-DEGRADED: ... could-not-check` and exit 2. Without it, the
+script's own reader below is GitHub-only.
+
 It never silently goes blind:
   · it reads each repo as the session's role App, minting that repo's token with
-    `desktoken <role> --repo <slug>` ($DESK_LOOP names the role) and handing it to
+    `desktoken <role> --forge github --repo <slug>` ($DESK_LOOP names the role) and handing it to
     that one `gh` call only; an inherited GH_TOKEN/GITHUB_TOKEN is unset and the
     ambient `gh` login is NEVER used;
   · a repo whose token cannot be minted (no role for $DESK_LOOP, no `desktoken`,
@@ -134,13 +140,36 @@ Exit codes:
      `MONITOR-DEGRADED: <reason>` line is printed on STDOUT first (the line the
      watch filter matches); stderr alone is invisible to it.
   2  at least one repo went DEGRADED (token mint failed, read failed, truncated, or
-     rate-limited) — state RETAINED
+     rate-limited) — state RETAINED; or the forge-aware reader exited outside 0/1/2
 EOF
 }
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
+fi
+
+# ---- FORGE-AWARE READ: the legacy cycle runs on `deskmonitor pr` when it is installed ----
+# This script's own reader below speaks to GitHub only (`gh pr list`). Which forge serves a
+# repo is the roster's answer (ASSAY_REPO_FORGES, then the origin host), and only the shared
+# Go resolver reads it — the same deskkit.ForgeFor path `deskboard actions` reads through. A
+# second copy of that resolver in shell would drift from it, so the legacy cycle is handed,
+# whole, to `deskmonitor pr`: the Go port of this script, with the same arguments, knobs,
+# state files, output grammar and exit codes, reading through that resolver. Without the
+# handoff a repo the roster maps to another forge is read with that forge's credential
+# against GitHub, which answers 401 and leaves the repo without a baseline every cycle.
+#
+# Qualified (classified) mode never hands off: its one collector is `deskboard review-queue`.
+# An exit outside the 0/1/2 contract (an inactive verb, a crash) prints nothing the watch
+# filter matches, so it is reported here as MONITOR-DEGRADED and exit 2, never as a quiet cycle.
+if [[ -z "${PR_MONITOR_REVIEW_OBSERVATION:-}" ]] && command -v deskmonitor >/dev/null 2>&1; then
+  deskmonitor pr "$@"
+  _dm_rc=$?
+  case "$_dm_rc" in
+    0|1|2) exit "$_dm_rc" ;;
+  esac
+  printf 'MONITOR-DEGRADED: forge-aware reader deskmonitor exited %s — could-not-check this cycle; no repo read, no baseline changed\n' "$_dm_rc"
+  exit 2
 fi
 
 if [[ -z "${PR_MONITOR_REVIEW_OBSERVATION:-}" ]]; then
@@ -366,7 +395,12 @@ mint_for_repo() {
   # ASSAY_CONFIG_ECHO=full: the minter prints its effective-config preamble on stderr,
   # which this captures and mostly discards; "full" keeps that echo stateless so no
   # digest is recorded as seen that nobody saw. The diagnosis is the LAST stderr line.
-  out=$(ASSAY_CONFIG_ECHO=full desktoken "$ROLE" --repo "$repo" 2>"$TMP_MINT"); rc=$?
+  # --forge github: the one reader below is `gh`, which speaks to GitHub only. Without
+  # it the minter follows the roster's forge for the repo, and a repo mapped to another
+  # forge gets THAT forge's credential — sent to GitHub, a 401 every cycle. Pinned, such
+  # a repo fails here as could-not-check (no read, no baseline) instead. The forge-aware
+  # path is `deskmonitor pr` (handoff above), which this fallback runs without.
+  out=$(ASSAY_CONFIG_ECHO=full desktoken "$ROLE" --forge github --repo "$repo" 2>"$TMP_MINT"); rc=$?
   if [[ "$rc" -ne 0 ]]; then
     MINT_WHY="desktoken $ROLE exited $rc: $(grep . "$TMP_MINT" | tail -n 1 | cut -c1-200)"
     return 1
