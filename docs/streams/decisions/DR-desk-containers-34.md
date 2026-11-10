@@ -14,7 +14,7 @@ accepted:
   - "A secret is scoped to (project repository, role, service name). The service name is the name in a Verify row's service:<name> Env cell. Only worker and verifier roles may hold one. Reviewer, intake and coordinator roles never do."
   - "The operator keeps each secret as an owner-only file outside every checkout. The launcher checks the file and exports only its path, and only into worker and verifier windows. The value is never passed in argv, in the environment, in a commit, in an image layer or in a pipeline-readable variable."
   - "The dispatcher strips the path variables from any child that runs an unblessed head and from every review-kit child. Reviewers witness a secret-bound row through the verifier's signed outcome for that row, never through a run report."
-  - "A non-holding role must be unable to open the file, not only unaware of its path: a per-role container mount, or a separate OS identity per role on a host. A cell that declares neither binds no role secret, so its secret-bound rows stay in the Environment-blocked queue. A declared surface counts only once the launcher's check has verified it: on a host, every non-holding identity is distinct from every holder and the file owner, is not root and cannot elevate without a prompt, and each window starts under its role's identity; on a container cell, no non-holding window runs on the host as the file owner."
+  - "A non-holding role must be unable to open the file, not only unaware of its path: a per-role container mount, or a separate OS identity per role on a host. A cell that declares neither binds no role secret, so its secret-bound rows stay in the Environment-blocked queue. A declared surface counts only once the launcher's check has verified it: on a host, every non-holding identity is distinct from every holder and the file owner, is not root and cannot elevate without a prompt, and each window starts under its role's identity; on a container cell, no non-holding window runs on the host as the file owner. Read isolation also covers the write path into a holder: no non-holding identity can write what a holding window executes or reads as configuration (a checkout's shared git directory, the cell config and identity map, the holder's PATH and home, or a writable mount shared with a holding container), because such a write would let the non-holder make the holder read the secret out for it."
   - "Deleting or replacing the local file stops future launches only. Revoking a leaked secret means rotating it at the issuing service. The launcher's receipt records role, project, service, path and times, never the value or a hash of it."
 ---
 
@@ -48,6 +48,11 @@ posted before that comment and the second after it, so the comment saw none of t
   trusting the declaration, and starts each window under its role's identity (Task 2a's last
   paragraph, Task 3, Verify rows 5, 8 and 9), added by the second security round;
 - the note that revocation of a leaked copy is rotation at the issuing service (Task 5).
+
+A third security round, after the approval, found that a non-holder able to write what a
+holder runs could make the holder read the secret out for it. Its write-path rules (Task 2a,
+Verify rows 8 and 9) implement the per-role read isolation the approval names, the same way
+the launcher's verification of a declared surface does; they are not a further decision.
 
 The second comment, on #6076, is the ruling `ruling:` links, and it confirms all three.
 Relayed as given, it reads:

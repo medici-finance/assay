@@ -137,11 +137,15 @@ Security review of this brief found that owner-only mode separates OS users, not
 processes. Its first round, posted before the ruling, added the read-isolation step (Task 2a,
 Verify rows 8 and 9) and the rotation note (Task 5). Its second round, after the ruling,
 required `cellctl check` to verify a declared surface rather than trust the declaration
-(Task 2a's last paragraph, Task 3's launch identity, rows 5, 8 and 9).
+(Task 2a's last paragraph, Task 3's launch identity, rows 5, 8 and 9). A third round, after the
+approval, added the write-path rules: no non-holding identity can write what a holding window
+runs (Task 2a, rows 8 and 9). They implement the approved read isolation, as the surface
+verification does.
 
 The design-decision record that rule 48 requires before this brief leaves `todo` is
 [DR-desk-containers-34](../decisions/DR-desk-containers-34.md). The driver approved it,
-naming it, together with all three additions above, which are therefore confirmed.
+naming it, together with the read isolation, the surface verification and the rotation note
+above, which are therefore confirmed; the write-path rules sit under that read isolation.
 Approved 2026-11-10, by the driver in their own login: https://github.com/medici-finance/assay/issues/6076#issuecomment-6775066942
 
 ## Ground rules
