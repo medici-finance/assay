@@ -2,7 +2,7 @@
 brief: assay:assay:desk-tools:63
 title: "Admit the open false-positive shapes as registry entries, each with the refusals that bound it, and cap word-shaped admission"
 why: >-
-  Six benign shapes still stop desk writes and are unblocked only by an audited scan override
+  Five benign shapes still stop desk writes and are unblocked only by an audited scan override
   or by renaming text that cannot be renamed: Go build-info module hashes, platform-suffixed
   digest assignments, sops age-armor lines seen in a diff fragment, Kubernetes qualified label
   keys, and `+`-joined identifier lists. In the other direction, one admission is too wide: a
@@ -105,7 +105,7 @@ it. The scanner treats that set as one more registry context, `anchored`. It nev
 design-fit:
   owner: tools/desk/internal/deskkit/benignshapes.go — the registry desk-tools/61 creates
   contract: S-publication-scan
-  retires: [the scan overrides these six shapes need today, the whole-surface-only reading of the sops grammar on diffs]
+  retires: [the scan overrides these five shapes need today, the whole-surface-only reading of the sops grammar on diffs]
   weight: "verbs 0, flags 0; registry entries +5 (one is the anchored context); refusals +1 (the word-salad cap); one scan input (the anchored line set)"
   why-add: "Each entry is the only alternative to a recurring override or an impossible rename. Removal was considered: widening an existing entry instead (for example, letting the digest-key entry accept any trailing word), and refused, because a wider entry is bounded by fewer refusals than a new narrow one."
 

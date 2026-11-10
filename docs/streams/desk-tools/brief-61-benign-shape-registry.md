@@ -38,7 +38,7 @@ sources:
   - "widening commits on the scan, oldest first: 73209fbdc, 8d90074d3, cea8ebb75, 153a80b27 (#750), 2671dc78b (#883), 0f2b5b18f (#966), 6824fb83a (#1161), be4380ce5 (#1643), ccf05f412 (#2036), 0f17a7f3f (#4077)"
   - "narrowing commits that followed a widening: e9e4e2b40 (after #1643 admitted eight synthetic credentials at its head), a34665a1a (Go subtest tail cap), 36d24d520 (decrypted k8s secret owner proof)"
   - "credential arms added beside the chain, not exemptions: #5332, #5348 (URL userinfo); #5320 constrained that arm's email exemption"
-  - "freshness-checked 2026-11-10 @ 450ac4047 (origin/main): 14 admission predicates in scanSurface's high-entropy loop, 3 structured span formats, 7 closed word lists; corpus 17 negative and 21 positive fixtures; mutations.json 146 mutations, 28 on bodycheck.go and 5 on structured.go plus the control"
+  - "freshness-checked 2026-11-10 @ 450ac4047 (origin/main): 14 admission predicates in scanSurface's high-entropy loop, 3 structured span formats, 7 main closed word lists; corpus 17 negative and 21 positive fixtures; mutations.json 146 mutations, 28 on bodycheck.go and 5 on structured.go plus the control"
 exec-tier: strong
 exec-tier-why: "A behaviour-preserving refactor of a trust-boundary control, with an equivalence proof against the pre-migration tree and a data-driven mutation per entry."
 domain: complicated
@@ -79,10 +79,11 @@ files:
 - **add** — `changelog/<branch-slug>.md` — one fragment
 
 facts:
-- **What the heuristic decides.** After the literal credential arms run (GitHub and GitLab
-  token prefixes, the AWS access-key-id shape, PEM blocks, JWTs, a decrypted Kubernetes Secret,
-  a sops block, the ruling-claim guard, then URL userinfo), `scanSurface` takes every run of the
-  class `[A-Za-z0-9+/=]{32,}` and refuses it. It computes no entropy. The verdict is length plus
+- **What the heuristic decides.** After the literal credential arms that run first (GitHub and
+  GitLab token prefixes, the AWS access-key-id shape, PEM blocks, JWTs, a decrypted Kubernetes
+  Secret, a sops block, the ruling-claim guard), `scanSurface` takes every run of the class
+  `[A-Za-z0-9+/=]{32,}` and refuses it. The URL-userinfo arm runs after that loop, last, so
+  every refusal before it keeps its rule id and message. It computes no entropy. The verdict is length plus
   alphabet, and a run is admitted only when one of 14 predicates says yes or the run sits inside
   a span `structuredExemptSpans` admits. In chain order the predicates are: git SHA, path-like,
   identifier-like, assignment-like, all-equals, digest-key assignment, doc-path hex segment,
@@ -90,8 +91,10 @@ facts:
   path, Go subtest name, diffstat bar. The 3 structured formats are a go.sum line, an SRI
   integrity value, and a sanctioned sops document (complete envelope, metadata block, armor
   bodies). The second two formats count only when the whole scanned surface parses as such a
-  document. Seven closed lists feed the predicates: numeronyms, the OAuth term, two-letter words,
-  digest keys, credential stems, armor labels, k8s UID prefixes.
+  document. Seven main closed lists feed the predicates: numeronyms, the OAuth term, two-letter
+  words, digest keys, credential stems, armor labels, k8s UID prefixes. Smaller ones also exist,
+  among them `goTestPrefixes` in `bodycheck.go` and a second armor-label list in
+  `structured.go`. The registry absorbs every list a predicate reads, not only the seven.
 - **Why it recurs.** Admission is an open list of special cases over a decision that knows
   only length and alphabet. Every benign shape the scan has not seen is refused, and the only
   remedy the code offers is one more case. The record: 10 widening commits since 2026-08-27,
@@ -170,7 +173,8 @@ to a credential control is never adopted by silence.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 - This brief changes no verdict. A test that needs a changed expectation is a STOP: report it,
   never edit the expectation.
-- Never edit a file under `testdata/corpus/`. Never write a credential-shaped literal into a test
+- Never edit a fixture under `testdata/corpus/`. Its README is edited only as task 9 says,
+  and row 5 allows exactly that one file. Never write a credential-shaped literal into a test
   or a fixture. Generate such strings at test time from a fixed seed, or split them with the
   corpus README's seam.
 - Do not touch the literal credential arms, the run class or the threshold.
@@ -200,7 +204,9 @@ to a credential control is never adopted by silence.
    registry's in-test bound set. Write it as a generated or seam-split string, never a literal
    and never a corpus edit.
 3. **Walk the registry.** Replace the chain in `scanSurface`'s high-entropy loop with a walk of
-   the registry. The literal arms keep their order and run before it. `--explain` and
+   the registry. The literal arms keep their current positions on either side of it: the arms
+   that run before the loop today still run before the walk, and the URL-userinfo arm still
+   runs after it, last. `--explain` and
    `ScanFinding` keep their fields. For an admitted run `--explain` may also name the admitting
    entry's `ID`, as an addition only.
 4. **Render the text.** The high-entropy refusal message is rendered from the registry's `Doc`
@@ -219,8 +225,8 @@ to a credential control is never adopted by silence.
 7. **Check the registry's shape.** `TestBenignRegistryComplete` (planned) asserts unique IDs, a known
    `Context`, a non-empty `Doc` and `Issue`, at least one `Admitted` and one `Bounds` per entry,
    and that every named fixture exists. It also asserts that every negative fixture is named by
-   some entry. The corpus coverage test's `required` map is derived from the registry. Its old
-   38 file names stay a subset of the derived set, so the test fails if a fixture drops out.
+   some entry. The corpus coverage test's `required` map is derived from the registry. Its 27
+   current names stay a subset of the derived set, so the test fails if a fixture drops out.
 8. **Keep every mutant.** Re-point `mutations.json` anchors whose code moved, keeping each
    mutation's meaning. The scan's mutation lines (on `bodycheck.go`, `structured.go` and
    `benignshapes.go`) may not fall below 34, and at least one targets the registry walk in
@@ -237,7 +243,7 @@ to a credential control is never adopted by silence.
 | 2 | check:ci +flow | `test -n "${DELIVERY_BASE:-}" && d=$(mktemp -d) && trap 'rm -rf "$d"' 0 && git archive --format=tar "$DELIVERY_BASE" > "$d/base.tar" && mkdir "$d/b" && tar -x -C "$d/b" -f "$d/base.tar" && cp tools/desk/internal/deskkit/benigngolden_test.go "$d/b/tools/desk/internal/deskkit/" && cp tools/desk/internal/deskkit/testdata/benign-golden.txt "$d/b/tools/desk/internal/deskkit/testdata/" && cd "$d/b/tools/desk" && go test ./internal/deskkit/ -run '^TestBenignGoldenVerdicts$' -count=1 -v > "$d/golden.log" 2>&1 && grep -F -e '--- PASS: TestBenignGoldenVerdicts ' "$d/golden.log"` | exit 0; `ok`. The golden test from head passes on the pre-migration tree, so the golden is the old scanner's behaviour and row 1 proves the new scanner gives the same verdict on every input |
 | 3 | check:ci +mutation | `O=$(mktemp) && trap 'rm -f "$O"' 0 && cd tools/desk && go run ./cmd/muhar -j 2 -spec internal/deskkit/mutations.json > "$O" 2>&1 && grep -F -e 'Harness healthy: baseline GREEN, positive control CAUGHT.' "$O" && grep -F -e ' 0 NOT CAUGHT, 0 could-not-mutate.' "$O" && n=$(grep -c -e '"file": "internal/deskkit/bodycheck.go"' -e '"file": "internal/deskkit/structured.go"' -e '"file": "internal/deskkit/benignshapes.go"' internal/deskkit/mutations.json) && [ "$n" -ge 34 ] && m=$(grep -c -e '"file": "internal/deskkit/benignshapes.go"' internal/deskkit/mutations.json) && [ "$m" -ge 1 ]` | exit 0; harness healthy, every mutation caught, the scan's mutation lines did not fall below 34, and at least one targets the registry walk |
 | 4 | check:ci +neighbour | `cd tools/desk && go test ./internal/deskkit/ -count=1 -v > "${TMPDIR:-/tmp}/dt61-all.log" 2>&1 && grep -F -e '--- PASS: TestBodycheckCorpus ' "${TMPDIR:-/tmp}/dt61-all.log" && grep -F -e '--- PASS: TestBenignRegistryComplete ' "${TMPDIR:-/tmp}/dt61-all.log" && ! grep -F -e '--- FAIL' "${TMPDIR:-/tmp}/dt61-all.log"` | exit 0; every existing scan, corpus and explain test passes unedited beside the registry tests |
-| 5 | check +flow | `test -n "${DELIVERY_BASE:-}" && test -n "${DELIVERY_HEAD:-}" && test -f tools/desk/internal/deskkit/benignshapes.go && git diff --quiet "$DELIVERY_BASE" "$DELIVERY_HEAD" -- tools/desk/internal/deskkit/testdata/corpus && o=$(mktemp) && trap 'rm -f "$o"' 0 && git diff --name-only "$DELIVERY_BASE" "$DELIVERY_HEAD" -- tools/desk/internal/deskkit > "$o" && ! grep -v -x -e 'tools/desk/internal/deskkit/corpus_test.go' -e 'tools/desk/internal/deskkit/benignshapes_test.go' -e 'tools/desk/internal/deskkit/benigngolden_test.go' -e 'tools/desk/internal/deskkit/testdata/benign-golden.txt' -e 'tools/desk/internal/deskkit/benignshapes.go' -e 'tools/desk/internal/deskkit/bodycheck.go' -e 'tools/desk/internal/deskkit/structured.go' -e 'tools/desk/internal/deskkit/explain.go' -e 'tools/desk/internal/deskkit/mutations.json' "$o"` | exit 0; the corpus is untouched, and no other deskkit test or source file changed |
+| 5 | check +flow | `test -n "${DELIVERY_BASE:-}" && test -n "${DELIVERY_HEAD:-}" && test -f tools/desk/internal/deskkit/benignshapes.go && git diff --quiet "$DELIVERY_BASE" "$DELIVERY_HEAD" -- tools/desk/internal/deskkit/testdata/corpus ':(exclude)tools/desk/internal/deskkit/testdata/corpus/README.md' && o=$(mktemp) && trap 'rm -f "$o"' 0 && git diff --name-only "$DELIVERY_BASE" "$DELIVERY_HEAD" -- tools/desk/internal/deskkit > "$o" && ! grep -v -x -e 'tools/desk/internal/deskkit/corpus_test.go' -e 'tools/desk/internal/deskkit/benignshapes_test.go' -e 'tools/desk/internal/deskkit/benigngolden_test.go' -e 'tools/desk/internal/deskkit/testdata/benign-golden.txt' -e 'tools/desk/internal/deskkit/benignshapes.go' -e 'tools/desk/internal/deskkit/bodycheck.go' -e 'tools/desk/internal/deskkit/structured.go' -e 'tools/desk/internal/deskkit/explain.go' -e 'tools/desk/internal/deskkit/mutations.json' -e 'tools/desk/internal/deskkit/testdata/corpus/README.md' "$o"` | exit 0; no corpus fixture changed (the corpus README may, for task 9), and no other deskkit test or source file changed |
 | 6 | check:ci +neighbour | `cd tools/desk && test -f internal/deskkit/benignshapes.go && go test ./internal/arch/ -run '^TestOneImplementationPerMeaning$' -count=1 -v > "${TMPDIR:-/tmp}/dt61-arch.log" 2>&1 && grep -F -e '--- PASS: TestOneImplementationPerMeaning ' "${TMPDIR:-/tmp}/dt61-arch.log" && grep -F -x -e 'S-publication-scan 1' internal/arch/markers.txt && go test ./cmd/muhar -run '^TestSpecAnchorsLand$' -count=1 -v > "${TMPDIR:-/tmp}/dt61-anch.log" 2>&1 && grep -F -e '--- PASS: TestSpecAnchorsLand ' "${TMPDIR:-/tmp}/dt61-anch.log"` | exit 0; the scan still has one implementation with a ceiling of 1, and every mutation anchor lands |
 | 7 | check +flow +dereference | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-61-benign-shape-registry.md && grep -F -e 'TestBenignEntriesBounded' docs/contracts.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/61 --delivery "$DELIVERY_HEAD" --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e 'summary: 3 corroborated, 0 disproved, 0 unchecked' "$o"` | exit 0; the README table, the contract row and the corpus README are in the delivering diff |
 
