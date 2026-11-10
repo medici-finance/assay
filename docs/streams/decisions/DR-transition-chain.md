@@ -4,7 +4,7 @@ date: "2026-11-10"
 title: "Chain approved acceptance transitions link by link, and let a row approved for Command+Expect replace its whole Command cell"
 consequence: major
 decided-by: "human:<name>"
-ruling: "https://github.com/medici-finance/assay/issues/6064#issuecomment-6773099410"
+ruling: "https://github.com/medici-finance/assay/issues/6064#issuecomment-6773695768"
 alternatives:
   - "Keep the one-span Command rule for rows approved for both cells (Q1, option 2). Ruled out: the first table waiting on this change, desk-containers/17, has two rows whose Command cells are rewritten whole while their Expect changes, so they would still refuse and that brief would have to be re-derived at a new delivery."
   - "Require every link of every chain, including the first, to carry a new approval in the chain format (Q2, option 2). Ruled out: the held statusgen/36 correction already has an approval in today's one-link format and needs a second link; refusing it would mean asking for that approval again for no added binding."
@@ -16,9 +16,8 @@ accepted:
   - "One-line (v1) acceptance-transition records keep today's verdicts byte-for-byte."
 ---
 
-**Status:** draft — the pull request that adds this record does not mark it approved. Approving a
-design record on a `gate: human` brief is the driver's act; a model or a worker cannot set it.
-The driver's merge of that pull request ratifies the record.
+**Status:** routed — the driver approved this record on 2026-11-10 in the `ruling:` comment above, and statusgen/40 cites it.
+**Routes-to:** docs/streams/statusgen/
 
 ## Basis
 
@@ -35,16 +34,18 @@ its question (the comments call it "A"):
 The direction they settle is the driver's earlier ruling on #5211, option B:
 https://github.com/medici-finance/assay/issues/5211#issuecomment-6771619511
 
-`ruling:` above links the Q1 answer, because Q1 is the point that goes past the letter of the
-#5211 ruling. `decided-by` keeps the placeholder a public repository uses, and the `ruling:`
-link is what names the human.
+## Ruling
 
-`statusgen --corroborate` passes a ruling only when the comment's own text names this record's
-id and the issue body carries a decision-gate marker for this record or for statusgen/40. None
-of the three answers names `DR-transition-chain`, and #6064's body carries no decision-gate
-marker. So this record does not corroborate yet. To ratify it, the driver posts one new comment
-on #6064 that names `DR-transition-chain` and confirms Q1 to Q3, #6064's body gains the marker,
-and this record's `ruling:` links that new comment instead.
+On 2026-11-10 the driver approved this record on #6064, the issue whose body carries this
+record's decision-gate marker. The comment is unedited and was posted from the driver's own
+account. Its text reads:
+
+> DR-transition-chain: approved — Q1 A, Q2 A, Q3 A as recorded above.
+
+That comment is this record's `ruling:`. It names the record, so `decided-by` above stays the
+public-repository placeholder and is confirmed through that link (`spec/registers-v1.md` §7.5).
+No bot relay or PR approval stands in for it. The three answer comments above stay the
+record of what each answer was.
 
 ## What this record does not decide
 

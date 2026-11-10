@@ -17,6 +17,7 @@ version: 2
 authored: 2026-11-10 by worker-desk (authoring for #6064)
 sources:
   - "the driver's own comment https://github.com/medici-finance/assay/issues/5211#issuecomment-6771619511 (2026-11-10): option B, approved transitions may chain and one row may correct Command and Expect together; a relaxation of a verification control, so its own brief and a security review"
+  - "docs/streams/decisions/DR-transition-chain.md — the design-decision record for the driver's answers to Q1 to Q3"
   - "#6064 — the scoping issue filed for that ruling: what refuses today, what the change needs, refusals that must stay"
   - "#5684 and docs/proposals/statusgen-36-acceptance/README.md — the held statusgen/36 correction; its 'Successor-chain support needed in the resolver' invariants and order-of-work step 1"
   - "#3470 — the original command-only transition; its Expect-only follow-up in the same owner"
@@ -94,7 +95,7 @@ Default if no answer: none — blocks until answered
 
 Silence cannot settle this: Q1's recommended answer goes past the letter of the ruling, and Q1's alternative fails the first table waiting on it. Before `in-progress` (rule 48), the driver approves a design-decision record that records the answer to each question.
 
-Answered 2026-11-10 by the driver, each from the driver's own account, each choosing option 1 (the recommended option; the comments call it "A"). The record is [DR-transition-chain](../decisions/DR-transition-chain.md), cited by `design:` above; it lands as a draft and is ratified only as that record describes.
+Answered 2026-11-10 by the driver, each from the driver's own account, each choosing option 1 (the recommended option; the comments call it "A"). The record is [DR-transition-chain](../decisions/DR-transition-chain.md), cited by `design:` above; the driver approved it on #6064: https://github.com/medici-finance/assay/issues/6064#issuecomment-6773695768
 - Q1: option 1, a `Command+Expect` row may replace its whole Command cell with row ID, order, class and shell fixed: https://github.com/medici-finance/assay/issues/6064#issuecomment-6773099410
 - Q2: option 1, a one-link approval may serve as link 1, judged under the one-link rules with no combined cells: https://github.com/medici-finance/assay/issues/6064#issuecomment-6773126747
 - Q3: option 1, no chain-length cap, each link with its own human approval: https://github.com/medici-finance/assay/issues/6064#issuecomment-6773147331
