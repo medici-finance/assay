@@ -27,9 +27,8 @@ type processRegistry struct {
 	closed bool
 }
 
-// start starts cmd and tracks it. Once killAll has run, a command that starts
-// afterwards is killed at once, so a worker racing the interrupt handler
-// cannot leave a suite running after muhar exits.
+// start starts cmd and tracks it. Once killAll has run, further starts are
+// refused before spawning, so a racing worker cannot leave a suite behind.
 func (r *processRegistry) start(cmd *exec.Cmd) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

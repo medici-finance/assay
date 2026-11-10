@@ -664,8 +664,8 @@ func (cs *coverSelector) coverFlags() (build, run []string) {
 	return build, append(run, "-test.timeout="+timeout)
 }
 
-// selectTemps tracks the coverage pass's temp dir so an interrupt can remove
-// it: os.Exit in main's signal handler skips Prepare's deferred cleanup.
+// selectTemps tracks coverage-pass directories. Prepare's deferred removal
+// also runs when a catchable interruption unwinds the command.
 var selectTemps = &tempSet{dirs: map[string]bool{}}
 
 type tempSet struct {
@@ -680,15 +680,6 @@ func (t *tempSet) remove(d string) {
 	delete(t.dirs, d)
 	t.mu.Unlock()
 	_ = os.RemoveAll(d)
-}
-
-// removeAll deletes every tracked dir; main's signal handler calls it.
-func (t *tempSet) removeAll() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	for d := range t.dirs {
-		_ = os.RemoveAll(d)
-	}
 }
 
 // resolveAlways maps the spec's always-run names to tests. A name the suite

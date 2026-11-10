@@ -427,9 +427,15 @@ worktree, the shims, the pinned model and the `/assay:<role>` first prompt are t
 worker budget. Configure both explicitly in each participating cell's
 `cell.env` (or through `cellctl set`); existing cells receive no new default.
 All roles and independent cells sharing the host budget must name the same
-existing absolute lease directory and positive total. Cellctl forwards only
-configured inputs, including explicitly empty values so muhar can refuse an
-invalid pair. It does not create a directory, invent a total or manage locks.
+existing absolute lease directory and positive total. Cellctl forwards the
+effective configured inputs: launching-process environment, then machine
+`defaults.env`, then `cell.env`, with later layers overriding earlier ones.
+This applies to scrubbed launches too; the values are not restricted to the
+cell.env layer. Explicitly empty values retain their presence so muhar can
+refuse an invalid pair. Cellctl creates no directory, total or lock manager.
+The directory and slot files are trusted operator inputs; use a private
+directory that untrusted local users cannot modify. Current slot opens follow
+symlinks and do not check directory ownership/mode or enforce a maximum total.
 
 The same composition supplies host Claude/Cursor windows, Codex command
 subprocesses, scrubbed allowlists and dry-run environment lines. A partial,
@@ -437,7 +443,7 @@ empty, invalid or inaccessible pair is refused by muhar before any work.
 A pool exceeding the total is clamped with a stderr diagnostic; baseline,
 control, selector and worker builds still run, and the complete mutation list
 keeps its original order. Stderr reports waiting and `queue-wait` separately
-from build/test timing. Both inputs unset retain current behavior.
+from build/test timing. Both inputs unset retain current worker scheduling.
 
 Stop the affected muhar run before repairing permissions or configuration.
 Normal completion and catchable SIGINT/SIGTERM release locks after child
@@ -487,10 +493,13 @@ links. It refuses an existing cell of the same name, exactly like every other ki
 
 ### The composed environment
 
-The launch is `env -i` plus an explicit allowlist — the parent shell contributes nothing by
-default. This is the exact list `cellctl` exports (`scrubbedEnvKeys` in
-`tools/desk/cmd/cellctl/env.go` is the single source this table, the `[plan]` lines below, and the
-live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares the same set, and
+The launch is `env -i` plus explicitly composed keys. `scrubbedEnvKeys` in
+`tools/desk/cmd/cellctl/env.go` supplies the core list; the shared managed-cache
+and mutation-budget helpers append their named effective configuration. Thus
+an explicitly set parent/defaults budget can cross this boundary even when
+cell.env does not name it; arbitrary parent keys do not pass through. The
+`[plan]` and live launch use the same composition. The shell oracle's
+`SCRUBBED_ENV_KEYS` declares its core set, and
 `tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it). The mutation-budget, cell database pointer and GitLab endpoint rows are
 Go-only additions,
 present only when the cell declares them; parity fixtures do not configure them.
