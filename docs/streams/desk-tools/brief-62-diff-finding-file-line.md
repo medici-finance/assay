@@ -25,6 +25,7 @@ gate-why: >-
 decision-trigger: start
 issues: [3196]
 outcome: none
+design: DR-scan-diff-reader
 schema: brief-v2
 version: 1
 authored: 2026-11-10 by a desk-dispatched authoring session (error-class design for issue 4284; the location half of issue 3196)
@@ -112,7 +113,8 @@ Default if no answer: option 1 after 7 days. Neither option changes what is refu
 ## Ground rules
 - Ruled option A on the decision issue, which is option 1 above: https://github.com/medici-finance/assay/issues/4284#issuecomment-6774271356
   The ruling extends the shared diff reader, with a byte-identity test and the outbound check's
-  tests left unedited. Option 2 is not taken.
+  tests left unedited. Option 2 is not taken. It names no record id, so it was restated under
+  DR-scan-diff-reader: https://github.com/medici-finance/assay/issues/4284#issuecomment-6775569997
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task instructions.
 - Stop at `implemented` — you do not set verified/done (a different, non-implementing identity does).
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
@@ -181,9 +183,8 @@ Default if no answer: option 1 after 7 days. Neither option changes what is refu
 
 ## Review
 Gate: human. Before it leaves `todo`, the design needs an approved `DR-<slug>` record cited by
-`design:` (brief-rules 48). The ruling on the decision issue chose the option but names no
-record id, so no record exists yet: one has to be ruled under a valid id first. The reviewer
-checks that the reported line can be opened at the named side: head
+`design:` (brief-rules 48). That record is DR-scan-diff-reader. The reviewer checks that the
+reported line can be opened at the named side: head
 for added and context lines, base for removed lines. They check that no output path prints the
 span, and that the outbound check's tests are unedited. Every Verify row is risk-bearing,
 because the brief answers `sensitive-data: yes`. Each row is written to fail on the delivery
