@@ -69,6 +69,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -79,7 +80,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -260,7 +260,7 @@ func versionLine() string {
 }
 
 // bindings are every setting muhar declares: flags and defaults only. muhar has no
-// configuration file and reads no environment variable for them.
+// configuration file; the separate host budget reads two explicit environment inputs.
 func bindings() []cli.Binding {
 	return []cli.Binding{
 		{Key: "state", Kind: cli.String, Flag: "state", Usage: "caller-owned resumable JSONL state path"},
@@ -314,6 +314,37 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 // sweep is the run itself: read and check the spec, then baseline, control and mutations.
 func sweep(o options, stdout, stderr io.Writer) (code int) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sig)
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-sig:
+			// Close admission/start custody before waking lease waiters. No early
+			// return can exit the parent ahead of the child-group kill.
+			liveGroups.killAll()
+			cancel()
+		case <-done:
+		}
+	}()
+	// The registry closes before the context is canceled, so either one marks
+	// the run interrupted before a killed command's failure can return.
+	interrupted := func() bool { return ctx.Err() != nil || liveGroups.stopped() }
+	defer func() {
+		if interrupted() {
+			code = 130
+		}
+	}()
+	budget, err := loadBudget(ctx, os.LookupEnv, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, "muhar: budget:", err)
+		return 1
+	}
+
 	if o.spec == "" {
 		fmt.Fprintln(stderr, "muhar: -spec is required")
 		return 1
@@ -322,29 +353,7 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 	if code != 0 {
 		return code
 	}
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sig)
-	var interrupted atomic.Bool
-	done := make(chan struct{})
-	defer close(done)
-	go func() {
-		select {
-		case <-sig:
-			interrupted.Store(true)
-			liveGroups.killAll()
-		case <-done:
-		}
-	}()
-
-	defer func() {
-		if interrupted.Load() {
-			code = 130
-		}
-	}()
-
 	var state *runState
-	var err error
 	if o.state != "" {
 		state, err = openRunState(o.state)
 		if err != nil {
@@ -389,7 +398,7 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 			i, n, len(s.Mutations), total, i, n)
 	}
 
-	n := resolveJobs(o.jobs, runtime.NumCPU())
+	n := budget.clamp(resolveJobs(o.jobs, runtime.NumCPU()))
 	if n < 1 {
 		fmt.Fprintln(stderr, "muhar: -j must be >= 0")
 		return 1
@@ -417,12 +426,15 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 
 	runEnv := envWithGOCACHE(os.Environ(), gocache)
 	h := &Harness{
-		Root:  s.Root,
-		State: state, Indices: indices, Interrupted: interrupted.Load,
-		Control:   s.Control,
-		Mutations: s.Mutations,
-		Jobs:      n,
-		Timeout:   s.Timeout,
+		Root:        s.Root,
+		Budget:      budget,
+		State:       state,
+		Indices:     indices,
+		Interrupted: interrupted,
+		Control:     s.Control,
+		Mutations:   s.Mutations,
+		Jobs:        n,
+		Timeout:     s.Timeout,
 		RunTest: func(root string, timeout time.Duration) CommandResult {
 			return runShell(root, s.Test, runEnv, timeout)
 		},
@@ -443,6 +455,7 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 		}, func(root string, args []string, timeout time.Duration) CommandResult {
 			return runGoArgs(root, withTimeout(args, timeout), env, timeout)
 		})
+		h.Selector.(*coverSelector).budget = budget
 	}
 	// Mutant schemata (#2635), for a spec that opts in: eligible mutants share
 	// one build per worker and are picked per run by an environment selector,
@@ -509,7 +522,7 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 	}
 
 	rep := h.Run()
-	if interrupted.Load() {
+	if interrupted() {
 		return 130
 	}
 	fmt.Fprint(stdout, rep.Summary())
@@ -519,7 +532,7 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 	return 0
 }
 
-// loadSpec reads and checks the mutation spec: the only configuration muhar reads.
+// loadSpec reads and checks the mutation spec; host admission has its own explicit inputs.
 func loadSpec(path string, stderr io.Writer) (spec, int) {
 	var s spec
 	raw, err := os.ReadFile(path)

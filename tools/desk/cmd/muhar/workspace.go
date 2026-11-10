@@ -159,8 +159,7 @@ func relinkGoMod(path, origDir, absSrc string) error {
 // readReplaces parses the replace directives of the go.mod at path with the go
 // command's own parser, so no hand-rolled go.mod grammar can drift from it.
 func readReplaces(path string) ([]goModReplace, error) {
-	cmd := exec.Command("go", "mod", "edit", "-json", path)
-	out, err := trackedOutput(cmd, false)
+	out, err := trackedOutput(exec.Command("go", "mod", "edit", "-json", path), false)
 	if err != nil {
 		var stderr string
 		var ee *exec.ExitError

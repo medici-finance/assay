@@ -64,7 +64,7 @@
     {
       "name": "identity interruption misreported",
       "file": "cmd/muhar/main.go",
-      "old": "if interrupted.Load() {\n\t\t\tcode = 130\n\t\t}",
+      "old": "if interrupted() {\n\t\t\tcode = 130\n\t\t}",
       "new": "if false { code = 130 }"
     },
     {

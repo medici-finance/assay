@@ -421,6 +421,40 @@ worktree, the shims, the pinned model and the `/assay:<role>` first prompt are t
 
 ---
 
+## Host mutation work budget
+
+`MUHAR_LEASE_DIR` and `MUHAR_TOTAL_SLOTS` opt muhar runs into one host-wide
+worker budget. Configure both explicitly in each participating cell's
+`cell.env` (or through `cellctl set`); existing cells receive no new default.
+All roles and independent cells sharing the host budget must name the same
+existing absolute lease directory and positive total. Cellctl forwards the
+effective configured inputs: launching-process environment, then machine
+`defaults.env`, then `cell.env`, with later layers overriding earlier ones.
+This applies to scrubbed launches too; the values are not restricted to the
+cell.env layer. Explicitly empty values retain their presence so muhar can
+refuse an invalid pair. Cellctl creates no directory, total or lock manager.
+The directory and slot files are trusted operator inputs; use a private
+directory that untrusted local users cannot modify. Current slot opens follow
+symlinks and do not check directory ownership/mode or enforce a maximum total.
+
+The same composition supplies host Claude/Cursor windows, Codex command
+subprocesses, scrubbed allowlists and dry-run environment lines. A partial,
+empty, invalid or inaccessible pair is refused by muhar before any work.
+A pool exceeding the total is clamped with a stderr diagnostic; baseline,
+control, selector and worker builds still run, and the complete mutation list
+keeps its original order. Stderr reports waiting and `queue-wait` separately
+from build/test timing. Both inputs unset retain current worker scheduling.
+
+Stop the affected muhar run before repairing permissions or configuration.
+Normal completion and catchable SIGINT/SIGTERM release locks after child
+cleanup; never unlink live slot files to recover capacity. SIGKILL/OOM closes
+parent lock descriptors while suite process groups can remain alive and
+leaseless, temporarily exceeding the budget. Inspect and stop or wait for
+orphan suites before replacement work. Windows retains top-process-only
+cleanup. Containers require an explicitly shared lock filesystem with
+compatible locking semantics; without that, host-wide coverage is
+could-not-check. See [muhar's lease and recovery contract](../tools/desk/cmd/muhar/README.md#sharing-a-host-budget).
+
 ## Scrubbed cells — `--kind scrubbed`
 
 Cell-owned Kimi/provider credentials and an optional Herdr display are described in
@@ -459,11 +493,14 @@ links. It refuses an existing cell of the same name, exactly like every other ki
 
 ### The composed environment
 
-The launch is `env -i` plus an explicit allowlist — the parent shell contributes nothing by
-default. This is the exact list `cellctl` exports (`scrubbedEnvKeys` in
-`tools/desk/cmd/cellctl/env.go` is the single source this table, the `[plan]` lines below, and the
-live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares the same set, and
-`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it). The cell database pointer and GitLab endpoint rows are
+The launch is `env -i` plus explicitly composed keys. `scrubbedEnvKeys` in
+`tools/desk/cmd/cellctl/env.go` supplies the core list; the shared managed-cache
+and mutation-budget helpers append their named effective configuration. Thus
+an explicitly set parent/defaults budget can cross this boundary even when
+cell.env does not name it; arbitrary parent keys do not pass through. The
+`[plan]` and live launch use the same composition. The shell oracle's
+`SCRUBBED_ENV_KEYS` declares its core set, and
+`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it). The mutation-budget, cell database pointer and GitLab endpoint rows are
 Go-only additions,
 present only when the cell declares them; parity fixtures do not configure them.
 
@@ -491,6 +528,8 @@ present only when the cell declares them; parity fixtures do not configure them.
 | LANG | passed through from the parent |
 | ASSAY_CELL_DB_DSN | `CELL_DB_DSN`, when `cell.env` carries one |
 | PGPASSFILE | `CELL_DB_PASSFILE`, when `cell.env` carries `CELL_DB_DSN` |
+| MUHAR_LEASE_DIR | Explicit configured shared absolute lease directory; absent when unset |
+| MUHAR_TOTAL_SLOTS | Explicit configured positive host total; absent when unset |
 | GITLAB_API_BASE | GitLab cells only: nonempty `cell.env` `GITLAB_API_BASE`, else its nonempty `FORGE_API_BASE`; inherited values and compiled defaults are excluded |
 
 A configured cell-owned provider adds its endpoint, token and model aliases to the final

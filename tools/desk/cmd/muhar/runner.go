@@ -28,17 +28,16 @@ type processRegistry struct {
 	closed bool
 }
 
-// start starts cmd and tracks it. Once killAll has run, a command that starts
-// afterwards is killed at once, so a worker racing the interrupt handler
-// cannot leave a suite running after muhar exits.
+// start starts cmd and tracks it. Once killAll has run, further starts are
+// refused before spawning, so a racing worker cannot leave a suite behind.
 func (r *processRegistry) start(cmd *exec.Cmd) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return context.Canceled
+	}
 	if err := cmd.Start(); err != nil {
 		return err
-	}
-	if r.closed {
-		_ = killProcessGroup(cmd)
 	}
 	r.procs[cmd] = struct{}{}
 	return nil
@@ -58,6 +57,34 @@ func (r *processRegistry) killAll() {
 	for cmd := range r.procs {
 		_ = killProcessGroup(cmd)
 	}
+}
+
+// stopped distinguishes cancellation from a genuine suite failure (CAUGHT).
+func (r *processRegistry) stopped() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.closed }
+
+// trackedOutput gives discovery, coverage, schemata and module edits the same
+// process-group custody as bounded suites. Admission belongs to their caller.
+func trackedOutput(cmd *exec.Cmd, combined bool) ([]byte, error) {
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	if combined {
+		cmd.Stderr = &stdout
+	} else if cmd.Stderr == nil {
+		cmd.Stderr = &stderr
+	}
+	setProcessGroup(cmd)
+	// Commands made with exec.Command have no context watcher; registry owns
+	// interruption. exec.Cmd refuses a non-nil Cancel on these commands.
+	cmd.Cancel = nil
+	if err := liveGroups.start(cmd); err != nil {
+		return nil, err
+	}
+	err := cmd.Wait()
+	liveGroups.done(cmd)
+	if liveGroups.stopped() {
+		return stdout.Bytes(), context.Canceled
+	}
+	return stdout.Bytes(), err
 }
 
 func runShell(root, command string, env []string, timeout time.Duration) CommandResult {
@@ -100,6 +127,9 @@ func runBounded(root string, env []string, timeout time.Duration, build func(con
 	}
 	err := cmd.Wait()
 	liveGroups.done(cmd)
+	if liveGroups.stopped() {
+		return CommandResult{Err: context.Canceled}
+	}
 	if ctx.Err() == context.DeadlineExceeded {
 		return CommandResult{TimedOut: true}
 	}
@@ -308,24 +338,4 @@ func goBuildFromTest(test, pkg string) (string, bool) {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
-}
-
-// trackedOutput gives discovery and coverage commands the same interruption
-// ownership as suite commands. Wait reaps them before source restoration.
-func trackedOutput(cmd *exec.Cmd, combined bool) ([]byte, error) {
-	setProcessGroup(cmd)
-	// These discovery commands have no context deadline; interruption is owned
-	// by liveGroups. exec.Cmd rejects Cancel on commands without a context.
-	cmd.Cancel = nil
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if combined {
-		cmd.Stderr = &out
-	}
-	if err := liveGroups.start(cmd); err != nil {
-		return nil, err
-	}
-	err := cmd.Wait()
-	liveGroups.done(cmd)
-	return out.Bytes(), err
 }

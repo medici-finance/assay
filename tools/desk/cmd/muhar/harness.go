@@ -209,6 +209,9 @@ type Harness struct {
 	// because two workers editing one file would invalidate every verdict.
 	Jobs int
 
+	// Budget admits independent workers, never a whole pool at once.
+	Budget *hostBudget
+
 	// Workspace provisions an isolated copy of the tree for worker id and
 	// returns its root plus a cleanup. It is only consulted when Jobs > 1;
 	// when it is nil the sweep falls back to running in place.
@@ -428,9 +431,14 @@ func (h *Harness) preflight(root string) Report {
 
 	// (4) Baseline: pristine source must be green. A suite that is already red
 	// makes every later "caught" meaningless.
+	release, err := h.Budget.acquire()
+	if err != nil {
+		return Report{Broken: true, BrokenReason: fmt.Sprintf("baseline admission: %v", err)}
+	}
 	start := time.Now()
 	base := h.runTest(root, policy.baseline)
 	baselineTime := time.Since(start)
+	release()
 	if base.TimedOut {
 		rep.Broken = true
 		rep.BrokenReason = fmt.Sprintf("baseline timed out after %s — discard the run", policy.baseline)
@@ -463,12 +471,17 @@ func (h *Harness) preflight(root string) Report {
 	// (3) Positive control: a mutation the suite MUST catch. If it is not
 	// caught, the harness is not mutating (or the suite cannot see the source)
 	// and the whole run is worthless — exactly the #34 failure, made loud.
+	release, err = h.Budget.acquire()
+	if err != nil {
+		return Report{Broken: true, BrokenReason: fmt.Sprintf("control admission: %v", err)}
+	}
 	control := *h
 	timing := &mutationTiming{Selection: "full command"}
 	control.observation = timing
 	start = time.Now()
 	cres, cerr := control.runOne(root, h.Control)
 	controlTime := time.Since(start)
+	release()
 	if h.State != nil && !h.stopped() {
 		if err := h.State.append(stateEntry{Kind: "phases", BaselineNS: baselineTime.Nanoseconds(), ControlNS: controlTime.Nanoseconds(), BuildNS: timing.Build.Nanoseconds(), TestNS: timing.Test.Nanoseconds(), Selection: timing.Selection}); err != nil {
 			return Report{Broken: true, BrokenReason: "state phases: " + err.Error()}
@@ -506,7 +519,7 @@ func (h *Harness) preflight(root string) Report {
 // either way: the same baseline gate, the same control gate, and Results indexed
 // by spec position so the report does not depend on completion order.
 func (h *Harness) Run() Report {
-	jobs := h.Jobs
+	jobs := h.Budget.clamp(h.Jobs)
 	// Never provision more workspaces than there is work for them.
 	if jobs > len(h.Mutations) {
 		jobs = len(h.Mutations)
@@ -521,12 +534,20 @@ func (h *Harness) Run() Report {
 		if rep.Broken {
 			return rep
 		}
+		release, err := h.Budget.acquire()
+		if err != nil {
+			return Report{Broken: true, BrokenReason: fmt.Sprintf("worker admission: %v", err)}
+		}
+		defer release()
 		// The instrument is proven. Now every NotCaught is a real finding.
 		_, st := h.schemataSetup(h.Root)
 		defer st.cleanup()
 		for i := range h.Mutations {
 			if h.stopped() {
 				break
+			}
+			if h.Budget != nil && h.Budget.ctx.Err() != nil {
+				return Report{Broken: true, BrokenReason: "worker canceled"}
 			}
 			result, err := h.completedMutation(h.Root, st, i)
 			if err != nil {
@@ -552,7 +573,12 @@ func (h *Harness) runParallel(jobs int) Report {
 		}
 	}()
 	for i := 0; i < jobs; i++ {
+		release, err := h.Budget.acquire()
+		if err != nil {
+			return Report{Broken: true, BrokenReason: fmt.Sprintf("workspace admission: %v", err)}
+		}
 		root, cleanup, err := h.Workspace(i)
+		release()
 		if err != nil {
 			return Report{
 				Broken:       true,
@@ -572,38 +598,74 @@ func (h *Harness) runParallel(jobs int) Report {
 
 	// Schemata is planned once, in the first copy; every other worker builds
 	// the same plan in its own copy and proves its own baseline green first.
+	release, err := h.Budget.acquire()
+	if err != nil {
+		return Report{Broken: true, BrokenReason: fmt.Sprintf("schemata admission: %v", err)}
+	}
 	plan, first := h.schemataSetup(roots[0])
+	release()
 
 	// Results are indexed by spec position, never appended, so the report is
 	// byte-identical to a sequential run whatever order the workers finish in.
 	rep.Results = make([]MutationResult, len(h.Mutations))
 	resultErrors := make([]error, len(h.Mutations))
-	next := make(chan int)
+	next := make(chan int, len(h.Mutations))
+	for i := range h.Mutations {
+		next <- i
+	}
+	close(next)
+	workerErrors := make([]error, jobs)
 	var wg sync.WaitGroup
 	for w := 0; w < jobs; w++ {
 		wg.Add(1)
 		go func(w int, root string) {
 			defer wg.Done()
+			// Poll without reserving work. Once the shared queue drains, a
+			// worker still waiting for capacity has nothing left to admit.
+			release, err := h.Budget.acquireWhile(func() bool { return len(next) > 0 })
+			if errors.Is(err, errNoBudgetWork) {
+				return
+			}
+			if err != nil {
+				workerErrors[w] = err
+				return
+			}
+			i, ok := <-next
+			if !ok {
+				release()
+				return
+			}
+			defer release()
 			st := first
 			if w > 0 {
 				st = h.schemataFor(root, plan)
+				defer st.cleanup()
 			}
-			defer st.cleanup()
-			for i := range next {
-				if h.stopped() {
-					continue
+			for {
+				if h.Budget != nil && h.Budget.ctx.Err() != nil {
+					workerErrors[w] = h.Budget.ctx.Err()
+					return
 				}
-				result, err := h.completedMutation(root, st, i)
-				resultErrors[i] = err
-				rep.Results[i] = result
+				if !h.stopped() {
+					result, err := h.completedMutation(root, st, i)
+					resultErrors[i] = err
+					rep.Results[i] = result
+				}
+				i, ok = <-next
+				if !ok {
+					break
+				}
 			}
 		}(w, roots[w])
 	}
-	for i := range h.Mutations {
-		next <- i
-	}
-	close(next)
 	wg.Wait()
+	// Worker zero may find the queue drained before admission.
+	first.cleanup()
+	for _, err := range workerErrors {
+		if err != nil {
+			return Report{Broken: true, BrokenReason: fmt.Sprintf("worker admission: %v", err)}
+		}
+	}
 	for _, err := range resultErrors {
 		if err != nil {
 			return Report{Broken: true, BrokenReason: err.Error()}

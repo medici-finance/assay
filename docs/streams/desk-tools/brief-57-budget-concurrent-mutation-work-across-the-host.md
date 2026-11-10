@@ -20,11 +20,11 @@ exec-tier: strong
 exec-tier-why: "Cross-process locking, cancellation and launcher propagation require concurrency and lifecycle reasoning across components."
 domain: complex
 consumers:
-  - "tools/desk/cmd/muhar/README.md: follow-up desk-tools/57 (this brief; flips to fixed-here when the lease contract is documented)"
-  - "tools/desk/cmd/cellctl/env.go: follow-up desk-tools/57 (this brief; flips to fixed-here when the scrubbed-cell allowlist propagates the values)"
-  - "tools/desk/cmd/cellctl/launch.go: follow-up desk-tools/57 (this brief; flips to fixed-here when deskLaunch and its dry-run echo propagate the values to non-scrubbed cells)"
-  - "tools/desk/cmd/cellctl/envkeys.go: follow-up desk-tools/57 (this brief; flips to fixed-here when both keys are classified in the env-key registry)"
-  - "docs/cellctl.md: follow-up desk-tools/57 (this brief; flips to fixed-here when operator configuration is documented)"
+  - "tools/desk/cmd/muhar/README.md: fixed-here (host lease, queue measurement and recovery contract)"
+  - "tools/desk/cmd/cellctl/env.go: fixed-here (shared composition propagates explicit budget inputs)"
+  - "tools/desk/cmd/cellctl/launch.go: fixed-here (host launch and dry-run compose explicit budget inputs)"
+  - "tools/desk/cmd/cellctl/envkeys.go: fixed-here (both optional inputs classified without defaults)"
+  - "docs/cellctl.md: fixed-here (shared directory, total and recovery documented)"
 ---
 
 # Brief 57 — Budget concurrent mutation work across the host
