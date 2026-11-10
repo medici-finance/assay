@@ -268,7 +268,8 @@ in PR #2620. They do not mark desk-tools/32 implemented or resurrect its closed 
 The secret-scan class work runs **desk-tools/61 → desk-tools/63**, with **desk-tools/62 →
 desk-tools/63** and **desk-tools/62 → desk-tools/64** beside it. 63's entries need 61's registry
 and 62's diff line index; 64's narrower scopes are a side filter over that same index. 61 and 64
-are each `gate: human` with a decision at creation, so the real head of this chain is the two
+are each `gate: human` with a decision at creation. 62 is `gate: human` at start, because it
+extends the diff reader the outbound push check uses. The real head of this chain is those
 human answers, not the code. See "Secret-scan class — 10 November 2026" below.
 
 ## Dependency waves
@@ -520,7 +521,7 @@ not exemptions and stay outside every change below.
 | Brief | What it does | Gate |
 |---|---|---|
 | [61](brief-61-benign-shape-registry.md) | Moves every existing admission, unchanged, into one declared registry, where each entry names its bounding refusals. A recorded-verdict golden, run on the old and new trees, proves nothing changed. | human, at creation |
-| [62](brief-62-diff-finding-file-line.md) | Reports a branch-diff refusal as file, line and side, not its line in the stripped diff (#3196 part 2; the deskevidence precedent is #3283, closed by #3300). No verdict changes. | human |
+| [62](brief-62-diff-finding-file-line.md) | Reports a branch-diff refusal as file, line and side, not its line in the stripped diff (#3196 part 2; the deskevidence precedent is #3283, closed by #3300). No verdict changes. | human, at start |
 | [63](brief-63-registry-acceptance-shapes.md) | Adds the open shapes as entries, each with paired refusals: go build-info hashes (#4723), platform-suffixed digest assignments (#2321), sops armor anchored to its file (#5257), Kubernetes qualified keys and `+`-joined identifiers (#1642, #2009). It adds an entropy cap to word-shaped admission (#4097) and keeps labelled 32-hex digests refused per the ruling on #3280 (#3196 part 1, guidance on #5156). The vendor-example allowlist (#929 part 2) is an option, defaulting to no. | human, at start |
 | [64](brief-64-diff-scan-scope.md) | Puts which diff lines the scan reads (added, removed, unchanged context; #929 part 1, #1642) to the human as options with their threats. The default is the status quo. | human, at creation |
 
