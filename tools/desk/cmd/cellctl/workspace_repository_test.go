@@ -129,7 +129,7 @@ func TestWorkspaceRootMapAtomic(t *testing.T) {
 	e.Put("CELL_ROOTS", "acme/tools="+legacyA+",acme/docs="+legacyB)
 	legacy := workspaceLegacyScope(e, cellDir)
 	scope := workspaceStoreScope{
-		Cell:     workspace.CellRef{UUID: "99999999-9999-4999-8999-999999999999", Root: cellDir},
+		Cell:     workspace.CellRef{UUID: "00000000-0000-4000-8000-000000000090", Root: cellDir},
 		Registry: filepath.Join(base, "registry"),
 		Legacy:   legacy,
 	}

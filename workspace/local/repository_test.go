@@ -167,8 +167,8 @@ func TestCellRepositoryIsolation(t *testing.T) {
 	run(t, host, "config", "user.name", "host operator")
 	run(t, host, "config", "credential.helper", "host-helper")
 
-	cellA := newCell(t, base, "cell-a", "11111111-1111-4111-8111-111111111111")
-	cellB := newCell(t, base, "cell-b", "22222222-2222-4222-8222-222222222222")
+	cellA := newCell(t, base, "cell-a", "00000000-0000-4000-8000-000000000010")
+	cellB := newCell(t, base, "cell-b", "00000000-0000-4000-8000-000000000020")
 	legacy := Legacy{Checkouts: []string{host}, Cleanup: []string{filepath.Join(cellA.Root, "worktrees"), filepath.Join(cellB.Root, "worktrees")}}
 	req := workspace.StoreRequest{Repo: repo, Subject: commit}
 	s := Stores{Transport: cloneFrom{repo: src}}
@@ -281,7 +281,7 @@ func TestCellRepositoryIsolation(t *testing.T) {
 		}, workspace.ReasonIdentityMismatch, "store.git"},
 	}
 	for i, sub := range subs {
-		cell := newCell(t, base, "sub-"+string(rune('a'+i)), "33333333-3333-4333-8333-33333333333"+string(rune('0'+i)))
+		cell := newCell(t, base, "sub-"+string(rune('a'+i)), "00000000-0000-4000-8000-00000000003"+string(rune('0'+i)))
 		lg := legacy
 		lg.Cleanup = append(append([]string(nil), legacy.Cleanup...), filepath.Join(cell.Root, "worktrees"))
 		_, err := Stores{Transport: sub.clone}.Provision(ctx, cell, req, lg)
@@ -300,14 +300,14 @@ func TestCellRepositoryIsolation(t *testing.T) {
 	// Placement: a store that would resolve into legacy scope is refused before any clone.
 	calls = 0
 	never := Stores{Transport: transportFunc(func(context.Context, workspace.RepoRef, string) error { calls++; return nil })}
-	cellL := newCell(t, base, "cell-l", "44444444-4444-4444-8444-444444444444")
+	cellL := newCell(t, base, "cell-l", "00000000-0000-4000-8000-000000000040")
 	linked := filepath.Join(base, "legacy-root-link")
 	if err := os.Symlink(workspace.StorePath(cellL, repo), linked); err != nil {
 		t.Fatal(err)
 	}
 	_, err = never.Provision(ctx, cellL, req, Legacy{Checkouts: []string{linked}})
 	wantRefusal(t, "legacy checkout resolving to the store", err, workspace.ReasonIdentityMismatch, "store.path")
-	cellR := newCell(t, base, "cell-r", "55555555-5555-4555-8555-555555555555")
+	cellR := newCell(t, base, "cell-r", "00000000-0000-4000-8000-000000000050")
 	if err := os.MkdirAll(filepath.Join(cellR.Root, "worktrees", "x"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -316,8 +316,8 @@ func TestCellRepositoryIsolation(t *testing.T) {
 	}
 	_, err = never.Provision(ctx, cellR, req, Legacy{Cleanup: []string{filepath.Join(cellR.Root, "worktrees")}})
 	wantRefusal(t, "repos directory linked into the legacy worktrees", err, workspace.ReasonIdentityMismatch, "store.path")
-	tracker := newCell(t, filepath.Join(base, "tracker-old"), "cell", "66666666-6666-4666-8666-666666666666")
-	_, err = never.Provision(ctx, tracker, req, Legacy{Cleanup: []string{filepath.Join(base, "tracker-*")}})
+	tracker := newCell(t, filepath.Join(base, "scratch-old"), "cell", "00000000-0000-4000-8000-000000000060")
+	_, err = never.Provision(ctx, tracker, req, Legacy{Cleanup: []string{filepath.Join(base, "scratch-*")}})
 	wantRefusal(t, "cell under an old sanctioned prefix", err, workspace.ReasonIdentityMismatch, "store.path")
 	if calls != 0 {
 		t.Fatalf("a placement refusal reached the transport %d times", calls)
@@ -327,7 +327,7 @@ func TestCellRepositoryIsolation(t *testing.T) {
 func TestCellRootBinding(t *testing.T) {
 	base := t.TempDir()
 	registry := filepath.Join(base, "registry")
-	cell := newCell(t, base, "cell", "77777777-7777-4777-8777-777777777777")
+	cell := newCell(t, base, "cell", "00000000-0000-4000-8000-000000000070")
 	if err := BindCell(registry, cell); err != nil {
 		t.Fatalf("bind: %v", err)
 	}
@@ -340,7 +340,7 @@ func TestCellRootBinding(t *testing.T) {
 	err := BindCell(registry, workspace.CellRef{UUID: cell.UUID, Root: copied})
 	wantRefusal(t, "copied cell", err, workspace.ReasonForeignState, "cell.root")
 	// A second UUID at an already bound root is refused.
-	err = BindCell(registry, workspace.CellRef{UUID: "88888888-8888-4888-8888-888888888888", Root: cell.Root})
+	err = BindCell(registry, workspace.CellRef{UUID: "00000000-0000-4000-8000-000000000080", Root: cell.Root})
 	wantRefusal(t, "second identity at one root", err, workspace.ReasonIdentityMismatch, "cell.uuid")
 	b, err := os.ReadFile(filepath.Join(registry, cell.UUID))
 	if err != nil {
