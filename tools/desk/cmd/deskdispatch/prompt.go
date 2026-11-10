@@ -169,6 +169,7 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	}
 	// The read-ahead packet, when one was written for this dispatch: one line, every kit.
 	writePacketLine(&b, plan)
+	writePickupReceipt(&b, o, plan.pickup)
 
 	if o.attestWorker && o.pr <= 0 && !review && !verifier {
 		writeWorkerAttestationSection(&b, o, repo, plan.workerAttestation)

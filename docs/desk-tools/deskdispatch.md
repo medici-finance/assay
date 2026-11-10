@@ -200,6 +200,20 @@ base moved, the checks at its head and the ones the base requires, every review 
 findings it records, the newest comments, and the diff. It holds no job log and no review
 comment anchored to a file and line — the forge surface reads neither — and says so.
 
+CONTEXT PICKUP. An implementer dispatch (--kit worker, --kit worker-objective) may carry
+--context-snapshot DIR and --context-receipt FILE, together or not at all: the snapshot
+`statusgen context` reads and the context-handoff receipt the brief was authored against.
+Before the claim and before any child process, deskdispatch rechecks the receipt against the
+snapshot with the same resolver package `statusgen context recheck` uses. A current receipt,
+an unrelated edit, an ignored draft rival or a product change to assess is admitted, and the
+prompt gains a "## Context pickup receipt" section with the receipt and merged digests,
+coverage, scope and every finding. A finding to reconcile, an unavailable input or partial
+coverage stops the dispatch with exit 5 and "dispatch HELD on context pickup": nothing is
+claimed and no worktree exists. A receipt whose schema this build does not validate is
+refused and names the manual bootstrap; it is never admitted unchecked. Without the flags the
+dispatch is unchanged and the kit's Architecture pickup section is the manual bootstrap
+(plugins/assay/references/implementation-pickup.md).
+
 --claim-root separates "where the consumer scripts live" from "which repo the worker's
 worktree branches from". The scripts (tools/dispatch-claim.sh, tools/decision-issue.sh)
 were centralized out of the consumer repos, so a cross-repo dispatch points --claim-root
