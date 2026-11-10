@@ -270,6 +270,12 @@
       "file": "cmd/desktoken/desktoken.go",
       "old": "\t_, fi, err := deskkit.LstatCustody(tokenPath, deskkit.CustodyNoLinks)",
       "new": "\tfi, err := os.Stat(tokenPath)"
+    },
+    {
+      "name": "drop the GitLab custody notice (a caller is no longer told the printed path is the only copy, so it may delete it as scratch and lock the role out)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tfmt.Fprintln(os.Stderr, gitlabCustodyNotice(rotate))",
+      "new": "\t_ = gitlabCustodyNotice"
     }
   ]
 }
