@@ -457,7 +457,7 @@ func stateIdentity(s spec, o options) (string, error) {
 func stateGoArgs(command string) (args, assigns []string, isGo bool, err error) {
 	toks, e := shellWords(command)
 	if e != nil {
-		if goCommandWord.MatchString(command) {
+		if mentionsGo(command) {
 			return nil, nil, false, fmt.Errorf("-state cannot resolve Go shell composition: %w", e)
 		}
 		return nil, nil, false, nil
@@ -477,7 +477,7 @@ func stateGoArgs(command string) (args, assigns []string, isGo bool, err error) 
 		return nil, nil, false, fmt.Errorf("-state needs the Go executable named go on PATH; absolute or relative Go executable paths are unsupported")
 	}
 	if len(toks) < 2 || toks[0] != "go" || toks[1] != "test" {
-		if goCommandWord.MatchString(command) {
+		if mentionsGo(command) {
 			return nil, nil, false, fmt.Errorf("-state requires a plain go test command to resolve Go inputs")
 		}
 		return nil, assigns, false, nil
@@ -525,6 +525,12 @@ func stateGoArgs(command string) (args, assigns []string, isGo bool, err error) 
 // Opaque compositions containing a Go executable fail closed. Plain commands
 // are classified from argv[0]'s base name by the shared token reader above.
 var goCommandWord = regexp.MustCompile(`(?i)(^|[[:space:];|&(){}!$<>\x60])['"]?([^[:space:];|&(){}!$<>\x60'"]*/)?go(\.exe)?['"]?([[:space:];|&(){}!$<>\x60]|$)`)
+
+// mentionsGo reports whether command names go as a command word. Backslashes
+// are stripped first: the shell removes them, so \go and g\o both run go.
+func mentionsGo(command string) bool {
+	return goCommandWord.MatchString(strings.ReplaceAll(command, `\`, ""))
+}
 
 func goExecutable(path string) bool {
 	name := filepath.Base(path)

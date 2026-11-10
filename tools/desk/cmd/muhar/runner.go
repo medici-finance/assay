@@ -103,7 +103,8 @@ func runGoArgs(root string, args []string, env []string, timeout time.Duration) 
 // the deadline, and classifies the exit: TimedOut for the deadline or a go
 // test binary's own timeout panic, Failed for an ordinary non-zero exit, Err
 // when the command could not run or its directly observed Unix process was
-// terminated by SIGKILL/SIGTERM. Fault signals retain ordinary failure semantics.
+// terminated by a termination or resource signal (SIGKILL, SIGTERM, SIGINT,
+// SIGHUP, SIGXCPU, SIGXFSZ). Fault signals retain ordinary failure semantics.
 // The caller builds the command so its argv[0] stays a literal at the exec
 // site, where the repo's exec-site checker can resolve it.
 func runBounded(root string, env []string, timeout time.Duration, build func(context.Context) *exec.Cmd) CommandResult {
@@ -139,7 +140,7 @@ func runBounded(root string, env []string, timeout time.Duration, build func(con
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
 		if resourceSignal(cmd.ProcessState) {
-			return CommandResult{Err: fmt.Errorf("command terminated by SIGKILL/SIGTERM: %w", err)}
+			return CommandResult{Err: fmt.Errorf("command terminated by a termination signal: %w", err)}
 		}
 		if seen.found() {
 			return CommandResult{TimedOut: true}

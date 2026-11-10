@@ -82,7 +82,7 @@
     {
       "name": "non-Go command rejected",
       "file": "cmd/muhar/state.go",
-      "old": "goCommandWord.MatchString(command)",
+      "old": "goCommandWord.MatchString(strings.ReplaceAll(command, `\\`, \"\"))",
       "new": "strings.Contains(command, \"go \")"
     },
     {
@@ -124,8 +124,20 @@
     {
       "name": "fault signal becomes infra error",
       "file": "cmd/muhar/process_unix.go",
-      "old": "return status.Signaled() && (signal == syscall.SIGKILL || signal == syscall.SIGTERM)",
-      "new": "return status.Signaled() || (signal == syscall.SIGKILL || signal == syscall.SIGTERM)"
+      "old": "return status.Signaled() && terminationSignals[status.Signal()]",
+      "new": "return status.Signaled()"
+    },
+    {
+      "name": "escaped Go command missed",
+      "file": "cmd/muhar/state.go",
+      "old": "strings.ReplaceAll(command, `\\`, \"\")",
+      "new": "command"
+    },
+    {
+      "name": "termination signal dropped",
+      "file": "cmd/muhar/process_unix.go",
+      "old": "syscall.SIGXFSZ: true,",
+      "new": "syscall.SIGXFSZ: false,"
     }
   ]
 }

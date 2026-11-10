@@ -328,7 +328,7 @@ The spec is one JSON object. Fields not listed here are ignored.
 
 | Field | Required | Meaning |
 |---|---|---|
-| `test` | yes | The suite command, run with `sh -c`. After the mutant builds, an ordinary non-zero test exit means `CAUGHT`; a directly observed Unix termination/resource-signal death (`SIGKILL`, `SIGTERM`) is non-definitive (see Verdicts); a timeout is also `CAUGHT` and is marked on that mutant's line. It may use pipes and `&&`. |
+| `test` | yes | The suite command, run with `sh -c`. After the mutant builds, an ordinary non-zero test exit means `CAUGHT`; a directly observed Unix termination/resource-signal death (`SIGKILL`, `SIGTERM`, `SIGINT`, `SIGHUP`, `SIGXCPU`, `SIGXFSZ`) is non-definitive (see Verdicts); a timeout is also `CAUGHT` and is marked on that mutant's line. It may use pipes and `&&`. |
 | `build` | no | Optional build command. When set, it runs before the suite for every mutation, whatever the file. If omitted, a `.go` mutation is checked with `go test -vet=off -c` for its package, carrying the leading `NAME=value` environment assignments and the build flags (`-tags`, `-race`, `-gcflags` and the like) from `test`; test-run flags such as `-run`, `-count` and `-timeout` are dropped. It compiles without executing tests or package initializers. A `test` that is not a plain `go test` command, or that carries a flag `muhar` does not know (or `-C`), uses the mutated package alone, with no flags; set `build` when that needs extra tags or a broader build. A build failure is `COULD_NOT_MUTATE`, and the suite is not run. Non-Go mutations have no automatic build step. |
 | `timeout` | no | Object with `multiplier` (default `5`), `floor` (default `20s`) and optional `baseline` limit (default `30m`). The pristine suite must finish within `baseline`. The per-mutation limit is `max(floor, measured baseline × multiplier)`, and each phase of a mutation gets all of it: the build, the suite, and with `schemata` the schema run and any classic fallback. No phase runs on what an earlier one left over. A suite killed at the limit is `CAUGHT`, flagged `TIMEOUT` on its line, because it had the whole limit and did not terminate. A build timeout is `COULD_NOT_MUTATE`. A positive control caught only by a timeout makes the run `HARNESS BROKEN`: the control must turn the suite red, and a suite that asserts nothing still times out when it is slow enough. |
 | `control` | yes | A mutation object (below) the suite **must** catch. `control.name` and `control.old` must be non-empty, or `muhar` exits 1 before running anything. |
@@ -349,7 +349,8 @@ A mutation becomes `COULD_NOT_MUTATE` when:
 read, stat'ed or written, or the bytes read back from disk after writing are
 not the intended mutant. It also applies when the mutated Go package cannot be
 built, or when the direct command child is killed by a termination or
-resource signal (`SIGKILL`, `SIGTERM`; Unix only). That rule holds for every run, with or without the host
+resource signal (`SIGKILL`, `SIGTERM`, `SIGINT`, `SIGHUP`, `SIGXCPU`,
+`SIGXFSZ`; Unix only). That rule holds for every run, with or without the host
 budget or `-state`. A fault signal such as `SIGABRT` or `SIGSEGV` is an
 ordinary test failure, so a crashing mutant is `CAUGHT`. The observation does
 not reach through wrappers: if a shell or `go test` turns a signaled
@@ -535,7 +536,7 @@ report is only the two `HARNESS BROKEN` lines.
 |---|---|---|
 | `CAUGHT` | The mutation was proven on disk and its test command exited ordinarily with non-zero status (including a wrapper translating a descendant failure), or ran for the whole per-mutation limit without finishing. A timeout is marked on the per-mutant line. | Nothing: the behaviour is tested, or the mutant did not terminate within its measured bound. |
 | `NOT_CAUGHT` | The mutation was proven on disk and the test command exited 0. | A real finding. Add a test that fails with this edit in place, then re-run. |
-| `COULD_NOT_MUTATE` | The edit could not be planted or proven, the mutated Go package could not be built, or the direct command child was killed by a termination or resource signal (`SIGKILL`, `SIGTERM`; Unix; every run, with or without budgeting or `-state`). Fault signals such as `SIGSEGV` stay ordinary failures. Descendant signal deaths translated to ordinary exits are not detected here. The reason is printed on the line. | Fix the spec or source. This is **not** a pass: that behaviour was not checked. |
+| `COULD_NOT_MUTATE` | The edit could not be planted or proven, the mutated Go package could not be built, or the direct command child was killed by a termination or resource signal (`SIGKILL`, `SIGTERM`, `SIGINT`, `SIGHUP`, `SIGXCPU`, `SIGXFSZ`; Unix; every run, with or without budgeting or `-state`). Fault signals such as `SIGSEGV` stay ordinary failures. Descendant signal deaths translated to ordinary exits are not detected here. The reason is printed on the line. | Fix the spec or source. This is **not** a pass: that behaviour was not checked. |
 | `HARNESS BROKEN` | The baseline was red or timed out, the control could not be planted, built or caught, or a `-j` copy could not be made. | Fix the suite, the control or the environment. Ignore everything else about this run. |
 
 ## Exit codes
@@ -684,7 +685,7 @@ Every retry reruns baseline, selection preparation and positive control. Only
 complete `CAUGHT` and `NOT_CAUGHT` mutation records with no infrastructure error
 are reused; a complete test timeout is a definitive `CAUGHT`. `COULD_NOT_MUTATE`,
 `HARNESS BROKEN`, interrupted and error observations are rerun. A directly observed Unix suite process killed by a termination or resource
-signal (`SIGKILL`, `SIGTERM`) is an
+signal (`SIGKILL`, `SIGTERM`, `SIGINT`, `SIGHUP`, `SIGXCPU`, `SIGXFSZ`) is an
 infrastructure error and is not reusable. Fault signals (`SIGABRT`, `SIGSEGV`
 and the like) keep their ordinary failed-test classification. A wrapper such as `go test` can convert a
 child's OOM or signal death into an ordinary exit 1; that hidden signal is not

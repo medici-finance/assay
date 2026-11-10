@@ -282,7 +282,7 @@ func TestStateRejectsNewTree(t *testing.T) {
 				t.Fatalf("non-Go command %q classified as Go: %v", command, err)
 			}
 		}
-		for _, command := range []string{"/custom/bin/go test .", "./go test .", "'/custom/bin/go' test . && true", "go test . && true", "(go test .)", "echo $(go test .)", "`go test .`", "{go test .;}", "!go test .", "echo <(go test .)"} {
+		for _, command := range []string{"/custom/bin/go test .", "./go test .", "'/custom/bin/go' test . && true", "go test . && true", "(go test .)", "echo $(go test .)", "`go test .`", "{go test .;}", "!go test .", "echo <(go test .)", `\go test .`, `g\o test .`, `go\ test .`, `echo x;\go test .`} {
 			if _, _, _, err := stateGoArgs(command); err == nil {
 				t.Fatalf("unresolved Go command accepted: %s", command)
 			}
@@ -477,8 +477,7 @@ func TestStateSkipsNoErrors(t *testing.T) {
 		}
 	}
 	t.Run("external-signal", func(t *testing.T) {
-		for _, signal := range []string{"KILL", "TERM"} {
-
+		for _, signal := range []string{"KILL", "TERM", "INT", "HUP", "XCPU", "XFSZ"} {
 			root := t.TempDir()
 			writeFixture(t, filepath.Join(root, "value.txt"), "one")
 			state, err := openRunState(filepath.Join(t.TempDir(), "signal.jsonl"))
@@ -496,7 +495,7 @@ func TestStateSkipsNoErrors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if result.Result != CouldNotMutate || result.Err == nil || !strings.Contains(result.Err.Error(), "SIGKILL/SIGTERM") {
+			if result.Result != CouldNotMutate || result.Err == nil || !strings.Contains(result.Err.Error(), "termination signal") {
 				t.Fatalf("externally killed suite became a verdict: %+v", result)
 			}
 			records := readStateLines(t, state.file.Name())
