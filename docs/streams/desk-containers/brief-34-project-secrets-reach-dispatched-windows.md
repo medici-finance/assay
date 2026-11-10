@@ -76,8 +76,11 @@ facts (freshness-checked 2026-11-10 @ 7cbf8a06b):
 
 single-point-of-failure: the role scoping in the launcher (which windows get the path). The
 layers behind it: the dispatcher strips the variables from any child running an unblessed
-head; reviewer windows never receive the map at all; the secret file is owner-only and
-outside every worktree, so no commit can carry it; the leak sweep gates every public tree.
+head; reviewer windows never receive the map at all; the secret file is outside every
+worktree, so no commit can carry it; the leak sweep gates every public tree. Those layers
+control only whether a process is TOLD the path. Whether a process can OPEN the file is a
+separate layer: per-role read isolation (Task 2a). Owner-only mode separates OS users, not
+the role windows of one user, so a cell without per-role read isolation binds no secret.
 
 design-fit:
   owner: cellctl (the launcher already owns every runtime credential path for a window)
@@ -122,6 +125,21 @@ Options:
 
 Default if no answer: option 4 (hold). A credential channel is never opened by silence.
 
+Ruled 2026-11-10: option 1, by the driver in their own login: https://github.com/medici-finance/assay/issues/6065#issuecomment-6773391431
+The ruling comment labels its choice "A". Its text restates option 1: a launcher-held,
+owner-only file per project, role and service, its path exported only to worker and
+verifier windows, stripped from unblessed heads, with reviewers accepting the verifier's
+signed outcome. The option text above is kept as it stood when ruled.
+
+Not yet recorded: the design-decision record that rule 48 requires before this brief leaves
+`todo`. `DR-desk-containers-34` can corroborate only from a ruling comment that names it, on
+a decision issue that carries this brief's decision-gate marker (registers-v1 §7.5). The
+comment above names neither, so the record waits for that comment rather than landing with a
+link that cannot corroborate. Security review of this brief, posted before the ruling, found
+that owner-only mode separates OS users, not role processes. It added the read-isolation
+step (Task 2a, Verify rows 8 and 9) and the rotation note (Task 5). The record's ruling is
+where the driver confirms those additions.
+
 ## Ground rules
 
 - Authoring this brief implements nothing. Implementation is a draft PR on its own branch;
@@ -141,6 +159,16 @@ Default if no answer: option 4 (hold). A credential channel is never opened by s
 2. **Check.** `cellctl check` refuses a role-secret file that is not a regular file, not
    owner-only, owned by another user, a symlink out of its directory, or inside any worktree or
    checkout. The dry run prints paths and role bindings, never a value.
+2a. **Read isolation.** A non-holding role must be unable to open the file, not only unaware
+   of its path. The cell declares the surface that provides this. On a container surface,
+   the secret volume is mounted only into worker and verifier containers, as
+   `containers/secrets.md` already does for App keys. On a host surface, each holding role
+   runs as its own OS identity and owns its files, and reviewer, intake and coordinator
+   windows run as an identity that cannot read them. A cell that declares no such surface
+   (one OS user for every window, the common desktop cell) binds no role secret: `cellctl
+   check` refuses the binding. On that surface, rows that need a secret stay in the
+   Environment-blocked queue. A harness read-deny rule is client-side and advisory, so it is
+   never enough on its own.
 3. **Launch.** `cellctl desk` exports, for an allowed role only, one variable per bound service
    naming the PATH. A disallowed role launched with a binding refuses rather than dropping it
    silently. Never pass a value in argv or in the environment.
@@ -148,8 +176,10 @@ Default if no answer: option 4 (hold). A credential channel is never opened by s
    item is not trusted (an unblessed author or an unblessed head) and from every review-kit
    child. Add the variables to the closed inventory in `exec.go` as never-inherited for those
    children.
-5. **Revocation and audit.** Rotation is replacing the file at its source; a removed file makes
-   the next launch for that role refuse. The launcher appends a receipt (role, project, service,
+5. **Revocation and audit.** Replacing or deleting the local file stops future launches only;
+   a removed file makes the next launch for that role refuse. It does not invalidate a copy
+   that has already leaked. Revoking a leaked secret means rotating it at the issuing
+   service, then replacing the file. The launcher appends a receipt (role, project, service,
    path, file modification time, launch time) to the cell's own state, never the value and never
    a hash of it, since a hash of a short password is a guessing oracle.
 6. **Reviewer witness.** For a `service:` row, the review kit and the pr-review-desk skill
@@ -168,18 +198,22 @@ Named tests must execute; zero matches or a skip fails independent verification.
 | 1 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretScope$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretScope ' "$o")` | Named PASS; worker and verifier get the path variable; reviewer, intake and coordinator do not, and a reviewer launched with a binding refuses. |
 | 2 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretCheck$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretCheck ' "$o")` | Named PASS; group-readable, foreign-owned, symlinked-out and inside-a-worktree files each refuse; the dry run output contains no fixture value. |
 | 3 | check +flow | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/deskdispatch/ -run '^TestRoleSecretUntrustedHead$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretUntrustedHead ' "$o")` | Named PASS; an unblessed item and every review-kit child run with no role-secret variable; a trusted worker item keeps it. |
-| 4 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretRevoke$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretRevoke ' "$o")` | Named PASS; a removed file refuses the next launch; the receipt names role, service and path and contains neither the value nor any hash of it. |
+| 4 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretRevoke$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretRevoke ' "$o")` | Named PASS; a removed file refuses the next launch; the receipt names role, service and path and contains neither the value nor any hash of it. This proves launch refusal, not revocation at the issuing service. |
 | 5 | check +flow | host | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretLaunchFlow$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretLaunchFlow ' "$o")` | Named PASS on a POSIX host (real file modes and owners); the compiled cellctl checks a scratch cell, launches a worker window whose dispatched child sees only the path variable, then refuses the same cell once the fixture file is made group-readable; no output contains the fixture contents. |
 | 6 | check | host | `statusgen --root . --lint --acceptance-forge` | exit 0; output contains "LINT: PASS". The flag reads the forge, so this row runs on a host with forge read access, never network-off. |
 | 7 | check | tree | `statusgen --consumers --brief desk-containers/34 --base $(git merge-base origin/main HEAD)` | Pre-merge, on the implementation branch: exit 0; declared implementation sites and follow-up references corroborate; out-of-scope judgments stay reviewer-owned. |
+| 8 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadIsolation$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadIsolation ' "$o")` | Named PASS; a cell that declares no per-role read-isolation surface refuses every role-secret binding; on the container surface, the generated mounts give the secret volume to worker and verifier containers only, and reviewer, intake and coordinator containers have no mount for it. |
+| 9 | check +flow | host:multi-user | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadDenyFlow$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadDenyFlow ' "$o")` | Named PASS on a POSIX host provisioned with a separate OS identity per role: a process running as the reviewer role's identity fails to open the fixture file by its path with a permission error, and the worker role's identity opens it; no output contains the fixture contents. |
 
 ## Threat model / pre-mortem
 
-- A reviewer slot inherits the secret and builds an untrusted head that sends it out: rows 1, 3, 5.
+- A reviewer slot inherits the secret's path and builds an untrusted head that sends it out: rows 1, 3, 5.
+- A reviewer, intake or coordinator process opens the secret file by its path, because every window runs as one OS user, for example when an untrusted head's text steers a reviewer to read it: rows 8, 9.
 - An unblessed item dispatched to a worker carries the variable into a hostile build: row 3.
 - A secret file is readable by other local users or sits inside a checkout and gets committed: rows 2, 5.
 - A secret is printed by a dry run, a receipt or a log, or a receipt carries a guessable hash of it: rows 2, 4.
 - A revoked secret keeps working because the launcher cached it: row 4.
+- A leaked copy keeps working after the local file is deleted: no row; review-only. Mitigation is rotation at the issuing service (Task 5).
 - A trusted worker's own dependency exfiltrates the secret it legitimately holds: no row; review-only. Mitigation is scope (non-production only, per-role, per-service) and rotation.
 - A merge-request pipeline reads the secret from a CI variable: no row; review-only. The design adds no CI variable, and review confirms none appears.
 
@@ -190,6 +224,6 @@ environment. No implementation evidence yet. -->
 
 ## Review
 
-Human gate. Confirm the scope unit, that reviewer and intake windows can never hold a project
-secret, that an untrusted head never runs beside one, and that revocation and audit record no
-value. Passing tests do not provision any real secret.
+Human gate. Confirm the scope unit, that reviewer and intake windows can neither be given nor
+open a project secret (Task 2a), that an untrusted head never runs beside one, and that
+revocation and audit record no value. Passing tests do not provision any real secret.
