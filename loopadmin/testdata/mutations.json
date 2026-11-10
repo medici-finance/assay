@@ -1594,5 +1594,33 @@
     "file": "process/run.go",
     "old": "if r == nil || r.custody == nil {\n\t\treturn -1, false, ErrNoCustody\n\t}\n\tadmission, err := r.custody.Admit(env)",
     "new": "var admission Admission\n\tvar err error\n\tif r != nil && r.custody != nil {\n\t\tadmission, err = r.custody.Admit(env)\n\t}"
+  },
+  {
+    "test": "TestJournalSharedStoreRestart",
+    "why": "graph-execution/26 row 6: relaunch when the journal lost the intent row",
+    "file": "journal/journal.go",
+    "old": "\tif prior != nil {\n\t\t// The caller holds a receipt the journal has no record of.",
+    "new": "\tif false {\n\t\t// The caller holds a receipt the journal has no record of."
+  },
+  {
+    "test": "TestJournalIncarnationPaused",
+    "why": "graph-execution/26 row 7: resume under a mismatched incarnation",
+    "file": "journal/incarnation.go",
+    "old": "if id != cur.ID || key != cur.KeyRef {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestNoEmbeddedJournalEngine",
+    "why": "graph-execution/26 row 8: stop refusing SQLite drivers",
+    "file": "journal/engine_test.go",
+    "old": "\t\"sqlite\", // mattn",
+    "new": "\t\"sqlite-disabled\", // mattn"
+  },
+  {
+    "test": "TestNoGraphDependency",
+    "why": "graph-execution/26: admit an unlisted module's packages",
+    "file": "runner/request_test.go",
+    "old": "\t\tif !ok {\n\t\t\treturn fmt.Errorf(\"runner module closure includes an unadmitted dependency\")",
+    "new": "\t\tif false && !ok {\n\t\t\treturn fmt.Errorf(\"runner module closure includes an unadmitted dependency\")"
   }
 ]

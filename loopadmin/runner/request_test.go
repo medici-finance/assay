@@ -561,12 +561,25 @@ func TestSchemaRefusesBlankTool(t *testing.T) {
 
 // TestNoGraphDependency retains graph/store isolation while admitting only the
 // existing credential-free local perfrec module, whose implementation is stdlib-only,
-// and the two pinned golang.org/x modules the moved process runner (loopadmin/process)
-// needs for process-group, job-object and terminal handling.
+// the two pinned golang.org/x modules the moved process runner (loopadmin/process)
+// needs for process-group, job-object and terminal handling, and the pinned
+// PostgreSQL driver and migration runner the execution journal (loopadmin/journal)
+// uses, with their own dependencies.
+//
+// Two scans run through the go-list boundary. The module graph admits no
+// replaced module except the local perfrec edge and no other local assay module
+// (the workflow module included). The package closure (every package built or
+// tested) admits only the listed modules at their pinned, unreplaced versions; a
+// module that only appears in a dependency's own requirement graph, such as the
+// database drivers goose's go.mod names, provides no package and is not admitted
+// by that appearance.
 // regression: desktools-v2/64
 // regression: graph-execution/26
 func TestNoGraphDependency(t *testing.T) {
 	if err := runnerModules(".."); err != nil {
+		t.Fatal(err)
+	}
+	if err := runnerPackages(".."); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join("..", "..", "go.work")); err == nil {
@@ -575,7 +588,7 @@ func TestNoGraphDependency(t *testing.T) {
 	// Plant a second module through the SAME go-list boundary. No download or
 	// dependency installation occurs: both synthetic requirements have local homes.
 	root := t.TempDir()
-	for _, name := range []string{"perfrec", "forbidden", "runner", "xsys"} {
+	for _, name := range []string{"perfrec", "forbidden", "runner", "xsys", "workflow"} {
 		if err := os.Mkdir(filepath.Join(root, name), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -585,89 +598,189 @@ func TestNoGraphDependency(t *testing.T) {
 			module = "example.test/forbidden"
 		case "xsys":
 			module = "golang.org/x/sys"
+		case "workflow":
+			module = "github.com/medici-finance/assay/workflow"
 		}
 		if err := os.WriteFile(filepath.Join(root, name, "go.mod"), []byte("module "+module+"\n\ngo 1.27.0\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if name == "runner" {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(root, name, "p.go"), []byte("package p\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	body := "module github.com/medici-finance/assay/loopadmin\n\ngo 1.27.0\n\nrequire github.com/medici-finance/assay/perfrec v0.0.0\nreplace github.com/medici-finance/assay/perfrec => ../perfrec\n"
 	site := filepath.Join(root, "runner")
 	mod := filepath.Join(site, "go.mod")
-	if err := os.WriteFile(mod, []byte(body), 0600); err != nil {
-		t.Fatal(err)
+	src := filepath.Join(site, "site.go")
+	write := func(goMod string, imports ...string) {
+		t.Helper()
+		if err := os.WriteFile(mod, []byte(goMod), 0600); err != nil {
+			t.Fatal(err)
+		}
+		code := "package site\n"
+		for _, imp := range imports {
+			code += "\nimport _ \"" + imp + "\"\n"
+		}
+		if err := os.WriteFile(src, []byte(code), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
+	write(body, "github.com/medici-finance/assay/perfrec")
 	if err := runnerModules(site); err != nil {
 		t.Fatalf("positive control: %v", err)
 	}
+	if err := runnerPackages(site); err != nil {
+		t.Fatalf("positive control: %v", err)
+	}
 	// An admitted golang.org/x module is admitted only at its pinned, unreplaced
-	// version: a locally replaced copy is refused.
+	// version: a locally replaced copy is refused by both scans.
 	swapped := body + "\nrequire golang.org/x/sys v0.0.0\nreplace golang.org/x/sys => ../xsys\n"
-	if err := os.WriteFile(mod, []byte(swapped), 0600); err != nil {
-		t.Fatal(err)
-	}
+	write(swapped, "golang.org/x/sys")
 	if err := runnerModules(site); err == nil {
-		t.Fatal("replaced golang.org/x/sys passed isolation check")
+		t.Fatal("replaced golang.org/x/sys passed the module-graph check")
 	}
-	body += "\nrequire example.test/forbidden v0.0.0\nreplace example.test/forbidden => ../forbidden\n"
-	if err := os.WriteFile(mod, []byte(body), 0600); err != nil {
-		t.Fatal(err)
+	if err := runnerPackages(site); err == nil {
+		t.Fatal("replaced golang.org/x/sys passed the package-closure check")
 	}
+	// Another local assay module is refused even as a graph-only requirement.
+	write(body+"\nrequire github.com/medici-finance/assay/workflow v0.0.0\nreplace github.com/medici-finance/assay/workflow => ../workflow\n", "github.com/medici-finance/assay/perfrec")
 	if err := runnerModules(site); err == nil {
-		t.Fatal("planted second dependency passed isolation check")
+		t.Fatal("a workflow module edge passed the module-graph check")
+	}
+	forbidden := body + "\nrequire example.test/forbidden v0.0.0\nreplace example.test/forbidden => ../forbidden\n"
+	write(forbidden, "example.test/forbidden")
+	if err := runnerModules(site); err == nil {
+		t.Fatal("planted second dependency passed the module-graph check")
+	}
+	if err := runnerPackages(site); err == nil {
+		t.Fatal("planted second dependency passed the package-closure check")
 	}
 }
 
-// admittedXModules are the only third-party modules in the loopadmin closure:
-// the exact versions tools/desk already pins, never replaced.
-var admittedXModules = map[string]string{
-	"golang.org/x/sys":  "v0.49.0",
-	"golang.org/x/term": "v0.47.0",
+// admittedModules are the only third-party modules whose packages may enter the
+// loopadmin closure: the exact versions tools/desk and workflow already pin,
+// never replaced (dependency risk summaries: #5900, #5929).
+var admittedModules = map[string]string{
+	"golang.org/x/sys":                "v0.49.0",
+	"golang.org/x/term":               "v0.47.0",
+	"github.com/jackc/pgx/v5":         "v5.12.0",
+	"github.com/pressly/goose/v3":     "v3.29.0",
+	"github.com/jackc/pgpassfile":     "v1.0.0",
+	"github.com/jackc/pgservicefile":  "v0.0.0-20240606120523-5a60cdf6a761",
+	"github.com/jackc/puddle/v2":      "v2.2.3",
+	"github.com/mfridman/interpolate": "v0.0.2",
+	"github.com/sethvargo/go-retry":   "v0.5.0",
+	"go.uber.org/multierr":            "v1.11.0",
+	"golang.org/x/sync":               "v0.24.0",
+	"golang.org/x/text":               "v0.43.0",
 }
 
-func runnerModules(dir string) error {
-	cmd := exec.Command("go", "list", "-m", "-json", "all")
+type listedModule struct {
+	Path    string
+	Version string
+	Main    bool
+	Replace *struct{ Path, Version string }
+}
+
+func goList(dir string, args ...string) ([]byte, error) {
+	cmd := exec.Command("go", append([]string{"list"}, args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off")
-	out, err := cmd.Output()
+	return cmd.Output()
+}
+
+// checkLocalEdge enforces the rules both scans share: the main module is the
+// unreplaced runner, perfrec is the exact relative edge, and no other local
+// assay module (the workflow module included) appears.
+func checkLocalEdge(m listedModule) (handled bool, err error) {
+	switch {
+	case m.Path == "github.com/medici-finance/assay/loopadmin":
+		if !m.Main || m.Replace != nil {
+			return true, fmt.Errorf("runner main module was replaced")
+		}
+		return true, nil
+	case m.Path == "github.com/medici-finance/assay/perfrec":
+		if m.Replace == nil || m.Replace.Path != "../perfrec" || m.Replace.Version != "" {
+			return true, fmt.Errorf("perfrec must use the exact admitted local edge")
+		}
+		return true, nil
+	case strings.HasPrefix(m.Path, "github.com/medici-finance/"):
+		return true, fmt.Errorf("runner module closure includes another local module")
+	}
+	return false, nil
+}
+
+// runnerModules scans the module graph.
+func runnerModules(dir string) error {
+	out, err := goList(dir, "-m", "-json", "all")
 	if err != nil {
 		return fmt.Errorf("could not inspect runner module closure: %w", err)
 	}
 	seen := map[string]bool{}
 	dec := json.NewDecoder(bytes.NewReader(out))
 	for {
-		var module struct {
-			Path    string
-			Version string
-			Main    bool
-			Replace *struct{ Path, Version string }
-		}
+		var module listedModule
 		if err := dec.Decode(&module); err == io.EOF {
 			break
 		} else if err != nil {
 			return fmt.Errorf("invalid module closure output")
 		}
-		switch module.Path {
-		case "github.com/medici-finance/assay/loopadmin":
-			if !module.Main || module.Replace != nil {
-				return fmt.Errorf("runner main module was replaced")
-			}
-		case "github.com/medici-finance/assay/perfrec":
-			if module.Replace == nil || module.Replace.Path != "../perfrec" || module.Replace.Version != "" {
-				return fmt.Errorf("perfrec must use the exact admitted local edge")
-			}
-		default:
-			want, ok := admittedXModules[module.Path]
-			if !ok {
-				return fmt.Errorf("runner module closure includes an unadmitted dependency")
-			}
-			if module.Replace != nil || module.Version != want {
-				return fmt.Errorf("%s must be the pinned, unreplaced %s", module.Path, want)
-			}
+		handled, err := checkLocalEdge(module)
+		if err != nil {
+			return err
+		}
+		if !handled && module.Replace != nil {
+			return fmt.Errorf("%s is replaced; only the local perfrec edge may be", module.Path)
 		}
 		seen[module.Path] = true
 	}
 	if !seen["github.com/medici-finance/assay/loopadmin"] || !seen["github.com/medici-finance/assay/perfrec"] {
 		return fmt.Errorf("runner module closure must contain the runner and local perfrec")
+	}
+	return nil
+}
+
+// runnerPackages scans the modules that provide a package to the build and
+// test closure.
+func runnerPackages(dir string) error {
+	out, err := goList(dir, "-deps", "-test", "-json=ImportPath,Module,Standard", "./...")
+	if err != nil {
+		return fmt.Errorf("could not inspect runner package closure: %w", err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(out))
+	for {
+		var pkg struct {
+			ImportPath string
+			Standard   bool
+			Module     *listedModule
+		}
+		if err := dec.Decode(&pkg); err == io.EOF {
+			break
+		} else if err != nil {
+			return fmt.Errorf("invalid package closure output")
+		}
+		if pkg.Standard {
+			continue
+		}
+		if pkg.Module == nil {
+			return fmt.Errorf("package %s has no module", pkg.ImportPath)
+		}
+		if handled, err := checkLocalEdge(*pkg.Module); handled {
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		want, ok := admittedModules[pkg.Module.Path]
+		if !ok {
+			return fmt.Errorf("runner module closure includes an unadmitted dependency")
+		}
+		if pkg.Module.Replace != nil || pkg.Module.Version != want {
+			return fmt.Errorf("%s must be the pinned, unreplaced %s", pkg.Module.Path, want)
+		}
 	}
 	return nil
 }
