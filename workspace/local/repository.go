@@ -36,7 +36,7 @@ type Transport interface {
 
 // Legacy is the scope managed data must stay physically outside of (spec section 5.4): the
 // checkouts the legacy keys name, and every legacy cleanup root. An entry may be a glob pattern
-// (`/private/tmp/tracker-*`), matched against every ancestor of a resolved store path.
+// (an old sanctioned temporary-worktree prefix, say), matched against every ancestor of a resolved store path.
 type Legacy struct {
 	// Checkouts are repositories or worktrees selected by CELL_REPO and CELL_ROOTS. A store may
 	// neither lie inside one, contain one, nor share its Git common directory.
