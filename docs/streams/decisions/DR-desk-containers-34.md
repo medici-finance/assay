@@ -14,7 +14,7 @@ accepted:
   - "A secret is scoped to (project repository, role, service name). The service name is the name in a Verify row's service:<name> Env cell. Only worker and verifier roles may hold one. Reviewer, intake and coordinator roles never do."
   - "The operator keeps each secret as an owner-only file outside every checkout. The launcher checks the file and exports only its path, and only into worker and verifier windows. The value is never passed in argv, in the environment, in a commit, in an image layer or in a pipeline-readable variable."
   - "The dispatcher strips the path variables from any child that runs an unblessed head and from every review-kit child. Reviewers witness a secret-bound row through the verifier's signed outcome for that row, never through a run report."
-  - "A non-holding role must be unable to open the file, not only unaware of its path: a per-role container mount, or a separate OS identity per role on a host. A cell that declares neither binds no role secret, so its secret-bound rows stay in the Environment-blocked queue."
+  - "A non-holding role must be unable to open the file, not only unaware of its path: a per-role container mount, or a separate OS identity per role on a host. A cell that declares neither binds no role secret, so its secret-bound rows stay in the Environment-blocked queue. A declared surface counts only once the launcher's check has verified it: on a host, every non-holding identity is distinct from every holder and the file owner, is not root and cannot elevate without a prompt, and each window starts under its role's identity; on a container cell, no non-holding window runs on the host as the file owner."
   - "Deleting or replacing the local file stops future launches only. Revoking a leaked secret means rotating it at the issuing service. The launcher's receipt records role, project, service, path and times, never the value or a hash of it."
 ---
 
@@ -24,11 +24,15 @@ design record on a `gate: human` brief is the driver's act; a model or a worker 
 **The ruling link does not corroborate yet.** The comment linked in `ruling:` above is the
 driver's choice of option 1 on brief 34, posted from the driver's own account on 2026-11-10.
 It does not name this record's id, and the issue it sits on carries no decision-gate marker.
-The registers-v1 §7.5 check therefore fails on it (`record-not-named`). That failure is
-intended: a record whose ruling does not name it is not an approved record. The driver
-corroborates it by posting a new comment that names `DR-desk-containers-34`, on an issue whose
-body carries the decision-gate marker for this record or for brief 34. This record then links
-that comment instead.
+A hand run of the registers-v1 §7.5 check (`statusgen --corroborate`) reports it as
+`record-not-named`. The CI `corroborate` job does not show that: it reaches the ruling-link
+check only when a pull request also touches a findings entry, so its green status on the
+pull request that adds this record says nothing about this record. Nor does the offline
+design gate: it reads a record's shape and its `human:<name>` stamp, not this status line.
+Merged as it stands, this record would satisfy rule 48 for brief 34. What holds it is that
+its pull request stays a draft, and is not flipped ready, until `ruling:` links a comment in
+which the driver names `DR-desk-containers-34`, on an issue whose body carries the
+decision-gate marker for this record or for brief 34.
 
 ## Basis
 
@@ -42,11 +46,14 @@ comment reads:
 The comment labels its choice "A". The brief numbers its options, and the comment's text
 restates option 1.
 
-Two parts of this record were added to the brief by security review, which was posted before
-the ruling, so the ruling did not see them:
+Three parts of this record were added to the brief by security review. The first round was
+posted before the ruling and the second after it, so the ruling saw none of them:
 
 - per-role read isolation, and the refusal to bind a secret on a cell without it (brief Task
   2a, Verify rows 8 and 9);
+- the requirement that the launcher's check verifies a declared surface rather than
+  trusting the declaration, and starts each window under its role's identity (Task 2a's last
+  paragraph, Task 3, Verify rows 5, 8 and 9), added by the second security round;
 - the note that revocation of a leaked copy is rotation at the issuing service (Task 5).
 
 The corroborating ruling is where the driver confirms or rejects them.
