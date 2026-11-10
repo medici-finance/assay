@@ -3,6 +3,7 @@ package deskkit
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -194,6 +195,10 @@ const (
 	// key this short can contribute at most two characters of opaque material, far under
 	// runThreshold. A longer key must earn its exemption by being word-shaped.
 	maxBareAssignKey = 2
+	// maxCapsAssignKey bounds the ALL-CAPS key isCapsKeyAssign accepts in front of an
+	// identifier value (`TEST=`, `RUN=`, `FILTER=`). Env-var name parts are short words;
+	// a longer ALL-CAPS stretch is opaque material in its own right.
+	maxCapsAssignKey = 16
 	// minAcronym / maxAcronym bound the ALL-CAPS run that wordDecomposition will accept as
 	// ONE word unit (see shortAcronymUnit). A 1-letter "acronym" is a lone capital — the
 	// shape a truncated token ends on — and carries no acronym meaning; a 5+ letter ALL-CAPS
@@ -351,6 +356,9 @@ const SurfaceBody = "body"
 //     rules above (see isAssignmentLike). This is the Verify/Evidence command idiom
 //     `f=docs/streams/…; test -f "$f" && …` (#775), which could not be
 //     reworded without desyncing a recorded audit trail from what was actually run.
+//     An ALL-CAPS env-var key (`TEST=`, `GO_TEST_RUN=`) in front of an exempt
+//     IDENTIFIER is admitted too, unless the full name carries a credential or digest
+//     stem (see isCapsKeyAssign, #1642).
 //   - a run composed ENTIRELY of `=` (see isAllEquals): a console-banner separator
 //     line (`echo "===================="`, #781) is base64 padding with no
 //     payload, so it cannot carry a credential. This does NOT exempt a `VAR=secret`
@@ -584,7 +592,7 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 		if isGitSHA(run) || isPathLike(run) || isIdentifierLike(run) || isAssignmentLike(run) || isAllEquals(run) {
 			continue
 		}
-		if isDigestKeyAssign(raw, loc[0], run) {
+		if isDigestKeyAssign(raw, loc[0], run) || isCapsKeyAssign(raw, loc[0], run) {
 			continue
 		}
 		// Rule 1 (doc-extension arm) and Rule 2. Both are NARROWER than the
@@ -650,7 +658,10 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 				"count as words), Go subtest names (TestX/sub) whose head is such an "+
 				"identifier and whose subtest path is words of at most 16 chars, "+
 				"key=<sha|path|identifier> assignments whose key is short "+
-				"or word-shaped, a git SHA behind an ALL-CAPS digest key (…_SHA, …_DIGEST, "+
+				"or word-shaped (an ALL-CAPS env-var key of up to 16 letters counts as "+
+				"word-shaped in front of an identifier, unless the variable's name carries "+
+				"a credential stem such as "+
+				"TOKEN, SECRET, KEY or PASS, or a digest stem), a git SHA behind an ALL-CAPS digest key (…_SHA, …_DIGEST, "+
 				"…_DIGEST_HEX; never a credential-named variable), all-'=' banner separators, "+
 				"all-'+' diffstat bars, a PGP key fingerprint (40 "+
 				"uppercase hex after a pgp:/fp: field, or on a line that names it with "+
@@ -1699,6 +1710,7 @@ func isIdentifierLike(run string) bool {
 //     under looksLikeWords (`file`, `manifest` — name material, not credential material).
 //     `AWS_SECRET_ACCESS_KEY=<key>` reduces to a run keyed `KEY`, which is three
 //     characters of ALL-CAPS: too long to be bare, not word-shaped, so refused here too.
+//     ALL-CAPS keys are isCapsKeyAssign's, which reads the full name back from the line.
 //  3. The value carries no `+` either. isPathLike and isIdentifierLike both already
 //     refuse `+`; the check is restated here on purpose, so that a future loosening of
 //     either predicate cannot quietly open a padding-bearing route through this one.
@@ -1731,16 +1743,9 @@ func isDigestKeyAssign(raw string, start int, run string) bool {
 	if eq <= 0 || !isGitSHA(run[eq+1:]) {
 		return false
 	}
-	i := start
-	for i > 0 && isEnvNameByte(raw[i-1]) {
-		i--
-	}
-	name := raw[i:start] + run[:eq]
-	up := strings.ToUpper(name)
-	for _, stem := range credentialStems {
-		if strings.Contains(up, stem) {
-			return false
-		}
+	name := envNameAt(raw, start, run[:eq])
+	if hasCredentialStem(name) {
+		return false
 	}
 	segs := strings.Split(name, "_")
 	tail := segs[len(segs)-1]
@@ -1749,6 +1754,74 @@ func isDigestKeyAssign(raw string, start int, run string) bool {
 	}
 	for _, k := range digestKeys {
 		if tail == k {
+			return true
+		}
+	}
+	return false
+}
+
+// isCapsKeyAssign reports whether run, starting at offset start in raw, is an ALL-CAPS
+// `KEY=<identifier>` assignment: the `make test TEST=<GoTestName>` selector a brief's
+// Verify row carries (#1642). isAssignmentLike already strips a short or word-shaped key,
+// but looksLikeWords never reads an ALL-CAPS key as word-shaped, so `TEST=`, `RUN=` and
+// `FILTER=` turned a value that is exempt on its own into a refusal. This rule is
+// narrower than isAssignmentLike on every axis, and each condition is load-bearing:
+//
+//  1. The VALUE must be an exempt identifier standing alone (isIdentifierLike, which
+//     admits no `=` or `+`) — never a path or a SHA. The rule adds no admission for the
+//     value: a name opening with a short acronym, or a CamelCase head on an entropy tail,
+//     refuses here exactly as it refuses bare.
+//  2. The key is 1 to maxCapsAssignKey letters, every one A-Z: no digit, no lowercase.
+//  3. The FULL env-var name, read back from raw across `_`, contains no credentialStems
+//     entry, so `PASSWORD=<CamelCase passphrase>` and `API_KEY_TEST=<identifier>` keep
+//     refusing (the #1643 review's SR-1643-1 case: the key is the only context that
+//     tells a passphrase from a name).
+//  4. No part of that name is a digestKeys entry or HEX. A digest-named variable is
+//     isDigestKeyAssign's alone, so `ARG BASE_DIGEST_HEX=<passphrase>` keeps the 1643-F1
+//     refusal.
+func isCapsKeyAssign(raw string, start int, run string) bool {
+	eq := strings.IndexByte(run, '=')
+	if eq <= 0 || eq > maxCapsAssignKey {
+		return false
+	}
+	key, val := run[:eq], run[eq+1:]
+	for i := 0; i < len(key); i++ {
+		if key[i] < 'A' || key[i] > 'Z' {
+			return false
+		}
+	}
+	if !isIdentifierLike(val) {
+		return false
+	}
+	name := envNameAt(raw, start, key)
+	if hasCredentialStem(name) {
+		return false
+	}
+	for _, seg := range strings.Split(name, "_") {
+		if seg == "HEX" || slices.Contains(digestKeys, seg) {
+			return false
+		}
+	}
+	return true
+}
+
+// envNameAt returns the full environment-variable name whose run-visible tail is key,
+// reading back from start in raw across the `_`-joined parts the run class excludes:
+// `ARG BASE_DIGEST_HEX=` reaches the loop as `HEX=` and is read back as BASE_DIGEST_HEX.
+func envNameAt(raw string, start int, key string) string {
+	i := start
+	for i > 0 && isEnvNameByte(raw[i-1]) {
+		i--
+	}
+	return raw[i:start] + key
+}
+
+// hasCredentialStem reports whether any credentialStems entry appears anywhere in name,
+// case-insensitively.
+func hasCredentialStem(name string) bool {
+	up := strings.ToUpper(name)
+	for _, stem := range credentialStems {
+		if strings.Contains(up, stem) {
 			return true
 		}
 	}

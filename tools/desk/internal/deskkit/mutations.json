@@ -207,6 +207,36 @@
       "new": "if isGitSHA(run) || isPathLike(run) || isIdentifierLike(run) || isAssignmentLike(run) || isAllEquals(run) || strings.ToLower(run) != run {"
     },
     {
+      "name": "#1642 caps-key — the exemption accepts ANY value behind an ALL-CAPS key (a base62 run, an AWS secret, a CamelCase head on an entropy tail written as TEST=<value> scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif !isIdentifierLike(val) {",
+      "new": "\tif len(val) == 0 {"
+    },
+    {
+      "name": "#1642 caps-key — drop the credential-stem check on the full env-var name (PASSWORD=<CamelCase passphrase>, API_KEY_TEST=<identifier> scan clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tname := envNameAt(raw, start, key)\n\tif hasCredentialStem(name) {",
+      "new": "\tname := envNameAt(raw, start, key)\n\tif false && hasCredentialStem(name) {"
+    },
+    {
+      "name": "#1642 caps-key — drop the digest/HEX name check (BASE_DIGEST_HEX=<passphrase> scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\t\tif seg == \"HEX\" || slices.Contains(digestKeys, seg) {",
+      "new": "\t\tif seg == \"\" && slices.Contains(digestKeys, seg) {"
+    },
+    {
+      "name": "#1642 caps-key — drop the key-length bound (a 17+ letter ALL-CAPS key in front of an identifier scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif eq <= 0 || eq > maxCapsAssignKey {",
+      "new": "\tif eq <= 0 {"
+    },
+    {
+      "name": "#1642 caps-key — accept any key byte, not only A-Z (TEST1= / TESt= in front of an identifier scan clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\t\tif key[i] < 'A' || key[i] > 'Z' {",
+      "new": "\t\tif key[i] == 0 {"
+    },
+    {
       "name": "#203 — make the public-repo self-containment scan a no-op on every repo",
       "file": "internal/deskkit/selfcontain.go",
       "old": "\tif !SelfContainApplies(o.Repo) {",
