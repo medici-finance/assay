@@ -328,7 +328,7 @@ The spec is one JSON object. Fields not listed here are ignored.
 
 | Field | Required | Meaning |
 |---|---|---|
-| `test` | yes | The suite command, run with `sh -c`. After the mutant builds, a non-zero test exit means `CAUGHT`; a timeout is also `CAUGHT` and is marked on that mutant's line. It may use pipes and `&&`. |
+| `test` | yes | The suite command, run with `sh -c`. After the mutant builds, an ordinary non-zero test exit means `CAUGHT`; direct-child signal death is nondefinitive (see Verdicts); a timeout is also `CAUGHT` and is marked on that mutant's line. It may use pipes and `&&`. |
 | `build` | no | Optional build command. When set, it runs before the suite for every mutation, whatever the file. If omitted, a `.go` mutation is checked with `go test -vet=off -c` for its package, carrying the leading `NAME=value` environment assignments and the build flags (`-tags`, `-race`, `-gcflags` and the like) from `test`; test-run flags such as `-run`, `-count` and `-timeout` are dropped. It compiles without executing tests or package initializers. A `test` that is not a plain `go test` command, or that carries a flag `muhar` does not know (or `-C`), uses the mutated package alone, with no flags; set `build` when that needs extra tags or a broader build. A build failure is `COULD_NOT_MUTATE`, and the suite is not run. Non-Go mutations have no automatic build step. |
 | `timeout` | no | Object with `multiplier` (default `5`), `floor` (default `20s`) and optional `baseline` limit (default `30m`). The pristine suite must finish within `baseline`. The per-mutation limit is `max(floor, measured baseline × multiplier)`, and each phase of a mutation gets all of it: the build, the suite, and with `schemata` the schema run and any classic fallback. No phase runs on what an earlier one left over. A suite killed at the limit is `CAUGHT`, flagged `TIMEOUT` on its line, because it had the whole limit and did not terminate. A build timeout is `COULD_NOT_MUTATE`. A positive control caught only by a timeout makes the run `HARNESS BROKEN`: the control must turn the suite red, and a suite that asserts nothing still times out when it is slow enough. |
 | `control` | yes | A mutation object (below) the suite **must** catch. `control.name` and `control.old` must be non-empty, or `muhar` exits 1 before running anything. |
@@ -344,15 +344,19 @@ A mutation object:
 | `old` | The exact text to replace, byte for byte, including whitespace. In JSON, write a tab as `\t` and a newline as `\n`. Only the **first** occurrence in the file is replaced, so make `old` long enough to be unique. |
 | `new` | The replacement text. It must differ from `old`. |
 
-A mutation becomes `COULD_NOT_MUTATE`, and the suite is not run for it, when:
+A mutation becomes `COULD_NOT_MUTATE` when:
 `old` is empty, `old` equals `new`, `old` is not in the file, the file cannot be
 read, stat'ed or written, or the bytes read back from disk after writing are
 not the intended mutant. It also applies when the mutated Go package cannot be
-built. When the control fails any of these checks, the whole run is
-`HARNESS BROKEN`.
+built, or when the direct command child terminates by signal. Direct-child
+signal death is nondefinitive even with the host budget unset: a crashing
+control breaks the harness. The observation does not reach through wrappers:
+if a shell or `go test` turns a signaled descendant into an ordinary non-zero
+exit, it is still `CAUGHT`. When the control fails any of these checks, the
+whole run is `HARNESS BROKEN`.
 
 After each mutation the original bytes are written back, whatever the verdict.
-(One exception: see [Interrupting a run](#interrupting-a-run).)
+(Uncatchable kills cannot run restoration; see [Interrupting a run](#interrupting-a-run).)
 
 ## Flags
 
@@ -414,6 +418,70 @@ After each mutation the original bytes are written back, whatever the verdict.
 If a worker's copy cannot be made, the run is `HARNESS BROKEN` (exit 2). It
 never falls back to sharing one tree.
 
+### Sharing a host budget
+
+The budget is opt-in. Set **both** `MUHAR_LEASE_DIR` (an existing absolute
+shared directory) and `MUHAR_TOTAL_SLOTS` (a positive integer) in every
+participating process. For example, after an operator creates a suitable
+private shared directory that other local users cannot modify:
+
+```sh
+MUHAR_LEASE_DIR=/path/to/shared-muhar-leases MUHAR_TOTAL_SLOTS=2 muhar -j 0 -spec mutations.json
+```
+
+The directory and existing slot files are trusted operator inputs. The current
+implementation follows slot symlinks and does not enforce directory ownership,
+permissions, regular-file type or a maximum total. It has no `O_NOFOLLOW`
+hardening; do not use a directory writable by untrusted local users.
+Independent roles on the same host must use the same directory and total.
+Both unset preserves the existing worker scheduling. Partial, empty, non-positive,
+unreadable or invalid configuration refuses before the baseline. There is no
+implicit directory, total or change to existing cells. A requested worker pool
+larger than the total is clamped and echoed on stderr; the harness still caps
+workers at the mutation count and uses one worker without isolated workspaces.
+**A total of one changes a requested `-j 0` or `-j N > 1` into an in-place
+run**, because the clamp precedes workspace selection. Commit or stash first,
+use separate checkouts for independent runs, and check `git diff` after
+interruption. Reads outside a lease are not isolated from another run planting
+a mutant in the same checkout. No mutation is dropped, reordered or sharded
+to fit capacity.
+
+One OS-backed exclusive slot lock admits each independently progressing
+worker before its own schemata setup or mutation build. Workspace preparation,
+first schemata setup, baseline and control acquire and release their own slot.
+Selection runs between the baseline and control leases: its discovery,
+coverage builds, coverage tests and pristine-set proofs each acquire their own
+slot. A worker never holds one slot while waiting for another. Workers poll
+nonblocking locks, and a waiting worker stops when the shared mutation queue
+is drained. Empty slot files are harmless: a file's existence proves no holder.
+
+Stderr distinguishes `waiting for a host slot` from command execution and
+reports `queue-wait=...` when admitted or when the queue drains. Baseline
+measurement and build/test deadlines start after admission; queue time cannot
+become a mutation timeout or a `CAUGHT` result. Admission errors and directly
+observed command signal deaths stay nondefinitive; preflight admission failure
+discards the run. A descendant failure translated by a wrapper into an
+ordinary non-zero exit remains subject to ordinary verdict classification.
+
+Locks release on completion, harness failure and catchable SIGINT/SIGTERM.
+The signal handler kills tracked suite, build and discovery process groups
+before ordinary source, workspace and cache cleanup unwinds. Unix kills the
+whole group; Windows retains its existing top-process-only kill limitation.
+**SIGKILL and OOM kills cannot run cleanup:** OS lock descriptors close, but
+suite process groups may continue leaseless until they exit. During that
+interval the configured total can be exceeded. Lease descriptors are not
+inherited by suite children. Stop or wait for those orphan suites before
+starting replacement work. Do not delete live slot files: replacing an inode
+can admit two owners of the same slot. For recovery, stop the affected run,
+inspect its suites, repair directory permissions/configuration, then retry;
+never switch directories to evade a held lease.
+
+Containers are covered only when they explicitly share this same lock
+filesystem and compatible OS locking semantics with all participating runs.
+Separate container filesystems are **could-not-check** for a host-wide bound.
+The budget limits muhar workers, not the internal process count or CPU usage
+of an arbitrary suite command or unrelated Go work.
+
 ### Splitting one spec across machines (`-shard`)
 
 `-shard i/n` runs only the mutations whose position in the spec (counting from
@@ -459,9 +527,9 @@ report is only the two `HARNESS BROKEN` lines.
 
 | Verdict | Means | What to do |
 |---|---|---|
-| `CAUGHT` | The mutation was proven on disk and its test command exited non-zero, or ran for the whole per-mutation limit without finishing. A timeout is marked on the per-mutant line. | Nothing: the behaviour is tested, or the mutant did not terminate within its measured bound. |
+| `CAUGHT` | The mutation was proven on disk and its test command exited ordinarily with non-zero status (including a wrapper translating a descendant failure), or ran for the whole per-mutation limit without finishing. A timeout is marked on the per-mutant line. | Nothing: the behaviour is tested, or the mutant did not terminate within its measured bound. |
 | `NOT_CAUGHT` | The mutation was proven on disk and the test command exited 0. | A real finding. Add a test that fails with this edit in place, then re-run. |
-| `COULD_NOT_MUTATE` | The edit could not be planted or proven, or the mutated Go package could not be built, so the suite did not judge it. The reason is printed on the line. | Fix the spec or source. This is **not** a pass: that behaviour was not checked. |
+| `COULD_NOT_MUTATE` | The edit could not be planted or proven, the mutated Go package could not be built, or the direct command child terminated by signal (with or without budgeting). Descendant signal deaths translated to ordinary exits are not detected here. The reason is printed on the line. | Fix the spec or source. This is **not** a pass: that behaviour was not checked. |
 | `HARNESS BROKEN` | The baseline was red or timed out, the control could not be planted, built or caught, or a `-j` copy could not be made. | Fix the suite, the control or the environment. Ignore everything else about this run. |
 
 ## Exit codes
@@ -512,27 +580,27 @@ from `tools/desk` with no `root`, so their `file` paths are relative to
   [Parallel runs](#parallel-runs--j)), the mutations are written into your own
   tree and restored after each one. Commit or stash your work first, so `git status` after a run shows
   anything left behind.
-- `muhar` makes no network calls and writes nothing outside the tree under test
-  and its temporary directories. Whatever your test command does is up to the
-  test command.
+- `muhar` makes no network calls. It writes to the tree under test, its
+  temporary directories and, when opted in, the explicit shared lease
+  directory. Whatever your test command does is up to the test command.
 - **A spec is code.** Its `test` field runs with `sh -c` with `muhar`'s
   environment. Treat a `mutations.json` like a script. In CI, do not run a
   spec from an untrusted fork's pull request in a job that has secrets.
 
 ### Interrupting a run
 
-When `muhar` receives SIGINT or SIGTERM, it kills every suite and build command
-it has running (on Unix each runs in its own process group, so the whole group
-goes, children included; on Windows only the top process is killed), deletes its temporary build cache and exits `130`. With `-j 1`, a mutation that is in place at that
-moment is **not** restored: the mutant stays in your working tree. After
-interrupting a sequential run, check `git status` (or `git diff`) and restore
-the file. The same applies to a run with one mutation or none, whatever `-j`
-says, because that run is in place too (see
-[Parallel runs](#parallel-runs--j)). Otherwise, with `-j` > 1 the mutants live
-in the temporary copies, so your tree is not touched. The copies themselves
-(`muhar-<n>-*` directories under the system temporary directory) are left
-behind; delete them. (Tracked as
-[#2646](https://github.com/medici-finance/assay/issues/2646).)
+When `muhar` receives SIGINT or SIGTERM, it kills every tracked suite, build
+and discovery command (Unix process groups, children included; Windows only
+the top process), then unwinds source restoration, temporary workspaces,
+coverage output, the build cache and host leases before returning `130`.
+Check `git diff` after an interrupted in-place run, especially if the storage
+could not accept restoration. SIGKILL/OOM cannot unwind source restoration or
+temporary-directory cleanup; inspect the source and orphan suites before
+retrying. During this unwind the first signal handler has already returned,
+but signal notification remains registered until the sweep returns: further
+SIGINT/SIGTERM signals are absorbed. A wedged cleanup may require SIGKILL,
+which cuts cleanup short and has the limits described above. The host-budget
+section describes the lock-descriptor limit.
 
 ## See also
 
