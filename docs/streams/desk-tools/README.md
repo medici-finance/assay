@@ -234,9 +234,9 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 53 | [Rename pr-review-desk to review-desk without breaking live windows or adopters](brief-53-rename-pr-review-desk-to-review-desk.md) | 1 | L | todo | — | — |
 | 55 | [Adopt parity-checked prune mutation selection](brief-55-adopt-parity-checked-prune-mutation-selection.md) | 1 | M | todo | — | — |
 | 56 | [Make mutation reports resumable and measurable](brief-56-make-mutation-reports-resumable-and-measurable.md) | 1 | M | todo | — | — |
-| 57 | [Budget concurrent mutation work across the host](brief-57-budget-concurrent-mutation-work-across-the-host.md) | 1 | M | todo | — | — |
+| 57 | [Budget concurrent mutation work across the host](brief-57-budget-concurrent-mutation-work-across-the-host.md) | 1 | M | implemented | — | — |
 | 58 | [Benchmark compile-once mutation execution](brief-58-benchmark-compile-once-mutation-execution.md) | 1 | M | todo | — | — |
-| 59 | [Remove incidental prune mutation fixture work](brief-59-remove-incidental-prune-mutation-fixture-work.md) | 1 | M | todo | — | — |
+| 59 | [Remove incidental prune mutation fixture work](brief-59-remove-incidental-prune-mutation-fixture-work.md) | 1 | M | implemented | — | — |
 | 60 | [Operate is human, and the gate ladder — what an agent fleet owns, what a human owns, and the written condition under which a human gate may ever widen (every threshold recorded as not set)](brief-60-operate-is-human-and-the-gate-ladder.md) | 1 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
