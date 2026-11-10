@@ -814,7 +814,8 @@ brief at `verified` with a refused close.
 the board shows phantom verification debt, other sessions re-report "stuck" briefs, and merged→verified
 lead time inflates by pure reporting latency. The Age column measures exactly that. Everything else this
 desk posts goes out under the role App via the desk verbs (`deskpr` / `deskreply` /
-`deskfile --raised-by verifier`), minted with `desktoken verifier` — never a bare forge call.
+`deskfile --raised-by verifier`), resolved with `desktoken --no-rotate verifier --repo <slug>` —
+never a bare forge call.
 For comments, use `deskfile attach` on issues or `deskreply` on this desk's own PRs;
 `deskpost comment` is reserved for `pr-review-desk`.
 **Standing-doctrine pointer (2026-08-17):** the verdict-transcription lane (`docs/streams/verdict-lane/`,
