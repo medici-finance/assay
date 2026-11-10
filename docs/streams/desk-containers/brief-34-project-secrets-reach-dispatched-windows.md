@@ -88,7 +88,7 @@ design-fit:
   owner: cellctl (the launcher already owns every runtime credential path for a window)
   contract: none — extends the cell config key registry and `containers/secrets.md`
   retires: [implementer-reported runs of secret-bound rows, ad-hoc exported service credentials in a desk shell]
-  weight: verbs +0, flags +0 required, config keys +1 (one role-secret map key), refusal predicates mode/owner/role/stale/missing
+  weight: verbs +0, flags +0 required, config keys +3 (the role-secret map, the read-isolation surface declaration, the role-to-identity map), refusal predicates mode/owner/acl/role/stale/missing/identity/writable-by-non-holder
   why-add: The launcher is the only place that already knows the role and holds credential custody; a new broker or vault client would be a second custody owner.
 
 ## Read first
@@ -160,8 +160,12 @@ Approved 2026-11-10, by the driver in their own login: https://github.com/medici
    name is the `<name>` of a `service:<name>` Env cell. One cell config key names a directory
    or map of such files; the registry in `envkeys.go` classes it as a cell key, never a machine
    key. Roles that may hold one: worker, verifier. Reviewer, intake and the coordinator never.
+   Two more cell keys, also security-relevant configuration that `cellctl check` reads: the
+   read-isolation surface the cell declares (Task 2a), and on a host surface the
+   role-to-identity map.
 2. **Check.** `cellctl check` refuses a role-secret file that is not a regular file, not
-   owner-only, owned by anyone but its expected owner, a symlink out of its directory, or
+   owner-only, carrying an access-control list that grants read to anyone but its owner
+   (on the file or its directory), owned by anyone but its expected owner, a symlink out of its directory, or
    inside any worktree or checkout. The expected owner is the bound role's declared OS
    identity on a host surface, and the identity `cellctl` runs as on a container surface;
    never the identity of whoever happens to run the check. The dry run prints paths and role
@@ -184,6 +188,15 @@ Approved 2026-11-10, by the driver in their own login: https://github.com/medici
    fail). On a container surface, it refuses the binding if any non-holding role's window runs
    on the host as the file's owner; each such role must run in a container without the mount,
    or on the host under a separate identity that passes the host-surface checks.
+   A verified surface also stops a non-holder writing what a holder runs. No non-holding
+   identity may be able to write anything a holding window executes or reads as
+   configuration: the git common directory (config and hooks) of every checkout a holding
+   role uses, the cell config and identity map, the tool directories on the holder's PATH,
+   and the holder's home. Holding roles work in checkouts their own identity owns, never in
+   worktrees of a checkout a non-holding identity can write. On a container surface, no
+   writable mount is shared between a non-holding container and a holding one. `cellctl
+   check` refuses the binding otherwise. The identity that launches windows (Task 3) is
+   none of the non-holding roles' identities.
 3. **Launch.** `cellctl desk` exports, for an allowed role only, one variable per bound service
    naming the PATH. A disallowed role launched with a binding refuses rather than dropping it
    silently. Never pass a value in argv or in the environment. On a host surface, `cellctl
@@ -219,14 +232,15 @@ Named tests must execute; zero matches or a skip fails independent verification.
 | 5 | check +flow | host:multi-user | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretLaunchFlow$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretLaunchFlow ' "$o")` | Named PASS on a POSIX host provisioned with a separate OS identity per role (real file modes and owners); the compiled cellctl checks a scratch cell that declares the host surface with those identities, launches a worker window whose dispatched child sees only the path variable, then refuses the same cell once the fixture file is made group-readable; no output contains the fixture contents. |
 | 6 | check | host | `statusgen --root . --lint --acceptance-forge` | exit 0; output contains "LINT: PASS". The flag reads the forge, so this row runs on a host with forge read access, never network-off. |
 | 7 | check | tree | `statusgen --consumers --brief desk-containers/34 --base $(git merge-base origin/main HEAD)` | Pre-merge, on the implementation branch: exit 0; declared implementation sites and follow-up references corroborate; out-of-scope judgments stay reviewer-owned. |
-| 8 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadIsolation$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadIsolation ' "$o")` | Named PASS; a cell that declares no per-role read-isolation surface refuses every role-secret binding; so does each declared-but-false surface: a host surface whose reviewer identity equals a holder's or the file owner's, one whose reviewer identity is uid 0, one whose reviewer identity can elevate without a prompt (the identity probe is injected, so the cases run in-tree), and a container surface with a host-side intake or coordinator window running as the file owner; on a valid container surface, the generated mounts give the secret volume to worker and verifier containers only, and reviewer, intake and coordinator containers have no mount for it. |
-| 9 | check +flow | host:multi-user | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadDenyFlow$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadDenyFlow ' "$o")` | Named PASS on a POSIX host provisioned with a separate OS identity per role: the compiled cellctl launches the reviewer and worker windows of a scratch cell from that cell's own identity map; a child of the launched reviewer window fails to open the fixture file by its path with a permission error, and a child of the launched worker window opens it; a second scratch cell whose map puts the reviewer on the worker's identity is refused at check, before any window starts; no output contains the fixture contents. |
+| 8 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadIsolation$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadIsolation ' "$o")` | Named PASS; a cell that declares no per-role read-isolation surface refuses every role-secret binding; so does each declared-but-false surface: a host surface whose reviewer identity equals a holder's or the file owner's, one whose reviewer identity is uid 0, one whose reviewer identity can elevate without a prompt (the identity probe is injected, so the cases run in-tree), one whose coordinator identity equals a holder's, one whose holder's checkout has a git common directory the reviewer identity can write, one whose secret file carries an access-control list granting another user read, and a container surface with a host-side intake or coordinator window running as the file owner or with a writable mount shared between a reviewer container and a worker container; on a valid container surface, the generated mounts give the secret volume to worker and verifier containers only, and reviewer, intake and coordinator containers have no mount for it. |
+| 9 | check +flow | host:multi-user | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadDenyFlow$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadDenyFlow ' "$o")` | Named PASS on a POSIX host provisioned with a separate OS identity per role: the compiled cellctl launches the reviewer and worker windows of a scratch cell from that cell's own identity map; a child of the launched reviewer window fails to open the fixture file by its path with a permission error, and a child of the launched worker window opens it; a second scratch cell whose map puts the reviewer on the worker's identity is refused at check, before any window starts; a third, whose reviewer identity is given prompt-free elevation on the host, is refused by the real elevation probe; no output contains the fixture contents. |
 
 ## Threat model / pre-mortem
 
 - A reviewer slot inherits the secret's path and builds an untrusted head that sends it out: rows 1, 3, 5.
 - A reviewer, intake or coordinator process opens the secret file by its path, because every window runs as one OS user, for example when an untrusted head's text steers a reviewer to read it: rows 8, 9.
 - A cell declares a read-isolation surface it does not provide: a reviewer mapped to a holder's identity, to root or to an identity that elevates without a prompt, or a host-side window running as the file's owner on a container cell: rows 8, 9.
+- A non-holding role plants code a holder runs: a git hook or command-executing git setting in a checkout's shared git directory, a changed cell config or identity map, or a tool on the holder's PATH: rows 8, 9.
 - An unblessed item dispatched to a worker carries the variable into a hostile build: row 3.
 - A secret file is readable by other local users or sits inside a checkout and gets committed: rows 2, 5.
 - A secret is printed by a dry run, a receipt or a log, or a receipt carries a guessable hash of it: rows 2, 4.
