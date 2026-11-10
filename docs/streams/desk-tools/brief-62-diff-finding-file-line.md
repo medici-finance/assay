@@ -110,6 +110,9 @@ Options:
 Default if no answer: option 1 after 7 days. Neither option changes what is refused.
 
 ## Ground rules
+- Ruled option A on the decision issue, which is option 1 above: https://github.com/medici-finance/assay/issues/4284#issuecomment-6774271356
+  The ruling extends the shared diff reader, with a byte-identity test and the outbound check's
+  tests left unedited. Option 2 is not taken.
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task instructions.
 - Stop at `implemented` — you do not set verified/done (a different, non-implementing identity does).
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
@@ -131,6 +134,11 @@ Default if no answer: option 1 after 7 days. Neither option changes what is refu
    `TestDiffLineIndexStrips` (planned) runs both the old `stripDiffMetaLines` and the index over the same
    diffs, including the existing `stripDiffMetaLines` test cases, and asserts equal output. Then
    point deskpr at the index's text and retire the private copy.
+   `TestAddedLinesParity` (planned) runs `AddedLinesByFile` and the index's added refs over every
+   diff that `TestDiffLineIndex` (planned) covers, and asserts they name the same files and the same new-side
+   lines. Its one direct test on main covers a single file with two hunks, so this differential
+   test is what covers rename, new-file, deleted-file, multi-file and no-newline diffs for the
+   outbound check. It is required whether or not `AddedLinesByFile` is rebuilt on the index.
 3. In `scanWrite`, when the branch-diff scan returns a finding, report `<path>:<line> (<side>)`
    in the refusal and in `--explain`, alongside the rule. `--explain` gains `path=` and `side=`
    fields after `line=`, which now carries the file line. The redacted shape and the "never the
@@ -140,18 +148,19 @@ Default if no answer: option 1 after 7 days. Neither option changes what is refu
 4. `TestDiffFindingVerdicts` (planned) runs the branch-diff scan over the same diffs with and without the
    index, and asserts the same refused-or-clean result, the same rule and the same override
    path.
-5. Add `difffinding-mutations.json` with three mutants, each caught by the tests above:
-   report the stripped-text line, label every line `added`, and number removed lines on the new
-   side.
+5. Add `difffinding-mutations.json` with four mutants, each caught by the tests above:
+   report the stripped-text line, label every line `added`, number removed lines on the new
+   side, and drop the added lines of a renamed file from the index. The spec's `test` command
+   runs both `./internal/deskkit` and `./cmd/deskpr`, because the index mutants live in deskkit.
 6. State the location format in the deskpr row of `tools/desk/README.md`. Change both consumer
    entries to `fixed-here` in the implementation PR.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestDiffLineIndex' -count=1 -v > "${TMPDIR:-/tmp}/dt62-idx.log" 2>&1 && grep -F -e '--- PASS: TestDiffLineIndex ' "${TMPDIR:-/tmp}/dt62-idx.log" && grep -F -e '--- PASS: TestDiffLineIndexStrips ' "${TMPDIR:-/tmp}/dt62-idx.log"` | exit 0; both named PASS lines; the index numbers every side correctly, and its stripped text is byte-identical to what deskpr scanned before |
+| 1 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestDiffLineIndex' -count=1 -v > "${TMPDIR:-/tmp}/dt62-idx.log" 2>&1 && grep -F -e '--- PASS: TestDiffLineIndex ' "${TMPDIR:-/tmp}/dt62-idx.log" && grep -F -e '--- PASS: TestDiffLineIndexStrips ' "${TMPDIR:-/tmp}/dt62-idx.log" && go test ./internal/deskkit/ -run '^TestAddedLinesParity$' -count=1 -v > "${TMPDIR:-/tmp}/dt62-par.log" 2>&1 && grep -F -e '--- PASS: TestAddedLinesParity ' "${TMPDIR:-/tmp}/dt62-par.log"` | exit 0; both named PASS lines; the index numbers every side correctly, and its stripped text is byte-identical to what deskpr scanned before |
 | 2 | check:ci +flow | `cd tools/desk && go test ./cmd/deskpr -run '^TestDiffFinding' -count=1 -v > "${TMPDIR:-/tmp}/dt62-find.log" 2>&1 && grep -F -e '--- PASS: TestDiffFindingFileLine ' "${TMPDIR:-/tmp}/dt62-find.log" && grep -F -e '--- PASS: TestDiffFindingVerdicts ' "${TMPDIR:-/tmp}/dt62-find.log"` | exit 0; both named PASS lines; the refusal names the file, line and side, and the verdict is unchanged |
-| 3 | check:ci +mutation | `O=$(mktemp) && trap 'rm -f "$O"' 0 && cd tools/desk && go run ./cmd/muhar -spec cmd/deskpr/difffinding-mutations.json > "$O" 2>&1 && grep -F -e 'Harness healthy: baseline GREEN, positive control CAUGHT.' "$O" && grep -F -e 'Totals: 3 caught, 0 NOT CAUGHT, 0 could-not-mutate.' "$O"` | exit 0; all three mutants caught |
+| 3 | check:ci +mutation | `O=$(mktemp) && trap 'rm -f "$O"' 0 && cd tools/desk && go run ./cmd/muhar -spec cmd/deskpr/difffinding-mutations.json > "$O" 2>&1 && grep -F -e 'Harness healthy: baseline GREEN, positive control CAUGHT.' "$O" && grep -F -e 'Totals: 4 caught, 0 NOT CAUGHT, 0 could-not-mutate.' "$O"` | exit 0; all four mutants caught |
 | 4 | check:ci +neighbour | `cd tools/desk && test -f internal/deskkit/difflines_test.go && go test ./internal/deskkit/ -count=1 && go test ./cmd/deskpr -count=1 && go test ./cmd/muhar -run '^TestSpecAnchorsLand$' -count=1 -v > "${TMPDIR:-/tmp}/dt62-anch.log" 2>&1 && grep -F -e '--- PASS: TestSpecAnchorsLand ' "${TMPDIR:-/tmp}/dt62-anch.log"` | exit 0; the outbound check's added-line tests, deskpr's remote-scan and override tests, and every mutation anchor still pass |
 | 5 | check +flow +dereference | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && git diff --quiet "$DELIVERY_BASE" "$DELIVERY_HEAD" -- tools/desk/internal/deskkit/bodycheck.go tools/desk/internal/deskkit/structured.go tools/desk/internal/deskkit/testdata && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-62-diff-finding-file-line.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/62 --delivery "$DELIVERY_HEAD" --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e 'summary: 2 corroborated, 0 disproved, 0 unchecked' "$o"` | exit 0; the scanner and its fixtures are untouched, and deskpr and its README row are in the delivering diff |
 
@@ -164,7 +173,7 @@ Default if no answer: option 1 after 7 days. Neither option changes what is refu
 |---|---|
 | The location is right for added lines but wrong for removed or context lines | rows 1 and 2 |
 | The stripped text changes, so the scan sees different bytes | row 1 (`TestDiffLineIndexStrips` (planned)) |
-| The outbound check's added-line placement changes, so it skips or misplaces a line | row 4 (its existing tests pass unedited) |
+| The outbound check's added-line placement changes, so it skips or misplaces a line | row 1 (`TestAddedLinesParity` (planned) over rename, new-file, deleted-file, multi-file and no-newline diffs); row 3 (the renamed-file mutant); row 4 (its existing tests pass unedited) |
 | The mapping changes a verdict or the override path | row 2 (`TestDiffFindingVerdicts` (planned)) |
 | The new report prints the offending span | row 4 (`TestExplainNamesRuleAndLineNeverSpan` stays green); row 2 (`TestDiffFindingFileLine` (planned) asserts the output) |
 | A mutated mapping goes unnoticed | row 3 |

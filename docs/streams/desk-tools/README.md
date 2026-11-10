@@ -267,10 +267,12 @@ in PR #2620. They do not mark desk-tools/32 implemented or resurrect its closed 
 
 The secret-scan class work runs **desk-tools/61 → desk-tools/63**, with **desk-tools/62 →
 desk-tools/63** and **desk-tools/62 → desk-tools/64** beside it. 63's entries need 61's registry
-and 62's diff line index; 64's narrower scopes are a side filter over that same index. 61 and 64
+and 62's diff line index; 64's narrowed scope is a side filter over that same index. 61 and 64
 are each `gate: human` with a decision at creation. 62 is `gate: human` at start, because it
-extends the diff reader the outbound push check uses. The real head of this chain is those
-human answers, not the code. See "Secret-scan class — 10 November 2026" below.
+extends the diff reader the outbound push check uses. All four decisions were ruled on #4284 on
+10 November 2026, so the head of this chain is now 61's and 62's code. 61's admission ruling and
+63's entry ruling are both recorded in DR-secret-scan-admission (planned), and 64's in DR-secret-scan-scope.
+See "Secret-scan class — 10 November 2026" below.
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
@@ -520,15 +522,15 @@ not exemptions and stay outside every change below.
 
 | Brief | What it does | Gate |
 |---|---|---|
-| [61](brief-61-benign-shape-registry.md) | Moves every existing admission, unchanged, into one declared registry, where each entry names its bounding refusals. A recorded-verdict golden, run on the old and new trees, proves nothing changed. | human, at creation |
-| [62](brief-62-diff-finding-file-line.md) | Reports a branch-diff refusal as file, line and side, not its line in the stripped diff (#3196 part 2; the deskevidence precedent is #3283, closed by #3300). No verdict changes. | human, at start |
-| [63](brief-63-registry-acceptance-shapes.md) | Adds the open shapes as entries, each with paired refusals: go build-info hashes (#4723), platform-suffixed digest assignments (#2321), sops armor anchored to its file (#5257), Kubernetes qualified keys and `+`-joined identifiers (#1642, #2009). It adds an entropy cap to word-shaped admission (#4097) and keeps labelled 32-hex digests refused per the ruling on #3280 (#3196 part 1, guidance on #5156). The vendor-example allowlist (#929 part 2) is an option, defaulting to no. | human, at start |
-| [64](brief-64-diff-scan-scope.md) | Puts which diff lines the scan reads (added, removed, unchanged context; #929 part 1, #1642) to the human as options with their threats. The default is the status quo. | human, at creation |
+| [61](brief-61-benign-shape-registry.md) | Moves every existing admission, unchanged, into one declared registry, where each entry names its bounding refusals. A recorded-verdict golden, run on the old and new trees, proves nothing changed. | human, at creation; ruled option 1: https://github.com/medici-finance/assay/issues/4284#issuecomment-6774184501 |
+| [62](brief-62-diff-finding-file-line.md) | Reports a branch-diff refusal as file, line and side, not its line in the stripped diff (#3196 part 2; the deskevidence precedent is #3283, closed by #3300). No verdict changes. | human, at start; ruled option 1: https://github.com/medici-finance/assay/issues/4284#issuecomment-6774271356 |
+| [63](brief-63-registry-acceptance-shapes.md) | Adds the open shapes as entries, each with paired refusals: go build-info hashes (#4723), platform-suffixed digest assignments (#2321), sops armor anchored to its file (#5257), Kubernetes qualified keys and `+`-joined identifiers (#1642, #2009). It adds an entropy cap to word-shaped admission (#4097) and keeps labelled 32-hex digests refused per the ruling on #3280 (#3196 part 1, guidance on #5156). The ruling adopts no vendor-example allowlist (#929 part 2). | human, at start; ruled option 1: https://github.com/medici-finance/assay/issues/4284#issuecomment-6774321215 |
+| [64](brief-64-diff-scan-scope.md) | Pins which diff lines the scan reads (#929 part 1, #1642): added and removed lines, with unchanged context skipped only when the diff's base is proven to be on the remote, and scanned in full otherwise. | human, at creation; ruled option 2: https://github.com/medici-finance/assay/issues/4284#issuecomment-6774347835 |
 
 Builds on, without duplicating: desk-tools/14 (corpus and `--explain`), desktools-v2/10 (one
 outbound check that moves existing scans and drops none), desktools-v2/14 (the regression
 floor), and build-less-brittle/07 and /10 (one implementation per meaning; the scan's ceiling
-stays 1). #6062 (closing #6060) documented the full-diff breadth that 64 now puts to a ruling.
+stays 1). #6062 (closing #6060) documented the remote check's full-diff breadth, which 64's ruling keeps.
 #6063 (closing #6059) fixed the override form the refusal names. The worker change for the
 `KEY=<value>` shape (#1642's latest occurrence, #5825, #5974) is not duplicated: it becomes one
 registry entry. The sibling class fix for a different scanner (#5142, draft #3350) is cited and

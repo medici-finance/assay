@@ -135,6 +135,13 @@ Default if no answer: none — blocks until answered. Option 1 is the recommenda
 widening of a credential control is never adopted by silence.
 
 ## Ground rules
+- Ruled option A on the decision issue, which is option 1 above: https://github.com/medici-finance/assay/issues/4284#issuecomment-6774321215
+  The ruling admits go build-info hashes, platform-suffixed digests from the closed
+  architecture set, file-anchored sops armor, and Kubernetes qualified keys with `+`-joined
+  identifiers. It counts those last two as one group, so its four shapes are this brief's five
+  admissions. Each ships with paired refusals, plus the word-shaped entropy cap. It adopts no
+  vendor-example list, and the labelled 32-hex digest stays refused. Options 2 and 3 are not
+  taken.
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task instructions.
 - Stop at `implemented` — you do not set verified/done (a different, non-implementing identity does).
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
@@ -159,8 +166,10 @@ widening of a credential control is never adopted by silence.
    acceptance case recording that the two OCI reference forms already scan clean.
 3. **File-anchored artifact context** (#5257). Export a deskkit function that runs the
    registry's `artifact` entries over one file's bytes and returns the admitted line ranges,
-   each tagged with its entry. In deskpr's branch-diff scan, read each touched file at HEAD, and
-   at the base for removed lines. Map each admitted range through the desk-tools/62 index, and
+   each tagged with its entry. In deskpr's branch-diff scan, read each touched file at HEAD for
+   added and context lines. For removed lines, read it at the merge-base of the default ref and
+   HEAD, the side the symmetric branch diff numbers removed lines against. Never read it at the
+   default-branch tip, which deskpr's own output also calls the base. Map each admitted range through the desk-tools/62 index, and
    pass the resulting stripped-diff lines as the `anchored` set. The set exempts only the
    high-entropy loop; the literal arms still run on every anchored line. An unreadable file, a
    file over the size cap the outbound check already uses, or a file that is not a sanctioned
@@ -183,8 +192,10 @@ widening of a credential control is never adopted by silence.
    alternative the ruling gives, a sha256 digest.
 7. **Entropy cap on word-shaped admission** (#4097). Admission by word decomposition also
    requires the run's Shannon entropy per character to be at or below a cap. Set the cap as the
-   highest value observed over every corpus input and every golden `clean` input that the word
-   rule admits, plus 0.1 bits. `TestShapeWordSaladCap` (planned) generates at least 200 word-salad runs
+   highest value observed over the corpus negatives and the named benign fixtures that the word
+   rule admits, plus 0.1 bits. Never calibrate on generated golden inputs: a generated run the
+   word rule admits today is exactly the #4097 case the cap must refuse. A generated input the
+   cap flips from clean to refused appears in the golden delta file, naming the cap. `TestShapeWordSaladCap` (planned) generates at least 200 word-salad runs
    from a fixed seed, built from random letters cut into word-length pieces, and asserts that
    at least 95% refuse while every corpus negative still scans clean.
 8. **Paired refusals.** `TestShapePairedRefusals` (planned) asserts that every entry this brief adds has
@@ -204,9 +215,9 @@ widening of a credential control is never adopted by silence.
     and `pos-word-salad-run.txt`), using the seam for every run.
 11. **Mutations.** Add two mutations to `mutations.json`, named `word-salad cap removed` and
     `platform suffix set opened`, and `TestShape` (planned) to its `test` selector. Add
-    `armoranchor-mutations.json` with three mutants: an unreadable file anchors everything, the
-    anchored set also skips the literal arms, and removed lines are anchored against the HEAD
-    file.
+    `armoranchor-mutations.json` with four mutants: an unreadable file anchors everything, the
+    anchored set also skips the literal arms, removed lines are anchored against the HEAD file,
+    and removed lines are anchored against the default-branch tip.
 12. Name the new tests in R-body-secret-scan in `docs/contracts.md`. The README table is
     rendered from the registry (desk-tools/61). Change every consumer entry to `fixed-here`.
 
@@ -216,7 +227,7 @@ widening of a credential control is never adopted by silence.
 | 1 | check:ci +mutation | `cd tools/desk && go test ./internal/deskkit/ -run '^TestShape' -count=1 -v > "${TMPDIR:-/tmp}/dt63-shape.log" 2>&1 && go test ./internal/deskkit/ -run '^TestBenignEntriesBounded$' -count=1 -v >> "${TMPDIR:-/tmp}/dt63-shape.log" 2>&1 && grep -F -e '--- PASS: TestShapeGoBuildInfo ' "${TMPDIR:-/tmp}/dt63-shape.log" && grep -F -e '--- PASS: TestShapeDigestKeyArch ' "${TMPDIR:-/tmp}/dt63-shape.log" && grep -F -e '--- PASS: TestShapeK8sQualifiedKey ' "${TMPDIR:-/tmp}/dt63-shape.log" && grep -F -e '--- PASS: TestShapePlusJoinedIdent ' "${TMPDIR:-/tmp}/dt63-shape.log" && grep -F -e '--- PASS: TestShapeMd5StaysRefused ' "${TMPDIR:-/tmp}/dt63-shape.log" && grep -F -e '--- PASS: TestShapeWordSaladCap ' "${TMPDIR:-/tmp}/dt63-shape.log" && grep -F -e '--- PASS: TestShapePairedRefusals ' "${TMPDIR:-/tmp}/dt63-shape.log" && grep -F -e '--- PASS: TestBenignEntriesBounded ' "${TMPDIR:-/tmp}/dt63-shape.log" && ! grep -F -e '--- FAIL' "${TMPDIR:-/tmp}/dt63-shape.log"` | exit 0; every named PASS line and no FAIL: each entry admits its shape, keeps its paired refusals, and widening any entry flips a refusal |
 | 2 | check:ci +flow | `cd tools/desk && go test ./cmd/deskpr -run '^TestDiffArmor' -count=1 -v > "${TMPDIR:-/tmp}/dt63-anchor.log" 2>&1 && grep -F -e '--- PASS: TestDiffArmorAnchor ' "${TMPDIR:-/tmp}/dt63-anchor.log" && grep -F -e '--- PASS: TestDiffArmorFailsClosed ' "${TMPDIR:-/tmp}/dt63-anchor.log" && grep -F -e '--- PASS: TestDiffArmorLiteralArms ' "${TMPDIR:-/tmp}/dt63-anchor.log"` | exit 0; three named PASS lines: an armor line in a sanctioned sops file's diff is admitted, an unreadable or unsanctioned file anchors nothing, and a provider token on an anchored line still refuses |
 | 3 | check:ci +flow | `test -n "${DELIVERY_BASE:-}" && b=$(mktemp) && trap 'rm -f "$b"' 0 && git show "$DELIVERY_BASE:tools/desk/internal/deskkit/testdata/benign-golden.txt" > "$b" && cd tools/desk && BENIGN_GOLDEN_BASE="$b" go test ./internal/deskkit/ -run '^TestShapeGoldenDelta$' -count=1 -v > "${TMPDIR:-/tmp}/dt63-delta.log" 2>&1 && grep -F -e '--- PASS: TestShapeGoldenDelta ' "${TMPDIR:-/tmp}/dt63-delta.log"` | exit 0; one PASS line: every verdict that changed is named in the delta file by the entry or the cap that changed it, and no corpus input became refused |
-| 4 | check:ci +mutation | `O=$(mktemp) && P=$(mktemp) && trap 'rm -f "$O" "$P"' 0 && cd tools/desk && grep -F -e 'word-salad cap removed' internal/deskkit/mutations.json && grep -F -e 'platform suffix set opened' internal/deskkit/mutations.json && go run ./cmd/muhar -j 2 -spec internal/deskkit/mutations.json > "$O" 2>&1 && grep -F -e 'Harness healthy: baseline GREEN, positive control CAUGHT.' "$O" && grep -F -e ' 0 NOT CAUGHT, 0 could-not-mutate.' "$O" && go run ./cmd/muhar -spec cmd/deskpr/armoranchor-mutations.json > "$P" 2>&1 && grep -F -e 'Totals: 3 caught, 0 NOT CAUGHT, 0 could-not-mutate.' "$P"` | exit 0; the two named scan mutations exist, every scan mutation is caught, and all three anchor mutants are caught |
+| 4 | check:ci +mutation | `O=$(mktemp) && P=$(mktemp) && trap 'rm -f "$O" "$P"' 0 && cd tools/desk && grep -F -e 'word-salad cap removed' internal/deskkit/mutations.json && grep -F -e 'platform suffix set opened' internal/deskkit/mutations.json && go run ./cmd/muhar -j 2 -spec internal/deskkit/mutations.json > "$O" 2>&1 && grep -F -e 'Harness healthy: baseline GREEN, positive control CAUGHT.' "$O" && grep -F -e ' 0 NOT CAUGHT, 0 could-not-mutate.' "$O" && go run ./cmd/muhar -spec cmd/deskpr/armoranchor-mutations.json > "$P" 2>&1 && grep -F -e 'Totals: 4 caught, 0 NOT CAUGHT, 0 could-not-mutate.' "$P"` | exit 0; the two named scan mutations exist, every scan mutation is caught, and all four anchor mutants are caught |
 | 5 | check +flow | `test -n "${DELIVERY_BASE:-}" && test -n "${DELIVERY_HEAD:-}" && test -f tools/desk/internal/deskkit/testdata/benign-golden-delta.txt && git diff --quiet --diff-filter=MDR "$DELIVERY_BASE" "$DELIVERY_HEAD" -- tools/desk/internal/deskkit/testdata/corpus && a=$(mktemp) && trap 'rm -f "$a"' 0 && git diff --name-only --diff-filter=A "$DELIVERY_BASE" "$DELIVERY_HEAD" -- tools/desk/internal/deskkit/testdata/corpus > "$a" && n=$(grep -c -e '/pos-' -e '/neg-' "$a") && [ "$n" -ge 9 ]` | exit 0; no existing fixture was modified, deleted or renamed, and at least nine fixtures were added |
 | 6 | check:ci +neighbour | `cd tools/desk && test -f internal/deskkit/testdata/benign-golden-delta.txt && go test ./internal/deskkit/ -count=1 -v > "${TMPDIR:-/tmp}/dt63-all.log" 2>&1 && grep -F -e '--- PASS: TestBodycheckPositives ' "${TMPDIR:-/tmp}/dt63-all.log" && ! grep -F -e '--- FAIL' "${TMPDIR:-/tmp}/dt63-all.log" && go test ./cmd/deskpr -count=1 && go test ./cmd/muhar -run '^TestSpecAnchorsLand$' -count=1 -v > "${TMPDIR:-/tmp}/dt63-anch.log" 2>&1 && grep -F -e '--- PASS: TestSpecAnchorsLand ' "${TMPDIR:-/tmp}/dt63-anch.log"` | exit 0; every positive fixture still refuses, the rest of deskkit and deskpr pass, and every mutation anchor lands |
 | 7 | check +flow +dereference | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-63-registry-acceptance-shapes.md && grep -F -e 'TestShapePairedRefusals' docs/contracts.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/63 --delivery "$DELIVERY_HEAD" --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e 'summary: 3 corroborated, 0 disproved, 0 unchecked' "$o"` | exit 0; the contract row, the README table and deskpr are in the delivering diff |
@@ -230,7 +241,7 @@ widening of a credential control is never adopted by silence.
 | The platform suffix becomes a way to hide a credential-stem name | row 1 (`TestShapeDigestKeyArch` (planned)), row 4 (`platform suffix set opened`) |
 | The anchor admits lines of a file that is not a sanctioned document, or fails open when the file cannot be read | row 2 (`TestDiffArmorFailsClosed` (planned)), row 4 (anchor mutants) |
 | An anchored line hides a provider token | row 2 (`TestDiffArmorLiteralArms` (planned)), row 4 |
-| A removed line is anchored against the wrong version of the file | row 4 (anchor mutant) |
+| A removed line is anchored against the wrong version of the file (HEAD, or the default-branch tip after main moved) | row 4 (two anchor mutants) |
 | The Kubernetes or `+` entry re-admits the ruled leading-acronym case | row 1 (`TestShapeK8sQualifiedKey` (planned), `TestShapePlusJoinedIdent` (planned)) |
 | The cap is too tight and starts refusing ordinary text | row 3 (no corpus input flips; every flip is listed), row 6 |
 | The cap is too loose and admits word salad | row 1 (`TestShapeWordSaladCap` (planned)), row 4 (`word-salad cap removed`) |

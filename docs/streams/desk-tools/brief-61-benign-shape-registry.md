@@ -162,6 +162,9 @@ Default if no answer: none — blocks until answered. Option 1 is the recommenda
 to a credential control is never adopted by silence.
 
 ## Ground rules
+- Ruled option A on the decision issue, which is option 1 above: https://github.com/medici-finance/assay/issues/4284#issuecomment-6774184501
+  The ruling adopts the declared registry. Every existing admission moves into it unchanged,
+  proven by a zero-verdict-change golden. Options 2 and 3 are not taken.
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task instructions.
 - Stop at `implemented` — you do not set verified/done (a different, non-implementing identity does).
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
