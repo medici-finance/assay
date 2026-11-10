@@ -1328,6 +1328,14 @@ Boundaries mirror the push-transport gate's:
 an audit row naming the tool, the verb, the surface digest, the stated reason and the
 identity that stated it. The reason is required and must be long enough to be one.
 
+`git push` takes no flag of ours, so the `deskpushguard` pre-push hook takes the same
+audited override from its environment instead: `DESKPUSHGUARD_SCAN_OVERRIDE="<why>"`. A
+refusal names the form of the caller that hit it: a pre-push refusal names the variable, a
+`deskpr`/`deskreply`/`deskfile` refusal names the flag. `deskpr` hands its own flag's
+reason to the hook on the push it makes, and clears any ambient value when it has none, so
+an ambient variable never overrides a `deskpr` push. A refusal that is not overridable (a
+withheld identifier, a ruling claim) advertises neither form.
+
 **Policy is unchanged: exit 5 without the flag is a STOP**, and it is still never a
 fallback trigger. The flag exists because a hard block with no override had only two
 outcomes once the scan was wrong, and the house paid for both: the PR stranded for days
