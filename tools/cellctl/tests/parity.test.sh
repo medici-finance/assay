@@ -73,6 +73,7 @@ EOF
 #!/usr/bin/env bash
 case "${1:-}" in
   --version) echo "codex 0.154.0 (stub)"; exit 0;;
+  features) [[ "${2:-}" == list ]] && { echo 'multi_agent stable true'; exit 0; }; exit 2;;
   login) echo "Logged in (stub)"; exit 0;;
   config) case "${2:-}" in --help) echo "Usage: codex config <get|set>"; exit 0;; get) echo true; exit 0;; esac; exit 0;;
   plugin) case "${2:-}" in --help) echo "Usage: codex plugin <list>"; exit 0;; list) echo "assay@assay"; exit 0;; esac; exit 0;;

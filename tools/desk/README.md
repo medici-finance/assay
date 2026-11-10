@@ -1070,10 +1070,19 @@ Use `deskpr create --check-remote --title T --body-file F` when a conditional
 forge-file write has already published the branch. Unlike offline `--check`, this
 explicitly mints the session-role App token and reads the credentialed push
 endpoint. It reuses the live create path's immutable source/destination proof and
-judges every commit actually new to that destination, then stops before write
-budget, push or PR creation. It refuses unknown, divergent or unreadable remote
-state and new foreign authors or committers. The two check modes are mutually
-exclusive; ordinary `--check` still opens no connection and judges the whole range.
+runs the publish-identity check on every commit actually new to that destination,
+then stops before write budget, push or PR creation. It refuses unknown, divergent
+or unreadable remote state and new foreign authors or committers. The two check
+modes are mutually exclusive; ordinary `--check` still opens no connection and
+judges the whole range.
+
+The confirmed tip narrows the identity check only. The secret scan and the outbound
+check judge the whole branch diff against the default branch in every mode, and the
+pre-push hook does the same on the live push, so commits already on the destination
+are scanned again. A flagged string that an earlier push cleared with
+`--force-scan-override` is refused again by `--check-remote` and by the next
+create; each needs its own audited override. This breadth is deliberate: a value
+already on the destination is still in the history the PR publishes.
 
 `--check-remote` is also the preflight for the public-repo write gate. Offline
 `--check` cannot read live visibility, so it reports that gate as not checked and
@@ -1318,6 +1327,14 @@ Boundaries mirror the push-transport gate's:
 `--force-scan-override "<why>"`, which proceeds past a **secret-scan refusal** and writes
 an audit row naming the tool, the verb, the surface digest, the stated reason and the
 identity that stated it. The reason is required and must be long enough to be one.
+
+`git push` takes no flag of ours, so the `deskpushguard` pre-push hook takes the same
+audited override from its environment instead: `DESKPUSHGUARD_SCAN_OVERRIDE="<why>"`. A
+refusal names the form of the caller that hit it: a pre-push refusal names the variable, a
+`deskpr`/`deskreply`/`deskfile` refusal names the flag. `deskpr` hands its own flag's
+reason to the hook on the push it makes, and clears any ambient value when it has none, so
+an ambient variable never overrides a `deskpr` push. A refusal that is not overridable (a
+withheld identifier, a ruling claim) advertises neither form.
 
 **Policy is unchanged: exit 5 without the flag is a STOP**, and it is still never a
 fallback trigger. The flag exists because a hard block with no override had only two
