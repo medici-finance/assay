@@ -138,15 +138,17 @@ processes. Its first round, posted before the ruling, added the read-isolation s
 Verify rows 8 and 9) and the rotation note (Task 5). Its second round, after the ruling,
 required `cellctl check` to verify a declared surface rather than trust the declaration
 (Task 2a's last paragraph, Task 3's launch identity, rows 5, 8 and 9). A third round, after the
-approval, added the write-path rules: no non-holding identity can write what a holding window
-runs (Task 2a, rows 8 and 9). They implement the approved read isolation, as the surface
-verification does.
+first approval, added the write-path rules: no non-holding identity can write what a holding
+window runs, and a secret file whose access-control list grants another identity read is
+refused (Tasks 1, 2 and 2a, rows 8 and 9).
 
 The design-decision record that rule 48 requires before this brief leaves `todo` is
-[DR-desk-containers-34](../decisions/DR-desk-containers-34.md). The driver approved it,
-naming it, together with the read isolation, the surface verification and the rotation note
-above, which are therefore confirmed; the write-path rules sit under that read isolation.
+[DR-desk-containers-34](../decisions/DR-desk-containers-34.md). The driver approved it twice,
+naming it each time. The first approval confirmed the read isolation, the surface verification
+and the rotation note above. The second approved the write-path rules and the access-control-list
+refusal, and is the comment the record's `ruling:` links.
 Approved 2026-11-10, by the driver in their own login: https://github.com/medici-finance/assay/issues/6076#issuecomment-6775066942
+Write-path rules approved 2026-11-10, by the driver in their own login: https://github.com/medici-finance/assay/issues/6076#issuecomment-6778126739
 
 ## Ground rules
 
@@ -236,7 +238,7 @@ Named tests must execute; zero matches or a skip fails independent verification.
 | 5 | check +flow | host:multi-user | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretLaunchFlow$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretLaunchFlow ' "$o")` | Named PASS on a POSIX host provisioned with a separate OS identity per role (real file modes and owners); the compiled cellctl checks a scratch cell that declares the host surface with those identities, launches a worker window whose dispatched child sees only the path variable, then refuses the same cell once the fixture file is made group-readable; no output contains the fixture contents. |
 | 6 | check | host | `statusgen --root . --lint --acceptance-forge` | exit 0; output contains "LINT: PASS". The flag reads the forge, so this row runs on a host with forge read access, never network-off. |
 | 7 | check | tree | `statusgen --consumers --brief desk-containers/34 --base $(git merge-base origin/main HEAD)` | Pre-merge, on the implementation branch: exit 0; declared implementation sites and follow-up references corroborate; out-of-scope judgments stay reviewer-owned. |
-| 8 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadIsolation$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadIsolation ' "$o")` | Named PASS; a cell that declares no per-role read-isolation surface refuses every role-secret binding; so does each declared-but-false surface: a host surface whose reviewer identity equals a holder's or the file owner's, one whose reviewer identity is uid 0, one whose reviewer identity can elevate without a prompt (the identity probe is injected, so the cases run in-tree), one whose coordinator identity equals a holder's, one whose holder's checkout has a git common directory the reviewer identity can write, one whose secret file carries an access-control list granting another user read, and a container surface with a host-side intake or coordinator window running as the file owner or with a writable mount shared between a reviewer container and a worker container; on a valid container surface, the generated mounts give the secret volume to worker and verifier containers only, and reviewer, intake and coordinator containers have no mount for it. |
+| 8 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadIsolation$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadIsolation ' "$o")` | Named PASS; a cell that declares no per-role read-isolation surface refuses every role-secret binding; so does each declared-but-false surface: a host surface whose reviewer identity equals a holder's or the file owner's, one whose reviewer identity is uid 0, one whose reviewer identity can elevate without a prompt (the identity probe is injected, so the cases run in-tree), one whose coordinator identity equals a holder's, one whose intake identity equals a holder's, one whose holder's checkout has a git common directory the reviewer identity can write, one whose role-to-identity map the reviewer identity can write, one with a directory on a holder's PATH the reviewer identity can write, one whose holder's home the reviewer identity can write, one whose secret file carries an access-control list granting another user read, and a container surface with a host-side intake or coordinator window running as the file owner or with a writable mount shared between a reviewer container and a worker container; on a valid container surface, the generated mounts give the secret volume to worker and verifier containers only, and reviewer, intake and coordinator containers have no mount for it. |
 | 9 | check +flow | host:multi-user | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadDenyFlow$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadDenyFlow ' "$o")` | Named PASS on a POSIX host provisioned with a separate OS identity per role: the compiled cellctl launches the reviewer and worker windows of a scratch cell from that cell's own identity map; a child of the launched reviewer window fails to open the fixture file by its path with a permission error, and a child of the launched worker window opens it; a second scratch cell whose map puts the reviewer on the worker's identity is refused at check, before any window starts; a third, whose reviewer identity is given prompt-free elevation on the host, is refused by the real elevation probe; no output contains the fixture contents. |
 
 ## Threat model / pre-mortem
