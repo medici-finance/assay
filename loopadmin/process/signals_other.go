@@ -1,6 +1,6 @@
 //go:build !unix
 
-package cellprocess
+package process
 
 import (
 	"context"

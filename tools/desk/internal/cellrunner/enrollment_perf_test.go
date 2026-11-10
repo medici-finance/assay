@@ -1,6 +1,6 @@
 //go:build darwin || linux
 
-package cellprocess
+package cellrunner
 
 import (
 	"context"

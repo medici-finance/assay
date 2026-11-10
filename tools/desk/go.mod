@@ -13,6 +13,7 @@ require (
 	github.com/medici-finance/assay/forgeread v0.0.0
 	github.com/medici-finance/assay/gitcore v0.0.0-00010101000000-000000000000
 	github.com/medici-finance/assay/gitquiet v0.0.0-00010101000000-000000000000
+	github.com/medici-finance/assay/loopadmin v0.0.0-00010101000000-000000000000
 	github.com/medici-finance/assay/perfrec v0.0.0-00010101000000-000000000000
 	github.com/medici-finance/assay/statusgen v0.0.0-00010101000000-000000000000
 	github.com/medici-finance/assay/workflow v0.0.0
@@ -130,3 +131,5 @@ replace github.com/medici-finance/assay/statusgen => ../../statusgen
 replace github.com/medici-finance/assay/gitcore => ../../gitcore
 
 replace github.com/medici-finance/assay/workflow => ../../workflow
+
+replace github.com/medici-finance/assay/loopadmin => ../../loopadmin

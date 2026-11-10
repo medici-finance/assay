@@ -9,6 +9,7 @@ statusgen
 qualgen
 workflow
 gitcore
+loopadmin
 cellconfig
 tools/freshness
 tools/intake-eval

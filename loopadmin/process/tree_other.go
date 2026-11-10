@@ -1,6 +1,6 @@
 //go:build !unix && !windows
 
-package cellprocess
+package process
 
 import (
 	"errors"

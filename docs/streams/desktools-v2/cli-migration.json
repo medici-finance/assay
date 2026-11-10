@@ -435,6 +435,21 @@
       "pattern": "tools/desk/internal/kubecompat/preparation/core.py",
       "reason": "desk-containers/31 embedded preparation domain loaded by the Go preparation.Run bridge; JSON data only, no argv parser, shebang or standalone main guard; never installed separately",
       "class": "library"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/release/qualification.py",
+      "reason": "fixture-only transport functions imported by fixed protected workflow calls; no shebang, main guard, argument parser or implicit execution (#5707)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/qualification_test.py",
+      "reason": "offline qualification refusal and workflow fixtures run by the existing release regression reader; never an operator CLI (#5707)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/transport_test.py",
+      "reason": "retained offline bundle, credential and extraction controls run by the existing release regression reader; never an operator CLI (#5707)"
     }
   ],
   "entrypoints": [
@@ -2935,6 +2950,38 @@
       "complexity": "simple",
       "basis": "226 LOC, 2 verbs, 10 flags at 765668a4b0d1; local record/report only, no network or work authority",
       "owner": "performance-collection/01",
+      "state": "pending"
+    },
+    {
+      "executable": "transport.py",
+      "path": "tools/release/transport.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "internal fixture workflow adapter; not host installed",
+      "consumers": [
+        ".github/workflows/release-object-qualification.yml",
+        "tools/release/README.md"
+      ],
+      "parser": "Python argparse",
+      "complexity": "complex",
+      "basis": "retained two verbs and twelve coordinate/path/proof flags; parser migration remains pending",
+      "owner": "desktools-v2/78",
+      "state": "pending"
+    },
+    {
+      "executable": "install-object-client.sh",
+      "path": "tools/release/install-object-client.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "internal fixture workflow adapter; not host installed",
+      "consumers": [
+        ".github/workflows/release-object-qualification.yml",
+        "tools/release/README.md"
+      ],
+      "parser": "bash positional argument",
+      "complexity": "simple",
+      "basis": "retained one required job-local destination; checksum-pinned client bootstrap",
+      "owner": "desktools-v2/79",
       "state": "pending"
     }
   ]
