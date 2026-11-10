@@ -79,10 +79,14 @@ func workspaceLegacyScope(e *Env, cellDir string) local.Legacy {
 		filepath.Join(cellDir, "comms"),
 		filepath.Join(cellDir, "tmp"),
 		e.GetOr("CELL_GO_CACHE_ROOT", filepath.Join(cellDir, "go-cache")),
-		"/private/tmp/tracker-*",
+		filepath.Join(legacyTmpBase, "tracker-*"),
 	)
 	return l
 }
+
+// legacyTmpBase is the parent of deskwt's compiled-in sanctioned worktree prefix (deskwt's
+// tmpBaseDir): a legacy cleanup root on every POSIX host, whatever the cell.
+const legacyTmpBase = "/private/tmp"
 
 // workspaceStoreScope is what publication needs about the cell: its admitted identity, the
 // machine-level registry binding that identity to one root, and its legacy scope.
