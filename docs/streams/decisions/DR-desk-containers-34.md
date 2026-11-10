@@ -4,7 +4,7 @@ date: "2026-11-10"
 title: "Project secrets reach worker and verifier windows as a launcher-held, owner-only file per project, role and service, with per-role read isolation; reviewers accept the verifier's signed outcome"
 consequence: major
 decided-by: "human:<name>"
-ruling: "https://github.com/medici-finance/assay/issues/6065#issuecomment-6773391431"
+ruling: "https://github.com/medici-finance/assay/issues/6076#issuecomment-6775066942"
 alternatives:
   - "Operating-system keychain lookup by project scope (brief option 2). Ruled out: it protects the value at rest better on one desktop, but Linux containers and Kubernetes have no equivalent, so the container path would still need the launcher-held file."
   - "A local-only verify lane is the sole holder (brief option 3). Ruled out: it exposes the least, but workers cannot run a secret-bound check while implementing, so failures surface only after merge."
@@ -18,28 +18,19 @@ accepted:
   - "Deleting or replacing the local file stops future launches only. Revoking a leaked secret means rotating it at the issuing service. The launcher's receipt records role, project, service, path and times, never the value or a hash of it."
 ---
 
-**Status:** draft — the pull request that adds this record does not mark it approved. Approving a
-design record on a `gate: human` brief is the driver's act; a model or a worker cannot set it.
-
-**The ruling link does not corroborate yet.** The comment linked in `ruling:` above is the
-driver's choice of option 1 on brief 34, posted from the driver's own account on 2026-11-10.
-It does not name this record's id, and the issue it sits on carries no decision-gate marker.
-A hand run of the registers-v1 §7.5 check (`statusgen --corroborate`) reports it as
-`record-not-named`. The CI `corroborate` job does not show that: it reaches the ruling-link
-check only when a pull request also touches a findings entry, so its green status on the
-pull request that adds this record says nothing about this record. Nor does the offline
-design gate: it reads a record's shape and its `human:<name>` stamp, not this status line.
-Merged as it stands, this record would satisfy rule 48 for brief 34. What holds it is that
-its pull request stays a draft, and is not flipped ready, until `ruling:` links a comment in
-which the driver names `DR-desk-containers-34`, on an issue whose body carries the
-decision-gate marker for this record or for brief 34.
+**Status:** approved — by the driver in their own login on 2026-11-10, in the comment that
+`ruling:` links. That comment names this record and sits on an issue whose body carries the
+decision-gate marker for it, so the registers-v1 §7.5 check corroborates it.
 
 ## Basis
 
 The decision text above comes from
 [desk-containers/34](../desk-containers/brief-34-project-secrets-reach-dispatched-windows.md)
-(`## Human decision`, `## Task`) and from the driver's ruling comment. Relayed as given, the
-comment reads:
+(`## Human decision`, `## Task`) and from two comments by the driver.
+
+The first, on #6065 (https://github.com/medici-finance/assay/issues/6065#issuecomment-6773391431),
+chose the option. It is kept here as history; it did not name this record, so it could not
+corroborate it. Relayed as given, it reads:
 
 > desk-containers/34: A — launcher-held owner-only file per project, role and service; path exported only to worker and verifier windows, stripped from unblessed heads; reviewers accept the verifier's signed outcome.
 
@@ -47,7 +38,7 @@ The comment labels its choice "A". The brief numbers its options, and the commen
 restates option 1.
 
 Three parts of this record were added to the brief by security review. The first round was
-posted before the ruling and the second after it, so the ruling saw none of them:
+posted before that comment and the second after it, so the comment saw none of them:
 
 - per-role read isolation, and the refusal to bind a secret on a cell without it (brief Task
   2a, Verify rows 8 and 9);
@@ -56,7 +47,10 @@ posted before the ruling and the second after it, so the ruling saw none of them
   paragraph, Task 3, Verify rows 5, 8 and 9), added by the second security round;
 - the note that revocation of a leaked copy is rotation at the issuing service (Task 5).
 
-The corroborating ruling is where the driver confirms or rejects them.
+The second comment, on #6076, is the ruling `ruling:` links, and it confirms all three.
+Relayed as given, it reads:
+
+> DR-desk-containers-34: approved — option 1 as ruled on #6065, plus per-role read isolation (single-user cells fail closed and bind no role secret), cellctl check verification of any declared isolation surface with windows launched under their role identity, and revocation by rotation at the issuing service.
 
 ## What this record does not decide
 

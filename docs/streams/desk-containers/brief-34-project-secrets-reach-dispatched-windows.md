@@ -132,17 +132,16 @@ owner-only file per project, role and service, its path exported only to worker 
 verifier windows, stripped from unblessed heads, with reviewers accepting the verifier's
 signed outcome. The option text above is kept as it stood when ruled.
 
+Security review of this brief found that owner-only mode separates OS users, not role
+processes. Its first round, posted before the ruling, added the read-isolation step (Task 2a,
+Verify rows 8 and 9) and the rotation note (Task 5). Its second round, after the ruling,
+required `cellctl check` to verify a declared surface rather than trust the declaration
+(Task 2a's last paragraph, Task 3's launch identity, rows 5, 8 and 9).
+
 The design-decision record that rule 48 requires before this brief leaves `todo` is
-[DR-desk-containers-34](../decisions/DR-desk-containers-34.md), filed as a draft. Its ruling
-link does not corroborate yet. Under registers-v1 §7.5, a ruling corroborates only if the
-comment names the record, and the comment above does not name it. The ruling must also sit on
-a decision issue that carries this brief's decision-gate marker. Security review of this
-brief, posted before the ruling, found
-that owner-only mode separates OS users, not role processes. It added the read-isolation
-step (Task 2a, Verify rows 8 and 9) and the rotation note (Task 5). Its second round, also
-after the ruling, required `cellctl check` to verify a declared surface rather than trust
-the declaration (Task 2a's last paragraph, Task 3's launch identity, rows 5, 8 and 9). The
-record's ruling is where the driver confirms those additions.
+[DR-desk-containers-34](../decisions/DR-desk-containers-34.md). The driver approved it,
+naming it, together with all three additions above, which are therefore confirmed.
+Approved 2026-11-10, by the driver in their own login: https://github.com/medici-finance/assay/issues/6076#issuecomment-6775066942
 
 ## Ground rules
 
