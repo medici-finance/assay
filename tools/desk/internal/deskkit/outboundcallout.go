@@ -388,8 +388,9 @@ func houseRefuse(w OutboundWrite, field, digest, kind, detail string, said callo
 		ArgsDigest: ArgsDigest(os.Args[1:]),
 	})
 	return Refused(fmt.Sprintf("refused: %s at %s — %s (%s write to %s, visibility %s). "+
-		"%s is not overridable: --%s does not apply.",
-		RuleHouseCallout, field, detail, w.Kind, w.Repo, w.Visibility, RuleHouseCallout, ScanOverrideFlag))
+		"%s is not overridable: %s does not apply.",
+		RuleHouseCallout, field, detail, w.Kind, w.Repo, w.Visibility, RuleHouseCallout,
+		currentOutboundContext().OverrideForm.Name()))
 }
 
 // houseRefusalField names the field a house refusal points at: the write's only non-empty
