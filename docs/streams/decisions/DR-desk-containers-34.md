@@ -18,9 +18,11 @@ accepted:
   - "Deleting or replacing the local file stops future launches only. Revoking a leaked secret means rotating it at the issuing service. The launcher's receipt records role, project, service, path and times, never the value or a hash of it."
 ---
 
-**Status:** approved — by the driver in their own login on 2026-11-10, in the comment that
-`ruling:` links. That comment names this record and sits on an issue whose body carries the
-decision-gate marker for it, so the registers-v1 §7.5 check corroborates it.
+**Status:** routed — approved by the driver in their own login on 2026-11-10, in the comment
+that `ruling:` links, and cited by brief 34's `sources:`. That comment names this record and
+sits on an issue whose body carries the decision-gate marker for it, so the registers-v1 §7.5
+check corroborates it.
+**Routes-to:** docs/streams/desk-containers/ (brief 34, which cites this record in `design:` and `sources:`).
 
 ## Basis
 

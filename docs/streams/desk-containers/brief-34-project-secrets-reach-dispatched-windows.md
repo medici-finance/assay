@@ -27,6 +27,7 @@ version: 1
 authored: 2026-11-10 by assay-worker-app (issue #6065 part 2)
 sources:
   - "Issue #6065: project secrets have no channel to reach dispatched reviewer and worker environments."
+  - "docs/streams/decisions/DR-desk-containers-34.md: the approved design-decision record for this brief."
   - "freshness-checked 2026-11-10 @ 7cbf8a06b (origin/main): containers/secrets.md, cellctl envkeys.go and celldb.go, deskdispatch exec.go, verify-desk and pr-review-desk skills, docs/board.md bucket 4."
   - "containers/secrets.md: the normative runtime credential contract (path-by-env, read-only mount, fail-closed, no secret in an image layer)."
 exec-tier: strong
