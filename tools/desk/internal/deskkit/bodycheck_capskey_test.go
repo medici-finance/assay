@@ -6,14 +6,21 @@ import (
 	"testing"
 )
 
-// Fixtures for the ALL-CAPS KEY=<identifier> case: a `make … TEST=<GoTestName>` selector
-// in a brief's Verify row (#1642). Split across concatenation for the reason recorded at
-// scanSecret40.
+// Fixtures for the ALL-CAPS KEY=<value> cases: a `make … TEST=<GoTestName>` selector in a
+// brief's Verify row (#1642), an env-var data directory (#5825) and a recorded input SHA
+// (#5974). Split across concatenation for the reason recorded at scanSecret40.
 var (
 	capsSel51   = "TEST=" + "TestPublicationAdmission" + "WithUpperLayerBypassed" // 51, field refusal 1
 	capsSel39   = "TEST=" + "TestCatalogObject" + "RevisionRoundTrip"             // 39, field refusal 2
 	capsIdent   = "TestCatalogObject" + "RevisionRoundTrip"                       // the value alone
 	capsCamelTl = "TestCatalogObject" + "Qx7pLk2wZt9mNc4bYf6R"                    // CamelCase head, entropy tail
+	capsPath    = "/var/lib/" + "postgresql/18/docker"                            // #5825's value
+	// Entropy made to look like a path: a word-shaped path whose last segment is a
+	// CamelCase head on an entropy tail, and base62 split by a slash into segments that
+	// outnumber the words. (isPathLike already admits a lone short opaque segment among
+	// more words, bare, on main; that value stays exactly as exempt behind a key.)
+	capsTailPath = "/var/lib/postgresql/" + capsCamelTl
+	capsLowPath  = "/var/" + "Xq7pLk2wZt9mNc4b/" + "Yf6RqZ3HvW8tKp2L"
 )
 
 // capsKeyAdmitLines are whole lines a Verify row, a Makefile or a shell command carries.
@@ -25,6 +32,31 @@ var capsKeyAdmitLines = []string{
 	"GO_TEST_RUN=" + capsIdent + " make test",
 	"export FILTER=" + identK8s,
 	"PATTERN=" + identPRs,
+}
+
+// capsKeyPathSHALines carry a path (#5825) or a git SHA (#5974) behind an ALL-CAPS key:
+// an Evidence note, a CI env line, a recorded input pair.
+var capsKeyPathSHALines = []string{
+	"RISK-VALUE: `PGDATA=" + capsPath + "` is the data directory.",
+	"GOMODCACHE=/opt/toolcache/" + "gocache/pkg/mod go build ./...",
+	"export GOPATH=/srv/ci/work/" + "toolchain/gopath",
+	"row 5 inputs: `DELIVERY_HEAD=" + fixHex40 + "` and `DELIVERY_BASE=" + fixHex40 + "`.",
+	"RELEASE_TREE=" + fixHex64,
+}
+
+// TestAssignmentCapsKeyPathSHA pins the #5825 / #5974 extension: a value that is a git SHA
+// or a word-shaped path on its own is admitted behind the same ALL-CAPS key the identifier
+// rule accepts.
+// regression: #5825 #5974
+func TestAssignmentCapsKeyPathSHA(t *testing.T) {
+	for _, line := range capsKeyPathSHALines {
+		if err := BodyCheck([]byte(line + "\n")); err != nil {
+			t.Errorf("BodyCheck rejected %q: %v", line, err)
+		}
+		if err := ScanSurfaceSecrets("branch diff vs origin/main", []byte(line+"\n")); err != nil {
+			t.Errorf("ScanSurfaceSecrets rejected %q: %v", line, err)
+		}
+	}
 }
 
 // TestAssignmentCapsKeyIdent pins the admission: an ALL-CAPS key in front of a value that
@@ -44,8 +76,9 @@ func TestAssignmentCapsKeyIdent(t *testing.T) {
 	}
 }
 
-// capsRandomKeys are a bare caps key, a snake_case caps name and a caps key behind a path,
-// each written in front of every random value below.
+// capsRandomKeys are the three key forms the admission covers (a bare caps key, a
+// snake_case caps name, a caps key in front of a path), each written in front of every
+// random value below.
 var capsRandomKeys = []string{"TEST=", "DELIVERY_HEAD=", "PGDATA=/var/lib/"}
 
 // capsKeyRefuseLines are real-shaped secrets of a similar length written as KEY=<value>
@@ -68,6 +101,9 @@ func capsKeyRefuseLines() (map[string]string, map[string]string) {
 		"base62 path segment":    "PGDATA=/var/lib/" + scanSecret40,
 		"base62 as head":         "DELIVERY_HEAD=" + scanSecret40,
 		"48 hex as head":         "DELIVERY_HEAD=" + fixHex64[:48],
+		"camel tail as path":     "PGDATA=" + capsTailPath,
+		"b62 tail as path":       "PGDATA=" + capsLowPath,
+		"tail path behind head":  "DELIVERY_HEAD=" + capsLowPath,
 		"upper hex as head":      "DELIVERY_HEAD=" + strings.ToUpper(fixHex40),
 		"camel head, tail":       "TEST=" + capsCamelTl,
 		"k8s head, tail":         "TEST=" + camelPrefix,
@@ -86,6 +122,12 @@ func capsKeyRefuseLines() (map[string]string, map[string]string) {
 		"cert dir path":       "CERT_DIR=/etc/ssl/" + "private/postgresql/server",
 		"secret-named sha":    "WEBHOOK_SECRET=" + fixHex40,
 		"deploy-named sha":    "DEPLOY_KEY=" + fixHex64,
+		"stem key, sha":       "TOKEN=" + fixHex40,
+		"stem name, sha":      "GITHUB_TOKEN=" + fixHex40,
+		"password hex64":      "DB_PASSWORD=" + fixHex64,
+		"session hex64":       "SESSION=" + fixHex64,
+		"secret dir path":     "SECRET_DIR=" + capsPath,
+		"stem file path":      "export TOKEN_FILE=" + capsPath,
 		"digest-named key":    "ARG BASE_DIGEST_HEX=" + capsIdent,
 		"sha-named key":       "IMAGE_SHA_RUN=" + capsIdent,
 		"hex, no digest":      "MASTER_HEX=" + fixHex64,
@@ -97,7 +139,11 @@ func capsKeyRefuseLines() (map[string]string, map[string]string) {
 		"nested sha":          "HEAD=A=" + fixHex40,
 		"plus-quantified sha": "HEAD=+" + fixHex40,
 	}
-	bare := map[string]string{}
+	// The path lookalikes must not be exempt bare either, or their rows prove nothing.
+	bare := map[string]string{
+		"camel tail as path": capsTailPath,
+		"b62 tail as path":   capsLowPath,
+	}
 	const b62 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "abcdefghijklmnopqrstuvwxyz" + "0123456789"
 	rng := rand.New(rand.NewSource(16421110))
 	for _, n := range []int{36, 48, 64} {
@@ -116,10 +162,10 @@ func capsKeyRefuseLines() (map[string]string, map[string]string) {
 	return cases, bare
 }
 
-// TestAssignmentCapsKeyRefuse pins the bounds of the admission above: the value must be
-// an exempt identifier on its own, and the key must be at most 16 ALL-CAPS letters in a name that
-// carries no credential or digest stem.
-// regression: #1642
+// TestAssignmentCapsKeyRefuse pins the bounds of the admissions above: the value must be
+// an exempt identifier, git SHA or path on its own, and the key must be at most 16 ALL-CAPS
+// letters in a name that carries no credential or digest stem.
+// regression: #1642 #5825 #5974
 func TestAssignmentCapsKeyRefuse(t *testing.T) {
 	cases, bare := capsKeyRefuseLines()
 	for name, line := range cases {

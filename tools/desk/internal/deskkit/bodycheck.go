@@ -196,8 +196,8 @@ const (
 	// runThreshold. A longer key must earn its exemption by being word-shaped.
 	maxBareAssignKey = 2
 	// maxCapsAssignKey bounds the ALL-CAPS key isCapsKeyAssign accepts in front of an
-	// identifier value (`TEST=`, `RUN=`, `FILTER=`). Env-var name parts are short words;
-	// a longer ALL-CAPS stretch is opaque material in its own right.
+	// already-exempt value (`TEST=`, `PGDATA=`, `HEAD=`). Env-var name parts are short
+	// words; a longer ALL-CAPS stretch is opaque material in its own right.
 	maxCapsAssignKey = 16
 	// minAcronym / maxAcronym bound the ALL-CAPS run that wordDecomposition will accept as
 	// ONE word unit (see shortAcronymUnit). A 1-letter "acronym" is a lone capital — the
@@ -356,9 +356,9 @@ const SurfaceBody = "body"
 //     rules above (see isAssignmentLike). This is the Verify/Evidence command idiom
 //     `f=docs/streams/…; test -f "$f" && …` (#775), which could not be
 //     reworded without desyncing a recorded audit trail from what was actually run.
-//     An ALL-CAPS env-var key (`TEST=`, `GO_TEST_RUN=`) in front of an exempt
-//     IDENTIFIER is admitted too, unless the full name carries a credential or digest
-//     stem (see isCapsKeyAssign, #1642).
+//     An ALL-CAPS env-var key (`TEST=`, `PGDATA=`, `DELIVERY_HEAD=`) in front of such a
+//     value is admitted too, unless the full name carries a credential or digest stem
+//     (see isCapsKeyAssign, #1642).
 //   - a run composed ENTIRELY of `=` (see isAllEquals): a console-banner separator
 //     line (`echo "===================="`, #781) is base64 padding with no
 //     payload, so it cannot carry a credential. This does NOT exempt a `VAR=secret`
@@ -659,8 +659,7 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 				"identifier and whose subtest path is words of at most 16 chars, "+
 				"key=<sha|path|identifier> assignments whose key is short "+
 				"or word-shaped (an ALL-CAPS env-var key of up to 16 letters counts as "+
-				"word-shaped in front of an identifier, unless the variable's name carries "+
-				"a credential stem such as "+
+				"word-shaped unless the variable's name carries a credential stem such as "+
 				"TOKEN, SECRET, KEY or PASS, or a digest stem), a git SHA behind an ALL-CAPS digest key (…_SHA, …_DIGEST, "+
 				"…_DIGEST_HEX; never a credential-named variable), all-'=' banner separators, "+
 				"all-'+' diffstat bars, a PGP key fingerprint (40 "+
@@ -1761,24 +1760,27 @@ func isDigestKeyAssign(raw string, start int, run string) bool {
 }
 
 // isCapsKeyAssign reports whether run, starting at offset start in raw, is an ALL-CAPS
-// `KEY=<identifier>` assignment: the `make test TEST=<GoTestName>` selector a brief's
-// Verify row carries (#1642). isAssignmentLike already strips a short or word-shaped key,
-// but looksLikeWords never reads an ALL-CAPS key as word-shaped, so `TEST=`, `RUN=` and
-// `FILTER=` turned a value that is exempt on its own into a refusal. This rule is
-// narrower than isAssignmentLike on every axis, and each condition is load-bearing:
+// `KEY=<value>` assignment whose value is already exempt on its own: the
+// `make test TEST=<GoTestName>` selector a brief's Verify row carries (#1642), an
+// env-var data directory `PGDATA=/var/lib/…` (#5825), or a recorded input
+// `DELIVERY_HEAD=<git sha>` (#5974). isAssignmentLike already strips a short or
+// word-shaped key, but looksLikeWords never reads an ALL-CAPS key of 5+ letters (or one
+// with no lowercase behind its capitals) as word-shaped, so the key turned an exempt value
+// into a refusal. This rule is narrower than isAssignmentLike on every axis, and each
+// condition is load-bearing:
 //
-//  1. The VALUE must be an exempt identifier standing alone (isIdentifierLike, which
-//     admits no `=` or `+`) — never a path or a SHA. The rule adds no admission for the
-//     value: a name opening with a short acronym, or a CamelCase head on an entropy tail,
-//     refuses here exactly as it refuses bare.
+//  1. The VALUE must pass isGitSHA, isPathLike or isIdentifierLike standing alone (none
+//     of which admits an `=` or a `+`). The rule adds no admission for the value: a name
+//     opening with a short acronym, a CamelCase head on an entropy tail, 48 hex or a path
+//     with an opaque segment refuses here exactly as it refuses bare.
 //  2. The key is 1 to maxCapsAssignKey letters, every one A-Z: no digit, no lowercase.
 //  3. The FULL env-var name, read back from raw across `_`, contains no credentialStems
-//     entry, so `PASSWORD=<CamelCase passphrase>` and `API_KEY_TEST=<identifier>` keep
-//     refusing (the #1643 review's SR-1643-1 case: the key is the only context that
-//     tells a passphrase from a name).
+//     entry, so `PASSWORD=<CamelCase passphrase>`, `WEBHOOK_SECRET=<40 hex>` and
+//     `API_KEY_TEST=<identifier>` keep refusing (the #1643 review's SR-1643-1 case: the
+//     key is the only context that tells `openssl rand -hex 20` output from a digest).
 //  4. No part of that name is a digestKeys entry or HEX. A digest-named variable is
-//     isDigestKeyAssign's alone, so `ARG BASE_DIGEST_HEX=<passphrase>` keeps the 1643-F1
-//     refusal.
+//     isDigestKeyAssign's alone, so `ARG BASE_DIGEST_HEX=<passphrase>` and
+//     `MASTER_HEX=<64 hex>` keep the 1643-F1 refusals.
 func isCapsKeyAssign(raw string, start int, run string) bool {
 	eq := strings.IndexByte(run, '=')
 	if eq <= 0 || eq > maxCapsAssignKey {
@@ -1790,7 +1792,7 @@ func isCapsKeyAssign(raw string, start int, run string) bool {
 			return false
 		}
 	}
-	if !isIdentifierLike(val) {
+	if !isGitSHA(val) && !isPathLike(val) && !isIdentifierLike(val) {
 		return false
 	}
 	name := envNameAt(raw, start, key)

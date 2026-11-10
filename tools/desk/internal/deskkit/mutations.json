@@ -233,8 +233,20 @@
     {
       "name": "#1642 caps-key — the exemption accepts ANY value behind an ALL-CAPS key (a base62 run, an AWS secret, a CamelCase head on an entropy tail written as TEST=<value> scans clean)",
       "file": "internal/deskkit/bodycheck.go",
-      "old": "\tif !isIdentifierLike(val) {",
+      "old": "\tif !isGitSHA(val) && !isPathLike(val) && !isIdentifierLike(val) {",
       "new": "\tif len(val) == 0 {"
+    },
+    {
+      "name": "#5974 caps-key — the SHA arm accepts any 40- or 64-char value (a base62 run or 48/upper-case hex sized like a SHA behind DELIVERY_HEAD= scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif !isGitSHA(val) && !isPathLike(val) && !isIdentifierLike(val) {",
+      "new": "\tif !(len(val) == 40 || len(val) == 64) && !isPathLike(val) && !isIdentifierLike(val) {"
+    },
+    {
+      "name": "#5825 caps-key — the path arm accepts any value carrying a '/' (an entropy segment or an AWS secret key behind PGDATA= scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif !isGitSHA(val) && !isPathLike(val) && !isIdentifierLike(val) {",
+      "new": "\tif !isGitSHA(val) && !strings.Contains(val, \"/\") && !isIdentifierLike(val) {"
     },
     {
       "name": "#1642 caps-key — drop the credential-stem check on the full env-var name (PASSWORD=<CamelCase passphrase>, API_KEY_TEST=<identifier> scan clean)",
