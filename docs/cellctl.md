@@ -1859,7 +1859,7 @@ What cellctl owns once the decision is recorded:
   - `CELL_REPO`;
   - every `CELL_ROOTS` checkout and its `.claude/worktrees`;
   - the cell's `worktrees`, `comms`, `tmp` and Go cache directories;
-  - the old `/private/tmp/tracker-*` prefix.
+  - the old sanctioned temporary worktree prefix that `deskwt` compiles in.
 
   cellctl reads the legacy keys to work out this scope and never writes them. Rollback, child and
   container profiles keep the same legacy keys, so they see the same checkouts as before.
