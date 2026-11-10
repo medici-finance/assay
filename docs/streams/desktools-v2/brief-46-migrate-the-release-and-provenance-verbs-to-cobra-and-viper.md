@@ -291,6 +291,27 @@ RISK-VALUE: DERIVED — UsageExit (deskpins, deskrebaseline) = deskkit.ExitRefus
 RISK-VALUE: DERIVED — UsageExit (deskmanifest, deskprovenance) = 2 @ tools/desk/cmd/deskmanifest/main.go:144, tools/desk/cmd/deskmanifest/lint.go:21, tools/desk/cmd/deskprovenance/main.go:198 — both pre-migration parsers returned 2 on a bad command line.
 
 **VERIFY: PASS** — 9 of 9 Verify rows pass at 612750a12406 and verifyrun --check credits all 9; row 4 now asserts its own Totals line, so the clause the last run could not observe (20 caught, 0 NOT CAUGHT, 0 could-not-mutate) holds.
+### Correction (2026-11-10): F1
+
+The sentence in the first prose paragraph of the 2026-11-10 run that begins "Since the last admitted run at 2e1ddcbd72c2" is wrong as a statement of what moved under this record. It names three paths that are not inputs of the outcome record: the muhar harness, the shared cli package and the clicontract Go sources. It also omits two movements of declared inputs: the previous Evidence landing on this brief, and three commits to docs/streams/desktools-v2/cli-migration.json.
+
+The record's declared inputs are this brief, docs/streams/desktools-v2/cli-migration.json, the five command directories tools/desk/cmd/deskmanifest/, tools/desk/cmd/deskpins/, tools/desk/cmd/deskprovenance/, tools/desk/cmd/deskrebaseline/ and tools/desk/cmd/deskrelease/, the mutation spec tools/desk/internal/clicontract/testdata/mutations/desktools-v2-46.json, and changelog/cli-release.md. Between 2e1ddcbd72c2 and 612750a12406, two of them moved and the rest did not:
+
+- This brief moved in three commits. a30423ed7 is the previous Evidence landing, the BLOCKED run merged by medici-finance/assay#5810 as 9e2afb9f3; it appends 42 lines to the Evidence section and changes nothing else. e4c6eec9b and a0ce63a76 are the Verify-row amendment merged by medici-finance/assay#5864; in this brief each changes only line 103, Verify row 4.
+- docs/streams/desktools-v2/cli-migration.json moved in three commits, none of them in a desktools-v2/46 entry. c141d6248 (medici-finance/assay#5708) adds one exclusion rule and changes the desk-containers/31 entry. b4f076f87 (medici-finance/assay#5734) adds three exclusion rules and two entries owned by desktools-v2/78 and desktools-v2/79. 5ed25cf5c (medici-finance/assay#5734) edits the desktools-v2/78 entry. The five entries owned by desktools-v2/46 hash identically at both commits: sha256 f66df0c79411 at 2e1ddcbd72c2 and at 612750a12406.
+- The five command directories, the mutation spec and changelog/cli-release.md have no commit and no diff in the range.
+
+The muhar harness change since 2e1ddcbd72c2 (host budget admission) is context for Verify row 4, which runs muhar; it is not movement under this record, since muhar is not a record input. The row 4 paragraph after the observed table is where that context belongs. The verdict, the witness table, the observed table and the RISK-VALUE lines are unchanged by this correction.
+
+These commands, run in a full clone at the Evidence PR head, reproduce every claim above (INPUTS stands for the nine declared input paths listed above):
+
+- `git log --no-merges --format='%h %s' 2e1ddcbd72c2..612750a12406 -- INPUTS` lists exactly a0ce63a76, e4c6eec9b, a30423ed7, 5ed25cf5c, b4f076f87 and c141d6248.
+- `git log --no-merges --format=%h 2e1ddcbd72c2..612750a12406 -- <path>`, run once per input path, is empty for every path except the brief and cli-migration.json.
+- `git diff --stat 2e1ddcbd72c2 612750a12406 -- INPUTS` touches only the brief (43 insertions, 1 deletion) and cli-migration.json (59 insertions, 5 deletions).
+- `git diff -U0 a30423ed7^ a30423ed7 -- <brief>` is one hunk adding 42 lines inside the Evidence section; `git diff -U0 e4c6eec9b^ e4c6eec9b -- <brief>` and the same for a0ce63a76 each change only line 103.
+- `git show <rev>:docs/streams/desktools-v2/cli-migration.json | jq -c '[.. | objects | select(.owner? == "desktools-v2/46")]' | shasum -a 256` gives f66df0c79411 (5 entries) at both 2e1ddcbd72c2 and 612750a12406.
+
+**VERIFY: PASS** — unchanged by this correction: 9 of 9 Verify rows pass at 612750a12406; only the what-moved statement is restated, from the log over the record's declared inputs.
 
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.
