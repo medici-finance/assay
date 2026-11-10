@@ -167,7 +167,7 @@ launch from, first confirm that none of the variables above is set for anything 
 `env | cut -d= -f1 | grep -E '_(APP|APP_ID|PEM|TOKEN|INSTALL_ID(_[A-Z0-9_]+)?)$'` (names only, so
 no token is printed; it also matches `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and the
 per-owner install ids) lists no variable that belongs to another cell or App.
-Then run `desktoken <role> --repo <owner>/<repo>` with only `HOME` set to the cell's `home`
+Then run `desktoken --no-rotate <role> --repo <owner>/<repo>` with only `HOME` set to the cell's `home`
 directory, leaving the rest of that shell's environment as it is. Do not set or clear any of these
 variables for the proof alone: a proof run in an environment the desks never get passes even when
 the launch reads another cell's credentials. A successful `desktoken` run shows that a key was
