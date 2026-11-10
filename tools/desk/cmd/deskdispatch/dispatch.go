@@ -2234,6 +2234,11 @@ func claimRootHint(o dispatchOpts) string {
 // made passing the translated key by hand corrupt the dispatch instead of working around
 // it.
 func claimKeyFor(item, repo string) string {
+	// Preserve the complete spelling for the qualified claim adapter. Returning
+	// a selector in a new transport key would create a second lock for one work.
+	if deskkit.NegotiatedWorkSyntax(item) || strings.Contains(item, ":") {
+		return item
+	}
 	if strings.Contains(item, "--") {
 		return item
 	}
