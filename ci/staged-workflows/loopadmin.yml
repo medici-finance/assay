@@ -12,15 +12,8 @@ name: loopadmin
 # this file runs it. GOWORK=off is set so a stray go.work can never widen it.
 #
 # WHERE THIS RUNS — the self-hosted `medici-builder-public` runner; Go is
-# hand-installed from go.dev/dl exactly as ci.yml documents. The module's only
-# third-party dependencies are the pinned golang.org/x, PostgreSQL driver and
-# migration modules (risk summaries #5900, #5929), resolved from go.sum.
-#
-# JOURNAL JOB — the execution journal's rows 6 and 7 need a real disposable
-# PostgreSQL through ASSAY_TEST_POSTGRES_DSN and never self-skip. Service
-# containers need Docker, which the regular builder lacks, so the `journal` job
-# runs on ubuntu-latest with the same pinned service assay-workflow.yml uses;
-# the builder job excludes only those two tests by name.
+# hand-installed from go.dev/dl exactly as ci.yml documents. The module has no
+# third-party dependency, so nothing is fetched beyond the toolchain.
 #
 # ── STAGED, PENDING HUMAN PROMOTION ──
 # No bot or App in this repo holds workflow-push permission (GitHub hard-rejects an
@@ -76,48 +69,8 @@ jobs:
           go version
           test -z "$(gofmt -l .)"
           go vet ./...
-          go test -count=1 -timeout 120s -skip '^TestJournal(SharedStoreRestart|IncarnationPaused)$' ./...
-
-  journal:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    services:
-      postgres:
-        image: postgres:18.6-bookworm@sha256:5c4783a8cc3f0074912164f94dfa1be4e043438f0f707cf968d7af9a0d31a2c8
-        env:
-          POSTGRES_USER: fixture_admin
-          POSTGRES_PASSWORD: fixture_only
-          POSTGRES_DB: postgres
-        ports: ["5432/tcp"]
-        options: --health-cmd "pg_isready -U fixture_admin -d postgres" --health-interval 1s --health-timeout 2s --health-retries 30
-    env:
-      KUBECONFIG: /dev/null
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install Go
-        run: |
-          set -euo pipefail
-          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
-          echo "fetching $url"
-          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
-          mkdir -p "${HOME}/go-toolchain"
-          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
-          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
-
-      - name: Journal against disposable PostgreSQL
-        working-directory: loopadmin
-        env:
-          ASSAY_TEST_POSTGRES_DSN: postgresql://fixture_admin:fixture_only@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres?sslmode=disable
-        run: |
-          set -euo pipefail
-          test -n "$ASSAY_TEST_POSTGRES_DSN"
-          go test -count=1 -race -timeout 180s ./journal/
+          go test -count=1 -timeout 120s ./...
 
       - name: Mutation gate
         working-directory: loopadmin
-        env:
-          ASSAY_TEST_POSTGRES_DSN: postgresql://fixture_admin:fixture_only@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres?sslmode=disable
         run: go run ./mutate -map testdata/mutations.json
