@@ -14,6 +14,7 @@ depends: []
 unblocks: []
 effort: M
 gate: human
+design: DR-desk-containers-34
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: >-
   This creates a new custody path for project credentials into agent processes. The human
@@ -131,11 +132,12 @@ owner-only file per project, role and service, its path exported only to worker 
 verifier windows, stripped from unblessed heads, with reviewers accepting the verifier's
 signed outcome. The option text above is kept as it stood when ruled.
 
-Not yet recorded: the design-decision record that rule 48 requires before this brief leaves
-`todo`. `DR-desk-containers-34` can corroborate only from a ruling comment that names it, on
-a decision issue that carries this brief's decision-gate marker (registers-v1 §7.5). The
-comment above names neither, so the record waits for that comment rather than landing with a
-link that cannot corroborate. Security review of this brief, posted before the ruling, found
+The design-decision record that rule 48 requires before this brief leaves `todo` is
+[DR-desk-containers-34](../decisions/DR-desk-containers-34.md), filed as a draft. Its ruling
+link does not corroborate yet. Under registers-v1 §7.5, a ruling corroborates only if the
+comment names the record, and the comment above does not name it. The ruling must also sit on
+a decision issue that carries this brief's decision-gate marker. Security review of this
+brief, posted before the ruling, found
 that owner-only mode separates OS users, not role processes. It added the read-isolation
 step (Task 2a, Verify rows 8 and 9) and the rotation note (Task 5). The record's ruling is
 where the driver confirms those additions.
