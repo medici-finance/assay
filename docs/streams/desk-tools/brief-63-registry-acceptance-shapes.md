@@ -27,6 +27,7 @@ gate-why: >-
 decision-trigger: start
 issues: [4284, 4723, 2321, 5257, 3196, 4097, 1642, 929]
 outcome: none
+design: DR-scan-admission
 schema: brief-v2
 version: 1
 authored: 2026-11-10 by a desk-dispatched authoring session (error-class design for issue 4284; the acceptance shapes)

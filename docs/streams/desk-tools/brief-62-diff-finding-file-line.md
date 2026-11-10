@@ -158,7 +158,7 @@ Default if no answer: option 1 after 7 days. Neither option changes what is refu
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestDiffLineIndex' -count=1 -v > "${TMPDIR:-/tmp}/dt62-idx.log" 2>&1 && grep -F -e '--- PASS: TestDiffLineIndex ' "${TMPDIR:-/tmp}/dt62-idx.log" && grep -F -e '--- PASS: TestDiffLineIndexStrips ' "${TMPDIR:-/tmp}/dt62-idx.log" && go test ./internal/deskkit/ -run '^TestAddedLinesParity$' -count=1 -v > "${TMPDIR:-/tmp}/dt62-par.log" 2>&1 && grep -F -e '--- PASS: TestAddedLinesParity ' "${TMPDIR:-/tmp}/dt62-par.log"` | exit 0; both named PASS lines; the index numbers every side correctly, and its stripped text is byte-identical to what deskpr scanned before |
+| 1 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestDiffLineIndex' -count=1 -v > "${TMPDIR:-/tmp}/dt62-idx.log" 2>&1 && grep -F -e '--- PASS: TestDiffLineIndex ' "${TMPDIR:-/tmp}/dt62-idx.log" && grep -F -e '--- PASS: TestDiffLineIndexStrips ' "${TMPDIR:-/tmp}/dt62-idx.log" && go test ./internal/deskkit/ -run '^TestAddedLinesParity$' -count=1 -v > "${TMPDIR:-/tmp}/dt62-par.log" 2>&1 && grep -F -e '--- PASS: TestAddedLinesParity ' "${TMPDIR:-/tmp}/dt62-par.log"` | exit 0; all three named PASS lines; the index numbers every side correctly, its added lines match the outbound reader's, and its stripped text is byte-identical to what deskpr scanned before |
 | 2 | check:ci +flow | `cd tools/desk && go test ./cmd/deskpr -run '^TestDiffFinding' -count=1 -v > "${TMPDIR:-/tmp}/dt62-find.log" 2>&1 && grep -F -e '--- PASS: TestDiffFindingFileLine ' "${TMPDIR:-/tmp}/dt62-find.log" && grep -F -e '--- PASS: TestDiffFindingVerdicts ' "${TMPDIR:-/tmp}/dt62-find.log"` | exit 0; both named PASS lines; the refusal names the file, line and side, and the verdict is unchanged |
 | 3 | check:ci +mutation | `O=$(mktemp) && trap 'rm -f "$O"' 0 && cd tools/desk && go run ./cmd/muhar -spec cmd/deskpr/difffinding-mutations.json > "$O" 2>&1 && grep -F -e 'Harness healthy: baseline GREEN, positive control CAUGHT.' "$O" && grep -F -e 'Totals: 4 caught, 0 NOT CAUGHT, 0 could-not-mutate.' "$O"` | exit 0; all four mutants caught |
 | 4 | check:ci +neighbour | `cd tools/desk && test -f internal/deskkit/difflines_test.go && go test ./internal/deskkit/ -count=1 && go test ./cmd/deskpr -count=1 && go test ./cmd/muhar -run '^TestSpecAnchorsLand$' -count=1 -v > "${TMPDIR:-/tmp}/dt62-anch.log" 2>&1 && grep -F -e '--- PASS: TestSpecAnchorsLand ' "${TMPDIR:-/tmp}/dt62-anch.log"` | exit 0; the outbound check's added-line tests, deskpr's remote-scan and override tests, and every mutation anchor still pass |
@@ -180,7 +180,10 @@ Default if no answer: option 1 after 7 days. Neither option changes what is refu
 | The scanner is edited to carry diff awareness | row 5 |
 
 ## Review
-Gate: human. The reviewer checks that the reported line can be opened at the named side: head
+Gate: human. Before it leaves `todo`, the design needs an approved `DR-<slug>` record cited by
+`design:` (brief-rules 48). The ruling on the decision issue chose the option but names no
+record id, so no record exists yet: one has to be ruled under a valid id first. The reviewer
+checks that the reported line can be opened at the named side: head
 for added and context lines, base for removed lines. They check that no output path prints the
 span, and that the outbound check's tests are unedited. Every Verify row is risk-bearing,
 because the brief answers `sensitive-data: yes`. Each row is written to fail on the delivery

@@ -270,8 +270,11 @@ desk-tools/63** and **desk-tools/62 → desk-tools/64** beside it. 63's entries 
 and 62's diff line index; 64's narrowed scope is a side filter over that same index. 61 and 64
 are each `gate: human` with a decision at creation. 62 is `gate: human` at start, because it
 extends the diff reader the outbound push check uses. All four decisions were ruled on #4284 on
-10 November 2026, so the head of this chain is now 61's and 62's code. 61's admission ruling and
-63's entry ruling are both recorded in DR-secret-scan-admission (planned), and 64's in DR-secret-scan-scope.
+10 November 2026. 61's admission ruling and 63's entry ruling are recorded in DR-scan-admission,
+and 64's in DR-secret-scan-scope. Each of the three briefs cites its record with `design:`. 62's
+ruling names no record id, so 62 has no design record yet, and rule 48 keeps it in `todo`
+until one is ruled. The head of this chain is that record, not 62's code. 61 can start, and 63
+and 64 wait on 62.
 See "Secret-scan class — 10 November 2026" below.
 
 ## Dependency waves

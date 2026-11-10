@@ -28,6 +28,7 @@ gate-why: >-
 decision-trigger: creation
 issues: [4284]
 outcome: none
+design: DR-scan-admission
 schema: brief-v2
 version: 1
 authored: 2026-11-10 by a desk-dispatched authoring session (error-class design brief for issue 4284)
@@ -266,7 +267,7 @@ to a credential control is never adopted by silence.
 
 ## Review
 Gate: human. Before it leaves `todo`, the design needs an approved `DR-<slug>` record cited by
-`design:` (brief-rules 48). The implementation PR needs a `Security-Review: pass` at its head
+`design:` (brief-rules 48). That record is DR-scan-admission. The implementation PR needs a `Security-Review: pass` at its head
 before any ready flip. The reviewer checks that rows 1 and 2 were run against the delivery
 base, not only at head. They check that no `Bounds` example is a weakened copy of a positive
 fixture, and that the literal arms are byte-identical to the base. Every Verify row is

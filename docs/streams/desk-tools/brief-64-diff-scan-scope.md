@@ -118,6 +118,11 @@ Default if no answer: option 1 after 14 days. Silence changes nothing. Option 2 
 recommendation. The ruling below takes option 2 and adds a condition: unchanged context is
 skipped only when the diff's base is proven to be on the remote.
 
+The question above is kept as it was asked. Its claim that removed and unchanged lines are
+already public holds only when the diff's base has been pushed. The base is read from a local
+ref, which may hold commits the remote does not (see facts). The ruling's condition corrects
+this, and the Task and Verify sections below implement the corrected form.
+
 ## Ground rules
 - Ruled option B on the decision issue, which is option 2 above: https://github.com/medici-finance/assay/issues/4284#issuecomment-6774347835
   The ruling scans added and removed lines and skips unchanged context, with tests proving the
