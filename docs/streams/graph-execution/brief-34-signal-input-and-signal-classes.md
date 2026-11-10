@@ -595,6 +595,30 @@ Risk-bearing value: frontmatter risk is all no, irreversible no. Enumerated over
 - RISK-VALUE: DERIVED — patternCulpritFields = {check, file, line, problem, class, origin} @ statusgen/patterns.go:116 — Task step 6 makes the culprit-record fields exactly this set, each once. Row 13's TestPatternsCulpritRecord passes, and it refuses a six-entry field list with one field duplicated and origin missing; row 9 shows the same rule refuses a mechanical withheld class.
 
 **VERIFY: BLOCKED** — 23/24 rows pass at 612750a12406 (22 in the closed container bracket, bracket-digest verdict=match, plus row 15 on both lanes). Row 16 is held on the repo-wide lint red tracked at medici-finance/assay#4823, which names no file of this brief. No obligation of this brief was observed failing. gate: model.
+### Correction (2026-11-10): F-what-moved
+
+What was wrong: the run description of the 2026-11-10 non-implementer pass at 612750a12406 says no delivered path changed between "the 2026-11-06 source 4cf9795597f6" and this source, and lists only the statusgen pattern files, both schema copies, the spec and the enforcement registry. That base is wrong. 4cf9795597f6 was the source of a 2026-11-06 run that was never landed. The previous landed verification of this brief is the 2026-11-02 Evidence block above and its outcome record 34-20261102T173903Z-4319e5b1feb8, both at source 43d134d8d592. The sentence is also wrong for its own range: one input-touching commit, f186f5fb7e08, lies between 4cf9795597f6 and 612750a12406.
+
+What is right: measured from the previous landed source 43d134d8d592 to 612750a12406, limited to the 30 input paths of the 2026-11-10 outcome record (each `file:` and `scope:` input), six non-merge commits moved an input:
+
+- 41762aee43d6: the brief, landing the 2026-11-02 Evidence block.
+- d1bb47f90972: the brief, "pin Verify row 15 to the delivery range". It changed row 15 from a `--base "$(git merge-base HEAD refs/remotes/origin/main)"` form to `--delivery 0d66f0aec69310518d900af570fb92af1177878e --base dbfa166d5d967904f4b14956b8735933d48579d6`. This is why row 15 passes in this run and failed (exit 2) in the 2026-11-02 run.
+- f05c320919d4: deletes changelog/graph-execution-34-signal-classes.md, a `scope:` input, as part of the v1.0.70 changelog aggregation.
+- 30e4a1a01b84, 91c0279e5001 and f186f5fb7e08: each changes both author-brief SKILL.md twins (.cursor/skills/author-brief/SKILL.md and plugins/assay/skills/author-brief/SKILL.md). Both are delivered by medici-finance/assay#5165 and are `file:` inputs of the record. Verify row 14 greps the plugins copy for each pattern rule id. Row 14 passes at 612750a12406 in the bracket witness above, so these edits did not remove what it checks.
+
+No other input moved. statusgen/patterns.go, its test, the 20 pattern fixtures in the record's inputs, both schema copies, the spec and statusgen/enforcementstatus.go are byte-unchanged over 43d134d8d592..612750a12406.
+
+Commands (full clone of medici-finance/assay; `<inputs>` is the 30 paths named by the record's `file:` and `scope:` keys):
+
+| Command | Observed | Date | Runner |
+|---|---|---|---|
+| `git log --no-merges --format='%h %s' 43d134d8d592..612750a12406 -- <inputs>` | 6 commits: f186f5fb7, 91c0279e5, 30e4a1a01, d1bb47f90, f05c32091, 41762aee4 | 2026-11-10 | assay-verifier-app[bot] @ 8e7175833662 (on-behalf-of human:ian) |
+| `git log --no-merges --format='%h %s' 4cf9795597f6..612750a12406 -- <inputs>` | 1 commit: f186f5fb7 | 2026-11-10 | assay-verifier-app[bot] @ 8e7175833662 (on-behalf-of human:ian) |
+| `git diff 43d134d8d592 612750a12406 -- <inputs except the two SKILL.md twins, the brief and the changelog fragment>` | empty (0 lines) | 2026-11-10 | assay-verifier-app[bot] @ 8e7175833662 (on-behalf-of human:ian) |
+| `git diff --stat 43d134d8d592 612750a12406 -- <inputs>` | 4 files: both SKILL.md twins (28 added, 5 removed, each), the changelog fragment (2 removed, file deleted), the brief (56 added, 1 removed) | 2026-11-10 | assay-verifier-app[bot] @ 8e7175833662 (on-behalf-of human:ian) |
+| `git grep -n 4cf9795597f6 HEAD -- docs/streams` | only the run description this block corrects | 2026-11-10 | assay-verifier-app[bot] @ 8e7175833662 (on-behalf-of human:ian) |
+
+This correction changes no row result, no witness and no verdict. The 2026-11-10 run stays **VERIFY: BLOCKED** at 612750a12406: 23 of 24 rows pass, and row 16 is held on medici-finance/assay#4823.
 
 ## Review
 
