@@ -393,6 +393,12 @@ or reaches outside the gate the driver still holds. A REVERSIBLE fork is differe
 ALREADY proceeded on its default behind a draft PR (the reversibility test), so the ask here is not a
 pre-empt but a merge-or-decline, and the item does not park on this skill.
 
+**A bare option letter answers only the question asked in the turn it follows.** If the desk's
+last message showed more than one item with options (a remaining-queue listing, a recap, a
+ruling relay followed by "next up"), a bare reply such as `A` is ambiguous. Ask which item it
+answers before recording anything, and never bind it to the next item on the list. A reply that
+names the item (`4928-A`, `<item>: A`) is unambiguous.
+
 ## Recording a ruling — always a relay, never the driver's voice
 
 When the answer comes back, the desk records it **on the issue**, because a decision that
