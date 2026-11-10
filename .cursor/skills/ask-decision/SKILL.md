@@ -235,6 +235,17 @@ restate it.
   through the `run` guard, which only prints while `DRY_RUN=1`. So pasting the block only
   reports what it would do, and the driver acts by typing `driver_act_<id> live`. Nothing the
   function sets outlives the call.
+- **In a live walk, one live line per step instead.** When the desk is in the session with
+  the driver, has just read the state the act depends on, and the driver runs each command
+  as its own `! <cmd>` (a fresh shell every time), the desk hands each step over as ONE live
+  line. The line pins the driver's token inline, the way the Reply shape's ruling command
+  does. It has no function, no dry-run switch and no comment lines: a function defined in
+  one `!` shell is gone in the next, and the desk's own fresh read replaces the dry run. The
+  line relies on the command's own refusals (a non-force `git push` refuses a
+  non-fast-forward) and never adds a force flag. After each line the desk reads the result
+  back before handing over the next. Everything posted for later or cold reading (a filed
+  issue, a `BLOCKED-ON-HUMAN` report, a verify-gate card, a rendered page) keeps the
+  dry-run block above, because no fresh read precedes its paste.
 - **A browser-click step** is exactly one URL line plus the field values to set, in a fenced
   `url` block — one per page. Never "go to the settings and find…".
 - **`# fill:` markers** for a value only the human can supply (a one-time code, a choice made
