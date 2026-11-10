@@ -667,8 +667,11 @@ refuse because a complete input inventory cannot be proved. `-j` is scheduling
 and does not change identity. With `-state`, external-input flags (`-overlay`, `-modfile`, `-pgo`,
 `-toolexec`, `-exec`) and unknown Go flags are refused. The same check applies to
 GOFLAGS from the environment, a command-local assignment or the go env file.
-Go shell compositions (including subshells, substitutions, braces and bang forms)
-and command-local PATH overrides also refuse. Set PATH for
+Go shell compositions recognized by the literal command-word screen (including
+subshells, substitutions, braces, bang forms, escapes and quote-split spellings)
+and command-local PATH overrides also refuse. The screen normalizes quoting and
+escapes for refusal; it does not evaluate shell expansion or resolve dynamically
+constructed command names. Set PATH for
 the whole invocation, with the chosen Go executable named `go`; absolute or
 relative paths to a Go executable are unsupported with `-state`.
 Other shell suites use the conservative tree inventory; their external data and

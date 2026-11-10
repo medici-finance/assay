@@ -277,12 +277,12 @@ func TestStateRejectsNewTree(t *testing.T) {
 		}
 	})
 	t.Run("command-words", func(t *testing.T) {
-		for _, command := range []string{"cargo test", "cargo test && true", "(cargo test)", "echo $(cargo test)", "`cargo test`", "{cargo test;}", "!cargo test", "echo mango fruit"} {
+		for _, command := range []string{"cargo test", "cargo test && true", "(cargo test)", "echo $(cargo test)", "`cargo test`", "{cargo test;}", "!cargo test", "echo mango fruit", `echo x; "car"go test`, `echo x; car''go test`} {
 			if _, _, goCmd, err := stateGoArgs(command); err != nil || goCmd {
 				t.Fatalf("non-Go command %q classified as Go: %v", command, err)
 			}
 		}
-		for _, command := range []string{"/custom/bin/go test .", "./go test .", "'/custom/bin/go' test . && true", "go test . && true", "(go test .)", "echo $(go test .)", "`go test .`", "{go test .;}", "!go test .", "echo <(go test .)", `\go test .`, `g\o test .`, `go\ test .`, `echo x;\go test .`} {
+		for _, command := range []string{"/custom/bin/go test .", "./go test .", "'/custom/bin/go' test . && true", "go test . && true", "(go test .)", "echo $(go test .)", "`go test .`", "{go test .;}", "!go test .", "echo <(go test .)", `\go test .`, `g\o test .`, `go\ test .`, `echo x;\go test .`, `echo x; "g"o test .`, `echo x; g''o test .`, `echo x; g""o test .`} {
 			if _, _, _, err := stateGoArgs(command); err == nil {
 				t.Fatalf("unresolved Go command accepted: %s", command)
 			}

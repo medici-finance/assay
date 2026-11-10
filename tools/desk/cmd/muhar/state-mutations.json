@@ -82,7 +82,7 @@
     {
       "name": "non-Go command rejected",
       "file": "cmd/muhar/state.go",
-      "old": "goCommandWord.MatchString(strings.ReplaceAll(command, `\\`, \"\"))",
+      "old": "goCommandWord.MatchString(strings.NewReplacer(`\\`, \"\", \"'\", \"\", `\"`, \"\").Replace(command))",
       "new": "strings.Contains(command, \"go \")"
     },
     {
@@ -130,14 +130,20 @@
     {
       "name": "escaped Go command missed",
       "file": "cmd/muhar/state.go",
-      "old": "strings.ReplaceAll(command, `\\`, \"\")",
-      "new": "command"
+      "old": "strings.NewReplacer(`\\`, \"\", \"'\", \"\", `\"`, \"\").Replace(command)",
+      "new": "strings.NewReplacer(\"'\", \"\", `\"`, \"\").Replace(command)"
     },
     {
       "name": "termination signal dropped",
       "file": "cmd/muhar/process_unix.go",
       "old": "syscall.SIGXFSZ: true,",
       "new": "syscall.SIGXFSZ: false,"
+    },
+    {
+      "name": "quote-split Go command missed",
+      "file": "cmd/muhar/state.go",
+      "old": "strings.NewReplacer(`\\`, \"\", \"'\", \"\", `\"`, \"\").Replace(command)",
+      "new": "strings.ReplaceAll(command, `\\`, \"\")"
     }
   ]
 }

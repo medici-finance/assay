@@ -526,10 +526,11 @@ func stateGoArgs(command string) (args, assigns []string, isGo bool, err error) 
 // are classified from argv[0]'s base name by the shared token reader above.
 var goCommandWord = regexp.MustCompile(`(?i)(^|[[:space:];|&(){}!$<>\x60])['"]?([^[:space:];|&(){}!$<>\x60'"]*/)?go(\.exe)?['"]?([[:space:];|&(){}!$<>\x60]|$)`)
 
-// mentionsGo reports whether command names go as a command word. Backslashes
-// are stripped first: the shell removes them, so \go and g\o both run go.
+// mentionsGo conservatively recognizes literal Go command words for refusal.
+// Removing quoting and escapes catches \go, g\o and "g"o without evaluating
+// shell expansions or trying to inventory dynamically constructed commands.
 func mentionsGo(command string) bool {
-	return goCommandWord.MatchString(strings.ReplaceAll(command, `\`, ""))
+	return goCommandWord.MatchString(strings.NewReplacer(`\`, "", "'", "", `"`, "").Replace(command))
 }
 
 func goExecutable(path string) bool {
