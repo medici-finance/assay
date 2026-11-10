@@ -65,6 +65,10 @@ USAGE:
 
 <role> ∈ {reviewer, verifier, worker, desk, issue-loop, intake-loop, cell-issues}
 
+On a GitLab-resolved --repo the plain form ROTATES, like --forge gitlab. A caller that
+needs only the credential's location passes --no-rotate. On GitLab the printed path is
+the role's custody file and the ONLY copy of its credential: never delete it.
+
 cell-issues is the write-issues App identity (issues:write + metadata:read only) — it is
 selectable only by explicit name, never a loop's default: no entry in the loop→role table
 resolves to it, so a desk window acts as it only when a caller asks for it by name.
