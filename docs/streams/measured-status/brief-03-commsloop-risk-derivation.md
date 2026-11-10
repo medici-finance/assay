@@ -420,6 +420,33 @@ RISK-VALUE: DERIVED — risk = false @ tools/desk/cmd/commsloop/loop.go:302 — 
 RISK-VALUE: DERIVED — risk "yes" rows tier = human @ tools/desk/cmd/commsloop/assign.yaml:38 (14 rows, lines 38 to 75; compiled mirror at tools/desk/cmd/commsloop/assign.go:125 to 162) — this follows the standing rule that any risk:yes goes to a human gate, as the table header states (assign.yaml lines 17 to 20). A grep and the compiled-table invariant test (row 2) both show that no risk-yes row maps to any other tier.
 
 **VERIFY: PASS** — 5/5 Verify rows pass with 0 fail and 0 could-not-run at 612750a12406 (version-3 table, Option 2). Gate: model; status left where it is.
+### Correction (2026-11-10): F-whatmoved-anchor
+
+What was wrong. The 2026-11-10 section above says: "No commit between 4cf9795597f6 (the 2026-11-06 run) and 612750a12406 touches tools/desk/cmd/commsloop, comms/contract or tools/desk/internal/comms." There was no 2026-11-06 run of this brief. 4cf9795597f6 is a 2026-11-06 `chore(status): regenerate` commit on main. This brief has no Evidence section dated 2026-11-06, and docs/streams/verify-outcomes/measured-status/ holds a single record for 03, `03-20261002T112659Z-bc3037845ea7.json`. The sentence is true only over the window from that wrong anchor. It is false from the last real witness and from the last landed record.
+
+What is right. The range starts at the previous landed outcome record, sha 6e419774479f (2026-10-02, outcome `blocked`, wake predicate `relevant-input-changed`). Its declared inputs are this brief, tools/desk/cmd/commsloop/loop.go and tools/desk/cmd/commsloop/assign.yaml. From 6e419774479f to 612750a12406, 15 non-merge commits touch those inputs:
+
+- loop.go: one commit, a724e99dc (#3367). It changes one comment line, the envelope path cited in the Derivation block (internal/comms/envelope.go becomes comms/contract/envelope.go). The whole loop.go diff over the range is that one line. No code line moved.
+- assign.yaml: no commit. Its sha256 is `ba7c8adabc0bc900…` at both 6e419774479f and 612750a12406, equal to the record's input digest.
+- This brief: 14 commits.
+  - Its own Verify changes: 75435adf1 (#2963, re-baseline of rows 1, 2 and 5), 6ed0928d9 (re-baseline so every row fails before delivery) and d9d774a40 (bump to version 3, merged via #5215). The 2026-11-10 run is the first witness of the version-3 table.
+  - Other brief edits: b0bff74a0 (#3697, Context files: block rewrite).
+  - Evidence and verification commits: 2d1c4de79 (#2053), e656bbcbd (#2933), 5e18ed262 (#3182), 19472d869, 0cb6f66ac, 09a3a22a4, 6a631fbf4, cbccd6149, d674e50ec and dba2df628.
+
+Measured from the last witness, the 2026-11-02 section at 2c6c21336a60, three of those commits are newer: 6ed0928d9, dba2df628 and d9d774a40. All three touch only this brief.
+
+The directories the old sentence named are wider than the record's inputs, and commits moved in them too. From 2c6c21336a60, one commit touches them: 017a40c96 (merged via #5293). It changes only comms/contract/deps_test.go, a test file, and does not touch the derivation. From 6e419774479f, seven commits touch them: f73ec32ea (#2255), 437c9ca04 (#2308), ce012f183 (#2731), b17e8b14f (#3051), 2cb2b41f0 (#3061, which moved the envelope contract into comms/contract), a724e99dc (#3367) and 017a40c96. tools/desk/cmd/commsloop/assign.go, the compiled mirror of assign.yaml, has no commit in the range.
+
+What still holds. No non-comment code moved on the derivation path in loop.go or assign.yaml since the previous record. The literal `const risk = false`, the 14 risk-yes rows and their compiled mirror are unchanged. This matches the Enumeration paragraph above. The rows, digests and RISK-VALUE lines of the 2026-11-10 section are unaffected.
+
+Commands (full clone of medici-finance/assay at d6f7a904dd30, each path passed as its own argument):
+
+- `git log -1 --format='%H %cs %s' 4cf9795597f6` prints a `chore(status): regenerate` commit dated 2026-11-06.
+- `ls docs/streams/verify-outcomes/measured-status/ | grep '^03'` prints one record, whose `sha` is 6e419774479f.
+- `git log --no-merges --format='%h %cs %s' 6e419774479f..612750a12406 -- docs/streams/measured-status/brief-03-commsloop-risk-derivation.md tools/desk/cmd/commsloop/loop.go tools/desk/cmd/commsloop/assign.yaml` lists the 15 commits above.
+- `git diff 6e419774479f 612750a12406 -- tools/desk/cmd/commsloop/loop.go` shows the single comment line.
+- `git show 6e419774479f:tools/desk/cmd/commsloop/assign.yaml | shasum -a 256` and the same at 612750a12406 both print `ba7c8adabc0bc900…`.
+- `git log --no-merges --format='%h %s' 2c6c21336a60..612750a12406 -- tools/desk/cmd/commsloop comms/contract tools/desk/internal/comms` lists 017a40c96. The same command from 6e419774479f lists the seven commits above, and from 4cf9795597f6 it lists none.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
