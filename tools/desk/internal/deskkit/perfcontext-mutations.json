@@ -66,6 +66,18 @@
       "file": "internal/deskkit/runtool.go",
       "old": "env = unknownPerfParentEnv(env)",
       "new": "_ = env"
+    },
+    {
+      "name": "child keeps the parent's stale work beside its own assignment",
+      "file": "../../perfrec/lifecycle.go",
+      "old": "for _, w := range work {",
+      "new": "for _, w := range append(append([]WorkRef(nil), p.Work...), work...) {"
+    },
+    {
+      "name": "carry request context in one process-global value",
+      "file": "internal/deskkit/perfcontext.go",
+      "old": "\treturn context.WithValue(ctx, perfContextKey{}, c)\n}\nfunc PerfContext(ctx context.Context) (perfrec.Context, bool) {\n",
+      "new": "\tperfGlobal = &c\n\treturn ctx\n}\n\nvar perfGlobal *perfrec.Context\n\nfunc PerfContext(ctx context.Context) (perfrec.Context, bool) {\n\tif perfGlobal != nil {\n\t\treturn *perfGlobal, true\n\t}\n"
     }
   ]
 }
