@@ -1,0 +1,173 @@
+---
+brief: assay:assay:statusgen:40
+title: Chain approved acceptance transitions, and let one approval correct a row's Command and Expect
+why: "A protected Verify table can take only one approved change after delivery, and an approved row may change its Command or its Expect but not both. A table amended twice, or a row whose check needs both cells corrected, has no route to acceptance, so its brief cannot be verified."
+wave: 1
+depends: []
+unblocks: ["desk-containers/17", "statusgen/36"]
+effort: M
+gate: human
+risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}
+gate-why: "It relaxes a verification control that every adopter's protected tables rely on: after this lands, a delivered table may carry more than one approved change and one approved row may change both of its cells. A defect here would credit a row against text no human approved. The driver confirms the open questions below before work starts, and accepts the change at done."
+decision-trigger: start
+issues: [6064, 5211]
+schema: brief-v2
+version: 1
+authored: 2026-11-10 by worker-desk (authoring for #6064)
+sources:
+  - "the driver's own comment https://github.com/medici-finance/assay/issues/5211#issuecomment-6771619511 (2026-11-10): option B, approved transitions may chain and one row may correct Command and Expect together; a relaxation of a verification control, so its own brief and a security review"
+  - "#6064 — the scoping issue filed for that ruling: what refuses today, what the change needs, refusals that must stay"
+  - "#5684 and docs/proposals/statusgen-36-acceptance/README.md — the held statusgen/36 correction; its 'Successor-chain support needed in the resolver' invariants and order-of-work step 1"
+  - "#3470 — the original command-only transition; its Expect-only follow-up in the same owner"
+  - docs/protected-paths.md (§Explicit human-approved acceptance transitions)
+  - docs/contracts.md (R-original-table-closure)
+  - "docs/streams/desktools-v2/brief-81-run-acceptance-transition-rows-inside-a-closed-container-netns-bracket.md — reads the same plan output; coordination only"
+  - "docs/streams/statusgen/brief-37-content-bound-witness-schema-v2-writers.md — its I-2 slice re-routes the transition audit; coordination only"
+  - "freshness-checked 2026-11-10 @ 7cbf8a06b330e9f2313fbe6ee187865ba3470c4e (origin/main)"
+exec-tier: strong
+exec-tier-why: "It changes an approval-bound security control: the chain walk, the per-link payload binding and the effective-table merge each need adversarial review, and a mistake credits unapproved acceptance."
+domain: complicated
+outcome: none
+consumers:
+  - "statusgen/acceptancetransition.go, statusgen/protectedclosure.go, statusgen/verifyrun.go (the `--acceptance-record` descriptor check only): follow-up statusgen/40"
+  - "statusgen/transitionchain_test.go and statusgen/transitionchain-mutations.json (new files): follow-up statusgen/40"
+  - "statusgen/acceptance-mutations.json: follow-up statusgen/40 (anchor text only; every existing mutant name is kept, see Verify row 12)"
+  - "docs/protected-paths.md (§Explicit human-approved acceptance transitions) and docs/contracts.md (R-original-table-closure): follow-up statusgen/40"
+  - "plugins/assay/skills/verify-desk/SKILL.md (the `--acceptance-record` paragraph), plus the generated Cursor mirror: follow-up statusgen/40"
+  - "desk-containers/17 (delivered at v1, amended to v2 and v3 after delivery): out-of-scope (its table and Evidence are not edited; once this ships and is pinned, the driver approves its v2 and v3 links and verify-desk re-verifies it)"
+  - "the held statusgen/36 version-3 correction: out-of-scope (that proposal's steps 2 to 5 stay with it; this brief is its step 1)"
+  - "row retirement, class changes, shell changes, row add/delete/renumber, supplemental-row promotion and table-layout migration: out-of-scope (stay refused)"
+---
+
+# Brief 40 — Chain approved acceptance transitions, and let one approval correct a row's Command and Expect
+
+## Context
+
+files: statusgen/acceptancetransition.go, statusgen/protectedclosure.go, statusgen/verifyrun.go (descriptor check only), statusgen/transitionchain_test.go (new), statusgen/transitionchain-mutations.json (new), statusgen/acceptance-mutations.json (anchor text only), docs/protected-paths.md, docs/contracts.md (the R-original-table-closure row only), plugins/assay/skills/verify-desk/SKILL.md, plus the generated Cursor mirror. No other statusgen file, and nothing under tools/desk/.
+
+facts:
+- The resolver is `acceptanceTransition` (`statusgen/acceptancetransition.go:44`). Its only caller is the protected plan (`statusgen/protectedclosure.go:195`), which feeds both `verifyrun --acceptance-record` and the lint audit. It requires exactly one literal `Acceptance-Transition: amendment=<sha> approval=<url>` marker (`:46`-`:53`).
+- One link only. The amendment must be on `rev-list --first-parent HEAD ^delivery` (`:70`), its first parent's Verify must equal the delivered Verify (`:78`, "acceptance changed between delivery and amendment"), and the current Verify must equal the amendment's (`:92`, "current Verify differs from the approved amendment"). The version must be the delivered version plus one, and current must equal the amendment's (`:159`, `:163`).
+- One column only. Per original row: an Expect-only change is a candidate (`:116`); a Command change needs one unambiguous code span with identical surrounding context (`:128`); a change to both refuses with "only command-only or Expect-only original-row changes are supported" (`:135`). Supplemental rows, row add/delete/renumber and class changes refuse.
+- The approval is a non-bot, roster-mapped human's unedited comment on a same-repository issue carrying `<!-- acceptance-transition: <brief path> -->`, read through `resolveRulingOn` with `--acceptance-forge` (`:252`-`:264`). Its body must be exactly `Approve acceptance-transition v1` then `repo=`, `brief=`, `delivery=`, `base=`, `original=`, `amendment=`, `rows=` (`:250`), CRLF normalised. Every changed Command row must be named (`:279`). Unnamed Expect drift keeps its original obligation (`:289`).
+- The result is the original table with only the approved columns rewritten, plus a `revisions` map (row ID to amendment, `:358`). Every original row needs a fresh witness at or after the amendment (`:201`). `acceptanceChanges` emits `ID=Command` or `ID=Expect` (`protectedclosure.go:388`); verifyrun prints it as `Acceptance-Changes:` (`verifyrun.go:2791`).
+- `acceptanceRecordKind` accepts exactly one Verification-Table line, optionally followed by one Acceptance-Transition line (`protectedclosure.go:268`-`:276`). Forge-enabled lint prints `acceptance transition: reading approval <url>` once per approval read (`acceptancetransition.go:254`; docs/brief-rules.md rule 51).
+- docs/protected-paths.md (its last paragraph) lists "Chained transitions" and "combined command-and-Expect changes in one row" as unsupported.
+- First consumer, desk-containers/17. It was delivered at version 1 (delivery ea4d3339cc4b, base 40523f81d6a0, original 716a74574ffe). Its first-parent chain then carries two Verify edits, both merges, with no other Verify edit between them. The #5209 merge (ba57f6e07329) made version 2: rows 1, 2, 3, 4 and 6 are Command-only edits, one code span each, same context, so they fit today's column rule. The #5255 merge (e5b9e7ad95fe) made version 3: row 5 (`check`) and row 7 (`gate:model +flow +dereference`, a prose hand-run Command) each change their Expect, and their Command goes from 3 code spans to 1 and from 3 to 10, so neither fits the one-span rule; their class is unchanged. The verifier's probe got the three single-link refusals above, one per candidate amendment. Its 2026-11-10 hand run met all 10 rows.
+- Second consumer, statusgen/36. It has one approved link, #5689 (amendment 37872cfb9961, rows 12 and 15, a v1 payload). Its held version-3 correction cannot land until a second link is supported (`docs/proposals/statusgen-36-acceptance/README.md` §"Successor-chain support needed in the resolver"; order of work, step 1).
+
+Design-fit: The plan for this control is already written: the held statusgen/36 proposal names "successor-chain support in the shared resolver, reviewed" as step 1 and lists its minimum invariants. **This brief builds on** today's single-link resolver (the #3470 command transitions and the Expect-only follow-up in the same owner). It extends that one function and the one protected plan, adding no second resolver, verb or flag. **It folds in** step 1 of the held statusgen/36 proposal: it adopts that proposal's invariants, except that ruling B supersedes the invariant "allow only one corrected column per approved row". **It replaces** nothing. A record in today's one-line form keeps today's rules exactly, so every existing record and test keeps its verdict.
+
+Sequencing against open work:
+- statusgen/37's I-2 slice will route the protected closure and transition audit through admitted delivery inputs, and its Task says to keep command-only amendment limits. This brief amends that sentence (statusgen/37 version 3) so the limits it keeps are the ones defined here, and records the order as an ordering feather on statusgen/37: a notice, not a hold.
+- desktools-v2/81 writes the planned transition table into a container receipt. This brief keeps the output shape that brief reads: one effective table, a `revisions` map and an `Acceptance-Changes:` value. Whichever lands second adapts the descriptor check and the one new `Command+Expect` token. That is a coordination point, not an edge.
+
+design-fit:
+  owner: statusgen/acceptancetransition.go (acceptanceTransition), consumed through statusgen/protectedclosure.go
+  contract: none — no S- row owns acceptance transitions; R-original-table-closure is amended in place
+  retires: ["the docs/protected-paths.md 'unsupported' entries for chained transitions and combined command-and-Expect changes", "'only command-only or Expect-only original-row changes are supported' for chain (v2) records; it stays for one-line (v1) records"]
+  weight: "verbs 0, flags 0; refusals +6 to +8 (per-link chain refusals, each naming the link); rule-text lines about +25 in docs/protected-paths.md and +4 in verify-desk"
+  why-add: "The chain checks must live in the one resolver every consumer already reads; anything outside it would be a second evaluator. Removal considered: re-derive the table at a new delivery instead of chaining, which the #5211 ruling chose against for these tables."
+
+single-point-of-failure: the chain walk. If the resolver missed one first-parent commit that changed the Verify table, that unapproved edit would ride into the effective table under the next link's approval. The walk enumerates every first-parent Verify change from delivery to HEAD and requires each to be exactly one link's amendment, in order (Verify row 5; mutant in row 10).
+
+## Human decision
+
+What is decided: how far the driver's ruling to let approved acceptance changes chain and to let one approved row correct both its Command and its Expect reaches, on the points the ruling left open.
+
+Today a delivered protected Verify table may take one approved change, and an approved row may change one cell. The ruling lifts both limits. Three points are still open.
+
+Q1. How wide a combined correction may be. Today a Command change must keep one code span and its surrounding text. The first table waiting on this change needs two rows whose Command cells are rewritten whole (one from three code spans to one, one prose hand-run step from three to ten) while their Expect also changes.
+1. **Recommended:** a row approved for both cells may replace its whole Command cell. Its row ID, order, class and shell stay fixed, and the approval names that row with the token `Command+Expect`. A row approved for Command alone keeps today's one-span rule.
+2. Keep the one-span rule for combined rows too. The first waiting table's two rows still refuse, and that brief must be re-derived at a new delivery instead.
+
+Q2. Whether an approval already given in today's one-link format can serve as the first link of a chain. One table has such an approval and needs a second link.
+1. **Recommended:** yes. The first link may cite an existing one-link approval. It is judged under today's one-link rules, with no combined cells, and every later link uses the new chain format.
+2. No. Every link of every chain needs a new approval in the chain format, so that existing approval is requested again.
+
+Q3. Whether a chain has a maximum length.
+1. **Recommended:** no cap. Each link needs its own human approval, which already bounds it.
+2. A fixed cap, which makes a longer chain re-derive at a new delivery.
+
+Default if no answer: none — blocks until answered
+
+Silence cannot settle this: Q1's recommended answer goes past the letter of the ruling, and Q1's alternative fails the first table waiting on it. Before `in-progress` (rule 48), the driver approves a design-decision record that records the answer to each question. The chain format, the per-link binding and the refusals in Task are design and are not open. Nothing here decides row retirement, class changes, table-layout migration, or the held statusgen/36 proposal's reuse questions. Those stay unsupported or with their owners.
+
+## Ground rules
+
+Normal worker admission, one isolated worktree, one draft PR. Tests use git fixtures built in a temporary directory and a fake forge client through `transitionClient`. No network, no live forge, no container engine. Do not edit desk-containers/17, statusgen/36 or any other brief's table or Evidence; the fixtures model their shapes. Do not relax the approval reader (`resolveRulingOn`, the issue marker, the github.com origin binding, the non-bot mapped-human rule, the unedited check). Do not relax the Evidence preservation, the version-increment rule or the fresh-witness audit. Keep every one-line (v1) record verdict byte-for-byte. The implementation PR changes a verification control: it takes the security lane and needs `Security-Review: pass` before ready. Stop at implemented.
+
+## Task
+
+1. **Record forms.** Keep the one-line form `Acceptance-Transition: amendment=<sha> approval=<url>` and its v1 rules unchanged. Add the chain form: one line per link, `Acceptance-Transition: link=<k> amendment=<sha> approval=<url>`, with k = 1..n, contiguous and in table order of lines. A record never mixes the two forms. `acceptanceRecordKind` accepts one Verification-Table line followed by either one one-line marker or n ≥ 1 chain lines, and nothing else. A malformed, duplicated, gapped or out-of-order link line, or a URL cited by two links, refuses before any git or forge read.
+2. **Chain walk.** Set link 0's amendment to the delivery. For each link k: its amendment is on `rev-list --first-parent HEAD ^<link k-1 amendment>`; its first parent's Verify equals link k-1's Verify; a two-parent amendment has a unique merge base whose Verify equals link k-1's Verify; its version is exactly link k-1's plus one; it does not change Evidence, and delivered Evidence history is preserved (the #4563 placeholder exception unchanged). Enumerate every first-parent commit from the delivery to HEAD that changes the brief's Verify table or `version:`. That set must equal the set of link amendments, so any other such commit is an unapproved edit and refuses. The current Verify and version must equal the final link's.
+3. **Per-link columns.** Each link's row rules are today's, with one change for a chain record only. A row whose Command and Expect both change at that link is a candidate for `Command+Expect`, under Q1's recorded answer (recommended: whole-cell Command replacement, with ID, order, class and shell fixed). Class or shell changes, row add/delete/renumber, supplemental amendment or promotion, and table-layout changes stay refused at every link. Command-only and Expect-only rows keep today's rules.
+4. **Per-link approval.** A chain link's approval body is exactly:
+   ```text
+   Approve acceptance-transition v2
+   repo=<owner/repo>
+   brief=<brief path>
+   delivery=<sha>
+   base=<sha>
+   original=<sha>
+   link=<k>
+   predecessor=<link k-1 amendment, the delivery for link 1>
+   amendment=<sha>
+   rows=<id>:<Command|Expect|Command+Expect>,...
+   ```
+   `rows=` names that link's candidates in table order, each with its exact column token. A changed Command must be named; an Expect-only row may be left out and keeps its prior obligation. Under Q2's recorded answer (recommended: yes), link 1 alone may instead cite an existing v1 approval, judged by today's v1 payload and column rules. The approval reader, issue marker, origin binding and author rules are reused unchanged. Lint prints one `acceptance transition: reading approval <url>` line per link.
+5. **Effective table and audit.** Start from the original table. Apply links in order, rewriting only each link's approved columns of each named row; an unnamed Expect drift keeps the prior effective Expect. `revisions` maps each changed row to the last link amendment that named it. `acceptanceChanges` emits `ID=Command`, `ID=Expect` or `ID=Command+Expect` for the net change against the original. Every original row needs a fresh witness at or after the final link's amendment.
+6. **Refusal text.** Every chain refusal starts `acceptance transition: link <k>: `, and names the link that is missing, unapproved or wrong. An unapproved Verify edit names its commit as `link <k> missing at <12-hex>`, where k is the position it would take. Structural refusals (Tasks 1 to 3) are returned before any approval read; an unreachable forge is could-not-check naming the link.
+7. **Tests and mutants.** Create the named tests in Verify in the new statusgen/transitionchain_test.go, using git fixtures that model desk-containers/17's shape (one Command-only link, then a link with a whole-cell `Command+Expect` change on a `check` row and on a prose `gate:model` row) and statusgen/36's (a v1 first link, then a chain link). Create statusgen/transitionchain-mutations.json with a control (drop the per-link payload binding) and these mutants: skip the unapproved-edit enumeration; drop `predecessor=` from the payload check; accept another link's approval; skip the first-parent order check between links; let a one-line record accept a combined change; check fresh witnesses against link 1 instead of the final link; accept a link-number gap; let one approval URL serve two links. Its test selector covers the existing transition tests and the new ones. In statusgen/acceptance-mutations.json, update `old`/`new` anchor text only where the refactor moved it; keep every mutant name.
+8. **Docs.** In docs/protected-paths.md, document the chain form, the v2 payload, the per-link rules and refusals, and remove "Chained transitions" and "combined command-and-Expect changes in one row" from the unsupported list; the rest of that list stays. Amend the R-original-table-closure row in docs/contracts.md to name the chain. In verify-desk's `--acceptance-record` paragraph, describe the chain descriptor and that verify-desk drafts each link's payload for the driver but never posts an approval. Regenerate the Cursor mirror.
+
+## Verify
+
+Every behaviour row (1 to 11) fails first: the named tests and the new manifest do not exist at the base, and the base docs still list both limits as unsupported. Rows 12 to 15 are pre-merge guards on the implementation branch. Each refusal row (3 to 7) also requires that structural refusals never reach the approval read: the fake forge client fails the test if it is called.
+
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 1 | check:ci +flow | `(cd statusgen && out=; trap 'test -n "$out" && rm -f "$out"' EXIT; out=$(mktemp "${TMPDIR:-/tmp}/sg40-r1.XXXXXX") && GOWORK=off go test -count=1 -v -run '^TestTransitionChain$' . > "$out" 2>&1 && grep -F -- '--- PASS: TestTransitionChain ' "$out")` | exit 0 and named PASS; fail-first: absent at the base, so the grep fails. A two-link chain record over the desk-containers/17-shaped fixture (link 1 Command-only on five rows, link 2 `Command+Expect` on a `check` row and a prose `gate:model` row) is credited: the effective table holds link 1's Commands and link 2's two rewritten rows, `revisions` names the last link per row, and `Acceptance-Changes:` reads `1=Command,2=Command,3=Command,4=Command,5=Command+Expect,6=Command,7=Command+Expect`; over the statusgen/36-shaped fixture, a v1 first link plus a chain link is credited and row 15's link-1 correction keeps its credit |
+| 2 | check:ci | `(cd statusgen && out=; trap 'test -n "$out" && rm -f "$out"' EXIT; out=$(mktemp "${TMPDIR:-/tmp}/sg40-r2.XXXXXX") && GOWORK=off go test -count=1 -v -run '^TestTransitionCombinedColumns$' . > "$out" 2>&1 && grep -F -- '--- PASS: TestTransitionCombinedColumns ' "$out")` | exit 0 and named PASS; fail-first: absent at the base. A one-link chain record approving `Command+Expect` on one row is credited with both cells rewritten. The same table under a one-line record still refuses with "only command-only or Expect-only original-row changes are supported". Naming that row `Command` alone, or `Expect` alone, refuses; a class change, a shell change, an added row and a supplemental row each refuse inside a chain link |
+| 3 | check:ci +mutation | `(cd statusgen && out=; trap 'test -n "$out" && rm -f "$out"' EXIT; out=$(mktemp "${TMPDIR:-/tmp}/sg40-r3.XXXXXX") && GOWORK=off go test -count=1 -v -run '^TestChainRefusesForgedApproval$' . > "$out" 2>&1 && grep -F -- '--- PASS: TestChainRefusesForgedApproval ' "$out")` | exit 0 and named PASS; fail-first: absent at the base. Threat: forged approval. For link 2 of a valid chain, each of these refuses with `acceptance transition: link 2: ` and the chain gets no credit: the payload posted by a bot account (a desk drafting it), by an unmapped login, an edited comment, a comment on an issue without the brief's marker, a comment on another repository's issue, and a payload differing in any one field; with the forge unreachable the result is could-not-check naming link 2 |
+| 4 | check:ci +mutation | `(cd statusgen && out=; trap 'test -n "$out" && rm -f "$out"' EXIT; out=$(mktemp "${TMPDIR:-/tmp}/sg40-r4.XXXXXX") && GOWORK=off go test -count=1 -v -run '^TestChainRefusesReplayedApproval$' . > "$out" 2>&1 && grep -F -- '--- PASS: TestChainRefusesReplayedApproval ' "$out")` | exit 0 and named PASS; fail-first: absent at the base. Threats: replayed approval and approval naming the wrong table. Each refuses naming the link: link 1's approval cited for link 2; one URL cited by two links (refused before any forge read); an approval of the same link but another amendment; an approval whose `predecessor=` names another commit; another brief's approval; a v1 approval cited for link 2 |
+| 5 | check:ci +mutation | `(cd statusgen && out=; trap 'test -n "$out" && rm -f "$out"' EXIT; out=$(mktemp "${TMPDIR:-/tmp}/sg40-r5.XXXXXX") && GOWORK=off go test -count=1 -v -run '^TestChainRefusesSkippedLink$' . > "$out" 2>&1 && grep -F -- '--- PASS: TestChainRefusesSkippedLink ' "$out")` | exit 0 and named PASS; fail-first: absent at the base. Threats: skipped link and unapproved edit. Each refuses before any approval read: a record naming only links 1 and 3 of three Verify edits (`link 2 missing at <12-hex>`); an unapproved first-parent Verify edit between two approved links; one after the final link; a `version:` bump with no link; a link whose version rises by two; a two-parent amendment whose merge base carries a different table |
+| 6 | check:ci +mutation | `(cd statusgen && out=; trap 'test -n "$out" && rm -f "$out"' EXIT; out=$(mktemp "${TMPDIR:-/tmp}/sg40-r6.XXXXXX") && GOWORK=off go test -count=1 -v -run '^TestChainRefusesReorderedChain$' . > "$out" 2>&1 && grep -F -- '--- PASS: TestChainRefusesReorderedChain ' "$out")` | exit 0 and named PASS; fail-first: absent at the base. Threat: reordered chain. Each refuses before any approval read, naming the link: link lines out of order; link numbers in order but amendments swapped; a link amendment that is not a first-parent descendant of the previous one; a branch commit (not on the first-parent chain) as an amendment; a record mixing one-line and chain markers |
+| 7 | check:ci +mutation | `(cd statusgen && out=; trap 'test -n "$out" && rm -f "$out"' EXIT; out=$(mktemp "${TMPDIR:-/tmp}/sg40-r7.XXXXXX") && GOWORK=off go test -count=1 -v -run '^TestChainRefusesEditAfterApproval$' . > "$out" 2>&1 && grep -F -- '--- PASS: TestChainRefusesEditAfterApproval ' "$out")` | exit 0 and named PASS; fail-first: absent at the base. Threat: table edited after approval. Each refuses: a current Verify that differs from the final link's amendment by one byte; a link amendment that changes Evidence; current Evidence that drops delivered history; an unnamed Command change at a link (`link <k>: ` and the row ID); an unnamed Expect drift is not credited as approved and the row keeps its prior Expect |
+| 8 | check:ci +flow +dereference | `(cd statusgen && out=; trap 'test -n "$out" && rm -f "$out"' EXIT; out=$(mktemp "${TMPDIR:-/tmp}/sg40-r8.XXXXXX") && GOWORK=off go test -count=1 -v -run '^TestChainExecution$' . > "$out" 2>&1 && grep -F -- '--- PASS: TestChainExecution ' "$out")` | exit 0 and named PASS; fail-first: absent at the base. `verifyrun --acceptance-record` with a two-link descriptor and the fake forge runs the effective table, not the current one, and writes one `Acceptance-Changes:` line; a descriptor with an extra or reordered line refuses with the descriptor message; the lint audit refuses a witness made after link 1 but before link 2, and prints one `reading approval` line per link |
+| 9 | check:ci | `(cd statusgen && out=; trap 'test -n "$out" && rm -f "$out"' EXIT; if ! out=$(mktemp "${TMPDIR:-/tmp}/sg40-r9.XXXXXX"); then exit 1; fi; for t in TestTransitionV1Unchanged TestAcceptanceTransition TestTransitionExecution TestTransitionCISkip TestTransitionContext TestContextExecution TestProtectedRecordRun TestProtectedRecordRefusal TestProtectedRecordCredit TestExpectOnlyTransition TestExpectTransitionExecution TestExpectTransitionRefusals TestExpectScopeExecution TestTransitionDeliveredPlaceholder; do if ! GOWORK=off go test -count=1 -v -run "^$t\$" . > "$out" 2>&1; then exit 1; fi; if ! grep -q -F -- "--- PASS: $t " "$out"; then exit 1; fi; done)` | exit 0; each of the 14 tests is run alone and prints its own named PASS; fail-first: `TestTransitionV1Unchanged` (planned) is absent at the base. It asserts that one-line records over the desk-containers/17-shaped fixture still get today's three refusals, one per candidate amendment, with today's exact text; the 13 existing transition tests are unchanged and still pass |
+| 10 | check:ci +mutation | `d=; trap 'test -n "$d" && rm -rf "$d"' EXIT; d=$(mktemp -d "${TMPDIR:-/tmp}/sg40-muhar.XXXXXX") && (cd tools/desk && GOWORK=off go build -o "$d/muhar" ./cmd/muhar) && for m in transitionchain-mutations.json acceptance-mutations.json; do if ! (cd statusgen && "$d/muhar" -spec "$m" -j 4 > "$d/out" 2>&1); then exit 1; fi; tail -1 "$d/out"; if ! grep -qE '^Totals: [1-9][0-9]* caught, 0 NOT CAUGHT, 0 could-not-mutate' "$d/out"; then exit 1; fi; done` | exit 0; for both manifests the last line reads `Totals: <n> caught, 0 NOT CAUGHT, 0 could-not-mutate`; fail-first: the new manifest is absent at the base, so muhar fails there. The control and every Task 7 mutant are caught, and every existing transition mutant is still caught |
+| 11 | check:ci | `grep -q -F -- 'Approve acceptance-transition v2' docs/protected-paths.md && grep -q -F -- 'Acceptance-Transition: link=' docs/protected-paths.md && grep -q -F -- 'Acceptance-Transition: link=' plugins/assay/skills/verify-desk/SKILL.md && ! grep -q -F -- 'Chained transitions' docs/protected-paths.md && ! grep -q -F -- 'combined command-and-Expect changes' docs/protected-paths.md` | exit 0; fail-first: at the base neither file names the chain form and protected-paths still lists both limits as unsupported, so the row exits 1 there |
+| 12 | check | `b=$(git merge-base refs/remotes/origin/main HEAD) && git diff --exit-code "$b" -- statusgen/acceptancetransition_test.go statusgen/expecttransition_test.go statusgen/protectedrecord_test.go statusgen/transitioncontext_test.go statusgen/transitionhistory_test.go && d=$(mktemp -d "${TMPDIR:-/tmp}/sg40-r12.XXXXXX") && git show "$b:statusgen/acceptance-mutations.json" > "$d/base" && grep -F '"name":' "$d/base" > "$d/a" && grep -F '"name":' statusgen/acceptance-mutations.json > "$d/b" && sort -o "$d/a" "$d/a" && sort -o "$d/b" "$d/b" && test -z "$(comm -23 "$d/a" "$d/b")"; rc=$?; rm -rf "$d"; exit $rc` | pre-merge, on the implementation branch: exit 0; the five existing transition test files are not edited, so row 9 tests today's rules, and every mutant name in the existing manifest at the base is still present |
+| 13 | check:ci | `cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check` | exit 0; no Cursor-mirror drift after the verify-desk edit |
+| 14 | check | `statusgen --root . --consumers --brief statusgen/40 --base $(git merge-base refs/remotes/origin/main HEAD)` | pre-merge, on the implementation branch: exit 0; the declared implementation sites corroborate; out-of-scope judgments stay UNCHECKED and reviewer-owned |
+| 15 | check | `statusgen --root . --lint --diff-base $(git merge-base refs/remotes/origin/main HEAD)` | pre-merge, on the implementation branch: exit 0; it reports `0 diff-introduced problem(s)` and promotes no notice to PROBLEM |
+
+Pre-mortem (threat model):
+- **Forged approval.** A comment that looks like an approval but is not a mapped human's unedited comment on the right issue. A desk that drafts the payload for the driver could post it itself. Row 3 catches each form, and the reader is reused unchanged (Ground rules). The mutant that drops the per-link payload binding (row 10 control) must be caught.
+- **Replayed approval.** A real approval reused for a link or table it never named: another link, another amendment, another predecessor, another brief, or one URL for two links. Row 4 catches it, because `link=` and `predecessor=` bind each approval to one position in one chain, and the mutants "drop `predecessor=`", "accept another link's approval" and "one URL serves two links" (row 10) must be caught.
+- **Skipped link.** An unapproved Verify or version edit between links, before the first or after the last, ridden in under a later approval. Row 5 catches it; this is the single point of failure, and the mutant "skip the unapproved-edit enumeration" (row 10) must be caught.
+- **Reordered chain.** Links in the wrong order, or a link that is not a first-parent descendant of its predecessor, so an approval is judged against the wrong pre-image. Row 6 catches it, with the mutant "skip the first-parent order check between links".
+- **Table edited after approval.** The current table, Evidence or an unnamed cell differs from what the final link approved. Row 7 catches it, and row 8 shows execution runs the effective table, not the current text.
+- **Stale witness.** A pass recorded against an earlier link's table credited after a later link changed it. Row 8 and the mutant "check fresh witnesses against link 1" catch it.
+- **Silent widening of the one-line form.** A change meant for chains loosens today's records. Rows 2, 9 and 12 and the mutant "let a one-line record accept a combined change" catch it.
+- **Over-wide combined correction.** A `Command+Expect` row used to change its class, shell or row identity. Row 2 catches it. Whether the whole Command cell may be replaced is Q1, decided by the driver; review checks the implementation follows the recorded answer.
+- **Downstream reader drift.** desktools-v2/81 or statusgen/37 reads a plan shape this brief changed. No row; review-only: the effective table, `revisions` map and `Acceptance-Changes:` stay the one output, and the new token is called out in docs (row 11).
+
+The implementation must create the exact named tests. An empty go-test match is not a PASS.
+
+## Unblocks
+
+| Brief | Rows | What it needs from this brief |
+|---|---|---|
+| desk-containers/17 (first consumer) | 1-7 | Delivered at version 1 and amended to version 2 (Command-only, rows 1 to 4 and 6) and version 3 (`Command+Expect` on rows 5 and 7). Once this ships and is pinned, the driver approves its v2 and v3 links (verify-desk drafts both payloads, never posts them) and verify-desk re-verifies it under a two-link record. |
+| statusgen/36 | 12, 23 | Has one approved v1 link (#5689). Its held version-3 correction needs a second link, with the v1 approval kept as link 1 (Q2). This brief is that proposal's step 1; its steps 2 to 5 stay with it. |
+| statusgen/37 (coordination, ordering feather) | — | Its I-2 slice re-routes the transition audit. It keeps the limits this brief defines, not today's one-link, one-column limits. |
+
+## Evidence
+
+<!-- Independent postmerge verifier records actual commands, source and outcomes here. -->
+
+## Review
+
+Gate: human. The implementation PR takes the security lane: `Security-Review: pass` is required before it is ready. Before `in-progress`, the driver approves a design-decision record answering Q1 to Q3. Human acceptance of the chain and combined-correction change is recorded here at done.
