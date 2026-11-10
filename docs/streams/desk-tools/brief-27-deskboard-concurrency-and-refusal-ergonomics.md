@@ -1025,6 +1025,17 @@ RISK-VALUE: DERIVED — flipConditions = [caller-role, app-token, pr-open-draft,
 RISK-VALUE: DERIVED — help tokens = {"-h","-help","--help"} @ tools/desk/internal/deskkit/helprequest.go:52-54 — a strict subset of the tokens Go's flag package maps to ErrHelp, matched only as the sole token after a subcommand. A miss falls through to normal parsing and its audit row, which is the safe direction. Rows 13 and 14 pass in the witness.
 
 **VERIFY: BLOCKED** — 17 of 20 rows passed in the admitted witness, and no acceptance obligation failed. Row 18 was not run: its live forge timings need a network-on lane with App identity (medici-finance/assay#4119). Row 19 is not settled: the whole-board lint is red on main only for neighbour briefs desk-tools/37, desktools-v2/65 and forge-neutral/54 (medici-finance/assay#4823), and its witness `pass` is the `; echo $?` artefact (medici-finance/assay#1906). Row 20 is the structural merged-tree case of medici-finance/assay#1281; its `fail` cell is the same artefact. Status stays where it is.
+Correction to the 2026-11-10 run above. This is prose only and adds no new verdict. The 2026-11-10 BLOCKED verdict stands as written.
+
+That run said three commits touched the delivered paths since the 2026-11-06 source. That count is wrong, and the sentence is withdrawn. The paths in question are the brief's `files:` list plus the whole deskboard package. `git log --no-merges 8f5bb307de31..612750a12406` over those paths lists five commits:
+
+- 4d1e55cd2b8f1ba2390df471d30d762987403706: the deskboard paged-read cap comments in board.go, plus a review-queue bridge test.
+- db9e2715cf9d4d7c3307996294941c431b70b415: re-anchors the deskboard visibility mutation to the paged read.
+- 1ab6288650e8f59ae5c81961c07cff64455633b2: a new deskboard help/version no-discovery test for another brief.
+- 4fd8de15a1148d7a17c7a72b5f1146c46abaf53d: a note in the desk tools README on `deskevidence --dry-run` with `--outcome-record`. The rest of that commit is under the deskevidence command, which this brief does not deliver. The earlier sentence did not name this commit.
+- 99f9a1e82889ffea54fbca2c56a5d9a3fbad6c8d: deskwt test-only changes to prune_test.go, prunesingleton_test.go and prune-mutations.json. The earlier sentence did not name this commit either.
+
+No risk literal changed. Neither of the two added commits touches a file that holds one of the risk-bearing values listed in the 2026-11-10 run. Every one of those literals was read at 612750a1 and sits at the same line as in the 2026-11-06 run. Both RISK-VALUE lines stand unchanged.
 
 ## Review
 
