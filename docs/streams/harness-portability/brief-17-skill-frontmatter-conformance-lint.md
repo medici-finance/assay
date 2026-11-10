@@ -557,6 +557,38 @@ RISK-VALUE: DERIVED — namePattern = ^[a-z0-9]+(-[a-z0-9]+)*$ @ tools/skillslin
 rows_passed=12 rows_total=13
 
 **VERIFY: BLOCKED** — 12/13 rows pass at 612750a12406; rows 1–12 pass; row 9 recorded (last heading quoted, no skill-body truncation on the shell-read path); row 13 could-not-check (the lint's three PROBLEMs are its own could-not-check on other briefs' acceptance authority; no PROBLEM names this brief) (blocker: #4823)
+### Correction (2026-11-10): F-row13-credit-path
+
+This corrects the 2026-11-10 run above (attestation medici-finance/assay#6032, source 612750a12406). It also settles the two advisory findings raised with it, F-include-text and F-only-mention. Nothing above is rewritten; rows 1–12 stand as recorded.
+
+**What was wrong.**
+- "Supplemental probes" says a `statusgen --lint --acceptance-forge` probe "would discharge no row either way". That is wrong: a standing driver rule credits exactly that probe for a row like row 13, and the run above did not cite it.
+- "Findings" says row 13 "cannot pass as authored" until the lint issue lands or the row gains a forge-authority flag. That is wrong for the same reason: the credit path is available now.
+- F-include-text: the Findings bullet set this run's PROBLEM text (`could-not-check repository authority ... an include may affect authority`) beside the 2026-11-01 text as if the lint's shape had changed in the tree. It did not; the wording comes from the host. The admitted checkout is a linked worktree whose git directory sits inside the shared checkout, and for that location the host's global git config conditionally includes a file that defines a `url.*.insteadOf` section. `gitcore/originincludes.go:279` refuses origin authority when an include defines a `remote`, `url` or `extensions` section, so the lint reported could-not-check on repository authority instead of on human authority. The count change (one brief on 2026-11-01, three now) is real and is recorded on #4823; only the wording is environmental.
+- F-only-mention: row 13's hand-run Observed cell says the brief's "only mention" in the lint output is the ordering-gate NOTICE. That holds only for the literal string `harness-portability/17`. The output also names this brief by path in advisory NOTICEs (verify-row-portability on rows 1–7 and 10, no-output-assertion on row 8, consumer-delivery-range on row 12), and at the Evidence head also by its `assay:assay:harness-portability:17` id in two verify-obligation NOTICEs (`+dereference`, `+flow`). None is a PROBLEM, so row 13's brief-specific half still holds.
+
+**What is right.** The standing rule (option A, 2026-11-08):
+https://github.com/medici-finance/assay/issues/4823#issuecomment-6725046323
+It says a Verify row whose Expect is a clean repo-wide statusgen lint is credited when `statusgen --lint --acceptance-forge` is clean at the pinned revision, witnessed in the host lane. Row 13's Expect ("exit 0; no PROBLEM line naming this brief") is that kind of row.
+
+**Re-witness in the ruled form.** A fresh full clone of this repository (not shallow) outside the shared checkout, on the host (no container), darwin/arm64, go1.27.3, git 2.56.0. `statusgen` was built from `statusgen/` at 612750a12406 (`--version` prints `dev`). The forge reads used the verifier App's own minted token, passed only to the lint command. HOME was a throwaway directory holding only the desk roster file, with no global git config.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 13 | `statusgen --lint --acceptance-forge --root .` (the credit form under the standing rule above; built from this repo's `statusgen/`) | exit 0; no PROBLEM line naming this brief | At 612750a12406, 12:03:39Z to 12:04:57Z: exit 0, `LINT: PASS`, 0 lines start with `PROBLEM` (stdout sha256 f1a401529bb9, stderr sha256 054e480a721e). Lines naming this brief are advisory NOTICEs only: verify-row-portability on rows 1–7 and 10, no-output-assertion on row 8, consumer-delivery-range on row 12, and the ordering-gate NOTICE on brief-04's prose. pass (credited under the standing rule) | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (on-behalf-of human:ian) |
+
+Controls, run in the same clone with the same binary (they credit nothing):
+- Offline `statusgen --lint --root .` at 612750a12406 under the host's normal HOME: exit 1, `LINT: FAIL 3 problem(s)`; desk-tools/37, desktools-v2/65 and forge-neutral/54, each `protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required`. That is the shape tracked on #4823. This clone's git directory is outside the conditionally included location, so the include does not apply and the repository-authority wording does not appear.
+- The same offline command under the throwaway HOME: the same exit 1 and the same three PROBLEMs.
+- The ruled form at the Evidence head 1e01f091724f (it adds only this Evidence section and its outcome record; `statusgen/` is identical to 612750a12406), throwaway HOME, 12:05:28Z to 12:06:44Z: exit 0, `LINT: PASS`, 0 PROBLEM lines.
+
+**Why this is a hand run and not an execution-witness row.** `statusgen verifyrun` runs each row's Command verbatim, and row 13's Command has no `--acceptance-forge`. Its own `--acceptance-forge` flag feeds only the Acceptance-Transition record path (`statusgen/verifyrun.go:2632`, `statusgen/acceptancetransition.go:251`), not the rows' subshells. So the witness table above still reads row 13 `fail exit=1`, and the credit form is witnessed by hand in the host lane, which is what the rule asks for. The Verify row itself is unchanged; amending it is a driver act. The first run did not execute the probe because the writeguard refused the combined call that also read the issue state. This run made the lint its own call.
+
+**Outcome.** With row 13 credited the run passes all rows. The outcome record still stays `blocked` (`environment`, #4823). Per the 2026-11-10 verify-desk note on #4823, `deskevidence` refuses a `verified` outcome record while the closure-tree lint is red ("verified outcome requires a lint-valid closure tree"). The brief stays `implemented` until that hold lifts.
+
+rows_passed=13 rows_total=13
+
+**VERIFY: PASS** — 13/13 rows pass at 612750a12406; rows 1–12 as recorded above; row 13 credited on a clean `statusgen --lint --acceptance-forge` (exit 0, `LINT: PASS`, 0 PROBLEM) in the host lane under the standing rule cited in "What is right"
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table and
