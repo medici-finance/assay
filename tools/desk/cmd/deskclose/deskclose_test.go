@@ -117,6 +117,12 @@ type stubRemote struct {
 	// landed, so a second attempt is a second comment, not a repair.
 	failPost     map[string]bool
 	postAttempts int
+
+	// forge and host model WHICH forge serves the stub's repositories and the host its
+	// backend reports (PushTransportHint). Zero values are GitHub on github.com, so every
+	// pre-existing test runs against the forge it always did.
+	forge deskkit.ForgeKind
+	host  string
 }
 
 func newStub(t *testing.T) *stubRemote {
@@ -235,6 +241,12 @@ func (s *stubRemote) install() {
 			mintedRole = "desk"
 		}
 		return deskkit.OutboundChecked(s, mintedRole), fr, nil
+	}
+	forgeKindFn = func(deskkit.ForgeRepo) (deskkit.ForgeKind, error) {
+		if s.forge == "" {
+			return deskkit.ForgeGitHub, nil
+		}
+		return s.forge, nil
 	}
 	runDisposition = func(args ...string) (string, error) {
 		s.dispCalls = append(s.dispCalls, args)
