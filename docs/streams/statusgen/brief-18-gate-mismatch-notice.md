@@ -461,6 +461,7 @@ RISK-VALUE: DERIVED — ph.Status == "done" @ statusgen/scanissues.go:501 — do
 RISK-VALUE: DERIVED — key = repo + "#" + strconv.Itoa(number) @ statusgen/scanissues.go:439, :497 — the key carries the repository, so the same issue number on a second repository is a different placeholder. Row 2's fixture covers that second-repository case.
 
 **VERIFY: VERIFIED** — 9 of 9 rows pass at source 612750a12406 (rows 1-6, 8 and 9 in the closed container bracket, row 7 on the host). Gate model, every risk answer no, fail-first owed on no row.
+**VERIFY: PASS** — correction to the 2026-11-10 verdict line above: its marker read VERIFIED, which is not in the verdict vocabulary; the verdict is PASS, 9 of 9 rows at source 612750a12406. The verified flip is held by medici-finance/assay#4823, and the outcome record is blocked on it.
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.
