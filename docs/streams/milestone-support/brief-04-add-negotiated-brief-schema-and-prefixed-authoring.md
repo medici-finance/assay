@@ -183,6 +183,30 @@ Risk-bearing values. The brief carries risk metadata, all no, and is not irrever
 The stream index already lists this brief as verified. This run flips nothing. CI owns the verified-to-done flip.
 
 **VERIFY: PASS** — rows 1-2 of 2 pass in one closed container bracket (verdict=match) at 612750a12406. Supplemental S1 caught 14 of 15 manifest mutations, with 1 case left on a stale anchor (see the finding); no acceptance credit.
+### Correction (2026-11-10): F-what-moved
+
+The re-verification section above says: "Since the follow-up, the only change to this brief's delivered files is #5379 (milestone-support/05, merge 178eab638)." That is wrong. #5379 is the only change to the delivered code. Other delivered files also moved between the follow-up merge 29387eb13de7 and the source 612750a12406. The same section's list of what #5347 changed is also incomplete. The text above stays as it landed; this note replaces both statements. No earlier outcome record exists for this brief, so the range starts at the follow-up merge.
+
+Delivered files. #5340 (merge 0dbff54ce38e, first parent fbd80a540b3b) changed 31 files. #5347 (merge 29387eb13de7, first parent bef30d4e0d54) changed 10. Together that is 33 distinct files. #5347's full list is: the brief-v4 parser statusgen/briefv4.go, both schema copies (schemas/brief-v4.json and statusgen/schemas/brief-v4.json), spec/brief-v1.md, the named test file statusgen/prefixedbrief_test.go, the mutation manifest statusgen/testdata/milestone-support/04-mutations.json, the fixture statusgen/testdata/milestone-support/04/tree/docs/streams/demo4/brief-03-pinned.md, tools/desk/internal/deskkit/capabilities_test.go, this brief's Notes section, and the changelog fragment changelog/feat-milestone-support-04-followup.md.
+
+What moved over 29387eb13de7..612750a12406, delivered code. Of the 33 files, only statusgen/brieffile.go and statusgen/briefv4.go changed. Both changed in one commit, bacbb9981 in #5379, and the net diff of the two files over the range is identical to that commit's diff. The other delivered Go sources, the tests, both schema copies, the fixtures and the mutation runner and manifest did not change. These are the files the two rows build and read: the statusgen package, its embedded statusgen/schemas/brief-v4.json and the statusgen/testdata/milestone-support/04 tree. Both rows ran at 612750a12406, after this change, so the PASS above stands.
+
+What moved over the same range, other delivered files. No row reads any of these. The two named tests take their fixtures from statusgen/testdata/milestone-support/04, and neither they nor the package code they call opens a file under spec/ or docs/. Outside test files, statusgen code names those spec files only in comments and message strings.
+
+- spec/milestone-v1.md: 5 commits. Two are from #5379: bacbb9981 (+45) and 8bab0722f (+13/-1). Three are from #5911 (milestone-support/06, merge 8aedd1b42): 2e40bf6e1 (+78), fb35b7b75 (+2/-1) and a492d0a6f (+5/-1). The net change is +140 lines. The RISK-VALUE entries above cite spec/milestone-v1.md:45 and :49-51 as read at 612750a12406, so they already reflect this movement.
+- spec/brief-v1.md: 11 commits, all release header stamps committed directly on main, from 9c188622f to 648e78628 (9c188622f, 438310c23, c747dc0cc, 468205923, 236fe20e0, eca1612a2, 7ff1c0bc7, 51796c3a1, d6b3dffe7, b1f0161ef, 648e78628). The net change is one line: the "Describes reference implementation" header moves from `statusgen` v1.0.71 to v1.0.82. The cited spec/brief-v1.md:169 was read at 612750a12406.
+- docs/contracts.md: 41 commits from 20 merges. One commit is from #5379 (bacbb9981) and one from #5911 (2e40bf6e1). The rest are other streams' contract entries.
+- docs/streams/milestone-support/README.md: 4 commits. 85d049afd (#5349) flips row 04 to verified, 9ace042b1 (#5354) flips row 03, cf8761853 (#5392) is a board reconcile, and 94cf127a0 (#5491) flips row 05.
+- This brief: 2 commits, ec0f0b9ba and 89cbc52a6, both from #5349. They are the 2026-11-02 Evidence above.
+- changelog/milestone-support-04.md and changelog/feat-milestone-support-04-followup.md: both removed by 9c188622f, the v1.0.71 changelog aggregation.
+
+Commands, run in a full clone at 612750a12406:
+
+- `git diff --name-only 0dbff54ce38e^1 0dbff54ce38e` (31 files) and `git diff --name-only 29387eb13de7^1 29387eb13de7` (10 files). Their sorted union is 33 files.
+- For each of the 33 files, `git log --no-merges --format=%h 29387eb13de7..612750a12406 -- <file>`. Nine files report commits: 1 each for the two Go files and the two changelog fragments, 2 for this brief, 4 for the README, 5 for spec/milestone-v1.md, 11 for spec/brief-v1.md and 41 for docs/contracts.md. The other 24 report none.
+- `git diff --stat 29387eb13de7 612750a12406` with the 33 files as separate pathspecs lists the same nine files.
+- `git diff 29387eb13de7 612750a12406 -- statusgen/brieffile.go statusgen/briefv4.go` matches `git diff bacbb9981^ bacbb9981 -- statusgen/brieffile.go statusgen/briefv4.go` once the index lines are ignored.
+- `git log --no-merges --numstat 29387eb13de7..612750a12406 -- spec/milestone-v1.md` gives the per-commit line counts. Each commit's PR was found by matching it to the first-parent merge on main that brought it in.
 
 ## Review
 
