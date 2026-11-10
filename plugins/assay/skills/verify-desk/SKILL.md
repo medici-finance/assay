@@ -1090,6 +1090,28 @@ verify-side contract only. Until the marker lands, record the Phase-0-record con
 Evidence per step 2 and surface any brief that cannot advance without it — never a re-run, never a bespoke
 human ruling re-derived from scratch each time.
 
+## Rows that need a project secret or a live service — witnessed by an operator, never by the implementer's report
+
+A Verify row that needs a project credential or a live non-production service (a database, an API, a
+staging deployment) — its `Env` cell names `service:<name>`, or its command plainly reaches one — is
+NOT the Phase-0 class above. That class covers a credential **only the implementer can hold**. A
+project secret is held by the project, so a non-implementer can hold it, and the implementer's own
+report of the run (a pasted output, a "passed locally", a record in the PR body) is never this row's
+Evidence. Until a channel exists that brings project secrets to dispatched verifier windows (the
+`desk-containers/34` brief, `gate: human`), this desk:
+
+1. **Records the row could-not-check with the EXACT command** and the environment it needs, never a
+   bare "needs creds". That places the brief in the board's **Environment-blocked** queue
+   (`docs/board.md` row 4), whose owner is an operator.
+2. **Leaves the status at `implemented`.** The operator who holds that environment, and is not the
+   implementer, runs the row verbatim on merged main and records it as any non-implementer Evidence.
+3. **Never asks for the secret, never puts one in a dispatched environment, never runs a PR head
+   with one.**
+
+A row classed `check:ci` that needs such an environment is mis-classed (`statusgen --lint` reddens it
+when the table carries an `Env` column); file it against the brief as a check-definition blocker,
+never "fix" it by an Evidence-only edit.
+
 ## Rules (inherited)
 
 - **Receipt on a human-typed message.** After ANY human-typed message, the FIRST line of your turn is

@@ -325,6 +325,14 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
    when authoring it. Never emit `findstr /c:"…"` with backslash paths under implicit `sh`:
    bash reinterprets those arguments. Shell selection belongs in the reviewed Verify table;
    an Evidence-only edit must not change the command or its shell to make a failing row pass.
+   **Say where each row runs.** When a row needs anything beyond the checkout, add an `Env`
+   column (`| # | Class | Env | Command | Expect |`): `tree`, `host[:<name>]`,
+   `service:<name>` for a named NON-PRODUCTION instance (a database, an API, a staging
+   deployment, described in `## Context`), or `cluster:<name>`. A row whose Env is not `tree`
+   is never `check:ci`, since no CI job reaches it; class it `check`. A row needing a project
+   secret or a live service is witnessed by a non-implementer where that environment exists,
+   never by the implementer's own report. The grammar and its `statusgen --lint` rules are
+   rule 45 in the brief-rules reference.
 4. **`gate: human` is mandatory when any risk answer is `yes`.** Record all four risk answers
    (regulatory, customer, irreversible, sensitive-data), not just the resulting gate — the answers are
    what a reviewer audits, the gate is just their conclusion. **A risk-gated brief (`gate: human` OR

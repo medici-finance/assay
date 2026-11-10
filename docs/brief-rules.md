@@ -948,6 +948,34 @@ passing run — which is why they are lint rules and not review vigilance.
     backslash paths on implicit `sh`. Changing a command or its shell requires a reviewed
     Verify-table change, never an Evidence-only edit by the verifier.
 
+    A Verify table MAY ALSO declare WHERE each row runs, in an optional `Env`
+    column (issue #6065) — `| # | Class | Env | Command | Expect |`. The class says
+    who executes a row; the environment says what that executor needs, so a
+    non-implementer knows where to witness it. A closed grammar, lower-cased:
+    - `tree` — the checkout alone, network-off: what CI re-executes.
+    - `host` or `host:<name>` — the witness's own machine (installed tools, local
+      config).
+    - `service:<name>` — a NAMED NON-PRODUCTION service instance: a database, an
+      API, a staging deployment. `<name>` is the identifier the brief's
+      `## Context` (or its spec) describes. A production instance is never a
+      Verify environment.
+    - `cluster:<name>` — a live cluster, run by the pod runner (`check:cluster`).
+
+    `<name>` is lower-case letters, digits, `.`, `_` and `-`. In a table that
+    carries the column, `statusgen --lint` hard-errors (PROBLEM) on an Env cell
+    outside the grammar; on a `check:ci` row naming anything but `tree` (CI reaches
+    no host, service or cluster, so the row can only fail or be faked there); on a
+    row naming a non-tree environment in a table with no `Class` column (an
+    unclassed row is legacy `check`, which the scheduled main re-run still
+    executes); and on an explicitly classed `check` or `check:cluster` row with an
+    empty Env (an env-bound row must say where it is witnessed). Gate rows are
+    judged, not executed: their Env cell is informational. A table without the
+    column lints exactly as before; add it whenever a row needs anything beyond
+    the checkout. A row that needs a project secret or a live service is witnessed
+    by someone other than the implementer, in the environment it names; the
+    implementer's own report of its run is not that witness (see the verify-desk
+    and pr-review-desk skills).
+
     *(Numbering note: the authoring repo's copy of this file allocated this rule and
     the typed-edge rule in the Dependencies section the same number in parallel —
     the collision class rule 40's detector exists for. This file allocates cleanly:
