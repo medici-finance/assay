@@ -1070,10 +1070,19 @@ Use `deskpr create --check-remote --title T --body-file F` when a conditional
 forge-file write has already published the branch. Unlike offline `--check`, this
 explicitly mints the session-role App token and reads the credentialed push
 endpoint. It reuses the live create path's immutable source/destination proof and
-judges every commit actually new to that destination, then stops before write
-budget, push or PR creation. It refuses unknown, divergent or unreadable remote
-state and new foreign authors or committers. The two check modes are mutually
-exclusive; ordinary `--check` still opens no connection and judges the whole range.
+runs the publish-identity check on every commit actually new to that destination,
+then stops before write budget, push or PR creation. It refuses unknown, divergent
+or unreadable remote state and new foreign authors or committers. The two check
+modes are mutually exclusive; ordinary `--check` still opens no connection and
+judges the whole range.
+
+The confirmed tip narrows the identity check only. The secret scan and the outbound
+check judge the whole branch diff against the default branch in every mode, and the
+pre-push hook does the same on the live push, so commits already on the destination
+are scanned again. A flagged string that an earlier push cleared with
+`--force-scan-override` is refused again by `--check-remote` and by the next
+create; each needs its own audited override. This breadth is deliberate: a value
+already on the destination is still in the history the PR publishes.
 
 `--check-remote` is also the preflight for the public-repo write gate. Offline
 `--check` cannot read live visibility, so it reports that gate as not checked and
