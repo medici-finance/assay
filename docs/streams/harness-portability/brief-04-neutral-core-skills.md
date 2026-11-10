@@ -932,6 +932,43 @@ Ranks 4 to 7 are reversible operational, toolchain or lint-config values. They a
 rows_passed=10 rows_total=11
 
 **VERIFY: BLOCKED** — rows 1, 2, 2a, 3, 3a, 4, 4a, 5, 6 and 7 pass at merged main 612750a12406, witnessed by statusgen v1.0.81 verifyrun. Row 8, a live Claude Code loop cycle, is could-not-run for a dispatched offline verifier and needs a human-run live session. Blocker: #1834 (open, help wanted). No obligation was observed to fail. The item stays at implemented.
+### Correction (2026-11-10): F1
+
+This corrects the "What moved since the 2026-11-01 run at 703a1d9ca092" paragraph of the 2026-11-10 run above, and one sentence of its "Reading the outputs" note (review note N1). The witness table, the Evidence table, the risk table, the outcome record and the verdict do not change. The text above is left as landed; this entry supersedes the two passages it names.
+
+**What was wrong (F1).**
+
+1. "(1790 commits)" is the count of the whole range, merges included. It is not a count of the commits that touched the declared inputs.
+2. The paragraph called the Cursor binding and the new handoff-note reference declared inputs. They are not. The declared inputs are the files the brief's `files:` list names, and the outcome record carries them as input keys. Under `plugins/assay/references/`, that list names only claude-code.md and codex.md. cursor.md and handoff-note.md are read only through the whole-directory scan that rows 3 and 3a run (`bindings plugins/assay/references`), so a change to either one does not wake this brief through its declared inputs.
+3. The paragraph left out one declared input that did change: this brief itself, at 3708d551e, which is the 2026-11-01 run's own Evidence append.
+
+**What is right.** Over 703a1d9ca092..612750a12406 (merged main at this run):
+
+- **Range size.** The range holds 1790 commits, merges included, and 1155 without merges.
+- **Declared-input commits.** 15 non-merge commits touched a declared input (ci.yml, Makefile, go.work, SOURCES.yaml, claude-code.md, codex.md, `plugins/assay/skills/*/SKILL.md`, `tools/harnesslint/`, this brief):
+  - skill bodies: d9e75106c, d1c25adcd, f186f5fb7, 91c0279e5, 70bb9d780, 30e4a1a01, d61844139, b35876e56, 48541a885, 77642a983;
+  - the ci workflow: d365545f5, 434b891da, 701674526, 75de524ab;
+  - this brief: 3708d551e.
+- **Six skill bodies changed:** author-brief, verify-desk, intake-desk, pr-review-desk, the-desk and worker-desk. The last four took a one-line pointer to handoff-note in 70bb9d780.
+- **The ci workflow** changed by 71 added and 4 removed lines. No added or removed line mentions harnesslint.
+- **Unchanged:** the harnesslint module, the Makefile, SOURCES.yaml, and the claude-code and codex bindings. There is no go.work at either end of the range.
+- **Outside the declared inputs** (read by rows 3 and 3a's directory scan), these also moved:
+  - the Cursor binding, at 998831273 and 77b7fca44 (34 added, 9 removed lines), with the cadence-tick, interactive-cadence and Freshness changes the paragraph describes;
+  - the new non-matrix reference handoff-note, added in 70bb9d780.
+
+  The stream README, which carries the capability vocabulary, and the plugindrift tool are not declared inputs either. Neither changed.
+
+**N1.** The "Reading the outputs" sentence lists rows 1, 2, 2a, 3, 3a, 4, 5 and 7 as the rows that end in "; echo $?". Row 6 (`(cd tools/plugindrift && GOWORK=off go run . --root ../..); echo $?`) ends that way too, and printed `0`, as its Evidence row shows. So nine rows print their exit with "; echo $?" and are recorded as pass at exit 0 whatever the tool returned: rows 1, 2, 3, 4, 5, 6 and 7 end with it, and rows 2a and 3a follow it with a cleanup `rm -rf`. Row 4a is the only executed row with neither, and its exit is the tool's own.
+
+**Commands** (run from a full, non-shallow clone, A=703a1d9ca092, B=612750a12406):
+
+- `git rev-list --count A..B` gives 1790; `git rev-list --no-merges --count A..B` gives 1155.
+- `git log --no-merges --format=%h A..B -- .github/workflows/ci.yml Makefile go.work plugins/assay/SOURCES.yaml plugins/assay/references/claude-code.md plugins/assay/references/codex.md tools/harnesslint/ docs/streams/harness-portability/brief-04-neutral-core-skills.md 'plugins/assay/skills/*/SKILL.md'` lists the 15 commits above. Pass each path as its own argument: a single quoted string of paths matches nothing.
+- `git diff-tree --no-commit-id --name-only -r <commit> -- <same paths>` names the input each commit touched.
+- `git diff --numstat A B -- .github/workflows/ci.yml` gives `71 4`. Filtering that diff's added and removed lines for harnesslint gives 0 matches.
+- `git diff --quiet A B -- <path>` exits 0 for tools/harnesslint, tools/plugindrift, the stream README, claude-code.md, codex.md, Makefile and SOURCES.yaml.
+- `git log --no-merges --format=%h A..B -- plugins/assay/references/cursor.md` gives 998831273 and 77b7fca44, and `git diff --numstat A B` on that file gives `34 9`. The same log on handoff-note.md gives 70bb9d780, and the file is absent at A.
+- The outcome record's `inputs` keys hold no cursor or handoff-note entry, and the brief's `files:` list names neither file.
 
 ## Review
 
