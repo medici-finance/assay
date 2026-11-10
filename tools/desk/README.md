@@ -4647,8 +4647,15 @@ the mutation sweep is `cmd/deskclose/mutations.json`.
 
 `deskclose triage --disposition human-decided --decision <ruling permalink> --tracker <ref>`
 closes a ruled decision issue. It authorizes only on the ruling comment on that issue, after
-verifying that its author is the blessing authority. It also writes one `human-decision-v1`
-record. The record holds:
+verifying that its author is the blessing authority. The permalink is the forge's own link to
+that one comment: `https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<id>` on GitHub,
+`https://<host>/<group>/<project>/-/issues/<N>#note_<id>` on GitLab. Its forge, host and
+project must be the ones serving the issue, and its number must be the issue's; anything else
+is refused before any read, as is a thread link with no comment anchor. The comment is then
+fetched from the forge, and a fetch that fails refuses (exit 6). On GitLab the author check
+compares the note author's username and numeric user id with the roster's `ASSAY_BLESS_LOGIN`
+pin, so a GitLab project's roster pins the GitLab account. It also writes one
+`human-decision-v1` record. The record holds:
 
 - the offered option ids, each with the sha256 of the option's text;
 - the recommended id;
