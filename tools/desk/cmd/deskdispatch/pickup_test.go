@@ -160,6 +160,7 @@ func TestPickupAdmission(t *testing.T) {
 }
 
 // Without a receipt the dispatch is unchanged: the kit's manual bootstrap applies.
+// regression: statusgen/21 — a dispatch with no receipt keeps the manual bootstrap
 func TestPickupAbsentIsBootstrap(t *testing.T) {
 	_, err, prompt := pickupDispatch(t, "worker")
 	if err != nil {
@@ -171,6 +172,7 @@ func TestPickupAbsentIsBootstrap(t *testing.T) {
 }
 
 // One flag without the other, or a non-implementer kit, is refused before any child runs.
+// regression: statusgen/21 — half a pickup is refused, never run unchecked
 func TestPickupFlagMisuse(t *testing.T) {
 	snap, receipt := pickupFixture(t)
 	for name, extra := range map[string][]string{
