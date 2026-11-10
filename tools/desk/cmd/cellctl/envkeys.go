@@ -213,6 +213,8 @@ func buildEnvKeys() []envKey {
 			why: "is the one checkout a cell's role worktrees are created from"},
 		envKey{key: "CELL_REPO_SLUG", class: envCell, desc: "Scrubbed cells: the one repository the cell is scoped to.",
 			why: "is the one repository a scrubbed cell is scoped to"},
+		// The managed-store mapping (workspace_repository.go) is deliberately NOT a key: it is a
+		// generation-stamped file a managed-aware reader opens, never exported beside CELL_ROOTS.
 		envKey{key: "CELL_ROOTS", class: envCell, desc: "The cell's stream-root map, exported to its role windows.",
 			why: "is one cell's stream-root map, the scope its desks read"},
 		envKey{key: "CELLS_CONFIG", class: envCell, desc: "The cell's cells.yaml slice (default: cells-<cell>.yaml in the cell's directory).",

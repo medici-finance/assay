@@ -78,6 +78,9 @@ COPY gitquiet/ ./gitquiet/
 COPY gitcore/ ./gitcore/
 COPY deskcore ./deskcore/
 COPY workflow/ ./workflow/
+# The workspace module (the cell-workspace/v1 contract and its local adapter) is a stdlib-only
+# sibling tools/desk resolves through `replace ../../workspace`.
+COPY workspace/ ./workspace/
 COPY statusgen/go.mod statusgen/go.sum ./statusgen/
 COPY tools/desk/go.mod ./tools/desk/
 RUN cd statusgen && go mod download

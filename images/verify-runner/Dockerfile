@@ -191,6 +191,7 @@ COPY deskcore/go.mod /tmp/modsrc/deskcore/
 COPY forgeread/go.mod /tmp/modsrc/forgeread/
 COPY gitquiet/go.mod /tmp/modsrc/gitquiet/
 COPY perfrec/go.mod /tmp/modsrc/perfrec/
+COPY workspace/go.mod /tmp/modsrc/workspace/
 RUN set -eu; \
     export GOWORK=off GOFLAGS=-mod=readonly GOTOOLCHAIN=local; \
     while read -r root; do \
