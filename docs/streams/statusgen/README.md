@@ -67,7 +67,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 31 | [Backfill derivable active brief metadata without fabricating evidence](brief-31-backfill-derivable-active-brief-metadata-without-fabricating-evidence.md) | 3 | M | todo | — | — |
 | 32 | [Connect board drift notices to the existing reconciliation owners](brief-32-connect-board-drift-notices-to-the-existing-reconciliation-owners.md) | 1 | M | todo | — | — |
 | 33 | [Drive active notice severity from the existing registry after cleanup](brief-33-drive-active-notice-severity-from-the-existing-registry-after-cleanup.md) | 9 | M | todo | — | — |
-| 34 | [One owned scratch path for Verify rows](brief-34-one-owned-scratch-path-for-verify-rows.md) | 1 | L | todo | — | — |
+| 34 | [One owned scratch path for Verify rows](brief-34-one-owned-scratch-path-for-verify-rows.md) | 1 | L | implemented | — | — |
 | 35 | [Drain actionable notice debt in this repository without rewriting closed records](brief-35-drain-actionable-notice-debt-in-this-repository-without-rewriting-closed-records.md) | 8 | M | todo | — | — |
 | 36 | [Content-bound witness schema v2: the reader and the one digest owner](brief-36-content-bound-witness-schema-v2-reader.md) | 1 | L | implemented | — | — |
 | 37 | [Content-bound witness schema v2: the writers and the desk readers](brief-37-content-bound-witness-schema-v2-writers.md) | 2 | L | todo | — | — |
