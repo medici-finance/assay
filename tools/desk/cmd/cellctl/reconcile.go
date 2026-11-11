@@ -305,10 +305,7 @@ func (c *Cell) reconcileInventory(roles []string, comms *deskCommsConfig) *recon
 			continue // a live window owns the role: its processes are its own business
 		}
 		if m.Orphan {
-			plan.Orphans = append(plan.Orphans, m)
-			if e != nil {
-				e.marked = append(e.marked, m.PID)
-			}
+			plan.Orphans = append(plan.Orphans, m) // listed on its role's record below, once every record exists
 			continue
 		}
 		// A marked process whose parent is alive and not a cell orphan is an owned child still
@@ -326,6 +323,13 @@ func (c *Cell) reconcileInventory(roles []string, comms *deskCommsConfig) *recon
 			why = "is still running and is shielded (it is, sits above, or is hosted alongside something live)"
 		}
 		e.Evidence = append(e.Evidence, fmt.Sprintf("marked process pid %d (%s) %s; the record cannot be dead while it runs, and it is never signalled", m.PID, m.Identity, why))
+	}
+	// Orphans join their role's record only after the scan: a live marked process above may create
+	// that record after an orphan of the same role was already seen (the scan runs in pid order).
+	for _, o := range plan.Orphans {
+		if e := eligible[o.Role]; e != nil {
+			e.marked = append(e.marked, o.PID)
+		}
 	}
 	return plan
 }

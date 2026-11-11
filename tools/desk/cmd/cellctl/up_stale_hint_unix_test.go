@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -361,4 +362,43 @@ func TestCommsStaleHintAcceptingVerb(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A role with no record whose marked orphan is scanned BEFORE the live marked process that creates
+// the role's (alive) record: the orphan is still listed as running. The scan runs in pid order, and
+// the orphan is started first, so it normally has the lower pid.
+//
+// regression: #6192
+func TestRunningListsEarlyOrphan(t *testing.T) {
+	const role = "worker-desk"
+	c := reconcileCell(t)
+	orphan := startOrphan(t, c, role)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := exec.Command(exe)
+	child.Env = c.stampCellMarker([]string{"PATH=/usr/bin:/bin", "CELLCTL_RECONCILE_SLEEPER=1"}, role)
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { child.Process.Kill(); child.Wait() })
+	live := child.Process.Pid
+	if orphan > live {
+		t.Logf("pid order: orphan %d is above live %d, so this run does not scan the orphan first", orphan, live)
+	}
+	// Until the child has exec'd, its marker is not readable and the orphan alone reads dead.
+	var p upProbe
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		probes, _ := c.probeUpRoles([]string{role}, nil)
+		if p = probes[0]; p.Kind == probeStale && p.class() == reconcileAlive {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("role never classified alive: %s/%s %+v", p.Kind, p.class(), p.Entry)
+		}
+	}
+	hint := c.staleHint(p)
+	t.Logf("up row: %s", hint)
+	assertListsRunning(t, hint, []int{orphan, live})
 }

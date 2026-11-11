@@ -874,9 +874,10 @@ The stale row names the verb that accepts the role's own class:
   running), `cellctl cadence <cell> recover <role> --confirm-stopped`, then `cellctl up <cell>
   --role <role>`. Stale comms state names `cellctl comms <cell> recover --confirm-stopped`.
 - **lease could not be probed**: neither verb can clear it, since both take the lease. Once the
-  prior harness and all its children have stopped (the row lists any role-marked pids still
-  running), repair the lease file by hand, check the role with `cellctl cadence <cell> status
-  <role>`, then run `cellctl up <cell> --role <role>`.
+  prior harness and all its children have stopped, repair the lease file by hand, check the role
+  with `cellctl cadence <cell> status <role>`, then run `cellctl up <cell> --role <role>`. This row
+  lists no pids: a role whose lease could not be probed is never treated as free, so its marked
+  processes are not inventoried. An empty list here does not mean nothing is still running.
 
 When `--plan` finds stale state but nothing it can plan, it still returns could-not-check (exit
 code unchanged) and prints one line per role naming that role's recovery.
@@ -891,8 +892,10 @@ role window the same way, for the same reason — see *Providers* below.
 `cellctl up <cell> --dry-run` (or `DRY_RUN=1 cellctl up <cell>`) prints the resolved cockpit and
 each role's disposition (an absent role shows the command its window would run) and launches
 nothing. On a house cell, stale comms checkpoints and orphaned processes carrying the cell's
-marker are inventoried by pid and start time; `up` refuses them with the whole inventory and the
-exact recovery commands (`up --plan`, then `up --apply`). A dry run prints the inventory and plan
+marker are inventoried by pid and start time; `up` refuses them with the whole inventory and a
+pointer to the verb that clears them: `up --plan`, then `up --apply`, for a dead record or orphans
+alone, otherwise `cellctl comms <cell> recover --confirm-stopped` (see the stale-row recovery list
+above). A dry run prints the inventory and plan
 and changes nothing. `cellctl desk <cell> <role>` runs the same preflight for its one role. See
 [Reconcile preflight](cellctl-cadence.md#reconcile-preflight). `--harness <h>` overrides `CELL_HARNESS` for **every** role window this run opens (the-desk
 included — there is no per-role `--harness-<role>` form) by threading `--harness <h>` onto each

@@ -21,8 +21,9 @@ import (
 //   - up:     a live process holds the role's cadence lease. The role is left alone: no second launch,
 //     no window closed, no window re-created.
 //   - stale:  the lease is free but the checkpoint still says running, or a marked orphan is left. Plain
-//     `up` never reconciles it; `up --plan` writes ONE cell-op plan for the whole cell and
-//     `up --apply <plan-id>` clears it on a terminal, after the typed confirm.
+//     `up` never reconciles it. A dead record (or orphans alone): `up --plan` writes ONE cell-op plan
+//     for the whole cell and `up --apply <plan-id>` clears it on a terminal, after the typed confirm.
+//     Any other class is refused by --plan; its row names its own recovery (staleRecovery).
 //   - absent: nothing is running and nothing is left. The role is launched.
 //
 // Launches are serialized: the next role's window opens only once the previous role's launch has

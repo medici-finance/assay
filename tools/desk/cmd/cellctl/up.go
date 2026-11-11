@@ -474,8 +474,9 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 	}
 
 	// The reconcile classification (#2880) is read, never acted on, by a plain `up`: each role is
-	// probed up / stale / absent from the same evidence the preflight uses, and stale state is
-	// cleared only by an applied plan (`up --plan`, then `up --apply <plan-id>` on a terminal).
+	// probed up / stale / absent from the same evidence the preflight uses. Plain `up` clears no
+	// stale state: a dead record is cleared by an applied plan (`up --plan`, then `up --apply
+	// <plan-id>` on a terminal), any other by the recover verb its row names (staleRecovery).
 	var commsCfg *deskCommsConfig
 	if c.Kind == "house" {
 		var cfgErr error
@@ -642,8 +643,9 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 
 // commsPreflightStale refuses a launch over stale comms state. Plain `up` never clears it, on a
 // terminal or off one: the inventory and the exact commands are printed (the reconcile preflight's
-// own output) and `up --plan` is named as the way to clear it with a typed confirm. A dry run
-// prints the inventory and changes nothing.
+// own output), then commsStalePointer names the verb that clears the comms record's class (`up
+// --plan` only for a dead record or orphans alone). A dry run prints the inventory and changes
+// nothing.
 func (c *Cell) commsPreflightStale(comms *deskCommsConfig, dryRun bool) {
 	if c.Kind != "house" || comms == nil {
 		return
