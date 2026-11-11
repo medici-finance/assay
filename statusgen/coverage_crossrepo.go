@@ -164,24 +164,31 @@ func crossTrackingUnchanged(root, admitted string) error {
 	if len(files) == 0 {
 		return nil
 	}
+	read := gitCoreForCommits(root, admitted, current)
+	if read.err != nil {
+		return fmt.Errorf("cannot read tracking objects: %w", read.err)
+	}
+	if read.native != "" {
+		return fmt.Errorf("tracking objects need an unsupported read profile: %s", read.native)
+	}
 	shape := prShape{Files: files, Patches: map[string]string{}, Heads: map[string]string{}}
 	for _, file := range files {
 		if !isStreamBriefPath(file) && !isStreamReadmePath(file) {
 			continue
 		}
-		patch, err := coverageGit(root, "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--unified=0", admitted, current, "--", file).Output()
+		patch, err := read.repo.FileDiff(admitted, current, file)
 		if err != nil {
 			return fmt.Errorf("cannot read tracking patch for %s", file)
 		}
-		head, err := coverageGit(root, "show", current+":"+file).Output()
+		head, err := read.repo.FileAt(current, file)
 		if err != nil {
 			return fmt.Errorf("cannot read current tracking path %s", file)
 		}
 		// The shared classifier consumes hunk lines, as supplied by a forge.
-		if start := strings.Index(string(patch), "@@ "); start >= 0 {
-			shape.Patches[file] = string(patch[start:])
+		if start := strings.Index(patch, "@@ "); start >= 0 {
+			shape.Patches[file] = patch[start:]
 		}
-		shape.Heads[file] = string(head)
+		shape.Heads[file] = head
 	}
 	if only, why := evidenceOnlyReason(shape); !only {
 		return fmt.Errorf("tracking inputs changed since admission: %s", why)
