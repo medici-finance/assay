@@ -879,12 +879,20 @@ Kills the session and this cell's `deskd` — matched on its own `--config` path
 torn down whichever cockpit resolves, and what a non-tmux cockpit opened is closed where that
 cockpit offers a verb for it and **named for you to close by hand where it does not**.
 
+`down` then `up` is a round trip: no `up --plan` or `cadence recover` is needed in between. A
+cadence role's supervisor is stopped first, by a stop request the role's next launch clears (a stop
+an operator wrote stays). Each interactive role is waited for after the close, with one 20-second
+bound, and its checkpoint is left finished; when that cannot be proved, `down` exits 1 and names
+`cellctl up <cell> --plan`. [Host desk cadence](cellctl-cadence.md#stop-and-recovery) has the evidence
+rule.
+
 `cellctl down <cell> <role>` closes **one** role. It applies only to a role that is already paused
 or drained: a role that is not is refused `role-busy` before any plan is shown, and `down` never
 pauses it for you, so declining the confirm leaves the cell exactly as it was. Run
 `cellctl pause <cell> <role>` (or `drain`) first. It stops that role's cadence alone, re-measures the role idle, re-verifies the role's
 surface identity against the live cockpit, and issues exactly one single-surface close
-(`tmux kill-window -t <id>`, `herdr tab close <tab>`, `orca terminal close --terminal <h>`). It never
+(`tmux kill-window -t <id>`, `herdr tab close <tab>`, `orca terminal close --terminal <h>`), then waits
+for an interactive role's owner as the cell-wide `down` does. It never
 closes a session, a workspace, a sibling's window or another cell's. A role with no surface receipt,
 or a cockpit build without the close verb, is refused `per-role-close-unsupported`, and only the
 cell-wide `down` can close it.
