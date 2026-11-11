@@ -17,7 +17,7 @@ import (
 func TestPiPilotContract(t *testing.T) {
 	t.Run("Kit", func(t *testing.T) { conformance.RunAll(t, subject) })
 
-	t.Run("NoProfileDeclarer", func(t *testing.T) {
+	t.Run("NoProfileDecl", func(t *testing.T) {
 		var a runner.Adapter = &Adapter{}
 		if _, ok := a.(runner.ProfileDeclarer); ok {
 			t.Fatal("the pilot adapter now declares profiles; update the report's profile note")

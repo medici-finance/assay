@@ -17,7 +17,7 @@ The behavioural corpus passes on the real Pi path. The conformance kit, restart,
 Other evidence limits are recorded but do not block the verdict:
 
 - Pi's usage model has no "unknown cost" value. The adapter therefore never reads Pi usage as spend; see the Pi findings below.
-- The adapter declares no `Resume`, `CancelAck`, `Snapshot` or `runner.ProfileDeclarer`. The conformance kit's profile-admission cases therefore pass without exercising the adapter. `TestPiPilotContract/NoProfileDeclarer` pins that fact.
+- The adapter declares no `Resume`, `CancelAck`, `Snapshot` or `runner.ProfileDeclarer`. The conformance kit's profile-admission cases therefore pass without exercising the adapter. `TestPiPilotContract/NoProfileDecl` pins that fact.
 - The npm 1.4.0 tarballs carry no `gitHead`. They correspond to the inspected Pi revision `8c03fef4d3b7ecf7a9e8cc5b1312ff60ec2be149` only by declared version and the 1.4.0 changelog entry; no byte comparison was made.
 
 A GO needs all three reason codes cleared on a re-run: the tuple vetted, rows 2-9 rerun in the network-off Linux environment, and a measurement that covers commits and peak memory. After that re-run, `results.json` must be regenerated. `cases.json` proves the derivation rejects a fabricated GO for each of these gaps and for every adverse fixture.
@@ -47,7 +47,7 @@ Each group ran as `GOWORK=off go test -tags pirunner -count=1 -v -run "^<group>$
 
 | Group | Cases | What the cases show |
 |---|---|---|
-| `TestPiPilotContract` | Kit, NoProfileDeclarer, UnsupportedRefused, PinnedModelAndTools | The full exported kit passes through the real `runner.Client` against the Pi adapter. Request scope, Resume, CancelAck and unknown capability requests are refused, with zero Pi submissions. The actual model is reported, and a silent fallback is rejected (`ErrModelFallback`). |
+| `TestPiPilotContract` | Kit, NoProfileDecl, UnsupportedRefused, PinnedModelAndTools | The full exported kit passes through the real `runner.Client` against the Pi adapter. Request scope, Resume, CancelAck and unknown capability requests are refused, with zero Pi submissions. The actual model is reported, and a silent fallback is rejected (`ErrModelFallback`). |
 | `TestPiPilotRestart` | KillMidTool, CrashAfterIntent, CrashAfterSubmit, OneOwner, Corpus | SIGKILL during an unsafe tool, then reopening the same SQLite store, gives one submission across two processes. The unsafe tool ran once and settled as one error result. A crash after intent leaves the start abandoned and never relaunched. A crash after submit leaves exactly one launch, and a repeated start dedupes to it. A second owner is refused. |
 | `TestPiPilotEffects` | LostReply, StableIdentity, OutcomesSeparate | A lost reply reconciles to one logical effect. The same action under a new tool-call ID applies once. Tool and session outcomes are reported apart from acceptance. |
 | `TestPiPilotAuthority` | ReplayRechecks, LedgerAlone, UpperHookBlocks | A safe tool replayed after kill skips `beforeTool` but is refused at execution by the ledger once the owner changes. With the upper hook disabled, the ledger alone refuses a stale owner. The upper hook blocks before intent. |
