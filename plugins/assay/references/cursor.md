@@ -74,6 +74,52 @@ cannot provide the underlying capability, the affected skill **refuses** rather
 than dropping the guarantee. Only *convenience* gaps (no parallel dispatch, no
 reliable background notification) may degrade — explicitly, and in-session.
 
+## Commit and PR attribution — a host setting, `false` on desk hosts
+
+The Cursor CLI adds attribution to agent output by default. Two settings control it
+(#5892):
+
+| Setting | What it does when `true` | Default | Required on a host that runs desks |
+|---|---|---|---|
+| `attribution.attributeCommitsToAgent` | Appends an attribution trailer naming the Cursor agent to every commit the agent makes, amends included. | `true` | `false` |
+| `attribution.attributePRsToAgent` | Appends a "Made with Cursor" footer to every PR the agent opens. | `true` | `false` |
+
+Assay forbids attribution lines in commits, PRs, issues and comments (the
+no-attribution guardrail every desk skill states). With the defaults, a desk worker on
+Cursor writes commits its own rules reject, and the push guard's outbound scan can
+refuse the push. The harness re-adds the trailer on every commit, so a worker cannot fix
+it from inside the session.
+
+Both settings live only in the **global** CLI config: `~/.cursor/cli-config.json` on
+macOS and Linux, `%USERPROFILE%\.cursor\cli-config.json` on Windows. A project's
+`.cursor/cli.json` carries permissions only, so no file placed in a repo can turn
+attribution off. An absent file or an absent key means `true`. Set, in the global file:
+
+```json
+{
+  "attribution": {
+    "attributeCommitsToAgent": false,
+    "attributePRsToAgent": false
+  }
+}
+```
+
+`deskinstall --harness cursor` (placement, `--check` and `--dry-run`) and
+`upgrade-assay --harness cursor` read that file and report each setting as off, on or
+could-not-check. The report names the file and the value to set. It is report-only:
+the installer does not own the global config, so it never edits it, and the report
+never changes the run's exit code.
+
+When a push is refused over a trailer the harness added, the worker STOPS and reports
+the setting. It never rewrites history or re-commits to strip the trailer and never
+pushes by another route. The host's operator sets the values above to `false`. Commits
+already made still carry the trailer; what happens to them is the operator's call, not
+the worker's.
+
+Source: [CLI configuration](https://cursor.com/docs/cli/reference/configuration).
+Documentary check: 2026-11-10 (the settings, their `true` defaults, and the global-only
+scope). Not live-tested on a desk host.
+
 ## Why Cursor is lighter than Codex
 
 Cursor's 2026 convergence (native `AGENTS.md`, the same `SKILL.md` open standard,
