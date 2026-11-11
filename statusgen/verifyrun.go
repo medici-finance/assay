@@ -99,6 +99,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2037,16 +2038,18 @@ Flags:
                     SKIPPED (runner-executed, not selected here); legacy rows and
                     check:ci rows are unaffected. check:ci rows always run network-off.
   --acceptance-forge  explicitly permit fresh human-approval reads on the host.
-  --acceptance-record <file>  coordinate-only protected-table descriptor; host
-                    execution only, same-repository admission. One
+  --acceptance-record <file>  coordinate-only protected-table descriptor; same-repository
+                    host execution or a closed container-netns transition bracket. One
                     Verification-Table line is a protected record: original
                     rows must equal their delivered definitions and run as
                     delivered; every delivered row the original table lacks
                     (derived from git at the coordinates, never from the file)
                     is witnessed author-added with no acceptance credit. That
                     line plus an Acceptance-Transition line is a transition,
-                    which also needs --acceptance-forge and executes the
-                    canonical original-plus-approved obligation plan.
+                    which needs --acceptance-forge on the host and executes the
+                    canonical original-plus-approved obligation plan. Open and
+                    close use the same record; the container executes the receipt's
+                    exact planned table and refuses --acceptance-forge.
   --sandbox <mode>  the network-off sandbox (default unshare). unshare wraps each
                     check:ci row in ` + "`unshare --net --map-root-user`" + `.
                     container-netns is an EXPLICIT opt-in for a runner already
@@ -2258,7 +2261,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// and once from the ErrHelp branch below.
 	fs.Usage = func() {}
 	briefPath := fs.String("brief", "", "brief file whose Verify table to run")
-	transitionRecord := fs.String("acceptance-record", "", "coordinate-only protected record or transition descriptor; host only; a transition also requires --acceptance-forge")
+	transitionRecord := fs.String("acceptance-record", "", "coordinate-only protected record or transition descriptor; host or closed container-netns bracket; host transitions require --acceptance-forge")
 	checkMode := fs.Bool("check", false, "audit an existing witness table instead of running anything")
 	dryRun := fs.Bool("dry-run", false, "print the witness table without writing it back")
 	rootDir := fs.String("root", "", "repo root the commands run in (its repository's toplevel; a subdirectory is refused)")
@@ -2421,7 +2424,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		if path == "" && fs.NArg() > 0 {
 			path = fs.Arg(0)
 		}
-		hostStep := "statusgen verifyrun: --open-bracket and --close-bracket are host steps around a container run; they run no rows and take no --sandbox, --container-image-digest, --check, --dry-run, --fail-first, --in-container or --acceptance-record"
+		hostStep := "statusgen verifyrun: --open-bracket and --close-bracket are host steps around a container run; they run no rows and take no --sandbox, --container-image-digest, --check, --dry-run, --fail-first or --in-container"
 		switch {
 		case *openBracket && *closeBracket:
 			fmt.Fprintln(stderr, "statusgen verifyrun: --open-bracket and --close-bracket are separate steps")
@@ -2429,7 +2432,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		case *openOut != "" && !*openBracket:
 			fmt.Fprintln(stderr, "statusgen verifyrun: --out only applies to --open-bracket")
 			return verifyrunExitUsageError
-		case *sandbox != sandboxUnshare || *imageDigest != "" || *checkMode || *dryRun || *failFirstMode || *inContainer || *transitionRecord != "":
+		case *sandbox != sandboxUnshare || *imageDigest != "" || *checkMode || *dryRun || *failFirstMode || *inContainer:
 			fmt.Fprintln(stderr, hostStep)
 			return verifyrunExitUsageError
 		case *openBracket && (*rootDir == "" || path == "" || *openOut == "" || *admissionReceipt != "" || *witnessFile != ""):
@@ -2440,9 +2443,13 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitUsageError
 		}
 		if *openBracket {
-			return runOpenBracket(*rootDir, path, *openOut, *moduleCacheDir, stdout, stderr, *historyOut)
+			return runOpenAcceptance(*rootDir, path, *openOut, *moduleCacheDir, *historyOut, *transitionRecord, stdout, stderr)
 		}
-		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, stdout, stderr)
+		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, stdout, stderr, *transitionRecord)
+	}
+	if *sandbox == sandboxContainerNetns && transitionForge {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --acceptance-forge is refused inside the container; approval is read on the host")
+		return verifyrunExitCouldNot
 	}
 	if why := containerBracketRefusal(*sandbox, *admissionReceipt, *imageDigest); why != "" {
 		fmt.Fprintln(stderr, "statusgen verifyrun:", why)
@@ -2591,9 +2598,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	}
 
 	root := rowRoot()
-	if why := verifyrunRootBelowToplevel(root); why != "" {
-		fmt.Fprintln(stderr, "statusgen verifyrun:", why)
-		return verifyrunExitUsageError
+	if *sandbox != sandboxContainerNetns || *transitionRecord == "" {
+		if why := verifyrunRootBelowToplevel(root); why != "" {
+			fmt.Fprintln(stderr, "statusgen verifyrun:", why)
+			return verifyrunExitUsageError
+		}
 	}
 	// Container mode never derives any part of a Runner cell of its own: a
 	// linked worktree's git directory is not mounted (#4208), and anything the
@@ -2620,29 +2629,16 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// line plus one Acceptance-Transition line). transitionRun is the latter.
 	var transitionDescriptor string
 	var transitionRun bool
-	if *transitionRecord != "" {
-		raw, err := os.ReadFile(*transitionRecord)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return verifyrunExitCouldNot
-		}
-		transitionDescriptor = strings.TrimSpace(string(raw))
-		why := ""
-		transitionRun, why = acceptanceRecordKind(transitionDescriptor)
-		if why == "" && transitionRun && !transitionForge {
-			why = "statusgen verifyrun: an Acceptance-Transition record requires --acceptance-forge"
-		}
+	if netnsContainer && (container.cell.Acceptance != nil || *transitionRecord != "") {
+		var why string
+		protectedExecution, transitionDescriptor, transitionRun, why = containerAcceptance(container.cell, *transitionRecord, verify)
 		if why != "" {
 			fmt.Fprintln(stderr, why)
 			return verifyrunExitCouldNot
 		}
-		protectedExecution, why = protectedAcceptanceFor(verify, evidence, transitionDescriptor, path)
-		if why == "" && !transitionRun {
-			// No transition approves a changed original here, so every original
-			// row must run exactly as delivered (protectedAcceptanceFor has
-			// already required the current section to equal the delivery's).
-			why = originalDefinitionDrift(protectedExecution.Verify, verify)
-		}
+	} else if *transitionRecord != "" {
+		var why string
+		protectedExecution, transitionDescriptor, transitionRun, why = planAcceptanceRecord(path, verify, evidence, *transitionRecord)
 		if why != "" {
 			fmt.Fprintln(stderr, why)
 			return verifyrunExitCouldNot
@@ -2673,6 +2669,14 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// --acceptance-record, the protected run set), after every admission check
 	// and before any row runs or anything is written.
 	allRows := rows
+	if rowsSet && netnsContainer && container.cell.Acceptance != nil {
+		for _, id := range selectedIDs {
+			if !slices.Contains(container.cell.Acceptance.RunSet, id) {
+				fmt.Fprintln(stderr, "statusgen verifyrun: --rows outside the protected run set")
+				return verifyrunExitUsageError
+			}
+		}
+	}
 	if rowsSet {
 		scope := "the Verify table"
 		if transitionDescriptor != "" {
@@ -2740,11 +2744,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 	}
-	executionTree := briefTreeSHA(root, path)
-	if netnsContainer {
-		executionTree = container.cell.RunnerTree
+	executionTree := container.cell.RunnerTree
+	if !netnsContainer {
+		executionTree = briefTreeSHA(root, path)
 	}
-	if transitionRun {
+	if transitionRun && !netnsContainer {
 		// A transition run binds the full HEAD as its immutable source, so it
 		// keeps the strict check: even an Evidence-only edit (an earlier run's
 		// uncommitted witnesses) refuses it, and a transition run records its
@@ -2768,7 +2772,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			ws[i].Base = failFirstCell(f.Base, f.State, f.Exit, ws[i].Tree)
 		}
 	}
-	target := witnessAnnotationRepo(witnessTargetRepo(path), witnessOriginRepo(root))
+	target := ""
+	if !netnsContainer {
+		target = witnessAnnotationRepo(witnessTargetRepo(path), witnessOriginRepo(root))
+	}
 	for i := range ws {
 		ws[i].Repo = target
 		if netnsContainer {
@@ -3019,4 +3026,34 @@ func repoRootFor(briefPath string) string {
 		return wd
 	}
 	return "."
+}
+
+// readAcceptanceRecord is shared by host planning and the offline container
+// reader. Shape belongs to acceptanceRecordKind; this adapter adds no grammar.
+func readAcceptanceRecord(path string) (raw []byte, descriptor string, transition bool, why string) {
+	var err error
+	raw, err = os.ReadFile(path)
+	if err != nil {
+		return nil, "", false, err.Error()
+	}
+	descriptor = strings.TrimSpace(string(raw))
+	transition, why = acceptanceRecordKind(descriptor)
+	return
+}
+
+// planAcceptanceRecord is the one host execution adapter over the protected
+// planner. Open, host execution and close all corroborate the same obligations.
+func planAcceptanceRecord(path, verify, evidence, record string) (protectedPlan, string, bool, string) {
+	_, descriptor, transition, why := readAcceptanceRecord(record)
+	if why == "" && transition && !transitionForge {
+		why = "statusgen verifyrun: an Acceptance-Transition record requires --acceptance-forge"
+	}
+	if why != "" {
+		return protectedPlan{}, descriptor, transition, why
+	}
+	protectedExecution, why := protectedAcceptanceFor(verify, evidence, descriptor, path)
+	if why == "" && !transition {
+		why = originalDefinitionDrift(protectedExecution.Verify, verify)
+	}
+	return protectedExecution, descriptor, transition, why
 }

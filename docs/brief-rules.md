@@ -902,6 +902,18 @@ passing run — which is why they are lint rules and not review vigilance.
       (the `Verification-Table:` line alone) needs no `--acceptance-forge`;
       it refuses an original row whose delivered definition differs from
       its original one, and witnesses supplemental rows `author-added`.
+      A protected or transition record may instead run inside a closed
+      **container-netns transition bracket**, opened and closed on the dispatch
+      host with the same `--acceptance-record` descriptor. The host plans and
+      re-plans through the shared evaluator, re-reading transition approvals
+      with `--acceptance-forge`. Inside it the container executes the receipt's
+      planned table, not the current table; the container refuses forge reads.
+      Close compares the exact table, descriptor, source, changes and witness
+      commands. `deskdispatch --check-verifier` runs only on the dispatch host:
+      a different runtime still refuses `environment changed since admission:
+      runtime`; never re-admit inside the runner. `--in-container`, `--check`
+      and cross-repository admission with the record stay refused. Credit is
+      unchanged (`credit=credited` only); a digest match alone grants none.
     - `check` — deterministic but ENV-BOUND (a live PEM, a real queue, a tool on
       PATH). A runner executes it; CI skips an explicitly-classed one (its verdict
       rests on the verifier's authorship+signature, not on a CI re-run).
