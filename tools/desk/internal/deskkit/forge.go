@@ -515,6 +515,10 @@ type SearchIssuesInput struct {
 	// DecisionGateBrief optionally narrows marker discovery to one exact brief
 	// spelling. It is an opaque marker token, never provider search syntax.
 	DecisionGateBrief string
+	// DecisionGateLegacy switches marker discovery to the legacy `needs-decision:` marker key
+	// that decision issues filed before the `decision-gate:` marker carry. It is valid only
+	// with DecisionGateMarkers; the walk and its completeness rules are the same.
+	DecisionGateLegacy bool
 	// FilingKey selects the exact filing-identity lookup: OPEN issues of this repo whose body
 	// carries the key's marker, walked to completion or an error (a truncated read is unknown,
 	// never an empty answer). Query and the decision fields must be empty in this mode. The key
