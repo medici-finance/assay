@@ -649,9 +649,18 @@ func (c *Cell) commsPreflightStale(comms *deskCommsConfig, dryRun bool) {
 		return
 	}
 	if err := c.reconcile(nil, comms, reconcileIO{DryRun: dryRun, Out: os.Stdout}); err != nil {
-		fmt.Printf("[reconcile] cellctl up %s --plan writes one plan for the whole cell; cellctl up %s --apply <plan-id> runs it on a terminal\n", c.Name, c.Name)
+		fmt.Println(c.commsStalePointer(commsStale(c.reconcileInventory(nil, comms))))
 		die("up: %v", err)
 	}
+}
+
+// commsStalePointer is the way out printed under a refused comms preflight: `up --plan` only for a
+// record it plans (proven dead); otherwise the comms record's own recovery (#6192).
+func (c *Cell) commsStalePointer(e *reconcileEntry) string {
+	if e == nil || e.Class == reconcileDead {
+		return fmt.Sprintf("[reconcile] cellctl up %s --plan writes one plan for the whole cell; cellctl up %s --apply <plan-id> runs it on a terminal", c.Name, c.Name)
+	}
+	return "[reconcile] comms: " + c.commsStaleHint(e)
 }
 
 // knownRolesOrdered lists the keys of set in the cell-role order.

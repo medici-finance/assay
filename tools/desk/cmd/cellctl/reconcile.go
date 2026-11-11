@@ -58,6 +58,9 @@ type reconcileEntry struct {
 	// group is the recorded role child's process-group id once that child is proven gone: its
 	// surviving members are the descendants the marker cannot always attribute.
 	group int
+	// unprobed: the lease itself could not be probed, so no verb that takes the lease (a plan's
+	// apply, `cadence recover`, `comms recover`) can clear this record.
+	unprobed bool
 }
 
 type reconcilePlan struct {
@@ -330,7 +333,7 @@ func (c *Cell) inventoryRecord(role, dir string, isComms bool) (e *reconcileEntr
 	}
 	switch {
 	case probeErr != nil:
-		e.Class = reconcileCNC
+		e.Class, e.unprobed = reconcileCNC, true
 		e.Evidence = append(e.Evidence, "the lease could not be probed: "+probeErr.Error())
 		return e, false
 	case busy:
