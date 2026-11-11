@@ -3547,7 +3547,10 @@ between roles.** Give each role window its own `ASSAY_CONFIG_HOME`. It holds the
 other role's. That is the window's own role, plus `desk` in a `worker-desk` or `verify-desk`
 window, because `deskdispatch` takes the claim and the model stamp as the desk App for worker
 and verifier kits. It also includes the role a dispatched agent mints, and `worker` or
-`verifier` wherever `deskreply` or `deskevidence` runs. Keep no role key in `~/.config/assay`,
+`verifier` wherever `deskreply` or `deskevidence` runs. A review kit claims and stamps as
+`reviewer` wherever it is dispatched, and the table gives `the-desk` no `reviewer` key, so
+review kits are dispatched from `pr-review-desk`; from a `the-desk` home provisioned by the
+table, a review dispatch fails closed at the reviewer claim mint. Keep no role key in `~/.config/assay`,
 which the search path always reads last. A separate OS user per role is what turns that split
 into a boundary. The per-window table is in `plugins/assay/references/desk-shell.md`
 §Role separation.

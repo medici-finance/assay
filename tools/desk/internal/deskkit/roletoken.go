@@ -143,8 +143,11 @@ func SessionTokenRole(verb string) (role, loop string, err error) {
 //
 // loop and loopRole name the window's canonical loop and its role whenever they resolved.
 // This is a client-side guard against a window borrowing another role by mistake. It is not
-// a boundary: a session controls its own environment. The boundary is one config home per
-// role, holding only that role's credential.
+// a boundary: a session controls its own environment. Separation comes from one config home
+// per role window, holding only the role keys the tools run in that window act as (a
+// worker-desk or verify-desk window also holds desk, which deskdispatch claims and stamps
+// as; the per-window table is in the desk-shell reference, §Role separation), and a
+// separate OS user per role is what makes that split a boundary.
 func RequireLoopRole(verb, role string) (loop, loopRole string, err error) {
 	if !loopBoundRole(role) || strings.TrimSpace(os.Getenv(loopEnv)) == "" {
 		return "", "", nil

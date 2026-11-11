@@ -41,7 +41,10 @@
 // --cross-role "<reason>", which the audit row records. It is not a boundary: the
 // caller holds the key and controls the env, and every key is readable by any
 // session of the same OS user. Separation between roles comes from giving each role
-// window its own ASSAY_CONFIG_HOME holding only that role's credential. File permissions (0600 on a workstation; 0440
+// window its own ASSAY_CONFIG_HOME, holding only the role keys the tools run in that
+// window act as: its own role, plus desk in a worker-desk or verify-desk window,
+// because deskdispatch claims and stamps as desk (the per-window table is in the
+// desk-shell reference, §Role separation). File permissions (0600 on a workstation; 0440
 // for a Secret-mounted key read via a pod's fsGroup) protect from other users
 // only, not from other sessions of the same user.
 //
@@ -81,8 +84,11 @@ Roles no loop acts under (cell-issues, release-runner, auditor, intake-loop) are
 name from any window, and an unset $DESK_LOOP (an operator shell, a cold-mint probe) is
 not checked. --cross-role "<reason>" admits a refused mint and writes the loop, the role
 and the reason into the audit row, a cache reuse included. This is a guard against a
-window borrowing a role by mistake, not a boundary: one config home per role window,
-holding only that role's credential, is what keeps roles apart.
+window borrowing a role by mistake, not a boundary. What keeps roles apart is one config
+home per role window, holding only the role keys the tools run in that window act as:
+the window's own role, plus desk in a worker-desk or verify-desk window, because
+deskdispatch claims and stamps as desk. The per-window table is in the desk-shell
+reference, §Role separation. A separate OS user per role makes that split a boundary.
 
 cell-issues is the write-issues App identity (issues:write + metadata:read only) — it is
 selectable only by explicit name, never a loop's default: no entry in the loop→role table
