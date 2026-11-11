@@ -222,7 +222,7 @@ disposition from another role.
 | `statusgen context discover`, `recheck`, `check`; `context-handoff-v1`; `amendment-manifest-v1` | v1.0.55 |
 | `context-handoff-v2` (withdrawn impacts) | v1.0.55 (schema from v1.0.50) |
 | `context-handoff-v3` (product-target binding), `statusgen context dispose`, the recheck `assess` class | v1.0.63 |
-| `deskdispatch --context-snapshot DIR --context-receipt FILE` (recheck before the claim) | the release after v1.0.81 |
+| `deskdispatch --context-snapshot DIR --context-receipt FILE` (recheck before the claim) | the first release whose `CHANGELOG.md` names `--context-snapshot` |
 
 `statusgen context --help` lists the verbs an install carries. Every verb refuses a
 schema version it does not know rather than reading it as the nearest one, and

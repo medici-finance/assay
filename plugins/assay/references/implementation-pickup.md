@@ -36,8 +36,8 @@ redesign the system or expand the brief. Preserve the original brief/source hist
 and later for `context-handoff-v1`, v1.0.63 and later for the product-bound
 `context-handoff-v3`), and `statusgen context check` for a brief amendment. A desk dispatching
 the work may run the same recheck before the claim with `deskdispatch --context-snapshot DIR
---context-receipt FILE` (the release after v1.0.81), which holds a receipt to reconcile or that
-cannot be confirmed before any claim exists. The `author-spec`, `author-brief` and
+--context-receipt FILE` (from the first release whose `CHANGELOG.md` names these flags), which
+holds a receipt to reconcile or that cannot be confirmed before any claim exists. The `author-spec`, `author-brief` and
 `worker-desk` skills point here; this is the single procedure.
 
 Otherwise, and for an install that lacks the verb or the receipt's schema, this

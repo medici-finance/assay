@@ -515,9 +515,9 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
              [--model SLUG] [--brief PATH] [--gate-human] [--pr N] [--dry-run]
 ```
 
-- **Context pickup receipt** (statusgen/21; deskdispatch after v1.0.81). When the brief was
-  authored against a context receipt, pass `--context-snapshot DIR --context-receipt FILE` with
-  an implementer kit. Before the claim, deskdispatch runs the shipped `statusgen context recheck`
+- **Context pickup receipt** (statusgen/21; deskdispatch from the first release whose
+  `CHANGELOG.md` names `--context-snapshot`). When the brief was authored against a context
+  receipt, pass `--context-snapshot DIR --context-receipt FILE` with an implementer kit. Before the claim, deskdispatch runs the shipped `statusgen context recheck`
   semantics over them: a current receipt, an unrelated edit or a product change to assess is
   admitted and carried into the prompt's `## Context pickup receipt` section; a conflict to
   reconcile, an unavailable input or partial coverage is HELD (exit 5, `dispatch HELD on context
