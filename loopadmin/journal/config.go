@@ -78,6 +78,10 @@ type Config struct {
 
 func (Config) String() string { return "explicit PostgreSQL configuration (redacted)" }
 
+// GoString redacts the %#v form too, which would otherwise print the Password
+// field.
+func (c Config) GoString() string { return c.String() }
+
 // driverConfig builds the driver configuration from a constant seed and the
 // explicit fields. It refuses a non-loopback TCP host without TLS, a weakened
 // TLS configuration, and any ambient PG* variable that could redirect it.

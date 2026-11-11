@@ -3,6 +3,8 @@ package journal
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -286,6 +288,33 @@ func TestJournalIncarnationPaused(t *testing.T) {
 	if launches != 2 {
 		t.Fatalf("paused journals must start no child, started %d", launches)
 	}
+
+	// A stale pause never lands on a newer activation: a runtime gate that saw
+	// the old record, and pauses only after the operator's Activate committed,
+	// leaves the new activation open (finding F-pause-race).
+	raced := pg.create(ctx, "")
+	must(t, Migrate(ctx, raced))
+	rop := &operator{}
+	rop.rotate(testCell, "inc-a", "key-a")
+	must(t, Activate(ctx, raced, testCell, rop, StopConfirmation{Receipt: "stop-a"}))
+	jx, err := Open(ctx, raced, testCell, rop)
+	must(t, err)
+	defer jx.Close()
+	rop.rotate(testCell, "inc-b", "key-b")
+	seen, err := current(ctx, rop, testCell)
+	must(t, err)
+	tx, err := jx.db.BeginTx(ctx, nil)
+	must(t, err)
+	stale, err := gate(ctx, tx, testCell, seen)
+	tx.Rollback()
+	if stale == nil || !errors.Is(err, ErrPaused) {
+		t.Fatalf("the gate must report the stale record, got %v, %v", stale, err)
+	}
+	must(t, Activate(ctx, raced, testCell, rop, StopConfirmation{Receipt: "stop-b"}))
+	must(t, markPaused(ctx, jx.db, testCell, stale))
+	if d, err := jx.Intend(ctx, intent("inv-5", "req-inv-5"), nil); err != nil || !d.Launch {
+		t.Fatalf("a pause from a stale gate must not wedge the new activation, got %+v, %v", d, err)
+	}
 }
 
 // TestJournalConfigRefuses pins the explicit-connection rules offline.
@@ -312,6 +341,11 @@ func TestJournalConfigRefuses(t *testing.T) {
 	}
 	if s := (Config{Password: "hunter2"}).String(); s != "explicit PostgreSQL configuration (redacted)" {
 		t.Errorf("config must not print its fields, got %q", s)
+	}
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s"} {
+		if s := fmt.Sprintf(verb, Config{Password: "hunter2"}); strings.Contains(s, "hunter2") {
+			t.Errorf("config must not print its password under %s, got %q", verb, s)
+		}
 	}
 }
 

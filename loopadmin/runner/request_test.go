@@ -650,6 +650,18 @@ func TestNoGraphDependency(t *testing.T) {
 	if err := runnerModules(site); err == nil {
 		t.Fatal("a workflow module edge passed the module-graph check")
 	}
+	// ...and as a requirement of the local perfrec edge, read from its go.mod.
+	perfrecMod := filepath.Join(root, "perfrec", "go.mod")
+	if err := os.WriteFile(perfrecMod, []byte("module github.com/medici-finance/assay/perfrec\n\ngo 1.27.0\n\nrequire github.com/medici-finance/assay/workflow v0.0.0\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	write(body, "github.com/medici-finance/assay/perfrec")
+	if err := runnerModules(site); err == nil {
+		t.Fatal("a workflow edge under perfrec passed the module-graph check")
+	}
+	if err := os.WriteFile(perfrecMod, []byte("module github.com/medici-finance/assay/perfrec\n\ngo 1.27.0\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	forbidden := body + "\nrequire example.test/forbidden v0.0.0\nreplace example.test/forbidden => ../forbidden\n"
 	write(forbidden, "example.test/forbidden")
 	if err := runnerModules(site); err == nil {
@@ -685,11 +697,47 @@ type listedModule struct {
 	Replace *struct{ Path, Version string }
 }
 
-func goList(dir string, args ...string) ([]byte, error) {
-	cmd := exec.Command("go", append([]string{"list"}, args...)...)
+// goTool runs one go command offline in dir. A failure carries go's own
+// stderr, so a refused scan says why it could not run.
+func goTool(dir string, args ...string) ([]byte, error) {
+	cmd := exec.Command("go", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off")
-	return cmd.Output()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("go %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
+	}
+	return out, nil
+}
+
+func goList(dir string, args ...string) ([]byte, error) {
+	return goTool(dir, append([]string{"list"}, args...)...)
+}
+
+// goModFile is the subset of `go mod edit -json` the module scan reads.
+type goModFile struct {
+	Module  struct{ Path string }
+	Require []struct{ Path, Version string }
+	Replace []struct {
+		Old struct{ Path, Version string }
+		New struct{ Path, Version string }
+	}
+}
+
+// readGoMod parses dir's go.mod with `go mod edit -json`, which reads that one
+// file and never the module cache or the network.
+func readGoMod(dir string) (goModFile, error) {
+	var f goModFile
+	out, err := goTool(dir, "mod", "edit", "-json")
+	if err != nil {
+		return f, err
+	}
+	if err := json.Unmarshal(out, &f); err != nil {
+		return f, fmt.Errorf("invalid go.mod output")
+	}
+	return f, nil
 }
 
 // checkLocalEdge enforces the rules both scans share: the main module is the
@@ -713,32 +761,63 @@ func checkLocalEdge(m listedModule) (handled bool, err error) {
 	return false, nil
 }
 
-// runnerModules scans the module graph.
+// runnerModules scans the module's requirement and replace directives. It
+// reads go.mod files only, so it needs no module cache: the runner's own
+// go.mod (the only one whose replace directives take effect), and the go.mod
+// of each local module it is replaced onto, whose requirements must name no
+// other local assay module either. A module that only appears in a
+// third-party dependency's own requirement graph is never read here; one that
+// provides a package is the package-closure scan's to refuse.
 func runnerModules(dir string) error {
-	out, err := goList(dir, "-m", "-json", "all")
+	f, err := readGoMod(dir)
 	if err != nil {
 		return fmt.Errorf("could not inspect runner module closure: %w", err)
 	}
-	seen := map[string]bool{}
-	dec := json.NewDecoder(bytes.NewReader(out))
-	for {
-		var module listedModule
-		if err := dec.Decode(&module); err == io.EOF {
-			break
-		} else if err != nil {
-			return fmt.Errorf("invalid module closure output")
-		}
-		handled, err := checkLocalEdge(module)
+	if _, err := checkLocalEdge(listedModule{Path: f.Module.Path, Main: true}); err != nil {
+		return err
+	}
+	replaced := map[string]*struct{ Path, Version string }{}
+	for _, r := range f.Replace {
+		r := r
+		replaced[r.Old.Path] = &struct{ Path, Version string }{r.New.Path, r.New.Version}
+	}
+	seen := map[string]bool{f.Module.Path: true}
+	check := func(m listedModule) error {
+		handled, err := checkLocalEdge(m)
 		if err != nil {
 			return err
 		}
-		if !handled && module.Replace != nil {
-			return fmt.Errorf("%s is replaced; only the local perfrec edge may be", module.Path)
+		if !handled && m.Replace != nil {
+			return fmt.Errorf("%s is replaced; only the local perfrec edge may be", m.Path)
 		}
-		seen[module.Path] = true
+		seen[m.Path] = true
+		return nil
+	}
+	for _, r := range f.Require {
+		if err := check(listedModule{Path: r.Path, Version: r.Version, Replace: replaced[r.Path]}); err != nil {
+			return err
+		}
+	}
+	for old, to := range replaced {
+		if !seen[old] {
+			if err := check(listedModule{Path: old, Replace: to}); err != nil {
+				return err
+			}
+		}
 	}
 	if !seen["github.com/medici-finance/assay/loopadmin"] || !seen["github.com/medici-finance/assay/perfrec"] {
 		return fmt.Errorf("runner module closure must contain the runner and local perfrec")
+	}
+	// The local edge is a directory in this repository: its own requirements
+	// are read from its go.mod, again without the module cache.
+	local, err := readGoMod(filepath.Join(dir, filepath.FromSlash(replaced["github.com/medici-finance/assay/perfrec"].Path)))
+	if err != nil {
+		return fmt.Errorf("could not inspect the local perfrec module: %w", err)
+	}
+	for _, r := range local.Require {
+		if strings.HasPrefix(r.Path, "github.com/medici-finance/") {
+			return fmt.Errorf("runner module closure includes another local module")
+		}
 	}
 	return nil
 }

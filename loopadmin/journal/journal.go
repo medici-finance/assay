@@ -117,10 +117,10 @@ func (j *Journal) Gate(ctx context.Context) error {
 	if err != nil {
 		return classify(ctx, "gate", err)
 	}
-	mismatch, err := gate(ctx, tx, j.cell, cur)
+	stale, err := gate(ctx, tx, j.cell, cur)
 	tx.Rollback()
-	if mismatch {
-		if perr := markPaused(ctx, j.db, j.cell); perr != nil {
+	if stale != nil {
+		if perr := markPaused(ctx, j.db, j.cell, stale); perr != nil {
 			return errors.Join(err, perr)
 		}
 	}
@@ -160,10 +160,10 @@ func (j *Journal) Intend(ctx context.Context, in Intent, prior *Receipt) (Decisi
 		return Decision{}, classify(ctx, "intend", err)
 	}
 	defer tx.Rollback()
-	if mismatch, err := gate(ctx, tx, j.cell, cur); err != nil {
+	if stale, err := gate(ctx, tx, j.cell, cur); err != nil {
 		tx.Rollback()
-		if mismatch {
-			if perr := markPaused(ctx, j.db, j.cell); perr != nil {
+		if stale != nil {
+			if perr := markPaused(ctx, j.db, j.cell, stale); perr != nil {
 				return Decision{}, errors.Join(err, perr)
 			}
 		}

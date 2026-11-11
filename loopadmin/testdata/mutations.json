@@ -1622,5 +1622,26 @@
     "file": "runner/request_test.go",
     "old": "\t\tif !ok {\n\t\t\treturn fmt.Errorf(\"runner module closure includes an unadmitted dependency\")",
     "new": "\t\tif false && !ok {\n\t\t\treturn fmt.Errorf(\"runner module closure includes an unadmitted dependency\")"
+  },
+  {
+    "test": "TestJournalIncarnationPaused",
+    "why": "F-pause-race: a stale gate pauses whatever activation the cell now holds",
+    "file": "journal/incarnation.go",
+    "old": "WHERE cell_id = $1 AND incarnation_id = $2 AND key_ref = $3\", cell, stale.id, stale.key)",
+    "new": "WHERE cell_id = $1\", cell)"
+  },
+  {
+    "test": "TestNoGraphDependency",
+    "why": "F-graph-offline: stop reading the local perfrec edge's own requirements",
+    "file": "runner/request_test.go",
+    "old": "\tfor _, r := range local.Require {\n\t\tif strings.HasPrefix(r.Path,",
+    "new": "\tfor _, r := range local.Require {\n\t\tif false && strings.HasPrefix(r.Path,"
+  },
+  {
+    "test": "TestJournalConfigRefuses",
+    "why": "security advisory: %#v prints the Config password",
+    "file": "journal/config.go",
+    "old": "func (c Config) GoString() string",
+    "new": "func (c Config) goString() string"
   }
 ]

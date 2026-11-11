@@ -59,32 +59,40 @@ func current(ctx context.Context, src IncarnationSource, cell string) (Incarnati
 	return cur, nil
 }
 
+// seenRecord is the activation record a gate found naming another
+// incarnation than the current one.
+type seenRecord struct{ id, key string }
+
 // gate checks, inside tx, that the activation record names the current
 // incarnation, is not paused and carries a stop confirmation. A present
-// record naming another incarnation is marked paused so that the journal stays
-// paused until the operator activates again.
-func gate(ctx context.Context, tx *sql.Tx, cell string, cur Incarnation) (mismatch bool, err error) {
+// record naming another incarnation is returned as stale so that the caller
+// marks exactly that record paused; the journal then stays paused until the
+// operator activates again.
+func gate(ctx context.Context, tx *sql.Tx, cell string, cur Incarnation) (stale *seenRecord, err error) {
 	var id, key, receipt string
 	var paused bool
 	err = tx.QueryRowContext(ctx, "SELECT incarnation_id, key_ref, paused, stop_receipt FROM loopadmin.activation WHERE cell_id = $1 FOR SHARE", cell).Scan(&id, &key, &paused, &receipt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return false, ErrPaused
+		return nil, ErrPaused
 	}
 	if err != nil {
-		return false, classify(ctx, "gate", err)
+		return nil, classify(ctx, "gate", err)
 	}
 	if id != cur.ID || key != cur.KeyRef {
-		return true, ErrPaused
+		return &seenRecord{id: id, key: key}, ErrPaused
 	}
 	if paused || receipt == "" {
-		return false, ErrPaused
+		return nil, ErrPaused
 	}
-	return false, nil
+	return nil, nil
 }
 
-// markPaused durably pauses a mismatched activation record.
-func markPaused(ctx context.Context, db *sql.DB, cell string) error {
-	_, err := db.ExecContext(ctx, "UPDATE loopadmin.activation SET paused = true, recorded_at = now() WHERE cell_id = $1", cell)
+// markPaused durably pauses the mismatched activation record the gate saw. It
+// runs after the gate's transaction, so it pauses only while the record still
+// names that stale incarnation: an activation that committed in between is a
+// new record and stays open.
+func markPaused(ctx context.Context, db *sql.DB, cell string, stale *seenRecord) error {
+	_, err := db.ExecContext(ctx, "UPDATE loopadmin.activation SET paused = true, recorded_at = now() WHERE cell_id = $1 AND incarnation_id = $2 AND key_ref = $3", cell, stale.id, stale.key)
 	return classify(ctx, "gate", err)
 }
 
