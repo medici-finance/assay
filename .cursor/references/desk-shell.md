@@ -205,7 +205,10 @@ window acts as, and no other role's:
 | `verify-desk` | `verifier`, `desk` | a verifier dispatch claims and stamps as `desk` |
 | `intake-desk` | `issue-loop`, plus `worker` if it runs `deskreply` | `deskreply` always posts as `worker` |
 
-Add `verifier` to any window that runs `deskevidence`. Add a by-name role (`cell-issues`,
+Add `verifier` to any window that runs `deskevidence`. A review kit claims and stamps as
+`reviewer` wherever it is dispatched, and the table gives `the-desk` no `reviewer` key:
+dispatch review kits from `pr-review-desk`. From a `the-desk` home provisioned by this table,
+a review dispatch fails closed when it mints the reviewer claim credential. Add a by-name role (`cell-issues`,
 `release-runner`, `auditor`) only to the window that uses it. Every extra key is reach that
 window keeps over another role. The table is the minimum the tools need today, not a
 boundary. Leave no role key in the shared config home itself: the search path always ends
