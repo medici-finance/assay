@@ -6,15 +6,12 @@ package main
 // (tools/desk/internal/deskkit/trailer.go), plus that PR's full reviews array.
 //
 // REUSE, not a fork:
-//   - The reviews array itself: brief-07 facts are explicit — "review-rework
-//     computes from the `gh pr view --json reviews` ARRAY (not the laundered
-//     latest view)". autoflip.go's ghModelFlipSource.ReviewState already made
-//     exactly this choice, for exactly this reason (its own comment: `gh pr
-//     view --json reviews` collapses to one row per author, losing the
-//     CHANGES_REQUESTED cycles a rework metric needs; the REST
-//     `pulls/{n}/reviews` endpoint returns every submission). This file's
-//     production source shells to the same REST endpoint and unmarshals into
-//     corroborate.go's existing ghReview/ghAuthor types — no new review shape.
+//   - The reviews array itself: brief-07 facts are explicit — review-rework
+//     computes from the whole reviews ARRAY (not the laundered latest view,
+//     which collapses to one row per author and loses the CHANGES_REQUESTED
+//     cycles a rework metric needs). The `deskread reviews` kind serves every
+//     submission oldest first, and this file reads it into corroborate.go's
+//     existing ghReview/ghAuthor types — no new review shape.
 //   - The Brief: trailer: prlink.go already classifies a PR body's trailer
 //     count (linked/unlinked/multi-linked) but does not extract the VALUE;
 //     extractBriefTrailer below is the one place that does, reusing prlink.go's
@@ -39,10 +36,8 @@ package main
 import (
 	"github.com/medici-finance/assay/statusgen/workref/trailers"
 
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -57,66 +52,54 @@ type bfPRRecord struct {
 
 // bfPRSource is the network seam --review-rework and --first-pass-yield share:
 // merged PRs in a window (with body, for the Brief: trailer) and one PR's full
-// reviews array. The production impl shells to gh; tests inject a fake so
+// reviews array. The production impl reads through deskread; tests inject a fake so
 // neither metric's compute logic is ever exercised over the network.
 type bfPRSource interface {
 	MergedPRs(repo string, since time.Time) ([]bfPRRecord, error)
 	Reviews(repo string, pr int) ([]ghReview, error)
 }
 
-// ghBFPRSource is the production bfPRSource.
-type ghBFPRSource struct{}
+// deskreadBFPRSource is the production bfPRSource: both reads go through the desk-tools read verb
+// (`deskread changes` and `deskread reviews`), the forge seam the desk verbs read through, not a
+// `gh` shell-out. The reviews are the un-laundered array brief-07's facts call for — one row per
+// submission, oldest first — not the one-row-per-author latest view.
+type deskreadBFPRSource struct{}
 
-// MergedPRs mirrors ghDoraTimingSource.MergedPRs (doratiming.go) — same
-// endpoint, same closed+base=main+client-side-since-filter shape — but also
-// reads `body`, which that source has no need of.
-func (ghBFPRSource) MergedPRs(repo string, since time.Time) ([]bfPRRecord, error) {
-	out, err := ghGuard(exec.Command("gh", "api",
-		fmt.Sprintf("repos/%s/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100", repo),
-	)).Output()
+// MergedPRs reads the merged changes and keeps those based on main and merged at or after since —
+// the same filter the `gh api pulls?state=closed&base=main` read applied client side. A list the
+// verb could not serve in full is an error (MergedChanges), which every caller already reports as
+// could-not-check; a window busier than the verb's page bound is not read as a complete one.
+func (deskreadBFPRSource) MergedPRs(repo string, since time.Time) ([]bfPRRecord, error) {
+	changes, err := newDeskreadReader().MergedChanges(repo)
 	if err != nil {
-		return nil, fmt.Errorf("gh api pulls: %w", err)
-	}
-	var raw []struct {
-		Number   int    `json:"number"`
-		Body     string `json:"body"`
-		MergedAt string `json:"merged_at"`
-	}
-	if err := json.Unmarshal(out, &raw); err != nil {
-		return nil, fmt.Errorf("unmarshal pulls: %w", err)
+		return nil, err
 	}
 	var prs []bfPRRecord
-	for _, p := range raw {
-		if p.MergedAt == "" {
-			continue // closed unmerged
-		}
-		mt, perr := time.Parse(time.RFC3339, p.MergedAt)
-		if perr != nil || mt.Before(since) {
+	for _, c := range changes {
+		if c.BaseRef != "main" {
 			continue
 		}
-		prs = append(prs, bfPRRecord{Number: p.Number, Body: p.Body, MergedAt: p.MergedAt})
+		mt, perr := time.Parse(time.RFC3339, c.MergedAt)
+		if perr != nil {
+			return nil, fmt.Errorf("change #%d has an unreadable mergedAt %q: %w", c.Number, c.MergedAt, perr)
+		}
+		if mt.Before(since) {
+			continue
+		}
+		prs = append(prs, bfPRRecord{Number: c.Number, Body: c.Body, MergedAt: c.MergedAt})
 	}
 	return prs, nil
 }
 
-// Reviews reads the REST reviews-endpoint array (autoflip.go's ghRESTReview
-// shape, reused as-is) — the un-laundered array brief-07's facts call for.
-func (ghBFPRSource) Reviews(repo string, pr int) ([]ghReview, error) {
-	out, err := ghGuard(exec.Command("gh", "api", "--paginate",
-		fmt.Sprintf("repos/%s/pulls/%d/reviews", repo, pr))).Output()
-	if err != nil {
-		return nil, fmt.Errorf("gh api pulls/%d/reviews: %w", pr, err)
-	}
-	var rest []ghRESTReview
-	if err := json.Unmarshal(out, &rest); err != nil {
-		return nil, fmt.Errorf("unmarshal PR %d reviews: %w", pr, err)
-	}
-	reviews := make([]ghReview, 0, len(rest))
-	for _, r := range rest {
-		reviews = append(reviews, ghReview{Author: ghAuthor{Login: r.User.Login}, State: r.State})
-	}
-	return reviews, nil
+// Reviews reads one change's whole review array through `deskread reviews`.
+func (deskreadBFPRSource) Reviews(repo string, pr int) ([]ghReview, error) {
+	return newDeskreadReader().ChangeReviews(repo, pr)
 }
+
+// defaultBFPRSource is the source the production --review-rework, --first-pass-yield and
+// --assayscore paths read: a var with a stable name so a test exercises the production wiring
+// itself, not a hand-picked implementation.
+var defaultBFPRSource bfPRSource = deskreadBFPRSource{}
 
 // bfBriefTrailerRe matches a `Brief: <id>` trailer line (deskkit's trailer
 // grammar); the captured id is trimmed of trailing punctuation a prose

@@ -104,6 +104,7 @@ var readKinds = map[string]string{
 	"change":         "one change, with its merge-commit SHA (deskkit.Forge.GetPullRequest)",
 	"change-commits": "a change's own commit SHAs, with Complete (deskkit.Forge.ListChangeCommits)",
 	"change-files":   "a change's file list with patches, reconciled against its file count (deskkit.Forge.ListChangedFiles + GetPullRequest)",
+	"reviews":        "a change's whole review array, oldest first, one row per submission (deskkit.Forge.ReviewsAtHead)",
 	"default-branch": "a repository's default branch (deskkit.Forge.RepoDefaultBranch)",
 }
 
@@ -112,7 +113,7 @@ var readKinds = map[string]string{
 var (
 	repoKinds   = map[string]bool{"issues": true, "issue-list": true, "changes": true, "default-branch": true}
 	issueKinds  = map[string]bool{"trust": true, "comments": true, "issue": true, "issue-states": true, "label-events": true}
-	changeKinds = map[string]bool{"comments": true, "change": true, "change-commits": true, "change-files": true}
+	changeKinds = map[string]bool{"comments": true, "change": true, "change-commits": true, "change-files": true, "reviews": true}
 )
 
 // stateWords is the CLOSED --state vocabulary per kind that takes one. A kind absent from this
@@ -128,7 +129,7 @@ var helpLong = `deskread — read-only forge reads on the seam, as JSON
 
 addressing: per-repo kinds (issues, issue-list, changes, default-branch) take --repo
 <owner/repo>; per-issue kinds (trust, issue, issue-states, label-events) take --issue <owner/repo#N>;
-per-change kinds (change, change-commits, change-files) take --change <owner/repo#N>;
+per-change kinds (change, change-commits, change-files, reviews) take --change <owner/repo#N>;
 comments takes exactly one of --issue and --change. Each address flag repeats, and ONE
 invocation serves the whole set, read concurrently (--max-parallel, default 6).
 --state: issue-list (open|closed|all, default open) and changes (merged|closed|all,
@@ -158,7 +159,11 @@ output: a versioned JSON envelope on stdout
    "partial": [{"repo": "o/n", "number": 7, "reason": "…"}]}
 
   per-issue and per-change kinds answer under "items", one key per kind: "issue",
-  "issueStates", "labelEvents", "change", "changeCommits", "changeFiles".
+  "issueStates", "labelEvents", "change", "changeCommits", "changeFiles", "reviews".
+
+  reviews answers a list, [{"authorLogin": …, "authorId": …, "state": "APPROVED|CHANGES_REQUESTED|
+  COMMENTED|DISMISSED|PENDING", "commitId": …, "submittedAt": …}], every submission oldest first
+  (an empty list is a real answer: nobody has reviewed). It is transport: it carries no verdict.
 
   label-events answers {"complete": …, "events": [{"label": …, "removed": …, "createdAt": …,
   "actorLogin": …, "actorId": …}]}: the whole history oldest first, an event whose label the
@@ -869,6 +874,7 @@ type ItemResult struct {
 	Change        *ChangeDetailJSON  `json:"change,omitempty"`
 	ChangeCommits *ChangeCommitsJSON `json:"changeCommits,omitempty"`
 	ChangeFiles   *ChangeFilesJSON   `json:"changeFiles,omitempty"`
+	Reviews       *[]ReviewJSON      `json:"reviews,omitempty"`
 }
 
 // PartialItem is one issue or change that was NOT read, and why. It never carries a data field.
@@ -922,6 +928,18 @@ type CommentJSON struct {
 	AuthorType  string `json:"authorType,omitempty"`
 	URL         string `json:"url,omitempty"`
 	UpdatedAt   string `json:"updatedAt,omitempty"`
+}
+
+// ReviewJSON is one deskkit.Review (the `reviews` kind), in the fields a review-history consumer
+// reads: who, the state word as the seam renders it, the commit the review was submitted against
+// and when. The body is not carried (no consumer reads it). An empty CommitID or SubmittedAt is
+// could-not-check, never "at the current head" or "just now".
+type ReviewJSON struct {
+	AuthorLogin string `json:"authorLogin,omitempty"`
+	AuthorID    int64  `json:"authorId,omitempty"`
+	State       string `json:"state"`
+	CommitID    string `json:"commitId,omitempty"`
+	SubmittedAt string `json:"submittedAt,omitempty"`
 }
 
 // IssueDetailJSON is one deskkit.Issue read through GetIssueTyped(issue kind). ClosedBy is set
@@ -1220,6 +1238,21 @@ func readItem(kind string, target deskkit.TargetKind, tgt issueTarget, o readOpt
 			})
 		}
 		res.ChangeFiles = fj
+	case "reviews":
+		rs, rerr := f.ReviewsAtHead(fr, tgt.Number)
+		if rerr != nil {
+			return nil, rerr
+		}
+		// ReviewsAtHead pages to exhaustion or errors, so a nil slice is "no reviews", a real
+		// answer, and renders as [] below.
+		out := make([]ReviewJSON, 0, len(rs))
+		for _, r := range rs {
+			out = append(out, ReviewJSON{
+				AuthorLogin: r.Author.Login, AuthorID: r.Author.ID, State: r.State,
+				CommitID: r.CommitID, SubmittedAt: r.SubmittedAt,
+			})
+		}
+		res.Reviews = &out
 	default:
 		return nil, deskkit.Refused("unknown per-item kind " + kind)
 	}
