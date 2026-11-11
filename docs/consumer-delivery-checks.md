@@ -70,11 +70,13 @@ several (a later follow-up PR that carries the same trailer makes the history am
 shallow repository, an octopus merge, or a candidate not reachable from the fetched mainline
 ref is could-not-check (exit 2), and the refusal names what was searched. A stderr line names
 the derived delivery and which source supplied it.
-The search reads through the in-process Git library (one validated walk of every commit
-reachable from HEAD, with its parents and message) and starts no new Git process. A
-repository profile the library does not qualify, or a commit whose message it cannot read
-exactly, is could-not-check too: the remedy is the marker or explicit `--delivery`/`--base`,
-never a native fallback.
+The search reads commits and their messages in process, through the Git library (one
+validated walk of every commit reachable from HEAD, with its parents and message). Ancestry
+queries use the existing native merge-base reads of the coverage adapter, one Git process per
+query: a binary search per merged naming commit plus the landing check, so the count grows
+with history. No new Git launch site is added. A repository profile the library does not
+qualify, or a commit whose message it cannot read exactly, is could-not-check too: the commit
+walk has no native fallback, and the remedy is the marker or explicit `--delivery`/`--base`.
 
 It is could-not-check (exit 2), never an unpinned diff and never a verdict, when the brief is
 not committed at HEAD, has no marker and no single history candidate, a code-span or

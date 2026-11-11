@@ -81,8 +81,6 @@ func (r *Repo) CommitRange(base, tip string) ([]RangeCommit, error) {
 	return out, nil
 }
 
-// The caller holds graphMu. Publish an index only after every parent was read:
-// failed or cyclic ancestry is retryable uncertainty, never a cached small set.
 // ReachableCommits returns every commit reachable from tip, tip included: the
 // base-less form of CommitRange, over the same indexed graph and records. The
 // tip must be a full object ID, every traversed parent must be readable, and the
@@ -115,6 +113,8 @@ func (r *Repo) ReachableCommits(tip string) ([]RangeCommit, error) {
 	return all, nil
 }
 
+// The caller holds graphMu. Publish an index only after every parent was read:
+// failed or cyclic ancestry is retryable uncertainty, never a cached small set.
 func (r *Repo) loadRangeNode(id string, visiting map[string]bool) (int, error) {
 	if index, ok := r.graphIDs[id]; ok {
 		return index, nil
