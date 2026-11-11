@@ -3054,6 +3054,8 @@ func glCases() []glCase {
 	}
 }
 
+// The read_file* cases are the #6163 fail-first cases (GitLab file reads typed by the adapter).
+// regression: #6163
 func TestForgeGitlabGolden(t *testing.T) {
 	for _, tc := range glCases() {
 		tc := tc
