@@ -76,7 +76,7 @@ changed or discarded.
 | `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, the `before_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (failure ⇒ exit 6, no prompt, claim released), roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
 | `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, the `desk-decided` label and body block agree with no standing `Undeclared-desk-decision:` finding, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
 | `deskpost` | `review`, `security-review`, `comment`, `ready` — as the reviewer App; `finish` posts a verdict, confirms it at the reviewed head and releases the review claim in one command | outward write | yes |
-| `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push); each takes `--check`, an OFFLINE gate run — every local check the write path runs, stopped before any token mint or connection; `--decided <file>` on `create`/`edit` declares a desk-taken reversible default as a `## Desk-decided` body section (decision:/alternative:/cost: triples) plus the `desk-decided` label — see "Desk-decided: the merge is the gate" below | outward write | yes |
+| `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push; its link trailer is fixed except through `--relink-from N --relink-to M --relink-reason TEXT`, all three or none, which runs only from the PR's own checkout and moves only a same-repository `Issue:`/`Fixes:` link to an open, trusted-or-blessed, ungated issue (a pull-request number refuses) and posts an audit comment naming old, new and reason BEFORE the body edit — #5020); each takes `--check`, an OFFLINE gate run — every local check the write path runs, stopped before any token mint or connection; `--decided <file>` on `create`/`edit` declares a desk-taken reversible default as a `## Desk-decided` body section (decision:/alternative:/cost: triples) plus the `desk-decided` label — see "Desk-decided: the merge is the gate" below | outward write | yes |
 | `deskreply` | PR reply comment under the **worker** identity; `--workpad` upserts ONE marked progress comment per PR (find the worker's own newest unresolved comment carrying the workpad marker and edit it in place, or create the first one) instead of always posting a new reply — `--dry-run` (plain reply or `--workpad`) reports what would post without writing; `--kind mr` names the merge request where a GitLab number also names an issue (without it that number refuses could-not-check, exit 6), and `--kind issue` is refused because the verb replies only on your own PR | outward write | yes |
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
 | `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` (the documented human-ruled BATCH lane) — the issue-CLOSING gate (a fetched human authorization or nothing); plus two identity+structure lanes that cite no artifact because they close nothing belonging to another party: `self-withdraw` (the authoring App's own draft, pinned by login AND bot id) and `verify-gate-refire` (the verifier session reopens + re-closes a closed `verify-gate` card) | outward write | yes |
@@ -3518,6 +3518,47 @@ review or write an Evidence commit from a cold shell, with the App **ID** resolv
 the search path, so the failure read as a broken key rather than a wrong directory.
 
 `<ROLE>_PEM` and `<ROLE>_TOKEN` still override an individual file outright, in all three.
+
+#### Role separation: a loop takes only its own role (#6069)
+
+`desktoken` reads `$DESK_LOOP` and refuses (exit 5) a role that another loop acts as, with
+any flags (`desktoken --no-rotate <role> --repo <slug>` included), before it reads any key or
+custody file on either forge. The table is
+`deskkit.LoopTokenRoles()`, the one every desk verb reads. Retired loop names resolve to their
+successor, and an unknown loop is exit 6. Two cases pass unchecked. One is a role no loop acts
+as (`cell-issues`, `release-runner`, `auditor`, `intake-loop`), which callers take by name. The
+other is an unset `$DESK_LOOP`: an operator's shell or the scrubbed cold-mint probe, not a desk
+window.
+
+`--cross-role "<reason>"` admits a refused mint. The audit row records
+`cross-role override: loop=<loop> acts-as=<role> role=<role> reason="<reason>"` on every use,
+a cache reuse included (the one row a reuse otherwise skips). A blank reason is no override.
+Two verbs pass it themselves because their posting identity is fixed: `deskreply` mints
+`worker` and `deskevidence` mints `verifier` from whichever window calls them, each with a
+reason that names the verb and the loop.
+
+`deskpost review`, `security-review` and `finish` refuse a verdict unless `$DESK_LOOP` acts
+as `reviewer`. The check sits in the shared verdict path, before the body check, the mint and
+any forge read, so a caller that skips the CLI is refused too.
+
+These checks catch a window reaching for the wrong role by mistake. They are not a boundary,
+because a session sets its own environment. **A shared config home gives no separation
+between roles.** Give each role window its own `ASSAY_CONFIG_HOME`. It holds the key,
+`apps.env` entry and token cache of each role that a tool run in that window acts as, and no
+other role's. That is the window's own role, plus `desk` in a `worker-desk` or `verify-desk`
+window, because `deskdispatch` takes the claim and the model stamp as the desk App for worker
+and verifier kits. It also includes the role a dispatched agent mints, and `worker` or
+`verifier` wherever `deskreply` or `deskevidence` runs. A review kit claims and stamps as
+`reviewer` wherever it is dispatched, and the table gives `the-desk` no `reviewer` key, so
+review kits are dispatched from `pr-review-desk`; from a `the-desk` home provisioned by the
+table, a review dispatch fails closed at the reviewer claim mint. Keep no role key in `~/.config/assay`,
+which the search path always reads last. A separate OS user per role is what turns that split
+into a boundary. The per-window table is in `plugins/assay/references/desk-shell.md`
+§Role separation.
+
+`deskdispatch` prints its claim commands (the NOT LAUNCHED, stale-claim and by-hand release
+hints, and the agent's release line) with `--cross-role` whenever the shell that runs them
+does not take the role they name. They therefore still run as printed.
 
 #### What a token lookup costs, and the two caches that make it nearly free
 
