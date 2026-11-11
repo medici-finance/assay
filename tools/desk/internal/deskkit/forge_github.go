@@ -703,10 +703,10 @@ func (g *GitHubForge) SearchIssues(repo ForgeRepo, in SearchIssuesInput) ([]Issu
 		if err := validateDecisionSearch(in); err != nil {
 			return nil, err
 		}
-		return g.searchDecisionMarkers(repo, in.DecisionGateBrief)
+		return g.searchDecisionMarkers(repo, in)
 	}
-	if in.DecisionGateBrief != "" {
-		return nil, Refused("decision-marker brief requires marker discovery mode")
+	if in.DecisionGateBrief != "" || in.DecisionGateLegacy {
+		return nil, Refused("decision-marker brief or legacy key requires marker discovery mode")
 	}
 	q := strings.TrimSpace(fmt.Sprintf("repo:%s is:issue %s", repo.Slug(), strings.TrimSpace(in.Query)))
 	path := fmt.Sprintf("/search/issues?q=%s&per_page=%d", url.QueryEscape(q), forgeSearchPerPage)

@@ -1,0 +1,1 @@
+decision-issue: refused: assay:ex:sample:07 decision-trigger=spec but its '## Human decision' section is still only a placeholder (an HTML comment or a 'Decision-trigger: spec' marker line) — the spec step must author it (context, numbered options, a 'Default if no answer:' line) before this stage can file (that authored section IS what ripens a spec-trigger brief)

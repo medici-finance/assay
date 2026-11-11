@@ -630,6 +630,9 @@ type shellPlan struct {
 	// stop is the run's interrupt (watchRunInterrupt): a delivered stop
 	// signal cancels it, and with it every row. nil never cancels.
 	stop context.Context
+	// captureOutput is an opt-in base-run sink. It sees primary bytes only for
+	// commands that ran; a failed write stops later rows and prevents a witness.
+	captureOutput func(string, []byte) error
 }
 
 // rowEnv is the environment every Verify row of the run executes in: the
@@ -1692,6 +1695,13 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan, r.Shell)
 		}
 		state, note := parseExpect(r.Expect).verdict(res)
+		captureFailed := false
+		if plan.captureOutput != nil && !res.couldNotRun && (state == statePass || state == stateFail) {
+			if err := plan.captureOutput(r.ID, res.output); err != nil {
+				state, note = stateCouldNotRun, "could not retain base primary output"
+				captureFailed = true
+			}
+		}
 		// Record WHICH shell actually executed the row (issue #1424) — but only
 		// when it ACTUALLY RAN under a NON-DEFAULT shell. A could-not-run row never
 		// ran (its note already names the shell/OS it could not use), and every
@@ -1719,6 +1729,9 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 			Note:         note,
 			Reads:        rowReads(tree, res),
 		})
+		if captureFailed {
+			break
+		}
 	}
 	return out
 }
@@ -2028,6 +2041,13 @@ Flags:
                     --sandbox=container-netns, whose receipt, image, witness,
                     tree and admission checks are unchanged
   --timeout <dur>   per-row wall-clock limit (default 10m); a row that times out is could-not-run
+  --base-log <dir>  with --fail-first row execution only: retain base combined
+                    stdout/stderr in a NEW private directory outside the admitted
+                    and baseline-history homes. The absolute path must have no
+                    traversal or symlink components. Files are exclusively
+                    created 0600; Base cells bind full output digests and generated
+                    filenames. Primary bytes are never printed. Skipped/no-run
+                    rows have no log. A retention failure refuses the run.
   --root <dir>      repo root the commands run in (default: the git toplevel of the cwd);
                     a directory below its repository's toplevel is refused. A
                     cross-repository verifier run executes its rows only in the
@@ -2268,6 +2288,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	sandbox := fs.String("sandbox", sandboxUnshare, "network-off sandbox for check:ci rows: "+sandboxUnshare+" (default) or "+sandboxContainerNetns+" (runner already inside a --network none container; refused in CI)")
 	failFirstMode := fs.Bool("fail-first", false, "run each risk-bearing row at the merge-base first and record red/green in a Base column")
 	baseRev := fs.String("base", "", "base revision for --fail-first (default: the merge-base of HEAD and origin/main)")
+	baseLog := fs.String("base-log", "", "with --fail-first: retain base primary output in a new private directory outside the home")
 	envFile := fs.String("env-file", "", "role env-file passed to the container as --env-file (path only; contents never read/logged); defaults to $"+inContainerEnvFileVar)
 	admissionReceipt := fs.String("admission-receipt", "", "container-netns and --close-bracket: the receipt file --open-bracket wrote, read-only and outside the home")
 	imageDigest := fs.String("container-image-digest", "", "container-netns only (required): sha256:<64 hex> digest of the image the rows run in, supplied by the host")
@@ -2290,6 +2311,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return 0
 		}
 		fmt.Fprint(stderr, verifyrunUsage)
+		return verifyrunExitUsageError
+	}
+	if *baseLog != "" && (!*failFirstMode || *checkMode || *inContainer || *openBracket || *closeBracket || *bracketDigestMode) {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --base-log requires --fail-first row execution; no row ran")
 		return verifyrunExitUsageError
 	}
 
@@ -2734,7 +2759,16 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			fmt.Fprintf(stdout, "--fail-first: no risk-bearing row %s; every row is recorded not-selected at base\n", where)
 		}
 		var ferr error
-		ff, ferr = runFailFirstBase(plan, *sandbox, baseRoot, base, rows, riskyIDs, *timeout, *ci)
+		var retained *baseOutputLog
+		if *baseLog != "" {
+			retained, ferr = newBaseOutputLog(root, *baseLog, baseRoot)
+			if ferr != nil {
+				fmt.Fprintln(stderr, "statusgen verifyrun: --base-log:", ferr)
+				return verifyrunExitCouldNot
+			}
+			defer retained.close()
+		}
+		ff, ferr = runFailFirstBase(plan, *sandbox, baseRoot, base, rows, riskyIDs, *timeout, *ci, retained)
 		if ferr != nil {
 			fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first:", ferr)
 			return verifyrunExitCouldNot
@@ -2766,6 +2800,9 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		for i := range ws {
 			f := ff[ws[i].ID]
 			ws[i].Base = failFirstCell(f.Base, f.State, f.Exit, ws[i].Tree)
+			if f.OutputDigest != "" {
+				ws[i].Base += " output=" + f.OutputDigest + " log=" + f.LogName
+			}
 		}
 	}
 	target := witnessAnnotationRepo(witnessTargetRepo(path), witnessOriginRepo(root))
