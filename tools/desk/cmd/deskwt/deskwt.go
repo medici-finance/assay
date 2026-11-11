@@ -1002,8 +1002,19 @@ func addLockReason(session string) string {
 // the fixture suite can drive the two outcomes real git will not produce on demand — a
 // lock that fails, and one that reports success without taking — and prove add rolls the
 // tree back on both; production never assigns it.
+//
+// role-init's stale-registration recovery (recoverOwnStaleRegistration) restores a lock
+// through it too, so that restore adds no git-exec site of its own.
 var worktreeLockFn = func(dir, reason, rt string) error {
 	_, err := runGit(dir, "worktree", "lock", "--reason", reason, rt)
+	return err
+}
+
+// worktreeUnlock runs `git worktree unlock <rt>`. It is the one spelling of the unlock that
+// role-init (its remove arm and its stale-registration recovery) and the husk remover share,
+// so the git-exec ratchet (scripts/count-git-exec.sh) counts one site for all three.
+func worktreeUnlock(dir, rt string) error {
+	_, err := runGit(dir, "worktree", "unlock", rt)
 	return err
 }
 
