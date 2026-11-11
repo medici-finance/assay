@@ -79,6 +79,10 @@ var scrubbedCases = map[string]bool{
 
 var scrubbedCaseArmRE = regexp.MustCompile(`(?m)^\s+([a-z][a-z-]*)\) case_[a-z_]+ ;;$`)
 
+// scrubbedCaseDefRE reads each case_<name>() definition, so a case whose dispatch arm is written
+// in a shape scrubbedCaseArmRE does not see is still counted.
+var scrubbedCaseDefRE = regexp.MustCompile(`(?m)^case_([a-z][a-z_]*)\(\)\s*\{`)
+
 // TestScrubbedCellShellSuite runs each case of tools/cellctl/tests/scrubbed-cell.test.sh against
 // the Go binary. Cases that need a real tmux skip, by name, where tmux is not installed; every
 // other case runs on every host. Its check-pass case kept the retired `codex config get` stub
@@ -90,17 +94,21 @@ func TestScrubbedCellShellSuite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var arms, known []string
+	var arms, defs, known []string
 	for _, m := range scrubbedCaseArmRE.FindAllStringSubmatch(string(src), -1) {
 		arms = append(arms, m[1])
+	}
+	for _, m := range scrubbedCaseDefRE.FindAllStringSubmatch(string(src), -1) {
+		defs = append(defs, strings.ReplaceAll(m[1], "_", "-"))
 	}
 	for name := range scrubbedCases {
 		known = append(known, name)
 	}
 	sort.Strings(arms)
+	sort.Strings(defs)
 	sort.Strings(known)
-	if strings.Join(arms, " ") != strings.Join(known, " ") {
-		t.Fatalf("scrubbed-cell.test.sh cases %v, scrubbedCases %v: classify every case", arms, known)
+	if strings.Join(arms, " ") != strings.Join(known, " ") || strings.Join(defs, " ") != strings.Join(known, " ") {
+		t.Fatalf("scrubbed-cell.test.sh arms %v, case functions %v, scrubbedCases %v: classify every case", arms, defs, known)
 	}
 	for _, name := range known {
 		t.Run(name, func(t *testing.T) {

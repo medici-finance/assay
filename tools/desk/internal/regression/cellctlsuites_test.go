@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -53,8 +54,8 @@ func TestReg6175ProviderSuite(t *testing.T) {
 }
 
 // cellctlSuiteRunners names, for each tools/cellctl/tests suite a `go test` runs, every test that
-// runs it, as "<package dir>:<TestName>". The named function must exist in that package and its
-// file must name the suite.
+// runs it, as "<package dir>:<TestName>". The named function must exist in that package and name
+// the suite in a string literal inside its own body.
 var cellctlSuiteRunners = map[string][]string{
 	"down.test.sh":               {"tools/desk/cmd/cellctl:TestDownShellSuite"},
 	"gen-shims-gh-token.test.sh": {"tools/desk/internal/regression:TestReg1145ShimCredential"},
@@ -76,7 +77,7 @@ var unrunCellctlSuites = map[string]bool{
 }
 
 // cellctlSuiteFaults returns one line per suite in suites that no runner covers or that sits in
-// both tables, per runner entry that does not resolve to a test naming its suite, and per stale
+// both tables, per runner entry whose test does not name its suite in its own body, and per stale
 // entry in either table. testFiles maps a package dir to its *_test.go sources by file name.
 func cellctlSuiteFaults(suites []string, runners map[string][]string, unrun map[string]bool, testFiles map[string]map[string][]byte) []string {
 	var faults []string
@@ -99,7 +100,7 @@ func cellctlSuiteFaults(suites []string, runners map[string][]string, unrun map[
 		for _, entry := range names {
 			pkg, name, ok := strings.Cut(entry, ":")
 			if !ok || !runnerNamesSuite(testFiles[pkg], name, s) {
-				faults = append(faults, fmt.Sprintf("%s: runner %s is not a test in a file that names the suite", s, entry))
+				faults = append(faults, fmt.Sprintf("%s: runner %s is not a test whose own body names the suite", s, entry))
 			}
 		}
 	}
@@ -112,18 +113,33 @@ func cellctlSuiteFaults(suites []string, runners map[string][]string, unrun map[
 	return faults
 }
 
-// runnerNamesSuite reports whether a top-level func name is declared in one of files whose
-// source also names suite.
+// runnerNamesSuite reports whether a top-level func name, declared in one of files, names suite in
+// a string literal inside its OWN body: the literal equals the suite or ends in "/<suite>". A
+// mention anywhere else in the file (a table, a comment, a sibling test) does not count, so an
+// entry naming a test that never runs the suite does not resolve (#6175 review).
 func runnerNamesSuite(files map[string][]byte, name, suite string) bool {
 	for file, src := range files {
 		f, err := parser.ParseFile(token.NewFileSet(), file, src, 0)
-		if err != nil || !strings.Contains(string(src), `"`+suite+`"`) && !strings.Contains(string(src), "/"+suite+`"`) {
+		if err != nil {
 			continue
 		}
 		for _, decl := range f.Decls {
-			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == name {
-				return true
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Recv != nil || fn.Name.Name != name || fn.Body == nil {
+				continue
 			}
+			found := false
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				lit, ok := n.(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					return !found
+				}
+				if v, err := strconv.Unquote(lit.Value); err == nil && (v == suite || strings.HasSuffix(v, "/"+suite)) {
+					found = true
+				}
+				return !found
+			})
+			return found
 		}
 	}
 	return false
@@ -175,17 +191,30 @@ func TestCellctlSuitesHaveRunners(t *testing.T) {
 		t.Errorf("%s", strings.Join(faults, "\n"))
 	}
 
+	// Planted controls. x_test.go names c.test.sh in a table, as this file's own tables name every
+	// suite, and holds a test that does not run it; e.test.sh is listed under the runner of its
+	// sibling d.test.sh in the same file. A matcher that reads the file, not the function, passes
+	// both.
 	plantedFiles := map[string]map[string][]byte{"p": {
 		"a_test.go": []byte("package p\nfunc TestRunsA(t *T) { run(\"a.test.sh\") }\n"),
 		"b_test.go": []byte("package p\nfunc TestRunsNothing(t *T) {}\n"),
+		"x_test.go": []byte("package p\nvar suites = []string{\"c.test.sh\", \"d.test.sh\", \"e.test.sh\"}\n" +
+			"func TestTableOnly(t *T) { _ = suites }\n" +
+			"func TestRunsD(t *T) { run(\"tools/d.test.sh\") }\n" +
+			"func TestRunsE(t *T) { run(\"tools/e.test.sh\") }\n"),
 	}}
 	got := cellctlSuiteFaults(
-		[]string{"a.test.sh", "b.test.sh", "plant.test.sh"},
-		map[string][]string{"a.test.sh": {"p:TestRunsA"}, "b.test.sh": {"p:TestRunsNothing"}},
+		[]string{"a.test.sh", "b.test.sh", "c.test.sh", "d.test.sh", "e.test.sh", "plant.test.sh"},
+		map[string][]string{
+			"a.test.sh": {"p:TestRunsA"}, "b.test.sh": {"p:TestRunsNothing"},
+			"c.test.sh": {"p:TestTableOnly"}, "d.test.sh": {"p:TestRunsD"}, "e.test.sh": {"p:TestRunsD"},
+		},
 		map[string]bool{"gone.test.sh": true},
 		plantedFiles)
 	want := []string{
-		"b.test.sh: runner p:TestRunsNothing is not a test in a file that names the suite",
+		"b.test.sh: runner p:TestRunsNothing is not a test whose own body names the suite",
+		"c.test.sh: runner p:TestTableOnly is not a test whose own body names the suite",
+		"e.test.sh: runner p:TestRunsD is not a test whose own body names the suite",
 		"gone.test.sh: in unrunCellctlSuites but not in tools/cellctl/tests",
 		"plant.test.sh: no go test runs this suite; add a runner and list it in cellctlSuiteRunners",
 	}
