@@ -11,7 +11,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [agent-execution](docs/streams/agent-execution/README.md) | P2 | active | 0/10 | 2026-11-10 |  |
+| [agent-execution](docs/streams/agent-execution/README.md) | P2 | active | 0/10 | 2026-11-11 |  |
 | [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/10 | 2026-11-10 |  |
 | [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 6/15 | 2026-11-11 |  |
 | [cell-api](docs/streams/cell-api/README.md) | P2 | active | 0/9 | 2026-11-10 |  |
@@ -141,7 +141,7 @@ _Held by per-stream caps: 17 brief(s) across 2 stream(s) — top: desktools-v2. 
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | desktools-v2 | 30 — Port the GitLab fleet provisioner to a Go command [exec:strong] | 3 | 2000 |
 | statusgen | 32 — Connect board drift notices to the existing reconciliation owners [exec:strong] | 1 | 2000 |
-| agent-execution | 10 — Evaluate a Pi Durable runner with offline recovery fixtures [exec:strong] | 1 | 1010 |
+| agent-execution | 10 — Evaluate a Pi Durable runner with offline recovery fixtures [exec:strong] | 1 | 1000 |
 | desk-containers | 34 — Project secrets reach dispatched worker and verifier windows, never an untrusted head [exec:strong] | 9 | 1000 |
 
 ## Intake queue
@@ -277,7 +277,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 38 [exec:strong] | implemented | 12500 | 23 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | forge-neutral | 33 [exec:strong] | implemented | 12000 | 20 | — | operator | environment blocker, cite #4322 | — | — |
 | desktools-v2 | 66 [exec:strong] | implemented | 11500 | 21 | — | operator | environment blocker, cite medici-finance/assay#5112 | — | — |
-| agent-execution | 01 [exec:strong] | implemented | 8010 | 14 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
+| agent-execution | 01 [exec:strong] | implemented | 8000 | 14 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 | cellctl-windows | 00 [exec:strong] | implemented | 5550 | 7 | — | operator | `$log = New-TemporaryFile; go test ./internal/celllaunch -run '^TestLaunchSpecRoundTrip$' -count=1 -v *> $log; if ($LASTEXITCODE -ne 0) { Get-Content $log; exit 1 }; if (-not (Select-String -Path $log -SimpleMatch '--- PASS: TestLaunchSpecRoundTrip ')) { exit 1 }; if (Select-String -Path $log -SimpleMatch '--- SKIP:') { exit 1 }` | — | — |
 | iso-9001 | 03 [exec:strong] | verified | 3010 | 4 | — | operator | environment blocker, cite #4823 | 2026-10-19 assay-verifier-app[bot] @ 810a5edf064b (claude-opus-5-5) | — |
