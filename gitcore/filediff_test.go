@@ -32,10 +32,8 @@ func TestFileDiff(t *testing.T) {
 	if _, err := repo.FileDiff("HEAD~2", "HEAD", "other.txt"); err == nil {
 		t.Fatal("a file missing from the old tree must remain unreadable")
 	}
-	if err := os.Chmod(filepath.Join(f.Dir, "nested/a file.md"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	f.CommitFile(t, "nested/a file.md", "one\nthree\n", "mode change")
+	mustGit2(t, f, "update-index", "--chmod=+x", "--", "nested/a file.md")
+	mustGit2(t, f, "commit", "-m", "mode change")
 	if _, err := repo.FileDiff("HEAD~1", "HEAD", "nested/a file.md"); err == nil {
 		t.Fatal("a mode change must not become a content-only patch")
 	}
