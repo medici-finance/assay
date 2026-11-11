@@ -152,7 +152,9 @@ case_new(){
   assert "new: cell.env CELL_REPO_SLUG is the --repo-slug value" 'grep -qx "CELL_REPO_SLUG=example-org/example-repo" "$C/cell.env"'
   assert "new: cell.env DESKD=0" 'grep -qx "DESKD=0" "$C/cell.env"'
   assert "new: home/.config/assay is a REAL directory (never a symlink)" '[[ -d "$C/home/.config/assay" && ! -L "$C/home/.config/assay" ]]'
-  assert "new: home/.config/assay mode 0700" '[[ "$(stat -f "%Lp" "$C/home/.config/assay" 2>/dev/null || stat -c "%a" "$C/home/.config/assay")" == "700" ]]'
+  # GNU spelling first: GNU `stat -f` is --file-system, which prints the filesystem record and
+  # exits non-zero, so a BSD-first probe returns that record glued to the mode on Linux.
+  assert "new: home/.config/assay mode 0700" 'hn=home; cfgd="$C/$hn/.config/assay"; [[ "$(stat -c "%a" "$cfgd" 2>/dev/null || stat -f "%Lp" "$cfgd")" == "700" ]]'
   assert "new: roster scopes ASSAY_ALLOWED_REPOS to the slug" 'grep -qx "ASSAY_ALLOWED_REPOS=example-org/example-repo" "$C/home/.config/assay/roster.env"'
   assert "new: gitconfig present, empty, never linked to the operator's" '[[ -f "$C/home/.gitconfig" && ! -L "$C/home/.gitconfig" && ! -s "$C/home/.gitconfig" ]]'
   assert "new: gh config dir present, a REAL directory" '[[ -d "$C/home/.config/gh" && ! -L "$C/home/.config/gh" ]]'

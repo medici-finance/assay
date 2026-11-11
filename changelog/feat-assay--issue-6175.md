@@ -1,3 +1,4 @@
 ### Fixed
 - The cellctl `harness`, `provider` and `scrubbed-cell` shell suites pass again. Their Codex stubs answer `codex features list`, the `set` refusal rows accept the Go binary's three-harness wording, and the suites no longer read provider or telemetry variables from the launching shell.
 - `go test` now runs `harness.test.sh` and `provider.test.sh` against the shell oracle and `harness.test.sh` against the Go binary. It also runs every `scrubbed-cell.test.sh` case against the Go binary; the cases that need a real tmux skip by name where tmux is not installed.
+- The shell oracle's scrubbed config-home mode check, the `scrubbed-cell` suite's `new` mode row and the `parity` suite's tree manifest read a file mode with GNU `stat -c` first. The old BSD-first probe returned the filesystem record glued to the mode on Linux, so the mode check failed there.
