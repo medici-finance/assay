@@ -161,13 +161,17 @@ func TestForgeSameTagTwoShas(t *testing.T) {
 // a tagged one is no disagreement.
 // regression: #6141
 func TestForgeTagConflictShaOnly(t *testing.T) {
+	// Three distinct tags on one sha: in whatever order the records reach the fold, a tagged
+	// record arrives AFTER the first disagreement, so the guard that keeps an already-conflicting
+	// row tagless is exercised, not only the disagreement itself.
 	section, rows := forgeTagReport(t, taggedLine(t, "10:00", "1a43034839", "v1.0.82", 5),
 		taggedLine(t, "11:00", "1a43034839", "v1.0.83", 3), untaggedLine(t, "12:00", "1a43034839", 1),
+		taggedLine(t, "13:00", "1a43034839", "v1.0.85", 2),
 		taggedLine(t, "10:30", "2b54145940", "v1.0.84", 2), untaggedLine(t, "11:30", "2b54145940", 1))
-	if !strings.Contains(section, "\n1a43034839 (tag conflict) 3 0 9") {
+	if !strings.Contains(section, "\n1a43034839 (tag conflict) 4 0 11") {
 		t.Errorf("forge section lacks the flagged sha-only row:\n%s", section)
 	}
-	if strings.Contains(section, "v1.0.82") || strings.Contains(section, "v1.0.83") {
+	if strings.Contains(section, "v1.0.82") || strings.Contains(section, "v1.0.83") || strings.Contains(section, "v1.0.85") {
 		t.Errorf("a conflicting row names a tag:\n%s", section)
 	}
 	if !strings.Contains(section, "v1.0.84 (2b54145940) 2 0 3") {
@@ -196,5 +200,56 @@ func TestForgeTagJSONFields(t *testing.T) {
 	}
 	if r["key"] != "1a43034839" || r["calls"] != float64(5) || r["releaseTag"] != "v1.0.82" {
 		t.Errorf("JSON release row = %v; want key 1a43034839, 5 calls, releaseTag v1.0.82", r)
+	}
+}
+
+// decodeLines decodes day-file lines through the strict codec, as the day-file reader does.
+func decodeLines(t *testing.T, lines ...string) []deskkit.PerfRecord {
+	t.Helper()
+	var recs []deskkit.PerfRecord
+	for _, l := range lines {
+		r, err := perfrec.Decode([]byte(l))
+		if err != nil {
+			t.Fatalf("fixture line does not decode: %v\n%s", err, l)
+		}
+		recs = append(recs, r)
+	}
+	return recs
+}
+
+// TestForgeV5CountsAsV2: a measured perf-v5 record is a perf-v2 http count in the forge
+// header, never a legacy forgeCalls one — the tag never moves a record out of its group.
+// regression: #6141
+func TestForgeV5CountsAsV2(t *testing.T) {
+	s := deskkit.SummarisePerfForge(decodeLines(t, taggedLine(t, "10:00", "1a43034839", "v1.0.82", 5),
+		untaggedLine(t, "11:00", "bbbb222", 3), legacyLine(t, "aaaa111", 2)))
+	if s.FromV2 != 2 || s.FromV1 != 1 || s.Measured != 3 {
+		t.Errorf("forge summary fromV2 %d, fromV1 %d, measured %d; want 2, 1, 3 (perf-v5 counts as perf-v2)",
+			s.FromV2, s.FromV1, s.Measured)
+	}
+	section, _ := forgeTagReport(t, taggedLine(t, "10:00", "1a43034839", "v1.0.82", 5), legacyLine(t, "aaaa111", 2))
+	if !strings.Contains(section, "(legacy forgeCalls 1, perf-v2 http 1, unavailable 0)") {
+		t.Errorf("forge header does not count the perf-v5 record as perf-v2 http:\n%s", section)
+	}
+}
+
+// TestCommandsPoolV5: a perf-v5 line lands in the SAME per-command row as an untagged perf-v2
+// line for that tool and verb (schema perf-v2, its boundary) — never a row of its own, and
+// never dropped.
+// regression: #6141
+func TestCommandsPoolV5(t *testing.T) {
+	s, err := deskkit.SummarisePerfCommands(decodeLines(t, taggedLine(t, "10:00", "1a43034839", "v1.0.82", 5),
+		untaggedLine(t, "11:00", "bbbb222", 3)), "", perfrec.V3Filter{}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Rows) != 1 {
+		t.Fatalf("per-command rows = %+v; want one perf-v2 row holding both records", s.Rows)
+	}
+	r := s.Rows[0]
+	if r.Schema != deskkit.PerfSchemaV2 || r.Boundary != perfrec.BoundaryProcess || r.Tool != "deskpr" ||
+		r.Verb != "other" || r.Count != 2 || r.HTTPMeasured != 2 || r.HTTPAttempts != 8 {
+		t.Errorf("per-command row = %+v; want deskpr/other, %s/%s, count 2, 8 http attempts over 2 measured",
+			r, deskkit.PerfSchemaV2, perfrec.BoundaryProcess)
 	}
 }
