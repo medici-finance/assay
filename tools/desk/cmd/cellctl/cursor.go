@@ -15,9 +15,12 @@ import (
 // Cursor Agent is the agent executable, not the Cursor desktop editor. Keep
 // arguments separate and use only flags advertised by its CLI. Session identity
 // travels through DESK_SESSION because this CLI has no --name flag.
-func cursorLaunchArgv(role, model, _ string, wt string) []string {
-	return []string{"agent", "--workspace", wt, "--model", model,
-		fmt.Sprintf("Invoke the %q skill now.", "assay:"+role)}
+func (c *Cell) cursorLaunchArgv(role, model, wt string) []string {
+	prompt := fmt.Sprintf("Invoke the %q skill now.", "assay:"+role)
+	if c.Cadence == nil {
+		prompt += " This is a standing interactive desk. Read .cursor/references/cursor.md and apply its Interactive desk cadence section during role boot."
+	}
+	return []string{"agent", "--workspace", wt, "--model", model, prompt}
 }
 
 // Cursor authenticates through its own configuration. Preserve the composed

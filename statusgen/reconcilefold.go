@@ -51,8 +51,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // reconcileFoldData is one brief's fold-relevant record, read once from the
@@ -135,7 +137,7 @@ type foldTree struct {
 // once for the whole run, as autoFlipModel does.
 func treeFoldInputs(root string, streams []*Stream, data []reconcileFoldData) foldTree {
 	t := foldTree{witnesses: map[string]WitnessInfo{}, rulings: map[string]string{}, undecided: map[string]string{}}
-	coverage := evaluateCoverage(root, streams, coverageOptions{})
+	coverage := evaluateCoverage(root, streams, coverageOptionsFor(root, nil))
 	for _, d := range data {
 		w, ok, why := foldVerified(d, coverage)
 		switch {
@@ -201,10 +203,11 @@ func foldVerified(d reconcileFoldData, coverage map[string]Coverage) (w WitnessI
 
 // briefVersionAt reads the brief's `version:` as the file stood at sha — the
 // version the recorded run was made against, never the current one copied.
+// A failed read carries git's own reason beside the exit status.
 func briefVersionAt(path, sha string) (int, error) {
 	out, err := coverageGit(filepath.Dir(path), "show", "--end-of-options", sha+":./"+filepath.Base(path)).Output()
 	if err != nil {
-		return 0, fmt.Errorf("git show: %w", err)
+		return 0, gitShowError(err)
 	}
 	bf, ok, perr := parseBriefFileBytes(path, out)
 	if perr != nil {
@@ -219,6 +222,19 @@ func briefVersionAt(path, sha string) (int, error) {
 	return 1, nil
 }
 
+// gitShowError carries git's first stderr line beside the exit status, so a
+// failed read says why (a revision this repository does not hold, a path the
+// revision lacks) instead of a bare "exit status 128".
+func gitShowError(err error) error {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if detail, _, _ := strings.Cut(strings.TrimSpace(string(ee.Stderr)), "\n"); detail != "" {
+			return fmt.Errorf("git show: %w: %s", err, detail)
+		}
+	}
+	return fmt.Errorf("git show: %w", err)
+}
+
 // humanSignoff returns the README Reviewed cell's human stamp ("human:<name>")
 // or "". On-behalf-of relays are removed first: a relay records whom an App
 // acted for and is never that human's sign-off.
@@ -230,8 +246,8 @@ func humanSignoff(reviewed string) string {
 	return "human:" + m[1]
 }
 
-// reconcileFlipSource is the forge read decideModelFlip uses for the fold;
-// tests replace it.
+// reconcileFlipSource serves both approval and Evidence-shape reads with the
+// credential selected for the REST reader. Tests replace it.
 var reconcileFlipSource = liveModelFlipSource
 
 // foldApprovals asks decideModelFlip about every gate:model brief that would
@@ -239,7 +255,7 @@ var reconcileFlipSource = liveModelFlipSource
 // the brief's version, not Undecided. flipDone yields an approval naming the
 // reviewer, PR and head; flipRefused yields none (the brief stays verified);
 // flipUnchecked marks the brief Undecided.
-func foldApprovals(root string, in *LifecycleInput, data []reconcileFoldData) map[string]ApprovalInfo {
+func foldApprovals(root string, in *LifecycleInput, data []reconcileFoldData, client *ghClient) map[string]ApprovalInfo {
 	out := map[string]ApprovalInfo{}
 	if !in.LookedAt {
 		return out
@@ -250,7 +266,7 @@ func foldApprovals(root string, in *LifecycleInput, data []reconcileFoldData) ma
 		prsByBrief[key] = append(prsByBrief[key], pr)
 	}
 	rev := modelReviewer()
-	src := reconcileFlipSource(rev.Forge)
+	src := reconcileFlipSource(rev.Forge, client.token)
 	for _, d := range data {
 		id := d.ident.ID
 		if d.ident.Gate != "model" {
@@ -403,7 +419,7 @@ func wireFoldInputs(in *LifecycleInput, boardRoot string, client *ghClient, repo
 		}
 	}
 
-	in.Approvals = foldApprovals(boardRoot, in, data)
+	in.Approvals = foldApprovals(boardRoot, in, data, client)
 
 	if len(in.Undecided) > 0 {
 		ids := make([]string, 0, len(in.Undecided))

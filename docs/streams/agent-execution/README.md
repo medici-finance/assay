@@ -17,7 +17,7 @@ and effect owners. The [future-state amendment](../../proposals/non-ci-architect
 is the controlling specification. Approval of amendment 27 for implementation and activation
 of this stream are proposed by [PR #4349](https://github.com/medici-finance/assay/pull/4349)
 and take effect on the maintainer's merge of it, the ruling record under lifecycle §8.4.
-The existing nine briefs retain their statuses,
+The nine briefs authored before admission (01–09) retain their statuses,
 dependencies, individual human decisions and independent verification requirements.
 Stream admission does not activate a runtime or approve a concrete custody or deployment
 profile. Later adoption, profile qualification and activation gates remain separate.
@@ -36,9 +36,10 @@ profile. Later adoption, profile qualification and activation gates remain separ
 | 07 | [Evaluate governed harness refinement with isolated offline fixtures](brief-07-harness-refinement-evaluation.md) | 3 | M | todo | — | — |
 | 08 | [Qualify a Kubernetes verification runner through the existing supervisor](brief-08-qualify-a-kubernetes-verification-runner-through-the-existing-supervisor.md) | 12 | M | todo | — | — |
 | 09 | [Qualify interactive Kubernetes standing desks through the shared runner](brief-09-qualify-interactive-kubernetes-standing-desks-through-the-shared-runner.md) | 9 | M | todo | — | — |
+| 10 | [Evaluate a Pi Durable runner with offline recovery fixtures](brief-10-evaluate-a-pi-durable-runner-with-offline-recovery-fixtures.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
-The generator owns the table. All nine briefs are M-sized, strong-tier work. New tests and
+The generator owns the table. All briefs are M-sized, strong-tier work. New tests and
 paths named by their Verify tables are future deliverables, not authoring-time evidence.
 
 ## Critical path and checked head
@@ -77,7 +78,7 @@ Global waves include the existing graph-execution prerequisites:
 
 | Wave | New work | Existing prerequisite |
 |---|---|---|
-| 1 | 01 qualified execution profile contract | graph-execution/20, wave 0 |
+| 1 | 01 qualified execution profile contract; 10 offline Pi Durable runner investigation (optional input, not a prerequisite) | graph-execution/20, wave 0 |
 | 2 | 02 prepared-environment receipt and workspace port | 01 |
 | 3 | 06 AX compatibility and 07 Harness² refinement investigations | 01–02; independent of core integration |
 | 8 | 03 local supervisor/adapter readiness enforcement | 02 and graph-execution/22 (7), /26 (6) |
@@ -141,3 +142,32 @@ contracts remain. Authoring /09 did not activate a profile, and neither does str
 activation under amendment 27, which takes effect on the maintainer's merge of
 [PR #4349](https://github.com/medici-finance/assay/pull/4349); /09's individual human
 decision and qualification requirements remain.
+
+
+## Desk-instance amendment — 25 October 2026
+
+The [requested instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) amends unfinished owner briefs (completed ones are left unchanged; unfinished or new owner briefs carry their deltas) without changing lifecycle status or completed Evidence. R2/R3 exact instance ownership and approximate role pacing → standing clients (graph-execution/27) → desired-population adapter (desk-containers/33) → lifecycle/Kubernetes consumers. API contract work can proceed against the declared versioned shape; runtime activation still requires its actual dependencies and independent qualification. Paused instances and draining predecessors remain part of pickup/retirement inventory.
+
+## Pi Durable runner investigation — 22 October 2026
+
+[Brief 10](brief-10-evaluate-a-pi-durable-runner-with-offline-recovery-fixtures.md)
+adds a wave-1 offline experiment after the implemented graph-execution/20 runner contract.
+The fresh source check at `ecc895ce2dd5989ff2119fb7aeeed5e1e0b8761e` found the runner kit
+and no supervisor or workflow implementation; those absent components are not its first
+blocker. Stream admission under amendment 27 activates no runtime or profile, and this brief adds none.
+
+The experiment uses real Pi durable tasks with scripted models and synthetic effects to
+produce a go/no-go/unknown decision, recovery evidence and a concrete omission/deletion
+map. It has no managed store/profile, provider call, deployment or default adapter change.
+Graph-execution/22 and /26 retain adapter/supervisor ownership and can proceed independently.
+A favorable report is optional input to those owners and agent-execution/01, /03-04; it
+does not satisfy their qualification or activation obligations. Vercel World hosting is
+a separately labeled optional comparison within the same cap, not another scheduler.
+
+```text
+graph-execution/20 (existing runner contract) -> 10 offline Pi investigation (wave 1)
+                                              -> optional source/evidence input to /22, /26, /01, /03-04
+```
+
+The second arrow is an advisory handoff, not a new hard dependency on core runtime work.
+No live trial or performance/savings claim is created by this authoring change.

@@ -19,6 +19,12 @@ const trackingFixtureRel = "docs/streams/fx/brief-01-fixture.md"
 // to the source revision succeeds instead of failing for a missing object.
 func foldTrackingFixture(t *testing.T, mode string) (reconcileFoldData, string, string) {
 	t.Helper()
+	d, sourceSHA, trackingSHA, _ := foldTrackingSource(t, mode)
+	return d, sourceSHA, trackingSHA
+}
+
+func foldTrackingSource(t *testing.T, mode string) (reconcileFoldData, string, string, string) {
+	t.Helper()
 	foreign := mode == "missing tracking but source present" || strings.HasSuffix(mode, sourcePresent)
 	mode = strings.TrimSuffix(mode, sourcePresent)
 	source := t.TempDir()
@@ -90,6 +96,8 @@ func foldTrackingFixture(t *testing.T, mode string) (reconcileFoldData, string, 
 		att = strings.Replace(att, " tier=strong", "", 1)
 	case "tracking-source only":
 		att = strings.Replace(att, " source-repo=example-org/agents", "", 1)
+	case "no tracking-source":
+		att = strings.Replace(att, " tracking-source="+trackingSHA, "", 1)
 	case "non-github origin":
 		foldGit(t, root, foldMailWorker, "remote", "set-url", "origin", "https://gitlab.example/example-org/tracker.git")
 	case "quoted v1 beside v2":
@@ -115,7 +123,7 @@ func foldTrackingFixture(t *testing.T, mode string) (reconcileFoldData, string, 
 	if err != nil || len(data) != 1 {
 		t.Fatalf("data=%d err=%v", len(data), err)
 	}
-	return data[0], sourceSHA, trackingSHA
+	return data[0], sourceSHA, trackingSHA, source
 }
 
 // sourcePresent marks a fixture mode whose deliverable object is local.
@@ -182,7 +190,8 @@ func TestFoldTrackingRevisionRefusalsSourcePresent(t *testing.T) {
 		"blockquoted":          "not bound by literal selected-run metadata",
 		"indented":             "not bound by literal selected-run metadata",
 		"unparseable":          "malformed cross-repository run attestation",
-		"tracking-source only": "malformed cross-repository run attestation",
+		"tracking-source only": "attestation: it names no source-repo=",
+		"no tracking-source":   "it names no tracking-source=",
 		"non-github origin":    "needs a github.com origin",
 	} {
 		t.Run(mode, func(t *testing.T) {
@@ -192,5 +201,63 @@ func TestFoldTrackingRevisionRefusalsSourcePresent(t *testing.T) {
 				t.Fatalf("w=%+v ok=%v why=%q; want could-not-check naming %q", w, ok, why, reason)
 			}
 		})
+	}
+}
+
+// regression: #5497 — the whole reconcile verb over a cross-repository PASS
+// whose source= exists only in the deliverable repository: every read is made
+// (so --apply does not exit could-not-check) and the witness carries the brief
+// version read at tracking-source=. Both the cross-repository and legacy
+// rows derive verified with their source history configured.
+func TestReconcileCrossRepoPass(t *testing.T) {
+	for _, mode := range []string{"current", "legacy"} {
+		t.Run(mode, func(t *testing.T) {
+			d, sourceSHA, _, source := foldTrackingSource(t, mode)
+			if mode == "current" {
+				addCrossCoverageSpan(t, d.path, sourceSHA)
+				foldGit(t, strings.TrimSuffix(d.path, filepath.FromSlash(trackingFixtureRel)), foldMailVerifier, "add", trackingFixtureRel)
+				foldGit(t, strings.TrimSuffix(d.path, filepath.FromSlash(trackingFixtureRel)), foldMailVerifier, "commit", "-qm", "closed source witness")
+			}
+			foldGit(t, source, foldMailWorker, "remote", "add", "origin", "https://github.com/example-org/agents.git")
+			foldGit(t, source, foldMailWorker, "update-ref", "refs/remotes/origin/main", "HEAD")
+			t.Setenv("DESK_ROOTS", "example-org/agents="+source)
+			root := strings.TrimSuffix(d.path, filepath.FromSlash(trackingFixtureRel))
+			foldServer(t, foldStdPulls()[:1], foldIssues())
+			src := foldApproved()
+			src.states[11] = prReviewState{Merged: true, HeadSHA: foldPR11Head}
+			foldFlipSeam(t, src)
+			code, res, e := foldRun(t, root)
+			if code != reconcileOK || len(res.Unread) != 0 {
+				t.Fatalf("exit %d unread=%q; want 0 and every read made; stderr:\n%s", code, res.Unread, e)
+			}
+			var cell BriefCell
+			for _, c := range res.Briefs {
+				if c.ID == "fx/01" {
+					cell = c
+				}
+			}
+			if cell.Version != 2 || !strings.Contains(cell.Witness, "pass (v2)") {
+				t.Fatalf("fx/01 = %+v; want a v2 passing witness", cell)
+			}
+			if cell.Cell != "verified" {
+				t.Fatalf("fx/01 = %+v; coverage must derive verified", cell)
+			}
+			if code, _, e := foldRun(t, root, "--apply"); code != reconcileOK {
+				t.Fatalf("--apply exit %d, want 0; stderr:\n%s", code, e)
+			}
+		})
+	}
+}
+
+// regression: #5497 — a run whose source= is a commit in another repository
+// and whose selected run binds no attestation naming tracking-source= stays
+// could-not-check, and the reason says why instead of a bare exit status.
+func TestFoldCrossRepoNoBinding(t *testing.T) {
+	d, sourceSHA, _ := foldTrackingFixture(t, "foreign homed source missing")
+	w, ok, why := foldVerified(d, map[string]Coverage{d.key: {Released: true}})
+	for _, want := range []string{"could-not-check the brief version for run source " + sourceSHA[:12], "fatal:", "this run binds none"} {
+		if ok || w.Passed || !strings.Contains(why, want) {
+			t.Fatalf("w=%+v ok=%v why=%q; want could-not-check naming %q", w, ok, why, want)
+		}
 	}
 }

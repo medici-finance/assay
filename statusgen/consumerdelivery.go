@@ -1,15 +1,24 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
+
+	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 var consumerCommit = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+// noMarkerReason is deriveConsumerDelivery's answer when the committed Evidence
+// names no delivery at all. It is the only answer that falls through to the
+// history search; a malformed or unauthenticated marker is still a refusal.
+const noMarkerReason = "the committed Evidence has no Verification-Table marker naming the delivery"
 
 // runDeliveryConsumers evaluates the declared routes at a bounded historical
 // delivery, including claims inherited from a separate authoring change. Ordinary
@@ -75,29 +84,19 @@ func runDeliveryConsumers(root, base, brief, delivery string) int {
 		return fail(err)
 	}
 	defer os.RemoveAll(snapshot)
-	// Reuse the existing Git archive pipeline. No historical source is run,
-	// no refs/worktree metadata are mutated, and local edits cannot replace inputs.
-	// A tree archive has no commit context for export-subst. Check the complete
-	// entry roster before extraction, so no symlink or submodule can escape the
-	// snapshot or make an input silently disappear. export-ignore is detected below.
+	// Only unchanged, fully contained non-board links may resolve. The bounded
+	// archive reader writes regular files and never extracts archive links.
 	entries, ok := repo.TreeModes(delivery)
 	if !ok || len(entries) == 0 {
 		return fail("cannot enumerate delivered tree entries")
 	}
-	for _, entry := range entries {
-		if entry.Mode != "100644" && entry.Mode != "100755" {
-			return fail("delivery snapshot contains a symlink or submodule: " + entry.Path)
-		}
-	}
-	archive := historyGit(root, "archive", "--format=tar", delivery+"^{tree}")
-	if err := materializeCommands(delivery, archive, exec.Command("tar", "-x", "-C", snapshot)); err != nil {
+	tree, err := newConsumerSnapshot(entries, changed)
+	if err != nil {
 		return fail(err)
 	}
-	for _, entry := range entries {
-		info, err := os.Lstat(filepath.Join(snapshot, filepath.FromSlash(entry.Path)))
-		if err != nil || !info.Mode().IsRegular() {
-			return fail("delivery archive omitted a tracked blob (for example export-ignore): " + entry.Path)
-		}
+	archive := historyGit(root, "archive", "--format=tar", delivery+"^{tree}")
+	if err := tree.materialize(archive, snapshot); err != nil {
+		return fail(err)
 	}
 	streams, _, err := loadStreams(snapshot)
 	if err != nil {
@@ -111,7 +110,7 @@ func runDeliveryConsumers(root, base, brief, delivery string) int {
 	if bf.ConsumersProse == "" && len(bf.Consumers) == 0 {
 		return fail("delivered brief declares no consumer routes")
 	}
-	verdicts := corroborateBrief(snapshot, streams, changed, nil, bf)
+	verdicts := corroborateBriefWithSnapshot(snapshot, streams, changed, nil, bf, tree)
 	// Both explicit and Evidence-derived pins reach this one historical path.
 	// A bounded snapshot authenticates the inputs, not the caller's assertion
 	// that this commit implements the producer. Keep that separate from routing.
@@ -205,7 +204,7 @@ func deriveConsumerDelivery(root, rel string) (delivery, base, why string) {
 	_, evidence := briefSectionsOf(string(blob))
 	markers := protectedMarkers(normalizeProtectedEvidence(evidence))
 	if len(markers) == 0 {
-		return "", "", "the committed Evidence has no Verification-Table marker naming the delivery"
+		return "", "", noMarkerReason
 	}
 	type triple struct{ delivery, base, original string }
 	var chosen *triple
@@ -247,7 +246,9 @@ func deriveConsumerDelivery(root, rel string) (delivery, base, why string) {
 // runDerivedConsumers is the --consumers --brief path with no --base and no
 // --delivery, reached only where the branch diff carries no evidence about the
 // named brief (merged main, or no diff at all). It pins the run to the brief's
-// recorded delivery and its first parent, or reports COULD-NOT-CHECK.
+// delivery and its first parent, or reports COULD-NOT-CHECK. The delivery comes
+// from the committed Verification-Table marker when there is one, and otherwise
+// from the checked-out history (deriveHistoryDelivery).
 func runDerivedConsumers(root string, streams []*Stream, briefFilter string) (code int, why string) {
 	briefs := selectConsumerBriefs(root, streams, map[string]bool{}, briefFilter)
 	if len(briefs) != 1 {
@@ -258,8 +259,150 @@ func runDerivedConsumers(root string, streams []*Stream, briefFilter string) (co
 		return 2, "the brief path is outside the repository root"
 	}
 	delivery, base, why := deriveConsumerDelivery(root, rel)
+	if why == noMarkerReason {
+		var source, hwhy string
+		delivery, base, source, hwhy = deriveHistoryDelivery(root, briefs[0].Brief)
+		if hwhy != "" {
+			return 2, why + ", and " + hwhy
+		}
+		fmt.Fprintf(os.Stderr, "statusgen: --consumers: no Verification-Table marker; delivery derived from history: %s (%s), pinned to its first parent %s\n", delivery, source, base)
+		why = ""
+	}
 	if why != "" {
 		return 2, why
 	}
 	return runDeliveryConsumers(root, base, briefFilter, delivery), ""
+}
+
+// deriveHistoryDelivery names a merged brief's delivery from local history when
+// its Evidence records none: the one first-parent commit of HEAD that names
+// `Brief: <stream>/<NN>`, either in its own message (a squash or direct commit)
+// or in a commit it merged (a merge commit, whose own message is title-only on
+// GitHub). Only fence-aware trailers count. Zero or several such commits is
+// COULD-NOT-CHECK, never a pick. The answer must also have landed on the fetched
+// mainline ref, and its pin is its first parent. No forge is asked, nothing is
+// fetched, and a shallow history is refused because it cannot prove uniqueness.
+func deriveHistoryDelivery(root, brief string) (delivery, base, source, why string) {
+	want := canonicalBriefKey(brief)
+	if _, _, ok := briefStreamNum(want); !ok {
+		return "", "", "", "the brief id " + want + " is not a <stream>/<NN> key the history can be searched for"
+	}
+	repo := coverageRepo{root: root}
+	if shallow, ok := repo.IsShallow(); !ok || shallow {
+		return "", "", "", "the history cannot be searched: complete local Git history is required (no fetch is attempted)"
+	}
+	// The walk and the message scan read through the library, never a new native
+	// launch. A repository profile the library does not qualify is refused, not
+	// read natively: the marker or explicit --delivery/--base remain the remedy.
+	read := gitCoreFor(root)
+	if read.err != nil {
+		return "", "", "", "the history of HEAD cannot be opened"
+	}
+	if read.native != "" {
+		return "", "", "", "the history cannot be searched through the library read path (" + read.native + "); record the Verification-Table marker or pass --delivery and --base"
+	}
+	head, err := read.repo.Resolve("HEAD")
+	if err != nil {
+		return "", "", "", "the first-parent history of HEAD cannot be read"
+	}
+	// One validated walk yields every commit reachable from HEAD with its parents
+	// and message; a missing object anywhere in it is an error, never a smaller set.
+	reachable, err := read.repo.ReachableCommits(head.String())
+	if err != nil {
+		return "", "", "", "the commits reachable from HEAD cannot be read"
+	}
+	commits := make(map[string]gitcore.RangeCommit, len(reachable))
+	named := map[string]bool{}
+	for _, c := range reachable {
+		if c.NativeMessageReason != "" {
+			return "", "", "", "the commit message of " + c.ID + " cannot be read through the library read path (" + c.NativeMessageReason + "); record the Verification-Table marker or pass --delivery and --base"
+		}
+		commits[c.ID] = c
+		_, briefs, _ := parseLinkTrailers(c.Message)
+		for _, b := range briefs {
+			if b == want {
+				named[c.ID] = true
+			}
+		}
+	}
+	var chain []string // HEAD's first-parent chain, newest first
+	onChain := map[string]int{}
+	for c := head.String(); ; {
+		rec, ok := commits[c]
+		if _, seen := onChain[c]; seen || !ok {
+			return "", "", "", "the first-parent history of HEAD cannot be read"
+		}
+		onChain[c] = len(chain)
+		chain = append(chain, c)
+		if len(rec.Parents) == 0 {
+			break
+		}
+		c = rec.Parents[0]
+	}
+	// Each naming commit belongs to the oldest first-parent commit that contains
+	// it: itself when it is on the chain, else the merge that brought it in.
+	// Containment is monotone along the chain, so a binary search finds it.
+	introducers := map[int]bool{}
+	for c := range named {
+		if i, ok := onChain[c]; ok {
+			introducers[i] = true
+			continue
+		}
+		lo, hi := 0, len(chain)-1 // chain[lo] contains c; find the largest such index
+		for lo < hi {
+			mid := (lo + hi + 1) / 2
+			in, err := historyAncestor(repo, c, chain[mid])
+			if err != nil {
+				return "", "", "", "ancestry in the history of HEAD cannot be read"
+			}
+			if in {
+				lo = mid
+			} else {
+				hi = mid - 1
+			}
+		}
+		introducers[lo] = true
+	}
+	var found []int
+	for i := range introducers {
+		found = append(found, i)
+	}
+	sort.Ints(found)
+	switch {
+	case len(found) == 0:
+		return "", "", "", fmt.Sprintf("no first-parent commit of HEAD names `Brief: %s` in its own message or in a commit it merged (searched %d first-parent commits)", want, len(chain))
+	case len(found) > 1:
+		var shorts []string
+		for _, i := range found {
+			shorts = append(shorts, chain[i][:12])
+		}
+		return "", "", "", fmt.Sprintf("the delivery is ambiguous: %d first-parent commits of HEAD name `Brief: %s` (%s); this instrument does not choose between them", len(found), want, strings.Join(shorts, ", "))
+	}
+	delivery = chain[found[0]]
+	parents := commits[delivery].Parents
+	if len(parents) < 1 || len(parents) > 2 || !consumerCommit.MatchString(parents[0]) {
+		return "", "", "", "the history-derived delivery " + delivery + " is not a single- or two-parent commit"
+	}
+	if landed, err := historyAncestor(repo, delivery, remoteMainRef); err != nil || !landed {
+		return "", "", "", "the history-derived delivery " + delivery + " is not reachable from the fetched mainline ref " + remoteMainRef + " (absent, or a local commit that has not landed)"
+	}
+	source = "its own message names Brief: " + want
+	if !named[delivery] {
+		source = "a commit it merged names Brief: " + want
+	}
+	return delivery, parents[0], source, ""
+}
+
+// historyAncestor reports whether a is an ancestor of (or equal to) b through
+// the coverage adapter's native merge-base reads: a is an ancestor of b exactly
+// when a is their only best common ancestor. Unrelated histories are "no"; any
+// other failure is an error, never an answer.
+func historyAncestor(repo coverageRepo, a, b string) (bool, error) {
+	if bases, ok := repo.MergeBaseAll(a, b); ok {
+		return len(bases) == 1 && bases[0] == a, nil
+	}
+	if repo.MergeBase(a, b) == evaluation.HistoryUnrelated {
+		return false, nil
+	}
+	return false, errors.New("ancestry cannot be read")
 }

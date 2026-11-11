@@ -372,9 +372,13 @@ the GitLab issue/orphan lane as could-not-check rather than empty. **It is a DIS
 the write boundary `ASSAY_ALLOWED_REPOS`** — a green write-lane preflight says nothing about
 it, and `ASSAY_ALLOWED_REPOS` already listing the adopter project does not set it.
 (A project whose GitLab visibility is `internal` is tagged `:internal` in
-`ASSAY_ALLOWED_REPOS` — `mygroup/myproject:ci:internal` — not `:public` and not `:private`: the
-public-repo write gate requires the tag to name the visibility the forge reports, and an
-`internal` project keeps every public-repo requirement, `ASSAY_HUMAN_LOGIN_MAP` included.)
+`ASSAY_ALLOWED_REPOS` — `mygroup/myproject:ci:internal` — not `:private`: the public-repo write
+gate requires the tag to be at least as exposed as the visibility the forge reports.
+`:internal` is the accurate tag. The write gate tolerates an existing `:public` entry on an
+internal project, but that is a mislabel: `deskboard policydrift` reports it as drift, and it
+over-ranks the project as a verifier cross-repo source (a public tracking repo could then
+publish its binding), so change it to `:internal`. An `internal` project keeps every public-repo
+requirement, `ASSAY_HUMAN_LOGIN_MAP` included.)
 
 - **Required value shape.** A comma-separated list of `<group>/<project>` slugs — the scan
   scope. It must contain **at least the adopter project itself** (the same slug that appears
@@ -1241,6 +1245,26 @@ Carried verbatim in spirit from spec.md §5 — this doc does not relax any of i
   (§4's checklist item 2); the script cannot set it via a group-scoped PAT.
 - **File custody unchanged.** `0600` token files, path-only printing, never in an
   environment variable or a command's argv.
+- **Rotation is an explicit act; read-only callers never rotate.** `desktoken <role> --repo
+  <gitlab-slug>` and `desktoken <role> --forge gitlab` both ROTATE. A caller that needs only
+  the credential's location (a read, a dry run, a script handing a path to another tool) runs
+  `desktoken --no-rotate <role> --repo <slug>`, which makes no network contact and leaves the
+  credential untouched. (On GitHub `--no-rotate` changes nothing.)
+- **The printed path is the only copy.** On GitLab the file `desktoken` prints is the role's
+  custody file, not a cache: after a rotation the previous value is dead and the new one exists
+  nowhere else. Never delete, move or overwrite it, and never treat it as a temporary file.
+  `desktoken` says so on stderr after every successful GitLab call.
+- **Recovery: a custody file lost after a rotation.** The role is locked out. The previous
+  value was invalidated by the rotation, and the live one was only in the lost file, so nothing
+  local can be repaired and no `desktoken` call can rotate it (rotation authenticates with the
+  current value). A **group Owner** issues a new credential for that role:
+  `tools/renew-fleet-gitlab-tokens.sh --only <role> --rotate-in-use` with the deployment's usual
+  `--hostname` / `--group` / `--prefix` / `--out-dir` (§2g; stop the role's desk sessions first,
+  and run `--dry-run` before it). That rotates the role's ACTIVE PAT, which is the orphaned one,
+  so the same call revokes it and installs the successor at `gitlab-<role>.token` (`0600`). If
+  the script refuses the role (more than one active PAT, §2g), revoke the orphan by hand on the
+  service account's personal access tokens in the group settings, then re-run. The orphan must
+  end revoked either way: a lost file is not proof the value is gone.
 - **Custody layout the rotate path expects.** `gitlab-<role>.token` on the config-home search
   path, resolving to a `0600` regular file — either the file itself or a **symlink** at that
   name pointing at one (§2's link step). A rotation resolves the link, writes the new token to

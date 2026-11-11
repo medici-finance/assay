@@ -124,3 +124,15 @@ The cache and batching delta is mirrored in `release.yml.proposed` and
 `ci/staged-workflows/release.yml`, preserving each proposal's other changes.
 The old changelog proposal is a historical snapshot, not a promotion source.
 No whole-file proposal should replace the current live workflow.
+
+## Fixture-only object qualification
+
+`release-object-qualification.yml` is a separate main-only, protected-environment workflow. It does not cut a tag, build release assets, publish a release or change release routing. Its producer and publisher use the original `transport.py` bundle/credential domain and checksum-pinned job-local object client. `qualification.py` supplies fixture/control functions called explicitly by the workflow, with no independent CLI or implicit network execution. The client adapter remains with its pending CLI migration owner; no parser migration is claimed here.
+
+The random multipart-sized inputs and version-shaped fixture member names are not release assets. Trusted producer job outputs bind the exact source, run, original producer attempt, hashes and size. A publisher-only rerun retains that producer attempt. The receipt is proof of the named checks only; failed or omitted checks are not qualification. Required cluster placement/admission and return-to-zero evidence remain operator gates, and the workflow cannot change runner capacity or release settings.
+
+Run the retained release tests plus `qualification_test.py` and the canonical `tools/desk/internal/regression/release-object-qualification-mutations.json` harness (run from `tools/desk` with `muhar -j 1 --spec internal/regression/release-object-qualification-mutations.json`; upward paths require sequential in-place execution). The existing Go CI regression reader executes the entire Python test roster on PRs and main. No existing release workflow was edited.
+
+The publisher's `outsidePrefixMissingKeyReadRefused` records only an explicit refusal to read a missing out-of-prefix key. [S3 returns 403 for a missing key when ListBucket is denied](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html), even if the credential can read existing keys there. The receipt explicitly sets `publisherPrefixScopeProven: false`; this probe is never runtime proof of least-privilege read scope. Before declaring the route qualified, the storage owner must supply separate scope evidence, including an out-of-prefix object known to exist and a same-run read denial. Neither the workflow nor this source can seed that object or widen a credential. All existing probes and typed-denial failures remain mandatory.
+
+Fixture objects are retained for the storage owner to remove under its existing retention/cleanup authority (tracked by issue #5707); producer and publisher receive no delete rights. This workflow installs no lifecycle policy and does not claim a retention policy was applied.

@@ -2,8 +2,8 @@
 brief: assay:assay:verification-handoff:02
 title: "Persist verifier blockers without losing the handoff"
 why: "A recorded failure can lose its outcome when a verifier home is reaped, and the reference loop can print a filing without creating one. A durable, truthful handoff must survive partial success and restart."
-wave: 2
-depends: ["verification-handoff/01", "desk-tools/49"]
+wave: 5
+depends: ["verification-handoff/01", "desk-tools/49", "desk-tools/47"]
 unblocks: ["verification-handoff/04"]
 effort: M
 gate: human
@@ -12,13 +12,15 @@ gate-why: "Changes the verifier filing and evidence landing boundary used to sch
 decision-trigger: start
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: 4a9cfb95-927f-4d86-bcd8-781293f51290
 authored: "2026-10-23 by assay-worker-app[bot]"
 exec-tier: strong
 exec-tier-why: "Cross-module shared policy, partial writes and independent actor/source binding require coordinated design and negative controls."
 domain: complicated
 sources:
+  - "docs/proposals/fixed-delivery-verification/README.md — fixed-delivery completion amendment, 2026-10-27; planning only"
+  - "freshness-checked 2026-10-27 @ 9a58a792c; existing PR 4579 and source/caller work map"
   - "docs/streams/verification-handoff/README.md — controlling implementation scope"
   - "spec/intake-exit-v1.md; docs/streams/desk-supervision/repair-obligation-v1.md; docs/verify-wake.md"
   - "freshness-checked 2026-10-23 @ fbe0331e2fc9f5c822c4edeafb8a18865c916828"
@@ -88,6 +90,33 @@ Default if no answer: none — blocks until answered.
 - New shared parsing/policy must be direct library calls, never a new helper executable. Preserve existing online read/custody boundaries.
 
 ## Task
+
+### Fixed-delivery completion amendment — 2026-10-27
+
+This is a planning amendment under [fixed-delivery
+verification](../../proposals/fixed-delivery-verification/README.md), not runtime implementation or
+activation. Preserve the original Verify table and Evidence. The changed fixed-subject,
+historical-subject and row-reuse policy waits for the precise existing authority decisions; an old
+decision token grants none of these changes. Existing approved work retains its original contract.
+At pickup, pin this brief/version, the controlling contracts, actual producer/consumer versions and
+open PRs; adapt or hold only the affected slice. No new evaluator, record store, desk, tracer or
+qualification stage is authorized.
+
+**Owner: retained historical/current blocked-run handoff.** Consume desk-tools/47's resumable
+operation in addition to /01 and /49. Keep the canonical case identity bound to original D/A, real
+W/conditions, affected rows, existing blocker/Evidence PR and any admitted successor delivery. Never
+equate the receipt's recording E with execution source.
+
+- A context-only refusal retains applicable core observations and the exact unfinished effect;
+  genuine consumer/test failures remain failures. Reconcile issue creation, outcome/Evidence partial
+  writes and lost replies through the existing custody/writer path. Unknown historical provenance
+  cannot be reconstructed from PASS counts or a disappearing scratch home. - Extend the existing
+  FAIL and BLOCKED adapter/retention fixtures with unchanged D at later E/H, a blocked historical
+  record with valid core rows, lost output artifacts and a two-route consumer disproval. A missing
+  record does not imply a missing execution, but unavailable execution proof cannot be invented.
+  Preserve the default non-durable sink and all activation/permission gates.
+
+### Existing task obligations
 
 1. Consume the reviewed canonical case lookup owned by desk-tools/49; recheck its actual API at pickup and hold this dependent slice if it is absent. Do not duplicate exact-key search, title dedupe, ambiguous-response reconciliation or suppress-all-on-brief logic. Bind the original brief, admitted source/run, exact failing or held rows, existing Evidence PR and blocker issue across the issue and outcome. Missing causation stays unknown: the verified brief is not automatically the defective implementation owner.
 2. Exercise both FAIL and BLOCKED/unlandable Land branches. Implement the live configured adapter behind the existing filing/repair interfaces through sanctioned typed forge/custody/evidence writers. Keep reference/dry-run modes explicitly non-durable and non-assigned. Do not activate the autonomous sink or widen any App permission as part of implementation. Ordinary bug filing needs no blanket to:intake; use deliberate role handoffs only under /01. A required filing failure remains an incomplete handoff, not a printed success.

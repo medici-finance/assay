@@ -1316,7 +1316,7 @@ func TestVerifyPassHeldContradictionNegationCuePosition(t *testing.T) {
 		{"bold row label before not", prose("**row 3:** not HELD"), true},
 		{"hyphen before no", prose("row 3 green - no HELD"), true},
 		{"closing parenthesis before no", prose("(runner up) no HELD"), true},
-		{"non-zero is not a zero count", prose("exit codes: 0 clean / non-zero could-not-check"), true},
+		{"non-zero is not a zero count", prose("exit codes: 0 clean / non-zero COULD-NOT-CHECK"), true}, // a marker: ruling A on #4721
 		// Must refuse: an exit status spelled out, or a number that is not a
 		// verdict count, is not a count position.
 		{"exit status zero before HELD", prose("row 3 exit zero HELD"), true},

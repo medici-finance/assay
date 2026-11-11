@@ -43,6 +43,18 @@
       "file": "rangehistory.go",
       "old": "if strings.ContainsRune(c.Message, 0) {",
       "new": "if strings.ContainsRune(c.Message, 0) && false {"
+    },
+    {
+      "name": "reachable: returned parent slice aliases cached graph",
+      "file": "rangehistory.go",
+      "old": "rec.Parents = slices.Clone(rec.Parents)",
+      "new": "rec.Parents = slices.Clip(rec.Parents)"
+    },
+    {
+      "name": "reachable: the walk stops at the tip",
+      "file": "rangehistory.go",
+      "old": "stack = append(stack, r.graphNodes[at].parents...)",
+      "new": "_ = r.graphNodes[at].parents"
     }
   ]
 }

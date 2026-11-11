@@ -88,8 +88,8 @@
     {
       "name": "evidenceOnlyChange ignores other changed or untracked paths",
       "file": "verifyrun.go",
-      "old": "\tif len(entries) != 1 || len(entries[0]) < 4 || entries[0][3:] != rel {",
-      "new": "\tif len(entries) < 1 || len(entries[0]) < 4 {"
+      "old": "\t\tif !ownReadSetFile(dir, rel, e, string(work)) {\n\t\t\treturn false\n\t\t}",
+      "new": "\t\tif false && !ownReadSetFile(dir, rel, e, string(work)) {\n\t\t\treturn false\n\t\t}"
     },
     {
       "name": "evidenceOnlyChange accepts any status code (an unmerged brief reads clean)",
@@ -106,8 +106,8 @@
     {
       "name": "outsideEvidence accepts a carriage return",
       "file": "verifyrun.go",
-      "old": "\tif strings.Contains(text, \"\\r\") {\n\t\treturn \"\", false\n\t}\n\tlines := strings.Split(text, \"\\n\")",
-      "new": "\tlines := strings.Split(text, \"\\n\")"
+      "old": "\tif strings.Contains(text, \"\\r\") {\n\t\treturn nil, 0, 0, 0, false\n\t}\n\tlines = strings.Split(text, \"\\n\")",
+      "new": "\tlines = strings.Split(text, \"\\n\")"
     },
     {
       "name": "a transition run accepts an Evidence-only edit (strict tree check dropped)",

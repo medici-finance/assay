@@ -46,6 +46,51 @@ func addWorktree(t *testing.T, name string) string {
 	return target
 }
 
+// A small real-Git sweep owns the walk-count invariant in the mutation lane;
+// the performance fixtures retain their independent scale and concurrency gates.
+// regression: F-prune-walk
+func TestPruneWalksMainOnce(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	first := addWorktree(t, "walk-first")
+	second := addWorktree(t, "walk-second")
+	side := addWorktree(t, "walk-side")
+	writeFile(t, filepath.Join(side, "side.txt"), "unmerged work\n")
+	mustGit(t, side, "add", "side.txt")
+	mustGit(t, side, "commit", "-m", "unmerged work")
+	advanceMain(t, work, "walk-main")
+
+	guard, err := newPathGuard(work)
+	if err != nil {
+		t.Fatalf("newPathGuard: %v", err)
+	}
+	walks := 0
+	origWalk := logOriginMain
+	logOriginMain = func(sc *sweepCtx, dir string) ([]string, error) {
+		walks++
+		return origWalk(sc, dir)
+	}
+	t.Cleanup(func() { logOriginMain = origWalk })
+
+	res, err := pruneSweep(guard, work, resolvePath(mustAbsOrRaw(work)), pruneOpts{singletonTTL: 0})
+	if err != nil {
+		t.Fatalf("pruneSweep: %v", err)
+	}
+	if walks != 1 {
+		t.Fatalf("mainline walks = %d, want exactly 1 for three candidates", walks)
+	}
+	if res.removed != 2 {
+		t.Fatalf("removed = %d, want both merged candidates", res.removed)
+	}
+	for _, target := range []string{first, second} {
+		if _, err := os.Stat(target); !os.IsNotExist(err) {
+			t.Fatalf("merged candidate survived (err=%v)", err)
+		}
+	}
+	assertExists(t, side)
+	t.Logf("mainline walks=%d for three real-Git candidates", walks)
+}
+
 // --- prune: merged+clean worktree is removed --------------------------------------
 
 func TestPruneRemovesMergedCleanWorktree(t *testing.T) {
