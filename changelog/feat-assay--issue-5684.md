@@ -1,1 +1,0 @@
-- Add a held proposal for statusgen/36 Verify rows 12 and 23 under `docs/proposals/statusgen-36-acceptance/`; the brief itself is unchanged until resolver successor-chain support and a consumer-proof disposition exist.

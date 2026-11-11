@@ -58,7 +58,7 @@ func TestClaimTrace(t *testing.T) {
 	t.Cleanup(deskkit.ResetTrace)
 	g := &gogitStore{url: srv.URL + "/" + filepath.Base(repo), host: "loopback"}
 	id := "example--pr-7--security"
-	got := g.CreateIfAbsent(id, claimMessage(id, "fixture", "claimed", "-", ""))
+	got := g.CreateIfAbsent(id, claimTestMessage(id, "fixture", "claimed", "-", ""))
 	if got != deskkit.ClaimWriteRejected || posts != 1 || objectCount != 2 || !strings.Contains(g.TransportCause(), hookSays) {
 		t.Fatalf("fixture failed: result=%v posts=%d objects=%d cause=%s", got, posts, objectCount, g.TransportCause())
 	}
@@ -94,7 +94,7 @@ func TestClaimEmptyAck(t *testing.T) {
 	defer srv.Close()
 	g := &gogitStore{url: srv.URL + "/" + filepath.Base(repo), host: "loopback"}
 	id := "example--pr-7--security"
-	got := g.CreateIfAbsent(id, claimMessage(id, "fixture", "claimed", "-", ""))
+	got := g.CreateIfAbsent(id, claimTestMessage(id, "fixture", "claimed", "-", ""))
 	_, referr := exec.Command("git", "-C", repo, "show-ref", "--verify", "refs/dispatch/"+id).CombinedOutput()
 	if posts != 1 || referr == nil {
 		t.Fatal("invalid empty-response fixture")
@@ -145,7 +145,7 @@ func TestClaimAckMatrix(t *testing.T) {
 			}))
 			defer srv.Close()
 			g := &gogitStore{url: srv.URL + "/" + filepath.Base(repo), host: "loopback"}
-			got := g.CreateIfAbsent(id, claimMessage(id, "fixture", "claimed", "-", ""))
+			got := g.CreateIfAbsent(id, claimTestMessage(id, "fixture", "claimed", "-", ""))
 			if posts != 1 {
 				t.Fatal("invalid fixture")
 			}
