@@ -392,6 +392,16 @@ const (
 // namespace's root carries there (sgNamespaceRootUID), for the file and every parent
 // directory alike. A caller-owned overlay, which reads as uid 0 in there, is refused. When
 // the mapping cannot be read or is ambiguous, the helper checks uid 0, as before.
+//
+// Inside the helper this rule is weaker than uid 0: every unmapped host uid reads as the
+// overflow uid, so there "owned by root" means "owned by anyone but the caller". The helper's
+// check is sound only because of the parent's. The helper is this same executable
+// (os.Executable in networkOffWrapper), and the parent, an ordinary invocation, has already
+// checked it, its overlay, its manifest and every parent directory by uid 0 before it starts
+// `unshare`. A file owned by any other host user is refused there ("ordinary invocation" in
+// TestStatusgenHotfixNetnsRoot), and a root-owned file cannot be re-owned between the two
+// checks without root. Only a direct `__verifyrun-netns` invocation skips the parent, and
+// that runs as the caller in the caller's own namespace.
 func sgActiveOwnerFor(args []string, read func(string) ([]byte, error)) func(string) error {
 	if v := strings.TrimSpace(sgHotfixSeamGet(sgHotfixSeamRootUID)); v != "" {
 		if uid, err := strconv.ParseUint(v, 10, 32); err == nil {

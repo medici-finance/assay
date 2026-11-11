@@ -44,6 +44,24 @@
       "new": "\n"
     },
     {
+      "name": "S4: TestHotfixIneligibleMatch: statusgen's identity stamp file is hotfix-eligible",
+      "file": "internal/deskkit/version.go",
+      "old": "\t\"statusgen/buildstamp.go\",\n",
+      "new": "\n"
+    },
+    {
+      "name": "S4: TestHotfixIneligibleMatch: the network-off helper (owner-rule argv) is hotfix-eligible",
+      "file": "internal/deskkit/version.go",
+      "old": "\t\"statusgen/netns.go\",\n",
+      "new": "\n"
+    },
+    {
+      "name": "S4: TestHotfixIneligibleMatch: the refusal's exit path (exitProcess) is hotfix-eligible",
+      "file": "internal/deskkit/version.go",
+      "old": "\t\"statusgen/perfrecord.go\",\n",
+      "new": "\n"
+    },
+    {
       "name": "A2: the no-pin refusal names the desk-tools pin for a statusgen hotfix (TestValidateHotfix)",
       "file": "internal/deskkit/hotfix.go",
       "old": "\tif tool == StatusgenArtifact {\n\t\treturn StatusgenArtifact\n\t}\n\treturn \"desk-tools\"",

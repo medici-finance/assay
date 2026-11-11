@@ -99,6 +99,12 @@ var hotfixIneligiblePaths = []string{
 	"statusgen/hotfixowner_windows.go",
 	"statusgen/hotfixexec_unix.go",
 	"statusgen/hotfixexec_windows.go",
+	// files outside the copy whose symbols the self-check depends on: the identity stamp it
+	// checks (buildstamp.go), the helper argv that picks its owner rule (netns.go) and the exit
+	// its refusal goes through (perfrecord.go's exitProcess)
+	"statusgen/buildstamp.go",
+	"statusgen/netns.go",
+	"statusgen/perfrecord.go",
 }
 
 // HotfixIneligiblePaths returns a copy of the compiled ineligible-path list.
