@@ -124,6 +124,9 @@ func runTree(args []string) int { return runTreeSelected(args, nil) }
 
 func runTreeSelected(args []string, sink func(perfrec.Context)) (code int) {
 	maintenanceCommand = ""
+	// Clear it again on the way out: a later in-process loadCell outside any run (a test, a
+	// helper) must not inherit this run's verb and take its admission lock (#6217).
+	defer func() { maintenanceCommand = "" }()
 	defer releaseMaintenanceAdmissions()
 	rawSelector, rawSelected, verbWords, cellsRootSelected = "", false, nil, ""
 	hook := hookVerb(args)

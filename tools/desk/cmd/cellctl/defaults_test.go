@@ -443,6 +443,24 @@ func TestCellDefaultsSetWritesOnlyCellEnv(t *testing.T) {
 	}
 }
 
+// regression: #6217
+func TestRunTreeClearsMaintCommand(t *testing.T) {
+	root := defaultsRoot(t)
+	envfile := writeCell(t, root, "demo", demoCell)
+	captureStdout(t, func() { inproc("ls") })
+	if maintenanceCommand != "" {
+		t.Fatalf("maintenanceCommand = %q after a finished run, want it cleared", maintenanceCommand)
+	}
+	// A direct load after a run takes no admission lock, so the cell dir stays as written.
+	loadCell("demo")
+	t.Cleanup(releaseMaintenanceAdmissions)
+	for _, n := range mustReadDir(t, filepath.Dir(envfile)) {
+		if n != "cell.env" {
+			t.Errorf("loadCell left %s in the cell dir", n)
+		}
+	}
+}
+
 func mustReadDir(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
