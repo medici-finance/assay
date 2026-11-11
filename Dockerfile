@@ -139,6 +139,25 @@ FROM scratch AS released
 COPY .release-images/desk-tools/ /out/
 FROM ${BINARY_STAGE} AS toolkit
 
+# Git release archive verified against the upstream maintainer signature.
+# Keep the version and checksum together when upgrading.
+FROM alpine:3.21 AS gitbuild
+USER root
+ARG GIT_VERSION=2.56.1
+ARG GIT_TARBALL_SHA256=f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f
+RUN set -eux; \
+    apk add --no-cache ca-certificates curl build-base linux-headers curl-dev expat-dev pcre2-dev xz zlib-dev
+RUN set -eux; \
+    curl -fsSL --proto '=https' --proto-redir '=https' \
+        "https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.xz" -o /tmp/git.txz; \
+    echo "${GIT_TARBALL_SHA256}  /tmp/git.txz" | sha256sum -c -; \
+    tar -C /tmp -xJf /tmp/git.txz; \
+    cd "/tmp/git-${GIT_VERSION}"; \
+    opts="prefix=/usr gitexecdir=/usr/lib/git-core NO_REGEX=NeedsStartEnd NO_OPENSSL=YesPlease NO_RUST=YesPlease NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_PERL=YesPlease NO_PYTHON=YesPlease USE_LIBPCRE2=YesPlease"; \
+    make -j"$(nproc)" $opts all; \
+    make $opts DESTDIR=/out install; \
+    test "$(/out/usr/bin/git version)" = "git version ${GIT_VERSION}"
+
 FROM alpine:3.21
 
 # The explicit /work bind mount may be owned by root on a Docker Desktop backend;
@@ -146,10 +165,20 @@ FROM alpine:3.21
 # launcher (statusgen verifyincontainer.go) ALSO marks safe.directory=/work via
 # per-run env — this system config is the second layer, so a direct
 # `docker run <img> git …` against /work still works without the launcher.
-RUN apk add --no-cache bash git github-cli ca-certificates file \
-    && git config --system --add safe.directory /work \
+RUN apk add --no-cache bash github-cli ca-certificates file libcurl expat pcre2 zlib \
     && addgroup -S desk \
     && adduser -S -G desk -h /home/desk desk
+
+# Replace the distro executable and helpers together; assert the runtime copy.
+COPY --from=gitbuild /out/usr/ /usr/
+RUN set -eu; \
+    test "$(/usr/bin/git version)" = "git version 2.56.1"; \
+    test -x /usr/lib/git-core/git-remote-https; \
+    ldd /usr/lib/git-core/git-remote-https > /tmp/git-ldd; \
+    if grep 'not found' /tmp/git-ldd; then exit 1; fi; \
+    rm /tmp/git-ldd
+
+RUN git config --system --add safe.directory /work
 
 # Binaries onto PATH (desk-tools suite + statusgen + bugs-gc).
 COPY --from=toolkit /out/ /usr/local/bin/
