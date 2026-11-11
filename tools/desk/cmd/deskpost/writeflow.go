@@ -104,6 +104,10 @@ func deskDir() (string, error) {
 // treated as stale → Unverifiable (exit 6).
 type auditLock struct{ f *os.File }
 
+// lockWait is how long acquireAuditLock waits for a contended lock before refusing. A package
+// var only so a test can shorten it; production is 60s and has no flag or env override.
+var lockWait = 60 * time.Second
+
 func acquireAuditLock() (*auditLock, error) {
 	dir, err := deskDir()
 	if err != nil {
@@ -116,7 +120,7 @@ func acquireAuditLock() (*auditLock, error) {
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot open audit lock", err)
 	}
-	deadline := time.Now().Add(60 * time.Second)
+	deadline := time.Now().Add(lockWait)
 	for {
 		lerr := deskkit.TryLockExclusive(f)
 		if lerr == nil {
