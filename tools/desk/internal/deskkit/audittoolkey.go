@@ -71,6 +71,7 @@ var canonicalToolKeys = map[string]struct{}{
 	"deskclaim-ref":     {},
 	"deskclose":         {},
 	"deskcomms":         {},
+	"deskdecision":      {},
 	"deskdigest":        {},
 	"deskdispatch":      {},
 	"deskdisable":       {},
