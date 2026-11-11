@@ -14,6 +14,14 @@ import (
 // ("is a missing but locked worktree"), so the boot stopped until someone unlocked and pruned
 // the entry by hand.
 
+// verifierPrefix is the verifier role's branch prefix in the fixture roster; role-init's
+// target for a session is tmpBaseDir/tracker-<prefix>-<session>.
+const verifierPrefix = "verify-desk"
+
+func verifierTarget(session string) string {
+	return filepath.Join(tmpBaseDir, "tracker-"+verifierPrefix+"-"+session)
+}
+
 // sweptRoleWorktree provisions a verifier role worktree for session, then deletes its
 // directory the way a tmp sweep does, leaving the registration (and its lock) behind.
 func sweptRoleWorktree(t *testing.T, session string) string {
@@ -21,7 +29,7 @@ func sweptRoleWorktree(t *testing.T, session string) string {
 	if rc, stderr := runCapErr(t, []string{"role-init", "--role", "verifier", "--session", session}); rc != deskkit.ExitOK {
 		t.Fatalf("first role-init rc = %d, want 0; stderr: %s", rc, stderr)
 	}
-	target := filepath.Join(tmpBaseDir, "tracker-verify-desk-"+session)
+	target := verifierTarget(session)
 	if err := os.RemoveAll(target); err != nil {
 		t.Fatalf("simulate the tmp sweep: %v", err)
 	}
@@ -138,7 +146,7 @@ func TestRoleInitReusesLeftBranch(t *testing.T) {
 	if rc, stderr := runCapErr(t, []string{"role-init", "--role", "verifier", "--session", "left"}); rc != deskkit.ExitOK {
 		t.Fatalf("first role-init rc = %d, want 0; stderr: %s", rc, stderr)
 	}
-	target := filepath.Join(tmpBaseDir, "tracker-verify-desk-left")
+	target := verifierTarget("left")
 	mustGit(t, target, "checkout", "-q", "-b", "fixture/side")
 	if err := os.RemoveAll(target); err != nil {
 		t.Fatal(err)
