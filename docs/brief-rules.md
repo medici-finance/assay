@@ -169,12 +169,16 @@ nothing measured.
      can weigh ("the two out-of-scope exclusions are judgements — reviewer confirms the
      frozen tree really has no live reader"). It does not get restated as fact in the
      frontmatter, where it would read as settled.
-   - **After the merge, the claims need the diff that made them.** `--brief` lifts the diff
-     SCOPING, not the need for a diff: run on merged main it exits **2 (COULD-NOT-CHECK)**,
-     because HEAD equals the base and nothing there is evidence either way. To re-run the
-     claims, give it the branch: `git checkout M^2 && statusgen --consumers --brief <id>
-     --base $(git merge-base M^1 M^2)` for the PR's merge commit `M`. Exit 2 is deliberate —
-     "could not check" must never render as "checked clean".
+   - **After the merge, the same row re-runs against the delivery.** On merged main HEAD
+     equals the base, so the branch diff is no evidence either way. The bare row then pins
+     itself to the brief's delivery and its first parent, read locally: the committed
+     Evidence's `Verification-Table:` marker when there is one, otherwise the one first-parent
+     commit whose message, or a commit it merged, carries `Brief: <stream>/<NN>`. The commit
+     that delivers the brief must therefore carry that trailer, and it must be the only one
+     (see [consumer delivery checks](consumer-delivery-checks.md)). When neither source names
+     exactly one delivery it exits **2 (COULD-NOT-CHECK)**; pass `--delivery <full-sha>
+     --base <its first parent>` explicitly. Exit 2 is deliberate — "could not check" must
+     never render as "checked clean".
 
    What the gate does **not** establish: that the list is COMPLETE. It judges the entries
    that were written; a consumer left off the list is invisible to it, and the run says so on

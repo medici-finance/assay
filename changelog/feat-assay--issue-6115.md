@@ -1,0 +1,3 @@
+### Fixed
+- `deskwt role-init` recovers from its own stale registration: when the role worktree's directory is gone (a reboot or tmp sweep) but git still has it registered under role-init's own lock for the same role and session, role-init unlocks and removes that one entry and provisions the worktree again, instead of stopping the boot on git's "missing but locked worktree" refusal. A registration locked by any other session or reason, or not locked, is still refused, now with a message naming the lock and the `deskwt remove` step.
+- A failed git child's refusal now carries git's whole diagnosis on one line. git prints progress such as `Preparing worktree (...)` ahead of its `fatal:` line, and the desk tools' message used to stop at the progress line.
