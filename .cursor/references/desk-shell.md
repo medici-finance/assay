@@ -193,27 +193,44 @@ any role. A coordinator window can then post a reviewer verdict, and a worker ca
 own change. The loop checks below catch a mistake. They do not stop a session that sets its
 own environment.
 
-**Provision.** Give each role window its own `ASSAY_CONFIG_HOME`, holding only that role's
-App key, `apps.env` entry and token cache, with an owner-only mode. Leave no role key in the
-shared config home itself: the search path always ends there, so a key left in it is
-readable from every window. The roster (`roster.env`) stays in the shared config home; the
-knob moves only the App-credential files. Each window's launcher exports both `DESK_LOOP` and
-that window's `ASSAY_CONFIG_HOME`. Separate config homes under one OS user still let a
-determined session read another directory. A separate OS user (or host) per role is what
-makes the split a boundary.
+**Provision.** Give each role window its own `ASSAY_CONFIG_HOME`, with an owner-only mode.
+It holds the App key, `apps.env` entry and token cache of each role that a tool run in that
+window acts as, and no other role's:
+
+| Window | Role keys in its config home | Why each extra key is there |
+|---|---|---|
+| `the-desk` | `desk`, plus `worker` or `verifier` if it dispatches those kits | a dispatched agent runs in this window's environment and mints its own kit's role |
+| `worker-desk` | `worker`, `desk` | `deskdispatch` takes the claim and the model stamp as `desk`: the dispatcher attests, never the dispatched role |
+| `pr-review-desk` | `reviewer`, plus `worker` if it runs `deskreply` | a review dispatch claims and stamps as `reviewer` |
+| `verify-desk` | `verifier`, `desk` | a verifier dispatch claims and stamps as `desk` |
+| `intake-desk` | `issue-loop`, plus `worker` if it runs `deskreply` | `deskreply` always posts as `worker` |
+
+Add `verifier` to any window that runs `deskevidence`. Add a by-name role (`cell-issues`,
+`release-runner`, `auditor`) only to the window that uses it. Every extra key is reach that
+window keeps over another role. The table is the minimum the tools need today, not a
+boundary. Leave no role key in the shared config home itself: the search path always ends
+there, so a key left in it is readable from every window. The roster (`roster.env`) stays in
+the shared config home; the knob moves only the App-credential files. Each window's launcher
+exports both `DESK_LOOP` and that window's `ASSAY_CONFIG_HOME`. Separate config homes under
+one OS user still let a determined session read another directory. A separate OS user (or
+host) per role is what makes the split a boundary.
 
 **What the tools check (#6069).** The loop-to-role table is the one every desk verb reads:
 `the-desk` acts as `desk`, `worker-desk` as `worker`, `pr-review-desk` as `reviewer`,
 `verify-desk` as `verifier`, and `intake-desk` as `issue-loop`.
 
-- `desktoken <role>` refuses, with exit 5, a role that another loop acts as, when
-  `$DESK_LOOP` is set. An unknown loop is exit 6. Roles no loop acts as (`cell-issues`,
+- `desktoken` refuses, with exit 5, a role that another loop acts as, when `$DESK_LOOP` is
+  set, whatever the flags: `desktoken --no-rotate <role> --repo <slug>` is checked too. An
+  unknown loop is exit 6. Roles no loop acts as (`cell-issues`,
   `release-runner`, `auditor`, `intake-loop`) are taken by name from any window. An unset
   `$DESK_LOOP` (an operator's shell) is not checked.
-- `desktoken <role> --cross-role "<reason>"` admits a refused mint and writes the loop, the
-  role and the reason into the audit row, on every use including a cache reuse. `deskreply`
-  always posts as `worker` and `deskevidence` always lands as `verifier`, so each passes the
-  override itself when called from another loop's window, with a reason naming the verb.
+- `desktoken --no-rotate <role> --repo <slug> --cross-role "<reason>"` admits a refused mint
+  and writes the loop, the role and the reason into the audit row, on every use including a
+  cache reuse. `deskreply` always posts as `worker` and `deskevidence` always lands as
+  `verifier`, so each passes the override itself when called from another loop's window, with
+  a reason naming the verb. `deskdispatch` prints its claim commands with the override when
+  the shell that runs them (the dispatching window, or the dispatched agent's loop) does not
+  take the role they name.
 - `deskpost review`, `deskpost security-review` and `deskpost finish` refuse to post a verdict
   unless `$DESK_LOOP` acts as `reviewer`, before any read or write.
 

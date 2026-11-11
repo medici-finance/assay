@@ -172,6 +172,30 @@ func CrossRoleReason(verb, role string) string {
 	if err == nil || ExitCodeOf(err) != ExitRefused {
 		return ""
 	}
+	return crossRoleText(verb, role, loop, loopRole)
+}
+
+// CrossRoleReasonFor is CrossRoleReason for a command PRINTED for another shell to run: the
+// reader's loop is named, not read from this process. deskdispatch prints claim commands that
+// run under the dispatching window's loop, or under the loop a dispatched agent runs as. It
+// returns "" when that loop takes role anyway, and when loop is empty or unknown (the printed
+// command then meets desktoken's own check, which fails closed).
+func CrossRoleReasonFor(loop, verb, role string) string {
+	if !loopBoundRole(role) {
+		return ""
+	}
+	names, ok := LoopFlagNames(strings.TrimSpace(loop))
+	if !ok {
+		return ""
+	}
+	loopRole, ok := TokenRoleForLoop(names[0])
+	if !ok || loopRole == role {
+		return ""
+	}
+	return crossRoleText(verb, role, names[0], loopRole)
+}
+
+func crossRoleText(verb, role, loop, loopRole string) string {
 	return fmt.Sprintf("%s posts as the %s App by design; loop %s acts as %s", verb, role, loop, loopRole)
 }
 
