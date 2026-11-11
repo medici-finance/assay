@@ -588,7 +588,7 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 		probes, _ := probe(rs)
 		for _, p := range probes {
 			if p.Kind == probeAbsent {
-				if _, err := c.prepareLaunch(); err != nil {
+				if _, err := c.upPrepareLaunch(); err != nil {
 					die("up preparation: %v; no windows launched", err)
 				}
 				break
