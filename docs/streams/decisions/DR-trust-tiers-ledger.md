@@ -3,7 +3,8 @@ id: DR-trust-tiers-ledger
 date: "2026-09-12"
 title: "Four contributor trust tiers, recorded in an operator-side per-repository ledger rather than a file in the public tree"
 consequence: critical
-decided-by: "human:<name>"
+decided-by: "human:ian"
+ruling: "https://github.com/medici-finance/assay/issues/2479#issuecomment-6561567674"
 alternatives:
   - "Keep the ledger as a tracked file in the public repository (a register under the docs tree, like findings or decisions) — ruled out: the ledger's rows are trust judgements about named external people, and publishing them turns a review-workflow record into a public reputation list. A demotion row would be a permanent public mark on an individual, which is a consequence far out of proportion to the workflow problem being solved, and a promotion row exposes a relationship the contributor did not ask to have published. The ledger therefore lives with the roster, outside every tree the tools evaluate."
   - "Two states only (trusted / untrusted), as today — ruled out: it is the measured status quo and it is what forces the same stranger-grade assessment on a contributor whose third change is landing. With no intermediate state there is nowhere to record 'this identity has one merged change and nothing adverse', which is exactly the fact a second review wants."
@@ -17,8 +18,12 @@ accepted:
   - "Demotion is available and is a recorded human act with a reason, which means an adverse judgement about a person exists in writing. Keeping it out of the public tree is what makes that acceptable."
 ---
 
-**PROPOSED — no ruling is recorded.** `decided-by:` is a placeholder until a human rules on
-the brief's decision issue; the ruling is recorded into this file in the same motion.
+**Ruled.** The driver [ruled on 2026-11-01](https://github.com/medici-finance/assay/issues/2479#issuecomment-6561567674),
+on decision issue medici-finance/assay#2479, for option 1: the ledger stays outside the
+repository with the operator configuration. The original record date and design are retained.
+The implementation was delivered by medici-finance/assay#971 before the ruling, and the ruling
+adopts it as it stands. Running the brief's Verify table on merged main remains the verifier's
+obligation.
 
 The decision has two halves that must be taken together: the vocabulary, and where it is
 written down.
