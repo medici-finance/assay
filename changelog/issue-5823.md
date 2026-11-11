@@ -1,2 +1,0 @@
-- Bring the independent cellctl shell oracle up to the current dry-run, Codex and scrubbed cockpit contracts while retaining all 200 parity comparisons.
-- Prepare discriminating, repeatable PostgreSQL acceptance commands and an isolated local scratch flow; acceptance transition approval remains a separate human act.
