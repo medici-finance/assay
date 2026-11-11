@@ -1170,7 +1170,11 @@ never "fix" it by an Evidence-only edit.
   the recorded output, and the runner must be attributable and ≠ author. A self-verify is void. Own temp
   worktree; never mutate the shared checkout; never `git restore`/`clean`; no STATUS.md on a branch.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
-  or comments.
+  or comments. If a push is refused over an attribution trailer your harness added, not you (on
+  Cursor the host setting `attribution.attributeCommitsToAgent`, and `attribution.attributePRsToAgent`
+  for PR footers; both default to true), STOP: never rewrite history or re-commit to strip it, and
+  never push by another route. Report the setting and the refusal line; the host's operator sets
+  it to false.
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
   workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
   standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
