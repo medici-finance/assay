@@ -280,3 +280,10 @@ step. They keep exit 0, because a deferred labels step is not a failed install. 
 because a set that cannot be derived is never reported clean. They keep exit 1, and their summary
 line does not change, since the run already has `MISS` rows. Every other byte and all stderr
 still must match.
+
+The same-suite harness `tools/cellctl/tests/house-cell.test.sh` runs a house `check` on a cell
+that has roots and a roster but no `CELL_LABELS_TOKEN_FILE`. Against the shell oracle it closes
+`[check] all preconditions met`. Against the Go port each labels row is could-not-check, so the
+run keeps exit 0 and closes `[check] every checked precondition met; N could-not-check row(s) (?)
+— not clean until each is checked`. The case accepts that line only when every could-not-check
+row is a labels row.
