@@ -87,7 +87,7 @@ Every file the flow writes lands on a branch and reaches `main` by a draft PR/MR
 | `install-main-guard` | the client hook, yes; its server-side counterpart, no | `.githooks/pre-commit` + `core.hooksPath`; server side: a ruleset / branch protection on `main` — *human* | the same hook; server side: a protected branch with a push-access list — *human*, set by `deskfleet provision --project` (or the fallback `tools/create-fleet-gitlab.sh`) | the hook is plain git; `repohardenguard` reads the server-side setting back on either forge (a per-forge checklist) |
 | `first-board` | yes | `statusgen --root <target> --lint` then `statusgen --root <target>` | identical | `statusgen` |
 | `setup-reviewer-app` (the reviewer grant) | no | a separate reviewer GitHub App with the three write duties, the CI reads and `administration: read` — *human* | a separate reviewer service account at the role in `docs/adopting-assay-gitlab.md` §1 — *human*, via `deskfleet provision` (or the fallback `tools/create-fleet-gitlab.sh`) | `deskroster preflight` (run by `deskboot`) reads the grant back — `app-scopes-vs-duties` on GitHub, the token-custody check on GitLab |
-| `create-labels` | no | a one-off — *human/admin*: `deskfleet labels --forge github`, or the repo's label settings; the list is `docs/adopting-assay.md` §3 `create-labels` | `deskfleet labels --forge gitlab` or `deskfleet provision --project` (or the fallback `tools/create-fleet-gitlab.sh`), same names, colours and descriptions — *human* | `deskfleet labels` creates the whole set on either forge, run by a human (`windows-port/08`); whether a desk role runs it on its own is #1559. `deskflip` creates the PR-state pair on first use on either forge; `deskfile` only PROBES `raised-by:*` and files unstamped when one is missing |
+| `create-labels` | no | an *operator* act under the operator's own label-write credential: `deskfleet labels --forge github --roles <roster roles>`, `cellctl new --kind house … --labels-token-file <file>`, or the repo's label settings; the set (`review-request`, `raised-by:<role>` + `to:<role>` per roster role, the PR-state pair) is `docs/adopting-assay.md` §3 `create-labels` | `deskfleet labels --forge gitlab --roles <roster roles>`, `cellctl new --kind house --forge gitlab … --labels-token-file <file>`, or `deskfleet provision --project` (or the fallback `tools/create-fleet-gitlab.sh`), same names, colours and descriptions; an inherited group label counts as present — *operator* | `deskfleet labels --check` (or `cellctl check` on a house cell) reads the set back: each missing label named, an unreadable list could-not-check. A credential that cannot write labels leaves the step NOT ENSURED with the exact `deskfleet labels` command, never silently done. No desk role App gets label-write; whether a desk role may ever create labels on its own stays open (#1559). `deskflip` creates the PR-state pair on first use on either forge; `deskfile` only PROBES `raised-by:*` / `to:*` and files unstamped / unaddressed when one is missing |
 
 `deskfleet`, `tools/create-fleet-gitlab.sh` and the two runbooks live in your `assay` checkout. Nothing in the
 table is performed by `gh` or `glab`.
@@ -369,8 +369,10 @@ hands the human the exact values and waits:
 - **GitLab fleet provisioning and renewal.** This covers `deskfleet provision`, the fallback
   `tools/create-fleet-gitlab.sh`, and `tools/renew-fleet-gitlab-tokens.sh`. Each one mints live
   credentials from a group-owner PAT. Hand the human the exact command (with `--dry-run` first),
-  never hold the owner token, and never run any of them yourself. `deskfleet labels` is also the
-  human's to run: it needs a token that can write labels.
+  never hold the owner token, and never run any of them yourself. `deskfleet labels` (and
+  `cellctl new --kind house --labels-token-file`) is also the operator's to run: it needs the
+  operator's own credential that can write labels, never a desk role's App token. Hand the human
+  the command the step printed.
 - **Repo creation** + admin / permission grants.
 - **Merge to main / pushing to the main branch / release tag / the first ready-flip.**
 - **git history rewrite** (for a carve-out).
