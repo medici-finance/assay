@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -127,6 +129,138 @@ func TestRoleInitKeepsForeignStale(t *testing.T) {
 				if hasWorktreeVerb(*calls, verb) {
 					t.Fatalf("refusal ran `git worktree %s`: %v", verb, gitCalls(*calls))
 				}
+			}
+		})
+	}
+}
+
+// ownLockReason is the lock role-init writes for the verifier role and session.
+func ownLockReason(session string) string {
+	return verifierPrefix + " live session (deskwt role-init session=" + session + ")"
+}
+
+// TestRoleInitKeepsUnrecoverableHead pins the HEAD gate: an own-locked swept entry is still
+// refused when clearing it would lose the only ref to a commit (a detached HEAD on a
+// local-only commit) or when its HEAD cannot be proven (a branch that no longer resolves).
+// Without the gate both cases would be unlocked and removed.
+//
+// regression: #6115
+func TestRoleInitKeepsUnrecoverableHead(t *testing.T) {
+	cases := []struct {
+		name   string
+		strand func(t *testing.T, work, target string) // runs while the directory still exists
+		wantRC int
+		want   string
+	}{
+		{"detached local-only commit", func(t *testing.T, work, target string) {
+			mustGit(t, target, "checkout", "-q", "--detach")
+			mustGit(t, target, "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid",
+				"commit", "-q", "--allow-empty", "-m", "local only")
+		}, deskkit.ExitRefused, "is on no remote-tracking ref"},
+		{"branch gone", func(t *testing.T, work, target string) {
+			mustGit(t, target, "checkout", "-q", "-b", "fixture/gone")
+			mustGit(t, work, "update-ref", "-d", "refs/heads/fixture/gone")
+		}, deskkit.ExitUnverifiable, "does not resolve to a commit"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			work := newRepo(t)
+			calls := withEnv(t, work)
+			if rc, stderr := runCapErr(t, []string{"role-init", "--role", "verifier", "--session", "head"}); rc != deskkit.ExitOK {
+				t.Fatalf("first role-init rc = %d, want 0; stderr: %s", rc, stderr)
+			}
+			target := verifierTarget("head")
+			tc.strand(t, work, target)
+			if err := os.RemoveAll(target); err != nil {
+				t.Fatal(err)
+			}
+			before := worktreeBlock(t, work, target)
+			if !strings.Contains(before, ownLockReason("head")) {
+				t.Fatalf("fixture drift: the swept entry is not under role-init's own lock:\n%s", before)
+			}
+			resetCalls(calls)
+
+			rc, stderr := runCapErr(t, []string{"role-init", "--role", "verifier", "--session", "head"})
+			if rc != tc.wantRC {
+				t.Fatalf("role-init over an unrecoverable HEAD rc = %d, want %d; stderr: %s", rc, tc.wantRC, stderr)
+			}
+			if !strings.Contains(stderr, tc.want) {
+				t.Errorf("the refusal does not name the HEAD hold %q: %s", tc.want, stderr)
+			}
+			if after := worktreeBlock(t, work, target); after != before {
+				t.Fatalf("the held registration changed:\nbefore:\n%s\nafter:\n%s", before, after)
+			}
+			for _, verb := range []string{"unlock", "remove", "prune", "add"} {
+				if hasWorktreeVerb(*calls, verb) {
+					t.Fatalf("the HEAD hold ran `git worktree %s`: %v", verb, gitCalls(*calls))
+				}
+			}
+		})
+	}
+}
+
+// TestRoleInitRestoresLockOnFailedClear pins the restore path: once the recovery has
+// unlocked its own entry, a remove that fails, or one that reports success but leaves the
+// entry listed, puts the original lock back. If the restore itself fails, the message says
+// so. git will not fail on demand here, so the fixture swaps the remove argv (and, in the
+// last case, the lock helper).
+//
+// regression: #6115
+func TestRoleInitRestoresLockOnFailedClear(t *testing.T) {
+	cases := []struct {
+		name       string
+		removeArgv []string // what the `git worktree remove` launch runs instead
+		lockFails  bool
+		want       string
+		wantRelock bool
+	}{
+		{"remove fails", []string{"fixture-no-such-verb"}, false, "could not clear the stale registration", true},
+		{"remove is a no-op", []string{"--version"}, false, "is still registered", true},
+		{"restore fails too", []string{"fixture-no-such-verb"}, true, "could not restore its lock", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			work := newRepo(t)
+			calls := withEnv(t, work)
+			target := sweptRoleWorktree(t, "relock")
+			resetCalls(calls)
+
+			recorded := execCommand
+			execCommand = func(name string, args ...string) *exec.Cmd {
+				for i, a := range args {
+					if a == "worktree" && i+1 < len(args) && args[i+1] == "remove" {
+						*calls = append(*calls, append([]string{name}, args...))
+						return exec.Command(name, tc.removeArgv...)
+					}
+				}
+				return recorded(name, args...)
+			}
+			t.Cleanup(func() { execCommand = recorded })
+			if tc.lockFails {
+				oldLock := worktreeLockFn
+				worktreeLockFn = func(string, string, string) error { return errors.New("lock refused (fixture)") }
+				t.Cleanup(func() { worktreeLockFn = oldLock })
+			}
+
+			rc, stderr := runCapErr(t, []string{"role-init", "--role", "verifier", "--session", "relock"})
+			if rc != deskkit.ExitUnverifiable {
+				t.Fatalf("role-init with a failing clear rc = %d, want 6; stderr: %s", rc, stderr)
+			}
+			if !strings.Contains(stderr, tc.want) {
+				t.Errorf("stderr does not say %q: %s", tc.want, stderr)
+			}
+			if !hasWorktreeVerb(*calls, "unlock") || !hasWorktreeVerb(*calls, "remove") {
+				t.Fatalf("fixture drift: the recovery did not reach unlock and remove: %v", gitCalls(*calls))
+			}
+			if hasWorktreeVerb(*calls, "add") {
+				t.Fatalf("role-init went on to add over a registration it failed to clear: %v", gitCalls(*calls))
+			}
+			b := worktreeBlock(t, work, target)
+			if b == "" {
+				t.Fatalf("the registration is gone, but the fixture's remove never ran")
+			}
+			if relocked := strings.Contains(b, "locked "+ownLockReason("relock")); relocked != tc.wantRelock {
+				t.Fatalf("lock restored = %v, want %v:\n%s", relocked, tc.wantRelock, b)
 			}
 		})
 	}
