@@ -1,0 +1,3 @@
+### Changed
+- Container images and workloads now run Go programs with `GODEBUG=multipathtcp=0`, a stopgap for CVE-2026-98432: the five Kubernetes desk manifests, the five Go-shipping Dockerfiles, the Compose desk services, `desk-run.sh` and the documented docling-serve Deployment set it, and a patched node kernel remains the real fix.
+- The offline manifest checker rejects any container that drops, clears, duplicates or overrides the setting (including re-enabling it after `multipathtcp=0`), with new hostile fixtures, and a repository-wide regression test fails when a Dockerfile, workload or Compose service is added without it.

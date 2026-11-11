@@ -96,6 +96,9 @@ the assay plugin on hand) uses a separate family of images under
   `/opt/assay/plugin`;
 - a first-run installer for the **interactive agent CLI** (installed into the
   persistent volume rather than baked — see `containers/README.md`);
+- **`ENV GODEBUG=multipathtcp=0`**, a stopgap for CVE-2026-98432 that keeps Go
+  programs off MPTCP listeners (a patched node kernel is the real fix; a later
+  `GODEBUG` override re-opens the path, see `containers/k8s/README.md`);
 - a **non-root `desk` user** (UID/GID pinned to 999) and a declared
   **`VOLUME /work`** for persistent working state.
 

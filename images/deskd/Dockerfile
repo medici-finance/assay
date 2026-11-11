@@ -63,5 +63,10 @@ COPY --from=build /out/passwd /etc/passwd
 COPY --from=build /out/group /etc/group
 COPY --from=build /out/deskd /deskd
 
+# CVE-2026-98432 stopgap: Go (1.24+) opens MPTCP listeners by default and the exploit
+# reaches the kernel bug through one. Programs that honour GODEBUG stay on plain TCP.
+# A patched node kernel is the real fix; a later GODEBUG override re-opens the path.
+ENV GODEBUG=multipathtcp=0
+
 USER 65532:65532
 ENTRYPOINT ["/deskd"]

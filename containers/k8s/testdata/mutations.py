@@ -136,3 +136,54 @@ def secret_control(encoded=False):
     data = {'data': {'token': base64.b64encode(token.encode()).decode()}} if encoded else {'stringData': {'token': token}}
     return json.dumps({'apiVersion': 'v1', 'kind': 'Secret',
                        'metadata': {'name': 'excluded-example'}, **data}).encode()
+
+
+# regression: #6213 - CVE-2026-98432 stopgap (GODEBUG=multipathtcp=0 on every
+# container). The reported defect is a manifest without the entry; the class is
+# "a container that can still open an MPTCP listener", so each plant is a different
+# way to get there, and every one is planted at EVERY role, not only the first.
+def mptcp_cases(clean):
+    def container(ds, role):
+        target = next(d for d in ds if d['kind'] == 'StatefulSet' and d['metadata']['name'] == role)
+        return target['spec']['template']['spec'], target['spec']['template']['spec']['containers'][0]
+
+    def drop(ds, role):
+        _, box = container(ds, role)
+        box['env'] = [e for e in box['env'] if e['name'] != 'GODEBUG']
+
+    def value(text):
+        def change(ds, role):
+            _, box = container(ds, role)
+            next(e for e in box['env'] if e['name'] == 'GODEBUG')['value'] = text
+        return change
+
+    def duplicate(ds, role):
+        _, box = container(ds, role)
+        box['env'].append({'name': 'GODEBUG', 'value': 'multipathtcp=1'})
+
+    def from_secret(ds, role):
+        _, box = container(ds, role)
+        entry = next(e for e in box['env'] if e['name'] == 'GODEBUG')
+        entry.pop('value')
+        entry['valueFrom'] = {'secretKeyRef': {'name': 'x', 'key': 'y'}}
+
+    def init_without(ds, role):
+        pod, box = container(ds, role)
+        pod['initContainers'] = [{'name': 'init', 'image': box['image']}]
+
+    kinds = {
+        'missing': drop,
+        'cleared': value(''),
+        'enabled': value('multipathtcp=1'),
+        'other-setting-only': value('http2debug=1'),
+        'reenabled-after-off': value('multipathtcp=0,multipathtcp=1'),
+        'duplicate-entry': duplicate,
+        'value-from': from_secret,
+        'init-container-without': init_without,
+    }
+    for workload in (d for d in clean if d['kind'] == 'StatefulSet'):
+        role = workload['metadata']['name']
+        for kind, change in kinds.items():
+            mutant = copy.deepcopy(clean)
+            change(mutant, role)
+            yield 'mptcp-' + role + '-' + kind, mutant

@@ -38,6 +38,11 @@ x-desk-common: &desk-common
   # env-file. Keep that file to model settings: it reaches every desk started on its default path.
   env_file:
     - ${ASSAY_DESK_ENV_FILE-${XDG_CONFIG_HOME:-${HOME}/.config}/assay/desk.env}
+  # CVE-2026-98432 stopgap: no MPTCP listeners from Go programs, whatever image tag is
+  # pulled. `environment` outranks `env_file`, so the operator's file cannot clear it.
+  # A patched host kernel is the real fix.
+  environment:
+    GODEBUG: multipathtcp=0
 
 services:
   intake-desk:

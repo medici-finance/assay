@@ -69,6 +69,10 @@ spec:
           env:
             - name: DOCLING_SERVE_ENABLE_UI
               value: "0"            # API only; the UI is an unauthenticated upload surface
+            - name: GODEBUG
+              value: multipathtcp=0 # CVE-2026-98432 stopgap for Go programs; a no-op for this
+                                    # image, kept so every workload here carries it. A patched
+                                    # node kernel is the real fix.
           resources:
             requests: { cpu: 500m, memory: 2Gi }
             limits:   { cpu: "2",  memory: 6Gi }

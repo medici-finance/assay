@@ -46,6 +46,10 @@ spec:
               value: the-desk
             - name: ASSAY_APP_PEM_FILE
               value: /run/secrets/assay/app.pem
+            # CVE-2026-98432 stopgap: no MPTCP listeners from Go programs. A node
+            # kernel patch is the real fix; see README.md "MPTCP stopgap".
+            - name: GODEBUG
+              value: multipathtcp=0
           envFrom:
             - secretRef:
                 name: the-desk-model

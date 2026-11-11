@@ -79,6 +79,21 @@ required work inputs. The legacy first-run npm installer is not run by these
 manifests, and the forge/model/DNS network floor does not permit arbitrary package
 registries. A retained shell does not install or start the agent automatically.
 
+## MPTCP stopgap
+
+Every container and init container in the five manifests carries
+`GODEBUG=multipathtcp=0` (CVE-2026-98432 stopgap). Go 1.24 and later open MPTCP
+listeners by default, and the published exploit reaches the kernel bug through one;
+the setting keeps Go programs on plain TCP. It is fragile on purpose and documented
+as such: it covers only Go programs that honour `GODEBUG`, a later `GODEBUG` value
+that re-enables the setting re-opens the path (Go reads the list left to right and
+the last `multipathtcp` entry wins), and a patched node kernel is the real fix,
+which this repository does not ship. A deployment that needs another `GODEBUG`
+value merges it into this one (`http2debug=1,multipathtcp=0`) instead of replacing
+it. `check.sh --base` rejects a container whose env lacks exactly one inline
+`GODEBUG` that ends with `multipathtcp=0`, and `--self-test` plants each way of
+dropping, clearing, overriding or re-enabling it.
+
 ## Offline checks
 
 From the repository root:

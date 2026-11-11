@@ -98,7 +98,7 @@ docker_calls() { wc -l <"$log" | tr -d ' '; }
 
 # expect <desk> <tag> : the exact command secrets.md section 4.1 prescribes.
 expect() {
-  printf 'docker run -it --name %s -v %s-work:/work --mount type=bind,src=%s,dst=/run/secrets/assay/app.pem,ro --env-file %s ghcr.io/medici-finance/assay/%s:%s' \
+  printf 'docker run -it --name %s -v %s-work:/work --mount type=bind,src=%s,dst=/run/secrets/assay/app.pem,ro --env-file %s -e GODEBUG=multipathtcp=0 ghcr.io/medici-finance/assay/%s:%s' \
     "$1" "$1" "$pem" "$envf" "$1" "$2"
 }
 
@@ -482,7 +482,8 @@ rc_dry=$rc
   }
   eval "$(cat "$tmp/out")"
 ) >"$tmp/pasted" 2>>"$all"
-if [ "$rc_dry" -eq 0 ] && [ ! -e "$tmp/cw/pwned-marker" ] && [ "$(wc -l <"$tmp/pasted" | tr -d ' ')" -eq 11 ] \
+if [ "$rc_dry" -eq 0 ] && [ ! -e "$tmp/cw/pwned-marker" ] && [ "$(wc -l <"$tmp/pasted" | tr -d ' ')" -eq 13 ] \
+  && grep -q -x -F -- "GODEBUG=multipathtcp=0" "$tmp/pasted" \
   && grep -q -x -F -- "type=bind,src=$qd/k.pem,dst=/run/secrets/assay/app.pem,ro" "$tmp/pasted" \
   && grep -q -x -F -- "$qd/m.env" "$tmp/pasted"; then
   pass "$name"

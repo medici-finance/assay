@@ -183,6 +183,22 @@ def schema_check(docs):
     return len(docs)
 
 
+MPTCP_OFF = 'multipathtcp=0'
+MPTCP_MISSING = 'every container needs GODEBUG with multipathtcp=0 (CVE-2026-98432 stopgap)'
+
+
+def mptcp_off(container):
+    # CVE-2026-98432 stopgap: Go opens MPTCP listeners by default. One inline GODEBUG
+    # entry (never valueFrom, never repeated) must leave multipathtcp at 0. Go reads
+    # the comma list left to right and the last setting of a key wins, so a trailing
+    # multipathtcp=1 after a 0 re-opens the path and is refused too.
+    entries = [e for e in container.get('env', []) if e.get('name') == 'GODEBUG']
+    if len(entries) != 1 or set(entries[0]) != {'name', 'value'}:
+        return False
+    settings = [s.strip() for s in str(entries[0]['value']).split(',')]
+    return [s for s in settings if s.startswith('multipathtcp=')][-1:] == [MPTCP_OFF]
+
+
 def structured(docs, record=None):
     expected = set(roles())
     recorded = recorded_images(record)
@@ -230,6 +246,8 @@ def structured(docs, record=None):
         pod = template['spec']
         need(pod.get('serviceAccountName') == 'desk-compat'
              and pod.get('automountServiceAccountToken') is False, 'agent token isolation required')
+        need(all(mptcp_off(c) for key in ['containers', 'initContainers', 'ephemeralContainers']
+                 for c in pod.get(key, [])), MPTCP_MISSING)
         need(not any(pod.get(k) for k in ['hostNetwork', 'hostPID', 'hostIPC',
                   'shareProcessNamespace', 'initContainers', 'ephemeralContainers']),
              'host namespaces and additional containers forbidden')
@@ -260,9 +278,11 @@ def structured(docs, record=None):
         resources = container.get('resources', {})
         for group in ['requests', 'limits']:
             need(all(resources.get(group, {}).get(k) for k in ['cpu', 'memory']), 'declared resources required')
-        need(container.get('env') == [{'name': 'ASSAY_DESK', 'value': role},
-             {'name': 'ASSAY_APP_PEM_FILE', 'value': '/run/secrets/assay/app.pem'}],
-             'only role identity and canonical PEM path may be inline env')
+        need(mptcp_off(container), MPTCP_MISSING)
+        need([e for e in container.get('env', []) if e.get('name') != 'GODEBUG'] ==
+             [{'name': 'ASSAY_DESK', 'value': role},
+              {'name': 'ASSAY_APP_PEM_FILE', 'value': '/run/secrets/assay/app.pem'}],
+             'only role identity, canonical PEM path and GODEBUG may be inline env')
         env = container.get('envFrom', [])
         need(len(env) == 1 and set(env[0]) == {'secretRef'}, 'one role-specific model Secret required')
         model = env[0]['secretRef']
@@ -420,7 +440,8 @@ def compatibility_structured(docs, pins, custody):
              container.get('terminationMessagePolicy') == 'File', 'exact lower termination message required')
         env = container.get('env', [])
         by_name = {item.get('name'): item for item in env}
-        need(len(env) == 5 and len(by_name) == 5 and
+        need(mptcp_off(container), MPTCP_MISSING)
+        need(len(env) == 6 and len(by_name) == 6 and
              by_name.get('ASSAY_POD_UID') == {'name': 'ASSAY_POD_UID', 'valueFrom': {'fieldRef': {'fieldPath': 'metadata.uid'}}},
              'exact downward Pod UID and launch identity required')
         for name in ['ASSAY_COMPAT_LAUNCH_ID', 'ASSAY_COMPAT_INIT_ID']:
@@ -429,7 +450,9 @@ def compatibility_structured(docs, pins, custody):
         # Reuse the historical base assertions for every unchanged custody/isolation
         # constraint. These changes are in an in-memory comparison copy only.
         spec['replicas'] = 1; container['image'] = old[role]; container.pop('args')
-        container['env'] = [by_name['ASSAY_DESK'], by_name['ASSAY_APP_PEM_FILE']]
+        # The patch adds three env entries to the base's three; GODEBUG stays so the
+        # reused base assertions also see the stopgap.
+        container['env'] = [by_name['ASSAY_DESK'], by_name['ASSAY_APP_PEM_FILE'], by_name['GODEBUG']]
         spec['template']['metadata']['labels']['assay.dev/profile'] = 'compatibility'
         for kind in ['Role', 'RoleBinding']:
             matches = [doc for doc in grants if doc.get('kind') == kind and
@@ -469,7 +492,12 @@ def compatibility_mutations(docs, pins, custody):
         ('foreign-attach', lambda value: next(item for item in value if item['kind'] == 'Role')['rules'][-1].update(resourceNames=['foreign-0'])),
         ('log-read', lambda value: next(item for item in value if item['kind'] == 'Role')['rules'][-1].update(resources=['pods/log'])),
         ('debug', lambda value: next(item for item in value if item['kind'] == 'Role')['rules'][-1].update(resources=['pods/ephemeralcontainers'])),
-        ('missing-network', lambda value: value.remove(next(item for item in value if item['kind'] == 'NetworkPolicy')))]
+        ('missing-network', lambda value: value.remove(next(item for item in value if item['kind'] == 'NetworkPolicy'))),
+        # regression: #6213 - the profile's patch must not drop or re-open the stopgap.
+        ('mptcp-dropped', lambda value: workloads(value)[0]['spec']['template']['spec']['containers'][0].update(
+            env=[e for e in workloads(value)[0]['spec']['template']['spec']['containers'][0]['env'] if e['name'] != 'GODEBUG'])),
+        ('mptcp-reenabled', lambda value: next(e for e in workloads(value)[-1]['spec']['template']['spec']['containers'][0]['env']
+                                               if e['name'] == 'GODEBUG').update(value='multipathtcp=1'))]
     compatibility_structured(docs, pins, custody)
     for name, mutate in cases:
         changed = copy.deepcopy(docs); mutate(changed)
@@ -529,6 +557,18 @@ def main():
                 try:
                     structured(mutant)
                 except Invalid:
+                    print(f'rejected: {name}')
+                    rejected += 1
+                else:
+                    raise Invalid(f'hostile fixture escaped: {name}')
+            # regression: #6213 - each stopgap defect must be rejected for the
+            # stopgap reason itself, not because some neighbouring rule tripped.
+            from testdata.mutations import mptcp_cases
+            for name, mutant in mptcp_cases(docs):
+                try:
+                    structured(mutant)
+                except Invalid as err:
+                    need(str(err) == MPTCP_MISSING, f'{name} rejected for another reason: {err}')
                     print(f'rejected: {name}')
                     rejected += 1
                 else:

@@ -369,6 +369,7 @@ else
     -v "$desk-work:/work" \
     --mount "type=bind,src=$pem,dst=$pem_dst,ro" \
     --env-file "$envf" \
+    -e GODEBUG=multipathtcp=0 \
     "$registry/$desk:$version"
 fi
 
