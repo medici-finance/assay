@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing"
@@ -82,6 +83,38 @@ func (r *Repo) CommitRange(base, tip string) ([]RangeCommit, error) {
 
 // The caller holds graphMu. Publish an index only after every parent was read:
 // failed or cyclic ancestry is retryable uncertainty, never a cached small set.
+// ReachableCommits returns every commit reachable from tip, tip included: the
+// base-less form of CommitRange, over the same indexed graph and records. The
+// tip must be a full object ID, every traversed parent must be readable, and the
+// result is a set whose Parents slices the caller owns.
+func (r *Repo) ReachableCommits(tip string) ([]RangeCommit, error) {
+	if !plumbing.IsHash(tip) {
+		return nil, fmt.Errorf("gitcore: reachable commits require a full object ID")
+	}
+	r.graphMu.Lock()
+	defer r.graphMu.Unlock()
+	start, err := r.loadRangeNode(tip, map[string]bool{})
+	if err != nil {
+		return nil, err
+	}
+	seen := make([]bool, len(r.graphNodes))
+	stack := []int{start}
+	var all []RangeCommit
+	for len(stack) > 0 {
+		at := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if seen[at] {
+			continue
+		}
+		seen[at] = true
+		rec := r.graphNodes[at].record
+		rec.Parents = slices.Clone(rec.Parents)
+		all = append(all, rec)
+		stack = append(stack, r.graphNodes[at].parents...)
+	}
+	return all, nil
+}
+
 func (r *Repo) loadRangeNode(id string, visiting map[string]bool) (int, error) {
 	if index, ok := r.graphIDs[id]; ok {
 		return index, nil

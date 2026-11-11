@@ -244,3 +244,14 @@ func TestDerivedHistoryDiffFails(t *testing.T) {
 		t.Fatalf("untakeable diff, delivery %s..%s in history: got %d, want 0", base, delivery, got)
 	}
 }
+
+// regression: #6099
+func TestDerivedHistoryNativeMessage(t *testing.T) {
+	// A commit whose message the library cannot render exactly (here a declared
+	// non-UTF-8 encoding) is refused, never searched natively or skipped.
+	root, _, _ := historyFixture(t, []string{"web/fixed.go: fixed-here"}, historyShape{messages: []string{trailer("implement", "alpha/01")}})
+	runGit(t, root, "-c", "commit.gpgsign=false", "-c", "i18n.commitEncoding=ISO-8859-1", "commit", "--allow-empty", "-qm", "an encoded commit")
+	runGit(t, root, "update-ref", remoteMainRef, "HEAD")
+	runGit(t, root, "checkout", "-q", "--detach", "HEAD")
+	wantCouldNotCheck(t, root, "cannot be read through the library read path", "record the Verification-Table marker or pass --delivery and --base")
+}

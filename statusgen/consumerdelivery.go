@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 var consumerCommit = regexp.MustCompile(`^[0-9a-f]{40}$`)
@@ -282,36 +284,60 @@ func runDerivedConsumers(root string, streams []*Stream, briefFilter string) (co
 // fetched, and a shallow history is refused because it cannot prove uniqueness.
 func deriveHistoryDelivery(root, brief string) (delivery, base, source, why string) {
 	want := canonicalBriefKey(brief)
-	stream, _, ok := briefStreamNum(want)
-	if !ok {
+	if _, _, ok := briefStreamNum(want); !ok {
 		return "", "", "", "the brief id " + want + " is not a <stream>/<NN> key the history can be searched for"
 	}
-	if shallow, ok := (coverageRepo{root: root}).IsShallow(); !ok || shallow {
+	repo := coverageRepo{root: root}
+	if shallow, ok := repo.IsShallow(); !ok || shallow {
 		return "", "", "", "the history cannot be searched: complete local Git history is required (no fetch is attempted)"
 	}
-	out, err := historyGit(root, "rev-list", "--first-parent", "HEAD").Output()
-	chain := strings.Fields(string(out))
-	if err != nil || len(chain) == 0 {
+	// The walk and the message scan read through the library, never a new native
+	// launch. A repository profile the library does not qualify is refused, not
+	// read natively: the marker or explicit --delivery/--base remain the remedy.
+	read := gitCoreFor(root)
+	if read.err != nil {
+		return "", "", "", "the history of HEAD cannot be opened"
+	}
+	if read.native != "" {
+		return "", "", "", "the history cannot be searched through the library read path (" + read.native + "); record the Verification-Table marker or pass --delivery and --base"
+	}
+	head, err := read.repo.Resolve("HEAD")
+	if err != nil {
 		return "", "", "", "the first-parent history of HEAD cannot be read"
 	}
-	onChain := make(map[string]int, len(chain))
-	for i, c := range chain {
-		onChain[c] = i
-	}
-	// The grep is only a prefilter; parseLinkTrailers decides what a commit names.
-	logOut, err := historyGit(root, "log", "-z", "--format=%H%n%B", "--regexp-ignore-case", "--fixed-strings", "--all-match", "--grep=brief:", "--grep="+stream, "HEAD", "--").Output()
+	// One validated walk yields every commit reachable from HEAD with its parents
+	// and message; a missing object anywhere in it is an error, never a smaller set.
+	reachable, err := read.repo.ReachableCommits(head.String())
 	if err != nil {
-		return "", "", "", "the commit messages reachable from HEAD cannot be read"
+		return "", "", "", "the commits reachable from HEAD cannot be read"
 	}
+	commits := make(map[string]gitcore.RangeCommit, len(reachable))
 	named := map[string]bool{}
-	for _, rec := range splitNUL(logOut) {
-		hash, body, _ := strings.Cut(rec, "\n")
-		_, briefs, _ := parseLinkTrailers(body)
+	for _, c := range reachable {
+		if c.NativeMessageReason != "" {
+			return "", "", "", "the commit message of " + c.ID + " cannot be read through the library read path (" + c.NativeMessageReason + "); record the Verification-Table marker or pass --delivery and --base"
+		}
+		commits[c.ID] = c
+		_, briefs, _ := parseLinkTrailers(c.Message)
 		for _, b := range briefs {
 			if b == want {
-				named[strings.TrimSpace(hash)] = true
+				named[c.ID] = true
 			}
 		}
+	}
+	var chain []string // HEAD's first-parent chain, newest first
+	onChain := map[string]int{}
+	for c := head.String(); ; {
+		rec, ok := commits[c]
+		if _, seen := onChain[c]; seen || !ok {
+			return "", "", "", "the first-parent history of HEAD cannot be read"
+		}
+		onChain[c] = len(chain)
+		chain = append(chain, c)
+		if len(rec.Parents) == 0 {
+			break
+		}
+		c = rec.Parents[0]
 	}
 	// Each naming commit belongs to the oldest first-parent commit that contains
 	// it: itself when it is on the chain, else the merge that brought it in.
@@ -325,7 +351,7 @@ func deriveHistoryDelivery(root, brief string) (delivery, base, source, why stri
 		lo, hi := 0, len(chain)-1 // chain[lo] contains c; find the largest such index
 		for lo < hi {
 			mid := (lo + hi + 1) / 2
-			in, err := isAncestor(root, c, chain[mid])
+			in, err := historyAncestor(repo, c, chain[mid])
 			if err != nil {
 				return "", "", "", "ancestry in the history of HEAD cannot be read"
 			}
@@ -353,31 +379,30 @@ func deriveHistoryDelivery(root, brief string) (delivery, base, source, why stri
 		return "", "", "", fmt.Sprintf("the delivery is ambiguous: %d first-parent commits of HEAD name `Brief: %s` (%s); this instrument does not choose between them", len(found), want, strings.Join(shorts, ", "))
 	}
 	delivery = chain[found[0]]
-	parentsOut, err := historyGit(root, "rev-list", "--parents", "-n", "1", delivery).Output()
-	parents := strings.Fields(string(parentsOut))
-	if err != nil || len(parents) < 2 || len(parents) > 3 || !consumerCommit.MatchString(parents[1]) {
+	parents := commits[delivery].Parents
+	if len(parents) < 1 || len(parents) > 2 || !consumerCommit.MatchString(parents[0]) {
 		return "", "", "", "the history-derived delivery " + delivery + " is not a single- or two-parent commit"
 	}
-	if err := historyGit(root, "merge-base", "--is-ancestor", delivery, remoteMainRef).Run(); err != nil {
+	if landed, err := historyAncestor(repo, delivery, remoteMainRef); err != nil || !landed {
 		return "", "", "", "the history-derived delivery " + delivery + " is not reachable from the fetched mainline ref " + remoteMainRef + " (absent, or a local commit that has not landed)"
 	}
 	source = "its own message names Brief: " + want
 	if !named[delivery] {
 		source = "a commit it merged names Brief: " + want
 	}
-	return delivery, parents[1], source, ""
+	return delivery, parents[0], source, ""
 }
 
-// isAncestor reports whether a is an ancestor of b. Exit status 1 is "no";
-// any other failure is an error, never an answer.
-func isAncestor(root, a, b string) (bool, error) {
-	err := historyGit(root, "merge-base", "--is-ancestor", a, b).Run()
-	var exit *exec.ExitError
-	switch {
-	case err == nil:
-		return true, nil
-	case errors.As(err, &exit) && exit.ExitCode() == 1:
+// historyAncestor reports whether a is an ancestor of (or equal to) b through
+// the coverage adapter's native merge-base reads: a is an ancestor of b exactly
+// when a is their only best common ancestor. Unrelated histories are "no"; any
+// other failure is an error, never an answer.
+func historyAncestor(repo coverageRepo, a, b string) (bool, error) {
+	if bases, ok := repo.MergeBaseAll(a, b); ok {
+		return len(bases) == 1 && bases[0] == a, nil
+	}
+	if repo.MergeBase(a, b) == evaluation.HistoryUnrelated {
 		return false, nil
 	}
-	return false, err
+	return false, errors.New("ancestry cannot be read")
 }

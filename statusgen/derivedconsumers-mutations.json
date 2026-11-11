@@ -172,14 +172,20 @@
     {
       "name": "history: an octopus merge is pinned to its first parent",
       "file": "consumerdelivery.go",
-      "old": "len(parents) < 2 || len(parents) > 3 ||",
-      "new": "len(parents) < 2 ||"
+      "old": "len(parents) < 1 || len(parents) > 2 ||",
+      "new": "len(parents) < 1 ||"
     },
     {
       "name": "history: a candidate that has not landed on the fetched mainline ref is accepted",
       "file": "consumerdelivery.go",
-      "old": "if err := historyGit(root, \"merge-base\", \"--is-ancestor\", delivery, remoteMainRef).Run(); err != nil {",
-      "new": "if err := historyGit(root, \"merge-base\", \"--is-ancestor\", delivery, remoteMainRef).Run(); false && err != nil {"
+      "old": "if landed, err := historyAncestor(repo, delivery, remoteMainRef); err != nil || !landed {",
+      "new": "if landed, err := historyAncestor(repo, delivery, remoteMainRef); false && (err != nil || !landed) {"
+    },
+    {
+      "name": "history: a message the library cannot render exactly is searched anyway",
+      "file": "consumerdelivery.go",
+      "old": "if c.NativeMessageReason != \"\" {",
+      "new": "if false && c.NativeMessageReason != \"\" {"
     }
   ]
 }
