@@ -60,6 +60,18 @@
       "file": "cmd/deskdispatch/briefkey.go",
       "old": "\tstream, num, serr := deskkit.SplitBriefKey(id)\n\tif serr != nil {\n\t\treturn \"\", \"\", nil\n\t}",
       "new": "\tstream, num, serr := deskkit.SplitBriefKey(id)\n\tif serr != nil {\n\t\treturn \"\", \"\", briefKeyRefusal(o.item, \"mutant\")\n\t}"
+    },
+    {
+      "name": "an unreadable stream directory reads as no match; TestBriefKeyUnreadableDir must go red",
+      "file": "cmd/deskdispatch/briefkey.go",
+      "old": "if derr != nil && !errors.Is(derr, fs.ErrNotExist) {",
+      "new": "if false && derr != nil && !errors.Is(derr, fs.ErrNotExist) {"
+    },
+    {
+      "name": "a symlinked brief is followed; TestBriefKeySymlinkRefused must go red",
+      "file": "cmd/deskdispatch/briefkey.go",
+      "old": "lerr == nil && fi.Mode()&fs.ModeSymlink != 0 {",
+      "new": "false && lerr == nil && fi.Mode()&fs.ModeSymlink != 0 {"
     }
   ]
 }

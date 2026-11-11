@@ -11,8 +11,8 @@ package main
 // THE RULE. With no --brief and no --gate-human, a key that reduces to a valid `<stream>/<NN>`
 // (briefIDFromItem, then deskkit.SplitBriefKey) names exactly one file,
 // docs/streams/<stream>/brief-<NN>-*.md, looked up under --root then --claim-root, the order
-// resolveBrief uses. No file, more than one, or an unreadable one is REFUSED before the claim: a
-// skip there would be a could-not-check reported as "not human-gated". A key that is not
+// resolveBrief uses. No file, more than one, an unreadable one or directory, or a symlink is
+// REFUSED before the claim: a skip there would be a could-not-check reported as "not human-gated". A key that is not
 // brief-shaped (issue-<N>, a review key, item-1) names no brief and changes nothing.
 //
 // THE SCOPE. The derived brief feeds the human gate ONLY: the gate detection, the recorded-ruling
@@ -22,7 +22,9 @@ package main
 // their behaviour on a key-only dispatch is what it was.
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,7 +65,12 @@ func briefFromItemKey(o dispatchOpts) (path, shown string, err error) {
 		seen[base] = true
 		dir := filepath.Join(base, rel)
 		tried = append(tried, filepath.Join(dir, prefix+"*.md"))
-		entries, _ := os.ReadDir(dir)
+		entries, derr := os.ReadDir(dir)
+		if derr != nil && !errors.Is(derr, fs.ErrNotExist) {
+			// An unreadable stream directory is could-not-check, never "no match": falling through
+			// to --claim-root would let a second copy decide a gate the first may hold.
+			return "", "", briefKeyRefusal(o.item, fmt.Sprintf("%s cannot be read (%v)", dir, derr))
+		}
 		var matches []string
 		for _, e := range entries {
 			if n := e.Name(); !e.IsDir() && strings.HasPrefix(n, prefix) && strings.HasSuffix(n, ".md") {
@@ -78,6 +85,11 @@ func briefFromItemKey(o dispatchOpts) (path, shown string, err error) {
 			return "", "", briefKeyRefusal(o.item, fmt.Sprintf("more than one brief matches (%s)", strings.Join(matches, ", ")))
 		}
 		p := matches[0]
+		// The key names a file IN the stream directory. A symlink there could point the gate at a
+		// file outside the checkout, so it is refused rather than followed.
+		if fi, lerr := os.Lstat(p); lerr == nil && fi.Mode()&fs.ModeSymlink != 0 {
+			return "", "", briefKeyRefusal(o.item, fmt.Sprintf("%s is a symlink; the key-named brief must be a regular file", p))
+		}
 		if _, rerr := os.ReadFile(p); rerr != nil {
 			return "", "", briefKeyRefusal(o.item, fmt.Sprintf("%s cannot be read (%v)", p, rerr))
 		}

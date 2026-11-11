@@ -265,3 +265,63 @@ func TestExplicitBriefUnchanged(t *testing.T) {
 		})
 	}
 }
+
+// An unreadable --root stream directory is could-not-check: it is refused, and a --claim-root copy
+// that does not gate never decides in its place.
+// regression: #6173
+func TestBriefKeyUnreadableDir(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a mode-000 directory")
+	}
+	s := &stub{}
+	_, root := s.install(t)
+	strictKeyBrief(t)
+	plantScripts(t, root)
+	claimRoot := t.TempDir()
+	plantScripts(t, claimRoot)
+	bkPlant(t, root, "docs/streams/example/brief-09-a.md", bkGated)
+	bkPlant(t, claimRoot, "docs/streams/example/brief-09-a.md", "---\nbrief: example/09\ngate: model\n---\n")
+	dir := filepath.Join(root, "docs", "streams", "example")
+	if err := os.Chmod(dir, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
+	err := cmdDispatch([]string{"assay--example--09", "--root", root, "--claim-root", claimRoot,
+		"--repo", allowedRepo, "--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "cannot be read") {
+		t.Fatalf("an unreadable stream directory was not refused as could-not-check: %v", err)
+	}
+	if len(s.calls) != 0 {
+		t.Fatalf("the refusal came after %d child process(es): %v", len(s.calls), s.calls)
+	}
+}
+
+// A key-named brief that is a symlink is refused, never followed out of the stream directory.
+// regression: #6173
+func TestBriefKeySymlinkRefused(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	strictKeyBrief(t)
+	plantScripts(t, root)
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	if err := os.WriteFile(outside, []byte("---\ngate: model\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "docs", "streams", "example")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "brief-09-a.md")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
+	err := cmdDispatch([]string{"assay--example--09", "--root", root, "--repo", allowedRepo,
+		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("a symlinked key-named brief was not refused: %v", err)
+	}
+	if len(s.calls) != 0 {
+		t.Fatalf("the refusal came after %d child process(es): %v", len(s.calls), s.calls)
+	}
+}
