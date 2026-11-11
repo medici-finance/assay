@@ -2300,6 +2300,42 @@
       "state": "pending"
     },
     {
+      "executable": "postgres-verify.sh",
+      "path": "tools/cellctl/tests/postgres-verify.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "source-only Verify runner; never installed, released or built by a workflow",
+      "consumers": [
+        "docs/streams/desk-containers/brief-26-local-docker-postgres.md",
+        "tools/cellctl/tests/postgres-verify.test.sh"
+      ],
+      "parser": "bash single positional Verify row number (3, 5, 9, 10 or 12)",
+      "complexity": "simple",
+      "basis": "61 lines at the issue #5823 change; dispatches one desk-containers/26 Verify row",
+      "owner": "",
+      "state": "excluded",
+      "class": "test",
+      "reason": "offline acceptance runner for desk-containers/26 Verify rows 3, 5, 9, 10 and 12, run from the repository root by a verifier; supplies no approval and writes no Evidence; never an operator entrypoint (#5823)"
+    },
+    {
+      "executable": "postgres-scratch.sh",
+      "path": "tools/cellctl/tests/postgres-scratch.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "source-only Verify runner; never installed, released or built by a workflow",
+      "consumers": [
+        "tools/cellctl/tests/postgres-verify.sh",
+        "tools/cellctl/tests/postgres-verify.test.sh"
+      ],
+      "parser": "no arguments",
+      "complexity": "simple",
+      "basis": "91 lines at the issue #5823 change; one disposable local compose project per run",
+      "owner": "",
+      "state": "excluded",
+      "class": "test",
+      "reason": "throwaway-server flow for desk-containers/26 Verify row 12, called only by postgres-verify.sh: starts its own disposable compose project from a cached image, provisions a synthetic cell and tears everything down; a test instrument, never the operator's provisioning path (#5823)"
+    },
+    {
       "executable": "inject-board-state.sh",
       "path": "plugins/assay/hooks/inject-board-state.sh",
       "kind": "script",

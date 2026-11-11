@@ -69,6 +69,12 @@ type postBackend interface {
 	// stale at this head); the security lane never touches it.
 	readMergeHold(pr int) (*deskkit.MergeHold, error)
 	setMergeHold(pr int, in deskkit.MergeHoldUpdate) error
+	// openMergeHold opens the marker thread on a change that has none. Its one caller is
+	// armHoldForRequestChanges: a request-changes verdict on a change opened outside the desk
+	// tooling (a human-authored merge request carries no marker thread) arms the hold by
+	// opening it, since a new thread is unresolved. GitHub's ghClient path is the typed
+	// not-applicable.
+	openMergeHold(pr int) error
 	// verdictLabels applies the mechanical, ADVISORY verdict-time labels (size + surface). It
 	// is post-write and gates nothing; a backend that cannot compute them returns a note, not
 	// an error (see forgeBackend.verdictLabels).
@@ -325,6 +331,11 @@ func (b *forgeBackend) readMergeHold(pr int) (*deskkit.MergeHold, error) {
 
 func (b *forgeBackend) setMergeHold(pr int, in deskkit.MergeHoldUpdate) error {
 	return b.fg.SetMergeHold(b.repo, pr, in)
+}
+
+func (b *forgeBackend) openMergeHold(pr int) error {
+	_, err := b.fg.OpenMergeHold(b.repo, pr)
+	return err
 }
 
 func (b *forgeBackend) RepoVisibility(owner, repo string) (string, error) {

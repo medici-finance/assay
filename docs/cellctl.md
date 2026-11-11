@@ -167,7 +167,7 @@ launch from, first confirm that none of the variables above is set for anything 
 `env | cut -d= -f1 | grep -E '_(APP|APP_ID|PEM|TOKEN|INSTALL_ID(_[A-Z0-9_]+)?)$'` (names only, so
 no token is printed; it also matches `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and the
 per-owner install ids) lists no variable that belongs to another cell or App.
-Then run `desktoken <role> --repo <owner>/<repo>` with only `HOME` set to the cell's `home`
+Then run `desktoken --no-rotate <role> --repo <owner>/<repo>` with only `HOME` set to the cell's `home`
 directory, leaving the rest of that shell's environment as it is. Do not set or clear any of these
 variables for the proof alone: a proof run in an environment the desks never get passes even when
 the launch reads another cell's credentials. A successful `desktoken` run shows that a key was
@@ -2101,6 +2101,14 @@ cockpit {tmux, herdr, orca} × verbs {check, desk, up, down, set, ls, smoke, sta
 per kind × forge {github, gitlab}. `new` has no dry run, so parity there is a byte-diff of the
 whole tree each implementation scaffolds — paths, mode bits and file contents. `PARITY_ONLY=<substring>`
 narrows a run to one cell or one verb.
+
+The oracle follows the current dry-run and custody contracts: host `down` plans
+without tearing down, Codex re-entry commands carry the cell root, and scrubbed
+Herdr displays a privately owned tmux session while scrubbed Orca is refused.
+Its standing Codex prompt is a literal fixture beside the shell script, never
+read from the production composer. The baseline matrix has no stored width
+overrides or existing house cadence checkpoints; the oracle refuses those
+configured cases rather than guessing their state. Go behavior tests cover them.
 
 **The machine-wide defaults file is outside the matrix too.** `$CELLS_ROOT/defaults.env` exists
 only in the Go program — the oracle neither reads nor writes it. A cells root without the file
