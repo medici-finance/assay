@@ -154,7 +154,7 @@ func removeHusk(guard *pathGuard, dir, rt string) (handled bool, detail string, 
 	}
 
 	if isLocked {
-		if _, uerr := runGit(dir, "worktree", "unlock", rt); uerr != nil {
+		if uerr := worktreeUnlock(dir, rt); uerr != nil {
 			return true, "", deskkit.Unverifiable("could not unlock the husk registration "+rt, uerr)
 		}
 	}

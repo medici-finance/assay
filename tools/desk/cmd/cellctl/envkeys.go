@@ -213,6 +213,8 @@ func buildEnvKeys() []envKey {
 			why: "is the one checkout a cell's role worktrees are created from"},
 		envKey{key: "CELL_REPO_SLUG", class: envCell, desc: "Scrubbed cells: the one repository the cell is scoped to.",
 			why: "is the one repository a scrubbed cell is scoped to"},
+		envKey{key: "CELL_LABELS_TOKEN_FILE", class: envCell, desc: "House cells: a FILE holding an operator credential that can read labels; `check` reads the cell's forge label set with it (unset: the labels rows are could-not-check).",
+			why: "is one operator credential file for one cell's repos"},
 		envKey{key: "CELL_ROOTS", class: envCell, desc: "The cell's stream-root map, exported to its role windows.",
 			why: "is one cell's stream-root map, the scope its desks read"},
 		envKey{key: "CELLS_CONFIG", class: envCell, desc: "The cell's cells.yaml slice (default: cells-<cell>.yaml in the cell's directory).",
