@@ -134,7 +134,7 @@ func runParity(t *testing.T, script string, fx fixture) (oracle, verb []cycleRes
 			env = append(env, e)
 		}
 		return append(env,
-			"PATH="+gh.binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+			"PATH="+oraclePATH(gh.binDir),
 			// The oracle's read identity is a minted role token; the loop names the role.
 			"DESK_LOOP=worker-desk",
 			stateEnv+"="+stateDir,

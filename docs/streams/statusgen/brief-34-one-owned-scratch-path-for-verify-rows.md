@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: [2789]
 schema: brief-v2
 outcome: none
-version: 1
+version: 2
 authored: 2026-10-18 by statusgen newbrief
 sources:
   - "medici-finance/assay#2789 — the issue: Verify rows that write scratch into the tree they verify, or leave it behind"
@@ -22,6 +22,7 @@ sources:
   - spec/cell-workspaces-v1.md — section 8 (effects, owners, the snapshot port) and section 9 (dispositions)
   - docs/verify-row-strength.md — the Verify-row rule catalogue
   - freshness-checked 2026-10-18 @ 83c6988d0 (origin/main)
+  - freshness-checked 2026-11-10 @ 612750a12 (origin/main; census refresh, see Read first)
 exec-tier: strong
 exec-tier-why: Two independent enforcement layers, a base-relative differential, a runtime filesystem observation and corrections to six other briefs need negative-path proofs at more than one site.
 domain: complicated
@@ -73,12 +74,12 @@ files:
 - changelog/statusgen-owned-row-scratch.md (planned)
 
 facts (source and date in frontmatter):
-- The defect is a class, not one row. At 83c6988d0 the Verify sections of `docs/streams/*/brief-*.md` hold two shapes. The in-tree shape has one site: measured-status/03 row 5 allocates its clone under the working directory with a mktemp template rooted at `$PWD`. The unowned shape has many: 247 Verify rows call mktemp with no trap and no rm. Among them, six copy or clone a tree and never remove it: build-less-brittle/08 row 6 (a shallow clone), build-less-brittle/10 row 7 and build-less-brittle/11 rows 3 and 4 (`cp -R .` copies), derived-board/09 row 7 (a full clone and a built binary under the temp root) and forge-neutral/34 row 16 (a shared clone and a built binary; it refuses a temp root under the checkout but never removes its directory).
+- The defect is a class, not one row. The Verify sections of `docs/streams/*/brief-*.md` hold two shapes, each measured by a census command defined in Read first. The in-tree shape: at 83c6988d0 it had one site, measured-status/03 row 5, which allocated its clone under the working directory with a mktemp template rooted at `$PWD`. At 612750a12 the in-tree census prints 0, because 6ed0928d9 (the measured-status/03 Verify re-baseline) moved that clone to `${TMPDIR:-/tmp}`. That row still removes its directory with a trailing rm and sets no trap, so it is now the unowned shape. The unowned shape has many sites: the unowned census printed 246 at 83c6988d0 and 382 at 612750a12, and it moves as briefs land. Among them, six copy or clone a tree and never remove it: build-less-brittle/08 row 6 (a shallow clone), build-less-brittle/10 row 7 and build-less-brittle/11 rows 3 and 4 (`cp -R .` copies), derived-board/09 row 7 (a full clone and a built binary under the temp root) and forge-neutral/34 row 16 (a shared clone and a built binary; it refuses a temp root under the checkout but never removes its directory). The correction-target check in Read first confirms all seven named rows at 612750a12.
 - medici-finance/assay#2803 fixed seven rows one by one. build-less-brittle/11 row 17 now allocates under the temp root and removes its directory. Nothing stops the next row from repeating either shape: no lint rule names in-tree or unowned scratch, and verifyrun runs every row with the caller's own environment and the checkout as its working directory.
 - The existing `verify-row-portability` tag (advisory) flags a hardcoded `/tmp` and exempts a `${TMPDIR:-/tmp}` fallback. It says nothing about where a mktemp template is rooted or whether the directory is removed.
 - verifyrun runs each row with `bash -o pipefail -c`, the working directory set to the root, and `plan.rowEnv()` as the environment: the caller's own, or `admittedRowEnv` for an admitted verifier run. `treeSHA` already marks a witness `+dirty` when `git status --porcelain` is non-empty, but it reads the tree once, so a row that writes into the tree and the rows after it share one mark, and nothing names the row that wrote.
 - The existing scratch and worktree owners do not fit. `cellscratch` serves metadata-free snapshots of an exact commit, and spec section 8 routes only checks that need immutable files rather than a Git checkout to it; the named rows run git clone, checkout and worktree commands. The workspace module and `deskwt` own worktrees. The caller census (`docs/workspace-callers.md`) does not read `docs/`, so Verify rows are not census sites. This brief therefore adds no allocator. The operating system's mktemp under the temp root is the allocator, and the change is about which root and who removes the directory.
-- `docs/brief-rules.md` ends at rule 49, so the new rule is 50.
+- `docs/brief-rules.md` holds rules 1 to 49 and rule 51. Rule 50 is reserved for this brief (8fd7148b1 numbered the clean-lint rule 51 for that reason), so the new rule is 50.
 - The idiom below was run on macOS `/bin/bash` 3.2 and on a current bash, both with pipefail. It keeps the row's own exit status (1 stays 1, 0 stays 0, an explicit exit 3 stays 3, and 0 stays 0 when allocation never ran) and removes the directory on every path, including failure.
 
 layering: lint rules in the existing Verify-row lint (verifyrows.go, strength.go), registered in the existing enforcement registry; runtime ownership in the existing verifyrun owner. No new verb, flag, module or service.
@@ -95,7 +96,27 @@ design-fit:
 
 ## Read first
 
-Read `statusgen/verifyrows.go` (the rule constants, `rowFindings`, `verifyRowTable`, `verifyCommand` and `unfailableRowAudit`), `statusgen/strength.go`, the `lintRuleRegistry` in `statusgen/enforcementstatus.go`, `branchChangedSet` in `statusgen/obligationderivation.go`, `gitShowObject` in `statusgen/gitbatch.go`, and `runVerifyrun`, `resolveShellPlan`, `runVerifyCommandWith` and `treeSHA` in `statusgen/verifyrun.go`. Read the issue's comments, including the design note in sources. Re-run the census in Verify row 5 against fresh main before starting. If the counts in Context no longer hold, report NEEDS_CONTEXT.
+Read `statusgen/verifyrows.go` (the rule constants, `rowFindings`, `verifyRowTable`, `verifyCommand` and `unfailableRowAudit`), `statusgen/strength.go`, the `lintRuleRegistry` in `statusgen/enforcementstatus.go`, `branchChangedSet` in `statusgen/obligationderivation.go`, `gitShowObject` in `statusgen/gitbatch.go`, and `runVerifyrun`, `resolveShellPlan`, `runVerifyCommandWith` and `treeSHA` in `statusgen/verifyrun.go`. Read the issue's comments, including the design note in sources. Before starting, run the three commands below from the root of a fresh main checkout. Record each command's output verbatim in the PR body, with the short sha from `git rev-parse --short HEAD`. They are measurements taken at pickup. The counts are not literals the tree must match.
+
+- **Unowned census.** It counts table rows inside `## Verify` sections of the immediate stream brief files (`docs/streams/*/brief-*.md`) where the row contains mktemp, contains no `trap`, and contains no shell `rm` word:
+
+      awk 'FNR==1{v=0} /^## /{v=($0 ~ /^## Verify/)} v && /^\|/ && /mk[t]emp/ && !/trap/ && !/(^|[^[:alnum:]_.-])rm([^[:alnum:]_.-]|$)/ {n++} END{print n+0}' docs/streams/*/brief-*.md
+
+  It printed `246` at 83c6988d0 and `382` at 612750a12. The count moves as briefs land, so a different count never blocks pickup and is not a contradiction under the ground rules. Record the count you measured as the scope of the class at pickup. This census measures the size of the class. It is not the `scratch-unowned` definition in the Interface contract: a row with an rm and no trap is unowned to the lint but not counted here. The lint is the enforcement, not this count.
+- **In-tree census.** This is Verify row 5's matcher, extended to name each matching row:
+
+      awk '/^## /{v=($0 ~ /^## Verify/)} v && match($0, /mk[t]emp( -[a-z]+)* +"?(\$PWD|\$\{PWD\}|\$\(pwd\))/) {n++; split($0, c, "|"); r=c[2]; gsub(/ /, "", r); print FILENAME " row " r} END{print n+0}' docs/streams/*/brief-*.md
+
+  At 83c6988d0 it printed `docs/streams/measured-status/brief-03-commsloop-risk-derivation.md row 5` and then `1`. At 612750a12 it prints `0`. Pickup condition: every row it names must be a row that Task step 6 names. A named row outside that list is an in-tree site this brief does not correct, so report NEEDS_CONTEXT.
+- **Correction targets.** This checks the seven rows that Task step 6 names:
+
+      for t in measured-status/brief-03-commsloop-risk-derivation.md:5 build-less-brittle/brief-08-hotspot-metric-and-brittle-mark.md:6 build-less-brittle/brief-10-fitness-functions.md:7 build-less-brittle/brief-11-regression-test-ratchet.md:3 build-less-brittle/brief-11-regression-test-ratchet.md:4 derived-board/brief-09-incremental-reconcile.md:7 forge-neutral/brief-34-deskread-ci-workflow-token-transport.md:16; do awk -v r="${t##*:}" -v f="${t%:*}" 'FNR==1{v=0} /^## /{v=($0 ~ /^## Verify/)} v && $0 ~ "^\\| " r " \\|" {print f " row " r ": mktemp=" ($0 ~ /mk[t]emp/) " trap=" ($0 ~ /trap/); n++} END{if (!n) print f " row " r ": ABSENT"}' "docs/streams/${t%:*}"; done
+
+  At 612750a12 it prints seven lines, each ending `mktemp=1 trap=0`. Pickup condition: all seven lines end `mktemp=1 trap=0`. A line that reads `ABSENT`, `mktemp=0` or `trap=1` means a named row moved, lost its scratch or was corrected elsewhere. Task step 6 then no longer matches the tree, so report NEEDS_CONTEXT.
+
+Only the two pickup conditions above block a start. Every other figure in Context is dated to its sha.
+
+> **Amended 2026-11-10 (version 2), #2789.** A pickup stopped at NEEDS_CONTEXT. Context stated 247 unowned rows with no recorded command, and the same scan gave 246 at 83c6988d0 and 318 on a later main. This revision defines each census as a command, records its outputs with their sha, and keeps the moving counts as pickup measurements rather than conditions. Context now also records that 6ed0928d9 already moved measured-status/03 row 5's clone to the temp root, and that rule 50 is reserved while rule 51 exists. The Interface contract, Task and Verify are unchanged.
 
 ## Ground rules
 

@@ -70,7 +70,7 @@ func ooBoard(t *testing.T, status string) (root string, evidenceBound *int) {
 	return root, &n
 }
 
-func ooRun(t *testing.T, root, record string, outcomeOnly bool) int {
+func ooRun(t *testing.T, root, record string, outcomeOnly bool, extra ...string) int {
 	t.Helper()
 	file := filepath.Join(t.TempDir(), "record.json")
 	if err := os.WriteFile(file, []byte(record), 0o644); err != nil {
@@ -80,7 +80,7 @@ func ooRun(t *testing.T, root, record string, outcomeOnly bool) int {
 	if outcomeOnly {
 		args = append(args, "--outcome-only")
 	}
-	return run(args)
+	return run(append(args, extra...))
 }
 
 // regression: #5759

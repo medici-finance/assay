@@ -97,6 +97,11 @@ var envKeys = buildEnvKeys()
 
 func buildEnvKeys() []envKey {
 	keys := []envKey{
+		// Explicit host-budget inputs, reviewed through the existing registry.
+		{key: "MUHAR_LEASE_DIR", class: envMachine, group: envGroupHarness,
+			desc: "Explicit shared host mutation slot directory; requires MUHAR_TOTAL_SLOTS. Unset by default."},
+		{key: "MUHAR_TOTAL_SLOTS", class: envMachine, group: envGroupHarness,
+			desc: "Explicit positive host mutation worker total; requires MUHAR_LEASE_DIR. Unset by default."},
 		// ── settable machine-wide ────────────────────────────────────────────────────────────
 		{key: "CELL_GO_CACHE", class: envMachine, group: envGroupCache, def: "off",
 			desc: "Managed per-cell Go build cache: on or off (macOS and Linux only)."},

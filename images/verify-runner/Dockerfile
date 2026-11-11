@@ -177,6 +177,7 @@ COPY statusgen/go.mod statusgen/go.sum /tmp/modsrc/statusgen/
 COPY qualgen/go.mod qualgen/go.sum /tmp/modsrc/qualgen/
 COPY workflow/go.mod workflow/go.sum /tmp/modsrc/workflow/
 COPY gitcore/go.mod gitcore/go.sum /tmp/modsrc/gitcore/
+COPY loopadmin/go.mod loopadmin/go.sum /tmp/modsrc/loopadmin/
 COPY cellconfig/go.mod cellconfig/go.sum /tmp/modsrc/cellconfig/
 COPY tools/freshness/go.mod tools/freshness/go.sum /tmp/modsrc/tools/freshness/
 COPY tools/intake-eval/go.mod tools/intake-eval/go.sum /tmp/modsrc/tools/intake-eval/

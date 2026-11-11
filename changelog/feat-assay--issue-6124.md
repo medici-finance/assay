@@ -1,0 +1,3 @@
+### Fixed
+
+- `deskflip`'s `checks-green` refusal now names each blocking check with the state the forge reported for it — `prompt (cancelled)`, `prompt (status queued)`, `leak-sweep (state pending)` — from the same classifier that decided the verdict, so the text is always the fact that produced it. A not-yet-green rollup no longer reads "a check has not completed" without naming the check; a failed one says each check is judged by its latest run at the head. The verdict is unchanged: a cancelled run that a later run of the same check at the same head superseded is not counted, a cancelled run that is the latest of its check still refuses, and pending, queued, failure, timed_out, action_required and any conclusion the reader does not know are never green.

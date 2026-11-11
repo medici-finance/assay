@@ -941,6 +941,9 @@ func TestForgeStatusRetainedRefusals(t *testing.T) {
 		`GH_TOKEN="$(cat "$(desktoken worker --repo o/n)")" gh pr view 1 --json status`,
 		`tokfile="$(desktoken "$role" --repo "$repo")"; GH_TOKEN="$(cat "$tokfile")" gh issue list -R "$repo" --limit 1 --json status`,
 		"if ! tokfile=\"$(desktoken \"$role\" --repo \"$repo\")\"; then\n  false\nelse\n  GH_TOKEN=\"$(cat \"$tokfile\")\" gh issue list -R \"$repo\" --limit 1 --json status\nfi",
+		// #6068: the recipe's read-only form.
+		`tokfile="$(desktoken --no-rotate "$role" --repo "$repo")"; GH_TOKEN="$(cat "$tokfile")" gh issue list -R "$repo" --limit 1 --json status`,
+		"if ! tokfile=\"$(desktoken --no-rotate \"$role\" --repo \"$repo\")\"; then\n  false\nelse\n  GH_TOKEN=\"$(cat \"$tokfile\")\" gh issue list -R \"$repo\" --limit 1 --json status\nfi",
 	})
 }
 

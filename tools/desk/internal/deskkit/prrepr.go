@@ -69,7 +69,7 @@ type RepresentedPR struct {
 // briefauthoring.go) drops a PR that only wrote the brief, and the PR behind it must then still be
 // seen rather than hidden by a first-wins reduction. A PR with no parseable `Brief:` trailer, or one
 // carrying an `Issue:` or `Authors:` link, contributes nothing — neither names a DELIVERED brief.
-func RepresentingPRsByBrief(prs []PRRef) map[string][]RepresentedPR {
+func RepresentingPRsByBrief(prs []PRRef, catalogs ...WorkCatalog) map[string][]RepresentedPR {
 	out := map[string][]RepresentedPR{}
 	for _, pr := range prs {
 		if !prRepresents(pr.State) {
@@ -82,6 +82,17 @@ func RepresentingPRsByBrief(prs []PRRef) map[string][]RepresentedPR {
 			continue
 		}
 		merged := strings.EqualFold(strings.TrimSpace(pr.State), "MERGED")
+		if len(catalogs) > 0 {
+			kind, selected, err := ResolveTrailerWork([]byte(pr.Body), catalogs[0])
+			if err != nil || kind != TrailerBrief {
+				continue
+			}
+			for _, work := range selected {
+				out[work.Reference.LogicalKey] = append(out[work.Reference.LogicalKey], RepresentedPR{Number: pr.Number, Merged: merged})
+			}
+			continue
+		}
+
 		for _, t := range trs {
 			if t.Kind != TrailerBrief {
 				continue

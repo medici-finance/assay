@@ -86,7 +86,7 @@ background agents run in isolated git worktrees natively. So more skills `run` h
 
 | Capability | Cursor mechanism (HP/12 §) |
 |---|---|
-| `capability:dispatch-worker` | IDE: in-session subagents + **cloud background agents in isolated git worktrees** (Firecracker microVMs, ~8 parallel) (§2.5). Headless (`cursor-agent -p`): scriptable invocation; whether parallel headless dispatch reaches the ~8-agent worktree model is `[needs: live-install confirmation]` (§2.5). **Where headless parallel dispatch is not confirmed**, the convenience-degradation floor applies: the fan-out runs **serially, one item at a time, stating the degradation**. |
+| `capability:dispatch-worker` | IDE: in-session subagents + **cloud background agents in isolated git worktrees** (Firecracker microVMs, ~8 parallel) (§2.5). Headless (`cursor-agent -p`): scriptable invocation; whether parallel headless dispatch reaches the ~8-agent worktree model is `[needs: live-install confirmation]` (§2.5). **Where headless parallel dispatch is not confirmed**, the convenience-degradation floor applies: the fan-out runs **serially, one item at a time, stating the degradation**. **Model selection:** follow [Execution model selection](#execution-model-selection) below when the brief requires `exec-tier: strong`; serial dispatch retains the same tier requirement. |
 | `capability:message-agent` | Follow-up messages to a background/subagent in the IDE; headless follow-up via `cursor-agent` session continuation (`--resume`) — present, durability across process restarts is `partial`/unconfirmed (§2.6). Prefer re-dispatch fresh when durability matters. |
 | `capability:isolate-workspace` | IDE: cloud background agents run in **isolated git worktrees** natively (§2.9 `supported`) — the isolation Codex CLI lacked. Headless: `cursor-agent` inherits the shell's git, so the skill runs `git worktree add` itself as on Claude Code; whether the default headless permission posture permits that ref-write unprompted (§2.8) — and whether the background-worktree isolation is reachable from the adopter's own flow — is `[needs: live-install confirmation]` (§2.9). **If reachable, isolation runs; if the sandbox blocks the worktree ref-write, the no-isolation floor applies and the affected skill refuses rather than implement in the shared checkout.** |
 | `capability:invoke-skill` | `SKILL.md` discovery from `.cursor/skills/` and `.agents/skills/` — the **same `SKILL.md` open standard** (agentskills.io, Cursor v2.4) Assay's plugin already uses (§2.2 `supported`); frontmatter `name` + `description`, progressive disclosure. Description-driven auto-trigger is documented; whether headless `cursor-agent` fires it with IDE ergonomics is `[needs: live-install confirmation]` (§2.3) — **invoke-by-name is the floor** where auto-trigger is unconfirmed (parity of availability, not of trigger ergonomics). |
@@ -105,6 +105,48 @@ Assay's only hook is a session-start resident-rules injection, which Cursor does
 headless hook-drop caveat (§2.4) is a watch-item for future hook use, never a current
 blocker. (The shared `AGENTS.md` fragment and the generated `.cursor/rules` rule are
 produced by `tools/harnessgen`, which arrives with the tool de-house follow-on.)
+
+## Execution model selection
+
+The worker skill already routes `exec-tier: strong` to a strong-tier worker. On Cursor,
+resolve that tier to the adopter's configured concrete model ID before dispatch; `strong`
+is an Assay requirement, not a Cursor model ID. Keep the model choice in adopter
+configuration so the binding does not hard-code a vendor or a model generation.
+
+- **IDE subagent:** confirm the selected custom subagent's `.cursor/agents/<name>.md`
+  frontmatter sets `model: <configured-model-id>`, then invoke it with `/name`.
+  `model: inherit` is sufficient only when the parent's resolved model is confirmed
+  to meet the requirement. Where the launch tool exposes explicit model selection,
+  it may name the configured ID directly; do not assume every tool schema accepts it.
+- **Headless:** use `cursor-agent --list-models` to check available IDs, then launch
+  in the worker's isolated worktree with
+  `cursor-agent -p --model "<configured-model-id>" --output-format stream-json "<worker-kit prompt>"`.
+  Retain the adopter's existing permission posture. Availability alone does not
+  establish a model's execution tier.
+- **Attestation and pickup:** before `deskdispatch`, confirm the launch configuration
+  resolves to the required model. Pass `--tier strong` and that model's concrete ID
+  as `--model`, dropping any bracketed options for the stamp (which accepts lowercase
+  letters, digits, dots and dashes); retain the full options in the actual launch.
+  The pin records the request, not proof of what was served. Check Cursor's subagent
+  task card or the CLI's `system` / `init` event `model` field against that request;
+  the CLI field is a display name, not necessarily the stamp ID. Keep the worker kit's
+  pickup-STOP check. An unresolvable identity, weaker fallback, or pickup tier failure
+  holds the item and is filed under the worker skill's existing procedure. Retain
+  its attestation receipt and coordinator stamp handoff; never self-attest or
+  replace an unresolved model identity with the requested one.
+
+Cursor documents fallback when a configured model is unavailable because of plan or
+admin restrictions. A prompt asking for a strong model, Auto, or an unconfirmed inherited
+model does not establish a strong launch. If the IDE cannot select the required model,
+use an explicitly pinned CLI worker where available; otherwise hold the item. Running
+serially preserves the execution-tier requirement.
+
+Sources: [subagent model configuration](https://cursor.com/docs/subagents#model-configuration),
+[CLI parameters](https://cursor.com/docs/cli/reference/parameters), and
+[CLI output format](https://cursor.com/docs/cli/reference/output-format).
+Documentary check: 2026-11-09; local `cursor-agent` 2026.11.05-86047df confirms
+`--model`, `--list-models` and `--output-format` in `--help`. Model routing and
+fallback were not live-tested; this does not close the existing live-install gaps.
 
 ## Interactive desk cadence
 

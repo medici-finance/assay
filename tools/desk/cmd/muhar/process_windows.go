@@ -2,7 +2,10 @@
 
 package main
 
-import "os/exec"
+import (
+	"os"
+	"os/exec"
+)
 
 // setProcessGroup is a no-op on Windows: there is no process group to join,
 // so a deadline or an interrupt kills the suite's top process only.
@@ -14,3 +17,6 @@ func killProcessGroup(cmd *exec.Cmd) error {
 	}
 	return cmd.Process.Kill()
 }
+
+// Windows process exits do not expose Unix resource-signal classifications.
+func resourceSignal(*os.ProcessState) bool { return false }

@@ -230,9 +230,15 @@ installed where you are aiming it.
 
 <!-- BEGIN forge cli as the role -->
 
-**Mechanism.** A desk's only forge credential is its role App's, minted by `desktoken <role>`.
+**Mechanism.** A desk's only forge credential is its role App's, resolved by
+`desktoken --no-rotate <role> --repo <owner/name>`.
 `desktoken` prints the PATH of an owner-only custody file on stdout, never the token itself,
-and exits 0 ok · 3 disabled · 5 refused · 6 unverifiable. The desk verbs resolve that same
+and exits 0 ok · 3 disabled · 5 refused · 6 unverifiable. A caller that only needs the
+credential's location passes `--no-rotate`. On GitHub the flag changes nothing: the App
+credential is minted or reused as before. On a GitLab-resolved repo the form without it ROTATES
+the role's credential, so rotation is an explicit act (`desktoken <role> --forge gitlab`), never
+a side effect of a read. There the printed file is the role's custody file and the only copy of
+its credential: never delete it or treat it as temporary. The desk verbs resolve that same
 credential on their own from `$DESK_LOOP` and have no ambient fallback. A bare `gh` call has no
 such resolution. It runs as whatever login the local CLI holds, usually a trusted human's
 personal one, or fails when there is none. A trusted human on the roster is a person whose
@@ -267,7 +273,7 @@ esac
 if [ -z "$role" ]; then
   printf '%s\n' "desk-auth: refused: \$DESK_LOOP is unset or names no desk role; export this window's loop name in this shell" >&2
   false
-elif ! tokfile="$(desktoken "$role" --repo "$repo")"; then
+elif ! tokfile="$(desktoken --no-rotate "$role" --repo "$repo")"; then
   printf '%s\n' "desk-auth: unauthenticated: role App custody for '$role' is unavailable (desktoken failed; its stderr names the cause)" >&2
   false
 elif [ -z "$tokfile" ] || [ ! -f "$tokfile" ] || ! grep -q '[^[:space:]]' "$tokfile"; then

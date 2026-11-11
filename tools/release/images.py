@@ -9,7 +9,9 @@ import subprocess
 import tarfile
 
 DESKS = ("intake-desk", "worker-desk", "pr-review-desk", "verify-desk", "the-desk")
-NAMES = ("desk-tools", "assay-harness", "desk-base", *DESKS, "verify-runner")
+# deskd is the service image cell-api/08 defines (images/deskd/, context deskd/).
+# It carries no statusgen, so check_deskd replaces check_version for it.
+NAMES = ("desk-tools", "assay-harness", "desk-base", *DESKS, "deskd", "verify-runner")
 # verify-runner's platforms (#4323); the other images are linux/amd64. These
 # equal images_contract's values, which the release step validates against.
 RUNNER_PLATFORMS = ("linux/amd64", "linux/arm64")
@@ -20,6 +22,26 @@ def run(*args, capture=False):
     print("+ " + " ".join(map(str, args)), flush=True)
     return subprocess.run(list(map(str, args)), check=True, text=True,
                           stdout=subprocess.PIPE if capture else None).stdout
+
+
+# Release builds run on a non-ephemeral runner, and two kinds of BuildKit state
+# outlive the build that wrote them: cache mounts (RUN --mount=type=cache),
+# shared by target path across every build on the daemon, and the instruction
+# cache, whose key for a RUN step does not cover the contents of its cache
+# mounts. Either could carry an earlier build's output (another ref, a dry run,
+# a build outside this module) into a published image. Every release image
+# build goes through docker_build, which clears all exec cache mounts first
+# (stopping the release if that fails) and then builds with --no-cache, so no
+# cached layer is reused and every step runs against empty mounts. Tests refuse
+# any other build call.
+PRUNE_CACHE_MOUNTS = ("docker", "builder", "prune", "--all", "--force",
+                      "--filter", "type=exec.cachemount")
+NO_CACHE = "--no-cache"
+
+
+def docker_build(*args):
+    run(*PRUNE_CACHE_MOUNTS)
+    run("docker", "build", NO_CACHE, *args)
 
 
 def build_images(root, version, source, prefix, verify_image, artifacts, out, publish, *, native):
@@ -108,32 +130,37 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
         shutil.copyfile(path, stage / "desk-tools" / path.name)
         (stage / "desk-tools" / path.name).chmod(path.stat().st_mode)
     (bins / "bugs-gc").unlink()
-    run("docker", "build", "--platform", "linux/amd64", *stamps,
+    docker_build("--platform", "linux/amd64", *stamps,
         "--build-arg", "BINARY_STAGE=released", "-t", refs["desk-tools"],
         "-f", root / "Dockerfile", root)
-    run("docker", "build", "--platform", "linux/amd64", "--build-arg", "BINARY_STAGE=released",
+    docker_build("--platform", "linux/amd64", "--build-arg", "BINARY_STAGE=released",
         "--build-arg", f"ASSAY_VERSION={version}", "--build-arg", f"SOURCE_REVISION={source}",
         "--build-arg", "SOURCE_URL=https://github.com/" + prefix.removeprefix("ghcr.io/"),
         "-t", refs["assay-harness"], "-f", root / "images/assay-harness/Dockerfile", root)
-    run("docker", "build", "--platform", "linux/amd64", *stamps,
+    docker_build("--platform", "linux/amd64", *stamps,
         "--build-arg", f"DESK_TOOLS_IMAGE={refs['desk-tools']}",
         "-t", refs["desk-base"], "-f", root / "containers/base/Dockerfile", root)
     for name in DESKS:
-        run("docker", "build", "--platform", "linux/amd64", "--build-arg",
+        docker_build("--platform", "linux/amd64", "--build-arg",
             f"BASE_IMAGE={refs['desk-base']}", "-t", refs[name],
             "-f", root / f"containers/{name}/Dockerfile", root)
+    # deskd's build context is its own public module, never the repository root.
+    docker_build("--platform", "linux/amd64", "--build-arg", f"REVISION={source}",
+        "-t", refs["deskd"], "-f", root / "images/deskd/Dockerfile", root / "deskd")
     # ARM64 is built and checked on a native runner. Import its exact checked
     # image; this publisher must never register an emulator or execute ARM64.
     import_native_runner(native, version, source, runner_refs["linux/arm64"])
     platform = "linux/amd64"
     ref = runner_refs[platform]
     build_runner(root, platform, ref)
-    checks = [(name, ref, "linux/amd64") for name, ref in refs.items() if name != "verify-runner"]
+    checks = [(name, ref, "linux/amd64") for name, ref in refs.items()
+              if name not in ("verify-runner", "deskd")]
     checks.append(("verify-runner " + platform, ref, platform))
     for name, ref, platform in checks:
         check_version(name, ref, platform, version)
     check_runner(root, runner_refs["linux/amd64"], "linux/amd64")
-    for name in ("desk-base", *DESKS):
+    check_deskd(refs["deskd"], source)
+    for name in ("desk-base", *DESKS, "deskd"):
         run("sh", root / "containers/scripts/layer-secret-scan.sh", refs[name])
     if not publish:
         print("Dry build complete: no image pushed and no pinnable-reference artifacts written.")
@@ -165,9 +192,33 @@ def check_version(name, ref, platform, version):
         raise ValueError(f"{name} statusgen version {got!r} != {version}")
 
 
+def check_deskd(ref, source):
+    """deskd has no statusgen: check its user, revision label and usage instead."""
+    config = json.loads(run("docker", "image", "inspect", "--format", "{{json .Config}}",
+                            ref, capture=True))
+    user = config.get("User") or ""
+    if not re.fullmatch(r"[0-9]+(?::[0-9]+)?", user) or any(int(p) == 0 for p in user.split(":")):
+        raise ValueError(f"deskd image user {user!r} is not a numeric non-root user")
+    revision = (config.get("Labels") or {}).get("org.opencontainers.image.revision")
+    if revision != source:
+        raise ValueError(f"deskd image revision label {revision!r} != {source}")
+    # Go's flag package prints usage to stderr and exits 0 for --help.
+    args = ["docker", "run", "--rm", "--pull", "never", "--network", "none",
+            "--platform", "linux/amd64", "--read-only", "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges", ref, "--help"]
+    print("+ " + " ".join(args), flush=True)
+    result = subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if result.returncode != 0 or "Usage of" not in result.stdout or "-addr" not in result.stdout:
+        # The output is the binary's own text from a --network none run; keep
+        # a bounded tail so the release log alone can diagnose the failure.
+        tail = result.stdout[-2000:]
+        raise ValueError(f"deskd image did not print its usage (exit {result.returncode}); "
+                         f"output tail: {tail!r}")
+
+
 def build_runner(root, platform, ref):
     # Each platform must push as ONE manifest, not a provenance/SBOM index.
-    run("docker", "build", "--platform", platform,
+    docker_build("--platform", platform,
         "--provenance=false", "--sbom=false", "-t", ref,
         "-f", root / "images/verify-runner/Dockerfile", root)
     check_runner_platform(ref, platform)

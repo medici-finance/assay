@@ -239,6 +239,41 @@ space returns: the gate measures again and normal claim deduplication still
 applies. A held harness launch starts no child; cadence records a failed pass
 and can retry at its next interval.
 
+### `cellctl up` cleans once on a reclaimable deferral
+
+Bounded launch preparation never walks the cache. `cellctl up` is the one
+exception, and it is narrow. When up's preparation defers for one of these
+reasons, up runs the same clean as `cellctl cache <cell> clean`, once, and then
+prepares again:
+
+- the recorded size is over three quarters of the budget;
+- the free-space margin above the floor is short;
+- the recorded measurement is older than five minutes;
+- a top-level `build` or `mod` directory changed after it.
+
+The clean is a full, not-dry `Check` under the same lock and maintenance entry
+budget. Like cadence maintenance, it first waits out the two-second timestamp
+margin. Up prints one line naming the reason and the logical bytes before and
+after:
+
+```text
+up cache clean: recorded size 900000 is within a quarter of budget 800000; logical bytes before 900000, after 0, reclaimed 900000; outcome checked-clean
+```
+
+If the cache is still over its margin after that clean, or the clean itself
+cannot finish, up refuses as before: `up preparation: storage-deferred: …; no
+windows launched`. Up never cleans twice or loops. Every other refusal goes
+back to the operator untouched:
+
+- missing, corrupt or future-dated accounting;
+- a last pass that was dirty, partial or storage-deferred;
+- a foreign owner or domain;
+- a new empty cache short of space.
+
+`wipe` and `recover --confirm-stopped` stay manual. `cellctl desk`, scratch
+launches, `deskdispatch` and consumer enrollment keep the bounded refusal and
+never clean.
+
 ```sh
 cellctl cache example status
 cellctl cache example clean
@@ -341,6 +376,6 @@ Maintenance inventory streams directory entries, with a limit of 262,144 entries
 
 For an inventory wider than the default, explicitly raise the maintenance-only budget, for example `ASSAY_MAINTENANCE_ENTRY_LIMIT=524288 cellctl cache house clean` (or the existing scratch sweep command). Values must be 1 through 1,048,576. Invalid values and exhausted budgets fail closed; there is no unlimited fallback. This setting does not change retained-data protections, per-role authority or launch pressure policy. Trees beyond the finite ceiling or depth limit remain incomplete and require owner-assisted layout correction.
 
-The existing cadence supervisor triggers this cache maintenance between completed passes and again at the due boundary when accounting is dirty, stale or otherwise cannot be proved clean. It retains the same owner’s finite inventory and reclamation checks. Interactive mode (`--cadence off`) and initial bounded startup still require operator `cache clean` when accounting refuses. Scratch diagnostic retention remains operator-triggered; no new background service is installed.
+The existing cadence supervisor triggers this cache maintenance between completed passes and again at the due boundary when accounting is dirty, stale or otherwise cannot be proved clean. It retains the same owner’s finite inventory and reclamation checks. Interactive mode (`--cadence off`) and initial bounded startup still require operator `cache clean` when accounting refuses, except that `cellctl up` runs that clean itself once on a size, free-space or stale-measurement deferral (see "`cellctl up` cleans once on a reclaimable deferral"). Scratch diagnostic retention remains operator-triggered; no new background service is installed.
 
 The default entry budget covers the representative fixture with 150,000 compiler-cache entries and 75,000 module-cache entries. The override remains finite; it is a maintenance resource budget, not a launch-policy or retention override.

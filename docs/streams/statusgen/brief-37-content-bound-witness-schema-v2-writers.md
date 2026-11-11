@@ -4,6 +4,10 @@ title: "Content-bound witness schema v2: the writers and the desk readers"
 why: "Once the reader exists, the two writers must produce v2 witnesses and verify-outcome records, and every tools/desk reader must judge them through statusgen's seam instead of commit reachability. This ends new squash-orphaned records (medici-finance/assay#3658) without changing a single v1 record."
 wave: 2
 depends: ["statusgen/36"]
+feathers:
+  - ref: "statusgen/40"
+    type: ordering-gate
+    reason: "The I-2 slice re-routes the protected transition audit, whose chain and combined-correction limits statusgen/40 defines. Landing statusgen/40 first avoids building I-2 on the one-link, one-column limits it replaces. This is a feather (a notice), not a hold: the rest of this brief does not need it."
 unblocks: ["statusgen/38", "desk-tools/46", "statusgen/29", "statusgen/31"]
 effort: L
 gate: human
@@ -12,7 +16,7 @@ issues: [2026, 3105, 3658]
 regression-of: "medici-finance/assay#2304"
 schema: brief-v2
 outcome: none
-version: 2
+version: 3
 authored: "2026-10-20 by the-desk (design brief for the witness-staleness class)"
 gate-why: "It changes what evidence the verifier writes and how the desk loops read it. A writer that records the wrong scope or runs a row with network access while claiming none would feed stale passes to the reader."
 decision-trigger: start
@@ -26,6 +30,7 @@ sources:
   - "tools/desk/internal/deskkit/forge.go — the forge-neutral `Forge` interface (GitHub and GitLab adapters)"
   - "statusgen/verifyincontainer.go — the digest-pinned harness container runner"
   - "freshness-checked 2026-10-20 @ 75cc11f1423301ea8ba0b111d48c8d5b8a303537 (origin/main)"
+  - "statusgen/40 (2026-11-10, #6064) — chained acceptance transitions and combined Command-and-Expect corrections; version 3 replaces 'command-only amendment limits' with the limits statusgen/40 defines"
 exec-tier: strong
 exec-tier-why: "Two writers in two Go modules, a hermetic runner mode, a forge read on two adapters and a version-skew proof across releases must agree with one reader."
 domain: complicated
@@ -251,8 +256,9 @@ request can deliver the Evidence record rather than the product.
   backward for a convenient pass. - Own the canonical lifecycle and protected-acceptance policy
   update: compare witness applicability to D, and after an approved command amendment retain
   unchanged applicable rows while requiring fresh proof for affected rows. Explicitly replace the
-  old full-table/descendant-source requirement only when authorized. Keep command-only amendment
-  limits, exact approval, independent actor/admission and human gates. - Extend the existing
+  old full-table/descendant-source requirement only when authorized. Keep the shared resolver's
+  amendment limits as statusgen/40 defines them (chained links, each approved, and the
+  per-row column rules), exact approval, independent actor/admission and human gates. - Extend the existing
   reader/caller fixture suites with a wrong delivery, forged binding, changed parent, changed A,
   same-context later failure, unrelated H/E advance and agreement among real callers. Test
   unchanged v1 behavior for the SAME explicit revision; do not confuse a later authorized subject

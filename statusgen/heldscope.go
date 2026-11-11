@@ -209,6 +209,21 @@ import (
 //     wording and any independent hold remain read. The source locator is
 //     syntax, not proof that the derivation or its claimed value is correct.
 //
+//  6. Structured signals only (#4721, ruling A). The scan reads witness
+//     rows and lines that state a current hold; free prose naming a state
+//     word is not a hold. A table line (any line carrying "|" or an HTML
+//     table tag) is read as rules 1 to 5 say. On any other line an
+//     occurrence is read only as one of three signals (heldProseSignal). A
+//     HELD marker is a state word not written entirely in lower case (HELD,
+//     Held, Could-Not-Check); the test is the word's own case, never a list
+//     of spellings. A row result is a line that names a row (row 3, Row3, R3,
+//     heldNamesRowNumRe), read at any case. A verdict line (RISK-VALUE: or
+//     VERIFY:, heldVerdictLineRe) is read at any case, rule 5's sourced
+//     definitions still excused. Lower-case
+//     held or could-not-check in any other prose, a step said to be held
+//     with no row, marker or verdict included, is not read: the witness row
+//     carries its state.
+//
 // The hygiene (fences, blockquotes, struck and inline code), the routing rule
 // and the negation rule in unroutedHeldLine apply unchanged to what is read.
 type heldLineRead struct {
@@ -2269,4 +2284,33 @@ func heldRiskDefinition(clean string, h []int) bool {
 		}
 	}
 	return false
+}
+
+// heldNamesRowNumRe matches a line naming a numbered Verify row: "row 3",
+// "Row3", "rows 2", "R3" (rule 6, #4721 edge 2a). A bare "#3" is not a row
+// name here: it is as often an issue or PR reference.
+var heldNamesRowNumRe = regexp.MustCompile(`(?i)\b(?:rows?[ \t]*\d+|r\d+)\b`)
+
+// heldVerdictLineRe matches a verdict line, a RISK-VALUE or VERIFY verdict
+// (rule 6). A verdict states the entry's own disposition, so it is read at
+// any case: "VERIFY: BLOCKED — 3/4 pass, 1 could-not-check" stays a hold.
+var heldVerdictLineRe = regexp.MustCompile(`\b(?:RISK-VALUE|VERIFY):`)
+
+// heldProseLine reports whether a line is prose for rule 6: neither a
+// results-table row nor any other table line. A line carrying "|" anywhere,
+// or an HTML table tag, is read as before (fail closed).
+func heldProseLine(line string, read heldLineRead) bool {
+	return read.key == "" && len(read.blank) == 0 && !strings.Contains(line, "|") && !heldHTMLTableRe.MatchString(line)
+}
+
+// heldProseSignal reports whether the state-word occurrence h of a prose
+// line clean is a structured signal rule 6 reads (#4721, ruling A): a HELD
+// marker (the word is not all lower case, edge 1a-i), a row result (the
+// line names a row, edge 2a) or a verdict line (RISK-VALUE or VERIFY). Anything else,
+// a step said to be held included (edge 3a), is free prose and not a hold.
+func heldProseSignal(clean string, h []int) bool {
+	if w := clean[h[0]:h[1]]; strings.ToLower(w) != w {
+		return true
+	}
+	return heldNamesRowNumRe.MatchString(clean) || heldVerdictLineRe.MatchString(clean)
 }
