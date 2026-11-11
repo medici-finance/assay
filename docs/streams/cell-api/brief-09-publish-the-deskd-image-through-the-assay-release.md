@@ -204,6 +204,62 @@ its record.
 command, exit, named result, failing control and restored pass, environment, date and
 runner. Empty at authoring; no implementation or publication result is asserted. -->
 
+### Independent verification — 2026-11-10
+
+Verifier: claude-opus-5-5, tier strong, non-implementer. Subject: merged main 612750a12406f19a96a83e6ea7687d794f772f9f. Delivery: PR #5845, merge ba6797bab298c08a17c84c717bae3bf3fe491749, first parent 3b0f97a4f47bbd403680d8d8756b6415680c41da. Environment: darwin arm64 host, installed statusgen and deskdispatch v1.0.81, KUBECONFIG=/dev/null, scratch outside the verified tree. The Verify table re-derives from base (deskpathguard rederive: 6 rows, 0 author-added).
+
+Binding (check-verifier rc 0 before the rows and again before this write):
+
+Verification-Attestation: medici-finance/assay#5954 run=29d732eafdc1aab64b8cec9aa6cd274a23d82384dc17f67f6db8a4a913be198b source=612750a12406f19a96a83e6ea7687d794f772f9f brief=docs/streams/cell-api/brief-09-publish-the-deskd-image-through-the-assay-release.md model=claude-opus-5-5 tier=strong
+
+Container witness (rows 1-3, closed admission bracket in verify-runner v1.0.81 sha256:03a2949dfe48, digest matched the release's verify-runner-image.txt and checksums.txt; bytes as emitted):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `o=$(mktemp) && python3 -B -m unittest discover -s tools/release -p images_test.py -v > "$o" 2>&1 && grep -E '^test_deskd_release_record .*\.\.\. ok$' "$o"` | pass exit=0 sandbox=container-netns | sha256:64e2c34457f6 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `o=$(mktemp) && python3 -B -m unittest discover -s tools/release -p images_test.py -v > "$o" 2>&1 && grep -E '^test_deskd_contract_compatibility .*\.\.\. ok$' "$o"` | pass exit=0 sandbox=container-netns | sha256:ec5e9abffafe | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `o=$(mktemp) && python3 -B -m unittest tools.release.images_test tools.release.ci_step_test -v > "$o" 2>&1 && grep -E '^test_release_has_one_approval_before_all_publication .*\.\.\. ok$' "$o" && tail -n 3 "$o" \| grep -E '^OK'` | pass exit=0 sandbox=container-netns | sha256:10fc5ddeceb3 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:bbf58e1999a2879bff899fd22c5d41834fbc884451654c5085000f4eedc075b6
+Container-Image: sha256:03a2949dfe483f2645e14b85369c1923f1fb4710c7e5ea37a9b915d0073dde59
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#5954 run=29d732eafdc1aab64b8cec9aa6cd274a23d82384dc17f67f6db8a4a913be198b source=612750a12406f19a96a83e6ea7687d794f772f9f brief=docs/streams/cell-api/brief-09-publish-the-deskd-image-through-the-assay-release.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=29d732eafdc1aab64b8cec9aa6cd274a23d82384dc17f67f6db8a4a913be198b source=612750a12406f19a96a83e6ea7687d794f772f9f tree=sha256:bbf58e1999a2879bff899fd22c5d41834fbc884451654c5085000f4eedc075b6 witness=sha256:71d5deb6398716e6deb55180998e489ae7f3ed28a4ba92afac8333441a0f01fe opened=2026-11-10T05:03:26Z closed=2026-11-10T05:05:24Z before=receipt after=check-verifier
+
+Host witness (verifyrun --rows 4,5,6 after the bracket closed; bytes as emitted):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `python3 -B -c "import sys; sys.path.insert(0, 'tools/release'); import images, images_contract as c; n = set(images.NAMES); assert 'deskd' in n and n == set(c.NAMES) and len(n) == 10, sorted(n); assert set(c.LEGACY_NAMES) == n - {'deskd'}, sorted(c.LEGACY_NAMES); print('names ok')" && grep -F -- 'exactly ten' docs/release-images.md && grep -F -- 'deskd' docs/release-images.md && grep -F -- 'deskd' docs/docker.md && ! grep -F -- 'all nine images' docs/docker.md && grep -F -- 'LEGACY_NAMES' containers/k8s/README.md && grep -F -- 'release-images.json' deskd/README.md` | pass exit=0 | sha256:748ab1ca2d17 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `sh containers/k8s/check.sh --base && sh containers/k8s/check.sh --base --self-test && o=$(mktemp) && { sh containers/k8s/check.sh --compatibility-cellctl --self-test > "$o" 2>&1; true; } && grep -Fx -- 'checked-clean: compatibility mutation fixtures; actual candidate remains a separate gate' "$o" && ! grep -F -- 'release-images-v1' "$o" && python3 -B -c "import sys; sys.path.insert(0, 'containers/k8s'); import check; print('candidate record accepted:', len(check.candidate_images()), 'role refs')"` | pass exit=0 | sha256:099c83abef6a | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && git diff --quiet "$ASSAY_DELIVERY_BASE_SHA" "$ASSAY_DELIVERY_SHA" -- .github/workflows ci/staged-workflows containers/k8s/release-images.json containers/k8s/components/compatibility-cellctl/candidate-release-images.json images/deskd && o=$(mktemp) && statusgen --root . --consumers --brief cell-api/09 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA" > "$o" 2>&1 && grep -E '^summary: [1-9][0-9]* corroborated, 0 disproved' "$o"` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5954 run=29d732eafdc1aab64b8cec9aa6cd274a23d82384dc17f67f6db8a4a913be198b source=612750a12406f19a96a83e6ea7687d794f772f9f brief=docs/streams/cell-api/brief-09-publish-the-deskd-image-through-the-assay-release.md model=claude-opus-5-5 tier=strong
+
+Per-row accounting (observations only; the witness tables above are the execution record):
+
+- Row 1, pass: the release suite ran 57 tests, OK; test_deskd_release_record is ok. Failing control in a scratch archive: deskd removed from the producer's image set gives 15 failures, test_deskd_release_record among them. At the pre-delivery base the suite runs 54 tests and neither deskd test exists, so the row's grep fails.
+- Row 2, pass: test_deskd_contract_compatibility is ok. Failing control in a scratch archive: the contract default loosened to accept the legacy set gives 3 subtest failures (the nine-image default case and both pinned-record cases).
+- Row 3, pass: both release suites pass and the one-approval test is ok; the live and staged release workflows are byte-identical.
+- Row 4, pass: prints names ok; every documentation probe matches. See the definition finding below.
+- Row 5, pass: base check, base self-test and the compatibility self-test pass, with no release-images-v1 failure. A direct host call accepts the candidate record (9 role refs). Failing control in a scratch archive: with no legacy set passed by the Kubernetes check, both recorded_images() and candidate_images() raise Invalid (image manifest is incomplete).
+- Row 6, could-not-run: a check:ci row that needs git history. On this darwin host the network-off host sandbox (unshare) is unavailable, and the container cannot run it because a linked-worktree home's gitdir is not mounted. This is the open tool defect #4327. No obligation was observed to fail. Supplemental unsandboxed host probe, no acceptance credit: the delivery is an ancestor of origin/main, its first parent equals the recorded base, the protected-path diff is quiet, and the consumers gate reports 11 corroborated, 0 disproved, 6 unchecked (four out-of-scope path entries and the two follow-ons outside this repository, held as review obligations). With the inputs unset the row exits 1.
+
+Definition finding, row 4 (no obligation failed): the Expect says each of the six documentation probes fails on its own at the pre-delivery base. At 3b0f97a4f47b the probe for deskd in the release-images document passes, because that document already names deskd as a module. The row still fails at base, since the first assertion fails and the same document's exactly-ten probe fails, so a delivery that skipped that file would still fail the row. The Expect wording is imprecise; the guard holds.
+
+Scope note for review (not a verify obligation): PR #5845 also carries two release-cache commits (a BuildKit cache-mount prune and a no-cache build flag) that sit outside this brief's Task list.
+
+RISK-VALUE: DERIVED — validate names default = (NAMES,) @ tools/release/images_contract.py:19 — the live release step (.github/workflows/release.yml:1715-1718) passes runner_platforms only, so the strict default is what makes release validation refuse a record without deskd; the loosened-default control fails row 2's test.
+RISK-VALUE: DERIVED — LEGACY_NAMES = the nine pre-delivery image names @ tools/release/images_contract.py:6 — equal to the pre-delivery image set exactly; row 4 asserts LEGACY_NAMES equals NAMES minus deskd.
+RISK-VALUE: DERIVED — final-user regex [0-9]+(?::[0-9]+)? with any zero part refused @ tools/release/images.py:200 — numeric non-root as Task 1 requires; the Dockerfile's USER 65532:65532 passes, and an empty, root or non-numeric user is refused (a zero gid is refused too, which is stricter).
+RISK-VALUE: DERIVED — revision label org.opencontainers.image.revision must equal the source @ tools/release/images.py:202 — the image definition sets it from ARG REVISION, and the producer passes REVISION set to the source at tools/release/images.py:148.
+RISK-VALUE: DERIVED — deskd platform = linux/amd64 @ tools/release/images.py:148 — the brief requires amd64; the contract allows only linux/amd64 for non-runner images.
+RISK-VALUE: DERIVED — usage markers "Usage of" and "-addr" @ tools/release/images.py:211 — Go flag usage text; -addr is defined at deskd/cmd/deskd/main.go:135.
+RISK-VALUE: DERIVED — failure output tail = 2000 bytes @ tools/release/images.py:214 — an operational knob for the error message only; it gates nothing.
+RISK-VALUE: DERIVED — cache prune mounts and no-cache flag @ tools/release/images.py:37-39 — operational knobs from the out-of-scope cache commits; they change build caching, not what is checked before a push.
+
+Attempts: 1, container rows 1-3, 2026-11-10T05:03:08Z to 05:05:24Z, 3 rows, all pass. 2, host rows 4-6, 2026-11-10T05:05:33Z to 05:05:39Z, 3 rows, rows 4 and 5 pass, row 6 could-not-run. No attempt was discarded.
+
+**VERIFY: BLOCKED** — 5/6 rows passed; row 6 could-not-run (git-history check:ci row on a darwin linked-worktree home, #4327). No obligation observed to fail; status stays implemented.
+
 ## Review
 
 Gate: model (from frontmatter; all four risk answers no). Confirm that the producer
