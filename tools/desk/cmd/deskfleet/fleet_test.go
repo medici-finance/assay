@@ -666,7 +666,7 @@ func TestLabelsCheck(t *testing.T) {
 }
 
 // An inherited GitLab group label is present to the ensure too: a no-op, no project copy.
-func TestLabelsGitLabInheritedGroupLabelIsNoOp(t *testing.T) {
+func TestLabelsGitLabKeepsGroupLabel(t *testing.T) {
 	f := newFakeForge(t)
 	f.groupLabels["to:worker"] = true
 	h := newHarness(t, f)
