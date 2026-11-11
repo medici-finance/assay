@@ -65,7 +65,8 @@ var cellctlSuiteRunners = map[string][]string{
 }
 
 // unrunCellctlSuites is every suite no `go test` runs yet. It only shrinks: a suite leaves it in
-// the PR that gives it a runner, and a new suite gets a runner instead of an entry.
+// the PR that gives it a runner, and a new suite gets a runner instead of an entry. The
+// fourteen below, and the red rows a first run of them showed, are tracked in #6185.
 var unrunCellctlSuites = map[string]bool{
 	"cell-set.test.sh": true, "cockpit.test.sh": true, "container-cell.test.sh": true,
 	"desk-worktree-merge.test.sh": true, "gitlab-fetch-cred.test.sh": true,
