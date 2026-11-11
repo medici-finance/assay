@@ -18,7 +18,7 @@ sources:
   - freshness-checked 2026-10-24 @ 61eb62a4a (origin/main)
 domain: complicated
 consumers:
-  - "tools/desk/cmd/deskwt/prune-mutations.json: follow-up desk-tools/59 (this brief; flips to fixed-here when the implementation edits the manifest)"
+  - "tools/desk/cmd/deskwt/prune-mutations.json: fixed-here"
 ---
 
 # Brief 59 — Remove incidental prune mutation fixture work

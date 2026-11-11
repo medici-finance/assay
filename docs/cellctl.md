@@ -167,7 +167,7 @@ launch from, first confirm that none of the variables above is set for anything 
 `env | cut -d= -f1 | grep -E '_(APP|APP_ID|PEM|TOKEN|INSTALL_ID(_[A-Z0-9_]+)?)$'` (names only, so
 no token is printed; it also matches `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and the
 per-owner install ids) lists no variable that belongs to another cell or App.
-Then run `desktoken <role> --repo <owner>/<repo>` with only `HOME` set to the cell's `home`
+Then run `desktoken --no-rotate <role> --repo <owner>/<repo>` with only `HOME` set to the cell's `home`
 directory, leaving the rest of that shell's environment as it is. Do not set or clear any of these
 variables for the proof alone: a proof run in an environment the desks never get passes even when
 the launch reads another cell's credentials. A successful `desktoken` run shows that a key was
@@ -421,6 +421,40 @@ worktree, the shims, the pinned model and the `/assay:<role>` first prompt are t
 
 ---
 
+## Host mutation work budget
+
+`MUHAR_LEASE_DIR` and `MUHAR_TOTAL_SLOTS` opt muhar runs into one host-wide
+worker budget. Configure both explicitly in each participating cell's
+`cell.env` (or through `cellctl set`); existing cells receive no new default.
+All roles and independent cells sharing the host budget must name the same
+existing absolute lease directory and positive total. Cellctl forwards the
+effective configured inputs: launching-process environment, then machine
+`defaults.env`, then `cell.env`, with later layers overriding earlier ones.
+This applies to scrubbed launches too; the values are not restricted to the
+cell.env layer. Explicitly empty values retain their presence so muhar can
+refuse an invalid pair. Cellctl creates no directory, total or lock manager.
+The directory and slot files are trusted operator inputs; use a private
+directory that untrusted local users cannot modify. Current slot opens follow
+symlinks and do not check directory ownership/mode or enforce a maximum total.
+
+The same composition supplies host Claude/Cursor windows, Codex command
+subprocesses, scrubbed allowlists and dry-run environment lines. A partial,
+empty, invalid or inaccessible pair is refused by muhar before any work.
+A pool exceeding the total is clamped with a stderr diagnostic; baseline,
+control, selector and worker builds still run, and the complete mutation list
+keeps its original order. Stderr reports waiting and `queue-wait` separately
+from build/test timing. Both inputs unset retain current worker scheduling.
+
+Stop the affected muhar run before repairing permissions or configuration.
+Normal completion and catchable SIGINT/SIGTERM release locks after child
+cleanup; never unlink live slot files to recover capacity. SIGKILL/OOM closes
+parent lock descriptors while suite process groups can remain alive and
+leaseless, temporarily exceeding the budget. Inspect and stop or wait for
+orphan suites before replacement work. Windows retains top-process-only
+cleanup. Containers require an explicitly shared lock filesystem with
+compatible locking semantics; without that, host-wide coverage is
+could-not-check. See [muhar's lease and recovery contract](../tools/desk/cmd/muhar/README.md#sharing-a-host-budget).
+
 ## Scrubbed cells — `--kind scrubbed`
 
 Cell-owned Kimi/provider credentials and an optional Herdr display are described in
@@ -459,11 +493,14 @@ links. It refuses an existing cell of the same name, exactly like every other ki
 
 ### The composed environment
 
-The launch is `env -i` plus an explicit allowlist — the parent shell contributes nothing by
-default. This is the exact list `cellctl` exports (`scrubbedEnvKeys` in
-`tools/desk/cmd/cellctl/env.go` is the single source this table, the `[plan]` lines below, and the
-live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares the same set, and
-`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it). The cell database pointer and GitLab endpoint rows are
+The launch is `env -i` plus explicitly composed keys. `scrubbedEnvKeys` in
+`tools/desk/cmd/cellctl/env.go` supplies the core list; the shared managed-cache
+and mutation-budget helpers append their named effective configuration. Thus
+an explicitly set parent/defaults budget can cross this boundary even when
+cell.env does not name it; arbitrary parent keys do not pass through. The
+`[plan]` and live launch use the same composition. The shell oracle's
+`SCRUBBED_ENV_KEYS` declares its core set, and
+`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it). The mutation-budget, cell database pointer and GitLab endpoint rows are
 Go-only additions,
 present only when the cell declares them; parity fixtures do not configure them.
 
@@ -491,6 +528,8 @@ present only when the cell declares them; parity fixtures do not configure them.
 | LANG | passed through from the parent |
 | ASSAY_CELL_DB_DSN | `CELL_DB_DSN`, when `cell.env` carries one |
 | PGPASSFILE | `CELL_DB_PASSFILE`, when `cell.env` carries `CELL_DB_DSN` |
+| MUHAR_LEASE_DIR | Explicit configured shared absolute lease directory; absent when unset |
+| MUHAR_TOTAL_SLOTS | Explicit configured positive host total; absent when unset |
 | GITLAB_API_BASE | GitLab cells only: nonempty `cell.env` `GITLAB_API_BASE`, else its nonempty `FORGE_API_BASE`; inherited values and compiled defaults are excluded |
 
 A configured cell-owned provider adds its endpoint, token and model aliases to the final
@@ -840,12 +879,20 @@ Kills the session and this cell's `deskd` — matched on its own `--config` path
 torn down whichever cockpit resolves, and what a non-tmux cockpit opened is closed where that
 cockpit offers a verb for it and **named for you to close by hand where it does not**.
 
+`down` then `up` is a round trip: no `up --plan` or `cadence recover` is needed in between. A
+cadence role's supervisor is stopped first, by a stop request the role's next launch clears (a stop
+an operator wrote stays). Each interactive role is waited for after the close, with one 20-second
+bound, and its checkpoint is left finished; when that cannot be proved, `down` exits 1 and names
+`cellctl up <cell> --plan`. [Host desk cadence](cellctl-cadence.md#stop-and-recovery) has the evidence
+rule.
+
 `cellctl down <cell> <role>` closes **one** role. It applies only to a role that is already paused
 or drained: a role that is not is refused `role-busy` before any plan is shown, and `down` never
 pauses it for you, so declining the confirm leaves the cell exactly as it was. Run
 `cellctl pause <cell> <role>` (or `drain`) first. It stops that role's cadence alone, re-measures the role idle, re-verifies the role's
 surface identity against the live cockpit, and issues exactly one single-surface close
-(`tmux kill-window -t <id>`, `herdr tab close <tab>`, `orca terminal close --terminal <h>`). It never
+(`tmux kill-window -t <id>`, `herdr tab close <tab>`, `orca terminal close --terminal <h>`), then waits
+for an interactive role's owner as the cell-wide `down` does. It never
 closes a session, a workspace, a sibling's window or another cell's. A role with no surface receipt,
 or a cockpit build without the close verb, is refused `per-role-close-unsupported`, and only the
 cell-wide `down` can close it.
@@ -2062,6 +2109,14 @@ cockpit {tmux, herdr, orca} × verbs {check, desk, up, down, set, ls, smoke, sta
 per kind × forge {github, gitlab}. `new` has no dry run, so parity there is a byte-diff of the
 whole tree each implementation scaffolds — paths, mode bits and file contents. `PARITY_ONLY=<substring>`
 narrows a run to one cell or one verb.
+
+The oracle follows the current dry-run and custody contracts: host `down` plans
+without tearing down, Codex re-entry commands carry the cell root, and scrubbed
+Herdr displays a privately owned tmux session while scrubbed Orca is refused.
+Its standing Codex prompt is a literal fixture beside the shell script, never
+read from the production composer. The baseline matrix has no stored width
+overrides or existing house cadence checkpoints; the oracle refuses those
+configured cases rather than guessing their state. Go behavior tests cover them.
 
 **The machine-wide defaults file is outside the matrix too.** `$CELLS_ROOT/defaults.env` exists
 only in the Go program — the oracle neither reads nor writes it. A cells root without the file

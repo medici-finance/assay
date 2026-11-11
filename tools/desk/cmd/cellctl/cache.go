@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
 	"github.com/medici-finance/assay/tools/desk/internal/cellrunner"
@@ -64,6 +67,50 @@ func (c *Cell) cacheAdmission() error {
 	b, _ := json.Marshal(r)
 	fmt.Fprintf(os.Stderr, "storage-admission %s\n", b)
 	return err
+}
+
+// upPrepareLaunch is prepareLaunch for `cellctl up`. When bounded admission
+// defers on a refusal one clean can clear (the recorded size or free-space
+// margin, or an aged or overtaken measurement), it runs that clean once and
+// prepares again; a second deferral refuses exactly as before. Every other
+// refusal (ownership, domain, corrupt or dirty accounting) is returned
+// untouched and stays with the operator. Desk and scratch launches keep
+// calling prepareLaunch, which never walks the cache.
+func (c *Cell) upPrepareLaunch() (bool, error) {
+	fresh, err := c.prepareLaunch()
+	var d *cellcache.Deferred
+	if err == nil || !errors.As(err, &d) || !d.Report.Reclaimable() {
+		return fresh, err
+	}
+	if err := c.upCacheClean(d.Report.Reason); err != nil {
+		return false, err
+	}
+	return c.prepareLaunch()
+}
+
+// upCacheClean is the one clean `up` may run: the same Check, not dry, that
+// `cellctl cache <cell> clean` runs, under the same lock and entry budget. It
+// prints one line naming why it ran and the logical bytes before and after.
+func (c *Cell) upCacheClean(why string) error {
+	p, err := c.cachePolicy()
+	if err != nil || p == nil {
+		return err
+	}
+	// A just-finished build can stamp a top-level directory inside the
+	// admission clock margin; settle it before measuring, as maintenance does.
+	time.Sleep(cellcache.AdmitMtimeSlack)
+	r, err := cellcache.Check(*p, false)
+	why, _, _ = strings.Cut(why, "; run cellctl cache")
+	fmt.Fprintf(os.Stderr, "up cache clean: %s; logical bytes before %s, after %s, reclaimed %d; outcome %s\n",
+		why, logicalBytes(r.Before), logicalBytes(r.After), r.Reclaimed, r.Outcome)
+	return err
+}
+
+func logicalBytes(m cellcache.Measurement) string {
+	if m.LogicalBytes == nil {
+		return "unknown"
+	}
+	return strconv.FormatInt(*m.LogicalBytes, 10)
 }
 
 // cadenceCacheMaintenance belongs to the existing supervisor between completed
