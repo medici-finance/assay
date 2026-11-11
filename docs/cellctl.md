@@ -380,7 +380,8 @@ cellctl new house --kind house \
   --repo /path/to/checkout \
   --roots 'example-org/example-repo=/path/to/checkout,example-org/other=/path/to/other' \
   [--roles "the-desk worker-desk"] [--port 8787] \
-  [--forge gitlab [--group example-group] [--gitlab-api-base URL]]
+  [--forge gitlab [--group example-group] [--gitlab-api-base URL]] \
+  [--labels-token-file /path/to/operator-label-credential]
 cellctl check house
 cellctl desk house worker-desk          # one window
 cellctl up house                        # every role, in the resolved cockpit (see *Cockpits*)
@@ -402,6 +403,21 @@ only a `DESKD=1` house cell needs it) and `GITLAB_TOKEN_STORE` when `--gitlab-to
 given; it links `.gitconfig` but **never** `.config/gh`, which is GitHub custody. Any other
 `--forge` value is refused before anything is created.
 
+**The forge label set.** After the scaffold, `new --kind house` ensures the desk tools' label
+set on every `--roots` repo: `review-request`, one `raised-by:<role>` and one `to:<role>` row per
+role the roster binds (the roster's `ASSAY_TRUSTED_BOT_SLUGS` `role=` names, the same list
+`deskfile --raised-by` / `--to` accept), and `authorization-needed` / `approval-needed`. Creating
+labels is an **operator act** under the operator's own credential: `--labels-token-file FILE`
+names a file (owner-only, the same custody check as `deskfleet labels --token-file`) holding a
+credential that can write labels. cellctl never mints one and never uses a desk role's App token.
+The ensure is idempotent: a label already present is a no-op, and on GitLab a label the project
+inherits from its group counts as present. Every repo prints one line: `ensured N on <repo>`, or
+`NOT ENSURED on <repo> — <why>; finish with: deskfleet labels …` naming the exact command. With no
+`--labels-token-file`, or a roster that binds no role yet, every repo is `NOT ENSURED` and `new`
+still exits 0 (the step is deferred, and `check` keeps reporting it). A credential that was given
+and could not write a label (denied, or any create failing) leaves the step unfinished and `new`
+exits 1.
+
 `check` on a house cell proves what a hand boot gets wrong rather than what a k8s cell needs: the
 checkout is a git checkout; the roster **parses** under the cell home (`deskroster repos --scope
 scan` exits 0 through the cell's `HOME`), not merely exists; every entry of `CELL_ROOTS` is well-
@@ -409,6 +425,14 @@ formed, exists and carries `docs/streams/`; the desk verbs a role needs are inst
 desk-tools bindir; `claude` is on `PATH` and the `assay@assay` plugin is enabled for the checkout.
 The gh config link is a row on a github house cell (a `MISS` when absent) and `n/a` on a gitlab
 one, worded as on a k8s gitlab cell.
+One **labels** row per `CELL_ROOTS` repo reads that repo's labels with the credential in
+`cell.env`'s `CELL_LABELS_TOKEN_FILE` (on GitLab including labels inherited from ancestor
+groups): `ok` when the whole roster-derived set is present, `MISS` naming each missing label and
+the `deskfleet labels` command that creates them. When the set cannot be derived (the roster binds
+no role) or read (`CELL_LABELS_TOKEN_FILE` unset, a credential file that fails custody, a failed
+or truncated read) the row is `?  could-not-check`, never `ok`. A could-not-check row leaves the
+exit code alone, but a run with one ends `every checked precondition met; N could-not-check
+row(s)`, never `all preconditions met`.
 `deskd` is reported `n/a` unless `cell.env` sets `DESKD=1`, in which case the cell is checked, stood
 and torn down exactly as a k8s cell's is.
 
@@ -879,12 +903,20 @@ Kills the session and this cell's `deskd` — matched on its own `--config` path
 torn down whichever cockpit resolves, and what a non-tmux cockpit opened is closed where that
 cockpit offers a verb for it and **named for you to close by hand where it does not**.
 
+`down` then `up` is a round trip: no `up --plan` or `cadence recover` is needed in between. A
+cadence role's supervisor is stopped first, by a stop request the role's next launch clears (a stop
+an operator wrote stays). Each interactive role is waited for after the close, with one 20-second
+bound, and its checkpoint is left finished; when that cannot be proved, `down` exits 1 and names
+`cellctl up <cell> --plan`. [Host desk cadence](cellctl-cadence.md#stop-and-recovery) has the evidence
+rule.
+
 `cellctl down <cell> <role>` closes **one** role. It applies only to a role that is already paused
 or drained: a role that is not is refused `role-busy` before any plan is shown, and `down` never
 pauses it for you, so declining the confirm leaves the cell exactly as it was. Run
 `cellctl pause <cell> <role>` (or `drain`) first. It stops that role's cadence alone, re-measures the role idle, re-verifies the role's
 surface identity against the live cockpit, and issues exactly one single-surface close
-(`tmux kill-window -t <id>`, `herdr tab close <tab>`, `orca terminal close --terminal <h>`). It never
+(`tmux kill-window -t <id>`, `herdr tab close <tab>`, `orca terminal close --terminal <h>`), then waits
+for an interactive role's owner as the cell-wide `down` does. It never
 closes a session, a workspace, a sibling's window or another cell's. A role with no surface receipt,
 or a cockpit build without the close verb, is refused `per-role-close-unsupported`, and only the
 cell-wide `down` can close it.
@@ -1607,6 +1639,7 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `CELL_KIND` | `k8s` (default — a cell scaffolded before kinds existed carries none), `house` (the operator's own desks; see *House cells*), `container` (see *Container cells*), or `scrubbed` (a composed environment; see *Scrubbed cells*) |
 | `CELL_ROOTS` | the stream-root map, `<owner>/<repo>=<abs path>,...`, exported to every role window as `DESK_ROOTS`; **required** on a house cell, optional on k8s/scrubbed (unset = the verbs' compiled placeholder topology, and `desk` says so) |
 | `CELL_REPO_SLUG` | **scrubbed only** — `<owner>/<repo>`; the ONE repo this cell is scoped to (checked against the roster's `ASSAY_ALLOWED_REPOS`) |
+| `CELL_LABELS_TOKEN_FILE` | **house** — a file (owner-only) holding an operator credential that can read labels; `check` reads each `CELL_ROOTS` repo's forge label set with it. Unset: the labels rows are could-not-check. Never a desk role's App token |
 | `CELL_PATH` | **scrubbed only** — overrides the trailing system part of the composed `PATH` (never the shim prefix or the resolved harness dir) |
 | `CELL_COCKPIT` | the surface `up` opens the role windows in: `auto` (default — herdr if on PATH, else orca if on PATH and its desktop app answers, else tmux), `tmux`, `herdr` or `orca`; `--cockpit` overrides it per run (see *Cockpits*) |
 | `DESKD` | **house** — `1` to require and stand a `deskd` as a k8s cell does (default `0`: no deskd, and `check` reports it `n/a`) |
@@ -1783,7 +1816,7 @@ processes are not configuration.
 | Refused in `defaults.env` | Why |
 |---|---|
 | `CELL`, `CELL_KIND`, `ROLES` | what one cell is: its name, its kind (each kind has its own preconditions) and its role windows |
-| `CELL_REPO`, `CELL_REPO_SLUG`, `CELL_ROOTS`, `CELLS_CONFIG`, `CELL_COMMS_CONFIG` | what one cell is scoped to: its checkout, its one repository, its stream-root map, its `cells.yaml` slice, a comms manifest that names its single cell |
+| `CELL_REPO`, `CELL_REPO_SLUG`, `CELL_ROOTS`, `CELLS_CONFIG`, `CELL_COMMS_CONFIG`, `CELL_LABELS_TOKEN_FILE` | what one cell is scoped to: its checkout, its one repository, its stream-root map, its `cells.yaml` slice, a comms manifest that names its single cell, the operator credential file its repos' labels are read with |
 | `DESKD`, `DESKD_ADDR`, `DESKD_INDEX`, `TMUX_SESSION` | what one running cell holds: whether it stands a `deskd`, the address that `deskd` binds, its index, the session `down` stops |
 | `CELL_GO_CACHE_ROOT` | a managed cache root is marked for exactly one cell, and a second cell is refused it |
 | `CELL_CONTAINER_CONFIG`, `CELL_CONTAINER_LAUNCHER` | bind one cell to its container definition or launcher |

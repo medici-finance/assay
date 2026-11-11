@@ -954,7 +954,11 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   is a floor, not the reversibility test above: an item that test calls one-way is filed
   `caught-by: nothing`, and so stays on the driver's queue, whatever the keywords say.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
-  or comments.
+  or comments. If a push is refused over an attribution trailer your harness added, not you (on
+  Cursor the host setting `attribution.attributeCommitsToAgent`, and `attribution.attributePRsToAgent`
+  for PR footers; both default to true), STOP: never rewrite history or re-commit to strip it, and
+  never push by another route. Report the setting and the refusal line; the host's operator sets
+  it to false.
 
 ## Cross-desk hand-offs — the lane verbs
 

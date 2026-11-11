@@ -1148,7 +1148,7 @@ comment for the full endpoint list):
 | Set approval settings | `POST api/v4/projects/:id/approvals` | `merge_requests_author_approval: false`, `merge_requests_disable_committers_approval: true` — the prevent-author / prevent-committers pair |
 | Require green pipelines before merge | `PUT api/v4/projects/:id` | `only_allow_merge_if_pipeline_succeeds: true` |
 | Require all threads resolved before merge | `PUT api/v4/projects/:id` | `only_allow_merge_if_all_discussions_are_resolved: true` — the merge-hold marker thread's server-side half (§0.1); Free tier, read back the same way as the pipeline flag above |
-| Create the desk labels | `POST api/v4/projects/:id/labels` | one call per label, idempotent (a duplicate name answers 409, or 400 "already exists"); the queue-legibility pair `authorization-needed` / `approval-needed`, the `review-request` dispatch token, and one `raised-by:<role>` per filing role |
+| Create the desk labels | `POST api/v4/projects/:id/labels` | one call per label, idempotent (a duplicate name answers 409, or 400 "already exists"; a name an ancestor group already defines answers 400 "already exists at group level" and counts as present); the queue-legibility pair `authorization-needed` / `approval-needed`, the `review-request` dispatch token, and one `raised-by:<role>` and one `to:<role>` per desk role |
 | Check for the board-push variable | `GET api/v4/projects/:id/variables/STATUSGEN_PUSH_TOKEN` | 404 means "not set yet"; an existing one is a no-op, checked for `masked` and `protected` |
 | Mint the board-push token | `POST api/v4/projects/:id/access_tokens` | `name: assay-statusgen-push`, `scopes: [write_repository]`, `access_level: 40`, `expires_at` = today + `--pat-expiry-days`; a refusal is a recorded failure naming the §2c manual step |
 | Store the board-push token | `POST api/v4/projects/:id/variables` | `key: STATUSGEN_PUSH_TOKEN`, `masked: true`, `protected: true`; read back by `GET` on the same variable |
@@ -1160,9 +1160,20 @@ The label set is the GitLab twin of the GitHub **`create-labels`** primitive
 (`docs/adopting-assay.md`) — the SAME names, colors and descriptions, so the two
 adoption profiles are label-parity. It matters because a label that is absent when a
 desk verb reaches for it degrades **silently**: `deskflip`'s `authorization-needed` →
-`approval-needed` queue swap fails, and `deskfile --raised-by <role>` drops the
-provenance stamp (#774). The script creates them under `--project`; colors are
-sent with the leading `#` GitLab requires.
+`approval-needed` queue swap fails, `deskfile --raised-by <role>` drops the
+provenance stamp (#774), and `deskfile --to <role>` files the issue unaddressed, where
+no desk's sweep finds it. The script creates them under `--project`; colors are
+sent with the leading `#` GitLab requires. The names are plain labels: `to:worker` has
+a single colon and is not a GitLab scoped (`::`) label, so labels of one family never
+displace each other on an issue. A label the project inherits from its group counts as
+present, both for the create (never re-created at project level) and for
+`deskfleet labels --check` / `cellctl check`, which list with `include_ancestor_groups`.
+Provisioning runs before the fleet's roster exists, so the script uses the six
+documented roles. Once the roster binds its roles, `deskfleet labels --forge gitlab
+--project <path> --roles <the roster's role= names> --token-file <file>` (or
+`cellctl new --kind house --forge gitlab … --labels-token-file <file>`) ensures the
+roster-derived set. Either way it runs under the operator's credential, never a desk
+role's token.
 
 ## 4. The ci-config-project runbook (human-only)
 

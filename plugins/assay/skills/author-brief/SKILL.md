@@ -362,6 +362,14 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
    when authoring it. Never emit `findstr /c:"…"` with backslash paths under implicit `sh`:
    bash reinterprets those arguments. Shell selection belongs in the reviewed Verify table;
    an Evidence-only edit must not change the command or its shell to make a failing row pass.
+   **Say where each row runs.** When a row needs anything beyond the checkout, add an `Env`
+   column (`| # | Class | Env | Command | Expect |`): `tree`, `host[:<name>]`,
+   `service:<name>` for a named NON-PRODUCTION instance (a database, an API, a staging
+   deployment, described in `## Context`), or `cluster:<name>`. A row whose Env is not `tree`
+   is never `check:ci`, since no CI job reaches it; class it `check`. A row needing a project
+   secret or a live service is witnessed by a non-implementer where that environment exists,
+   never by the implementer's own report. The grammar and its `statusgen --lint` rules are
+   rule 45 in the brief-rules reference.
 4. **`gate: human` is mandatory when any risk answer is `yes`.** Record all four risk answers
    (regulatory, customer, irreversible, sensitive-data), not just the resulting gate — the answers are
    what a reviewer audits, the gate is just their conclusion. **A risk-gated brief (`gate: human` OR
@@ -440,6 +448,14 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
      Run your project's consumers check — the diff-aware `statusgen --consumers` gate — over the
      branch before pushing an authoring change, so the deferred routing is confirmed locally rather
      than by a red check in CI.
+   - **The consumers Verify row works after the merge too**: the bare
+     `statusgen --consumers --brief <stream>/<NN>` row re-runs on merged main with no hand-pinned
+     commits. It pins itself to the delivery and that commit's first parent, read locally: the
+     committed Evidence's `Verification-Table:` marker if there is one, otherwise the one
+     first-parent commit whose message (or a commit it merged) carries `Brief: <stream>/<NN>`. So
+     the implementation PR's commits carry that trailer, and a later PR for the same brief should
+     not repeat it: zero or several candidates is exit 2 (COULD-NOT-CHECK), and the remedy is an
+     explicit `--delivery <full-sha> --base <its first parent>`.
    - **Flow Verify row**: a shared-value brief's Verify table must carry at least one row exercising
      the cross-component flow end-to-end (e.g. *frontend submits form → API persists → dashboard row
      appears*), not just the changed site. Site-green does not imply flow-green. This one stays a

@@ -687,6 +687,16 @@ separate PRs** (repetition, not rounds on one PR) names a mechanism, not a guard
 record the class per `intake-desk` step 1 — independent of whether any PR hit the round cap
 above. Recurrence goes to design, never straight to one more rule.
 
+### A check that needs a project secret or a live service
+
+When a PR's claim rests on a check that needs a project credential or a live service (`review-prompt`
+clause 5), the desk does not treat the implementer's report of running it as evidence, and does not
+treat a review that accepted that report as an approval. The verdict names the check could-not-check
+and the environment it needs; the approval rests on what the reviewer could check. The Verify row is
+witnessed after merge, in the board's Environment-blocked queue, by an operator who holds that
+environment (verify-desk §"Rows that need a project secret or a live service"). No reviewer slot is
+given a project secret, and no PR head is run with one.
+
 ### Finding-class calibration — reversal-rate demotion
 
 A finding class earns its blocking power; it does not hold it by default. The monthly
@@ -1322,7 +1332,11 @@ concluding anything about install state.
   content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
   either side of the test — the test never routes around one.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
-  or comments.
+  or comments. If a push is refused over an attribution trailer your harness added, not you (on
+  Cursor the host setting `attribution.attributeCommitsToAgent`, and `attribution.attributePRsToAgent`
+  for PR footers; both default to true), STOP: never rewrite history or re-commit to strip it, and
+  never push by another route. Report the setting and the refusal line; the host's operator sets
+  it to false.
 - Model-tier awareness: if downgraded mid-session, stop synthesis/judgment and fall back to
   transcription-grade work. Probe vs assertion (2026-07-10): human:<name> ASKING what model you are is a
   probe — answer with the env model line verbatim + ask for confirmation, and keep mechanical work

@@ -691,7 +691,7 @@ func (o dispatchOpts) notLaunched(plan dispatchPlan, repo, home string) {
 	if tool == "" {
 		tool = claimScriptRel
 	}
-	cred := claimCredArg(tool, stampRoleForKit(o.kit), repo)
+	cred := claimCredArg(tool, stampRoleForKit(o.kit), repo, dispatcherLoop())
 	branch := plan.branch
 	if branch == "" {
 		branch = "-" // a detached review/verify home has no branch; the claim records "-"
@@ -1333,7 +1333,7 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, auth claimAut
 						"flight, a branch-as-claim the tool keeps) reclaim deliberately with `%s steal %s "+
 						"--repo %s --reason <why>%s`. This verb still does not steal inline. Existing claim: %s.",
 					stepClaimAcquire, claimKey, state, ageMin, script, claimKey, repo,
-					claimCredArg(script, stampRoleForKit(o.kit), repo), holder))
+					claimCredArg(script, stampRoleForKit(o.kit), repo, dispatcherLoop()), holder))
 			}
 			return deskkit.Refused(fmt.Sprintf(
 				"step %s: %s is already claimed by a LIVE holder — do not proceed. Existing claim: %s. "+
@@ -1421,7 +1421,7 @@ func releaseClaim(o dispatchOpts, script string, auth claimAuth, claimKey, repo 
 	r := runCmdEnv(o.root, auth.env, script, append([]string{"release", claimKey, "--repo", repo}, auth.args...)...)
 	if r.err != nil {
 		return "NOT released (release failed: " + r.run.Said() + ") — release it by hand: " +
-			script + " release " + claimKey + " --repo " + repo + claimCredArg(script, stampRoleForKit(o.kit), repo)
+			script + " release " + claimKey + " --repo " + repo + claimCredArg(script, stampRoleForKit(o.kit), repo, dispatcherLoop())
 	}
 	return "released"
 }
