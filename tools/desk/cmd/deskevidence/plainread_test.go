@@ -105,7 +105,7 @@ func boardOfNoRows() string {
 }
 
 // TestPlainFileRead: only a plain file the forge proved is a record; the outcome-record
-// lane alone also admits a read the forge did not type (the GitLab backend types none).
+// lane alone also admits a read the forge did not type.
 func TestPlainFileRead(t *testing.T) {
 	fr := deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}
 	for _, c := range []struct {
