@@ -567,7 +567,10 @@ func reviewedEmpty(cell string) bool {
 // unrunAwaitRows returns the Verify rows with no settled run behind them. A row
 // is settled when some Evidence row for it is complete (dated, a runner named,
 // not marked unrun) and is not itself a could-not-check or a cluster-pending
-// park — both of those record that the row did NOT run.
+// park — both of those record that the row did NOT run. A read-set token's
+// `(reads could-not-check: …)` says only that the run's reads were not
+// recorded, never that the row did not run, so it is removed before the
+// could-not-check test.
 func unrunAwaitRows(rows []verifyRowCells, evidence string) []unrunAwaitRow {
 	evRows := parseEvidenceRows(evidence)
 	var out []unrunAwaitRow
@@ -579,7 +582,7 @@ func unrunAwaitRows(rows []verifyRowCells, evidence string) []unrunAwaitRow {
 		u := unrunAwaitRow{cells: r}
 		settled := false
 		for _, er := range evRows[id] {
-			prose := inlineCodeRe.ReplaceAllString(er.Text, "")
+			prose := inlineCodeRe.ReplaceAllString(stripWriterReadSetTokens(er.Text), "")
 			if clusterMarkerRe.MatchString(er.Text) {
 				u.clusterParked = true
 				continue

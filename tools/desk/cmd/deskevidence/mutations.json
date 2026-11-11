@@ -492,6 +492,30 @@
       "file": "cmd/deskevidence/github.go",
       "old": "if strings.TrimSpace(c.AuthorLogin) != \"\" {",
       "new": "if res.Author == \"\" && strings.TrimSpace(c.AuthorLogin) != \"\" {"
+    },
+    {
+      "name": "#4554: ignore --dry-run on the --outcome-record route",
+      "file": "cmd/deskevidence/outcomerecord.go",
+      "old": "\tif dryRun {",
+      "new": "\tif false && dryRun {"
+    },
+    {
+      "name": "#4554: ignore --dry-run on the --evidence-file route",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\tif *dryRun {",
+      "new": "\tif false && *dryRun {"
+    },
+    {
+      "name": "#4554: accept a flag the selected route does not honour",
+      "file": "cmd/deskevidence/routeflags.go",
+      "old": "if !honoured[f.Name] {",
+      "new": "if false && !honoured[f.Name] {"
+    },
+    {
+      "name": "SEC-5881-01: skip the immutability check under --dry-run",
+      "file": "cmd/deskevidence/outcomerecord.go",
+      "old": "\tif remoteExists {",
+      "new": "\tif !dryRun && remoteExists {"
     }
   ]
 }

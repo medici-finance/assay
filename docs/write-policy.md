@@ -161,7 +161,7 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   text, and `git status && T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1
   --json status` (a mint a separator could skip),
   `GH_TOKEN=$(cat "$(desktoken worker --repo o/n)") gh pr view 1 --json status` (the
-  nested form in `desktoken`'s own notice), `tokfile="$(desktoken "$role" --repo "$repo")"`
+  nested form in `desktoken`'s own notice), `tokfile="$(desktoken --no-rotate "$role" --repo "$repo")"`
   then `GH_TOKEN="$(cat "$tokfile")" gh issue list -R "$repo" --limit 1 --json status`
   (the role recipe in `plugins/assay/references/desk-shell.md` and its `.cursor` twin;
   #5077 tracks both),

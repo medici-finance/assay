@@ -7,7 +7,12 @@ import (
 )
 
 // Existing synthetic fixtures run under an explicit process-start policy.
+// The run is bracketed by treeLeakGuard (tree_test.go): a test that leaves a
+// deskd state file in the tree fails the package.
+//
+// regression: #5863
 func TestMain(m *testing.M) {
+	checkTree := treeLeakGuard(os.Stderr)
 	if os.Getenv("DESKD_TEST_POLICY_DISABLED") != "1" {
 		login := os.Getenv("DESKD_TEST_POLICY_LOGIN")
 		if login == "" {
@@ -17,5 +22,5 @@ func TestMain(m *testing.M) {
 			panic(err)
 		}
 	}
-	os.Exit(m.Run())
+	os.Exit(checkTree(m.Run()))
 }

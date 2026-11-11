@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/cellprocess"
+	"github.com/medici-finance/assay/tools/desk/internal/cellrunner"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -95,7 +95,7 @@ func native(ctx context.Context, common, operation string) ([]byte, error) {
 	}
 	args = append(args, operationArgs...)
 	var stdout, stderr boundedBuffer
-	_, uncertain, err := cellprocess.Run(ctx, append([]string{"git"}, args...), maintenanceEnv(os.Environ()), filepath.Dir(common), &stdout, &stderr)
+	_, uncertain, err := cellrunner.Run(ctx, append([]string{"git"}, args...), maintenanceEnv(os.Environ()), filepath.Dir(common), &stdout, &stderr)
 	if uncertain {
 		err = errors.Join(err, errCleanupUnknown)
 	}

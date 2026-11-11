@@ -3,7 +3,7 @@
 **Version:** v1.0-draft
 **Status:** DRAFT — published for review. v1.0-draft is unstable: breaking changes MAY be
 made without a major-version bump; no stability commitment.
-**Describes reference implementation:** `statusgen` v1.0.79
+**Describes reference implementation:** `statusgen` v1.0.83
 
 ## 1. Scope
 
@@ -605,6 +605,16 @@ The body MUST contain a `## Verify` section with an executable table:
   `\<` or `\[` to use those characters in prose; keep dollars out of a marked
   Command cell.
 - Rows MUST NOT be prose-only assertions without a command.
+- A table MAY carry an optional `Class` column (who executes the row: `check:ci`,
+  hermetic and re-executed by CI network-off on the checkout alone; `check`,
+  env-bound and runner-executed; `gate:model`; `gate:human`) and an optional `Env`
+  column (where the row runs: `tree`, `host[:<name>]`, `service:<name>` or
+  `cluster:<name>`), each located by header name, never position. A row that
+  needs anything beyond the checkout SHOULD name it in `Env`. A row that needs a
+  database or another service MUST name, as `service:<name>`, the NON-PRODUCTION
+  instance it runs against, and the brief or its spec MUST describe that
+  instance. A row whose environment is not `tree` MUST NOT be classed `check:ci`,
+  because no CI job reaches it.
 - Prose deliverables (docs, articles) MUST use PRESENCE gates: checks that required
   elements exist (file, section, token). The Verify section MUST state that
   it gates presence, not quality; quality is owned by the review gate.

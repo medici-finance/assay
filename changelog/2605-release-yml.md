@@ -1,2 +1,0 @@
-### Fixed
-- The release workflow's changelog roll is now pinned to the release tag: it aggregates and clears only the fragments present at the tag, so a fragment merged after the tag waits for the next cut instead of being filed under the wrong version and deleted. A retry that finds nothing left to aggregate is treated as done; a retry that finds fragments at the tag but the version's section already present fails instead.

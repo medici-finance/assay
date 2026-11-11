@@ -169,6 +169,12 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 		return nil, nil
 	}
 	t.Cleanup(func() { lintDiffFn = oldLint })
+	// Nor the non-decisive verdict gate (verdictgate_test.go owns it).
+	oldVerdict := evidenceVerdictCheckFn
+	evidenceVerdictCheckFn = func(string, string, []byte, []byte, bool, string) (closureVerdict, string, error) {
+		return closureAccepted, "", nil
+	}
+	t.Cleanup(func() { evidenceVerdictCheckFn = oldVerdict })
 	rows := "| 1 | command | 1 | missing behavior |\n" + receipt.EvidenceBinding() + "\n"
 	fragment := filepath.Join(t.TempDir(), "rows.md")
 	os.WriteFile(fragment, []byte(rows), 0600)

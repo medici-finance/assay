@@ -2,7 +2,7 @@
 
 <!-- GENERATED from the command tree by TestCLIReferenceDoc; do not edit by hand. -->
 
-Every command takes the cell as its first argument. The shape is
+Lifecycle commands take the cell as their first argument. Local `compat-prepare` takes `--cell`. The shape is
 `cellctl [--cells-root <abs>] <verb> <positionals...> [flags]`: the registry selector is the
 separated `--cells-root <abs>`, and only as the first word. Single-dash spellings of long flags
 (`-apply`) are accepted by `scratch` only. Help (`-h`, `--help`, `help <command>`) and version
@@ -56,6 +56,24 @@ initialize, check, run or recover a cell's interim comms service
   --reader-contained                  attest that an external ACP reader has enforced containment
   --reader-pin               string   external reader version pin
   --repo                     string   quarantine issue destination owner/repo
+```
+
+## `cellctl compat-prepare`
+
+plan or prepare a cold Claude desk volume locally
+
+```
+  --agent                    string   preinstalled executable path
+  --agent-version            string   exact installed Claude package version
+  --cell                     string   approved cell name
+  --instructions             string   approved instructions path; default is the image-baked role skill
+  --model                    string   explicit approved versioned Claude model ID
+  --prepare                           explicitly create cold descriptor/history; default is read-only plan
+  --readback                          read validated unused preparation bindings without changing them
+  --role                     string   desk role
+  --version-manifest         string   installed Claude package manifest path
+  --work                     string   absolute retained work directory
+  --workdir                  string   preinstalled work checkout path
 ```
 
 ## `cellctl defaults init|print`

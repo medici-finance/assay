@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
-	"github.com/medici-finance/assay/tools/desk/internal/cellprocess"
+	"github.com/medici-finance/assay/tools/desk/internal/cellrunner"
 )
 
 func (c *Cell) cachePolicy() (*cellcache.Policy, error) {
@@ -135,9 +135,9 @@ func cmdCacheRun(args []string) {
 	runCachedForeground(args, os.Environ(), "")
 }
 func runCachedForeground(args, env []string, dir string) {
-	ctx, stop := cellprocess.NotifyContext(context.Background())
+	ctx, stop := cellrunner.NotifyContext(context.Background())
 	defer stop()
-	code, uncertain, err := cellprocess.RunInteractive(ctx, args, env, dir, os.Stdin, os.Stdout, os.Stderr)
+	code, uncertain, err := cellrunner.RunInteractive(ctx, args, env, dir, os.Stdin, os.Stdout, os.Stderr)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}

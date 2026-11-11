@@ -415,7 +415,7 @@ no tool reinvents it with holes:
 | `AllowWrite(tool) error` / `AllowWriteAt(tool, now)` | **Two meters** (C-5/TM-4, #209). Budget: ≤20/tool/rolling hour (`RateLimitPerPRPerHour`, raised 10→20 by PR #1053, 2026-08-14), charged only by attempts that may have reached the remote (`ok`, `unverifiable`). Breaker: 5 consecutive non-progress attempts (`refused`, `noop`) → open for 15m. Neither meter counts `ratelimited`/`disabled` — its own output — which is what made the old single counter non-recovering; nor `dryrun` (#214), which wrote nothing. Exit-4 errors carry a **retry-after** (`RetryAfterOf(err)`). The cap is a **chosen throughput ceiling**, not a figure derived from an incident — `ratelimit.go` states what each value is chosen against. |
 | `AlreadyDone(repo, pr, head, verb) bool` / `AlreadyDoneIn(entries, …)` | Idempotency: only prior `ok`/`noop` entries count as done (C-5). `dryrun` never counts — a rehearsal must not suppress the real write. |
 | audit `result` | `ok` · `noop` (attempted, idempotency short-circuited it) · `dryrun` (`--dry-run`: stopped **before** the write, invisible to both meters, #214) · `refused` · `disabled` · `ratelimited` · `unverifiable`. |
-| `BodyCheck([]byte) error` | Shared secret scan (C-3); refuses token/PEM/JWT/AKIA/sops shapes + high-entropy runs. Exempts 40/64-char lowercase-hex git SHAs and **paths** — absolute or repo-relative — whose slash-separated segments are *word-shaped* (#1052, #209). Bare CamelCase identifiers are word-shaped too: a 2-4 letter acronym (optionally plural, `PRs`/`IDs`), a `V` version segment of 1-2 digits between words or closing the name (`V1`, `V10`; one per name, sharing the acronym budget), and the numeronyms `K8s`/`I18n`/`L10n`/`A11y` and the term `OAuth` count as words, and one acronym that closes the name spends no acronym budget unless the name carries a version segment (a version and an acronym never share one name); a 40/64-hex git SHA assigned to an ALL-CAPS env var whose name ends in a closed digest key (`SHA`, `SHA1`, `SHA256`, `DIGEST`, `CHECKSUM`, `COMMIT`, or `HEX` directly behind one, as in a Dockerfile `ARG BASE_DIGEST_HEX=<sha256>`) is exempt, unless the name contains a credential stem (`SECRET`, `TOKEN`, `KEY`, `PASS`, …); any other value, and any other key, refuses as on main (#1642). A Go test name with a subtest path (`TestX/sub`) is exempt when its head is such an identifier and its subtest path is at most 16 characters (half the run threshold) of word-shaped segments carrying at most 4 short lowercase characters in total; a run made only of `+` (a `git diff --stat` change bar) is exempt like an all-`=` banner. `${NAME}`/`$NAME` substitutions never form a run (`$`, `{`, `}`, `_` are outside the run class). Refuses `glpat-` GitLab tokens (#1642). Opaque material between slashes still refuses, including an AWS **secret access key**, whose `/` characters defeat a length-only segment gate. **Also refuses impersonated human rulings (#45)**: a body claiming a configured human's decision BY NAME — `"Decision (Alex, ...)"`, `"Ruling: ... — Alex"`, `"I (Alex) have decided"` — is refused categorically, since no desk write path ever posts as a human; see `ImpersonatedRulingClaim` (`impersonation.go`). |
+| `BodyCheck([]byte) error` | Shared secret scan (C-3); refuses token/PEM/JWT/AKIA/sops shapes + high-entropy runs. Exempts 40/64-char lowercase-hex git SHAs and **paths** — absolute or repo-relative — whose slash-separated segments are *word-shaped* (#1052, #209). Bare CamelCase identifiers are word-shaped too: a 2-4 letter acronym (optionally plural, `PRs`/`IDs`), a `V` version segment of 1-2 digits between words or closing the name (`V1`, `V10`; one per name, sharing the acronym budget), and the numeronyms `K8s`/`I18n`/`L10n`/`A11y` and the term `OAuth` count as words, and one acronym that closes the name spends no acronym budget unless the name carries a version segment (a version and an acronym never share one name); a 40/64-hex git SHA assigned to an ALL-CAPS env var whose name ends in a closed digest key (`SHA`, `SHA1`, `SHA256`, `DIGEST`, `CHECKSUM`, `COMMIT`, or `HEX` directly behind one, as in a Dockerfile `ARG BASE_DIGEST_HEX=<sha256>`) is exempt, unless the name contains a credential stem (`SECRET`, `TOKEN`, `KEY`, `PASS`, …). Any other ALL-CAPS env-var assignment is exempt only when the value is already exempt on its own (a word-shaped identifier, a git SHA or a word-shaped path, as in `make test TEST=<GoTestName>`, `PGDATA=/var/lib/…` or `DELIVERY_HEAD=<sha>`), the key is at most 16 capitals, and the full name carries neither a credential stem nor a digest stem; any other value, and any other key, refuses as on main (#1642). A Go test name with a subtest path (`TestX/sub`) is exempt when its head is such an identifier and its subtest path is at most 16 characters (half the run threshold) of word-shaped segments carrying at most 4 short lowercase characters in total; a run made only of `+` (a `git diff --stat` change bar) is exempt like an all-`=` banner. `${NAME}`/`$NAME` substitutions never form a run (`$`, `{`, `}`, `_` are outside the run class). Refuses `glpat-` GitLab tokens (#1642). Opaque material between slashes still refuses, including an AWS **secret access key**, whose `/` characters defeat a length-only segment gate. **Also refuses impersonated human rulings (#45)**: a body claiming a configured human's decision BY NAME — `"Decision (Alex, ...)"`, `"Ruling: ... — Alex"`, `"I (Alex) have decided"` — is refused categorically, since no desk write path ever posts as a human; see `ImpersonatedRulingClaim` (`impersonation.go`). |
 | `Version()` / `WarnIfUnpinned(w)` | Reports the embedded `sourceSHA`/`builtAt`; warns loudly when unpinned (C-1). |
 | exit codes | `ExitOK 0`, `ExitDisabled 3`, `ExitRateLimited 4`, `ExitRefused 5`, `ExitUnverifiable 6`. `ExitCodeOf(err)` maps a typed error, failing **closed** to 6 for any unexpected error. |
 
@@ -1070,10 +1070,19 @@ Use `deskpr create --check-remote --title T --body-file F` when a conditional
 forge-file write has already published the branch. Unlike offline `--check`, this
 explicitly mints the session-role App token and reads the credentialed push
 endpoint. It reuses the live create path's immutable source/destination proof and
-judges every commit actually new to that destination, then stops before write
-budget, push or PR creation. It refuses unknown, divergent or unreadable remote
-state and new foreign authors or committers. The two check modes are mutually
-exclusive; ordinary `--check` still opens no connection and judges the whole range.
+runs the publish-identity check on every commit actually new to that destination,
+then stops before write budget, push or PR creation. It refuses unknown, divergent
+or unreadable remote state and new foreign authors or committers. The two check
+modes are mutually exclusive; ordinary `--check` still opens no connection and
+judges the whole range.
+
+The confirmed tip narrows the identity check only. The secret scan and the outbound
+check judge the whole branch diff against the default branch in every mode, and the
+pre-push hook does the same on the live push, so commits already on the destination
+are scanned again. A flagged string that an earlier push cleared with
+`--force-scan-override` is refused again by `--check-remote` and by the next
+create; each needs its own audited override. This breadth is deliberate: a value
+already on the destination is still in the history the PR publishes.
 
 `--check-remote` is also the preflight for the public-repo write gate. Offline
 `--check` cannot read live visibility, so it reports that gate as not checked and
@@ -1318,6 +1327,14 @@ Boundaries mirror the push-transport gate's:
 `--force-scan-override "<why>"`, which proceeds past a **secret-scan refusal** and writes
 an audit row naming the tool, the verb, the surface digest, the stated reason and the
 identity that stated it. The reason is required and must be long enough to be one.
+
+`git push` takes no flag of ours, so the `deskpushguard` pre-push hook takes the same
+audited override from its environment instead: `DESKPUSHGUARD_SCAN_OVERRIDE="<why>"`. A
+refusal names the form of the caller that hit it: a pre-push refusal names the variable, a
+`deskpr`/`deskreply`/`deskfile` refusal names the flag. `deskpr` hands its own flag's
+reason to the hook on the push it makes, and clears any ambient value when it has none, so
+an ambient variable never overrides a `deskpr` push. A refusal that is not overridable (a
+withheld identifier, a ruling claim) advertises neither form.
 
 **Policy is unchanged: exit 5 without the flag is a STOP**, and it is still never a
 fallback trigger. The flag exists because a hard block with no override had only two
@@ -4630,8 +4647,15 @@ the mutation sweep is `cmd/deskclose/mutations.json`.
 
 `deskclose triage --disposition human-decided --decision <ruling permalink> --tracker <ref>`
 closes a ruled decision issue. It authorizes only on the ruling comment on that issue, after
-verifying that its author is the blessing authority. It also writes one `human-decision-v1`
-record. The record holds:
+verifying that its author is the blessing authority. The permalink is the forge's own link to
+that one comment: `https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<id>` on GitHub,
+`https://<host>/<group>/<project>/-/issues/<N>#note_<id>` on GitLab. Its forge, host and
+project must be the ones serving the issue, and its number must be the issue's; anything else
+is refused before any read, as is a thread link with no comment anchor. The comment is then
+fetched from the forge, and a fetch that fails refuses (exit 6). On GitLab the author check
+compares the note author's username and numeric user id with the roster's `ASSAY_BLESS_LOGIN`
+pin, so a GitLab project's roster pins the GitLab account. It also writes one
+`human-decision-v1` record. The record holds:
 
 - the offered option ids, each with the sha256 of the option's text;
 - the recommended id;
@@ -5196,6 +5220,18 @@ different bytes is refused (exit 5) — a correction is a NEW record (a fresh `t
 digest and path), never an edit of an existing one. The verified-outcome closure gates
 (`guardVerifiedOutcomes`, `gateVerifiedSidecarLanding`) apply to a `verified` record exactly as
 they applied to an added log line; `verify-fail` is never gated.
+
+**`--dry-run`** (#4554). With `--outcome-record`, plain or with `--outcome-only`, `--dry-run`
+runs every gate the real landing runs (parse, admission, `evidence_withheld`, wake, Evidence
+binding, immutability read, closure, attribution, receipts), then prints the planned target
+path, branch and record digest and exits 0. It makes no commits-API write and spends no write
+budget. Before #4554 this route parsed `--dry-run` and ignored it, so a dry run committed the
+record for real.
+
+**Flags a route does not read are refused.** Each landing shape declares the flags it honours.
+A flag set on the command line that the selected shape does not read (for example
+`--append-only`, `--allow-shrink` or `--row` with `--outcome-record`) is refused (exit 5) before
+mint or any forge call. Before #4554 it was accepted and ignored.
 
 **Committed closure history.** A new `verified` outcome (including a direct per-file
 Evidence write) runs full lint, identity attribution, the pending-record lint diff
