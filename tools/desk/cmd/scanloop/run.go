@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -68,6 +69,11 @@ func cmdRun(args []string, stdout io.Writer) error {
 	// touch the poller at all — that is the CI-testable surface, and it is also what a session
 	// already holding the harness monitor's output wants.
 	var source func() (*MonitorReport, error)
+	// armDir is the state dir the pass's poll arms (the throwaway copy under --dry-run), re-read
+	// after the pass; probeRefused names every owner the poller-identity probe was refused a
+	// credential for (issue 5890). Both reach the exit code below.
+	armDir := stateDir
+	var probeRefused []string
 	if o.offline {
 		source = func() (*MonitorReport, error) {
 			if strings.TrimSpace(o.inbound) == "" {
@@ -104,6 +110,7 @@ func cmdRun(args []string, stdout io.Writer) error {
 				}
 			}()
 			pollDir = copyDir
+			armDir = copyDir
 			fmt.Fprintf(stdout, "dry-run: the poller runs against a THROWAWAY COPY of the state dir (%s), "+
 				"removed after the pass — the real baselines in %s are not advanced\n", copyDir, stateDir)
 		}
@@ -118,6 +125,11 @@ func cmdRun(args []string, stdout io.Writer) error {
 			// repo. Resolved per pass so a long-lived session never hands over an expired file.
 			id := ResolveMonitorIdentity(scope)
 			renderMonitorIdentity(stdout, id)
+			probeRefused = probeRefused[:0]
+			for o, why := range id.Refused {
+				probeRefused = append(probeRefused, o+" ("+why+")")
+			}
+			sort.Strings(probeRefused)
 			return RunMonitor(script, pollDir, scope, id.TokenFiles, nil)
 		}
 		source = retainingMonitor(pollDir, scope, source)
@@ -221,6 +233,23 @@ func cmdRun(args []string, stdout io.Writer) error {
 	if rep := loop.Report(); rep != nil && rep.Blind() {
 		return deskkit.Unverifiable("scanloop run: the inbound surface was not fully readable this pass "+
 			"(degraded repos or a suppressed burst) — blind is not idle", nil)
+	}
+	// UNWATCHED IS NOT IDLE (issue 5890). A pass whose poller never armed a single repo watched
+	// nothing, and a probe that was refused a credential cannot say which identity it read as:
+	// either way exit 0 would report an unwatched surface as a clean, empty drain. Same
+	// could-not-check exit `plan` gives.
+	post, perr := ReadMonitorState(armDir, scope)
+	if perr != nil {
+		return perr
+	}
+	if !post.Armed {
+		return deskkit.Unverifiable("scanloop run: the inbound monitor is still NOT ARMED after this pass — no "+
+			"rostered repo has a baseline, so nothing is being watched: COULD-NOT-CHECK, never a clean empty drain", nil)
+	}
+	if len(probeRefused) > 0 {
+		return deskkit.Unverifiable("scanloop run: the poller-identity probe was REFUSED a credential for "+
+			fmt.Sprint(len(probeRefused))+" owner(s): "+strings.Join(probeRefused, "; ")+
+			" — this pass cannot say which identity those repos were read as: COULD-NOT-CHECK", nil)
 	}
 	return nil
 }

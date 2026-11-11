@@ -282,7 +282,8 @@ Windows compilation alone does not establish those behaviors.
 The offline Windows runtime checks can be run from `tools/desk` in PowerShell:
 
 ```powershell
-go test ./internal/cellcadence ./internal/cellprocess
+go test ./internal/cellcadence ./internal/cellrunner
+cd ../../loopadmin && go test ./process && cd ../tools/desk
 go test ./cmd/cellctl -run 'TestCodex|TestWindowsCommandEnvironment|TestInteractiveOwner'
 ```
 

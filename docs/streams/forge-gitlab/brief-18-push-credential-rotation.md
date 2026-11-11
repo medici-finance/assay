@@ -594,6 +594,51 @@ Each one goes into `cmd/deskfleet/mutations.json`.
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 16 | `git fetch -q origin main && test "$(git merge-base FETCH_HEAD HEAD)" != "$(git rev-parse HEAD)" && git diff --name-only "$(git merge-base FETCH_HEAD HEAD)" HEAD -- statusgen .github ci tools/desk/internal/deskkit/ambienttoken_guard_test.go tools/renew-fleet-gitlab-tokens.sh \| wc -l` | fail exit=1 | sha256:e3b0c44298fc | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) | base=7f61cff94b18 red rc=1 · head=2e1ddcbd72c2 |
+| 17 | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskfleet/mutations.json` | pass exit=0 | sha256:b9f899fa6efb | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) | base=7f61cff94b18 green rc=0 · head=2e1ddcbd72c2 |
+| 21 | `statusgen --root . --consumers` | pass exit=0 | sha256:96b908bf4244 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) | base=7f61cff94b18 green rc=0 · head=2e1ddcbd72c2 |
+Verification-Attestation: medici-finance/assay#5778 run=fa08700c1bf72f06ec9daa3f4d56e180a549b2fc2bd2036db21547ff7876afc9 source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f brief=docs/streams/forge-gitlab/brief-18-push-credential-rotation.md model=claude-opus-5-5 tier=strong
+
+### Re-verification 2026-11-08 (desk tools v1.0.78)
+
+The verifier is claude-opus-5-5, a non-implementer at tier strong. It ran at merged main source 2e1ddcbd72c2 under attestation medici-finance/assay#5778, run fa08700c1bf7. Host statusgen and deskdispatch were v1.0.78 on darwin-arm64, with KUBECONFIG=/dev/null, the normal HOME and no forge identity exported. The delivering change is medici-finance/assay#5463, merged as 167cecb995a1. The fail-first base, 7f61cff94b18, is that merge's first parent. The Verify section is byte-identical at base and at head.
+
+**Rows run.** The witness above covers rows 16, 17 and 21, the three `check` rows. They ran on the host with `statusgen verifyrun --rows 16,17,21 --fail-first --base 7f61cff94b18 --timeout 45m`. The timeout is longer than the default because row 17 runs the whole mutation spec. `statusgen verifyrun --check` reports 2 pass, 1 fail and 19 not run, out of 22 rows.
+
+**Rows not run.**
+- Rows 1-15, 18 and 22 (`check:ci`) were not run. On darwin these rows run with the network off inside the pinned verify-runner container: v1.0.75, linux/arm64 manifest sha256:576cb2e49407. A dependency probe in that image (`go list -deps -test`, network none, tree mounted read-only) could not resolve modules that these rows build:
+  - `github.com/mattn/go-isatty` v0.0.24, for `./cmd/deskfleet` and `./cmd/muhar`;
+  - `github.com/jackc/pgx/v5` v5.12.0 and `github.com/pressly/goose/v3` v3.29.0, for `./internal/deskkit` (row 15).
+
+  This is the known module gap in the runner image, medici-finance/assay#4683. These rows are not counted as failed.
+- Rows 19 and 20 (`gate:human`) were not run. Each runs `deskfleet push-token` against a live GitLab instance with the human's `PT_*` inputs, and the brief assigns both rows to the human after implementation.
+
+**Fail-first.** The risk line answers sensitive-data: yes, so every row is risk-bearing.
+- Row 16 was red at base and fails at head. The row's own Expect says to run it on the implementing branch before merge. On merged main the merge-base equals HEAD, so the leading `test` exits 1 and the row cannot pass after merge. This run gives no evidence either way on the scope obligation itself: no change under statusgen, .github or ci, and none to the ambient-token ratchet or the role-PAT script.
+- Row 17 does not discriminate: exit 0 at base and at head. The delivering merge adds the M1-M11 entries to `tools/desk/cmd/deskfleet/mutations.json` (186 added lines). `muhar` exits 0 whenever the run is healthy (baseline green, positive control caught); per-mutation `NOT_CAUGHT` and `COULD_NOT_MUTATE` verdicts do not change its exit code. The row's exit code therefore does not depend on per-mutation verdicts, so it passes with or without the change. Exit 0 at head shows only a healthy harness: the M1-M11 verdicts were not asserted, so the row's Expect (each `CAUGHT`, zero `NOT_CAUGHT`, zero could-not-mutate) is not shown by this run.
+- Row 21 does not discriminate: `statusgen --root . --consumers` exits 0 at base and at head.
+
+Rows 17 and 21 are risk-bearing and do not discriminate. Row 16 cannot pass on merged main. These are defects in the Verify definition; no defect in the code was observed. The fix is a Verify-row amendment, for example:
+- re-point row 16 at the delivering change's own base and head;
+- give row 17 an assertion that each of M1-M11 is reported `CAUGHT`, which the base spec cannot produce;
+- give row 21 an assertion that the two `follow-up forge-gitlab/18` entries read `fixed-here`.
+
+**Risk-bearing values.** I enumerated the literal bounds, scopes and flags in `tools/desk/cmd/deskfleet/pushrotate.go` and `tables.go` that the change introduces, ranked them by irreversibility, and derived the top entries from DR-forge-gitlab-18.
+- RISK-VALUE: DERIVED — pushRotateMaxDays = 90 @ tools/desk/cmd/deskfleet/pushrotate.go:46 — DR choice 4, "at most 90". It caps the life of a leaked token, and `--days` and `--min-days` outside 1-90 are refused (pushrotate.go:257, :260).
+- RISK-VALUE: DERIVED — pushTokenScope = "write_repository" @ tools/desk/cmd/deskfleet/tables.go:70 — DR choice 2, "scopes exactly [write_repository]": the narrowest scope that still lets the board job push.
+- RISK-VALUE: DERIVED — pushTokenAccessLevel = 40 @ tools/desk/cmd/deskfleet/tables.go:71 — DR choice 2, Maintainer (40), the level the ruling names for pushing to the protected default branch.
+- RISK-VALUE: DERIVED — pushDefaultMinDays = 7 @ tools/desk/cmd/deskfleet/pushrotate.go:47 — DR choice 4, "at least 7 days left". `left < minDays` fails the by-id proof (pushrotate.go:742).
+- RISK-VALUE: DERIVED — pushRotateDefaultDays = 30 @ tools/desk/cmd/deskfleet/pushrotate.go:45 — DR choice 4, "30-day tokens by default".
+- RISK-VALUE: DERIVED — expiry floor = want.AddDate(0, 0, -1) @ tools/desk/cmd/deskfleet/pushrotate.go:738 — DR choice 4, "an expiry no earlier than one day before the requested date". The same line also refuses an expiry more than one day after the requested date, `exp.After(want.AddDate(0, 0, 1))`. That is stricter than the ruling, in the safe direction.
+- RISK-VALUE: DERIVED — write body "masked": true, "protected": true, "environment_scope": "*" @ tools/desk/cmd/deskfleet/pushrotate.go:588 — rows 6 and 7: the forge's update resets any flag it omits, so every write restates the three flags preflight requires.
+- Ranked last, reversible knobs that need no derivation: pushRetries = 2 @ pushrotate.go:48, pushListPerPage = 100 @ :49, pushListMaxPages = 50 @ :50.
+
+**Attempts.** There was one attempt (attempt 1, credited): host rows 16, 17 and 21, from 2026-11-08T04:42:23Z to 04:54:01Z. No container attempt was made, because the dependency probe showed the module gap first.
+
+**VERIFY: FAIL**
+
 ## Review
 
 Gate: human (from frontmatter; sensitive-data: yes). The Human decision is ratified before

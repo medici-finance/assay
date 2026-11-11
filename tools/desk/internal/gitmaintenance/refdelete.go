@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/medici-finance/assay/tools/desk/internal/cellprocess"
+	"github.com/medici-finance/assay/tools/desk/internal/cellrunner"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -18,7 +18,7 @@ import (
 // the child exited successfully and a later ref read could infer its effect.
 var ErrRefDiagnostic = errors.New("local ref transaction emitted diagnostic uncertainty")
 
-var refProcess = cellprocess.Run
+var refProcess = cellrunner.Run
 
 // deleteTempRef is a fixed offline reference transaction, the #2513 exception for
 // go-git's missing compare-and-delete API. Unlike Run, it takes no verb or argv.

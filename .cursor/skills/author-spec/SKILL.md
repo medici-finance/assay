@@ -114,7 +114,10 @@ where relevant, not required headings or a section-count gate.
 - **Proof and decisions.** Map conditions to independently verifiable acceptance examples, including a relevant
   failure or boundary case, and the evidence that could falsify the design. State what can
   be checked now versus after implementation. Separate facts from hypotheses; do not claim
-  a metric or retrospective comparison proves causation. Name remaining decisions and
+  a metric or retrospective comparison proves causation. For each check that needs a
+  database or another service, name the NON-PRODUCTION instance it runs against and what
+  reaching it requires (network, a credential); briefs carry that name into the Verify
+  table's `Env` column as `service:<name>`, and such a check is never hermetic CI. Name remaining decisions and
   their authorized owner, with options and a recommendation. Continue independent work
   while a decision is pending; do not silently choose on that owner's behalf.
 
