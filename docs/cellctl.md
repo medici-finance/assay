@@ -839,7 +839,7 @@ lease (`run/cadence/<role>/owner.lock`):
 | Disposition | Meaning | What `up` does |
 |---|---|---|
 | up | the lease is held by a live process | row `already-up`; never relaunched, its window never touched |
-| stale | a running checkpoint with no live holder | row `failed`, naming `up --plan`; plain `up` never reconciles it |
+| stale | a running checkpoint with no live holder | row `failed`, naming the verb that clears its class (below); plain `up` never reconciles it |
 | absent | no lease holder, no checkpoint | its window is opened |
 
 Windows are opened **one at a time**: role N+1 opens only after role N has taken its lease and
@@ -873,9 +873,10 @@ The stale row names the verb that accepts the role's own class:
   prior harness and all its children have stopped (the row lists any role-marked pids still
   running), `cellctl cadence <cell> recover <role> --confirm-stopped`, then `cellctl up <cell>
   --role <role>`. Stale comms state names `cellctl comms <cell> recover --confirm-stopped`.
-- **lease could not be probed**: neither verb can clear it, since both take the lease. Repair the
-  lease file by hand, check the role with `cellctl cadence <cell> status <role>`, then run
-  `cellctl up <cell> --role <role>`.
+- **lease could not be probed**: neither verb can clear it, since both take the lease. Once the
+  prior harness and all its children have stopped (the row lists any role-marked pids still
+  running), repair the lease file by hand, check the role with `cellctl cadence <cell> status
+  <role>`, then run `cellctl up <cell> --role <role>`.
 
 When `--plan` finds stale state but nothing it can plan, it still returns could-not-check (exit
 code unchanged) and prints one line per role naming that role's recovery.

@@ -103,13 +103,8 @@ func (c *Cell) probeUpRoles(roles []string, comms *deskCommsConfig) ([]upProbe, 
 		entries[e.Role] = e
 	}
 	orphans := map[string]bool{}
-	running := map[string][]int{}
 	for _, o := range plan.Orphans {
 		orphans[o.Role] = true
-		running[o.Role] = append(running[o.Role], o.PID)
-	}
-	for _, m := range plan.Live {
-		running[m.Role] = append(running[m.Role], m.PID)
 	}
 	var out []upProbe
 	for _, role := range roles {
@@ -131,11 +126,8 @@ func (c *Cell) probeUpRoles(roles []string, comms *deskCommsConfig) ([]upProbe, 
 		default:
 			p.Kind = probeAbsent
 		}
-		if p.Kind == probeStale {
-			if p.Entry != nil {
-				p.Running = append(p.Running, p.Entry.PIDs...)
-			}
-			p.Running = append(p.Running, running[role]...)
+		if p.Kind == probeStale && p.Entry != nil {
+			p.Running = p.Entry.running()
 		}
 		out = append(out, p)
 	}
@@ -214,7 +206,7 @@ func (c *Cell) commsStaleHint(e *reconcileEntry) string {
 	if len(e.Evidence) > 0 {
 		why = staleWhy(e.Evidence, e.Class)
 	}
-	return "stale (" + why + "); not reconciled by up: " + c.staleRecovery("comms", e.Class, e.unprobed, e.PIDs)
+	return "stale (" + why + "); not reconciled by up: " + c.staleRecovery("comms", e.Class, e.unprobed, e.running())
 }
 
 // staleWhy is the evidence a stale hint shows. A proven-dead record shows its first line, as it
@@ -246,11 +238,11 @@ func (c *Cell) staleRecovery(role, class string, unprobed bool, running []int) s
 		recoverCmd = "cellctl comms " + c.Name + " recover --confirm-stopped, then cellctl up " + c.Name
 		stopped = "the prior gateway, drain and every owned child have stopped"
 	}
-	if unprobed {
-		return "neither --plan nor a recover verb can clear it (" + class + ": its lease could not be probed, and both take the lease): repair the lease file by hand, then " + recheckCmd
-	}
 	if len(running) > 0 {
 		stopped += " (still running: pid " + joinInts(running) + ")"
+	}
+	if unprobed {
+		return "neither --plan nor a recover verb can clear it (" + class + ": its lease could not be probed, and both take the lease): once " + stopped + ", repair the lease file by hand, then " + recheckCmd
 	}
 	return "--plan does not clear it (" + class + "): once " + stopped + ", run " + recoverCmd
 }

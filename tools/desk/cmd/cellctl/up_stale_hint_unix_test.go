@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -37,6 +38,49 @@ func writeCheckpoint(t *testing.T, dir string, body []byte) {
 	}
 }
 
+// listedRunning is the pid list a hint names in its "still running: pid ..." phrase, or nil.
+func listedRunning(text string) []string {
+	const phrase = "still running: pid "
+	i := strings.Index(text, phrase)
+	if i < 0 {
+		return nil
+	}
+	rest := text[i+len(phrase):]
+	if j := strings.Index(rest, ")"); j >= 0 {
+		rest = rest[:j]
+	}
+	return strings.Split(rest, ", ")
+}
+
+// assertListsRunning fails unless text's "still running" phrase names every pid in pids.
+func assertListsRunning(t *testing.T, text string, pids []int) {
+	t.Helper()
+	listed := listedRunning(text)
+	for _, pid := range pids {
+		found := false
+		for _, l := range listed {
+			found = found || l == strconv.Itoa(pid)
+		}
+		if !found {
+			t.Fatalf("hint does not list running pid %d in its still-running phrase:\n%s", pid, text)
+		}
+	}
+}
+
+// stopOrphans kills the fixture's re-parented orphans and waits until each is gone: the
+// operator's stop that the hint asks for before recover.
+func stopOrphans(t *testing.T, pids []int) {
+	t.Helper()
+	for _, pid := range pids {
+		syscall.Kill(pid, syscall.SIGKILL)
+		for deadline := time.Now().Add(5 * time.Second); alive(pid); time.Sleep(20 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("orphan pid %d did not stop", pid)
+			}
+		}
+	}
+}
+
 func runningState(cell, role string, pid int) []byte {
 	now := time.Now().UTC()
 	b, _ := json.Marshal(cellcadence.State{Schema: cellcadence.Schema, Mode: "interactive", Cell: cell, Role: role, PID: pid, Running: true, Sequence: 1, NextDue: now, Heartbeat: now, LastStart: now, Outcome: "running"})
@@ -58,6 +102,10 @@ func TestStaleHintNamesAcceptingVerb(t *testing.T) {
 		class    string
 		verb     string
 		evidence string
+		orphans  bool // the pids are re-parented orphans the test stops before recover
+		// unproven: the pids run with no recorded start time, so they may be reused pids. The
+		// evidence names them with that caveat; the still-running list (what to stop) does not.
+		unproven bool
 	}{
 		{
 			name:  "dead/owner-record",
@@ -83,7 +131,7 @@ func TestStaleHintNamesAcceptingVerb(t *testing.T) {
 				writeCheckpoint(t, c.cadenceDir(role), runningState(c.Name, role, live))
 				return []int{live}
 			},
-			class: reconcileCNC, verb: verbRecover, evidence: "no owner record survived",
+			class: reconcileCNC, verb: verbRecover, evidence: "no owner record survived", unproven: true,
 		},
 		{
 			name: "alive/role-child-running",
@@ -113,6 +161,16 @@ func TestStaleHintNamesAcceptingVerb(t *testing.T) {
 				return nil
 			},
 			class: reconcileCNC, verb: verbRecover, evidence: "belongs to another cell or role",
+		},
+		{
+			// A marked orphan beside a record --plan refuses: no evidence line names its pid, so
+			// only the running list does.
+			name: "could-not-check/marked-orphan",
+			setup: func(t *testing.T, c *Cell) []int {
+				writeCheckpoint(t, c.cadenceDir(role), runningState("another-cell", role, deadPID(t)))
+				return []int{startOrphan(t, c, role)}
+			},
+			class: reconcileCNC, verb: verbRecover, evidence: "belongs to another cell or role", orphans: true,
 		},
 		{
 			name: "could-not-check/lease-unprobed",
@@ -146,11 +204,16 @@ func TestStaleHintNamesAcceptingVerb(t *testing.T) {
 			if !strings.Contains(hint, tc.evidence) {
 				t.Fatalf("hint does not carry the evidence %q:\n%s", tc.evidence, hint)
 			}
-			for _, pid := range pids {
-				if !strings.Contains(hint, strconv.Itoa(pid)) {
-					t.Fatalf("hint does not name running pid %d:\n%s", pid, hint)
+			running := pids
+			if tc.unproven {
+				for _, pid := range pids {
+					if !strings.Contains(hint, "pid "+strconv.Itoa(pid)+" is running and no start time was recorded") {
+						t.Fatalf("hint does not name unproven pid %d with its caveat:\n%s", pid, hint)
+					}
 				}
+				running = nil
 			}
+			assertListsRunning(t, hint, running)
 			switch tc.verb {
 			case verbPlan:
 				if !strings.Contains(hint, planCmd) || strings.Contains(hint, recoverCmd) {
@@ -178,6 +241,13 @@ func TestStaleHintNamesAcceptingVerb(t *testing.T) {
 					if tc.verb == verbNone && !strings.Contains(text, "cellctl cadence example status "+role) {
 						t.Fatalf("does not name the re-check:\n%s", text)
 					}
+					if !strings.Contains(text, "once the prior harness and all its children have stopped") {
+						t.Fatalf("does not make recovery wait for the prior harness to stop:\n%s", text)
+					}
+					assertListsRunning(t, text, running)
+				}
+				if tc.orphans {
+					stopOrphans(t, pids)
 				}
 				// Run the recover verb's one code path. The operator's --confirm-stopped is the test's
 				// word here: the fixture's processes are not the prior harness.
@@ -221,14 +291,16 @@ func TestCommsStaleHintAcceptingVerb(t *testing.T) {
 	planCmd := "cellctl up example --plan"
 	recoverCmd := "cellctl comms example recover --confirm-stopped"
 	cases := []struct {
-		name  string
-		body  func(c *Cell) []byte
-		lock  bool // owner.lock is a directory: the lease cannot be probed
-		class string
-		verb  string
+		name   string
+		body   func(c *Cell) []byte
+		lock   bool // owner.lock is a directory: the lease cannot be probed
+		orphan bool // a comms-marked orphan runs beside the record
+		class  string
+		verb   string
 	}{
 		{name: "dead", body: func(c *Cell) []byte { return runningState(c.Name, "comms", deadPID(t)) }, class: reconcileDead, verb: verbPlan},
 		{name: "could-not-check/foreign", body: func(c *Cell) []byte { return runningState("another-cell", "comms", deadPID(t)) }, class: reconcileCNC, verb: verbRecover},
+		{name: "could-not-check/marked-orphan", body: func(c *Cell) []byte { return runningState("another-cell", "comms", deadPID(t)) }, orphan: true, class: reconcileCNC, verb: verbRecover},
 		{name: "could-not-check/lease-unprobed", body: func(c *Cell) []byte { return runningState(c.Name, "comms", deadPID(t)) }, lock: true, class: reconcileCNC, verb: verbNone},
 	}
 	for _, tc := range cases {
@@ -246,6 +318,10 @@ func TestCommsStaleHintAcceptingVerb(t *testing.T) {
 			}
 			if err := os.WriteFile(filepath.Join(dir, "checkpoint.json"), tc.body(c), 0o600); err != nil {
 				t.Fatal(err)
+			}
+			var pids []int
+			if tc.orphan {
+				pids = []int{startOrphan(t, c, "comms")}
 			}
 			e := commsStale(c.reconcileInventory(nil, cfg))
 			if e == nil || e.Class != tc.class {
@@ -267,7 +343,9 @@ func TestCommsStaleHintAcceptingVerb(t *testing.T) {
 				if strings.Contains(text, planCmd) || strings.Contains(text, recoverCmd) != (tc.verb == verbRecover) {
 					t.Fatalf("pointer names the wrong verb for %s:\n%s", tc.name, text)
 				}
+				assertListsRunning(t, text, pids)
 			}
+			stopOrphans(t, pids)
 			err := c.recoverComms(cfg)
 			if tc.verb == verbNone {
 				if err == nil {

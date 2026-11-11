@@ -61,6 +61,15 @@ type reconcileEntry struct {
 	// unprobed: the lease itself could not be probed, so no verb that takes the lease (a plan's
 	// apply, `cadence recover`, `comms recover`) can clear this record.
 	unprobed bool
+	// marked are the role's marked processes found running beside this record (orphans and owned
+	// children). They are never ownership proof; a stale hint lists them as what must stop first.
+	marked []int
+}
+
+// running is every pid a stale hint lists as still running for this record: its recorded pids and
+// the role's marked processes.
+func (e *reconcileEntry) running() []int {
+	return append(append([]int(nil), e.PIDs...), e.marked...)
 }
 
 type reconcilePlan struct {
@@ -297,6 +306,9 @@ func (c *Cell) reconcileInventory(roles []string, comms *deskCommsConfig) *recon
 		}
 		if m.Orphan {
 			plan.Orphans = append(plan.Orphans, m)
+			if e != nil {
+				e.marked = append(e.marked, m.PID)
+			}
 			continue
 		}
 		// A marked process whose parent is alive and not a cell orphan is an owned child still
@@ -308,6 +320,7 @@ func (c *Cell) reconcileInventory(roles []string, comms *deskCommsConfig) *recon
 			eligible[m.Role] = e
 		}
 		e.Class = reconcileAlive
+		e.marked = append(e.marked, m.PID)
 		why := fmt.Sprintf("is still running under live parent pid %d, so it is not proven orphaned (on a Linux host with a child subreaper a real orphan looks like this too)", m.Parent)
 		if m.Shielded {
 			why = "is still running and is shielded (it is, sits above, or is hosted alongside something live)"
