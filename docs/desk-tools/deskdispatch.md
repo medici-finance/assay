@@ -126,14 +126,20 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       it the registration is the AGENT's first act after its PR opens, and
                       the exact command is emitted into the prompt.
   4 decision-gate     with --gate-human (or a --brief whose own metadata gates on a
-                      human), runs tools/decision-issue.sh ensure from the resolved root
-                      (--claim-root when given, else --root) so the human has something
-                      concrete to decide. No pure-Go port of it ships, so a resolved root
-                      without it REFUSES pre-claim (exit 6), naming the path tried and
-                      the --claim-root way out. Idempotent by the script's own
-                      marker dedupe. The script runs under the dispatching role's
-                      credential (GH_TOKEN in its environment, from the same resolution
-                      the claim uses), never the ambient login; with none it refuses.
+                      human), ensures the decision issue so the human has something
+                      concrete to decide. The tool resolves like the claim tool:
+                      `deskdecision ensure` (installed with desk-tools) when it is on
+                      PATH, else tools/decision-issue.sh ensure from the resolved root
+                      (--claim-root when given, else --root). With neither it REFUSES
+                      pre-claim (exit 6), naming every location tried and the
+                      --claim-root way out. Both speak one protocol (argv, exit codes,
+                      issue body, and the `decision-gate:` / legacy `needs-decision:`
+                      marker dedupe), so either finds an issue the other filed.
+                      `deskdecision` is passed `--as <dispatching role>` and resolves
+                      that role's own credential itself (GitHub or GitLab); the script
+                      runs under the dispatching role's credential (GH_TOKEN in its
+                      environment, from the same resolution the claim uses), never the
+                      ambient login; with none it refuses.
                       A brief whose human has already ruled may carry the ruling as a
                       `**Ruling (<YYYY-MM-DD>): option <N>.**` line linking one record
                       under docs/streams/decisions/ (by path in the brief's own
@@ -201,11 +207,12 @@ findings it records, the newest comments, and the diff. It holds no job log and 
 comment anchored to a file and line — the forge surface reads neither — and says so.
 
 --claim-root separates "where the consumer scripts live" from "which repo the worker's
-worktree branches from". The scripts (tools/dispatch-claim.sh, tools/decision-issue.sh)
-were centralized out of the consumer repos, so a cross-repo dispatch points --claim-root
-at the checkout that carries them while --root stays the ITEM's own repo — the worktree
-is always cut from --root. An explicit --claim-root is authoritative: there is no silent
-fall-back to --root.
+worktree branches from". Both scripts (tools/dispatch-claim.sh, tools/decision-issue.sh)
+have a pure-Go port installed with desk-tools (deskclaim-ref, deskdecision), which is
+tried first, so a dispatch with desk-tools on PATH needs no --claim-root. A repo that
+keeps the scripts and runs without the ports points --claim-root at the checkout that
+carries them while --root stays the ITEM's own repo — the worktree is always cut from
+--root. An explicit --claim-root is authoritative: there is no silent fall-back to --root.
 
 Before the claim, deskdispatch echoes any ADVISORY write-scope overlap
 between the item's write scopes (derived from --brief's Context 'files:' list) and any item

@@ -464,6 +464,14 @@ resolves. So if you run desks, land this pin on main before the first boot:
 `assay-install.sh pin --kind desk-tools …` then `assay-install.sh acquire --kind desk-tools --pins
 "$TARGET/.assay-versions" --dest <bindir>` does all three, with no forge CLI.
 
+`deskdecision` and `deskclaim-ref` come with desk-tools too. They are the pure-Go ports of the
+decision-gate and dispatch-claim helpers (`tools/decision-issue.sh`, `tools/dispatch-claim.sh`),
+which no install path copies into your repo. `deskdispatch` tries each port on `PATH` before the
+script, so a `gate: human` brief dispatches with desk-tools installed and no script and no
+`--claim-root` (#6131). If you keep the scripts in a checkout and run without the ports, pass
+`--claim-root <that checkout>`. With neither, a human-gated dispatch refuses (exit 6) and names
+every place it looked.
+
 `cellctl` comes with desk-tools (#850) — it is one of the extracted files, so nothing extra is
 needed to obtain it; see `docs/cellctl.md` for what it does and its own `--version` check.
 Before scaffolding a cell, ask the operator which kind they want. The table is in

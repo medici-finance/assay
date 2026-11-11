@@ -195,6 +195,9 @@ the same HTTPS fetch, the same pin-file comparison, **REFUSE on a mismatch or an
 digest**, and only then extract and install the binaries to `PATH`. The only shape difference is
 the artifact is a `.tar.gz` of binaries, not a single file. Config is at the config-home
 (`../../references/desk-shell.md` §Config home) only, never the environment. See `install-desk-tools` in the `adopt` runbook.
+The tarball also carries `deskdecision` and `deskclaim-ref`, the pure-Go ports of the decision-gate
+and dispatch-claim helpers. `deskdispatch` runs them from `PATH`, so a `gate: human` brief dispatches
+without copying `tools/decision-issue.sh` into the repo.
 
 Skippable for the repo, **required for a desk**: `deskboot` refuses (exit 6, step
 `first-sweep-prereqs`) when the nearest `.assay-versions` has no `desk-tools` /
