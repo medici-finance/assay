@@ -10,8 +10,11 @@ package main
 // is GREEN on the base by design.
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -388,6 +391,44 @@ func TestRelinkPRNumberRefuses(t *testing.T) {
 		t.Fatalf("reads = %v, want %v (the issue read, then one change read to classify it)", curForge.issueKinds, want)
 	}
 	assertNoWrites(t)
+}
+
+// TestRelinkGitHubKindPin runs the gate against the REAL GitHub backend, served from a local
+// httptest stub that answers a pull-request record at the number. The fake forge copies the
+// backend's kind-mismatch wording; this pins that the backend's own answer is still the one
+// relinkKindMismatch recognises, so a change to that wording goes red here instead of
+// silently turning the documented exit-5 refusal into exit 6.
+//
+// regression: #5020
+func TestRelinkGitHubKindPin(t *testing.T) {
+	var (
+		mu    sync.Mutex
+		paths []string
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths = append(paths, r.Method+" "+r.URL.Path)
+		mu.Unlock()
+		if r.URL.Path != "/repos/example-org/tracker/issues/78" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"number":78,"title":"t","state":"open","body":"",` +
+			`"user":{"login":"ada","id":2001,"type":"User"},"pull_request":{}}`))
+	}))
+	defer srv.Close()
+	fg := &deskkit.GitHubForge{Token: "stub", BaseURL: srv.URL, Client: srv.Client()}
+	err := relinkIssueGate(fg, deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}, 78)
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "#78 is a pull request") {
+		t.Fatalf("err = %v, want exit 5: the GitHub backend's own kind-mismatch answer must classify the number", err)
+	}
+	want := []string{"GET /repos/example-org/tracker/issues/78", "GET /repos/example-org/tracker/issues/78"}
+	mu.Lock()
+	defer mu.Unlock()
+	if !slices.Equal(paths, want) {
+		t.Fatalf("requests = %v, want %v (the issue read, then one change read)", paths, want)
+	}
 }
 
 // regression: #5020

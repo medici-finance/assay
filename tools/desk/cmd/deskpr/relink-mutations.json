@@ -282,6 +282,12 @@
       "file": "cmd/deskpr/relink.go",
       "old": "\t\tif unicode.Is(unicode.Cf, r) {",
       "new": "\t\tif false {"
+    },
+    {
+      "name": "the GitHub backend's kind-mismatch wording drifts from the phrase the gate recognises",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\"could-not-check: %s#%d is a pull request, not an issue — state the kind you mean (--kind pr)\",",
+      "new": "\"could-not-check: %s#%d is a PR, not an issue — state the kind you mean (--kind pr)\","
     }
   ]
 }
