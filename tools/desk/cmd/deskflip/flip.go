@@ -348,13 +348,14 @@ func flip(o flipOpts) error {
 	switch evalRollup(checks) {
 	case ciFail:
 		return deskkit.Refused(fmt.Sprintf(
-			"condition %s: a check at %s failed — %s. A red rollup outranks any local verification: CI runs "+
-				"the real toolchain and a local trace does not.",
+			"condition %s: the latest run of a check at %s is not green — %s. Each check is judged by its "+
+				"latest run at this head, so an earlier run a later one superseded is not counted here. A red "+
+				"rollup outranks any local verification: CI runs the real toolchain and a local trace does not.",
 			condChecksGreen, short(head), strings.Join(failedChecks(checks), ", ")))
 	case ciPending:
 		return deskkit.Unverifiable(fmt.Sprintf(
-			"condition %s: checks at %s are not positively green (a check has not completed). Not-yet-green "+
-				"is could-not-verify, never green.", condChecksGreen, short(head)), nil)
+			"condition %s: checks at %s are not positively green — %s. Not-yet-green is could-not-verify, "+
+				"never green.", condChecksGreen, short(head), strings.Join(pendingChecks(checks), ", ")), nil)
 	case ciEmpty:
 		// An ABSENT rollup is the config-vs-reality fork. The roster's coarse ci-tag says
 		// whether the repo "runs CI" — but a repo can run CI without REQUIRING any check to
@@ -2079,9 +2080,6 @@ const (
 	ciFail
 )
 
-// evalRollup reduces the rollup to one state. NOT-COMPLETED and UNRECOGNISED both fall to
-// pending rather than to green: a conclusion this reader does not know is a conclusion it
-// has not verified, and the only safe reading of an unverified check is "not yet green".
 // conclusionGreen is the ONE accepted set of green check-run conclusions, shared by the
 // checks-green reduction (evalRollup) and by the check-only-CR exemption's test of the run a
 // reviewer cited.
@@ -2109,37 +2107,67 @@ func checkRunGreen(run deskkit.CheckRun) bool {
 		conclusionGreen(run.Conclusion)
 }
 
+// entryVerdict is one rollup entry judged: its state, and the fact the forge reported that
+// decided it, in the words a refusal names it by ("cancelled", "status queued", "state
+// pending", "completed with no conclusion").
+type entryVerdict struct {
+	state  ciState // ciGreen, ciPending or ciFail — never ciEmpty
+	reason string
+}
+
+// judgeEntry is the ONE classifier of a rollup entry. evalRollup folds its verdicts into the
+// rollup's state, and failedChecks/pendingChecks render its reasons into the refusal, so the
+// text of a refusal is always the fact that produced it (#6124: a refusal that read "a check
+// has not completed" over runs that had all completed, naming none of them).
+//
+// It fails CLOSED. A check run's conclusion is green only in deskkit.ConclusionGreen's set;
+// every other conclusion, including one this reader has never seen, is a failure. A status
+// context is green only on SUCCESS, waiting on PENDING/EXPECTED, and failed on anything
+// else. An entry with neither — a run still queued or in progress, or a completed run the
+// forge served no conclusion for — is not green, and its reason says which.
+func judgeEntry(e rollupEntry) entryVerdict {
+	lower := func(v string) string { return strings.ToLower(strings.TrimSpace(v)) }
+	switch {
+	case e.Conclusion != "":
+		if conclusionGreen(e.Conclusion) {
+			return entryVerdict{ciGreen, lower(e.Conclusion)}
+		}
+		return entryVerdict{ciFail, lower(e.Conclusion)}
+	case e.State != "":
+		switch strings.ToUpper(strings.TrimSpace(e.State)) {
+		case "SUCCESS":
+			return entryVerdict{ciGreen, "state " + lower(e.State)}
+		case "PENDING", "EXPECTED":
+			return entryVerdict{ciPending, "state " + lower(e.State)}
+		default:
+			return entryVerdict{ciFail, "state " + lower(e.State)}
+		}
+	case strings.EqualFold(strings.TrimSpace(e.Status), "COMPLETED"):
+		return entryVerdict{ciPending, "completed with no conclusion"}
+	case strings.TrimSpace(e.Status) == "":
+		return entryVerdict{ciPending, "no status reported"}
+	default:
+		return entryVerdict{ciPending, "status " + lower(e.Status)}
+	}
+}
+
+// evalRollup reduces the (already latest-per-name) rollup to one state: any failed entry
+// makes it ciFail, else any not-yet-green entry makes it ciPending, else ciGreen. An empty
+// rollup is ciEmpty, which the caller decides against the base branch's required checks.
 func evalRollup(entries []rollupEntry) ciState {
 	if len(entries) == 0 {
 		return ciEmpty
 	}
-	pending := false
+	state := ciGreen
 	for _, e := range entries {
-		switch {
-		case e.Conclusion != "":
-			if !conclusionGreen(e.Conclusion) {
-				return ciFail
-			}
-		case e.State != "":
-			switch strings.ToUpper(e.State) {
-			case "SUCCESS":
-			case "PENDING", "EXPECTED":
-				pending = true
-			default:
-				return ciFail
-			}
-		default:
-			// A check run that has not completed carries a status and no conclusion.
-			pending = true
-		}
-		if e.Conclusion == "" && e.State == "" && !strings.EqualFold(e.Status, "COMPLETED") {
-			pending = true
+		switch judgeEntry(e).state {
+		case ciFail:
+			return ciFail
+		case ciPending:
+			state = ciPending
 		}
 	}
-	if pending {
-		return ciPending
-	}
-	return ciGreen
+	return state
 }
 
 // missingRequiredChecks returns the branch-protection required contexts that are ABSENT from
@@ -2164,29 +2192,27 @@ func missingRequiredChecks(present []rollupEntry, required []string) []string {
 	return missing
 }
 
+// failedChecks names every entry judgeEntry failed, each with the conclusion or state that
+// failed it: "prompt (cancelled)".
 func failedChecks(entries []rollupEntry) []string {
+	return checksIn(entries, ciFail, "(the rollup reports a failure but names no check)")
+}
+
+// pendingChecks names every entry judgeEntry found not yet green, each with what the forge
+// reported for it: "prompt (status queued)", "leak-sweep (state pending)".
+func pendingChecks(entries []rollupEntry) []string {
+	return checksIn(entries, ciPending, "(the rollup reports a pending check but names none)")
+}
+
+func checksIn(entries []rollupEntry, want ciState, none string) []string {
 	var out []string
 	for _, e := range entries {
-		bad := false
-		if e.Conclusion != "" {
-			switch strings.ToUpper(e.Conclusion) {
-			case "SUCCESS", "NEUTRAL", "SKIPPED":
-			default:
-				bad = true
-			}
-		} else if e.State != "" {
-			switch strings.ToUpper(e.State) {
-			case "SUCCESS", "PENDING", "EXPECTED":
-			default:
-				bad = true
-			}
-		}
-		if bad {
-			out = append(out, e.label())
+		if v := judgeEntry(e); v.state == want {
+			out = append(out, e.label()+" ("+v.reason+")")
 		}
 	}
 	if len(out) == 0 {
-		return []string{"(the rollup reports a failure but names no check)"}
+		return []string{none}
 	}
 	return out
 }

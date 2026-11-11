@@ -211,9 +211,20 @@ func (c *countingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) 
 // through to http.DefaultTransport) and asserting zero calls, not just a
 // could-not-check status a network-reaching implementation could also print
 // after the fact.
+//
+// GITHUB_REPOSITORY is pinned so a target repo ALWAYS resolves. Without it, a
+// hermetic tree (no git remote, e.g. a network-off container with no .git
+// mounted) makes computeCISlotSaturation return could-not-check at the
+// no-target-repo branch before any network read — so a build with the
+// --forge flag gate removed would still pass and the test would not
+// discriminate. With the target pinned, only the flag gate stands between
+// this call and the network.
+//
+// regression: #4729
 func TestFlowForgeGatedOnFlagNotToken(t *testing.T) {
 	t.Setenv("GH_TOKEN", "fixture-token")
 	t.Setenv("GITHUB_TOKEN", "fixture-token")
+	t.Setenv("GITHUB_REPOSITORY", "example-org/example-app")
 
 	orig := http.DefaultTransport
 	stub := &countingRoundTripper{t: t}
