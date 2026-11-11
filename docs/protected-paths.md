@@ -327,7 +327,9 @@ Close re-plans with a fresh approval read and compares the complete receipt plan
 byte-exact table and witness descriptor, changes and commands before appending anything.
 `deskdispatch --check-verifier` runs only on the dispatch host. A different-runtime
 runner still refuses `environment changed since admission: runtime`; the runtime
-recheck is unchanged and the container is never re-admitted. Credit is unchanged:
+recheck is unchanged and the container is never re-admitted. Protected container
+execution requires explicit `--root` and refuses `--fail-first`: the receipt binds
+the head plan, not baseline history. Keep baseline qualification on the host. Credit is unchanged:
 `credit=credited` only, never a matching bracket digest alone.
 
 Execution with `--acceptance-record` and `--in-container`, `--check` or cross-repository

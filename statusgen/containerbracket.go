@@ -974,7 +974,11 @@ func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stder
 		if !reflect.DeepEqual(fresh, receipt.Acceptance) {
 			return refuse("acceptance plan differs from the host re-plan (including the byte-exact execution table)")
 		}
-		if why := acceptanceWitness(fresh, descriptor, block); why != "" {
+		current, _, err := briefSections(brief)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		if why := acceptanceWitness(fresh, descriptor, block, current); why != "" {
 			return refuse("%s", why)
 		}
 	}
@@ -1519,7 +1523,7 @@ func acceptancePresence(a *receiptAcceptance, record string, block containerBloc
 	return ""
 }
 
-func acceptanceWitness(a *receiptAcceptance, descriptor string, block containerBlock) string {
+func acceptanceWitness(a *receiptAcceptance, descriptor string, block containerBlock, current string) string {
 	want := strings.Split(descriptor, "\n")
 	if a.Changes != "" {
 		want = append([]string{"Acceptance-Changes: " + a.Changes}, want...)
@@ -1530,6 +1534,11 @@ func acceptanceWitness(a *receiptAcceptance, descriptor string, block containerB
 	planned := map[string]verifyRow{}
 	for _, row := range briefVerifyRows(a.Verify) {
 		planned[row.ID] = row
+	}
+	for _, row := range briefVerifyRows(current) {
+		if slices.Contains(a.Added, row.ID) {
+			planned[row.ID] = row
+		}
 	}
 	seen := map[string]bool{}
 	for _, raw := range block.rows {
@@ -1549,7 +1558,7 @@ func acceptanceWitness(a *receiptAcceptance, descriptor string, block containerB
 			if normalizeCommandText(witnessCommandOf(raw)) != normalizeCommandText(row.Command) {
 				return "witness row " + id + " command differs from its planned Command"
 			}
-		} else if !slices.Contains(a.Added, id) {
+		} else {
 			return "acceptance witness has a row outside the plan"
 		}
 	}

@@ -176,6 +176,35 @@ func TestOpenBracketTransition(t *testing.T) {
 
 // regression: #1800
 func TestContainerNetnsTransition(t *testing.T) {
+	t.Run("protected-record", func(t *testing.T) {
+		c := newContainerFixture(t)
+		r := newRecordFixture(t, nil)
+		c.home, c.brief = r.root, r.path
+		putFile(t, c.check, checkJSON(1, fixtureRun, r.delivery, vfBriefRel, "m"))
+		oldNow := nowFunc
+		nowFunc = func() time.Time { v, _ := time.Parse(time.RFC3339, fixtureOpened); return v }
+		t.Cleanup(func() { nowFunc = oldNow })
+		res, diag := captureVerifyrun(t, []string{"--open-bracket", "--root", c.home, "--brief", c.brief, "--out", c.receipt, "--acceptance-record", r.record})
+		if res.code != 0 {
+			t.Fatalf("protected open: %d %s", res.code, diag)
+		}
+		client := transitionClient
+		transitionClient = func() *ghClient { t.Fatal("protected container read forge"); return nil }
+		t.Cleanup(func() { transitionClient = client })
+		res, diag = captureVerifyrun(t, append(c.runArgs(), "--acceptance-record", r.record))
+		if res.code != 0 {
+			t.Fatalf("protected container: %d %s", res.code, diag)
+		}
+		body := getFile(t, c.witness)
+		if !strings.Contains(body, strings.TrimSpace(getFile(t, r.record))) || !strings.Contains(body, "author-added; execution") || strings.Contains(body, "Acceptance-Changes:") {
+			t.Fatalf("protected witness: %s", body)
+		}
+		nowFunc = func() time.Time { v, _ := time.Parse(time.RFC3339, fixtureOpened); return v.Add(time.Minute) }
+		res, diag = captureVerifyrun(t, []string{"--close-bracket", "--root", c.home, "--brief", c.brief, "--admission-receipt", c.receipt, "--witness", c.witness, "--acceptance-record", r.record})
+		if res.code != 0 || strings.Count(getFile(t, c.witness), admissionBracketPrefix) != 1 {
+			t.Fatalf("protected close: %d %s", res.code, diag)
+		}
+	})
 	for _, drift := range []bool{false, true} {
 		t.Run(fmt.Sprint("drift=", drift), func(t *testing.T) {
 			f := newTransBracket(t, drift)
@@ -193,10 +222,23 @@ func TestContainerNetnsTransition(t *testing.T) {
 			}
 			oldPath := os.Getenv("PATH")
 			t.Setenv("PATH", bin+string(os.PathListSeparator)+oldPath)
+			gitdir := filepath.Join(f.home, ".git")
+			hidden := filepath.Join(t.TempDir(), "git-metadata")
+			if err := os.Rename(gitdir, hidden); err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if _, err := os.Stat(hidden); err == nil {
+					_ = os.Rename(hidden, gitdir)
+				}
+			}()
 			client := transitionClient
 			transitionClient = func() *ghClient { t.Fatal("container tried to read approval"); return nil }
 			code, diag := f.run(t)
 			transitionClient = client
+			if err := os.Rename(hidden, gitdir); err != nil {
+				t.Fatal(err)
+			}
 			t.Setenv("PATH", oldPath)
 			want := verifyrunExitPass
 			if drift {
@@ -237,7 +279,7 @@ func TestContainerNetnsTransition(t *testing.T) {
 
 // regression: #1800
 func TestTransitionBracketRefusals(t *testing.T) {
-	for _, name := range []string{"no-receipt", "no-plan", "descriptor", "table-digest", "run-set", "added", "rows", "forge", "dropped", "version2", "in-container", "check"} {
+	for _, name := range []string{"no-receipt", "no-plan", "descriptor", "table-digest", "run-set", "added", "rows", "forge", "dropped", "version2", "in-container", "check", "fail-first", "no-root"} {
 		t.Run("container/"+name, func(t *testing.T) {
 			f := newTransBracket(t, false)
 			f.start(t)
@@ -265,6 +307,10 @@ func TestTransitionBracketRefusals(t *testing.T) {
 				f.editReceipt(t, func(r *bracketReceipt) {
 					r.Check = json.RawMessage(checkJSON(2, fixtureRun, f.amendment, vfBriefRel, "m"))
 				})
+			case "fail-first":
+				args = append(args, "--fail-first")
+			case "no-root":
+				args = []string{"--sandbox=container-netns", "--brief", f.brief, "--admission-receipt", f.receipt, "--container-image-digest", fixtureImage, "--witness", f.witness, "--acceptance-record", f.record}
 			case "in-container", "check":
 				args = []string{"--root", f.home, "--brief", f.brief, "--acceptance-record", f.record, "--" + name}
 			}
@@ -273,12 +319,19 @@ func TestTransitionBracketRefusals(t *testing.T) {
 				t.Fatalf("not refused before witness: %d %s", r.code, diag)
 			}
 			f.containerFixture.assertNothingRan(t, getFile(t, f.brief))
+			if name == "fail-first" && !strings.Contains(diag, "protected container execution cannot run --fail-first") {
+				t.Fatalf("history path was not refused before Git: %s", diag)
+			}
+			if name == "no-root" && !strings.Contains(diag, "protected container execution needs --root") {
+				t.Fatalf("root derivation was not refused before Git: %s", diag)
+			}
+
 			if (name == "in-container" || name == "check") && !strings.Contains(diag, "requires host execution and same-repository admission") {
 				t.Fatalf("legacy refusal changed: %s", diag)
 			}
 		})
 	}
-	for _, name := range []string{"edited-approval", "unreadable-approval", "replan", "descriptor", "changes", "command", "table-bytes", "no-record", "ordinary-descriptor", "ordinary-changes", "no-plan", "no-descriptor", "no-changes"} {
+	for _, name := range []string{"edited-approval", "unreadable-approval", "replan", "descriptor", "changes", "command", "supplement-command", "table-bytes", "no-record", "ordinary-descriptor", "ordinary-changes", "no-plan", "no-descriptor", "no-changes"} {
 		t.Run("close/"+name, func(t *testing.T) {
 			f := newTransBracket(t, false)
 			f.start(t)
@@ -300,6 +353,8 @@ func TestTransitionBracketRefusals(t *testing.T) {
 				body = strings.Replace(body, "2=Command", "1=Expect", 1)
 			case "command":
 				body = strings.Replace(body, "`sh check.sh --no-pull`", "`true`", 1)
+			case "supplement-command":
+				body = strings.Replace(body, "`printf supplemental`", "`printf changed`", 1)
 			case "table-bytes":
 				f.editReceipt(t, func(r *bracketReceipt) {
 					r.Acceptance.Verify += "\n"
@@ -316,7 +371,9 @@ func TestTransitionBracketRefusals(t *testing.T) {
 				f.editReceipt(t, func(r *bracketReceipt) { r.Acceptance = nil })
 				body = strings.Replace(body, f.descriptor+"\n", "", 1)
 			case "no-plan":
-				f.editReceipt(t, func(r *bracketReceipt) { r.Acceptance = nil })
+				short := briefTreeSHA(f.home, f.brief)
+				f.editReceipt(t, func(r *bracketReceipt) { r.Acceptance = nil; r.RunnerTree = short })
+				body = strings.ReplaceAll(body, " @ "+f.amendment+" ", " @ "+short+" ")
 			case "no-descriptor":
 				body = strings.Replace(body, f.descriptor+"\n", "", 1)
 			case "no-changes":

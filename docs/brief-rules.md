@@ -912,8 +912,9 @@ passing run — which is why they are lint rules and not review vigilance.
       commands. `deskdispatch --check-verifier` runs only on the dispatch host:
       a different runtime still refuses `environment changed since admission:
       runtime`; never re-admit inside the runner. `--in-container`, `--check`
-      and cross-repository admission with the record stay refused. Credit is
-      unchanged (`credit=credited` only); a digest match alone grants none.
+      and cross-repository admission with the record stay refused. Protected
+      container execution needs explicit `--root` and refuses `--fail-first`,
+      whose baseline history is outside this plan. Credit is unchanged (`credit=credited` only); a digest match alone grants none.
     - `check` — deterministic but ENV-BOUND (a live PEM, a real queue, a tool on
       PATH). A runner executes it; CI skips an explicitly-classed one (its verdict
       rests on the verifier's authorship+signature, not on a CI re-run).

@@ -281,7 +281,9 @@ source, exact table, changes and witness commands before appending the bracket.
 `deskdispatch --check-verifier` runs only on the dispatch host; checking on another
 runtime still refuses `environment changed since admission: runtime`. Never re-admit
 inside the runner. `--in-container`, `--check` and cross-repository admission with the
-record stay refused. Credit is unchanged: `credit=credited` only, never digest match
+record stay refused. Protected container execution requires explicit `--root` and
+refuses `--fail-first`: baseline history is outside the bound plan; keep baseline
+qualification on the host. Credit is unchanged: `credit=credited` only, never digest match
 alone. Independent whole-table verification and human closure gates remain required.
 
 On failed pre-work stamping, no verifier prompt is emitted and the claim is released.

@@ -2049,7 +2049,8 @@ Flags:
                     which needs --acceptance-forge on the host and executes the
                     canonical original-plus-approved obligation plan. Open and
                     close use the same record; the container executes the receipt's
-                    exact planned table and refuses --acceptance-forge.
+                    exact planned table, requires --root and refuses --acceptance-forge
+                    and --fail-first (baseline history is outside this plan).
   --sandbox <mode>  the network-off sandbox (default unshare). unshare wraps each
                     check:ci row in ` + "`unshare --net --map-root-user`" + `.
                     container-netns is an EXPLICIT opt-in for a runner already
@@ -2446,6 +2447,16 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return runOpenAcceptance(*rootDir, path, *openOut, *moduleCacheDir, *historyOut, *transitionRecord, stdout, stderr)
 		}
 		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, stdout, stderr, *transitionRecord)
+	}
+	if *sandbox == sandboxContainerNetns && *transitionRecord != "" {
+		if *rootDir == "" {
+			fmt.Fprintln(stderr, "statusgen verifyrun: protected container execution needs --root; it never derives a root from Git")
+			return verifyrunExitCouldNot
+		}
+		if *failFirstMode {
+			fmt.Fprintln(stderr, "statusgen verifyrun: protected container execution cannot run --fail-first; baseline history is not part of the bound acceptance plan")
+			return verifyrunExitCouldNot
+		}
 	}
 	if *sandbox == sandboxContainerNetns && transitionForge {
 		fmt.Fprintln(stderr, "statusgen verifyrun: --acceptance-forge is refused inside the container; approval is read on the host")
