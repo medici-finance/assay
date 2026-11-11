@@ -140,6 +140,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 78 | [Migrate the release object transport adapter to the shared CLI contract](brief-78-migrate-the-release-object-transport-adapter.md) | 4 | M | blocked | — | — |
 | 79 | [Migrate the release object client bootstrap to the shared CLI contract](brief-79-migrate-the-release-object-client-bootstrap.md) | 4 | S | blocked | — | — |
 | 80 | [Port the release spec-header stamp script](brief-80-port-the-release-spec-header-stamp-script.md) | 4 | S | todo | — | — |
+| 81 | [Run acceptance-transition rows inside a closed container-netns bracket](brief-81-run-acceptance-transition-rows-inside-a-closed-container-netns-bracket.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

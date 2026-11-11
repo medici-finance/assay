@@ -1552,5 +1552,47 @@
     "file": "runner/executionprofile.go",
     "old": "if p.BudgetScopes == nil || p.Qualification.Limits == nil {",
     "new": "if false {"
+  },
+  {
+    "test": "TestCacheObservedRoutes",
+    "why": "graph-execution/26: plant an observed launch that bypasses custody",
+    "file": "process/run.go",
+    "old": "return r.Run(observeLaunch(ctx, started), argv, env, dir, stdout, stderr)",
+    "new": "return runObserved(ctx, argv, env, dir, stdout, stderr, newProcessTree, started)"
+  },
+  {
+    "test": "TestCacheObservedRoutes",
+    "why": "graph-execution/26: plant a second raw launch outside custody",
+    "file": "process/run.go",
+    "old": "const pipeWait =",
+    "new": "func secondSite() { _, _, _ = run(context.Background(), nil, nil, \"\", nil, nil, newProcessTree) }\n\nconst pipeWait ="
+  },
+  {
+    "test": "TestObservedLaunchFailure",
+    "why": "graph-execution/26: ignore an enrollment failure",
+    "file": "process/run.go",
+    "old": "startErr = started(cmd.Process.Pid)",
+    "new": "_ = started(cmd.Process.Pid)"
+  },
+  {
+    "test": "TestRunCleansDescendants",
+    "why": "graph-execution/26: kill the parent but leave its descendants",
+    "file": "process/tree_unix.go",
+    "old": "syscall.Kill(-p.Pid, syscall.SIGKILL)",
+    "new": "syscall.Kill(p.Pid, syscall.SIGKILL)"
+  },
+  {
+    "test": "TestRunnerCustodyBoundary",
+    "why": "graph-execution/26: report an uncertain cleanup to custody as clean",
+    "file": "process/run.go",
+    "old": "finishErr = admission.Finish(!uncertain)",
+    "new": "finishErr = admission.Finish(true)"
+  },
+  {
+    "test": "TestRunnerCustodyBoundary",
+    "why": "graph-execution/26: launch with no custodian",
+    "file": "process/run.go",
+    "old": "if r == nil || r.custody == nil {\n\t\treturn -1, false, ErrNoCustody\n\t}\n\tadmission, err := r.custody.Admit(env)",
+    "new": "var admission Admission\n\tvar err error\n\tif r != nil && r.custody != nil {\n\t\tadmission, err = r.custody.Admit(env)\n\t}"
   }
 ]

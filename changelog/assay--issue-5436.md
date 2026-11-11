@@ -1,2 +1,0 @@
-### Changed
-- `deskpr create --check` now says that `--check-remote` runs the public-repo authorization gate it reports as not checked, and the gate's refusal for a live-internal repo still listed `:public` says that, if the entry was written before the `:internal` token existed, it predates the token. The gate itself is unchanged: such an entry still refuses until the operator changes it to `:internal`, and no verb rewrites the allowed-repos set. (#5436)

@@ -70,10 +70,14 @@ COPY comms/ ./comms/
 # The perfrec module (the shared perf-v1 writer) is the same kind of stdlib-only sibling:
 # statusgen resolves it through `replace ../perfrec`, tools/desk through `replace ../../perfrec`.
 COPY perfrec/ ./perfrec/
+# The loopadmin module owns the shared process runner (graph-execution/26): tools/desk
+# resolves it through `replace ../../loopadmin`, and it resolves perfrec the same way.
+COPY loopadmin/ ./loopadmin/
 # Test-support replacement module required when loading either module graph.
 COPY gitquiet/ ./gitquiet/
 COPY gitcore/ ./gitcore/
 COPY deskcore ./deskcore/
+COPY workflow/ ./workflow/
 COPY statusgen/go.mod statusgen/go.sum ./statusgen/
 COPY tools/desk/go.mod ./tools/desk/
 RUN cd statusgen && go mod download

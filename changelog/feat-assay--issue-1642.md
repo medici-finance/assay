@@ -1,0 +1,2 @@
+### Fixed
+- The desk tools' secret scan no longer refuses an ALL-CAPS env-var assignment whose value is already exempt on its own: a `make test TEST=<GoTestName>` selector in a Verify row, an env-var path such as `PGDATA=<data-dir>` (a word-shaped path under `/var/lib`), or a recorded git SHA such as `DELIVERY_HEAD=<sha>`. An ALL-CAPS key of up to 16 letters is now the "short or word-shaped key" the refusal text always named. A name carrying a credential or digest stem, a longer key, and any value that is not exempt on its own still refuse.

@@ -2,7 +2,7 @@
 brief: assay:assay:verification-handoff:04
 title: "Discover and claim the successor repair work"
 why: "A worker label is not a dispatch. Addressed issues are absent from work-ready, while the default fanout board reads a file without issue labels, so a routed repair can remain undiscovered."
-wave: 3
+wave: 6
 depends: ["verification-handoff/02", "verification-handoff/03"]
 unblocks: ["verification-handoff/05"]
 effort: M

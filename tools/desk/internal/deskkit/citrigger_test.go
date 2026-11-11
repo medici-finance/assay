@@ -215,6 +215,37 @@ func TestWorkflowFoundationCI(t *testing.T) {
 	}
 }
 
+// TestWorkflowRefreshCI requires the dedicated explicit PostgreSQL environment
+// and a named joined PASS: ordinary no-DSN skips do not qualify this integration.
+func TestWorkflowRefreshCI(t *testing.T) {
+	ciAssertPublicLayoutRow(t, "workflow/store/refresh_schema_test.go")
+	ciAssertPublicLayoutRow(t, "tools/desk/internal/deskkit/mirror_joined_test.go")
+	raw, err := os.ReadFile("../../../../.github/workflows/assay-workflow.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"ASSAY_TEST_POSTGRES_DSN: postgresql://", `test -n "$ASSAY_TEST_POSTGRES_DSN"`, "go test -count=1 -race -timeout=180s -v -run '^TestMirrorPersistedReadThroughJoin$' ./internal/deskkit", `grep -F -- '--- PASS: TestMirrorPersistedReadThroughJoin ' "$out"`} {
+		if !strings.Contains(string(raw), required) {
+			t.Fatal("dedicated PostgreSQL integration lacks required execution proof", required)
+		}
+	}
+}
+
+// regression: F-provision-ci-execution-proof
+func TestWorkflowRefreshProvisionCI(t *testing.T) {
+	ciAssertPublicLayoutRow(t, "workflow/store/refresh_provision_test.go")
+	ciAssertPublicLayoutRow(t, "tools/desk/internal/deskkit/mirror_joined_test.go")
+	raw, e := os.ReadFile("../../../../.github/workflows/assay-workflow.yml")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, required := range []string{`test -n "$ASSAY_TEST_POSTGRES_DSN"`, "go test -count=1 -race -timeout=180s -v -run '^TestMirrorProvisionedReadThrough$' ./internal/deskkit", `grep -F -- '--- PASS: TestMirrorProvisionedReadThrough ' "$provisioned"`} {
+		if !strings.Contains(string(raw), required) {
+			t.Fatal("dedicated provisioned-role join lacks required execution proof", required)
+		}
+	}
+}
+
 // ciAssertPublicLayoutRow runs one registry row's event reachability and read
 // coverage against the workflow in the public source layout, without the
 // house-only tools.yml fixture the full sweep above skips on.
@@ -351,6 +382,22 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{test: "workflow/store/refresh_provision_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
+			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
+			reads:      []string{"spec/coordination-store-v1.md", "forgeread/mirror/", "forgeread/refresh/"},
+			runInvokes: []string{"cd workflow", "go test -count=1 -race -timeout=180s ./..."},
+			why:        "operator initialization catalog/known-state controls read the canonical schema and existing refresh/kernel owners"},
+
+		{test: "workflow/store/refresh_schema_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
+			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
+			reads:      []string{"spec/coordination-store-v1.md", "forgeread/mirror/", "forgeread/refresh/", ".github/workflows/assay-workflow.yml"},
+			runInvokes: []string{"cd workflow", "go test -count=1 -race -timeout=180s ./..."},
+			why:        "canonical refresh schema, lower SQL controls and pure coordinator/kernel dependencies run against an explicit disposable database"},
+		{test: "tools/desk/internal/deskkit/mirror_joined_test.go", module: "tools/desk", workflow: ".github/workflows/assay-workflow.yml",
+			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
+			reads:      []string{"workflow/", "forgeread/", "tools/desk/", ".github/workflows/assay-workflow.yml"},
+			runInvokes: []string{"cd tools/desk", "go test -count=1 -race -timeout=180s -v -run '^TestMirrorPersistedReadThroughJoin$' ./internal/deskkit", "grep -F -- '--- PASS: TestMirrorPersistedReadThroughJoin '", "go test -count=1 -race -timeout=180s -v -run '^TestMirrorProvisionedReadThrough$' ./internal/deskkit", "grep -F -- '--- PASS: TestMirrorProvisionedReadThrough '"},
+			why:        "actual native SDK/source/coordinator/SQL Store join requires the selected PostgreSQL service and named PASS; a missing fixture or skipped test is not evidence"},
 		{test: "workflow/store/mirror_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
 			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
 			reads:      []string{"spec/coordination-store-v1.md", "forgeread/go.mod", "forgeread/mirror/", ".github/workflows/assay-workflow.yml"},
@@ -394,6 +441,7 @@ func ciCrossModuleRegistry() []ciEntry {
 		{test: "tools/desk/internal/deskkit/declaredscope_corpus_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads: []string{"docs/streams"}, runInvokes: deskShardInvokes,
 			why: "the Context files: ratchet (#3697) parses every brief and its list under docs/streams; a docs-only diff is exactly the one that adds a refused declaration, and the unfiltered desk shards run it on every pull request"},
+		{test: "tools/desk/cmd/cellctl/kube_compat_preparation_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"containers/k8s/compatibility/prepare.py", "containers/k8s/compatibility/desk-session.py"}, runInvokes: deskShardInvokes, why: "Compiled preparation CLI checks the exact delegate and image-owned initializer against cold synthetic volumes; workflow has no path filter"},
 		{test: "tools/desk/internal/kubecompat/profile_contract_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"containers/k8s/compatibility/cellctl-config.schema.json", "containers/k8s/compatibility/desk-session.py", "containers/k8s/compatibility/prepare.py", "containers/k8s/compatibility/prepare.test.py"}, runInvokes: deskShardInvokes, why: "Pins compatibility source/schema, actual Go/Python hash parity and cold-preparation flow; workflow has no path filter"},
 
 		{test: "perfrec/v4_schema_test.go", module: "perfrec", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
@@ -500,6 +548,20 @@ func ciCrossModuleRegistry() []ciEntry {
 			why:        "the deskd build contract parses the root Makefile and the deskd Dockerfile and ignore file; the unconditional build-test floor runs it on any edit to them",
 		},
 		{
+			test: "tools/desk/internal/forgeservice/auth/testdata/qualify_fixture.py", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: ciJobRef{id: "forge-local-authority", check: "forge-local-authority"}, pushJob: ciJobRef{id: "forge-local-authority", check: "forge-local-authority"},
+			reads:      []string{"tools/desk", "comms", "forgeread", "deskcore", "perfrec", "gitquiet", "gitcore", ".github/workflows/ci.yml", "docs/proposals/non-ci-architecture/21-cell-operator-surface.md", "docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md", "spec/operator-incarnation-v1.md", "spec/forge-local-authority-v1.md"},
+			runInvokes: []string{"qualify_fixture.py", "--endpoint unix:///var/run/docker.sock", "--platform linux/amd64"},
+			why:        "the actual hosted source-bound Docker entrypoint compiles the authority owner and existing module replacements, requires named custody and compiling fault PASS, and checks exact cleanup; missing profile or ordinary skips do not qualify",
+		},
+		{
+			test: "tools/desk/internal/forgeservice/auth/qualification_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{"docs/proposals/non-ci-architecture/21-cell-operator-surface.md", "docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md", "spec/operator-incarnation-v1.md", "spec/forge-local-authority-v1.md", ".github/workflows/ci.yml", ".github/workflows/assay-workflow.yml", "tools/desk/internal/forgeservice/auth/testdata/qualify_fixture.py"},
+			runInvokes: deskShardInvokes,
+			why:        "the unconditional Go floor checks controlling local/external/restore requirements and the actual required source-bound custody workflow; ordinary Dockerless skips remain explicitly unqualified",
+		},
+		{
 			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",
 			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads: []string{
@@ -539,7 +601,7 @@ func ciCrossModuleRegistry() []ciEntry {
 		{
 			test: "tools/desk/internal/regression/releasecache_test.go", module: "tools/desk",
 			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
-			reads:      []string{"tools/release", ".github/workflows/release.yml", "ci/staged-workflows/release.yml"},
+			reads:      []string{"tools/release", ".github/workflows/release.yml", "ci/staged-workflows/release.yml", ".github/workflows/release-object-qualification.yml"},
 			runInvokes: deskShardInvokes,
 			why:        "the unconditional build-test floor executes release cache provenance, image artifact contracts, archive, and workflow fixtures",
 		},

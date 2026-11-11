@@ -1,0 +1,2 @@
+### Fixed
+- A secret-scan refusal now names the override form its caller accepts: a `deskpushguard` pre-push refusal names `DESKPUSHGUARD_SCAN_OVERRIDE="<why>"`, and a `deskpr`, `deskreply` or `deskfile` refusal keeps naming `--force-scan-override "<why>"`. Before, a push refusal named the flag, which `git push` rejects. Nothing changes in what is scanned, which rules can be overridden, or the audit row. Withheld-identifier and ruling-claim refusals still advertise no override.

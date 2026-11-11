@@ -123,7 +123,7 @@ jobs:
           # The compiled surface: the tools/desk module (its go.mod/go.sum
           # included), the sibling modules it pulls in through replace directives
           # in tools/desk/go.mod, any go.work, and this workflow.
-          scope_re='^(tools/desk|comms|forgeread|perfrec|gitquiet|gitcore|deskcore)/|(^|/)go\.work(\.sum)?$|^\.github/workflows/ci\.yml$'
+          scope_re='^(tools/desk|comms|forgeread|perfrec|gitquiet|gitcore|deskcore|loopadmin|statusgen|workflow)/|(^|/)go\.work(\.sum)?$|^\.github/workflows/ci\.yml$'
           if [ "$EVENT" != "pull_request" ]; then
             echo "event '$EVENT': always compile"
           elif ! files="$(git diff --no-renames --name-only HEAD^1 HEAD)"; then
@@ -331,6 +331,66 @@ jobs:
         if: matrix.shard == 'rest'
         run: bash statusgen/test-role-claims.sh
 
+  # Separate real-container qualification. The ordinary self-hosted Go shards
+  # have no Docker daemon and their explicit custody SKIP is UNQUALIFIED. This
+  # hosted job builds only the source-bound FROM-scratch helper, with no pull,
+  # no provider/issuer credentials and no host/engine-socket mounts.
+  forge-local-authority:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install the declared Go toolchain
+        env:
+          GO_VERSION: "1.27.3"
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/authority-go.tar.gz"
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/authority-go.tar.gz" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/authority-go"
+          tar -C "${RUNNER_TEMP}/authority-go" -xzf "${RUNNER_TEMP}/authority-go.tar.gz"
+          echo "${RUNNER_TEMP}/authority-go/go/bin" >> "$GITHUB_PATH"
+      - name: Prepare pinned module dependencies
+        env:
+          GOENV: "off"
+          GOAUTH: "off"
+          GOPROXY: "https://proxy.golang.org"
+          GOSUMDB: "sum.golang.org"
+          GOPRIVATE: ""
+          GONOPROXY: ""
+          GONOSUMDB: ""
+        run: |
+          set -euo pipefail
+          echo "Pinned dependency source: ${GOPROXY}; checksums: ${GOSUMDB}"
+          GOWORK=off GOTOOLCHAIN=local go -C tools/desk mod download
+          GOWORK=off GOTOOLCHAIN=local go -C tools/desk list -mod=readonly -deps -test ./internal/forgeservice/auth ./internal/forgeservice/auth/testfixture >/dev/null
+      - name: Require actual isolated flow and compiling production controls
+        run: |
+          set -euo pipefail
+          source_path="${RUNNER_TEMP}/authority-source"
+          git worktree add --detach "$source_path" HEAD
+          python3 "$source_path/tools/desk/internal/forgeservice/auth/testdata/qualify_fixture.py" \
+            --source "$source_path" --work "${RUNNER_TEMP}/authority-qualification" \
+            --go "$(command -v go)" --python "$(command -v python3)" --docker "$(command -v docker)" \
+            --endpoint unix:///var/run/docker.sock --platform linux/amd64 \
+            --module-cache "$(go env GOMODCACHE)" --go-cache "$(go env GOCACHE)"
+      - name: Retain bounded qualification receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: local-authority-qualification
+          path: |
+            ${{ runner.temp }}/authority-qualification/*.json
+            ${{ runner.temp }}/authority-qualification/actual-flow.*
+            ${{ runner.temp }}/authority-qualification/production-controls.*
+          if-no-files-found: ignore
+
   # The required check `build-test`. Branch protection requires a check of this
   # exact name, so it stays a single job that reports one verdict for the whole
   # sharded suite: success only when every build-test-shard leg succeeded. Any
@@ -339,18 +399,20 @@ jobs:
   # cancelled suite reads as a failure here, never as a skipped (passing) check.
   # GitHub-hosted: it only reads the needs context.
   build-test:
-    needs: [build-test-shard]
+    needs: [build-test-shard, forge-local-authority]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
       - name: All build-test shards passed
         env:
           SHARDS: ${{ needs.build-test-shard.result }}
+          AUTHORITY: ${{ needs.forge-local-authority.result }}
         run: |
           set -euo pipefail
           echo "build-test-shard: ${SHARDS}"
-          if [ "$SHARDS" = "success" ]; then
-            echo "every shard passed"
+          echo "forge-local-authority: ${AUTHORITY}"
+          if [ "$SHARDS" = "success" ] && [ "$AUTHORITY" = "success" ]; then
+            echo "every shard and actual authority qualification passed"
           else
             echo "::error::build-test shards concluded '${SHARDS}' — the suite did not pass"
             exit 1

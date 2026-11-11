@@ -153,6 +153,15 @@ keep it to scope + intent, not a keystroke script.>
 # AUTHORING: prefer `grep -F` and forward-slash paths for portable checks. Native Windows
 # syntax MUST have explicit `cmd` or `pwsh` in the Shell cell from the first draft; never
 # leave `findstr /c:"…" a\b.md` on implicit sh. Evidence-only edits cannot change the shell.
+# OPTIONAL `Env` column (issue #6065): WHERE a row runs, so a non-implementer knows where to
+# witness it — | # | Class | Env | Command | Expect |. Values: tree (the checkout alone,
+# network-off: what CI re-executes) / host or host:<name> (the witness's own machine) /
+# service:<name> (a NAMED NON-PRODUCTION instance — a database, an API, a staging deployment —
+# described in ## Context) / cluster:<name> (a live cluster, the pod runner). Add it whenever a
+# row needs more than the checkout. `statusgen --lint` PROBLEMs a check:ci row naming anything
+# but tree, an env-bound check / check:cluster row with an empty Env, a non-tree Env in a table
+# with no Class column (legacy rows are CI re-executed), and any Env outside this grammar.
+# (The frontmatter `target` above stays reserved and unenforced; Env is the enforced per-row field.)
 # SCRIPTED rows: a check:ci / check row may be a reviewed script instead of an inline command —
 #   docs/streams/<stream>/verify.d/brief-NN/row-K.sh  (executable, exit 0 = PASS)
 # and then the row's Command cell IS that script path. The reviewer who approves the brief

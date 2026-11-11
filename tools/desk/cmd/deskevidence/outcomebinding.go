@@ -57,24 +57,37 @@ func admittedOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskki
 	}, tree)
 }
 
+// admittedRunComplete is the receipt-completeness clause every NEW outcome record
+// carries, whether it names landed Evidence (validateOutcomeEvidenceBinding) or
+// withholds it (checkOutcomeOnly): the admitted binding names this repo and a brief,
+// a full hex source and run, an issue, and a brief the receipt admits as its
+// Evidence target. One function, so the two record kinds cannot drift apart.
+func admittedRunComplete(fr deskkit.ForgeRepo, receipt deskkit.VerifierReceipt) error {
+	b := receipt.Binding
+	if b.Repo != fr.Slug() || b.Brief == "" || len(b.Source) != 40 || len(b.Run) != 64 || receipt.Issue < 1 {
+		return deskkit.Refused("refused: outcome record has no complete admitted Evidence run")
+	}
+	for _, value := range []string{b.Source, b.Run} {
+		if _, err := hex.DecodeString(value); err != nil {
+			return deskkit.Refused("refused: outcome record has an invalid Evidence revision or run")
+		}
+	}
+	return receipt.CheckEvidenceTarget(b.Brief)
+}
+
 // An outcome may hold future verification work. Admission alone does not prove
 // that this run's Evidence landed: its earlier write may have been refused.
 // Read both the named commit and target branch before publishing a new receipt.
 func validateOutcomeEvidenceBinding(root string, fg deskkit.Forge, fr deskkit.ForgeRepo, branch string, receipt deskkit.VerifierReceipt, sha string) error {
 	b := receipt.Binding
-	if b.Repo != fr.Slug() || b.Brief == "" || len(b.Source) != 40 || len(b.Run) != 64 || receipt.Issue < 1 {
-		return deskkit.Refused("refused: outcome record has no complete admitted Evidence run")
+	if err := admittedRunComplete(fr, receipt); err != nil {
+		return err
 	}
-	for _, value := range []string{b.Source, b.Run, sha} {
-		if _, err := hex.DecodeString(value); err != nil || value == "" {
-			return deskkit.Refused("refused: outcome record has an invalid Evidence revision or run")
-		}
+	if _, err := hex.DecodeString(sha); err != nil || sha == "" {
+		return deskkit.Refused("refused: outcome record has an invalid Evidence revision or run")
 	}
 	if len(sha) != 40 {
 		return deskkit.Refused("refused: outcome record must name the full Evidence commit SHA")
-	}
-	if err := receipt.CheckEvidenceTarget(b.Brief); err != nil {
-		return err
 	}
 	atCommit, err := gitShowAt(root, sha, b.Brief)
 	if err != nil {

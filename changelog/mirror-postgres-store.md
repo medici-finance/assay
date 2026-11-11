@@ -1,2 +1,0 @@
-- Add the bounded canonical PostgreSQL mirror Store with current admission checks, atomic version/rows/coverage, independent SQL transition guards and exact observation presence. Shared refresh fencing, retention, ingestion service and activation remain separately gated.
-- Refuse incomplete inventory absences consistently, including missing or already absent rows, without advancing their snapshot version or coverage.

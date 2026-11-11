@@ -18,10 +18,10 @@ package main
 //     verifyflip.go's flipLatestPass; the HELD and FAIL refusals closeVerify
 //     applies; the closureWitnesses audit (`verifyrun --check`); flipProvenance
 //     (the PASS lines committed by the roster's verifier, not the implementer);
-//     the brief version read from the brief AS IT STOOD at the run's sha; and
+//     the brief version read at the run's tracking revision (source for legacy); and
 //     the evidence-coverage verdict (coverage.go). A refusal from any of them
 //     contributes no witness. A read that could not be made (no roster, a
-//     shallow clone, git failing, the version unreadable at the run's sha)
+//     shallow clone, git failing, the recorded brief revision unreadable)
 //     marks the brief Undecided: its cell is `unknown`, never `verified` and
 //     never a definite `implemented`.
 //   - Approvals (`done`, gate:model): autoflip.go's decideModelFlip — the
@@ -51,8 +51,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // reconcileFoldData is one brief's fold-relevant record, read once from the
@@ -135,7 +137,7 @@ type foldTree struct {
 // once for the whole run, as autoFlipModel does.
 func treeFoldInputs(root string, streams []*Stream, data []reconcileFoldData) foldTree {
 	t := foldTree{witnesses: map[string]WitnessInfo{}, rulings: map[string]string{}, undecided: map[string]string{}}
-	coverage := evaluateCoverage(root, streams, coverageOptions{})
+	coverage := evaluateCoverage(root, streams, coverageOptionsFor(root, nil))
 	for _, d := range data {
 		w, ok, why := foldVerified(d, coverage)
 		switch {
@@ -187,9 +189,9 @@ func foldVerified(d reconcileFoldData, coverage map[string]Coverage) (w WitnessI
 		}
 		return WitnessInfo{}, false, "could-not-check provenance: " + err.Error()
 	}
-	version, verr := briefVersionAt(d.path, p.SHA)
+	version, verr := briefVersionForPass(d.path, d.evidence, p)
 	if verr != nil {
-		return WitnessInfo{}, false, fmt.Sprintf("could-not-check the brief version at the run's sha %s: %v", p.SHA, verr)
+		return WitnessInfo{}, false, fmt.Sprintf("could-not-check the brief version for run source %s: %v", p.SHA, verr)
 	}
 	return WitnessInfo{
 		Passed:   true,
@@ -201,10 +203,11 @@ func foldVerified(d reconcileFoldData, coverage map[string]Coverage) (w WitnessI
 
 // briefVersionAt reads the brief's `version:` as the file stood at sha — the
 // version the recorded run was made against, never the current one copied.
+// A failed read carries git's own reason beside the exit status.
 func briefVersionAt(path, sha string) (int, error) {
 	out, err := coverageGit(filepath.Dir(path), "show", "--end-of-options", sha+":./"+filepath.Base(path)).Output()
 	if err != nil {
-		return 0, fmt.Errorf("git show: %w", err)
+		return 0, gitShowError(err)
 	}
 	bf, ok, perr := parseBriefFileBytes(path, out)
 	if perr != nil {
@@ -219,6 +222,19 @@ func briefVersionAt(path, sha string) (int, error) {
 	return 1, nil
 }
 
+// gitShowError carries git's first stderr line beside the exit status, so a
+// failed read says why (a revision this repository does not hold, a path the
+// revision lacks) instead of a bare "exit status 128".
+func gitShowError(err error) error {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if detail, _, _ := strings.Cut(strings.TrimSpace(string(ee.Stderr)), "\n"); detail != "" {
+			return fmt.Errorf("git show: %w: %s", err, detail)
+		}
+	}
+	return fmt.Errorf("git show: %w", err)
+}
+
 // humanSignoff returns the README Reviewed cell's human stamp ("human:<name>")
 // or "". On-behalf-of relays are removed first: a relay records whom an App
 // acted for and is never that human's sign-off.
@@ -230,8 +246,8 @@ func humanSignoff(reviewed string) string {
 	return "human:" + m[1]
 }
 
-// reconcileFlipSource is the forge read decideModelFlip uses for the fold;
-// tests replace it.
+// reconcileFlipSource serves both approval and Evidence-shape reads with the
+// credential selected for the REST reader. Tests replace it.
 var reconcileFlipSource = liveModelFlipSource
 
 // foldApprovals asks decideModelFlip about every gate:model brief that would
@@ -239,7 +255,7 @@ var reconcileFlipSource = liveModelFlipSource
 // the brief's version, not Undecided. flipDone yields an approval naming the
 // reviewer, PR and head; flipRefused yields none (the brief stays verified);
 // flipUnchecked marks the brief Undecided.
-func foldApprovals(root string, in *LifecycleInput, data []reconcileFoldData) map[string]ApprovalInfo {
+func foldApprovals(root string, in *LifecycleInput, data []reconcileFoldData, client *ghClient) map[string]ApprovalInfo {
 	out := map[string]ApprovalInfo{}
 	if !in.LookedAt {
 		return out
@@ -250,7 +266,7 @@ func foldApprovals(root string, in *LifecycleInput, data []reconcileFoldData) ma
 		prsByBrief[key] = append(prsByBrief[key], pr)
 	}
 	rev := modelReviewer()
-	src := reconcileFlipSource(rev.Forge)
+	src := reconcileFlipSource(rev.Forge, client.token)
 	for _, d := range data {
 		id := d.ident.ID
 		if d.ident.Gate != "model" {
@@ -403,7 +419,7 @@ func wireFoldInputs(in *LifecycleInput, boardRoot string, client *ghClient, repo
 		}
 	}
 
-	in.Approvals = foldApprovals(boardRoot, in, data)
+	in.Approvals = foldApprovals(boardRoot, in, data, client)
 
 	if len(in.Undecided) > 0 {
 		ids := make([]string, 0, len(in.Undecided))

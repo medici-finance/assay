@@ -383,3 +383,7 @@ prior approval, active assignments, completed Evidence and enrollment remain unc
 Reuse [the existing change map](../../desk-workflow-efficiency-change-map.md#candidate-plus-priority-ownership-reconciliation--23-october-2026)
 for exact scope and sequencing. Recheck active work before dispatch/publication; material
 assignment changes require its existing owner checkpoint/acknowledgment, not silent rebinding.
+
+## Automatic desk instances — 25 October 2026
+
+[Amendment 30](30-desk-instances-and-rolling-replacement.md) is a requested delta, not an activation record. Its Delivery and acceptance table enumerates the actual brief patches in this PR, including new desk-containers/33. The older owner-only rows and their dated source accounts remain history. Existing R2/R3/R4/R7 owners retain meaning; completed desk-containers/06, /15–18, graph-execution/16 and agent-execution/01 are left unchanged; the new obligations from desk-containers/15–18 are carried by /33, those from desk-containers/06 by /28, those from graph-execution/16 by graph-execution/26 and those from agent-execution/01 by agent-execution/03, each of which depends on the completed brief. Active public PR overlap and the bounded source assessment are recorded in amendment 30; implementation pickup must refresh claims and obtain existing acknowledgments before rebinding active work.
