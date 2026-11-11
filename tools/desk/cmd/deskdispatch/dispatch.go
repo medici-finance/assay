@@ -171,6 +171,9 @@ type dispatchOpts struct {
 	// repo its item-key prefix or brief-v2 id names, and its deliverable PR opens in --repo. Without
 	// it, a --repo that differs from the resolved repo stays the HARD FAIL (deliverable.go).
 	crossRepo bool
+	// contextSnapshot and contextReceipt are --context-snapshot / --context-receipt (statusgen/21,
+	// pickup.go): the receipt is rechecked against the snapshot before the claim.
+	contextSnapshot, contextReceipt string
 	// briefShown is how the prompt spells the specification: the caller's own spelling when the file
 	// sits under --root, else its absolute path (resolveBrief). brief itself is the resolved absolute
 	// path every reader uses.
@@ -232,6 +235,11 @@ func dispatch(o dispatchOpts) error {
 	// a tidiness preference.
 	plan, err := validateCallerPreconditions(o)
 	if err != nil {
+		return err
+	}
+	// CONTEXT PICKUP — before the claim and before any child process (pickup.go): a receipt
+	// that must be reconciled or cannot be confirmed holds here, never after a launch.
+	if plan.pickup, err = pickupAdmit(o); err != nil {
 		return err
 	}
 	if err := resolveResume(o, &plan); err != nil {
@@ -781,6 +789,8 @@ type dispatchPlan struct {
 	// through the alias registry, and the tracking checkout the PR's `Brief:` trailer resolves
 	// against. Inactive when the item declared no alias — the legacy path, unchanged.
 	dl deliverable
+	// pickup is the admitted context recheck (pickup.go), or nil when no receipt was given.
+	pickup *pickupResult
 	// followUpOf is the MERGED PR a --rework dispatch follows up (0 = not a follow-up). Set by
 	// applyFollowUp, pre-claim, so the worktree branch and the prompt agree.
 	followUpOf int

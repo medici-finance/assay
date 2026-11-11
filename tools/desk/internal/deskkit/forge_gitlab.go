@@ -4044,6 +4044,10 @@ func gitlabLabelColor(color string) string {
 // content base64-encoded; the optimistic-lock id an update must cite is `last_commit_id`, which
 // this maps onto FileContent.SHA (the same opaque-id contract the GitHub blob sha carries). A
 // 404 propagates as a *ForgeAPIError (IsForgeNotFound true) via mapErr.
+//
+// The Files API response names no entry type (#6163), so the adapter types the read itself
+// (glFileKind, then glTreeEntryKind) and FileContent.Kind carries the same values the GitHub
+// backend serves.
 func (g *GitLabForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, error) {
 	cl, err := g.client()
 	if err != nil {
@@ -4062,7 +4066,114 @@ func (g *GitLabForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, 
 	if sha == "" {
 		sha = f.BlobID
 	}
-	return &FileContent{Content: decoded, SHA: sha, Exists: true}, nil
+	kind := glFileKind(f, in.File, decoded)
+	if kind == glKindBlobProven {
+		kind = g.glTreeEntryKind(cl, repo, in.Ref, in.File, f.BlobID, f.ExecuteFilemode)
+	}
+	return &FileContent{Content: decoded, SHA: sha, Exists: true, Kind: kind}, nil
+}
+
+// glKindBlobProven is glFileKind's answer for a Files-API read whose served bytes are shown to
+// be the served blob. Like ghKindBlobProven it never leaves ReadFile: the blob proof cannot
+// tell a regular file from a symbolic link, so glTreeEntryKind settles it from the entry mode.
+const glKindBlobProven = "blob-proven"
+
+// glFileKind maps one Repository Files API read of file onto FileContent.Kind, except that it
+// never answers FileKindRegular: only the tree entry's mode proves that.
+//
+// The response carries no type and no mode. The endpoint serves the tree entry at the path
+// without following links, and its response shape differs per entry:
+//   - a regular or executable file serves its blob: content hashes to blob_id;
+//   - a symbolic link serves its own blob, the link's target text, so it also hashes to
+//     blob_id and execute_filemode is false; the response alone cannot tell it from a file;
+//   - a submodule serves empty content under blob_id = the submodule's commit id, which the
+//     empty blob does not hash to;
+//   - a file whose bytes are not valid UTF-8 text may be re-encoded before base64, so its
+//     content no longer hashes to blob_id.
+//
+// So the proof is: the response names the requested path, base64 encoding, and content that
+// hashes to blob_id. A response that names no path or no blob id does not identify an entry
+// and stays untyped (""), which every caller needing a plain record refuses. A failed proof is
+// FileKindUnproven. content is the decoded body the caller will hand on.
+func glFileKind(f *gitlab.File, file string, content []byte) string {
+	if f.FilePath == "" || f.BlobID == "" {
+		return ""
+	}
+	if strings.Trim(f.FilePath, "/") != strings.Trim(file, "/") ||
+		f.Encoding != "base64" || !gitBlobMatches(f.BlobID, content) {
+		return FileKindUnproven
+	}
+	return glKindBlobProven
+}
+
+// The tree-entry modes as GitLab's Repository Tree API serves them (the octal mode as a
+// string).
+const (
+	glModeRegular    = "100644"
+	glModeExecutable = "100755"
+	glModeSymlink    = "120000"
+	glModeGitlink    = "160000"
+)
+
+// glTreeEntryKind settles a blob-proven Files-API read from the tree entry at the same ref,
+// read through the Repository Tree API listing of the file's parent directory (the GitLab
+// half of #3149). The entry must be the blob the Files API served (id == blobID), so a ref
+// that moved between the two reads describes one entry, never two.
+//
+// FileKindRegular only for a regular or executable file mode on that blob, and only when the
+// Files API's execute_filemode agrees with the mode (GitLab derives it from the same mode, so
+// a disagreement means the two reads did not see one entry). The neutral type has no separate
+// executable slot: an executable file is a plain file. FileKindSymlink / FileKindSubmodule for
+// those modes. Anything else is FileKindUnproven, and so is a lookup that fails, cannot find
+// the entry, or reaches the page ceiling: the content stays readable to a caller that does not
+// need the kind, while one that needs a plain record treats the read as could-not-check. It
+// never fails the ReadFile.
+func (g *GitLabForge) glTreeEntryKind(cl *gitlab.Client, repo ForgeRepo, ref, file, blobID string, executable bool) string {
+	file = strings.Trim(file, "/")
+	opt := &gitlab.ListTreeOptions{}
+	if i := strings.LastIndex(file, "/"); i >= 0 {
+		opt.Path = gitlab.Ptr(file[:i])
+	}
+	if ref != "" {
+		opt.Ref = gitlab.Ptr(ref)
+	}
+	for page := 1; page <= gitlabMaxFilePage; page++ {
+		opt.ListOptions = gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)}
+		nodes, resp, err := cl.Repositories.ListTree(repo.Slug(), opt)
+		if err != nil {
+			return FileKindUnproven
+		}
+		for _, n := range nodes {
+			if n == nil || strings.Trim(n.Path, "/") != file {
+				continue
+			}
+			if n.ID == "" || !strings.EqualFold(n.ID, blobID) {
+				return FileKindUnproven
+			}
+			switch n.Mode {
+			case glModeRegular:
+				if executable {
+					return FileKindUnproven
+				}
+				return FileKindRegular
+			case glModeExecutable:
+				if !executable {
+					return FileKindUnproven
+				}
+				return FileKindRegular
+			case glModeSymlink:
+				return FileKindSymlink
+			case glModeGitlink:
+				return FileKindSubmodule
+			default:
+				return FileKindUnproven
+			}
+		}
+		if resp == nil || resp.NextPage == 0 {
+			return FileKindUnproven
+		}
+	}
+	return FileKindUnproven
 }
 
 // WriteFile writes a file's whole content with one conditional Commit API action.
