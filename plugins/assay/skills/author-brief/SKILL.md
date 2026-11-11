@@ -411,6 +411,14 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
      Run your project's consumers check — the diff-aware `statusgen --consumers` gate — over the
      branch before pushing an authoring change, so the deferred routing is confirmed locally rather
      than by a red check in CI.
+   - **The consumers Verify row works after the merge too**: the bare
+     `statusgen --consumers --brief <stream>/<NN>` row re-runs on merged main with no hand-pinned
+     commits. It pins itself to the delivery and that commit's first parent, read locally: the
+     committed Evidence's `Verification-Table:` marker if there is one, otherwise the one
+     first-parent commit whose message (or a commit it merged) carries `Brief: <stream>/<NN>`. So
+     the implementation PR's commits carry that trailer, and a later PR for the same brief should
+     not repeat it: zero or several candidates is exit 2 (COULD-NOT-CHECK), and the remedy is an
+     explicit `--delivery <full-sha> --base <its first parent>`.
    - **Flow Verify row**: a shared-value brief's Verify table must carry at least one row exercising
      the cross-component flow end-to-end (e.g. *frontend submits form → API persists → dashboard row
      appears*), not just the changed site. Site-green does not imply flow-green. This one stays a
