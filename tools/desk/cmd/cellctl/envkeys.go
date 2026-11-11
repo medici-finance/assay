@@ -262,6 +262,10 @@ func buildEnvKeys() []envKey {
 			why: "is one cell's own database and role"},
 		envKey{key: "CELL_DB_PASSFILE", class: envCell, desc: "The absolute path of the cell database's pgpass file (mode 0600 or 0400); exported as PGPASSFILE when CELL_DB_DSN is set.",
 			why: "is one cell's database credential file"},
+		envKey{key: "CELL_ROLE_SECRETS", class: envCell, desc: "Role-secret bindings, <owner>/<repo>:<role>:<service>=<abs path>,...: an owner-only file mounted read-only into the worker-desk or verify-desk container only, its PATH exported as ASSAY_ROLE_SECRET_<SERVICE>_FILE (unset: none). Read from cell.env only; container surface only.",
+			why: "binds one cell's project secrets to its own roles"},
+		envKey{key: "CELL_ROLE_SECRET_SURFACE", class: envCell, desc: "The read-isolation surface that keeps role secrets from non-holding windows; only container is accepted (host is not built yet). Unset: no role secret binds.",
+			why: "declares one cell's read-isolation surface for its role secrets"},
 
 		// ── not a lever: switches for one run ────────────────────────────────────────────────
 		envKey{key: "CELLS_ROOT", class: envNotLever, from: envFromRun,

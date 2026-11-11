@@ -710,6 +710,26 @@ and `check`, naming the key and never its value: that profile composes no databa
 claim that cells are separated from each other (see [`docs/postgres.md`](postgres.md) §Isolation
 boundary).
 
+**Role secrets rows** — only when `cell.env` sets `CELL_ROLE_SECRETS` or
+`CELL_ROLE_SECRET_SURFACE` (with neither set, no row is printed). This release binds role secrets
+on a **native container surface only**: `CELL_KIND=container` with `CELL_CONTAINER_CONFIG` and
+`CELL_ROLE_SECRET_SURFACE=container`. Every other surface is a `MISS` and `desk` refuses to
+launch: any host kind (the one-OS-user desktop cell included), a Kubernetes compatibility cell, a
+container cell on an external `CELL_CONTAINER_LAUNCHER`, and `CELL_ROLE_SECRET_SURFACE=host`,
+whose per-role identity launch is a follow-up. On a container surface, each bound file is a `MISS`
+unless it exists, is a regular file (a symlink is refused, wherever it points), is mode `0600` or
+stricter, is owned by the identity `cellctl` runs as, carries no access-control list, sits in a
+directory that identity owns, nobody else can write and that carries no list, and lies inside no
+git checkout or worktree. The surface itself is a `MISS` while any other cell under the cells root
+runs host windows (they run as the file's owner and could open it by its path), runs on an external
+launcher, mounts a bound file, binds the same file, or shares a writable volume with this cell's
+containers; an unreadable cell is counted, never skipped. The rows print paths and role
+bindings, never a value: `cellctl` never opens a secret file. `desk`, `up` and the container's
+own run re-verify every file at each launch, so a removed or re-moded file refuses the next one;
+each launch appends a receipt (launch time, cell, role, project, service, path, file modification
+time — never a value or a hash of one) to `<cell>/state/role-secrets.receipts`. See
+[`containers/secrets.md`](../containers/secrets.md) §Project role secrets.
+
 Run it after `new`, and again after any key or token rotation.
 
 ---
@@ -1671,6 +1691,8 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `TMUX_SESSION` | override the tmux session name (default `<cell>-cell`) |
 | `CELL_DB_DSN` | the cell's own PostgreSQL database, as a libpq connection string with **no password** (for example `host=127.0.0.1 port=5432 dbname=cell_example_cell user=cell_example_cell sslmode=disable`); when set, every role window gets it as `ASSAY_CELL_DB_DSN`; unset, the cell has no database and nothing is composed (see [`docs/postgres.md`](postgres.md)) |
 | `CELL_DB_PASSFILE` | the absolute path of that database's pgpass file (mode `0600` or `0400`, outside the repository); exported as `PGPASSFILE` when `CELL_DB_DSN` is set, so libpq reads the password itself and it is never an environment value or an argv element |
+| `CELL_ROLE_SECRETS` | role-secret bindings for a native container cell, comma-separated `<owner>/<repo>:<role>:<service>=<absolute path>` entries: the project must be the container cell's repository, the role `worker-desk` or `verify-desk` (any other role refuses every launch), the service a `service:<name>` name. Each file is mounted read-only at `/run/secrets/role-<service>` into that role's container only, and `ASSAY_ROLE_SECRET_<SERVICE>_FILE` (`.` and `-` spelled `_`) names the path; no value is ever read, printed or exported. Read from `cell.env` only: a value from the shell or `defaults.env` is refused. See *Role secrets* below |
+| `CELL_ROLE_SECRET_SURFACE` | the read-isolation surface the cell declares for its role secrets; only `container` is accepted this release. Unset, `host` (per-role OS identity launch is not built yet) or anything else binds no role secret: `check` reports a MISS and `desk` refuses |
 
 ### Machine-wide defaults — `defaults.env`
 
@@ -1821,6 +1843,7 @@ processes are not configuration.
 | `CELL_GO_CACHE_ROOT` | a managed cache root is marked for exactly one cell, and a second cell is refused it |
 | `CELL_CONTAINER_CONFIG`, `CELL_CONTAINER_LAUNCHER` | bind one cell to its container definition or launcher |
 | `CELL_DB_DSN`, `CELL_DB_PASSFILE` | one cell's database and its credential file: each cell has its own role and database ([docs/postgres.md](postgres.md)) |
+| `CELL_ROLE_SECRETS`, `CELL_ROLE_SECRET_SURFACE` | one cell's project-secret bindings and the read-isolation surface that keeps them from its non-holding windows; read from the cell's own `cell.env` only ([`containers/secrets.md`](../containers/secrets.md)) |
 | `CELL_KUBERNETES_CONFIG` | binds one cell to its explicit Kubernetes compatibility profile and approved target |
 | `CELL_FORGE`, `GITHUB_HOST`, `FORGE_API_BASE`, `GITLAB_API_BASE`, `GITLAB_GROUP`, `GITLAB_TOKEN_STORE`, `DESKD_GITLAB_TOKEN_FILE`, `DESKD_APP_PEM`, `DESKD_APP_ID_VAR`, `ORGS` | one cell's forge binding: which forge its credentials are minted for, held in and sent to |
 | `CELLS_ROOT`, `XDG_DATA_HOME` | locate this file: the cells root, and the data directory its default is under, are resolved before the file is read |

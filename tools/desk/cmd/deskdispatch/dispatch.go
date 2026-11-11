@@ -217,6 +217,11 @@ func executeDispatch(o dispatchOpts, override string) error {
 }
 
 func dispatch(o dispatchOpts) error {
+	// A window holding a role-secret path never dispatches a review kit or an item with no
+	// forge item behind it; refused before any other check or child process (rolesecret.go).
+	if err := roleSecretPrecheck(o); err != nil {
+		return err
+	}
 	if err := storageAdmission(o.dryRun, o.root); err != nil {
 		return err
 	}
@@ -234,7 +239,16 @@ func dispatch(o dispatchOpts) error {
 	if err != nil {
 		return err
 	}
+	// The role-secret trust boundary: in a holding window, an untrusted item or a --pr head not
+	// provably pushed by roster logins is refused here, before the claim (rolesecret.go).
+	admittedHead, err := roleSecretAdmission(o, plan.repo)
+	if err != nil {
+		return err
+	}
 	if err := resolveResume(o, &plan); err != nil {
+		return err
+	}
+	if err := roleSecretPinHead(admittedHead, plan); err != nil {
 		return err
 	}
 	repo, branch, wtName := plan.repo, plan.branch, plan.wtName

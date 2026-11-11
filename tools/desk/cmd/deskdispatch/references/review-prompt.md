@@ -96,8 +96,11 @@ report. Record the check could-not-check, name the environment it needs, and let
 rest on it. Never ask for the secret, and never run a PR head with one in its environment. The
 Verify row is witnessed after merge: the verifier records it could-not-check with its exact
 command, which places the brief in the board's Environment-blocked queue, where an operator who
-holds that environment, never the implementer, runs it. A Verify row whose `Env` cell names
-anything but `tree` while classed `check:ci` is a finding; `statusgen --lint` reddens it.
+holds that environment, never the implementer, runs it. For a `service:` row, only the
+verifier's signed outcome for that row is ever evidence, and never a run report. Until the
+signed verdict lane is enacted there is none, and the row stays could-not-check. A Verify row
+whose `Env` cell names anything but `tree` while classed `check:ci` is a finding;
+`statusgen --lint` reddens it.
 
 **Read what an instrument printed, not only its exit code.** Two read-only runs report
 through their output:

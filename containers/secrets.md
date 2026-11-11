@@ -40,6 +40,7 @@ human decision, never a model self-clear.
 | Model API key / auth token | Runtime **env** | `--env-file` / compose `env_file` / k8s `envFrom` a Secret | Never. |
 | Model endpoint + model selection | Runtime **env** | same as above | Never (non-secret, but still runtime-supplied — see §3). |
 | GitHub token (if a pre-minted one is used at all) | Runtime **env** | same as above | Never. |
+| Project role secret (a `service:<name>` Verify row's credential) | Mounted **file**, read-only, **worker and verifier containers only** | Native container cell (`cellctl`) bind at `/run/secrets/role-<service>`; `ASSAY_ROLE_SECRET_<SERVICE>_FILE` names the path (§4.4) | Never: neither the file nor the path variable. |
 
 The desks mint their own short-lived, per-role GitHub tokens **from the mounted
 PEM** at runtime (via `desktoken`); the PEM is therefore the root GitHub secret,
@@ -114,6 +115,7 @@ The container treats the whole set as runtime input.
 ## 4. Per-surface injection recipes
 
 All four surfaces implement §2 and §3 identically; only the syntax differs.
+Project role secrets (§4.4) are bound by native container cells only.
 
 ### 4.1 `docker run` (interactive launch)
 
@@ -177,6 +179,79 @@ volumes:
 Manifests ship with **placeholder** Secret names / `example` values and a
 `kustomization.yaml` so a cluster overlays its real secret names — the manifests
 themselves carry no credential.
+
+### 4.4 Project role secrets (native container cells)
+
+A project secret that a worker or verifier needs for a `service:<name>` Verify
+row reaches that role's container as a **path**, never a value. The scope unit
+is (project repository, role, service name). Only `worker-desk` and
+`verify-desk` may hold one; the reviewer, intake and the coordinator never do.
+
+This release builds the **container surface only**. The operator keeps each
+secret in an owner-only file on the host and names it in the cell's own
+`cell.env` (never `defaults.env`, never the launching shell):
+
+```
+CELL_KIND=container
+CELL_CONTAINER_CONFIG=<operator-path>/containers.json
+CELL_ROLE_SECRET_SURFACE=container
+CELL_ROLE_SECRETS=<owner>/<repo>:worker-desk:<service>=<host-path-to>/<service>.secret
+```
+
+`cellctl desk` / `up` then plans, for that role's container only:
+
+```
+--mount type=bind,src=<host-path-to>/<service>.secret,dst=/run/secrets/role-<service>,readonly
+-e ASSAY_ROLE_SECRET_<SERVICE>_FILE=/run/secrets/role-<service>
+```
+
+(`.` and `-` in the service name are spelled `_` in the variable.) The
+reviewer, intake and coordinator containers get no such mount and no such
+variable; a binding to any of those roles refuses every launch rather than
+being dropped.
+
+`cellctl check`, `desk` and the container's own run verify, at **every**
+launch and without ever opening the file, that:
+
+- the file exists, is a regular file (not a symlink), is mode `0600` or
+  stricter, is owned by the identity `cellctl` runs as, and carries no
+  access-control list; its directory is owned by that identity, writable by
+  nobody else, and carries no list either;
+- the file lies inside no git checkout or worktree;
+- the binding's project is the container cell's repository;
+- no other cell under the same cells root runs host windows (they run as the
+  file's owner and could open it by its path), runs on an external launcher,
+  mounts the file, binds the same file, or shares a writable volume with this
+  cell's containers. An unreadable cell refuses the binding.
+
+Any failure is a `MISS` in `check` and a refusal in `desk`. Every other
+surface binds nothing and refuses: a host kind (including the one-OS-user
+desktop cell), a Kubernetes compatibility cell, an external
+`CELL_CONTAINER_LAUNCHER`, and `CELL_ROLE_SECRET_SURFACE=host`, whose per-role
+OS identity launch is a follow-up. On those surfaces, rows that need a secret
+stay in the Environment-blocked queue. A harness read-deny rule is client-side
+and advisory and is never enough on its own.
+
+Inside a holding window, `deskdispatch` refuses, before any claim, every item
+it cannot show to be trusted from forge data: a review-kit dispatch, an item
+with no forge item behind it, an untrusted unblessed issue or change, and a
+change whose head is not provably pushed by roster logins. It also strips every
+`ASSAY_ROLE_SECRET_*` variable from every child process it starts.
+
+**Revocation and audit.** Replacing or deleting the host file stops future
+launches only: a removed file makes the next launch for that role refuse. It
+does not invalidate a copy that has already leaked; revoking a leaked secret
+means rotating it at the issuing service, then replacing the file. Each launch
+appends one JSON line per bound service to `<cell>/state/role-secrets.receipts`
+(directory `0700`, file `0600`): launch time, cell, role, project, service,
+path and the file's modification time — never the value, and never a hash of
+it (a hash of a short password is a guessing oracle).
+
+Residual exposure the surface does not remove: any other process on the host
+running as the file's owner, outside every cell, can still read the file; and
+a trusted worker's own dependency can exfiltrate the secret it legitimately
+holds. Keep role secrets to non-production, per-role, per-service credentials,
+and rotate on any doubt.
 
 ---
 

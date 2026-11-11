@@ -19,7 +19,47 @@ type Config struct {
 	Image      string          `json:"image"`
 	Platform   string          `json:"platform"`
 	Cells      map[string]Cell `json:"cells"`
+	// RoleSecrets is not part of the file: cellctl sets it (SetRoleSecrets) from the cell's own
+	// role-secret map once it has verified the files and the surface. Keyed by cell name, then
+	// by desk role (Roles' values).
+	RoleSecrets map[string]map[string][]SecretBind `json:"-"`
 }
+
+// SecretBind is one project secret bound to a role: the service it is for and the operator's
+// owner-only host file holding it. Only the PATH reaches a container, as a read-only file bind.
+type SecretBind struct {
+	Service, Source, EnvName string
+}
+
+// RoleSecretTargetPrefix is where a bound secret file appears inside a holding container.
+const RoleSecretTargetPrefix = "/run/secrets/role-"
+
+// RoleSecretHolders are the container role keys that may hold a role secret: the worker and the
+// verifier. Every other role is refused a binding.
+var RoleSecretHolders = map[string]bool{"worker": true, "verifier": true}
+
+// SetRoleSecrets installs the verified bindings and re-validates the configuration, so every
+// directory bind is compared against the secret files as protected paths too.
+func (c *Config) SetRoleSecrets(m map[string]map[string][]SecretBind) error {
+	for cell, roles := range m {
+		if _, ok := c.Cells[cell]; !ok {
+			return fmt.Errorf("role secrets name cell %q, which the container config does not define", cell)
+		}
+		for role, binds := range roles {
+			for _, b := range binds {
+				if !absolute(b.Source) || !secretServiceRE.MatchString(b.Service) || !secretEnvRE.MatchString(b.EnvName) {
+					return fmt.Errorf("invalid role secret binding for %s/%s", cell, role)
+				}
+			}
+		}
+	}
+	c.RoleSecrets = m
+	return c.Validate()
+}
+
+var secretServiceRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+var secretEnvRE = regexp.MustCompile(`^ASSAY_ROLE_SECRET_[A-Z0-9_]+_FILE$`)
+
 type Cell struct {
 	Repo     string          `json:"repo"`
 	Incoming string          `json:"incoming"`
@@ -80,6 +120,13 @@ func (c *Config) protected() []string {
 			out = append(out, r.AppKey)
 			if r.ClaudeToken != "" {
 				out = append(out, r.ClaudeToken)
+			}
+		}
+	}
+	for _, roles := range c.RoleSecrets {
+		for _, binds := range roles {
+			for _, b := range binds {
+				out = append(out, b.Source)
 			}
 		}
 	}
@@ -337,6 +384,22 @@ func (c *Config) Plan(name, key, harness, model string) (*Plan, error) {
 		p.Mounts = append(p.Mounts, Mount{"bind", r.AppKey, "/run/secrets/app.pem", true})
 		p.Env[strings.ToUpper(strings.ReplaceAll(name+"_"+key, "-", "_"))+"_PEM"] = "/run/secrets/app.pem"
 		p.Env[strings.ToUpper(strings.ReplaceAll(key, "-", "_"))+"_PEM"] = "/run/secrets/app.pem"
+	}
+	// Role secrets: a read-only file bind per service, and one variable naming its path, for
+	// the worker and the verifier only. A binding for any other role refuses the plan rather
+	// than being dropped. The value is never read here.
+	if binds := c.RoleSecrets[name][Roles[key]]; len(binds) > 0 {
+		if !RoleSecretHolders[key] {
+			return nil, fmt.Errorf("role %s may not hold a role secret, and %d are bound to it", key, len(binds))
+		}
+		for _, b := range binds {
+			target := RoleSecretTargetPrefix + b.Service
+			if _, dup := p.Env[b.EnvName]; dup {
+				return nil, fmt.Errorf("role secret variable %s is bound twice", b.EnvName)
+			}
+			p.Mounts = append(p.Mounts, Mount{"bind", b.Source, target, true})
+			p.Env[b.EnvName] = target
+		}
 	}
 	if harness == "claude" {
 		if r.ClaudeToken == "" {

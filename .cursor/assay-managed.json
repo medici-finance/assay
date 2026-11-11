@@ -25,7 +25,7 @@
     ".cursor/skills/intake-desk/SKILL.md": "8c981ff91fb7b3da53f109aba4cbe882835841b5fb9fa4e2f4d06a29fde083cf",
     ".cursor/skills/pdfingest/SETUP.md": "ff2c52f24528164712ae951caa729f90318b16dbe5d604f2b8e24aa955773f23",
     ".cursor/skills/pdfingest/SKILL.md": "18d69fb22a5d6ccbb9cb8a174f9d8f5ef5a9154d9cb305a89f630f12991feea9",
-    ".cursor/skills/pr-review-desk/SKILL.md": "e2d71ee18f4e7c8e422fc465907fac3ee5d7cecc6a0797a8eefce02f2252b872",
+    ".cursor/skills/pr-review-desk/SKILL.md": "004958c1cb37bb288fe1a8d755a956b639d89d63af02e9fec4aa1f189dd3324e",
     ".cursor/skills/pr-review-desk/references/leak-audience-check.md": "9d3163bb0fa0da74865ef128409866fa6e5ecbf9d2e64858a7addac9db8ed568",
     ".cursor/skills/pr-review-desk/references/merge-time-recheck.md": "558248aa76c930c578c2fb256ee9c14a1ae5dd066202053499b4e422ad33791e",
     ".cursor/skills/pr-review-desk/references/out-of-scope-filing.md": "d850da0002a43a5ecca1a6c6fab054c8d70731ca6b341209ddb9268ed3e7d2bc",
@@ -40,8 +40,8 @@
     ".cursor/skills/trace-path-to-live/SKILL.md": "3f53cf3cb564fb8631e42f14a82cd31b4f5fe7ac8cae9f0044c20b4f01193c66",
     ".cursor/skills/trace-path-to-live/references/report.md": "91fad1473fb5876ca40aff859be4376c147a5952797c062ea1487a4fabacfdf1",
     ".cursor/skills/upgrade-assay/SKILL.md": "629fb0269d7344583a8fca08d801b32a3d8f3dbb28db7fa5af9be732928df775",
-    ".cursor/skills/verify-desk/SKILL.md": "35efd92f703407e17fc2bab1a40707e8c330c8a57e730949eb27728e9e66365b",
-    ".cursor/skills/worker-desk/SKILL.md": "b76b9e5a854289653805679ee08904f83517e99962740cede65fd6952f1d5748",
+    ".cursor/skills/verify-desk/SKILL.md": "2ba647bcd2d354f527b352c73cf6552a8b925de9da903857f0d88fb09c3756ee",
+    ".cursor/skills/worker-desk/SKILL.md": "0bba64fd1838137b5ee714290412c7f2941fd9a9623b7fc4803a67d7b6c153ae",
     ".cursor/skills/worker-desk/references/dispatch-runbook.md": "61f6196d7830a57b9ef84c2cf4b2d4862a62207625893fc74e91f0e878b8672b"
   },
   "bindingsSha256": "c773cfb4677870fadbc5d5eac55ec2bf64cb2f92dc39a1278a026c6668bec43e"

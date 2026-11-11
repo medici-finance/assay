@@ -257,6 +257,13 @@ var envKeyOtherReads = map[string]envOtherRead{
 	"Source(providerVar(name, suffix))@provider.go:providerValue": {provider: true,
 		why: "which file supplied the provider value just read"},
 
+	"Get(k)@rolesecret.go:roleSecretBindings": {keys: []string{"CELL_ROLE_SECRETS", "CELL_ROLE_SECRET_SURFACE"},
+		why: "the two role-secret binding keys, refused unless cell.env supplies them"},
+	"IsSet(k)@rolesecret.go:roleSecretBindings": {keys: []string{"CELL_ROLE_SECRETS", "CELL_ROLE_SECRET_SURFACE"},
+		why: "whether either role-secret binding key is set at all"},
+	"Source(k)@rolesecret.go:roleSecretBindings": {keys: []string{"CELL_ROLE_SECRETS", "CELL_ROLE_SECRET_SURFACE"},
+		why: "which layer supplied a role-secret binding key; only cell.env is accepted"},
+
 	// ── Env.Get handed to another package ──
 	"c.Env.Get@cache.go:cachePolicy": {keys: []string{"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE", "CELL_GO_CACHE_BUILD_MAX_AGE",
 		"CELL_GO_CACHE_LOW_WATER_PERCENT", "CELL_GO_CACHE_TRIM_MIN_AGE", "CELL_GO_TRIMPATH"},
@@ -291,6 +298,8 @@ var envKeyOtherReads = map[string]envOtherRead{
 	"envFileValue(rm.Src)@show.go:cmdShow":                     {why: "whether that same variable is in cell.env, for display"},
 	`Get("http://" + c.DeskdAddr + "/healthz")@git.go:deskdUp`: {why: "an HTTP client's Get, not an Env's"},
 	"res.Source@deskd.go:deskdMintGitHub":                      {why: "a struct field named Source, not the Env reader"},
+	"b.Source@rolesecret.go:writeRoleSecretReceipts":           {why: "a mount's host path (a struct field named Source), not the Env reader"},
+	"m.Source@rolesecret.go:printRoleSecretPlan":               {why: "a mount's host path (a struct field named Source), not the Env reader"},
 }
 
 // checkEnvReads classifies a set of reads against the registry. It returns one line per
