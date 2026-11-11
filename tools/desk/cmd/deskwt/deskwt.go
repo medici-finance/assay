@@ -1011,8 +1011,8 @@ var worktreeLockFn = func(dir, reason, rt string) error {
 }
 
 // worktreeUnlock runs `git worktree unlock <rt>`. It is the one spelling of the unlock that
-// role-init (its remove arm and its stale-registration recovery) and the husk remover share,
-// so the git-exec ratchet (scripts/count-git-exec.sh) counts one site for all three.
+// role-clean, role-init's stale-registration recovery and the husk remover share, so the
+// git-exec ratchet (scripts/count-git-exec.sh) counts one site for all three.
 func worktreeUnlock(dir, rt string) error {
 	_, err := runGit(dir, "worktree", "unlock", rt)
 	return err
