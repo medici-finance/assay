@@ -1650,6 +1650,12 @@
       "file": "heldscope.go",
       "old": "&& !heldHTMLTableRe.MatchString(line)\n}",
       "new": "\n}"
+    },
+    {
+      "name": "S3: fail-first retained-output Base cells stop covering an earlier hold",
+      "file": "heldscope.go",
+      "old": "(?: output=sha256:[0-9a-f]{64} log=row-[0-9]{6}\\.log)?",
+      "new": ""
     }
   ]
 }

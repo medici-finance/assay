@@ -21,11 +21,24 @@ type baseOutputLog struct {
 
 // openBaseLogParent rejects every symlink component and pins opened directories.
 // Comparing the opened inode with Lstat also refuses a substitution during open.
-func openBaseLogParent(path string) (*os.Root, error) {
+func openBaseLogParent(path string, homes ...os.FileInfo) (*os.Root, error) {
 	anchor := filepath.VolumeName(path) + string(filepath.Separator)
 	current, err := os.OpenRoot(anchor)
 	if err != nil {
 		return nil, err
+	}
+	insideHome := func(info os.FileInfo) bool {
+		for _, home := range homes {
+			if os.SameFile(info, home) {
+				return true
+			}
+		}
+		return false
+	}
+	anchorInfo, err := current.Stat(".")
+	if err != nil || insideHome(anchorInfo) {
+		current.Close()
+		return nil, fmt.Errorf("base-log must be outside the admitted and baseline history homes")
 	}
 	for _, part := range strings.Split(strings.TrimPrefix(path, anchor), string(filepath.Separator)) {
 		if part == "" {
@@ -39,6 +52,10 @@ func openBaseLogParent(path string) (*os.Root, error) {
 		if before.Mode()&os.ModeSymlink != 0 || !before.IsDir() {
 			current.Close()
 			return nil, fmt.Errorf("base-log parent must contain only real directories")
+		}
+		if insideHome(before) {
+			current.Close()
+			return nil, fmt.Errorf("base-log must be outside the admitted and baseline history homes")
 		}
 		next, err := current.OpenRoot(part)
 		if err != nil {
@@ -60,6 +77,7 @@ func newBaseOutputLog(home, path string, otherHomes ...string) (*baseOutputLog, 
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return nil, fmt.Errorf("base-log must be a clean absolute path without traversal")
 	}
+	var homes []os.FileInfo
 	for _, candidate := range append([]string{home}, otherHomes...) {
 		absolute, err := filepath.Abs(candidate)
 		if err != nil {
@@ -72,8 +90,13 @@ func newBaseOutputLog(home, path string, otherHomes ...string) (*baseOutputLog, 
 		if _, inside := relWithin(real, path); inside {
 			return nil, fmt.Errorf("base-log must be outside the admitted and baseline history homes")
 		}
+		info, err := os.Stat(real)
+		if err != nil {
+			return nil, err
+		}
+		homes = append(homes, info)
 	}
-	parent, err := openBaseLogParent(filepath.Dir(path))
+	parent, err := openBaseLogParent(filepath.Dir(path), homes...)
 	if err != nil {
 		return nil, err
 	}

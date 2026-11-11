@@ -1696,7 +1696,7 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 		}
 		state, note := parseExpect(r.Expect).verdict(res)
 		captureFailed := false
-		if plan.captureOutput != nil && !res.couldNotRun {
+		if plan.captureOutput != nil && !res.couldNotRun && (state == statePass || state == stateFail) {
 			if err := plan.captureOutput(r.ID, res.output); err != nil {
 				state, note = stateCouldNotRun, "could not retain base primary output"
 				captureFailed = true

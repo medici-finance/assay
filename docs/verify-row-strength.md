@@ -163,11 +163,12 @@ or write failure is could-not-check, rather than a successful fail-first witness
 If the platform cannot establish the required private directory/file modes, retention
 fails closed; this does not affect runs without the option.
 
-Each completed base execution's `Base` cell also records its full output SHA-256 and generated log
+Each red or green base execution's `Base` cell also records its full output SHA-256 and generated log
 filename. Read the retained bytes and compare their digest before crediting a required diagnostic;
 the tool still does not interpret arbitrary prose in the contract. A hash or nonzero exit by itself
 does not establish that the intended assertion failed. Skipped/unexecuted rows have no output
-record. Without `--base-log`, existing witnesses and behavior are unchanged.
+record; this includes executions whose Expect cannot be evaluated, such as a missing numeric
+count. Without `--base-log`, existing witnesses and behavior are unchanged.
 
 The retained files contain raw row output. Keep them under the verification evidence's existing
 custody, outside the source checkout, and retain them before disposing of an execution container.

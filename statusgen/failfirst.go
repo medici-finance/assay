@@ -405,7 +405,7 @@ func runFailFirstBase(plan shellPlan, sandbox, root, base string, rows []verifyR
 		default:
 			f.State = baseUnproven
 		}
-		if retained != nil {
+		if retained != nil && (f.State == baseRed || f.State == baseGreen) {
 			if record, ok := retained.rows[w.ID]; ok {
 				f.OutputDigest, f.LogName = record.digest, record.name
 			}

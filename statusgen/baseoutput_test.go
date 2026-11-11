@@ -87,6 +87,79 @@ func TestBaseOutputRetainsPrimaryBytes(t *testing.T) {
 	}
 }
 
+func TestBaseOutputUnprovenDoesNotEmitMetadata(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("private POSIX-mode logs")
+	}
+	root, _, base, _, _, _ := ffRepo(t)
+	path := filepath.Join(canonicalPath(t.TempDir()), "primary")
+	log, err := newBaseOutputLog(root, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer log.close()
+	rows := []verifyRow{{ID: "1", Command: "printf 'no numbers here\\n'", Expect: "≥ `1`"}}
+	got, err := runFailFirstBase(resolveShellPlan(), sandboxUnshare, root, base, rows, map[string]bool{"1": true}, time.Minute, false, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := got["1"]
+	if f.State != baseUnproven || f.OutputDigest != "" || f.LogName != "" {
+		t.Fatalf("unproven record: %+v", f)
+	}
+	w := witness{ID: "1", Command: "check", State: stateCouldNotRun, Exit: 0, OutHash: "0123456789ab", Date: "2026-11-01", Runner: "fixture", Tree: "aaaaaaaaaaaa", Base: failFirstCell(f.Base, f.State, f.Exit, "aaaaaaaaaaaa")}
+	if parsed, ok := failFirstOf(w.row()); !ok || parsed.State != baseUnproven {
+		t.Fatalf("unreadable unproven record: %+v ok=%v", parsed, ok)
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("unproven output artifacts: %v err=%v", entries, err)
+	}
+}
+
+func TestBaseOutputRejectsHomeDirectoryIdentity(t *testing.T) {
+	home := canonicalPath(t.TempDir())
+	child := filepath.Join(home, "child")
+	if err := os.Mkdir(child, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parent, err := openBaseLogParent(child, info); err == nil {
+		parent.Close()
+		t.Fatal("opened a parent chain through the home inode")
+	}
+}
+
+func TestBaseOutputRejectsCaseInsensitiveHomeAlias(t *testing.T) {
+	parent := canonicalPath(t.TempDir())
+	home := filepath.Join(parent, "SourceHome")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(parent, "sourcehome")
+	a, err := os.Stat(alias)
+	if os.IsNotExist(err) {
+		t.Skip("case-sensitive filesystem")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.Stat(home)
+	if err != nil || !os.SameFile(a, b) {
+		t.Fatal("case alias does not name the home")
+	}
+	if log, err := newBaseOutputLog(home, filepath.Join(alias, "logs")); err == nil {
+		log.close()
+		t.Fatal("accepted a case alias inside the home")
+	}
+	if _, err := os.Stat(filepath.Join(home, "logs")); !os.IsNotExist(err) {
+		t.Fatal("containment refusal created log directory")
+	}
+}
+
 func TestBaseOutputRefusesUnsafePaths(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("private POSIX-mode output directories and symlink controls")
