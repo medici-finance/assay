@@ -50,16 +50,30 @@ There is no skip or borrowed-file fallback. SHA bounds and acceptance limits are
 With a named `--brief` and neither `--base` nor `--delivery`, a brief the branch diff does
 not carry (merged main, where HEAD equals the base ref, or no base ref at all) used to be
 could-not-check forever, because no diff can corroborate a claim made by a merged change.
-It now derives the pin instead, from one source only: the literal
+It now derives the pin instead, from two local sources in a fixed order: first the literal
 `Verification-Table: delivery=<sha> base=<sha> original=<sha>` marker in the brief's
-**committed** Evidence at HEAD. The recorded triple is authenticated by the same reader the
+**committed** Evidence at HEAD, then, only when that Evidence carries no marker at all, the
+checked-out history (below). Explicit `--delivery`/`--base` flags outrank both. The recorded triple is authenticated by the same reader the
 protected-table closure uses (the delivery is an ancestor of HEAD on its first-parent chain,
 and the recorded base is its exact baseline). The pinned base is then computed as the
 delivery's own first parent, never copied from the marker, and the run is the delivery mode
 above (immutable snapshot, exact summary counts, same exit codes).
 
+With no marker, the delivery is the one first-parent commit of HEAD that names
+`Brief: <stream>/<NN>` as a trailer: in its own message (a squash or direct commit), or in a
+commit it merged (a merge commit, whose own message is title-only on GitHub). Trailers are
+read fence-aware, and the id must match exactly (`alpha/010` does not name `alpha/01`). The
+pin is that commit's first parent, so a merge delivery is the merge commit against the
+mainline it landed on, the same range the marker path pins. Nothing is fetched and no forge is
+asked, so this works from a verifier home detached at `origin/main`. Zero naming commits,
+several (a later follow-up PR that carries the same trailer makes the history ambiguous), a
+shallow repository, an octopus merge, or a candidate not reachable from the fetched mainline
+ref is could-not-check (exit 2), and the refusal names what was searched. A stderr line names
+the derived delivery and which source supplied it.
+
 It is could-not-check (exit 2), never an unpinned diff and never a verdict, when the brief is
-not committed at HEAD, has no marker, a code-span or malformed marker, short ids, more than
+not committed at HEAD, has no marker and no single history candidate, a code-span or
+malformed marker (a malformed marker never falls through to history), short ids, more than
 one distinct delivery, a delivery that is not on HEAD's first-parent chain, a base that
 is not its baseline, or a delivery that is not reachable from the fetched mainline ref
 (`refs/remotes/origin/main`; with no such ref nothing can be shown to have landed). No
@@ -73,14 +87,15 @@ against that diff exactly as before. Without `--brief` nothing is derived.
 
 Limit: the base is bound and the delivery is not. The base is computed from the named
 delivery, never copied from the marker, but the delivery itself is chosen by whoever wrote
-the committed marker: it is checked against the git graph (on HEAD's first-parent chain,
+the committed marker, or, on the history path, by whoever wrote the `Brief:` trailer: it is checked against the git graph (on HEAD's first-parent chain,
 landed on the mainline ref, with its exact baseline), not against the brief's declared files
 or any record the verifier does not author. A marker that names a later mainline commit is
 accepted, so a reviewer still owns the claim that the named commit is the real delivery.
 The derivation reads every marker in the committed Evidence and refuses distinct triples;
-the protected-table closure reads only the current run's marker. Evidence that has not yet recorded a marker gets
-could-not-check. The `consumer-delivery-range` lint below is unchanged and still asks for
-explicit pins in authored rows.
+the protected-table closure reads only the current run's marker. Evidence that has not yet
+recorded a marker falls back to the history search, which is could-not-check unless exactly
+one first-parent commit names the brief. The `consumer-delivery-range` lint below is
+unchanged and still asks for explicit pins in authored rows.
 
 A row re-authored under the
 [immutable-delivery rule](protected-paths.md#explicit-human-approved-acceptance-transitions)

@@ -1,14 +1,22 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
 var consumerCommit = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+// noMarkerReason is deriveConsumerDelivery's answer when the committed Evidence
+// names no delivery at all. It is the only answer that falls through to the
+// history search; a malformed or unauthenticated marker is still a refusal.
+const noMarkerReason = "the committed Evidence has no Verification-Table marker naming the delivery"
 
 // runDeliveryConsumers evaluates the declared routes at a bounded historical
 // delivery, including claims inherited from a separate authoring change. Ordinary
@@ -194,7 +202,7 @@ func deriveConsumerDelivery(root, rel string) (delivery, base, why string) {
 	_, evidence := briefSectionsOf(string(blob))
 	markers := protectedMarkers(normalizeProtectedEvidence(evidence))
 	if len(markers) == 0 {
-		return "", "", "the committed Evidence has no Verification-Table marker naming the delivery"
+		return "", "", noMarkerReason
 	}
 	type triple struct{ delivery, base, original string }
 	var chosen *triple
@@ -236,7 +244,9 @@ func deriveConsumerDelivery(root, rel string) (delivery, base, why string) {
 // runDerivedConsumers is the --consumers --brief path with no --base and no
 // --delivery, reached only where the branch diff carries no evidence about the
 // named brief (merged main, or no diff at all). It pins the run to the brief's
-// recorded delivery and its first parent, or reports COULD-NOT-CHECK.
+// delivery and its first parent, or reports COULD-NOT-CHECK. The delivery comes
+// from the committed Verification-Table marker when there is one, and otherwise
+// from the checked-out history (deriveHistoryDelivery).
 func runDerivedConsumers(root string, streams []*Stream, briefFilter string) (code int, why string) {
 	briefs := selectConsumerBriefs(root, streams, map[string]bool{}, briefFilter)
 	if len(briefs) != 1 {
@@ -247,8 +257,127 @@ func runDerivedConsumers(root string, streams []*Stream, briefFilter string) (co
 		return 2, "the brief path is outside the repository root"
 	}
 	delivery, base, why := deriveConsumerDelivery(root, rel)
+	if why == noMarkerReason {
+		var source, hwhy string
+		delivery, base, source, hwhy = deriveHistoryDelivery(root, briefs[0].Brief)
+		if hwhy != "" {
+			return 2, why + ", and " + hwhy
+		}
+		fmt.Fprintf(os.Stderr, "statusgen: --consumers: no Verification-Table marker; delivery derived from history: %s (%s), pinned to its first parent %s\n", delivery, source, base)
+		why = ""
+	}
 	if why != "" {
 		return 2, why
 	}
 	return runDeliveryConsumers(root, base, briefFilter, delivery), ""
+}
+
+// deriveHistoryDelivery names a merged brief's delivery from local history when
+// its Evidence records none: the one first-parent commit of HEAD that names
+// `Brief: <stream>/<NN>`, either in its own message (a squash or direct commit)
+// or in a commit it merged (a merge commit, whose own message is title-only on
+// GitHub). Only fence-aware trailers count. Zero or several such commits is
+// COULD-NOT-CHECK, never a pick. The answer must also have landed on the fetched
+// mainline ref, and its pin is its first parent. No forge is asked, nothing is
+// fetched, and a shallow history is refused because it cannot prove uniqueness.
+func deriveHistoryDelivery(root, brief string) (delivery, base, source, why string) {
+	want := canonicalBriefKey(brief)
+	stream, _, ok := briefStreamNum(want)
+	if !ok {
+		return "", "", "", "the brief id " + want + " is not a <stream>/<NN> key the history can be searched for"
+	}
+	if shallow, ok := (coverageRepo{root: root}).IsShallow(); !ok || shallow {
+		return "", "", "", "the history cannot be searched: complete local Git history is required (no fetch is attempted)"
+	}
+	out, err := historyGit(root, "rev-list", "--first-parent", "HEAD").Output()
+	chain := strings.Fields(string(out))
+	if err != nil || len(chain) == 0 {
+		return "", "", "", "the first-parent history of HEAD cannot be read"
+	}
+	onChain := make(map[string]int, len(chain))
+	for i, c := range chain {
+		onChain[c] = i
+	}
+	// The grep is only a prefilter; parseLinkTrailers decides what a commit names.
+	logOut, err := historyGit(root, "log", "-z", "--format=%H%n%B", "--regexp-ignore-case", "--fixed-strings", "--all-match", "--grep=brief:", "--grep="+stream, "HEAD", "--").Output()
+	if err != nil {
+		return "", "", "", "the commit messages reachable from HEAD cannot be read"
+	}
+	named := map[string]bool{}
+	for _, rec := range splitNUL(logOut) {
+		hash, body, _ := strings.Cut(rec, "\n")
+		_, briefs, _ := parseLinkTrailers(body)
+		for _, b := range briefs {
+			if b == want {
+				named[strings.TrimSpace(hash)] = true
+			}
+		}
+	}
+	// Each naming commit belongs to the oldest first-parent commit that contains
+	// it: itself when it is on the chain, else the merge that brought it in.
+	// Containment is monotone along the chain, so a binary search finds it.
+	introducers := map[int]bool{}
+	for c := range named {
+		if i, ok := onChain[c]; ok {
+			introducers[i] = true
+			continue
+		}
+		lo, hi := 0, len(chain)-1 // chain[lo] contains c; find the largest such index
+		for lo < hi {
+			mid := (lo + hi + 1) / 2
+			in, err := isAncestor(root, c, chain[mid])
+			if err != nil {
+				return "", "", "", "ancestry in the history of HEAD cannot be read"
+			}
+			if in {
+				lo = mid
+			} else {
+				hi = mid - 1
+			}
+		}
+		introducers[lo] = true
+	}
+	var found []int
+	for i := range introducers {
+		found = append(found, i)
+	}
+	sort.Ints(found)
+	switch {
+	case len(found) == 0:
+		return "", "", "", fmt.Sprintf("no first-parent commit of HEAD names `Brief: %s` in its own message or in a commit it merged (searched %d first-parent commits)", want, len(chain))
+	case len(found) > 1:
+		var shorts []string
+		for _, i := range found {
+			shorts = append(shorts, chain[i][:12])
+		}
+		return "", "", "", fmt.Sprintf("the delivery is ambiguous: %d first-parent commits of HEAD name `Brief: %s` (%s); this instrument does not choose between them", len(found), want, strings.Join(shorts, ", "))
+	}
+	delivery = chain[found[0]]
+	parentsOut, err := historyGit(root, "rev-list", "--parents", "-n", "1", delivery).Output()
+	parents := strings.Fields(string(parentsOut))
+	if err != nil || len(parents) < 2 || len(parents) > 3 || !consumerCommit.MatchString(parents[1]) {
+		return "", "", "", "the history-derived delivery " + delivery + " is not a single- or two-parent commit"
+	}
+	if err := historyGit(root, "merge-base", "--is-ancestor", delivery, remoteMainRef).Run(); err != nil {
+		return "", "", "", "the history-derived delivery " + delivery + " is not reachable from the fetched mainline ref " + remoteMainRef + " (absent, or a local commit that has not landed)"
+	}
+	source = "its own message names Brief: " + want
+	if !named[delivery] {
+		source = "a commit it merged names Brief: " + want
+	}
+	return delivery, parents[1], source, ""
+}
+
+// isAncestor reports whether a is an ancestor of b. Exit status 1 is "no";
+// any other failure is an error, never an answer.
+func isAncestor(root, a, b string) (bool, error) {
+	err := historyGit(root, "merge-base", "--is-ancestor", a, b).Run()
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.As(err, &exit) && exit.ExitCode() == 1:
+		return false, nil
+	}
+	return false, err
 }

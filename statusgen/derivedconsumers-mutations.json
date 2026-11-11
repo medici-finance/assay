@@ -138,6 +138,48 @@
       "file": "consumers.go",
       "old": "historyGitEnv(exec.Command(\"git\", \"-C\", root, \"status\", \"--porcelain\", \"--untracked-files=all\"))",
       "new": "exec.Command(\"git\", \"-C\", root, \"status\", \"--porcelain\", \"--untracked-files=all\")"
+    },
+    {
+      "name": "history: a malformed marker falls through to the history search",
+      "file": "consumerdelivery.go",
+      "old": "\tif why == noMarkerReason {",
+      "new": "\tif why != \"\" {"
+    },
+    {
+      "name": "history: several first-parent candidates resolve to the newest instead of refusing",
+      "file": "consumerdelivery.go",
+      "old": "\tcase len(found) > 1:",
+      "new": "\tcase false && len(found) > 1:"
+    },
+    {
+      "name": "history: a shallow history is searched as if complete",
+      "file": "consumerdelivery.go",
+      "old": "IsShallow(); !ok || shallow {",
+      "new": "IsShallow(); false && (!ok || shallow) {"
+    },
+    {
+      "name": "history: a trailer naming another brief counts",
+      "file": "consumerdelivery.go",
+      "old": "\t\t\tif b == want {",
+      "new": "\t\t\tif b != \"\" {"
+    },
+    {
+      "name": "history: a merged commit is attributed to HEAD instead of the merge that brought it in",
+      "file": "consumerdelivery.go",
+      "old": "\t\tintroducers[lo] = true",
+      "new": "\t\tintroducers[0] = true"
+    },
+    {
+      "name": "history: an octopus merge is pinned to its first parent",
+      "file": "consumerdelivery.go",
+      "old": "len(parents) < 2 || len(parents) > 3 ||",
+      "new": "len(parents) < 2 ||"
+    },
+    {
+      "name": "history: a candidate that has not landed on the fetched mainline ref is accepted",
+      "file": "consumerdelivery.go",
+      "old": "if err := historyGit(root, \"merge-base\", \"--is-ancestor\", delivery, remoteMainRef).Run(); err != nil {",
+      "new": "if err := historyGit(root, \"merge-base\", \"--is-ancestor\", delivery, remoteMainRef).Run(); false && err != nil {"
     }
   ]
 }

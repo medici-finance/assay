@@ -1,0 +1,3 @@
+### Fixed
+
+- `statusgen --consumers --brief <stream>/<NN>` now passes on merged main when its claims are corroborated, from a checkout detached at `origin/main` with no `--delivery`/`--base`. When the committed Evidence carries no `Verification-Table:` marker, the delivery is the one first-parent commit whose message, or a commit it merged, carries `Brief: <stream>/<NN>`, pinned to its first parent. The search is local only. Zero or several candidates, a shallow history, or a candidate not on the fetched mainline ref is exit 2 (COULD-NOT-CHECK). Explicit flags and the marker still take precedence.
