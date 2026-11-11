@@ -255,6 +255,13 @@ wins, and the credit rule above is unchanged. A bad selector (an unknown, empty,
 shared ID, a table with no `#` column, or `--rows` with an audit or bracket step) is refused
 before any row runs.
 
+For cross-repository coverage, host witnesses also bind the admitted tracking
+snapshot. Only Evidence and status bookkeeping may change there before closure;
+a changed tracking input requires a fresh run. Keep explanatory summaries in prose
+or tables without Date/Runner headers, which the closure reader reserves for run
+records. Repair a malformed summary through a fresh admitted run and append its
+native evidence and verdict through `deskevidence`; retain the earlier record.
+
 With `--acceptance-record`, execute the protected host rows in **one** host invocation on a
 clean committed source, before inserting uncommitted Evidence. Include every supplemental
 row so the producer records `author-added; no acceptance credit`. Select these host rows

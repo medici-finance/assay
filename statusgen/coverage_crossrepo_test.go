@@ -153,17 +153,21 @@ func TestCrossCoverageScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	host := strings.Replace(foldRow, "{SHA}", sourceSHA[:12], 1)
-	for _, mode := range []string{"source", "host policy row", "carried row", "outside bracket"} {
+	for _, mode := range []string{"source", "host policy row", "bound host", "host ci row", "carried row", "outside bracket"} {
 		t.Run(mode, func(t *testing.T) {
 			evidence, run := bf.Evidence, pass.Run
 			rows := []evaluation.VerifyRow{{ID: "1"}}
 			switch mode {
-			case "host policy row":
+			case "host policy row", "bound host", "host ci row":
 				host = strings.Replace(host, "| 1 |", "| 2 |", 1)
 				host = strings.Replace(host, "`true`", "`cat ../tracker/policy.txt`", 1)
-				run += "\n" + host
-				evidence += "\n" + host
-				rows = append(rows, evaluation.VerifyRow{ID: "2"})
+				run += "\n" + witnessHeader + "\n" + host
+				evidence += "\n" + witnessHeader + "\n" + host
+				class := classCheck
+				if mode == "host ci row" {
+					class = classCheckCI + " +flow"
+				}
+				rows = append(rows, evaluation.VerifyRow{ID: "2", ClassCell: class})
 			case "carried row":
 				rows = append(rows, evaluation.VerifyRow{ID: "2"})
 				evidence = strings.Replace(host, "| 1 |", "| 2 |", 1) + "\n" + evidence
@@ -172,9 +176,76 @@ func TestCrossCoverageScope(t *testing.T) {
 				run += "\n" + newer
 				evidence += "\n" + newer
 			}
-			got := crossCoverageSpan(evidence, run, rows)
-			if (got == nil) != (mode == "source") {
+			got := crossCoverageSpan(evidence, run, rows, mode == "bound host" || mode == "host ci row")
+			if (got == nil) != (mode == "source" || mode == "bound host") {
 				t.Fatalf("scope=%v", got)
+			}
+		})
+	}
+}
+
+// A host witness must bind both repositories. Its adjacent container bracket
+// never licenses a changed tracking policy or a different source revision.
+func TestCoverageCrossSourceMixedWitnesses(t *testing.T) {
+	for _, mode := range []string{"current", "status only", "tracking policy", "tracking stream policy", "source changed", "missing tracking", "wrong source", "dirty host", "carried host", "malformed summary"} {
+		t.Run(mode, func(t *testing.T) {
+			d, sourceSHA, trackingSHA, source := foldTrackingSource(t, "mixed witnesses")
+			root := strings.TrimSuffix(d.path, filepath.FromSlash(trackingFixtureRel))
+			addCrossCoverageSpan(t, d.path, sourceSHA)
+			raw, err := os.ReadFile(d.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			host := strings.ReplaceAll(foldRow, "{SHA}", sourceSHA[:12])
+			host = strings.Replace(host, "| 1 | `true`", "| 2 | `cat ../tracker/policy.txt`", 1)
+			text := strings.Replace(string(raw), "**VERIFY: PASS**", witnessHeader+"\n"+host+"\n**VERIFY: PASS**", 1)
+			switch mode {
+			case "status only", "tracking policy", "tracking stream policy":
+				file := "policy.txt"
+				if mode == "status only" {
+					file = "STATUS.md"
+				}
+				if mode == "tracking stream policy" {
+					file = "docs/streams/fx/policy.md"
+				}
+				if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(file)), []byte("changed input\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				foldGit(t, root, foldMailWorker, "add", file)
+				foldGit(t, root, foldMailWorker, "commit", "-qm", "tracking change")
+			case "source changed":
+				if err := os.WriteFile(filepath.Join(source, "implementation.txt"), []byte("changed source\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				foldGit(t, source, foldMailWorker, "add", "implementation.txt")
+				foldGit(t, source, foldMailWorker, "commit", "-qm", "source change")
+			case "missing tracking":
+				text = strings.ReplaceAll(text, "tracking-source="+trackingSHA, "tracking-source="+strings.Repeat("f", 40))
+			case "wrong source":
+				text = strings.ReplaceAll(text, "source="+sourceSHA, "source="+strings.Repeat("d", 40))
+			case "dirty host":
+				text = strings.Replace(text, host, strings.Replace(host, "@ "+sourceSHA[:12], "@ "+sourceSHA[:12]+"+dirty", 1), 1)
+			case "carried host":
+				text = strings.Replace(text, witnessHeader+"\n"+host+"\n", "", 1)
+			case "malformed summary":
+				text = strings.Replace(text, "**VERIFY: PASS**", "| Note | Date | Runner |\n|---|---|---|\n| summary | 2026-10-01 | fixture-model |\n**VERIFY: PASS**", 1)
+			}
+			if err := os.WriteFile(d.path, []byte(text), 0600); err != nil {
+				t.Fatal(err)
+			}
+			foldGit(t, root, foldMailVerifier, "add", trackingFixtureRel)
+			foldGit(t, root, foldMailVerifier, "commit", "-qm", "mixed evidence")
+			foldGit(t, source, foldMailWorker, "remote", "add", "origin", "https://github.com/example-org/agents.git")
+			foldGit(t, source, foldMailWorker, "update-ref", "refs/remotes/origin/main", "HEAD")
+			t.Setenv("DESK_ROOTS", "example-org/agents="+source)
+			streams, _, err := loadStreams(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := evaluateCoverage(root, streams, coverageOptions{})["fx/01"]
+			want := mode == "current" || mode == "status only"
+			if got.Released != want {
+				t.Fatalf("released=%v want=%v claims=%+v", got.Released, want, got.Claims)
 			}
 		})
 	}
