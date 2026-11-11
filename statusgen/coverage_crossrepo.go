@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/medici-finance/assay/statusgen/evaluation"
 )
@@ -51,11 +52,10 @@ func coverageCrossSource(root, path, evidence string, obs *evaluation.BriefObser
 	}
 	// Host rows can read the admitted tracking tree as well as the source.
 	// Establish that second input before allowing them beside a sealed span.
-	hostBound := crossTrackingUnchanged(root, binding.trackingSource)
-	if err := crossCoverageSpan(evidence, pass.Run, obs.VerifyRows, hostBound == nil); err != nil {
-		if hostBound != nil {
-			return hold(fmt.Errorf("%w; tracking inputs: %v", err, hostBound))
-		}
+	trackingCheck := sync.OnceValue(func() error {
+		return crossTrackingUnchanged(root, binding.trackingSource)
+	})
+	if err := crossCoverageSpan(evidence, pass.Run, obs.VerifyRows, trackingCheck); err != nil {
 		return hold(err)
 	}
 	source := effectiveSiblingRootOverrides(siblingRootFlagValues)[binding.sourceRepo]
@@ -114,7 +114,7 @@ func (r crossCoverageRepo) DeclaredFilesAt(_ string, briefRel string) ([]string,
 // crossCoverageSpan requires a closed source bracket and a latest witness in
 // this run for every row. Host rows additionally require unchanged tracking
 // inputs; they never inherit source-only scope from the neighboring bracket.
-func crossCoverageSpan(evidence, run string, rows []evaluation.VerifyRow, trackingUnchanged bool) error {
+func crossCoverageSpan(evidence, run string, rows []evaluation.VerifyRow, trackingCheck func() error) error {
 	checks := bracketChecks(run)
 	if len(checks) == 0 {
 		return fmt.Errorf("source-only coverage requires a closed container bracket")
@@ -139,8 +139,11 @@ func crossCoverageSpan(evidence, run string, rows []evaluation.VerifyRow, tracki
 			if class == classCheckCI {
 				return fmt.Errorf("Verify row %s requires a sealed container witness", row.ID)
 			}
-			if !trackingUnchanged {
-				return fmt.Errorf("Verify row %s needs unchanged tracking inputs for its host witness", row.ID)
+			if trackingCheck == nil {
+				return fmt.Errorf("Verify row %s has no tracking binding for its host witness", row.ID)
+			}
+			if err := trackingCheck(); err != nil {
+				return fmt.Errorf("Verify row %s needs unchanged tracking inputs for its host witness: %w", row.ID, err)
 			}
 		}
 	}

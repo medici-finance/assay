@@ -176,9 +176,24 @@ func TestCrossCoverageScope(t *testing.T) {
 				run += "\n" + newer
 				evidence += "\n" + newer
 			}
-			got := crossCoverageSpan(evidence, run, rows, mode == "bound host" || mode == "host ci row")
+			trackingChecks := 0
+			trackingCheck := func() error {
+				trackingChecks++
+				if mode == "bound host" || mode == "host ci row" {
+					return nil
+				}
+				return fmt.Errorf("tracking policy changed")
+			}
+			got := crossCoverageSpan(evidence, run, rows, trackingCheck)
 			if (got == nil) != (mode == "source" || mode == "bound host") {
 				t.Fatalf("scope=%v", got)
+			}
+			wantChecks := 0
+			if mode == "bound host" || mode == "host policy row" {
+				wantChecks = 1
+			}
+			if trackingChecks != wantChecks {
+				t.Fatalf("tracking reads=%d want=%d", trackingChecks, wantChecks)
 			}
 		})
 	}
@@ -187,7 +202,7 @@ func TestCrossCoverageScope(t *testing.T) {
 // A host witness must bind both repositories. Its adjacent container bracket
 // never licenses a changed tracking policy or a different source revision.
 func TestCoverageCrossSourceMixedWitnesses(t *testing.T) {
-	for _, mode := range []string{"current", "status only", "tracking policy", "tracking stream policy", "source changed", "missing tracking", "wrong source", "dirty host", "carried host", "malformed summary"} {
+	for _, mode := range []string{"current", "status only", "tracking policy", "tracking stream policy", "source changed", "missing tracking", "unrelated tracking", "wrong source", "dirty host", "carried host", "malformed summary"} {
 		t.Run(mode, func(t *testing.T) {
 			d, sourceSHA, trackingSHA, source := foldTrackingSource(t, "mixed witnesses")
 			root := strings.TrimSuffix(d.path, filepath.FromSlash(trackingFixtureRel))
@@ -221,6 +236,9 @@ func TestCoverageCrossSourceMixedWitnesses(t *testing.T) {
 				foldGit(t, source, foldMailWorker, "commit", "-qm", "source change")
 			case "missing tracking":
 				text = strings.ReplaceAll(text, "tracking-source="+trackingSHA, "tracking-source="+strings.Repeat("f", 40))
+			case "unrelated tracking":
+				foldGit(t, root, foldMailWorker, "checkout", "--orphan", "unrelated-tracking")
+				foldGit(t, root, foldMailWorker, "commit", "-qm", "unrelated tracking root")
 			case "wrong source":
 				text = strings.ReplaceAll(text, "source="+sourceSHA, "source="+strings.Repeat("d", 40))
 			case "dirty host":
