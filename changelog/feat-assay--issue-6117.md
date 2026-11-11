@@ -1,0 +1,2 @@
+### Changed
+- `cellctl up` no longer stops at a Go-cache deferral that one clean can clear. When up's bounded admission defers because the recorded size or free-space margin is short, or the measurement is stale, up runs the same clean as `cellctl cache <cell> clean` once. It prints one line with the logical bytes before and after, then prepares again. A cache still over its margin refuses as before. Every other refusal still needs the operator, and so do `wipe` and recovery. `cellctl desk`, scratch launches and dispatch keep the bounded refusal.

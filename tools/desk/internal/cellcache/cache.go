@@ -50,7 +50,17 @@ type Report struct {
 	// lock-free test cleared it, "locked: <why>" when the full check ran
 	// because the test could not. Empty for every other caller.
 	Admission string `json:"admission,omitempty"`
+	// reclaimable marks a bounded launch refusal that one explicit clean can
+	// clear: the recorded size or free-space margin, or a measurement that has
+	// aged or been overtaken by a top-level change. It is not serialized.
+	reclaimable bool
 }
+
+// Reclaimable reports whether this bounded launch refusal is one that a single
+// clean (Check, not dry) may clear. Ownership, domain, corrupt, dirty or
+// missing accounting and an empty cache short of space are never reclaimable;
+// those stay with the operator.
+func (r Report) Reclaimable() bool { return r.reclaimable }
 
 // LowWaterTrim is what one low-water trim set out to do and whether it got
 // there. A trim that stops above its target says why in Reason: the entries
