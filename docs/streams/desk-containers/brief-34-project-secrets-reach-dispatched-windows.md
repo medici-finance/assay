@@ -23,6 +23,7 @@ gate-why: >-
 decision-trigger: creation
 issues: [6065]
 decision-issue: 6065
+ruling: "https://github.com/medici-finance/assay/issues/6065#issuecomment-6773391431"
 schema: brief-v2
 version: 1
 authored: 2026-11-10 by assay-worker-app (issue #6065 part 2)
