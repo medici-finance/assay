@@ -310,7 +310,7 @@ func Command(forge, target string, roles []string, apiBase string, check bool) s
 		b.WriteString(" --repo " + shellWord(target))
 	}
 	if rs := NormalizeRoles(roles); len(rs) > 0 {
-		b.WriteString(" --roles " + strings.Join(rs, ","))
+		b.WriteString(" --roles " + shellWord(strings.Join(rs, ",")))
 	} else {
 		b.WriteString(" --roles " + RolesPlaceholder)
 	}
@@ -330,11 +330,11 @@ func shellWord(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// shellLiteral reports whether r is an ASCII letter or digit, or one of - _ . / : @ % + =.
+// shellLiteral reports whether r is an ASCII letter or digit, or one of - _ . / : @ % + = ,
 func shellLiteral(r rune) bool {
 	switch {
 	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
 		return true
 	}
-	return strings.ContainsRune("-_./:@%+=", r)
+	return strings.ContainsRune("-_./:@%+=,", r)
 }

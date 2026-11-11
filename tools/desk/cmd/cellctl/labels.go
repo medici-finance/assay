@@ -90,6 +90,8 @@ func ensureCellLabels(forge, base string, repos, roles []string, tokenFile strin
 		return notEnsured(err.Error())
 	}
 	set := forgelabels.Canonical(roles)
+	// Name where the credential goes before the first request, as `deskfleet labels` does.
+	fmt.Printf("[new] labels: target %s API %s, repos %s, roles %s\n", forge, base, strings.Join(repos, ","), strings.Join(roles, ","))
 	ok := true
 	for _, r := range repos {
 		b, err := labelsBackend(forge, base, r, tok)
@@ -158,6 +160,8 @@ func (c *Cell) labelsRows(k *checker) {
 		return
 	}
 	set := forgelabels.Canonical(roles)
+	// Name where the credential goes before the first request, as `deskfleet labels` does.
+	fmt.Printf("[check] labels: reading from %s API %s, repos %s\n", c.Forge, base, strings.Join(repos, ","))
 	for _, r := range repos {
 		b, err := labelsBackend(c.Forge, base, r, tok)
 		var missing []string

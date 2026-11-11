@@ -362,6 +362,25 @@ func TestHouseCheckUnreadableLabelsAreCouldNotCheck(t *testing.T) {
 	})
 }
 
+// Both network-reaching label paths name the forge and the API base the operator credential
+// goes to before the first request, as `deskfleet labels` prints its target: the line comes
+// ahead of every per-repo result.
+func TestLabelPathsNameTheirTargetFirst(t *testing.T) {
+	_, _, cred := labelsWorld(t)
+	_, srv := newFakeLabelForge(t, "github")
+	out := captureStdout(t, func() { _ = ensureCellLabels("github", srv.URL, []string{"o/r"}, labelsRosterRoles, cred) })
+	target := "[new] labels: target github API " + srv.URL + ", repos o/r, roles "
+	if i, j := strings.Index(out, target), strings.Index(out, "[new] labels: ensured"); i < 0 || j < 0 || i > j {
+		t.Errorf("new does not name its target before the first result; want %q first in:\n%s", target, out)
+	}
+	_, srv2 := newFakeLabelForge(t, "github")
+	out = labelsCheckOut(t, srv2, true)
+	target = "[check] labels: reading from github API " + srv2.URL + ", repos o/r"
+	if i, j := strings.Index(out, target), strings.Index(out, "labels on o/r"); i < 0 || j < 0 || i > j {
+		t.Errorf("check does not name its target before the first labels row; want %q first in:\n%s", target, out)
+	}
+}
+
 // The summary of a run whose only open rows are could-not-check never says the cell is clean.
 func TestCheckerSummaryWithCouldNotCheck(t *testing.T) {
 	k := &checker{ok: true}

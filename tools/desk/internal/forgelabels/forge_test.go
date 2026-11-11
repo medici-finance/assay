@@ -326,6 +326,12 @@ func TestCommand(t *testing.T) {
 			t.Errorf("Command(%s %s) =\n%s\nwant\n%s", c.forge, c.target, got, c.want)
 		}
 	}
+	// A roster role is operator text the printed command carries into a shell: one that is not
+	// shell-literal is quoted with the rest, never pasted bare.
+	want0 := `deskfleet labels --forge github --repo o/r --roles 'desk,wo$(x)rker' --token-file ` + CredentialPlaceholder
+	if got := Command("github", "o/r", []string{"desk", "wo$(x)rker"}, "", false); got != want0 {
+		t.Errorf("Command with a shell-active role =\n%s\nwant\n%s", got, want0)
+	}
 	// No bound role: the command names the placeholder, never a guessed list.
 	want := "deskfleet labels --forge github --repo o/r --roles " + RolesPlaceholder + " --token-file " + CredentialPlaceholder
 	if got := Command("github", "o/r", nil, "", false); got != want {
