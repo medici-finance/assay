@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"errors"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -92,23 +91,54 @@ func TestDownRoundTripFixture(t *testing.T) {
 	}
 }
 
+// roundTripEnv is the owner's environment: the test's own, without any launch or desk setting a
+// surrounding cell session exported (the owner sees only what a launch would hand it), plus extra.
+func roundTripEnv(extra ...string) []string {
+	var env []string
+	for _, kv := range fixtureProcessEnv() {
+		if !strings.HasPrefix(kv, "ASSAY_") && !strings.HasPrefix(kv, "DESK_") {
+			env = append(env, kv)
+		}
+	}
+	for _, kv := range extra {
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			env = envSet(env, k, v)
+		}
+	}
+	return env
+}
+
 // roundTripOwner is one running fixture owner; it is reaped in the background, as the cockpit's
 // shell reaps a window's process, so a down that waits for it sees it gone.
 type roundTripOwner struct {
 	cmd  *exec.Cmd
+	mode string
 	done chan error
+}
+
+// wait returns the owner's exit; call it only once the owner has exited.
+func (o *roundTripOwner) wait() error {
+	err := <-o.done
+	o.done <- err
+	return err
 }
 
 func startRoundTripOwner(t *testing.T, c *Cell, mode string) *roundTripOwner {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestDownRoundTripFixture$")
-	cmd.Env = fixtureProcessEnv("CELL_ROUNDTRIP_FIXTURE="+mode, "CELL_ROUNDTRIP_DIR="+c.Dir, "CELL_ROUNDTRIP_CONFIG="+c.Config)
-	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
+	cmd.Env = roundTripEnv("CELL_ROUNDTRIP_FIXTURE="+mode, "CELL_ROUNDTRIP_DIR="+c.Dir, "CELL_ROUNDTRIP_CONFIG="+c.Config,
+		"ASSAY_SOURCE_REVISION=fixture-revision", "DESK_LOOP="+roundTripRole)
+	log, err := os.OpenFile(filepath.Join(c.Config, "owner-"+mode+".log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = log.Close() })
+	cmd.Stdout, cmd.Stderr = log, log
 	cmd.WaitDelay = 200 * time.Millisecond
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	o := &roundTripOwner{cmd: cmd, done: make(chan error, 1)}
+	o := &roundTripOwner{cmd: cmd, mode: mode, done: make(chan error, 1)}
 	go func() { o.done <- cmd.Wait() }()
 	t.Cleanup(func() {
 		_ = cmd.Process.Kill()
@@ -141,7 +171,8 @@ func waitFor(t *testing.T, c *Cell, o *roundTripOwner, what string, cond func() 
 	for !cond() {
 		if o.exited(0) {
 			b, _ := os.ReadFile(filepath.Join(c.Dir, "admit.err"))
-			t.Fatalf("%s: the owner exited first; admission said %q", what, b)
+			out, _ := os.ReadFile(filepath.Join(c.Config, "owner-"+o.mode+".log"))
+			t.Fatalf("%s: the owner exited first (%v); admission said %q; owner output:\n%s", what, o.wait(), b, out)
 		}
 		if time.Now().After(until) {
 			t.Fatalf("%s: timed out", what)
