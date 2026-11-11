@@ -833,10 +833,10 @@ func (g *GitLabForge) SearchIssues(repo ForgeRepo, in SearchIssuesInput) ([]Issu
 		if err := validateDecisionSearch(in); err != nil {
 			return nil, err
 		}
-		return g.searchDecisionMarkers(repo, in.DecisionGateBrief)
+		return g.searchDecisionMarkers(repo, in)
 	}
-	if in.DecisionGateBrief != "" {
-		return nil, Refused("decision-marker brief requires marker discovery mode")
+	if in.DecisionGateBrief != "" || in.DecisionGateLegacy {
+		return nil, Refused("decision-marker brief or legacy key requires marker discovery mode")
 	}
 	cl, err := g.client()
 	if err != nil {
