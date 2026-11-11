@@ -30,7 +30,7 @@
     "experiments/pirunner/ledger.go": "107e56fea8e371330e8d3f3565eda68056c5b017c330361ad0633a8ec9efd945",
     "experiments/pirunner/helpers_test.go": "29a070acb59b7d7d593373ce26ce18afbe9802203eab3291fefde0b063fa8116",
     "experiments/pirunner/contract_test.go": "88730c95b52fc135aefea65256fcdefc663a806a72bdbc45400a627f42c493c2",
-    "experiments/pirunner/recovery_test.go": "146f98adbc1b63e8ee5332f2763a24bbc25936eb9951cfd646d674614ad0f85e",
+    "experiments/pirunner/recovery_test.go": "bc7d99ce173c4337d8726901ce6dfccef054d628f1868e3261573e2a6b3b36f0",
     "experiments/pirunner/negative_test.go": "d3a0b358e814d259638309c4f8e3c744c4ee9ac8f0664bd18f843ccef83a5523",
     "experiments/pirunner/node/src/bridge.ts": "97405c389c4a96f9a9da3d511293f9aea7afdc5eadf5551a6d73fcd07cdd88a1",
     "experiments/pirunner/node/package.json": "c00112fa5a24c2ffcf493c8d2ffe4ac7c2b68a80d46287051004efbe2a4766db",

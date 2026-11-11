@@ -362,6 +362,7 @@ type fixture struct {
 // TestPiPilotDecisionEvidence dereferences the published verdict against the
 // locked tuple, the installed packages, the subject hashes and the test
 // sources, then proves the derivation rejects fabricated GO claims.
+// regression: #6208
 func TestPiPilotDecisionEvidence(t *testing.T) {
 	dir := filepath.Join("..", "..", "testdata", "pirunner")
 	var r Results

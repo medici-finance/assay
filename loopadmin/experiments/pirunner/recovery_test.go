@@ -87,6 +87,7 @@ func toolResults(es []map[string]any, tool string) (ok, failed int, texts []stri
 // TestPiPilotRestart kills the real Node process mid-run and reopens the same
 // SQLite store: the durable submission survives, the identity mapping settles
 // both crash windows of a start, and only one owner may hold the directory.
+// regression: #6208
 func TestPiPilotRestart(t *testing.T) {
 	t.Run("KillMidTool", func(t *testing.T) {
 		a := pilot(t)
@@ -241,6 +242,7 @@ func measure(t *testing.T, n int) Measurement {
 
 // TestPiPilotEffects routes consequential synthetic writes through the
 // separate ledger with stable logical identity, and loses a reply mid-flight.
+// regression: #6208
 func TestPiPilotEffects(t *testing.T) {
 	t.Run("LostReply", func(t *testing.T) {
 		a := pilot(t)
@@ -306,6 +308,7 @@ func TestPiPilotEffects(t *testing.T) {
 
 // TestPiPilotAuthority proves current authority is asked at execution time,
 // including on a replay that skips beforeTool.
+// regression: #6208
 func TestPiPilotAuthority(t *testing.T) {
 	t.Run("ReplayRechecks", func(t *testing.T) {
 		a := pilot(t)
@@ -364,6 +367,7 @@ func refused(l *Ledger, kind, why string) bool {
 // TestPiPilotStopAndObserve: an abort request is not a stop while anything it
 // started still runs, an ignored cancel stays running, and Observe attaches
 // without resuming work.
+// regression: #6208
 func TestPiPilotStopAndObserve(t *testing.T) {
 	t.Run("AbortHoldsForChild", func(t *testing.T) {
 		a := pilot(t)
@@ -410,6 +414,7 @@ func TestPiPilotStopAndObserve(t *testing.T) {
 // TestPiPilotAccounting: usage is reported once, unknown cost stays unknown
 // across a restart, pause survives a restart, and unsupported continuity or
 // capability requirements refuse before launch.
+// regression: #6208
 func TestPiPilotAccounting(t *testing.T) {
 	t.Run("PartialCostUnknown", func(t *testing.T) {
 		a := pilot(t)
