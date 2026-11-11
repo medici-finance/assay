@@ -101,8 +101,8 @@ func TestRoleTableMatchesBash(t *testing.T) {
 }
 
 // The script's LABEL_TABLE moved into internal/forgelabels, the one canonical set this verb
-// and cmd/deskgitlab both build from; there is no second copy left to drift. What remains
-// checkable here is that the documented-role fallback names exactly the desk roles this
+// and cmd/deskgitlab both build from (TestLabelTableMatchesBash holds both to it). This test
+// pins that the documented-role fallback names exactly the desk roles this
 // provisioner's role table creates service accounts for (board-writer is the one fleet account
 // that is not a desk role and is never a label target).
 func TestDocumentedRolesMatchFleetRoles(t *testing.T) {
@@ -118,6 +118,88 @@ func TestDocumentedRolesMatchFleetRoles(t *testing.T) {
 	if strings.Join(got, ",") != strings.Join(desk, ",") {
 		t.Errorf("forgelabels.DocumentedRoles() = %v; fleetRoles' desk roles = %v", got, desk)
 	}
+}
+
+// TestLabelTableMatchesBash — the script's LABEL_TABLE moved, row for row, into the Go
+// provisioner the script now execs (cmd/deskgitlab, desktools-v2/30), and both that
+// provisioner and this verb now build their set from internal/forgelabels. The test keeps its
+// name (brief Verify rows require it) and its property: the label set the shell path creates
+// is the one this verb creates. It reads cmd/deskgitlab/tables.go as SOURCE (two main
+// packages) and passes only when that file's fleetLabels is this verb's own declaration, or a
+// literal whose rows equal this verb's set; and no shell source re-adds a LABEL_TABLE literal,
+// which would be a second copy no Go table is built from.
+func TestLabelTableMatchesBash(t *testing.T) {
+	theirs, err := os.ReadFile(filepath.Join("..", "deskgitlab", "tables.go"))
+	if err != nil {
+		t.Fatalf("reading cmd/deskgitlab/tables.go (the provisioner's label table): %v", err)
+	}
+	ours, err := os.ReadFile("tables.go")
+	if err != nil {
+		t.Fatalf("reading tables.go: %v", err)
+	}
+	var rows []string
+	for _, l := range fleetLabels {
+		rows = append(rows, l.Name+"|"+l.Color+"|"+l.Description)
+	}
+	if msg := labelDeclAgrees(string(ours), string(theirs), rows); msg != "" {
+		t.Errorf("cmd/deskgitlab's fleetLabels drifted from this verb's: %s", msg)
+	}
+	for _, f := range bashRoleSources {
+		b, err := os.ReadFile(filepath.Join(toolsDir(), f))
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := bashTable(t, string(b), "LABEL_TABLE"); ok {
+			t.Errorf("tools/%s carries a LABEL_TABLE literal again: a second label table, which internal/forgelabels replaced", f)
+		}
+	}
+}
+
+// labelDeclAgrees compares two `var fleetLabels = …` declarations: equal right-hand sides
+// agree (both build from the same expression), a literal agrees when its rows equal want,
+// and anything else is drift. It returns "" when they agree, else what differs.
+func labelDeclAgrees(ours, theirs string, want []string) string {
+	decl := regexp.MustCompile(`(?m)^var fleetLabels = (.*)$`)
+	o, th := decl.FindStringSubmatch(ours), decl.FindStringSubmatch(theirs)
+	switch {
+	case o == nil:
+		return "this package declares no fleetLabels"
+	case th == nil:
+		return "no fleetLabels declaration found"
+	case strings.TrimSpace(o[1]) == strings.TrimSpace(th[1]):
+		return ""
+	}
+	block := regexp.MustCompile(`(?s)var fleetLabels = \[\]fleetLabel\{\n(.*?)\n\}`).FindStringSubmatch(theirs)
+	if block == nil {
+		return "it is built from " + strings.TrimSpace(th[1]) + ", this verb from " + strings.TrimSpace(o[1])
+	}
+	row := regexp.MustCompile(`^\s*\{("(?:[^"\\]|\\.)*"), ("(?:[^"\\]|\\.)*"), ("(?:[^"\\]|\\.)*")\},$`)
+	var got []string
+	for _, ln := range strings.Split(block[1], "\n") {
+		if s := strings.TrimSpace(ln); s == "" || strings.HasPrefix(s, "//") {
+			continue
+		}
+		m := row.FindStringSubmatch(ln)
+		if m == nil {
+			return "unparsed literal row " + strconv.Quote(ln)
+		}
+		var f [3]string
+		for i := range f {
+			v, err := strconv.Unquote(m[i+1])
+			if err != nil {
+				return "literal row " + strconv.Quote(ln) + ": " + err.Error()
+			}
+			f[i] = v
+		}
+		got = append(got, strings.Join(f[:], "|"))
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		return "literal rows:\n" + strings.Join(got, "\n") + "\nwant:\n" + strings.Join(want, "\n")
+	}
+	return ""
 }
 
 // The default PAT lifetime is spec §5's expiry backstop; the two paths must agree on it.

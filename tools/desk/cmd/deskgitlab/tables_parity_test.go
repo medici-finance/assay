@@ -16,8 +16,8 @@ import (
 // tools/fleet-gitlab-roles.sh, the shared role table, PAT lifetime and naming helpers the
 // renewal script (tools/renew-fleet-gitlab-tokens.sh) still sources — a renewal that
 // disagrees with the provisioner on a PAT name silently mints a duplicate credential. (The
-// label table is no longer a copy to compare: this provisioner and cmd/deskfleet both build
-// it from internal/forgelabels.)
+// label table is no longer a shell copy: this provisioner and cmd/deskfleet both build it
+// from internal/forgelabels, and TestLabelTableMatchesDeskfleet holds them to one source.)
 //
 // Each is read as SOURCE from this tree. A copy of this module outside the repository (the
 // mutation harness's per-worker copy) has no tools/ sources: that is could-not-check, and the
@@ -105,6 +105,58 @@ func TestPushTokenMatchesDeskfleet(t *testing.T) {
 		if theirs != want {
 			t.Errorf("%s = %q here, %q in deskfleet", name, want, theirs)
 		}
+	}
+}
+
+// TestLabelTableMatchesDeskfleet — this provisioner and cmd/deskfleet must create the same
+// label set. Both now build it from internal/forgelabels, so the property is that cmd/deskfleet's
+// fleetLabels declaration is this one's, or a literal whose rows equal this set. It reads
+// cmd/deskfleet/tables.go as SOURCE (two main packages); the mirror test there reads this one.
+func TestLabelTableMatchesDeskfleet(t *testing.T) {
+	theirs, err := os.ReadFile(filepath.Join("..", "deskfleet", "tables.go"))
+	if err != nil {
+		t.Fatalf("reading cmd/deskfleet/tables.go: %v", err)
+	}
+	ours, err := os.ReadFile("tables.go")
+	if err != nil {
+		t.Fatalf("reading tables.go: %v", err)
+	}
+	decl := regexp.MustCompile(`(?m)^var fleetLabels = (.*)$`)
+	o, th := decl.FindStringSubmatch(string(ours)), decl.FindStringSubmatch(string(theirs))
+	if o == nil || th == nil {
+		t.Fatalf("a fleetLabels declaration is missing (here: %v, deskfleet: %v)", o != nil, th != nil)
+	}
+	if strings.TrimSpace(o[1]) == strings.TrimSpace(th[1]) {
+		return
+	}
+	block := regexp.MustCompile(`(?s)var fleetLabels = \[\]fleetLabel\{\n(.*?)\n\}`).FindStringSubmatch(string(theirs))
+	if block == nil {
+		t.Fatalf("deskfleet's fleetLabels is built from %s, this provisioner's from %s", strings.TrimSpace(th[1]), strings.TrimSpace(o[1]))
+	}
+	row := regexp.MustCompile(`^\s*\{("(?:[^"\\]|\\.)*"), ("(?:[^"\\]|\\.)*"), ("(?:[^"\\]|\\.)*")\},$`)
+	var got []string
+	for _, ln := range strings.Split(block[1], "\n") {
+		if s := strings.TrimSpace(ln); s == "" || strings.HasPrefix(s, "//") {
+			continue
+		}
+		m := row.FindStringSubmatch(ln)
+		if m == nil {
+			t.Fatalf("unparsed deskfleet fleetLabels row: %q", ln)
+		}
+		var f [3]string
+		for i := range f {
+			if f[i], err = strconv.Unquote(m[i+1]); err != nil {
+				t.Fatalf("row %q: %v", ln, err)
+			}
+		}
+		got = append(got, strings.Join(f[:], "|"))
+	}
+	var want []string
+	for _, l := range fleetLabels {
+		want = append(want, l.Name+"|"+l.Color+"|"+l.Description)
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("deskfleet fleetLabels drifted:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
 
