@@ -1,0 +1,2 @@
+decision-issue: refused: composed body is not self-contained — it carries a markdown link or URL. The reader must be able to decide from the issue alone; inline the content instead (fix the brief's '## Human decision' section or its gate-why/why). Offending lines:
+13:1. Keep 30 days, see https://example.invalid/policy.

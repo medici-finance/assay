@@ -81,6 +81,7 @@ changed or discarded.
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
 | `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` (the documented human-ruled BATCH lane) — the issue-CLOSING gate (a fetched human authorization or nothing); plus two identity+structure lanes that cite no artifact because they close nothing belonging to another party: `self-withdraw` (the authoring App's own draft, pinned by login AND bot id) and `verify-gate-refire` (the verifier session reopens + re-closes a closed `verify-gate` card) | outward write | yes |
 | `desklabel` | `add`, `rm` — set or clear ONE label on an issue or change as the session's own App role, against a closed role-keyed vocabulary (shared escalation set for any role — the topology decision-owed labels read from the topology loader, plus `help wanted`; `superseded?`/`disposition:*` worker-owned; `authorization-needed`/`approval-needed` reviewer-owned; `human-decided` refused for every role; anything else refused, exit 5). The check runs before any forge call; the target kind comes from the seam's own read (`--kind issue|mr` for a GitLab both-resolve); present/absent = no-op; `--dry-run` stops before the write. `vocabulary` prints the table | outward write | yes |
+| `deskdecision` | `ensure <brief-file> [--repo] [--at] [--held] [--dry-run] [--as <role>]` — the decision-issue gate: files ONE decision issue for a `gate: human` brief unless one exists (frontmatter `decision-issue:` or the `decision-gate:` / legacy `needs-decision:` body marker); the pure-Go PATH port of `tools/decision-issue.sh ensure`, which `deskdispatch` runs first | outward write (one issue) | yes |
 | `deskdigest` | (no verbs) `--dry-run` / `--post` — the weekly batched decision queue; reports only, and writes exactly one issue: its own | outward write | yes |
 | `deskdisposition` | `set`, `read`, `sweep` — machine-readable PR disposition records (#728/#827); records a verdict, never closes | outward write (`set`) / read-only (`read`, `sweep`) | yes |
 | `deskmerge` | `check` — merge-currency in three states, writes nothing; `merge` — merges main INTO a PR branch, gated on a fetched human sign-off of R-5 (unsigned today, so it merges nothing) | read-only (`check`) / outward write (`merge`) | yes (`merge`) |
@@ -6915,10 +6916,16 @@ review is still text written outside the dispatch.
 **They WRAP, they do not re-implement.** `deskboot` delegates every step to the verb that
 owns it (`deskwt prune`, `deskroster set`/`preflight`, `desktoken`) and adds only the
 ordering, the fail-closed contract, and the named-step report. `deskdispatch` delegates the
-worktree to `deskwt add` and invokes the claim tool and the consumer decision script
-`tools/decision-issue.sh` — it carries no copy of either, because a second implementation of
-a claim protocol is two claim protocols, and two claim protocols dispatch the same item
-twice. On top of the worktree `deskwt add` returns, `deskdispatch` STAMPS the dispatched
+worktree to `deskwt add` and invokes the claim tool and the decision-gate tool — it carries
+no copy of either in-process, because a second implementation of a claim protocol is two
+claim protocols, and two claim protocols dispatch the same item twice. The decision-gate tool
+is `deskdecision ensure` whenever it is on PATH (installed with desk-tools, #6131), else the
+consumer script `tools/decision-issue.sh` when the resolved root carries it, else a refusal
+naming both (exit 6). `deskdecision` is the port of that script. It uses the same argv, exit
+codes and issue body, and the same `<!-- decision-gate: <id> -->` marker, with the legacy
+`<!-- needs-decision: <id> -->` marker and the brief's `decision-issue: <N>` frontmatter also
+read for dedupe. So a repo that switches between the two never gets a second issue for one
+brief. On top of the worktree `deskwt add` returns, `deskdispatch` STAMPS the dispatched
 agent's OWN role commit identity (worker/reviewer/verifier, mapped from `--kit`) into it
 worktree-scoped, through the same shared resolver `role-init` uses, so a verifier dispatched
 from a desk checkout commits — and reports its runner — under the verifier App, never the
@@ -6939,15 +6946,17 @@ the roster pins it, its bot user id; on GitLab, it must equal the role's PAT cus
 other identity (a human login, another role's App) is ignored with a NOTICE, dropped from the
 process, and the role token minted instead; an identity that cannot be read is exit 6, and a
 role the roster binds no App to is exit 5, both with no claim attempted. A mint refusal is exit
-6 with no claim attempted. The decision script
+6 with no claim attempted. `deskdecision` is handed no credential: `deskdispatch` passes
+`--as <dispatching role>` and the port resolves that role's own credential through the deskkit
+forge resolver (GitHub or GitLab), the same custody the role's other desk tools use. The decision script
 shells out to the forge CLI itself, so a rule keyed on a child literally named `gh` never
 covered it (#1146): it is handed the SAME credential from that one resolution, as `GH_TOKEN`
 (plus `GITLAB_TOKEN` on a GitLab-served repo) in its environment, and the `decision-gate OK`
 line names the source; with no credential handed over and none exported it refuses (exit 6)
 rather than run on the ambient login. The scripts are resolved
-under `--claim-root` when given, else under `--root`: the scripts were centralized out of the
-consumer repos, so on a cross-repo dispatch `--claim-root` names the checkout that carries
-the tools while `--root` stays the item's own repo — the worktree is always cut from
+under `--claim-root` when given, else under `--root`, and only when their port is not on PATH:
+a repo that keeps the scripts but runs without the ports points `--claim-root` at the checkout
+that carries them while `--root` stays the item's own repo — the worktree is always cut from
 `--root`, and the claim itself is a ref in the target repo (`--repo`) regardless of where the
 script file sits.
 
