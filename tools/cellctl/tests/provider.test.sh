@@ -47,6 +47,11 @@ unset CELL CELL_KIND CELL_FORGE CELL_REPO CELL_ROOTS CELL_COCKPIT CELLS_CONFIG R
       DESKD_ADDR DESKD_INDEX DESK_MODEL_DEFAULT DESK_MODEL_the_desk TMUX_SESSION CELL_ATTENDED \
       CELL_PROVIDER CELL_PROVIDER_ZAI_BASE_URL CELL_PROVIDER_ZAI_TOKEN_ENV ZAI_API_KEY \
       MODEL_OVERRIDE DESK_MODEL_OVERRIDE
+# A host running claude against a provider carries these in its own shell; the "no provider" rows
+# assert they are NOT exported, so an inherited value must never reach the fixture launch.
+unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_MODEL \
+      ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL \
+      CELL_TIER_MODEL_TOP CELL_TIER_MODEL_MID CELL_TIER_MODEL_FAST
 
 # ---------------------------------------------------------------- fixtures
 export HOME="$T/home"; mkdir -p "$HOME/.config/gh"

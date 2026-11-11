@@ -106,9 +106,10 @@ case "\${1:-}" in --version) echo "codex-cli 0.1.0-test"; exit 0 ;; esac
 case "\${1:-} \${2:-}" in
   "login status")
     [[ -f "$CODEX_STATE/authed" ]] && exit 0 || exit 1 ;;
-  "config --help") printf 'Commands:\n  get     read a config value\n'; exit 0 ;;
-  "config get")
-    if [[ -f "$CODEX_STATE/multiagent" ]]; then cat "$CODEX_STATE/multiagent"; else echo ""; fi
+  # cellctl reads Codex's EFFECTIVE feature state from "codex features list" (one
+  # "<name> <stage> <true|false>" row per feature), never a literal config read (f53fed97f, ea4f9842d).
+  "features list")
+    if [[ -f "$CODEX_STATE/multiagent" ]]; then printf 'multi_agent stable %s\n' "\$(cat "$CODEX_STATE/multiagent")"; fi
     exit 0 ;;
   "plugin --help") printf 'Commands:\n  list    list installed plugins\n'; exit 0 ;;
   "plugin list")
@@ -279,7 +280,10 @@ case_plan_grammar(){
   "$CELLCTL" new "$cell" --kind scrubbed --repo "$REPO" --repo-slug example-org/example-repo \
     --roots "example-org/example-repo=$REPO" >/dev/null
   local out
-  out="$(TERM=xterm-256color LANG=en_US.UTF-8 DRY_RUN=1 "$CELLCTL" desk "$cell" the-desk 2>&1)"
+  # TERM, LANG and ASSAY_TELEMETRY are composed only when the launching shell carries them
+  # (ASSAY_TELEMETRY since c893a16f2), so set each here: the KEY-set row below must not depend on
+  # the host shell.
+  out="$(TERM=xterm-256color LANG=en_US.UTF-8 ASSAY_TELEMETRY=0 DRY_RUN=1 "$CELLCTL" desk "$cell" the-desk 2>&1)"
   local lines; lines="$(printf '%s\n' "$out" | grep -E '^\[dry-run\]|^\[plan\]')"
   assert "plan-grammar: the existing [dry-run] line comes first" '[[ "$(head -n1 <<<"$lines")" == \[dry-run\]* ]]'
   local env_keys; env_keys="$(grep '^\[plan\] env ' <<<"$lines" | sed -E 's/^\[plan\] env //; s/=.*$//')"
