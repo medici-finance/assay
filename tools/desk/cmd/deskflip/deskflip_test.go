@@ -293,6 +293,67 @@ func TestMissingLeakGateIsCouldNotCheck(t *testing.T) {
 	}
 }
 
+// regression: #6198
+// The authorization-needed head: the repo's rulesets name only the out-of-band leak-sweep
+// verdict, the build and changelog checks come from CLASSIC branch protection (which the
+// legacy endpoint shows only to an `administration` identity), and the head's workflows were
+// never allowed to run — so the rollup holds the one leak-sweep status and nothing else.
+// The rules read alone says "leak-sweep is the whole required set", which made checks-green
+// pass 1/1 on a head whose build and tests never ran. The branch read's own protection
+// summary names the classic contexts, so the union catches the absent ones.
+func TestClassicChecksMissing(t *testing.T) {
+	s := newStub()
+	s.rollup = []rollupEntry{{Context: "leak-sweep", State: "SUCCESS"}}
+	s.adminFreeBranch = `{"name":"main","protected":true,"protection":{"enabled":true,
+		"required_status_checks":{"enforcement_level":"everyone","contexts":["build-test","changelog"]}}}`
+	s.adminFreeRules = `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("required checks never reported rc = %d, want %d (not green)", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("flipped though build-test and changelog never reported: %v", m)
+	}
+}
+
+// regression: #6198
+// The same head when the classic protection's required list cannot be seen at all: the
+// branch read carries no protection summary, so the set the rules read gave is a lower bound
+// of unknown completeness. That is could-not-check, never a pass.
+func TestRulesNoSummaryRefuses(t *testing.T) {
+	s := newStub()
+	s.rollup = []rollupEntry{{Context: "leak-sweep", State: "SUCCESS"}}
+	s.adminFreeBranch = `{"name":"main","protected":true}`
+	s.adminFreeRules = `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("unseen classic protection rc = %d, want %d (could-not-check)", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("flipped on a required set of unknown completeness: %v", m)
+	}
+}
+
+// The ruleset-only repo still flips: the branch read says classic protection is off, so the
+// rules read IS the whole required set and a present leak-sweep verdict satisfies it.
+func TestRulesetOnlyStillFlips(t *testing.T) {
+	s := newStub()
+	s.rollup = []rollupEntry{{Context: "leak-sweep", State: "SUCCESS"}}
+	s.adminFreeBranch = `{"name":"main","protected":true,"protection":{"enabled":false,
+		"required_status_checks":{"enforcement_level":"off","contexts":[],"checks":[]}}}`
+	s.adminFreeRules = `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("ruleset-only repo with its verdict present rc = %d, want %d", rc, deskkit.ExitOK)
+	}
+}
+
 // The other side of the same contract: a green rollup that DOES carry the leak-sweep verdict
 // (and every other required context) still flips — the cross-check refuses only an ABSENT
 // required verdict, never a present one, so it does not brick the normal green path.

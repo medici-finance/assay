@@ -504,8 +504,23 @@ type ghRequiredStatusChecksWire struct {
 // `GET /repos/{o}/{r}/branches/{b}`: whether ANYTHING protects the branch. This endpoint is
 // readable by a plain repo token (no `administration` scope), unlike the legacy protection
 // endpoint, so it answers "is the required set necessarily empty" without admin rights.
+//
+// It also carries the branch's CLASSIC-protection summary (`protection`), which the same plain
+// read can see: `enabled` says whether classic branch protection applies at all, and its
+// `required_status_checks` names the contexts that protection requires. A ruleset-only branch
+// reads `enabled: false`. Both are pointers so an ABSENT summary is told apart from an
+// explicit "protection off" — an absent summary means classic protection cannot be ruled out.
 type ghBranchProtectedWire struct {
-	Protected bool `json:"protected"`
+	Protected  bool `json:"protected"`
+	Protection *struct {
+		Enabled              bool `json:"enabled"`
+		RequiredStatusChecks *struct {
+			Contexts []string `json:"contexts"`
+			Checks   []struct {
+				Context string `json:"context"`
+			} `json:"checks"`
+		} `json:"required_status_checks"`
+	} `json:"protection"`
 }
 
 // ghBranchRuleWire is one entry of `GET /repos/{o}/{r}/rules/branches/{b}` — the EFFECTIVE
@@ -1603,7 +1618,23 @@ func (g *GitHubForge) requiredChecksAdminFree(repo ForgeRepo, branch string, leg
 			ctxs = append(ctxs, c.Context)
 		}
 	}
-	if set := dedupContexts(ctxs); len(set) > 0 {
+	// The rules API shows RULESETS only. Classic branch protection can require further
+	// contexts that no ruleset names, so a ruleset-derived set is only a LOWER bound unless the
+	// branch read shows classic protection is off or names its own contexts (#6198: a branch
+	// whose rulesets named only an out-of-band verdict read as "that verdict is everything
+	// required", and checks-green passed a head whose build and tests never ran).
+	classic, classicSeen := classicRequiredContexts(bp, brErr)
+	if set := dedupContexts(ctxs, classic); len(set) > 0 {
+		if !classicSeen {
+			return nil, Unverifiable(fmt.Sprintf(
+				"cannot establish the complete required status-check set for %s@%s: the rulesets name %d "+
+					"required context(s) (%s), but whether classic branch protection requires more could not "+
+					"be read — the branch read carried no classic-protection summary, and the legacy "+
+					"endpoint that would show it is forbidden to this identity (needs the `administration: "+
+					"read` repository permission). A partial set is could-not-check, never complete: a required "+
+					"check that never reported would pass unseen.",
+				repo.Slug(), branch, len(dedupContexts(ctxs)), strings.Join(dedupContexts(ctxs), ", ")), nil)
+		}
 		return set, nil
 	}
 	// Protected (or protection-flag unreadable) AND the rules API named no required contexts.
@@ -1631,6 +1662,31 @@ func (g *GitHubForge) requiredChecksAdminFree(repo ForgeRepo, branch string, leg
 			"until that permission is granted ONCE — escalate it as a permission grant, not as a recurring "+
 			"human decision.",
 		repo.Slug(), branch, branch), nil)
+}
+
+// classicRequiredContexts reads the classic-branch-protection required contexts off the
+// admin-free branch read. seen is true only when that read POSITIVELY showed the classic
+// answer: protection off (no contexts) or protection on with its required-checks summary. An
+// unreadable branch, an absent protection summary, or protection on with no summary is NOT
+// seen — classic protection may require contexts this read cannot show, and the caller must
+// treat the rules-derived set as incomplete.
+func classicRequiredContexts(bp ghBranchProtectedWire, brErr error) (contexts []string, seen bool) {
+	if brErr != nil || bp.Protection == nil {
+		return nil, false
+	}
+	if !bp.Protection.Enabled {
+		return nil, true
+	}
+	rsc := bp.Protection.RequiredStatusChecks
+	if rsc == nil {
+		return nil, false
+	}
+	var out []string
+	out = append(out, rsc.Contexts...)
+	for _, c := range rsc.Checks {
+		out = append(out, c.Context)
+	}
+	return dedupContexts(out), true
 }
 
 // contextsOf flattens the `checks` shape (context + optional app id) to its context names.

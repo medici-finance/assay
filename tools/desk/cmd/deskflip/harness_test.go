@@ -134,6 +134,12 @@ type stub struct {
 	// rather than assume nothing is required.
 	requiredChecksErr bool
 	reqCheckReads     int
+	// adminFreeBranch / adminFreeRules, when adminFreeBranch is non-empty, make the legacy
+	// required_status_checks endpoint answer 403 (an identity without `administration`) and
+	// serve these JSON bodies from the admin-free branch read and the branch-rules read — the
+	// path every reviewer App identity takes.
+	adminFreeBranch string
+	adminFreeRules  string
 
 	// headCommittedAt is the committer date GET /commits/{sha} serves for the head — the
 	// date an APPROVED's submitted_at must not predate (#3093: GitHub re-anchors an old
@@ -272,11 +278,21 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+			if s.adminFreeBranch != "" {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
 			if s.requiredChecks == nil {
 				w.WriteHeader(http.StatusNotFound) // no protection / none required
 				return
 			}
 			enc(map[string]any{"contexts": s.requiredChecks})
+
+		case s.adminFreeBranch != "" && strings.Contains(path, "/rules/branches/"):
+			_, _ = w.Write([]byte(s.adminFreeRules))
+
+		case s.adminFreeBranch != "" && strings.Contains(path, "/branches/"):
+			_, _ = w.Write([]byte(s.adminFreeBranch))
 
 		case strings.HasSuffix(path, "/status"):
 			enc(s.servedStatuses())

@@ -168,7 +168,7 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 			mux: &reqChecksMux{
 				legacyStatus: http.StatusForbidden,
 				branchStatus: http.StatusOK,
-				branchBody:   `{"name":"main","protected":true}`,
+				branchBody:   `{"name":"main","protected":true,"protection":{"enabled":false}}`,
 				rulesStatus:  http.StatusOK,
 				rulesBody: `[
 					{"type":"pull_request","parameters":{}},
@@ -183,6 +183,85 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 				]`,
 			},
 			wantSet:     []string{"ci/build", "go-test", "leak-sweep"},
+			wantSawBr:   true,
+			wantSawRule: true,
+		},
+		{
+			// (c2) regression #6198: rulesets name only one context, classic protection requires
+			// two more. The branch read's protection summary names them; the set is the union, so
+			// a head carrying only the ruleset's verdict is missing two required checks.
+			name: "legacy_403_rules_plus_classic_union",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusForbidden,
+				branchStatus: http.StatusOK,
+				branchBody: `{"name":"main","protected":true,"protection":{"enabled":true,
+					"required_status_checks":{"contexts":["build-test"],"checks":[{"context":"changelog"}]}}}`,
+				rulesStatus: http.StatusOK,
+				rulesBody:   `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`,
+			},
+			wantSet:     []string{"build-test", "changelog", "leak-sweep"},
+			wantSawBr:   true,
+			wantSawRule: true,
+		},
+		{
+			// (c3) regression #6198: rulesets name a context but the branch read carries NO
+			// protection summary, so classic protection cannot be ruled out. A rules-only set is a
+			// lower bound of unknown completeness => could-not-check, never the partial set.
+			name: "legacy_403_rules_contexts_no_protection_summary",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusForbidden,
+				branchStatus: http.StatusOK,
+				branchBody:   `{"name":"main","protected":true}`,
+				rulesStatus:  http.StatusOK,
+				rulesBody:    `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`,
+			},
+			wantErr:       true,
+			wantSawBr:     true,
+			wantSawRule:   true,
+			wantErrSubstr: []string{"leak-sweep", "administration: read"},
+		},
+		{
+			// (c4) regression #6198: classic protection is ON but its required-checks summary is
+			// absent => the classic half is unreadable => could-not-check.
+			name: "legacy_403_rules_contexts_classic_on_summary_absent",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusForbidden,
+				branchStatus: http.StatusOK,
+				branchBody:   `{"name":"main","protected":true,"protection":{"enabled":true}}`,
+				rulesStatus:  http.StatusOK,
+				rulesBody:    `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`,
+			},
+			wantErr:     true,
+			wantSawBr:   true,
+			wantSawRule: true,
+		},
+		{
+			// (c5) regression #6198: the protection flag read fails but the rules read names
+			// contexts. Classic protection cannot be ruled out => could-not-check.
+			name: "legacy_403_branch_read_fails_rules_contexts",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusForbidden,
+				branchStatus: http.StatusInternalServerError,
+				rulesStatus:  http.StatusOK,
+				rulesBody:    `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`,
+			},
+			wantErr:     true,
+			wantSawBr:   true,
+			wantSawRule: true,
+		},
+		{
+			// (c6) classic protection alone, visible in the branch summary, with no rulesets:
+			// its contexts are the required set (a classic-only repo no longer dead-ends).
+			name: "legacy_403_classic_only_summary",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusForbidden,
+				branchStatus: http.StatusOK,
+				branchBody: `{"name":"main","protected":true,"protection":{"enabled":true,
+					"required_status_checks":{"contexts":["ci/build"]}}}`,
+				rulesStatus: http.StatusOK,
+				rulesBody:   `[]`,
+			},
+			wantSet:     []string{"ci/build"},
 			wantSawBr:   true,
 			wantSawRule: true,
 		},
