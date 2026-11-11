@@ -206,10 +206,11 @@ func TestPruneSingletonMissingStampSweeps(t *testing.T) {
 // boot-time and manual sweep on the machine — an efficiency mechanism turned into an
 // outage. After a tick completes, the lock must be free.
 
-func TestPruneIntervalReleasesLockPerTick(t *testing.T) {
+// regression: F-prune-lock-release
+func TestPruneIntervalLockRelease(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
-	addWorktree(t, "tick-candidate")
+	target := addWorktree(t, "tick-candidate")
 	advanceMain(t, work, "first")
 
 	guard, err := newPathGuard(work)
@@ -218,16 +219,20 @@ func TestPruneIntervalReleasesLockPerTick(t *testing.T) {
 	}
 	cwd := resolvePath(mustAbsOrRaw(work))
 	stop := make(chan struct{})
+	close(stop) // the immediate sweep runs before stop is selected
 	ac := &auditCtx{verb: "prune"}
 
 	out := runCapOut(t, func() {
-		go func() { time.Sleep(300 * time.Millisecond); close(stop) }()
-		if rerr := runPruneLoop(guard, work, cwd, 50*time.Millisecond, pruneOpts{singletonTTL: 0}, stop, ac); rerr != nil {
+		if rerr := runPruneLoop(guard, work, cwd, time.Hour, pruneOpts{singletonTTL: 0}, stop, ac); rerr != nil {
 			t.Errorf("runPruneLoop: %v", rerr)
 		}
 	})
-	if !strings.Contains(out, "tick 1") {
-		t.Fatalf("the loop did not tick; stdout:\n%s", out)
+	if strings.Count(out, "prune tick ") != 1 || !strings.Contains(out, "prune tick 1:") {
+		t.Fatalf("want exactly one immediate tick; stdout:\n%s", out)
+	}
+
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("the immediate tick did not remove its merged candidate (err=%v)", err)
 	}
 
 	// The supervisor has exited; the lock must be takeable immediately.

@@ -1,0 +1,213 @@
+{
+  "schema": "brief-identity-mutations-v1",
+  "runner": "python3 statusgen/testdata/milestone-support/08-mutate.py",
+  "cases": [
+    {
+      "name": "trailer-kind-erasure",
+      "target": "tools/desk/internal/deskkit/trailer.go",
+      "old": "return workref.Resolve(v, declaring, registry, workref.TypedBrief)",
+      "new": "return workref.Resolve(strings.ReplaceAll(v, \":m-\", \":b-\"), declaring, registry, workref.TypedBrief)",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestPrefixedTrailerIdentityJoin"
+    },
+    {
+      "name": "exact-version-substitution",
+      "target": "tools/desk/internal/deskkit/workselection.go",
+      "old": "if r.Revision != 0 && r.Revision != found.Subject.Version {",
+      "new": "if false && r.Revision != 0 && r.Revision != found.Subject.Version {",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestPrefixedTrailerIdentityJoin"
+    },
+    {
+      "name": "duplicate-subject-admitted",
+      "target": "tools/desk/internal/deskkit/workselection.go",
+      "old": "if i != 5 || token != \"\" || !strings.HasPrefix(field, subjectToken) {",
+      "new": "if _ = i; !strings.HasPrefix(field, subjectToken) {",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestClaimSubjectTokens"
+    },
+    {
+      "name": "subject-dropped-on-progress",
+      "target": "tools/desk/cmd/deskclaim-ref/claim.go",
+      "old": "if legacySubjectHold(ref.Msg) {\n\t\terrf(\"unverifiable: selected subject required to advance a negotiated claim\")",
+      "new": "if false && legacySubjectHold(ref.Msg) {\n\t\terrf(\"unverifiable: selected subject required to advance a negotiated claim\")",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestPrefixedClaimAliases"
+    },
+    {
+      "name": "physical-key-selector",
+      "target": "tools/desk/cmd/deskclaim-ref/args.go",
+      "old": "id = work.ClaimKey",
+      "new": "id = work.ClaimKey + \"@2\"",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestPrefixedClaimAliases"
+    },
+    {
+      "name": "second-caller-selector",
+      "target": "tools/desk/cmd/deskclaim-ref/workclaim.go",
+      "old": "func (s *subjectClaimStore) unique(id string) bool {",
+      "new": "func repeatedClaimKey(id string) string { return id + \"@2\" }\nfunc (s *subjectClaimStore) unique(id string) bool {\n id = repeatedClaimKey(id)",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestPrefixedClaimAliases"
+    },
+    {
+      "name": "stale-cas-custody-restored",
+      "target": "tools/desk/cmd/deskclaim-ref/workclaim.go",
+      "old": "if ref.Version != old {\n\t\treturn deskkit.ClaimWriteRejected\n\t}",
+      "new": "if ref.Version != old {\n old=ref.Version\n }",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestSelectedClaimCAS"
+    },
+    {
+      "name": "historical-alias-ignored",
+      "target": "tools/desk/cmd/deskclaim-ref/workclaim.go",
+      "old": "if !aliases[other] {",
+      "new": "if true {",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestClaimAliasHolds"
+    },
+    {
+      "name": "post-create-race-ignored",
+      "target": "tools/desk/cmd/deskclaim-ref/workclaim.go",
+      "old": "if outcome == deskkit.ClaimWriteApplied && !s.unique(id) {",
+      "new": "if false && outcome == deskkit.ClaimWriteApplied && !s.unique(id) {",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestClaimAliasHolds"
+    },
+    {
+      "name": "writer-census-grants-syntax",
+      "target": "tools/desk/internal/deskkit/worksource.go",
+      "old": "return CheckWorkOperation(\"trailer\", peers, complete)",
+      "new": "_ = peers; _ = complete; return nil",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestWorkSourceSnapshot"
+    },
+    {
+      "name": "trailer-source-bypassed",
+      "target": "tools/desk/cmd/deskpr/deskpr.go",
+      "old": "if deskkit.NegotiatedWorkSyntax(trs[0].Value) {",
+      "new": "if false && deskkit.NegotiatedWorkSyntax(trs[0].Value) {",
+      "module": "tools/desk",
+      "package": "./cmd/deskpr",
+      "test": "TestWorkTrailerSourceHold"
+    },
+    {
+      "name": "positional-reader-erases-extension",
+      "target": "tools/desk/cmd/desksupervise/live.go",
+      "old": "if len(fields) < 5 || fields[0] != \"dispatch-claim\" || fields[1] != key {",
+      "new": "if len(fields) != 5 || fields[0] != \"dispatch-claim\" || fields[1] != key {",
+      "module": "tools/desk",
+      "package": "./cmd/desksupervise",
+      "test": "TestSubjectPayloadReader"
+    },
+    {
+      "name": "dispatch-selector-erased",
+      "target": "tools/desk/cmd/deskdispatch/dispatch.go",
+      "old": "if deskkit.NegotiatedWorkSyntax(item) || strings.Contains(item, \":\") {",
+      "new": "if false && (deskkit.NegotiatedWorkSyntax(item) || strings.Contains(item, \":\")) {",
+      "module": "tools/desk",
+      "package": "./cmd/deskdispatch",
+      "test": "TestClaimKeySubjectSpelling"
+    },
+    {
+      "name": "cross-root-case-fold",
+      "target": "tools/desk/cmd/deskdispatch/phantom.go",
+      "old": "validCrossLink(t.Value) && validCrossLink(xrLink) && t.Value == xrLink",
+      "new": "strings.EqualFold(strings.TrimSpace(t.Value), xrLink)",
+      "module": "tools/desk",
+      "package": "./cmd/deskdispatch",
+      "test": "TestStrictCrossRepoMatch"
+    },
+    {
+      "name": "filing-legacy-fallback",
+      "target": "tools/desk/cmd/deskfile/bound.go",
+      "old": "if deskkit.NegotiatedWorkSyntax(briefArg) {",
+      "new": "if false && deskkit.NegotiatedWorkSyntax(briefArg) {",
+      "module": "tools/desk",
+      "package": "./cmd/deskfile",
+      "test": "TestBoundSubjectHold"
+    },
+    {
+      "name": "local-scope-overclaim",
+      "target": "tools/desk/internal/loopengine/claim.go",
+      "old": "if deskkit.NegotiatedWorkSyntax(it.ID) {",
+      "new": "if false && deskkit.NegotiatedWorkSyntax(it.ID) {",
+      "module": "tools/desk",
+      "package": "./internal/loopengine",
+      "test": "TestLocalSubjectHold"
+    },
+    {
+      "name": "legacy-note-is-not-metadata",
+      "target": "tools/desk/internal/deskkit/workselection.go",
+      "old": "return (strings.HasPrefix(field, \"subject\") && strings.Contains(field, \"=\")) || strings.Contains(field, \"subject-v\")",
+      "new": "return strings.HasPrefix(field, \"subject\") || strings.Contains(field, \"subject-v\")",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestClaimSubjectTokens"
+    },
+    {
+      "name": "legacy-field-whitespace",
+      "target": "tools/desk/cmd/deskclaim-ref/claim.go",
+      "old": "if strings.IndexFunc(field, unicode.IsSpace) >= 0 {",
+      "new": "if false && strings.IndexFunc(field, unicode.IsSpace) >= 0 {",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestLegacyFieldWhitespace"
+    },
+    {
+      "name": "claim-key-whitespace",
+      "target": "tools/desk/cmd/deskclaim-ref/claim.go",
+      "old": " || strings.IndexFunc(id, unicode.IsSpace) >= 0",
+      "new": " || false && strings.IndexFunc(id, unicode.IsSpace) >= 0",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestLegacyFieldWhitespace"
+    },
+    {
+      "name": "legacy-note-subject-token",
+      "target": "tools/desk/cmd/deskclaim-ref/claim.go",
+      "old": "if _, present, err := deskkit.DecodeClaimSubject(msg); err != nil || present {",
+      "new": "if _, present, err := deskkit.DecodeClaimSubject(msg); false && (err != nil || present) {",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestLegacyFieldWhitespace"
+    },
+    {
+      "name": "admission-commit-erased",
+      "target": "tools/desk/cmd/deskclaim-ref/workclaim.go",
+      "old": "if err != nil || !present || subject != s.selected.Subject {",
+      "new": "if err != nil || !present || subject.UUID != s.selected.Subject.UUID || subject.Version != s.selected.Subject.Version || subject.Repository != s.selected.Subject.Repository || subject.Path != s.selected.Subject.Path {",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestAdmittedSourceProgress"
+    },
+    {
+      "name": "opaque-header-is-not-subject",
+      "target": "tools/desk/internal/deskkit/workselection.go",
+      "old": "if i < 5 && prefixValid {",
+      "new": "if false && i < 5 && prefixValid {",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim-ref",
+      "test": "TestLegacyFieldWhitespace"
+    },
+    {
+      "name": "malformed-header-token-hidden",
+      "target": "tools/desk/internal/deskkit/workselection.go",
+      "old": "if i < 5 && prefixValid {",
+      "new": "if i < 5 {",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestClaimSubjectTokens"
+    }
+  ]
+}

@@ -1375,6 +1375,14 @@ func main() {
 		exitProcess(runVerifyclosure(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen evidenceverdict` — the READ-ONLY landing question "may this
+	// run's verdict be appended to this brief's Evidence?" (evidenceverdict.go):
+	// a non-decisive verdict on a verified or done brief belongs in the outcome
+	// record only. deskevidence asks it before any Evidence write.
+	if len(os.Args) > 1 && os.Args[1] == "evidenceverdict" {
+		exitProcess(runEvidenceverdict(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen verifyflip` — the sanctioned implemented → verified README flip
 	// for a gate: model brief, its Verified stamp derived from the recorded strict
 	// PASS (verifyflip.go, #2074). Own flag namespace, so intercepted here.
@@ -1651,7 +1659,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, verifyflip, mergecheck, shardcheck, conform, brief, context, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, evidenceverdict, verifyflip, mergecheck, shardcheck, conform, brief, context, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			exitProcess(2)
 		}

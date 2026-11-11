@@ -11,6 +11,7 @@ S-eligibility 1
 S-evidence-coverage 1
 S-exit-codes 1
 S-forge-local-authority 1
+S-host-mutation-work 1
 S-identity 2
 S-publication-scan 1
 S-review-verdict 3

@@ -1042,10 +1042,14 @@ worker-desk's own.
   bindings), the desk falls back to the event-driven + fixed-cadence board sweep at the same 30-minute
   cadence and **states the gap in-session**; a durable wake is a convenience, never one of the three
   never-degrade guarantees.
-- **A tick keeps the dead-man lease fresh.** The desk tools refuse to run when the `HEARTBEAT`
-  file in the config home (desk-shell.md §Config home: `~/.config/assay`) has not been touched
-  inside its staleness window, so the standing loop is the thing that keeps it current: touch
-  it on every tick, including a quiet one.
+- **A tick never renews the dead-man lease.** When the `HEARTBEAT` file in the config home
+  (desk-shell.md §Config home: `~/.config/assay`) exists and was last touched outside its
+  staleness window, the desk tools refuse to run: that is STOP-ALL by construction. Renewal is a
+  HUMAN act. The driver, or a cron the driver owns, touches the file. No agent or loop touches,
+  renews or deletes it, on any tick, because a loop that keeps its own lease fresh defeats the
+  dead-man semantics. A `heartbeat stale (age …)` refusal is the lease firing. Quote it verbatim
+  in the hand-off note, print ONE loud line naming it, and stand down. Never ask the driver how
+  to proceed.
 - **A tick reads the armed per-run stops and stops each run's worker.** Every tick, read the armed
   per-run stops (`desksupervise status --stops`) and, for each one, `capability:stop-worker` the matching
   dispatched worker — the cooperative `STOP.run.<key>` flag already refuses that run's next desk verb,
