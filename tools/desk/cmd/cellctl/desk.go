@@ -370,6 +370,9 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 		// When the repair-admission opt-in is on, show it composed into the launch — the exact
 		// KEY=VALUE the child process (and, through it, deskdispatch) will carry. Off/unset is
 		// absent here, matching the composed environment (deskLaunch omits it).
+		for _, kv := range c.muharBudgetEnv(nil) {
+			fmt.Printf("[dry-run] env %s (host mutation budget opt-in)\n", kv)
+		}
 		if rav := c.repairAdmissionValue(); rav != "" {
 			fmt.Printf("[dry-run] env %s=%s (repair-admission dispatch gate opt-in)\n", deskkit.EnvRepairAdmission, rav)
 		}

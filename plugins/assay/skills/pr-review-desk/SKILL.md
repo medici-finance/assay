@@ -125,7 +125,7 @@ identity. Three desk-specific residues `deskboot` does not carry:
    per change (`kind ∈ opened | pushed | draft-flip | state | merge-state | closed`) — so a fresh
    PR, a push, or a draft flip surfaces within one cadence tick. Each repo is read under its own
    per-repo role token, minted inside the poll from the window's `$DESK_LOOP` (`desktoken <role>
-   --repo <slug>`) and scoped to that one read — never the ambient `gh` login, never an inherited
+   --forge github --repo <slug>`, which never rotates) and scoped to that one read — never the ambient `gh` login, never an inherited
    `GH_TOKEN`. A mint that fails (or a `$DESK_LOOP` that is unset) prints `MONITOR-DEGRADED: <slug>
    token mint FAILED (...)`, the repo keeps its previous baseline, and the cycle exits 2: that is
    could-not-check, never "no open PRs" — so arm the monitor with `DESK_LOOP` exported. It PACES its reads: it sleeps
@@ -686,6 +686,16 @@ separate PRs** (repetition, not rounds on one PR) names a mechanism, not a guard
 record the class per `intake-desk` step 1 — independent of whether any PR hit the round cap
 above. Recurrence goes to design, never straight to one more rule.
 
+### A check that needs a project secret or a live service
+
+When a PR's claim rests on a check that needs a project credential or a live service (`review-prompt`
+clause 5), the desk does not treat the implementer's report of running it as evidence, and does not
+treat a review that accepted that report as an approval. The verdict names the check could-not-check
+and the environment it needs; the approval rests on what the reviewer could check. The Verify row is
+witnessed after merge, in the board's Environment-blocked queue, by an operator who holds that
+environment (verify-desk §"Rows that need a project secret or a live service"). No reviewer slot is
+given a project secret, and no PR head is run with one.
+
 ### Finding-class calibration — reversal-rate demotion
 
 A finding class earns its blocking power; it does not hold it by default. The monthly
@@ -856,7 +866,7 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        the same code that writes, each with its `readme`, `from`/`to` and the whole table line
        before and after (`rowBefore`/`rowAfter`). The token comes ONLY from `--token-file`, a
        file holding the reviewer role's own credential, used here for reads only (the path
-       `desktoken reviewer --repo <delivery owner/name>` prints) — never a token placed in the environment
+       `desktoken --no-rotate reviewer --repo <delivery owner/name>` prints) — never a token placed in the environment
        (`GITHUB_TOKEN`), never a human account's. The `--apply` form stays valid: the same
        command with `--apply`, whose `applied` list carries the same fields; because it writes
        into the worktree it runs on, each `--apply` run needs its OWN fresh throwaway worktree.
@@ -1271,8 +1281,8 @@ it survives a skim. Standing rule, mirrored in the intake-desk copy:
 ## Reviewer identity, and this desk's grants
 
 The reviewer posts as a dedicated GitHub App, `assay-reviewer-app[bot]` — a *distinct actor* from
-the shared machine account that authors PRs and that the human also drives from a CLI. Mint with
-`desktoken`, post with the desk verbs (the resident rules' identity & posting section). The App's
+the shared machine account that authors PRs and that the human also drives from a CLI. Resolve
+the credential with `desktoken --no-rotate reviewer --repo <slug>`, post with the desk verbs (the resident rules' identity & posting section). The App's
 token carries `pull_requests`, `issues` and `contents` write, so it files governance issues and
 flips its own drafts as the App; the App-family record is the desk-App family record shipped with the desk tools.
 

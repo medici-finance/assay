@@ -44,6 +44,19 @@ type PathCommit struct {
 // object — ends the walk with an error rather than being reported as "the path is absent":
 // a caller comparing PathID against ParentPathIDs must never read a gap as a change.
 func (r *Repo) PathHistory(rev, path string, visit func(PathCommit) bool) error {
+	return r.PathHistoryStop(rev, path, nil, visit)
+}
+
+// ErrPathHistoryStopped is what PathHistoryStop returns when its stop ended the walk.
+var ErrPathHistoryStopped = errors.New("gitcore: path history stopped by its caller")
+
+// PathHistoryStop is PathHistory that also asks stop, when it is not nil, before each
+// commit's own tree and before each parent's, so a caller's limit binds inside one commit
+// with many parents, not only between visits. stop returning true ends the walk with
+// ErrPathHistoryStopped, and that commit is not visited. The commit iterator decodes
+// each parent's commit object (never its tree) before it hands a commit on; stop does
+// not reach that decode.
+func (r *Repo) PathHistoryStop(rev, path string, stop func() bool, visit func(PathCommit) bool) error {
 	hash, err := r.Resolve(rev)
 	if err != nil {
 		return err
@@ -86,10 +99,16 @@ func (r *Repo) PathHistory(rev, path string, visit func(PathCommit) bool) error 
 			ParentPathIDs: make([]string, len(c.ParentHashes)),
 		}
 		var err error
+		if stop != nil && stop() {
+			return ErrPathHistoryStopped
+		}
 		if pc.PathID, err = at(c); err != nil {
 			return err
 		}
 		for i, ph := range c.ParentHashes {
+			if stop != nil && stop() {
+				return ErrPathHistoryStopped
+			}
 			pc.Parents[i] = ph.String()
 			parent, err := r.repo.CommitObject(ph)
 			if err != nil {
@@ -104,6 +123,9 @@ func (r *Repo) PathHistory(rev, path string, visit func(PathCommit) bool) error 
 		}
 		return nil
 	})
+	if errors.Is(err, ErrPathHistoryStopped) {
+		return ErrPathHistoryStopped
+	}
 	if err != nil {
 		return fmt.Errorf("gitcore: path history %s: %w", rev, err)
 	}

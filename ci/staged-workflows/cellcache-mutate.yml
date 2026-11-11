@@ -31,7 +31,8 @@ on:
     branches: [main]
     paths:
       - "tools/desk/internal/cellcache/**"
-      - "tools/desk/internal/cellprocess/**"
+      - "tools/desk/internal/cellrunner/**"
+      - "loopadmin/process/**"
       - "tools/desk/cmd/cellctl/**"
       - "tools/desk/cmd/deskdispatch/**"
       - "tools/desk/cmd/deskwt/**"
@@ -39,7 +40,8 @@ on:
   pull_request:
     paths:
       - "tools/desk/internal/cellcache/**"
-      - "tools/desk/internal/cellprocess/**"
+      - "tools/desk/internal/cellrunner/**"
+      - "loopadmin/process/**"
       - "tools/desk/cmd/cellctl/**"
       - "tools/desk/cmd/deskdispatch/**"
       - "tools/desk/cmd/deskwt/**"

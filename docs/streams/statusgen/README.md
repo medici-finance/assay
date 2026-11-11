@@ -69,10 +69,11 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 33 | [Drive active notice severity from the existing registry after cleanup](brief-33-drive-active-notice-severity-from-the-existing-registry-after-cleanup.md) | 9 | M | todo | — | — |
 | 34 | [One owned scratch path for Verify rows](brief-34-one-owned-scratch-path-for-verify-rows.md) | 1 | L | todo | — | — |
 | 35 | [Drain actionable notice debt in this repository without rewriting closed records](brief-35-drain-actionable-notice-debt-in-this-repository-without-rewriting-closed-records.md) | 8 | M | todo | — | — |
-| 36 | [Content-bound witness schema v2: the reader and the one digest owner](brief-36-content-bound-witness-schema-v2-reader.md) | 1 | L | todo | — | — |
+| 36 | [Content-bound witness schema v2: the reader and the one digest owner](brief-36-content-bound-witness-schema-v2-reader.md) | 1 | L | implemented | — | — |
 | 37 | [Content-bound witness schema v2: the writers and the desk readers](brief-37-content-bound-witness-schema-v2-writers.md) | 2 | L | todo | — | — |
 | 38 | [One-time v1-to-v2 witness backfill where the witnessed content is still fetchable](brief-38-one-time-v1-to-v2-witness-backfill.md) | 3 | M | todo | — | — |
 | 39 | [Multi-root objective reader: prerequisite graph, critical path and ranked moves](brief-39-multi-root-objective-reader.md) | 1 | L | todo | — | — |
+| 40 | [Chain approved acceptance transitions, and let one approval correct a row's Command and Expect](brief-40-chain-approved-acceptance-transitions.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -104,13 +105,19 @@ leads 37 and 37 leads 38 (medici-finance/assay#2026, medici-finance/assay#3658).
 statusgen/39 (multi-root objective reader) has no in-repo `depends:`; its one prerequisite is
 the v1 objective skill of #4107, carried as a `feathers:` ordering edge (a notice, never a
 hold) because only the final skill-swap step needs it.
+statusgen/40 (chained acceptance transitions and combined Command-and-Expect corrections,
+medici-finance/assay#6064) has no in-repo `depends:`; its head is the human decision it
+carries (rule 48). It unblocks the acceptance of desk-containers/17 and the held statusgen/36
+correction, and it is step 1 of that held proposal. It reaches statusgen/37 only as a
+`feathers:` ordering edge (a notice, never a hold), because only /37's I-2 slice re-routes
+the transition audit whose limits /40 defines.
 Every other brief is independent and self-contained.
 
 ## Dependency waves
 - **Wave 1** — statusgen/01, statusgen/02, statusgen/04, statusgen/05, statusgen/06,
   statusgen/07, statusgen/09, statusgen/10, statusgen/11, statusgen/12, statusgen/13,
-  statusgen/14, statusgen/15, statusgen/19, statusgen/22, statusgen/36, statusgen/39 (all
-  independent; parallelizable).
+  statusgen/14, statusgen/15, statusgen/19, statusgen/22, statusgen/36, statusgen/39,
+  statusgen/40 (all independent; parallelizable).
 - **Wave 2** — statusgen/03 (depends on statusgen/02), statusgen/08 (depends on statusgen/07),
   statusgen/18 (depends on statusgen/17), statusgen/20 (depends on statusgen/19),
   statusgen/24 (depends on statusgen/22; cross-stream: continuing-operations/01 is also wave 2),
@@ -339,6 +346,7 @@ statusgen/37 -> statusgen/31 -> statusgen/35
 statusgen/37 -> desk-tools/46 -> /47 -> handoff/02 -> /04 -> /05 -> /06
 desk-tools/46 -> handoff/05 -> statusgen/35
 statusgen/27..32 + /38 + desk-tools/47 + handoff/05 -> statusgen/35
+statusgen/40 ..> statusgen/37   (ordering feather on /37's I-2 slice; a notice, not a hold)
 ```
 
 The typed frontmatter is authoritative for exact edges; the sketch shows shared owners,

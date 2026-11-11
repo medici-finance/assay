@@ -52,9 +52,15 @@ does not own or mutate native Goal state.
 Explicit `--cadence` / `CELL_CADENCE` durations select the existing headless supervisor;
 `--cadence off` or saved `CELL_CADENCE=off` explicitly selects interactive mode.
 A tick budget requires an explicit cadence; `off` ignores a saved budget. Codex tick
-launches disable native Goals and never receive the standing bootstrap. Claude and
-Cursor keep their existing behavior. Defaults do not rewrite cell.env or change
-already-running sessions.
+launches disable native Goals and never receive the standing bootstrap.
+
+Interactive Cursor desks opened by `desk` or `up` use Cursor's built-in
+`/loop` skill during role boot. The loop wakes the same chat for its due sweep,
+with normal operator input and approvals in that chat. Use the updated Cursor
+bundle in the role worktree so the boot can read the
+[interactive cadence binding](../plugins/assay/references/cursor.md#interactive-desk-cadence).
+An explicit duration still selects the headless supervisor. Changes to these
+launch defaults apply the next time a session starts.
 
 The same bootstrap covers host and scrubbed Codex desk argv. Native container cells
 run an independently pinned image entrypoint with its own paused/handoff contract;
@@ -276,7 +282,8 @@ Windows compilation alone does not establish those behaviors.
 The offline Windows runtime checks can be run from `tools/desk` in PowerShell:
 
 ```powershell
-go test ./internal/cellcadence ./internal/cellprocess
+go test ./internal/cellcadence ./internal/cellrunner
+cd ../../loopadmin && go test ./process && cd ../tools/desk
 go test ./cmd/cellctl -run 'TestCodex|TestWindowsCommandEnvironment|TestInteractiveOwner'
 ```
 
@@ -297,7 +304,9 @@ or the periodic sweep a running desk supervisor starts beside its child (see
 Managed Go-cache preparation and final process enrollment never recursively inventory
 the cache. Fresh clean accounting, current free-space headroom and owned root metadata
 are required; missing, stale, dirty or corrupt accounting refuses with a request to run
-`cellctl cache <cell> clean`. A newly created empty owned root is initialized with
+`cellctl cache <cell> clean`. `cellctl up` alone runs that clean itself, once, when the
+refusal is the size or free-space margin or a stale measurement, then prepares again
+([Managed Go caches](cellctl-go-cache.md#cellctl-up-cleans-once-on-a-reclaimable-deferral)). A newly created empty owned root is initialized with
 bounded metadata reads. Maintenance inventory releases admission custody while walking,
 then reacquires it and revalidates consumer enrollment and current free space before
 cleanup. A consumer admitted during inventory invalidates that pass even if it exits
