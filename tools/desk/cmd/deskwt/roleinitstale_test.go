@@ -57,7 +57,7 @@ func TestRoleInitClearsOwnStaleLock(t *testing.T) {
 
 	// A second, unrelated registration whose directory is also gone. The recovery must touch
 	// only role-init's own entry: a repo-wide `git worktree prune` would drop this one too.
-	other := filepath.Join(tmpBaseDir, "tracker-unrelated")
+	other := filepath.Join(tmpBaseDir, "unrelated")
 	mustGit(t, work, "worktree", "add", "--detach", other, "HEAD")
 	if err := os.RemoveAll(other); err != nil {
 		t.Fatal(err)
@@ -212,14 +212,15 @@ func TestGitFailCarriesFatalLine(t *testing.T) {
 func TestAddFailCarriesFatalLine(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
-	target := filepath.Join(tmpBaseDir, "tracker-planted")
+	const name = "planted"
+	target := filepath.Join(tmpBaseDir, "tracker-"+name) // deskwt add's target for name
 	mustGit(t, work, "worktree", "add", "--detach", target, "HEAD")
 	mustGit(t, work, "worktree", "lock", "--reason", "fixture lock", target)
 	if err := os.RemoveAll(target); err != nil {
 		t.Fatal(err)
 	}
 
-	rc, stderr := runCapErr(t, []string{"add", "planted"})
+	rc, stderr := runCapErr(t, []string{"add", name})
 	if rc == deskkit.ExitOK {
 		t.Fatalf("add over a missing-but-locked registration succeeded; stderr: %s", stderr)
 	}
