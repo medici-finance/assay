@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,9 +59,7 @@ func acquireAuditLock() (*auditLock, error) {
 		}
 		if time.Now().After(deadline) {
 			f.Close()
-			return nil, deskkit.Unverifiable(fmt.Sprintf(
-				"audit lock held >%s (stale lock?) — another desk write may be stuck; retry, or a human clears it",
-				lockWait), nil)
+			return nil, deskkit.AuditLockContended(lockWait)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

@@ -211,7 +211,7 @@ func lockAudit(dir string) (unlock func(), err error) {
 		}
 		if time.Now().After(deadline) {
 			lf.Close()
-			return nil, Unverifiable("audit lock held >60s (stale lock?) — another desk write may be stuck; retry, or a human clears it", nil)
+			return nil, AuditLockContended(60 * time.Second)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

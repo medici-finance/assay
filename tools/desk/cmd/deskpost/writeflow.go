@@ -132,8 +132,7 @@ func acquireAuditLock() (*auditLock, error) {
 		}
 		if time.Now().After(deadline) {
 			f.Close()
-			return nil, deskkit.Unverifiable(
-				"audit lock held >60s (stale lock?) — another desk write may be stuck; retry, or a human clears it", nil)
+			return nil, deskkit.AuditLockContended(lockWait)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -242,7 +241,9 @@ func attemptOutward(args []string, opts postOpts, repo string, pr int, plan func
 	// START is the same mischarge ready.go's CI-read failures made, one layer up.
 	lock, err := acquireAuditLock()
 	if err != nil {
-		return finishAudit(args, writeResult{verb: toolName, repo: repo, pr: pr, result: deskkit.ResultUnwritten, detail: err.Error(), err: err}), err
+		// A lock-wait refusal is contention, not a loop: it is audited ResultContended so the
+		// circuit breaker does not count it (#6227). Any other lock failure stays unwritten.
+		return finishAudit(args, writeResult{verb: toolName, repo: repo, pr: pr, result: deskkit.LockStepResult(err, deskkit.ResultUnwritten), detail: err.Error(), err: err}), err
 	}
 	defer lock.release()
 

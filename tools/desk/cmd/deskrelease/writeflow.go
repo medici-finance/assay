@@ -122,8 +122,7 @@ func acquireAuditLock() (*auditLock, error) {
 		}
 		if time.Now().After(deadline) {
 			f.Close()
-			return nil, deskkit.Unverifiable(
-				"audit lock held >60s (stale lock?) — another desk write may be stuck; retry, or a human clears it", nil)
+			return nil, deskkit.AuditLockContended(60 * time.Second)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -152,7 +151,7 @@ func (l *auditLock) release() {
 func runOutward(args []string, plan func(entries []deskkit.Entry) writeResult) int {
 	lock, err := acquireAuditLock()
 	if err != nil {
-		return finishAudit(args, writeResult{verb: toolName, result: deskkit.ResultUnverifiable, detail: err.Error(), err: err})
+		return finishAudit(args, writeResult{verb: toolName, result: deskkit.LockStepResult(err, deskkit.ResultUnverifiable), detail: err.Error(), err: err})
 	}
 	defer lock.release()
 
