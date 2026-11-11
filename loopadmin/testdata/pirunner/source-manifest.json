@@ -1,0 +1,48 @@
+{
+  "note": "Pinned tuple for the agent-execution/10 Pi Durable pilot. TestPiPilotDecisionEvidence dereferences tuple.lock_sha256 against node/package-lock.json, lock_integrity against the lockfile entries and the installed package versions against node_modules. The Node runtime checksum records the runtime that produced the published evidence; a re-run on another runtime is a different subject and must republish results.json.",
+  "tuple": {
+    "pi_durable": "1.4.0",
+    "pi_ai": "1.4.0",
+    "chord": "1.4.0",
+    "typescript": "5.9.3",
+    "node": "v26.13.0 darwin-arm64",
+    "node_sha256": "64e4f47aef084a288c443ebe9a0091a34acba03ad176fb612b6e7d90784ff93d",
+    "lock_sha256": "2fd34fa6ba124725e664e008be27e54227374d5ceb4d72c0445b1a49a743584b"
+  },
+  "vetted_by": "pending maintainer vetting (medici-finance/assay#6208)",
+  "lock_integrity": {
+    "@earendil-works/pi-durable": "sha512-EtIyXH1MBSXdJSkodmy+CYXuwfve3gPrD4GNCZ0XmuRWLPupwRlNQ7fdaXjRcLoKb6SWkT/yEzK+sMmrqvYK+Q==",
+    "@earendil-works/pi-ai": "sha512-hQM/C4+1w8rHYACzDDf+0vQMnEnpzIop1tptIERVgR3ZeT/hHSzBNG8PaWPgxWQjqSeKCyBZSyp8uTT6eKK1pQ==",
+    "@earendil-works/chord": "sha512-dTbgyz4xgDS5KAUFx1bFENqj0Cr1N3tYxJJOYStc6g6HS78FSBZydyoCwLoddiQRF+VgRS0fpgAi+iKxjZ3BQA==",
+    "typescript": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="
+  },
+  "lockfile": {
+    "lockfile_version": 3,
+    "packages": 94,
+    "licenses": {"MIT": 42, "Apache-2.0": 38, "BSD-3-Clause": 12, "Unlicense": 1, "0BSD": 1},
+    "install_scripts_declared": ["@google/genai", "protobufjs"],
+    "install_scripts_run": "none: node/.npmrc sets ignore-scripts=true and acquisition used npm ci --ignore-scripts"
+  },
+  "sources": {
+    "pi": {
+      "repository": "https://github.com/earendil-works/pi",
+      "inspected_revision": "8c03fef4d3b7ecf7a9e8cc5b1312ff60ec2be149",
+      "declared_version": "1.4.0",
+      "license": "MIT",
+      "package_correspondence": "The npm 1.4.0 tarballs carry no gitHead; correspondence to the inspected revision rests on the declared version and the 1.4.0 changelog entry (2026-10-21), not a byte comparison.",
+      "installed_file_sha256": {
+        "@earendil-works/pi-durable/package.json": "c100d039aa3ca0d952f49f118d7eb22ddec04d85e5eb28193f2838e8f7584ae7",
+        "@earendil-works/pi-durable/dist/harness/tool.js": "9d8615a13cee84fa49b33b8eb3ee613ee302d006817efe3ea8eb013dab1d756b",
+        "@earendil-works/pi-ai/package.json": "36df91142c18a5912eafab0f2783bb4d88cdd101c5c5e7fd9173d4387cc5cced",
+        "@earendil-works/chord/package.json": "9b53ee7df3745848da9cf734b1fb117a29590536f07e8198538711e73906dcf1"
+      }
+    },
+    "vercel_durable_harness": {
+      "repository": "https://github.com/vercel-labs/durable-harness",
+      "inspected_revision": "fb056a3c08549fdad9b87ed8358a27e2097ded11",
+      "pi_tuple": "1.0.4 (development pin), not the 1.4.0 tuple used here",
+      "disposition": "not run; see the report's Vercel disposition"
+    }
+  },
+  "supported_os": "Pi declares Node >=22.19 and no OS restriction; this evidence ran on darwin-arm64 only. The brief's approved environment is network-off Linux, not yet run."
+}

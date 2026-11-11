@@ -74,3 +74,49 @@ jobs:
       - name: Mutation gate
         working-directory: loopadmin
         run: go run ./mutate -map testdata/mutations.json
+
+  # agent-execution/10 — the Pi Durable pilot (`pirunner` build tag). A separate
+  # job that starts only after the format/vet/test step and the mutation gate
+  # above have finished, so no default step ever runs in a tree with the Node
+  # set installed. It consumes ONLY a pre-staged, integrity-pinned set: a Node
+  # runtime already on the runner and an npm cache pre-populated from
+  # loopadmin/experiments/pirunner/node/package-lock.json. `npm ci --offline`
+  # makes no registry request, and --ignore-scripts runs no lifecycle script.
+  # Staging Node and that cache on the self-hosted runner ends this workflow's
+  # no-third-party-fetch invariant: that is a maintainer ruling at promotion,
+  # not an implementer default. Until then the job fails loudly (no skip) on a
+  # runner without the pre-staged set.
+  pirunner:
+    needs: loopadmin
+    runs-on: medici-builder-public
+    env:
+      KUBECONFIG: /dev/null
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: Install the pre-staged Pi set (offline, no scripts)
+        working-directory: loopadmin/experiments/pirunner/node
+        run: |
+          set -euo pipefail
+          test -n "${PIRUNNER_NPM_CACHE:-}" || { echo "PIRUNNER_NPM_CACHE not staged on this runner"; exit 1; }
+          node --version
+          npm ci --offline --ignore-scripts --cache "${PIRUNNER_NPM_CACHE}"
+          npm run build
+
+      - name: Pilot tests (pirunner tag)
+        working-directory: loopadmin
+        run: go test -tags pirunner -count=1 -timeout 20m ./experiments/pirunner
+
+      - name: Remove the installed set
+        if: always()
+        working-directory: loopadmin/experiments/pirunner/node
+        run: rm -rf node_modules dist
