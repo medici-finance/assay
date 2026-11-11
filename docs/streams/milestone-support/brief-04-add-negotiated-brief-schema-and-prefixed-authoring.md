@@ -207,6 +207,43 @@ Commands, run in a full clone at 612750a12406:
 - `git diff --stat 29387eb13de7 612750a12406` with the 33 files as separate pathspecs lists the same nine files.
 - `git diff 29387eb13de7 612750a12406 -- statusgen/brieffile.go statusgen/briefv4.go` matches `git diff bacbb9981^ bacbb9981 -- statusgen/brieffile.go statusgen/briefv4.go` once the index lines are ignored.
 - `git log --no-merges --numstat 29387eb13de7..612750a12406 -- spec/milestone-v1.md` gives the per-commit line counts. Each commit's PR was found by matching it to the first-parent merge on main that brought it in.
+### Re-verification by a non-implementer — 2026-11-11 at d0809b9691ed (claude-opus-5-5, tier strong)
+
+This run re-verifies the brief at merged main d0809b9691ed210a8e27ff1147457b9c91f6bffc. The pass above was taken at 612750a12406. Since then, none of this brief's delivered statusgen sources, tests, schema copies, fixtures or its mutation runner and manifest have changed; the only change under the milestone-support testdata tree is #5915 (milestone-support/08, merge 7d119c295ffd), which adds the 08 mutation runner and manifest and touches no 04 file.
+
+Pre-work admission: deskdispatch --check-verifier exited 0 for this home and brief before any row ran (attestation #6221, tool v1.0.82, runtime darwin-arm64). deskpathguard rederive found 2 rows and 0 author-added rows at base d0809b9691ed. Both rows match the Verify table.
+
+Rows 1 and 2 (check:ci) ran in one closed container bracket. The image was verify-runner v1.0.82, pinned by the digest in that release's verify-runner-image.txt (its checksum matches the release checksums.txt), with go 1.27.3, git 2.56.0 and statusgen v1.0.82 inside. The container ran with --network none, --read-only, all capabilities dropped, no-new-privileges, the host uid, GOPROXY=off, GOTOOLCHAIN=local, GOFLAGS=-mod=readonly, KUBECONFIG=/dev/null, a tmpfs TMPDIR and HOME, and a fresh module cache that the open step provisioned. The home, its git dir, the receipt and the module cache were mounted read-only. No forge credential entered the container. Each row prints the empty-output digest because the command writes its test output to a temporary file and checks it with grep -q, so exit 0 is the named-PASS result. Neither row carries a risk-bearing tag and every risk answer is no, so no fail-first base witness applies. The bracket opened at 23:18:35Z and closed at 23:20:02Z. --bracket-digest reports verdict=match with span-lines tree-digest:1, container-image:1, attestation:1. Before landing, --bracket-digest --credit prints credit=could-not-check because the witness file is not in a git work tree, so that check runs again on the landed commit.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPrefixedBriefSchema$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestPrefixedBriefSchema ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-11 | assay-verifier-app[bot] @ d0809b9691ed (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestNewbriefCaps$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestNewbriefCaps ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-11 | assay-verifier-app[bot] @ d0809b9691ed (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:9bcac3a5db2108cdd91a6af84c9ac32b3d3356eff8839ceeeb0abe1177946a4e
+Container-Image: sha256:43db6da8cd159b2c822af62bb859f1a305637c066ea1a750df16dfd5d7b99563
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6221 run=ae16da62c1749a3b07a49d6b328da45a6477e9ca0d224036b0407b61c9c83790 source=d0809b9691ed210a8e27ff1147457b9c91f6bffc brief=docs/streams/milestone-support/brief-04-add-negotiated-brief-schema-and-prefixed-authoring.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=ae16da62c1749a3b07a49d6b328da45a6477e9ca0d224036b0407b61c9c83790 source=d0809b9691ed210a8e27ff1147457b9c91f6bffc tree=sha256:9bcac3a5db2108cdd91a6af84c9ac32b3d3356eff8839ceeeb0abe1177946a4e witness=sha256:af313895d1043d7dbefff29462678a8320d2cba883f2d6ec376d5d2de9310214 opened=2026-11-11T23:18:35Z closed=2026-11-11T23:20:02Z before=receipt after=check-verifier
+
+Supplemental probe. It carries no acceptance credit. It ran in the same image with --network none against a tracked-file snapshot of d0809b9691ed held outside the home, and the snapshot was clean afterwards.
+
+| Probe | Command | Expected | Observed | Date | Runner |
+|-------|---------|----------|----------|------|--------|
+| S1 | the brief's declared mutation manifest runner (statusgen testdata milestone-support 04-mutate.py), whole run, then one --name run per remaining case | every manifest plant turns its named test red | exit 1 on the whole run: 3 cases CAUGHT, then the runner stopped at case v4-milestone-gate-held with "expected exactly one anchor". Run one case at a time, the 11 remaining cases were all CAUGHT (7 against TestPrefixedBriefSchema, 4 against TestNewbriefCaps), each with its named baseline passing first. Total 14 of 15 caught, 1 stale anchor, the same result as on 2026-11-10 | 2026-11-11 | assay-verifier-app[bot] @ d0809b9691ed (on-behalf-of human:ian) |
+
+Finding (no acceptance effect), carried forward: the stale manifest case v4-milestone-gate-held recorded on 2026-11-10 is still unchanged at this source. Neither the runner nor the manifest has changed since, so the whole-run exit is still not a usable mutation result until that case is re-anchored at its new site in the milestone graph adapter.
+
+Risk-bearing values. The brief carries risk metadata, all no, and is not irreversible. No delivered file changed since 612750a12406, so the enumeration is the one recorded above; every ranked literal was re-read at d0809b9691ed at the same line, and the two schema copies are still byte-identical.
+
+- RISK-VALUE: DERIVED — briefSchemaV4 = "brief-v4" @ statusgen/brieffile.go:303 — spec/brief-v1.md:169 allocates exactly this schema name, and the shipped schema pins it.
+- RISK-VALUE: DERIVED — briefSchemaFirstRelease["brief-v4"] = "" @ statusgen/briefschemaversions.go:31 — spec/brief-v1.md:169 still lists brief-v4 as unreleased, and Task 4 forbids inventing a supporting-release number.
+- RISK-VALUE: DERIVED — requires-milestones item pattern = "^([a-z0-9][a-z0-9-]*:){1,3}m-[0-9]{2,}@[1-9][0-9]*$" @ schemas/brief-v4.json:187 — the {1,3} prefix count matches the three colon-only forms in spec/milestone-v1.md:49-51, and @[1-9][0-9]* matches the positive contract version required by spec/milestone-v1.md:45.
+- RISK-VALUE: DERIVED — envelope schema = "reader-requirements-v1" @ schemas/brief-v4.json:196 — it equals readercaps.RequirementsSchema at statusgen/readercaps/caps.go:14, the decoder the validator calls.
+- RISK-VALUE: NAMED, NOT DERIVED — brief id pattern = "^[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*:b-[0-9]{2,4}[a-z]?$" @ schemas/brief-v4.json:33 — the spec writes only <NN> and gives no source for the 2-4 digit bound or the optional letter suffix. The schema is descriptive and the validator owns the semantic rule.
+
+The stream index already lists this brief as verified. This run flips nothing. CI owns the verified-to-done flip.
+
+**VERIFY: PASS** — rows 1-2 of 2 pass in one closed container bracket (verdict=match) at d0809b9691ed. Supplemental S1 caught 14 of 15 manifest mutations, with the same 1 stale-anchor case; no acceptance credit.
 
 ## Review
 
