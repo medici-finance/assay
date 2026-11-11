@@ -64,9 +64,11 @@ AGENTS.md content outside the bounded Assay block is preserved. --check is read-
 
 Every mode 2 run that reaches a result also reports the host's Cursor CLI commit
 attribution (attribution.attributeCommitsToAgent and attribution.attributePRsToAgent
-in the global ~/.cursor/cli-config.json; both default to true). On a host that runs
-desks both must be false. The report says off, on, or could-not-check for each and
-prints the setting to change; it never edits that file and never changes the exit code.
+in the global ~/.cursor/cli-config.json, and in the file CURSOR_CONFIG_DIR or, on
+Linux/BSD, XDG_CONFIG_HOME names when set; both default to true). On a host that runs
+desks both must be false in every one of those files. The report says off, on, or
+could-not-check for each and prints the setting to change; it never edits a file and
+never changes the exit code.
 
 --harness is mutually exclusive with --manifest/--dest: supplying both is a
 refusal naming both modes, never a silent precedence.

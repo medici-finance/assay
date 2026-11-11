@@ -82,7 +82,7 @@ The Cursor CLI adds attribution to agent output by default. Two settings control
 
 | Setting | What it does when `true` | Default | Required on a host that runs desks |
 |---|---|---|---|
-| `attribution.attributeCommitsToAgent` | Appends an attribution trailer naming the Cursor agent to every commit the agent makes, amends included. | `true` | `false` |
+| `attribution.attributeCommitsToAgent` | Appends a "Made with Cursor" trailer to every commit the agent makes, amends included. | `true` | `false` |
 | `attribution.attributePRsToAgent` | Appends a "Made with Cursor" footer to every PR the agent opens. | `true` | `false` |
 
 Assay forbids attribution lines in commits, PRs, issues and comments (the
@@ -91,10 +91,14 @@ Cursor writes commits its own rules reject, and the push guard's outbound scan c
 refuse the push. The harness re-adds the trailer on every commit, so a worker cannot fix
 it from inside the session.
 
-Both settings live only in the **global** CLI config: `~/.cursor/cli-config.json` on
-macOS and Linux, `%USERPROFILE%\.cursor\cli-config.json` on Windows. A project's
+Both settings live only in the **global** CLI config. By default that is
+`~/.cursor/cli-config.json` on macOS and Linux, `%USERPROFILE%\.cursor\cli-config.json` on
+Windows. Two environment variables override the location: `CURSOR_CONFIG_DIR` (a custom
+directory) and, on Linux/BSD, `XDG_CONFIG_HOME` (`$XDG_CONFIG_HOME/cursor/cli-config.json`).
+Cursor's reference states no precedence between them and the default. A project's
 `.cursor/cli.json` carries permissions only, so no file placed in a repo can turn
-attribution off. An absent file or an absent key means `true`. Set, in the global file:
+attribution off. An absent file or an absent key means `true`. Set, in the global file (in
+every one of them when an override is set):
 
 ```json
 {
@@ -106,8 +110,10 @@ attribution off. An absent file or an absent key means `true`. Set, in the globa
 ```
 
 `deskinstall --harness cursor` (placement, `--check` and `--dry-run`) and
-`upgrade-assay --harness cursor` read that file and report each setting as off, on or
-could-not-check. The report names the file and the value to set. It is report-only:
+`upgrade-assay --harness cursor` read every global file the CLI may read (each override
+that is set, plus the default) and report each setting as off, on or could-not-check. A
+setting is off only when it is `false` in all of them; an override set to a relative path
+is could-not-check. The report names each file and the value to set. It is report-only:
 the installer does not own the global config, so it never edits it, and the report
 never changes the run's exit code.
 
@@ -118,8 +124,9 @@ already made still carry the trailer; what happens to them is the operator's cal
 the worker's.
 
 Source: [CLI configuration](https://cursor.com/docs/cli/reference/configuration).
-Documentary check: 2026-11-10 (the settings, their `true` defaults, and the global-only
-scope). Not live-tested on a desk host.
+Documentary check: 2026-11-11 (the settings, their `true` defaults, the global-only
+scope, and the `CURSOR_CONFIG_DIR` / `XDG_CONFIG_HOME` overrides with no stated
+precedence). Not live-tested on a desk host.
 
 ## Why Cursor is lighter than Codex
 
