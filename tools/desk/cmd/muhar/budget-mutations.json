@@ -46,8 +46,8 @@
     {
       "name": "external kill counts as failure",
       "file": "cmd/muhar/runner.go",
-      "old": "if exitErr.ExitCode() < 0 {",
-      "new": "if false && exitErr.ExitCode() < 0 {"
+      "old": "if resourceSignal(cmd.ProcessState) {",
+      "new": "if false && resourceSignal(cmd.ProcessState) {"
     },
     {
       "name": "raw command loses cleanup custody",

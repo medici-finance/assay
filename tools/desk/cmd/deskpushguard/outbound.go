@@ -11,7 +11,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -39,18 +38,16 @@ func checkOutbound(stderr io.Writer, remoteName, repo string, refs []refLine) (r
 	restore := deskkit.SetOutboundNoticeWriter(stderr)
 	defer restore()
 
-	reason := strings.TrimSpace(os.Getenv(EnvScanOverride))
-	if reason != "" {
-		if err := deskkit.ValidateScanOverride(reason); err != nil {
-			for _, ref := range refs {
-				refused = append(refused, outboundRefusal{branch: ref.branch,
-					msg: EnvScanOverride + " is set but not a usable override reason: " + err.Error()})
-			}
-			auditOutbound(stderr, refused)
-			return refused, nil
+	// The override reason, its validation and the env form every refusal below names (#6059)
+	// all come from the one deskkit function that reads the variable.
+	if _, err := deskkit.SetPushGuardOutboundContext("deskpushguard", "pre-push"); err != nil {
+		for _, ref := range refs {
+			refused = append(refused, outboundRefusal{branch: ref.branch,
+				msg: EnvScanOverride + " is set but not a usable override reason: " + err.Error()})
 		}
+		auditOutbound(stderr, refused)
+		return refused, nil
 	}
-	deskkit.SetOutboundContext(deskkit.OutboundContext{Tool: "deskpushguard", Verb: "pre-push", OverrideReason: reason})
 
 	role := ""
 	if r, _, err := deskkit.SessionTokenRole("deskpushguard"); err == nil {

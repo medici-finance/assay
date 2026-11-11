@@ -566,7 +566,8 @@ Stated once for every desk; this skill adds only what is its own above.
   don't cite it; cannot reach the remote and cannot cross-check → **could-not-check**, never a
   claim badged as re-verified.
 - **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskreply`,
-  `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script; a `gh`
+  `deskpr`), resolving the credential with `desktoken --no-rotate <role> --repo <slug>` (rotation
+  is an explicit act, never a side effect) — never a hand-rolled mint script; a `gh`
   call no verb covers runs as the role App per desk-shell.md §Forge CLI as the role. For comments,
   use `deskfile attach` on issues or `deskreply` on this desk's own PRs; `deskpost comment`
   is reserved for `pr-review-desk`. A shared
