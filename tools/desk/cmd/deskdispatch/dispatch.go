@@ -347,7 +347,7 @@ func dispatch(o dispatchOpts) error {
 	// DECISION HOLD — before the claim (briefadmission.go). A fresh worker dispatch of a
 	// human-gated brief whose decision issue is open and unruled is held here, so no claim
 	// cycle or worker slot is spent discovering the open decision after pickup.
-	if err := briefDecisionHold(o, plan, repo); err != nil {
+	if err := briefDecisionHold(plan.gateOpts(o), plan, repo); err != nil {
 		return err
 	}
 
@@ -592,9 +592,12 @@ func dispatch(o dispatchOpts) error {
 	// pre-claim and is carried on the plan.
 	// The script child runs under the credential the claim step resolved (auth.scriptEnv), never
 	// the ambient login — issue 1146.
-	gate, gerr := stepDecision(o, plan.gateHuman, repo, plan.decisionTool, plan.ruling, auth)
+	gate, gerr := stepDecision(plan.gateOpts(o), plan.gateHuman, repo, plan.decisionTool, plan.ruling, auth)
 	if gerr != nil {
 		return held.settle(gerr)
+	}
+	if !plan.gateHuman && plan.keyBrief != "" {
+		gate += fmt.Sprintf(" (read %s, named by the item key: it does not gate on a human)", plan.keyBriefShown)
 	}
 	o.say("%s %s", stepDecisionGate, gate)
 
@@ -724,6 +727,10 @@ type dispatchPlan struct {
 	// and the prompt's human-gated line all read the SAME answer — keying the gate on
 	// --gate-human alone silently dropped the metadata half of the contract.
 	gateHuman bool
+	// keyBrief is the brief the ITEM KEY names, read for the human gate when no --brief was given
+	// (#6173, briefkey.go): absolute path, and its shown spelling. Empty when --brief was given or
+	// the key is not brief-shaped. Only the gate steps read it (gateOpts).
+	keyBrief, keyBriefShown string
 	// claimKey is the key the durable claim is taken (and later released) under —
 	// derived once from the item key by claimKeyFor, so the acquire call and the release
 	// hint in the prompt cannot drift onto two different keys.
@@ -1172,7 +1179,18 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 				"the item's own specification, never invented by the dispatcher.", stepDecisionGate))
 	}
 	plan.gateHuman = o.gateHuman
-	if !plan.gateHuman && strings.TrimSpace(o.brief) != "" && briefGatesHuman(o.root, o.brief) {
+	// No --brief: a brief-shaped item key still names a brief, and its `gate: human` binds the same
+	// way (#6173). It is resolved here, pre-claim, and a key whose brief cannot be read is REFUSED
+	// rather than reported as "not human-gated". It feeds the gate steps only (gateOpts).
+	if !plan.gateHuman && strings.TrimSpace(o.brief) == "" {
+		kb, shown, kerr := keyBriefFn(o)
+		if kerr != nil {
+			return plan, kerr
+		}
+		plan.keyBrief, plan.keyBriefShown = kb, shown
+	}
+	g := plan.gateOpts(o)
+	if !plan.gateHuman && strings.TrimSpace(g.brief) != "" && briefGatesHuman(g.root, g.brief) {
 		plan.gateHuman = true
 	}
 	if plan.gateHuman {
@@ -1198,7 +1216,7 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		}
 		// A recorded ruling is parsed and its corroborating tool probed HERE, before the claim, so a
 		// line this gate cannot accept costs nothing durable (#2079).
-		ruling, rerr := readRecordedRuling(o.root, o.brief, briefArg(o))
+		ruling, rerr := readRecordedRuling(g.root, g.brief, briefArg(g))
 		if rerr != nil {
 			return plan, rerr
 		}
@@ -1207,7 +1225,7 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 				return plan, deskkit.Unverifiable(fmt.Sprintf(
 					"step %s: %s records a ruling, but %s is not on PATH, so the ruling cannot be corroborated — "+
 						"this refuses rather than take the ruling on the brief's word. Nothing was claimed.",
-					stepDecisionGate, ruling.where(briefArg(o)), statusgenBinary), lerr)
+					stepDecisionGate, ruling.where(briefArg(g)), statusgenBinary), lerr)
 			}
 		}
 		plan.ruling = ruling

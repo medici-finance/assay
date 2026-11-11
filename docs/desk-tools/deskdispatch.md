@@ -127,7 +127,13 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       the exact command is emitted into the prompt.
   4 decision-gate     with --gate-human (or a --brief whose own metadata gates on a
                       human), ensures the decision issue so the human has something
-                      concrete to decide. The tool resolves like the claim tool:
+                      concrete to decide. With no --brief, a brief-shaped item key
+                      (<repo>--<stream>--<NN>, <stream>/<NN>) names its brief,
+                      docs/streams/<stream>/brief-<NN>-*.md under --root then
+                      --claim-root, and that brief's `gate: human` gates the same way;
+                      a key whose brief matches no file, or more than one, is REFUSED
+                      pre-claim (exit 5). SKIPPED is printed only when the brief was
+                      read and does not gate, or the item names no brief (issue-<N>). The tool resolves like the claim tool:
                       `deskdecision ensure` (installed with desk-tools) when it is on
                       PATH, else tools/decision-issue.sh ensure from the resolved root
                       (--claim-root when given, else --root). With neither it REFUSES

@@ -1,0 +1,65 @@
+{
+  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 300s -run 'TestBriefKey|TestExplicitBriefUnchanged|TestIssueKeyStillSkips'",
+  "control": {
+    "name": "CONTROL — the item key names no brief (the pre-#6173 behaviour); TestBriefKeyGateFires must go red",
+    "file": "cmd/deskdispatch/dispatch.go",
+    "old": "kb, shown, kerr := keyBriefFn(o)",
+    "new": "kb, shown, kerr := \"\", \"\", error(nil)"
+  },
+  "mutations": [
+    {
+      "name": "PLANTED SECOND INSTANCE (defect class) — the pre-claim decision hold, a second gate reader, reads --brief alone; TestBriefKeyDecisionHolds must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "briefDecisionHold(plan.gateOpts(o), plan, repo)",
+      "new": "briefDecisionHold(o, plan, repo)"
+    },
+    {
+      "name": "the recorded-ruling read takes --brief alone; TestBriefKeyRecordedRuling must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "readRecordedRuling(g.root, g.brief, briefArg(g))",
+      "new": "readRecordedRuling(o.root, o.brief, briefArg(o))"
+    },
+    {
+      "name": "the decision tool is handed --brief alone; TestBriefKeyGateFires must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "stepDecision(plan.gateOpts(o), plan.gateHuman,",
+      "new": "stepDecision(o, plan.gateHuman,"
+    },
+    {
+      "name": "an unresolvable key is not refused; TestBriefKeyUnresolvedRefused/none must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\tif kerr != nil {\n\t\t\treturn plan, kerr",
+      "new": "\t\tif false && kerr != nil {\n\t\t\treturn plan, kerr"
+    },
+    {
+      "name": "two matching briefs: the first silently wins; TestBriefKeyUnresolvedRefused/ambiguous must go red",
+      "file": "cmd/deskdispatch/briefkey.go",
+      "old": "\t\tswitch len(matches) {",
+      "new": "\t\tswitch min(len(matches), 1) {"
+    },
+    {
+      "name": "--claim-root is not searched; TestBriefKeyClaimRootGates must go red",
+      "file": "cmd/deskdispatch/briefkey.go",
+      "old": "for _, base := range []string{o.root, o.claimRoot} {",
+      "new": "for _, base := range []string{o.root} {"
+    },
+    {
+      "name": "the key-named brief overrides an explicit --brief; TestExplicitBriefUnchanged/key-names-gated must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "if !plan.gateHuman && strings.TrimSpace(o.brief) == \"\" {",
+      "new": "if !plan.gateHuman {"
+    },
+    {
+      "name": "the SKIPPED line does not say the key-named brief was read; TestBriefKeyNonGatedSkips must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tif !plan.gateHuman && plan.keyBrief != \"\" {\n\t\tgate +=",
+      "new": "\tif false && !plan.gateHuman && plan.keyBrief != \"\" {\n\t\tgate +="
+    },
+    {
+      "name": "an issue key is read as a brief key; TestIssueKeyStillSkips must go red",
+      "file": "cmd/deskdispatch/briefkey.go",
+      "old": "\tstream, num, serr := deskkit.SplitBriefKey(id)\n\tif serr != nil {\n\t\treturn \"\", \"\", nil\n\t}",
+      "new": "\tstream, num, serr := deskkit.SplitBriefKey(id)\n\tif serr != nil {\n\t\treturn \"\", \"\", briefKeyRefusal(o.item, \"mutant\")\n\t}"
+    }
+  ]
+}
