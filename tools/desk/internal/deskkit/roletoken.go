@@ -129,6 +129,69 @@ func SessionTokenRole(verb string) (role, loop string, err error) {
 	return role, loop, nil
 }
 
+// RequireLoopRole is the credential half of role separation (#6069): a desk window takes
+// only the credential of the App role its own loop acts under, read from the same
+// loopTokenRoles table every other caller uses.
+//
+// It answers in three states:
+//
+//   - nil when role is not any loop's App role (a by-name identity such as cell-issues,
+//     release-runner, auditor or intake-loop), when $DESK_LOOP is unset (an operator's shell
+//     or a scrubbed cold-mint probe, not a desk window), or when the loop acts as role;
+//   - Refused (exit 5) when the loop acts as a DIFFERENT role;
+//   - Unverifiable (exit 6) when $DESK_LOOP names no known loop or a loop with no App role.
+//
+// loop and loopRole name the window's canonical loop and its role whenever they resolved.
+// This is a client-side guard against a window borrowing another role by mistake. It is not
+// a boundary: a session controls its own environment. The boundary is one config home per
+// role, holding only that role's credential.
+func RequireLoopRole(verb, role string) (loop, loopRole string, err error) {
+	if !loopBoundRole(role) || strings.TrimSpace(os.Getenv(loopEnv)) == "" {
+		return "", "", nil
+	}
+	loopRole, loop, err = SessionTokenRole(verb)
+	if err != nil {
+		return loop, "", err
+	}
+	if loopRole != role {
+		return loop, loopRole, Refused(fmt.Sprintf(
+			"%s: this window's loop %q acts as the %q role, so it does not take the %q credential (#6069). "+
+				"Run this from the %s window, whose own config home holds that credential. A deliberate "+
+				"cross-role use passes --cross-role \"<reason>\", which the audit log records.",
+			verb, loop, loopRole, role, strings.Join(loopsActingAs(role), " or ")))
+	}
+	return loop, loopRole, nil
+}
+
+// CrossRoleReason is the override a verb whose posting identity is FIXED by design passes to
+// desktoken: deskreply always posts as worker, deskevidence always as verifier. It returns ""
+// when RequireLoopRole would admit the mint anyway, so the override is recorded only when it
+// is actually used.
+func CrossRoleReason(verb, role string) string {
+	loop, loopRole, err := RequireLoopRole(verb, role)
+	if err == nil || ExitCodeOf(err) != ExitRefused {
+		return ""
+	}
+	return fmt.Sprintf("%s posts as the %s App by design; loop %s acts as %s", verb, role, loop, loopRole)
+}
+
+// loopBoundRole reports whether some loop acts under role.
+func loopBoundRole(role string) bool {
+	return len(loopsActingAs(role)) > 0
+}
+
+// loopsActingAs lists the loops whose App role is role, sorted.
+func loopsActingAs(role string) []string {
+	var out []string
+	for loop, r := range loopTokenRoles {
+		if r == role {
+			out = append(out, loop)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // tokenMinter is the seam the token lookup runs through. Production runs the credential
 // provider IN PROCESS (providerMint, credentialprovider.go) — no child process, no PATH
 // lookup, so a host with no `desktoken` binary on PATH mints exactly as one with it; a test

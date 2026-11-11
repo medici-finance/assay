@@ -1,0 +1,4 @@
+### Changed
+- `desktoken <role>` refuses (exit 5) a role that another loop acts as when `$DESK_LOOP` is set, using the same loop-to-role table every desk verb reads. Roles no loop acts as, and an unset `$DESK_LOOP`, are unchanged. `--cross-role "<reason>"` admits a deliberate cross-role mint, and the audit row records the loop, role and reason on every use, a cache reuse included. `deskreply` (worker) and `deskevidence` (verifier) pass that override themselves when called from another loop's window.
+- `deskpost review`, `security-review` and `finish` refuse to post a verdict unless `$DESK_LOOP` acts as the reviewer, before any read or write.
+- The desk-shell reference and the desk-tools README say plainly that a shared config home gives no separation between roles, and describe one `ASSAY_CONFIG_HOME` per role window holding only that role's credential.

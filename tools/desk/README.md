@@ -3518,6 +3518,34 @@ the search path, so the failure read as a broken key rather than a wrong directo
 
 `<ROLE>_PEM` and `<ROLE>_TOKEN` still override an individual file outright, in all three.
 
+#### Role separation: a loop takes only its own role (#6069)
+
+`desktoken <role>` reads `$DESK_LOOP` and refuses (exit 5) a role that another loop acts
+as, before it reads any key or custody file on either forge. The table is
+`deskkit.LoopTokenRoles()`, the one every desk verb reads. Retired loop names resolve to their
+successor, and an unknown loop is exit 6. Two cases pass unchecked. One is a role no loop acts
+as (`cell-issues`, `release-runner`, `auditor`, `intake-loop`), which callers take by name. The
+other is an unset `$DESK_LOOP`: an operator's shell or the scrubbed cold-mint probe, not a desk
+window.
+
+`--cross-role "<reason>"` admits a refused mint. The audit row records
+`cross-role override: loop=<loop> acts-as=<role> role=<role> reason="<reason>"` on every use,
+a cache reuse included (the one row a reuse otherwise skips). A blank reason is no override.
+Two verbs pass it themselves because their posting identity is fixed: `deskreply` mints
+`worker` and `deskevidence` mints `verifier` from whichever window calls them, each with a
+reason that names the verb and the loop.
+
+`deskpost review`, `security-review` and `finish` refuse a verdict unless `$DESK_LOOP` acts
+as `reviewer`. The check sits in the shared verdict path, before the body check, the mint and
+any forge read, so a caller that skips the CLI is refused too.
+
+These checks catch a window reaching for the wrong role by mistake. They are not a boundary,
+because a session sets its own environment. **A shared config home gives no separation
+between roles.** Give each role window its own `ASSAY_CONFIG_HOME` holding only that role's
+key, `apps.env` entry and token cache, and keep no role key in `~/.config/assay`, which the
+search path always reads last. A separate OS user per role is what turns that split into a
+boundary. See `plugins/assay/references/desk-shell.md` §Role separation.
+
 #### What a token lookup costs, and the two caches that make it nearly free
 
 A desk verb obtains an App installation token through one function —

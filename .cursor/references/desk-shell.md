@@ -184,6 +184,39 @@ cross-platform note. The literal path is correct on every platform; what a skill
 stop implying is that the `~/` spelling is a unix-only shell expansion rather than a resolved
 Go path.
 
+## Role separation: one config home per role window
+
+**A shared config home gives no separation between roles.** Every desk tool reads a role's
+App key, `apps.env` and token cache from the App-credential search path (`$ASSAY_CONFIG_HOME`,
+then the config home). When one directory holds every role's credential, any window can mint
+any role. A coordinator window can then post a reviewer verdict, and a worker can approve its
+own change. The loop checks below catch a mistake. They do not stop a session that sets its
+own environment.
+
+**Provision.** Give each role window its own `ASSAY_CONFIG_HOME`, holding only that role's
+App key, `apps.env` entry and token cache, with an owner-only mode. Leave no role key in the
+shared config home itself: the search path always ends there, so a key left in it is
+readable from every window. The roster (`roster.env`) stays in the shared config home; the
+knob moves only the App-credential files. Each window's launcher exports both `DESK_LOOP` and
+that window's `ASSAY_CONFIG_HOME`. Separate config homes under one OS user still let a
+determined session read another directory. A separate OS user (or host) per role is what
+makes the split a boundary.
+
+**What the tools check (#6069).** The loop-to-role table is the one every desk verb reads:
+`the-desk` acts as `desk`, `worker-desk` as `worker`, `pr-review-desk` as `reviewer`,
+`verify-desk` as `verifier`, and `intake-desk` as `issue-loop`.
+
+- `desktoken <role>` refuses, with exit 5, a role that another loop acts as, when
+  `$DESK_LOOP` is set. An unknown loop is exit 6. Roles no loop acts as (`cell-issues`,
+  `release-runner`, `auditor`, `intake-loop`) are taken by name from any window. An unset
+  `$DESK_LOOP` (an operator's shell) is not checked.
+- `desktoken <role> --cross-role "<reason>"` admits a refused mint and writes the loop, the
+  role and the reason into the audit row, on every use including a cache reuse. `deskreply`
+  always posts as `worker` and `deskevidence` always lands as `verifier`, so each passes the
+  override itself when called from another loop's window, with a reason naming the verb.
+- `deskpost review`, `deskpost security-review` and `deskpost finish` refuse to post a verdict
+  unless `$DESK_LOOP` acts as `reviewer`, before any read or write.
+
 ## Authenticated transport
 
 <!-- BEGIN authenticated transport -->

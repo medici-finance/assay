@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/cmd/deskpost/internal/bodycheck"
@@ -158,6 +159,12 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 	preVerb := "review:" + verdictFlag
 
 	return runOutward(args, opts, repo, pr, func(entries []deskkit.Entry, opts postOpts) writeResult {
+		// Role separation (#6069): a review verdict is the reviewer's to post. `review`,
+		// `security-review` and `finish` all reach this shared path, so a caller that skips
+		// the CLI is checked too. It runs before any body check, mint, read or write.
+		if res, refusedHere := requireReviewerLoop(preVerb, repo, pr, "deskpost "+shapeVerb(shape)); refusedHere {
+			return withDigest(res, dig)
+		}
 		if !deskkit.IsAllowedRepo(repo) {
 			return refused(preVerb, repo, pr, "", "repo "+repo+" is not in the fixed desk repo set")
 		}
@@ -973,4 +980,46 @@ func applyMergeHoldForVerdict(client postBackend, pr int, event, head string) er
 		}
 	}
 	return nil
+}
+
+// reviewerRole is the App role a review verdict posts as.
+const reviewerRole = "reviewer"
+
+// shapeVerb names the CLI verb a verdict shape belongs to, for the refusal message.
+func shapeVerb(shape reviewShape) string {
+	if shape.wantKind == bodycheck.KindSecurity {
+		return "security-review"
+	}
+	return "review"
+}
+
+// requireReviewerLoop refuses a review verdict from a window whose loop does not act as the
+// reviewer role (#6069). The reviewer credential would mint from any window that can read
+// it, so without this a coordinator or a worker on its own change could post the verdict.
+// The loop is resolved from the same loop-to-role table every desk verb reads: unset is
+// refused, unknown is could-not-check, and a known non-reviewer loop is refused.
+func requireReviewerLoop(preVerb, repo string, pr int, verb string) (writeResult, bool) {
+	role, loop, err := deskkit.SessionTokenRole(verb)
+	if err != nil {
+		return fromReadErr(preVerb, repo, pr, "", err), true
+	}
+	if role == reviewerRole {
+		return writeResult{}, false
+	}
+	return refused(preVerb, repo, pr, "", fmt.Sprintf(
+		"%s posts a review verdict as the reviewer, but loop %q acts as %q; refusing to post another role's verdict (#6069). "+
+			"Verdicts come from the %s window. Keep your own DESK_LOOP identity.",
+		verb, loop, role, strings.Join(reviewerLoops(), " or "))), true
+}
+
+// reviewerLoops lists the loops that act as the reviewer role, from the shared table.
+func reviewerLoops() []string {
+	var out []string
+	for loop, role := range deskkit.LoopTokenRoles() {
+		if role == reviewerRole {
+			out = append(out, loop)
+		}
+	}
+	sort.Strings(out)
+	return out
 }

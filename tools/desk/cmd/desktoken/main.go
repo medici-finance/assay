@@ -36,9 +36,12 @@
 // never printed to stdout, audit, or logs — only the cache file path.
 //
 // This tool provides attribution (which App name appears on GitHub) plus an audit
-// trail — it does NOT enforce authorization (which session may act as each role).
-// The caller holds the key and controls the env; every key is readable by any
-// session of the same OS user. File permissions (0600 on a workstation; 0440
+// trail. Its one authorization check is a client-side guard (#6069): a window whose
+// $DESK_LOOP acts as one role is refused another loop's role unless it passes
+// --cross-role "<reason>", which the audit row records. It is not a boundary: the
+// caller holds the key and controls the env, and every key is readable by any
+// session of the same OS user. Separation between roles comes from giving each role
+// window its own ASSAY_CONFIG_HOME holding only that role's credential. File permissions (0600 on a workstation; 0440
 // for a Secret-mounted key read via a pod's fsGroup) protect from other users
 // only, not from other sessions of the same user.
 //
@@ -61,6 +64,7 @@ USAGE:
   desktoken --forge gitlab <role>                     # GitLab: rotate PAT in place
   desktoken --no-rotate <role> --repo <slug>          # read-only: print custody PATH, rotate nothing
   desktoken coverage <role> [--repo <slug>] [--json]  # GitHub: list repos the role's App sees
+  desktoken <role> --cross-role "<reason>" ...        # audited: another loop's role
   desktoken --version
 
 <role> ∈ {reviewer, verifier, worker, desk, issue-loop, intake-loop, cell-issues}
@@ -68,6 +72,17 @@ USAGE:
 On a GitLab-resolved --repo the plain form ROTATES, like --forge gitlab. A caller that
 needs only the credential's location passes --no-rotate. On GitLab the printed path is
 the role's custody file and the ONLY copy of its credential: never delete it.
+
+Role separation (#6069). When $DESK_LOOP is set, desktoken refuses (exit 5) a role
+that another loop acts under: the-desk -> desk, worker-desk -> worker, pr-review-desk ->
+reviewer, verify-desk -> verifier, intake-desk -> issue-loop (the table every desk verb
+reads; retired loop names resolve to their successor). An unknown $DESK_LOOP is exit 6.
+Roles no loop acts under (cell-issues, release-runner, auditor, intake-loop) are taken by
+name from any window, and an unset $DESK_LOOP (an operator shell, a cold-mint probe) is
+not checked. --cross-role "<reason>" admits a refused mint and writes the loop, the role
+and the reason into the audit row, a cache reuse included. This is a guard against a
+window borrowing a role by mistake, not a boundary: one config home per role window,
+holding only that role's credential, is what keeps roles apart.
 
 cell-issues is the write-issues App identity (issues:write + metadata:read only) — it is
 selectable only by explicit name, never a loop's default: no entry in the loop→role table
