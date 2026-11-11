@@ -324,8 +324,17 @@ func Command(forge, target string, roles []string, apiBase string, check bool) s
 // shellWord single-quotes s unless it is made only of characters a POSIX shell reads
 // literally.
 func shellWord(s string) string {
-	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_./:@%+=") == "" {
+	if s != "" && strings.IndexFunc(s, func(r rune) bool { return !shellLiteral(r) }) < 0 {
 		return s
 	}
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// shellLiteral reports whether r is an ASCII letter or digit, or one of - _ . / : @ % + =.
+func shellLiteral(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		return true
+	}
+	return strings.ContainsRune("-_./:@%+=", r)
 }
