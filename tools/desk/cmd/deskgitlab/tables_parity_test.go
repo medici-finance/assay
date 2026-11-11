@@ -7,14 +7,17 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/forgelabels"
 )
 
-// The provisioner's tables must not drift from the two other sources that carry them:
-//   - tools/fleet-gitlab-roles.sh, the shared role table, PAT lifetime and naming helpers the
-//     renewal script (tools/renew-fleet-gitlab-tokens.sh) still sources — a renewal that
-//     disagrees with the provisioner on a PAT name silently mints a duplicate credential;
-//   - cmd/deskfleet's label table, the cross-platform verb's copy (its parity test reads this
-//     package's table the same way).
+// The provisioner's tables must not drift from the shell source that also carries them:
+// tools/fleet-gitlab-roles.sh, the shared role table, PAT lifetime and naming helpers the
+// renewal script (tools/renew-fleet-gitlab-tokens.sh) still sources — a renewal that
+// disagrees with the provisioner on a PAT name silently mints a duplicate credential. (The
+// label table is no longer a copy to compare: this provisioner and cmd/deskfleet both build
+// it from internal/forgelabels.)
 //
 // Each is read as SOURCE from this tree. A copy of this module outside the repository (the
 // mutation harness's per-worker copy) has no tools/ sources: that is could-not-check, and the
@@ -80,42 +83,6 @@ func TestPATDaysAndNamesMatchShell(t *testing.T) {
 	}
 }
 
-func TestLabelTableMatchesDeskfleet(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "deskfleet", "tables.go"))
-	if err != nil {
-		t.Fatalf("reading cmd/deskfleet/tables.go: %v", err)
-	}
-	block := regexp.MustCompile(`(?s)var fleetLabels = \[\]fleetLabel\{\n(.*?)\n\}`).FindStringSubmatch(string(b))
-	if block == nil {
-		t.Fatal("no fleetLabels literal in cmd/deskfleet/tables.go")
-	}
-	row := regexp.MustCompile(`^\s*\{("(?:[^"\\]|\\.)*"), ("(?:[^"\\]|\\.)*"), ("(?:[^"\\]|\\.)*")\},$`)
-	var theirs []string
-	for _, ln := range strings.Split(block[1], "\n") {
-		if s := strings.TrimSpace(ln); s == "" || strings.HasPrefix(s, "//") {
-			continue
-		}
-		m := row.FindStringSubmatch(ln)
-		if m == nil {
-			t.Fatalf("unparsed deskfleet fleetLabels row: %q", ln)
-		}
-		var f [3]string
-		for i := range f {
-			if f[i], err = strconv.Unquote(m[i+1]); err != nil {
-				t.Fatalf("row %q: %v", ln, err)
-			}
-		}
-		theirs = append(theirs, strings.Join(f[:], "|"))
-	}
-	var ours []string
-	for _, l := range fleetLabels {
-		ours = append(ours, l.Name+"|"+l.Color+"|"+l.Description)
-	}
-	if strings.Join(ours, "\n") != strings.Join(theirs, "\n") {
-		t.Errorf("fleetLabels drifted from cmd/deskfleet's:\n%s\nwant:\n%s", strings.Join(ours, "\n"), strings.Join(theirs, "\n"))
-	}
-}
-
 // TestPushTokenMatchesDeskfleet pins the board-push credential's name, variable, scope and
 // role to deskfleet's: the two provisioners must mint the same credential class.
 func TestPushTokenMatchesDeskfleet(t *testing.T) {
@@ -137,6 +104,26 @@ func TestPushTokenMatchesDeskfleet(t *testing.T) {
 		}
 		if theirs != want {
 			t.Errorf("%s = %q here, %q in deskfleet", name, want, theirs)
+		}
+	}
+}
+
+// regression: #6127
+// TestFleetLabelsCarryEveryStampDeskfileReaches — the defect class is a label table that is
+// a hand copy instead of a projection of the role vocabulary deskfile stamps with: it lacked
+// every `to:<role>` row, so each addressed filing went UNADDRESSED. Whatever fleetLabels is
+// built from, it must carry, for every documented desk role, the raised-by and to labels
+// spelled with deskkit's own prefixes (the ones deskfile applies).
+func TestFleetLabelsCarryEveryStampDeskfileReaches(t *testing.T) {
+	have := map[string]bool{}
+	for _, l := range fleetLabels {
+		have[l.Name] = true
+	}
+	for _, role := range forgelabels.DocumentedRoles() {
+		for _, name := range []string{deskkit.RaisedByPrefix + role, deskkit.AddressedToPrefix + role} {
+			if !have[name] {
+				t.Errorf("fleetLabels lacks %q, which deskfile stamps for role %q", name, role)
+			}
 		}
 	}
 }

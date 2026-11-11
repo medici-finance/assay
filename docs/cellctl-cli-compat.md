@@ -266,3 +266,17 @@ cockpit has always launched private tmux. With cell-owned provider/Herdr support
 `check` now reports that actual surface; Herdr is explicit opt-in. Exit status,
 all other stdout and all stderr remain byte-identical in the fixture. The frozen
 pre-migration transcript remains unchanged.
+
+## The house cell's forge label set
+
+Issue #6127 makes `new --kind house` ensure the desk tools' forge label set on every `--roots`
+repo, and makes `check` report it (see *House cells* in [cellctl](cellctl.md)). The fixture
+world's cell roster binds no role yet, so the set cannot be derived there. `new-house/0`,
+`new-trailing-value/0`, `new-trailing-value/1`, `new-trailing-value/3`, `new-trailing-value/4`
+and `new-trailing-value/5` add exactly one stdout line after the scaffold line: `[new] labels:
+NOT ENSURED on o/r — …; finish with: deskfleet labels …`, naming the command that finishes the
+step. They keep exit 0, because a deferred labels step is not a failed install. `check/0` and
+`check/1` add exactly one `?  could-not-check: labels: …` row after the `docs/streams/` row,
+because a set that cannot be derived is never reported clean. They keep exit 1, and their summary
+line does not change, since the run already has `MISS` rows. Every other byte and all stderr
+still must match.

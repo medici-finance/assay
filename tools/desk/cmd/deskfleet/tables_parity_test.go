@@ -7,9 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/forgelabels"
 )
 
 // The Unix provisioning path (tools/create-fleet-gitlab.sh, now an adapter onto cmd/deskgitlab)
@@ -97,58 +100,24 @@ func TestRoleTableMatchesBash(t *testing.T) {
 	}
 }
 
-// The script's LABEL_TABLE moved, row for row, into the Go provisioner the script now execs
-// (cmd/deskgitlab, desktools-v2/30), so that port's table is the one these labels must match.
-// It is read as SOURCE, not imported (two main packages), and the mirror test in deskgitlab
-// reads this package's table the same way.
-func TestLabelTableMatchesBash(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "deskgitlab", "tables.go"))
-	if err != nil {
-		t.Fatalf("reading cmd/deskgitlab/tables.go (the provisioner's label table): %v", err)
-	}
-	rows := goLabelRows(t, string(b))
-	var ours []string
-	for _, l := range fleetLabels {
-		ours = append(ours, l.Name+"|"+l.Color+"|"+l.Description)
-	}
-	if strings.Join(rows, "\n") != strings.Join(ours, "\n") {
-		t.Errorf("tables.go fleetLabels drifted from cmd/deskgitlab's fleetLabels:\n%s\nwant:\n%s",
-			strings.Join(ours, "\n"), strings.Join(rows, "\n"))
-	}
-}
-
-// goLabelRows returns the rows of the `var fleetLabels = []fleetLabel{…}` literal in a Go
-// source file, as name|color|description.
-func goLabelRows(t *testing.T, src string) []string {
-	t.Helper()
-	block := regexp.MustCompile(`(?s)var fleetLabels = \[\]fleetLabel\{\n(.*?)\n\}`).FindStringSubmatch(src)
-	if block == nil {
-		t.Fatal("no fleetLabels literal found")
-	}
-	row := regexp.MustCompile(`^\s*\{("(?:[^"\\]|\\.)*"), ("(?:[^"\\]|\\.)*"), ("(?:[^"\\]|\\.)*")\},$`)
-	var rows []string
-	for _, ln := range strings.Split(block[1], "\n") {
-		if strings.TrimSpace(ln) == "" || strings.HasPrefix(strings.TrimSpace(ln), "//") {
-			continue
+// The script's LABEL_TABLE moved into internal/forgelabels, the one canonical set this verb
+// and cmd/deskgitlab both build from; there is no second copy left to drift. What remains
+// checkable here is that the documented-role fallback names exactly the desk roles this
+// provisioner's role table creates service accounts for (board-writer is the one fleet account
+// that is not a desk role and is never a label target).
+func TestDocumentedRolesMatchFleetRoles(t *testing.T) {
+	var desk []string
+	for _, r := range fleetRoles {
+		if r.Role != "board-writer" {
+			desk = append(desk, r.Role)
 		}
-		m := row.FindStringSubmatch(ln)
-		if m == nil {
-			t.Fatalf("unparsed fleetLabels row: %q", ln)
-		}
-		var f [3]string
-		for i := range f {
-			v, err := strconv.Unquote(m[i+1])
-			if err != nil {
-				t.Fatalf("row %q: %v", ln, err)
-			}
-			f[i] = v
-		}
-		rows = append(rows, f[0]+"|"+f[1]+"|"+f[2])
 	}
-	if len(rows) == 0 {
-		t.Fatal("the fleetLabels literal has no rows")
+	got := forgelabels.DocumentedRoles()
+	sort.Strings(desk)
+	sort.Strings(got)
+	if strings.Join(got, ",") != strings.Join(desk, ",") {
+		t.Errorf("forgelabels.DocumentedRoles() = %v; fleetRoles' desk roles = %v", got, desk)
 	}
-	return rows
 }
 
 // The default PAT lifetime is spec §5's expiry backstop; the two paths must agree on it.
