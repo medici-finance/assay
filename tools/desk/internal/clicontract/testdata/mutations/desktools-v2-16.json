@@ -3,8 +3,8 @@
   "control": {
     "name": "CONTROL — a parse failure exits with the wrong code (usage exit 3 becomes 4)",
     "file": "cmd/cellctl/cobra.go",
-    "old": "UsageExit:       3,",
-    "new": "UsageExit:       4,"
+    "old": "usageExit := 3",
+    "new": "usageExit := 4"
   },
   "mutations": [
     {

@@ -1119,7 +1119,7 @@ func (c *ghClient) markReadyForReview(nodeID string) error {
 	return nil
 }
 
-// readMergeHold / setMergeHold: the ghClient path is GitHub-only (branch protection is
+// readMergeHold / setMergeHold / openMergeHold: the ghClient path is GitHub-only (branch protection is
 // GitHub's server-side twin — the forge-gitlab merge-hold brief), so both are the typed
 // not-applicable, unconditionally, and issue no request.
 func (c *ghClient) readMergeHold(pr int) (*deskkit.MergeHold, error) {
@@ -1127,6 +1127,10 @@ func (c *ghClient) readMergeHold(pr int) (*deskkit.MergeHold, error) {
 }
 
 func (c *ghClient) setMergeHold(pr int, in deskkit.MergeHoldUpdate) error {
+	return deskkit.ErrMergeHoldNotApplicable
+}
+
+func (c *ghClient) openMergeHold(pr int) error {
 	return deskkit.ErrMergeHoldNotApplicable
 }
 

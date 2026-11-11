@@ -95,6 +95,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -191,6 +192,11 @@ type witness struct {
 	Sandbox string
 	// Base is the fail-first cell (verify-integrity/03); "" for an ordinary run.
 	Base string
+	// Reads is the row's read-set token (build-less-brittle/15), rendered as a
+	// parenthetical right after the `@ <tree>` marker: `(reads sha256:<hex>)`
+	// naming the recorded read-set file, or `(reads could-not-check: <why>)`.
+	// "" (a row that did not execute) adds nothing.
+	Reads string
 	// Note is console-only commentary (why could-not-run, which Expect
 	// constraints were undecidable). It is deliberately NOT written into the
 	// row: the row is a record, and free text in a record is where a caption
@@ -247,7 +253,7 @@ func (w witness) row() string {
 	if !w.HostOnBehalfOf {
 		obo = onBehalfOfSuffix(w.Runner, w.Repo)
 	}
-	runnerCell := runnerCellText(w.Runner, w.Tree, obo, w.RunnerSource)
+	runnerCell := runnerCellWithReads(w.Runner, w.Tree, w.Reads, obo, w.RunnerSource)
 	row := fmt.Sprintf("| %s | %s | %s | sha256:%s | %s | %s |",
 		w.ID, codeSpanOf(w.Command), result, w.OutHash, w.Date, runnerCell)
 	// The fail-first Base cell (verify-integrity/03) is a trailing 7th cell, so
@@ -264,7 +270,16 @@ func (w witness) row() string {
 // non-empty. witness.row() and the container bracket's close-step check both
 // render it here, so the cell the close step requires is the cell a row writes.
 func runnerCellText(runner, tree, obo, source string) string {
+	return runnerCellWithReads(runner, tree, "", obo, source)
+}
+
+// runnerCellWithReads is runnerCellText with the row's read-set token placed
+// right after the tree, ahead of the on-behalf-of and source parentheticals.
+func runnerCellWithReads(runner, tree, reads, obo, source string) string {
 	cell := fmt.Sprintf("%s @ %s", runner, tree)
+	if reads != "" {
+		cell += " " + reads
+	}
 	if obo != "" {
 		cell += " (" + obo + ")"
 	}
@@ -1289,11 +1304,27 @@ func evidenceOnlyChange(root, brief string) bool {
 	if err != nil {
 		return false
 	}
-	entries := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
-	if len(entries) != 1 || len(entries[0]) < 4 || entries[0][3:] != rel {
+	work, err := os.ReadFile(abs)
+	if err != nil {
 		return false
 	}
-	switch entries[0][:2] {
+	var briefEntry string
+	for _, e := range strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00") {
+		if len(e) < 4 {
+			return false
+		}
+		if e[3:] == rel {
+			briefEntry = e
+			continue
+		}
+		if !ownReadSetFile(dir, rel, e, string(work)) {
+			return false
+		}
+	}
+	if briefEntry == "" {
+		return false
+	}
+	switch briefEntry[:2] {
 	case " M", "M ", "MM":
 	default:
 		return false
@@ -1302,14 +1333,37 @@ func evidenceOnlyChange(root, brief string) bool {
 	if err != nil {
 		return false
 	}
-	work, err := os.ReadFile(abs)
-	if err != nil {
-		return false
-	}
 	a, okA := outsideEvidence(string(head))
 	b, okB := outsideEvidence(string(work))
 	return okA && okB && a == b
 }
+
+// ownReadSetFile reports whether one `git status --porcelain` entry is a new
+// read-set file of the brief rel (build-less-brittle/15): an untracked or
+// added `<brief dir>/reads/<sha256>` whose content hashes to its name and
+// whose digest the brief's working Evidence names in a `reads sha256:` token.
+// Another brief's read-set file, or any other path, is not.
+func ownReadSetFile(top, rel, entry, work string) bool {
+	switch entry[:2] {
+	case "??", "A ":
+	default:
+		return false
+	}
+	p := entry[3:]
+	d, name := path.Split(p)
+	if strings.TrimSuffix(d, "/") != path.Join(path.Dir(rel), evaluation.ReadSetDir) || !readSetNameRe.MatchString(name) {
+		return false
+	}
+	ev, ok := evidenceSectionText([]byte(work))
+	if !ok || !strings.Contains(ev, "(reads sha256:"+name+")") {
+		return false
+	}
+	b, err := os.ReadFile(filepath.Join(top, filepath.FromSlash(p)))
+	return err == nil && evaluation.ReadSetDigest(b) == name
+}
+
+// readSetNameRe is a read-set file's name: 64 lowercase hex digits.
+var readSetNameRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // outsideEvidence is a brief's text with its `## Evidence` section's lines cut
 // out, bounded exactly as the brief parser bounds them: the frontmatter fence
@@ -1317,11 +1371,20 @@ func evidenceOnlyChange(root, brief string) bool {
 // ok is false for text the comparison cannot read the same way on both sides:
 // a carriage return, an unterminated frontmatter, or no Evidence section.
 func outsideEvidence(text string) (string, bool) {
-	if strings.Contains(text, "\r") {
+	lines, body, start, end, ok := evidenceBounds(text)
+	if !ok {
 		return "", false
 	}
-	lines := strings.Split(text, "\n")
-	body := 0
+	return strings.Join(lines[:body+start], "\n") + "\x00" + strings.Join(lines[body+end:], "\n"), true
+}
+
+// evidenceBounds splits text into lines and finds the body start and the
+// Evidence span within the body.
+func evidenceBounds(text string) (lines []string, body, start, end int, ok bool) {
+	if strings.Contains(text, "\r") {
+		return nil, 0, 0, 0, false
+	}
+	lines = strings.Split(text, "\n")
 	if strings.TrimSpace(lines[0]) == "---" {
 		body = -1
 		for i := 1; i < len(lines); i++ {
@@ -1331,14 +1394,11 @@ func outsideEvidence(text string) (string, bool) {
 			}
 		}
 		if body < 0 {
-			return "", false
+			return nil, 0, 0, 0, false
 		}
 	}
-	start, end, ok := evidenceSectionSpan(lines[body:])
-	if !ok {
-		return "", false
-	}
-	return strings.Join(lines[:body+start], "\n") + "\x00" + strings.Join(lines[body+end:], "\n"), true
+	start, end, ok = evidenceSectionSpan(lines[body:])
+	return lines, body, start, end, ok
 }
 
 // ---------------------------------------------------------------------------
@@ -1657,9 +1717,20 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 			Tree:         tree,
 			Sandbox:      rowSandbox,
 			Note:         note,
+			Reads:        rowReads(tree, res),
 		})
 	}
 	return out
+}
+
+// rowReads is an executed row's read-set token. A fail-first run (no tree)
+// and a row that never started carry none; every other row carries the
+// recorder's token, which off Linux is always a could-not-check.
+func rowReads(tree string, res runResult) string {
+	if tree == "" || res.couldNotRun {
+		return ""
+	}
+	return rowReadSetToken()
 }
 
 // proseLedNote is the could-not-run note for a prose-led row: the lint's
@@ -1999,6 +2070,20 @@ Flags:
   --history-out <file>  with --open-bracket, export complete admitted HEAD history
                     to a new Git object pack outside the home. Mount it read-only in
                     the container; no host config, hooks or credentials travel.
+  --module-cache <dir>  with --open-bracket, run go mod download for each Go
+                    module root the home lists in
+                    images/verify-runner/go-module-roots.txt, bound to its
+                    go.sum and the checksum database, into this new empty
+                    directory outside the home (never the host's own module
+                    cache), and record its digest in the receipt. Required
+                    when the home lists module roots. A failed download is
+                    could-not-check with no receipt; the image's baked cache
+                    is never a fall-back. The step prints the container flags
+                    the run needs: --network none, --read-only, the cache
+                    mounted read-only at /go/pkg/mod, GOPROXY=off and
+                    GOTOOLCHAIN=local. The container run checks the mount,
+                    the environment and the digest before any row, and its
+                    witness records Module-Cache: <digest> (#4683).
   --history-pack <file>  with container-netns --fail-first, import that pack
                     into private scratch for baseline checkouts. Its source must
                     equal the admitted source. Head rows still run on --root.
@@ -2189,6 +2274,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	openBracket := fs.Bool("open-bracket", false, "host open step of a container run: run the admission check, digest the home and write the receipt to --out")
 	openOut := fs.String("out", "", "with --open-bracket: the receipt file to write, outside the home")
 	historyOut := fs.String("history-out", "", "with --open-bracket: export admitted HEAD history to a new Git object pack outside the home")
+	moduleCacheDir := fs.String("module-cache", "", "with --open-bracket: download the home's Go module roots into this new directory outside the home and record its digest in the receipt")
 	historyPack := fs.String("history-pack", "", "container-netns --fail-first: read-only admitted-source Git object pack for isolated baseline checkouts")
 	closeBracket := fs.Bool("close-bracket", false, "host close step of a container run: re-check admission and the tree digest, then append Admission-Bracket to --witness")
 	witnessFile := fs.String("witness", "", "container-netns: the new file outside the home the witness is written to; with --close-bracket or --bracket-digest: that file")
@@ -2318,6 +2404,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// The container bracket (desktools-v2/71): the close step is its own mode,
 	// and a row-running container-netns invocation needs the host's receipt
 	// and image digest before anything else happens.
+	if *moduleCacheDir != "" && !*openBracket {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --module-cache only applies to --open-bracket")
+		return verifyrunExitUsageError
+	}
 	if *historyOut != "" && !*openBracket {
 		fmt.Fprintln(stderr, "statusgen verifyrun: --history-out only applies to --open-bracket")
 		return verifyrunExitUsageError
@@ -2350,7 +2440,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitUsageError
 		}
 		if *openBracket {
-			return runOpenBracket(*rootDir, path, *openOut, stdout, stderr, *historyOut)
+			return runOpenBracket(*rootDir, path, *openOut, *moduleCacheDir, stdout, stderr, *historyOut)
 		}
 		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, stdout, stderr)
 	}
@@ -2711,7 +2801,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			fmt.Fprintf(stderr, "statusgen verifyrun: the rows changed the mounted home (tree %s before the rows, %s after, %v); no witness written\n", containerTree, after, err)
 			return verifyrunExitCouldNot
 		}
-		table += "\n" + containerWitnessLines(*imageDigest, containerTree, attestation)
+		table += "\n" + containerWitnessLines(*imageDigest, containerTree, container.moduleCache, attestation)
 	} else if attestation != "" {
 		table += "\n" + attestation + "\n"
 	}

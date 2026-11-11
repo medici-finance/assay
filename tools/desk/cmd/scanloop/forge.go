@@ -23,6 +23,11 @@ var (
 	forgeAPIBase string
 	// sessionRoleFn resolves this session's App role, swapped in tests.
 	sessionRoleFn = deskkit.SessionTokenRole
+	// roleCredentialFn is the poller-identity probe's credential seam (ResolveMonitorIdentity),
+	// swapped in tests. Production binds it to the forge-aware resolver deskread and issueboard
+	// use, never to the GitHub-only mintTokenFn: the probe covers every owner in the scan scope,
+	// GitLab-served ones included (issue 5890).
+	roleCredentialFn = deskkit.ResolveRoleCredential
 )
 
 func init() {

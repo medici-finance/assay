@@ -108,14 +108,16 @@ def recorded_images(raw=None):
     sys.dont_write_bytecode = True
     sys.path.insert(0, str(ROOT / 'tools/release'))
     try:
-        from images_contract import validate
+        from images_contract import LEGACY_NAMES, NAMES, validate
     finally:
         sys.path.pop(0)
     try:
         record = json.loads(raw)
         refs = {i['name']: i['ref'] for i in record['images']}
+        # The pinned v1.0.52 record predates deskd; accept that set by name.
         return validate(record, record['version'], record['source_revision'],
-                        refs['verify-runner'] + '\n', 'medici-finance/assay')
+                        refs['verify-runner'] + '\n', 'medici-finance/assay',
+                        names=(NAMES, LEGACY_NAMES))
     except (ValueError, KeyError, TypeError) as err:
         raise Invalid('release image record is not a valid release-images-v1 record') from err
 
@@ -367,13 +369,15 @@ def candidate_images():
     need(record.get('source_revision') == candidate.get('source_revision'), 'candidate source differs')
     sys.path.insert(0, str(ROOT / 'tools/release'))
     try:
-        from images_contract import validate
+        from images_contract import LEGACY_NAMES, NAMES, validate
     finally:
         sys.path.pop(0)
     refs = {item['name']: item['ref'] for item in record['images']}
     try:
+        # The pinned v1.0.65 candidate record predates deskd; accept that set by name.
         images = validate(record, record['version'], record['source_revision'],
-                          refs['verify-runner'] + '\n', 'medici-finance/assay')
+                          refs['verify-runner'] + '\n', 'medici-finance/assay',
+                          names=(NAMES, LEGACY_NAMES))
     except (KeyError, ValueError, TypeError) as error:
         raise Invalid('candidate record is not actual release-images-v1') from error
     need(candidate.get('images') == {role: images[role] for role in roles()}, 'candidate image consumers differ')

@@ -33,6 +33,10 @@ type glHoldFake struct {
 	postErr    error
 	visibility string
 	trust      *deskkit.TrustPayload
+	// opens counts OpenMergeHold calls; openErr, when set, is what one answers, leaving the
+	// change with no thread.
+	opens   int
+	openErr error
 }
 
 func newGLHoldFake() *glHoldFake {
@@ -67,7 +71,8 @@ func (g *glHoldFake) PostReview(fr deskkit.ForgeRepo, n int, in deskkit.ReviewIn
 	return g.postErr
 }
 
-// SetMergeHold records the call and, when the write is not failed, applies it.
+// SetMergeHold records the call and, when the write is not failed, applies it. A change with
+// no thread is refused, as the GitLab backend refuses it: there is nothing to release or re-arm.
 func (g *glHoldFake) SetMergeHold(_ deskkit.ForgeRepo, _ int, in deskkit.MergeHoldUpdate) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -75,12 +80,28 @@ func (g *glHoldFake) SetMergeHold(_ deskkit.ForgeRepo, _ int, in deskkit.MergeHo
 	if g.holdSetErr != nil {
 		return g.holdSetErr
 	}
+	if g.holdState == deskkit.MergeHoldAbsent {
+		return deskkit.Refused("!1 carries no merge-hold marker thread to release or re-arm")
+	}
 	if in.Resolved {
 		g.holdState, g.holdHead, g.holdResolvedBy = deskkit.MergeHoldResolved, in.Head, reviewerBotDisplay()
 	} else {
 		g.holdState, g.holdHead, g.holdResolvedBy = deskkit.MergeHoldUnresolved, "", ""
 	}
 	return nil
+}
+
+// OpenMergeHold records the call and, when it is not failed, opens the thread: a new marker
+// thread is unresolved, as on the GitLab backend.
+func (g *glHoldFake) OpenMergeHold(deskkit.ForgeRepo, int) (string, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.opens++
+	if g.openErr != nil {
+		return "", g.openErr
+	}
+	g.holdState, g.holdHead, g.holdResolvedBy = deskkit.MergeHoldUnresolved, "", ""
+	return "disc-1", nil
 }
 
 func (g *glHoldFake) RepoVisibility(deskkit.ForgeRepo) (string, error) { return g.visibility, nil }
@@ -244,6 +265,7 @@ func TestGitLabRerunHoldStepOnlyArmsOrConfirms(t *testing.T) {
 
 		wantExit   int
 		wantWrites int    // hold writes, every one a re-arm
+		wantOpens  int    // hold threads opened on a change that had none
 		wantResult string // audit result
 		wantText   string // in stderr or the audit detail
 	}{
@@ -298,9 +320,20 @@ func TestGitLabRerunHoldStepOnlyArmsOrConfirms(t *testing.T) {
 				return []deskkit.Review{glRecorded(t, 52, rerunReviewer(t), okReviewBody, testHead, tLater)}
 			},
 			wantExit: deskkit.ExitOK, wantWrites: 1, wantResult: deskkit.ResultOK, wantText: "merge-hold re-armed"},
-		{name: "request-changes recorded, the change has no hold thread",
+		// regression: #5898 — a change opened outside the desk tooling has no thread; the
+		// re-run opens one rather than leaving the gate released under a request-changes.
+		{name: "request-changes recorded, the change has no hold thread: one is opened",
 			verdict: "request-changes", holdState: deskkit.MergeHoldAbsent,
-			wantExit: deskkit.ExitUnverifiable, wantResult: deskkit.ResultUnwritten, wantText: "no merge-hold"},
+			wantExit: deskkit.ExitOK, wantOpens: 1, wantResult: deskkit.ResultOK, wantText: "so one was opened"},
+		{name: "request-changes recorded but superseded, no hold thread: none is opened",
+			verdict: "request-changes", holdState: deskkit.MergeHoldAbsent,
+			later: func(t *testing.T) []deskkit.Review {
+				return []deskkit.Review{glRecorded(t, 52, rerunReviewer(t), okReviewBody, testHead, tLater)}
+			},
+			wantExit: deskkit.ExitUnverifiable, wantResult: deskkit.ResultUnwritten, wantText: "did not open one"},
+		{name: "approve recorded, no hold thread: none is opened",
+			verdict: "approve", holdState: deskkit.MergeHoldAbsent,
+			wantExit: deskkit.ExitUnverifiable, wantResult: deskkit.ResultUnwritten, wantText: "An approve does not open one"},
 		{name: "request-changes recorded, the hold cannot be read",
 			verdict: "request-changes", readErr: errors.New("502 bad gateway"),
 			wantExit: deskkit.ExitUnverifiable, wantResult: deskkit.ResultUnwritten, wantText: "could not be read"},
@@ -338,6 +371,9 @@ func TestGitLabRerunHoldStepOnlyArmsOrConfirms(t *testing.T) {
 			if len(f.setHoldCalls) != tc.wantWrites {
 				t.Fatalf("hold writes = %d, want %d: %+v", len(f.setHoldCalls), tc.wantWrites, f.setHoldCalls)
 			}
+			if f.opens != tc.wantOpens {
+				t.Fatalf("hold threads opened = %d, want %d", f.opens, tc.wantOpens)
+			}
 			e := lastAudit(t)
 			if e.Result != tc.wantResult {
 				t.Fatalf("audit result = %q, want %q: %+v", e.Result, tc.wantResult, e)
@@ -356,6 +392,7 @@ func TestGitLabRerunHoldStepOnlyArmsOrConfirms(t *testing.T) {
 // outward write, so it is sent only where the post step itself could have written — a
 // trusted change, a repository this identity may write to — and never on a dry run.
 func TestGitLabRerunHoldWritePassesTheWriteGates(t *testing.T) {
+	absent := func(f *glHoldFake) { f.holdState = deskkit.MergeHoldAbsent }
 	for _, tc := range []struct {
 		name       string
 		arrange    func(f *glHoldFake)
@@ -363,6 +400,11 @@ func TestGitLabRerunHoldWritePassesTheWriteGates(t *testing.T) {
 		wantExit   int
 		wantResult string
 	}{
+		{name: "no hold thread, the repository reads public and is not listed as one",
+			arrange:  func(f *glHoldFake) { absent(f); f.visibility = "public" },
+			wantExit: deskkit.ExitRefused, wantResult: deskkit.ResultRefused},
+		{name: "no hold thread, a dry run", arrange: absent, extra: []string{"--dry-run"},
+			wantExit: deskkit.ExitOK, wantResult: deskkit.ResultDryRun},
 		{name: "the repository reads public and is not listed as one",
 			arrange:  func(f *glHoldFake) { f.visibility = "public" },
 			wantExit: deskkit.ExitRefused, wantResult: deskkit.ResultRefused},
@@ -386,8 +428,8 @@ func TestGitLabRerunHoldWritePassesTheWriteGates(t *testing.T) {
 			bf := writeBody(t, "rev.md", rcReviewBody)
 
 			code := run(append(reviewArgs(glReviewRepo, "1", "request-changes", testHead, bf), tc.extra...))
-			if len(f.setHoldCalls) != 0 {
-				t.Fatalf("a hold write was sent: %+v", f.setHoldCalls)
+			if len(f.setHoldCalls) != 0 || f.opens != 0 {
+				t.Fatalf("a hold write was sent: %+v, %d thread(s) opened", f.setHoldCalls, f.opens)
 			}
 			if len(f.postedReview) != 0 {
 				t.Fatalf("posted %d review(s)", len(f.postedReview))
