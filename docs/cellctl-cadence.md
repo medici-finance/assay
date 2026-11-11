@@ -89,7 +89,10 @@ selects the interactive default unless cell.env saves a duration.
 `supervisor=active` identifies a cadence owner; `supervisor=interactive` does not.
 If status instead reports `unfinished`, follow the recovery procedure below only after
 confirming the old harness and all children have stopped. Do not delete locks or
-checkpoints to force a second owner. A launch never clears a stop flag itself.
+checkpoints to force a second owner. A launch clears exactly one stop flag itself: the
+per-role stop request `cellctl down` wrote (its body reads `cellctl down`), removed by the
+role's next launch under the role lease. A stop written by `cadence stop`, an empty marker
+or any other body, and every cell-wide flag, stays until `resume` or its own owner lifts it.
 
 ## Configuration and ownership
 
@@ -123,8 +126,18 @@ cellctl desk house pr-review-desk --cadence 30m
 
 A stop request cancels an active pass on the next supervisor heartbeat (normally five
 seconds), then reaps its process tree. `cellctl down` requests this cancellation
-before closing cockpit windows. `resume` clears only the local stop request; it does
+before closing cockpit windows, and never overwrites a stop request already there.
+`resume` clears only the local stop request; it does
 not launch a model, clear the cell's STOP/DISABLED flags, or discard a checkpoint.
+
+An interactive role stops on the hangup the cockpit's close delivers. `cellctl down`
+names each interactive owner (its pid and start time) before closing anything, then
+waits for them, 20 seconds for them all. When an owner's own cleanup could not prove
+itself finished, its checkpoint would stay `running`; down records the stop instead,
+but only when the reconcile preflight's evidence below shows the owner it signalled,
+that owner's role child and every process carrying the role's marker gone. Otherwise
+down finishes the teardown, exits 1 and names `cellctl up <cell> --plan`. So `down`
+then `up` needs no recovery in between.
 
 A supervisor crash during a pass or interactive session is ambiguous: the agent might still be running.
 An unfinished checkpoint therefore refuses all replacement launches, even when the
@@ -213,7 +226,9 @@ one answer instead of one recovery per role. The preflight:
    lets the launch continue as it always has.
 
 There is deliberately no `--yes` flag: clearing stays a human act, as `--confirm-stopped`
-intends. `cellctl up <cell> --dry-run` (or `DRY_RUN=1`) prints the inventory and the plan
+intends. The operator's `cellctl down` is that act for the one record it clears itself: the
+interactive checkpoint of an owner that down named before it signalled it, on the dead
+evidence above. A crashed owner with no down behind it still needs this preflight or `recover`. `cellctl up <cell> --dry-run` (or `DRY_RUN=1`) prints the inventory and the plan
 and changes nothing. The preflight never touches queued, held or acknowledged comms
 messages, keys, configuration, worktrees, branches or the Go cache. When its plan stops or
 clears anything, it points at `cellctl cache <cell> status` and
