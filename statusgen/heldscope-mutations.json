@@ -820,8 +820,8 @@
     {
       "name": "#4294 witness: a Base cell may carry text after its head tree",
       "file": "heldscope.go",
-      "old": "(?:\\+dirty|\\+unknown)?|no-git)$`)",
-      "new": "(?:\\+dirty|\\+unknown)?|no-git)`)"
+      "old": "(?:\\+dirty|\\+unknown)?|no-git))$`)",
+      "new": "(?:\\+dirty|\\+unknown)?|no-git))`)"
     },
     {
       "name": "#4294 witness: a digest is matched after heldNorm (case and emphasis ignored)",
