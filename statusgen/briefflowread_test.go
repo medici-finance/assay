@@ -10,9 +10,9 @@ package main
 // modes run. `gh` is stubbed to fail on every row: a read that still reached it errors.
 //
 // MUTATIONS that re-redden the rows on the fixed tree: drop the incomplete case from
-// MergedChanges (TestBFMergedChangesUnservedIsAnError/incomplete); drop the `main` base filter in
-// deskreadBFPRSource.MergedPRs (TestBFMergedPRsReadThroughDeskread); read the reviews with
-// --issue instead of --change (TestBFReviewsReadThroughDeskread).
+// MergedChanges (TestBFMergedUnserved/incomplete); drop the `main` base filter in
+// deskreadBFPRSource.MergedPRs (TestBFMergedViaDeskread); read the reviews with
+// --issue instead of --change (TestBFReviewsViaDeskread).
 
 import (
 	"os"
@@ -55,7 +55,7 @@ func lastStubCall(t *testing.T, argsFile string) string {
 const bfRepo = "example-org/alpha"
 
 // regression: the merged-PR read shelled `gh api pulls?state=closed&base=main`, so it failed wherever gh was absent or unauthenticated
-func TestBFMergedPRsReadThroughDeskread(t *testing.T) {
+func TestBFMergedViaDeskread(t *testing.T) {
 	argsFile := stubBFVerbs(t, `{"schema":1,"kind":"changes","repos":[{"repo":"`+bfRepo+`","changes":[`+
 		`{"number":30,"state":"MERGED","body":"Brief: s/01","baseRef":"main","mergedAt":"2026-09-10T00:00:00Z"},`+
 		`{"number":29,"state":"MERGED","body":"stacked","baseRef":"feat/other","mergedAt":"2026-09-09T00:00:00Z"},`+
@@ -75,7 +75,7 @@ func TestBFMergedPRsReadThroughDeskread(t *testing.T) {
 }
 
 // regression: a window busier than gh's one 100-row page read as a complete one; an unservable list must be could-not-check, never short
-func TestBFMergedChangesUnservedIsAnError(t *testing.T) {
+func TestBFMergedUnserved(t *testing.T) {
 	since := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	ok := `{"number":1,"state":"MERGED","baseRef":"main","mergedAt":"2026-09-10T00:00:00Z"}`
 	for _, tc := range []struct{ name, body string }{
@@ -101,7 +101,7 @@ func TestBFMergedChangesUnservedIsAnError(t *testing.T) {
 }
 
 // regression: an empty merged list read through a verb that would not run must not read as "no PRs merged"
-func TestBFMergedPRsVerbFailureIsAnError(t *testing.T) {
+func TestBFMergedVerbFails(t *testing.T) {
 	bin := t.TempDir()
 	writeStubBin(t, bin, "gh", ghFails)
 	writeStubBin(t, bin, "deskread", "#!/bin/sh\necho 'deskread: stubbed to fail' >&2\nexit 1\n")
@@ -112,7 +112,7 @@ func TestBFMergedPRsVerbFailureIsAnError(t *testing.T) {
 }
 
 // regression: the reviews read shelled `gh api pulls/N/reviews`, so it failed wherever gh was absent or unauthenticated
-func TestBFReviewsReadThroughDeskread(t *testing.T) {
+func TestBFReviewsViaDeskread(t *testing.T) {
 	argsFile := stubBFVerbs(t, `{}`, `{"schema":1,"kind":"reviews","items":[{"repo":"`+bfRepo+`","number":30,"reviews":[`+
 		`{"authorLogin":"reviewer-app[bot]","state":"CHANGES_REQUESTED","commitId":"a1","submittedAt":"2026-09-02T00:00:00Z"},`+
 		`{"authorLogin":"reviewer-app[bot]","state":"APPROVED","commitId":"b2","submittedAt":"2026-09-03T00:00:00Z"}]}],"partial":[]}`)
@@ -130,7 +130,7 @@ func TestBFReviewsReadThroughDeskread(t *testing.T) {
 }
 
 // regression: a review list the verb could not serve must be could-not-check, never an empty list that scores a PR as never reworked
-func TestBFReviewsUnservedIsAnError(t *testing.T) {
+func TestBFReviewsUnserved(t *testing.T) {
 	for _, tc := range []struct{ name, body string }{
 		{"partial", `{"schema":1,"kind":"reviews","items":[],"partial":[{"repo":"` + bfRepo + `","number":30,"reason":"cannot read it"}]}`},
 		{"no review list", `{"schema":1,"kind":"reviews","items":[{"repo":"` + bfRepo + `","number":30}],"partial":[]}`},
@@ -147,7 +147,7 @@ func TestBFReviewsUnservedIsAnError(t *testing.T) {
 }
 
 // An empty review list is a real answer — nobody has reviewed — and stays distinct from a failure.
-func TestBFReviewsEmptyListIsAnAnswer(t *testing.T) {
+func TestBFReviewsEmptyList(t *testing.T) {
 	stubBFVerbs(t, `{}`, `{"schema":1,"kind":"reviews","items":[{"repo":"`+bfRepo+`","number":30,"reviews":[]}],"partial":[]}`)
 	got, err := defaultBFPRSource.Reviews(bfRepo, 30)
 	if err != nil || len(got) != 0 {
