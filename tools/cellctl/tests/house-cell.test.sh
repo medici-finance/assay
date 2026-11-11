@@ -31,7 +31,12 @@ CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" =
 is_shell_impl(){ head -c2 "$CELLCTL" 2>/dev/null | grep -q '#!'; }
 # Resolved with pwd -P: a TMPDIR with a trailing slash or a symlinked temp root would otherwise
 # make the paths cellctl prints (it normalises) differ from the ones the test compares against.
-T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-house.XXXXXX")" && pwd -P)"
+# Fail closed before the EXIT trap: on bash 3.2 `cd ""` succeeds, so a failed mktemp
+# must never leave T at the caller's directory for the trap to delete (#6161).
+made="$(mktemp -d "${TMPDIR:-/tmp}/cellctl-house.XXXXXX")" || exit 1
+[ -n "$made" ] && [ -d "$made" ] || exit 1
+T="$(cd "$made" && pwd -P)" || exit 1
+[ -n "$T" ] || exit 1
 trap 'suite_status=$?; if declare -F private_deskwt_finish >/dev/null; then private_deskwt_finish || suite_status=1; fi; rm -rf "$T"; exit "$suite_status"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
