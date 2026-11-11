@@ -188,20 +188,14 @@ type beaconRole struct {
 	Role string `json:"role,omitempty"`
 }
 
-// resolveSessionName returns the session name from the two identifying env vars, in the
-// order deskroster's own resolveSession uses ($DESK_SESSION then $CLAUDE_SESSION_ID),
-// falling back to the explicit session argument. It answers "" rather than an error when
-// none is set: for THIS resolver, no identifiable session is a legitimate answer
-// (PrincipalUnattended), never a refusal — unlike deskroster's own resolveSession, which
-// refuses because ITS callers have no other identity to fall back to.
+// resolveSessionName resolves the session name with ResolveSessionName, the same order
+// deskroster uses (explicit session argument, then $DESK_SESSION, then $CLAUDE_SESSION_ID).
+// It answers "" rather than an error when none is set: for THIS resolver, no identifiable
+// session is a legitimate answer (PrincipalUnattended), never a refusal — unlike
+// deskroster's own resolveSession, which refuses because ITS callers have no other
+// identity to fall back to.
 func resolveSessionName(session string) string {
-	if s := strings.TrimSpace(os.Getenv("DESK_SESSION")); s != "" {
-		return s
-	}
-	if s := strings.TrimSpace(os.Getenv("CLAUDE_SESSION_ID")); s != "" {
-		return s
-	}
-	return strings.TrimSpace(session)
+	return ResolveSessionName(session)
 }
 
 // sessionNameSafeRe is the character set a session name must stay within before this

@@ -100,17 +100,12 @@ func claimsDir() (string, error) {
 
 // ---- session resolution ----
 
-// resolveSession returns the session name from env or flag.
-// Order: $DESK_SESSION → $CLAUDE_SESSION_ID → flag → exit 6.
+// resolveSession returns the session name via deskkit.ResolveSessionName.
+// Order: --session flag → $DESK_SESSION → $CLAUDE_SESSION_ID → exit 6. An explicit flag
+// always wins over an inherited environment variable.
 func resolveSession(sessionFlag string) (string, error) {
-	if s := os.Getenv("DESK_SESSION"); s != "" {
+	if s := deskkit.ResolveSessionName(sessionFlag); s != "" {
 		return s, nil
-	}
-	if s := os.Getenv("CLAUDE_SESSION_ID"); s != "" {
-		return s, nil
-	}
-	if sessionFlag != "" {
-		return sessionFlag, nil
 	}
 	return "", deskkit.Unverifiable(
 		"cannot resolve session identity: set $DESK_SESSION, $CLAUDE_SESSION_ID, or pass --session",
@@ -386,7 +381,7 @@ func cmdSet(args []string) error {
 	fs.IntVar(&pr, "pr", 0, "PR number")
 	fs.StringVar(&what, "what", "", "Description of the work")
 	fs.StringVar(&role, "role", "", "Optional role label for this session")
-	fs.StringVar(&session, "session", "", "Session name (env: $DESK_SESSION or $CLAUDE_SESSION_ID)")
+	fs.StringVar(&session, "session", "", "Session name; wins over $DESK_SESSION and $CLAUDE_SESSION_ID")
 	fs.IntVar(&width, "width", 0, "With --role: set that LOOP's agent-pool width (see `deskroster width --role`)")
 	fs.StringVar(&tokens, "tokens", "", "Cumulative tokens this session has consumed, or \"unknown\" (could-not-check); omit to leave unset")
 	fs.StringVar(&ctxPct, "context-pct", "", "Percent of the context window in use (0-100), or \"unknown\"; omit to leave unset")
@@ -531,7 +526,7 @@ func cmdDrop(args []string) error {
 	)
 	fs.StringVar(&repo, "repo", "", "Short repo name (e.g. tracker)")
 	fs.IntVar(&pr, "pr", 0, "PR number")
-	fs.StringVar(&session, "session", "", "Session name (env: $DESK_SESSION or $CLAUDE_SESSION_ID)")
+	fs.StringVar(&session, "session", "", "Session name; wins over $DESK_SESSION and $CLAUDE_SESSION_ID")
 
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused(fmt.Sprintf("drop: %v", err))
@@ -810,7 +805,7 @@ func cmdList() error {
 func cmdMine(args []string) error {
 	fs := flag.NewFlagSet("mine", flag.ContinueOnError)
 	var session string
-	fs.StringVar(&session, "session", "", "Session name (env: $DESK_SESSION or $CLAUDE_SESSION_ID)")
+	fs.StringVar(&session, "session", "", "Session name; wins over $DESK_SESSION and $CLAUDE_SESSION_ID")
 
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused(fmt.Sprintf("mine: %v", err))
