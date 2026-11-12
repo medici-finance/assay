@@ -58,6 +58,7 @@ type goldenServer struct {
 	status     map[string]any
 	checks     map[string]any
 	reqChecks  map[string]any
+	brRules    []map[string]any // branch-rules read (the RULESET half of the required set); nil serves `[]`
 	reactions  []map[string]any
 	pull       map[string]any
 	issue      map[string]any
@@ -134,6 +135,7 @@ var (
 	gCommits   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits$`)
 	gCommitPRs = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits/[^/]+/pulls$`)
 	gReqChecks = regexp.MustCompile(`/branches/[^/]+/protection/required_status_checks$`)
+	gBrRules   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/rules/branches/[^/]+$`)
 	gRepo      = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
 	gReactions = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
 	gGitRef    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/git/refs/.+$`)
@@ -278,6 +280,12 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.fileCommits)
 	case r.Method == http.MethodGet && gCommitPRs.MatchString(path):
 		enc(s.commitPulls)
+	case r.Method == http.MethodGet && gBrRules.MatchString(path):
+		if s.brRules == nil {
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		enc(s.brRules)
 	case r.Method == http.MethodGet && gReqChecks.MatchString(path):
 		// A branch with no protection (or no required checks) answers 404 — the "nothing
 		// required" case, distinct from a served object. A case that wants the 404 sets it via
@@ -556,7 +564,9 @@ func TestForgeGithubGolden(t *testing.T) {
 		{
 			// Branch protection with required checks in BOTH shapes GitHub serves: the legacy
 			// flat `contexts` list and the newer `checks` array. The two are unioned, and a
-			// context named in both (go-test) appears once.
+			// context named in both (go-test) appears once. The legacy endpoint does not show
+			// rulesets, so the branch-rules read follows and its contexts are unioned in
+			// (changelog here; leak-sweep is named by both and appears once).
 			name: "required_status_checks",
 			setup: func(s *goldenServer) {
 				s.reqChecks = map[string]any{
@@ -565,15 +575,30 @@ func TestForgeGithubGolden(t *testing.T) {
 						{"context": "go-test"}, {"context": "leak-sweep"},
 					},
 				}
+				s.brRules = []map[string]any{{"type": "required_status_checks", "parameters": map[string]any{
+					"required_status_checks": []map[string]any{{"context": "leak-sweep"}, {"context": "changelog"}}}}}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.RequiredStatusChecks(forgeTestRepo, "main") },
 		},
 		{
-			// An unprotected branch (or one requiring no checks) answers 404, which the backend
-			// reads as the EMPTY required set — nothing required, no error.
+			// An unprotected branch (or one whose classic protection requires no checks) answers
+			// 404: the classic half is empty. With no rulesets either, the required set is
+			// EMPTY — nothing required, no error.
 			name: "required_status_checks_unprotected_branch",
 			setup: func(s *goldenServer) {
 				s.forceStatus["/required_status_checks"] = http.StatusNotFound
+			},
+			run: func(f *GitHubForge) (any, error) { return f.RequiredStatusChecks(forgeTestRepo, "main") },
+		},
+		{
+			// #6198: the legacy endpoint 404s (classic protection requires nothing) while a
+			// ruleset requires three contexts. The required set is the ruleset contexts.
+			name: "required_status_checks_legacy_404_rulesets",
+			setup: func(s *goldenServer) {
+				s.forceStatus["/required_status_checks"] = http.StatusNotFound
+				s.brRules = []map[string]any{{"type": "required_status_checks", "parameters": map[string]any{
+					"required_status_checks": []map[string]any{
+						{"context": "leak-sweep"}, {"context": "build-test"}, {"context": "changelog"}}}}}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.RequiredStatusChecks(forgeTestRepo, "main") },
 		},

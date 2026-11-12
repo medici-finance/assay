@@ -126,29 +126,77 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 		wantSawRule   bool
 	}{
 		{
-			// (a) legacy 404 ⇒ nothing required (empty), no fallback consulted.
+			// (a) legacy 404 + no rulesets ⇒ nothing required (empty). The 404 settles only the
+			// classic half; the rules read is still made and is empty here.
 			name: "legacy_404_empty",
 			mux: &reqChecksMux{
 				legacyStatus: http.StatusNotFound,
 				branchNil:    true,
-				rulesNil:     true,
+				rulesStatus:  http.StatusOK,
+				rulesBody:    `[]`,
 			},
-			wantSet: nil,
+			wantSet:     nil,
+			wantSawRule: true,
 		},
 		{
-			// (a2) legacy 200 with real contexts ⇒ used directly, NEITHER admin-free fallback
+			// (a1) regression #6198, the observed shape: the legacy endpoint answers 404
+			// ("Required status checks not enabled") because classic protection requires
+			// nothing, while a ruleset requires leak-sweep, build-test and changelog. Reading
+			// the 404 as the whole answer returned an empty set, so checks-green passed a head
+			// carrying only leak-sweep. The set is the ruleset contexts.
+			name: "legacy_404_rules_contexts",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusNotFound,
+				branchNil:    true,
+				rulesStatus:  http.StatusOK,
+				rulesBody: `[{"type":"deletion"},{"type":"required_status_checks","parameters":{
+					"required_status_checks":[{"context":"leak-sweep"},{"context":"build-test"},{"context":"changelog"}]}}]`,
+			},
+			wantSet:     []string{"build-test", "changelog", "leak-sweep"},
+			wantSawRule: true,
+		},
+		{
+			// (a1b) regression #6198: legacy 404 and the rules read fails. The classic half
+			// alone is a lower bound, so this is could-not-check, never the empty set.
+			name: "legacy_404_rules_read_fails",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusNotFound,
+				branchNil:    true,
+				rulesStatus:  http.StatusInternalServerError,
+			},
+			wantErr:       true,
+			wantSawRule:   true,
+			wantErrSubstr: []string{"legacy endpoint answered 404", "rulesets"},
+		},
+		{
+			// (a2) legacy 200 with real contexts ⇒ used directly, the branch read NOT
 			// consulted. This is the path a classic-protected repo takes once the calling App
 			// is granted `administration: read` (assay#1020's actual fix: a permission grant,
-			// not a code change) — pinned here so a future edit cannot silently start
-			// preferring the rulesets fallback over a legacy read that already succeeded.
+			// not a code change). The legacy endpoint does not show rulesets, so the rules read
+			// is still made and unioned in (#6198): here it adds `changelog`.
 			name: "legacy_200_protected_contexts_direct",
 			mux: &reqChecksMux{
 				legacyStatus: http.StatusOK,
 				legacyBody:   `{"contexts":["ci/build"],"checks":[{"context":"leak-sweep","app_id":1}]}`,
 				branchNil:    true,
-				rulesNil:     true,
+				rulesStatus:  http.StatusOK,
+				rulesBody:    `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"changelog"},{"context":"leak-sweep"}]}}]`,
 			},
-			wantSet: []string{"ci/build", "leak-sweep"},
+			wantSet:     []string{"ci/build", "changelog", "leak-sweep"},
+			wantSawRule: true,
+		},
+		{
+			// (a2b) regression #6198: legacy 200 and the rules read fails ⇒ could-not-check.
+			name: "legacy_200_rules_read_fails",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusOK,
+				legacyBody:   `{"contexts":["ci/build"]}`,
+				branchNil:    true,
+				rulesStatus:  http.StatusForbidden,
+			},
+			wantErr:       true,
+			wantSawRule:   true,
+			wantErrSubstr: []string{"requires 1 context(s)", "rulesets"},
 		},
 		{
 			// (b) legacy 403 + branch not protected ⇒ empty; rules not consulted.
@@ -187,9 +235,10 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 			wantSawRule: true,
 		},
 		{
-			// (c2) regression #6198: rulesets name only one context, classic protection requires
-			// two more. The branch read's protection summary names them; the set is the union, so
-			// a head carrying only the ruleset's verdict is missing two required checks.
+			// (c2) the same union on the 403 path (the class of #6198): rulesets name one context,
+			// classic protection requires two more. The branch read's protection summary names
+			// them; the set is the union, so a head carrying only the ruleset's verdict is
+			// missing two required checks.
 			name: "legacy_403_rules_plus_classic_union",
 			mux: &reqChecksMux{
 				legacyStatus: http.StatusForbidden,
@@ -204,9 +253,10 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 			wantSawRule: true,
 		},
 		{
-			// (c3) regression #6198: rulesets name a context but the branch read carries NO
-			// protection summary, so classic protection cannot be ruled out. A rules-only set is a
-			// lower bound of unknown completeness => could-not-check, never the partial set.
+			// (c3) 403-path hardening, the class of #6198: rulesets name a context but the branch
+			// read carries NO protection summary, so classic protection cannot be ruled out. A
+			// rules-only set is a lower bound of unknown completeness => could-not-check, never
+			// the partial set.
 			name: "legacy_403_rules_contexts_no_protection_summary",
 			mux: &reqChecksMux{
 				legacyStatus: http.StatusForbidden,
@@ -221,8 +271,8 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 			wantErrSubstr: []string{"leak-sweep", "administration: read"},
 		},
 		{
-			// (c4) regression #6198: classic protection is ON but its required-checks summary is
-			// absent => the classic half is unreadable => could-not-check.
+			// (c4) 403-path hardening, the class of #6198: classic protection is ON but its
+			// required-checks summary is absent => the classic half is unreadable => could-not-check.
 			name: "legacy_403_rules_contexts_classic_on_summary_absent",
 			mux: &reqChecksMux{
 				legacyStatus: http.StatusForbidden,
@@ -236,8 +286,8 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 			wantSawRule: true,
 		},
 		{
-			// (c5) regression #6198: the protection flag read fails but the rules read names
-			// contexts. Classic protection cannot be ruled out => could-not-check.
+			// (c5) 403-path hardening, the class of #6198: the protection flag read fails but the
+			// rules read names contexts. Classic protection cannot be ruled out => could-not-check.
 			name: "legacy_403_branch_read_fails_rules_contexts",
 			mux: &reqChecksMux{
 				legacyStatus: http.StatusForbidden,
@@ -262,6 +312,38 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 				rulesBody:   `[]`,
 			},
 			wantSet:     []string{"ci/build"},
+			wantSawBr:   true,
+			wantSawRule: true,
+		},
+		{
+			// (c7) a required-checks summary with NO `enabled` key: its contexts still count.
+			// Reading the absent flag as "protection off" dropped them and returned the
+			// ruleset-only set as complete.
+			name: "legacy_403_summary_enabled_absent",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusForbidden,
+				branchStatus: http.StatusOK,
+				branchBody: `{"name":"main","protected":true,"protection":{
+					"required_status_checks":{"contexts":["build-test"]}}}`,
+				rulesStatus: http.StatusOK,
+				rulesBody:   `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`,
+			},
+			wantSet:     []string{"build-test", "leak-sweep"},
+			wantSawBr:   true,
+			wantSawRule: true,
+		},
+		{
+			// (c8) a protection object with neither `enabled` nor a required-checks summary:
+			// classic protection is not ruled out, so a ruleset set is could-not-check.
+			name: "legacy_403_protection_fields_absent",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusForbidden,
+				branchStatus: http.StatusOK,
+				branchBody:   `{"name":"main","protected":true,"protection":{}}`,
+				rulesStatus:  http.StatusOK,
+				rulesBody:    `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`,
+			},
+			wantErr:     true,
 			wantSawBr:   true,
 			wantSawRule: true,
 		},
