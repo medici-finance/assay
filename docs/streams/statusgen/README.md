@@ -73,7 +73,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 37 | [Content-bound witness schema v2: the writers and the desk readers](brief-37-content-bound-witness-schema-v2-writers.md) | 2 | L | todo | — | — |
 | 38 | [One-time v1-to-v2 witness backfill where the witnessed content is still fetchable](brief-38-one-time-v1-to-v2-witness-backfill.md) | 3 | M | todo | — | — |
 | 39 | [Multi-root objective reader: prerequisite graph, critical path and ranked moves](brief-39-multi-root-objective-reader.md) | 1 | L | todo | — | — |
-| 40 | [Chain approved acceptance transitions, and let one approval correct a row's Command and Expect](brief-40-chain-approved-acceptance-transitions.md) | 1 | M | todo | — | — |
+| 40 | [Chain approved acceptance transitions, and let one approval correct a row's Command and Expect](brief-40-chain-approved-acceptance-transitions.md) | 1 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

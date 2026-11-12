@@ -2065,7 +2065,8 @@ Flags:
                     delivered; every delivered row the original table lacks
                     (derived from git at the coordinates, never from the file)
                     is witnessed author-added with no acceptance credit. That
-                    line plus an Acceptance-Transition line is a transition,
+                    line plus one legacy or an ordered chain of Acceptance-Transition
+                    lines is a transition,
                     which needs --acceptance-forge on the host and executes the
                     canonical original-plus-approved obligation plan. Open and
                     close use the same record; the container executes the receipt's
@@ -2662,7 +2663,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	var protectedExecution protectedPlan
 	// transitionDescriptor is the --acceptance-record text: a protected record
 	// (one Verification-Table line, #4499) or an acceptance transition (that
-	// line plus one Acceptance-Transition line). transitionRun is the latter.
+	// line plus one legacy or an ordered chain of Acceptance-Transition lines).
+	// transitionRun is the latter.
 	var transitionDescriptor string
 	var transitionRun bool
 	if netnsContainer && (container.cell.Acceptance != nil || *transitionRecord != "") {
