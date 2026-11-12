@@ -36,13 +36,14 @@ consumers:
 
 ## Context
 
-files: statusgen/verifyrun.go, statusgen/verifyincontainer.go and their tests (new tests in statusgen/verifyrunrows_test.go); statusgen/unrun.go, statusgen/protectedclosure.go, statusgen/containerbracket.go, statusgen/htmlcomment.go (read only); docs/brief-rules.md (rule 45); plugins/assay/skills/verify-desk/SKILL.md and its generated Cursor mirror; changelog/<slug>.md (new, top level)
-
 ruling: https://github.com/medici-finance/assay/issues/4247#issuecomment-6377158517
 
 analysis: https://github.com/medici-finance/assay/issues/4247#issuecomment-6377148170
 
+files: statusgen/verifyrun.go, statusgen/verifyincontainer.go, statusgen/verifyrun_test.go, statusgen/verifyincontainer_test.go, statusgen/verifyrunrows_test.go (planned); statusgen/unrun.go, statusgen/protectedclosure.go, statusgen/containerbracket.go, statusgen/htmlcomment.go (read only); docs/brief-rules.md, plugins/assay/skills/verify-desk/SKILL.md, .cursor/skills/verify-desk/SKILL.md, changelog/verifyrun-rows-selector.md (planned)
+
 facts:
+- Scope notes for the `files:` line. The rule 45 edit in docs/brief-rules.md is a mixed-assembly paragraph only; the credit rule is unchanged. statusgen/verifyrunrows_test.go is the new test file for the selector. The .cursor/skills/verify-desk/SKILL.md mirror is generated from the plugin skill, so it is regenerated, not hand-edited. The changelog fragment is one top-level file under changelog/, and its slug is the implementer's choice, so the name above is a placeholder that a different slug replaces.
 - The closure audit keeps the LAST witness per row ID. `checkWitnesses` (`statusgen/verifyrun.go:1535`) loops every Evidence row for each Verify row and overwrites `latest`, "last witness for the row wins" (`:1543`). `verifyrun --check` reaches it through `closureWitnesses` over the whole Evidence section (`runVerifyrunCheck`, `verifyrun.go:2377`; `htmlcomment.go:122`). The closure verbs (`verifyflip.go:299`, `reconcilefold.go:179`) audit only the selected run, the rows before the latest strict PASS verdict (`closureRunWitnesses`, `protectedclosure.go:67`-`:79`).
 - verifyrun has no row selector. Its flags are declared at `verifyrun.go:1901`-`:1921` (plus `--acceptance-forge`, `acceptancetransition.go:19`). Every run executes `briefVerifyRows(verify)` in full (`:2227`), writes one row per executed row through `witnessTable` (`:2309`, `:1444`) and, outside container mode, appends the table to the brief's `## Evidence` (`:2368`). Container mode writes it to `--witness <file>` instead, outside the home (`:2049`-`:2056`).
 - The masking case. A brief mixing `check:ci` rows (credited from the rule 45 container-netns bracket, desktools-v2/71) with host-only rows that need the linked worktree's git directory (`statusgen --consumers`, `statusgen --lint`) needs two runs. The container run records the host-only rows as fail, since the git directory is not mounted. The host run records the `check:ci` rows as could-not-run or as an uncredited host result. Under last-wins, whichever table lands second masks the other run's passes, so `verifyrun --check` never reports every row pass. Live case: brief desktools-v2/71's Evidence on #4114.
