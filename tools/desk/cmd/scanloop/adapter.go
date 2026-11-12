@@ -51,6 +51,14 @@ type ScanLoop struct {
 	// one". An error means the answer could not be read, and the scan dispatch is refused rather
 	// than cutting a possible duplicate. It is consulted only for the scan-carrier lane.
 	OpenPR func() (*OpenScanPR, error)
+	// Carriers reports every open scan carrier by this App on the scan target (carriers.go). The
+	// scan dispatch excludes the placeholders they already carry, so a fresh carrier is never a
+	// superset of a sealed one. nil means none is known. An error refuses the scan dispatch: the
+	// full delta is never written on an unread answer.
+	Carriers func() ([]OpenScanPR, error)
+	// CarrierFiles reads the files one open carrier carries. Required whenever Carriers names a
+	// carrier other than the one being written to.
+	CarrierFiles func(number int) ([]deskkit.ChangedFile, error)
 	// Exec is the lanes' process seam. nil = run for real.
 	Exec Exec
 	// Write is the lanes' file seam (the captured title and body). nil = write for real.
@@ -534,6 +542,13 @@ func (s *ScanLoop) Dispatch(it loopengine.Item, tier loopengine.Tier) (loopengin
 		if decision.Act() == CoalesceInto {
 			req.Branch = open.Branch
 		}
+	}
+	if lane.Name() == LaneScanCarrierPR {
+		carried, err := s.carriedPaths(req.Branch)
+		if err != nil {
+			return nil, err
+		}
+		req.Carried = carried
 	}
 
 	outcome, lerr := lane.Execute(req)
