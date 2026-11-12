@@ -876,15 +876,15 @@ func TestAutoLane_SuiteShortReadHolds(t *testing.T) {
 }
 
 // regression: #6234
-// Review finding F1: a later suite of ANOTHER workflow under the same Actions app supersedes
-// nothing; the stuck suite of the required check's workflow still holds checks-green.
-func TestAutoLane_OtherWorkflowSuiteHolds(t *testing.T) {
+// Review finding F1: a later suite of the same app that concluded with runs — on the reported
+// head, a rerun of the stuck suite's own workflow — does not release the stuck one;
+// checks-green still holds, nothing written.
+func TestAutoLane_RerunSuiteHolds(t *testing.T) {
 	e := install(t, fixtureLaneKeys, rulingsSigned)
 	e.fg.suites = []deskkit.CheckSuite{
-		{ID: "12", App: "github-actions", Status: "queued", CreatedAt: "2026-11-11T20:23:15Z",
-			Workflow: ".github/workflows/changelog-check.yml"},
-		{ID: "13", App: "github-actions", Status: "completed", Conclusion: "success", RunCount: 12,
-			CreatedAt: "2026-11-12T00:40:07Z", Workflow: ".github/workflows/ci.yml"},
+		{ID: "12", App: "github-actions", Status: "queued", CreatedAt: "2026-11-11T20:23:15Z"},
+		{ID: "13", App: "github-actions", Status: "completed", Conclusion: "success", RunCount: 1,
+			CreatedAt: "2026-11-12T00:40:07Z"},
 	}
 	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
 	if code != deskkit.ExitUnverifiable || !strings.Contains(stderr, "suite 12 queued") {

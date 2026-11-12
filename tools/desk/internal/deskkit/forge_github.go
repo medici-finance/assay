@@ -497,16 +497,6 @@ type ghCheckSuitesWire struct {
 	} `json:"check_suites"`
 }
 
-// ghSuiteRunsWire is one page of GET /actions/runs?head_sha={sha}: each workflow run names the
-// check suite it opened and the workflow file it ran.
-type ghSuiteRunsWire struct {
-	TotalCount   int `json:"total_count"`
-	WorkflowRuns []struct {
-		CheckSuiteID int64  `json:"check_suite_id"`
-		Path         string `json:"path"`
-	} `json:"workflow_runs"`
-}
-
 // ghLabelWire is one entry of the repo/issue label listings.
 type ghLabelWire struct {
 	Name string `json:"name"`
@@ -1531,14 +1521,8 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 
 // CheckSuitesAtHead reads GET /repos/{o}/{r}/commits/{sha}/check-suites, paginated under the
 // same bound as the rollups. A walk that stops short of the asserted total is returned as-is
-// (len < TotalCount) so the caller fails closed, exactly as ChecksAtHead does.
-//
-// When a GitHub Actions suite has not concluded (SuitesNeedWorkflow), it also reads the
-// workflow runs at the head (GET /actions/runs?head_sha=, `actions: read`) to name each Actions
-// suite's workflow: Actions opens one suite per workflow run under one app slug, and only a
-// later suite of the SAME workflow supersedes a stuck one. A failed runs read is an error, never
-// a silent fallback; a suite the runs walk did not reach keeps an empty Workflow and so is
-// never superseded.
+// (len < TotalCount) so the caller fails closed, exactly as ChecksAtHead does. The read is
+// under `checks: read`.
 func (g *GitHubForge) CheckSuitesAtHead(repo ForgeRepo, sha string) (*CheckSuitesAtHead, error) {
 	out := &CheckSuitesAtHead{}
 	for page := 1; page <= forgeMaxCIPages; page++ {
@@ -1559,31 +1543,6 @@ func (g *GitHubForge) CheckSuitesAtHead(repo ForgeRepo, sha string) (*CheckSuite
 		}
 		if len(w.CheckSuites) < forgeCIPerPage {
 			break
-		}
-	}
-	if !SuitesNeedWorkflow(out.Suites) {
-		return out, nil
-	}
-	bySuite := map[string]string{}
-	for page := 1; page <= forgeMaxCIPages; page++ {
-		var w ghSuiteRunsWire
-		path := fmt.Sprintf("/repos/%s/%s/actions/runs?head_sha=%s&exclude_pull_requests=true&per_page=%d&page=%d",
-			repo.Owner, repo.Name, sha, forgeCIPerPage, page)
-		if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
-			return nil, fmt.Errorf("read the workflow runs at %s to name the Actions suites' workflows: %w", sha, err)
-		}
-		for _, r := range w.WorkflowRuns {
-			if id := checkRunID(r.CheckSuiteID); id != "" {
-				bySuite[id] = r.Path
-			}
-		}
-		if len(w.WorkflowRuns) < forgeCIPerPage {
-			break
-		}
-	}
-	for i := range out.Suites {
-		if out.Suites[i].App == ActionsAppSlug {
-			out.Suites[i].Workflow = bySuite[out.Suites[i].ID]
 		}
 	}
 	return out, nil

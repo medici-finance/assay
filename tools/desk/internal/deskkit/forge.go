@@ -464,10 +464,6 @@ type CheckSuite struct {
 	Conclusion string // success | failure | cancelled | stale | ... ; "" while not concluded
 	RunCount   int    // the runs in the suite's latest attempt (latest_check_runs_count)
 	CreatedAt  string // RFC3339, "" when the forge reported none
-	// Workflow names the workflow that opened the suite (GitHub Actions: the workflow file's
-	// path), "" when unknown. GitHub Actions opens one suite PER WORKFLOW RUN under the one
-	// app slug, so the app alone does not say which suites re-ran the same work (#6234).
-	Workflow string
 }
 
 // DraftChangeInput is the request to open a draft change (draft PR ↔ Draft: MR).

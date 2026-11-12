@@ -58,7 +58,6 @@ type goldenServer struct {
 	status     map[string]any
 	checks     map[string]any
 	suites     map[string]any
-	suiteRuns  map[string]any // GET /actions/runs?head_sha= — names each Actions suite's workflow
 	reqChecks  map[string]any
 	reactions  []map[string]any
 	pull       map[string]any
@@ -134,7 +133,6 @@ var (
 	gStatus    = regexp.MustCompile(`/commits/[^/]+/status$`)
 	gChecks    = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
 	gSuites    = regexp.MustCompile(`/commits/[^/]+/check-suites$`)
-	gRunsAtSHA = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/runs$`)
 	gCommits   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits$`)
 	gCommitPRs = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits/[^/]+/pulls$`)
 	gReqChecks = regexp.MustCompile(`/branches/[^/]+/protection/required_status_checks$`)
@@ -280,8 +278,6 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.checks)
 	case r.Method == http.MethodGet && gSuites.MatchString(path):
 		enc(s.suites)
-	case r.Method == http.MethodGet && gRunsAtSHA.MatchString(path):
-		enc(s.suiteRuns)
 	case r.Method == http.MethodGet && gCommits.MatchString(path):
 		enc(s.fileCommits)
 	case r.Method == http.MethodGet && gCommitPRs.MatchString(path):
@@ -564,15 +560,9 @@ func TestForgeGithubGolden(t *testing.T) {
 		{
 			// #6234: the check suites at a head, including the shape the rollup cannot see — a
 			// suite with no conclusion and ZERO runs. A null conclusion maps to "", and the run
-			// count is the suite's latest_check_runs_count. An Actions suite is unconcluded, so the
-			// workflow runs at the head are read too and name each Actions suite's workflow; a
-			// suite no run names keeps an empty Workflow.
+			// count is the suite's latest_check_runs_count. One request: the suite list alone.
 			name: "check_suites_at_head",
 			setup: func(s *goldenServer) {
-				s.suiteRuns = map[string]any{"total_count": 1,
-					"workflow_runs": []map[string]any{
-						{"id": 9001, "check_suite_id": 116705687855, "path": ".github/workflows/changelog-check.yml"},
-					}}
 				s.suites = map[string]any{"total_count": 2,
 					"check_suites": []map[string]any{
 						{"id": 116700446469, "status": "completed", "conclusion": "success",

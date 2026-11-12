@@ -4,11 +4,6 @@
       "method": "GET",
       "path": "/repos/medici-finance/assay/commits/abc123/check-suites",
       "query": "per_page=100\u0026page=1"
-    },
-    {
-      "method": "GET",
-      "path": "/repos/medici-finance/assay/actions/runs",
-      "query": "head_sha=abc123\u0026exclude_pull_requests=true\u0026per_page=100\u0026page=1"
     }
   ],
   "result": {
@@ -20,8 +15,7 @@
         "Status": "completed",
         "Conclusion": "success",
         "RunCount": 1,
-        "CreatedAt": "2026-11-11T20:09:57Z",
-        "Workflow": ""
+        "CreatedAt": "2026-11-11T20:09:57Z"
       },
       {
         "ID": "116705687855",
@@ -29,8 +23,7 @@
         "Status": "queued",
         "Conclusion": "",
         "RunCount": 0,
-        "CreatedAt": "2026-11-11T20:23:15Z",
-        "Workflow": ".github/workflows/changelog-check.yml"
+        "CreatedAt": "2026-11-11T20:23:15Z"
       }
     ]
   }
