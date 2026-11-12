@@ -99,8 +99,8 @@ rows here and are recorded for forge-neutral/18: the in-process REST client in `
 | 4 | statusgen/issues.go:577 | statusgen (`--issues`/`--dora`) | (a) | #1223 | GAP — all-state issue metrics list (`ghIssueMetricLister`; `ListOpenIssues` covers only `state=open`) | forge-neutral/18 |
 | 5 | statusgen/decisiongateanchor.go:229 | statusgen (decision-gate anchor) | (a) | #1223 | `GetIssueTyped`-shaped (`fetchDecisionGateIssue`) | forge-neutral/18 |
 | 6 | statusgen/claimdecay.go:63 | statusgen (claim-decay reader) | (a) | #1223 | GAP — all-state PR list with `headRefName`/`isCrossRepository` fields (`ghPRListJSON`; `ListOpenChanges` is open-only) | forge-neutral/18 |
-| 7 | statusgen/briefflowreview.go:72 | statusgen (brief-flow review) | (a) | #1223 | GAP — merged-PRs-since query (`ghBFPRSource.MergedPRs`) | forge-neutral/18 |
-| 8 | statusgen/briefflowreview.go:103 | statusgen (brief-flow review) | (a) | #1223 | `ReviewsAtHead`-shaped (`ghBFPRSource.Reviews`) | forge-neutral/18 |
+| 7 | statusgen/briefflowreview.go:72 | statusgen (brief-flow review) | (a) | #1223 | GAP — merged-PRs-since query (`ghBFPRSource.MergedPRs`); migrated by a forge-neutral brief 18 slice: now `deskreadBFPRSource.MergedPRs`, reading `deskread changes` | forge-neutral/18 |
+| 8 | statusgen/briefflowreview.go:103 | statusgen (brief-flow review) | (a) | #1223 | `ReviewsAtHead`-shaped (`ghBFPRSource.Reviews`); migrated by a forge-neutral brief 18 slice: now `deskreadBFPRSource.Reviews`, reading `deskread reviews` | forge-neutral/18 |
 | 9 | statusgen/transcribeverdict.go:506 | statusgen (`--transcribe-verdict`) | (a) | #1223 | `GetIssueTyped`-shaped (`ghVerdictIssueResolver`) | forge-neutral/18 |
 | 10 | statusgen/transcribeverdict.go:579 | statusgen (`--transcribe-verdict`) | (a) | #1223 | `ChecksAtHead`-shaped (`ghVerdictMainHealth`) | forge-neutral/18 |
 | 11 | statusgen/trustgate.go:208 | statusgen (trust gate, `--transcribe-scan`) | (a) | #1223, #628 (**off the `scanloop` path since #1255** — `--scan-issues` now reads through `deskreadIssueBlessChecker`) | `IssueTrustEvents`-shaped (`ghIssueBlessChecker`) | forge-neutral/18 |
