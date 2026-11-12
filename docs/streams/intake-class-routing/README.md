@@ -63,7 +63,7 @@ published judgment is therefore the real head: brief 01 settles it in its host-w
 Verify row 5, and it is milestone m-01's acceptance.
 
 **Smallest unblocking move:** record and hand-publish one direct repair on one installation
-with the shipped tools, then read the dispatch view. It needs no code, and it can be done
+with the shipped tools, then read the dispatch queue uncapped. It needs no code, and it can be done
 before brief 01 merges.
 
 **A tempting wrong first step:** building the class pass (04) before any judgment has been
@@ -131,7 +131,7 @@ installation, not a fleet census:
 |---|---|
 | Issue placeholders at `todo` | about 2,700 |
 | Committed handoff companions, and `handoff:` pointers | 0 and 0 |
-| Placeholder rows in the dispatch view | 0 of the 40 rows it listed, out of 92 eligible; counted as rows whose stream is `issue-loop` |
+| Placeholder rows in the dispatch queue | 0. Read uncapped (`--next-up --span 100000`) at each of the installation's four roots on their main: 40, 53, 0 and 1 eligible rows, none in the `issue-loop` stream. The root that holds the placeholders reported no row held by a stream cap |
 | Judgment exits in the local `intake-exit-v1` log | 563 |
 | Local `intake-handoffs-v1.jsonl` | absent |
 | Owed judgments presented by the last intake pass | 147, at the replay bound in 5 of 7 repositories |
@@ -317,7 +317,7 @@ review, so these stay in authored prose (`plugins/assay/references/milestone-aut
 
 - **`assay:assay:intake-class-routing:m-01` — judged issues reach the dispatch board.**
   Acceptance: on one installation, a committed companion makes its placeholder appear in the
-  dispatch view; the pass that recorded it no longer shows that issue as owed; and a companion
+  dispatch queue read uncapped; the pass that recorded it no longer shows that issue as owed; and a companion
   with a wrong event time leaves the placeholder held. Contributors: 01 alone (hand
   publication); 02 removes the hand step. This is the issue-lane proof split from
   `verification-handoff/06`.
