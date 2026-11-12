@@ -20,6 +20,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -164,6 +165,24 @@ type stub struct {
 	headCommittedAt string
 	commitErr       bool
 	commitReads     int
+
+	// mergeStates is the forge's merge verdict (REST mergeable_state) each read of the change
+	// AFTER the ready mutation serves, in order; the last entry repeats. nil serves "clean".
+	// Reads before the mutation serve none. It drives the post-flip backstop (#6242).
+	mergeStates []string
+	mergeReads  int
+	// mergeDrafts is the change's draft flag on each of those same post-flip reads, the last
+	// repeating. nil serves "not a draft": the flip is visible at once.
+	mergeDrafts []bool
+	// priorComments are the comments already on the change, served to the comment-thread read
+	// (the not-reverted condition, #6253 review F2). Each is {login, body}.
+	priorComments [][2]string
+	commentReads  int
+	commentErr    bool // the comment-thread read answers 500
+	// convertFail makes the convertPullRequestToDraft mutation answer 500.
+	convertFail bool
+	// comments records every comment body the verb posted on the change.
+	comments []string
 }
 
 // defaultHeadCommittedAt predates every SubmittedAt the fixtures carry (they start at
@@ -257,6 +276,46 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 			empty := map[string]any{"pageInfo": map[string]any{"hasNextPage": false}, "nodes": []any{}}
 			enc(map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
 				"lastEditedAt": edited, "comments": empty, "reviews": empty, "reviewThreads": empty}}}})
+
+		case r.Method == http.MethodPost && path == "/graphql" && isCommentWalk(rec.Body):
+			s.commentReads++
+			if s.commentErr {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			nodes := make([]any, 0, len(s.priorComments))
+			for i, c := range s.priorComments {
+				login, typ := c[0], "User"
+				if b, ok := strings.CutSuffix(login, "[bot]"); ok {
+					login, typ = b, "Bot" // GraphQL reports an App by its bare slug
+				}
+				nodes = append(nodes, map[string]any{
+					"id": fmt.Sprintf("IC_%d", i+1), "databaseId": 900 + i, "body": c[1], "isMinimized": false,
+					"createdAt": "2026-01-02T00:00:00Z", "updatedAt": "2026-01-02T00:00:00Z",
+					"url":    fmt.Sprintf("https://example.invalid/pull/7#issuecomment-%d", 900+i),
+					"author": map[string]any{"login": login, "__typename": typ, "databaseId": 50 + i},
+				})
+			}
+			enc(map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
+				"comments": map[string]any{"pageInfo": map[string]any{"hasNextPage": false}, "nodes": nodes}}}}})
+
+		case r.Method == http.MethodPost && path == "/graphql" &&
+			strings.Contains(rec.Body, "convertPullRequestToDraft"):
+			if s.convertFail {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			enc(map[string]any{"data": map[string]any{
+				"convertPullRequestToDraft": map[string]any{
+					"pullRequest": map[string]any{"isDraft": true}}}})
+
+		case r.Method == http.MethodPost && strings.HasSuffix(path, "/issues/7/comments"):
+			var c struct {
+				Body string `json:"body"`
+			}
+			_ = json.Unmarshal([]byte(rec.Body), &c)
+			s.comments = append(s.comments, c.Body)
+			enc(map[string]any{"id": len(s.comments), "node_id": "IC_1", "html_url": "https://example.invalid/c"})
 
 		case r.Method == http.MethodPost && path == "/graphql":
 			enc(map[string]any{"data": map[string]any{
@@ -410,6 +469,19 @@ func (s *stub) servedPR() map[string]any {
 		"head":   map[string]any{"sha": head, "ref": "feat/x"},
 		"base":   map[string]any{"ref": "main"},
 		"labels": labels,
+	}
+	if s.flipped() {
+		st := "clean"
+		if len(s.mergeStates) > 0 {
+			st = s.mergeStates[min(s.mergeReads, len(s.mergeStates)-1)]
+		}
+		draft := false
+		if len(s.mergeDrafts) > 0 {
+			draft = s.mergeDrafts[min(s.mergeReads, len(s.mergeDrafts)-1)]
+		}
+		s.mergeReads++
+		out["mergeable_state"] = st
+		out["draft"] = draft
 	}
 	switch s.pr.Mergeable {
 	case deskkit.Mergeable:
@@ -708,8 +780,8 @@ func (s *stub) mutated() []string {
 		if r.Method == http.MethodGet {
 			continue
 		}
-		if r.Method == http.MethodPost && r.Path == "/graphql" && isTrustRead(r.Body) {
-			continue // a GraphQL READ (the PR body's edit time), not a mutation
+		if r.Method == http.MethodPost && r.Path == "/graphql" && (isTrustRead(r.Body) || isCommentWalk(r.Body)) {
+			continue // a GraphQL READ (the PR body's edit time, the comment thread), not a mutation
 		}
 		out = append(out, r.String())
 	}
@@ -820,6 +892,13 @@ const riskyPath = ".github/workflows/ci.yml"
 
 // isTrustRead reports whether a POST /graphql body is the trust-events READ (a query for the
 // PR's lastEditedAt) rather than a mutation. Anything carrying a mutation is never a read.
+// isCommentWalk reports whether a GraphQL body is the change comment-thread read (and not the
+// trust read, which also selects comments).
+func isCommentWalk(body string) bool {
+	return strings.Contains(body, "isMinimized") && !strings.Contains(body, "lastEditedAt") &&
+		!strings.Contains(body, "mutation")
+}
+
 func isTrustRead(body string) bool {
 	return strings.Contains(body, "lastEditedAt") && !strings.Contains(body, "mutation")
 }

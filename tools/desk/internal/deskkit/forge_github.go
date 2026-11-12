@@ -377,6 +377,9 @@ type ghPullWire struct {
 	// report "not yet computed" as "conflicting", which refuses flips that should proceed,
 	// and the opposite collapse would report it as mergeable, which is the fail-open half.
 	Mergeable *bool `json:"mergeable"`
+	// MergeableState is GitHub's `mergeable_state`, the REST rendering of the GraphQL
+	// mergeStateStatus enum in lower case. ghPullFromWire upper-cases it.
+	MergeableState string `json:"mergeable_state"`
 }
 
 // ghPullRepoWire is the repository a pull's head or base branch lives in. GitHub sends it as
@@ -617,12 +620,14 @@ func ghPullFromWire(w ghPullWire) *PullRequest {
 		MergedAt:     w.MergedAt,
 		Merged:       w.Merged,
 		Mergeable:    ghMergeableState(w.Mergeable),
-		Labels:       labels,
-		URL:          w.HTMLURL,
-		HeadRef:      w.Head.Ref,
-		BaseSHA:      w.Base.SHA,
-		BaseRef:      w.Base.Ref,
-		CrossRepo:    ghCrossRepo(w.Head.Repo, w.Base.Repo),
+		// The forge's merge verdict, upper-cased to the GraphQL enum spelling.
+		MergeStateStatus: strings.ToUpper(strings.TrimSpace(w.MergeableState)),
+		Labels:           labels,
+		URL:              w.HTMLURL,
+		HeadRef:          w.Head.Ref,
+		BaseSHA:          w.Base.SHA,
+		BaseRef:          w.Base.Ref,
+		CrossRepo:        ghCrossRepo(w.Head.Repo, w.Base.Repo),
 		// Only a merged pull has a merge commit; an open pull's merge_commit_sha is a
 		// test-merge SHA and must not leak through as one (forge-neutral brief 33 Task 2.1).
 		MergeCommitSHA: ghMergeCommitSHA(w),
@@ -2749,6 +2754,27 @@ func (g *GitHubForge) MarkReadyForReview(nodeID string) error {
 	}
 	if len(out.Errors) > 0 {
 		return Unverifiable("markPullRequestReadyForReview GraphQL error: "+out.Errors[0].Message, nil)
+	}
+	return nil
+}
+
+// ConvertToDraft returns a ready pull request to draft via the GraphQL
+// convertPullRequestToDraft mutation, over the same client and /graphql route as
+// MarkReadyForReview. Its one caller is the post-flip backstop (ReadyBackstop); see the
+// interface doc for the ruling that admits it.
+func (g *GitHubForge) ConvertToDraft(nodeID string) error {
+	q := `mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id}){pullRequest{isDraft}}}`
+	in := map[string]any{"query": q, "variables": map[string]any{"id": nodeID}}
+	var out struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
+		return err
+	}
+	if len(out.Errors) > 0 {
+		return Unverifiable("convertPullRequestToDraft GraphQL error: "+out.Errors[0].Message, nil)
 	}
 	return nil
 }

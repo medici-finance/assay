@@ -665,6 +665,14 @@ func TestForgeGithubGolden(t *testing.T) {
 			run: func(f *GitHubForge) (any, error) { return nil, f.MarkReadyForReview("PR_node") },
 		},
 		{
+			// The post-flip backstop's revert (#6242) — the inverse mutation, same transport.
+			name: "convert_to_draft",
+			setup: func(s *goldenServer) {
+				s.graphql = map[string]any{"data": map[string]any{"convertPullRequestToDraft": map[string]any{"pullRequest": map[string]any{"isDraft": true}}}}
+			},
+			run: func(f *GitHubForge) (any, error) { return nil, f.ConvertToDraft("PR_node") },
+		},
+		{
 			// The applier-aware label-event read: `labeled` events survive with the actor
 			// that applied them; every other timeline event is dropped, because only an
 			// APPLICATION is an attestation.

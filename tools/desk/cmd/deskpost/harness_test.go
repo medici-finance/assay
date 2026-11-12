@@ -182,6 +182,18 @@ type fakeGH struct {
 	postedCmt    int
 	flips        int
 
+	// mergeStates is the forge's merge verdict (REST mergeable_state) each PR read AFTER the
+	// ready flip serves, in order; the last entry repeats. nil serves "clean". Reads before
+	// the flip serve none. It drives `ready`'s post-flip backstop (#6242).
+	mergeStates []string
+	mergeReads  int
+	// mergeDrafts is the PR's draft flag on each of those same post-flip reads, the last
+	// repeating. nil serves "not a draft": the flip is visible at once.
+	mergeDrafts []bool
+	// convertFail makes the convertPullRequestToDraft mutation answer 500; converts counts it.
+	convertFail bool
+	converts    int
+
 	// Label + surface-config fixtures for the mechanical verdict-time labeler.
 	// prLabels is the current label set on the PR (mutated by add/remove routes, as GitHub
 	// does — labels are a set). surfaceConfig, when non-nil, is the raw bytes GET
@@ -358,6 +370,17 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		for _, l := range f.prLabels {
 			p.Labels = append(p.Labels, prLabel{Name: l})
+		}
+		if f.flips > 0 {
+			p.MergeableState = "clean"
+			if len(f.mergeStates) > 0 {
+				p.MergeableState = f.mergeStates[min(f.mergeReads, len(f.mergeStates)-1)]
+			}
+			p.Draft = false
+			if len(f.mergeDrafts) > 0 {
+				p.Draft = f.mergeDrafts[min(f.mergeReads, len(f.mergeDrafts)-1)]
+			}
+			f.mergeReads++
 		}
 		f.mu.Unlock()
 		p.User.Login = f.prAuthor
@@ -659,6 +682,18 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 		// its PR and ISSUE forms. Branch on the request body — only the mutation counts as
 		// a flip, and the two trust queries return different response shapes.
 		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), "convertPullRequestToDraft") {
+			f.mu.Lock()
+			f.converts++
+			fail := f.convertFail
+			f.mu.Unlock()
+			if fail {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			writeJSON(map[string]any{"data": map[string]any{"convertPullRequestToDraft": map[string]any{"pullRequest": map[string]any{"isDraft": true}}}})
+			return
+		}
 		if strings.Contains(string(body), "markPullRequestReadyForReview") {
 			f.mu.Lock()
 			f.flips++
