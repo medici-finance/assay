@@ -998,6 +998,13 @@ type ChangeRef struct {
 	Title    string
 	Body     string
 	MergedAt string // RFC3339, "" unless State == MERGED
+	// UpdatedAt is the forge's last-modified time for the change, RFC3339, EMPTY where the forge did
+	// not report one (could-not-check, never "unchanged"). ListChanges walks most-recently-updated
+	// first, so a consumer that must know whether the bounded walk already passed a time window
+	// reads this: a change merged at T has UpdatedAt >= T. Consumer: cmd/deskread's `changes` kind,
+	// for statusgen's brief-flow review (forge-neutral brief 18). omitempty keeps every list that
+	// predates the field byte-identical.
+	UpdatedAt string `json:",omitempty"`
 	// Author is the change's author, Type per Account.Type (empty where unresolved). An author
 	// the forge does not report (a deleted account) keeps ID == 0, which is could-not-check.
 	// Consumer: cmd/deskread's `changes` kind (forge-neutral brief 33), for statusgen's autonomy

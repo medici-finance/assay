@@ -274,14 +274,23 @@ func (d deskreadReader) readItem(kind, repo string, number int) (*deskreadItemEn
 	return d.readItemAt("--issue", kind, repo, number)
 }
 
+// readVerb is the ONE place the per-item and merged-list reads start the read verb: a fixed name
+// from the struct field, argv only, no shell. Keeping the launch in a single function keeps it
+// one site in the launch inventory and one exemption in the row-environment guard, whichever
+// kind a caller reads. (IssueList and OpenIssues keep their own launches.)
+func (d deskreadReader) readVerb(args []string) ([]byte, error) {
+	argv := perfChildArgs(d.bin, args) // probe outside the phase
+	leave := perfEnter("deskread")
+	out, err := exec.Command(d.bin, argv...).Output()
+	leave()
+	return out, err
+}
+
 // readItemAt is readItem for a stated address flag: `--issue` for the per-issue kinds, `--change`
 // for the per-change ones (the verb refuses the wrong one before any forge call).
 func (d deskreadReader) readItemAt(addrFlag, kind, repo string, number int) (*deskreadItemEnvelope, int, error) {
 	target := fmt.Sprintf("%s#%d", repo, number)
-	argv := perfChildArgs(d.bin, []string{kind, addrFlag, target}) // probe outside the phase
-	leave := perfEnter("deskread")
-	out, err := exec.Command(d.bin, argv...).Output()
-	leave()
+	out, err := d.readVerb([]string{kind, addrFlag, target})
 	var env deskreadItemEnvelope
 	jerr := json.Unmarshal(out, &env)
 	if jerr == nil && env.Schema != deskreadSchema {
@@ -416,6 +425,8 @@ type mergedChange struct {
 	Body     string
 	BaseRef  string
 	MergedAt string
+	// UpdatedAt is the forge's last-modified time, "" when it did not report one.
+	UpdatedAt string
 }
 
 // deskreadChangesEnvelope mirrors the verb's `changes` contract (`deskread changes --repo
@@ -431,7 +442,8 @@ type deskreadChangesEnvelope struct {
 			State    string `json:"state"`
 			Body     string `json:"body"`
 			BaseRef  string `json:"baseRef"`
-			MergedAt string `json:"mergedAt"`
+			MergedAt  string `json:"mergedAt"`
+			UpdatedAt string `json:"updatedAt"`
 		} `json:"changes"`
 		Incomplete *bool `json:"incomplete"`
 		PageCap    int   `json:"pageCap"`
@@ -443,20 +455,23 @@ type deskreadChangesEnvelope struct {
 }
 
 // MergedChanges is the `changes --state merged` kind for ONE repo: every merged change the verb's
-// bounded, most-recently-updated-first walk reached. It is a deskreadReader method only, like
-// IssueList: its callers are report modes, not --forge-gated checks.
+// bounded, most-recently-updated-first walk reached, covering AT LEAST every change merged at or
+// after since. It is a deskreadReader method only, like IssueList: its callers are report modes,
+// not --forge-gated checks.
 //
 // Every way the list went unread is an ERROR, never a short or empty list, and the page bound is
 // the one the `gh api pulls?per_page=100` read this replaces could not see: it read one page of
-// 100 and said nothing, so a busier window read as a complete one. A merged change the forge
-// reports without a base branch or a merge time is an error too, not a skipped row: the caller
-// filters on both, and a row it cannot place is a row it cannot honestly drop.
-func (d deskreadReader) MergedChanges(repo string) ([]mergedChange, error) {
+// 100 and said nothing, so a busier window read as a complete one. The verb's walk is bounded by
+// pages, not by the window, so `incomplete` alone says nothing about the window: a change merged
+// at or after since has updatedAt >= mergedAt >= since, and the walk is most-recently-updated
+// first, so once a listed row's updatedAt is before since no unlisted row can be in the window.
+// Only an incomplete walk that has NOT reached that point is an error; a row with no updatedAt
+// makes that proof impossible, so it is an error too. A merged change the forge reports without a
+// base branch or a merge time is an error as well, not a skipped row: the caller filters on both,
+// and a row it cannot place is a row it cannot honestly drop.
+func (d deskreadReader) MergedChanges(repo string, since time.Time) ([]mergedChange, error) {
 	what := fmt.Sprintf("%s changes --repo %s --state merged", d.bin, repo)
-	argv := perfChildArgs(d.bin, []string{"changes", "--repo", repo, "--state", "merged"}) // probe outside the phase
-	leave := perfEnter("deskread")
-	out, err := exec.Command(d.bin, argv...).Output()
-	leave()
+	out, err := d.readVerb([]string{"changes", "--repo", repo, "--state", "merged"})
 	var env deskreadChangesEnvelope
 	jerr := json.Unmarshal(out, &env)
 	if jerr == nil && env.Schema != deskreadSchema {
@@ -484,15 +499,26 @@ func (d deskreadReader) MergedChanges(repo string) ([]mergedChange, error) {
 				return nil, fmt.Errorf("%s: could-not-check: the entry carries no change list", what)
 			case r.Incomplete == nil:
 				return nil, fmt.Errorf("%s: could-not-check: the entry carries no completeness field", what)
-			case *r.Incomplete:
-				return nil, fmt.Errorf("%s: could-not-check: the list stopped at its %d-page bound with the forge still paginating, so it is not provably complete", what, r.PageCap)
 			}
 			merged := make([]mergedChange, 0, len(*r.Changes))
+			walkedPast := false // some listed row was last updated before since
 			for _, c := range *r.Changes {
 				if c.MergedAt == "" || c.BaseRef == "" {
 					return nil, fmt.Errorf("%s: could-not-check: change #%d is listed merged with no merge time or base branch", what, c.Number)
 				}
-				merged = append(merged, mergedChange{Number: c.Number, Body: c.Body, BaseRef: c.BaseRef, MergedAt: c.MergedAt})
+				if *r.Incomplete {
+					ut, uerr := time.Parse(time.RFC3339, c.UpdatedAt)
+					if uerr != nil {
+						return nil, fmt.Errorf("%s: could-not-check: the list stopped at its %d-page bound and change #%d carries no readable updatedAt (%q), so the window cannot be shown covered", what, r.PageCap, c.Number, c.UpdatedAt)
+					}
+					if ut.Before(since) {
+						walkedPast = true
+					}
+				}
+				merged = append(merged, mergedChange{Number: c.Number, Body: c.Body, BaseRef: c.BaseRef, MergedAt: c.MergedAt, UpdatedAt: c.UpdatedAt})
+			}
+			if *r.Incomplete && !walkedPast {
+				return nil, fmt.Errorf("%s: could-not-check: the list stopped at its %d-page bound with the forge still paginating before it reached changes last updated before %s, so the window is not provably covered", what, r.PageCap, since.Format(time.RFC3339))
 			}
 			return merged, nil
 		}

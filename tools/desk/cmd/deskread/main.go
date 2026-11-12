@@ -144,7 +144,10 @@ output: a versioned JSON envelope on stdout
 
   per-repo kinds answer under "repos": issue-list adds "incomplete" and "pageCap" beside
   "issues" (each issue also carries "closedAt" once closed); changes answers "changes" with
-  "incomplete" and "pageCap"; default-branch answers "defaultBranch".
+  "incomplete" and "pageCap" (each change also carries "updatedAt", the forge's last-modified
+  time, and the walk is most-recently-updated first, so a window older than every listed
+  "updatedAt" is fully covered even when "incomplete" is true); default-branch answers
+  "defaultBranch".
 
   {"schema": 1, "kind": "trust",
    "items":   [{"repo": "o/n", "number": 7, "trust": {"bodyEditedAt": "…", "complete": true,
@@ -695,6 +698,7 @@ type ChangeJSON struct {
 	Title     string       `json:"title,omitempty"`
 	Body      string       `json:"body,omitempty"`
 	MergedAt  string       `json:"mergedAt,omitempty"`
+	UpdatedAt string       `json:"updatedAt,omitempty"`
 	Author    *AccountJSON `json:"author,omitempty"`
 	BaseRef   string       `json:"baseRef,omitempty"`
 	CrossRepo string       `json:"crossRepo,omitempty"`
@@ -808,7 +812,7 @@ func readRepo(kind, repo string, o readOpts) (*RepoResult, error) {
 		for _, c := range cl.Changes {
 			res.Changes = append(res.Changes, ChangeJSON{
 				Number: c.Number, State: c.State, HeadSHA: c.HeadSHA, HeadRef: c.HeadRef,
-				Title: c.Title, Body: c.Body, MergedAt: c.MergedAt, Author: accountJSON(c.Author),
+				Title: c.Title, Body: c.Body, MergedAt: c.MergedAt, UpdatedAt: c.UpdatedAt, Author: accountJSON(c.Author),
 				BaseRef: c.BaseRef, CrossRepo: c.CrossRepo, HeadRepo: c.HeadRepo,
 			})
 		}

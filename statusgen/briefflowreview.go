@@ -67,10 +67,11 @@ type deskreadBFPRSource struct{}
 
 // MergedPRs reads the merged changes and keeps those based on main and merged at or after since —
 // the same filter the `gh api pulls?state=closed&base=main` read applied client side. A list the
-// verb could not serve in full is an error (MergedChanges), which every caller already reports as
-// could-not-check; a window busier than the verb's page bound is not read as a complete one.
+// verb could not serve in full over the window is an error (MergedChanges), which every caller
+// already reports as could-not-check; a window the verb's page bound did not reach the far side of
+// is not read as a complete one.
 func (deskreadBFPRSource) MergedPRs(repo string, since time.Time) ([]bfPRRecord, error) {
-	changes, err := newDeskreadReader().MergedChanges(repo)
+	changes, err := newDeskreadReader().MergedChanges(repo, since)
 	if err != nil {
 		return nil, err
 	}
