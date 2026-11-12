@@ -54,10 +54,12 @@ func TestDownRoundTripFixture(t *testing.T) {
 	case "interactive":
 		// The launch's own interactive owner.
 		c.runInteractiveHarness(roundTripRole, child, childEnv, dir)
-	case "uncertain":
+	case "uncertain", "released":
 		// An owner whose cleanup cannot prove itself finished after the hangup, as when the
 		// terminal's foreground cannot be restored once tmux has gone: it reaps its child and
-		// still reports Uncertain, so RunInteractive leaves the checkpoint Running.
+		// still reports Uncertain, so RunInteractive leaves the checkpoint Running. "uncertain"
+		// leaves by os.Exit with its owner record in place; "released" leaves as a launch does
+		// (desk.go defers lease.Close), which removes the owner record before the process exits.
 		ctx, stop := cellrunner.NotifyContext(context.Background())
 		defer stop()
 		_ = lease.RunInteractive(ctx, c.Name, roundTripRole, func(pass context.Context) cellcadence.Result {
@@ -73,6 +75,9 @@ func TestDownRoundTripFixture(t *testing.T) {
 			_ = lease.RecordChild(0)
 			return cellcadence.Result{ExitCode: -1, Uncertain: true}
 		})
+		if mode == "released" {
+			_ = lease.Close()
+		}
 		os.Exit(1)
 	case "cadence":
 		config := c.cadenceConfig(roundTripRole)
@@ -238,6 +243,69 @@ func TestDownRoundTripInteractiveUncertainCleanup(t *testing.T) {
 	must(t, os.Remove(filepath.Join(c.Dir, "child.pid")))
 	second := startRoundTripOwner(t, c, "uncertain")
 	waitFor(t, c, second, "second up", childStarted(c))
+}
+
+// A real launch releases its lease as it exits, and that removes the owner record: no start time
+// survives for down to match against. The owner down signalled is then identified by what down
+// read before it signalled (pid, start time, and the checkpoint it was running).
+// regression: #6251
+func TestDownRoundTripOwnerReleased(t *testing.T) {
+	c := roundTripCell(t)
+	first := startRoundTripOwner(t, c, "released")
+	waitFor(t, c, first, "first up", childStarted(c))
+	unsettled, err := c.downRoles(hangup(t, first))
+	if err != nil || len(unsettled) > 0 {
+		t.Fatalf("down did not settle an owner that exited and released its lease: %v %q", err, unsettled)
+	}
+	if !first.exited(5 * time.Second) {
+		t.Fatal("the owner did not exit on the hangup")
+	}
+	if h, err := cellcadence.Holder(c.cadenceDir(roundTripRole)); err == nil && h != nil {
+		t.Fatalf("the exited owner left its holder record, so this is not the released path: %+v", h)
+	}
+	s, err := cellcadence.Read(c.cadenceDir(roundTripRole))
+	if err != nil || s.Running || s.Summary != downStoppedSummary {
+		t.Fatalf("down left the checkpoint unfinished or misrecorded: %+v %v", s, err)
+	}
+	assertNoReconcile(t, c)
+	must(t, os.Remove(filepath.Join(c.Dir, "child.pid")))
+	second := startRoundTripOwner(t, c, "released")
+	waitFor(t, c, second, "second up", childStarted(c))
+}
+
+// The same exit, but down is told a different checkpoint than the one the owner left: nothing
+// proves the record is the signalled owner's, so it stays unfinished.
+// regression: #6251
+func TestDownSettleReleasedOwnerOtherRecord(t *testing.T) {
+	c := roundTripCell(t)
+	first := startRoundTripOwner(t, c, "released")
+	waitFor(t, c, first, "first up", childStarted(c))
+	dir := c.cadenceDir(roundTripRole)
+	o, ok, err := c.interactiveOwner(roundTripRole)
+	if err != nil || !ok || o.PID != first.cmd.Process.Pid || o.Start == "" || o.Sequence == 0 {
+		t.Fatalf("the live owner was not identified: %+v %v %v", o, ok, err)
+	}
+	hangup(t, first)()
+	if !first.exited(5 * time.Second) {
+		t.Fatal("the owner did not exit on the hangup")
+	}
+	soon := time.Now().Add(time.Second)
+	other := o
+	other.Sequence++
+	if err := c.settleInteractiveOwner(other, soon); err == nil {
+		t.Fatal("settle finished a record that is not the one down read before it signalled")
+	}
+	if s, err := cellcadence.Read(dir); err != nil || !s.Running {
+		t.Fatalf("a record down could not attribute was cleared: %+v %v", s, err)
+	}
+	unidentified := o
+	unidentified.Sequence = 0
+	if err := c.settleInteractiveOwner(unidentified, soon); err == nil {
+		t.Fatal("settle finished a record down never read")
+	}
+	if err := c.settleInteractiveOwner(o, soon); err != nil {
+		t.Fatalf("the exact owner down read was not settled: %v", err)
+	}
 }
 
 // regression: #6116
