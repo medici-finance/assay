@@ -416,6 +416,11 @@ func flip(o flipOpts) error {
 				condChecksGreen, short(head), repo, len(missing), strings.Join(missing, ", ")), nil)
 		}
 	}
+	// A green reading of the rollup is not yet the forge's: a check suite with no conclusion and
+	// no runs is invisible to the rollup yet holds the merge gate (#6234).
+	if err := checkSuitesHold(o, fg, fr, head); err != nil {
+		return err
+	}
 	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
 
 	// --- desk-decided --------------------------------------------------------------
