@@ -58,7 +58,7 @@ func TestLockStepResultOnlyForContention(t *testing.T) {
 // a change that rewrites the busy return without the tag fails here whatever its wording.
 //
 // regression: class #6227
-func TestAcquireAuditLockBusyIsContended(t *testing.T) {
+func TestBusyAuditLockIsContended(t *testing.T) {
 	dir := t.TempDir()
 	held, err := AcquireAuditLock(dir, time.Second)
 	if err != nil {
