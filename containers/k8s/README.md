@@ -64,6 +64,14 @@ admitting a profile. Kubernetes Secret files otherwise default to root ownership
 0400 alone would be unreadable to this non-root process. The mount remains
 read-only, and only `app.pem` is projected.
 
+Each role container carries exactly three inline env entries: `ASSAY_DESK`, the
+canonical `ASSAY_APP_PEM_FILE` path, and `GODEBUG=multipathtcp=0`. The last one
+turns off the MPTCP listeners Go has opened by default since 1.24, as a stopgap
+for CVE-2026-98432 (a Linux kernel use-after-free in that path). It is fragile:
+it covers only Go programs that read it, and a later override undoes it. Patched
+node kernels are the real fix. The checker rejects a role container that drops it
+or turns MPTCP back on.
+
 `secrets.example.yaml` contains empty named skeletons for all ten Secrets, with
 required keys listed only in comments; it is excluded from the build. These
 skeletons are not deployable. Do not apply or populate that tracked file. Provision real Secrets
@@ -78,21 +86,6 @@ Pre-provision the retained work volume with the approved pinned agent CLI and
 required work inputs. The legacy first-run npm installer is not run by these
 manifests, and the forge/model/DNS network floor does not permit arbitrary package
 registries. A retained shell does not install or start the agent automatically.
-
-## MPTCP stopgap
-
-Every container and init container in the five manifests carries
-`GODEBUG=multipathtcp=0` (CVE-2026-98432 stopgap). Go 1.24 and later open MPTCP
-listeners by default, and the published exploit reaches the kernel bug through one;
-the setting keeps Go programs on plain TCP. It is fragile on purpose and documented
-as such: it covers only Go programs that honour `GODEBUG`, a later `GODEBUG` value
-that re-enables the setting re-opens the path (Go reads the list left to right and
-the last `multipathtcp` entry wins), and a patched node kernel is the real fix,
-which this repository does not ship. A deployment that needs another `GODEBUG`
-value merges it into this one (`http2debug=1,multipathtcp=0`) instead of replacing
-it. `check.sh --base` rejects a container whose env lacks exactly one inline
-`GODEBUG` that ends with `multipathtcp=0`, and `--self-test` plants each way of
-dropping, clearing, overriding or re-enabling it.
 
 ## Offline checks
 

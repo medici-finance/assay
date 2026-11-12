@@ -81,11 +81,6 @@ ARG SOURCE_SHA=unknown
 COPY --from=build /go/bin/gh    /usr/local/bin/gh
 COPY --from=build /go/bin/crane /usr/local/bin/crane
 
-# CVE-2026-98432 stopgap: Go (1.24+) opens MPTCP listeners by default and the exploit
-# reaches the kernel bug through one. Programs that honour GODEBUG stay on plain TCP.
-# A patched node kernel is the real fix; a later GODEBUG override re-opens the path.
-ENV GODEBUG=multipathtcp=0
-
 # Fail the build if either binary is missing or won't execute at its pinned path.
 RUN set -eux; \
     /usr/local/bin/gh --version; \
@@ -104,3 +99,7 @@ LABEL org.opencontainers.image.title="ci-tools" \
       org.opencontainers.image.revision="${SOURCE_SHA}" \
       org.opencontainers.image.licenses="MIT AND Apache-2.0" \
       org.opencontainers.image.version="gh-${GH_VERSION}-crane-${CRANE_VERSION}"
+
+# CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
+# them off. A fragile stopgap only; patched node kernels are the real fix.
+ENV GODEBUG=multipathtcp=0

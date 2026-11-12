@@ -97,8 +97,9 @@ the assay plugin on hand) uses a separate family of images under
 - a first-run installer for the **interactive agent CLI** (installed into the
   persistent volume rather than baked — see `containers/README.md`);
 - **`ENV GODEBUG=multipathtcp=0`**, a stopgap for CVE-2026-98432 that keeps Go
-  programs off MPTCP listeners (a patched node kernel is the real fix; a later
-  `GODEBUG` override re-opens the path, see `containers/k8s/README.md`);
+  programs off MPTCP listeners (a patched node kernel is the real fix; the
+  setting covers only Go programs that read `GODEBUG`, and a later override
+  undoes it, see `containers/k8s/README.md`);
 - a **non-root `desk` user** (UID/GID pinned to 999) and a declared
   **`VOLUME /work`** for persistent working state.
 
@@ -164,16 +165,18 @@ example per desk (substitute the paths and tag):
 # Shared flags: read-only PEM mount + model env-file + a per-desk work volume.
 PEM=--mount=type=bind,src=/path/to/app.pem,dst=/run/secrets/assay/app.pem,ro
 ENVF=--env-file=/path/to/desk.env
+# MPTCP off (CVE-2026-98432 stopgap); an explicit --env outranks the env-file.
+MPTCP=--env=GODEBUG=multipathtcp=0
 
-docker run -it "$PEM" "$ENVF" -v intake-work:/work \
+docker run -it "$PEM" "$ENVF" "$MPTCP" -v intake-work:/work \
   ghcr.io/medici-finance/assay/intake-desk:latest
-docker run -it "$PEM" "$ENVF" -v worker-work:/work \
+docker run -it "$PEM" "$ENVF" "$MPTCP" -v worker-work:/work \
   ghcr.io/medici-finance/assay/worker-desk:latest
-docker run -it "$PEM" "$ENVF" -v prreview-work:/work \
+docker run -it "$PEM" "$ENVF" "$MPTCP" -v prreview-work:/work \
   ghcr.io/medici-finance/assay/pr-review-desk:latest
-docker run -it "$PEM" "$ENVF" -v verify-work:/work \
+docker run -it "$PEM" "$ENVF" "$MPTCP" -v verify-work:/work \
   ghcr.io/medici-finance/assay/verify-desk:latest
-docker run -it "$PEM" "$ENVF" -v thedesk-work:/work \
+docker run -it "$PEM" "$ENVF" "$MPTCP" -v thedesk-work:/work \
   ghcr.io/medici-finance/assay/the-desk:latest
 ```
 

@@ -168,11 +168,6 @@ LABEL org.opencontainers.image.title="assay-harness" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
       org.opencontainers.image.version="${ASSAY_VERSION}"
 
-# CVE-2026-98432 stopgap: Go (1.24+) opens MPTCP listeners by default and the exploit
-# reaches the kernel bug through one. Programs that honour GODEBUG stay on plain TCP.
-# A patched node kernel is the real fix; a later GODEBUG override re-opens the path.
-ENV GODEBUG=multipathtcp=0
-
 # Non-root by construction: a worker Job is ephemeral and clones into HOME; the
 # uid is fixed so a securityContext can pin runAsUser without reading the image.
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin harness
@@ -188,3 +183,7 @@ CMD ["statusgen", "--version"]
 
 # Disable next-prompt generation for interactive and scheduled Claude processes.
 ENV CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false
+
+# CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
+# them off. A fragile stopgap only; patched node kernels are the real fix.
+ENV GODEBUG=multipathtcp=0

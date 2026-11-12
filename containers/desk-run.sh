@@ -5,7 +5,8 @@
 #
 #   docker run -it --name <desk> -v <desk>-work:/work \
 #     --mount type=bind,src=<pem>,dst=/run/secrets/assay/app.pem,ro \
-#     --env-file <env-file> ghcr.io/medici-finance/assay/<desk>:<tag>
+#     --env-file <env-file> -e GODEBUG=multipathtcp=0 \
+#     ghcr.io/medici-finance/assay/<desk>:<tag>
 #
 # That is the `docker run` recipe of containers/secrets.md section 4.1, composed
 # from three inputs this script validates: a desk name, an App PEM file and a

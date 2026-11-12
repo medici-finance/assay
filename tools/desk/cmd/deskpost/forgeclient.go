@@ -57,6 +57,9 @@ type postBackend interface {
 	issueTrustPayload(n int) (*deskkit.TrustPayload, error)
 	combinedStatusAt(sha string) (*combinedStatus, error)
 	checkRunsAt(sha string) (*checkRunsResp, error)
+	// checkSuitesAt reads the check SUITES at a commit (#6234): a suite with no conclusion and
+	// no runs never reaches either rollup above, yet holds the forge's merge gate.
+	checkSuitesAt(sha string) (*deskkit.CheckSuitesAtHead, error)
 	// postReview lands the verdict. A non-empty note on success says the verdict is in force
 	// by a route other than the plain POST (GitLab: the App's approval already stood, #1106);
 	// it is empty on the ordinary path and never accompanies an error.
@@ -304,6 +307,10 @@ func (b *forgeBackend) checkRunsAt(sha string) (*checkRunsResp, error) {
 		}{Name: r.Name, Status: r.Status, Conclusion: r.Conclusion})
 	}
 	return cr, nil
+}
+
+func (b *forgeBackend) checkSuitesAt(sha string) (*deskkit.CheckSuitesAtHead, error) {
+	return b.fg.CheckSuitesAtHead(b.repo, sha)
 }
 
 func (b *forgeBackend) postReview(pr int, head, event, body string) (string, error) {

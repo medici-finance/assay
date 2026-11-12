@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -140,6 +141,7 @@ type bracketReceipt struct {
 	// ModuleCache is the module cache the open step downloaded for the home
 	// (--module-cache, #4683); nil when the open step downloaded none.
 	ModuleCache *receiptModuleCache `json:"module_cache,omitempty"`
+	Acceptance  *receiptAcceptance  `json:"acceptance,omitempty"`
 }
 
 // receiptRunnerRe is the shape of a runner token executingRunner derives: a
@@ -240,6 +242,13 @@ func readBracketReceipt(path, home, brief string) (bracketReceipt, string, strin
 	}
 	if err := json.Unmarshal(raw, &r); err != nil {
 		return r, "", "", fmt.Errorf("unreadable receipt: %w", err)
+	}
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &members); err != nil {
+		return r, "", "", err
+	}
+	if value, present := members["acceptance"]; present && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+		return r, "", "", fmt.Errorf("receipt acceptance must be a plan, not null")
 	}
 	if !sha256DigestRe.MatchString(r.Tree) {
 		return r, "", "", fmt.Errorf("the receipt carries no sha256 tree digest from the open step")
@@ -408,7 +417,7 @@ func containerAdmission(receiptPath, root, brief string) (containerAdmit, error)
 		}
 		moduleCache = r.ModuleCache.Digest
 	}
-	cell := bracketReceipt{Check: r.Check, Runner: r.Runner, RunnerSource: r.RunnerSource, RunnerTree: r.RunnerTree, OnBehalfOf: r.OnBehalfOf}
+	cell := bracketReceipt{Check: r.Check, Runner: r.Runner, RunnerSource: r.RunnerSource, RunnerTree: r.RunnerTree, OnBehalfOf: r.OnBehalfOf, Acceptance: r.Acceptance}
 	return containerAdmit{attestation: line, tree: tree, cell: cell, moduleCache: moduleCache}, nil
 }
 
@@ -564,6 +573,14 @@ func writeContainerWitness(path, home, table string) error {
 // that lists module roots (moduleRootsManifest) is refused without one, since
 // its container rows would otherwise resolve from the image's baked cache.
 func runOpenBracket(home, brief, out, moduleCache string, stdout, stderr io.Writer, historyOut ...string) int {
+	history := ""
+	if len(historyOut) > 0 {
+		history = historyOut[0]
+	}
+	return runOpenAcceptance(home, brief, out, moduleCache, history, "", stdout, stderr)
+}
+
+func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record string, stdout, stderr io.Writer) int {
 	refuse := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "statusgen verifyrun --open-bracket: refused, no receipt written: "+format+"\n", a...)
 		return verifyrunExitCouldNot
@@ -622,6 +639,15 @@ func runOpenBracket(home, brief, out, moduleCache string, stdout, stderr io.Writ
 			return refuse("%v", err)
 		}
 	}
+	var acceptance *receiptAcceptance
+	if record != "" {
+		var why string
+		acceptance, _, why = hostAcceptance(home, brief, record, check)
+		if why != "" {
+			return refuse("%s", why)
+		}
+		cell.RunnerTree = acceptance.Source
+	}
 	tree, err := homeTreeDigest(home)
 	if err != nil {
 		return refuse("%v", err)
@@ -648,15 +674,15 @@ func runOpenBracket(home, brief, out, moduleCache string, stdout, stderr io.Writ
 		mc = &got
 	}
 	opened := nowFunc().UTC().Format(time.RFC3339)
-	if len(historyOut) > 0 && historyOut[0] != "" {
+	if historyOut != "" {
 		binding, err := checkBinding(check)
 		if err != nil {
 			return refuse("%v", err)
 		}
-		if canonicalPath(historyOut[0]) == canonicalPath(out) {
+		if canonicalPath(historyOut) == canonicalPath(out) {
 			return refuse("history bundle and admission receipt need different output files")
 		}
-		if err := exportContainerHistory(home, historyOut[0], binding.Source); err != nil {
+		if err := exportContainerHistory(home, historyOut, binding.Source); err != nil {
 			return refuse("%v", err)
 		}
 	}
@@ -670,6 +696,13 @@ func runOpenBracket(home, brief, out, moduleCache string, stdout, stderr io.Writ
 			return refuse("%v", err)
 		}
 		body += `,"module_cache":` + string(m)
+	}
+	if acceptance != nil {
+		a, err := json.Marshal(acceptance)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		body += `,"acceptance":` + string(a)
 	}
 	body += `}` + "\n"
 	if err := os.WriteFile(out, []byte(body), 0o644); err != nil {
@@ -828,7 +861,11 @@ func witnessSeparatorLine(l string) bool {
 // exactly the run the witness and the receipt name AND the home's recomputed
 // tree digest equals both the receipt's tree and the witness's Tree-Digest.
 // Any mismatch or refusal writes nothing.
-func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stderr io.Writer) int {
+func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stderr io.Writer, records ...string) int {
+	record := ""
+	if len(records) > 0 {
+		record = records[0]
+	}
 	refuse := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "statusgen verifyrun --close-bracket: refused, nothing appended: "+format+"\n", a...)
 		return verifyrunExitCouldNot
@@ -851,6 +888,9 @@ func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stder
 	receipt, receiptLine, _, err := readBracketReceipt(receiptPath, home, brief)
 	if err != nil {
 		return refuse("%v", err)
+	}
+	if why := acceptancePresence(receipt.Acceptance, record, block); why != "" {
+		return refuse("%s", why)
 	}
 	if receiptLine != block.attestation {
 		return refuse("the receipt does not name the run the witness names:\n  witness: %s\n  receipt: %s", block.attestation, receiptLine)
@@ -926,9 +966,28 @@ func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stder
 		}
 		cellBrief = hostBrief
 	}
+	if receipt.Acceptance != nil {
+		fresh, descriptor, why := hostAcceptance(home, brief, record, receipt.Check)
+		if why != "" {
+			return refuse("%s", why)
+		}
+		if !reflect.DeepEqual(fresh, receipt.Acceptance) {
+			return refuse("acceptance plan differs from the host re-plan (including the byte-exact execution table)")
+		}
+		current, _, err := briefSections(brief)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		if why := acceptanceWitness(fresh, descriptor, block, current); why != "" {
+			return refuse("%s", why)
+		}
+	}
 	host, ok := hostRunnerCell(home, cellBrief)
 	if !ok {
 		return refuse("could-not-attribute — no executing identity is available on the host for %s, so the runner the receipt names cannot be confirmed", home)
+	}
+	if receipt.Acceptance != nil {
+		host.RunnerTree = receipt.Acceptance.Source
 	}
 	if host.Runner != receipt.Runner || host.RunnerSource != receipt.RunnerSource {
 		return refuse("the receipt names runner %s (%s), but the host derives %s (%s): the receipt was not written by this home's open step, or it was altered", receipt.Runner, receipt.RunnerSource, host.Runner, host.RunnerSource)
@@ -1298,4 +1357,210 @@ func normaliseRunnerCell(row string, col int) string {
 	cell := onBehalfOfStampRe.ReplaceAllString(row[pipes[col]+1:pipes[col+1]], "")
 	cell = strings.TrimSpace(cellWhitespaceRe.ReplaceAllString(cell, " "))
 	return row[:pipes[col]+1] + " " + cell + " " + row[pipes[col+1]:]
+}
+
+// receiptAcceptance transports the host planner's result, never an approval.
+// The host re-derives every field at close; the offline reader checks internal
+// consistency and executes Verify verbatim without consulting Git or the forge.
+type receiptAcceptance struct {
+	DescriptorSHA string            `json:"descriptor_sha256"`
+	Source        string            `json:"source"`
+	RunSet        []string          `json:"run_set"`
+	Changes       string            `json:"changes"`
+	Added         []string          `json:"author_added"`
+	Verify        string            `json:"verify"`
+	VerifySHA     string            `json:"verify_sha256"`
+	Original      string            `json:"original"`
+	Revisions     map[string]string `json:"revisions"`
+}
+
+func acceptanceSHA(raw []byte) string {
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+func hostAcceptance(home, brief, record string, check []byte) (*receiptAcceptance, string, string) {
+	binding, err := checkBinding(check)
+	if err != nil {
+		return nil, "", err.Error()
+	}
+	if binding.Version != 1 {
+		return nil, "", "statusgen verifyrun: --acceptance-record requires host execution and same-repository admission"
+	}
+	if why := verifyrunRootBelowToplevel(home); why != "" {
+		return nil, "", why
+	}
+	verify, evidence, err := briefSections(brief)
+	if err != nil {
+		return nil, "", err.Error()
+	}
+	// Hold the exact descriptor bytes through the approval read: the receipt
+	// must not bind a replacement that the host planner never interpreted.
+	raw, err := os.ReadFile(record)
+	if err != nil {
+		return nil, "", err.Error()
+	}
+	plan, descriptor, _, why := planAcceptanceRecord(brief, verify, evidence, record)
+	if why != "" {
+		return nil, "", why
+	}
+	after, err := os.ReadFile(record)
+	if err != nil || !bytes.Equal(raw, after) {
+		return nil, "", "acceptance descriptor changed during planning"
+	}
+	full, ok := (coverageRepo{root: home}).ResolveCommit("HEAD")
+	if !ok || !isObjectID(full) || strings.Contains(treeSHA(home), "+") {
+		return nil, "", "transition execution requires a clean immutable source"
+	}
+	if full != binding.Source {
+		return nil, "", "acceptance source differs from the host check binding"
+	}
+	a := &receiptAcceptance{DescriptorSHA: acceptanceSHA(raw), Source: full, Verify: plan.Verify,
+		VerifySHA: acceptanceSHA([]byte(plan.Verify)), Changes: plan.Changes, Original: plan.Original, Revisions: plan.Revisions}
+	for _, row := range briefVerifyRows(plan.Verify) {
+		a.RunSet = append(a.RunSet, row.ID)
+	}
+	for _, row := range plan.Added {
+		a.Added = append(a.Added, row.ID)
+	}
+	return a, descriptor, ""
+}
+
+func containerAcceptance(receipt bracketReceipt, record, verify string) (protectedPlan, string, bool, string) {
+	fail := func(why string) (protectedPlan, string, bool, string) {
+		return protectedPlan{}, "", false, "statusgen verifyrun: container acceptance refused; no row ran: " + why
+	}
+	a := receipt.Acceptance
+	if a == nil || record == "" {
+		return fail("receipt acceptance and --acceptance-record must both be present")
+	}
+	binding, err := checkBinding(receipt.Check)
+	if err != nil || binding.Version != 1 {
+		return fail("--acceptance-record requires host execution and same-repository admission")
+	}
+	raw, descriptor, transition, why := readAcceptanceRecord(record)
+	if why != "" {
+		return fail(why)
+	}
+	if acceptanceSHA(raw) != a.DescriptorSHA {
+		return fail("descriptor digest differs from receipt")
+	}
+	if acceptanceSHA([]byte(a.Verify)) != a.VerifySHA {
+		return fail("planned table digest differs from receipt")
+	}
+	if !isObjectID(a.Source) || a.Source != binding.Source || receipt.RunnerTree != a.Source {
+		return fail("planned source differs from the receipt binding or runner")
+	}
+	rows, numbered := numberedVerifyRows(a.Verify)
+	var ids []string
+	seen := map[string]bool{}
+	for i, row := range rows {
+		if !numbered[i] || seen[row.ID] {
+			return fail("planned table has ambiguous row IDs")
+		}
+		seen[row.ID] = true
+		ids = append(ids, row.ID)
+	}
+	if len(ids) == 0 || !slices.Equal(ids, a.RunSet) {
+		return fail("planned table row IDs differ from run set")
+	}
+	var added []string
+	current := map[string]bool{}
+	for _, row := range briefVerifyRows(verify) {
+		if current[row.ID] {
+			return fail("current table has duplicate row IDs")
+		}
+		current[row.ID] = true
+		if !seen[row.ID] {
+			added = append(added, row.ID)
+		}
+	}
+	for _, id := range ids {
+		if !current[id] {
+			return fail("current table lost an original row")
+		}
+	}
+	if !slices.Equal(added, a.Added) {
+		return fail("current author-added rows differ from receipt")
+	}
+	plan := protectedPlan{Verify: a.Verify, Original: a.Original, Revisions: a.Revisions, Changes: a.Changes}
+	for _, id := range added {
+		plan.Added = append(plan.Added, checkFinding{ID: id, State: stateAuthorAdded})
+	}
+	return plan, descriptor, transition, ""
+}
+
+// Only the preamble preceding this block's own table can bind its descriptor.
+// A missing/dropped plan cannot fall back to ordinary bracket closure.
+func acceptancePreamble(block containerBlock) []string {
+	_, header := witnessSpanDigest(block.lines, len(block.lines))
+	var lines []string
+	if header < 0 {
+		return lines
+	}
+	for _, line := range block.lines[:header] {
+		line = strings.TrimSpace(line)
+		for _, prefix := range []string{"Verification-Table:", "Acceptance-Transition:", "Acceptance-Changes:"} {
+			if strings.HasPrefix(line, prefix) {
+				lines = append(lines, line)
+				break
+			}
+		}
+	}
+	return lines
+}
+
+func acceptancePresence(a *receiptAcceptance, record string, block containerBlock) string {
+	if (a != nil) != (record != "") {
+		return "receipt acceptance and --acceptance-record must both be present or both absent"
+	}
+	if a == nil && len(acceptancePreamble(block)) != 0 {
+		return "witness carries acceptance preamble without a host plan"
+	}
+	if a != nil && len(acceptancePreamble(block)) == 0 {
+		return "witness lacks its acceptance preamble"
+	}
+	return ""
+}
+
+func acceptanceWitness(a *receiptAcceptance, descriptor string, block containerBlock, current string) string {
+	want := strings.Split(descriptor, "\n")
+	if a.Changes != "" {
+		want = append([]string{"Acceptance-Changes: " + a.Changes}, want...)
+	}
+	if !slices.Equal(acceptancePreamble(block), want) {
+		return "witness acceptance descriptor or Acceptance-Changes differs from the host plan"
+	}
+	planned := map[string]verifyRow{}
+	for _, row := range briefVerifyRows(a.Verify) {
+		planned[row.ID] = row
+	}
+	for _, row := range briefVerifyRows(current) {
+		if slices.Contains(a.Added, row.ID) {
+			planned[row.ID] = row
+		}
+	}
+	seen := map[string]bool{}
+	for _, raw := range block.rows {
+		if witnessSeparatorLine(raw) {
+			continue
+		}
+		cells := witnessCells(raw)
+		if cells == nil {
+			return "acceptance witness contains a malformed row"
+		}
+		id := strings.TrimSpace(cells[0])
+		if seen[id] {
+			return "acceptance witness repeats a row"
+		}
+		seen[id] = true
+		if row, ok := planned[id]; ok {
+			if normalizeCommandText(witnessCommandOf(raw)) != normalizeCommandText(row.Command) {
+				return "witness row " + id + " command differs from its planned Command"
+			}
+		} else {
+			return "acceptance witness has a row outside the plan"
+		}
+	}
+	return ""
 }

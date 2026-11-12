@@ -1,0 +1,30 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/commits/abc123/check-suites",
+      "query": "per_page=100\u0026page=1"
+    }
+  ],
+  "result": {
+    "TotalCount": 2,
+    "Suites": [
+      {
+        "ID": "116700446469",
+        "App": "github-actions",
+        "Status": "completed",
+        "Conclusion": "success",
+        "RunCount": 1,
+        "CreatedAt": "2026-11-11T20:09:57Z"
+      },
+      {
+        "ID": "116705687855",
+        "App": "github-actions",
+        "Status": "queued",
+        "Conclusion": "",
+        "RunCount": 0,
+        "CreatedAt": "2026-11-11T20:23:15Z"
+      }
+    ]
+  }
+}
