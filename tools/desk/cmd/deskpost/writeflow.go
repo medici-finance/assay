@@ -1,10 +1,7 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -102,46 +99,27 @@ func deskDir() (string, error) {
 // auditLock is the flock held across LoadEntries→remote-call→audit-append,
 // so two parallel desk sessions cannot double-post or double-count. A lock held >60s is
 // treated as stale → Unverifiable (exit 6).
-type auditLock struct{ f *os.File }
+type auditLock struct{ l *deskkit.AuditLock }
 
 // lockWait is how long acquireAuditLock waits for a contended lock before refusing. A package
 // var only so a test can shorten it; production is 60s and has no flag or env override.
-var lockWait = 60 * time.Second
+var lockWait = deskkit.AuditLockWait
 
 func acquireAuditLock() (*auditLock, error) {
 	dir, err := deskDir()
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot resolve desk-tools dir (HOME missing?)", err)
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, deskkit.Unverifiable("cannot create desk-tools dir", err)
-	}
-	f, err := os.OpenFile(filepath.Join(dir, "audit.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	// The one choke point for the audit lock: it records the holder's pid and start beside the lock,
+	// and a lock still busy after the wait names the lock file, that holder and the clearing action.
+	l, err := deskkit.AcquireAuditLock(dir, lockWait)
 	if err != nil {
-		return nil, deskkit.Unverifiable("cannot open audit lock", err)
+		return nil, err
 	}
-	deadline := time.Now().Add(lockWait)
-	for {
-		lerr := deskkit.TryLockExclusive(f)
-		if lerr == nil {
-			return &auditLock{f: f}, nil
-		}
-		if !errors.Is(lerr, deskkit.ErrLockBusy) {
-			f.Close()
-			return nil, deskkit.Unverifiable("cannot acquire audit lock", lerr)
-		}
-		if time.Now().After(deadline) {
-			f.Close()
-			return nil, deskkit.AuditLockContended(lockWait)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	return &auditLock{l: l}, nil
 }
 
-func (l *auditLock) release() {
-	_ = deskkit.UnlockFile(l.f)
-	_ = l.f.Close()
-}
+func (l *auditLock) release() { l.l.Release() }
 
 // runOutward is the single orchestration path for every mutating verb (review/comment/
 // ready). Guard() has already run in main. It holds the flock across:

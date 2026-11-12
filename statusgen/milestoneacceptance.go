@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/statusgen/domain"
+	"github.com/medici-finance/assay/statusgen/evaluation"
 	"github.com/medici-finance/assay/statusgen/workref"
 )
 
@@ -226,4 +227,39 @@ func milestoneUnique(d *json.Decoder) error {
 	}
 	_, e = d.Token()
 	return e
+}
+
+// milestoneSubject maps the complete selected subject to an exact comparison
+// token. No subject fields are discarded; domain remains its semantic owner.
+func milestoneSubject(s domain.MilestoneSubject) evaluation.ReadinessSubject {
+	raw, _ := json.Marshal(s)
+	return evaluation.ReadinessSubject{Token: domain.ContentDigest(raw), Environment: s.Environment, Interface: s.Interface, Profile: s.Profile}
+}
+
+// milestoneAcceptanceObservation projects the receipt owner's assessment only.
+// The ref/subject MUST be those supplied as Current to readMilestoneAcceptance.
+// No production selection is installed: the existing nil-source path is unknown.
+func milestoneAcceptanceObservation(ref string, subject domain.MilestoneSubject, a domain.MilestoneAssessment) evaluation.AcceptanceObservation {
+	out := evaluation.AcceptanceObservation{Milestone: ref, Subject: milestoneSubject(subject), State: evaluation.AcceptanceUnknown, Availability: evaluation.Availability(a.State), HistoryCount: len(a.History), Blockers: append([]string(nil), a.Blockers...)}
+	for _, why := range a.Unknowns {
+		if why != "acceptance-outstanding" {
+			out.Unknowns = append(out.Unknowns, why)
+		}
+	}
+	switch {
+	case a.State == "supported" && !a.AcceptanceOutstanding && len(a.History) > 0:
+		out.State = evaluation.AcceptanceAccepted
+	case a.AcceptanceOutstanding && len(out.Unknowns) == 0:
+		out.State = evaluation.AcceptanceOutstanding
+	}
+	for _, h := range a.History {
+		if h.Revoked {
+			out.State = evaluation.AcceptanceRevoked
+			break
+		}
+		if h.Superseded {
+			out.State = evaluation.AcceptanceSuperseded
+		}
+	}
+	return out
 }

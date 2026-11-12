@@ -649,7 +649,9 @@ identity* — plan for it before you turn protection on, not after the board sil
 > prepends a banner naming the decision issue to such a PR's body. The banner informs; it blocks
 > nothing. On **GitLab**, layer two is not scaffolded, so the hold there is the well-formed-link
 > check of layer one alone; and because GitLab serves no ref compare, `deskevidence` reports
-> could-not-check (exit 6) on an evidence landing there.
+> could-not-check (exit 6) on an evidence landing there unless the landing checkout's HEAD is
+> the target branch's tip (the same commit by full object id, never a prefix), when there is no
+> difference to compare.
 
 **Verify:** `grep -q 'skip-status-regen' …/statusgen.yml && grep -q 'STATUS.md is generated' …/statusgen.yml`; and `grep -F 'git status --porcelain -- STATUS.md' …/statusgen.yml` matches (bootstrap-safe). After first push to main, `STATUS.md` appears in one `[skip-status-regen]` commit; a PR editing `STATUS.md` fails lint. Roster: `grep -c 'vars.ASSAY_' …/statusgen.yml` is 5, and the regen job's log shows `role-bindings=` naming your `verifier=` binding rather than `(none bound)` — a `::notice::ASSAY_TRUSTED_BOT_SLUGS is not set` line in that log means the variables are not set yet.
 

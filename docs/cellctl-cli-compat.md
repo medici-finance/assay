@@ -105,7 +105,8 @@ it also fails when a listed row stops differing, so this table cannot go stale i
   parser bypassed and requires the same refusals.
 - **`up` output.** The per-role command lines `up` prints still re-execute and reproduce the plan. A dry run still prints one line per absent role, byte for byte as before, and
   now also a disposition line for a role that is already up or stale; `up` itself converges (it
-  no longer prompts to reconcile a stale role: that is `up --plan` then `up --apply`).
+  no longer prompts to reconcile a stale role: a dead record is cleared by `up --plan` then
+  `up --apply`, any other by the recover verb its row names).
 
 ## What differs
 

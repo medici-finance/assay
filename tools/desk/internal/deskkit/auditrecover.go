@@ -180,39 +180,20 @@ func RecoverCorruptAudit() (AuditRecovery, error) {
 // and the next invocation checks again. ok=false is never permission to proceed without the
 // lock — it is permission to do nothing.
 func tryLockAudit(dir string) (unlock func(), ok bool) {
-	lf, err := os.OpenFile(filepath.Join(dir, "audit.lock"), os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
+	l, ok := tryAcquireAuditLock(dir)
+	if !ok {
 		return nil, false
 	}
-	if lerr := TryLockExclusive(lf); lerr != nil {
-		lf.Close()
-		return nil, false
-	}
-	return func() { _ = UnlockFile(lf); _ = lf.Close() }, true
+	return l.Release, true
 }
 
 // lockAudit takes the shared audit.lock exclusive advisory lock, the same lock the
 // outward-write flow holds across LoadEntries → AllowWrite → append, so recovery cannot race
 // a live write. It fails closed: a lock it cannot take is never permission to proceed.
 func lockAudit(dir string) (unlock func(), err error) {
-	lf, err := os.OpenFile(filepath.Join(dir, "audit.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	l, err := AcquireAuditLock(dir, AuditLockWait)
 	if err != nil {
-		return nil, Unverifiable("cannot open audit lock", err)
+		return nil, err
 	}
-	deadline := time.Now().Add(60 * time.Second)
-	for {
-		lerr := TryLockExclusive(lf)
-		if lerr == nil {
-			return func() { _ = UnlockFile(lf); _ = lf.Close() }, nil
-		}
-		if lerr != ErrLockBusy {
-			lf.Close()
-			return nil, Unverifiable("cannot acquire audit lock", lerr)
-		}
-		if time.Now().After(deadline) {
-			lf.Close()
-			return nil, AuditLockContended(60 * time.Second)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	return l.Release, nil
 }

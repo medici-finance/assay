@@ -1,30 +1,18 @@
 package deskkit
 
-import (
-	"errors"
-	"fmt"
-	"time"
-)
+import "errors"
 
 // AuditLockContended is the refusal for a desk audit lock that stayed busy for the whole bounded
-// wait (exit 6, fail closed: never "assume free"). It is the ONE place that message is built, and
-// the one place a lock-wait refusal is marked as such, so every acquirer reports contention the
-// same way and every audit line it writes can be classified without parsing the message.
+// wait (exit 6, fail closed: never "assume free"). msg is the actionable sentence for the caller
+// (AuditBusyMessage). It is the ONE place a lock-wait refusal is marked as such, and its only
+// caller is AcquireAuditLock, the single choke point every acquirer goes through, so every
+// audit line a lock-wait refusal produces can be classified without parsing the message.
 //
 // The wait is the first step of an outward write, before any audit read, forge read or forge
 // write, so this refusal says nothing about the caller's input (#6227). LockStepResult turns it
 // into ResultContended, which neither the budget nor the circuit breaker counts.
-func AuditLockContended(wait time.Duration) *DeskError {
-	w := wait.String()
-	if wait > 0 && wait%time.Second == 0 {
-		w = fmt.Sprintf("%ds", int(wait/time.Second))
-	}
-	return &DeskError{
-		Code: ExitUnverifiable,
-		Msg: fmt.Sprintf(
-			"audit lock held >%s (stale lock?) — another desk write may be stuck; retry, or a human clears it", w),
-		lockContended: true,
-	}
+func AuditLockContended(msg string) *DeskError {
+	return &DeskError{Code: ExitUnverifiable, Msg: msg, lockContended: true}
 }
 
 // IsAuditLockContended reports whether err is (or wraps) an AuditLockContended refusal.

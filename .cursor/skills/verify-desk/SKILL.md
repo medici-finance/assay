@@ -267,6 +267,11 @@ With `--acceptance-record`, execute the protected host rows in **one** host invo
 clean committed source, before inserting uncommitted Evidence. Include every supplemental
 row so the producer records `author-added; no acceptance credit`. Select these host rows
 with `--rows`; use `--acceptance-forge` when the descriptor names an approved transition.
+A chain descriptor carries `Acceptance-Transition: link=<k> amendment=<sha> approval=<url>`
+for each contiguous link after the one `Verification-Table:` line. Draft each link's
+exact v2 payload for the driver; never post an approval. Link 1 alone may retain a v1
+approval under its existing rules. The shared plan derives `Command`, `Expect` or
+`Command+Expect` changes, and every original witness must follow the final amendment.
 Then bracket the disjoint container-witnessable rows on that same source and land the
 closed witness through the sanctioned Evidence path. The selections together cover the
 whole protected table, and the assembled run carries exactly one `Verification-Table:`
@@ -274,10 +279,25 @@ descriptor. A second protected host invocation duplicates that descriptor or mov
 source and cannot close. Container execution may precede the host invocation if its
 witness remains outside the home and the home stays clean; inserting it first makes the
 protected host execution refuse. Never rewrite witness cells or receipt fields to make
-sources agree. The container executes the current table, so a row whose current definition
+sources agree. Outside a transition bracket, container rows execute the current table, so a row whose current definition
 differs from its owed original definition still needs the existing protected acceptance
 route; mixed assembly does not exempt that obligation. The whole-table audit and bracket
 credit checks above remain mandatory.
+
+A protected or transition record may instead run inside a closed **container-netns transition bracket** opened and closed with the same `--acceptance-record` descriptor.
+The host steps plan through the canonical protected-acceptance evaluator and re-read
+transition approval with `--acceptance-forge`; the container refuses that forge flag.
+Inside the bracket the container executes the receipt's planned table, not the current
+table, preserving every unamended Command and Expect and marking supplemental rows
+`author-added; no acceptance credit`. Close re-plans and compares the descriptor,
+source, exact table, changes and witness commands before appending the bracket.
+`deskdispatch --check-verifier` runs only on the dispatch host; checking on another
+runtime still refuses `environment changed since admission: runtime`. Never re-admit
+inside the runner. `--in-container`, `--check` and cross-repository admission with the
+record stay refused. Protected container execution requires explicit `--root` and
+refuses `--fail-first`: baseline history is outside the bound plan; keep baseline
+qualification on the host. Credit is unchanged: `credit=credited` only, never digest match
+alone. Independent whole-table verification and human closure gates remain required.
 
 On failed pre-work stamping, no verifier prompt is emitted and the claim is released.
 Keep the retained worktree for recovery; return its real dispatch receipt to the coordinator

@@ -1,9 +1,6 @@
 package main
 
 import (
-	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,7 +22,7 @@ func deskDir() (string, error) {
 // auditLock is the flock held across AllowWrite→remote-call→audit-append,
 // so two parallel desk sessions cannot double-commit or double-count. A lock held longer
 // than lockWait is treated as stale → Unverifiable (exit 6).
-type auditLock struct{ f *os.File }
+type auditLock struct{ l *deskkit.AuditLock }
 
 // lockWait is how long acquireAuditLock will wait for a contended lock before refusing.
 // It is a package var for ONE reason: so a test can shorten it and prove the deadline
@@ -40,35 +37,16 @@ func acquireAuditLock() (*auditLock, error) {
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot resolve desk-tools dir (HOME missing?)", err)
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, deskkit.Unverifiable("cannot create desk-tools dir", err)
-	}
-	f, err := os.OpenFile(filepath.Join(dir, "audit.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	// The one choke point for the audit lock: it records the holder's pid and start beside the lock,
+	// and a lock still busy after the wait names the lock file, that holder and the clearing action.
+	l, err := deskkit.AcquireAuditLock(dir, lockWait)
 	if err != nil {
-		return nil, deskkit.Unverifiable("cannot open audit lock", err)
+		return nil, err
 	}
-	deadline := time.Now().Add(lockWait)
-	for {
-		lerr := deskkit.TryLockExclusive(f)
-		if lerr == nil {
-			return &auditLock{f: f}, nil
-		}
-		if !errors.Is(lerr, deskkit.ErrLockBusy) {
-			f.Close()
-			return nil, deskkit.Unverifiable("cannot acquire audit lock", lerr)
-		}
-		if time.Now().After(deadline) {
-			f.Close()
-			return nil, deskkit.AuditLockContended(lockWait)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	return &auditLock{l: l}, nil
 }
 
-func (l *auditLock) release() {
-	_ = deskkit.UnlockFile(l.f)
-	_ = l.f.Close()
-}
+func (l *auditLock) release() { l.l.Release() }
 
 // runOutward is the single orchestration path for deskevidence's one mutating verb.
 // Guard() has already run in main. It holds the flock across the WHOLE of cmdEvidence:
