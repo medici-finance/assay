@@ -32,7 +32,7 @@ runtime containment. Taxonomy membership describes components and grants no auth
 | Forge operations (reads and writes) and role credential | Planned shared forge library (`DR-forge-library`), desktools-v2/75: proposed root module `forgeclient/`, composing `forgeread`'s adapters and desktools-v2/58's credential provider | `deskread` and every desk write verb as thin wrappers; statusgen through its forge adapter layer only (desktools-v2/77). Enumerated typed operations only; one client per role and repository; token in a private field; no ambient fallback; no raw URL, request or query. `statusgen/evaluation` links none of it. |
 | Local write-isolation policy | Proposed `deskcore/writepolicy`, [write-policy contract](write-policy.md), desktools-v2/66 | `writeguard` is a thin hook adapter; managed adapters supply validated allocation observations. Core has no effects or authority; independent guards keep their owners. |
 | Work-reference interpretation | `statusgen/workref` (`Parse`, `Resolve`, copied supplied registry), milestone-support/01 | Both actual QID and trailer adapters call the package in-process with explicit, distinct legacy profiles. Typed brief adapters bind an observed UUID/version/repository/commit/path and preserve the existing physical claim key (milestone-support/08). New operation effects require complete operation-specific reader/writer observations; operational advertisements and rollout remain held for /10 and /14. No credential or authority moves. |
-| Eligibility and evidence coverage | `statusgen/evaluation` (canonical owner since statusgen/15): `EvaluateEligibility`, `EvaluateCoverage` | statusgen commands, workflow bindings, projection producers. Explicit observations in; deterministic verdicts out. No admission, identity, capacity or claim authority. |
+| Eligibility and evidence coverage | `statusgen/evaluation` (canonical owner since statusgen/15): `EvaluateEligibility`, `EvaluateReadiness`, `EvaluateCoverage` | statusgen commands, workflow bindings, projection producers. Explicit observations in; deterministic verdicts out. No admission, identity, capacity or claim authority. |
 | Stream-view wire schema | Existing `statusgen/streamview` | Producers and authorized readers pin the contract; no policy or serving behavior in this package. |
 | Workflow progression | `workflow` store/controller, graph-execution/19 and /21 | Calls evaluation and loop-admin APIs; process exit is not work acceptance. |
 | Process supervision | `loopadmin`, graph-execution/26 | Standing desks and workflow stages; no dependency on workflow store, no effect credentials. |
@@ -228,9 +228,9 @@ codes and JSON envelopes are unchanged. graph-execution/19 consumes this package
 extracting a second evaluator.
 
 **Provenance.** `evaluation.CurrentIdentity()` reports the evaluator version
-(`statusgen-evaluation/2`) and a policy digest over the rule constants the verdicts depend on. Generation 2
-adds explicit original acceptance-definition revisions and held provenance observations for protected
-Verify tables; witness execution revisions and content applicability retain their existing meaning. The same
+(`statusgen-evaluation/6`) and a policy digest over the rule constants the verdicts depend on. Generation 6
+adds optional milestone readiness within this owner, preserving the nil-input eligibility
+projection and existing evidence/coverage semantics. The same
 input yields the same verdicts under the same identity, and a change to a policy constant changes the digest, and a change to rule
 behavior bumps the version, so a recorded verdict can be tied to what produced it.
 
@@ -337,3 +337,20 @@ Only wired legacy syntax and negotiation preflight are advertised. Milestone run
 new authoring, complete dispatch/pickup and rollout remain subsequent deliveries.
 See [the contract](../spec/reader-capabilities-v1.md) for the allocated envelope,
 conformance cases, host observation responsibilities and old-reader limitation.
+
+
+## Milestone readiness — milestone-support/07
+
+Under [DR-milestone-support-07](streams/decisions/DR-milestone-support-07.md),
+`EvaluateReadiness` extends S-eligibility with explicit graph and receipt assessment
+observations. `EvaluateEligibility` is its per-brief projection. Domain imports
+evaluation, so the reverse import is prohibited; `milestoneacceptance.go` maps the
+assessment and hashes the complete selected subject into a plain exact token.
+The shared graph retains per-contributor observations instead of making readiness
+parse diagnostic strings. No new library or dependency is required.
+
+The post-scan host calls this API for start gates and exposes the typed result on
+`Stream.MilestoneReadiness`. Next-up, the drive frontier, instance checks and the
+eligibility CLI retain their per-brief map and independent exclusions. No acceptance
+selector is installed and no milestone capability is advertised. Missing selection,
+coverage or acceptance remains explicit; the API grants no effect admission.

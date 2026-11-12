@@ -310,6 +310,22 @@ func runRoleInit(f roleFlags) (err error) {
 		return lerr
 	}
 
+	// Self-recovery (#6115): the target is registered but its directory is gone (a reboot or a
+	// tmp sweep took it). git refuses to add a worktree over that registration, so without this
+	// the boot stops here. Only role-init's OWN lock on it is retired; see
+	// recoverOwnStaleRegistration for the boundary.
+	recovered := ""
+	if set[rt] {
+		if _, statErr := os.Lstat(p.target); os.IsNotExist(statErr) {
+			note, rerr := recoverOwnStaleRegistration(guard, dir, rt, p)
+			if rerr != nil {
+				return rerr
+			}
+			recovered = note
+			fmt.Fprintln(os.Stderr, "deskwt: role-init "+note)
+		}
+	}
+
 	// Idempotent reuse: an existing target must be a registered worktree of THIS repo.
 	if _, statErr := os.Lstat(p.target); statErr == nil {
 		if !set[rt] {
@@ -403,6 +419,9 @@ func runRoleInit(f roleFlags) (err error) {
 	}
 
 	ac.detail = "provisioned role worktree " + p.target + " (branch " + p.branch + " tracking origin/main, identity " + botEmail + ")"
+	if recovered != "" {
+		ac.detail += "; " + recovered
+	}
 	fmt.Println(p.target)
 	return roleInitPreflightRun(p, repo)
 }
@@ -636,7 +655,7 @@ func runRoleClean(f roleFlags) (err error) {
 	// UNLOCK before removing: removeWorktreeDir does os.RemoveAll + `git worktree prune`, and
 	// prune SKIPS a locked admin entry, which would leave the worktree still registered after
 	// the directory is gone. Tolerate "not locked" (idempotent).
-	_, _ = runGit(dir, "worktree", "unlock", p.target)
+	_ = worktreeUnlock(dir, p.target)
 
 	if rmErr := removeWorktreeDir(guard, dir, rt); rmErr != nil {
 		return rmErr
@@ -672,12 +691,100 @@ func assertSameRepo(rt, bootRepo string) error {
 // without bound (see lockreclaim.go, and `deskwt prune --reclaim-stale-locks`). The session
 // id is already validated as a single safe segment, so the stamp is one whitespace-free token.
 func ensureLock(dir, target, session string, cfg roleWTConfig) error {
-	reason := cfg.branchPrefix + " live session (deskwt role-init session=" + session + ")"
+	reason := roleLockReason(session, cfg)
 	out, err := runGit(dir, "worktree", "lock", "--reason", reason, target)
 	if err != nil && !strings.Contains(strings.ToLower(out+err.Error()), "already locked") {
 		return deskkit.Unverifiable("git worktree lock failed for "+target, err)
 	}
 	return nil
+}
+
+// roleLockReason is the exact lock reason role-init writes for a role and session. It is the
+// one spelling ensureLock writes and recoverOwnStaleRegistration matches, so the two cannot
+// drift apart.
+func roleLockReason(session string, cfg roleWTConfig) string {
+	return cfg.branchPrefix + " live session (deskwt role-init session=" + session + ")"
+}
+
+// recoverOwnStaleRegistration clears role-init's OWN registration at its target when the
+// directory is gone (#6115). git refuses `worktree add` over a registered path whose directory
+// is missing ("is a missing but locked worktree"), so a cell whose role worktrees live under a
+// tmp prefix stopped at boot after every reboot or tmp sweep until someone unlocked and pruned
+// the entries by hand.
+//
+// THE BOUNDARY, and why it is safe:
+//
+//   - The directory is MISSING (the caller checked). A worktree whose directory exists is
+//     never this function's business: it may hold files that exist nowhere else.
+//   - The lock reason is EXACTLY the one role-init writes for this role and session
+//     (roleLockReason). The target path is derived from the same role and session, so that
+//     lock is this caller's own promise from an earlier boot, and the session that made it
+//     is the one booting now. A lock with any other reason (another session, a hand-written
+//     reason, no reason, git's in-flight "initializing" lock) is REFUSED, as is an unlocked
+//     registration this verb did not take: that case is `deskwt remove`'s, under its owner rule.
+//   - The admin entry's HEAD must be recoverable (adminHeadHold, the gate `deskwt remove`
+//     and prune apply to the same shape): a branch HEAD must resolve to a commit, because the
+//     branch outlives the entry; a detached HEAD must be on a remote-tracking ref. Removing
+//     the entry deletes its HEAD, so an entry holding the only ref to a commit is refused.
+//   - Only that ONE entry is touched: `git worktree remove <path>`, never a repo-wide
+//     `git worktree prune` and never a force flag. If the remove fails, or the entry is
+//     still listed after it, the original lock is restored.
+//
+// The git launches are the minimum this needs: git refuses to remove a LOCKED entry
+// without a double force, so the unlock is its own launch, and the remove is the second.
+// The restoring lock runs only on failure. Unlock and lock reuse the package's shared
+// helpers (worktreeUnlock, worktreeLockFn), so only the remove is a new git-exec site.
+func recoverOwnStaleRegistration(guard *pathGuard, dir, rt string, p roleInitParams) (string, error) {
+	locked, lerr := guard.lockedWorktrees(dir)
+	if lerr != nil {
+		return "", lerr
+	}
+	reason, isLocked := locked[rt]
+	own := roleLockReason(p.session, p.cfg)
+	if !isLocked || reason != own {
+		state := "not locked"
+		if isLocked {
+			state = "locked " + lockReasonText(reason)
+		}
+		return "", deskkit.Refused("refused: " + p.target + " is a registered worktree whose directory is missing, and it is " +
+			state + " — role-init clears only its own stale registration (lock reason \"" + own +
+			"\"); inspect it and clear it with `deskwt remove " + p.target + "`, then re-run role-init")
+	}
+	admin, aerr := guard.adminDirFor(rt)
+	if aerr != nil {
+		return "", aerr
+	}
+	if hold := adminHeadHold(dir, admin, huskDetachedProof(dir)); hold != "" {
+		if strings.HasPrefix(hold, "could-not-check:") {
+			return "", deskkit.Unverifiable("cannot clear the stale registration of "+p.target+": "+hold, nil)
+		}
+		return "", deskkit.Refused("refused: cannot clear the stale registration of " + p.target + ": " + hold)
+	}
+	if uerr := worktreeUnlock(dir, rt); uerr != nil {
+		return "", deskkit.Unverifiable("could not unlock the stale registration "+p.target, uerr)
+	}
+	restore := func(cause error) error {
+		if relErr := worktreeLockFn(dir, reason, rt); relErr != nil {
+			return deskkit.Unverifiable("could not clear the stale registration of "+p.target+
+				" and could not restore its lock: "+errText(cause), relErr)
+		}
+		return cause
+	}
+	if _, rmErr := runGit(dir, "worktree", "remove", rt); rmErr != nil {
+		return "", restore(deskkit.Unverifiable("could not clear the stale registration of "+p.target, rmErr))
+	}
+	// A listing failure AFTER a successful remove is returned without a restore: git said
+	// the entry is gone, so there is nothing proven to re-lock, and a lock on an entry that
+	// no longer exists would fail anyway. The error still stops the boot, so nothing is
+	// added over a registration whose state is unknown.
+	set, serr := guard.worktreePaths(dir)
+	if serr != nil {
+		return "", serr
+	}
+	if set[rt] {
+		return "", restore(deskkit.Unverifiable("git worktree remove reported success but "+p.target+" is still registered", nil))
+	}
+	return "cleared its own stale registration at " + p.target + " (directory missing; lock " + lockReasonText(reason) + " retired)", nil
 }
 
 // setCommitIdentity stamps the role's App identity onto the worktree, SCOPED to the worktree
