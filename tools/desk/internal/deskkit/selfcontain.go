@@ -79,8 +79,9 @@ const minShortNameNotice = 4
 // configured, that reported itself unconfigured, and that never ran.
 //
 // KEEP IN SYNC with parseConfig's `known` map in rosterconfig.go: an unrecognised key in the
-// ASSAY_ namespace REFUSES the whole roster, so a house that sets this without the key being
-// recognised would collapse every desk tool's configuration at once.
+// ASSAY_ namespace draws a NOTICE (it no longer refuses, #1261) and is NOT applied, so a house
+// that sets this without the key being recognised would silently run without the withheld
+// category of the scan.
 const EnvWithheldIdentifiers = "ASSAY_WITHHELD_IDENTIFIERS"
 
 // SelfContainOpts is what the scan needs to know about the write it is guarding.

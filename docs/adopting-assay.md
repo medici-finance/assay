@@ -736,9 +736,18 @@ Two consequences worth stating before you debug them:
 
 - Your CI `env:` block covers only the **five** variables the reporting modes use.
   `ASSAY_RISK_PATH_TRIGGERS_EXTRA` and `ASSAY_ROSTER_SCHEMA` exist but are not passed there.
-- A stray unrecognised `ASSAY_*` key — a one-character typo — collapses the **whole**
-  configuration to unconfigured and every tool refuses. Keys outside the `ASSAY_` namespace are
-  echoed and ignored, so a co-tenant tool may share the file.
+- A stray unrecognised `ASSAY_*` key — a one-character typo, or a key a newer release added —
+  is NOT applied: the desk tools print an `assay-config: NOTICE —` line naming the key and keep
+  the rest of the roster, so whatever the key meant to configure keeps its unset behaviour (a
+  misspelt trust key leaves that trust surface empty, which fails closed). A misspelt optional
+  HARDENING key is different: its unset default is the weaker setting, so a NOTICE naming one
+  means that control is off — `ASSAY_WITHHELD_IDENTIFIERS` (the withheld-identifier category of
+  the public-body self-containment scan does not run), `ASSAY_RISK_PATH_TRIGGERS_EXTRA` and
+  `ASSAY_RISK_CALLOUT` (risk classification uses the compiled patterns only),
+  `ASSAY_WRITEGUARD_CALLOUT` (compiled indicators only) and `ASSAY_OUTBOUND_CALLOUT` with its
+  `ASSAY_OUTBOUND_CALLOUT_REQUIRED` switch (no house outbound check). Read every such NOTICE. `statusgen` still
+  refuses the whole configuration on such a key (see below). Keys outside the `ASSAY_` namespace
+  are echoed and ignored, so a co-tenant tool may share the file.
 - `ASSAY_HUMAN_LOGIN_MAP` is load-bearing for the trust-dependent checks in
   `statusgen --lint`. A configuration the loader refuses now exits **5** before
   evaluation, printing `LINT: REFUSED configuration; trust-dependent checks could-not-check`
@@ -755,8 +764,9 @@ recognizes that desk-only key. These examples are not a complete minimum-version
 matrix. When an older binary refuses a newer roster key, deliberately re-pin to a
 release whose loader recognizes the keys you use, following the release/checksum
 procedure. Do not remove the key or substitute a reduced roster to obtain a green
-lint. The unknown-`ASSAY_*` refusal policy remains unchanged; its policy decision
-is tracked in [#1261](https://github.com/medici-finance/assay/issues/1261).
+lint. The desk tools downgraded an unknown `ASSAY_*` key to a NOTICE under the recorded
+ruling on [#1261](https://github.com/medici-finance/assay/issues/1261); `statusgen --lint` still
+refuses one, so an older statusgen pin still exits **5** on a newer roster key.
 
 **A bad TRUST value still refuses everything; a bad EXTENSION value now refuses only its own
 dependents.** The six fail-closed trust surfaces — `ASSAY_BLESS_LOGIN`, `ASSAY_TRUSTED_LOGINS`,
@@ -772,9 +782,9 @@ whole roster when one of them is malformed: the loader records the rejection aga
 key, the key's own feature falls back to its shipped default (exactly the unset behaviour), and
 only the desk unit that actually declares a dependency on that key deactivates and reports why —
 every unrelated acting command keeps running. This is the fix for the outage class the previous
-paragraph's typo bullet still describes for an **unrecognised** key name: a stray unrecognised
-`ASSAY_*` key still collapses the whole roster today (that bullet is unchanged), but a
-**recognised** extension key's own bad VALUE no longer does.
+paragraph's typo bullet describes for an **unrecognised** key name: in the desk tools a stray
+unrecognised `ASSAY_*` key is now a NOTICE, and a **recognised** extension key's own bad VALUE
+no longer collapses the whole roster either.
 
 `ASSAY_OS_USER_LOGIN_MAP` carries comma-separated `osuser:login` entries binding an OS
 account name to the roster login the scan-override audit row names (the desk tools'

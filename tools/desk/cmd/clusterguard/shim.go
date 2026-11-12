@@ -14,7 +14,7 @@ import (
 )
 
 // allowClusterEnv is the operator opt-in. It is declared in deskkit so the
-// roster's unknown-ASSAY_-key refusal recognises it (see EnvAllowCluster); it
+// roster's unknown-ASSAY_-key NOTICE does not fire for it (see EnvAllowCluster); it
 // is READ here, and only here, with a direct os.Getenv.
 const allowClusterEnv = deskkit.EnvAllowCluster
 

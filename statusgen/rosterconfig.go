@@ -356,7 +356,7 @@ const (
 	// everything after it (spaces included) is the display name, kept verbatim (trimmed). The
 	// username key is lowercased to match the roster slug. It is CONSUMED here (statusgen's
 	// Evidence-actor gate). deskkit RECOGNISES the key — the two readers share one roster.env,
-	// so an unknown ASSAY_ key would collapse deskkit's whole configuration — but does not
+	// so an unknown ASSAY_ key would draw a NOTICE from deskkit on every run — but does not
 	// consume it (its GitLab commit-identity paths resolve the username ONLINE via the typed
 	// forge, deskevidence's attribution check). KEEP IN SYNC with deskkit's
 	// EnvGitLabDisplayNames. An UNSET value is neither an error nor a refusal (the offline
@@ -554,8 +554,8 @@ type scanConfig struct {
 
 	// HomeRepo and ScanRepos are statusgen-only roster values (the compiled-in
 	// owned-repo roster this externalises). deskkit RECOGNISES their keys — the
-	// two readers share one roster.env, so an unknown ASSAY_ key would collapse
-	// the OTHER reader's whole configuration — but does not consume them.
+	// two readers share one roster.env, so an unknown ASSAY_ key would draw a NOTICE
+	// from the OTHER reader on every run — but does not consume them.
 	HomeRepo  string
 	ScanRepos []string
 
