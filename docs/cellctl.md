@@ -864,6 +864,13 @@ roles as `reconciled+up`. A role that came alive between plan and apply is refus
 (exit 5), naming the role, and nothing is launched. Stale comms state is refused the same way,
 with the reconcile inventory and a pointer to the verb that clears it.
 
+**Plan ids.** Every `--plan` names its plan with two lowercase words and a hyphen, such as
+`amber-falcon`, and ends with the line `apply on a terminal: cellctl up <cell> --apply
+amber-falcon`. The words come from fixed lists built into `cellctl`. An id is never reused within
+a cell, including the ids of plans already applied. A plan stored with an older 24-character hex
+id still applies by that id. The id only finds the plan: apply still shows it and asks for the
+typed confirm code.
+
 `--plan` clears only a role whose checkpoint names a supervisor that has exited (the *dead* class).
 The stale row names the verb that accepts the role's own class:
 

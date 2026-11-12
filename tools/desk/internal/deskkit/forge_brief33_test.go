@@ -825,3 +825,34 @@ func TestCommentFieldsOnChangeTarget(t *testing.T) {
 		}
 	})
 }
+
+// regression: forge-neutral brief 18 — ListChanges carries the forge's last-modified time, so a consumer
+// can tell a bounded walk already passed its window; absent stays empty, never a guess.
+func TestChangeRefCarriesUpdatedAt(t *testing.T) {
+	t.Run("github", func(t *testing.T) {
+		payload := b33Changes(false, map[string]any{"nameWithOwner": "medici-finance/assay"})
+		nodes := payload["data"].(map[string]any)["repository"].(map[string]any)["pullRequests"].(map[string]any)["nodes"].([]map[string]any)
+		nodes[0]["updatedAt"] = "2026-09-02T03:04:05Z"
+		var sent string
+		gh := newB33GitHub(t, func(w http.ResponseWriter, r *http.Request, body string) { sent = body; b33Enc(w, payload) })
+		got, err := gh.forge().ListChanges(forgeTestRepo, OpenAndMerged())
+		if err != nil || len(got.Changes) != 1 || got.Changes[0].UpdatedAt != "2026-09-02T03:04:05Z" {
+			t.Fatalf("ListChanges: %v %+v — UpdatedAt must be the forge's updatedAt", err, got)
+		}
+		if !strings.Contains(sent, "updatedAt") {
+			t.Fatalf("the changes query must select updatedAt: %s", sent)
+		}
+		nodes[0]["updatedAt"] = nil
+		if got, err := gh.forge().ListChanges(forgeTestRepo, OpenAndMerged()); err != nil || got.Changes[0].UpdatedAt != "" {
+			t.Fatalf("an absent updatedAt must stay empty: %v %+v", err, got)
+		}
+	})
+	t.Run("gitlab", func(t *testing.T) {
+		s := newGLServer(t)
+		s.mrList = []map[string]any{glMR(nil)}
+		got, err := s.forge().ListChanges(glRepo, OpenAndMerged())
+		if err != nil || len(got.Changes) != 1 || got.Changes[0].UpdatedAt != "2026-09-01T12:00:00Z" {
+			t.Fatalf("ListChanges: %v %+v — UpdatedAt must be the merge request's updated_at", err, got)
+		}
+	})
+}
