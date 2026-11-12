@@ -132,6 +132,11 @@ func (f *ciRecordingForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHe
 	return nil, nil
 }
 
+func (f *ciRecordingForge) CheckSuitesAtHead(repo ForgeRepo, sha string) (*CheckSuitesAtHead, error) {
+	f.rec("CheckSuitesAtHead")
+	return nil, nil
+}
+
 func (f *ciRecordingForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error) {
 	f.rec("RequiredStatusChecks")
 	return nil, nil
@@ -274,6 +279,11 @@ func (f *ciRecordingForge) PostReview(repo ForgeRepo, number int, in ReviewInput
 
 func (f *ciRecordingForge) MarkReadyForReview(nodeID string) error {
 	f.rec("MarkReadyForReview")
+	return nil
+}
+
+func (f *ciRecordingForge) ConvertToDraft(nodeID string) error {
+	f.rec("ConvertToDraft")
 	return nil
 }
 

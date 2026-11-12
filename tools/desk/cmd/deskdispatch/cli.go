@@ -81,6 +81,8 @@ func dispatchBindings(mode string) []cli.Binding {
 			str("worktree", "", "operator-stated existing home, with --dry-run only"), boolean("rework", "follow up a merged delivery on a new branch"),
 			boolean("attest-worker", "fresh worker: create, stamp, close and read back pre-work attestation"),
 			boolean("cross-repo", "brief homed in tracking repo; deliverable in --repo with Cross-repo-brief trailer"),
+			str("context-snapshot", "", "statusgen context snapshot DIR; recheck --context-receipt before the claim"),
+			str("context-receipt", "", "context-handoff receipt the brief was authored against (with --context-snapshot)"),
 			str(deskkit.ScanOverrideFlag, "", deskkit.OutboundOverrideHelp), boolean("kits", "list embedded prompt kits and exit"))
 	}
 }
@@ -178,6 +180,8 @@ func newDispatchCLI(mode string, env dispatchCLI) *cobra.Command {
 			o.rework = v.Bool("rework")
 			o.attestWorker = v.Bool("attest-worker")
 			o.crossRepo = v.Bool("cross-repo")
+			o.contextSnapshot = v.String("context-snapshot")
+			o.contextReceipt = v.String("context-receipt")
 			override = v.String(deskkit.ScanOverrideFlag)
 		}
 		return env.handle(mode, o, override)

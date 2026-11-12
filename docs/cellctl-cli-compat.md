@@ -105,7 +105,8 @@ it also fails when a listed row stops differing, so this table cannot go stale i
   parser bypassed and requires the same refusals.
 - **`up` output.** The per-role command lines `up` prints still re-execute and reproduce the plan. A dry run still prints one line per absent role, byte for byte as before, and
   now also a disposition line for a role that is already up or stale; `up` itself converges (it
-  no longer prompts to reconcile a stale role: that is `up --plan` then `up --apply`).
+  no longer prompts to reconcile a stale role: a dead record is cleared by `up --plan` then
+  `up --apply`, any other by the recover verb its row names).
 
 ## What differs
 
@@ -266,3 +267,24 @@ cockpit has always launched private tmux. With cell-owned provider/Herdr support
 `check` now reports that actual surface; Herdr is explicit opt-in. Exit status,
 all other stdout and all stderr remain byte-identical in the fixture. The frozen
 pre-migration transcript remains unchanged.
+
+## The house cell's forge label set
+
+Issue #6127 makes `new --kind house` ensure the desk tools' forge label set on every `--roots`
+repo, and makes `check` report it (see *House cells* in [cellctl](cellctl.md)). The fixture
+world's cell roster binds no role yet, so the set cannot be derived there. `new-house/0`,
+`new-trailing-value/0`, `new-trailing-value/1`, `new-trailing-value/3`, `new-trailing-value/4`
+and `new-trailing-value/5` add exactly one stdout line after the scaffold line: `[new] labels:
+NOT ENSURED on o/r — …; finish with: deskfleet labels …`, naming the command that finishes the
+step. They keep exit 0, because a deferred labels step is not a failed install. `check/0` and
+`check/1` add exactly one `?  could-not-check: labels: …` row after the `docs/streams/` row,
+because a set that cannot be derived is never reported clean. They keep exit 1, and their summary
+line does not change, since the run already has `MISS` rows. Every other byte and all stderr
+still must match.
+
+The same-suite harness `tools/cellctl/tests/house-cell.test.sh` runs a house `check` on a cell
+that has roots and a roster but no `CELL_LABELS_TOKEN_FILE`. Against the shell oracle it closes
+`[check] all preconditions met`. Against the Go port each labels row is could-not-check, so the
+run keeps exit 0 and closes `[check] every checked precondition met; N could-not-check row(s) (?)
+— not clean until each is checked`. The case accepts that line only when every could-not-check
+row is a labels row.

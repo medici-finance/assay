@@ -383,19 +383,34 @@ type MonitorIdentity struct {
 	// on the poller's keyring path exactly as before this hand-off existed — which under a
 	// replaced HOME 401s and goes MONITOR-DEGRADED loudly, never silently empty.
 	Fallbacks map[string]string
+	// Resolved names, per owner, a credential the forge-aware resolver found that is NOT handed
+	// over as a token file: a GitLab-served owner's custody PAT. The poller's --token-file is a
+	// GitHub App installation hand-off, so the poller reads that owner through the same resolver
+	// under this session's role instead. The entry names the forge and the custody FILE, never
+	// the token.
+	Resolved map[string]string
+	// Refused names, per owner, why the forge-aware resolver refused this session's role a
+	// credential (issue 5890). Every such owner is also a Fallback. A refused probe means this
+	// pass cannot say which identity that owner's repos were read as, so `run` reports the pass
+	// COULD-NOT-CHECK (exit 6) after it ends, never a clean exit 0.
+	Refused map[string]string
 }
 
-// ResolveMonitorIdentity looks up the running role's installation token file for every owner in
-// the scan scope. It introduces no credential of its own: the role is the one this session already
+// ResolveMonitorIdentity looks up the running role's credential for every owner in the scan scope
+// through the forge-aware resolver (deskkit.ResolveRoleCredential, the resolver deskread and
+// issueboard use), so a GitLab-served owner resolves its custody PAT instead of tripping the
+// GitHub-only transport's refusal (issue 5890). A GitHub owner's installation token file is handed
+// to the poller; a GitLab owner's custody file is recorded as Resolved and is not. It introduces no credential of its own: the role is the one this session already
 // acts as (the same one the trust gate reads under), and the file is the minter's own cache, read
 // in place — never copied anywhere new.
 //
-// It fails OPEN to the keyring path, not closed. The poller's keyring read is today's behaviour
-// and still works under an operator's real HOME; refusing the whole drain because a mint failed
-// would turn a recoverable, loudly-DEGRADED read into no read at all. Every fallback is named so
-// the operator can see which identity each owner was read under.
+// The pass is not refused up front: the poller still reads what it can, and every fallback is named
+// so the operator can see which identity each owner was read under. But a credential the resolver
+// REFUSED under a resolved role is recorded in Refused, and `run` turns that into a could-not-check
+// exit once the pass ends: a refused probe is never reported as a clean drain.
 func ResolveMonitorIdentity(scope []string) MonitorIdentity {
-	id := MonitorIdentity{TokenFiles: map[string]string{}, Fallbacks: map[string]string{}}
+	id := MonitorIdentity{TokenFiles: map[string]string{}, Fallbacks: map[string]string{},
+		Resolved: map[string]string{}, Refused: map[string]string{}}
 	// One representative repo per owner, in scope order: an installation token is per owner.
 	var owners []string
 	repoOf := map[string]string{}
@@ -417,15 +432,25 @@ func ResolveMonitorIdentity(scope []string) MonitorIdentity {
 		return id
 	}
 	id.Role = role
+	refuse := func(o, why string) {
+		id.Fallbacks[o] = why
+		id.Refused[o] = why
+	}
 	for _, o := range owners {
-		_, path, err := mintTokenFn(role, repoOf[o])
+		owner, name, _ := strings.Cut(repoOf[o], "/")
+		cred, err := roleCredentialFn(role, deskkit.ForgeRepo{Owner: owner, Name: name}, "")
+		path := strings.TrimSpace(cred.Path)
 		switch {
 		case err != nil:
-			id.Fallbacks[o] = err.Error()
-		case strings.TrimSpace(path) == "":
-			id.Fallbacks[o] = "the " + role + " App token minter named no token file"
-		default:
+			refuse(o, err.Error())
+		case path == "":
+			refuse(o, fmt.Sprintf("the forge-aware resolver named no custody file for the %s credential (%s)",
+				role, cred.Resolution.Kind))
+		case cred.Resolution.Kind == deskkit.ForgeGitHub:
 			id.TokenFiles[o] = path
+		default:
+			id.Resolved[o] = fmt.Sprintf("the %s %s custody credential (%s, %s)", role,
+				cred.Resolution.Kind, path, cred.Resolution.Source)
 		}
 	}
 	return id
@@ -435,19 +460,31 @@ func ResolveMonitorIdentity(scope []string) MonitorIdentity {
 // It names the token FILE, never the token. A keyring fallback is printed with its reason, because
 // under a replaced HOME it is exactly the line that explains a wall of MONITOR-DEGRADED 401s.
 func renderMonitorIdentity(w io.Writer, id MonitorIdentity) {
-	owners := make([]string, 0, len(id.TokenFiles)+len(id.Fallbacks))
-	for o := range id.TokenFiles {
-		owners = append(owners, o)
-	}
-	for o := range id.Fallbacks {
-		if _, dup := id.TokenFiles[o]; !dup {
-			owners = append(owners, o)
+	seen := map[string]bool{}
+	var owners []string
+	for _, m := range []map[string]string{id.TokenFiles, id.Resolved, id.Fallbacks} {
+		for o := range m {
+			if !seen[o] {
+				seen[o] = true
+				owners = append(owners, o)
+			}
 		}
 	}
 	sort.Strings(owners)
 	for _, o := range owners {
 		if p, ok := id.TokenFiles[o]; ok {
 			fmt.Fprintf(w, "poller identity: %s — the %s App token (%s token file %s)\n", o, id.Role, monitorTokenFileFlag, p)
+			continue
+		}
+		if r, ok := id.Resolved[o]; ok {
+			fmt.Fprintf(w, "poller identity: %s — %s, resolved by the forge-aware resolver; the poller reads it "+
+				"through the same resolver under this session's role (no %s: that hand-off is GitHub-only)\n",
+				o, r, monitorTokenFileFlag)
+			continue
+		}
+		if why, ok := id.Refused[o]; ok {
+			fmt.Fprintf(w, "poller identity: %s — REFUSED by the forge-aware resolver (%s) — COULD-NOT-CHECK, "+
+				"this pass cannot exit clean\n", o, why)
 			continue
 		}
 		fmt.Fprintf(w, "poller identity: %s — gh keyring fallback (%s)\n", o, id.Fallbacks[o])

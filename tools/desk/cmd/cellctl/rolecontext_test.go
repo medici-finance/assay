@@ -1546,6 +1546,14 @@ func TestRoleContextShellSuite(t *testing.T) {
 		"PATH=" + strings.Join(path, string(os.PathListSeparator)),
 		"CELLCTL=" + cellctlBinary(t), "TMPDIR=" + tmp, "HOME=" + tmp, "LC_ALL=C",
 	}
+	// A throwaway working directory, never this package's: the suite's EXIT trap removes its
+	// scratch directory, and a suite that ever resolved that to its cwd must cost nothing.
+	// Every input reaches it by absolute path (the suite, $CELLCTL). A directory under tmp,
+	// not t.TempDir(), for the same "context" reason as tmp itself. regression: #6161
+	cmd.Dir = filepath.Join(tmp, "cwd")
+	if err := os.Mkdir(cmd.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "\nrole-context.test.sh: OK\n") {
 		t.Fatalf("role-context.test.sh: %v\n%s", err, out)

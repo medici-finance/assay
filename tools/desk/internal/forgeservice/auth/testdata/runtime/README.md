@@ -44,6 +44,9 @@ helper receives no controller, private key, engine socket or control volume.
 
 `TestForgeLocalAuthorityCustody` requires `AUTH57_CUSTODY_INPUT` naming this owned
 packet. Missing input is explicitly UNQUALIFIED, never a passing custody result.
+The packet's only producer is `../qualify_fixture.py`: CI runs it, and the
+brief's Verify rows 3 and 7 run it inside the row against an explicit local engine,
+so a verifier never supplies a packet by hand.
 The fixture checks actual positive authentication and independent role exclusions,
 wrong launch/signature/scope, final lease expiry, private revocation and rotation.
 Cleanup rechecks exact ownership before removing every known container and volume.

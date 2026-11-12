@@ -33,10 +33,21 @@ func TestCursorModelNamespace(t *testing.T) {
 func TestCursorLaunchPreservesSelection(t *testing.T) {
 	wt := filepath.Join(t.TempDir(), "work space & snow雪")
 	model := "model[effort=high,context=1m]"
-	got := cursorLaunchArgv("worker-desk", model, "session-1", wt)
-	want := []string{"agent", "--workspace", wt, "--model", model, `Invoke the "assay:worker-desk" skill now.`}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Cursor argv = %#v, want %#v", got, want)
+	for _, setting := range []string{"", "off"} {
+		cell := &Cell{Cadence: resolveDeskCadence("house", "cursor", setting, "")}
+		for _, role := range knownRoles {
+			got := cell.cursorLaunchArgv(role, model, wt)
+			want := []string{"agent", "--workspace", wt, "--model", model}
+			if len(got) != len(want)+1 || !reflect.DeepEqual(got[:len(want)], want) {
+				t.Fatalf("Cursor argv with cadence %q = %#v, want prefix %#v", setting, got, want)
+			}
+			prompt := got[len(want)]
+			if !strings.Contains(prompt, `Invoke the "assay:`+role+`" skill now.`) ||
+				!strings.Contains(prompt, ".cursor/references/cursor.md") ||
+				!strings.Contains(prompt, "Interactive desk cadence") {
+				t.Fatalf("Cursor launch for %s with cadence %q omitted standing boot: %q", role, setting, prompt)
+			}
+		}
 	}
 	input := []string{"PATH=/cell/shim:/tools", "DESK_LOOP=worker-desk", "DESK_SESSION=session-1", "DESK_ROOTS=org/repo=/roots/repo", "CURSOR_API_KEY=synthetic-cursor", "ANTHROPIC_AUTH_TOKEN=synthetic-other", "ANTHROPIC_MODEL=wrong-model", "CLAUDE_CONFIG_DIR=/wrong/config", "CLAUDE_CODE_USE_BEDROCK=1"}
 	snapshot := append([]string(nil), input...)
