@@ -68,6 +68,9 @@ type LaneOutcome struct {
 	Exit     Exit
 	Artifact string
 	Decision CoalesceDecision
+	// Worktree is the scan worktree the lane actually ran in: the request's, or — on a coalesce —
+	// a retained scan worktree it reused (retainedCarrierWorktree). Cleanup keys on this one.
+	Worktree string
 	// Steps is the exact command sequence the lane ran, or — under --dry-run — would run. It is
 	// the audit surface: a lane that reports an outcome without the steps that produced it is a
 	// claim, not evidence.
@@ -177,10 +180,14 @@ func (l scanCarrierPRLane) Name() LaneName { return LaneScanCarrierPR }
 // a failed carry must not leave them behind either.
 func (l scanCarrierPRLane) Execute(req LaneRequest) (LaneOutcome, error) {
 	out, err := l.carry(req)
+	wt := req.Worktree
+	if out.Worktree != "" {
+		wt = out.Worktree
+	}
 	// The cleanup is keyed to the worktree path, so it runs only for a path the isolation guard
 	// accepts: an empty or relative one would resolve against whatever directory this runs in.
-	if !req.DryRun && assertIsolatedScanRoot(req.Root, req.Worktree) == nil {
-		titleFile, bodyFile := scanMetaFiles(req.Worktree)
+	if !req.DryRun && assertIsolatedScanRoot(req.Root, wt) == nil {
+		titleFile, bodyFile := scanMetaFiles(wt)
 		for _, p := range []string{titleFile, bodyFile} {
 			if rmErr := os.Remove(p); rmErr != nil && !os.IsNotExist(rmErr) {
 				// A leftover metadata file sits BESIDE the worktree and blocks nothing, so it is
@@ -198,6 +205,7 @@ func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 	if err := assertIsolatedScanRoot(req.Root, req.Worktree); err != nil {
 		return out, err
 	}
+	out.Worktree = req.Worktree
 	repo := strings.TrimSpace(req.Item.Payload["repo"])
 	if repo == "" {
 		return out, deskkit.Refused("scan-carrier lane: the item carries no target repo")
@@ -255,7 +263,24 @@ func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 		cutFrom = "origin/" + req.Open.Branch
 		branchFlag = "-B"
 	}
-	if err := step(req.Root, "git", "worktree", "add", req.Worktree, branchFlag, req.Branch, cutFrom); err != nil {
+	// A coalesce re-cuts the OPEN carrier branch, and an earlier pass that failed after its commit
+	// may have retained its scan worktree with that branch still checked out; `worktree add` would
+	// then die on "already used by worktree" on every pass in the window. A retained scan worktree
+	// that is clean and sits exactly at the remote carrier tip is the state `-B` would have
+	// produced, so the pass carries on IN it. Anything else refuses and is left untouched.
+	reused := ""
+	if decision.Act() == CoalesceInto {
+		held, err := retainedCarrierWorktree(capture, req)
+		if err != nil {
+			return out, err
+		}
+		reused = held
+	}
+	if reused != "" {
+		req.Worktree = reused
+		out.Worktree = reused
+		out.Steps = append(out.Steps, "# reuse: "+req.Branch+" is checked out, clean, at the remote carrier tip in the retained scan worktree "+reused)
+	} else if err := step(req.Root, "git", "worktree", "add", req.Worktree, branchFlag, req.Branch, cutFrom); err != nil {
 		return out, err
 	}
 	if decision.Act() == CoalesceInto {

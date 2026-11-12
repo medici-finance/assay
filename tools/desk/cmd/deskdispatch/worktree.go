@@ -12,8 +12,8 @@ package main
 // proof is what keeps "render a stated path" from re-opening "let the verb guess a path".
 //
 // The prefix rule here is the same two-line rule the worktree verb enforces on the paths it
-// creates. The two commands are separate `main` packages, so the rule is DUPLICATED rather
-// than imported; it is deliberately no LOOSER than the original. Do not relax it.
+// creates: both call deskkit.InSanctionedWorktreePrefix, so the two cannot drift apart. Do not
+// relax it.
 
 import (
 	"fmt"
@@ -70,7 +70,7 @@ func liveRefreshResume(o dispatchOpts, branch string) error {
 // package var ONLY so tests can point it at a temp dir; production keeps the compiled-in
 // `/private/tmp`, matching the worktree verb's own fixed allowlist. It is deliberately NOT
 // wired to any env var or flag — an operator-relocatable prefix would defeat the allowlist.
-var worktreeTmpBase = "/private/tmp"
+var worktreeTmpBase = deskkit.SanctionedWorktreeTmpBase
 
 // validateOperatorWorktree proves that an operator-stated path is a usable home worktree
 // for the item whose repo is rooted at root, and returns the RESOLVED path to render. Each
@@ -135,16 +135,12 @@ func validateOperatorWorktree(root, path string) (string, error) {
 	return resolved, nil
 }
 
-// worktreePrefixAllowed is the worktree verb's own two-line prefix rule, duplicated (the
-// verbs are separate main packages) and no looser: a direct `tracker-*` child of the
-// resolved tmp base, or strictly under the resolved <repo-root>/.claude/worktrees/.
+// worktreePrefixAllowed is the worktree verb's own prefix rule — the same deskkit function
+// deskwt calls, not a copy of it: a direct `tracker-*` child of the resolved tmp base, or
+// strictly under the resolved <repo-root>/.claude/worktrees/.
 func worktreePrefixAllowed(resolved, sharedCheckout string) bool {
-	if filepath.Dir(resolved) == resolvePath(worktreeTmpBase) &&
-		strings.HasPrefix(filepath.Base(resolved), "tracker-") {
-		return true
-	}
-	wtDir := resolvePath(filepath.Join(sharedCheckout, ".claude", "worktrees"))
-	return strings.HasPrefix(resolved, wtDir+string(filepath.Separator))
+	return deskkit.InSanctionedWorktreePrefix(resolved, resolvePath(worktreeTmpBase),
+		resolvePath(filepath.Join(sharedCheckout, ".claude", "worktrees")))
 }
 
 // gitOut runs `git <args...>` in dir through the recording seam and returns trimmed stdout.

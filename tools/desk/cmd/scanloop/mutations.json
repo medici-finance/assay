@@ -1,0 +1,53 @@
+{
+  "test": "go test ./cmd/scanloop/ -run 'TestCoalesce(Reuses|Refuses)|TestScanWorktreeIsSanctioned|TestWindowsScanBaseUnderRepo' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — a coalesce never reuses the retained scan worktree (the carrier branch stays blocked by it, #6282)",
+    "file": "cmd/scanloop/lane.go",
+    "old": "\t\treused = held\n",
+    "new": "\t\treused = held[:0]\n"
+  },
+  "mutations": [
+    {
+      "name": "a retained scan worktree with uncommitted or untracked changes is reused (the scan commits a stranger's files onto the carrier)",
+      "file": "cmd/scanloop/scanworktree.go",
+      "old": "\tif strings.TrimSpace(status) != \"\" {",
+      "new": "\tif false && strings.TrimSpace(status) != \"\" {"
+    },
+    {
+      "name": "a retained scan worktree whose HEAD is not the remote carrier tip is reused (unpushed or stale commits ride the next push)",
+      "file": "cmd/scanloop/scanworktree.go",
+      "old": "\tif head == \"\" || head != tip {",
+      "new": "\tif false && (head == \"\" || head != tip) {"
+    },
+    {
+      "name": "a worktree this loop did not cut is reused because it happens to hold the carrier branch",
+      "file": "cmd/scanloop/scanworktree.go",
+      "old": "\tif !isScanWorktreeName(filepath.Base(held)) {",
+      "new": "\tif false && !isScanWorktreeName(filepath.Base(held)) {"
+    },
+    {
+      "name": "the scan worktree leaf loses the sanctioned tracker- prefix (deskwt refuses to remove a retained one)",
+      "file": "cmd/scanloop/scanworktree.go",
+      "old": "const scanWorktreeLeaf = deskkit.SanctionedWorktreeLeafPrefix + \"intake-scan-\"",
+      "new": "const scanWorktreeLeaf = \"intake-scan-\""
+    },
+    {
+      "name": "the POSIX default base reverts to the parent of --root (the location #6282 reported: outside every sanctioned prefix)",
+      "file": "cmd/scanloop/scanworktree.go",
+      "old": "\t\treturn scanTmpBase, nil",
+      "new": "\t\treturn filepath.Dir(root), nil"
+    },
+    {
+      "name": "the Windows default is accepted from the MAIN checkout (the scan worktree lands nested inside the checkout it scans)",
+      "file": "cmd/scanloop/scanworktree.go",
+      "old": "\tif nestedIn(base, absRoot) || nestedIn(base, resolvedRoot) {",
+      "new": "\tif false && (nestedIn(base, absRoot) || nestedIn(base, resolvedRoot)) {"
+    },
+    {
+      "name": "the reuse probe looks for a worktree holding a different ref (a held carrier branch is never found, so the coalesce dies on worktree add again)",
+      "file": "cmd/scanloop/scanworktree.go",
+      "old": "\twant := \"branch refs/heads/\" + branch",
+      "new": "\twant := \"branch refs/remotes/\" + branch"
+    }
+  ]
+}
