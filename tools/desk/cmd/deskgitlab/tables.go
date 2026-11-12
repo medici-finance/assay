@@ -8,9 +8,12 @@ package main
 // must not drift: tables_parity_test.go reads the shell table and compares it field for field.
 // A scope widened in translation is a privilege escalation nobody asked for.
 //
-// fleetLabels is the script's LABEL_TABLE: `review-request`, the six `raised-by:<role>`
-// provenance stamps, and the `authorization-needed` / `approval-needed` pair. Colors are
+// fleetLabels is internal/forgelabels' canonical set over its documented roles — the one
+// table deskfleet is driven from too, so the two provisioners cannot drift. It extends the
+// script's LABEL_TABLE with the `to:<role>` addressee rows `deskfile --to` stamps. Colors are
 // stored bare (six hex digits) and rendered with GitLab's leading `#` where they are sent.
+
+import "github.com/medici-finance/assay/tools/desk/internal/forgelabels"
 
 type fleetRole struct {
 	Role        string
@@ -29,23 +32,9 @@ var fleetRoles = []fleetRole{
 	{"board-writer", "developer", "30", "api,write_repository"},
 }
 
-type fleetLabel struct {
-	Name        string
-	Color       string // six hex digits, no leading '#'
-	Description string
-}
+type fleetLabel = forgelabels.Label
 
-var fleetLabels = []fleetLabel{
-	{"review-request", "d4c5f9", "dispatch token: a review session picks this up, runs the skill, posts the verdict"},
-	{"raised-by:desk", "BFDADC", "filed by the process desk (the-desk)"},
-	{"raised-by:worker", "BFDADC", "filed by a worker (worker-desk)"},
-	{"raised-by:reviewer", "BFDADC", "filed by the reviewer desk (pr-review-desk)"},
-	{"raised-by:verifier", "BFDADC", "filed by the verify desk (verify-desk)"},
-	{"raised-by:issue-loop", "BFDADC", "filed by the intake/issue loop (intake-desk)"},
-	{"raised-by:intake-loop", "BFDADC", "filed by the intake loop (roster-bound; no skill stamps it yet)"},
-	{"authorization-needed", "FBCA04", "review lane has not approved at head — waiting on a reviewer verdict / open findings"},
-	{"approval-needed", "5319E7", "review lane fully approved; flipped ready — waiting on the human's merge approval"},
-}
+var fleetLabels = forgelabels.Canonical(forgelabels.DocumentedRoles())
 
 const (
 	// defaultPATDays is FLEET_PAT_DAYS (spec.md §5's "7 days RECOMMENDED" expiry backstop).

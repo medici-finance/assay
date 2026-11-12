@@ -139,6 +139,10 @@ func (r *readOnlyForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead,
 	return r.inner.ChecksAtHead(repo, sha)
 }
 
+func (r *readOnlyForge) CheckSuitesAtHead(repo ForgeRepo, sha string) (*CheckSuitesAtHead, error) {
+	return r.inner.CheckSuitesAtHead(repo, sha)
+}
+
 func (r *readOnlyForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error) {
 	return r.inner.RequiredStatusChecks(repo, branch)
 }

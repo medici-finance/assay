@@ -256,7 +256,11 @@ discarded; it must never be the explanation for a verdict you cannot show.
   same write through another tool. Each desk's own grants and denials (what it may flip, file, close,
   or land) stay in its skill, directly below this block.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
-  or comments.
+  or comments. If a push is refused over an attribution trailer your harness added, not you (on
+  Cursor the host setting `attribution.attributeCommitsToAgent`, and `attribution.attributePRsToAgent`
+  for PR footers; both default to true), STOP: never rewrite history or re-commit to strip it, and
+  never push by another route. Report the setting and the refusal line; the host's operator sets
+  it to false.
 - **Reversibility test — default-forward on anything a human-held gate still catches:** before
   parking an item on the driver, ask ONE question: *is a wrong guess here caught by a gate the
   driver still controls — a draft PR awaiting merge, a filed issue awaiting close, a flip CI or a

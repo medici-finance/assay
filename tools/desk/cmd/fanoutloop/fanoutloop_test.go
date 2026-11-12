@@ -634,6 +634,7 @@ func TestReleaseDispatchClaim_UsesEnumeratedDeleteRef(t *testing.T) {
 
 // --- dispatch prompt carries the skill essentials verbatim, no shared-checkout path -----------
 
+// regression: #1792
 func TestDispatchPrompt_CarriesSkillEssentials(t *testing.T) {
 	it := loopengine.Item{
 		ID: "fixture/02", BriefPath: "docs/streams/fixture/brief-02-x.md", TargetSHA: "deadbeef",
@@ -652,7 +653,10 @@ func TestDispatchPrompt_CarriesSkillEssentials(t *testing.T) {
 		"Stop at `implemented`",                              // stop-at-implemented
 		"fast/cheap-tier model, STOP",                        // exec:strong pickup-STOP
 		"gate:human",                                         // gate:human handling present
-		"BLOCKED-ON-IAN",                                     // gate:human cutover stop-point
+		"BLOCKED-ON-IAN",                                     // escalation token (also in the offline clause)
+		// The cutover stop-point itself: the bare token above is satisfied by the offline
+		// clause too, so it alone never pinned the gate:human stop (issue #1792).
+		"STOP at that documented point, and report BLOCKED-ON-IAN",
 	} {
 		if !strings.Contains(p, must) {
 			t.Fatalf("dispatch prompt missing essential %q:\n%s", must, p)

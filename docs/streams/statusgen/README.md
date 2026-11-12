@@ -54,7 +54,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 18 | [`--scan-issues`: print a notice when an open issue derives `gate: human` and its placeholder reads `gate: model` (detect only, no write)](brief-18-gate-mismatch-notice.md) | 2 | S | implemented | — | — |
 | 19 | [Context handoff contracts and synthetic fixtures](brief-19-context-handoff-contracts.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | 20 | [Offline future-state resolver with receipt and amendment validation](brief-20-offline-context-resolver.md) | 2 | L | verified | 2026-10-25 assay-verifier-app[bot] @ 0c3b558efec3 (forge-identity) | — |
-| 21 | [Author skills consume the shared context handoff](brief-21-author-skill-handoff.md) | 4 | L | todo | — | — |
+| 21 | [Author skills consume the shared context handoff](brief-21-author-skill-handoff.md) | 4 | L | verified | 2026-11-11 assay-verifier-app[bot] @ b856f281f758 (claude-opus-5-5) | — |
 | 22 | [Product target records and compatible requirement parsing](brief-22-product-target-records-and-compatible-requirement-parsing.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | 23 | [Product target binding and context drift assessment](brief-23-product-target-binding-and-context-drift-assessment.md) | 3 | M | verified | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
 | 24 | [Portfolio allocation and capacity accounting](brief-24-portfolio-allocation-and-capacity-accounting.md) | 2 | M | verified | 2026-10-29 assay-verifier-app[bot] @ 4264d1027198 (forge-identity) | — |
@@ -73,7 +73,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 37 | [Content-bound witness schema v2: the writers and the desk readers](brief-37-content-bound-witness-schema-v2-writers.md) | 2 | L | todo | — | — |
 | 38 | [One-time v1-to-v2 witness backfill where the witnessed content is still fetchable](brief-38-one-time-v1-to-v2-witness-backfill.md) | 3 | M | todo | — | — |
 | 39 | [Multi-root objective reader: prerequisite graph, critical path and ranked moves](brief-39-multi-root-objective-reader.md) | 1 | L | todo | — | — |
-| 40 | [Chain approved acceptance transitions, and let one approval correct a row's Command and Expect](brief-40-chain-approved-acceptance-transitions.md) | 1 | M | todo | — | — |
+| 40 | [Chain approved acceptance transitions, and let one approval correct a row's Command and Expect](brief-40-chain-approved-acceptance-transitions.md) | 1 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

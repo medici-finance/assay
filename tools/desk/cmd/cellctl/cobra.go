@@ -711,7 +711,8 @@ func upCmd() *cobra.Command {
 			"  up      its cadence lease is held by a live process: reported already-up, never relaunched, its window\n" +
 			"          never touched;\n" +
 			"  stale   a running checkpoint with no live holder (a crashed session): plain up never reconciles it, the\n" +
-			"          role is reported failed and the exact recovery is named (up --plan, then up --apply);\n" +
+			"          role is reported failed naming the verb that clears its class (up --plan, then up --apply, for a\n" +
+			"          dead record; cadence recover --confirm-stopped, then up --role, for any other whose lease is free);\n" +
 			"  absent  launched, in the resolved COCKPIT: a tmux session \"<cell>-cell\" (an existing session gets only\n" +
 			"          the missing windows), a labelled herdr tab per role, or an orca terminal per role.\n" +
 			"A house cell opens no deskd window unless DESKD=1. --cockpit overrides cell.env CELL_COCKPIT for this run.\n" +
@@ -914,7 +915,9 @@ func newCmd() *cobra.Command {
 			"--kind house: a LOCAL cell on the operator's laptop; the desks reuse the operator's config home by symlink,\n" +
 			"no deskd is required, every role still boots in its own LOCKED worktree. --roots '<owner>/<repo>=<abs path>,...'\n" +
 			"[--roles \"<role> ...\"] [--port N] [--forge gitlab [--group G] [--gitlab-api-base URL]] (a gitlab house cell\n" +
-			"links no gh config).\n\n" +
+			"links no gh config). [--labels-token-file FILE]: ensure the forge label set (one raised-by:/to: row per role\n" +
+			"the roster binds) on every --roots repo under that operator credential; without it, or when the forge denies\n" +
+			"it, the step prints NOT ENSURED with the deskfleet labels command that finishes it (exit 1 when FILE was given).\n\n" +
 			"--kind container: --repo <repo-id> with --launcher <absolute-executable> (an operator-owned launcher, no\n" +
 			"credentials copied) or --container-config <absolute JSON file> (the native Go runtime; see docs/cellctl.md).\n\n" +
 			"--kind scrubbed: --repo <checkout> --repo-slug <owner/repo> [--roots '...'] [--roles \"...\"], a host-local\n" +
@@ -939,6 +942,7 @@ func newCmd() *cobra.Command {
 		bStr("gitlab-token-store", "gitlab: role token store directory"),
 		bStr("roots", "the DESK_ROOTS map: '<owner>/<repo>=<abs path>,...'"),
 		bDef("roles", "space-separated roles", rolesDefault),
+		bStr("labels-token-file", "house: FILE holding an operator credential that can write labels; ensures the label set on every --roots repo"),
 	)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if len(args) > 1 {

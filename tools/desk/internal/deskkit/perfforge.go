@@ -18,6 +18,13 @@ package deskkit
 // without a roster-shaped label's form (a shape check, not roster membership) or a hex stamp's
 // groups under "other" or "unpinned", so no path, URL or control byte reaches this section's
 // rows. Every sum saturates at the int64 maximum rather than wrapping.
+//
+// A release row stays keyed on its build stamp. A perf-v5 record also names the release tag its
+// binary was stamped with, and the row carries that tag when its records name exactly one:
+// records that name none (perf-v1, and perf-v2 from a dev or unstamped build) add no opinion,
+// and records that name two or more set ReleaseTagConflict and no tag — the view never picks
+// one, and never derives a tag from the stamp. The tag is re-checked against
+// perfrec.ReleasePattern here too, so only a tag's shape reaches the row.
 
 import (
 	"math"
@@ -38,21 +45,24 @@ const PerfForgeBudgetPerHour = 5000
 // every per-run and peak figure are over the Measured records only; Unavailable records were
 // not observed and add nothing. PeakHourCalls is the most calls this row made in one UTC clock
 // hour (PeakHour, the earliest on a tie); the two budget percentages divide the peak hour and
-// the p90 run by PerfForgeBudgetPerHour.
+// the p90 run by PerfForgeBudgetPerHour. ReleaseTag and ReleaseTagConflict are set on
+// release rows only (see the file comment); both are omitted when not set.
 type PerfForgeStats struct {
-	Key               string  `json:"key"`
-	Runs              int     `json:"runs"`
-	Measured          int     `json:"measured"`
-	Unavailable       int     `json:"unavailable"`
-	Calls             int64   `json:"calls"`
-	P50PerRun         int64   `json:"p50PerRun"`
-	P90PerRun         int64   `json:"p90PerRun"`
-	MaxPerRun         int64   `json:"maxPerRun"`
-	SharePct          float64 `json:"sharePct"`
-	PeakHour          string  `json:"peakHour,omitempty"`
-	PeakHourCalls     int64   `json:"peakHourCalls"`
-	PeakHourBudgetPct float64 `json:"peakHourBudgetPct"`
-	P90RunBudgetPct   float64 `json:"p90RunBudgetPct"`
+	Key                string  `json:"key"`
+	Runs               int     `json:"runs"`
+	Measured           int     `json:"measured"`
+	Unavailable        int     `json:"unavailable"`
+	Calls              int64   `json:"calls"`
+	P50PerRun          int64   `json:"p50PerRun"`
+	P90PerRun          int64   `json:"p90PerRun"`
+	MaxPerRun          int64   `json:"maxPerRun"`
+	SharePct           float64 `json:"sharePct"`
+	PeakHour           string  `json:"peakHour,omitempty"`
+	PeakHourCalls      int64   `json:"peakHourCalls"`
+	PeakHourBudgetPct  float64 `json:"peakHourBudgetPct"`
+	P90RunBudgetPct    float64 `json:"p90RunBudgetPct"`
+	ReleaseTag         string  `json:"releaseTag,omitempty"`
+	ReleaseTagConflict bool    `json:"releaseTagConflict,omitempty"`
 }
 
 // PerfForgeSummary is the forge section of `deskperf report`. Runs counts the perf-v1 and
@@ -101,8 +111,8 @@ func forgeCount(r PerfRecord) (calls int64, measured, ok bool) {
 	return 0, false, false
 }
 
-// SummarisePerfForge aggregates forge calls per tool and per release build (sourceSHA) over
-// the perf-v1 and perf-v2 invocation records: total calls, the calls-per-run distribution
+// SummarisePerfForge aggregates forge calls per tool and per release build (sourceSHA, labelled
+// with the release tag its records name) over the perf-v1 and perf-v2 invocation records: total calls, the calls-per-run distribution
 // (nearest rank), each row's share of all calls, and the rate-limit cost — the busiest UTC
 // hour and the p90 run as a share of PerfForgeBudgetPerHour. Runs == 0 means the window held
 // no record this view reads.
@@ -112,6 +122,7 @@ func SummarisePerfForge(recs []PerfRecord) PerfForgeSummary {
 		calls    int64
 		measured bool
 		hour     string
+		tag      string
 	}
 	byTool := map[string][]obs{}
 	byRelease := map[string][]obs{}
@@ -123,10 +134,13 @@ func SummarisePerfForge(recs []PerfRecord) PerfForgeSummary {
 		}
 		s.Runs++
 		o := obs{calls: calls, measured: measured}
+		if r.Schema == PerfSchemaV5 && perfrec.ReleasePattern.MatchString(r.ReleaseTag) {
+			o.tag = r.ReleaseTag
+		}
 		if measured {
 			s.Measured++
 			s.Calls = satAdd(s.Calls, calls)
-			if r.Schema == PerfSchemaV2 {
+			if IsPerfV2(r) {
 				s.FromV2++
 			} else {
 				s.FromV1++
@@ -146,13 +160,22 @@ func SummarisePerfForge(recs []PerfRecord) PerfForgeSummary {
 	}
 	s.PeakHour, s.PeakHourCalls = peakHour(hours)
 	s.PeakHourBudgetPct = budgetPct(s.PeakHourCalls)
-	rows := func(groups map[string][]obs) []PerfForgeStats {
+	rows := func(groups map[string][]obs, tagged bool) []PerfForgeStats {
 		var out []PerfForgeStats
 		for key, os := range groups {
 			st := PerfForgeStats{Key: key, Runs: len(os)}
 			var per []int64
 			hrs := map[string]int64{}
 			for _, o := range os {
+				if tagged && o.tag != "" {
+					switch {
+					case st.ReleaseTagConflict:
+					case st.ReleaseTag == "":
+						st.ReleaseTag = o.tag
+					case st.ReleaseTag != o.tag:
+						st.ReleaseTag, st.ReleaseTagConflict = "", true
+					}
+				}
 				if !o.measured {
 					st.Unavailable++
 					continue
@@ -184,7 +207,7 @@ func SummarisePerfForge(recs []PerfRecord) PerfForgeSummary {
 		})
 		return out
 	}
-	s.Tools, s.Releases = rows(byTool), rows(byRelease)
+	s.Tools, s.Releases = rows(byTool, false), rows(byRelease, true)
 	return s
 }
 
