@@ -229,6 +229,66 @@ func TestMonitorBurstCollapse(t *testing.T) {
 	}
 }
 
+// TestReplayCapLeavesBurst — the poller's burst bound is its own. scanloop's replay bound is a
+// separate knob (INTAKE_REPLAY_CAP) that the poller must never read: a fresh delta collapses at
+// INBOUND_MONITOR_BURST_CAP whether or not the replay knob is set, and a delta of exactly the
+// burst bound is listed whole, so a poller reading the replay value (3) would collapse it.
+//
+// regression: intake-class-routing/03 — the replay bound gained its own knob.
+func TestReplayCapLeavesBurst(t *testing.T) {
+	run := func(t *testing.T, replay string, newIssues int) string {
+		t.Helper()
+		t.Setenv("INBOUND_MONITOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+		t.Setenv("INBOUND_MONITOR_BURST_CAP", "7")
+		t.Setenv("ASSAY_MONITOR_PACE_SECONDS", "0")
+		if replay == "" {
+			t.Setenv("INTAKE_REPLAY_CAP", "")
+			if err := os.Unsetenv("INTAKE_REPLAY_CAP"); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			t.Setenv("INTAKE_REPLAY_CAP", replay)
+		}
+		plantRoster(t, []string{repoT})
+		stubSessionIdentity(t, "worker", "x-minted-token", nil)
+		fake := newForgeFake(t)
+		seed := fixtureCycle{Reads: map[string]fixtureRead{repoT: {Issues: issues(1)}}}
+		if _, code := pollInbound(t, fake, seed, repoT); code != 0 {
+			t.Fatalf("seed exit %d", code)
+		}
+		nums := make([]int, 0, newIssues+1)
+		for n := 1; n <= newIssues+1; n++ {
+			nums = append(nums, n)
+		}
+		out, code := pollInbound(t, fake, fixtureCycle{Reads: map[string]fixtureRead{repoT: {Issues: issues(nums...)}}}, repoT)
+		if code != 0 {
+			t.Fatalf("burst cycle: exit %d\n%s", code, out)
+		}
+		return out
+	}
+
+	t.Run("more than the burst bound collapses at the burst bound", func(t *testing.T) {
+		const want = "INBOUND-BURST: example-org/tracker 11 over 7 — listing suppressed\n"
+		with, without := run(t, "3", 11), run(t, "", 11)
+		if with != want {
+			t.Fatalf("with INTAKE_REPLAY_CAP=3:\n got %q\nwant %q", with, want)
+		}
+		if without != with {
+			t.Fatalf("the replay knob moved the poller's output:\n with    %q\n without %q", with, without)
+		}
+	})
+
+	t.Run("exactly the burst bound is listed whole", func(t *testing.T) {
+		with, without := run(t, "3", 7), run(t, "", 7)
+		if got := strings.Count(with, "INBOUND: "); got != 7 || strings.Contains(with, "INBOUND-BURST") {
+			t.Fatalf("with INTAKE_REPLAY_CAP=3 want 7 listed events and no burst line, got:\n%s", with)
+		}
+		if without != with {
+			t.Fatalf("the replay knob moved the poller's output:\n with    %q\n without %q", with, without)
+		}
+	})
+}
+
 // TestMonitorTokenFilePreconditions — a --token-file the verb cannot use is a precondition failure
 // (exit 1) BEFORE any read: it never swaps the identity it was told to use for another one.
 func TestMonitorTokenFilePreconditions(t *testing.T) {
