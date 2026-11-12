@@ -504,6 +504,8 @@ func v2Table(stdout io.Writer, v2 deskkit.PerfV2Summary, days int, tool, role st
 // hour against the App budget floor (PerfForgeBudgetPerHour says why that is a gauge, not a
 // bound), then one table per tool and one per release build. A row with
 // no measured run prints "-" for every figure — unavailable is not observed, never zero.
+// A release row reads "<tag> (<sha>)" when its records name one release tag, the sha flagged
+// "(tag conflict)" when they name more than one, and the sha alone when they name none.
 func forgeTable(stdout io.Writer, f deskkit.PerfForgeSummary) error {
 	peak := "-"
 	if f.PeakHour != "" {
@@ -528,13 +530,25 @@ func forgeTable(stdout io.Writer, f deskkit.PerfForgeSummary) error {
 				figs = fmt.Sprintf("%d\t%d\t%d\t%d\t%.1f\t%d\t%.2f\t%.2f",
 					r.Calls, r.P50PerRun, r.P90PerRun, r.MaxPerRun, r.SharePct, r.PeakHourCalls, r.PeakHourBudgetPct, r.P90RunBudgetPct)
 			}
-			fmt.Fprintf(tw, "%s\t%d\t%d\t%s\n", r.Key, r.Runs, r.Unavailable, figs)
+			fmt.Fprintf(tw, "%s\t%d\t%d\t%s\n", forgeRowLabel(r), r.Runs, r.Unavailable, figs)
 		}
 		if err := tw.Flush(); err != nil {
 			return deskkit.Unverifiable("cannot write the report", err)
 		}
 	}
 	return nil
+}
+
+// forgeRowLabel is a forge row's first column. Rows stay keyed on Key; a release row's tag only
+// labels it, so two builds with one tag are two rows.
+func forgeRowLabel(r deskkit.PerfForgeStats) string {
+	switch {
+	case r.ReleaseTagConflict:
+		return r.Key + " (tag conflict)"
+	case r.ReleaseTag != "":
+		return r.ReleaseTag + " (" + r.Key + ")"
+	}
+	return r.Key
 }
 
 // countList renders "a N · b M" over the known keys in order, then any other key by name.

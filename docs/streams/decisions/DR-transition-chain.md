@@ -4,7 +4,7 @@ date: "2026-11-10"
 title: "Chain approved acceptance transitions link by link, and let a row approved for Command+Expect replace its whole Command cell"
 consequence: major
 decided-by: "human:<name>"
-ruling: "https://github.com/medici-finance/assay/issues/6064#issuecomment-6773695768"
+ruling: "https://github.com/medici-finance/assay/issues/6064#issuecomment-6810709991"
 alternatives:
   - "Keep the one-span Command rule for rows approved for both cells (Q1, option 2). Ruled out: the first table waiting on this change, desk-containers/17, has two rows whose Command cells are rewritten whole while their Expect changes, so they would still refuse and that brief would have to be re-derived at a new delivery."
   - "Require every link of every chain, including the first, to carry a new approval in the chain format (Q2, option 2). Ruled out: the held statusgen/36 correction already has an approval in today's one-link format and needs a second link; refusing it would mean asking for that approval again for no added binding."
@@ -16,7 +16,7 @@ accepted:
   - "One-line (v1) acceptance-transition records keep today's verdicts byte-for-byte."
 ---
 
-**Status:** routed — the driver approved this record on 2026-11-10 in the `ruling:` comment above, and statusgen/40 cites it.
+**Status:** routed — the driver approved this record on 2026-11-10 and explicitly bound it to statusgen/40 on 2026-11-11 (America/Phoenix) in the `ruling:` comment above.
 **Routes-to:** docs/streams/statusgen/
 
 ## Basis
@@ -36,16 +36,11 @@ https://github.com/medici-finance/assay/issues/5211#issuecomment-6771619511
 
 ## Ruling
 
-On 2026-11-10 the driver approved this record on #6064, the issue whose body carries this
-record's decision-gate marker. The comment is unedited and was posted from the driver's own
-account. Its text reads:
+On 2026-11-11 (America/Phoenix; 2026-11-12 UTC), the driver posted a new, unedited comment on #6064 naming both this record and statusgen/40:
 
-> DR-transition-chain: approved — Q1 A, Q2 A, Q3 A as recorded above.
+> Approve DR-transition-chain for statusgen/40: Q1 option 1, Q2 option 1, Q3 option 1.
 
-That comment is this record's `ruling:`. It names the record, so `decided-by` above stays the
-public-repository placeholder and is confirmed through that link (`spec/registers-v1.md` §7.5).
-No bot relay or PR approval stands in for it. The three answer comments above stay the
-record of what each answer was.
+That comment is this record's `ruling:`. It binds the existing answers to this brief; it grants neither verification PASS nor final acceptance. The original record approval remains at https://github.com/medici-finance/assay/issues/6064#issuecomment-6773695768 and the three answer comments above retain their provenance. `decided-by` stays the public-repository placeholder, corroborated through the human-authored ruling (`spec/registers-v1.md` §7.5). No bot relay or PR approval stands in for it.
 
 ## What this record does not decide
 

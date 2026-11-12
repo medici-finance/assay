@@ -120,6 +120,11 @@ type glServer struct {
 	// not yet on the not-yet-created target branch. When nil, the GET is ref-agnostic — a file
 	// in repoFile is served on any ref, which is what every pre-existing case relies on.
 	repoFileRefs map[string]bool
+	// repoTree is the Repository Tree API listing (ReadFile's tree-entry mode lookup, #6163),
+	// keyed by the request's `path` query ("" for the repository root). Absent → 404. When
+	// repoTreePerPage > 0 the listing is served in pages of that size with X-Next-Page.
+	repoTree        map[string][]map[string]any
+	repoTreePerPage int
 	// updateFileStatus, when set, is the status the Commit API update-action route returns
 	// instead of 201 — the failed-update case (a race that removed the path between the probe
 	// and the write, or a caller bug), which must surface as could-not-check and NEVER be
@@ -233,6 +238,7 @@ var (
 	lMRNote1     = regexp.MustCompile(`/merge_requests/[0-9]+/notes/[0-9]+$`)
 	lProjLabels  = regexp.MustCompile(`^/api/v4/projects/[^/]+/labels$`)
 	lRepoFile    = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/files/[^/]+$`)
+	lRepoTree    = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/tree$`)
 	// the forge-gitlab merge-hold brief adds the merge-hold marker thread's discussion endpoints. lMRDiscNote
 	// (the note sub-resource) is matched BEFORE lMRDisc1 (the discussion resource) and
 	// lMRDiscussions (the list/create collection), same ordering discipline lMRNote1 already
@@ -323,6 +329,30 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("X-Next-Page", fmt.Sprintf("%d", n+1))
 		}
 		enc(nonNilList(out))
+	case r.Method == http.MethodGet && lRepoTree.MatchString(path):
+		entries, ok := s.repoTree[r.URL.Query().Get("path")]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			enc(map[string]any{"message": "404 Tree Not Found"})
+			return
+		}
+		if s.repoTreePerPage > 0 {
+			n := 1
+			if page != "" {
+				_, _ = fmt.Sscanf(page, "%d", &n)
+			}
+			lo, hi := (n-1)*s.repoTreePerPage, n*s.repoTreePerPage
+			if hi < len(entries) {
+				w.Header().Set("X-Next-Page", fmt.Sprintf("%d", n+1))
+			} else {
+				hi = len(entries)
+			}
+			if lo > hi {
+				lo = hi
+			}
+			entries = entries[lo:hi]
+		}
+		enc(nonNilList(entries))
 	case lRepoFile.MatchString(path):
 		// Repository Files API: GET reads, POST creates, PUT updates. The file path is the
 		// last segment, which the client library escapes fully (a "." becomes %2E), so it is
@@ -1110,6 +1140,13 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
 		},
 		{
+			// #6234: GitLab has no check-suite container, so the read answers the EMPTY set and
+			// issues no request — the golden's empty request trace pins that.
+			name: "check_suites_at_head_none", method: "CheckSuitesAtHead",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.CheckSuitesAtHead(glRepo, "abc123") },
+		},
+		{
 			// issue #1411 — the merge_request_event shape #1125 / PR #1134 missed: the commit
 			// document carries NO `last_pipeline`, yet a GREEN pipeline exists at the head SHA
 			// and is reachable through the SAME by-SHA read ListOpenChanges already uses
@@ -1729,19 +1766,122 @@ func glCases() []glCase {
 			},
 		},
 		{
+			// #6163: the Files API names no type; a read whose content hashes to blob_id and
+			// whose tree entry is that blob with a regular mode is a plain file.
 			name: "read_file", method: "ReadFile",
 			setup: func(s *glServer) {
-				s.repoFile = map[string]map[string]any{
-					"EVIDENCE.md": {
-						"file_name":      "EVIDENCE.md",
-						"file_path":      "EVIDENCE.md",
-						"content":        glB64("row one\n"),
-						"encoding":       "base64",
-						"ref":            "feat/x",
-						"blob_id":        "blob-1",
-						"last_commit_id": "commit-1",
-					},
-				}
+				s.repoFile = map[string]map[string]any{"EVIDENCE.md": glFile("EVIDENCE.md", "row one\n", glBlobRowOne, false)}
+				s.repoTree = map[string][]map[string]any{"": {
+					glTreeNode("docs", "tree", "040000", "tree-1"),
+					glTreeNode("EVIDENCE.md", "blob", "100644", glBlobRowOne),
+				}}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ReadFile(glRepo, ReadFileInput{File: "EVIDENCE.md", Ref: "feat/x"})
+			},
+		},
+		{
+			// An executable blob (mode 100755, execute_filemode true) is a plain file: the
+			// neutral type has no separate executable slot.
+			name: "read_file_executable", method: "ReadFile",
+			setup: func(s *glServer) {
+				s.repoFile = map[string]map[string]any{"tools/run.sh": glFile("tools/run.sh", "#!/bin/sh\necho hi\n", glBlobScript, true)}
+				s.repoTree = map[string][]map[string]any{"tools": {glTreeNode("tools/run.sh", "blob", "100755", glBlobScript)}}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ReadFile(glRepo, ReadFileInput{File: "tools/run.sh", Ref: "feat/x"})
+			},
+		},
+		{
+			// execute_filemode disagrees with the tree mode: the two reads did not see one
+			// entry, so the read is unproven.
+			name: "read_file_exec_mode_mismatch", method: "ReadFile",
+			setup: func(s *glServer) {
+				s.repoFile = map[string]map[string]any{"tools/run.sh": glFile("tools/run.sh", "#!/bin/sh\necho hi\n", glBlobScript, false)}
+				s.repoTree = map[string][]map[string]any{"tools": {glTreeNode("tools/run.sh", "blob", "100755", glBlobScript)}}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ReadFile(glRepo, ReadFileInput{File: "tools/run.sh", Ref: "feat/x"})
+			},
+		},
+		{
+			// A symbolic link is served as its own blob (the target text), which passes the
+			// blob proof; only the tree mode 120000 tells it apart.
+			name: "read_file_symlink", method: "ReadFile",
+			setup: func(s *glServer) {
+				s.repoFile = map[string]map[string]any{"docs/EVIDENCE.md": glFile("docs/EVIDENCE.md", "../shared/EVIDENCE.md", glBlobLink, false)}
+				s.repoTree = map[string][]map[string]any{"docs": {glTreeNode("docs/EVIDENCE.md", "blob", "120000", glBlobLink)}}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ReadFile(glRepo, ReadFileInput{File: "docs/EVIDENCE.md", Ref: "feat/x"})
+			},
+		},
+		{
+			// A submodule is served with empty content under its commit id, which the empty
+			// blob does not hash to: unproven, with no tree lookup.
+			name: "read_file_submodule", method: "ReadFile",
+			setup: func(s *glServer) {
+				s.repoFile = map[string]map[string]any{"vendor/lib": glFile("vendor/lib", "", "0123456789abcdef0123456789abcdef01234567", false)}
+				s.repoTree = map[string][]map[string]any{"vendor": {glTreeNode("vendor/lib", "commit", "160000", "0123456789abcdef0123456789abcdef01234567")}}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ReadFile(glRepo, ReadFileInput{File: "vendor/lib", Ref: "feat/x"})
+			},
+		},
+		{
+			// A blob id the content does not hash to fails the proof: unproven, no tree lookup.
+			name: "read_file_blob_mismatch", method: "ReadFile",
+			setup: func(s *glServer) {
+				s.repoFile = map[string]map[string]any{"EVIDENCE.md": glFile("EVIDENCE.md", "row one\n", glBlobScript, false)}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ReadFile(glRepo, ReadFileInput{File: "EVIDENCE.md", Ref: "feat/x"})
+			},
+		},
+		{
+			// The tree lookup fails: the read is still served, as unproven.
+			name: "read_file_tree_lookup_fails", method: "ReadFile",
+			setup: func(s *glServer) {
+				s.repoFile = map[string]map[string]any{"EVIDENCE.md": glFile("EVIDENCE.md", "row one\n", glBlobRowOne, false)}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ReadFile(glRepo, ReadFileInput{File: "EVIDENCE.md", Ref: "feat/x"})
+			},
+		},
+		{
+			// The tree entry names a different blob (the ref moved between reads): unproven.
+			name: "read_file_tree_other_blob", method: "ReadFile",
+			setup: func(s *glServer) {
+				s.repoFile = map[string]map[string]any{"EVIDENCE.md": glFile("EVIDENCE.md", "row one\n", glBlobRowOne, false)}
+				s.repoTree = map[string][]map[string]any{"": {glTreeNode("EVIDENCE.md", "blob", "100644", glBlobScript)}}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ReadFile(glRepo, ReadFileInput{File: "EVIDENCE.md", Ref: "feat/x"})
+			},
+		},
+		{
+			// The entry sits past the first tree page: the walk follows X-Next-Page.
+			name: "read_file_tree_paged", method: "ReadFile",
+			setup: func(s *glServer) {
+				s.repoFile = map[string]map[string]any{"EVIDENCE.md": glFile("EVIDENCE.md", "row one\n", glBlobRowOne, false)}
+				s.repoTree = map[string][]map[string]any{"": {
+					glTreeNode("AGENTS.md", "blob", "100644", glBlobScript),
+					glTreeNode("EVIDENCE.md", "blob", "100644", glBlobRowOne),
+				}}
+				s.repoTreePerPage = 1
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ReadFile(glRepo, ReadFileInput{File: "EVIDENCE.md", Ref: "feat/x"})
+			},
+		},
+		{
+			// A response that names no blob id does not identify an entry: it stays untyped
+			// (Kind ""), which every caller needing a plain record refuses.
+			name: "read_file_untyped", method: "ReadFile",
+			setup: func(s *glServer) {
+				f := glFile("EVIDENCE.md", "row one\n", "", false)
+				delete(f, "blob_id")
+				s.repoFile = map[string]map[string]any{"EVIDENCE.md": f}
 			},
 			run: func(f *GitLabForge) (any, error) {
 				return f.ReadFile(glRepo, ReadFileInput{File: "EVIDENCE.md", Ref: "feat/x"})
@@ -2921,6 +3061,8 @@ func glCases() []glCase {
 	}
 }
 
+// The read_file* cases are the #6163 fail-first cases (GitLab file reads typed by the adapter).
+// regression: #6163
 func TestForgeGitlabGolden(t *testing.T) {
 	for _, tc := range glCases() {
 		tc := tc
@@ -3625,4 +3767,26 @@ func TestAutoLaneSignOffThread_GitLabTypedNotesCapIsCouldNotCheck(t *testing.T) 
 	if err != nil || len(cs) != 3 {
 		t.Fatalf("a 3-page thread read %d notes, err %v — want all 3", len(cs), err)
 	}
+}
+
+// Real git blob ids (git hash-object) of the ReadFile fixtures' contents (#6163).
+const (
+	glBlobRowOne = "04e65df65794ea688c6af5eed3abb4fe7fb72dde" // "row one\n"
+	glBlobScript = "4163036efa65bd4a469e752267498f01ea36a55c" // "#!/bin/sh\necho hi\n"
+	glBlobLink   = "54e64a655ef34865f65a57262c5f20802c8832b8" // "../shared/EVIDENCE.md"
+)
+
+// glFile is a Repository Files API GET payload as GitLab serves it: no type, no mode.
+func glFile(path, content, blobID string, executable bool) map[string]any {
+	return map[string]any{
+		"file_name": path[strings.LastIndex(path, "/")+1:], "file_path": path,
+		"size": len(content), "encoding": "base64", "content": glB64(content),
+		"ref": "feat/x", "blob_id": blobID, "commit_id": "commit-0",
+		"last_commit_id": "commit-1", "execute_filemode": executable,
+	}
+}
+
+// glTreeNode is one Repository Tree API entry.
+func glTreeNode(path, typ, mode, id string) map[string]any {
+	return map[string]any{"id": id, "name": path[strings.LastIndex(path, "/")+1:], "type": typ, "path": path, "mode": mode}
 }

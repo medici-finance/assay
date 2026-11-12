@@ -307,7 +307,15 @@ func witAttestV2(t *testing.T) string {
 func TestHeldScopeWitnessForms(t *testing.T) {
 	cnr := witRow3(stateCouldNotRun, -1, witCNR)
 	v2 := witAttestV2(t)
+	base3 := failFirstCell("", baseUnproven, -1, "0123456789ab")
+	logged := func(state string, exit int) string {
+		cell := failFirstCell("abc1234", state, exit, "0123456789ab") +
+			" output=sha256:" + strings.Repeat("a", 64) + " log=row-000001.log"
+		return strings.Replace(witTableFF(4, sandboxUnshare, witPass, witAttest), base3+" |", cell+" |", 1)
+	}
 	runHeldRowCases(t, []heldScanCase{
+		{"retained red Base covers earlier BLOCKED", witOldRow + witEntry("Run 2", logged(baseRed, 1), "", "**VERIFY: PASS**"), false},
+		{"retained green Base covers earlier BLOCKED", witOldRow + witEntry("Run 2", logged(baseGreen, 0), "", "**VERIFY: PASS**"), false},
 		// The fail-first header passes its trailer over as witnessHeader does.
 		{"fail-first witness, earlier",
 			witEntry("Run 1", witTableFF(4, sandboxUnshare, cnr, witAttest), witBullet, "VERIFY: BLOCKED") + witLatest(witPass), false},
@@ -343,8 +351,15 @@ func TestHeldScopeWitnessForms(t *testing.T) {
 func TestHeldScopeWitnessExact(t *testing.T) {
 	ff := witTableFF(4, sandboxUnshare, witPass, witAttest)
 	base3 := failFirstCell("", baseUnproven, -1, "0123456789ab")
+	suffix := " output=sha256:" + strings.Repeat("a", 64) + " log=row-000001.log"
+	withBase := func(cell string) string { return strings.Replace(ff, base3+" |", cell+" |", 1) }
 	latest := func(table string) string { return witOldRow + witEntry("Run 2", table, "", "**VERIFY: PASS**") }
 	runHeldLayerCases(t, []heldScanCase{
+		{"unproven Base with output metadata", latest(withBase(base3 + suffix)), true},
+		{"not-selected Base with output metadata", latest(withBase(failFirstCell("", baseNotSelected, -1, "0123456789ab") + suffix)), true},
+		{"retained Base followed by note", latest(withBase(failFirstCell("abc1234", baseRed, 1, "0123456789ab") + suffix + " see log")), true},
+		{"retained Base with bad digest", latest(withBase(failFirstCell("abc1234", baseRed, 1, "0123456789ab") + strings.Replace(suffix, strings.Repeat("a", 64), "short", 1))), true},
+		{"retained Base with traversal", latest(withBase(failFirstCell("abc1234", baseRed, 1, "0123456789ab") + strings.Replace(suffix, "row-000001.log", "../outside", 1))), true},
 		{"digest in emphasis", latest(strings.ReplaceAll(witTable(4, "", witPass, witAttest),
 			"sha256:0123456789ab", "**sha256:0123456789ab**")), true},
 		{"digest in upper case", latest(strings.ReplaceAll(witTable(4, "", witPass, witAttest),

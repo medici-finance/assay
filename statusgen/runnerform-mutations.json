@@ -118,8 +118,8 @@
     {
       "name": "the host lane stamps treeSHA again (an Evidence-only edit reads +dirty)",
       "file": "verifyrun.go",
-      "old": "\texecutionTree := briefTreeSHA(root, path)",
-      "new": "\texecutionTree := treeSHA(root)"
+      "old": "\t\texecutionTree = briefTreeSHA(root, path)",
+      "new": "\t\texecutionTree = treeSHA(root)"
     },
     {
       "name": "the bracket open step derives treeSHA again",

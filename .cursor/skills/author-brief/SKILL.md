@@ -50,8 +50,45 @@ Specs and briefs identify the selected target/transition, semantic contracts and
 applicable project engineering guidelines by canonical pointer. Include their
 pickup/resume assessment in the implementation handoff; record revisions, coverage
 and continue/adapt/hold rather than assume the authoring snapshot is still current.
-Use the explicit manual bootstrap until the shared operation is shipped and supported.
+Use the shipped context operation where the installed version supports it (see the
+supported version below); otherwise use the explicit manual bootstrap.
 Do not rewrite completed Evidence or let a draft proposal veto approved work.
+
+## Consume the context handoff before opening the PR
+
+When the spec hands over a context receipt, the brief PR answers it:
+
+1. Recheck the receipt against the current snapshot with
+   `statusgen context recheck --snapshot DIR receipt.json`. Reconcile (exit 1) or resolve the
+   hold (exit 3) before authoring on it.
+2. For each impact you dispose `amend`, write the candidate brief patch, a single-file
+   unified diff against the brief's current revision, and record the obligation in the
+   receipt's `amendments` with that patch's base revision and digest. Bind every obligation
+   in an `amendment-manifest-v1` file: owning brief, action, delivery paths, test commands,
+   active-work treatment, and the patch or follow-up brief it binds to.
+3. Run `statusgen context check --snapshot DIR receipt.json manifest.json PATCH...` and open
+   the PR only on exit 0. An `amend` obligation without a patch is a failure, not a note:
+   the receipt's own validation refuses it. Fix a refusal (exit 1) or a hold (exit 3); never
+   waive it in the PR body.
+4. The existing rules still apply: author `consumers:`, `depends:` / `unblocks:` and the
+   Verify table as below. A patch never edits populated Evidence or a dated source account,
+   and a delivered brief takes a linked follow-on instead of a patch.
+5. Keep product and architecture bindings separate: carry each brief's `outcome` and
+   `outcome-revision` unchanged unless the spec moves them, and never drop the revision the
+   work was first selected against.
+
+**Supported version.** `statusgen context discover`, `statusgen context recheck` and
+`statusgen context check`, with the `context-handoff-v1` and `context-handoff-v2` receipts and
+the `amendment-manifest-v1` file, ship in Assay v1.0.55 and later. The product-binding
+extension, `context-handoff-v3`, ships in v1.0.63 and later. `statusgen context --help`
+lists the verbs an install has.
+
+**Manual bootstrap.** When the installed statusgen lacks the verb, or lacks the
+product-binding extension while briefs bind `outcome-revision`, follow the
+[implementation pickup procedure](../../references/implementation-pickup.md) by hand: record
+the impacted briefs, their revisions, coverage and each amendment obligation in the handoff,
+and say that it is a manual bootstrap. Never invent a receipt or a schema version the
+install does not ship.
 
 ## Map work to delivery milestones
 
