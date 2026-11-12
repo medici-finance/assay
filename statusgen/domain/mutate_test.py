@@ -27,6 +27,11 @@ class SnapshotTests(unittest.TestCase):
             self.assertEqual([f.name for f in copied.glob("*.go")], ["ids.go"])
             self.assertEqual((copied / "ids.go").read_bytes(),
                              (runner.ROOT / "statusgen/contexthandoff/ids.go").read_bytes())
+            caps = dest / "statusgen/readercaps"
+            self.assertEqual(sorted(f.name for f in caps.glob("*.go")),
+                             ["caps.go", "diagnostic.go"])
+            self.assertEqual((caps / "caps.go").read_bytes(),
+                             (runner.ROOT / "statusgen/readercaps/caps.go").read_bytes())
             result = subprocess.run(
                 ["go", "test", "-count=1", "-timeout=30s", "./domain"],
                 cwd=dest / "statusgen", env=runner.offline_env(), text=True,

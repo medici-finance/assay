@@ -150,9 +150,11 @@ RUN set -eu; \
     rm -f /tmp/yq; \
     test "$(yq --version)" = 'yq (https://github.com/mikefarah/yq/) version v4.54.1'
 
-# Go module cache for tools/desk (which also requires the gopkg.in/yaml.v3
-# module the containers/k8s YAML adapter runs on) and for statusgen, which
-# tools/desk tests build from source. Only module files are copied; the
+# Go module cache for every module root the manifest below lists: tools/desk
+# (which also requires the gopkg.in/yaml.v3 module the containers/k8s YAML
+# adapter runs on), statusgen, which tools/desk tests build from source, and
+# each other tracked module with requirements of its own, so a row that builds
+# qualgen or workflow offline resolves too. Only module files are copied; the
 # downloads are checked against each module's go.sum. Rows need no proxy, and
 # the cache stays read-only and world-readable for a non-root row user.
 #
@@ -172,13 +174,23 @@ ENV GOMODCACHE=/go/pkg/mod
 COPY images/verify-runner/go-module-roots.txt /usr/local/share/verify-runner/go-module-roots.txt
 COPY tools/desk/go.mod tools/desk/go.sum /tmp/modsrc/tools/desk/
 COPY statusgen/go.mod statusgen/go.sum /tmp/modsrc/statusgen/
+COPY qualgen/go.mod qualgen/go.sum /tmp/modsrc/qualgen/
+COPY workflow/go.mod workflow/go.sum /tmp/modsrc/workflow/
+COPY gitcore/go.mod gitcore/go.sum /tmp/modsrc/gitcore/
+COPY loopadmin/go.mod loopadmin/go.sum /tmp/modsrc/loopadmin/
+COPY cellconfig/go.mod cellconfig/go.sum /tmp/modsrc/cellconfig/
+COPY tools/freshness/go.mod tools/freshness/go.sum /tmp/modsrc/tools/freshness/
+COPY tools/intake-eval/go.mod tools/intake-eval/go.sum /tmp/modsrc/tools/intake-eval/
+COPY tools/loopresolve/go.mod tools/loopresolve/go.sum /tmp/modsrc/tools/loopresolve/
+COPY tools/metrics-harvest/go.mod tools/metrics-harvest/go.sum /tmp/modsrc/tools/metrics-harvest/
+COPY tools/pairedversions/go.mod tools/pairedversions/go.sum /tmp/modsrc/tools/pairedversions/
+COPY tools/plugindrift/go.mod tools/plugindrift/go.sum /tmp/modsrc/tools/plugindrift/
+COPY tools/skillslint/go.mod tools/skillslint/go.sum /tmp/modsrc/tools/skillslint/
 COPY comms/go.mod /tmp/modsrc/comms/
 COPY deskcore/go.mod /tmp/modsrc/deskcore/
 COPY forgeread/go.mod /tmp/modsrc/forgeread/
 COPY gitquiet/go.mod /tmp/modsrc/gitquiet/
-COPY gitcore/go.mod /tmp/modsrc/gitcore/
 COPY perfrec/go.mod /tmp/modsrc/perfrec/
-COPY workflow/go.mod /tmp/modsrc/workflow/
 RUN set -eu; \
     export GOWORK=off GOFLAGS=-mod=readonly GOTOOLCHAIN=local; \
     while read -r root; do \
@@ -237,3 +249,7 @@ RUN set -eux; \
     fi; \
     test ! -e /usr/lib/git-core; \
     PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/local/bin/git-floor-check
+
+# CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
+# them off. A fragile stopgap only; patched node kernels are the real fix.
+ENV GODEBUG=multipathtcp=0

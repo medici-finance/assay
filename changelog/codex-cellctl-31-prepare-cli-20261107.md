@@ -1,1 +1,0 @@
-- Move compatibility cold-volume preparation parsing into `cellctl compat-prepare`; retain the image-owned initializer and document companion placement for existing role images.

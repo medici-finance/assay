@@ -82,3 +82,35 @@ await:
 	}
 	return errors.Join(result.Err, ctx.Err(), recordErr, write(l.dir, s))
 }
+
+// RecordStopped finishes the unfinished interactive record that owner pid left behind. It is
+// only for a teardown that signalled that owner itself and then proved, by pid and start time,
+// that the owner and every child it recorded are gone and that no process carrying the role's
+// marker survives: a crashed owner nobody stopped still needs explicit recovery. The caller holds
+// the lease. Anything but a Running interactive record written by pid is refused unchanged.
+func (l *Lease) RecordStopped(pid int, summary string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.file == nil || l.running {
+		return errors.New("role lease closed or already running")
+	}
+	s, err := Read(l.dir)
+	if err != nil {
+		return err
+	}
+	if s.Mode != "interactive" || !s.Running || pid <= 0 || s.PID != pid {
+		return errors.New("checkpoint is not the unfinished interactive record of the stopped owner")
+	}
+	now := time.Now().UTC()
+	if now.Before(s.LastStart) {
+		now = s.LastStart
+	}
+	s.Running = false
+	s.Heartbeat = now
+	s.LastFinish = now
+	s.NextDue = now
+	s.Outcome = "could-not-check" // the harness's own result was never observed
+	s.Summary = summary
+	s.ExitCode = -1
+	return write(l.dir, s)
+}

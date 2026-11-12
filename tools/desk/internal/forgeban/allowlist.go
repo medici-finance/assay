@@ -198,7 +198,7 @@ var UnresolvedArgv = []Allowance{
 			"no forge permit or runtime activation, and leaves the owner gate in place.",
 	},
 	{
-		Key: "internal/cellprocess/run.go::runObserved::<unresolved>",
+		Key: "loopadmin/process/run.go::runObserved::<unresolved>",
 		Reason: "the shared process-tree runner for cadence and interactive host harnesses and the " +
 			"explicit cellctl scratch run command. Harness callers supply registered claude, codex, or " +
 			"Cursor launch argv; scratch run accepts the operator-selected task executable directly, " +

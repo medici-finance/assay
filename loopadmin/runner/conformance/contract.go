@@ -35,7 +35,7 @@ func finish(t *testing.T, s Subject, c *runner.Client, ref runner.Ref, res runne
 
 // secretShape builds a credential-shaped string at run time, so no literal in
 // the tree looks like one.
-func secretShape() string { return "gh" + "p_" + strings.Repeat("a1", 20) }
+func secretShape() string { return "ghp" + "_" + strings.Repeat("a1", 20) }
 
 // passwordURL builds a URL whose userinfo carries a password, at run time.
 func passwordURL() string {

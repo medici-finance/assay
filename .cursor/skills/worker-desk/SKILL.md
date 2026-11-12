@@ -515,6 +515,17 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
              [--model SLUG] [--brief PATH] [--gate-human] [--pr N] [--dry-run]
 ```
 
+- **Context pickup receipt** (statusgen/21; deskdispatch from the first release whose
+  `CHANGELOG.md` names `--context-snapshot`). When the brief was authored against a context
+  receipt, pass `--context-snapshot DIR --context-receipt FILE` with an implementer kit. Before the claim, deskdispatch runs the shipped `statusgen context recheck`
+  semantics over them: a current receipt, an unrelated edit or a product change to assess is
+  admitted and carried into the prompt's `## Context pickup receipt` section; a conflict to
+  reconcile, an unavailable input or partial coverage is HELD (exit 5, `dispatch HELD on context
+  pickup`, nothing claimed): a delay, not a verdict. A receipt schema this build does not
+  validate is refused, never admitted unchecked. Without the flags, or on an older install, the
+  kit's Architecture pickup is the **manual bootstrap** of the
+  [implementation pickup procedure](../../references/implementation-pickup.md), the one
+  procedure the author skills also follow.
 - **The item key passes through UNCHANGED** — `<repo>--<stream>--<NN>`, or `<repo>--issue-<NN>` for
   issue-shaped work. A key a dispatcher reshaped would not collide with the one another desk holds,
   and a claim that does not collide is not a claim.
@@ -944,7 +955,11 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   is a floor, not the reversibility test above: an item that test calls one-way is filed
   `caught-by: nothing`, and so stays on the driver's queue, whatever the keywords say.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
-  or comments.
+  or comments. If a push is refused over an attribution trailer your harness added, not you (on
+  Cursor the host setting `attribution.attributeCommitsToAgent`, and `attribution.attributePRsToAgent`
+  for PR footers; both default to true), STOP: never rewrite history or re-commit to strip it, and
+  never push by another route. Report the setting and the refusal line; the host's operator sets
+  it to false.
 
 ## Cross-desk hand-offs — the lane verbs
 
@@ -1042,10 +1057,14 @@ worker-desk's own.
   bindings), the desk falls back to the event-driven + fixed-cadence board sweep at the same 30-minute
   cadence and **states the gap in-session**; a durable wake is a convenience, never one of the three
   never-degrade guarantees.
-- **A tick keeps the dead-man lease fresh.** The desk tools refuse to run when the `HEARTBEAT`
-  file in the config home (desk-shell.md §Config home: `~/.config/assay`) has not been touched
-  inside its staleness window, so the standing loop is the thing that keeps it current: touch
-  it on every tick, including a quiet one.
+- **A tick never renews the dead-man lease.** When the `HEARTBEAT` file in the config home
+  (desk-shell.md §Config home: `~/.config/assay`) exists and was last touched outside its
+  staleness window, the desk tools refuse to run: that is STOP-ALL by construction. Renewal is a
+  HUMAN act. The driver, or a cron the driver owns, touches the file. No agent or loop touches,
+  renews or deletes it, on any tick, because a loop that keeps its own lease fresh defeats the
+  dead-man semantics. A `heartbeat stale (age …)` refusal is the lease firing. Quote it verbatim
+  in the hand-off note, print ONE loud line naming it, and stand down. Never ask the driver how
+  to proceed.
 - **A tick reads the armed per-run stops and stops each run's worker.** Every tick, read the armed
   per-run stops (`desksupervise status --stops`) and, for each one, `capability:stop-worker` the matching
   dispatched worker — the cooperative `STOP.run.<key>` flag already refuses that run's next desk verb,

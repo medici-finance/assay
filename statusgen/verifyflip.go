@@ -386,6 +386,41 @@ func flipVerdictTokens(lines []string) []flipVerdictTok {
 	return toks
 }
 
+// latestVerdictIndex is the index in toks of the latest recorded verdict: the
+// last one outside a struck span, or -1 when Evidence records none. It is the
+// one selector flipLatestPass and latestEvidenceVerdict share, so the closure
+// lint and the Evidence-landing check read the same verdict as "latest".
+func latestVerdictIndex(toks []flipVerdictTok) int {
+	li := -1
+	for i, t := range toks {
+		if !t.struck {
+			li = i
+		}
+	}
+	return li
+}
+
+// latestEvidenceVerdict returns the latest recorded verdict word in Evidence
+// as flipLatestPass selects it, and the number of unstruck verdicts recorded.
+// word is "" when Evidence records no verdict. An unterminated comment is an
+// error: the record cannot be read as written.
+func latestEvidenceVerdict(evidence string) (word string, count int, err error) {
+	stripped, unterminated := stripRowComments(evidence)
+	if unterminated >= 0 {
+		return "", 0, refuseFlip("Evidence carries an unterminated <!-- — the record cannot be read as written")
+	}
+	toks := flipVerdictTokens(strings.Split(stripped, "\n"))
+	for _, t := range toks {
+		if !t.struck {
+			count++
+		}
+	}
+	if li := latestVerdictIndex(toks); li >= 0 {
+		word = toks[li].word
+	}
+	return word, count, nil
+}
+
 // flipStampFromEvidence derives the Verified stamp from the latest strict PASS
 // and checks the recorded run against wantSHA / wantRunner. run is that PASS's
 // own lines (comments stripped): the witness check reads them and nothing else.
@@ -533,12 +568,7 @@ func latestPassSpan(evidence string) (lines []string, start, end int, err error)
 	}
 	lines = strings.Split(stripped, "\n")
 	toks := flipVerdictTokens(lines)
-	li := -1
-	for i, t := range toks {
-		if !t.struck {
-			li = i
-		}
-	}
+	li := latestVerdictIndex(toks)
 	if li < 0 {
 		return nil, 0, 0, refuseFlip("verdict mismatch: Evidence records no VERIFY verdict")
 	}
@@ -728,7 +758,12 @@ func flipDateRunnerRows(lines []string) (rows [][2]string, at []int) {
 		if len(cells) < 2+trail {
 			continue
 		}
-		rows = append(rows, [2]string{strings.TrimSpace(cells[len(cells)-2-trail]), strings.TrimSpace(cells[len(cells)-1-trail])})
+		// A row's read-set token (build-less-brittle/15) names that row's own
+		// recorded inputs, so it differs row to row by design; it is not part
+		// of the run's runner and sha agreement, nor of the stamp. Only a token
+		// verifyrun writes, where it writes it, is removed (review S21); any
+		// other token-shaped text stays and takes part in that agreement.
+		rows = append(rows, [2]string{strings.TrimSpace(cells[len(cells)-2-trail]), stripWriterReadSetToken(strings.TrimSpace(cells[len(cells)-1-trail]))})
 		at = append(at, i)
 	}
 	return rows, at

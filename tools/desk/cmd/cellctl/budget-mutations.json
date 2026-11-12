@@ -1,0 +1,29 @@
+{
+  "test": "go test ./cmd/cellctl -run '^TestMuharBudgetEnv$' -count=1 -timeout=30s",
+  "control": {
+    "name": "CONTROL: host environment loses pair",
+    "file": "cmd/cellctl/budget.go",
+    "old": "if input.set {",
+    "new": "if false && input.set {"
+  },
+  "mutations": [
+    {
+      "name": "scrubbed environment loses pair",
+      "file": "cmd/cellctl/env.go",
+      "old": "ce.Pairs = c.muharBudgetEnv(ce.Pairs)",
+      "new": "// host budget propagation omitted"
+    },
+    {
+      "name": "Codex command loses budget",
+      "file": "cmd/cellctl/codex_environment.go",
+      "old": "\"MUHAR_LEASE_DIR\", \"MUHAR_TOTAL_SLOTS\", \"DESK_LOOP\"",
+      "new": "\"DESK_LOOP\""
+    },
+    {
+      "name": "empty configuration presence lost",
+      "file": "cmd/cellctl/budget.go",
+      "old": "if input.set {",
+      "new": "if input.set && input.value != \"\" {"
+    }
+  ]
+}

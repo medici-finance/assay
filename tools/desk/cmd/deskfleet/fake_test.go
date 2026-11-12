@@ -93,6 +93,12 @@ type fakeForge struct {
 	labels       map[string]bool // gitlab labels present
 	ghLabels     map[string]bool // github labels present
 	gitlab400Dup bool            // answer a gitlab duplicate with 400 instead of 409
+	// labelPostStatus answers every label create on either forge (0 = normal); labelGetStatus
+	// every label list (0 = 200). groupLabels are GitLab labels the project inherits from its
+	// group: listed with include_ancestor_groups=true, and a project create of one is refused
+	// 400 "already exists at group level".
+	labelPostStatus, labelGetStatus int
+	groupLabels                     map[string]bool
 	// dropPushUser keeps a protected-branch POST but drops its per-user push entries, as a
 	// GitLab 19.5.3 instance was seen to do (answered 2xx, entry absent from the read-back).
 	dropPushUser bool
@@ -121,7 +127,7 @@ type fakeForge struct {
 
 func newFakeForge(t *testing.T) *fakeForge {
 	f := &fakeForge{t: t, plan: "premium", accounts: map[string]int64{}, nextUserID: 1000,
-		members: map[int64]int{}, labels: map[string]bool{}, ghLabels: map[string]bool{}, avatars: map[string]string{},
+		members: map[int64]int{}, labels: map[string]bool{}, ghLabels: map[string]bool{}, groupLabels: map[string]bool{}, avatars: map[string]string{},
 		variables: map[string]map[string]any{}}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.handle))
 	t.Cleanup(f.srv.Close)
@@ -171,7 +177,15 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// GitHub labels endpoint.
+	if strings.HasPrefix(p, "/repos/") && strings.HasSuffix(p, "/labels") && r.Method == "GET" {
+		f.writeLabelList(w, r, f.ghLabels, nil)
+		return
+	}
 	if strings.HasPrefix(p, "/repos/") && strings.HasSuffix(p, "/labels") && r.Method == "POST" {
+		if f.labelPostStatus != 0 {
+			writeJSON(w, f.labelPostStatus, map[string]any{"message": "Resource not accessible by integration"})
+			return
+		}
 		name, _ := body["name"].(string)
 		if f.ghLabels[name] {
 			writeJSON(w, 422, map[string]any{"message": "Validation Failed",
@@ -376,8 +390,22 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "GET" && api == pid:
 		writeJSON(w, 200, map[string]any{"id": fakeProjectID, "only_allow_merge_if_pipeline_succeeds": true,
 			"only_allow_merge_if_all_discussions_are_resolved": true})
+	case r.Method == "GET" && strings.HasPrefix(api, "/projects/") && strings.HasSuffix(api, "/labels"):
+		var inherited map[string]bool
+		if r.URL.Query().Get("include_ancestor_groups") == "true" {
+			inherited = f.groupLabels
+		}
+		f.writeLabelList(w, r, f.labels, inherited)
 	case r.Method == "POST" && strings.HasPrefix(api, "/projects/") && strings.HasSuffix(api, "/labels"):
+		if f.labelPostStatus != 0 {
+			writeJSON(w, f.labelPostStatus, map[string]any{"message": "403 Forbidden"})
+			return
+		}
 		name, _ := body["name"].(string)
+		if f.groupLabels[name] {
+			writeJSON(w, 400, map[string]any{"message": map[string]any{"title": []string{"already exists at group level for " + fakeGroupPath}}})
+			return
+		}
 		if f.labels[name] {
 			if f.gitlab400Dup {
 				writeJSON(w, 400, map[string]any{"message": map[string]any{"title": []string{"has already been taken"}}})
@@ -541,4 +569,25 @@ func (h *harness) allText(t *testing.T) string {
 		}
 	}
 	return b.String()
+}
+
+// writeLabelList answers a label list page (the fake holds fewer than one page, so page 1 is
+// everything and any later page is empty).
+func (f *fakeForge) writeLabelList(w http.ResponseWriter, r *http.Request, own, inherited map[string]bool) {
+	if f.labelGetStatus != 0 {
+		writeJSON(w, f.labelGetStatus, map[string]any{"message": "boom"})
+		return
+	}
+	var out []map[string]any
+	if r.URL.Query().Get("page") == "1" {
+		for _, m := range []map[string]bool{own, inherited} {
+			for n := range m {
+				out = append(out, map[string]any{"name": n})
+			}
+		}
+	}
+	if out == nil {
+		out = []map[string]any{}
+	}
+	writeJSON(w, 200, out)
 }

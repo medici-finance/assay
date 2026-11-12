@@ -435,6 +435,21 @@
       "pattern": "tools/desk/internal/kubecompat/preparation/core.py",
       "reason": "desk-containers/31 embedded preparation domain loaded by the Go preparation.Run bridge; JSON data only, no argv parser, shebang or standalone main guard; never installed separately",
       "class": "library"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/release/qualification.py",
+      "reason": "fixture-only transport functions imported by fixed protected workflow calls; no shebang, main guard, argument parser or implicit execution (#5707)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/qualification_test.py",
+      "reason": "offline qualification refusal and workflow fixtures run by the existing release regression reader; never an operator CLI (#5707)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/transport_test.py",
+      "reason": "retained offline bundle, credential and extraction controls run by the existing release regression reader; never an operator CLI (#5707)"
     }
   ],
   "entrypoints": [
@@ -2285,6 +2300,42 @@
       "state": "pending"
     },
     {
+      "executable": "postgres-verify.sh",
+      "path": "tools/cellctl/tests/postgres-verify.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "source-only Verify runner; never installed, released or built by a workflow",
+      "consumers": [
+        "docs/streams/desk-containers/brief-26-local-docker-postgres.md",
+        "tools/cellctl/tests/postgres-verify.test.sh"
+      ],
+      "parser": "bash single positional Verify row number (3, 5, 9, 10 or 12)",
+      "complexity": "simple",
+      "basis": "61 lines at the issue #5823 change; dispatches one desk-containers/26 Verify row",
+      "owner": "",
+      "state": "excluded",
+      "class": "test",
+      "reason": "offline acceptance runner for desk-containers/26 Verify rows 3, 5, 9, 10 and 12, run from the repository root by a verifier; supplies no approval and writes no Evidence; never an operator entrypoint (#5823)"
+    },
+    {
+      "executable": "postgres-scratch.sh",
+      "path": "tools/cellctl/tests/postgres-scratch.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "source-only Verify runner; never installed, released or built by a workflow",
+      "consumers": [
+        "tools/cellctl/tests/postgres-verify.sh",
+        "tools/cellctl/tests/postgres-verify.test.sh"
+      ],
+      "parser": "no arguments",
+      "complexity": "simple",
+      "basis": "91 lines at the issue #5823 change; one disposable local compose project per run",
+      "owner": "",
+      "state": "excluded",
+      "class": "test",
+      "reason": "throwaway-server flow for desk-containers/26 Verify row 12, called only by postgres-verify.sh: starts its own disposable compose project from a cached image, provisions a synthetic cell and tears everything down; a test instrument, never the operator's provisioning path (#5823)"
+    },
+    {
       "executable": "inject-board-state.sh",
       "path": "plugins/assay/hooks/inject-board-state.sh",
       "kind": "script",
@@ -2860,6 +2911,23 @@
       "state": "pending"
     },
     {
+      "executable": "deskdecision",
+      "path": "tools/desk/cmd/deskdecision",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        "tools/desk/cmd/deskdispatch/dispatch.go",
+        "docs/adopting-assay.md"
+      ],
+      "parser": "Cobra through tools/desk/internal/cli; generic owner fixture qualification pending",
+      "complexity": "simple",
+      "basis": "1 verb (ensure), 5 command flags; the decision-gate protocol belongs to the PATH port's own tests (deskkit decisionensure), shared CLI qualification to this owner",
+      "owner": "desktools-v2/56",
+      "state": "pending"
+    },
+    {
       "executable": "desk-session.sh",
       "path": "containers/k8s/compatibility/desk-session.sh",
       "kind": "script",
@@ -2935,6 +3003,38 @@
       "complexity": "simple",
       "basis": "226 LOC, 2 verbs, 10 flags at 765668a4b0d1; local record/report only, no network or work authority",
       "owner": "performance-collection/01",
+      "state": "pending"
+    },
+    {
+      "executable": "transport.py",
+      "path": "tools/release/transport.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "internal fixture workflow adapter; not host installed",
+      "consumers": [
+        ".github/workflows/release-object-qualification.yml",
+        "tools/release/README.md"
+      ],
+      "parser": "Python argparse",
+      "complexity": "complex",
+      "basis": "retained two verbs and twelve coordinate/path/proof flags; parser migration remains pending",
+      "owner": "desktools-v2/78",
+      "state": "pending"
+    },
+    {
+      "executable": "install-object-client.sh",
+      "path": "tools/release/install-object-client.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "internal fixture workflow adapter; not host installed",
+      "consumers": [
+        ".github/workflows/release-object-qualification.yml",
+        "tools/release/README.md"
+      ],
+      "parser": "bash positional argument",
+      "complexity": "simple",
+      "basis": "retained one required job-local destination; checksum-pinned client bootstrap",
+      "owner": "desktools-v2/79",
       "state": "pending"
     }
   ]

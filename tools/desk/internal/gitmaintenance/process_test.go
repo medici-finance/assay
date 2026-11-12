@@ -13,7 +13,7 @@ import (
 // regression: #2513
 func TestDeadlineKillsChildTree(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("shell-based descendant fixture is Unix-specific; Windows jobs have native cellprocess witnesses")
+		t.Skip("shell-based descendant fixture is Unix-specific; Windows jobs have native loopadmin/process witnesses")
 	}
 	repo := fixtureRepo(t)
 	requireNativeHooks(t, repo)

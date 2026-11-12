@@ -192,17 +192,14 @@ type cellopVerb struct {
 	After func(c *Cell, r *cellop.Result)
 }
 
-// cellopNewPlan makes and stores a plan for c. It changes nothing but the plan store.
+// cellopNewPlan makes and stores a plan for c, under a two-word id no plan in c's store has used.
+// It changes nothing but the plan store.
 func cellopNewPlan(c *Cell, verb string, actions []cellop.Action) cellop.Plan {
-	id, err := cellop.NewID()
+	now := time.Now()
+	p, err := cellop.StoreFor(c.Dir).SaveNew(func(id string) (cellop.Plan, error) {
+		return cellop.NewPlan(id, verb, []string{c.Name}, actions, nil, now)
+	})
 	if err != nil {
-		die("%s: %v", verb, err)
-	}
-	p, err := cellop.NewPlan(id, verb, []string{c.Name}, actions, nil, time.Now())
-	if err != nil {
-		die("%s: %v", verb, err)
-	}
-	if _, err := cellop.StoreFor(c.Dir).Save(p); err != nil {
 		die("%s: storing the plan: %v", verb, err)
 	}
 	return p

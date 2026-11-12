@@ -363,7 +363,7 @@ of these is done. Until they are, the honest sentence above is the whole of the 
 | **desk-tools** | The desk-role **binaries** (`deskboard`, `deskpr`, `deskevidence`, `deskfile`, `deskpost`, …) the five desk-role skills drive as their **primary** path — they carry the guards, write-budgets, and roster + trust gates. **Optional-but-recommended**: without them the desk skills fall back to raw `gh`/`git` (works, but loses the guards). Acquired as a pinned, sha256-verified tarball — the **same mechanism as statusgen** | a **release tarball** (`desk-tools-<platform>.tar.gz`) from the same release as statusgen — see `install-desk-tools` | **no source in your repo** — a `.assay-versions` pin plus the installed binaries on `PATH`; config at the config-home (`~/.config/assay/`) |
 | **reviewer GitHub App** | The separate review identity (§1a) — attribution, not authorization; `pull_requests: write`, `issues: write`, `contents: write` (the desk tools' required duty set — a reviewer without all three fails the boot preflight) plus **`checks`/`statuses`/`actions: read`** so it can read CI to gate on it, plus **`administration: read`** so `deskflip` can read required checks a ruleset does not express — classic protection, or a ruleset with no `required_status_checks` rule (§3 `setup-reviewer-app`) | CORE `setup-reviewer-app` (runbook) | GitHub org/account settings — **not a repo file** |
 | **auditor GitHub App** | A dedicated **READ-ONLY** identity for `repohardenguard`'s repo-hardening reads (op 40 `RepoHardeningRead`) — `Metadata: read`, `Contents: read`, `Administration: read`, and **no write permission of any kind**. A write attempted with its token is refused by GitHub itself; the admin-gated rows it cannot see (`security_and_analysis.*`, ruleset `bypass_actors`) report `could-not-check` and are re-run by a repository admin — never bought back with a wider grant. Optional: only needed if you run `repohardenguard` | operator-provisioned (GitHub org/account), PEM at the config-home as `auditor-app.pem` | GitHub org/account settings — **not a repo file** |
-| **cell-issues GitHub App** | A narrower, per-purpose "write-issues" identity (`issues: write`) — the model the auditor role above follows (inventory delta D2: a per-purpose identity carries the narrowest grant that serves the purpose). Selectable only by NAME (`desktoken cell-issues --repo …`); it is never a loop's default identity. Optional: only needed if a cell files issues under a narrower identity than its loop's own role | operator-provisioned (GitHub org/account) | GitHub org/account settings — **not a repo file** |
+| **cell-issues GitHub App** | A narrower, per-purpose "write-issues" identity (`issues: write`) — the model the auditor role above follows (inventory delta D2: a per-purpose identity carries the narrowest grant that serves the purpose). Selectable only by NAME (`desktoken --no-rotate cell-issues --repo …`); it is never a loop's default identity. Optional: only needed if a cell files issues under a narrower identity than its loop's own role | operator-provisioned (GitHub org/account) | GitHub org/account settings — **not a repo file** |
 | **release-runner GitHub App** | A dedicated, single-purpose identity that `deskrun` starts workflow runs and clears deployment gates with. Dispatching needs **`Actions: write`** — which also grants cancelling runs, deleting run logs and disabling workflows repo-wide — which is exactly why it is its own App and never a worker/reviewer/verifier App repurposed (`deskrun` refuses a `release-runner` roster binding that shares another role's App). A repo is only automated when the roster binds it: `ASSAY_RUN_CREDENTIALS=<owner/name>=release-runner`; a repo bound `=human:<name>` stays a human action and `deskrun` refuses it. **`deskrun approve` on GitHub reports could-not-check under this App:** approving a pending deployment needs `Deployments: write`, and GitHub lets only an environment's required reviewers approve — required reviewers are users or teams, never an App — so the forge answers that the App may not approve and `deskrun` refuses before writing. Optional: only needed if you want a desk verb to dispatch runs | operator-provisioned (GitHub org/account), PEM at the config-home as `release-runner-app.pem`, minted by `desktoken release-runner --repo …` | GitHub org/account settings + the roster binding — **not a repo file** |
 | **workflow GitHub App** | The workflow App: the **single** identity holding **`workflows: write`** — a capability that stands beside the desk-role Apps, **not** a desk role and **not** a tier: it is no desk loop's default identity. Scope is exactly **`contents: write` + `workflows: write` + `pull_requests: write` + `metadata: read`**, subscribed to **zero** webhook events; **withheld**, and checked as absent: `administration`, `actions`, `checks`/`statuses: write`, `members`, and secrets/variables. Its duty is to author a workflow-only PR (a diff touching `.github/workflows/**` and its own changelog fragment, nothing else) — `pull_requests: write` is what lets it open that PR; a human merges it. **Sole-holder invariant:** no other App — worker, desk, reviewer, verifier, any inbound-lane or loop App, or any single-purpose App — holds `workflows: write`. Its credentialled path runs only under a human-initiated invocation — an operator/desk run or an explicit `workflow_dispatch` (DR accepted entry 6) — never from a trigger an outside contributor can fire. Neither a `workflow_dispatch` nor a desk run is by itself proof that a human started the run, and who holds the App's key is not yet ruled; the DR's note says where the human-initiated property has to be enforced. Optional: only needed if workflow changes should land as their own reviewable PR instead of a staged copy a maintainer hand-promotes. Scope, duties and checks: [`workflow-app-scope.md`](streams/desk-supervision/workflow-app-scope.md); design: [`DR-workflow-app-landing`](streams/decisions/DR-workflow-app-landing.md) | operator-provisioned (GitHub org/account) | GitHub org/account settings — **not a repo file** |
 | **automation identity** | The account (and/or role Apps) the fleet **runs as** — authors PRs, pushes branches, runs CI, mints tokens. Distinct from the human account (the two-accounts prerequisite). Minimum = one machine account plus the reviewer App it owns; larger fleets *optionally* split it into role Apps (worker / verifier / desk / loop) — a decomposition, **not** a requirement | operator-provisioned (GitHub org/account) | GitHub org/account settings — **not a repo file** |
@@ -464,8 +464,19 @@ resolves. So if you run desks, land this pin on main before the first boot:
 `assay-install.sh pin --kind desk-tools …` then `assay-install.sh acquire --kind desk-tools --pins
 "$TARGET/.assay-versions" --dest <bindir>` does all three, with no forge CLI.
 
+`deskdecision` and `deskclaim-ref` come with desk-tools too. They are the pure-Go ports of the
+decision-gate and dispatch-claim helpers (`tools/decision-issue.sh`, `tools/dispatch-claim.sh`),
+which no install path copies into your repo. `deskdispatch` tries each port on `PATH` before the
+script, so a `gate: human` brief dispatches with desk-tools installed and no script and no
+`--claim-root` (#6131). If you keep the scripts in a checkout and run without the ports, pass
+`--claim-root <that checkout>`. With neither, a human-gated dispatch refuses (exit 6) and names
+every place it looked.
+
 `cellctl` comes with desk-tools (#850) — it is one of the extracted files, so nothing extra is
 needed to obtain it; see `docs/cellctl.md` for what it does and its own `--version` check.
+Before scaffolding a cell, ask the operator which kind they want. The table is in
+`docs/cellctl.md` §"Choosing a cell kind". A `scrubbed` cell runs one desk at a time, so never pick
+it without saying so.
 
 Configuration is at the **config-home only** (`~/.config/assay/`) — the same roster file the acting
 tools read everywhere (§3 `configure-roster`, failure mode 1); the environment is never a transport
@@ -638,7 +649,9 @@ identity* — plan for it before you turn protection on, not after the board sil
 > prepends a banner naming the decision issue to such a PR's body. The banner informs; it blocks
 > nothing. On **GitLab**, layer two is not scaffolded, so the hold there is the well-formed-link
 > check of layer one alone; and because GitLab serves no ref compare, `deskevidence` reports
-> could-not-check (exit 6) on an evidence landing there.
+> could-not-check (exit 6) on an evidence landing there unless the landing checkout's HEAD is
+> the target branch's tip (the same commit by full object id, never a prefix), when there is no
+> difference to compare.
 
 **Verify:** `grep -q 'skip-status-regen' …/statusgen.yml && grep -q 'STATUS.md is generated' …/statusgen.yml`; and `grep -F 'git status --porcelain -- STATUS.md' …/statusgen.yml` matches (bootstrap-safe). After first push to main, `STATUS.md` appears in one `[skip-status-regen]` commit; a PR editing `STATUS.md` fails lint. Roster: `grep -c 'vars.ASSAY_' …/statusgen.yml` is 5, and the regen job's log shows `role-bindings=` naming your `verifier=` binding rather than `(none bound)` — a `::notice::ASSAY_TRUSTED_BOT_SLUGS is not set` line in that log means the variables are not set yet.
 
@@ -982,14 +995,35 @@ verb that creates the whole set natively on either forge — no `gh`/`glab`, no 
 Git-Bash/WSL, so it is also the Windows path:
 
 ```
-deskfleet labels --forge github --repo <owner/repo>       --token-file <path> [--dry-run]
-deskfleet labels --forge gitlab --project <path-or-id>    --token-file <path> [--dry-run]
+deskfleet labels --forge github --repo <owner/repo>       --roles <role,role,…> --token-file <path> [--dry-run | --check]
+deskfleet labels --forge gitlab --project <path-or-id>    --roles <role,role,…> --token-file <path> [--dry-run | --check]
 ```
 
-An existing label is a no-op; `--dry-run` enumerates every action with zero network calls. It is
-still a **human-run** act, holding a token that can write the repo's labels: it creates label
-*definitions* from a fixed list and applies none. Whether a desk role should run it on its own is
-the open decision in #1559. The
+`--roles` is the roster's role-bindings (the `role=` names on `ASSAY_TRUSTED_BOT_SLUGS`,
+comma-separated): the role rows are built from it, so the set has a `raised-by:<role>` and a
+`to:<role>` for exactly the roles `deskfile` accepts. Without `--roles` the verb uses the six
+documented roles below and prints a NOTICE saying so. An existing label is a no-op. On GitLab a
+label the project inherits from an ancestor group counts as present and is never re-created.
+`--dry-run` enumerates every action with zero network calls. `--check` creates nothing: it reads the
+target's labels (inherited group labels included) and names each missing one, exiting 1 when any
+is missing and 6 (could-not-check) when the labels could not be read. An unread list is never
+reported complete.
+
+**The install path runs it.** `cellctl new --kind house … --labels-token-file <path>` runs the same
+ensure on every `--roots` repo, with the roles derived from the cell's roster. `cellctl check`
+then reports one labels row per repo: `ok`, `MISS` naming each missing label, or `?
+could-not-check` when the labels cannot be read. See `docs/cellctl.md`, *House cells*. A step that
+cannot finish never reads as done. That covers no credential given, a roster that binds no role
+yet, a credential the forge denies, and any create that fails. Each prints `NOT ENSURED` with the
+exact `deskfleet labels …` command that finishes it, and a credential that was given and failed
+makes `new` exit 1.
+
+Creating labels is an **operator act under the operator's own credential**: the file `--token-file`
+/ `--labels-token-file` names holds a credential the operator chose, one that can write the
+repo's labels. No desk role App is granted label-write for this, and no install step mints or
+borrows one. The verb creates label *definitions* from the table and applies none. Whether a desk
+role may ever create labels on its own is the open decision in #1559. This default does not settle
+it. The
 GitHub-native equivalent (for a human who prefers `gh` directly, or is not running the desk tools)
 and the GitLab shell script remain as fallbacks:
 
@@ -1003,9 +1037,9 @@ and the GitLab shell script remain as fallbacks:
 
 On either forge `deskflip` also creates the PR-state pair on first use (the forge seam's label
 write ensures a missing label exists before applying it); `deskfile` only *probes* for the
-`raised-by:*` labels and never creates them.
+`raised-by:*` and `to:*` labels and never creates them.
 
-**Three label families:**
+**Four label families:**
 
 - **`review-request`** — the review-dispatch token. The coordinator desk files a `review-request`
   issue when a review is needed and stops; a review session picks it up (the intake work-scanner
@@ -1020,6 +1054,11 @@ write ensures a missing label exists before applying it); `deskfile` only *probe
   `desk`, `worker`, `reviewer`, `verifier`, `issue-loop`, `intake-loop`. An omitted `--raised-by`,
   a missing label, or an unanswered probe all leave the issue **UNKNOWN** — never read UNKNOWN as
   "a human raised it".
+- **`to:<role>`** — the addressee stamp. `deskfile new --to <role>` (and `deskfile attach --to`)
+  addresses an issue to one desk role, whose inbox sweep picks it up. The `--to` vocabulary is the
+  same roster projection as `--raised-by`, so the roles are the same list. `deskfile` **probes for
+  the label first and, if it is absent, files the issue anyway UNADDRESSED** (`to=UNADDRESSED:label-missing`),
+  and no desk's sweep finds it. The `to:*` labels must exist before the first addressed filing.
 - **PR-state pair (`authorization-needed` / `approval-needed`)** — the review-loop's
   who-is-the-PR-waiting-on marker (`pr-review-desk` skill, §PR-state labels). Exactly ONE of the
   two sits on a PR under review, sequentially: `authorization-needed` while the review lane has
@@ -1042,6 +1081,14 @@ gh label create raised-by:verifier    --repo <owner/repo> --color BFDADC --descr
 gh label create raised-by:issue-loop  --repo <owner/repo> --color BFDADC --description "filed by the intake/issue loop (intake-desk)"
 gh label create raised-by:intake-loop --repo <owner/repo> --color BFDADC --description "filed by the intake loop (roster-bound; no skill stamps it yet)"
 
+# Addressee stamps — one per roster role-binding (deskfile --to <role> applies them)
+gh label create to:desk        --repo <owner/repo> --color C2E0C6 --description "addressed to the process desk (the-desk): its inbox sweep picks this up"
+gh label create to:worker      --repo <owner/repo> --color C2E0C6 --description "addressed to a worker (worker-desk): its inbox sweep picks this up"
+gh label create to:reviewer    --repo <owner/repo> --color C2E0C6 --description "addressed to the reviewer desk (pr-review-desk): its inbox sweep picks this up"
+gh label create to:verifier    --repo <owner/repo> --color C2E0C6 --description "addressed to the verify desk (verify-desk): its inbox sweep picks this up"
+gh label create to:issue-loop  --repo <owner/repo> --color C2E0C6 --description "addressed to the intake/issue loop (intake-desk): its inbox sweep picks this up"
+gh label create to:intake-loop --repo <owner/repo> --color C2E0C6 --description "addressed to the intake loop: its inbox sweep picks this up"
+
 # PR-state pair — the review-loop keeps exactly ONE of these on each PR it is driving
 gh label create authorization-needed --repo <owner/repo> --color FBCA04 \
   --description "review lane has not approved at head — waiting on a reviewer verdict / open findings"
@@ -1049,14 +1096,18 @@ gh label create approval-needed --repo <owner/repo> --color 5319E7 \
   --description "review lane fully approved; flipped ready — waiting on the human's merge approval"
 ```
 
-> The `raised-by:*` labels track the roster, not this list: if `configure-roster` binds a role
-> beyond those above, add the matching `raised-by:<role>` label here for that suite.
+> The `raised-by:*` and `to:*` labels track the roster, not this list: if `configure-roster` binds
+> a role beyond those above, that suite needs the matching `raised-by:<role>` and `to:<role>`
+> labels. `deskfleet labels --roles` and `cellctl new --kind house` derive them from the roster.
 
 **Verify:** the repo's label list (its *Labels* page on either forge, or — as an optional
-convenience — `gh label list` / `glab label list`) includes `review-request`, all six
-`raised-by:*` labels, and the PR-state pair `authorization-needed` + `approval-needed`; and the
-desk verb reads it the same way: `deskfile new … --raised-by worker` on a test filing reports
-`raised-by=raised-by:worker` (stamped), **not** `UNSTAMPED:label-missing`.
+convenience — `gh label list` / `glab label list`) includes `review-request`, one `raised-by:*`
+and one `to:*` label per roster role, and the PR-state pair `authorization-needed` +
+`approval-needed`. `deskfleet labels … --check` (or `cellctl check` on a house cell) proves it
+mechanically: exit 0 means every label is present, exit 1 names each missing one, and exit 6 means
+the labels could not be read. The desk verb reads it the same way: `deskfile new … --raised-by
+worker --to reviewer` on a test filing reports `raised-by=raised-by:worker` (stamped), **not**
+`UNSTAMPED:label-missing`, and `to=reviewer`, **not** `to=UNADDRESSED:label-missing`.
 
 ### PRIMITIVE: install-main-guard
 `cp <parent>/.githooks/pre-commit "$TARGET/.githooks/pre-commit" && chmod +x … && git -C "$TARGET"
@@ -1772,7 +1823,7 @@ those commands actually does underneath. Nothing here is retired by the collapse
 15. **Export `GITLAB_API_BASE`** in the shell or session-bootstrap that invokes the desk verbs —
     no default host, and it is not a `roster.env` key (see [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md)).
 
-Plus the **create-labels** primitive (`deskfleet labels`, or the nine `gh label create` lines, or
+Plus the **create-labels** primitive (`deskfleet labels`, or the `gh label create` lines, or
 the GitLab script) — not numbered above because it is shared with every adopter, Windows or not.
 
 ## 3a. What the bundle delivers by itself — and what you still have to write

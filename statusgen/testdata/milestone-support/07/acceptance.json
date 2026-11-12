@@ -1,0 +1,13 @@
+[
+ {"name":"exact", "state":"accepted", "availability":"supported", "eligible":true},
+ {"name":"outstanding", "state":"outstanding", "availability":"unknown"},
+ {"name":"revoked", "state":"revoked", "availability":"blocked"},
+ {"name":"superseded", "state":"superseded", "availability":"blocked"},
+ {"name":"unknown", "state":"unknown", "availability":"unknown"},
+ {"name":"wrong-version", "state":"accepted", "availability":"supported"},
+ {"name":"wrong-subject", "state":"accepted", "availability":"supported"},
+ {"name":"wrong-profile", "state":"accepted", "availability":"supported"},
+ {"name":"unknown-revocation", "state":"accepted", "availability":"supported"},
+ {"name":"ambiguous", "state":"accepted", "availability":"supported"},
+ {"name":"missing", "state":"accepted", "availability":"supported"}
+]
