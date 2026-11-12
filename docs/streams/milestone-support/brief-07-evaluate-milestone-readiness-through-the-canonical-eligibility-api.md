@@ -167,11 +167,15 @@ The design extends the existing owner. It does not add a second planner.
    acceptance. The evaluator never reads comments, decisions or evidence itself.
 3. **Distinct per-milestone fields.** Each milestone reports four separate values, never
    folded into one verdict:
-   - work remaining: the contributors not yet `done`, with each shared brief counted
-     once. `implemented` and `verified` count as remaining. Withdrawn or missing work is
-     a blocker and never counts as progress;
-   - work complete with acceptance outstanding: every contributor is `done`, and there
-     is no current acceptance for the exact version and subject;
+   - work remaining: contributing and prerequisite briefs not yet `done`, deduplicated
+     by canonical brief identity across the milestone and its prerequisite graph.
+     `implemented` and `verified` count as remaining. Withdrawn or missing work is a
+     blocker and never counts as progress; unread prerequisite coverage stays unknown;
+   - work complete with acceptance outstanding: every contributor is `done` and every
+     prerequisite promise has qualifying acceptance for the consuming milestone's
+     environment, interface and workload profile, but this milestone has no current
+     acceptance for its exact version and subject. A prerequisite with remaining work,
+     missing acceptance or unknown coverage cannot meet these completion requirements;
    - accepted for subject: the exact milestone version and subject that have current
      acceptance. Revoked or superseded history stays visible and never satisfies;
    - current availability: `supported`, `blocked` or `unknown`. Typed holds carry the
@@ -197,8 +201,9 @@ The design extends the existing owner. It does not add a second planner.
 7. **Host wiring is kept narrow.** `applyMilestoneStartGates` stops pre-resolving the
    gate itself and passes the graph and the mapped observations through
    `EvaluateReadiness`. Next-up and the drive frontier keep reading the per-brief map.
-   No reader capability is advertised and no production acceptance selector is
-   installed. On main, every start requirement therefore stays `could-not-check` until
+   Start requirements remain in `Gates`, never `Feathers`; an edge with no `Resolved`
+   value must still resolve fail-closed. No reader capability is advertised and no
+   production acceptance selector is installed. On main, every start requirement therefore stays `could-not-check` until
    /10 and /14 turn the operational path on.
 
 ### Preserved actor, subject, revocation and effect-admission rules
@@ -227,10 +232,12 @@ checks or reported results. The original commands and Evidence remain unchanged.
 | Existing future test | Case and expected discrimination |
 |---|---|
 | `TestMilestoneEligibility` (planned) | Brief 11 belongs to a milestone whose only prerequisite is final-only, and it stays `eligible`. Brief 12 has an explicit `requires-milestones` on an unaccepted milestone and is `held`. Mutation: copying final-only requirements onto contributors holds brief 11, so the test fails. |
-| `TestMilestoneEligibility` (planned) | All contributors are `done` but there is no acceptance: the result reports acceptance outstanding, and the start gate stays unsatisfied or could-not-check. Exact current acceptance is the positive control. Revoked, superseded, wrong-version and wrong-subject observations never satisfy. |
+| `TestMilestoneEligibility` (planned) | All contributors are `done` and every prerequisite promise has qualifying acceptance, but this milestone has no acceptance: the result reports acceptance outstanding, and the start gate stays unsatisfied or could-not-check. Exact current acceptance is the positive control. Revoked, superseded, wrong-version and wrong-subject observations never satisfy. |
+| `TestMilestoneEligibility` (planned) | All local contributors are `done`, but prerequisite P has remaining briefs: report those briefs as remaining and do not report work complete with acceptance outstanding. A shared not-done brief reached directly and through multiple prerequisites counts once. Mutation: omitting prerequisite traversal or deduplication fails. When P's briefs become `done` but P lacks qualifying acceptance (or its coverage is unknown), completion requirements still are not met. Only qualifying acceptance for every prerequisite permits this milestone's acceptance-outstanding view. |
 | `TestMilestoneEligibility` (planned) | `implemented`, `verified` and withdrawn contributors count as remaining or blocking. A brief shared by two milestones is counted once per outcome. Mutation: counting `verified` as done, or counting withdrawal as complete, fails. |
 | `TestMilestoneEligibility` (planned) | A satisfied start gate never lifts a human, design, risk, verification, placeholder or parked hold. Mutation: returning `eligible` as soon as the start gate is satisfied fails. A nil `Milestones` reproduces the legacy fixtures byte for byte. |
 | `TestNextupMilestoneCoverage` (planned) | Next-up, run through the real host adapter, never lists a brief whose milestone root is unread, whose prerequisite is withdrawn or whose acceptance is missing. The incomplete-coverage flag and blocking heads are surfaced. Required parked work is visible and non-dispatchable. |
+| `TestMilestoneEligibility` (planned) | An unresolved milestone start edge remains a `Gates` hold. Two separate mutations in `07-mutations.json` (planned) must fail through the production evaluator/host flow: moving the edge into `Feathers`, and treating an absent `Resolved` value as satisfied. Neither mutation may yield `eligible` or `eligible-with-notice`. |
 | `TestNextupMilestoneCoverage` (planned) | With the reader capability unadvertised, as it is on main, every start requirement is `could-not-check`, and Next-up output for non-milestone streams is unchanged. |
 
 After the ruling, these cases are implemented through the actual entrypoints. The
