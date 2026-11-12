@@ -297,7 +297,7 @@ func Classify(in ClassifyInput, reviewer string) (action, note string) {
 		if in.MergePolicyBlocked {
 			if in.MergeableRaw != "MERGEABLE" {
 				return ActMergeStateUnknown, "mergeStateStatus is BLOCKED and the separate mergeable verdict is " +
-					MergeStateDisplay(in.MergeableRaw) + "; conflict freedom is not established — re-read before any ready evaluation"
+					fieldStateDisplay("mergeable", in.MergeableRaw) + "; conflict freedom is not established — re-read before any ready evaluation"
 			}
 			if in.Draft {
 				return ActFlip, reviewer + " APPROVED at head, " + ciPhrase + checkedZero +
@@ -380,8 +380,11 @@ func secReviewReason(reason string) string {
 	return reason
 }
 func MergeStateDisplay(raw string) string {
+	return fieldStateDisplay("mergeStateStatus", raw)
+}
+func fieldStateDisplay(field, raw string) string {
 	if strings.TrimSpace(raw) == "" {
-		return "ABSENT (no mergeStateStatus in the payload)"
+		return "ABSENT (no " + field + " in the payload)"
 	}
 	return strconv.Quote(raw)
 }
