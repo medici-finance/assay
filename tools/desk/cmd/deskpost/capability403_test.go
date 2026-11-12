@@ -135,6 +135,7 @@ func TestAppScopeFor(t *testing.T) {
 		{http.MethodGet, "/repos/o/r/commits/abc/status?per_page=100&page=1", "statuses: read"},
 		{http.MethodGet, "/repos/o/r/commits/abc/check-runs?per_page=100&page=1", "checks: read"},
 		{http.MethodGet, "/repos/o/r/commits/abc/check-suites?per_page=100&page=1", "checks: read"},
+		{http.MethodGet, "/repos/o/r/actions/runs?head_sha=abc&exclude_pull_requests=true&per_page=100&page=1", "actions: read"},
 		{http.MethodGet, "/repos/o/r/pulls/7", "pull_requests: read"},
 		{http.MethodGet, "/repos/o/r/pulls/7/files?per_page=100&page=1", "pull_requests: read"},
 		{http.MethodPost, "/repos/o/r/pulls/7/reviews", "pull_requests: write"},

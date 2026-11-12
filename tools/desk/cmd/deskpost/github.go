@@ -360,6 +360,9 @@ func appScopeFor(method, path string) string {
 		return "statuses: read"
 	case strings.HasSuffix(path, "/check-runs"), strings.HasSuffix(path, "/check-suites"):
 		return "checks: read"
+	case strings.HasSuffix(path, "/actions/runs"):
+		// The workflow-runs list ready reads to name an unconcluded Actions suite's workflow (#6234).
+		return "actions: read"
 	case strings.Contains(path, "/pulls/"):
 		if method == http.MethodGet {
 			return "pull_requests: read"
@@ -911,9 +914,19 @@ type checkSuitesWire struct {
 	} `json:"check_suites"`
 }
 
+// suiteRunsWire is one page of GET /actions/runs?head_sha={sha}.
+type suiteRunsWire struct {
+	WorkflowRuns []struct {
+		CheckSuiteID int64  `json:"check_suite_id"`
+		Path         string `json:"path"`
+	} `json:"workflow_runs"`
+}
+
 // checkSuitesAt reads the check suites at a commit across all pages, under the same bound as
 // the rollups. TotalCount is carried from the first page so ready can fail closed on a short
-// walk (#6234).
+// walk (#6234). When an Actions suite has not concluded it also reads the workflow runs at the
+// head to name each Actions suite's workflow, as deskkit's GitHub backend does: only a later
+// suite of the SAME workflow supersedes a stuck one (deskkit.PendingCheckSuites).
 func (c *ghClient) checkSuitesAt(sha string) (*deskkit.CheckSuitesAtHead, error) {
 	out := &deskkit.CheckSuitesAtHead{}
 	for page := 1; page <= maxCIPages; page++ {
@@ -936,6 +949,31 @@ func (c *ghClient) checkSuitesAt(sha string) (*deskkit.CheckSuitesAtHead, error)
 		}
 		if len(w.CheckSuites) < ciPerPage {
 			break
+		}
+	}
+	if !deskkit.SuitesNeedWorkflow(out.Suites) {
+		return out, nil
+	}
+	bySuite := map[string]string{}
+	for page := 1; page <= maxCIPages; page++ {
+		var w suiteRunsWire
+		path := fmt.Sprintf("/repos/%s/%s/actions/runs?head_sha=%s&exclude_pull_requests=true&per_page=%d&page=%d",
+			c.owner, c.repo, sha, ciPerPage, page)
+		if err := c.doJSON(http.MethodGet, path, nil, &w); err != nil {
+			return nil, fmt.Errorf("read the workflow runs at %s to name the Actions suites' workflows: %w", sha, err)
+		}
+		for _, r := range w.WorkflowRuns {
+			if r.CheckSuiteID != 0 {
+				bySuite[strconv.FormatInt(r.CheckSuiteID, 10)] = r.Path
+			}
+		}
+		if len(w.WorkflowRuns) < ciPerPage {
+			break
+		}
+	}
+	for i := range out.Suites {
+		if out.Suites[i].App == deskkit.ActionsAppSlug {
+			out.Suites[i].Workflow = bySuite[out.Suites[i].ID]
 		}
 	}
 	return out, nil

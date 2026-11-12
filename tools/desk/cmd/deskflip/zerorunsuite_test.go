@@ -15,6 +15,13 @@ import (
 
 const actionsApp = "github-actions"
 
+// The workflow files of the reported head's suites (#6234): the stuck suites were
+// changelog-check runs, and the later suites that concluded include other workflows.
+const (
+	wfChangelog = ".github/workflows/changelog-check.yml"
+	wfCI        = ".github/workflows/ci.yml"
+)
+
 // assertSuiteHold runs the flip and wants could-not-check, no ready mutation, and a refusal
 // naming checks-green and every fragment in want.
 func assertSuiteHold(t *testing.T, s *stub, want ...string) {
@@ -116,13 +123,14 @@ func TestSuiteReadErrorHolds(t *testing.T) {
 }
 
 // Scope: a re-trigger at the same head (close and reopen) leaves the stuck suite behind, and a
-// LATER suite of the same app concluded with runs. That re-ran the app's work; the flip goes.
+// LATER suite of the same workflow concluded with runs. That re-ran the stuck suite's own work,
+// and its newest suite is what the merge gate reads; the flip goes.
 func TestRerunSuiteSupersedes(t *testing.T) {
 	s := newStub()
 	s.suites = []deskkit.CheckSuite{
-		{ID: "401", App: actionsApp, Status: "queued", CreatedAt: "2026-11-11T20:23:15Z"},
+		{ID: "401", App: actionsApp, Status: "queued", CreatedAt: "2026-11-11T20:23:15Z", Workflow: wfChangelog},
 		{ID: "402", App: actionsApp, Status: "completed", Conclusion: "success", RunCount: 1,
-			CreatedAt: "2026-11-11T21:00:00Z"},
+			CreatedAt: "2026-11-11T21:00:00Z", Workflow: wfChangelog},
 	}
 	s.install(t)
 	s.reviews = approvalAtHead(t, headSHA)
@@ -143,4 +151,40 @@ func TestIdleAppSuiteIgnored(t *testing.T) {
 	s.reviews = approvalAtHead(t, headSHA)
 
 	assertFlips(t, s)
+}
+
+// regression: #6234
+// Review finding F1: GitHub Actions opens one suite per workflow under one app slug. The stuck
+// changelog-check suites are followed by a LATER suite of another workflow (ci.yml) that
+// concluded with runs; that re-ran other work, so the stuck suites still hold the head.
+func TestOtherWorkflowSuiteHolds(t *testing.T) {
+	s := newStub()
+	s.suites = []deskkit.CheckSuite{
+		{ID: "601", App: actionsApp, Status: "completed", Conclusion: "success", RunCount: 1,
+			CreatedAt: "2026-11-11T20:09:57Z", Workflow: wfChangelog},
+		{ID: "602", App: actionsApp, Status: "queued", CreatedAt: "2026-11-11T20:23:15Z", Workflow: wfChangelog},
+		{ID: "603", App: actionsApp, Status: "completed", Conclusion: "success", RunCount: 12,
+			CreatedAt: "2026-11-12T00:40:07Z", Workflow: wfCI},
+	}
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	assertSuiteHold(t, s, "suite 602 queued", "workflow "+wfChangelog)
+}
+
+// regression: #6234
+// The workflow-runs read that names an unconcluded Actions suite's workflow fails: that is
+// could-not-check, never a fall-back to superseding by app.
+func TestSuiteWorkflowReadErrorHolds(t *testing.T) {
+	s := newStub()
+	s.failPath = "/actions/runs"
+	s.suites = []deskkit.CheckSuite{
+		{ID: "701", App: actionsApp, Status: "queued", CreatedAt: "2026-11-11T20:23:15Z", Workflow: wfChangelog},
+		{ID: "702", App: actionsApp, Status: "completed", Conclusion: "success", RunCount: 1,
+			CreatedAt: "2026-11-11T21:00:00Z", Workflow: wfChangelog},
+	}
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	assertSuiteHold(t, s, "cannot read the check suites", "workflow runs")
 }

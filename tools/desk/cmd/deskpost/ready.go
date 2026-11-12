@@ -224,7 +224,7 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		// (c') No check suite at the head holds the forge's merge gate (#6234). A suite with no
 		// conclusion and no runs adds nothing to either rollup above, so they read green while
 		// the forge reads BLOCKED. Which suites hold is deskkit.PendingCheckSuites, the rule
-		// deskflip and deskautolane share.
+		// deskflip and deskautolane merge share.
 		suites, err := client.checkSuitesAt(head)
 		if err != nil {
 			return fromReadErr("ready", repo, pr, head, ciReadErr("check suites", head, err))

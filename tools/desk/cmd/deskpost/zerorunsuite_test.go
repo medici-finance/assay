@@ -13,6 +13,12 @@ import (
 
 const suiteApp = "github-actions"
 
+// The workflow files behind the reported head's suites (#6234).
+const (
+	wfChangelog = ".github/workflows/changelog-check.yml"
+	wfCI        = ".github/workflows/ci.yml"
+)
+
 // wantSuiteHold runs ready and wants exit 6, no flip, an unwritten audit, and every fragment.
 func wantSuiteHold(t *testing.T, f *fakeGH, errText func() string, want ...string) {
 	t.Helper()
@@ -71,18 +77,52 @@ func TestReadySuite403Holds(t *testing.T) {
 	wantSuiteHold(t, f, errBuf.String, "check suites", "checks: read")
 }
 
-// Scope: a later suite of the same app that concluded with runs supersedes a stuck one.
+// Scope: a later suite of the same app AND the same workflow that concluded with runs
+// supersedes a stuck one.
 func TestReadyRerunSuiteFlips(t *testing.T) {
 	f, errBuf := setupFake(t)
 	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
 	f.status = greenStatus()
 	f.suites = []deskkit.CheckSuite{
-		{ID: "12", App: suiteApp, Status: "queued", CreatedAt: "2026-11-11T20:23:15Z"},
+		{ID: "12", App: suiteApp, Status: "queued", CreatedAt: "2026-11-11T20:23:15Z", Workflow: wfChangelog},
 		{ID: "13", App: suiteApp, Status: "completed", Conclusion: "success", RunCount: 1,
-			CreatedAt: "2026-11-11T21:00:00Z"},
+			CreatedAt: "2026-11-11T21:00:00Z", Workflow: wfChangelog},
 	}
 	if code := run(readyArgs(exampleRepo)); code != 0 || f.flips != 1 {
 		t.Fatalf("ready exit = %d flips = %d, want 0 and 1 — the suite hold over-applied\n%s",
 			code, f.flips, errBuf.String())
 	}
+}
+
+// regression: #6234
+// Review finding F1: a later suite of ANOTHER workflow under the same Actions app re-ran other
+// work; the stuck changelog-check suite still holds the head.
+func TestReadyOtherWorkflowSuiteHolds(t *testing.T) {
+	f, errBuf := setupFake(t)
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+	f.status = greenStatus()
+	f.suites = []deskkit.CheckSuite{
+		{ID: "11", App: suiteApp, Status: "completed", Conclusion: "success", RunCount: 1,
+			CreatedAt: "2026-11-11T20:09:57Z", Workflow: wfChangelog},
+		{ID: "12", App: suiteApp, Status: "queued", CreatedAt: "2026-11-11T20:23:15Z", Workflow: wfChangelog},
+		{ID: "13", App: suiteApp, Status: "completed", Conclusion: "success", RunCount: 12,
+			CreatedAt: "2026-11-12T00:40:07Z", Workflow: wfCI},
+	}
+	wantSuiteHold(t, f, errBuf.String, "suite 12 queued", "workflow "+wfChangelog)
+}
+
+// regression: #6234
+// A 403 on the workflow-runs read that names an Actions suite's workflow names the permission
+// and fails closed — never a fall-back to superseding by app.
+func TestReadySuiteWorkflow403Holds(t *testing.T) {
+	f, errBuf := setupFake(t)
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+	f.status = greenStatus()
+	f.suites = []deskkit.CheckSuite{
+		{ID: "12", App: suiteApp, Status: "queued", CreatedAt: "2026-11-11T20:23:15Z", Workflow: wfChangelog},
+		{ID: "13", App: suiteApp, Status: "completed", Conclusion: "success", RunCount: 1,
+			CreatedAt: "2026-11-11T21:00:00Z", Workflow: wfChangelog},
+	}
+	force403(f, "/actions/runs")
+	wantSuiteHold(t, f, errBuf.String, "workflow runs", "actions: read")
 }

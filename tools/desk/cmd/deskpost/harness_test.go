@@ -156,6 +156,7 @@ type fakeGH struct {
 	checks            checkRunsResp
 	// suites are the check suites served at the head (#6234); nil serves none. suitesTotal,
 	// when > 0, is the total_count asserted instead of len(suites), to force a short read.
+	// A suite's Workflow is served through GET /actions/runs?head_sha=, as GitHub names it.
 	suites      []deskkit.CheckSuite
 	suitesTotal int
 
@@ -219,6 +220,7 @@ var (
 	reStatus       = regexp.MustCompile(`/commits/[^/]+/status$`)
 	reChecks       = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
 	reSuites       = regexp.MustCompile(`/commits/[^/]+/check-suites$`)
+	reSuiteRuns    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/runs$`)
 	reCommit       = regexp.MustCompile(`/commits/[^/]+$`)
 	reRepo         = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
 	reTimeline     = regexp.MustCompile(`/issues/[0-9]+/timeline$`)
@@ -461,6 +463,9 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 
 	case r.Method == http.MethodGet && reSuites.MatchString(path):
 		writeJSON(f.servedSuites())
+
+	case r.Method == http.MethodGet && reSuiteRuns.MatchString(path):
+		writeJSON(f.servedSuiteRuns())
 
 	case r.Method == http.MethodGet && reChecks.MatchString(path):
 		per, pg := ghPaging(r.URL.Query())
@@ -867,4 +872,18 @@ func (f *fakeGH) servedSuites() map[string]any {
 		total = f.suitesTotal
 	}
 	return map[string]any{"total_count": total, "check_suites": list}
+}
+
+// servedSuiteRuns renders GET /actions/runs?head_sha= from f.suites: one workflow run per suite
+// that names a Workflow, carrying its check_suite_id and workflow path (#6234).
+func (f *fakeGH) servedSuiteRuns() map[string]any {
+	list := []map[string]any{}
+	for _, s := range f.suites {
+		if s.Workflow == "" {
+			continue
+		}
+		id, _ := strconv.ParseInt(s.ID, 10, 64)
+		list = append(list, map[string]any{"check_suite_id": id, "path": s.Workflow})
+	}
+	return map[string]any{"total_count": len(list), "workflow_runs": list}
 }

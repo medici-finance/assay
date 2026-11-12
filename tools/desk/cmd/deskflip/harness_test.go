@@ -124,7 +124,8 @@ type stub struct {
 
 	// suites is the check-suite list the fake forge serves at /commits/{sha}/check-suites
 	// (#6234). nil serves an empty list; suiteTotalOverride, when non-zero, is the total_count
-	// it ASSERTS regardless of how many it serves.
+	// it ASSERTS regardless of how many it serves. A suite's Workflow is served through
+	// /actions/runs?head_sha=, as GitHub names it, never in the suite itself.
 	suites             []deskkit.CheckSuite
 	suiteTotalOverride int
 
@@ -292,6 +293,9 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 
 		case strings.HasSuffix(path, "/check-suites"):
 			enc(s.servedSuites())
+
+		case r.Method == http.MethodGet && strings.HasSuffix(path, "/actions/runs"):
+			enc(s.servedSuiteRuns())
 
 		case r.Method == http.MethodGet && strings.Contains(path, "/commits/"):
 			// GET /commits/{sha} — the head commit's committer date (#3093). Ordered after
@@ -587,6 +591,23 @@ func (s *stub) servedSuites() map[string]any {
 		total = s.suiteTotalOverride
 	}
 	return map[string]any{"total_count": total, "check_suites": items}
+}
+
+// servedSuiteRuns renders GET /actions/runs?head_sha= from the stub's suites: one workflow run
+// per suite that names a Workflow, carrying its check_suite_id and workflow path (#6234).
+func (s *stub) servedSuiteRuns() map[string]any {
+	items := []map[string]any{}
+	for _, c := range s.suites {
+		if c.Workflow == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(c.ID, 10, 64)
+		if err != nil {
+			panic("CheckSuite.ID must be numeric for the GitHub stub: " + c.ID)
+		}
+		items = append(items, map[string]any{"check_suite_id": id, "path": c.Workflow})
+	}
+	return map[string]any{"total_count": len(items), "workflow_runs": items}
 }
 
 // --- assertions over the recording -------------------------------------------------

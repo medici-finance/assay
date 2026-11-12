@@ -14,8 +14,8 @@ import (
 // runs inside suites. A suite still queued or running with ZERO runs therefore adds nothing to
 // the rollup, so latestPerRollupName judges the older green run of each name while the forge's
 // merge gate waits on the stuck suite. The rollup reads green; the forge reads BLOCKED.
-// Which suites hold is deskkit.PendingCheckSuites — one rule, shared with deskautolane's
-// checks-green, so the two gates cannot drift apart on it.
+// Which suites hold is deskkit.PendingCheckSuites — one rule, shared with deskautolane's merge
+// checks-green and deskpost ready's precondition (c'), so the three gates cannot drift apart on it.
 //
 // A suite read that fails, or that served fewer suites than the forge asserts, is could-not-check.
 func checkSuitesHold(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head string) error {
