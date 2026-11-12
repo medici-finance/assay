@@ -1,0 +1,4 @@
+### Added
+
+- `deskperf report`'s forge-calls RELEASE table now names the release a build came from: a row reads `v1.0.82 (1a43034839)` when that build's records carry its release tag, the sha alone when they carry none, and `<sha> (tag conflict)` when they name more than one tag. Rows stay keyed on the sha, so two builds with one tag stay two rows. `--json` adds `releaseTag` and `releaseTagConflict` to each release row and keeps every existing field.
+- Release builds of the desk tools and `statusgen` record their stamped release tag in the local perf history as `perf-v5`: the `perf-v2` record unchanged plus one required `releaseTag`. Dev and unstamped builds keep writing `perf-v2` byte for byte, and no tag is ever derived from a sha. Existing `perf-v1`/`perf-v2` history reads unchanged; a reader that predates `perf-v5` skips those lines as an unknown schema.

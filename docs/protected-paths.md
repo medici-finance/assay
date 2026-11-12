@@ -130,8 +130,7 @@ commands and results before producing the closure record.
 
 When the delivery added supplemental rows but changed no original row, the
 independent verifier records that run with a protected record: a file holding
-only the `Verification-Table:` line above, passed as `--acceptance-record` (host
-execution and same-repository admission only; no `--acceptance-forge`, since it
+only the `Verification-Table:` line above, passed as `--acceptance-record` (same-repository host execution or the closed bracket below; no `--acceptance-forge`, since it
 reads no approval):
 
 ```sh
@@ -318,8 +317,23 @@ or fail lint. Verify the upgraded workflow can corroborate the exact ruling befo
 committing a final transition verdict. This source change does not activate any
 repository's workflows or provide any actual amendment approval.
 
-Transition execution inside `--in-container` or with cross-repository admission is
-unsupported and refuses. The fenced runner gains no network access. Chained
+A protected or transition record may run inside a closed **container-netns transition bracket**
+opened and closed with the same `--acceptance-record` descriptor. The dispatch host
+performs the protected plan and clean-source checks at open, re-reads transition approval
+with `--acceptance-forge`, and binds the exact planned table, row IDs, source and changes
+in the receipt. Inside it the container executes the receipt's planned table, not the
+current table; it reads no Git history or forge and refuses `--acceptance-forge`.
+Close re-plans with a fresh approval read and compares the complete receipt plan,
+byte-exact table and witness descriptor, changes and commands before appending anything.
+`deskdispatch --check-verifier` runs only on the dispatch host. A different-runtime
+runner still refuses `environment changed since admission: runtime`; the runtime
+recheck is unchanged and the container is never re-admitted. Protected container
+execution requires explicit `--root` and refuses `--fail-first`: the receipt binds
+the head plan, not baseline history. Keep baseline qualification on the host. Credit is unchanged:
+`credit=credited` only, never a matching bracket digest alone.
+
+Execution with `--acceptance-record` and `--in-container`, `--check` or cross-repository
+admission remains unsupported and refuses. The fenced runner gains no network access. Chained
 transitions, row retirement, class changes, combined command-and-Expect changes in
 one row, and table-layout migrations also remain unsupported. Human closure gates, independent review and release/pin
 requirements remain separate; this mechanism performs none of those actions.
