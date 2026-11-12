@@ -57,11 +57,19 @@ type postBackend interface {
 	issueTrustPayload(n int) (*deskkit.TrustPayload, error)
 	combinedStatusAt(sha string) (*combinedStatus, error)
 	checkRunsAt(sha string) (*checkRunsResp, error)
+	// checkSuitesAt reads the check SUITES at a commit (#6234): a suite with no conclusion and
+	// no runs never reaches either rollup above, yet holds the forge's merge gate.
+	checkSuitesAt(sha string) (*deskkit.CheckSuitesAtHead, error)
 	// postReview lands the verdict. A non-empty note on success says the verdict is in force
 	// by a route other than the plain POST (GitLab: the App's approval already stood, #1106);
 	// it is empty on the ordinary path and never accompanies an error.
 	postReview(pr int, head, event, body string) (note string, err error)
 	markReadyForReview(nodeID string) error
+	// convertToDraft and postComment serve ONE caller: `ready`'s post-flip backstop
+	// (deskkit.ReadyBackstop, #6242), which returns a just-flipped PR to draft when the forge
+	// reports it BLOCKED or DIRTY and explains why in one comment. Neither is a verb.
+	convertToDraft(nodeID string) error
+	postComment(pr int, body string) error
 	// readMergeHold / setMergeHold: the forge-gitlab merge-hold brief. GitHub's ghClient path
 	// is the typed not-applicable, unconditionally — its server-side twin is branch
 	// protection. postVerdictReview's correctness lane reads and writes the hold AFTER the
@@ -144,6 +152,8 @@ func (b *forgeBackend) getPR(pr int) (*prInfo, error) {
 		NodeID:       p.NodeID,
 		Body:         p.Body,
 		ChangedFiles: p.ChangedFiles,
+		// The forge's merge verdict, read only by `ready`'s post-flip backstop (#6242).
+		MergeableState: p.MergeStateStatus,
 	}
 	out.User.Login = p.Author.Login
 	out.User.ID = p.Author.ID
@@ -306,6 +316,10 @@ func (b *forgeBackend) checkRunsAt(sha string) (*checkRunsResp, error) {
 	return cr, nil
 }
 
+func (b *forgeBackend) checkSuitesAt(sha string) (*deskkit.CheckSuitesAtHead, error) {
+	return b.fg.CheckSuitesAtHead(b.repo, sha)
+}
+
 func (b *forgeBackend) postReview(pr int, head, event, body string) (string, error) {
 	// The shipping consumer of the typed reviewer verdict-write op on the GitLab backend: the
 	// forge-neutral event (APPROVE / REQUEST_CHANGES / COMMENT) maps to a head-pinned approval +
@@ -323,6 +337,15 @@ func (b *forgeBackend) postReview(pr int, head, event, body string) (string, err
 
 func (b *forgeBackend) markReadyForReview(nodeID string) error {
 	return b.fg.MarkReadyForReview(nodeID)
+}
+
+func (b *forgeBackend) convertToDraft(nodeID string) error {
+	return b.fg.ConvertToDraft(nodeID)
+}
+
+func (b *forgeBackend) postComment(pr int, body string) error {
+	_, err := b.fg.PostComment(b.repo, pr, body)
+	return err
 }
 
 func (b *forgeBackend) readMergeHold(pr int) (*deskkit.MergeHold, error) {

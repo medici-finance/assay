@@ -32,8 +32,16 @@ redesign the system or expand the brief. Preserve the original brief/source hist
    assessment into review; check the actual diff retires the named duplicate and calls
    the chosen owner. A declaration or import alone is not conformance evidence.
 
-Use the shipped context discover/recheck/check interface only if the installed version
-supports the selected receipt/binding. Until qualified automation is available, this
+**Shipped operation.** Where the installed version supports the receipt, use
+`statusgen context recheck --snapshot DIR receipt.json` for steps 1, 2 and 5 (Assay v1.0.55
+and later for `context-handoff-v1`, v1.0.63 and later for the product-bound
+`context-handoff-v3`), and `statusgen context check` for a brief amendment. A desk dispatching
+the work may run the same recheck before the claim with `deskdispatch --context-snapshot DIR
+--context-receipt FILE` (from the first release whose `CHANGELOG.md` names these flags), which
+holds a receipt to reconcile or that cannot be confirmed before any claim exists. The `author-spec`, `author-brief` and
+`worker-desk` skills point here; this is the single procedure.
+
+Otherwise, and for an install that lacks the verb or the receipt's schema, this
 source-pinned assessment is the **manual bootstrap**; disclose its coverage and obtain
 any bootstrap approval required by the controlling architecture. It does not pretend
 a planned command exists, grant a new permission or relax an existing human gate.

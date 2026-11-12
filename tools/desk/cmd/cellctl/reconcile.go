@@ -58,6 +58,18 @@ type reconcileEntry struct {
 	// group is the recorded role child's process-group id once that child is proven gone: its
 	// surviving members are the descendants the marker cannot always attribute.
 	group int
+	// unprobed: the lease itself could not be probed, so no verb that takes the lease (a plan's
+	// apply, `cadence recover`, `comms recover`) can clear this record.
+	unprobed bool
+	// marked are the role's marked processes found running beside this record (orphans and owned
+	// children). They are never ownership proof; a stale hint lists them as what must stop first.
+	marked []int
+}
+
+// running is every pid a stale hint lists as still running for this record: its recorded pids and
+// the role's marked processes.
+func (e *reconcileEntry) running() []int {
+	return append(append([]int(nil), e.PIDs...), e.marked...)
 }
 
 type reconcilePlan struct {
@@ -293,7 +305,7 @@ func (c *Cell) reconcileInventory(roles []string, comms *deskCommsConfig) *recon
 			continue // a live window owns the role: its processes are its own business
 		}
 		if m.Orphan {
-			plan.Orphans = append(plan.Orphans, m)
+			plan.Orphans = append(plan.Orphans, m) // listed on its role's record below, once every record exists
 			continue
 		}
 		// A marked process whose parent is alive and not a cell orphan is an owned child still
@@ -305,11 +317,19 @@ func (c *Cell) reconcileInventory(roles []string, comms *deskCommsConfig) *recon
 			eligible[m.Role] = e
 		}
 		e.Class = reconcileAlive
+		e.marked = append(e.marked, m.PID)
 		why := fmt.Sprintf("is still running under live parent pid %d, so it is not proven orphaned (on a Linux host with a child subreaper a real orphan looks like this too)", m.Parent)
 		if m.Shielded {
 			why = "is still running and is shielded (it is, sits above, or is hosted alongside something live)"
 		}
 		e.Evidence = append(e.Evidence, fmt.Sprintf("marked process pid %d (%s) %s; the record cannot be dead while it runs, and it is never signalled", m.PID, m.Identity, why))
+	}
+	// Orphans join their role's record only after the scan: a live marked process above may create
+	// that record after an orphan of the same role was already seen (the scan runs in pid order).
+	for _, o := range plan.Orphans {
+		if e := eligible[o.Role]; e != nil {
+			e.marked = append(e.marked, o.PID)
+		}
 	}
 	return plan
 }
@@ -330,7 +350,7 @@ func (c *Cell) inventoryRecord(role, dir string, isComms bool) (e *reconcileEntr
 	}
 	switch {
 	case probeErr != nil:
-		e.Class = reconcileCNC
+		e.Class, e.unprobed = reconcileCNC, true
 		e.Evidence = append(e.Evidence, "the lease could not be probed: "+probeErr.Error())
 		return e, false
 	case busy:

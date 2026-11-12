@@ -250,3 +250,7 @@ RUN set -eux; \
     fi; \
     test ! -e /usr/lib/git-core; \
     PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/local/bin/git-floor-check
+
+# CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
+# them off. A fragile stopgap only; patched node kernels are the real fix.
+ENV GODEBUG=multipathtcp=0

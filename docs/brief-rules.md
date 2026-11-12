@@ -169,12 +169,16 @@ nothing measured.
      can weigh ("the two out-of-scope exclusions are judgements — reviewer confirms the
      frozen tree really has no live reader"). It does not get restated as fact in the
      frontmatter, where it would read as settled.
-   - **After the merge, the claims need the diff that made them.** `--brief` lifts the diff
-     SCOPING, not the need for a diff: run on merged main it exits **2 (COULD-NOT-CHECK)**,
-     because HEAD equals the base and nothing there is evidence either way. To re-run the
-     claims, give it the branch: `git checkout M^2 && statusgen --consumers --brief <id>
-     --base $(git merge-base M^1 M^2)` for the PR's merge commit `M`. Exit 2 is deliberate —
-     "could not check" must never render as "checked clean".
+   - **After the merge, the same row re-runs against the delivery.** On merged main HEAD
+     equals the base, so the branch diff is no evidence either way. The bare row then pins
+     itself to the brief's delivery and its first parent, read locally: the committed
+     Evidence's `Verification-Table:` marker when there is one, otherwise the one first-parent
+     commit whose message, or a commit it merged, carries `Brief: <stream>/<NN>`. The commit
+     that delivers the brief must therefore carry that trailer, and it must be the only one
+     (see [consumer delivery checks](consumer-delivery-checks.md)). When neither source names
+     exactly one delivery it exits **2 (COULD-NOT-CHECK)**; pass `--delivery <full-sha>
+     --base <its first parent>` explicitly. Exit 2 is deliberate — "could not check" must
+     never render as "checked clean".
 
    What the gate does **not** establish: that the list is COMPLETE. It judges the entries
    that were written; a consumer left off the list is invisible to it, and the run says so on
@@ -898,6 +902,19 @@ passing run — which is why they are lint rules and not review vigilance.
       (the `Verification-Table:` line alone) needs no `--acceptance-forge`;
       it refuses an original row whose delivered definition differs from
       its original one, and witnesses supplemental rows `author-added`.
+      A protected or transition record may instead run inside a closed
+      **container-netns transition bracket**, opened and closed on the dispatch
+      host with the same `--acceptance-record` descriptor. The host plans and
+      re-plans through the shared evaluator, re-reading transition approvals
+      with `--acceptance-forge`. Inside it the container executes the receipt's
+      planned table, not the current table; the container refuses forge reads.
+      Close compares the exact table, descriptor, source, changes and witness
+      commands. `deskdispatch --check-verifier` runs only on the dispatch host:
+      a different runtime still refuses `environment changed since admission:
+      runtime`; never re-admit inside the runner. `--in-container`, `--check`
+      and cross-repository admission with the record stay refused. Protected
+      container execution needs explicit `--root` and refuses `--fail-first`,
+      whose baseline history is outside this plan. Credit is unchanged (`credit=credited` only); a digest match alone grants none.
     - `check` — deterministic but ENV-BOUND (a live PEM, a real queue, a tool on
       PATH). A runner executes it; CI skips an explicitly-classed one (its verdict
       rests on the verifier's authorship+signature, not on a CI re-run).

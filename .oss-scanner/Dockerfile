@@ -47,6 +47,10 @@ FROM golang:1.27.3-bookworm
 
 ENV CGO_ENABLED=0
 
+# CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
+# them off. A fragile stopgap only; patched node kernels are the real fix.
+ENV GODEBUG=multipathtcp=0
+
 # Shell tooling dependencies: bash for the tools/*.sh suites, python3 for
 # the scanner's own helpers and the repo's python scripts, git because
 # several tools shell out to it.

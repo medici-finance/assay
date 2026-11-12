@@ -191,8 +191,9 @@ keep it to scope + intent, not a keystroke script.>
 # but "the cross-component flow that depends on this value still completes end-to-end."
 # It also carries the consumers: corroboration — `statusgen --consumers --brief <stream>/<NN>`,
 # expecting exit 0 with the UNCHECKED entries named in the Expect column for the reviewer to weigh.
-# Re-run after the merge it exits 2 (COULD-NOT-CHECK): the diff that made the claims true is gone.
-# To re-corroborate a merged brief, give it that diff — see brief-rules.md rule 9 for the recipe.
+# Re-run after the merge, the same row pins itself to the delivery: the Evidence's
+# Verification-Table marker, else the one first-parent commit carrying `Brief: <stream>/<NN>`.
+# With neither it exits 2 (COULD-NOT-CHECK) — see brief-rules.md rule 9.
 # If this brief adds a CHECK or guard, add a MUTATION-TEST row (brief-rules.md rule 16):
 # revert the fix or break the guarded thing, confirm the check goes RED.
 # If this brief touches a shared lister/flag/query, add a NEIGHBOUR row (brief-rules.md rule 17):

@@ -214,6 +214,10 @@ LABEL org.opencontainers.image.title="assay desk-tools" \
       org.opencontainers.image.created="${BUILT_AT}" \
       org.opencontainers.image.licenses="Apache-2.0"
 
+# CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
+# them off. A fragile stopgap only; patched node kernels are the real fix.
+ENV GODEBUG=multipathtcp=0
+
 USER desk
 WORKDIR /home/desk
 
