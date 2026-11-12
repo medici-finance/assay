@@ -42,7 +42,7 @@ func replayPass(t *testing.T) (int, []string) {
 	return len(loop.Queued()), rep.Deferred
 }
 
-// regression: intake-class-routing/03 — the replay bound had no knob of its own.
+// regression: F-replay-own-knob — the replay bound had no knob of its own.
 func TestReplayCapOwnKnob(t *testing.T) {
 	t.Run("own knob sets the bound and the deferred line names it", func(t *testing.T) {
 		t.Setenv("INTAKE_REPLAY_CAP", "3")

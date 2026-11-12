@@ -234,7 +234,7 @@ func TestMonitorBurstCollapse(t *testing.T) {
 // INBOUND_MONITOR_BURST_CAP whether or not the replay knob is set, and a delta of exactly the
 // burst bound is listed whole, so a poller reading the replay value (3) would collapse it.
 //
-// regression: intake-class-routing/03 — the replay bound gained its own knob.
+// regression: F-replay-own-knob — the replay bound gained its own knob.
 func TestReplayCapLeavesBurst(t *testing.T) {
 	run := func(t *testing.T, replay string, newIssues int) string {
 		t.Helper()
