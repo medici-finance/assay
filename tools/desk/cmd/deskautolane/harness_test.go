@@ -92,6 +92,7 @@ type fakeForge struct {
 	reviews    []deskkit.Review
 	checks     *deskkit.ChecksAtHead
 	checks2    *deskkit.ChecksAtHead // what every checks read AFTER the first serves; nil = unchanged
+	suites     []deskkit.CheckSuite  // the check suites at head (#6234); nil serves none
 	checkReads int
 	required   []string
 	events     []deskkit.LabelEvent
@@ -243,6 +244,13 @@ func (f *fakeForge) ChecksAtHead(r deskkit.ForgeRepo, sha string) (*deskkit.Chec
 		return f.checks2, nil
 	}
 	return f.checks, nil
+}
+
+func (f *fakeForge) CheckSuitesAtHead(r deskkit.ForgeRepo, sha string) (*deskkit.CheckSuitesAtHead, error) {
+	if err := f.rec("CheckSuitesAtHead", sha, ""); err != nil {
+		return nil, err
+	}
+	return &deskkit.CheckSuitesAtHead{TotalCount: len(f.suites), Suites: f.suites}, nil
 }
 
 func (f *fakeForge) RequiredStatusChecks(r deskkit.ForgeRepo, branch string) ([]string, error) {

@@ -1,0 +1,3 @@
+### Fixed
+- `deskflip` checks-green, `deskautolane` merge checks-green and `deskpost ready` now read the check suites at the head, not only the check-run rollup. A suite with no conclusion and zero runs never appears in the rollup but still holds the forge's merge gate, so a green rollup flipped or merged a head the forge reported `BLOCKED`. Such a suite now holds checks-green as could-not-check (exit 6), as do a failed or short suite read. A later suite of the same app that concluded with runs supersedes a stuck one, and an installed app that never reports at the head is ignored.
+- New read-only forge method `CheckSuitesAtHead` (GitHub: `commits/{sha}/check-suites`; GitLab: no suite concept, answers an empty set with no request).

@@ -820,6 +820,25 @@ func TestAutoLane_SizeLabelUntrusted_CouldNotCheck(t *testing.T) {
 	}
 }
 
+// regression: #6234
+// The rollup is green, but a newer suite of the app that reports it has no conclusion and no
+// runs: the forge's merge gate waits on it, so checks-green is could-not-check, nothing written.
+func TestAutoLane_ZeroRunSuiteHolds(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.suites = []deskkit.CheckSuite{
+		{ID: "11", App: "github-actions", Status: "completed", Conclusion: "success", RunCount: 1,
+			CreatedAt: "2026-11-11T20:09:57Z"},
+		{ID: "12", App: "github-actions", Status: "queued", CreatedAt: "2026-11-11T20:23:15Z"},
+	}
+	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+	if code != deskkit.ExitUnverifiable || !strings.Contains(stderr, "suite 12 queued") {
+		t.Fatalf("exit %d stderr %q — want exit 6 naming the unconcluded suite", code, stderr)
+	}
+	if w := e.fg.writes(); len(w) != 0 {
+		t.Fatalf("a pending suite ejected: %v", w)
+	}
+}
+
 // TestAutoLane_PendingChecksAre_CouldNotCheck — CI still running on an in-lane PR is
 // could-not-check at recompute (exit 6, nothing written, no latch), never a one-way ejection.
 func TestAutoLane_PendingChecksAre_CouldNotCheck(t *testing.T) {
