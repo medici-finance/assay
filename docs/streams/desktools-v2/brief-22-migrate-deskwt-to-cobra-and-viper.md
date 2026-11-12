@@ -294,5 +294,39 @@ RISK-VALUE: DERIVED — maintain min-interval = 6*time.Hour, timeout = 30*time.S
 RISK-VALUE: DERIVED — singleton-ttl default = defaultSingletonTTL (10 * time.Minute) @ tools/desk/cmd/deskwt/cli.go:113 — the pre-migration parser bound the same constant at prune.go:248 in 378520e58386.
 
 **VERIFY: BLOCKED** — 9 of 10 obligations discharged at bc078e9179c8 and no obligation failed; row 9 exits 0 but its unpinned --consumers form cannot establish corroboration on merged main (lint [consumer-delivery-range]), check-definition blocker medici-finance/assay#1927.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskwt -run '^TestCLIHelpOffline$' > "$f" 2>&1 && test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskwt -run '^TestCLIConfigFlow$' > "$f" 2>&1 && test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskwt -run '^TestCLILegacyForms$' > "$f" 2>&1 && test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd tools/desk && s=internal/clicontract/testdata/mutations/desktools-v2-22.json && n=$(jq -e '.mutations \| length' "$s") && test "$n" -gt 0 && o=$(mktemp) && trap 'rm -f "$o"' 0 && { go run ./cmd/muhar -j 1 -spec "$s" > "$o"; r=$?; cat "$o"; test "$r" -eq 0; } && test "$(tail -n 1 "$o")" = "Totals: $n caught, 0 NOT CAUGHT, 0 could-not-mutate.")` | pass exit=0 | sha256:8c9fddd615b3 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskwt/...` | pass exit=0 | sha256:552d0b36e3e4 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskwt` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/22 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:23b797b0bb7c | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:3500e8589c56 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:938a538575ae | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `(f=$(mktemp) && trap 'rm -f "$f"' 0 && cd tools/desk && go test -count=1 -v ./cmd/deskwt -run '^TestCLILifecycleParity$' > "$f" 2>&1 && grep -F -e '--- PASS: TestCLILifecycleParity ' "$f")` | pass exit=0 | sha256:23adc4497801 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6004 run=71219bee156f8c9185a75c783a4e52bf407047afe621b435810d46d19e1cce93 source=612750a12406f19a96a83e6ea7687d794f772f9f brief=docs/streams/desktools-v2/brief-22-migrate-deskwt-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+
+Verifier notes (no acceptance credit):
+
+- Re-verification attempt, 2026-11-10, dispatched non-implementer verifier (claude-opus-5-5, strong), merged main 612750a12406 (delivery: #4460, squash commit 0d9cb252285a; first parent 378520e58386). Admission passed before and after this run. The table above is the statusgen verifyrun host witness, appended by the tool and carried here byte for byte; all 10 rows ran in one pass and each exited 0.
+- Row 4 changed since the earlier Evidence. The 2026-11-01 and 2026-11-06 witnesses ran the old row-4 command; this run witnesses the current one, which also asserts the muhar Totals line itself (amended in e4c6eec9b18c and a0ce63a7635e). It passed.
+- Row 9 exits 0 but stays deferred. Its unpinned statusgen --root . --consumers form cannot establish corroboration on merged main, and the check-definition blocker recorded on 2026-11-01 and 2026-11-06 (medici-finance/assay#1927) is still open, so row 9 earns no credit.
+- The Verify table at 612750a12406 re-derives to 10 rows, 0 author-added (deskpathguard rederive); it is not a protected table.
+- The owned package changed since the 2026-11-06 verification at bc078e9179c8 only in 99f9a1e82889 (prune test fixtures and the prune mutation spec); cli.go and the desktools-v2-22 mutation spec are unchanged.
+- The Runner cells carry "reads could-not-check: recorder is Linux-only (darwin)": the read recorder did not run on this host, so the rows assert exit and output only.
+- The home tree was restored to clean (git status --porcelain --ignored empty) after the witness was captured.
+
+Risk-bearing values. Frontmatter risk is present and every field is "no" (not irreversible). Enumeration over the delivered diff of #4460 (cli.go bindings and the handler bounds they feed), re-read at 612750a12406:
+
+RISK-VALUE: DERIVED — lock-ttl default = "0" @ tools/desk/cmd/deskwt/cli.go:110 — the brief forbids reinterpreting --lock-ttl during the parser port; the pre-migration parser declared the same "0" (age test disabled) at prune.go:236 in 378520e58386, so the migrated default preserves the baseline exactly.
+RISK-VALUE: DERIVED — maintain min-interval = 6*time.Hour, timeout = 30*time.Second @ tools/desk/cmd/deskwt/cli.go:125-126 — identical to the pre-migration FlagSet defaults at maintenance.go:179-180 in 378520e58386, and the 1h / 1s / 5m bounds are unchanged in the handler (maintenance.go:175).
+RISK-VALUE: DERIVED — singleton-ttl default = defaultSingletonTTL (10 * time.Minute) @ tools/desk/cmd/deskwt/cli.go:113 — the pre-migration parser bound the same constant at prune.go:248 in 378520e58386.
+
+**VERIFY: BLOCKED** — 9 of 10 obligations discharged at 612750a12406 and no obligation failed; row 9 exits 0 but its unpinned --consumers form stays deferred on the open check-definition blocker medici-finance/assay#1927.
+
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.

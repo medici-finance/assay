@@ -256,10 +256,22 @@ wins, and the credit rule above is unchanged. A bad selector (an unknown, empty,
 shared ID, a table with no `#` column, or `--rows` with an audit or bracket step) is refused
 before any row runs.
 
+For cross-repository coverage, host witnesses bind the whole tracking tree at the
+admitted tracking-source. Any non-bookkeeping change there holds them at closure
+and every later board read, requiring a fresh admitted run. Keep summaries in prose
+or tables without Date/Runner headers, which the closure reader reserves for run
+records. Repair a malformed summary through a fresh admitted run and append its
+native evidence and verdict through `deskevidence`; retain the earlier record.
+
 With `--acceptance-record`, execute the protected host rows in **one** host invocation on a
 clean committed source, before inserting uncommitted Evidence. Include every supplemental
 row so the producer records `author-added; no acceptance credit`. Select these host rows
 with `--rows`; use `--acceptance-forge` when the descriptor names an approved transition.
+A chain descriptor carries `Acceptance-Transition: link=<k> amendment=<sha> approval=<url>`
+for each contiguous link after the one `Verification-Table:` line. Draft each link's
+exact v2 payload for the driver; never post an approval. Link 1 alone may retain a v1
+approval under its existing rules. The shared plan derives `Command`, `Expect` or
+`Command+Expect` changes, and every original witness must follow the final amendment.
 Then bracket the disjoint container-witnessable rows on that same source and land the
 closed witness through the sanctioned Evidence path. The selections together cover the
 whole protected table, and the assembled run carries exactly one `Verification-Table:`
@@ -267,10 +279,25 @@ descriptor. A second protected host invocation duplicates that descriptor or mov
 source and cannot close. Container execution may precede the host invocation if its
 witness remains outside the home and the home stays clean; inserting it first makes the
 protected host execution refuse. Never rewrite witness cells or receipt fields to make
-sources agree. The container executes the current table, so a row whose current definition
+sources agree. Outside a transition bracket, container rows execute the current table, so a row whose current definition
 differs from its owed original definition still needs the existing protected acceptance
 route; mixed assembly does not exempt that obligation. The whole-table audit and bracket
 credit checks above remain mandatory.
+
+A protected or transition record may instead run inside a closed **container-netns transition bracket** opened and closed with the same `--acceptance-record` descriptor.
+The host steps plan through the canonical protected-acceptance evaluator and re-read
+transition approval with `--acceptance-forge`; the container refuses that forge flag.
+Inside the bracket the container executes the receipt's planned table, not the current
+table, preserving every unamended Command and Expect and marking supplemental rows
+`author-added; no acceptance credit`. Close re-plans and compares the descriptor,
+source, exact table, changes and witness commands before appending the bracket.
+`deskdispatch --check-verifier` runs only on the dispatch host; checking on another
+runtime still refuses `environment changed since admission: runtime`. Never re-admit
+inside the runner. `--in-container`, `--check` and cross-repository admission with the
+record stay refused. Protected container execution requires explicit `--root` and
+refuses `--fail-first`: baseline history is outside the bound plan; keep baseline
+qualification on the host. Credit is unchanged: `credit=credited` only, never digest match
+alone. Independent whole-table verification and human closure gates remain required.
 
 On failed pre-work stamping, no verifier prompt is emitted and the claim is released.
 Keep the retained worktree for recovery; return its real dispatch receipt to the coordinator
@@ -815,7 +842,8 @@ brief at `verified` with a refused close.
 the board shows phantom verification debt, other sessions re-report "stuck" briefs, and merged→verified
 lead time inflates by pure reporting latency. The Age column measures exactly that. Everything else this
 desk posts goes out under the role App via the desk verbs (`deskpr` / `deskreply` /
-`deskfile --raised-by verifier`), minted with `desktoken verifier` — never a bare forge call.
+`deskfile --raised-by verifier`), resolved with `desktoken --no-rotate verifier --repo <slug>` —
+never a bare forge call.
 For comments, use `deskfile attach` on issues or `deskreply` on this desk's own PRs;
 `deskpost comment` is reserved for `pr-review-desk`.
 **Standing-doctrine pointer (2026-08-17):** the verdict-transcription lane (`docs/streams/verdict-lane/`,
@@ -1091,6 +1119,28 @@ verify-side contract only. Until the marker lands, record the Phase-0-record con
 Evidence per step 2 and surface any brief that cannot advance without it — never a re-run, never a bespoke
 human ruling re-derived from scratch each time.
 
+## Rows that need a project secret or a live service — witnessed by an operator, never by the implementer's report
+
+A Verify row that needs a project credential or a live non-production service (a database, an API, a
+staging deployment) — its `Env` cell names `service:<name>`, or its command plainly reaches one — is
+NOT the Phase-0 class above. That class covers a credential **only the implementer can hold**. A
+project secret is held by the project, so a non-implementer can hold it, and the implementer's own
+report of the run (a pasted output, a "passed locally", a record in the PR body) is never this row's
+Evidence. Until a channel exists that brings project secrets to dispatched verifier windows (the
+`desk-containers/34` brief, `gate: human`), this desk:
+
+1. **Records the row could-not-check with the EXACT command** and the environment it needs, never a
+   bare "needs creds". That places the brief in the board's **Environment-blocked** queue
+   (`docs/board.md` row 4), whose owner is an operator.
+2. **Leaves the status at `implemented`.** The operator who holds that environment, and is not the
+   implementer, runs the row verbatim on merged main and records it as any non-implementer Evidence.
+3. **Never asks for the secret, never puts one in a dispatched environment, never runs a PR head
+   with one.**
+
+A row classed `check:ci` that needs such an environment is mis-classed (`statusgen --lint` reddens it
+when the table carries an `Env` column); file it against the brief as a check-definition blocker,
+never "fix" it by an Evidence-only edit.
+
 ## Rules (inherited)
 
 - **Receipt on a human-typed message.** After ANY human-typed message, the FIRST line of your turn is
@@ -1140,7 +1190,11 @@ human ruling re-derived from scratch each time.
   the recorded output, and the runner must be attributable and ≠ author. A self-verify is void. Own temp
   worktree; never mutate the shared checkout; never `git restore`/`clean`; no STATUS.md on a branch.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
-  or comments.
+  or comments. If a push is refused over an attribution trailer your harness added, not you (on
+  Cursor the host setting `attribution.attributeCommitsToAgent`, and `attribution.attributePRsToAgent`
+  for PR footers; both default to true), STOP: never rewrite history or re-commit to strip it, and
+  never push by another route. Report the setting and the refusal line; the host's operator sets
+  it to false.
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
   workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
   standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +

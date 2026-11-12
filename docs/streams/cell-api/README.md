@@ -67,7 +67,7 @@ parked on its own terms. A recorded dependency or passed unit test cannot lift t
 | 06 | [Bind the in-cluster cellctl operator to the public service](brief-06-bind-the-in-cluster-cellctl-operator-to-the-public-service.md) | 15 | M | todo | — | — |
 | 07 | [Qualify handover rollback and last-consumer retirement](brief-07-qualify-handover-rollback-and-last-consumer-retirement.md) | 16 | M | todo | — | — |
 | 08 | [Build the deskd binary and image from public source through the Makefile](brief-08-build-the-deskd-binary-and-image-from-public-source-through-the-makefile.md) | 0 | M | verified | 2026-11-06 assay-verifier-app[bot] @ 7ded00183785 (forge-identity) | — |
-| 09 | [Publish the deskd image through the assay release](brief-09-publish-the-deskd-image-through-the-assay-release.md) | 1 | M | todo | — | — |
+| 09 | [Publish the deskd image through the assay release](brief-09-publish-the-deskd-image-through-the-assay-release.md) | 1 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Bounded refactor map

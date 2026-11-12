@@ -57,6 +57,9 @@ type postBackend interface {
 	issueTrustPayload(n int) (*deskkit.TrustPayload, error)
 	combinedStatusAt(sha string) (*combinedStatus, error)
 	checkRunsAt(sha string) (*checkRunsResp, error)
+	// checkSuitesAt reads the check SUITES at a commit (#6234): a suite with no conclusion and
+	// no runs never reaches either rollup above, yet holds the forge's merge gate.
+	checkSuitesAt(sha string) (*deskkit.CheckSuitesAtHead, error)
 	// postReview lands the verdict. A non-empty note on success says the verdict is in force
 	// by a route other than the plain POST (GitLab: the App's approval already stood, #1106);
 	// it is empty on the ordinary path and never accompanies an error.
@@ -69,6 +72,12 @@ type postBackend interface {
 	// stale at this head); the security lane never touches it.
 	readMergeHold(pr int) (*deskkit.MergeHold, error)
 	setMergeHold(pr int, in deskkit.MergeHoldUpdate) error
+	// openMergeHold opens the marker thread on a change that has none. Its one caller is
+	// armHoldForRequestChanges: a request-changes verdict on a change opened outside the desk
+	// tooling (a human-authored merge request carries no marker thread) arms the hold by
+	// opening it, since a new thread is unresolved. GitHub's ghClient path is the typed
+	// not-applicable.
+	openMergeHold(pr int) error
 	// verdictLabels applies the mechanical, ADVISORY verdict-time labels (size + surface). It
 	// is post-write and gates nothing; a backend that cannot compute them returns a note, not
 	// an error (see forgeBackend.verdictLabels).
@@ -300,6 +309,10 @@ func (b *forgeBackend) checkRunsAt(sha string) (*checkRunsResp, error) {
 	return cr, nil
 }
 
+func (b *forgeBackend) checkSuitesAt(sha string) (*deskkit.CheckSuitesAtHead, error) {
+	return b.fg.CheckSuitesAtHead(b.repo, sha)
+}
+
 func (b *forgeBackend) postReview(pr int, head, event, body string) (string, error) {
 	// The shipping consumer of the typed reviewer verdict-write op on the GitLab backend: the
 	// forge-neutral event (APPROVE / REQUEST_CHANGES / COMMENT) maps to a head-pinned approval +
@@ -325,6 +338,11 @@ func (b *forgeBackend) readMergeHold(pr int) (*deskkit.MergeHold, error) {
 
 func (b *forgeBackend) setMergeHold(pr int, in deskkit.MergeHoldUpdate) error {
 	return b.fg.SetMergeHold(b.repo, pr, in)
+}
+
+func (b *forgeBackend) openMergeHold(pr int) error {
+	_, err := b.fg.OpenMergeHold(b.repo, pr)
+	return err
 }
 
 func (b *forgeBackend) RepoVisibility(owner, repo string) (string, error) {
