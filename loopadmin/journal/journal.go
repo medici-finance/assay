@@ -117,14 +117,9 @@ func (j *Journal) Gate(ctx context.Context) error {
 	if err != nil {
 		return classify(ctx, "gate", err)
 	}
-	stale, err := gate(ctx, tx, j.cell, cur)
+	seen, err := gate(ctx, tx, j.cell, cur)
 	tx.Rollback()
-	if stale != nil {
-		if perr := markPaused(ctx, j.db, j.cell, stale); perr != nil {
-			return errors.Join(err, perr)
-		}
-	}
-	return err
+	return refuse(ctx, j.db, j.source, j.cell, seen, err)
 }
 
 func newReceiptID() (string, error) {
@@ -160,14 +155,9 @@ func (j *Journal) Intend(ctx context.Context, in Intent, prior *Receipt) (Decisi
 		return Decision{}, classify(ctx, "intend", err)
 	}
 	defer tx.Rollback()
-	if stale, err := gate(ctx, tx, j.cell, cur); err != nil {
+	if seen, err := gate(ctx, tx, j.cell, cur); err != nil {
 		tx.Rollback()
-		if stale != nil {
-			if perr := markPaused(ctx, j.db, j.cell, stale); perr != nil {
-				return Decision{}, errors.Join(err, perr)
-			}
-		}
-		return Decision{}, err
+		return Decision{}, refuse(ctx, j.db, j.source, j.cell, seen, err)
 	}
 	// Serialize intents for one request so that a concurrent duplicate waits
 	// for this transaction instead of racing it.

@@ -289,32 +289,84 @@ func TestJournalIncarnationPaused(t *testing.T) {
 		t.Fatalf("paused journals must start no child, started %d", launches)
 	}
 
-	// A stale pause never lands on a newer activation: a runtime gate that saw
-	// the old record, and pauses only after the operator's Activate committed,
-	// leaves the new activation open (finding F-pause-race).
-	raced := pg.create(ctx, "")
-	must(t, Migrate(ctx, raced))
-	rop := &operator{}
-	rop.rotate(testCell, "inc-a", "key-a")
-	must(t, Activate(ctx, raced, testCell, rop, StopConfirmation{Receipt: "stop-a"}))
-	jx, err := Open(ctx, raced, testCell, rop)
-	must(t, err)
-	defer jx.Close()
-	rop.rotate(testCell, "inc-b", "key-b")
-	seen, err := current(ctx, rop, testCell)
-	must(t, err)
-	tx, err := jx.db.BeginTx(ctx, nil)
-	must(t, err)
-	stale, err := gate(ctx, tx, testCell, seen)
-	tx.Rollback()
-	if stale == nil || !errors.Is(err, ErrPaused) {
-		t.Fatalf("the gate must report the stale record, got %v, %v", stale, err)
+	// A pause never lands on a newer activation (finding F-pause-race, both
+	// orders). Each case runs the production steps of a runtime gate by hand:
+	// the operator snapshot, the gate transaction, then the settling of its
+	// refusal, with the operator's Activate committing at a chosen point.
+	setup := func() (*Journal, Config, *operator) {
+		c := pg.create(ctx, "")
+		must(t, Migrate(ctx, c))
+		o := &operator{}
+		o.rotate(testCell, "inc-a", "key-a")
+		must(t, Activate(ctx, c, testCell, o, StopConfirmation{Receipt: "stop-a"}))
+		jj, err := Open(ctx, c, testCell, o)
+		must(t, err)
+		t.Cleanup(func() { jj.Close() })
+		return jj, c, o
 	}
-	must(t, Activate(ctx, raced, testCell, rop, StopConfirmation{Receipt: "stop-b"}))
-	must(t, markPaused(ctx, jx.db, testCell, stale))
-	if d, err := jx.Intend(ctx, intent("inv-5", "req-inv-5"), nil); err != nil || !d.Launch {
-		t.Fatalf("a pause from a stale gate must not wedge the new activation, got %+v, %v", d, err)
+	gateSeen := func(jj *Journal, snap Incarnation) *seenRecord {
+		t.Helper()
+		tx, err := jj.db.BeginTx(ctx, nil)
+		must(t, err)
+		seen, gerr := gate(ctx, tx, testCell, snap)
+		tx.Rollback()
+		if seen == nil || !errors.Is(gerr, ErrPaused) {
+			t.Fatalf("the gate must report the record it saw, got %v, %v", seen, gerr)
+		}
+		return seen
 	}
+	settle := func(jj *Journal, o *operator, seen *seenRecord) {
+		t.Helper()
+		if err := refuse(ctx, jj.db, o, testCell, seen, ErrPaused); !errors.Is(err, ErrPaused) {
+			t.Fatalf("the refused attempt itself stays refused, got %v", err)
+		}
+	}
+	launchOK := func(jj *Journal, inv string) {
+		t.Helper()
+		if d, err := jj.Intend(ctx, intent(inv, "req-"+inv), nil); err != nil || !d.Launch {
+			t.Fatalf("a pause from a stale gate must not wedge the new activation, got %+v, %v", d, err)
+		}
+	}
+	snapshot := func(o *operator) Incarnation {
+		t.Helper()
+		cur, err := current(ctx, o, testCell)
+		must(t, err)
+		return cur
+	}
+
+	// Positive control: a record the source has moved past is paused.
+	j0, c0, o0 := setup()
+	o0.rotate(testCell, "inc-b", "key-b")
+	settle(j0, o0, gateSeen(j0, snapshot(o0)))
+	if n := rows(t, ctx, c0, "SELECT count(*) FROM loopadmin.activation WHERE paused"); n != 1 {
+		t.Fatal("a record the operator source moved past must be paused durably")
+	}
+
+	// Order 1: the gate sees the old record, Activate commits, then the pause
+	// would run.
+	j1, c1, o1 := setup()
+	o1.rotate(testCell, "inc-b", "key-b")
+	seen := gateSeen(j1, snapshot(o1))
+	must(t, Activate(ctx, c1, testCell, o1, StopConfirmation{Receipt: "stop-b"}))
+	settle(j1, o1, seen)
+	launchOK(j1, "inv-5")
+
+	// Order 2, the reverse: the snapshot is read first, Activate commits, and
+	// the gate then reads the NEW record, which differs from the older
+	// snapshot. The record the gate saw is the newer one.
+	j2, c2, o2 := setup()
+	snap := snapshot(o2)
+	o2.rotate(testCell, "inc-b", "key-b")
+	must(t, Activate(ctx, c2, testCell, o2, StopConfirmation{Receipt: "stop-b"}))
+	seen = gateSeen(j2, snap)
+	if seen.id != "inc-b" {
+		t.Fatalf("the gate must have seen the new record, got %+v", seen)
+	}
+	settle(j2, o2, seen)
+	if n := rows(t, ctx, c2, "SELECT count(*) FROM loopadmin.activation WHERE paused"); n != 0 {
+		t.Fatal("a record equal to the operator source must never be paused")
+	}
+	launchOK(j2, "inv-6")
 }
 
 // TestJournalConfigRefuses pins the explicit-connection rules offline.

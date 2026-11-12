@@ -1627,8 +1627,15 @@
     "test": "TestJournalIncarnationPaused",
     "why": "F-pause-race: a stale gate pauses whatever activation the cell now holds",
     "file": "journal/incarnation.go",
-    "old": "WHERE cell_id = $1 AND incarnation_id = $2 AND key_ref = $3\", cell, stale.id, stale.key)",
+    "old": "WHERE cell_id = $1 AND incarnation_id = $2 AND key_ref = $3\", cell, seen.id, seen.key)",
     "new": "WHERE cell_id = $1\", cell)"
+  },
+  {
+    "test": "TestJournalIncarnationPaused",
+    "why": "F-pause-race, reverse order: a gate that read an older operator snapshot pauses the newer activation it then saw",
+    "file": "journal/incarnation.go",
+    "old": "if err != nil || (fresh.ID == seen.id && fresh.KeyRef == seen.key) {",
+    "new": "if err != nil || fresh.ID == \"\" {"
   },
   {
     "test": "TestNoGraphDependency",

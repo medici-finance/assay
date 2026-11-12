@@ -60,15 +60,15 @@ func current(ctx context.Context, src IncarnationSource, cell string) (Incarnati
 }
 
 // seenRecord is the activation record a gate found naming another
-// incarnation than the current one.
+// incarnation than the operator snapshot it was given.
 type seenRecord struct{ id, key string }
 
-// gate checks, inside tx, that the activation record names the current
-// incarnation, is not paused and carries a stop confirmation. A present
-// record naming another incarnation is returned as stale so that the caller
-// marks exactly that record paused; the journal then stays paused until the
-// operator activates again.
-func gate(ctx context.Context, tx *sql.Tx, cell string, cur Incarnation) (stale *seenRecord, err error) {
+// gate checks, inside tx, that the activation record names the snapshot's
+// incarnation, is not paused and carries a stop confirmation. A present record
+// naming another incarnation than the snapshot is returned as seen. It is not
+// yet known to be stale: the snapshot was read before the transaction began,
+// so either side may be the newer one. refuse decides.
+func gate(ctx context.Context, tx *sql.Tx, cell string, cur Incarnation) (seen *seenRecord, err error) {
 	var id, key, receipt string
 	var paused bool
 	err = tx.QueryRowContext(ctx, "SELECT incarnation_id, key_ref, paused, stop_receipt FROM loopadmin.activation WHERE cell_id = $1 FOR SHARE", cell).Scan(&id, &key, &paused, &receipt)
@@ -87,13 +87,28 @@ func gate(ctx context.Context, tx *sql.Tx, cell string, cur Incarnation) (stale 
 	return nil, nil
 }
 
-// markPaused durably pauses the mismatched activation record the gate saw. It
-// runs after the gate's transaction, so it pauses only while the record still
-// names that stale incarnation: an activation that committed in between is a
-// new record and stays open.
-func markPaused(ctx context.Context, db *sql.DB, cell string, stale *seenRecord) error {
-	_, err := db.ExecContext(ctx, "UPDATE loopadmin.activation SET paused = true, recorded_at = now() WHERE cell_id = $1 AND incarnation_id = $2 AND key_ref = $3", cell, stale.id, stale.key)
-	return classify(ctx, "gate", err)
+// refuse is the single place a runtime handle writes a pause, and it settles
+// a gate refusal. It returns gateErr, joined with any failure to record the
+// pause. A record is paused durably only when the operator source, read again
+// now, still names another incarnation than that record: the source has then
+// provably moved past it. A record equal to the fresh source is a newer
+// activation than the snapshot the gate used, so this attempt is refused and
+// nothing is paused. An unreadable or unusable source proves nothing and
+// pauses nothing. The update itself matches the record seen, so an activation
+// that commits after the re-read is a new record and stays open.
+func refuse(ctx context.Context, db *sql.DB, src IncarnationSource, cell string, seen *seenRecord, gateErr error) error {
+	if seen == nil {
+		return gateErr
+	}
+	fresh, err := current(ctx, src, cell)
+	if err != nil || (fresh.ID == seen.id && fresh.KeyRef == seen.key) {
+		return gateErr
+	}
+	_, err = db.ExecContext(ctx, "UPDATE loopadmin.activation SET paused = true, recorded_at = now() WHERE cell_id = $1 AND incarnation_id = $2 AND key_ref = $3", cell, seen.id, seen.key)
+	if err = classify(ctx, "gate", err); err != nil {
+		return errors.Join(gateErr, err)
+	}
+	return gateErr
 }
 
 // Activate is the operator path, never reachable from a runtime Journal
