@@ -334,3 +334,7 @@ CMD ["/bin/bash"]
 
 # Disable next-prompt generation for interactive and scheduled Claude processes.
 ENV CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false
+
+# CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
+# them off. A fragile stopgap only; patched node kernels are the real fix.
+ENV GODEBUG=multipathtcp=0

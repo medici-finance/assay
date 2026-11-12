@@ -210,6 +210,8 @@ func cmdRun(args []string, stdout io.Writer) error {
 
 	rerr := drainPass(cfg, loop, stdout)
 
+	renderAuditReadFailure(stdout, rerr)
+
 	// The pass report is printed whether or not the drain errored: a drain that failed halfway
 	// still has to say what left and what did not.
 	renderPassReport(stdout, loop)
@@ -420,4 +422,17 @@ func renderPassReport(w io.Writer, loop *ScanLoop) {
 			fmt.Fprintf(w, "  RETIRED (terminal disposition recorded; a newer event is read again): %s\n", r)
 		}
 	}
+}
+
+// renderAuditReadFailure names an unreadable audit store on its own line, ahead of the pass report:
+// the report's empty trust-gate and ledger counts would otherwise read as a pass that saw nothing.
+// It reports whether err was that failure.
+func renderAuditReadFailure(w io.Writer, err error) bool {
+	var ae *AuditReadError
+	if !errors.As(err, &ae) {
+		return false
+	}
+	fmt.Fprintf(w, "\nAUDIT READ: FAILED — the accountable intake dispositions could not be read, so which events "+
+		"are still owed is unknown this pass. The inbound poll did not run: this is an audit-read failure, not a blind poll. %v\n", ae.Cause)
+	return true
 }

@@ -44,12 +44,25 @@ func decisionSearchUnknown(repo ForgeRepo, id string, err error) string {
 	return fmt.Sprintf("the search for %s's decision issue on %s could not run (%s)", id, repo.Slug(), cause)
 }
 
-func (g *GitHubForge) searchDecisionMarkers(repo ForgeRepo, brief string) ([]IssueSearchResult, error) {
+func (g *GitHubForge) searchDecisionMarkers(repo ForgeRepo, in SearchIssuesInput) ([]IssueSearchResult, error) {
+	return g.searchBodyMarkers(repo, markerSearch{text: decisionMarkerSearchText(in), what: "decision-marker"})
+}
+
+// DecisionLegacyMarkerPrefix is the marker key decision issues filed before the
+// decision-gate marker carry (`<!-- needs-decision: <brief id> -->`).
+const DecisionLegacyMarkerPrefix = "needs-decision"
+
+// decisionMarkerSearchText is the exact body phrase one marker discovery walks: the
+// marker key (current or legacy), narrowed to one brief spelling when one is named.
+func decisionMarkerSearchText(in SearchIssuesInput) string {
 	text := DecisionGateMarkerPrefix
-	if brief != "" {
-		text += ": " + brief
+	if in.DecisionGateLegacy {
+		text = DecisionLegacyMarkerPrefix
 	}
-	return g.searchBodyMarkers(repo, markerSearch{text: text, what: "decision-marker"})
+	if in.DecisionGateBrief != "" {
+		text += ": " + in.DecisionGateBrief
+	}
+	return text
 }
 
 // markerSearch is one exact, complete body-phrase discovery. what names the search in its
@@ -129,12 +142,8 @@ func (g *GitHubForge) searchBodyMarkers(repo ForgeRepo, ms markerSearch) ([]Issu
 	return nil, Unverifiable(ms.what+" search exceeded its page bound", errDecisionSearchIncomplete)
 }
 
-func (g *GitLabForge) searchDecisionMarkers(repo ForgeRepo, brief string) ([]IssueSearchResult, error) {
-	search := DecisionGateMarkerPrefix
-	if brief != "" {
-		search += ": " + brief
-	}
-	return g.searchBodyMarkers(repo, markerSearch{text: search, what: "decision-marker"})
+func (g *GitLabForge) searchDecisionMarkers(repo ForgeRepo, in SearchIssuesInput) ([]IssueSearchResult, error) {
+	return g.searchBodyMarkers(repo, markerSearch{text: decisionMarkerSearchText(in), what: "decision-marker"})
 }
 
 func (g *GitLabForge) searchBodyMarkers(repo ForgeRepo, ms markerSearch) ([]IssueSearchResult, error) {

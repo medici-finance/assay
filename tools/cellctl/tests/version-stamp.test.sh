@@ -32,7 +32,12 @@ CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" =
 # removes — and has no meaning for a binary, which is stamped by `-ldflags -X` instead. It states
 # itself n/a rather than failing.
 is_shell_impl(){ head -c2 "$CELLCTL" 2>/dev/null | grep -q '#!'; }
-T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-version.XXXXXX")" && pwd -P)"
+# Fail closed before the EXIT trap: on bash 3.2 `cd ""` succeeds, so a failed mktemp
+# must never leave T at the caller's directory for the trap to delete (#6161).
+made="$(mktemp -d "${TMPDIR:-/tmp}/cellctl-version.XXXXXX")" || exit 1
+[ -n "$made" ] && [ -d "$made" ] || exit 1
+T="$(cd "$made" && pwd -P)" || exit 1
+[ -n "$T" ] || exit 1
 trap 'rm -rf "$T"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }

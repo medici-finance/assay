@@ -3,21 +3,21 @@
   "control": {
     "name": "CONTROL — a human-gated dispatch with no decision helper SKIPS the gate instead of refusing; TestDecisionHelperAbsentRefuses must go red",
     "file": "cmd/deskdispatch/dispatch.go",
-    "old": "\t\tif _, err := os.Stat(plan.decisionScript); err != nil {",
-    "new": "\t\tif _, err := os.Stat(plan.decisionScript); false && err != nil {"
+    "old": "\t\tdefault:\n\t\t\treturn plan, deskkit.Unverifiable(fmt.Sprintf(\n\t\t\t\t\"step %s: no decision helper is available",
+    "new": "\t\tdefault:\n\t\t\tplan.gateHuman = false\n\t\t\t_ = deskkit.Unverifiable(fmt.Sprintf(\n\t\t\t\t\"step %s: no decision helper is available"
   },
   "mutations": [
     {
       "name": "the decision-gate refusal names only the root again (not every location tried); TestDecisionHelperAbsentRefuses must go red",
       "file": "cmd/deskdispatch/dispatch.go",
-      "old": "\t\t\t\tstepDecisionGate, helperLocationsTried(o, decisionScriptRel, scriptsRoot), claimRootHint(o)), err)",
-      "new": "\t\t\t\tstepDecisionGate, decisionScriptRel+\" is not present in \"+scriptsRoot, claimRootHint(o)), err)"
+      "old": "\t\t\t\tstepDecisionGate, helperLocationsTried(o, decisionScriptRel, scriptsRoot), claimRootHint(o), goDecisionBinary), portErr)",
+      "new": "\t\t\t\tstepDecisionGate, decisionScriptRel+\" is not present in \"+scriptsRoot, claimRootHint(o), goDecisionBinary), portErr)"
     },
     {
       "name": "the decision-gate refusal drops the --claim-root way out; TestDecisionHelperAbsentRefuses must go red",
       "file": "cmd/deskdispatch/dispatch.go",
-      "old": "\t\t\t\tstepDecisionGate, helperLocationsTried(o, decisionScriptRel, scriptsRoot), claimRootHint(o)), err)",
-      "new": "\t\t\t\tstepDecisionGate, helperLocationsTried(o, decisionScriptRel, scriptsRoot), \"\"), err)"
+      "old": "\t\t\t\tstepDecisionGate, helperLocationsTried(o, decisionScriptRel, scriptsRoot), claimRootHint(o), goDecisionBinary), portErr)",
+      "new": "\t\t\t\tstepDecisionGate, helperLocationsTried(o, decisionScriptRel, scriptsRoot), \"\", goDecisionBinary), portErr)"
     },
     {
       "name": "the claim-tool refusal stops naming every location tried; TestHelperRefusalsNameAll/dispatch-claim.sh must go red",
@@ -32,16 +32,16 @@
       "new": "\t\tunder = \"under --root, since no --claim-root was given\""
     },
     {
-      "name": "a helper with no PATH port no longer says PATH was considered; TestDecisionHelperAbsentRefuses must go red",
+      "name": "the decision-gate refusal stops saying the PATH port was looked for; TestDecisionHelperAbsentRefuses must go red",
       "file": "cmd/deskdispatch/dispatch.go",
-      "old": "\treturn fmt.Sprintf(\"%s, and no pure-Go port of %s ships, so PATH holds no fallback\", file, rel)",
-      "new": "\treturn fmt.Sprintf(\"%s (%s)\", file, rel)"
+      "old": "\t\treturn fmt.Sprintf(\"the pure-Go %s binary is not on PATH, and %s\", port, file)",
+      "new": "\t\treturn file"
     },
     {
       "name": "the decision helper resolves under --root even when --claim-root is given; TestDecisionHelperViaClaimRoot must go red",
       "file": "cmd/deskdispatch/dispatch.go",
-      "old": "\tplan.decisionScript = filepath.Join(scriptsRoot, filepath.FromSlash(decisionScriptRel))",
-      "new": "\tplan.decisionScript = filepath.Join(o.root, filepath.FromSlash(decisionScriptRel))"
+      "old": "\t\tdecisionScriptPath := filepath.Join(scriptsRoot, filepath.FromSlash(decisionScriptRel))",
+      "new": "\t\tdecisionScriptPath := filepath.Join(o.root, filepath.FromSlash(decisionScriptRel))"
     },
     {
       "name": "the class guard's const scan ignores tools/*.sh helpers (matcher broken); its positive control in TestHelperRefusalsNameAll must go red",
@@ -70,7 +70,7 @@
     {
       "name": "the decision helper is listed with a PATH port the resolver never looks up; TestHelperPathPortsAreLookedUp/decision-issue.sh must go red",
       "file": "cmd/deskdispatch/dispatch.go",
-      "old": "\t{rel: decisionScriptRel, pathPort: \"\"},",
+      "old": "\t{rel: decisionScriptRel, pathPort: goDecisionBinary},",
       "new": "\t{rel: decisionScriptRel, pathPort: \"deskdecision-ref\"},"
     }
   ]

@@ -122,6 +122,10 @@ func runShellFixtureWithBash(t testing.TB, bash, path, tmp string, budget time.D
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bash, path)
+	// The fixture's own scratch directory is its working directory, never this package's: a
+	// suite whose EXIT trap removes a scratch path that resolved to its cwd must cost nothing.
+	// Callers pass the suite by absolute path. regression: #6161
+	cmd.Dir = tmp
 	cmd.Env = FixtureEnv("KUBECONFIG=/dev/null", "TMPDIR="+tmp,
 		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull,
 		"GIT_TEMPLATE_DIR="+gitquiet.TemplateDir(t))
