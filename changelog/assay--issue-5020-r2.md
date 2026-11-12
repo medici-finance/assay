@@ -1,2 +1,0 @@
-### Added
-- `deskpr edit --relink-from N --relink-to M --relink-reason TEXT` corrects a PR's `Issue:`/`Fixes:` link (including `Issue: #N` to `Fixes: #N`). All three flags are required together, and the flag runs only from the PR's own checkout. The new issue must exist, be an open issue (not a pull request), pass the trust gate and carry no human or decision gate. An audit comment naming the old link, the new link and the reason is posted on the PR before the body edit. Without the flags, a link change is still refused exactly as before.

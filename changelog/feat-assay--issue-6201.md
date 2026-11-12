@@ -1,2 +1,0 @@
-### Fixed
-- The release mutation gate's exit-code neighbour mutation compiles again, so the bodycheck sweep reports `0 could-not-mutate`. `deskkit` branches on exit-code classes with the `Is*` predicates instead of a constant `switch`, and a new guard test fails any switch case list or literal key set in the package that names two exit-code constants, so this shows up in ordinary CI and no longer only at a release cut.
