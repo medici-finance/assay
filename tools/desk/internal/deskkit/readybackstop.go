@@ -198,14 +198,15 @@ func readyBackstopRevertBody(state, head string) string {
 		"the forge reported its merge state as `%s` at head `%s`.\n\n"+
 		"Ready means mergeable per the forge, so the flip was reverted. The ready verb's own checks had "+
 		"passed, which means they and the forge's merge verdict disagree; the merge state names what the "+
-		"forge still requires. The ready verbs will not flip this head again; a new head clears that."+
+		"forge still requires. deskflip will not flip this head again; a new head clears that."+
 		"\n\n%s", state, head, ReadyBackstopRevertMarker(head))
 }
 
 // ReadyBackstopRevertMarker is the hidden line the backstop's revert comment carries for head:
-// the stable key the ready verbs' pre-flip check matches, so a head the backstop already
-// returned to draft is never flipped again on the next tick (medici-finance/assay#6253 review
-// F2). It names the head, so a new head never matches.
+// the stable key deskflip's pre-flip not-reverted check matches, so a head the backstop already
+// returned to draft is never flipped again by deskflip on the next tick (medici-finance/assay#6253
+// review F2). It names the head, so a new head never matches. deskpost ready does not read it:
+// that verb never reads the comment surface.
 func ReadyBackstopRevertMarker(head string) string {
 	return "<!-- assay:ready-backstop-revert head=" + strings.ToLower(strings.TrimSpace(head)) + " -->"
 }
