@@ -122,6 +122,12 @@ type stub struct {
 	// regardless of how many it serves — a forge that claims more than it hands over.
 	checkTotalOverride int
 
+	// suites is the check-suite list the fake forge serves at /commits/{sha}/check-suites
+	// (#6234). nil serves an empty list; suiteTotalOverride, when non-zero, is the total_count
+	// it ASSERTS regardless of how many it serves.
+	suites             []deskkit.CheckSuite
+	suiteTotalOverride int
+
 	// requiredChecks is the branch-protection required-status-check set the fake forge serves
 	// at the required_status_checks endpoint. nil serves a 404 — GitHub's answer for a branch
 	// whose classic protection requires no checks, which the backend reads as an empty CLASSIC
@@ -312,9 +318,12 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 		case strings.HasSuffix(path, "/check-runs"):
 			enc(s.servedCheckRuns())
 
+		case strings.HasSuffix(path, "/check-suites"):
+			enc(s.servedSuites())
+
 		case r.Method == http.MethodGet && strings.Contains(path, "/commits/"):
 			// GET /commits/{sha} — the head commit's committer date (#3093). Ordered after
-			// the /status and /check-runs suffix cases, which also live under /commits/.
+			// the /status, /check-runs and /check-suites suffix cases, which also live under /commits/.
 			s.commitReads++
 			if s.commitErr {
 				w.WriteHeader(http.StatusInternalServerError)
@@ -580,6 +589,32 @@ func (s *stub) servedCheckRuns() map[string]any {
 		total = s.checkTotalOverride
 	}
 	return map[string]any{"total_count": total, "check_runs": items}
+}
+
+// servedSuites renders the stub's check suites in GitHub's check-suites shape. A suite with
+// no conclusion is served as JSON null, as GitHub serves it.
+func (s *stub) servedSuites() map[string]any {
+	items := []map[string]any{}
+	for _, c := range s.suites {
+		id, err := strconv.ParseInt(c.ID, 10, 64)
+		if err != nil {
+			panic("CheckSuite.ID must be numeric for the GitHub stub: " + c.ID)
+		}
+		var conclusion any
+		if c.Conclusion != "" {
+			conclusion = c.Conclusion
+		}
+		items = append(items, map[string]any{
+			"id": id, "status": c.Status, "conclusion": conclusion,
+			"app": map[string]any{"slug": c.App}, "latest_check_runs_count": c.RunCount,
+			"created_at": c.CreatedAt,
+		})
+	}
+	total := len(items)
+	if s.suiteTotalOverride != 0 {
+		total = s.suiteTotalOverride
+	}
+	return map[string]any{"total_count": total, "check_suites": items}
 }
 
 // --- assertions over the recording -------------------------------------------------

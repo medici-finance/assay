@@ -30,13 +30,22 @@
       "test": "TestPrefixedBriefSchema"
     },
     {
-      "name": "v4-milestone-gate-held",
-      "target": "statusgen/briefv4.go",
-      "old": "out = append(out, GraphEdge{Ref: m, Type: \"behavioural-gate\"",
-      "new": "_ = append(out, GraphEdge{Ref: m, Type: \"behavioural-gate\"",
+      "name": "v4-milestone-gate-resolved",
+      "target": "statusgen/milestonegraph.go",
+      "old": "gates = append(gates, GraphEdge{Ref: gate.Spelling, Type: \"behavioural-gate\"",
+      "new": "_ = append(gates, GraphEdge{Ref: gate.Spelling, Type: \"behavioural-gate\"",
       "module": "statusgen",
       "package": ".",
       "test": "TestPrefixedBriefSchema"
+    },
+    {
+      "name": "v4-milestone-gate-held",
+      "target": "statusgen/milestonegraph.go",
+      "old": "gates = append(gates, GraphEdge{Ref: m, Type: \"behavioural-gate\"",
+      "new": "_ = append(gates, GraphEdge{Ref: m, Type: \"behavioural-gate\"",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneGraphUnknowns"
     },
     {
       "name": "v4-cross-root-edge-refused",
