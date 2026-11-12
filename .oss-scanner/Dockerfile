@@ -22,7 +22,7 @@
 # never share a locally built image. In the scanner's environment the
 # context is always a fresh clone.
 
-FROM golang:1.27.3-bookworm
+FROM golang:1.27.4-bookworm
 
 ENV CGO_ENABLED=0
 

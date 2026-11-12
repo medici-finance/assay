@@ -2,6 +2,8 @@ module github.com/medici-finance/assay/deskd
 
 go 1.27.0
 
+toolchain go1.27.4
+
 require (
 	github.com/creack/pty v1.1.24
 	github.com/medici-finance/assay/tools/desk v0.0.0-20260908135545-8217692d48e4
