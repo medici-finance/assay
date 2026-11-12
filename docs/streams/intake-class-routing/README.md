@@ -38,7 +38,7 @@ review and the decisions the landing merge rules follow the board sections, from
 | 02 | [The scan publishes recorded handoffs and land stops a judged exit without one](brief-02-the-scan-publishes-recorded-handoffs-and-land-stops-a-judged-exit-without-one.md) | 0 | M | todo | — | — |
 | 03 | [Give intake replay its own bound](brief-03-give-intake-replay-its-own-bound.md) | 0 | S | todo | — | — |
 | 04 | [Work the owed batch by class](brief-04-work-the-owed-batch-by-class.md) | 0 | M | todo | — | — |
-| 05 | [New cells pin the intake role to a strong tier](brief-05-new-cells-pin-the-intake-role-to-a-strong-tier.md) | 0 | S | todo | — | — |
+| 05 | [New cells pin the intake role to a strong tier](brief-05-new-cells-pin-the-intake-role-to-a-strong-tier.md) | 0 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -131,7 +131,7 @@ installation, not a fleet census:
 |---|---|
 | Issue placeholders at `todo` | about 2,700 |
 | Committed handoff companions, and `handoff:` pointers | 0 and 0 |
-| Placeholder rows among the dispatch view's eligible rows | 0 of 92 |
+| Placeholder rows in the dispatch view | 0 of the 40 rows it listed, out of 92 eligible; counted as rows whose stream is `issue-loop` |
 | Judgment exits in the local `intake-exit-v1` log | 563 |
 | Local `intake-handoffs-v1.jsonl` | absent |
 | Owed judgments presented by the last intake pass | 147, at the replay bound in 5 of 7 repositories |
@@ -336,8 +336,10 @@ Not briefs; each is an act only an operator or maintainer can perform.
 
 - **Move the intake role to a strong tier on existing installations.** Where a
   provider-defaults file or model policy exists it decides the model and a per-role pin is
-  ignored, so the tier is changed there, and that cell's running windows are restarted. Where
-  none exists, the per-role pin applies. The skill already requires a strong tier for judgment
+  ignored, so the tier is changed there, and that cell's running windows are restarted. One
+  cell can be moved without touching the shared file: a `providers.json` in the cell's own
+  directory holding only the intake tier is merged over it. Where neither exists, the per-role
+  pin applies. The skill already requires a strong tier for judgment
   work; the session observed was not on one. Brief 05 changes the seeded and scaffolded
   defaults for new installations only; it rewrites no existing file.
 - **Clear what blocks the intake carrier** on the installation being drained. Two open bugs sit
