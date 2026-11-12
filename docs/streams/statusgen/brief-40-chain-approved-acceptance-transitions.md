@@ -95,6 +95,8 @@ Default if no answer: none — blocks until answered
 
 Silence cannot settle this: Q1's recommended answer goes past the letter of the ruling, and Q1's alternative fails the first table waiting on it. Before `in-progress` (rule 48), the driver approves a design-decision record that records the answer to each question.
 
+**Ruling (2026-11-11): option 1.** The driver bound option 1 for Q1, Q2 and Q3 to statusgen/40 in [DR-transition-chain](../decisions/DR-transition-chain.md).
+
 Answered 2026-11-10 by the driver, each from the driver's own account, each choosing option 1 (the recommended option; the comments call it "A"). The record is [DR-transition-chain](../decisions/DR-transition-chain.md), cited by `design:` above; the driver approved it on #6064: https://github.com/medici-finance/assay/issues/6064#issuecomment-6773695768
 - Q1: option 1, a `Command+Expect` row may replace its whole Command cell with row ID, order, class and shell fixed: https://github.com/medici-finance/assay/issues/6064#issuecomment-6773099410
 - Q2: option 1, a one-link approval may serve as link 1, judged under the one-link rules with no combined cells: https://github.com/medici-finance/assay/issues/6064#issuecomment-6773126747
