@@ -10,6 +10,8 @@ gate: human
 risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}
 gate-why: "It relaxes a verification control that every adopter's protected tables rely on: after this lands, a delivered table may carry more than one approved change and one approved row may change both of its cells. A defect here would credit a row against text no human approved. The driver confirms the open questions below before work starts, and accepts the change at done."
 decision-trigger: start
+decision-issue: 6064
+ruling: "https://github.com/medici-finance/assay/issues/6064#issuecomment-6810709991"
 design: DR-transition-chain
 issues: [6064, 5211]
 schema: brief-v2
