@@ -21,8 +21,9 @@ accepted:
 **Ruled.** The driver [ruled on 2026-11-01](https://github.com/medici-finance/assay/issues/2479#issuecomment-6561567674),
 on decision issue medici-finance/assay#2479, for option 1: the ledger stays outside the
 repository with the operator configuration. The original record date and design are retained.
-The implementation was delivered by medici-finance/assay#971 before the ruling, and the ruling
-adopts it as it stands. Running the brief's Verify table on merged main remains the verifier's
+The implementation was delivered by medici-finance/assay#971 before the ruling and follows
+this design; the ruling does not mention it, and the per-tier capability list in it is not
+signed off here. Running the brief's Verify table on merged main remains the verifier's
 obligation.
 
 The decision has two halves that must be taken together: the vocabulary, and where it is

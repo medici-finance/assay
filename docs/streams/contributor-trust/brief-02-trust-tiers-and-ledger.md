@@ -138,10 +138,10 @@ Default if no answer: none — blocks until answered. Everything downstream keys
 **Ruled 2026-11-01: option 1, outside the repository**, per the driver's ruling on decision
 issue medici-finance/assay#2479:
 https://github.com/medici-finance/assay/issues/2479#issuecomment-6561567674
-The ruling keeps the implementation already on main, delivered by medici-finance/assay#971
-with the follow-up medici-finance/assay#5294. The adopted design is recorded in
-[DR-trust-tiers-ledger](../decisions/DR-trust-tiers-ledger.md). The ruling answers where the
-ledger lives. It does not by itself sign off the per-tier capability list, which stays with
+The implementation already on main, delivered by medici-finance/assay#971 with the follow-up
+medici-finance/assay#5294, follows that design; the ruling does not mention it. The design is
+recorded in [DR-trust-tiers-ledger](../decisions/DR-trust-tiers-ledger.md). The ruling answers
+where the ledger lives. It does not sign off the per-tier capability list, which stays with
 the brief's review and human sign-off.
 
 ## Ground rules
