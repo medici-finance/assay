@@ -521,6 +521,22 @@ cockpit_want(){
   fi
 }
 
+# A scrubbed display never owns the harness process. Auto stays on private tmux;
+# Herdr may display it, and Orca is refused before any reachability probe.
+oracle_resolve_cockpit(){
+  local want="$1" src="$2"
+  if [[ "$CELL_KIND" == scrubbed ]]; then
+    if [[ "$want" == auto ]]; then
+      command -v tmux >/dev/null || { COCKPIT_ERR="scrubbed auto requires tmux on PATH"; return 1; }
+      COCKPIT=tmux; COCKPIT_WHY="scrubbed auto: private socket"; return 0
+    fi
+    if [[ "$want" != tmux && "$want" != herdr ]]; then
+      COCKPIT_ERR="scrubbed cockpit must be tmux or herdr"; return 1
+    fi
+  fi
+  resolve_cockpit "$want" "$src"
+}
+
 # role_cmd <role> <cfg> — the one command a role window runs, identical in every cockpit.
 # $MODEL_OVERRIDE, $HARNESS_OVERRIDE (cmd_up's own --model/--harness) and $up_provider (cmd_up's
 # own --provider) are GLOBALS `cmd_up` sets (never `local`) rather than extra positionals — every
@@ -532,7 +548,11 @@ cockpit_want(){
 # cockpit `up` RESOLVED (never `auto`), threaded so every window exports the same ASSAY_COCKPIT
 # as the surface it was opened in, even when `up --cockpit` overrode cell.env for this run only.
 role_cmd(){
-  local out; out="$(printf "'%s' desk '%s' '%s'" "$SELF" "$CELL" "$1")"
+  local out; out="$(printf "'%s'" "$SELF")"
+  if [[ "${HARNESS_OVERRIDE:-$CELL_HARNESS}" == codex ]]; then
+    out="$out --cells-root '$CELLS_ROOT'"
+  fi
+  out="$out desk '$CELL' '$1'"
   [[ -n "${MODEL_OVERRIDE:-}" ]] && out="$out --model '$MODEL_OVERRIDE'"
   [[ -n "${HARNESS_OVERRIDE:-}" ]] && out="$out --harness '$HARNESS_OVERRIDE'"
   [[ -n "${up_provider:-}" ]] && out="$out --provider '$up_provider'"
@@ -1561,13 +1581,19 @@ cmd_check(){
       [[ "$_dirty" == "0" ]] || warn "root $_name: $_dirty uncommitted change(s) in $_p"
     done
   fi
-  chk "tmux (the always-works cockpit, and every other cockpit's fallback)" 'command -v tmux >/dev/null'
+  if [[ "$CELL_KIND" != house ]]; then
+    chk "tmux (the always-works cockpit, and every other cockpit's fallback)" 'command -v tmux >/dev/null'
+  fi
   # The COCKPIT row resolves exactly as `up` will and says why, so "which surface will my role
   # windows appear in" is answerable before booting. An explicit CELL_COCKPIT that is not
   # available is a MISS (it is what `up` would refuse on); `auto` can never MISS — it falls
   # through to tmux — so its row records the choice and the reason.
   cockpit_want ""
-  if resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC"; then
+  if oracle_resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC"; then
+    if [[ "$CELL_KIND" == house ]]; then
+      if [[ "$COCKPIT" == tmux ]]; then chk "tmux (the selected cockpit)" 'command -v tmux >/dev/null'
+      else na "tmux — not required by selected $COCKPIT cockpit"; fi
+    fi
     echo "  ok    cockpit: $COCKPIT ($COCKPIT_WHY)"
     # The same resolved value is what every role window exports as ASSAY_COCKPIT — the worker-desk
     # worktree-create arm — so the row says which arm that is, not only which surface.
@@ -1580,7 +1606,9 @@ cmd_check(){
   fi
   # Orca reachability is stated whenever orca is installed, whichever cockpit won: its CLI is a
   # thin client of the desktop app, and an unreachable app is why `auto` passed orca over.
-  if command -v orca >/dev/null 2>&1; then
+  if [[ "$CELL_KIND" == scrubbed ]] && command -v orca >/dev/null 2>&1; then
+    na "orca — not used by scrubbed cells (reachability not probed)"
+  elif command -v orca >/dev/null 2>&1; then
     if orca_reachable; then echo "  ok    orca desktop app reachable (its CLI is a thin client)"
     else echo "  n/a   orca on PATH but its desktop app is not reachable — auto passes it over; start the app (or 'orca serve') to use it"; fi
   else
@@ -1667,8 +1695,12 @@ check_house(){
     chk "root ${e%%=*} carries docs/streams/" '[[ -d "$p/docs/streams" ]]'
   done
   local v; for v in $HOUSE_VERBS; do chk "desk verb: $DESK_TOOLS_BIN/$v" '[[ -x "$DESK_TOOLS_BIN/$v" ]]'; done
-  chk "claude on PATH" 'command -v claude >/dev/null'
-  chk "plugin assay@assay enabled for $CELL_REPO (config $cfg)" 'plugin_enabled "$cfg"'
+  if [[ "$CELL_HARNESS" == codex && -z "${CELL_MODEL_POLICY:-}" ]]; then
+    na "Claude config/plugin — not required by Codex"
+  else
+    chk "claude on PATH" 'command -v claude >/dev/null'
+    chk "plugin assay@assay enabled for $CELL_REPO (config $cfg)" 'plugin_enabled "$cfg"'
+  fi
   na "cells config / apps.env / deskd App key — not applicable on a house cell (the operator's own config home is used as is)"
 }
 
@@ -1936,30 +1968,32 @@ merge_role_worktree(){
 }
 
 # ---------------------------------------------------------------- codex harness
-# codex_multi_agent_on: true when `[features] multi_agent = true` resolves in codex's effective
-# config. Probed via a `codex config get`-style verb where the installed build advertises one
-# (codex's exact config-read surface has moved across releases, per the codex-smoke-run findings —
-# never hard-coded to a single spelling); falling back to a literal read of the config.toml under
-# CODEX_HOME (default ~/.codex) since not every build ships a config-read verb. A `-c` override
-# given on the invocation itself is not visible here (an ephemeral CLI flag, never a persisted
-# config value) — the check row's own text says "or -c override applied" so an operator who
-# overrides per-run rather than persisting is not misread as a MISS.
+# Expected standing prompt is an independent literal fixture.
+# Never source the production composer here: a production text change must diverge.
+oracle_codex_prompt(){
+  sed "s/@ROLE@/$1/g" "$(dirname "$SELF")/codex-standing-prompt.txt"
+}
+
+# Effective feature state belongs to Codex, including managed/profile overrides.
+# A literal config file is not a substitute for the installed CLI's resolver.
 codex_multi_agent_on(){
-  # Two `local` lines, same reason `cmd_desk`'s mvar/model pair is split: in a single
-  # `local a=… b="$a"` the expansion of $a is resolved before `a` itself is assigned.
-  local home; home="${CODEX_HOME:-$HOME/.codex}"
-  local cfg="$home/config.toml" v
-  if help_has get codex config >/dev/null 2>&1; then
-    v="$(codex config get features.multi_agent 2>/dev/null || true)"
-    [[ "$v" == "true" ]] && return 0
+  local output
+  if [[ "$CELL_KIND" == scrubbed ]]; then
+    output="$(cd "$CELL_REPO" && CODEX_HOME="$CELL_HOME/.codex" codex features list)" || return 1
+  else
+    output="$(cd "$CELL_REPO" && codex features list)" || return 1
   fi
-  [[ -f "$cfg" ]] || return 1
-  awk '
-    /^\[features\]/ { insec=1; next }
-    /^\[/            { insec=0 }
-    insec && /^[[:space:]]*multi_agent[[:space:]]*=[[:space:]]*true[[:space:]]*$/ { found=1 }
-    END { exit(found ? 0 : 1) }
-  ' "$cfg"
+  printf '%s\n' "$output" | awk '$1 == "multi_agent" { n++; if (NF != 3 || $3 != "true") bad=1 } END { exit(n == 1 && !bad ? 0 : 1) }'
+}
+
+# The parity fixture has no stored pool widths. Refuse unsupported state rather
+# than report a default for a cell whose coordinator set a different capacity.
+oracle_codex_width(){
+  [[ ! -e "$CELL_CONFIG/roster/width/$1.json" ]] || die "oracle: stored Codex width requires a dedicated fixture"
+  case "$1" in
+    worker-desk) echo 8;; pr-review-desk) echo 5;; verify-desk) echo 6;;
+    the-desk|intake-desk) echo 1;; *) die "oracle: unknown capacity role '$1'";;
+  esac
 }
 
 # codex_skills_discoverable: either discovery arm documented in docs/adopting-assay.md "Running
@@ -2007,7 +2041,12 @@ check_codex_harness(){
   chk "codex --version" 'command -v codex >/dev/null && codex --version >/dev/null 2>&1'
   chk "codex authenticated (codex login status, or equivalent)" \
     'command -v codex >/dev/null && (codex login status >/dev/null 2>&1 || codex login status --json >/dev/null 2>&1)'
-  chk "[features] multi_agent = true (effective config, or a -c override applied)" 'codex_multi_agent_on'
+  chk "Codex multi_agent effective state is enabled (codex features list)" 'codex_multi_agent_on'
+  local capacity_role capacity_width
+  for capacity_role in $ROLES; do
+    capacity_width="$(oracle_codex_width "$capacity_role")" || return 1
+    chk "Codex $capacity_role launch capacity: agents.max_concurrent_threads_per_session=$capacity_width (cell roster; excludes primary thread)" true
+  done
   chk "resident-rules fragment present: $CELL_REPO/AGENTS.md" 'grep -qF "Assay resident operating rules" "$CELL_REPO/AGENTS.md" 2>/dev/null'
   chk "skills discoverable: marketplace plugin assay@assay, or .agents/skills/ placed" 'codex_skills_discoverable'
 }
@@ -2148,7 +2187,7 @@ scrubbed_desk_launch(){
   scrubbed_compose_env "$role" "$harness" "$session"
   local -a argv=()
   if [[ "$harness" == "codex" ]]; then
-    argv=(codex --sandbox danger-full-access -C "$wt" -m "$model" "Invoke the \"assay:$role\" skill now.")
+    argv=(codex --sandbox danger-full-access -C "$wt" -m "$model" "$(oracle_codex_prompt "$role")")
   else
     argv=(claude --name "$session" --model "$model" "/assay:$role")
   fi
@@ -2391,8 +2430,10 @@ cmd_desk(){
   # refuses it, never exported as some other value. A scrubbed cell composes its own environment
   # and opens no cockpit, so it carries none.
   local assay_cockpit="" assay_cockpit_why=""
-  if [[ "$CELL_KIND" != "scrubbed" ]]; then
-    cockpit_want "$cockpit_flag"
+  cockpit_want "$cockpit_flag"
+  if [[ "$CELL_KIND" == scrubbed ]]; then
+    oracle_resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC" || die "desk: $COCKPIT_ERR"
+  else
     resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC" \
       || die "desk: $COCKPIT_ERR — it is exported to the window as ASSAY_COCKPIT, so an unavailable explicit choice is refused rather than replaced; install it, or pass --cockpit tmux (or set CELL_COCKPIT)"
     assay_cockpit="$COCKPIT"; assay_cockpit_why="$COCKPIT_WHY"
@@ -2402,7 +2443,9 @@ cmd_desk(){
     if [[ -n "$repair_admission" ]]; then
       echo "[dry-run] env ASSAY_REPAIR_ADMISSION=$repair_admission (repair-admission dispatch gate opt-in)"
     fi
-    if [[ -n "$assay_cockpit" ]]; then
+    if [[ "$CELL_KIND" == scrubbed && "$COCKPIT" == herdr ]]; then
+      echo "[dry-run] cockpit=herdr ($COCKPIT_WHY; process owner=private tmux)"
+    elif [[ -n "$assay_cockpit" ]]; then
       echo "[dry-run] env ASSAY_COCKPIT=$assay_cockpit ($assay_cockpit_why)"
     fi
     if [[ "$harness" == "claude" && "$CELL_KIND" != "scrubbed" ]]; then
@@ -2416,9 +2459,12 @@ cmd_desk(){
       # desk-containers/09 defines (and desk-containers/10 diffs against): one [plan] env line per
       # exported variable (sorted by KEY), then argv, cwd, lock.
       scrubbed_compose_env "$role" "$harness" "$session"
+      if [[ "$COCKPIT" == herdr ]]; then
+        SCR_ENV_SORTED=("ASSAY_COCKPIT=tmux" "${SCR_ENV_SORTED[@]}")
+      fi
       local -a scr_argv=()
       if [[ "$harness" == "codex" ]]; then
-        scr_argv=(codex --sandbox danger-full-access -C "$wt" -m "$model" "Invoke the \"assay:$role\" skill now.")
+        scr_argv=(codex --sandbox danger-full-access -C "$wt" -m "$model" "$(oracle_codex_prompt "$role")")
       else
         scr_argv=(claude --name "$session" --model "$model" "/assay:$role")
       fi
@@ -2627,6 +2673,14 @@ cmd_smoke(){
 # that is not a load error.
 cmd_status(){
   load_cell "${1:?cell}"
+  if [[ "$CELL_KIND" == house ]]; then
+    local role
+    for role in intake-desk worker-desk pr-review-desk verify-desk the-desk; do
+      [[ ! -e "$CELL_DIR/run/cadence/$role/checkpoint.json" ]] || die "oracle: configured cadence status requires a dedicated fixture"
+      echo "[cadence] role=$role not-configured"
+    done
+    return 0
+  fi
   [[ "$CELL_KIND" == "scrubbed" ]] || die "status is only defined for a scrubbed cell (kind=$CELL_KIND)"
   local sessname="${CELL}-cell" lockdir="$CELL_DIR/run/lock.d"
   if [[ -d "$lockdir" ]]; then
@@ -3136,6 +3190,10 @@ cmd_down(){
     --*) die "down: unknown flag $1";;
     *) die "down: unexpected argument '$1'";;
   esac; done
+  if [[ "${DRY_RUN:-0}" == 1 ]]; then
+    echo "[dry-run] down: would stop comms and role supervisors, then close owned cockpit surfaces"
+    return 0
+  fi
   cockpit_want "$cockpit_flag"
   if resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC"; then
     echo "[cockpit] $COCKPIT ($COCKPIT_WHY)"
@@ -3597,6 +3655,10 @@ EOF
 # dropped a `--cockpit <value>` pair's value beyond position 3 besides. `check` is left alone: its
 # second parameter really is a single optional positional (a config dir), not a flag set, so the
 # fixed-arity form does not have this failure mode.
+if [[ "${1:-}" == --cells-root ]]; then
+  CELLS_ROOT="${2:?--cells-root needs a value}"
+  shift 2
+fi
 case "${1:-}" in
   model-policy) shift; model_policy "$@" ;;
   ls) cmd_ls ;;

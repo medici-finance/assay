@@ -615,9 +615,13 @@ func runTranscribeScan(root string, dryRun bool,
 		fmt.Printf("transcribe-scan: %s %s\n", closeOutPastTense(c.Action), c.Rel)
 	}
 	if len(delta.Creates) > 0 {
-		if merr := os.MkdirAll(filepath.Join(root, "docs", "streams", scanStreamName), 0o755); merr != nil {
+		readmeCreated, merr := openScanStream(root)
+		if merr != nil {
 			fmt.Fprintln(os.Stderr, "statusgen --transcribe-scan:", merr)
 			return 1
+		}
+		if readmeCreated {
+			fmt.Printf("transcribe-scan: created %s\n", scanStreamREADMERel)
 		}
 		for _, p := range delta.Creates {
 			if werr := os.WriteFile(p.Path, []byte(p.Content), 0o644); werr != nil {
@@ -1079,9 +1083,13 @@ func runTranscribeScanDelta(root string, dryRun bool, pubkeyPath string,
 	}
 
 	if len(allCreates) > 0 {
-		if merr := os.MkdirAll(filepath.Join(root, "docs", "streams", scanStreamName), 0o755); merr != nil {
+		readmeCreated, merr := openScanStream(root)
+		if merr != nil {
 			fmt.Fprintln(os.Stderr, "statusgen --transcribe-scan-delta:", merr)
 			return 1
+		}
+		if readmeCreated {
+			fmt.Printf("transcribe-scan-delta: created %s\n", scanStreamREADMERel)
 		}
 		for _, p := range allCreates {
 			if werr := os.WriteFile(p.Path, []byte(p.Content), 0o644); werr != nil {

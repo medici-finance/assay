@@ -47,6 +47,9 @@ func foldTrackingSource(t *testing.T, mode string) (reconcileFoldData, string, s
 	foldGit(t, source, foldMailWorker, "commit", "-qm", "implementation")
 	sourceSHA := foldTrackingGitLine(t, source, "rev-parse", "HEAD")
 	b := foldFixtureBrief{num: "01", id: "fx/01", gate: "model", ev: foldPassEv, version: 2}
+	if mode == "mixed witnesses" {
+		b.verifyTail = "| 2 | `cat ../tracker/policy.txt` | exit 0 |\n"
+	}
 	root := writeFoldFixture(t, []foldFixtureBrief{b}, map[string][3]string{"01": {"implemented", "—", "—"}})
 	foldGit(t, root, foldMailWorker, "remote", "add", "origin", "https://github.com/example-org/tracker.git")
 	trackingSHA := foldTrackingGitLine(t, root, "rev-parse", "HEAD")

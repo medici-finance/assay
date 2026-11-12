@@ -74,7 +74,7 @@ func TestOriginParity(t *testing.T) {
 				} else if tc.origin != "" {
 					git("remote", "add", "origin", tc.origin)
 				}
-				t.Setenv("PATH", gh.binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+				t.Setenv("PATH", oraclePATH(gh.binDir))
 				t.Setenv("PARITY_CYCLE_DIR", gh.cycleDir)
 				t.Setenv("PARITY_READ_LOG", gh.logPath)
 				t.Setenv("ASSAY_MONITOR_PACE_SECONDS", "0")

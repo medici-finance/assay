@@ -64,6 +64,14 @@ admitting a profile. Kubernetes Secret files otherwise default to root ownership
 0400 alone would be unreadable to this non-root process. The mount remains
 read-only, and only `app.pem` is projected.
 
+Each role container carries exactly three inline env entries: `ASSAY_DESK`, the
+canonical `ASSAY_APP_PEM_FILE` path, and `GODEBUG=multipathtcp=0`. The last one
+turns off the MPTCP listeners Go has opened by default since 1.24, as a stopgap
+for CVE-2026-98432 (a Linux kernel use-after-free in that path). It is fragile:
+it covers only Go programs that read it, and a later override undoes it. Patched
+node kernels are the real fix. The checker rejects a role container that drops it
+or turns MPTCP back on.
+
 `secrets.example.yaml` contains empty named skeletons for all ten Secrets, with
 required keys listed only in comments; it is excluded from the build. These
 skeletons are not deployable. Do not apply or populate that tracked file. Provision real Secrets
@@ -137,7 +145,8 @@ for it in that release's `checksums.txt`. Each manifest's `image:` line cites it
 and `check.sh --base` binds them: it requires the record's bytes to hash to the
 SHA-256 pinned in `check.py` (`RECORD_SHA256`, the value stated above, which
 this README must also state), validates the record with the release's own
-contract validator (`tools/release/images_contract.py`) and rejects any role
+contract validator (`tools/release/images_contract.py`), explicitly allowing
+the pre-deskd image set `LEGACY_NAMES` that this pinned record predates, and rejects any role
 reference that is not exactly the one the record holds for that role (a digest no
 release recorded, another role's digest, or a recorded digest under another
 tag). `testdata/mutations.py` plants each of those at every role, plus a

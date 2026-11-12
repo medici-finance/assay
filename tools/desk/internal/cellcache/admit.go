@@ -129,8 +129,19 @@ func admit(p Policy, dry bool, env admitEnv) (Report, error) {
 // cheapClean returns a checked-clean report and "" when the lock-free test
 // clears the cache, or a zero report and the reason it could not.
 func cheapClean(p Policy, dry bool, env admitEnv) (Report, string) {
-	no := func(format string, a ...any) (Report, string) {
-		return Report{}, fmt.Sprintf(format, a...)
+	r, why, _ := precheck(p, dry, env)
+	return r, why
+}
+
+// precheck is cheapClean plus whether the refusal is one a single clean can
+// clear: the size or free-space margin, an aged measurement, or a top-level
+// change since it. Every other refusal is not reclaimable.
+func precheck(p Policy, dry bool, env admitEnv) (Report, string, bool) {
+	no := func(format string, a ...any) (Report, string, bool) {
+		return Report{}, fmt.Sprintf(format, a...), false
+	}
+	reclaim := func(format string, a ...any) (Report, string, bool) {
+		return Report{}, fmt.Sprintf(format, a...), true
 	}
 	if err := p.Validate(); err != nil {
 		return no("policy: %v", err)
@@ -173,7 +184,10 @@ func cheapClean(p Policy, dry bool, env admitEnv) (Report, string) {
 	now := env.now().UTC()
 	age := now.Sub(rep.After.At)
 	if rep.After.At.IsZero() || age < 0 || age > AdmitMaxAge {
-		return no("recorded measurement is stale or future-dated")
+		if rep.After.At.IsZero() || age < 0 {
+			return no("recorded measurement is stale or future-dated")
+		}
+		return reclaim("recorded measurement is stale or future-dated")
 	}
 	for _, name := range []string{"build", "mod"} {
 		st, err := r.Lstat(name)
@@ -192,11 +206,11 @@ func cheapClean(p Policy, dry bool, env admitEnv) (Report, string) {
 		// margins below are for. The comparison leaves AdmitMtimeSlack of
 		// room because file timestamps and the report's clock can disagree.
 		if !st.ModTime().Before(rep.After.At.Add(-AdmitMtimeSlack)) {
-			return no("%s changed after the recorded measurement", name)
+			return reclaim("%s changed after the recorded measurement", name)
 		}
 	}
 	if *est > p.Budget/4*3 {
-		return no("recorded size %d is within a quarter of budget %d", *est, p.Budget)
+		return reclaim("recorded size %d is within a quarter of budget %d", *est, p.Budget)
 	}
 	free, err := env.free(p.Root)
 	if err != nil {
@@ -204,7 +218,7 @@ func cheapClean(p Policy, dry bool, env admitEnv) (Report, string) {
 	}
 	need := p.Floor + uint64(p.Budget/4)
 	if need < p.Floor || free < need {
-		return no("free space %d is within the margin of floor %d", free, p.Floor)
+		return reclaim("free space %d is within the margin of floor %d", free, p.Floor)
 	}
 	at := now
 	size := *est
@@ -213,5 +227,5 @@ func cheapClean(p Policy, dry bool, env admitEnv) (Report, string) {
 		DryRun: dry, Admission: "precheck",
 		Before: Measurement{At: at, LogicalBytes: &size, AvailableBytes: &free},
 		After:  Measurement{At: at, LogicalBytes: &size, AvailableBytes: &free},
-	}, ""
+	}, "", false
 }

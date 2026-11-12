@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -357,7 +358,7 @@ func appScopeFor(method, path string) string {
 		// ready.go aborts on either, which is why "fall back to check-runs when status
 		// 403s" could never have worked (#348).
 		return "statuses: read"
-	case strings.HasSuffix(path, "/check-runs"):
+	case strings.HasSuffix(path, "/check-runs"), strings.HasSuffix(path, "/check-suites"):
 		return "checks: read"
 	case strings.Contains(path, "/pulls/"):
 		if method == http.MethodGet {
@@ -895,6 +896,51 @@ func (c *ghClient) checkRunsAt(sha string) (*checkRunsResp, error) {
 	return &agg, nil
 }
 
+// checkSuitesWire is one page of GET /commits/{sha}/check-suites.
+type checkSuitesWire struct {
+	TotalCount  int `json:"total_count"`
+	CheckSuites []struct {
+		ID         int64  `json:"id"`
+		Status     string `json:"status"`
+		Conclusion string `json:"conclusion"`
+		App        struct {
+			Slug string `json:"slug"`
+		} `json:"app"`
+		LatestCheckRunsCount int    `json:"latest_check_runs_count"`
+		CreatedAt            string `json:"created_at"`
+	} `json:"check_suites"`
+}
+
+// checkSuitesAt reads the check suites at a commit across all pages, under the same bound as
+// the rollups. TotalCount is carried from the first page so ready can fail closed on a short
+// walk (#6234).
+func (c *ghClient) checkSuitesAt(sha string) (*deskkit.CheckSuitesAtHead, error) {
+	out := &deskkit.CheckSuitesAtHead{}
+	for page := 1; page <= maxCIPages; page++ {
+		var w checkSuitesWire
+		path := fmt.Sprintf("/repos/%s/%s/commits/%s/check-suites?per_page=%d&page=%d",
+			c.owner, c.repo, sha, ciPerPage, page)
+		if err := c.doJSON(http.MethodGet, path, nil, &w); err != nil {
+			return nil, err
+		}
+		if page == 1 {
+			out.TotalCount = w.TotalCount
+		}
+		for _, cs := range w.CheckSuites {
+			id := ""
+			if cs.ID != 0 {
+				id = strconv.FormatInt(cs.ID, 10)
+			}
+			out.Suites = append(out.Suites, deskkit.CheckSuite{ID: id, App: cs.App.Slug, Status: cs.Status,
+				Conclusion: cs.Conclusion, RunCount: cs.LatestCheckRunsCount, CreatedAt: cs.CreatedAt})
+		}
+		if len(w.CheckSuites) < ciPerPage {
+			break
+		}
+	}
+	return out, nil
+}
+
 // postReview submits a head-pinned review AS THE APP. event is APPROVE or
 // REQUEST_CHANGES; commit_id pins the verdict to the reviewed head.
 //
@@ -1119,7 +1165,7 @@ func (c *ghClient) markReadyForReview(nodeID string) error {
 	return nil
 }
 
-// readMergeHold / setMergeHold: the ghClient path is GitHub-only (branch protection is
+// readMergeHold / setMergeHold / openMergeHold: the ghClient path is GitHub-only (branch protection is
 // GitHub's server-side twin — the forge-gitlab merge-hold brief), so both are the typed
 // not-applicable, unconditionally, and issue no request.
 func (c *ghClient) readMergeHold(pr int) (*deskkit.MergeHold, error) {
@@ -1127,6 +1173,10 @@ func (c *ghClient) readMergeHold(pr int) (*deskkit.MergeHold, error) {
 }
 
 func (c *ghClient) setMergeHold(pr int, in deskkit.MergeHoldUpdate) error {
+	return deskkit.ErrMergeHoldNotApplicable
+}
+
+func (c *ghClient) openMergeHold(pr int) error {
 	return deskkit.ErrMergeHoldNotApplicable
 }
 

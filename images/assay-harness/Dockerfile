@@ -82,6 +82,10 @@ COPY comms/ /src/comms/
 # `replace` to a sibling directory; same sibling layout as forgeread.
 COPY perfrec/ /src/perfrec/
 
+# loopadmin — the shared process runner (graph-execution/26) tools/desk resolves through
+# `replace ../../loopadmin`; same sibling layout as forgeread.
+COPY loopadmin/ /src/loopadmin/
+
 # gitquiet — the stdlib-only quiet-Git test template statusgen and tools/desk each resolve through a
 # `replace` to a sibling directory (their test builds import it); same sibling layout as forgeread.
 # `go mod download` reads each replaced module's go.mod, so the directory must exist in this stage.
@@ -179,3 +183,7 @@ CMD ["statusgen", "--version"]
 
 # Disable next-prompt generation for interactive and scheduled Claude processes.
 ENV CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false
+
+# CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
+# them off. A fragile stopgap only; patched node kernels are the real fix.
+ENV GODEBUG=multipathtcp=0

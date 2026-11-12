@@ -46,11 +46,14 @@ consumers:
 - 'loopadmin execution journal: follow-up graph-execution/26 (same engine, own schema; no Go dependency on workflow)'
 - 'tools/desk/cmd/deskclaim-ref claim tests: out-of-scope (their intent is carried here as TestPGClaimHolderSemantics per graph-execution/29 inventory; the command is unchanged)'
 - 'forge-neutral file/served claim store (forge-neutral/22-32): out-of-scope (supported legacy desk-tools claim path; applicability note in the forge-neutral README; retirement is the non-CI R8 decision)'
-version: 9
+version: 11
 id: ead4e747-4d61-4ec6-abaf-332873c79b21
 ---
 
 # Brief 19 — Durable instance store and production coverage binding
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -179,6 +182,10 @@ the named test exists. Existing Task/Verify rows and Evidence are preserved.
 
 Version 8 strengthens Tasks 3–4 and Verify rows 1–2 with actual shared-domain record persistence and assessment, exact restored bindings, positive baselines and independent mutation controls. Verify rows 3–13, dependencies and historical Evidence remain unchanged. These prospective implementation obligations are mapped in [the acceptance and consumer integration manifest](../../proposals/non-ci-architecture/20-amendment-manifest.md#contract-acceptance-and-consumer-integration--23-october-2026); no passing result is claimed.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
+
 ## PostgreSQL foundation precursor — 2026-11-03
 
 [Brief 36](brief-36-canonical-postgresql-foundation-for-read-only-consumers.md) brings forward only this owner's module, explicit PostgreSQL connection boundary, one forward-only migration ledger, foundation-only contract section and disposable test harness. It has no execution, claims, admission, outbox, activation or reconstruction APIs, so its start does not require this brief's effect-bearing dependencies. It is the same `workflow/store` owner, not a second database or interchangeable backend.
@@ -198,6 +205,8 @@ The inspected open desk-instance authoring PRs 5033 and 4429 add enduring desk r
 5. (R2, 2026-10-13) Write `spec/coordination-store-v1.md` (planned) and implement the store on PostgreSQL with versioned migrations, one transaction for admission, claim generation and effect intent, an outbox with stable operation identities that implements graph-execution/04's handoff seam, and the activation record graph-execution/16's incarnation check reads. Add a static guard that the runtime store imports no SQLite or other embedded engine. Provide the disposable PostgreSQL service in the module's CI job. Add a test that resolves the contract's named tables and columns against the migrations in both directions.
 6. (R2) Implement whole-database reconstruction over supplied Git-definition, published-evidence and forge-read fixtures, and backup rollback that starts paused under a mismatched incarnation. Mark lost attempts unknown, hold unknown resources and never replay stale outbox entries blindly.
 7. (R2) Carry the claim-test intent (holder/role/lane/attempt/generation compare, malformed claims, transport uncertainty, stale-generation release/publication) and persist pending feedback and decisions per generation plus retirement progress per completed step.
+
+- **Instance amendment:** Extend the existing coordination contract/migrations with enduring desk identities, desired-entry binding/revision, replacement links and persistent paused/draining state. Keep exact item/authority claims and effect intents under their existing owners. Role occupancy is a derived best-effort gauge/cache, never a durable slot ledger or atomic capacity gate. Desk/supervisor records work without workflow instances; restore reconciles ownership independently and refreshes approximate pacing without blocking on counter maintenance.
 
 ## Interface contract
 
@@ -220,6 +229,7 @@ Pinned instance/attempt/subject and actor capability enter; typed state, evidenc
 | 11 | check:ci +dereference +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoordinationSpecMatchesMigrations$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCoordinationSpecMatchesMigrations " "$routing_out")` | exit 0; named PASS; every table and column `spec/coordination-store-v1.md` (planned) names exists in `workflow/store/migrations/` (planned), and every migrated table is named in the contract; mutation: drop one column from the contract text — the named test must fail |
 | 12 | check:ci +flow +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGContextRestore$" ./store/ > "$out" && grep -F -- "--- PASS: TestPGContextRestore " "$out")` | exit 0; named PASS; real PostgreSQL reload/restore retains old cutoff and expiry; binding flow holds stale context and accepts current context; mutation: replace expiry with restore time |
 | 13 | check:ci +flow +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGOperationCountSeedAndBrake$" ./... > "$routing_out" && grep -q -- "--- PASS: TestPGOperationCountSeedAndBrake " "$routing_out")` | exit 0; named PASS against a real disposable PostgreSQL; with at least two processes and a seed at most half the cap, after the pacing counter rows are dropped mid-window, the estimate is re-derived from the window's effect intents and receipts before each admission, and restarts and concurrent processes admit no more than cap + C; with intents committed but every pacing-row update skipped, admissions still stay within cap + C; after whole-database loss one reset is recorded, admissions stay within 2 × (cap + C), and a second reset, or a reset record deleted while the activation record survives, treats the window as exhausted; an unknown brake count holds; mutation: seed the lost estimate at zero, keep a per-process estimate, or admit against the cached pacing row instead of the re-derived estimate — the named test must fail |
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd workflow && GOWORK=off go test -count=1 -v ./store/... -run '^TestDeskInstanceRestore$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceRestore ' "$o")` | Disposable PostgreSQL restores two workers/three reviewers, paused peer and partial replacement without workflow rows, a second successor or renewed authority. A missing/stale pacing cache is labelled unknown and refreshed best-effort, not treated as a required slot ledger. Mutation: couple role counter reconstruction/update to publication or capacity admission, or drop paused/ownership history, makes the test fail. |
 
 ## Pre-mortem and dispatch checks
 

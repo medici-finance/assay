@@ -39,7 +39,12 @@ if is_shell_impl; then
   echo "role-context.test.sh: n/a (0 assertions run against the shell oracle)"
   exit 0
 fi
-T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-rolectx.XXXXXX")" && pwd -P)"
+# Fail closed before the EXIT trap: on bash 3.2 `cd ""` succeeds, so a failed mktemp
+# must never leave T at the caller's directory for the trap to delete (#6161).
+made="$(mktemp -d "${TMPDIR:-/tmp}/cellctl-rolectx.XXXXXX")" || exit 1
+[ -n "$made" ] && [ -d "$made" ] || exit 1
+T="$(cd "$made" && pwd -P)" || exit 1
+[ -n "$T" ] || exit 1
 trap 'rm -rf "$T"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }

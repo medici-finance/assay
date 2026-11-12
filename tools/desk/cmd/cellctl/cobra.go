@@ -151,10 +151,16 @@ func runTreeSelected(args []string, sink func(perfrec.Context)) (code int) {
 		}
 		die("--cells-root requires an absolute registry path and a command")
 	}
+	// Preparation preserves its former argparse usage exit. Other cellctl verbs
+	// retain their existing usage code.
+	usageExit := 3
+	if i := verbIndex(args); i < len(args) && args[i] == "compat-prepare" {
+		usageExit = 2
+	}
 	// The pre-migration command-line shape, checked before anything parses or echoes.
 	if err := legacyShape(buildRoot(), args); err != nil {
 		fmt.Fprintf(os.Stderr, "cellctl: %v\nRun 'cellctl --help' for usage.\n", err)
-		return 3
+		return usageExit
 	}
 	i := verbIndex(args)
 	if i < len(args) {
@@ -194,7 +200,7 @@ func runTreeSelected(args []string, sink func(perfrec.Context)) (code int) {
 		IO:              cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr},
 		Version:         versionLine(),
 		VersionTemplate: "{{.Version}}\n",
-		UsageExit:       3,
+		UsageExit:       usageExit,
 		// Single-dash long flags are the Go flag package's spelling, which only scratch read.
 		GoFlagCompat: scratchLine(args),
 	})
@@ -453,7 +459,7 @@ func buildRoot() *cobra.Command {
 	declared = nil
 	root := cli.NewRoot("cellctl", "start, stop and scaffold an Assay CELL on one laptop")
 	root.Long = "cellctl starts, stops and scaffolds an Assay CELL on one laptop (the laptop route).\n\n" +
-		"Every command takes the cell as its first argument.\n\n" + helpConcepts
+		"Lifecycle commands take the cell as their first argument; compat-prepare takes --cell.\n\n" + helpConcepts
 	root.Example = "  cellctl ls\n  cellctl new mycell --kind house --repo ~/src/repo --roots 'o/r=/abs/path'\n  cellctl up mycell\n  cellctl --cells-root /abs/registry show mycell"
 	declare(root, cli.Binding{Key: "cells-root", Kind: cli.String, Flag: "cells-root", Persistent: true,
 		Usage: "absolute path of the cell registry to use for this run (overrides CELLS_ROOT)"})
@@ -482,7 +488,7 @@ func buildRoot() *cobra.Command {
 	}
 	root.AddCommand(
 		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(), pauseCmd(), resumeCmd(), drainCmd(),
-		smokeCmd(), statusCmd(), attachCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
+		smokeCmd(), statusCmd(), attachCmd(), compatPrepareCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), hotfixCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(), scrubbedRunCmd(),
 	)
 	// The cellopfixture build adds the fixture verb and the stand-ins; the release build adds nothing.
@@ -705,7 +711,8 @@ func upCmd() *cobra.Command {
 			"  up      its cadence lease is held by a live process: reported already-up, never relaunched, its window\n" +
 			"          never touched;\n" +
 			"  stale   a running checkpoint with no live holder (a crashed session): plain up never reconciles it, the\n" +
-			"          role is reported failed and the exact recovery is named (up --plan, then up --apply);\n" +
+			"          role is reported failed naming the verb that clears its class (up --plan, then up --apply, for a\n" +
+			"          dead record; cadence recover --confirm-stopped, then up --role, for any other whose lease is free);\n" +
 			"  absent  launched, in the resolved COCKPIT: a tmux session \"<cell>-cell\" (an existing session gets only\n" +
 			"          the missing windows), a labelled herdr tab per role, or an orca terminal per role.\n" +
 			"A house cell opens no deskd window unless DESKD=1. --cockpit overrides cell.env CELL_COCKPIT for this run.\n" +
@@ -908,7 +915,9 @@ func newCmd() *cobra.Command {
 			"--kind house: a LOCAL cell on the operator's laptop; the desks reuse the operator's config home by symlink,\n" +
 			"no deskd is required, every role still boots in its own LOCKED worktree. --roots '<owner>/<repo>=<abs path>,...'\n" +
 			"[--roles \"<role> ...\"] [--port N] [--forge gitlab [--group G] [--gitlab-api-base URL]] (a gitlab house cell\n" +
-			"links no gh config).\n\n" +
+			"links no gh config). [--labels-token-file FILE]: ensure the forge label set (one raised-by:/to: row per role\n" +
+			"the roster binds) on every --roots repo under that operator credential; without it, or when the forge denies\n" +
+			"it, the step prints NOT ENSURED with the deskfleet labels command that finishes it (exit 1 when FILE was given).\n\n" +
 			"--kind container: --repo <repo-id> with --launcher <absolute-executable> (an operator-owned launcher, no\n" +
 			"credentials copied) or --container-config <absolute JSON file> (the native Go runtime; see docs/cellctl.md).\n\n" +
 			"--kind scrubbed: --repo <checkout> --repo-slug <owner/repo> [--roots '...'] [--roles \"...\"], a host-local\n" +
@@ -933,6 +942,7 @@ func newCmd() *cobra.Command {
 		bStr("gitlab-token-store", "gitlab: role token store directory"),
 		bStr("roots", "the DESK_ROOTS map: '<owner>/<repo>=<abs path>,...'"),
 		bDef("roles", "space-separated roles", rolesDefault),
+		bStr("labels-token-file", "house: FILE holding an operator credential that can write labels; ensures the label set on every --roots repo"),
 	)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if len(args) > 1 {
