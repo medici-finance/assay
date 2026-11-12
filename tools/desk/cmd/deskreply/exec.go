@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -17,8 +16,8 @@ import (
 // package constructs commands, so there is exactly one place argv is built.
 //
 // SINCE THE FORGE MIGRATION the only binaries that reach it are `git` (read-only worktree
-// facts, plus the one worktree-scoped config write recordWorkpadID makes) and `desktoken`
-// (the identity layer). Every forge read and write goes through the resolved deskkit.Forge,
+// facts, plus the one worktree-scoped config write recordWorkpadID makes); the credential is
+// read in process (#5457). Every forge read and write goes through the resolved deskkit.Forge,
 // so there is no forge CLI to launch and no ambient CLI identity to fall back to.
 var execCommand = exec.Command
 
@@ -160,12 +159,12 @@ func git(dir string, args ...string) (string, error) {
 	return runCmd(dir, "git", args...)
 }
 
-// mintWorkerToken calls desktoken worker --repo <repo> to get or reuse an installation
-// token for the worker GitHub App SCOPED TO repo's owner, then sets it as ghToken so every
-// subsequent forge call authenticates as the worker App.
+// mintWorkerToken reads the worker role's credential SCOPED TO repo's owner READ-ONLY through
+// deskkit.WriteVerbRoleCredential (never the desktoken binary, so never its rotation path —
+// #5457), then sets it as ghToken so every subsequent forge call authenticates as the worker.
 //
-// --repo is not optional here (#562): the worker App is installed on more than one
-// account, and desktoken defaults the owner whenever --repo is absent. Without this flag,
+// The repo is not optional here (#562): the worker App is installed on more than one
+// account, and the installation is chosen by the repo's owner. Without it,
 // deskreply running against another org's repo would silently mint a token for the WRONG
 // installation — one with no access to the target repo — and the subsequent reads would fail
 // with a "Could not resolve to a Repository" error, surfacing as deskreply's exit 6. Passing
@@ -174,25 +173,13 @@ func git(dir string, args ...string) (string, error) {
 // deterministic regardless of which worktree/remote deskreply happens to run in.
 //
 // deskreply posts as the worker App from whichever window calls it (an intake or verify
-// window replying on its own PR, too), so under another loop it passes desktoken's audited
-// --cross-role override (#6069) rather than being refused. The reason names this verb.
+// window replying on its own PR, too), so under another loop the helper admits the audited
+// cross-role override (#6069) rather than refusing it. The reason names this verb.
 func mintWorkerToken(repo string) error {
-	args := []string{"worker", "--repo", repo}
-	if reason := deskkit.CrossRoleReason("deskreply", "worker"); reason != "" {
-		args = append(args, "--cross-role", reason)
-	}
-	out, err := runCmd("", "desktoken", args...)
+	cred, err := deskkit.WriteVerbRoleCredential("deskreply", "worker", repo)
 	if err != nil {
-		return fmt.Errorf("desktoken worker --repo %s: %w", repo, err)
+		return err
 	}
-	tokenPath := strings.TrimSpace(out)
-	b, rerr := os.ReadFile(tokenPath)
-	if rerr != nil {
-		return fmt.Errorf("read worker token from %s: %w", tokenPath, rerr)
-	}
-	ghToken = strings.TrimSpace(string(b))
-	if ghToken == "" {
-		return fmt.Errorf("worker token at %s is empty", tokenPath)
-	}
+	ghToken = cred.Token
 	return nil
 }

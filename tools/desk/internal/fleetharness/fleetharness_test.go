@@ -152,9 +152,9 @@ func loadExpectations(t *testing.T) map[string]expectation {
 // ---------------------------------------------------------------------------
 
 type fleetEnv struct {
-	bin           string // dir holding the built verbs + the gh/desktoken shims
+	bin           string // dir holding the built verbs + the gh shim
 	home          string // private HOME (roster, audit log)
-	tokens        string // where the desktoken shim writes its token files (FAKE_TOKEN_DIR)
+	tokens        string // the planted role-credential cache the write verbs read in-process (see plantCredential)
 	ownRepo       string // owner/name of the worker's own origin
 	otherRepo     string // owner/name of a DIFFERENT repo in the allowed set
 	detached      string // worktree created with --detach from refs/remotes/origin/<branch>
@@ -267,7 +267,6 @@ func newFleetEnv(t *testing.T) *fleetEnv {
 	buildVerbForge(t, e.bin, "deskpr", e.forgeURL)
 	buildVerb(t, e.bin, "deskreply")
 	buildShim(t, e.bin, "gh", ghShimSource)
-	buildShim(t, e.bin, "desktoken", desktokenShimSource)
 
 	// Two origins, laid out so that `remote.origin.url`'s last two path components parse
 	// to the owner/name slugs above — the tools derive the repo from the remote URL, so a
@@ -454,13 +453,15 @@ func scenarios(e *fleetEnv) []scenario {
 			},
 		},
 		{
-			// The cold-shell case: desktoken not resolvable on PATH.
+			// The cold-shell case: no resolvable role credential. The write verbs read the
+			// credential in-process (no desktoken on PATH is consulted any more), so a shell
+			// with no App config and no cached installation credential has nothing to read.
 			// It shares exit 6 with the detached-HEAD refusal, which is why the two causes
 			// must be kept distinguishable — the harness records
 			// them as separate scenarios so a conflated exit code is at least visible.
-			name: "deskpr-create/desktoken-absent-from-path",
+			name: "deskpr-create/no-role-credential",
 			run: func(t *testing.T, e *fleetEnv) (string, string) {
-				return e.invokeWithoutShim(t, e.onBranch, "desktoken", "deskpr", "create",
+				return e.invokeWithoutCredential(t, e.onBranch, "deskpr", "create",
 					"--title", "fleet acceptance", "--body-file", e.bodyClean)
 			},
 		},
@@ -472,38 +473,52 @@ func scenarios(e *fleetEnv) []scenario {
 // ---------------------------------------------------------------------------
 
 func (e *fleetEnv) invoke(t *testing.T, dir, verb string, args ...string) (string, string) {
-	return e.exec(t, dir, e.bin, verb, args...)
+	return e.exec(t, dir, true, verb, args...)
 }
 
-// invokeWithoutShim removes ONE shim from the PATH dir for the duration of the call, which
-// is how a cold worker shell that never prepended /opt/desk-tools/bin actually looks.
-func (e *fleetEnv) invokeWithoutShim(t *testing.T, dir, shim, verb string, args ...string) (string, string) {
+// invokeWithoutCredential runs a verb in a shell that carries no App config and no cached
+// installation credential for the role — how a cold worker shell that was never provisioned
+// actually looks to the in-process credential read.
+func (e *fleetEnv) invokeWithoutCredential(t *testing.T, dir, verb string, args ...string) (string, string) {
 	t.Helper()
-	partial := t.TempDir()
-	entries, err := os.ReadDir(e.bin)
-	if err != nil {
-		t.Fatalf("cannot read the harness bin dir: %v", err)
-	}
-	for _, en := range entries {
-		if en.Name() == shim {
-			continue
-		}
-		linkOrCopy(t, filepath.Join(e.bin, en.Name()), filepath.Join(partial, en.Name()))
-	}
-	return e.exec(t, dir, partial, verb, args...)
+	return e.exec(t, dir, false, verb, args...)
 }
 
-func (e *fleetEnv) exec(t *testing.T, dir, pathDir, verb string, args ...string) (string, string) {
+const (
+	// The worker App's ID and installation ID in the harness's world. Opaque fixtures: the
+	// in-process credential read names the installation it would act as from these two values
+	// and, finding a fresh cache for it, never reaches a network.
+	fixtureWorkerAppID     = "100001"
+	fixtureWorkerInstallID = "4242"
+)
+
+// plantCredential writes the worker App's installation-credential cache where the in-process
+// read looks (WORKER_TOKEN, read together with WORKER_APP_ID / WORKER_INSTALL_ID): a mode-0600
+// file younger than the provider's reuse window. The write verbs read the role credential
+// through deskkit.WriteVerbRoleCredential — in this process, never a forked desktoken — so a
+// harness whose only credential source was a PATH shim measured "no App ID" on every scenario.
+// The file is (re)written per invocation so its age is always inside the reuse window.
+func (e *fleetEnv) plantCredential(t *testing.T) []string {
+	t.Helper()
+	cache := filepath.Join(e.tokens, "worker-token-"+fixtureWorkerInstallID)
+	if err := os.WriteFile(cache, []byte("fleet-harness-worker-credential\n"), 0o600); err != nil {
+		t.Fatalf("plant the fixture role credential: %v", err)
+	}
+	return []string{
+		"WORKER_APP_ID=" + fixtureWorkerAppID,
+		"WORKER_INSTALL_ID=" + fixtureWorkerInstallID,
+		"WORKER_TOKEN=" + cache,
+	}
+}
+
+func (e *fleetEnv) exec(t *testing.T, dir string, withCredential bool, verb string, args ...string) (string, string) {
 	t.Helper()
 	cmd := exec.Command(filepath.Join(e.bin, verb), args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
-		"PATH="+pathDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"PATH="+e.bin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"HOME="+e.home,
 		"XDG_CONFIG_HOME="+filepath.Join(e.home, ".config"),
-		// The desktoken shim writes its token file here (under the scenario's t.TempDir),
-		// so the real temp dir never accumulates one per mint (#1195).
-		"FAKE_TOKEN_DIR="+e.tokens,
 		"CLAUDE_SESSION_ID=fleet-harness",
 		"DESK_TOOLS_DISABLED=",
 		// The workflow these scenarios measure is a DISPATCHED WORKER's, and such a
@@ -529,6 +544,12 @@ func (e *fleetEnv) exec(t *testing.T, dir, pathDir, verb string, args ...string)
 		"FAKEGH_LIST_DRAFT="+os.Getenv("FAKEGH_LIST_DRAFT"),
 		"FAKEGH_HEAD_REF="+os.Getenv("FAKEGH_HEAD_REF"),
 	)
+	if withCredential {
+		cmd.Env = append(cmd.Env, e.plantCredential(t)...)
+	} else {
+		// os.Environ() may carry a real operator's App config; a cold shell has none.
+		cmd.Env = append(cmd.Env, "WORKER_APP_ID=", "WORKER_INSTALL_ID=", "WORKER_TOKEN=", "WORKER_PEM=", "WORKER_APP=")
+	}
 	out, err := cmd.CombinedOutput()
 	code := 0
 	if err != nil {
@@ -654,29 +675,6 @@ func main() {
 }
 `
 
-// desktokenShimSource stands in for the cold App-token mint: it writes a token file and
-// prints its path, which is exactly the contract mintWorkerToken depends on.
-const desktokenShimSource = `package main
-
-import (
-	"fmt"
-	"os"
-)
-
-func main() {
-	// The token lands under FAKE_TOKEN_DIR — a directory inside the scenario's t.TempDir
-	// (see fleetEnv.exec) — never loose in the real temp dir, where nothing removes it.
-	f, err := os.CreateTemp(os.Getenv("FAKE_TOKEN_DIR"), "fleet-harness-token-*")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	fmt.Fprint(f, "fleet-harness-worker-token")
-	f.Close()
-	fmt.Println(f.Name())
-}
-`
-
 // ---------------------------------------------------------------------------
 // Small helpers.
 // ---------------------------------------------------------------------------
@@ -693,20 +691,6 @@ func write(t *testing.T, p, content string) {
 	mkdir(t, filepath.Dir(p))
 	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
 		t.Fatalf("write %s: %v", p, err)
-	}
-}
-
-func linkOrCopy(t *testing.T, from, to string) {
-	t.Helper()
-	if err := os.Symlink(from, to); err == nil {
-		return
-	}
-	b, err := os.ReadFile(from)
-	if err != nil {
-		t.Fatalf("copy %s: %v", from, err)
-	}
-	if err := os.WriteFile(to, b, 0o700); err != nil {
-		t.Fatalf("copy to %s: %v", to, err)
 	}
 }
 

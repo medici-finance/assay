@@ -192,7 +192,7 @@ PR body carries the old or the new link before re-running. Because a body edit m
 edit also posts one short comment naming what changed, so a head-keyed review monitor
 has an event to see.
 
-gh calls authenticate as this session's App role via desktoken, resolved from the
+gh calls authenticate as this session's App role (credential read in process, never rotated), resolved from the
 loop identity ($DESK_LOOP). That is the worker App by default, and the VERIFIER App
 under DESK_LOOP=verify-desk — so an Evidence PR is filed under the same App that
 authored its branch commits, not misattributed to the worker (#396). When no loop
