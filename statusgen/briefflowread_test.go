@@ -1,6 +1,6 @@
 package main
 
-// briefflowread_test.go — forge-neutral/18: the merged-PR list and the per-PR review array the
+// briefflowread_test.go — forge-neutral brief 18: the merged-PR list and the per-PR review array the
 // brief-flow metrics (--review-rework, --first-pass-yield, --assayscore's Quality dimension) read
 // reach the forge through `deskread changes` and `deskread reviews`, never a `gh api` shell-out,
 // and every read the verb could not serve in full is an error the callers report as

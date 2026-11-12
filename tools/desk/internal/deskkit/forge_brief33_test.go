@@ -826,7 +826,7 @@ func TestCommentFieldsOnChangeTarget(t *testing.T) {
 	})
 }
 
-// regression: forge-neutral/18 — ListChanges carries the forge's last-modified time, so a consumer
+// regression: forge-neutral brief 18 — ListChanges carries the forge's last-modified time, so a consumer
 // can tell a bounded walk already passed its window; absent stays empty, never a guess.
 func TestChangeRefCarriesUpdatedAt(t *testing.T) {
 	t.Run("github", func(t *testing.T) {
