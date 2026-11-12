@@ -833,7 +833,7 @@ const (
 // node already requested — no extra request, and no scope beyond `checks:read`. The head
 // commit's oid and committedDate are scalars on that same commit node, selected for the
 // stale-approval test (#3093, ReviewPredatesHead) at the same zero request/point cost.
-const ghOpenChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$first,after:$after,orderBy:{field:CREATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+const ghOpenChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$first,after:$after,orderBy:{field:CREATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus mergeable headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
 
 // ghListChangesQuery is the states-scoped, cursor-paginated changes read behind ListChanges. It
 // requests EXACTLY the ChangeRef fields — number, state, head oid, source branch (headRefName),
@@ -865,7 +865,7 @@ const ghReviewQueueReviewsSel = `reviews(first:100){pageInfo{hasNextPage} nodes{
 // at and the reviews reduced against it come from one consistent response. Its point cost is
 // the open-changes read's plus one nested connection per change (see the stream's query-cost
 // record).
-const ghReviewQueueQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String){repository(owner:$owner,name:$name){visibility pullRequests(states:OPEN,first:$first,after:$after,orderBy:{field:CREATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+const ghReviewQueueQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String){repository(owner:$owner,name:$name){visibility pullRequests(states:OPEN,first:$first,after:$after,orderBy:{field:CREATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus mergeable headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
 
 // forgeQueueReviewsCap is the per-change review bound of ghReviewQueueReviewsSel's first:.
 const forgeQueueReviewsCap = 100
@@ -888,6 +888,7 @@ type ghOpenChangeNode struct {
 		Typename string `json:"__typename"`
 	} `json:"author"`
 	MergeStateStatus string          `json:"mergeStateStatus"`
+	Mergeable        string          `json:"mergeable"`
 	HeadRefOid       string          `json:"headRefOid"`
 	HeadRefName      string          `json:"headRefName"`
 	BaseRefName      string          `json:"baseRefName"`
@@ -1059,6 +1060,7 @@ func ghOpenChange(n ghOpenChangeNode) OpenChange {
 		Number: n.Number, Title: n.Title, Body: n.Body, State: n.State, Draft: n.IsDraft,
 		CreatedAt: n.CreatedAt, LastEditedAt: n.LastEditedAt, UpdatedAt: n.UpdatedAt,
 		MergeStateStatus: n.MergeStateStatus,
+		Mergeable:        n.Mergeable,
 		HeadSHA:          n.HeadRefOid, HeadRef: n.HeadRefName, BaseRef: n.BaseRefName,
 	}
 	if n.Author != nil {
