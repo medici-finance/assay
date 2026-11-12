@@ -268,12 +268,12 @@ func TestGLCreateMRKeyedGivesUp(t *testing.T) {
 	}
 }
 
-// TestGLCreateMRTargetMissingNoRetry proves the widened classifier stays narrow: a
+// TestGLCreateMRNoRetryTarget proves the widened classifier stays narrow: a
 // field-keyed 400 that names the TARGET branch as missing — alone, or beside a different
 // source_branch complaint — is surfaced on the first response and never retried.
 //
 // regression: #6281
-func TestGLCreateMRTargetMissingNoRetry(t *testing.T) {
+func TestGLCreateMRNoRetryTarget(t *testing.T) {
 	bodies := []map[string]any{
 		{"message": map[string]any{"target_branch": []string{"does not exist"}}},
 		{"message": map[string]any{
