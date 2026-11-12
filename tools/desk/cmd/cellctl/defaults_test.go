@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // The machine-wide defaults file (defaults.go). Every test here builds its own cells root under
@@ -452,6 +454,23 @@ func TestRunTreeClearsMaintCommand(t *testing.T) {
 		t.Fatalf("maintenanceCommand = %q after a finished run, want it cleared", maintenanceCommand)
 	}
 	// A direct load after a run takes no admission lock, so the cell dir stays as written.
+	loadCell("demo")
+	t.Cleanup(releaseMaintenanceAdmissions)
+	for _, n := range mustReadDir(t, filepath.Dir(envfile)) {
+		if n != "cell.env" {
+			t.Errorf("loadCell left %s in the cell dir", n)
+		}
+	}
+}
+
+// regression: #6217
+func TestRunTreeWithClearsMaintVerb(t *testing.T) {
+	root := defaultsRoot(t)
+	envfile := writeCell(t, root, "demo", demoCell)
+	captureStdout(t, func() { runTreeWith(t, []string{"ls"}, func(*cobra.Command) {}) })
+	if maintenanceCommand != "" {
+		t.Fatalf("maintenanceCommand = %q after a finished runTreeWith, want it cleared", maintenanceCommand)
+	}
 	loadCell("demo")
 	t.Cleanup(releaseMaintenanceAdmissions)
 	for _, n := range mustReadDir(t, filepath.Dir(envfile)) {
