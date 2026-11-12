@@ -698,7 +698,8 @@ func (s *ScanLoop) worktreeFor(loopengine.Item) string {
 		}
 		base = def
 	}
-	return filepath.Join(base, scanWorktreeLeaf+sanitizeSegment(s.passName()))
+	leaf := scanWorktreeLeaf + sanitizeSegment(s.passName())
+	return filepath.Join(base, leaf)
 }
 
 // branchFor is the pass's scan branch. It is time-suffixed on purpose: the bounded coalesce window
