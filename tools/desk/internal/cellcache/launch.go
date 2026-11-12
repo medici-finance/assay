@@ -41,7 +41,7 @@ func (m *manager) launchCheck() (Report, error) {
 		return m.emptyAdmission()
 
 	}
-	r, why := cheapClean(m.p, false, admitEnv{free: m.free, now: time.Now})
+	r, why, reclaimable := precheck(m.p, false, admitEnv{free: m.free, now: time.Now})
 	if why == "" {
 		return r, nil
 	}
@@ -54,8 +54,9 @@ func (m *manager) launchCheck() (Report, error) {
 		}
 	}
 	// Missing, stale, dirty, partial or corrupt accounting cannot become a zero
-	// estimate, and cannot trigger an unbounded scan on the startup path.
-	r = Report{Schema: schema, Policy: m.p, Outcome: "could-not-check", Admission: "bounded-refusal", Reason: fmt.Sprintf("%s; run cellctl cache <cell> clean before retrying launch", why)}
+	// estimate, and Prepare never walks the cache itself. The refusal says
+	// whether one clean may clear it; only `cellctl up` acts on that.
+	r = Report{Schema: schema, Policy: m.p, Outcome: "could-not-check", Admission: "bounded-refusal", Reason: fmt.Sprintf("%s; run cellctl cache <cell> clean before retrying launch", why), reclaimable: reclaimable}
 	return r, &Deferred{r}
 }
 
