@@ -169,6 +169,12 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 		return nil, nil
 	}
 	t.Cleanup(func() { lintDiffFn = oldLint })
+	// Nor the non-decisive verdict gate (verdictgate_test.go owns it).
+	oldVerdict := evidenceVerdictCheckFn
+	evidenceVerdictCheckFn = func(string, string, []byte, []byte, bool, string) (closureVerdict, string, error) {
+		return closureAccepted, "", nil
+	}
+	t.Cleanup(func() { evidenceVerdictCheckFn = oldVerdict })
 	rows := "| 1 | command | 1 | missing behavior |\n" + receipt.EvidenceBinding() + "\n"
 	fragment := filepath.Join(t.TempDir(), "rows.md")
 	os.WriteFile(fragment, []byte(rows), 0600)
@@ -327,6 +333,25 @@ func TestCrossRepoDeliveryJoin(t *testing.T) {
 	f = &fakeForge{}
 	if err := checkAdmittedDeliveryPRs(f, receipt, facts); err != nil || len(f.joinReads) != 0 {
 		t.Fatal("same-repo join changed")
+	}
+}
+
+// A delivery PR whose merge commit IS the admitted source is contained in it without a
+// compare; any other source (another commit, or an abbreviation) still needs one.
+// regression: #6270
+func TestDeliveryJoinSameCommit(t *testing.T) {
+	facts := joinFacts{Entries: []joinEntry{{Repo: jOtherRepo, MergeSHA: jMerge}}}
+	receipt := deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{Version: 2, SourceRepo: jOtherRepo, Source: jMerge}}
+	f := &fakeForge{compareErr: fmt.Errorf("unavailable")}
+	if err := checkAdmittedDeliveryPRs(f, receipt, facts); err != nil || len(f.cmpCalls) != 0 {
+		t.Fatalf("got %v after compares %v; want the merge commit admitted without a compare", err, f.cmpCalls)
+	}
+	for _, source := range []string{jSHA, jMerge[:7], strings.ToUpper(jMerge)} {
+		receipt.Binding.Source = source
+		f := &fakeForge{compareErr: fmt.Errorf("unavailable")}
+		if err := checkAdmittedDeliveryPRs(f, receipt, facts); err == nil || !deskkit.IsUnverifiable(err) || len(f.cmpCalls) != 1 {
+			t.Fatalf("source %s: got %v after compares %v; want could-not-check from the compare", source, err, f.cmpCalls)
+		}
 	}
 }
 

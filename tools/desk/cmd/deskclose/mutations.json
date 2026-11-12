@@ -216,6 +216,24 @@
       "file": "cmd/deskclose/postcondition.go",
       "old": "Query: searchTokens(title)",
       "new": "Query: title"
+    },
+    {
+      "name": "skip the forge match on a --decision comment link (#6061: a github.com link to a GitLab-served project, or a GitLab note link to a GitHub-served one, is fetched from the wrong forge and accepted)",
+      "file": "cmd/deskclose/authority.go",
+      "old": "\tif served != link.Forge {",
+      "new": "\tif false && served != link.Forge {"
+    },
+    {
+      "name": "skip the host match on a --decision comment link (#6061: a note link on another GitLab host is fetched from this one and accepted)",
+      "file": "cmd/deskclose/authority.go",
+      "old": "!strings.EqualFold(link.Host, host) {",
+      "new": "false && !strings.EqualFold(link.Host, host) {"
+    },
+    {
+      "name": "skip the project and number match on a human-decided --decision link (#6061: a ruling in another project, on another issue or on the merge request of that number authorizes this close)",
+      "file": "cmd/deskclose/triage.go",
+      "old": "\tif sameRepo && sameItem {",
+      "new": "\tif true || sameRepo && sameItem {"
     }
   ]
 }

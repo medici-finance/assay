@@ -1,0 +1,71 @@
+{
+  "test": "go test ./cmd/muhar ./internal/arch -run '^(TestBudget|TestOneImplementationPerMeaning)' -count=1 -timeout=45s",
+  "control": {
+    "name": "CONTROL: host clamp disabled",
+    "file": "cmd/muhar/budget.go",
+    "old": "if b != nil && jobs > b.total {",
+    "new": "if false && b != nil && jobs > b.total {"
+  },
+  "mutations": [
+    {
+      "name": "OS slot exclusion bypassed",
+      "file": "cmd/muhar/budget.go",
+      "old": "err = deskkit.TryLockExclusive(f)",
+      "new": "err = nil"
+    },
+    {
+      "name": "slot release retains live fd",
+      "file": "cmd/muhar/budget.go",
+      "old": "once.Do(func() { _ = deskkit.UnlockFile(f); _ = f.Close() })",
+      "new": "once.Do(func() {})"
+    },
+    {
+      "name": "partial configuration accepted",
+      "file": "cmd/muhar/budget.go",
+      "old": "if !haveDir || !haveTotal || dir == \"\" || err != nil || total <= 0 {",
+      "new": "if false && (!haveDir || !haveTotal || dir == \"\" || err != nil || total <= 0) {"
+    },
+    {
+      "name": "selector work skips admission",
+      "file": "cmd/muhar/selection.go",
+      "old": "release, err := cs.budget.acquire()",
+      "new": "release, err := (*hostBudget)(nil).acquire()"
+    },
+    {
+      "name": "drained worker keeps polling",
+      "file": "cmd/muhar/budget.go",
+      "old": "if needed != nil && !needed() {\n\t\t\tif waiting {",
+      "new": "if false && needed != nil && !needed() {\n\t\t\tif waiting {"
+    },
+    {
+      "name": "missing slot silently admitted",
+      "file": "cmd/muhar/budget.go",
+      "old": "return nil, fmt.Errorf(\"budget slot %d: %w\", i, err)",
+      "new": "return func(){}, nil"
+    },
+    {
+      "name": "external kill counts as failure",
+      "file": "cmd/muhar/runner.go",
+      "old": "if resourceSignal(cmd.ProcessState) {",
+      "new": "if false && resourceSignal(cmd.ProcessState) {"
+    },
+    {
+      "name": "raw command loses cleanup custody",
+      "file": "cmd/muhar/runner.go",
+      "old": "cmd.Cancel = nil",
+      "new": "// cmd.Cancel = nil"
+    },
+    {
+      "name": "host owner marker omitted",
+      "file": "cmd/muhar/budget.go",
+      "old": "// semantic: S-host-mutation-work\nfunc (b *hostBudget) acquireWhile",
+      "new": "// host owner marker omitted\nfunc (b *hostBudget) acquireWhile"
+    },
+    {
+      "name": "second host owner declared",
+      "file": "cmd/muhar/budget.go",
+      "old": "func (b *hostBudget) acquire() (func(), error) {",
+      "new": "// semantic: S-host-mutation-work\nfunc (b *hostBudget) acquire() (func(), error) {"
+    }
+  ]
+}

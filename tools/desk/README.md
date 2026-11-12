@@ -76,11 +76,12 @@ changed or discarded.
 | `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, the `before_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (failure ⇒ exit 6, no prompt, claim released), roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
 | `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, the `desk-decided` label and body block agree with no standing `Undeclared-desk-decision:` finding, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
 | `deskpost` | `review`, `security-review`, `comment`, `ready` — as the reviewer App; `finish` posts a verdict, confirms it at the reviewed head and releases the review claim in one command | outward write | yes |
-| `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push); each takes `--check`, an OFFLINE gate run — every local check the write path runs, stopped before any token mint or connection; `--decided <file>` on `create`/`edit` declares a desk-taken reversible default as a `## Desk-decided` body section (decision:/alternative:/cost: triples) plus the `desk-decided` label — see "Desk-decided: the merge is the gate" below | outward write | yes |
+| `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push; its link trailer is fixed except through `--relink-from N --relink-to M --relink-reason TEXT`, all three or none, which runs only from the PR's own checkout and moves only a same-repository `Issue:`/`Fixes:` link to an open, trusted-or-blessed, ungated issue (a pull-request number refuses) and posts an audit comment naming old, new and reason BEFORE the body edit — #5020); each takes `--check`, an OFFLINE gate run — every local check the write path runs, stopped before any token mint or connection; `--decided <file>` on `create`/`edit` declares a desk-taken reversible default as a `## Desk-decided` body section (decision:/alternative:/cost: triples) plus the `desk-decided` label — see "Desk-decided: the merge is the gate" below | outward write | yes |
 | `deskreply` | PR reply comment under the **worker** identity; `--workpad` upserts ONE marked progress comment per PR (find the worker's own newest unresolved comment carrying the workpad marker and edit it in place, or create the first one) instead of always posting a new reply — `--dry-run` (plain reply or `--workpad`) reports what would post without writing; `--kind mr` names the merge request where a GitLab number also names an issue (without it that number refuses could-not-check, exit 6), and `--kind issue` is refused because the verb replies only on your own PR | outward write | yes |
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
 | `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` (the documented human-ruled BATCH lane) — the issue-CLOSING gate (a fetched human authorization or nothing); plus two identity+structure lanes that cite no artifact because they close nothing belonging to another party: `self-withdraw` (the authoring App's own draft, pinned by login AND bot id) and `verify-gate-refire` (the verifier session reopens + re-closes a closed `verify-gate` card) | outward write | yes |
 | `desklabel` | `add`, `rm` — set or clear ONE label on an issue or change as the session's own App role, against a closed role-keyed vocabulary (shared escalation set for any role — the topology decision-owed labels read from the topology loader, plus `help wanted`; `superseded?`/`disposition:*` worker-owned; `authorization-needed`/`approval-needed` reviewer-owned; `human-decided` refused for every role; anything else refused, exit 5). The check runs before any forge call; the target kind comes from the seam's own read (`--kind issue|mr` for a GitLab both-resolve); present/absent = no-op; `--dry-run` stops before the write. `vocabulary` prints the table | outward write | yes |
+| `deskdecision` | `ensure <brief-file> [--repo] [--at] [--held] [--dry-run] [--as <role>]` — the decision-issue gate: files ONE decision issue for a `gate: human` brief unless one exists (frontmatter `decision-issue:` or the `decision-gate:` / legacy `needs-decision:` body marker); the pure-Go PATH port of `tools/decision-issue.sh ensure`, which `deskdispatch` runs first | outward write (one issue) | yes |
 | `deskdigest` | (no verbs) `--dry-run` / `--post` — the weekly batched decision queue; reports only, and writes exactly one issue: its own | outward write | yes |
 | `deskdisposition` | `set`, `read`, `sweep` — machine-readable PR disposition records (#728/#827); records a verdict, never closes | outward write (`set`) / read-only (`read`, `sweep`) | yes |
 | `deskmerge` | `check` — merge-currency in three states, writes nothing; `merge` — merges main INTO a PR branch, gated on a fetched human sign-off of R-5 (unsigned today, so it merges nothing) | read-only (`check`) / outward write (`merge`) | yes (`merge`) |
@@ -415,7 +416,7 @@ no tool reinvents it with holes:
 | `AllowWrite(tool) error` / `AllowWriteAt(tool, now)` | **Two meters** (C-5/TM-4, #209). Budget: ≤20/tool/rolling hour (`RateLimitPerPRPerHour`, raised 10→20 by PR #1053, 2026-08-14), charged only by attempts that may have reached the remote (`ok`, `unverifiable`). Breaker: 5 consecutive non-progress attempts (`refused`, `noop`) → open for 15m. Neither meter counts `ratelimited`/`disabled` — its own output — which is what made the old single counter non-recovering; nor `dryrun` (#214), which wrote nothing. Exit-4 errors carry a **retry-after** (`RetryAfterOf(err)`). The cap is a **chosen throughput ceiling**, not a figure derived from an incident — `ratelimit.go` states what each value is chosen against. |
 | `AlreadyDone(repo, pr, head, verb) bool` / `AlreadyDoneIn(entries, …)` | Idempotency: only prior `ok`/`noop` entries count as done (C-5). `dryrun` never counts — a rehearsal must not suppress the real write. |
 | audit `result` | `ok` · `noop` (attempted, idempotency short-circuited it) · `dryrun` (`--dry-run`: stopped **before** the write, invisible to both meters, #214) · `refused` · `disabled` · `ratelimited` · `unverifiable`. |
-| `BodyCheck([]byte) error` | Shared secret scan (C-3); refuses token/PEM/JWT/AKIA/sops shapes + high-entropy runs. Exempts 40/64-char lowercase-hex git SHAs and **paths** — absolute or repo-relative — whose slash-separated segments are *word-shaped* (#1052, #209). Bare CamelCase identifiers are word-shaped too: a 2-4 letter acronym (optionally plural, `PRs`/`IDs`), a `V` version segment of 1-2 digits between words or closing the name (`V1`, `V10`; one per name, sharing the acronym budget), and the numeronyms `K8s`/`I18n`/`L10n`/`A11y` and the term `OAuth` count as words, and one acronym that closes the name spends no acronym budget unless the name carries a version segment (a version and an acronym never share one name); a 40/64-hex git SHA assigned to an ALL-CAPS env var whose name ends in a closed digest key (`SHA`, `SHA1`, `SHA256`, `DIGEST`, `CHECKSUM`, `COMMIT`, or `HEX` directly behind one, as in a Dockerfile `ARG BASE_DIGEST_HEX=<sha256>`) is exempt, unless the name contains a credential stem (`SECRET`, `TOKEN`, `KEY`, `PASS`, …); any other value, and any other key, refuses as on main (#1642). A Go test name with a subtest path (`TestX/sub`) is exempt when its head is such an identifier and its subtest path is at most 16 characters (half the run threshold) of word-shaped segments carrying at most 4 short lowercase characters in total; a run made only of `+` (a `git diff --stat` change bar) is exempt like an all-`=` banner. `${NAME}`/`$NAME` substitutions never form a run (`$`, `{`, `}`, `_` are outside the run class). Refuses `glpat-` GitLab tokens (#1642). Opaque material between slashes still refuses, including an AWS **secret access key**, whose `/` characters defeat a length-only segment gate. **Also refuses impersonated human rulings (#45)**: a body claiming a configured human's decision BY NAME — `"Decision (Alex, ...)"`, `"Ruling: ... — Alex"`, `"I (Alex) have decided"` — is refused categorically, since no desk write path ever posts as a human; see `ImpersonatedRulingClaim` (`impersonation.go`). |
+| `BodyCheck([]byte) error` | Shared secret scan (C-3); refuses token/PEM/JWT/AKIA/sops shapes + high-entropy runs. Exempts 40/64-char lowercase-hex git SHAs and **paths** — absolute or repo-relative — whose slash-separated segments are *word-shaped* (#1052, #209). Bare CamelCase identifiers are word-shaped too: a 2-4 letter acronym (optionally plural, `PRs`/`IDs`), a `V` version segment of 1-2 digits between words or closing the name (`V1`, `V10`; one per name, sharing the acronym budget), and the numeronyms `K8s`/`I18n`/`L10n`/`A11y` and the term `OAuth` count as words, and one acronym that closes the name spends no acronym budget unless the name carries a version segment (a version and an acronym never share one name); a 40/64-hex git SHA assigned to an ALL-CAPS env var whose name ends in a closed digest key (`SHA`, `SHA1`, `SHA256`, `DIGEST`, `CHECKSUM`, `COMMIT`, or `HEX` directly behind one, as in a Dockerfile `ARG BASE_DIGEST_HEX=<sha256>`) is exempt, unless the name contains a credential stem (`SECRET`, `TOKEN`, `KEY`, `PASS`, …). Any other ALL-CAPS env-var assignment is exempt only when the value is already exempt on its own (a word-shaped identifier, a git SHA or a word-shaped path, as in `make test TEST=<GoTestName>`, `PGDATA=/var/lib/…` or `DELIVERY_HEAD=<sha>`), the key is at most 16 capitals, and the full name carries neither a credential stem nor a digest stem; any other value, and any other key, refuses as on main (#1642). A Go test name with a subtest path (`TestX/sub`) is exempt when its head is such an identifier and its subtest path is at most 16 characters (half the run threshold) of word-shaped segments carrying at most 4 short lowercase characters in total; a run made only of `+` (a `git diff --stat` change bar) is exempt like an all-`=` banner. `${NAME}`/`$NAME` substitutions never form a run (`$`, `{`, `}`, `_` are outside the run class). Refuses `glpat-` GitLab tokens (#1642). Opaque material between slashes still refuses, including an AWS **secret access key**, whose `/` characters defeat a length-only segment gate. **Also refuses impersonated human rulings (#45)**: a body claiming a configured human's decision BY NAME — `"Decision (Alex, ...)"`, `"Ruling: ... — Alex"`, `"I (Alex) have decided"` — is refused categorically, since no desk write path ever posts as a human; see `ImpersonatedRulingClaim` (`impersonation.go`). |
 | `Version()` / `WarnIfUnpinned(w)` | Reports the embedded `sourceSHA`/`builtAt`; warns loudly when unpinned (C-1). |
 | exit codes | `ExitOK 0`, `ExitDisabled 3`, `ExitRateLimited 4`, `ExitRefused 5`, `ExitUnverifiable 6`. `ExitCodeOf(err)` maps a typed error, failing **closed** to 6 for any unexpected error. |
 
@@ -1070,20 +1071,31 @@ Use `deskpr create --check-remote --title T --body-file F` when a conditional
 forge-file write has already published the branch. Unlike offline `--check`, this
 explicitly mints the session-role App token and reads the credentialed push
 endpoint. It reuses the live create path's immutable source/destination proof and
-judges every commit actually new to that destination, then stops before write
-budget, push or PR creation. It refuses unknown, divergent or unreadable remote
-state and new foreign authors or committers. The two check modes are mutually
-exclusive; ordinary `--check` still opens no connection and judges the whole range.
+runs the publish-identity check on every commit actually new to that destination,
+then stops before write budget, push or PR creation. It refuses unknown, divergent
+or unreadable remote state and new foreign authors or committers. The two check
+modes are mutually exclusive; ordinary `--check` still opens no connection and
+judges the whole range.
+
+The confirmed tip narrows the identity check only. The secret scan and the outbound
+check judge the whole branch diff against the default branch in every mode, and the
+pre-push hook does the same on the live push, so commits already on the destination
+are scanned again. A flagged string that an earlier push cleared with
+`--force-scan-override` is refused again by `--check-remote` and by the next
+create; each needs its own audited override. This breadth is deliberate: a value
+already on the destination is still in the history the PR publishes.
 
 `--check-remote` is also the preflight for the public-repo write gate. Offline
 `--check` cannot read live visibility, so it reports that gate as not checked and
 names `--check-remote` as the mode that runs it. `--check-remote` runs the real gate
-and refuses with the same text and exit code (5) as the live create. A GitLab
-`internal` project still listed `:public` therefore shows up here, before any push.
-That refusal names the `:internal` replacement entry and says that, if the `:public`
-entry was written before the `:internal` token existed, it predates the token. The gate
-cannot know that: a repo listed `:public` that later became internal reads the same. The operator edits `ASSAY_ALLOWED_REPOS`. No verb
-rewrites it from a live read, because it is an authorization control.
+and refuses with the same text and exit code (5) as the live create. An entry that no
+longer authorizes the live visibility therefore shows up here, before any push: for
+example a project that became public while still listed `:internal`. The refusal names
+the cause and the replacement entry. (A GitLab `internal` project listed `:public`
+passes: the gate ranks exposure and tolerates that mislabel. `:internal` is the accurate
+entry; see the allowed-repos section for why a `:public` label should be changed.) The operator
+edits `ASSAY_ALLOWED_REPOS`. No verb rewrites it from a live read, because it is an
+authorization control.
 
 A successful remote check is a snapshot, not permission to ignore a later refusal.
 Run ordinary create from the same owned branch with a fresh body file; it rechecks
@@ -1316,6 +1328,14 @@ Boundaries mirror the push-transport gate's:
 `--force-scan-override "<why>"`, which proceeds past a **secret-scan refusal** and writes
 an audit row naming the tool, the verb, the surface digest, the stated reason and the
 identity that stated it. The reason is required and must be long enough to be one.
+
+`git push` takes no flag of ours, so the `deskpushguard` pre-push hook takes the same
+audited override from its environment instead: `DESKPUSHGUARD_SCAN_OVERRIDE="<why>"`. A
+refusal names the form of the caller that hit it: a pre-push refusal names the variable, a
+`deskpr`/`deskreply`/`deskfile` refusal names the flag. `deskpr` hands its own flag's
+reason to the hook on the push it makes, and clears any ambient value when it has none, so
+an ambient variable never overrides a `deskpr` push. A refusal that is not overridable (a
+withheld identifier, a ruling claim) advertises neither form.
 
 **Policy is unchanged: exit 5 without the flag is a STOP**, and it is still never a
 fallback trigger. The flag exists because a hard block with no override had only two
@@ -3499,6 +3519,47 @@ the search path, so the failure read as a broken key rather than a wrong directo
 
 `<ROLE>_PEM` and `<ROLE>_TOKEN` still override an individual file outright, in all three.
 
+#### Role separation: a loop takes only its own role (#6069)
+
+`desktoken` reads `$DESK_LOOP` and refuses (exit 5) a role that another loop acts as, with
+any flags (`desktoken --no-rotate <role> --repo <slug>` included), before it reads any key or
+custody file on either forge. The table is
+`deskkit.LoopTokenRoles()`, the one every desk verb reads. Retired loop names resolve to their
+successor, and an unknown loop is exit 6. Two cases pass unchecked. One is a role no loop acts
+as (`cell-issues`, `release-runner`, `auditor`, `intake-loop`), which callers take by name. The
+other is an unset `$DESK_LOOP`: an operator's shell or the scrubbed cold-mint probe, not a desk
+window.
+
+`--cross-role "<reason>"` admits a refused mint. The audit row records
+`cross-role override: loop=<loop> acts-as=<role> role=<role> reason="<reason>"` on every use,
+a cache reuse included (the one row a reuse otherwise skips). A blank reason is no override.
+Two verbs pass it themselves because their posting identity is fixed: `deskreply` mints
+`worker` and `deskevidence` mints `verifier` from whichever window calls them, each with a
+reason that names the verb and the loop.
+
+`deskpost review`, `security-review` and `finish` refuse a verdict unless `$DESK_LOOP` acts
+as `reviewer`. The check sits in the shared verdict path, before the body check, the mint and
+any forge read, so a caller that skips the CLI is refused too.
+
+These checks catch a window reaching for the wrong role by mistake. They are not a boundary,
+because a session sets its own environment. **A shared config home gives no separation
+between roles.** Give each role window its own `ASSAY_CONFIG_HOME`. It holds the key,
+`apps.env` entry and token cache of each role that a tool run in that window acts as, and no
+other role's. That is the window's own role, plus `desk` in a `worker-desk` or `verify-desk`
+window, because `deskdispatch` takes the claim and the model stamp as the desk App for worker
+and verifier kits. It also includes the role a dispatched agent mints, and `worker` or
+`verifier` wherever `deskreply` or `deskevidence` runs. A review kit claims and stamps as
+`reviewer` wherever it is dispatched, and the table gives `the-desk` no `reviewer` key, so
+review kits are dispatched from `pr-review-desk`; from a `the-desk` home provisioned by the
+table, a review dispatch fails closed at the reviewer claim mint. Keep no role key in `~/.config/assay`,
+which the search path always reads last. A separate OS user per role is what turns that split
+into a boundary. The per-window table is in `plugins/assay/references/desk-shell.md`
+§Role separation.
+
+`deskdispatch` prints its claim commands (the NOT LAUNCHED, stale-claim and by-hand release
+hints, and the agent's release line) with `--cross-role` whenever the shell that runs them
+does not take the role they name. They therefore still run as printed.
+
 #### What a token lookup costs, and the two caches that make it nearly free
 
 A desk verb obtains an App installation token through one function —
@@ -3968,16 +4029,21 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
   board run), not a cosmetic one. Patterns are display-only, in `AllowedRepoScope()`.
 - **Writes to a public repo require an explicit `:public` allowed-repos entry, and writes to
   an `internal` repo an explicit `:internal` one** — the public-repo write gate
-  (`PublicRepoGate`). The authorization is REPOSITORY-scoped, decided once by a human
-  out-of-band: a public repo listed as `owner/name:public` (an internal repo listed as
-  `owner/name:internal`) is a place the desk may write, and every gated write passes on it.
+  (`PublicRepoGate`). The gate ranks exposure private < internal < public (the same rank as
+  the verifier cross-repo check) and passes a live read only when the entry's token is not
+  `:private` and ranks at least as exposed as the live visibility, so nothing passes that is
+  more exposed than its entry states. It therefore also tolerates a `:public` entry on a
+  live-internal repo; that is a mislabel, not an equal choice (see below). The authorization
+  is REPOSITORY-scoped, decided once by a human out-of-band: a public repo listed as
+  `owner/name:public` (an internal repo listed as `owner/name:internal`) is a place the desk
+  may write, and every gated write passes on it.
   The gate runs in `deskpr` (create / update / edit), `deskpost` (comment / ready / review),
   `deskreply`, `deskevidence` and `deskrelease cut` — the commands
   `deskkit.PublicRepoGateVerbs` lists and the refusal names. Tracker writes such as
   `deskfile` do not run it. A repo that is absent, matched only by an `owner/*` pattern (patterns carry
-  no visibility policy), tagged `:private`, carrying no visibility token, or tagged with the
-  other non-private token (`:internal` on a live-public repo, `:public` on a live-internal
-  one) **refuses** (exit 5) with the remedy in the message. `internal` is visible to every
+  no visibility policy), tagged `:private`, carrying no visibility token, or tagged
+  `:internal` on a live-public repo **refuses** (exit 5) with its cause and the remedy in
+  the message. `internal` is visible to every
   account on the forge instance, so it is never treated as private: an `:internal` repo is
   risk-classed, self-containment scanned and stamped with the neutral on-behalf-of form
   exactly like a `:public` one. This replaces the former per-item `+1` reaction
@@ -3986,25 +4052,32 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
   unit. A draft PR is inert until a human merges it, so the repository-level decision plus
   the merge gate buy everything the per-item ceremony did; **merge remains the human's.**
   - Both reads are load-bearing at once. The gate reads the **live** visibility from the
-    forge AND the **configured** `:public` / `:internal` claim, and they must AGREE: a repo flipped to
-    public after the set was written still refuses (the configured claim disagrees), and a
-    stale roster claiming `:public` for a repo the forge reports otherwise never authorizes
-    on the stale claim (the live read disagrees). A live read that fails or returns an
-    unrecognised value is **unverifiable** (exit 6, fail closed) — never guessed private.
-  - **A `:public` entry on a live-internal repo may predate the `:internal` token.** Earlier
-    versions had no `:internal` token, so `:public` was the tag such a repo got. The gate
-    cannot tell that entry from one written while the repo was public, before it became
-    internal. It refuses like any mismatch. The refusal says that, if the entry was
-    written before the token existed, it predates it, and it names the
-    `owner/name:internal` replacement. Nothing migrates the entry: the operator edits
-    it. `deskpr create --check-remote` surfaces the mismatch before a live create.
-    `deskroster` has no check that reads repo visibility from the forge, so it does not
-    report this mismatch.
+    forge AND the **configured** `:public` / `:internal` claim, and the claim must cover the
+    live read: a repo flipped to public after the set was written while listed `:private`
+    or `:internal` still refuses (the configured claim is less exposed than the live
+    read), and a stale roster claim never authorizes a repo the forge reports as more
+    exposed than the claim. A live read that fails or returns an unrecognised value is
+    **unverifiable** (exit 6, fail closed) — never guessed private.
+  - **A `:public` entry on a live-internal repo is a tolerated mislabel.** Earlier versions
+    had no `:internal` token, so `:public` was the tag such a repo got. The write gate still
+    passes it, because an internal repo's audience is narrower than the entry states, and
+    its refusals never name `:public` as an internal repo's remedy. `:internal` is the
+    accurate token: a `:public` label on an internal repo is reported as drift by
+    `deskboard policydrift`, and it over-ranks the repo as a verifier cross-repo source,
+    which ranks the configured visibility alone, so a public tracking repo could then
+    publish that repo's binding. Operators with such an entry should change it to
+    `:internal`; nothing migrates it.
+    `deskpr create --check-remote` surfaces any entry that does not authorize the live
+    visibility before a live create. `deskroster` has no check that reads repo visibility
+    from the forge, so it does not report such an entry; `deskboard policydrift` reports
+    a configured visibility that differs from the forge's.
   - **Migration from the retired sentinel.** The former standing-per-repo authorization —
     a human-maintained opt-out list file under `~/.config/assay/` (respectively
     `$XDG_CONFIG_HOME/assay/`) — is gone: its reader has been removed, so the file no longer
     has any effect. An operator who maintained one moves each `owner/name` line into
-    `ASSAY_ALLOWED_REPOS` as `owner/name:public`. The tools never wrote, and never deleted,
+    `ASSAY_ALLOWED_REPOS` with the token that matches the repository's live visibility:
+    `owner/name:public` for a public repository, `owner/name:internal` for an internal
+    one. The tools never wrote, and never deleted,
     that file; it is the operator's to remove.
 
 **The desk writes where it does not watch.** The write gates use `IsAllowedRepo`, which a
@@ -4616,8 +4689,15 @@ the mutation sweep is `cmd/deskclose/mutations.json`.
 
 `deskclose triage --disposition human-decided --decision <ruling permalink> --tracker <ref>`
 closes a ruled decision issue. It authorizes only on the ruling comment on that issue, after
-verifying that its author is the blessing authority. It also writes one `human-decision-v1`
-record. The record holds:
+verifying that its author is the blessing authority. The permalink is the forge's own link to
+that one comment: `https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<id>` on GitHub,
+`https://<host>/<group>/<project>/-/issues/<N>#note_<id>` on GitLab. Its forge, host and
+project must be the ones serving the issue, and its number must be the issue's; anything else
+is refused before any read, as is a thread link with no comment anchor. The comment is then
+fetched from the forge, and a fetch that fails refuses (exit 6). On GitLab the author check
+compares the note author's username and numeric user id with the roster's `ASSAY_BLESS_LOGIN`
+pin, so a GitLab project's roster pins the GitLab account. It also writes one
+`human-decision-v1` record. The record holds:
 
 - the offered option ids, each with the sha256 of the option's text;
 - the recommended id;
@@ -5182,6 +5262,18 @@ different bytes is refused (exit 5) — a correction is a NEW record (a fresh `t
 digest and path), never an edit of an existing one. The verified-outcome closure gates
 (`guardVerifiedOutcomes`, `gateVerifiedSidecarLanding`) apply to a `verified` record exactly as
 they applied to an added log line; `verify-fail` is never gated.
+
+**`--dry-run`** (#4554). With `--outcome-record`, plain or with `--outcome-only`, `--dry-run`
+runs every gate the real landing runs (parse, admission, `evidence_withheld`, wake, Evidence
+binding, immutability read, closure, attribution, receipts), then prints the planned target
+path, branch and record digest and exits 0. It makes no commits-API write and spends no write
+budget. Before #4554 this route parsed `--dry-run` and ignored it, so a dry run committed the
+record for real.
+
+**Flags a route does not read are refused.** Each landing shape declares the flags it honours.
+A flag set on the command line that the selected shape does not read (for example
+`--append-only`, `--allow-shrink` or `--row` with `--outcome-record`) is refused (exit 5) before
+mint or any forge call. Before #4554 it was accepted and ignored.
 
 **Committed closure history.** A new `verified` outcome (including a direct per-file
 Evidence write) runs full lint, identity attribution, the pending-record lint diff
@@ -6824,10 +6916,16 @@ review is still text written outside the dispatch.
 **They WRAP, they do not re-implement.** `deskboot` delegates every step to the verb that
 owns it (`deskwt prune`, `deskroster set`/`preflight`, `desktoken`) and adds only the
 ordering, the fail-closed contract, and the named-step report. `deskdispatch` delegates the
-worktree to `deskwt add` and invokes the claim tool and the consumer decision script
-`tools/decision-issue.sh` — it carries no copy of either, because a second implementation of
-a claim protocol is two claim protocols, and two claim protocols dispatch the same item
-twice. On top of the worktree `deskwt add` returns, `deskdispatch` STAMPS the dispatched
+worktree to `deskwt add` and invokes the claim tool and the decision-gate tool — it carries
+no copy of either in-process, because a second implementation of a claim protocol is two
+claim protocols, and two claim protocols dispatch the same item twice. The decision-gate tool
+is `deskdecision ensure` whenever it is on PATH (installed with desk-tools, #6131), else the
+consumer script `tools/decision-issue.sh` when the resolved root carries it, else a refusal
+naming both (exit 6). `deskdecision` is the port of that script. It uses the same argv, exit
+codes and issue body, and the same `<!-- decision-gate: <id> -->` marker, with the legacy
+`<!-- needs-decision: <id> -->` marker and the brief's `decision-issue: <N>` frontmatter also
+read for dedupe. So a repo that switches between the two never gets a second issue for one
+brief. On top of the worktree `deskwt add` returns, `deskdispatch` STAMPS the dispatched
 agent's OWN role commit identity (worker/reviewer/verifier, mapped from `--kit`) into it
 worktree-scoped, through the same shared resolver `role-init` uses, so a verifier dispatched
 from a desk checkout commits — and reports its runner — under the verifier App, never the
@@ -6848,15 +6946,17 @@ the roster pins it, its bot user id; on GitLab, it must equal the role's PAT cus
 other identity (a human login, another role's App) is ignored with a NOTICE, dropped from the
 process, and the role token minted instead; an identity that cannot be read is exit 6, and a
 role the roster binds no App to is exit 5, both with no claim attempted. A mint refusal is exit
-6 with no claim attempted. The decision script
+6 with no claim attempted. `deskdecision` is handed no credential: `deskdispatch` passes
+`--as <dispatching role>` and the port resolves that role's own credential through the deskkit
+forge resolver (GitHub or GitLab), the same custody the role's other desk tools use. The decision script
 shells out to the forge CLI itself, so a rule keyed on a child literally named `gh` never
 covered it (#1146): it is handed the SAME credential from that one resolution, as `GH_TOKEN`
 (plus `GITLAB_TOKEN` on a GitLab-served repo) in its environment, and the `decision-gate OK`
 line names the source; with no credential handed over and none exported it refuses (exit 6)
 rather than run on the ambient login. The scripts are resolved
-under `--claim-root` when given, else under `--root`: the scripts were centralized out of the
-consumer repos, so on a cross-repo dispatch `--claim-root` names the checkout that carries
-the tools while `--root` stays the item's own repo — the worktree is always cut from
+under `--claim-root` when given, else under `--root`, and only when their port is not on PATH:
+a repo that keeps the scripts but runs without the ports points `--claim-root` at the checkout
+that carries them while `--root` stays the item's own repo — the worktree is always cut from
 `--root`, and the claim itself is a ref in the target repo (`--repo`) regardless of where the
 script file sits.
 
@@ -7853,6 +7953,31 @@ still present, so a v1 reader keeps working. The one new block is
     "recurrence_candidates": 1                 // CANDIDATES — a prompt to look, not a finding
   },
 
+  // Read by statusgen's autonomy ladder (rung 3). Population: main-session
+  // Agent/Task dispatches on the day, each attributed to the origin of the prompt
+  // record that started its turn (see "the dispatch split" below).
+  "dispatch": {
+    "status": "ok",                            // could-not-check: transcripts blind, or
+                                               // dispatch-origin-unrecorded (both sides null)
+    "total_dispatches": 9,
+    "loop_initiated": 4,                       // scheduled | peer | task_notification | auto_continuation
+    "operator_initiated": 2,                   // human
+    "unattributed": 3                          // sdk, or no origin stamp; never folded into a side
+  },
+
+  // Read by the ladder's rung 4. Population: subagent RUNS (sidechain records grouped
+  // by session + agent) whose first record is on the day. All four counts share it.
+  "token_efficiency": {
+    "status": "ok",
+    "reason": "",                              // the gh reason when merged_prs is null
+    "subagent_tokens": 3255,                   // input + output + cache-creation + cache-read, per message id once
+    "merged_prs": 5,                           // same source as intervention.merged_prs
+    "noop_dispatches": 2,                      // runs whose report OPENS as a no-op (heuristic)
+    "total_dispatches": 4,                     // the run count
+    "reports_unread": 1,                       // runs with no report text to classify
+    "noop_classifier": "opmetrics-noop/1"      // the no-op ruler's version
+  },
+
   "unmeasured": ["prompt-blockage", "operator-think-time"],
 
   "trend": {                                   // present only with --trend N
@@ -7869,7 +7994,31 @@ still present, so a v1 reader keeps working. The one new block is
 `reason` codes: `transcripts-unreadable` · `no-transcript-files` ·
 `no-operator-messages` · `gh-json-not-supplied` · `gh-json-unreadable` ·
 `no-merged-prs` · `no-latency-samples` · `roster-dir-unreadable` ·
-`claims-dir-unreadable` · `no-prior-day-files`.
+`claims-dir-unreadable` · `no-prior-day-files` · `dispatch-origin-unrecorded`.
+
+### The dispatch split and the no-op count
+
+The `dispatch` and `token_efficiency` blocks were added inside `opmetrics/2` without a
+schema bump: both are new top-level keys, no existing key changed, and a reader that
+predates them sees them absent and reports the ladder rungs unmeasured, as before.
+
+- **Origin is read, never guessed.** The harness stamps each prompt record with
+  `turnOrigin` (or `origin.kind`). `human` is operator; `scheduled`, `peer`,
+  `task_notification` and `auto_continuation` are loop; anything else is
+  unattributed. A tool result does not start a turn and does not change the origin.
+- **No-op is a versioned heuristic.** A run counts as a no-op when its final report
+  (its handback message, else its last assistant text) opens with a closed phrase
+  list such as "already merged", "nothing to do" or "no changes needed", optionally
+  after a short subject ("This dispatch was a no-op."). The match is anchored to the
+  start of the opening line, found by skipping leading heading, emphasised-label and
+  rule lines and stripping a leading `**Label:**` and list or quote markers. The same
+  phrase later in the report ("the helper already exists so I reused it") does not
+  count. Change the list or the skipped line shapes only with a bump to
+  `noop_classifier`.
+- **Blind is all-null.** When the transcripts cannot be read, both blocks are
+  could-not-check and every count in them is null, `merged_prs` included.
+- **What leaves the file is a count.** No prompt, report, agent id or tool input is
+  emitted; `TestLeakEmittedKeysAreAllowlisted` pins the full key list.
 
 ### `classifierVersion` — the ruler, versioned
 

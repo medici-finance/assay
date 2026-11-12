@@ -154,6 +154,10 @@ type fakeGH struct {
 	changedFilesCount int
 	status            combinedStatus
 	checks            checkRunsResp
+	// suites are the check suites served at the head (#6234); nil serves none. suitesTotal,
+	// when > 0, is the total_count asserted instead of len(suites), to force a short read.
+	suites      []deskkit.CheckSuite
+	suitesTotal int
 
 	// intercept forces a status for a matching request (nil = normal handling).
 	intercept func(method, path string) (int, bool)
@@ -177,6 +181,18 @@ type fakeGH struct {
 	postedReview int
 	postedCmt    int
 	flips        int
+
+	// mergeStates is the forge's merge verdict (REST mergeable_state) each PR read AFTER the
+	// ready flip serves, in order; the last entry repeats. nil serves "clean". Reads before
+	// the flip serve none. It drives `ready`'s post-flip backstop (#6242).
+	mergeStates []string
+	mergeReads  int
+	// mergeDrafts is the PR's draft flag on each of those same post-flip reads, the last
+	// repeating. nil serves "not a draft": the flip is visible at once.
+	mergeDrafts []bool
+	// convertFail makes the convertPullRequestToDraft mutation answer 500; converts counts it.
+	convertFail bool
+	converts    int
 
 	// Label + surface-config fixtures for the mechanical verdict-time labeler.
 	// prLabels is the current label set on the PR (mutated by add/remove routes, as GitHub
@@ -214,6 +230,7 @@ var (
 	reIssue        = regexp.MustCompile(`/issues/([0-9]+)$`)
 	reStatus       = regexp.MustCompile(`/commits/[^/]+/status$`)
 	reChecks       = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
+	reSuites       = regexp.MustCompile(`/commits/[^/]+/check-suites$`)
 	reCommit       = regexp.MustCompile(`/commits/[^/]+$`)
 	reRepo         = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
 	reTimeline     = regexp.MustCompile(`/issues/[0-9]+/timeline$`)
@@ -354,6 +371,17 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 		for _, l := range f.prLabels {
 			p.Labels = append(p.Labels, prLabel{Name: l})
 		}
+		if f.flips > 0 {
+			p.MergeableState = "clean"
+			if len(f.mergeStates) > 0 {
+				p.MergeableState = f.mergeStates[min(f.mergeReads, len(f.mergeStates)-1)]
+			}
+			p.Draft = false
+			if len(f.mergeDrafts) > 0 {
+				p.Draft = f.mergeDrafts[min(f.mergeReads, len(f.mergeDrafts)-1)]
+			}
+			f.mergeReads++
+		}
 		f.mu.Unlock()
 		p.User.Login = f.prAuthor
 		p.User.ID = f.prAuthorID
@@ -453,6 +481,9 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 		out := f.status                         // copy (TotalCount echoed verbatim — the fake never recomputes it)
 		out.Statuses = f.status.Statuses[lo:hi] // the page GitHub would return
 		writeJSON(out)
+
+	case r.Method == http.MethodGet && reSuites.MatchString(path):
+		writeJSON(f.servedSuites())
 
 	case r.Method == http.MethodGet && reChecks.MatchString(path):
 		per, pg := ghPaging(r.URL.Query())
@@ -651,6 +682,18 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 		// its PR and ISSUE forms. Branch on the request body — only the mutation counts as
 		// a flip, and the two trust queries return different response shapes.
 		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), "convertPullRequestToDraft") {
+			f.mu.Lock()
+			f.converts++
+			fail := f.convertFail
+			f.mu.Unlock()
+			if fail {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			writeJSON(map[string]any{"data": map[string]any{"convertPullRequestToDraft": map[string]any{"pullRequest": map[string]any{"isDraft": true}}}})
+			return
+		}
 		if strings.Contains(string(body), "markPullRequestReadyForReview") {
 			f.mu.Lock()
 			f.flips++
@@ -839,4 +882,24 @@ func writeBody(t *testing.T, name, content string) string {
 		t.Fatalf("write body: %v", err)
 	}
 	return p
+}
+
+// servedSuites renders f.suites as GET /commits/{sha}/check-suites does: a pending suite's
+// conclusion is JSON null, never "".
+func (f *fakeGH) servedSuites() map[string]any {
+	var list []map[string]any
+	for _, s := range f.suites {
+		var conclusion any
+		if s.Conclusion != "" {
+			conclusion = s.Conclusion
+		}
+		id, _ := strconv.ParseInt(s.ID, 10, 64)
+		list = append(list, map[string]any{"id": id, "status": s.Status, "conclusion": conclusion,
+			"app": map[string]any{"slug": s.App}, "latest_check_runs_count": s.RunCount, "created_at": s.CreatedAt})
+	}
+	total := len(f.suites)
+	if f.suitesTotal > 0 {
+		total = f.suitesTotal
+	}
+	return map[string]any{"total_count": total, "check_suites": list}
 }

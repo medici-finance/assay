@@ -139,8 +139,26 @@ const storedLoginPlaceholder = "stored-login-refused"
 // CELLCTL_GH_AMBIENT removed and any unset token family replaced by a
 // placeholder, so the CLI authenticates only with the variable it was given.
 // CI snapshots the effective environment here, its existing single source, so
-// retries use the same credential. Outside CI an allowed command is unchanged.
-func ghGuard(cmd *exec.Cmd) *exec.Cmd {
+// retries use the same credential. Outside CI an allowed command is unchanged
+// unless the caller already resolved a credential for the GitHub.com REST reader.
+func ghGuard(cmd *exec.Cmd, githubToken ...string) *exec.Cmd {
+	if len(githubToken) > 0 && githubToken[0] != "" {
+		// Keep the selected credential on this launch only. Clear alternate
+		// credential sources and pin the same host as the REST reader.
+		var kept []string
+		for _, kv := range cmd.Environ() {
+			key, _, _ := strings.Cut(kv, "=")
+			switch strings.ToUpper(key) {
+			case "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
+				"CELLCTL_GH_AMBIENT", "GH_HOST", "GH_REPO":
+				continue
+			}
+			kept = append(kept, kv)
+		}
+		cmd.Env = append(kept, "GH_TOKEN="+githubToken[0], "GH_HOST=github.com",
+			"GH_ENTERPRISE_TOKEN="+storedLoginPlaceholder)
+		return cmd
+	}
 	if cmd.Env == nil && os.Getenv("GITHUB_ACTIONS") == "true" {
 		cmd.Env = os.Environ()
 	}

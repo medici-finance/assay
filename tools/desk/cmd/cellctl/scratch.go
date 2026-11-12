@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/medici-finance/assay/tools/desk/internal/cellprocess"
+	"github.com/medici-finance/assay/tools/desk/internal/cellrunner"
 	"github.com/medici-finance/assay/tools/desk/internal/cellscratch"
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 )
@@ -89,7 +89,7 @@ func cmdScratch(name, action string, v *cli.Values, command []string) {
 			die("scratch begin: %v", err)
 		}
 		defer r.Close()
-		ctx, stop := cellprocess.NotifyContext(context.Background())
+		ctx, stop := cellrunner.NotifyContext(context.Background())
 		defer stop()
 		code, uncertain := -1, false
 		runErr := error(nil)
@@ -107,7 +107,7 @@ func cmdScratch(name, action string, v *cli.Values, command []string) {
 				env = envSet(env, k, v)
 			}
 			fmt.Fprintf(os.Stderr, "[scratch] id=%s work=%s source=%s revision=%s; evidence pending\n", r.Record.ID, r.Work(), abs, sha)
-			code, uncertain, runErr = cellprocess.RunObserved(ctx, command, env, r.Work(), io.MultiWriter(os.Stdout, tail), io.MultiWriter(os.Stderr, tail), r.Started)
+			code, uncertain, runErr = cellrunner.RunObserved(ctx, command, env, r.Work(), io.MultiWriter(os.Stdout, tail), io.MultiWriter(os.Stderr, tail), r.Started)
 		}
 		if runErr != nil {
 			fmt.Fprintln(os.Stderr, "scratch task:", runErr)

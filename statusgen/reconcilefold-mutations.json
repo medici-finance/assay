@@ -32,9 +32,9 @@
       "new": "if err := error(nil); err != nil {"
     },
     {
-      "name": "version read at the run's sha",
+      "name": "version read at the selected run's tracking revision",
       "file": "reconcilefold.go",
-      "old": "version, verr := briefVersionAt(d.path, p.SHA)",
+      "old": "version, verr := briefVersionForPass(d.path, d.evidence, p)",
       "new": "version, verr := d.ident.Version, error(nil)"
     },
     {
@@ -136,7 +136,7 @@
     {
       "name": "version read failure is a could-not-check (reconcilefold.go:187)",
       "file": "reconcilefold.go",
-      "old": "return WitnessInfo{}, false, fmt.Sprintf(\"could-not-check the brief version at the run's sha %s: %v\", p.SHA, verr)",
+      "old": "return WitnessInfo{}, false, fmt.Sprintf(\"could-not-check the brief version for run source %s: %v\", p.SHA, verr)",
       "new": "return WitnessInfo{}, false, \"\""
     },
     {
@@ -222,6 +222,36 @@
       "file": "reconcilefold.go",
       "old": "d.files = briefFilesOf(bf)",
       "new": "_ = briefFilesOf(bf)"
+    },
+    {
+      "name": "tracking: a malformed cross-repository line is skipped, not refused",
+      "file": "reconciletracking.go",
+      "old": "if !ok || a.version != 2 {\n\t\t\treturn 0, fmt.Errorf(\"malformed cross-repository run attestation%s\", missingCrossFields(m.text))\n\t\t}",
+      "new": "if !ok || a.version != 2 {\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "tracking: cross-repository detection keyed only on source-repo=",
+      "file": "reconciletracking.go",
+      "old": "cross = cross || strings.HasPrefix(field, \"source-repo=\") || strings.HasPrefix(field, \"tracking-source=\")",
+      "new": "cross = cross || strings.HasPrefix(field, \"source-repo=\")"
+    },
+    {
+      "name": "tracking: the github.com origin host check removed",
+      "file": "containercredit.go",
+      "old": "if err != nil || remoteHost(string(origin)) != \"github.com\" {",
+      "new": "if err != nil {"
+    },
+    {
+      "name": "tracking: an unbound cross-repository line no longer blocks the source-revision read",
+      "file": "reconciletracking.go",
+      "old": "if unboundCrossAttestation(evidence) {",
+      "new": "if false {"
+    },
+    {
+      "name": "tracking: a quoted v1 line beside a literal v2 line counts as mixed",
+      "file": "reconciletracking.go",
+      "old": "legacy = legacy || (m.literal && ok && a.version == 1)",
+      "new": "legacy = legacy || (ok && a.version == 1)"
     }
   ]
 }

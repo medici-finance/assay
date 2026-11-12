@@ -121,6 +121,10 @@ func publishEvidenceIdentityGate(dir string, receipt deskkit.VerifierReceipt) er
 // The repo is not optional (mirrors deskreply/#562): an App installed on more than one account
 // resolves the wrong installation when the owner is omitted — a token with no access to the
 // target repo. The repo deskevidence passes is the one it just validated against its repo set.
+//
+// deskevidence lands Evidence as the verifier App by design, including for a verifier agent
+// a coordinator window dispatched, so under another loop the helper admits the audited
+// cross-role override (#6069) rather than refusing it. The reason names this verb.
 func mintVerifierToken(repoSlug string) error {
 	cred, err := deskkit.WriteVerbRoleCredential("deskevidence", "verifier", repoSlug)
 	if err != nil {

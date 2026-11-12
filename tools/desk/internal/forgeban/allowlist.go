@@ -157,6 +157,15 @@ var AllowedInvocations = []Allowance{
 // unresolvedRegister records every exec site whose argv[0] the checker cannot resolve. It is
 // a LEDGER of blind spots, not a permit — see the file header.
 var UnresolvedArgv = []Allowance{
+	{
+		Key: "internal/cellcontainer/authority_runtime.go::AuthorityRuntime.command::<unresolved>",
+		Reason: "the existing closed local-authority container adapter runs the trusted operator's " +
+			"explicit absolute DockerBinary with an empty CLI configuration, explicit local engine, " +
+			"original caller context and finite protocol I/O. The scanner cannot certify the selected " +
+			"executable as Docker or forge-free: retain could-not-check, not a forge permit. This row " +
+			"registers only that existing exec site; resolved forge calls and other unresolved sites " +
+			"retain their independent refusals.",
+	},
 	{Key: "cmd/cellctl/comms_init.go::Cell.initComms::<unresolved>", Reason: "The Codex executable resolved from PATH is hashed and queried with --version to pin the contained reader. It is a local harness version probe, not a forge CLI; no inference or authentication command is invoked."},
 	{
 		Key: "cmd/cellctl/hotfix.go::hotfixRunTimeout::<unresolved>",
@@ -189,7 +198,7 @@ var UnresolvedArgv = []Allowance{
 			"no forge permit or runtime activation, and leaves the owner gate in place.",
 	},
 	{
-		Key: "internal/cellprocess/run.go::runObserved::<unresolved>",
+		Key: "loopadmin/process/run.go::runObserved::<unresolved>",
 		Reason: "the shared process-tree runner for cadence and interactive host harnesses and the " +
 			"explicit cellctl scratch run command. Harness callers supply registered claude, codex, or " +
 			"Cursor launch argv; scratch run accepts the operator-selected task executable directly, " +

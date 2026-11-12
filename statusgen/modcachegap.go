@@ -28,8 +28,11 @@ import (
 // image's module cache does not hold. A row that then exits non-zero and whose
 // output names one of those missing modules never reached its own check: it is
 // recorded could-not-run with modCacheGapNote, which names the module, the
-// version the tree wants and the versions the image has. Nothing is predicted:
-// a row that does not trip on a missing module keeps its own verdict.
+// version the tree wants and the versions the image has. A row that exits
+// non-zero with no captured output at all cannot be attributed either way, so
+// it is could-not-run too, with a note that says its output was not captured
+// (#5766). Nothing else is predicted: a row that printed output naming no
+// missing module, or exited 0, keeps its own verdict.
 
 // bakedModuleRootsFile is where the verify-runner image records the module
 // roots it baked. Absent (a runner that is not that image), no check runs. A
@@ -382,4 +385,43 @@ func gapRoots(gaps []modGap) string {
 func modCacheGapNotice(gaps []modGap) string {
 	return "statusgen verifyrun: " + modCacheGapCause(gaps) +
 		"; a row that stops on one of these modules is recorded could-not-run"
+}
+
+// modGapReclass is the one decision every container-netns row goes through
+// after it ran: is its non-zero exit attributable to the module-cache gap?
+//
+//   - Output that names a missing module: the row stopped on module resolution
+//     (modCacheGapNote).
+//   - No captured output at all, under a non-empty gap (#5766): a row that sends
+//     its output to a file or to /dev/null leaves nothing to name the module, so
+//     the cause can be neither confirmed nor excluded. It is could-not-run
+//     (modCacheGapSilentNote), never an observed failure, and, like the named
+//     case, even when its Expect wanted that exit.
+//   - Anything else keeps the row's own verdict: a row that exited 0, a row
+//     that printed output naming no missing module, a row that is already
+//     could-not-run, and every row when there is no gap.
+//
+// The decision reads the captured output and exit, never the command's text,
+// so it holds for every way a row can run silent, not only `go test`. No row
+// moves toward pass: the only transition is to could-not-run.
+func modGapReclass(res runResult, gaps []modGap) (reason string, ok bool) {
+	if res.couldNotRun || res.exit == 0 || len(gaps) == 0 {
+		return "", false
+	}
+	if hit := gapsNamedIn(res.output, gaps); len(hit) > 0 {
+		return modCacheGapNote(hit), true
+	}
+	if len(res.output) == 0 {
+		return modCacheGapSilentNote(gaps), true
+	}
+	return "", false
+}
+
+// modCacheGapSilentNote is the could-not-run reason for a row that exited
+// non-zero with no captured output while the image's cache lacks requirements
+// of the tree: the cause, what is not known and why, then the remedy.
+func modCacheGapSilentNote(gaps []modGap) string {
+	return modCacheGapCause(gaps) + ": the row's output was not captured, so a stop on module resolution could be neither confirmed nor excluded. " +
+		"Re-run in the verify-runner image of a release whose " + gapRoots(gaps) +
+		" go.mod and go.sum match the verified tree, normally the first release that contains the verified commit"
 }

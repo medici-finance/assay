@@ -32,8 +32,8 @@ Existing independent human, review, verification and adoption gates remain in fo
 | 02 | [Negotiate reader capabilities through one shared contract](brief-02-negotiate-reader-capabilities-through-one-shared-contract.md) | 1 | M | implemented | — | — |
 | 03 | [Load and validate versioned milestone records](brief-03-load-and-validate-versioned-milestone-records.md) | 2 | M | verified | 2026-11-02 assay-verifier-app[bot] @ fede422ee8a5 (forge-identity) | — |
 | 04 | [Add negotiated brief schema and prefixed authoring](brief-04-add-negotiated-brief-schema-and-prefixed-authoring.md) | 2 | M | verified | 2026-11-02 assay-verifier-app[bot] @ cd08e97833cb (forge-identity) | — |
-| 05 | [Build the combined milestone and brief dependency graph](brief-05-build-the-combined-milestone-and-brief-dependency-graph.md) | 3 | M | implemented | — | — |
-| 06 | [Bind milestone acceptance to existing evidence and decisions](brief-06-bind-milestone-acceptance-to-existing-evidence-and-decisions.md) | 4 | M | todo | — | — |
+| 05 | [Build the combined milestone and brief dependency graph](brief-05-build-the-combined-milestone-and-brief-dependency-graph.md) | 3 | M | verified | 2026-11-04 assay-verifier-app[bot] @ 7f61cff94b18 (forge-identity) | — |
+| 06 | [Bind milestone acceptance to existing evidence and decisions](brief-06-bind-milestone-acceptance-to-existing-evidence-and-decisions.md) | 4 | M | implemented | — | — |
 | 07 | [Evaluate milestone readiness through the canonical eligibility API](brief-07-evaluate-milestone-readiness-through-the-canonical-eligibility-api.md) | 5 | M | todo | — | — |
 | 08 | [Normalize PR trailers and claims through the shared resolver](brief-08-normalize-pr-trailers-and-claims-through-the-shared-resolver.md) | 3 | M | todo | — | — |
 | 09 | [Preserve workflow subjects and human rulings across aliases](brief-09-preserve-workflow-subjects-and-human-rulings-across-aliases.md) | 4 | M | todo | — | — |

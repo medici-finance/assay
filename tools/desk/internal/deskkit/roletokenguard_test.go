@@ -407,6 +407,8 @@ var desktokenExecAllow = map[string]string{
 		"ledger entries",
 	"internal/deskkit/credentialprovider.go:providerMint": "not an exec: the in-process minter writes its " +
 		"audit row under the CLI's tool name, so the ledger reads one minter whichever caller ran it",
+	"internal/deskkit/writeverbcred.go:logCrossRoleOverride": "not an exec: the write-verb credential read " +
+		"records an admitted cross-role override (#6069) under the minter's own audit tool name",
 	// Probes of the CLI itself: the binary is the thing under test.
 	"internal/deskkit/preflight.go:coldMintProbe": "a probe OF the CLI: it proves a cold shell can mint " +
 		"through the installed binary, with a scrubbed environment",

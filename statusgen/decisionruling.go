@@ -143,13 +143,18 @@ type decisionRecordStamp struct {
 
 // rulingOutcome is the resolved verdict for one record's ruling link.
 type rulingOutcome struct {
-	Body    string       // authenticated, unedited human comment, populated only on success
-	Present bool         // the record carries a ruling: (or could not be read)
-	Reason  rulingReason // rulingOK on a pass
-	Detail  string       // human-readable evidence (pass) or explanation (refusal)
-	Author  string       // the ruling comment's author login, when observed
-	Name    string       // the human name the author resolved to, on a pass
-	Names   []string     // the record's real decided-by names (empty = placeholder)
+	// ObservedHuman/ObservedBody record a same-issue, non-bot, mapped-author
+	// observation even when later checks refuse. They supply NO ruling or
+	// acceptance authority; adapters may use them only to retain a hold.
+	ObservedHuman string
+	ObservedBody  string
+	Body          string       // authenticated, unedited human comment, populated only on success
+	Present       bool         // the record carries a ruling: (or could not be read)
+	Reason        rulingReason // rulingOK on a pass
+	Detail        string       // human-readable evidence (pass) or explanation (refusal)
+	Author        string       // the ruling comment's author login, when observed
+	Name          string       // the human name the author resolved to, on a pass
+	Names         []string     // the record's real decided-by names (empty = placeholder)
 }
 
 // rulingOutcomes maps a DR record file (stamp.File) to its outcome.
@@ -328,6 +333,16 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 	onRepo, onNum := im[1]+"/"+im[2], im[3]
 	if !strings.EqualFold(onRepo, link.Repo) || onNum != strconv.Itoa(link.Issue) {
 		return refuse(rulingUnrelatedIssue, "comment %d sits on %s#%s, not on %s#%d as the ruling link claims", link.CommentID, onRepo, onNum, link.Repo, link.Issue)
+	}
+
+	// Preserve restrictive observations without changing any legacy verdict,
+	// check ordering or successful Body/Name semantics. Parent binding above
+	// already prevents a foreign comment from holding this issue's receipt.
+	if !strings.EqualFold(cm.User.Type, "Bot") && !strings.HasSuffix(strings.ToLower(cm.User.Login), "[bot]") {
+		out.ObservedHuman = humanNameForLogin(humanLogins, cm.User.Login)
+		if out.ObservedHuman != "" {
+			out.ObservedBody = cm.Body
+		}
 	}
 
 	// 2b. The comment is unedited: the text a reviewer reads must be the text the
