@@ -345,7 +345,8 @@ correctness). A **mutating** response does not converge harmlessly: hence §Clos
    only**. An issue that fails the routing test (thin / ambiguous) is NOT left for a worker — label
    it `question` with what is missing, or scope it; a worker-legible issue rides Next-up. **Do not
    fan out workers, take a dispatch claim, or author implementation or close PRs from this window.**
-   **Class decision** (same judgement as the triple). Is the symptom an instance of an open
+   **Class decision** (same judgement as the triple). Group the owed batch by mechanism before judging it,
+   on a strong-tier session: [`../../references/intake-class-pass.md`](../../references/intake-class-pass.md). Is the symptom an instance of an open
    `error-class` issue intake opened (title `class: <mechanism>`)? **Yes** → `deskfile attach`
    (outside the new-issue budget) one instance block: `kind` (`confirmed-defect` / `false-positive` /
    `intended-control` / `requested-capability` / `uncertain`), `incident-group` (mirrors share one),

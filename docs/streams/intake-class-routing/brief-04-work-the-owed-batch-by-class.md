@@ -28,9 +28,9 @@ sources:
   - "spec/intake-handoff-v1.md — consumed as shipped, not changed"
   - "freshness-checked 2026-11-12 @ 0665bfb77 (origin/main): the intake skill's class decision runs per new issue only; no procedure groups a batch"
 consumers:
-  - "plugins/assay/skills/intake-desk/SKILL.md: follow-up intake-class-routing/04 (this brief; flips to fixed-here when the implementation edits the path)"
-  - ".cursor/skills/intake-desk/SKILL.md: follow-up intake-class-routing/04 (this brief; generated harness copy of the canonical skill)"
-  - ".cursor/assay-managed.json: follow-up intake-class-routing/04 (this brief; generated harness content digest)"
+  - "plugins/assay/skills/intake-desk/SKILL.md: fixed-here"
+  - ".cursor/skills/intake-desk/SKILL.md: fixed-here"
+  - ".cursor/assay-managed.json: fixed-here"
   - "plugins/assay/skills/author-brief/SKILL.md: out-of-scope (class briefs use its existing rules 9d and 14 and design-fit; nothing is added there)"
 ---
 
