@@ -1,0 +1,53 @@
+{
+  "test": "go test . -run '^TestRowread' -count=1 -timeout 300s",
+  "control": {
+    "name": "admitted rows inherit the forge credential variables again",
+    "file": "verifieradmission.go",
+    "old": "\t\tcase admittedRowForgeToken(key):\n",
+    "new": "\t\tcase false && admittedRowForgeToken(key):\n"
+  },
+  "mutations": [
+    {
+      "name": "rowread accepts any kind, write verbs included",
+      "file": "rowread.go",
+      "old": "\tif !rowreadKinds[kind] {\n",
+      "new": "\tif kind == \"\" {\n"
+    },
+    {
+      "name": "an unread issue reads as no matching comment",
+      "file": "rowread.go",
+      "old": "\t\t\tfmt.Fprintf(stderr, \"statusgen rowread: %s#%d: could-not-check: %v\\n\", is.repo, is.number, err)\n\t\t\treturn rowreadExitCouldNot\n",
+      "new": "\t\t\tfmt.Fprintf(stderr, \"statusgen rowread: %s#%d: could-not-check: %v\\n\", is.repo, is.number, err)\n\t\t\tcontinue\n"
+    },
+    {
+      "name": "rowread prints the comment body",
+      "file": "rowread.go",
+      "old": "AuthorLogin: c.User.Login, CreatedAt: c.CreatedAt}",
+      "new": "AuthorLogin: c.User.Login, CreatedAt: c.Body}"
+    },
+    {
+      "name": "rowread lets a flag ride in as a target",
+      "file": "rowread.go",
+      "old": "`^([A-Za-z0-9][A-Za-z0-9-]*)/",
+      "new": "`^([A-Za-z0-9=-][A-Za-z0-9=-]*)/"
+    },
+    {
+      "name": "matches of issues read before an unread one reach stdout",
+      "file": "rowread.go",
+      "old": "\tenc := json.NewEncoder(&buf)\n",
+      "new": "\tenc := json.NewEncoder(stdout)\n"
+    },
+    {
+      "name": "--body-contains filter disabled, every comment printed",
+      "file": "rowread.go",
+      "old": "\t\t\tif *contains != \"\" && !strings.Contains(c.Body, *contains) {\n",
+      "new": "\t\t\tif false && *contains != \"\" && !strings.Contains(c.Body, *contains) {\n"
+    },
+    {
+      "name": "a stray trailing argument is accepted",
+      "file": "rowread.go",
+      "old": "\tif fs.NArg() != 0 {\n",
+      "new": "\tif false && fs.NArg() != 0 {\n"
+    }
+  ]
+}

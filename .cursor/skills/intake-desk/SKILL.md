@@ -25,6 +25,8 @@ description: >-
 
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
+> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, and how it is reconciled and marked read are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
+
 > Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
 The **intake-desk** is the generic front door of the process-desk pipeline — the first of the four
@@ -565,7 +567,8 @@ Stated once for every desk; this skill adds only what is its own above.
   don't cite it; cannot reach the remote and cannot cross-check → **could-not-check**, never a
   claim badged as re-verified.
 - **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskreply`,
-  `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script; a `gh`
+  `deskpr`), resolving the credential with `desktoken --no-rotate <role> --repo <slug>` (rotation
+  is an explicit act, never a side effect) — never a hand-rolled mint script; a `gh`
   call no verb covers runs as the role App per desk-shell.md §Forge CLI as the role. For comments,
   use `deskfile attach` on issues or `deskreply` on this desk's own PRs; `deskpost comment`
   is reserved for `pr-review-desk`. A shared

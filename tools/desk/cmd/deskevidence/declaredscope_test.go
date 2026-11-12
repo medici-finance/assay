@@ -116,3 +116,36 @@ func TestSiblingCoverageValidator(t *testing.T) {
 		})
 	}
 }
+
+// A single-repository receipt covers a sibling declaration only by its
+// declared-unbound marker, and that marker never stands beside a pin.
+// regression: #5097
+func TestSiblingUnboundValidator(t *testing.T) {
+	root := t.TempDir()
+	rvGitIn(t, root, "init", "-q", "-b", "main")
+	rvWriteAndAdd(t, root, receiptBriefPath, "## Context\nfiles:\n- `foo/bar.go`\n- `../one/x.go`\n")
+	rvWriteAndAdd(t, root, "foo/bar.go", "bar")
+	rvGitIn(t, root, "commit", "-qm", "declared inputs")
+	sha := rvGitIn(t, root, "rev-parse", "HEAD")
+	mark := deskkit.InputKeyDeclaredPrefix + "../one/x.go"
+	for _, tc := range []struct {
+		name  string
+		extra map[string]string
+		ok    bool
+	}{
+		{"marked", map[string]string{mark: deskkit.DeclaredUnbound}, true},
+		{"marked-and-pinned", map[string]string{mark: deskkit.DeclaredUnbound, "repo-source:example-org/one": "0123456789abcdef0123456789abcdef01234567"}, false},
+		{"wrong-value", map[string]string{mark: "present"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			inputs := map[string]string{"file:foo/bar.go": "present"}
+			for k, v := range tc.extra {
+				inputs[k] = v
+			}
+			err := validateReceiptInputsCoverDeliverables(root, deskkit.WakeReceipt{Brief: "example-stream/14", SHA: sha, Inputs: inputs})
+			if tc.ok != (err == nil) || (err != nil && deskkit.ExitCodeOf(err) != deskkit.ExitRefused) {
+				t.Fatalf("got %v, want ok=%v", err, tc.ok)
+			}
+		})
+	}
+}

@@ -44,10 +44,22 @@
       "new": "\t\treturn nil, nil"
     },
     {
-      "name": "stop reducing to the latest run per name (a superseded CANCELLED/QUEUED run jams the flip again — reddens TestSupersededRunDoesNotJamACleanFlip)",
+      "name": "stop reducing to the latest run per name (a superseded CANCELLED/QUEUED run jams the flip again — reddens TestSupersededRunDoesNotJamACleanFlip, TestCancelledTwinsFlip)",
       "file": "cmd/deskflip/flip.go",
       "old": "\tchecks := latestPerRollupName(rollup)",
       "new": "\tchecks := rollup"
+    },
+    {
+      "name": "judge a non-green conclusion as green (a latest CANCELLED run flips — reddens TestLoneCancelledRefuses, TestLaterCancelledRefuses, #6124)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\treturn entryVerdict{ciFail, lower(e.Conclusion)}",
+      "new": "\t\treturn entryVerdict{ciGreen, lower(e.Conclusion)}"
+    },
+    {
+      "name": "drop the reason from a named refusal (the check is named without the state that blocked it — reddens TestLoneCancelledRefuses, TestPendingNamesTheCheck, #6124)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\t\tout = append(out, e.label()+\" (\"+v.reason+\")\")",
+      "new": "\t\t\tout = append(out, e.label())"
     },
     {
       "name": "check-only CR (a): infer 'check-only' from PROSE when no declaration is present — the exact heuristic the authorization forbids (an ordinary CR that merely mentions the check becomes exempt — reddens TestProseIsNotADeclaration)",

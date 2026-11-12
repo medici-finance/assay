@@ -30,6 +30,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -169,6 +170,7 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	}
 	// The read-ahead packet, when one was written for this dispatch: one line, every kit.
 	writePacketLine(&b, plan)
+	writePickupReceipt(&b, o, plan.pickup)
 
 	if o.attestWorker && o.pr <= 0 && !review && !verifier {
 		writeWorkerAttestationSection(&b, o, repo, plan.workerAttestation)
@@ -194,6 +196,7 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	fmt.Fprintf(&b, "\n\n---\n\n# Standing clauses — %s (quoted verbatim, not paraphrased)\n\n", kitName)
 	b.WriteString(kit)
 	b.WriteString("\n")
+	writeDispatchRules(&b, plan.rules)
 	return b.String(), nil
 }
 
@@ -548,7 +551,7 @@ func writeReleaseClaim(b *strings.Builder, o dispatchOpts, plan dispatchPlan, re
 	}
 	role, _ := kitRole(o.kit)
 	fmt.Fprintf(b, "```\n%s release %q --repo %s%s\n```\n", releaseTool, plan.claimKey, repo,
-		claimCredArg(releaseTool, role, repo))
+		claimCredArg(releaseTool, role, repo, agentLoop(role)))
 }
 
 // claimCredArg is the credential argument a PRINTED claim-tool command needs to run as
@@ -558,14 +561,41 @@ func writeReleaseClaim(b *strings.Builder, o dispatchOpts, plan dispatchPlan, re
 // one. The legacy script reads the ambient credential itself and takes no flag, so it gets
 // none. role is the desk role whose credential the reader holds; "" (an unknown kit) falls
 // back to the dispatcher's own.
-func claimCredArg(tool, role, repo string) string {
+//
+// readerLoop is the $DESK_LOOP of the shell that will run the command. desktoken refuses a
+// role that loop does not act as (#6069), and this command uses another role by design (a
+// worker-desk or verify-desk window claims as the desk App; a verifier dispatched from the-desk
+// releases as verifier). In that case the printed mint carries the audited --cross-role
+// override, so the command still runs as printed.
+func claimCredArg(tool, role, repo, readerLoop string) string {
 	if tool != goClaimBinary {
 		return ""
 	}
 	if role == "" {
 		role = deskkit.DispatcherRole
 	}
-	return fmt.Sprintf(` --token-file "$(desktoken --no-rotate %s --repo %s)"`, role, repo)
+	override := ""
+	if reason := deskkit.CrossRoleReasonFor(readerLoop, claimHintVerb, role); reason != "" {
+		override = fmt.Sprintf(" --cross-role %q", reason)
+	}
+	return fmt.Sprintf(` --token-file "$(desktoken --no-rotate %s --repo %s%s)"`, role, repo, override)
+}
+
+// claimHintVerb names the printed claim command in a cross-role override reason.
+const claimHintVerb = "a deskdispatch claim command"
+
+// dispatcherLoop is the loop of this dispatching window: the reader of every claim command
+// deskdispatch prints for its own operator.
+func dispatcherLoop() string { return os.Getenv("DESK_LOOP") }
+
+// agentLoop is the loop a dispatched agent's shell runs under. A worker exports
+// DESK_LOOP=worker-desk before any desk verb (the envelope says so). A review or verifier
+// agent sets no loop and inherits the dispatching window's.
+func agentLoop(role string) string {
+	if role == "worker" {
+		return "worker-desk"
+	}
+	return dispatcherLoop()
 }
 
 // issueNumFromItem extracts the GitHub issue number from an ISSUE-ONLY item key. The

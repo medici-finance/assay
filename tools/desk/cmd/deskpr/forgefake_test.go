@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -61,6 +63,13 @@ type envForge struct {
 	labelChanges   []deskkit.LabelChange
 	labelNums      []int
 	applyLabelsErr error
+
+	// issueNums / trustNums record the `edit --relink-to` issue reads (#5020); ops records the
+	// order of the two PR writes ("comment", "edit") so the audit-before-edit rule is assertable.
+	issueNums  []int
+	issueKinds []deskkit.TargetKind
+	trustNums  []int
+	ops        []string
 }
 
 // synthGH renders the forge ops this fake recorded as canonical gh-shaped pseudo-argvs, so the
@@ -89,6 +98,12 @@ func (f *envForge) synthGH() [][]string {
 			e = append(e, "--title", f.edited.Title)
 		}
 		out = append(out, e)
+	}
+	for _, n := range f.issueNums {
+		out = append(out, []string{"gh", "issue", "view", strconv.Itoa(n), "-R", repo})
+	}
+	for _, n := range f.trustNums {
+		out = append(out, []string{"gh", "api", "graphql", "issue-trust", strconv.Itoa(n)})
 	}
 	for _, n := range f.commentNums {
 		out = append(out, []string{"gh", "pr", "comment", strconv.Itoa(n), "-R", repo, "--body-file", "<note>"})
@@ -232,6 +247,7 @@ func (f *envForge) RepoVisibility(repo deskkit.ForgeRepo) (string, error) {
 
 func (f *envForge) EditChange(repo deskkit.ForgeRepo, number int, in deskkit.EditChangeInput) error {
 	f.editedNum = number
+	f.ops = append(f.ops, "edit")
 	e := in
 	f.edited = &e
 	if os.Getenv("FAKEGH_EDIT_FAIL") == "1" {
@@ -242,6 +258,7 @@ func (f *envForge) EditChange(repo deskkit.ForgeRepo, number int, in deskkit.Edi
 
 func (f *envForge) PostComment(repo deskkit.ForgeRepo, number int, body string) (*deskkit.CommentRef, error) {
 	f.commentNums = append(f.commentNums, number) // the ATTEMPT, recorded before any failure
+	f.ops = append(f.ops, "comment")
 	if os.Getenv("FAKEGH_COMMENT_FAIL") == "1" {
 		return nil, deskkit.Unverifiable("HTTP 502: Bad Gateway", nil)
 	}
@@ -282,4 +299,108 @@ func installFakeForge(t *testing.T) *envForge {
 	}
 	t.Cleanup(func() { forgeForFn = old })
 	return f
+}
+
+// GetIssueTyped answers `edit --relink-to`'s read of the NEW issue (#5020) from FAKEGH_ISSUE_*:
+// MISSING=1 is a 404, READ_FAIL=1 an HTTP 502, SPLIT_FAIL a failed issue read with a change at
+// the same number (below), NIL=1 a (nil, nil) answer, PR=1 a pull request,
+// STATE (default open), AUTHOR login:id (default the fixture's trusted ada:2001), LABELS
+// (comma-separated), TITLE and BODY.
+//
+// The kind mismatch matches deskkit.GitHubForge.GetIssueTyped exactly: GitHub numbers issues
+// and PRs in one sequence, and its typed read answers a PR number read as an issue (or an
+// issue number read as a change) with a could-not-check error, never a record.
+func (f *envForge) GetIssueTyped(repo deskkit.ForgeRepo, number int, kind deskkit.TargetKind) (*deskkit.Issue, error) {
+	f.issueNums = append(f.issueNums, number)
+	f.issueKinds = append(f.issueKinds, kind)
+	if os.Getenv("FAKEGH_ISSUE_MISSING") == "1" {
+		return nil, &deskkit.ForgeAPIError{Status: 404}
+	}
+	if os.Getenv("FAKEGH_ISSUE_READ_FAIL") == "1" {
+		return nil, deskkit.Unverifiable("HTTP 502: Bad Gateway", nil)
+	}
+	// FAKEGH_ISSUE_SPLIT_FAIL models a forge with SEPARATE issue and change sequences
+	// (GitLab's #N and !N) whose ISSUE read fails while a change exists at the same number:
+	// a status (e.g. 503, 403) fails it the way GitLabForge.mapErr does, with a ForgeAPIError
+	// cause ("503-echo" adds the mismatch wording to that answer's text); "transport" fails it
+	// with no status but a transport cause. The change read
+	// answers an open change at the number.
+	if sf := os.Getenv("FAKEGH_ISSUE_SPLIT_FAIL"); sf != "" {
+		if kind == deskkit.TargetChange {
+			return &deskkit.Issue{Number: number, State: "open", IsPullRequest: true,
+				Author: deskkit.Account{Login: "ada", ID: 2001}}, nil
+		}
+		path := fmt.Sprintf("/projects/%s/issues/%d", repo.Slug(), number)
+		if sf == "transport" {
+			return nil, deskkit.Unverifiable("could-not-check: GET "+path+" did not complete: connection reset",
+				errors.New("connection reset"))
+		}
+		// "echo" is a 503 whose forge-supplied body text happens to carry the single-sequence
+		// kind-mismatch wording: a status-bearing failure is a failure whatever it says.
+		msg := ""
+		if strings.HasSuffix(sf, "-echo") {
+			sf = strings.TrimSuffix(sf, "-echo")
+			msg = ": #" + strconv.Itoa(number) + " is a pull request, not an issue"
+		}
+		st, _ := strconv.Atoi(sf)
+		return nil, deskkit.Unverifiable(fmt.Sprintf("could-not-check: GET %s — HTTP %d%s", path, st, msg),
+			&deskkit.ForgeAPIError{Status: st, Method: "GET", Path: path, Body: msg})
+	}
+	if os.Getenv("FAKEGH_ISSUE_NIL") == "1" {
+		return nil, nil
+	}
+	isPR := os.Getenv("FAKEGH_ISSUE_PR") == "1"
+	// FAKEGH_ISSUE_UNTYPED=1 models a backend whose issue read does not refuse a pull
+	// request number but returns the record flagged IsPullRequest (the GitHub backend
+	// refuses it, as above); it pins the gate's own IsPullRequest check.
+	untyped := os.Getenv("FAKEGH_ISSUE_UNTYPED") == "1"
+	if isPR && kind == deskkit.TargetIssue && !untyped {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d is a pull request, not an issue — state the kind you mean (--kind pr)",
+			repo.Slug(), number), nil)
+	}
+	if !isPR && kind == deskkit.TargetChange {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: %s#%d is an issue, not a pull request — state the kind you mean (--kind issue)",
+			repo.Slug(), number), nil)
+	}
+	state := os.Getenv("FAKEGH_ISSUE_STATE")
+	if state == "" {
+		state = "open"
+	}
+	author := os.Getenv("FAKEGH_ISSUE_AUTHOR")
+	if author == "" {
+		author = "ada:2001"
+	}
+	login, idStr, _ := strings.Cut(author, ":")
+	id, _ := strconv.ParseInt(idStr, 10, 64)
+	var labels []string
+	if l := os.Getenv("FAKEGH_ISSUE_LABELS"); l != "" {
+		labels = strings.Split(l, ",")
+	}
+	return &deskkit.Issue{
+		Number:        number,
+		State:         state,
+		Author:        deskkit.Account{Login: login, ID: id},
+		IsPullRequest: isPR,
+		Title:         os.Getenv("FAKEGH_ISSUE_TITLE"),
+		Body:          os.Getenv("FAKEGH_ISSUE_BODY"),
+		Labels:        labels,
+	}, nil
+}
+
+// IssueTrustEvents answers the trust gate's read: FAKEGH_ISSUE_BLESSED=1 serves a blessing
+// comment from the fixture's blessing authority after the last body edit; TRUST_FAIL=1 an
+// unreadable record; TRUST_INCOMPLETE=1 a record the forge could not page to the end.
+func (f *envForge) IssueTrustEvents(repo deskkit.ForgeRepo, number int) (*deskkit.TrustPayload, error) {
+	f.trustNums = append(f.trustNums, number)
+	if os.Getenv("FAKEGH_ISSUE_TRUST_FAIL") == "1" {
+		return nil, deskkit.Unverifiable("HTTP 502: Bad Gateway", nil)
+	}
+	edited := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	tp := &deskkit.TrustPayload{BodyEdited: edited, Complete: os.Getenv("FAKEGH_ISSUE_TRUST_INCOMPLETE") != "1"}
+	if os.Getenv("FAKEGH_ISSUE_BLESSED") == "1" {
+		tp.Events = []deskkit.ContentEvent{{Author: "ada", AuthorID: 2001, CreatedAt: edited.Add(time.Hour)}}
+	}
+	return tp, nil
 }

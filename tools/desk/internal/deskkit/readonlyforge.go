@@ -22,8 +22,10 @@ package deskkit
 // forge and checks every method against the test-side classification table (obClass).
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/forgeread/adapters"
 )
 
 // readOnlyRefusalText is the phrase every refusal of this decorator carries. Tests and the
@@ -135,6 +137,10 @@ func (r *readOnlyForge) ListChangedFiles(repo ForgeRepo, number int) ([]ChangedF
 
 func (r *readOnlyForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, error) {
 	return r.inner.ChecksAtHead(repo, sha)
+}
+
+func (r *readOnlyForge) CheckSuitesAtHead(repo ForgeRepo, sha string) (*CheckSuitesAtHead, error) {
+	return r.inner.CheckSuitesAtHead(repo, sha)
 }
 
 func (r *readOnlyForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error) {
@@ -267,6 +273,10 @@ func (r *readOnlyForge) MarkReadyForReview(nodeID string) error {
 	return readOnlyRefusal("MarkReadyForReview")
 }
 
+func (r *readOnlyForge) ConvertToDraft(nodeID string) error {
+	return readOnlyRefusal("ConvertToDraft")
+}
+
 func (r *readOnlyForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error) {
 	return nil, readOnlyRefusal("ApplyLabels")
 }
@@ -309,4 +319,12 @@ func (r *readOnlyForge) ApproveGate(repo ForgeRepo, run RunRef, in ApproveGateIn
 
 func (r *readOnlyForge) RetryRun(repo ForgeRepo, run RunRef) error {
 	return readOnlyRefusal("RetryRun")
+}
+
+func (r *readOnlyForge) ChangesUpdatedSince(ctx context.Context, repo ForgeRepo, q adapters.UpdateQuery) (adapters.ChangeUpdates, error) {
+	return r.inner.ChangesUpdatedSince(ctx, repo, q)
+}
+
+func (r *readOnlyForge) IssuesUpdatedSince(ctx context.Context, repo ForgeRepo, q adapters.UpdateQuery) (adapters.IssueUpdates, error) {
+	return r.inner.IssuesUpdatedSince(ctx, repo, q)
 }

@@ -25,7 +25,7 @@ consumers:
   - "tools/desk/cmd/deskavatar/main.go: fixed-here"
   - "docs/desk-tools/deskavatar.md: fixed-here"
   - "docs/streams/apps-installer/design.md: fixed-here"
-version: 1
+version: 2
 id: a45786fd-217c-4794-9e43-1391edcd0d95
 ---
 
@@ -74,12 +74,12 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd tools/desk && go build -o /tmp/deskavatar ./cmd/deskavatar && rm -rf /tmp/av10 && /tmp/deskavatar --org example --tier team --out /tmp/av10 --sizes 200 && ls /tmp/av10 \| grep -cE -e '^example-read\.' -e '^example-act\.' -e '^example-review\.'` | 6 | check +flow |
+| 1 | `cd tools/desk && d=$(mktemp -d) && trap 'rm -rf "$d"' EXIT && go build -o "$d/deskavatar" ./cmd/deskavatar && "$d/deskavatar" --org example --tier team --out "$d/av" --sizes 200 && ls "$d/av" \| grep -cE -e '^example-read\.' -e '^example-act\.' -e '^example-review\.'` | 6 | check +flow |
 | 2 | `cd tools/desk && go test ./internal/avatar/ -run 'TestTeam.*Proof' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestTeam.*Proof'` | ≥ 1 — the three-tile team set passes the 20 px proof for org logins `example`, `acme`, `a`, and a 39-character login | check |
 | 3 | `cd tools/desk && go test ./internal/avatar/ -run 'TestTeamReadActUnchanged' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestTeamReadActUnchanged'` | 1 — the read and act SVG bytes for org `example` equal golden files captured from origin/main before this change | check +dereference |
 | 4 | `cd tools/desk && go test ./internal/avatar/ -run 'TestProofRejects' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestProofRejects'` | ≥ 1 — a forced review tile identical to read (same glyph and colours) makes `Generate` return a `*ProofError` naming both Apps | check +mutation |
-| 5 | `cd tools/desk && go test ./internal/avatar/ -count=1` | exit 0 — the whole package, including the updated `TestGenerateTeamNamesAndCount` and `TestGolden20px` against the regenerated team strip | check |
-| 6 | `statusgen --root . --consumers --brief apps-installer/10` | exit 0 — routing claims corroborated against the diff | check |
+| 5 | `cd tools/desk && go test ./internal/avatar/ -count=1 && test "$(od -An -j19 -N1 -tu1 internal/avatar/testdata/golden/team-20px.png \| tr -d ' ')" = 60` | exit 0 — the whole package, including the updated `TestGenerateTeamNamesAndCount` and `TestGolden20px` against the regenerated team strip | check |
+| 6 | `o=$(statusgen --root . --consumers --brief apps-installer/10 --delivery f52610f4e036de6b8e01e16c6f7aadde168b5b25 --base 59246f0b7a95c5ac600ef209d6731fd378125e6e 2>&1) && printf '%s\n' "$o" \| grep -q '^summary: 4 corroborated, 0 disproved, 0 unchecked'` | exit 0 — routing claims corroborated against the diff | check |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item -->
@@ -332,6 +332,61 @@ RISK-VALUE: DERIVED — reviewBody mix ratio = 0.55 @ tools/desk/internal/avatar
 
 **VERIFY: BLOCKED** — row 6, check-definition, #4560: all 6 rows pass on observation at 0006683ef1c8 (row 6: 4 corroborated, 0 disproved, 0 unchecked), but row 6 still has no pinned --delivery and first-parent --base, so the closure lint refuses a verified flip until #4560 is resolved.
 
+### 2026-11-06 re-pass at the current source (fresh verifier, admitted run)
+
+Observed source: 7ded001837854dcc54ac5a242a4a28235064770e (merged main, detached home, clean before the run). Delivery: squash commit f52610f4e036de6b8e01e16c6f7aadde168b5b25 (#3171) on the first-parent chain, single parent 59246f0b7a95c5ac600ef209d6731fd378125e6e. Dispatcher admission check passed before any row ran (Verification-Attestation #5567, run ce14adebe9d47080b8fade446c1910290821e4d88281ee6197ed8e4eca08216b, brief sha256 3342ab18a74ca2c70e9cf7b1fc110323eb725689083b0289c2a66541df5ba4cf, model claude-opus-5-5, tier any). Toolchain: go1.27.2 darwin/arm64, git 2.56.0, statusgen v1.0.75 (installed release). KUBECONFIG=/dev/null, and no forge read variable was set for the run.
+
+Source currency: `git diff --stat f52610f4e036de6b8e01e16c6f7aadde168b5b25..7ded001837854dcc54ac5a242a4a28235064770e` over the delivered code and docs (the avatar package, the deskavatar command, the deskavatar doc, the stream design note) printed nothing.
+
+Table change since the 2026-10-30 source: commit 89dfa215e5a913beab7bb46a8225ab4fc91ff99d made a command-only amendment of rows 1, 5 and 6 and moved `version:` from 1 to 2. The merge 706d7deb9179b70e256b1e483c8de9ad28c8d830 (#5184) landed it on the first-parent chain. The amendment kept every row's Expect, class and order. `deskpathguard rederive --main 59246f0b7a95c5ac600ef209d6731fd378125e6e` reports 6 rows, 0 author-added, all from-base, and re-derives rows 1, 5 and 6 to their pre-amendment commands. Row 4's class at base is `check`; the delivery made it `check +mutation`. No row is classed check:ci, so the darwin network-off sandbox gap does not apply. No row carries a risk-bearing, live, mutating or end-to-end tag, and every brief-wide risk field is no, so `--fail-first` selected no row at base (Base cell `not-selected`).
+
+Verification-Table: delivery=f52610f4e036de6b8e01e16c6f7aadde168b5b25 base=59246f0b7a95c5ac600ef209d6731fd378125e6e original=59246f0b7a95c5ac600ef209d6731fd378125e6e
+
+Execution witness (written by `statusgen verifyrun --fail-first --base 59246f0b7a95c5ac600ef209d6731fd378125e6e` at the observed source, over the current table; left as the tool wrote it):
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `cd tools/desk && d=$(mktemp -d) && trap 'rm -rf "$d"' EXIT && go build -o "$d/deskavatar" ./cmd/deskavatar && "$d/deskavatar" --org example --tier team --out "$d/av" --sizes 200 && ls "$d/av" \| grep -cE -e '^example-read\.' -e '^example-act\.' -e '^example-review\.'` | pass exit=0 | sha256:06e9d52c1720 | 2026-11-06 | assay-verifier-app[bot] @ 7ded00183785 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=7ded00183785 |
+| 2 | `cd tools/desk && go test ./internal/avatar/ -run 'TestTeam.*Proof' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestTeam.*Proof'` | pass exit=0 | sha256:53c234e5e847 | 2026-11-06 | assay-verifier-app[bot] @ 7ded00183785 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=7ded00183785 |
+| 3 | `cd tools/desk && go test ./internal/avatar/ -run 'TestTeamReadActUnchanged' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestTeamReadActUnchanged'` | pass exit=0 | sha256:4355a46b19d3 | 2026-11-06 | assay-verifier-app[bot] @ 7ded00183785 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=7ded00183785 |
+| 4 | `cd tools/desk && go test ./internal/avatar/ -run 'TestProofRejects' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestProofRejects'` | pass exit=0 | sha256:4355a46b19d3 | 2026-11-06 | assay-verifier-app[bot] @ 7ded00183785 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=7ded00183785 |
+| 5 | `cd tools/desk && go test ./internal/avatar/ -count=1 && test "$(od -An -j19 -N1 -tu1 internal/avatar/testdata/golden/team-20px.png \| tr -d ' ')" = 60` | pass exit=0 | sha256:46c3fe0877fb | 2026-11-06 | assay-verifier-app[bot] @ 7ded00183785 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=7ded00183785 |
+| 6 | `o=$(statusgen --root . --consumers --brief apps-installer/10 --delivery f52610f4e036de6b8e01e16c6f7aadde168b5b25 --base 59246f0b7a95c5ac600ef209d6731fd378125e6e 2>&1) && printf '%s\n' "$o" \| grep -q '^summary: 4 corroborated, 0 disproved, 0 unchecked'` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-06 | assay-verifier-app[bot] @ 7ded00183785 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=7ded00183785 |
+Verification-Attestation: medici-finance/assay#5567 run=ce14adebe9d47080b8fade446c1910290821e4d88281ee6197ed8e4eca08216b source=7ded001837854dcc54ac5a242a4a28235064770e brief=docs/streams/apps-installer/brief-10-team-review-avatar.md model=claude-opus-5-5 tier=any
+
+Output inspection. The witness records hashes only. The small outputs were checked against their hashes, and the package was run verbosely once more at the same source, with output kept outside the home:
+
+- Row 1: hash 06e9d52c1720 is the sha256 of "6" plus newline, so the count is 6, as Expect requires.
+- Row 2: hash 53c234e5e847 is "2" plus newline. TestTeamThreeTileProof (logins example, acme, a and a 39-character login) and TestTeamProofEveryHue both PASS.
+- Row 3: hash 4355a46b19d3 is "1" plus newline. TestTeamReadActUnchanged PASS, comparing the read and act SVG bytes with the pre-change goldens.
+- Row 4: hash 4355a46b19d3 is "1" plus newline. TestProofRejectsReviewLikeRead PASS: the forced review-equals-read set makes Generate return a *ProofError naming both Apps.
+- Row 5: exit 0. The verbose package run shows 12 top-level tests PASS, among them TestGenerateTeamNamesAndCount and TestGolden20px, and ends `ok github.com/medici-finance/assay/tools/desk/internal/avatar`. The output hash varies run to run with the elapsed-time suffix. The width byte the row reads from the team strip golden (offset 19) is 60 at this source and 40 at base 59246f0b7a95, so the amended row fails at base.
+- Row 6: exit 0 and empty output (grep -q); e3b0c44298fc is the empty-input hash. Exit 0 means the line `summary: 4 corroborated, 0 disproved, 0 unchecked` appeared for the pinned delivery range. The row was run only inside verifyrun.
+
+Protected-table closure status: this brief's Evidence carries Verification-Table markers, so it is a protected record. At this source, rows 1, 5 and 6 of the Verify section differ from the delivered section (the #5184 amendment). A dry-run probe with no credit ran no row: `statusgen verifyrun --acceptance-record` with the coordinate-only Verification-Table line refused with `protected table: current Verify section differs from immutable delivery` (exit 2). The supported route is the human-approved acceptance transition in docs/protected-paths.md, section "Explicit human-approved acceptance transitions". It needs an unedited approval comment from a mapped human on a decision issue that carries this brief's acceptance-transition marker, naming amendment=706d7deb9179b70e256b1e483c8de9ad28c8d830 and rows=1,5,6. A public search of the tracker found no issue that carries that marker for this brief. The #5184 body says the approval is owed by the driver and is not claimed there. Until that approval exists, the amended rows 1, 5 and 6 earn no acceptance credit, and `statusgen verifyrun --check` refuses this record. Running the transition also needs `--acceptance-forge` with the forge read variable supplied, which this run does not have. No acceptance obligation failed.
+
+Risk-bearing value enumeration. Diff scope: the delivery's changes to generate.go and to the deskavatar main.go, the literals the brief names, and the amendment's row literals. Tests and docs carry no runtime constant. The item is not irreversible and has full risk metadata, all no.
+
+- reviewBody mix ratio = 0.55 @ tools/desk/internal/avatar/generate.go:183 (introduced).
+- review tile App name = org + "-review" @ tools/desk/internal/avatar/generate.go:185 (introduced; the third tile's file name).
+- review glyph = GlyphDisc @ tools/desk/internal/avatar/generate.go:185 (introduced for the team tier).
+- review glyph colour colGlyphLite = "#EAF0FF" @ tools/desk/internal/avatar/compose.go:15 (existed before; reused).
+- proof thresholds proofDeltaE = 25.0 and proofIoU = 0.6 @ tools/desk/internal/avatar/proof.go:12 and :13 (named in the brief; the delivery does not touch proof.go).
+- team strip width assertion = 60 in Verify row 5 (introduced by the amendment).
+
+Ranking: every entry is cosmetic or a check literal, and each can be undone by an edit and a redeploy. The proof thresholds rank first, because lowering them would let indistinct tiles through. The row 5 width literal ranks next, then the tone ratio.
+
+RISK-VALUE: DERIVED — proofDeltaE = 25.0 @ tools/desk/internal/avatar/proof.go:12 and proofIoU = 0.6 @ tools/desk/internal/avatar/proof.go:13 — these are the values the brief's facts state as the proof contract, its ground rule forbids lowering them, and the delivery leaves proof.go untouched.
+
+RISK-VALUE: DERIVED — team strip width = 60 in Verify row 5 — the 20 px strip sets the three team tiles side by side, so 3 × 20 = 60 px. The PNG IHDR width is a 4-byte big-endian field at offsets 16 to 19, and for a width under 256 its offset-19 byte is the whole width. The two-tile strip at base reads 40, which the row tells apart.
+
+RISK-VALUE: DERIVED — reviewBody mix ratio = 0.55 @ tools/desk/internal/avatar/generate.go:183 — a cosmetic tone choice that can be undone, placing the review body between read's dark body and act's accent body. The brief's acceptance is the unchanged 20 px proof, which rows 2 and 5 show passing, with TestTeamProofEveryHue covering the whole hue circle.
+
+#### Correction — 2026-11-06 rework
+
+The row 5 bullet above gives the wrong test count. The verbose package run at this source shows 21 top-level tests PASS, not 12. A fresh `go test ./internal/avatar/ -count=1 -v` in `tools/desk`, over package bytes identical to 7ded00183785 (`git diff --stat` over `tools/desk` against this branch prints nothing), printed 21 top-level `--- PASS` lines, 0 `--- FAIL` lines, and ended `ok github.com/medici-finance/assay/tools/desk/internal/avatar`. TestGenerateTeamNamesAndCount and TestGolden20px are among the 21. The package declares 23 `func Test` functions; two are fixtures under `testdata/classguard/`, which `go test ./internal/avatar/` does not compile. Row 5's result and every other row result stand unchanged, because none depends on this count. The outcome record first added with this section repeated the wrong count in its note; a new record with the corrected note replaces it.
+
+**VERIFY: BLOCKED** — rows 1, 5 and 6, human-action, #4560: all 6 rows pass at 7ded00183785 on the current (amended) table. But this is a protected record whose Verify section differs from the delivery, and no human approval binds amendment 706d7deb9179 for rows 1, 5 and 6. Next actor: the driver posts the acceptance-transition approval on a decision issue that carries this brief's marker. A fresh dispatch then runs `statusgen verifyrun --acceptance-record` with the transition descriptor and `--acceptance-forge`.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

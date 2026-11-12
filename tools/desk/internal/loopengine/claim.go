@@ -190,6 +190,13 @@ func firstNonEmpty(vals ...string) string {
 // directory-wide lock is held. The consequence is stated in doc.go — probe-then-lock is
 // not one atomic step.
 func Claim(cfg Config, it Item) (bool, error) {
+	// A local flock cannot qualify cross-machine subject/alias exclusion. Keep
+	// raw negotiated subjects intact and hold until the admitted durable path
+	// supplies their binding; no prefix/selector-derived local filename.
+	if deskkit.NegotiatedWorkSyntax(it.ID) {
+		return false, deskkit.Unverifiable("loopengine: negotiated work requires selected durable subject admission", nil)
+	}
+
 	if cfg.ClaimsDir == "" {
 		return false, fmt.Errorf("loopengine: Claim needs a ClaimsDir")
 	}

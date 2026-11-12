@@ -141,6 +141,14 @@ reads back the whole command), the exit code, a sha256 fingerprint of the combin
 executing identity, and the tree it ran against. The format and its rules live in
 [`../docs/brief-rules.md`](../docs/brief-rules.md) (rules 25–26).
 
+For fail-first contracts that require a named base diagnostic, add
+`--fail-first --base-log /absolute/path/to/new-directory`. It retains each executed base row's
+combined output in an owner-only directory outside the source home and binds the file's digest
+in the Base witness cell. Inspect those bytes before crediting the diagnostic. See
+[base-output retention](../docs/verify-row-strength.md#retaining-base-primary-output) for custody,
+path restrictions and the limits of that evidence. This option does not change existing runs,
+grant acceptance credit, publish logs or broaden the execution fence.
+
 Three exit codes, and they must not be collapsed: **0** every row witnessed,
 matching and passing · **1** a row failed · **2** COULD-NOT-RUN — a row has no
 witness, produced no verdict, or carries a witness for a command the Verify row no
@@ -898,3 +906,21 @@ pull request, and on push to `main` regenerates and commits `STATUS.md`
 self-triggering loop). Adopters wiring this into their own repo should copy
 the workflow and adjust the `docs/streams/**` path filters if their stream
 docs live elsewhere.
+
+### CI rate-limit recovery
+
+In GitHub Actions (`GITHUB_ACTIONS=true`), statusgen's read-only REST client
+and the four PR corroboration CLI reads retry a rate-limited read once with the
+same credential. REST waits require `Retry-After` or an exhausted
+`X-RateLimit-Remaining` with a valid reset. CLI reads preserve the provider's
+error and, only for a rate-limit error, consult `/rate_limit` for the relevant
+REST or GraphQL reset. Ordinary permission/authentication errors never retry.
+
+HTTP and CLI reads share a 65-minute wait budget for the whole process: one
+hourly quota window plus a small reset margin. A repeated denial, missing or
+unusable reset, cancellation or exhausted wait budget still fails closed.
+Outside GitHub Actions these reads keep their immediate failure behavior. No
+stored-login fallback, additional token, permission, stale response cache or
+clean result is introduced. CLI diagnostics redact explicit credential values.
+This recovery does not reduce the request count of full-history reconciliation;
+its cadence and query cost remain separate operational concerns.

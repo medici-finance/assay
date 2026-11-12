@@ -59,6 +59,12 @@ func TestHelperProcess(t *testing.T) {
 		fmt.Fprintln(os.Stderr, "fatal: a branch named 'wd/thing' already exists")
 		fmt.Fprintln(os.Stderr, "hint: use a different --branch")
 		os.Exit(5)
+	case "git-progress-then-fatal":
+		// git's own failure shape: progress lines on stderr ahead of the diagnosis (#6115).
+		fmt.Fprintln(os.Stderr, "Preparing worktree (checking out 'fixture/attach')")
+		fmt.Fprintln(os.Stderr, "fatal: '/x/wt' is a missing but locked worktree;")
+		fmt.Fprintln(os.Stderr, "use 'add -f -f' to override, or 'unlock' and 'prune' or 'remove' to clear")
+		os.Exit(128)
 	case "leak-token":
 		// A child that prints a credential on stderr and carries one in its own argv-ish
 		// output. Everything a trace shows about this child must come out redacted.
@@ -305,14 +311,17 @@ var awsKeyIDFixture = "AK" + "IAIOSFODNN7EXAMPLE"
 // place a credential has actually been observed to travel through a diagnostic.
 func TestScrubRedactsEveryTransportShape(t *testing.T) {
 	secret := "ghp_" + strings.Repeat("B", 36)
+	urlPw := "s3cr3t" + "value" // concatenated: no URL-userinfo password sits in the source
 	cases := []struct {
 		name, in, mustNotContain, mustContain string
 	}{
 		{"github token", "remote said: " + secret + " rejected", secret, "rejected"},
 		{"url userinfo", "https://x-access-token:" + secret + "@github.com/o/r.git",
 			secret, "x-access-token"},
-		{"generic url userinfo", "https://oauth2:s3cr3tvalue@gitlab.com/o/r.git",
-			"s3cr3tvalue", "oauth2"},
+		{"generic url userinfo", "https://oauth2:" + urlPw + "@gitlab.com/o/r.git",
+			urlPw, "oauth2"},
+		{"empty-user url userinfo", "redis://:" + urlPw + "@cache.example.com:6379",
+			urlPw, "@cache.example.com"},
 		{"authorization header", "Authorization: Bearer abcdefghijklmnop", "abcdefghijklmnop", "Authorization"},
 		{"env assignment", "GH_TOKEN=abcdefghijklmnop", "abcdefghijklmnop", "GH_TOKEN="},
 		{"env assignment lowercase name", "gitlab_pat=abcdefghijklmnop", "abcdefghijklmnop", "gitlab_pat="},
@@ -406,5 +415,35 @@ func TestRefusedWithCauseStaysARefusal(t *testing.T) {
 	// rendering — no new shape is invented here.
 	if !strings.HasPrefix(err.Error(), "refused: the branch is held") {
 		t.Errorf("the caller's message was rewritten: %q", err.Error())
+	}
+}
+
+// regression: #6115
+func TestToolRunGitSaidKeepsFatal(t *testing.T) {
+	ResetTrace()
+	for _, name := range []string{"git", "/usr/bin/git", `C:\Program Files\Git\cmd\git.exe`} {
+		h := helperProcess(t, "git-progress-then-fatal")
+		helperBin, helperArgs := h.Name, h.Args
+		h.Name = name
+		h.Args = []string{"worktree", "add", "/x/wt", "fixture/attach"}
+		h.Start = func(string, ...string) *exec.Cmd { return exec.Command(helperBin, helperArgs...) }
+		r := Run(h)
+		if !r.Failed() {
+			t.Fatalf("%s: helper was supposed to exit non-zero; got %+v", name, r)
+		}
+		err := r.Fail(ExitUnverifiable, "git %s", strings.Join(h.Args, " "))
+		msg := err.Error()
+		if !strings.Contains(msg, "Preparing worktree") {
+			t.Fatalf("%s: fixture drift: progress line missing: %q", name, msg)
+		}
+		if !strings.Contains(msg, "fatal: '/x/wt' is a missing but locked worktree;") {
+			t.Errorf("%s: the message drops git's fatal line: %q", name, msg)
+		}
+		if !strings.Contains(msg, "'unlock' and 'prune'") {
+			t.Errorf("%s: the message drops git's remedy line: %q", name, msg)
+		}
+		if strings.Contains(msg, "\n") {
+			t.Errorf("%s: the message is not one line: %q", name, msg)
+		}
 	}
 }

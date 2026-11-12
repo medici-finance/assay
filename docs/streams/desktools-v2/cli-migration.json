@@ -93,6 +93,21 @@
     },
     {
       "class": "test",
+      "pattern": "images/verify-runner/source_proof.py",
+      "reason": "fixed-path image verification instrument called by witness.sh to prove local Git source before executing Verify rows; also imported as a shared library; no independent operator CLI or acceptance authority (#5338)"
+    },
+    {
+      "class": "test",
+      "pattern": "images/verify-runner/source_proof_check.py",
+      "reason": "release-owned joined source and witness capability probe invoked by check.py; uses local synthetic Git trees and process seams, never exposed as an operator CLI (#5338)"
+    },
+    {
+      "class": "test",
+      "pattern": "images/verify-runner/source_proof_test.py",
+      "reason": "offline joined source proof and mutation-oracle regression suite run by release-producer CI tests; never installed as an operator CLI (#5338)"
+    },
+    {
+      "class": "test",
       "pattern": "images/verify-runner/stage-source.sh",
       "reason": "verification-harness step baked into the verify-runner image: the container runtime execs it as a cluster stage Job's init container with the argument list the admission policy fixes, to stage the source a verify witness runs Verify rows against; never installed on an operator host or exposed as an operator CLI (#4264)"
     },
@@ -235,6 +250,11 @@
       "class": "test",
       "pattern": "tools/desk/scripts/forge-ban-probe.sh",
       "reason": "positive control for forge-ban.sh; plants a probe file and asserts the counter moves"
+    },
+    {
+      "class": "test",
+      "pattern": "forgeread/mirror/mutate.py",
+      "reason": "source-only offline mutation runner owned by forge-neutral/46; copies the module into disposable directories and requires bounded named Go tests to fail on planted production-source defects; never installed, packaged or released as an operator CLI"
     },
     {
       "class": "test",
@@ -410,6 +430,26 @@
       "pattern": "deskd/internal/humanid/mutate-policy.py",
       "class": "test",
       "reason": "offline mutation qualification of startup identity invariants with automatic source restoration; never an operator CLI"
+    },
+    {
+      "pattern": "tools/desk/internal/kubecompat/preparation/core.py",
+      "reason": "desk-containers/31 embedded preparation domain loaded by the Go preparation.Run bridge; JSON data only, no argv parser, shebang or standalone main guard; never installed separately",
+      "class": "library"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/release/qualification.py",
+      "reason": "fixture-only transport functions imported by fixed protected workflow calls; no shebang, main guard, argument parser or implicit execution (#5707)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/qualification_test.py",
+      "reason": "offline qualification refusal and workflow fixtures run by the existing release regression reader; never an operator CLI (#5707)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/transport_test.py",
+      "reason": "retained offline bundle, credential and extraction controls run by the existing release regression reader; never an operator CLI (#5707)"
     }
   ],
   "entrypoints": [
@@ -1094,8 +1134,6 @@
         "docs/adopting-assay.md",
         "plugins/assay/skills/install/SKILL.md",
         "scripts/bootstrap-windows.ps1",
-        ".github/workflows/windows-ci-leg.yml",
-        "ci/staged-workflows/windows-ci-leg.yml",
         "docs/cellctl-cadence.md"
       ],
       "parser": "manual os.Args parsing",
@@ -1259,8 +1297,7 @@
         "tools/desk/README.md",
         "docs/contracts.md",
         "plugins/assay/skills/pr-review-desk/SKILL.md",
-        "plugins/assay/skills/pr-review-desk/references/verdict-format.md",
-        ".github/workflows/windows-ci-leg.yml"
+        "plugins/assay/skills/pr-review-desk/references/verdict-format.md"
       ],
       "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
       "complexity": "complex",
@@ -2263,6 +2300,42 @@
       "state": "pending"
     },
     {
+      "executable": "postgres-verify.sh",
+      "path": "tools/cellctl/tests/postgres-verify.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "source-only Verify runner; never installed, released or built by a workflow",
+      "consumers": [
+        "docs/streams/desk-containers/brief-26-local-docker-postgres.md",
+        "tools/cellctl/tests/postgres-verify.test.sh"
+      ],
+      "parser": "bash single positional Verify row number (3, 5, 9, 10 or 12)",
+      "complexity": "simple",
+      "basis": "61 lines at the issue #5823 change; dispatches one desk-containers/26 Verify row",
+      "owner": "",
+      "state": "excluded",
+      "class": "test",
+      "reason": "offline acceptance runner for desk-containers/26 Verify rows 3, 5, 9, 10 and 12, run from the repository root by a verifier; supplies no approval and writes no Evidence; never an operator entrypoint (#5823)"
+    },
+    {
+      "executable": "postgres-scratch.sh",
+      "path": "tools/cellctl/tests/postgres-scratch.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "source-only Verify runner; never installed, released or built by a workflow",
+      "consumers": [
+        "tools/cellctl/tests/postgres-verify.sh",
+        "tools/cellctl/tests/postgres-verify.test.sh"
+      ],
+      "parser": "no arguments",
+      "complexity": "simple",
+      "basis": "91 lines at the issue #5823 change; one disposable local compose project per run",
+      "owner": "",
+      "state": "excluded",
+      "class": "test",
+      "reason": "throwaway-server flow for desk-containers/26 Verify row 12, called only by postgres-verify.sh: starts its own disposable compose project from a cached image, provisions a synthetic cell and tears everything down; a test instrument, never the operator's provisioning path (#5823)"
+    },
+    {
       "executable": "inject-board-state.sh",
       "path": "plugins/assay/hooks/inject-board-state.sh",
       "kind": "script",
@@ -2442,11 +2515,9 @@
       "path": "scripts/bootstrap-windows.ps1",
       "kind": "script",
       "module": "pwsh",
-      "release": "repo tooling; run by windows-ci-leg.yml",
+      "release": "repo tooling; run by adopters on Windows (no CI caller)",
       "consumers": [
         "docs/adopting-assay.md",
-        ".github/workflows/windows-ci-leg.yml",
-        "ci/staged-workflows/windows-ci-leg.yml",
         "ci/staged-workflows/README.md",
         "plugins/assay/skills/install/SKILL.md"
       ],
@@ -2473,24 +2544,6 @@
       "parser": "PowerShell param block",
       "complexity": "simple",
       "basis": "485 lines at 3ad1ad83c871",
-      "owner": "desktools-v2/35",
-      "state": "pending"
-    },
-    {
-      "executable": "windows-bootstrap-hashcheck-smoke.ps1",
-      "path": "scripts/windows-bootstrap-hashcheck-smoke.ps1",
-      "kind": "script",
-      "module": "pwsh",
-      "release": "repo tooling; run by windows-ci-leg.yml",
-      "consumers": [
-        "ci/staged-workflows/README.md",
-        ".github/workflows/windows-ci-leg.yml",
-        "ci/staged-workflows/windows-ci-leg.yml",
-        "docs/adopting-assay.md"
-      ],
-      "parser": "PowerShell param block",
-      "complexity": "simple",
-      "basis": "177 lines at 3ad1ad83c871",
       "owner": "desktools-v2/35",
       "state": "pending"
     },
@@ -2858,6 +2911,23 @@
       "state": "pending"
     },
     {
+      "executable": "deskdecision",
+      "path": "tools/desk/cmd/deskdecision",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        "tools/desk/cmd/deskdispatch/dispatch.go",
+        "docs/adopting-assay.md"
+      ],
+      "parser": "Cobra through tools/desk/internal/cli; generic owner fixture qualification pending",
+      "complexity": "simple",
+      "basis": "1 verb (ensure), 5 command flags; the decision-gate protocol belongs to the PATH port's own tests (deskkit decisionensure), shared CLI qualification to this owner",
+      "owner": "desktools-v2/56",
+      "state": "pending"
+    },
+    {
       "executable": "desk-session.sh",
       "path": "containers/k8s/compatibility/desk-session.sh",
       "kind": "script",
@@ -2902,18 +2972,69 @@
       "path": "containers/k8s/compatibility/prepare.py",
       "kind": "script",
       "module": "python3",
-      "release": "source-mounted operator preparation adapter; not included in the published role images",
+      "release": "source-mounted delegate plus reviewed Linux AMD64 cellctl binary; neither is included in the v1.0.65 role images",
       "consumers": [
         "docs/kubernetes-compatibility-preparation.md",
         "containers/k8s/components/compatibility-cellctl/README.md",
         "containers/k8s/compatibility/prepare.test.py",
         "tools/desk/internal/kubecompat/profile_contract_test.go",
-        "docs/streams/desk-containers/brief-31-operate-trusted-compatibility-kubernetes-desks-through-cellctl.md"
+        "docs/streams/desk-containers/brief-31-operate-trusted-compatibility-kubernetes-desks-through-cellctl.md",
+        "tools/desk/cmd/cellctl/kube_compat_preparation_test.go"
       ],
-      "parser": "Python argparse; 11 options including mutually exclusive prepare/readback modes",
+      "parser": "Transparent exec delegate; cellctl compat-prepare owns Cobra/Viper parsing of the 11 options",
       "complexity": "simple",
-      "basis": "169 lines at a504b956; bounded cold-volume preparation; no runtime or work authority",
+      "basis": "8-line delegate; bounded cold-volume preparation domain embedded in cellctl; image launcher owns history and identity",
       "owner": "desk-containers/31",
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/cellctl"
+    },
+    {
+      "executable": "perfdata",
+      "path": "perfdata/cmd/perfdata",
+      "kind": "go",
+      "module": "perfdata",
+      "release": "module-local operator command built from source; not in the release.yml cmd/* loop or the Makefile DESK_CMDS",
+      "consumers": [
+        "docs/performance-collection.md",
+        "perfdata/cmd/perfdata/main_test.go",
+        "docs/streams/performance-collection/brief-01-local-performance-event-contract-spool-and-offline-report.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "226 LOC, 2 verbs, 10 flags at 765668a4b0d1; local record/report only, no network or work authority",
+      "owner": "performance-collection/01",
+      "state": "pending"
+    },
+    {
+      "executable": "transport.py",
+      "path": "tools/release/transport.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "internal fixture workflow adapter; not host installed",
+      "consumers": [
+        ".github/workflows/release-object-qualification.yml",
+        "tools/release/README.md"
+      ],
+      "parser": "Python argparse",
+      "complexity": "complex",
+      "basis": "retained two verbs and twelve coordinate/path/proof flags; parser migration remains pending",
+      "owner": "desktools-v2/78",
+      "state": "pending"
+    },
+    {
+      "executable": "install-object-client.sh",
+      "path": "tools/release/install-object-client.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "internal fixture workflow adapter; not host installed",
+      "consumers": [
+        ".github/workflows/release-object-qualification.yml",
+        "tools/release/README.md"
+      ],
+      "parser": "bash positional argument",
+      "complexity": "simple",
+      "basis": "retained one required job-local destination; checksum-pinned client bootstrap",
+      "owner": "desktools-v2/79",
       "state": "pending"
     }
   ]

@@ -26,6 +26,11 @@ import (
 // 60s) failed a passing suite under load. A real hang still fails, at this deadline.
 // The runners above it (check-floor.sh, the brief's Verify rows) bound each go test
 // run longer than this, so the budget's own failure is the one a hang reports.
+// The tools/release suite (TestReleaseGoCache) was the second instance (#5125): about
+// 33s on CI, 53.5s to 73.0s on a shared host at load average 15 to 21, and over 60s on
+// a loaded CI runner, where its own fixed 60s killed a passing run. 4m is 3.3x its
+// slowest run (240/73) and 7.3x its CI time (240/33). TestSuiteDeadlineFloor holds
+// every context.WithTimeout in this package to at least this budget.
 const shellBudget = 4 * time.Minute
 
 // maxShellBudget caps shellBudget well inside go test's default 10m binary timeout,
@@ -117,6 +122,10 @@ func runShellFixtureWithBash(t testing.TB, bash, path, tmp string, budget time.D
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bash, path)
+	// The fixture's own scratch directory is its working directory, never this package's: a
+	// suite whose EXIT trap removes a scratch path that resolved to its cwd must cost nothing.
+	// Callers pass the suite by absolute path. regression: #6161
+	cmd.Dir = tmp
 	cmd.Env = FixtureEnv("KUBECONFIG=/dev/null", "TMPDIR="+tmp,
 		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull,
 		"GIT_TEMPLATE_DIR="+gitquiet.TemplateDir(t))
@@ -228,6 +237,86 @@ func shellBudgetFaults(name string, src []byte) (int, []string) {
 	return sites, faults
 }
 
+// deadlineFaults returns every context.WithTimeout call in src whose deadline may
+// be tighter than shellBudget: a constant below it, or a value read as none of
+// shellBudget, a constant, or the enclosing function's own parameter (a wrapper
+// forwarding its caller's budget, which shellBudgetFaults checks at each caller).
+// It reads the sites runShellFixture does not own: a suite run by a direct
+// exec.CommandContext, as TestReleaseGoCache was when a fixed 60s killed it (#5125).
+func deadlineFaults(name string, src []byte) (int, []string) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, name, src, 0)
+	if err != nil {
+		return 0, []string{fmt.Sprintf("%s: %v", name, err)}
+	}
+	sites, faults := 0, []string(nil)
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		params := map[string]bool{}
+		for _, field := range fn.Type.Params.List {
+			for _, id := range field.Names {
+				params[id.Name] = true
+			}
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "WithTimeout" {
+				return true
+			}
+			if pkg, ok := sel.X.(*ast.Ident); !ok || pkg.Name != "context" {
+				return true
+			}
+			sites++
+			at := fset.Position(call.Pos())
+			if len(call.Args) != 2 {
+				faults = append(faults, fmt.Sprintf("%s: context.WithTimeout with %d arguments", at, len(call.Args)))
+				return true
+			}
+			if id, ok := call.Args[1].(*ast.Ident); ok && (id.Name == "shellBudget" || params[id.Name]) {
+				return true
+			}
+			d, ok := constDuration(call.Args[1])
+			if !ok {
+				faults = append(faults, fmt.Sprintf("%s: deadline is not shellBudget, a parameter or a constant", at))
+			} else if d < shellBudget {
+				faults = append(faults, fmt.Sprintf("%s: deadline %s is below shellBudget (%s)", at, d, shellBudget))
+			}
+			return true
+		})
+	}
+	return sites, faults
+}
+
+// constDuration evaluates a constant duration written as integers and time units
+// joined by *, such as 5*time.Minute. ok is false for any other expression.
+func constDuration(e ast.Expr) (d time.Duration, ok bool) {
+	switch e := e.(type) {
+	case *ast.ParenExpr:
+		return constDuration(e.X)
+	case *ast.BasicLit:
+		n, err := strconv.ParseInt(e.Value, 0, 64)
+		return time.Duration(n), e.Kind == token.INT && err == nil
+	case *ast.SelectorExpr:
+		units := map[string]time.Duration{"Nanosecond": time.Nanosecond, "Microsecond": time.Microsecond,
+			"Millisecond": time.Millisecond, "Second": time.Second, "Minute": time.Minute, "Hour": time.Hour}
+		pkg, isIdent := e.X.(*ast.Ident)
+		d, ok = units[e.Sel.Name]
+		return d, ok && isIdent && pkg.Name == "time"
+	case *ast.BinaryExpr:
+		x, okX := constDuration(e.X)
+		y, okY := constDuration(e.Y)
+		return x * y, e.Op == token.MUL && okX && okY
+	}
+	return 0, false
+}
+
 // TestShellBudgetNamed is the class guard for regression-shell-idle-deadline: a shell
 // fixture run under a literal deadline sized to idle speed instead of the one named,
 // load-tolerant shellBudget. A planted control keeps the matcher honest.
@@ -261,6 +350,45 @@ func TestShellDeadline() { _, _ = runShellFixture(t, p, d, time.Millisecond) }
 	got := strings.Join(faults, "\n")
 	if n != 3 || len(faults) != 2 || !strings.Contains(got, "plant.go:2:") || !strings.Contains(got, "plant.go:3:") {
 		t.Errorf("planted controls: sites=%d faults=%d, want 3 and 2 (lines 2 and 3):\n%s", n, len(faults), got)
+	}
+}
+
+// TestSuiteDeadlineFloor widens the regression-shell-idle-deadline guard to every
+// context.WithTimeout in this package: no child run gets a deadline tighter than
+// shellBudget. A planted control keeps the matcher honest.
+//
+// regression: #5125
+func TestSuiteDeadlineFloor(t *testing.T) {
+	files, err := filepath.Glob("*_test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sites := 0
+	for _, file := range files {
+		src, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, faults := deadlineFaults(file, src)
+		sites += n
+		if len(faults) > 0 {
+			t.Errorf("%s", strings.Join(faults, "\n"))
+		}
+	}
+	if sites < 4 {
+		t.Errorf("examined %d context.WithTimeout sites, want at least 4 (the shell wrapper, the evidence-automerge suites and the release suite)", sites)
+	}
+	planted := `package p
+func literal() { context.WithTimeout(ctx, 60*time.Second) }
+func local() { b := time.Hour; context.WithTimeout(ctx, b) }
+func healthy() { context.WithTimeout(ctx, shellBudget) }
+func long() { context.WithTimeout(ctx, (5 * time.Minute)) }
+func forward(budget time.Duration) { context.WithTimeout(ctx, budget) }
+`
+	n, faults := deadlineFaults("plant.go", []byte(planted))
+	got := strings.Join(faults, "\n")
+	if n != 5 || len(faults) != 2 || !strings.Contains(got, "plant.go:2:") || !strings.Contains(got, "plant.go:3:") {
+		t.Errorf("planted controls: sites=%d faults=%d, want 5 and 2 (lines 2 and 3):\n%s", n, len(faults), got)
 	}
 }
 

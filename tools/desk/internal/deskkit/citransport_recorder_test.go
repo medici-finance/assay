@@ -6,7 +6,9 @@ package deskkit
 // until the method is written out here too.
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/medici-finance/assay/forgeread/adapters"
 	"sync"
 )
 
@@ -127,6 +129,11 @@ func (f *ciRecordingForge) ListChangedFiles(repo ForgeRepo, number int) ([]Chang
 
 func (f *ciRecordingForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, error) {
 	f.rec("ChecksAtHead")
+	return nil, nil
+}
+
+func (f *ciRecordingForge) CheckSuitesAtHead(repo ForgeRepo, sha string) (*CheckSuitesAtHead, error) {
+	f.rec("CheckSuitesAtHead")
 	return nil, nil
 }
 
@@ -275,6 +282,11 @@ func (f *ciRecordingForge) MarkReadyForReview(nodeID string) error {
 	return nil
 }
 
+func (f *ciRecordingForge) ConvertToDraft(nodeID string) error {
+	f.rec("ConvertToDraft")
+	return nil
+}
+
 func (f *ciRecordingForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error) {
 	f.rec("ApplyLabels")
 	return nil, nil
@@ -343,4 +355,14 @@ func (f *ciRecordingForge) RetryRun(repo ForgeRepo, run RunRef) error {
 func (f *ciRecordingForge) PushTransportHint(repo ForgeRepo) PushTransport {
 	f.rec("PushTransportHint")
 	return PushTransport{}
+}
+
+func (f *ciRecordingForge) ChangesUpdatedSince(ctx context.Context, repo ForgeRepo, q adapters.UpdateQuery) (adapters.ChangeUpdates, error) {
+	f.rec("ChangesUpdatedSince")
+	return adapters.ChangeUpdates{}, nil
+}
+
+func (f *ciRecordingForge) IssuesUpdatedSince(ctx context.Context, repo ForgeRepo, q adapters.UpdateQuery) (adapters.IssueUpdates, error) {
+	f.rec("IssuesUpdatedSince")
+	return adapters.IssueUpdates{}, nil
 }

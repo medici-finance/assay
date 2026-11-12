@@ -104,12 +104,16 @@ type Witness struct {
 	Tree    string // the tree token after the Runner cell's `@`, "" when absent
 	// Runner, Result, Output and Date are the row's Runner, Result, output-digest
 	// and Date cells as written (trimmed). A v2 cell (`[w2]`) is judged from
-	// them (witness.go); a v1 cell never reads them. An empty Runner is read
-	// from Tree alone.
+	// them (witness.go); a v1 cell reads only Runner's read-set token
+	// (readset.go). An empty Runner is read from Tree alone.
 	Runner string
 	Result string
 	Output string
 	Date   string
+	// ReadSet is the caller's observation of the read-set file the Runner
+	// cell's `(reads sha256:…)` token names, and of the commit that
+	// introduced this row (readset.go); nil when none was observed.
+	ReadSet *ReadSetObservation
 }
 
 // BriefObservation is everything coverage reads about one brief.
@@ -203,6 +207,26 @@ type CoverageInput struct {
 	// Forge is the optional code-hosting seam a v2 landing check consults; nil
 	// is offline.
 	Forge Forge
+	// GoFloors answers the compile-input floor of a build-family `go-run`
+	// entry of a witness's read set. It is asked only for a read set the
+	// library has admitted (digest, header and introduction binding all
+	// hold), so a read set that is never admitted never reaches the go tool.
+	// A read set with such an entry and no floor here (nil, or an unanswered
+	// entry) is could-not-check, never narrowed.
+	GoFloors GoFloorSource
+	// ReadSetDeadline is the caller's per-evaluation time limit on read-set
+	// work: it returns why the limit has run out, or "" while time is left.
+	// The library asks it before judging each read set, before each changed
+	// path a counted set is compared on and before each attribute read; past
+	// it the claim is could-not-check with that reason. nil is no limit.
+	ReadSetDeadline func() string
+	// ReadSetsRecorded is true only in a build that ships a read-set
+	// recorder (statusgen's readSetRecorderShipped). While it is false no
+	// `(reads sha256:…)` token is judged: the token is could-not-check
+	// (ReasonNoRecorder), the row comes out exactly as the same row with no
+	// token and its reason gains ReadSetNotJudged. A token then never
+	// narrows a witness's scope, whatever file or introduction is observed.
+	ReadSetsRecorded bool
 }
 
 // EvaluateCoverage computes the coverage verdict of every observed brief,
@@ -214,6 +238,9 @@ type CoverageInput struct {
 func EvaluateCoverage(in CoverageInput, repo Repo) map[string]Coverage {
 	x := newEvalCtx(repo, in.MaxLandingCandidates)
 	x.policy, x.forge = in.WitnessPolicy, in.Forge
+	x.goFloors = in.GoFloors
+	x.readSetDeadline = in.ReadSetDeadline
+	x.readSetsRecorded = in.ReadSetsRecorded
 	x.prefetchV2Records(in)
 	out := map[string]Coverage{}
 	for _, b := range in.Briefs {
@@ -249,6 +276,9 @@ func evaluateOneCoverage(x *evalCtx, b BriefObservation, in CoverageInput) Cover
 			definition = amended
 		}
 		result, reason, claimRev := resolveVerifyClaim(x, scope.forVerifyRow(r), r, b.Witnesses[r.ID], revision, definition)
+		if note := x.tokenNotJudged(b.Witnesses[r.ID]); note != "" {
+			reason += "; " + note
+		}
 		claims = append(claims, Claim{
 			Claim:    fmt.Sprintf("Verify row #%s: %s", r.ID, r.Command),
 			Kind:     "command",

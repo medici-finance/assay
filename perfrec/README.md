@@ -29,10 +29,17 @@ the install id each exist once.
   not the order the run entered them, and cover only the time a phase was
   open: time before the first phase and after the last is inside `wallMs` but
   in no phase, so the phase `ms` never sum to it.
+- `perf-v5` (`SchemaV5`, made by `WithRelease`) is a `perf-v2` record from a
+  release build: the `perf-v2` field set unchanged plus one required
+  `releaseTag`, the binary's own stamp, kept only when it matches
+  `ReleasePattern`. `WithRelease` returns any other record, or any other stamp
+  (`dev`, empty, a sha, free text), unchanged, so no tag is ever guessed.
+  Readers pool it with `perf-v2`.
 
 `Record` marshals and unmarshals strictly per the schema its `schema` field
 names: a perf-v1 record carrying a perf-v2 field (or the reverse) is refused,
-and an invalid perf-v2 line does not decode. The field tables, the boundary and
+`releaseTag` on any schema but perf-v5 is refused, and an invalid perf-v2 or
+perf-v5 line does not decode. The field tables, the boundary and
 exclusion statements and the reader rules live in `docs/telemetry.md`.
 
 ## Extensible reader (perf-v4)

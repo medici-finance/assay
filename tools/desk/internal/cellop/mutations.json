@@ -1,5 +1,5 @@
 {
-  "test": "go test -tags cellopfixture ./internal/cellop ./cmd/cellctl -count=1 -timeout=300s -run '^(TestOutcomeExitCodes|TestPlanDigestIsJCS|TestStoreModesAndStrictDecode|TestApplyRefusesOffTTYAndDeskSession|TestConcurrentApplyRunsOnce|TestApplyReverifies|TestPlanExpiryAndForeignCell|TestMarkerResetBound|TestBatchConsumedFirstAndStops|TestFailureAfterConsume|TestReadConfirm|TestEveryStateChangingInvocationRequiresTTY|TestApplyRefusesDeskSession|TestNoApprovalSurface|TestOneApplyPath|TestConsentTreeChecks|TestPlanApplyRoundTrip)$'",
+  "test": "go test -tags cellopfixture ./internal/cellop ./cmd/cellctl -count=1 -timeout=300s -run '^(TestOutcomeExitCodes|TestPlanDigestIsJCS|TestStoreModesAndStrictDecode|TestApplyRefusesOffTTYAndDeskSession|TestConcurrentApplyRunsOnce|TestApplyReverifies|TestPlanExpiryAndForeignCell|TestMarkerResetBound|TestBatchConsumedFirstAndStops|TestFailureAfterConsume|TestReadConfirm|TestEveryStateChangingInvocationRequiresTTY|TestApplyRefusesDeskSession|TestNoApprovalSurface|TestOneApplyPath|TestConsentTreeChecks|TestPlanApplyRoundTrip|TestPlanIDWordLists|TestSaveNewRedrawsTakenIDs|TestSaveNewRaceAndExhaustion|TestApplyByTwoWordID|TestApplyByLegacyHexID|TestPlanIDPatternMatchesSchema)$'",
   "control": {
     "name": "skip the typed confirm",
     "file": "internal/cellop/apply.go",
@@ -84,6 +84,24 @@
       "file": "cmd/cellctl/cobra.go",
       "old": "cellopFixtureCommands(root)",
       "new": "cellopFixtureCommands(root)\n\troot.PersistentFlags().Bool(\"yes\", false, \"skip the confirm\")"
+    },
+    {
+      "name": "reuse a consumed plan's id",
+      "file": "internal/cellop/planid.go",
+      "old": "for _, path := range []string{s.Path(id), s.MarkerPath(id)} {",
+      "new": "for _, path := range []string{s.Path(id)} {"
+    },
+    {
+      "name": "no redraw after a lost save race",
+      "file": "internal/cellop/planid.go",
+      "old": "if _, err := s.Save(p); errors.Is(err, fs.ErrExist) {\n\t\t\tcontinue\n\t\t} else if err != nil {",
+      "new": "if _, err := s.Save(p); err != nil {"
+    },
+    {
+      "name": "legacy hex ids no longer load",
+      "file": "internal/cellop/plan.go",
+      "old": "idRE   = regexp.MustCompile(`^(?:[a-z]{3,8}-[a-z]{3,8}|[0-9a-f]{24})$`)",
+      "new": "idRE   = regexp.MustCompile(`^[a-z]{3,8}-[a-z]{3,8}$`)"
     }
   ]
 }

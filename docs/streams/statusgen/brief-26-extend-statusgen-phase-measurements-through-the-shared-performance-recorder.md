@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
 outcome: none
-version: 3
+version: 4
 delivery:
   - {in: "assay#3759", covers: partial, note: "sub-split (a); snapshot reuse, workloads and Verify 2 remain owed"}
 id: 34374f41-67cd-492a-9bb3-5d3353cf0559
@@ -122,7 +122,7 @@ break planted, not a duplicate checker.
 | 1 | check:ci +flow +mutation +dereference | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedPhaseRecorderFlow$' ./... > "$out" && grep -F -- '--- PASS: TestSharedPhaseRecorderFlow ' "$out")` | exit 0; named PASS; compiled offline lint/regen/gate-scores/next-up and fake deskread retain output/exit, produce correct shared records and deskperf can read them; copied writer fails parity |
 | 2 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestInvocationSnapshotReuseParity$' ./... > "$out" && grep -F -- '--- PASS: TestInvocationSnapshotReuseParity ' "$out")` | exit 0; named PASS; same snapshot shares parsing, while new/deleted/untracked consumers and changed contents match fresh reference results; HEAD-only or prior-readset reuse fails |
 | 3 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerformanceKeepsCredentialBoundary$' ./... > "$out" && grep -F -- '--- PASS: TestPerformanceKeepsCredentialBoundary ' "$out")` | exit 0; named PASS; dependency closure contains no desk/custody/authenticated adapter imports, off creates no files and fake deskread stays the sole online route; planted direct credential getter fails |
-| 4 | check +dereference | `statusgen --root . --consumers --brief statusgen/26` | exit 0; actual implementation diff corroborates declared routing; out-of-scope sufficiency remains review, and no unavailable check is recorded as a pass. |
+| 4 | check +dereference | `(out=$(mktemp) && trap 'rm -f "$out"' 0 && statusgen --root . --consumers --brief statusgen/26 --delivery 5a4a3edda5c801b72e4e40bd17d68bfc6f946550 --base 4264d1027198b8f257a95e1630f07cac358fcd6f > "$out" && grep -F -- 'summary: 12 corroborated, 0 disproved, 3 unchecked,' "$out")` | exit 0; actual implementation diff corroborates declared routing; out-of-scope sufficiency remains review, and no unavailable check is recorded as a pass. |
 
 ## Pre-mortem and detection
 
@@ -228,6 +228,44 @@ RISK-VALUE: NAMED, NOT DERIVED — deskread probe timeout = 15*time.Second @ sta
 Accounting: 4 rows total. 3 passed (rows 1, 2, 3). 0 failed obligations. 1 could-not-check (row 4: exit 2, COULD-NOT-CHECK, check-definition, #4560). No could-not-check result is counted as a pass.
 
 **VERIFY: BLOCKED** — rows 1-3 pass in the admitted container bracket at 2a3b4be18948; row 4 exit 2 is could-not-check (consumers row lacks a --delivery/--base pin on merged main; check-definition, #4560). No acceptance obligation was observed to fail.
+Re-verification of statusgen/26 at merged main 612750a12406f19a96a83e6ea7687d794f772f9f by a non-implementer verifier: runner assay-verifier-app[bot], model claude-opus-5-5, strong tier, admitted by pre-work attestation medici-finance/assay#6042. Installed statusgen v1.0.81 throughout; no locally built binary. Row 4 now carries its pinned --delivery 5a4a3edda5c8 and first-parent --base 4264d1027198 (amended by de939dc59), so the check-definition blocker recorded above no longer applies.
+
+Rows 1-3 (check:ci) ran network-off inside the closed admission bracket: host open-bracket with a fresh module cache, then statusgen verifyrun --sandbox=container-netns in the v1.0.81 verify-runner image (release reference checked against checksums.txt; digest on the Container-Image line; linux/arm64) started with --network none, a read-only root, read-only source and module-cache mounts, GOPROXY=off and no forge credential, then host close-bracket. statusgen verifyrun --bracket-digest on the closed witness reported verdict=match. The closed witness bytes follow unedited.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedPhaseRecorderFlow$' ./... > "$out" && grep -F -- '--- PASS: TestSharedPhaseRecorderFlow ' "$out")` | pass exit=0 sandbox=container-netns | sha256:0cd4eb4d2d19 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestInvocationSnapshotReuseParity$' ./... > "$out" && grep -F -- '--- PASS: TestInvocationSnapshotReuseParity ' "$out")` | pass exit=0 sandbox=container-netns | sha256:790e1c7bc071 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerformanceKeepsCredentialBoundary$' ./... > "$out" && grep -F -- '--- PASS: TestPerformanceKeepsCredentialBoundary ' "$out")` | pass exit=0 sandbox=container-netns | sha256:1e7807540db2 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:bbf58e1999a2879bff899fd22c5d41834fbc884451654c5085000f4eedc075b6
+Container-Image: sha256:03a2949dfe483f2645e14b85369c1923f1fb4710c7e5ea37a9b915d0073dde59
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6042 run=c6ed2e2a7f86a8b730301f65bf34d0347560b9819a48259c21f5660053bdc023 source=612750a12406f19a96a83e6ea7687d794f772f9f brief=docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=c6ed2e2a7f86a8b730301f65bf34d0347560b9819a48259c21f5660053bdc023 source=612750a12406f19a96a83e6ea7687d794f772f9f tree=sha256:bbf58e1999a2879bff899fd22c5d41834fbc884451654c5085000f4eedc075b6 witness=sha256:17f3e25076236f64112bc1fa97f7648b737b7c708c70b0d33ebf7b81b37f9a5d opened=2026-11-10T11:08:48Z closed=2026-11-10T11:11:37Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `(out=$(mktemp) && trap 'rm -f "$out"' 0 && statusgen --root . --consumers --brief statusgen/26 --delivery 5a4a3edda5c801b72e4e40bd17d68bfc6f946550 --base 4264d1027198b8f257a95e1630f07cac358fcd6f > "$out" && grep -F -- 'summary: 12 corroborated, 0 disproved, 3 unchecked,' "$out")` | pass exit=0 | sha256:30d75ac63742 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6042 run=c6ed2e2a7f86a8b730301f65bf34d0347560b9819a48259c21f5660053bdc023 source=612750a12406f19a96a83e6ea7687d794f772f9f brief=docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md model=claude-opus-5-5 tier=strong
+
+
+Row 4 (check) ran on the host through statusgen verifyrun --rows 4 on a clean home at the attested source, after the container bracket closed; the witness above is its own output, copied byte for byte from the tool's append. The selections are disjoint: rows 1-3 in the container bracket, row 4 on the host. Its grep for the exact summary line discriminates: the Evidence-edit false zero recorded above printed 0 corroborated and would not match.
+
+Supplemental host probe. It earns no acceptance credit and discharges no Verify row:
+
+- S1, observed 2026-11-10 by assay-verifier-app[bot] on the host, clean home: the row 4 statusgen command without the grep exited 0 and printed "summary: 12 corroborated, 0 disproved, 3 unchecked, 0 brief(s) claiming nothing". The 3 unchecked entries are the brief's declared out-of-scope claims (tools/desk/cmd/deskread, statusgen/contexthandoff/, qualgen/), left to review as the row's Expect states. 4264d1027198 is the first parent of the delivery merge 5a4a3edda5c8, and the delivery is an ancestor of the verified head.
+
+Negative controls. Read at the verified head, the three named tests exercise the production owners with the stated breaks planted: the copied-writer parity control in TestSharedPhaseRecorderFlow, the head-only (brieffile.go) and prior-readset (readmemo.go) overlay mutants in TestInvocationSnapshotReuseParity, which fail the parent unless each mutant fails, and the planted adapter import plus planted GH_TOKEN getter in TestPerformanceKeepsCredentialBoundary.
+
+Risk-bearing values. Brief risk metadata is present and every field is no; the item is not irreversible. Enumerated over the literals the deliveries introduce in statusgen/perfrecord.go, statusgen/readmemo.go, statusgen/bench/perfworkload.sh and statusgen/testdata/perfworkload/sizes.json. Since the earlier verification, statusgen/perfrecord.go changed only by adding evidenceverdict to the subcommand list (d1c25adcd); the literals below sit at the same lines. readmemo.go adds counters with no literal bound. The highest-ranked is the phase roster, because records written under a wrong roster stay wrong for deskperf readers; it is still reversible by an edit and a release.
+
+RISK-VALUE: DERIVED — perfV3Phases = {"discover","parse","evaluate","render","write","deskread"} @ statusgen/perfrecord.go:257 — covers the brief's Interface contract (discovery/load, parse, evaluation, rendering, and the deskread child), plus the write phase, and matches the phase roster docs/telemetry.md line 345 documents element for element.
+RISK-VALUE: DERIVED — perfToolName = "statusgen" @ statusgen/perfrecord.go:51 — the record's tool field, a constant rather than argv[0], so a renamed or wrapped binary still emits records under the tool name the brief names.
+RISK-VALUE: NAMED, NOT DERIVED — deskread probe timeout = 15*time.Second @ statusgen/perfrecord.go:432, cmd.WaitDelay = time.Second @ statusgen/perfrecord.go:436, bench SAMPLES default 20 @ statusgen/bench/perfworkload.sh:13, go test -timeout=240s @ statusgen/bench/perfworkload.sh:16, workload sizes small 2x4 and large 12x20 @ statusgen/testdata/perfworkload/sizes.json:1 — reversible operational knobs and fixture sizes; ranked last and out of scope for derivation by design.
+
+Accounting: 4 rows total. 4 passed (rows 1, 2, 3 in the container bracket; row 4 on the host). 0 failed obligations. 0 could-not-run.
+
+**VERIFY: PASS** — 4/4 rows pass at 612750a12406: rows 1-3 in the admitted container bracket (verdict=match), row 4 on the host with its pinned delivery range.
 
 ## Review
 

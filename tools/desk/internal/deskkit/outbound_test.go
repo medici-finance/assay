@@ -37,6 +37,8 @@ var (
 	obPhoneIntl     = "+1 415 " + "555 0100"
 	obPhoneAmbig    = "415-555" + "-0100"
 	obRulingClaim   = "I (" + "Alex" + ") have decided to ship it."
+	obUserinfoPw    = "fixture-" + "pw"
+	obUserinfoURL   = "https://fixture-user:" + obUserinfoPw + "@github.com/example-org/project.git"
 )
 
 // obRoster plants the configured roster every row reads: the three listed targets and the
@@ -201,6 +203,11 @@ func obRows() []obRow {
 		{id: "C4", text: "// mirrors the fixture in " + obInternal, target: obPublic, refuse: true, rule: RuleSelfContainPrefix, span: obInternal, surfaces: obAll},
 		{id: "C5", text: "reach " + obEmailOutside + " for access", target: obPrivate, refuse: true, rule: RulePIIEmail, span: obEmailOutside, surfaces: obAll},
 		{id: "C5b", text: "reach " + obEmailReserved + " for access", target: obPrivate, surfaces: obAll},
+		{id: "C5c", text: "https://github.com/example-org/project.git," + obEmailOutside, target: obPrivate, refuse: true, rule: RulePIIEmail, span: obEmailOutside, surfaces: obAll},
+		{id: "C5d", text: "https://github.com/example-org/project.git?contact=" + obEmailOutside, target: obPrivate, refuse: true, rule: RulePIIEmail, span: obEmailOutside, surfaces: obAll},
+		{id: "C5e", text: "ssh://git@github.com/example-org/project.git", target: obPrivate, surfaces: obAll},
+		// A password in URL userinfo is a credential (secret.url-userinfo), on any target.
+		{id: "C5f", text: "clone " + obUserinfoURL, target: obPrivate, refuse: true, rule: RuleSecretPrefix + "url-userinfo", span: obUserinfoPw, surfaces: obAll},
 		{id: "C6", text: "co-authored by " + obEmailNoReply, target: obPublic, surfaces: obAll},
 		{id: "C7", text: "call " + obPhoneIntl + " after hours", target: obPrivate, refuse: true, rule: RulePIIPhone, span: obPhoneIntl, surfaces: obAll},
 		{id: "C8", text: "ticket " + obPhoneAmbig + " is closed", target: obPublic, notice: RulePIIPhoneAmbiguous, surfaces: obAll},
@@ -564,12 +571,13 @@ func TestOverrideAuditRowHoldsDigestNotText(t *testing.T) {
 // none (or only backend-composed fixed strings) and pass straight through; "read" methods
 // write nothing. A method added to the interface without a row here fails the test.
 var obClass = map[string]string{
+	"ChangesUpdatedSince": "read", "IssuesUpdatedSince": "read",
 	"FileIssue": "text", "PostComment": "text", "PostCommentTyped": "text", "EditComment": "text",
 	"CreateDraftChange": "text", "EditChange": "text", "PostReview": "text", "ApplyLabels": "text",
 	"WriteFile": "text",
 
 	"CloseIssue": "notext", "CloseIssueTyped": "notext", "ReopenIssue": "notext",
-	"MarkReadyForReview": "notext", "SetMergeHold": "notext", "DeleteRef": "notext",
+	"MarkReadyForReview": "notext", "ConvertToDraft": "notext", "SetMergeHold": "notext", "DeleteRef": "notext",
 	"OpenMergeHold": "notext", "RunWorkflow": "notext", "ApproveGate": "notext",
 	"RetryRun": "notext",
 
@@ -578,7 +586,7 @@ var obClass = map[string]string{
 	"ListOpenChanges": "read", "ListChanges": "read", "ListOpenIssues": "read",
 	"PRTrustEvents": "read", "IssueTrustEvents": "read", "IssueContentEvents": "read",
 	"ReviewsAtHead": "read", "ReviewQueueSnapshot": "read", "ListChangedFiles": "read",
-	"ChecksAtHead": "read", "RequiredStatusChecks": "read", "IssueReactions": "read",
+	"ChecksAtHead": "read", "CheckSuitesAtHead": "read", "RequiredStatusChecks": "read", "IssueReactions": "read",
 	"ListIssueLabelEvents": "read", "ListLabelEvents": "read", "ListComments": "read", "ListCommentsTyped": "read",
 	"RepoVisibility": "read", "ReadFile": "read", "ListRecentCommits": "read",
 	"GetCommit": "read", "ListFileCommits": "read", "ListCommitChanges": "read",

@@ -243,7 +243,12 @@ func guardRelay(identity, call string) bool {
 		"worktree.go::gitOut":       {`runCmd(dir, "git", args...)`},
 		"dispatch.go::stepClaim":    {`runCmdEnv(o.root, auth.env, script, append(args, auth.args...)...)`, `runCmdEnv(o.root, auth.env, script, append([]string{"show", claimKey, "--repo", repo}, auth.args...)...)`},
 		"dispatch.go::releaseClaim": {`runCmdEnv(o.root, auth.env, script, append([]string{"release", claimKey, "--repo", repo}, auth.args...)...)`},
-		"dispatch.go::stepDecision": {`runCmdEnv(o.root, auth.scriptEnv, script, "ensure", briefArg(o), "--repo", repo, "--at", "start")`},
+		// #6131: the second literal is the decision helper's PATH port, deskdecision, by bare
+		// name, with the script's argv plus --as the dispatching role. It is handed NO credential
+		// (nil env inherits): it resolves that role's own custody through the deskkit forge
+		// resolver, so the same role files the gate as with the script.
+		"dispatch.go::stepDecision": {`runCmdEnv(o.root, auth.scriptEnv, script, "ensure", briefArg(o), "--repo", repo, "--at", "start")`,
+			`runCmdEnv(o.root, nil, goDecisionBinary, "ensure", briefArg(o), "--repo", repo, "--at", "start", "--as", role)`},
 		// #2079: the recorded-ruling check is a forge READ (statusgen's ruling-link resolver) under
 		// the same handed-over credential the decision script receives; it writes nothing.
 		"recordedruling.go::checkRecordedRuling":                     {`runCmdEnv(r.repoRoot, env, bin, "--root", r.repoRoot, "--corroborate", "--ruling-record", r.record, "--ruling-brief", r.brief)`},

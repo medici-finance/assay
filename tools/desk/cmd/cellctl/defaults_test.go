@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // The machine-wide defaults file (defaults.go). Every test here builds its own cells root under
@@ -238,7 +240,7 @@ func TestCellDefaultsRefusesPerCellKeys(t *testing.T) {
 	named := []string{
 		// One cell's identity, scope or bound resource.
 		"CELL", "CELL_KIND", "CELL_REPO", "CELL_REPO_SLUG", "CELL_ROOTS", "ROLES",
-		"CELLS_CONFIG", "CELL_COMMS_CONFIG",
+		"CELLS_CONFIG", "CELL_COMMS_CONFIG", "CELL_LABELS_TOKEN_FILE",
 		"DESKD", "DESKD_ADDR", "DESKD_INDEX", "TMUX_SESSION", "CELL_GO_CACHE_ROOT",
 		"CELL_CONTAINER_CONFIG", "CELL_CONTAINER_LAUNCHER", "CELL_KUBERNETES_CONFIG",
 		"CELL_DB_DSN", "CELL_DB_PASSFILE",
@@ -440,6 +442,41 @@ func TestCellDefaultsSetWritesOnlyCellEnv(t *testing.T) {
 	// And the cell now loads with its own override in force.
 	if c := loadCell("demo"); c.Harness != "claude" || c.Env.Source("CELL_HARNESS") != layerCellEnv || c.Env.Source("CELL_GO_CACHE") != layerDefaults {
 		t.Errorf("after set: harness=%q from %s, CELL_GO_CACHE from %s", c.Harness, c.Env.Source("CELL_HARNESS"), c.Env.Source("CELL_GO_CACHE"))
+	}
+}
+
+// regression: #6217
+func TestRunTreeClearsMaintCommand(t *testing.T) {
+	root := defaultsRoot(t)
+	envfile := writeCell(t, root, "demo", demoCell)
+	captureStdout(t, func() { inproc("ls") })
+	if maintenanceCommand != "" {
+		t.Fatalf("maintenanceCommand = %q after a finished run, want it cleared", maintenanceCommand)
+	}
+	// A direct load after a run takes no admission lock, so the cell dir stays as written.
+	loadCell("demo")
+	t.Cleanup(releaseMaintenanceAdmissions)
+	for _, n := range mustReadDir(t, filepath.Dir(envfile)) {
+		if n != "cell.env" {
+			t.Errorf("loadCell left %s in the cell dir", n)
+		}
+	}
+}
+
+// regression: #6217
+func TestRunTreeWithClearsMaintVerb(t *testing.T) {
+	root := defaultsRoot(t)
+	envfile := writeCell(t, root, "demo", demoCell)
+	captureStdout(t, func() { runTreeWith(t, []string{"ls"}, func(*cobra.Command) {}) })
+	if maintenanceCommand != "" {
+		t.Fatalf("maintenanceCommand = %q after a finished runTreeWith, want it cleared", maintenanceCommand)
+	}
+	loadCell("demo")
+	t.Cleanup(releaseMaintenanceAdmissions)
+	for _, n := range mustReadDir(t, filepath.Dir(envfile)) {
+		if n != "cell.env" {
+			t.Errorf("loadCell left %s in the cell dir", n)
+		}
 	}
 }
 

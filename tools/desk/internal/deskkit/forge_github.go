@@ -25,6 +25,7 @@ import (
 
 	"github.com/medici-finance/assay/forgeread/adapters"
 	ghissues "github.com/medici-finance/assay/forgeread/adapters/github"
+	"github.com/medici-finance/assay/forgeread/adapters/pager"
 )
 
 // forge_github.go — the GitHub implementation of Forge, seated on the official go-gh
@@ -269,14 +270,14 @@ func (g *GitHubForge) doJSONHeader(method, path string, in, out any) (http.Heade
 		attachRequestPoints(capture.body, decodeRequestPoints(raw, perfrec.UnitGitHubPoints))
 	}
 	if readErr != nil {
-		return nil, Unverifiable(fmt.Sprintf("%s %s response body cut off mid-transfer (%d bytes arrived) — refusing to treat a partial answer as a complete one", method, path, len(raw)), readErr)
+		return nil, transientRead(Unverifiable(fmt.Sprintf("%s %s response body cut off mid-transfer (%d bytes arrived) — refusing to treat a partial answer as a complete one", method, path, len(raw)), readErr))
 	}
 	if out != nil {
 		if len(raw) == 0 {
-			return nil, Unverifiable(fmt.Sprintf("%s %s returned HTTP %d with an empty body where a JSON answer was expected — an absent answer is not an empty one", method, path, resp.StatusCode), nil)
+			return nil, transientRead(Unverifiable(fmt.Sprintf("%s %s returned HTTP %d with an empty body where a JSON answer was expected — an absent answer is not an empty one", method, path, resp.StatusCode), nil))
 		}
 		if uerr := json.Unmarshal(raw, out); uerr != nil {
-			return nil, Unverifiable(fmt.Sprintf("cannot parse %s %s response", method, path), uerr)
+			return nil, transientRead(Unverifiable(fmt.Sprintf("cannot parse %s %s response", method, path), uerr))
 		}
 	}
 	return resp.Header, nil
@@ -376,6 +377,9 @@ type ghPullWire struct {
 	// report "not yet computed" as "conflicting", which refuses flips that should proceed,
 	// and the opposite collapse would report it as mergeable, which is the fail-open half.
 	Mergeable *bool `json:"mergeable"`
+	// MergeableState is GitHub's `mergeable_state`, the REST rendering of the GraphQL
+	// mergeStateStatus enum in lower case. ghPullFromWire upper-cases it.
+	MergeableState string `json:"mergeable_state"`
 }
 
 // ghPullRepoWire is the repository a pull's head or base branch lives in. GitHub sends it as
@@ -481,6 +485,21 @@ type ghCheckRunsWire struct {
 	} `json:"check_runs"`
 }
 
+// ghCheckSuitesWire is one page of GET /commits/{sha}/check-suites.
+type ghCheckSuitesWire struct {
+	TotalCount  int `json:"total_count"`
+	CheckSuites []struct {
+		ID         int64  `json:"id"`
+		Status     string `json:"status"`
+		Conclusion string `json:"conclusion"`
+		App        struct {
+			Slug string `json:"slug"`
+		} `json:"app"`
+		LatestCheckRunsCount int    `json:"latest_check_runs_count"`
+		CreatedAt            string `json:"created_at"`
+	} `json:"check_suites"`
+}
+
 // ghLabelWire is one entry of the repo/issue label listings.
 type ghLabelWire struct {
 	Name string `json:"name"`
@@ -503,8 +522,27 @@ type ghRequiredStatusChecksWire struct {
 // `GET /repos/{o}/{r}/branches/{b}`: whether ANYTHING protects the branch. This endpoint is
 // readable by a plain repo token (no `administration` scope), unlike the legacy protection
 // endpoint, so it answers "is the required set necessarily empty" without admin rights.
+//
+// It also carries the branch's CLASSIC-protection summary (`protection`), which the same plain
+// read can see: `enabled` says whether classic branch protection applies at all, and its
+// `required_status_checks` names the contexts that protection requires. All three are pointers
+// so an ABSENT field is told apart from an explicit one: an absent summary, or an absent
+// `enabled` with no required-checks summary, means classic protection cannot be ruled out. No
+// premise is taken about how a ruleset-governed branch fills this in (one observed
+// ruleset-governed branch reads `enabled: true` with an empty, `enforcement_level: "off"`
+// required-checks summary), so a summary that is present is read for its contexts whatever
+// `enabled` says.
 type ghBranchProtectedWire struct {
-	Protected bool `json:"protected"`
+	Protected  bool `json:"protected"`
+	Protection *struct {
+		Enabled              *bool `json:"enabled"`
+		RequiredStatusChecks *struct {
+			Contexts []string `json:"contexts"`
+			Checks   []struct {
+				Context string `json:"context"`
+			} `json:"checks"`
+		} `json:"required_status_checks"`
+	} `json:"protection"`
 }
 
 // ghBranchRuleWire is one entry of `GET /repos/{o}/{r}/rules/branches/{b}` — the EFFECTIVE
@@ -582,12 +620,14 @@ func ghPullFromWire(w ghPullWire) *PullRequest {
 		MergedAt:     w.MergedAt,
 		Merged:       w.Merged,
 		Mergeable:    ghMergeableState(w.Mergeable),
-		Labels:       labels,
-		URL:          w.HTMLURL,
-		HeadRef:      w.Head.Ref,
-		BaseSHA:      w.Base.SHA,
-		BaseRef:      w.Base.Ref,
-		CrossRepo:    ghCrossRepo(w.Head.Repo, w.Base.Repo),
+		// The forge's merge verdict, upper-cased to the GraphQL enum spelling.
+		MergeStateStatus: strings.ToUpper(strings.TrimSpace(w.MergeableState)),
+		Labels:           labels,
+		URL:              w.HTMLURL,
+		HeadRef:          w.Head.Ref,
+		BaseSHA:          w.Base.SHA,
+		BaseRef:          w.Base.Ref,
+		CrossRepo:        ghCrossRepo(w.Head.Repo, w.Base.Repo),
 		// Only a merged pull has a merge commit; an open pull's merge_commit_sha is a
 		// test-merge SHA and must not leak through as one (forge-neutral brief 33 Task 2.1).
 		MergeCommitSHA: ghMergeCommitSHA(w),
@@ -702,10 +742,10 @@ func (g *GitHubForge) SearchIssues(repo ForgeRepo, in SearchIssuesInput) ([]Issu
 		if err := validateDecisionSearch(in); err != nil {
 			return nil, err
 		}
-		return g.searchDecisionMarkers(repo, in.DecisionGateBrief)
+		return g.searchDecisionMarkers(repo, in)
 	}
-	if in.DecisionGateBrief != "" {
-		return nil, Refused("decision-marker brief requires marker discovery mode")
+	if in.DecisionGateBrief != "" || in.DecisionGateLegacy {
+		return nil, Refused("decision-marker brief or legacy key requires marker discovery mode")
 	}
 	q := strings.TrimSpace(fmt.Sprintf("repo:%s is:issue %s", repo.Slug(), strings.TrimSpace(in.Query)))
 	path := fmt.Sprintf("/search/issues?q=%s&per_page=%d", url.QueryEscape(q), forgeSearchPerPage)
@@ -749,12 +789,21 @@ func (g *GitHubForge) ListLabels(repo ForgeRepo) ([]string, error) {
 }
 
 // forgeIssuePerPage / forgeOpenChangesCap bound the two bulk board reads. The issue read
-// paginates to exhaustion (per_page=100); the open-change read is a SINGLE bounded page
-// whose cap is reported (OpenChanges.Cap) so a read that came back exactly full signals a
-// possibly-truncated population rather than a confident count over an unknown remainder.
+// paginates to exhaustion (per_page=100); the open-change read is a bounded cursor walk of at
+// most forgeOpenChangesCap changes whose cap is reported (OpenChanges.Cap), so a forge holding
+// more than the cap signals a truncated population rather than a confident count over an
+// unknown remainder.
 const (
 	forgeIssuePerPage   = 100
 	forgeOpenChangesCap = 100
+	// forgeOpenChangesPage / forgeOpenChangesMinPage / forgeOpenChangesRetries bound the
+	// open-change walk (#3096): pages of 25 changes, halved on a transient failure to a floor
+	// of 6, with at most 4 smaller retries across the whole walk. One unpaginated page of 100
+	// changes with their reviews, labels and rollup contexts outran the forge's own time
+	// budget (a 504, an empty 200 or a body cut off mid-JSON) while pages of 20-50 answered.
+	forgeOpenChangesPage    = 25
+	forgeOpenChangesMinPage = 6
+	forgeOpenChangesRetries = 4
 	// forgeMaxIssuePages bounds the open-issue walk (the GitLab arm's gitlabMaxIssuePage
 	// twin): a forge still advertising more pages past it is a could-not-check, never a
 	// silently truncated listing.
@@ -784,7 +833,7 @@ const (
 // node already requested — no extra request, and no scope beyond `checks:read`. The head
 // commit's oid and committedDate are scalars on that same commit node, selected for the
 // stale-approval test (#3093, ReviewPredatesHead) at the same zero request/point cost.
-const ghOpenChangesQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+const ghOpenChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$first,after:$after,orderBy:{field:CREATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
 
 // ghListChangesQuery is the states-scoped, cursor-paginated changes read behind ListChanges. It
 // requests EXACTLY the ChangeRef fields — number, state, head oid, source branch (headRefName),
@@ -796,7 +845,7 @@ const ghOpenChangesQuery = `query($owner:String!,$name:String!,$limit:Int!){repo
 // added the base branch (baseRefName), the fork facts (isCrossRepository, headRepository) and
 // the author with its kind and numeric id (the Actor interface carries no databaseId, so the id
 // is read through the concrete-type fragments) — still no rollup.
-const ghListChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String,$states:[PullRequestState!]){repository(owner:$owner,name:$name){pullRequests(states:$states,first:$first,after:$after,orderBy:{field:UPDATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number state headRefOid headRefName baseRefName title body mergedAt isCrossRepository headRepository{nameWithOwner} author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}`
+const ghListChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String,$states:[PullRequestState!]){repository(owner:$owner,name:$name){pullRequests(states:$states,first:$first,after:$after,orderBy:{field:UPDATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number state headRefOid headRefName baseRefName title body mergedAt updatedAt isCrossRepository headRepository{nameWithOwner} author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}`
 
 // ghReviewQueueReviewsSel is the ONE selection ReviewQueueSnapshot adds to the open-changes
 // read. It is held as its own constant so a test can prove the snapshot query is EXACTLY
@@ -811,11 +860,12 @@ const ghReviewQueueReviewsSel = `reviews(first:100){pageInfo{hasNextPage} nodes{
 // ghReviewQueueQuery is the ReviewQueueSnapshot document: ghOpenChangesQuery with
 // ghReviewQueueReviewsSel inserted after baseRefName, plus the repository visibility scalar
 // consumed by actions' policy-drift alarm (TestReviewQueueQueryIsOpenChangesPlusReviews
-// pins exactly those additions). ONE POST answers the whole queue — change metadata, CI
-// rollup contexts and every change's reviews — so the head a change is classified at and the
-// reviews reduced against it come from one consistent read. Its point cost is the open-changes
-// read's plus one nested connection per change (see the stream's query-cost record).
-const ghReviewQueueQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){visibility pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+// pins exactly those additions). Each page answers its changes whole — change metadata, CI
+// rollup contexts and every change's reviews on one node — so the head a change is classified
+// at and the reviews reduced against it come from one consistent response. Its point cost is
+// the open-changes read's plus one nested connection per change (see the stream's query-cost
+// record).
+const ghReviewQueueQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String){repository(owner:$owner,name:$name){visibility pullRequests(states:OPEN,first:$first,after:$after,orderBy:{field:CREATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
 
 // forgeQueueReviewsCap is the per-change review bound of ghReviewQueueReviewsSel's first:.
 const forgeQueueReviewsCap = 100
@@ -894,6 +944,10 @@ type ghOpenChangesEnvelope struct {
 		Repository struct {
 			Visibility   string `json:"visibility"`
 			PullRequests struct {
+				PageInfo struct {
+					HasNextPage bool   `json:"hasNextPage"`
+					EndCursor   string `json:"endCursor"`
+				} `json:"pageInfo"`
 				Nodes []ghOpenChangeNode `json:"nodes"`
 			} `json:"pullRequests"`
 		} `json:"repository"`
@@ -903,34 +957,100 @@ type ghOpenChangesEnvelope struct {
 	} `json:"errors"`
 }
 
-// openChangesRead POSTs one open-change document (ghOpenChangesQuery or ghReviewQueueQuery)
-// and returns its nodes. Any GraphQL-level error fails the whole read could-not-check, exactly
-// as the open-changes read always has — a partial response is never mapped.
-func (g *GitHubForge) openChangesRead(repo ForgeRepo, query, what string) ([]ghOpenChangeNode, string, error) {
-	in := map[string]any{
-		"query": query,
-		"variables": map[string]any{
-			"owner": repo.Owner, "name": repo.Name, "limit": forgeOpenChangesCap,
-		},
-	}
-	var out ghOpenChangesEnvelope
-	if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
-		return nil, "", err
-	}
-	if len(out.Errors) > 0 {
-		msgs := make([]string, 0, len(out.Errors))
-		for _, e := range out.Errors {
-			msgs = append(msgs, e.Message)
+// openChangesRead walks one open-change document (ghOpenChangesQuery or ghReviewQueueQuery)
+// page by page through the shared pager (forgeread/adapters/pager) and returns its nodes, the
+// repository visibility and whether the forge holds more open changes than forgeOpenChangesCap.
+//
+// Each page is ONE POST; a change's head and its reviews still come from one node of one
+// response, so no change can straddle a push. The population is the union of the pages, newest
+// first, de-duplicated by number (a change opened during the walk can shift one change across
+// a page boundary; one opened after the first page is read next cycle).
+//
+// A transient page failure — a 5xx, an HTTP 200 with an empty body, a body cut off mid-transfer
+// or one that does not parse (ghReadClass) — is retried for the SAME cursor at half the page
+// size, down to forgeOpenChangesMinPage and within forgeOpenChangesRetries for the whole walk.
+// Authentication, permission, not-found and rate-limit answers and GraphQL-level errors are
+// never retried. Any failure fails the whole read could-not-check, exactly as the single-page
+// read always has: a partial page set is never mapped.
+func (g *GitHubForge) openChangesRead(repo ForgeRepo, query, what string) ([]ghOpenChangeNode, string, bool, error) {
+	visibility := ""
+	fetch := func(_ context.Context, req pager.Request) (pager.Page[ghOpenChangeNode], error) {
+		vars := map[string]any{"owner": repo.Owner, "name": repo.Name, "first": req.Size, "after": nil}
+		if req.Cursor != "" {
+			vars["after"] = req.Cursor
 		}
-		return nil, "", Unverifiable(what+" GraphQL error: "+strings.Join(msgs, "; "), nil)
+		var out ghOpenChangesEnvelope
+		if err := g.doJSON(http.MethodPost, "/graphql", map[string]any{"query": query, "variables": vars}, &out); err != nil {
+			return pager.Page[ghOpenChangeNode]{}, err
+		}
+		if len(out.Errors) > 0 {
+			msgs := make([]string, 0, len(out.Errors))
+			for _, e := range out.Errors {
+				msgs = append(msgs, e.Message)
+			}
+			return pager.Page[ghOpenChangeNode]{}, Unverifiable(what+" GraphQL error: "+strings.Join(msgs, "; "), nil)
+		}
+		if req.Cursor == "" {
+			visibility = strings.ToLower(out.Data.Repository.Visibility)
+		}
+		conn := out.Data.Repository.PullRequests
+		return pager.Page[ghOpenChangeNode]{Items: conn.Nodes, More: conn.PageInfo.HasNextPage, Next: conn.PageInfo.EndCursor}, nil
 	}
-	visibility := strings.ToLower(out.Data.Repository.Visibility)
+	res, err := pager.Walk(context.Background(), pager.Policy{
+		PageSize: forgeOpenChangesPage, MinPageSize: forgeOpenChangesMinPage,
+		MaxItems: forgeOpenChangesCap, MaxRetries: forgeOpenChangesRetries,
+		Classify: ghReadClass,
+	}, func(n ghOpenChangeNode) string { return strconv.Itoa(n.Number) }, fetch)
+	if err != nil {
+		var ex *pager.ExhaustedError
+		var st *pager.StalledError
+		var bud *pager.BudgetError
+		switch {
+		case errors.As(err, &ex):
+			return nil, "", false, Unverifiable(fmt.Sprintf("%s read could not be completed: %d request(s), %d retried at a smaller page, last page size %d (%s)",
+				what, ex.Stats.Requests, ex.Stats.Retries, ex.Size, ex.Reason), ex.Cause)
+		case errors.As(err, &st), errors.As(err, &bud):
+			return nil, "", false, Unverifiable(what+" read could not be completed", err)
+		}
+		return nil, "", false, err
+	}
 	switch visibility {
 	case "public", "private", "internal":
 	default:
 		visibility = "" // missing or future enum: never manufacture a policy observation
 	}
-	return out.Data.Repository.PullRequests.Nodes, visibility, nil
+	return res.Items, visibility, res.Truncated, nil
+}
+
+// ghReadClass classifies a failed open-change page for the pager. TRANSIENT is only what a
+// smaller page of the same read can cure: a 500/502/503/504 that is not a rate-limit answer, and
+// the doJSON refusals transientRead marks (an empty body, a body cut off mid-transfer, a body
+// that does not parse). Everything else — 401/403/404, a rate limit, a GraphQL error, a transport
+// failure — is a STOP: a retry would not clear it, and a rate limit must not be compounded.
+func ghReadClass(err error) pager.Class {
+	if IsForgeRateLimited(err) {
+		return pager.Stop
+	}
+	var de *DeskError
+	if errors.As(err, &de) && de.transientRead {
+		return pager.Transient
+	}
+	var ae *ForgeAPIError
+	if errors.As(err, &ae) {
+		switch ae.Status {
+		case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+			return pager.Transient
+		}
+	}
+	return pager.Stop
+}
+
+// transientRead marks a doJSON refusal as a degraded ANSWER (empty, cut off, unparseable) rather
+// than a refusal by the forge. The mark is out of band: Error() and the exit code are unchanged,
+// and only a paged read's classifier (ghReadClass) reads it.
+func transientRead(e *DeskError) *DeskError {
+	e.transientRead = true
+	return e
 }
 
 // ghOpenChange maps one open-change node to the seam's OpenChange.
@@ -976,7 +1096,7 @@ func ghOpenChange(n ghOpenChangeNode) OpenChange {
 }
 
 func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
-	nodes, _, err := g.openChangesRead(repo, ghOpenChangesQuery, "open-changes")
+	nodes, _, truncated, err := g.openChangesRead(repo, ghOpenChangesQuery, "open-changes")
 	if err != nil {
 		return nil, err
 	}
@@ -987,12 +1107,13 @@ func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 	return &OpenChanges{
 		Changes:        changes,
 		Cap:            forgeOpenChangesCap,
-		TruncatedAtCap: len(changes) >= forgeOpenChangesCap,
+		TruncatedAtCap: truncated,
 	}, nil
 }
 
-// ReviewQueueSnapshot is ListOpenChanges and every change's ReviewsAtHead in ONE GraphQL
-// POST (ghReviewQueueQuery). Each change is mapped through the same ghOpenChange the list
+// ReviewQueueSnapshot is ListOpenChanges and every change's ReviewsAtHead in the same paged
+// GraphQL read (ghReviewQueueQuery, one POST per page; see openChangesRead). Each change is
+// mapped through the same ghOpenChange the list
 // read uses; each review carries exactly what ReviewsAtHead's REST read reports, rendered
 // the same way:
 //
@@ -1009,7 +1130,7 @@ func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 // connection at all — comes back with ReviewsComplete=false and no reviews, and the caller
 // reads that one change with ReviewsAtHead.
 func (g *GitHubForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) {
-	nodes, visibility, err := g.openChangesRead(repo, ghReviewQueueQuery, "review-queue")
+	nodes, visibility, truncated, err := g.openChangesRead(repo, ghReviewQueueQuery, "review-queue")
 	if err != nil {
 		return nil, err
 	}
@@ -1040,7 +1161,7 @@ func (g *GitHubForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) 
 		Visibility:     visibility,
 		Changes:        changes,
 		Cap:            forgeOpenChangesCap,
-		TruncatedAtCap: len(changes) >= forgeOpenChangesCap,
+		TruncatedAtCap: truncated,
 	}, nil
 }
 
@@ -1093,6 +1214,7 @@ func (g *GitHubForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 							Title       string `json:"title"`
 							Body        string `json:"body"`
 							MergedAt    string `json:"mergedAt"`
+							UpdatedAt   string `json:"updatedAt"`
 							// Pointers so a null stays distinguishable from false / absent.
 							IsCrossRepository *bool `json:"isCrossRepository"`
 							HeadRepository    *struct {
@@ -1122,7 +1244,7 @@ func (g *GitHubForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 			ref := ChangeRef{
 				Number: n.Number, State: strings.ToUpper(n.State), HeadSHA: n.HeadRefOid,
 				HeadRef: n.HeadRefName, Title: n.Title, Body: n.Body, MergedAt: n.MergedAt,
-				Author: gqlActorAccount(n.Author), BaseRef: n.BaseRefName,
+				UpdatedAt: n.UpdatedAt, Author: gqlActorAccount(n.Author), BaseRef: n.BaseRefName,
 			}
 			// A null isCrossRepository leaves CrossRepo EMPTY (could-not-check), never
 			// CrossRepoSame; a null headRepository (a deleted fork) leaves HeadRepo EMPTY,
@@ -1422,12 +1544,54 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 	return out, nil
 }
 
-// RequiredStatusChecks reads the branch's required status-check contexts from GitHub branch
-// protection (`GET /repos/{o}/{r}/branches/{branch}/protection/required_status_checks`).
+// CheckSuitesAtHead reads GET /repos/{o}/{r}/commits/{sha}/check-suites, paginated under the
+// same bound as the rollups. A walk that stops short of the asserted total is returned as-is
+// (len < TotalCount) so the caller fails closed, exactly as ChecksAtHead does. The read is
+// under `checks: read`.
+func (g *GitHubForge) CheckSuitesAtHead(repo ForgeRepo, sha string) (*CheckSuitesAtHead, error) {
+	out := &CheckSuitesAtHead{}
+	for page := 1; page <= forgeMaxCIPages; page++ {
+		var w ghCheckSuitesWire
+		path := fmt.Sprintf("/repos/%s/%s/commits/%s/check-suites?per_page=%d&page=%d",
+			repo.Owner, repo.Name, sha, forgeCIPerPage, page)
+		if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+			return nil, err
+		}
+		if page == 1 {
+			out.TotalCount = w.TotalCount
+		}
+		for _, cs := range w.CheckSuites {
+			out.Suites = append(out.Suites, CheckSuite{
+				ID: checkRunID(cs.ID), App: cs.App.Slug, Status: cs.Status, Conclusion: cs.Conclusion,
+				RunCount: cs.LatestCheckRunsCount, CreatedAt: cs.CreatedAt,
+			})
+		}
+		if len(w.CheckSuites) < forgeCIPerPage {
+			break
+		}
+	}
+	return out, nil
+}
+
+// RequiredStatusChecks reads the branch's required status-check contexts. GitHub can require a
+// check from TWO places, and no single endpoint shows both:
 //
-// The 404 IS the answer, not an error. GitHub returns 404 both for a branch with no
-// protection AND for a protected branch that requires no status checks; in either case
-// nothing gates the merge on a check, so the required set is EMPTY and no error is returned.
+//   - CLASSIC branch protection, read here from the legacy
+//     `GET /repos/{o}/{r}/branches/{branch}/protection/required_status_checks` endpoint, which
+//     does not show rulesets; and
+//   - RULESETS, read from `GET /repos/{o}/{r}/rules/branches/{branch}` (rulesetRequiredContexts),
+//     which does not show classic protection.
+//
+// The required set is therefore always the UNION of the two halves, and a half that could not be
+// read makes the whole set could-not-check, never a partial set that looks complete (#6198: the
+// legacy endpoint answered 404 on a branch whose rulesets required `leak-sweep`, `build-test` and
+// `changelog`, the 404 was read as "nothing required", and checks-green passed a head carrying
+// only the leak-sweep status).
+//
+// A legacy 404 is the CLASSIC half's answer, not an error. GitHub returns 404 both for a branch
+// with no classic protection AND for a classically protected branch that requires no status
+// checks; either way classic protection adds nothing. It is not the whole answer: the rulesets
+// are still read, and they are the required set.
 //
 // A 403 is NOT the answer, but it is not a dead end either. The legacy protection endpoint
 // needs the `administration` scope, which the reviewer/worker App tokens do not carry, so it
@@ -1452,10 +1616,10 @@ func (g *GitHubForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]str
 		repo.Owner, repo.Name, url.PathEscape(branch))
 	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
 		if IsForgeNotFound(err) {
-			// No branch protection, or protection with no required checks: nothing is
-			// required to merge, so the required set is empty. This is the honest "green" for
-			// an absent rollup, and it is distinct from the error return below.
-			return nil, nil
+			// Classic protection requires no status checks (or there is none). That settles
+			// the classic half only; the rulesets are the required set.
+			return g.withRulesetContexts(repo, branch, nil,
+				"classic branch protection requires no status checks (the legacy endpoint answered 404)")
 		}
 		if IsForgeForbidden(err) {
 			// The token lacks `administration` for the legacy endpoint. Re-resolve the same
@@ -1464,22 +1628,85 @@ func (g *GitHubForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]str
 		}
 		return nil, err
 	}
-	return dedupContexts(w.Contexts, contextsOf(w.Checks)), nil
+	classic := dedupContexts(w.Contexts, contextsOf(w.Checks))
+	return g.withRulesetContexts(repo, branch, classic,
+		fmt.Sprintf("classic branch protection requires %d context(s)", len(classic)))
 }
+
+// withRulesetContexts completes a required set whose CLASSIC half is already known (classic,
+// described by classicDesc for the refusal) with the RULESET half. A failed rules read is
+// could-not-check: the classic half alone is a lower bound, and a check a ruleset requires
+// would pass unseen.
+func (g *GitHubForge) withRulesetContexts(repo ForgeRepo, branch string, classic []string, classicDesc string) ([]string, error) {
+	rulesets, err := g.rulesetRequiredContexts(repo, branch)
+	if err != nil {
+		return nil, Unverifiable(fmt.Sprintf(
+			"cannot establish the complete required status-check set for %s@%s: %s, but the rulesets "+
+				"that may require more could not be read (%v). The classic half alone is could-not-check, "+
+				"never complete: a check a ruleset requires that never reported would pass unseen.",
+			repo.Slug(), branch, classicDesc, err), nil)
+	}
+	return dedupContexts(classic, rulesets), nil
+}
+
+// rulesetRequiredContexts reads `GET /repos/{o}/{r}/rules/branches/{b}`, the rules every active
+// ruleset applies to the branch (readable without `administration`), and returns the union of
+// every `required_status_checks` rule's contexts. It cannot see classic branch protection. An
+// error is returned as-is for the caller to fail closed on.
+//
+// The listing is paginated (30 rules per page by default), so the read walks it to exhaustion
+// at per_page=100. The walk goes on while EITHER the page came back full OR the forge's
+// `Link: rel="next"` advertises more, as ListOpenIssues does (#1032). A required_status_checks
+// rule can sit on any page, and a first page alone is a partial set that looks complete, so a
+// failed page read, or a listing that outruns forgeMaxRulePages, is an error, never the
+// contexts gathered so far.
+func (g *GitHubForge) rulesetRequiredContexts(repo ForgeRepo, branch string) ([]string, error) {
+	var ctxs []string
+	for page := 1; ; page++ {
+		if page > forgeMaxRulePages {
+			return nil, Unverifiable(fmt.Sprintf(
+				"the branch rules for %s@%s still advertise a next page after %d pages of %d; the rules "+
+					"read so far are a partial list, not the whole one", repo.Slug(), branch,
+				forgeMaxRulePages, forgeCIPerPage), nil)
+		}
+		var rules []ghBranchRuleWire
+		rpath := fmt.Sprintf("/repos/%s/%s/rules/branches/%s?per_page=%d&page=%d",
+			repo.Owner, repo.Name, url.PathEscape(branch), forgeCIPerPage, page)
+		hdr, err := g.doJSONHeader(http.MethodGet, rpath, nil, &rules)
+		if err != nil {
+			return nil, err
+		}
+		for _, rule := range rules {
+			for _, c := range rule.Parameters.RequiredStatusChecks {
+				ctxs = append(ctxs, c.Context)
+			}
+		}
+		if len(rules) < forgeCIPerPage && !hasNextLink(hdr) {
+			break
+		}
+	}
+	return dedupContexts(ctxs), nil
+}
+
+// forgeMaxRulePages bounds the branch-rules walk: 25 pages of 100 rules. A listing still
+// advertising a next page past it is could-not-check, never the rules read so far.
+const forgeMaxRulePages = 25
 
 // requiredChecksAdminFree re-resolves the branch's required status-check contexts WITHOUT the
 // `administration` scope the legacy protection endpoint demands, for tokens that get a 403
 // there (every reviewer/worker App). It uses two endpoints a plain repo token can read:
 //
-//  1. GET /repos/{o}/{r}/branches/{b} → `.protected`. If the branch is NOT protected at all,
-//     nothing gates the merge on a check, so the required set is empty (⇒ green). This is the
+//  1. GET /repos/{o}/{r}/branches/{b} → `.protected`. If the branch is NOT protected,
+//     classic protection requires nothing, and the required set is the rulesets' alone (step 2
+//     still runs): empty (⇒ green) only when no ruleset requires a check either. This is the
 //     ONLY admin-free path to an empty/green answer.
 //  2. GET /repos/{o}/{r}/rules/branches/{b} → the branch's RULESET rules (NOT classic branch
 //     protection — the rules API surfaces rulesets only). The union of every
 //     `required_status_checks` rule's contexts is the required set from rulesets.
 //
 // This is a flip GATE, so it fails CLOSED: the only outputs are an empty set (positively
-// unprotected), a NON-empty set (rulesets name required contexts), or could-not-check. In
+// unprotected, and no ruleset requires a check), a NON-empty set (the union of the halves the
+// reads could see), or could-not-check. In
 // particular a branch that is `protected: true` but whose rules endpoint returns NO
 // required_status_checks contexts is could-not-check, NOT empty: the tell of CLASSIC branch
 // protection, which protects the branch (and may require checks) but is invisible to the
@@ -1491,15 +1718,16 @@ func (g *GitHubForge) requiredChecksAdminFree(repo ForgeRepo, branch string, leg
 	bpath := fmt.Sprintf("/repos/%s/%s/branches/%s", repo.Owner, repo.Name, url.PathEscape(branch))
 	brErr := g.doJSON(http.MethodGet, bpath, nil, &bp)
 	if brErr == nil && !bp.Protected {
-		// The branch is not protected: nothing GitHub enforces gates the merge on a check, so
-		// the required set is empty. This is the only admin-free empty/green answer.
-		return nil, nil
+		// The branch is not protected: classic protection requires nothing. That settles the
+		// classic half only, as a legacy 404 does; the rulesets are still read and are the
+		// required set (empty when none applies). A failed rules read is could-not-check.
+		return g.withRulesetContexts(repo, branch, nil,
+			"the branch read says the branch is not protected (classic protection requires nothing)")
 	}
 	// The branch is protected, or its protection flag could not be read. Read the ruleset rules
 	// for any required contexts they name.
-	var rules []ghBranchRuleWire
-	rpath := fmt.Sprintf("/repos/%s/%s/rules/branches/%s", repo.Owner, repo.Name, url.PathEscape(branch))
-	if rErr := g.doJSON(http.MethodGet, rpath, nil, &rules); rErr != nil {
+	ctxs, rErr := g.rulesetRequiredContexts(repo, branch)
+	if rErr != nil {
 		if brErr != nil {
 			// BOTH admin-free fallbacks failed: the required set could not be read at all.
 			// Fail closed — an absent rollup must never be read as green off a set this tool
@@ -1515,13 +1743,23 @@ func (g *GitHubForge) requiredChecksAdminFree(repo ForgeRepo, branch string, leg
 			"cannot read the required status checks for %s@%s: %s is protected but its effective rules "+
 				"could not be read (%v)", repo.Slug(), branch, branch, rErr), nil)
 	}
-	var ctxs []string
-	for _, rule := range rules {
-		for _, c := range rule.Parameters.RequiredStatusChecks {
-			ctxs = append(ctxs, c.Context)
+	// The rules API shows RULESETS only. Classic branch protection can require further
+	// contexts that no ruleset names, so a ruleset-derived set is only a LOWER bound unless the
+	// branch read positively shows the classic half: its required-checks summary, or protection
+	// explicitly off. This is the same union RequiredStatusChecks takes on the legacy 404 and
+	// 200 paths, with the classic half taken from the branch read instead.
+	classic, classicSeen := classicRequiredContexts(bp, brErr)
+	if set := dedupContexts(ctxs, classic); len(set) > 0 {
+		if !classicSeen {
+			return nil, Unverifiable(fmt.Sprintf(
+				"cannot establish the complete required status-check set for %s@%s: the rulesets name %d "+
+					"required context(s) (%s), but whether classic branch protection requires more could not "+
+					"be read — the branch read carried no classic-protection summary, and the legacy "+
+					"endpoint that would show it is forbidden to this identity (needs the `administration: "+
+					"read` repository permission). A partial set is could-not-check, never complete: a required "+
+					"check that never reported would pass unseen.",
+				repo.Slug(), branch, len(ctxs), strings.Join(ctxs, ", ")), nil)
 		}
-	}
-	if set := dedupContexts(ctxs); len(set) > 0 {
 		return set, nil
 	}
 	// Protected (or protection-flag unreadable) AND the rules API named no required contexts.
@@ -1538,6 +1776,23 @@ func (g *GitHubForge) requiredChecksAdminFree(repo ForgeRepo, branch string, leg
 	// this as an ordinary could-not-check and re-asks a human on every flip attempt is treating
 	// a fixed fact as if it might resolve itself. Naming the permission here is what lets an
 	// operator or desk recognise "grant this once" instead of "decide this again."
+	//
+	// When the branch read DID show the classic half (a present, empty required-checks summary,
+	// or protection explicitly off), invisible classic protection is not the cause, and the
+	// refusal says what was seen instead. It still fails closed: a protected branch with no
+	// requirement this identity can see is not proven to require nothing, and the legacy
+	// endpoint (the same permission) is what would answer for classic protection directly.
+	if _, seen := classicRequiredContexts(bp, brErr); seen {
+		return nil, Unverifiable(fmt.Sprintf(
+			"cannot read the required status checks for %s@%s: %s is protected, its classic-protection "+
+				"summary names no required status checks, and the rulesets name none, so nothing this "+
+				"identity can read names a requirement. A protected branch with no visible requirement is "+
+				"not proven to require nothing (could-not-check, never read as green). The legacy "+
+				"branch-protection endpoint (GET /repos/{owner}/{repo}/branches/{branch}/protection/"+
+				"required_status_checks) answers for classic protection directly; it needs the "+
+				"`administration: read` repository permission, which the calling App lacks.",
+			repo.Slug(), branch, branch), nil)
+	}
 	return nil, Unverifiable(fmt.Sprintf(
 		"cannot read the required status checks for %s@%s: %s is protected but the rules API named no "+
 			"required status checks — the tell of CLASSIC branch protection, which the rules API cannot "+
@@ -1549,6 +1804,26 @@ func (g *GitHubForge) requiredChecksAdminFree(repo ForgeRepo, branch string, leg
 			"until that permission is granted ONCE — escalate it as a permission grant, not as a recurring "+
 			"human decision.",
 		repo.Slug(), branch, branch), nil)
+}
+
+// classicRequiredContexts reads the classic-branch-protection required contexts off the
+// admin-free branch read. seen is true only when that read POSITIVELY showed the classic
+// answer: a required-checks summary (its contexts are taken whatever `enabled` says, so a
+// summary is never discarded on the strength of one flag), or no summary with protection
+// EXPLICITLY off. An unreadable branch, an absent protection summary, or no required-checks
+// summary with `enabled` true or absent is NOT seen: classic protection may require contexts
+// this read cannot show, and the caller must treat the rules-derived set as incomplete.
+func classicRequiredContexts(bp ghBranchProtectedWire, brErr error) (contexts []string, seen bool) {
+	if brErr != nil || bp.Protection == nil {
+		return nil, false
+	}
+	if rsc := bp.Protection.RequiredStatusChecks; rsc != nil {
+		return dedupContexts(rsc.Contexts, contextsOf(rsc.Checks)), true
+	}
+	if en := bp.Protection.Enabled; en != nil && !*en {
+		return nil, true
+	}
+	return nil, false
 }
 
 // contextsOf flattens the `checks` shape (context + optional app id) to its context names.
@@ -2479,6 +2754,27 @@ func (g *GitHubForge) MarkReadyForReview(nodeID string) error {
 	}
 	if len(out.Errors) > 0 {
 		return Unverifiable("markPullRequestReadyForReview GraphQL error: "+out.Errors[0].Message, nil)
+	}
+	return nil
+}
+
+// ConvertToDraft returns a ready pull request to draft via the GraphQL
+// convertPullRequestToDraft mutation, over the same client and /graphql route as
+// MarkReadyForReview. Its one caller is the post-flip backstop (ReadyBackstop); see the
+// interface doc for the ruling that admits it.
+func (g *GitHubForge) ConvertToDraft(nodeID string) error {
+	q := `mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id}){pullRequest{isDraft}}}`
+	in := map[string]any{"query": q, "variables": map[string]any{"id": nodeID}}
+	var out struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
+		return err
+	}
+	if len(out.Errors) > 0 {
+		return Unverifiable("convertPullRequestToDraft GraphQL error: "+out.Errors[0].Message, nil)
 	}
 	return nil
 }

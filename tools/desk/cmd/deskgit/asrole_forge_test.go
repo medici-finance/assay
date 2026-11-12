@@ -17,6 +17,10 @@ import (
 // GitHub App (or, with one installed on a same-named account, minted a GitHub token and offered
 // it to the GitLab host). The PRODUCTION binding is exercised here — no asWorker stub — with a
 // minter DETECTOR in deskkit's own seam, so "nothing was minted" is a counted fact.
+//
+// Since #5028 a GitLab-served `fetch --as` takes the GitLab arm (fetch_gitlab_test.go). This
+// fixture's origin is a local path, which that arm refuses too (no https host to bind the GitLab
+// credential to), so fetch here is still exit 5 with nothing minted or read.
 
 func TestAsRole_GitLabServedOrigin_RefusedBeforeAnyMint(t *testing.T) {
 	work := newRepo(t, allowedSlug)

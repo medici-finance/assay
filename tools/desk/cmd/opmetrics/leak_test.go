@@ -13,6 +13,10 @@ package main
 //	TestLeakEmittedStringValuesAreEnumerated — the VALUES come from closed vocabularies
 //	TestLeakNoTranscriptContentReachesTheArtifact — nothing from the fixtures is present
 //	TestLeakScannerSeesPlantedLeak       — the scanner above actually works
+//	TestLeakEmittedKeysAreAllowlisted    — every emitted KEY, counts included, is pinned
+//
+// with a planted-input control for the vocabulary and key instruments too
+// (TestLeakEnumScannerSeesPlantedFreeText, TestLeakKeyScannerSeesPlantedKey).
 //
 // The last one is the three-states rule applied to the test itself: a scan that finds
 // nothing because the SCAN is broken must never read as clean. It plants a leak into a
@@ -55,8 +59,11 @@ func emitFixtureArtifact(t *testing.T) []byte {
 	isolateHome(t)
 	root := t.TempDir()
 	var stdout, stderr strings.Builder
+	// Both fixture trees: the operator-turn fixtures, and the dispatch fixture whose
+	// prompts, subagent briefs and final reports feed the dispatch and token blocks.
 	code := run([]string{
 		"--transcripts", fxTranscripts,
+		"--transcripts", fxDispatch,
 		"--desk-tools", fxDeskTools,
 		"--gh-fixture", fxGH,
 		"--root", root,
@@ -82,7 +89,23 @@ func emitFixtureArtifact(t *testing.T) []byte {
 func transcriptStrings(t *testing.T) []string {
 	t.Helper()
 	var out []string
-	err := filepath.WalkDir(fxTranscripts, func(path string, d fs.DirEntry, err error) error {
+	for _, root := range []string{fxTranscripts, fxDispatch} {
+		out = append(out, transcriptStringsUnder(t, root)...)
+	}
+	if len(out) < 10 {
+		t.Fatalf("only %d fixture messages collected — the scan corpus is not being built, "+
+			"so a clean result here would prove nothing", len(out))
+	}
+	return out
+}
+
+// transcriptStringsUnder collects one fixture root's text: message bodies, text and
+// tool-result parts, and the free-text inputs of tool calls (a dispatch prompt, a
+// subagent's final report).
+func transcriptStringsUnder(t *testing.T, root string) []string {
+	t.Helper()
+	var out []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -112,8 +135,9 @@ func transcriptStrings(t *testing.T) []string {
 				continue
 			}
 			var parts []struct {
-				Text    string `json:"text"`
-				Content string `json:"content"`
+				Text    string         `json:"text"`
+				Content string         `json:"content"`
+				Input   map[string]any `json:"input"`
 			}
 			if json.Unmarshal(rec.Message.Content, &parts) == nil {
 				for _, p := range parts {
@@ -123,17 +147,18 @@ func transcriptStrings(t *testing.T) []string {
 					if p.Content != "" {
 						out = append(out, p.Content)
 					}
+					for _, v := range p.Input {
+						if s, ok := v.(string); ok && s != "" {
+							out = append(out, s)
+						}
+					}
 				}
 			}
 		}
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("collecting fixture transcript text: %v", err)
-	}
-	if len(out) < 10 {
-		t.Fatalf("only %d fixture messages collected — the scan corpus is not being built, "+
-			"so a clean result here would prove nothing", len(out))
+		t.Fatalf("collecting fixture transcript text under %s: %v", root, err)
 	}
 	return out
 }
@@ -212,23 +237,28 @@ func TestLeakScannerSeesPlantedLeak(t *testing.T) {
 // can run against a real transcript.
 func TestLeakEmitStringFieldsAreAllowlisted(t *testing.T) {
 	allowed := map[string]string{
-		"schema":                       "fixed literal",
-		"date":                         "YYYY-MM-DD",
-		"generatedAt":                  "RFC3339 stamp",
-		"classifierVersion":            "fixed literal",
-		"operator.status":              "Status enum",
-		"operator.reason":              "Reason enum",
-		"intervention.status":          "Status enum",
-		"intervention.reason":          "Reason enum",
-		"decision_latency.status":      "Status enum",
-		"decision_latency.reason":      "Reason enum",
-		"session_hygiene.status":       "Status enum",
-		"session_hygiene.reason":       "Reason enum",
-		"correction_recurrence.status": "Status enum",
-		"correction_recurrence.reason": "Reason enum",
-		"unmeasured[]":                 "Unmeasured code enum",
-		"trend.status":                 "Status enum",
-		"trend.reason":                 "Reason enum",
+		"schema":                           "fixed literal",
+		"date":                             "YYYY-MM-DD",
+		"generatedAt":                      "RFC3339 stamp",
+		"classifierVersion":                "fixed literal",
+		"operator.status":                  "Status enum",
+		"operator.reason":                  "Reason enum",
+		"intervention.status":              "Status enum",
+		"intervention.reason":              "Reason enum",
+		"decision_latency.status":          "Status enum",
+		"decision_latency.reason":          "Reason enum",
+		"session_hygiene.status":           "Status enum",
+		"session_hygiene.reason":           "Reason enum",
+		"correction_recurrence.status":     "Status enum",
+		"correction_recurrence.reason":     "Reason enum",
+		"unmeasured[]":                     "Unmeasured code enum",
+		"trend.status":                     "Status enum",
+		"trend.reason":                     "Reason enum",
+		"dispatch.status":                  "Status enum",
+		"dispatch.reason":                  "Reason enum",
+		"token_efficiency.status":          "Status enum",
+		"token_efficiency.reason":          "Reason enum",
+		"token_efficiency.noop_classifier": "fixed literal (NoopClassifierVersion)",
 	}
 	found := map[string]bool{}
 	walkStringLeaves(t, reflect.TypeOf(Report{}), "", found)
@@ -293,6 +323,30 @@ var (
 // It is the backstop for a field that is allowlisted but starts carrying free text.
 func TestLeakEmittedStringValuesAreEnumerated(t *testing.T) {
 	artifact := emitFixtureArtifact(t)
+	if bad := nonEnumeratedStrings(t, artifact); len(bad) > 0 {
+		t.Fatalf("the day-file carries string values outside the closed vocabularies "+
+			"(fixed literals, Status, Reason, Unmeasured codes, dates):\n  %s", strings.Join(bad, "\n  "))
+	}
+}
+
+// TestLeakEnumScannerSeesPlantedFreeText is the vocabulary instrument's CONTROL:
+// free text planted into an allowlisted field of the real artifact must be reported.
+func TestLeakEnumScannerSeesPlantedFreeText(t *testing.T) {
+	var doc map[string]any
+	if err := json.Unmarshal(emitFixtureArtifact(t), &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["dispatch"].(map[string]any)["reason"] = "please dispatch the gamma worker"
+	planted, _ := json.Marshal(doc)
+	if bad := nonEnumeratedStrings(t, planted); len(bad) != 1 || !strings.HasPrefix(bad[0], "dispatch.reason") {
+		t.Fatalf("free text planted at dispatch.reason was not the one finding: %v", bad)
+	}
+}
+
+// nonEnumeratedStrings walks emitted JSON and returns every string value outside the
+// closed vocabularies, as "path = value".
+func nonEnumeratedStrings(t *testing.T, artifact []byte) []string {
+	t.Helper()
 	var doc any
 	if err := json.Unmarshal(artifact, &doc); err != nil {
 		t.Fatalf("artifact is not valid JSON: %v", err)
@@ -300,7 +354,7 @@ func TestLeakEmittedStringValuesAreEnumerated(t *testing.T) {
 
 	allowedValue := func(s string) bool {
 		switch s {
-		case SchemaVersion, ClassifierVersion:
+		case SchemaVersion, ClassifierVersion, NoopClassifierVersion:
 			return true
 		}
 		for _, st := range []Status{StatusOK, StatusCouldNotCheck, StatusNoPriorData} {
@@ -345,9 +399,157 @@ func TestLeakEmittedStringValuesAreEnumerated(t *testing.T) {
 		}
 	}
 	walk(doc, "")
-	if len(bad) > 0 {
-		t.Fatalf("the day-file carries string values outside the closed vocabularies "+
-			"(fixed literals, Status, Reason, Unmeasured codes, dates):\n  %s", strings.Join(bad, "\n  "))
+	return bad
+}
+
+// emittedKeys is every key path the day-file may carry, pinned. Arrays are "[]".
+// Adding a key — a count included — means adding it here, in review, next to the
+// closed vocabulary or the count it is. A key that is not here fails
+// TestLeakEmittedKeysAreAllowlisted on the emitted bytes.
+var emittedKeys = []string{
+	"schema", "date", "generatedAt", "classifierVersion", "relay_ratio",
+	"operator", "operator.status", "operator.reason", "operator.messages_total",
+	"operator.messages_classified", "operator.relay_messages", "operator.substantive_messages",
+	"operator.empty_messages", "operator.relay_ratio", "operator.relay_families",
+	"operator.relay_families.sync", "operator.relay_families.state_echo",
+	"operator.relay_families.poke", "operator.relay_families.lookup",
+	"operator.relay_families.duplicate", "operator.attention_families",
+	"operator.attention_families.route", "operator.attention_families.status",
+	"operator.attention_families.toil", "operator.attention_families.correction",
+	"operator.attention_families.decision", "operator.attention_families.idea",
+	"operator.attention_families.ack", "operator.attention_families.other",
+	"operator.transcript_files", "operator.unparseable_lines",
+	"intervention", "intervention.status", "intervention.reason",
+	"intervention.operator_messages", "intervention.merged_prs",
+	"intervention.messages_per_merged_pr",
+	"decision_latency", "decision_latency.status", "decision_latency.reason",
+	"decision_latency.samples", "decision_latency.p50_minutes", "decision_latency.p90_minutes",
+	"decision_latency.basis", "decision_latency.basis.ready_flip",
+	"decision_latency.basis.decision_request", "decision_latency.basis.created_at",
+	"session_hygiene", "session_hygiene.status", "session_hygiene.reason",
+	"session_hygiene.sessions_observed", "session_hygiene.sessions_over_24h",
+	"session_hygiene.roster_beacons", "session_hygiene.zombie_agents",
+	"session_hygiene.claims_filed", "session_hygiene.claims_open",
+	"session_hygiene.sessions_active", "session_hygiene.unparseable_files",
+	"correction_recurrence", "correction_recurrence.status", "correction_recurrence.reason",
+	"correction_recurrence.corrective_messages", "correction_recurrence.recurrence_candidates",
+	"dispatch", "dispatch.status", "dispatch.reason", "dispatch.total_dispatches",
+	"dispatch.loop_initiated", "dispatch.operator_initiated", "dispatch.unattributed",
+	"token_efficiency", "token_efficiency.status", "token_efficiency.reason",
+	"token_efficiency.subagent_tokens", "token_efficiency.merged_prs",
+	"token_efficiency.noop_dispatches", "token_efficiency.total_dispatches",
+	"token_efficiency.reports_unread", "token_efficiency.noop_classifier",
+	"unmeasured", "unmeasured[]",
+	"trend", "trend.status", "trend.reason", "trend.window_days", "trend.prior_files_found",
+	"trend.prior_files_other_classifier", "trend.relay_ratio", "trend.relay_ratio.prior_mean",
+	"trend.relay_ratio.delta", "trend.messages_per_merged_pr",
+	"trend.messages_per_merged_pr.prior_mean", "trend.messages_per_merged_pr.delta",
+}
+
+// unallowlistedKeys returns every key path in artifact that is not in emittedKeys.
+func unallowlistedKeys(t *testing.T, artifact []byte) []string {
+	t.Helper()
+	var doc any
+	if err := json.Unmarshal(artifact, &doc); err != nil {
+		t.Fatalf("artifact is not valid JSON: %v", err)
+	}
+	allowed := map[string]bool{}
+	for _, k := range emittedKeys {
+		allowed[k] = true
+	}
+	seen := map[string]bool{}
+	var walk func(node any, path string)
+	walk = func(node any, path string) {
+		switch v := node.(type) {
+		case map[string]any:
+			for k, child := range v {
+				p := k
+				if path != "" {
+					p = path + "." + k
+				}
+				seen[p] = true
+				walk(child, p)
+			}
+		case []any:
+			for _, e := range v {
+				seen[path+"[]"] = true
+				walk(e, path+"[]")
+			}
+		}
+	}
+	walk(doc, "")
+	var bad []string
+	for p := range seen {
+		if !allowed[p] {
+			bad = append(bad, p)
+		}
+	}
+	sort.Strings(bad)
+	return bad
+}
+
+// TestLeakEmittedKeysAreAllowlisted is the KEY instrument: every key in the emitted
+// day-file — counts included — is on the pinned list. It is what catches a new block
+// arriving unreviewed, and a dynamic key (a session id, a branch) used as a map key.
+func TestLeakEmittedKeysAreAllowlisted(t *testing.T) {
+	artifact := emitFixtureArtifact(t)
+	if bad := unallowlistedKeys(t, artifact); len(bad) > 0 {
+		t.Fatalf("the day-file carries keys that are not on the pinned list:\n  %s", strings.Join(bad, "\n  "))
+	}
+	// Every pinned key is actually emitted by the fixture run (trend included, via
+	// --trend), so a stale entry cannot sit on the list unseen.
+	var doc any
+	_ = json.Unmarshal(artifact, &doc)
+	for _, k := range emittedKeys {
+		if !keyPresent(doc, strings.Split(k, ".")) {
+			t.Errorf("pinned key %q is not in the fixture artifact — a stale pin hides nothing", k)
+		}
+	}
+}
+
+// keyPresent reports whether the dotted path exists in doc. "[]" descends into the
+// first array element; an empty array counts as present for "x[]".
+func keyPresent(doc any, parts []string) bool {
+	if len(parts) == 0 {
+		return true
+	}
+	m, ok := doc.(map[string]any)
+	if !ok {
+		return false
+	}
+	head := parts[0]
+	if strings.HasSuffix(head, "[]") {
+		arr, ok := m[strings.TrimSuffix(head, "[]")].([]any)
+		if !ok {
+			return false
+		}
+		if len(parts) == 1 {
+			return true
+		}
+		return len(arr) > 0 && keyPresent(arr[0], parts[1:])
+	}
+	// Optional ",omitempty" reasons are absent on ok blocks; they are pinned so a
+	// could-not-check run passes, and are present-or-omitted by construction.
+	child, ok := m[head]
+	if !ok {
+		return len(parts) == 1 && head == "reason"
+	}
+	return keyPresent(child, parts[1:])
+}
+
+// TestLeakKeyScannerSeesPlantedKey is the key instrument's CONTROL: a key planted
+// into the real artifact — one a careless change might add — must be reported.
+func TestLeakKeyScannerSeesPlantedKey(t *testing.T) {
+	var doc map[string]any
+	if err := json.Unmarshal(emitFixtureArtifact(t), &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["dispatch"].(map[string]any)["by_session"] = map[string]any{"session-gamma": 9}
+	planted, _ := json.Marshal(doc)
+	bad := unallowlistedKeys(t, planted)
+	want := []string{"dispatch.by_session", "dispatch.by_session.session-gamma"}
+	if strings.Join(bad, ",") != strings.Join(want, ",") {
+		t.Fatalf("planted keys reported as %v, want %v", bad, want)
 	}
 }
 
