@@ -57,6 +57,7 @@ type goldenServer struct {
 	files      []map[string]any
 	status     map[string]any
 	checks     map[string]any
+	suites     map[string]any
 	reqChecks  map[string]any
 	reactions  []map[string]any
 	pull       map[string]any
@@ -131,6 +132,7 @@ var (
 	gIssueRoot = regexp.MustCompile(`^/repos/[^/]+/[^/]+/issues$`)
 	gStatus    = regexp.MustCompile(`/commits/[^/]+/status$`)
 	gChecks    = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
+	gSuites    = regexp.MustCompile(`/commits/[^/]+/check-suites$`)
 	gCommits   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits$`)
 	gCommitPRs = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits/[^/]+/pulls$`)
 	gReqChecks = regexp.MustCompile(`/branches/[^/]+/protection/required_status_checks$`)
@@ -274,6 +276,8 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.status)
 	case r.Method == http.MethodGet && gChecks.MatchString(path):
 		enc(s.checks)
+	case r.Method == http.MethodGet && gSuites.MatchString(path):
+		enc(s.suites)
 	case r.Method == http.MethodGet && gCommits.MatchString(path):
 		enc(s.fileCommits)
 	case r.Method == http.MethodGet && gCommitPRs.MatchString(path):
@@ -552,6 +556,24 @@ func TestForgeGithubGolden(t *testing.T) {
 					}}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.ChecksAtHead(forgeTestRepo, "abc123") },
+		},
+		{
+			// #6234: the check suites at a head, including the shape the rollup cannot see — a
+			// suite with no conclusion and ZERO runs. A null conclusion maps to "", and the run
+			// count is the suite's latest_check_runs_count. One request: the suite list alone.
+			name: "check_suites_at_head",
+			setup: func(s *goldenServer) {
+				s.suites = map[string]any{"total_count": 2,
+					"check_suites": []map[string]any{
+						{"id": 116700446469, "status": "completed", "conclusion": "success",
+							"app": map[string]any{"slug": "github-actions"}, "latest_check_runs_count": 1,
+							"created_at": "2026-11-11T20:09:57Z"},
+						{"id": 116705687855, "status": "queued", "conclusion": nil,
+							"app": map[string]any{"slug": "github-actions"}, "latest_check_runs_count": 0,
+							"created_at": "2026-11-11T20:23:15Z"},
+					}}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.CheckSuitesAtHead(forgeTestRepo, "abc123") },
 		},
 		{
 			// Branch protection with required checks in BOTH shapes GitHub serves: the legacy

@@ -4,6 +4,7 @@ import (
 	"github.com/medici-finance/assay/deskcore/issueflow"
 	"time"
 
+	"github.com/medici-finance/assay/statusgen/evaluation"
 	"github.com/medici-finance/assay/statusgen/readercaps"
 	"github.com/medici-finance/assay/statusgen/streamview"
 )
@@ -107,6 +108,9 @@ type Stream struct {
 	// whose envelope is unreadable (coverage unknown) (milestones.go); nil for
 	// every legacy, non-opted-in or archived stream.
 	Milestones *MilestonePlan
+	// MilestoneReadiness is the canonical post-scan result, including coverage
+	// gaps and required parked work; it grants no dispatch admission.
+	MilestoneReadiness *evaluation.ReadinessResult
 }
 
 type Brief struct {

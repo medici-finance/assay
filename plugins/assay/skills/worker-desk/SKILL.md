@@ -650,11 +650,12 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   - any brief-keyed or review-kit item;
   - an issue or change whose author is not trusted and that carries no current blessing;
   - a `--pr` item whose head commits are not all on the base repository, with a linked author and
-    committer that are both roster logins.
+    committer that are both roster logins (commit attribution, not proof of who pushed).
 
   Unreadable forge data counts as untrusted. Treat that refusal like any guard refusal: it is a
-  STOP for the item in that window. Never route around it by unsetting the variable, because the
-  file stays mounted. `deskdispatch` also strips every such variable from the tool processes it
+  STOP for the item in that window. Never route around it by unsetting the variable: the
+  file stays mounted, and an existing `/run/secrets/role-*` file makes the window a holding one
+  anyway. `deskdispatch` also strips every such variable from the tool processes it
   starts.
 
 ## Cockpit-aware worktree creation — additive, chosen by `ASSAY_COCKPIT` or detected on PATH, never required

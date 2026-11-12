@@ -159,6 +159,9 @@ secrets:
 containers:
   - name: <desk-name>
     image: ghcr.io/medici-finance/assay/<desk-name>:<tag>
+    env:
+      - name: GODEBUG
+        value: multipathtcp=0              # CVE-2026-98432 stopgap; patched node kernels are the fix
     envFrom:
       - secretRef:
           name: assay-model-credentials   # the §3 variables
@@ -235,8 +238,14 @@ and advisory and is never enough on its own.
 Inside a holding window, `deskdispatch` refuses, before any claim, every item
 it cannot show to be trusted from forge data: a review-kit dispatch, an item
 with no forge item behind it, an untrusted unblessed issue or change, and a
-change whose head is not provably pushed by roster logins. It also strips every
-`ASSAY_ROLE_SECRET_*` variable from every child process it starts.
+change whose head commits are not all attributed to roster logins. A window is a
+holding window when its environment has any variable whose name starts with
+`ASSAY_ROLE_SECRET_` (case-insensitive, set or empty) or when any file matches
+`/run/secrets/role-*`, so unsetting the variable does not lift the checks. The
+head check reads commit attribution, not the pusher: the forge links an
+account by the email recorded in the commit, which a pusher chooses, and it
+compares commits by login only. It also strips every `ASSAY_ROLE_SECRET_*`
+variable from every child process it starts.
 
 **Revocation and audit.** Replacing or deleting the host file stops future
 launches only: a removed file makes the next launch for that role refuse. It
@@ -250,7 +259,10 @@ it (a hash of a short password is a guessing oracle).
 Residual exposure the surface does not remove: any other process on the host
 running as the file's owner, outside every cell, can still read the file; and
 a trusted worker's own dependency can exfiltrate the secret it legitimately
-holds. Keep role secrets to non-production, per-role, per-service credentials,
+holds; a writer on the base repository can forge the commit attribution the
+head check reads; and an admitted agent still reads comments, review bodies and
+linked content from accounts outside the roster, so prompt-injection
+exfiltration through that content is not covered. Keep role secrets to non-production, per-role, per-service credentials,
 and rotate on any doubt.
 
 ---

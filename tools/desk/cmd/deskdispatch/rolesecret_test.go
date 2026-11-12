@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -66,15 +67,16 @@ func rsWindow(t *testing.T, holding bool, f deskkit.Forge) {
 	if holding {
 		env = append(env, "ASSAY_ROLE_SECRET_FAKE_SVC_FILE=/run/secrets/role-fake-svc")
 	}
-	origEnv, origForge := roleSecretEnviron, roleSecretForgeFn
+	origEnv, origForge, origGlob := roleSecretEnviron, roleSecretForgeFn, roleSecretMountGlob
 	roleSecretEnviron = func() []string { return env }
+	roleSecretMountGlob = filepath.Join(t.TempDir(), "role-*")
 	roleSecretForgeFn = func(deskkit.ForgeRepo) (deskkit.Forge, error) {
 		if f == nil {
 			return nil, errors.New("forge unreachable")
 		}
 		return f, nil
 	}
-	t.Cleanup(func() { roleSecretEnviron, roleSecretForgeFn = origEnv, origForge })
+	t.Cleanup(func() { roleSecretEnviron, roleSecretForgeFn, roleSecretMountGlob = origEnv, origForge, origGlob })
 }
 
 func rsTrustedChange() *rsForge {
@@ -269,4 +271,23 @@ func TestRoleSecretDispatchRefusesBeforeClaim(t *testing.T) {
 			t.Fatalf("a child saw a role-secret variable: %s", res.stdout)
 		}
 	}
+}
+
+// A window whose role-secret variable was unset still holds the secret while its file is mounted
+// at the fixed path, so the mount alone makes it a holding window.
+// regression: #6065
+func TestRoleSecretMountHolds(t *testing.T) {
+	rsWindow(t, false, nil)
+	if holdingRoleSecret() {
+		t.Fatal("a window with neither the variable nor the mount held a secret")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "role-fake-svc"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	roleSecretMountGlob = filepath.Join(dir, "role-*")
+	if !holdingRoleSecret() {
+		t.Fatal("a mounted role secret with no variable was not a holding window")
+	}
+	wantRefusal(t, "mount-only review kit", roleSecretPrecheck(dispatchOpts{item: "assay--issue-12", kit: "review", pr: 7}), "review-kit dispatch")
 }

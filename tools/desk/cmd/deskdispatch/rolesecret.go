@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -22,14 +23,18 @@ import (
 //     check has no author or blessing to read for it;
 //   - an issue item whose author is not trusted and that carries no current blessing
 //     (deskkit.ItemTrustedEvents, with an incomplete event read counted as untrusted);
-//   - a --pr item that fails the same check, or whose head is not provably pushed by roster
-//     logins. GitHub records no pusher per commit, so the rule is the strictest one forge data
-//     supports: the head repository is the base repository, the commits the head adds over the
-//     base branch's CURRENT tip are read completely, and every one of them has a linked author
-//     AND a linked committer that are both trusted roster logins. Anything unread or unlinked
-//     is untrusted.
+//   - a --pr item that fails the same check, or whose head commits are not all attributed to
+//     roster logins. GitHub records no pusher per commit, and the forge links an account by the
+//     email in the commit object, which a pusher chooses, so this is attribution, not proof of
+//     who pushed. The rule is the strictest one forge data supports: the head repository is the
+//     base repository, the commits the head adds over the base branch's CURRENT tip are read
+//     completely, and every one of them has a linked author AND a linked committer that are
+//     both trusted roster logins (by login only: the commit record carries no account id).
+//     Anything unread or unlinked is untrusted. A writer on the base repository can still
+//     forge that attribution.
 //
-// A window that holds no role-secret variable is unaffected: every check here is skipped.
+// A window that holds no role-secret variable and has no role-secret mount is unaffected:
+// every check here is skipped.
 //
 // Separately, runCmdEnv strips every role-secret variable from every child this verb starts,
 // trusted or not (the closed inventory in exec.go).
@@ -44,7 +49,21 @@ var roleSecretForgeFn = func(fr deskkit.ForgeRepo) (deskkit.Forge, error) {
 	return fg, err
 }
 
-func holdingRoleSecret() bool { return deskkit.HoldsRoleSecret(roleSecretEnviron()) }
+// roleSecretMountGlob matches the fixed in-container path a bound secret is mounted at
+// (containers/secrets.md §4.4). A seam for tests.
+var roleSecretMountGlob = "/run/secrets/role-*"
+
+// holdingRoleSecret reports a holding window by the variable OR by the mount: a window whose
+// variable was unset still has the file readable at its fixed path, so an existing mount counts
+// as holding too. An unreadable pattern matches nothing, which only ever errs toward the
+// variable test alone.
+func holdingRoleSecret() bool {
+	if deskkit.HoldsRoleSecret(roleSecretEnviron()) {
+		return true
+	}
+	m, _ := filepath.Glob(roleSecretMountGlob)
+	return len(m) > 0
+}
 
 const roleSecretRefusalTail = " — this window holds a role-secret path (ASSAY_ROLE_SECRET_*), so only work shown to be " +
 	"trusted from forge data is dispatched from it; nothing was claimed."
