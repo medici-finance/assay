@@ -115,3 +115,173 @@ The wrong-but-plausible delivery is the mutation named in each Verify row. Each 
 ## Review
 
 Gate: human, derived from the declared risks. Independent review checks compatibility and consumer-flow evidence. No reviewer/worker stamp, release permission or acceptance receipt is created by this authoring change.
+
+## Proposed readiness integration — pending human ruling
+
+**Proposal only. No implementation, Task/Verify change, Evidence or lifecycle credit is
+claimed.** This brief is human-gated, and its decision issue is open with no ruling yet.
+This appendix sets out the concrete design that the Human decision section asks for, so
+the maintainer can accept it, correct it or hold it. Until an unedited human ruling
+names this proposal, nothing here changes a shared value, advertises a capability or
+makes a milestone ready.
+
+### Architecture pickup and source coverage
+
+Manual bootstrap at source commit `4502966e88b19860ab06f1a2dbc1729cbcd6c766`, brief
+`assay:assay:milestone-support:07`, authored revision 1. The dispatch packet records the
+same commit, and the worktree head matched it before editing. Both dependencies are
+delivered on main: /05 is verified, and /06 is implemented with its Evidence PASS landed.
+The table lists the source contracts that were inspected. None of them is a new approval.
+
+| Source | What the design relies on |
+|---|---|
+| `statusgen/evaluation/eligibility.go` (`EvaluateEligibility`, `S-eligibility`) | The canonical eligibility owner. It takes explicit observations and returns `eligible`, `held` or `eligible-with-notice`, with each edge `satisfied`, `unsatisfied` or `could-not-check`. Pre-resolved gates arrive as `Edge.Resolved`. |
+| `statusgen/evaluation/milestonegraph.go` (`BuildMilestoneGraph`) | The combined graph. It holds per-brief start gates and, per milestone, the contributors, prerequisites, completion (`complete`, `blocked`, `unknown` or `cycle`), blockers and unknowns. It also lists cycles and provides the deduplicating `ContributorCount`. A start gate is never satisfied today, because this reader does not observe acceptance. Withdrawn contributors block. |
+| `statusgen/milestonegraph.go` (`applyMilestoneStartGates`) | The host adapter. It writes each start gate onto the brief row as a `behavioural-gate` edge, pre-resolved to `unsatisfied` or `could-not-check`. |
+| `statusgen/domain` (`AssessMilestone`, `S-verification-domain`) and `statusgen/milestoneacceptance.go` | The /06 receipt assessment. It records immutable history, a present state (`supported`, `blocked` or `unknown`), whether acceptance is outstanding, blockers, unknowns and quarantined input. No production selector is installed, and nothing calls it in production. |
+| `statusgen/briefschemaversions.go` (`statusgenReaderCaps`) and `statusgen/milestones.go` | Only `syntax` and `preflight` are advertised. While `milestone-v1` is unadvertised, milestone records are not read and every start requirement is `could-not-check`. |
+| `statusgen/nextup.go` (`eligibleBase`, `eligible`) and `statusgen/drivefrontier.go` | Next-up and the drive frontier read one eligibility map. Every existing exclusion is applied outside the evaluator: inactive stream, stale ref, homed-in, merged in a sibling, phantom, claimed, measures queue, placeholder and the legacy wave rule. |
+| `spec/milestone-v1.md` §5, §6, §9 and its implementation sections | Unknown never means "no dependency" or "done". The three outcome views and current availability stay distinct. Revoked acceptance never satisfies, withdrawn work does not count, shared briefs count once, and legacy streams are unchanged. |
+
+Import direction fixes the package boundary. `statusgen/domain` already imports
+`statusgen/evaluation`, so the evaluator cannot import the receipt types without
+creating a cycle. The /06 result therefore enters the evaluator as plain values, and the
+statusgen host does the mapping.
+
+### Bounded design to rule on
+
+The design extends the existing owner. It does not add a second planner.
+
+1. **One evaluator, one optional input.** `EligibilityInput` gains an optional
+   `Milestones` field. It carries the `MilestoneGraph` that `BuildMilestoneGraph`
+   already builds, plus a list of acceptance observations. A new
+   `EvaluateReadiness(EligibilityInput)`, in the same `S-eligibility` owner, returns
+   the existing per-brief `Eligibility` map plus a per-milestone readiness map and a
+   coverage summary. `EvaluateEligibility` stays, as the per-brief projection of the
+   same call. When `Milestones` is nil, its output is byte-identical to today's, which
+   is the legacy guarantee.
+2. **Plain acceptance observations.** Each observation names the exact milestone,
+   promise version and subject. It carries a present state (`accepted`, `outstanding`,
+   `revoked`, `superseded` or `unknown`), with reasons and a history count. The
+   statusgen host maps it from `domain.MilestoneAssessment` without re-deriving
+   acceptance. The evaluator never reads comments, decisions or evidence itself.
+3. **Distinct per-milestone fields.** Each milestone reports four separate values, never
+   folded into one verdict:
+   - work remaining: contributing and prerequisite briefs not yet `done`, deduplicated
+     by canonical brief identity across the milestone and its prerequisite graph.
+     `implemented` and `verified` count as remaining. Withdrawn or missing work is a
+     blocker and never counts as progress; unread prerequisite coverage stays unknown;
+   - work complete with acceptance outstanding: every contributor is `done` and every
+     prerequisite promise has qualifying acceptance for the consuming milestone's
+     environment, interface and workload profile, but this milestone has no current
+     acceptance for its exact version and subject. A prerequisite with remaining work,
+     missing acceptance or unknown coverage cannot meet these completion requirements;
+   - accepted for subject: the exact milestone version and subject that have current
+     acceptance. Revoked or superseded history stays visible and never satisfies;
+   - current availability: `supported`, `blocked` or `unknown`. Typed holds carry the
+     blocker and unknown lists and the blocking heads, meaning the not-done contributors
+     and unaccepted prerequisites nearest the root. An incomplete-coverage flag is set
+     whenever any root, record, version or observation was not read.
+4. **Start gates.** A brief's `requires-milestones` entry is `satisfied` only when two
+   things hold: the milestone's current availability is `supported`, and an observation
+   shows current acceptance for the exact version and subject. Known remaining work, a
+   cycle, a withdrawn contributor or a revoked or superseded acceptance makes the entry
+   `unsatisfied`. A missing observation, absent selector, unread record or unadvertised
+   reader capability makes it `could-not-check`. Satisfying a start gate removes only
+   that one hold and never overrides any other hold.
+5. **Final-only requirements stay final-only.** A milestone's own `requires-milestones`
+   holds only that milestone's acceptance. It is never copied onto contributing briefs.
+   A contributor without its own start requirement therefore keeps its current
+   eligibility (spec §9: brief 11 starts, and brief 12, which has an explicit
+   requirement, stays held).
+6. **Every existing rule is retained.** The risk, design, human-decision, verification,
+   placeholder, legacy-wave, measures-queue, claimed, phantom, homed-in, merged-sibling
+   and parked/paused rules all apply unchanged. Required work in a parked or paused
+   stream is listed as a blocking head and stays non-dispatchable.
+7. **Host wiring is kept narrow.** `applyMilestoneStartGates` stops pre-resolving the
+   gate itself and passes the graph and the mapped observations through
+   `EvaluateReadiness`. Next-up and the drive frontier keep reading the per-brief map.
+   Start requirements remain in `Gates`, never `Feathers`; an edge with no `Resolved`
+   value must still resolve fail-closed. No reader capability is advertised and no
+   production acceptance selector is installed. On main, every start requirement therefore stays `could-not-check` until
+   /10 and /14 turn the operational path on.
+
+### Preserved actor, subject, revocation and effect-admission rules
+
+The Human decision section asks for these four rules to be confirmed explicitly.
+
+- **Actor.** Unchanged from `DR-milestone-support-06`. Only the authorized human
+  identity on the protected source can accept, reject, hold or revoke. The evaluator
+  holds no identity and accepts nothing. It only reads the result the host maps.
+- **Subject.** Every comparison uses the exact milestone, promise version and subject.
+  An acceptance for another version, subject or profile never satisfies, and a newer
+  promise version does not inherit an older acceptance.
+- **Revocation.** A revoked or superseded acceptance keeps its history. It never
+  satisfies a start gate and never counts as accepted for the subject. If the
+  revocation source cannot be read, the present state is `unknown`; an unreadable
+  source never proves that no revocation exists.
+- **Effect admission.** None. Eligibility and readiness are reports only. They grant no
+  permission, capacity, claim, dispatch admission or acceptance. Dispatch admission
+  stays with /10. No new store, queue or acceptance authority is introduced.
+
+### Acceptance cases for the post-ruling implementation
+
+These are proposed cases for the two existing Verify rows. They are not new executable
+checks or reported results. The original commands and Evidence remain unchanged.
+
+| Existing future test | Case and expected discrimination |
+|---|---|
+| `TestMilestoneEligibility` (planned) | Brief 11 belongs to a milestone whose only prerequisite is final-only, and it stays `eligible`. Brief 12 has an explicit `requires-milestones` on an unaccepted milestone and is `held`. Mutation: copying final-only requirements onto contributors holds brief 11, so the test fails. |
+| `TestMilestoneEligibility` (planned) | All contributors are `done` and every prerequisite promise has qualifying acceptance, but this milestone has no acceptance: the result reports acceptance outstanding, and the start gate stays unsatisfied or could-not-check. Exact current acceptance is the positive control. Revoked, superseded, wrong-version and wrong-subject observations never satisfy. |
+| `TestMilestoneEligibility` (planned) | All local contributors are `done`, but prerequisite P has remaining briefs: report those briefs as remaining and do not report work complete with acceptance outstanding. A shared not-done brief reached directly and through multiple prerequisites counts once. Mutation: omitting prerequisite traversal or deduplication fails. When P's briefs become `done` but P lacks qualifying acceptance (or its coverage is unknown), completion requirements still are not met. Only qualifying acceptance for every prerequisite permits this milestone's acceptance-outstanding view. |
+| `TestMilestoneEligibility` (planned) | `implemented`, `verified` and withdrawn contributors count as remaining or blocking. A brief shared by two milestones is counted once per outcome. Mutation: counting `verified` as done, or counting withdrawal as complete, fails. |
+| `TestMilestoneEligibility` (planned) | A satisfied start gate never lifts a human, design, risk, verification, placeholder or parked hold. Mutation: returning `eligible` as soon as the start gate is satisfied fails. A nil `Milestones` reproduces the legacy fixtures byte for byte. |
+| `TestNextupMilestoneCoverage` (planned) | Next-up, run through the real host adapter, never lists a brief whose milestone root is unread, whose prerequisite is withdrawn or whose acceptance is missing. The incomplete-coverage flag and blocking heads are surfaced. Required parked work is visible and non-dispatchable. |
+| `TestMilestoneEligibility` (planned) | An unresolved milestone start edge remains a `Gates` hold. Two separate mutations in `07-mutations.json` (planned) must fail through the production evaluator/host flow: moving the edge into `Feathers`, and treating an absent `Resolved` value as satisfied. Neither mutation may yield `eligible` or `eligible-with-notice`. |
+| `TestNextupMilestoneCoverage` (planned) | With the reader capability unadvertised, as it is on main, every start requirement is `could-not-check`, and Next-up output for non-milestone streams is unchanged. |
+
+After the ruling, these cases are implemented through the actual entrypoints. The
+compiling mutations are recorded in the declared `07-mutations.json`, and fail-first
+results are shown before the implementation PR opens. Neither named test exists at this
+source revision.
+
+### Consumer census and transition
+
+| Consumer | Disposition |
+|---|---|
+| This brief's design appendix and design changelog fragment | fixed-here: authoring material only; no shared runtime value changes. |
+| `statusgen/evaluation/eligibility.go`, a sibling readiness file in the same owner, and `docs/contracts.md` row `S-eligibility` | follow-up /07 after the ruling; the evaluator version changes wherever a verdict can change. |
+| `statusgen/milestonegraph.go` host adapter and `statusgen/milestoneacceptance.go` mapping | follow-up /07; maps the /06 assessment to plain observations without re-deriving acceptance. |
+| `statusgen/nextup.go`, `statusgen/drivefrontier.go`, the `--eligibility` output and its could-not-check notices | follow-up /07; consume the canonical result and keep every existing exclusion. |
+| `statusgen/flow.go` depends reading | out-of-scope: brief `depends` semantics are unchanged. |
+| `spec/milestone-v1.md` start-gate and implementation sections, `docs/library-first.md` eligibility row | follow-up /07; the canonical text is updated only after the ruling. |
+| Reader capability advertisement, dispatch admission and operational rollout | follow-up /10 and /14; nothing is advertised here. |
+| Board, historian/export and selected-outcome trace | follow-up /11, /12 and /13; consume the canonical result. |
+| The desk loop engine's own eligibility verdict type | out-of-scope: it has a different meaning and is not this evaluator. |
+
+### Decision block
+
+**Owner:** the maintainer authorized by the existing /07 decision issue. This gate
+approves how /07 will be implemented. It does not accept any milestone outcome.
+
+1. **Accept the bounded readiness integration (recommended).** This authorizes:
+   - the optional `Milestones` input and `EvaluateReadiness` in the `S-eligibility`
+     owner;
+   - the four distinct per-milestone fields, with typed holds;
+   - start gates satisfied only by exact current acceptance;
+   - final-only requirements never copied onto contributors;
+   - every existing hold retained;
+   - the actor, subject, revocation and no-admission rules above.
+2. **Request corrections.** Name the field, gate rule, preserved rule or consumer to
+   change. Implementation stays held until a revised proposal.
+3. **Hold.** Leave /07 at its current lifecycle state, and say what evidence or
+   ownership resolution is needed before another proposal.
+
+Exact ruling needed: an unedited human comment on the existing decision issue. It names
+`milestone-support/07`, the proposal PR and its head, and `DR-milestone-support-07`,
+selects one option, and states any corrections. The reserved record id is
+`DR-milestone-support-07`. If the proposal is accepted, the ruling is transcribed into
+that decision-v1 record, with alternatives, consequences and a ruling link that can be
+corroborated. The brief then cites the record through its `design:` field before
+governed implementation starts. Nothing in this proposal creates an approved DR, fills
+`decided-by`, records Evidence or advances the lifecycle status.
