@@ -233,6 +233,13 @@ type verifyRowCells struct {
 	// resolves to the default `sh` (POSIX bash), which is byte-for-byte today's
 	// behaviour for the whole inherited corpus. resolveRowShell normalises it.
 	Shell string
+	// Env is the RAW `Env` cell text (issue #6065): WHERE the row runs — the
+	// checkout alone, the witness's host, a named non-production service
+	// instance, or a live cluster. EnvCol records whether the TABLE carried an
+	// `Env` column at all; the environment lint reads a table only when it has
+	// opted in, so the inherited corpus is untouched. resolveRowEnv normalises it.
+	Env    string
+	EnvCol bool
 }
 
 // resolveRowClass normalises a Class cell to one of the class constants and
@@ -351,6 +358,99 @@ func (r verifyRowCells) shell() string {
 }
 
 // ---------------------------------------------------------------------------
+// Verify row ENVIRONMENTS (issue #6065)
+// ---------------------------------------------------------------------------
+//
+// The class says WHO executes a row; nothing said WHERE. A row that needs a live
+// database or a project credential could be classed `check:ci` — which CI
+// re-executes network-off on the checkout alone, so it can only fail or be
+// faked — and an env-bound `check` row could name no environment at all, which
+// leaves the non-implementer who must witness it with nowhere to run it. The
+// author then reports their own run, and the reviewer is right to refuse it.
+//
+// So a row may state its environment in an optional `Env` column, located by
+// header NAME like `Class` and `Shell`:
+//
+//	| # | Class | Env | Command | Expect |
+//
+// A CLOSED grammar, lower-cased, backticks stripped:
+//
+//	tree             the checkout alone, network-off — what CI re-executes.
+//	host[:<name>]    the witness's own machine: installed tools, local config.
+//	service:<name>   a NAMED NON-PRODUCTION service instance — a database, an
+//	                 API, a staging deployment. <name> is the identifier the
+//	                 brief's Context (or its spec) describes; never production.
+//	cluster:<name>   a live cluster, run by the pod runner (check:cluster).
+//
+// <name> is lower-case letters, digits, `.`, `_` and `-`. An empty cell names no
+// environment. The column is ADDITIVE: a table without it lints exactly as it
+// did before, and every consumer other than the lint ignores it.
+//
+// The rules (lint arm (d) in verifyRowClassProblems), all in a table WITH the
+// column:
+//
+//   - an Env cell outside the grammar is a PROBLEM — it routes nowhere;
+//   - a `check:ci` row naming anything but `tree` is a PROBLEM — CI reaches no
+//     host, service or cluster;
+//   - a row naming a non-tree environment in a table with NO `Class` column is
+//     a PROBLEM — an unclassed row is legacy `check`, which the scheduled main
+//     re-run still executes in CI;
+//   - an explicitly classed `check` or `check:cluster` row with an empty Env is
+//     a PROBLEM — an env-bound row must say where it is witnessed.
+//
+// Gate rows are judged, not executed, so their Env cell is informational.
+
+const (
+	rowEnvTree    = "tree"
+	rowEnvHost    = "host"
+	rowEnvService = "service"
+	rowEnvCluster = "cluster"
+)
+
+// rowEnvNameRe is the <name> half of a `kind:<name>` Env cell.
+var rowEnvNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+
+// resolveRowEnv normalises an `Env` cell and reports its kind and whether it is
+// well-formed. An empty cell is well-formed with kind "" (no environment named).
+// The normalised cell is returned verbatim so the lint names what was written.
+func resolveRowEnv(raw string) (env, kind string, known bool) {
+	env = strings.ToLower(strings.TrimSpace(normalizeRowID(raw)))
+	if env == "" {
+		return "", "", true
+	}
+	k, name, named := strings.Cut(env, ":")
+	switch k {
+	case rowEnvTree:
+		return env, k, !named
+	case rowEnvHost:
+		return env, k, !named || rowEnvNameRe.MatchString(name)
+	case rowEnvService, rowEnvCluster:
+		return env, k, named && rowEnvNameRe.MatchString(name)
+	}
+	return env, k, false
+}
+
+// rowEnvProblem is lint arm (d) for one row of a table carrying an `Env`
+// column: "" when the row is clean, else the PROBLEM text (issue #6065).
+func rowEnvProblem(path, where string, r verifyRowCells) string {
+	env, kind, known := resolveRowEnv(r.Env)
+	if !known {
+		return fmt.Sprintf("%s: %s declares environment %q, which is not a defined Verify-row environment — the recognised forms are `tree` (the checkout alone, network-off: what CI re-executes), `host` or `host:<name>` (the witness's own machine), `service:<name>` (a named non-production service instance: a database, an API, a staging deployment) and `cluster:<name>` (a live cluster), where <name> is lower-case letters, digits, `.`, `_` or `-`. An environment the tool cannot resolve routes the row nowhere; fix the cell — issue #6065", path, where, env)
+	}
+	offTree := kind != "" && kind != rowEnvTree
+	cls := r.class()
+	switch {
+	case offTree && !r.Classed:
+		return fmt.Sprintf("%s: %s names environment %q in a table with no `Class` column — an unclassed row is legacy `check`, which the scheduled main re-run still executes in CI, where that environment does not exist. Add a `Class` column and class the row `check` (or `check:cluster` for a cluster probe) — issue #6065", path, where, env)
+	case offTree && cls == classCheckCI:
+		return fmt.Sprintf("%s: %s is classed `check:ci` but its Env cell names %q — a `check:ci` row is re-executed by CI network-off on the checkout alone, which reaches no host, service or cluster. Class it `check` (or `check:cluster` for a cluster probe) so a non-implementer witnesses it where that environment exists, or make it a tree-only command with Env `tree` — issue #6065", path, where, env)
+	case kind == "" && r.Classed && (cls == classCheck || cls == classCheckCluster):
+		return fmt.Sprintf("%s: %s is classed `%s` but names no environment — an env-bound row must say where a non-implementer witnesses it. Name it in the Env cell (`host`, `host:<name>`, `service:<name>` for a non-production service instance, or `cluster:<name>`), or class the row `check:ci` with Env `tree` if the checkout alone is enough — issue #6065", path, where, cls)
+	}
+	return ""
+}
+
+// ---------------------------------------------------------------------------
 // verify.d scripted rows
 // ---------------------------------------------------------------------------
 
@@ -400,6 +500,12 @@ func scriptPath(command string) string {
 //	    cannot resolve would route the row nowhere. The `Shell` column is
 //	    independent of the `Class` column, so this fires whether or not the table
 //	    declares a `Class` column.
+//
+//	(d) an environment mismatch (issue #6065), only in a table carrying an
+//	    `Env` column — see rowEnvProblem: an unknown Env cell, a `check:ci` row
+//	    naming an environment CI cannot reach, an unclassed row naming one, or
+//	    an env-bound row naming none. Always a PROBLEM; no table on main carried
+//	    the column when the arm landed, so it adds no debt to the corpus.
 func verifyRowClassProblems(streams []*Stream) []string {
 	var problems []string
 	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
@@ -452,6 +558,13 @@ func verifyRowClassProblems(streams []*Stream) []string {
 							add("%s: %s declares obligation %q, which is not a defined Verify-row obligation — the recognised obligations are `+mutation`, `+flow`, `+dereference` and `+neighbour` (mistake-proofing/03). An obligation token the tool cannot resolve routes nowhere and is silently exempt from the obligation derivation; fix the token or drop it. This lint checks the PRESENCE of a typed obligation, not its adequacy, which stays the reviewer's call (spec §3 D7) — mistake-proofing/03", path, where, ob)
 							return // an unknown obligation makes the script check meaningless
 						}
+					}
+				}
+				// (d) environment mismatch (issue #6065). After (a), so the
+				// class it reads is a known one.
+				if r.EnvCol {
+					if msg := rowEnvProblem(path, where, r); msg != "" {
+						add("%s", msg)
 					}
 				}
 				// (b) missing / non-executable script.

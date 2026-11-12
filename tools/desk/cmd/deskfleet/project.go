@@ -18,6 +18,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/forgelabels"
 )
 
 func (p *provisioner) configureProject() {
@@ -48,7 +50,7 @@ func (p *provisioner) configureProject() {
 	p.configureApprovals(pp)
 	p.configureProtectedTags(pp)
 	p.configureMergeChecks(pp)
-	ensureLabels(&gitlabLabels{c: p.gl, projectPath: pp}, p.e.stdout, p.fail)
+	ensureLabels(forgelabels.GitLab(fleetTransport{p.gl}, strconv.FormatInt(pr.ID, 10)), fleetLabels, p.e.stdout, p.fail)
 	p.configurePushToken(pp, mainRule, mainRead)
 }
 

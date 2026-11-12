@@ -169,12 +169,16 @@ nothing measured.
      can weigh ("the two out-of-scope exclusions are judgements — reviewer confirms the
      frozen tree really has no live reader"). It does not get restated as fact in the
      frontmatter, where it would read as settled.
-   - **After the merge, the claims need the diff that made them.** `--brief` lifts the diff
-     SCOPING, not the need for a diff: run on merged main it exits **2 (COULD-NOT-CHECK)**,
-     because HEAD equals the base and nothing there is evidence either way. To re-run the
-     claims, give it the branch: `git checkout M^2 && statusgen --consumers --brief <id>
-     --base $(git merge-base M^1 M^2)` for the PR's merge commit `M`. Exit 2 is deliberate —
-     "could not check" must never render as "checked clean".
+   - **After the merge, the same row re-runs against the delivery.** On merged main HEAD
+     equals the base, so the branch diff is no evidence either way. The bare row then pins
+     itself to the brief's delivery and its first parent, read locally: the committed
+     Evidence's `Verification-Table:` marker when there is one, otherwise the one first-parent
+     commit whose message, or a commit it merged, carries `Brief: <stream>/<NN>`. The commit
+     that delivers the brief must therefore carry that trailer, and it must be the only one
+     (see [consumer delivery checks](consumer-delivery-checks.md)). When neither source names
+     exactly one delivery it exits **2 (COULD-NOT-CHECK)**; pass `--delivery <full-sha>
+     --base <its first parent>` explicitly. Exit 2 is deliberate — "could not check" must
+     never render as "checked clean".
 
    What the gate does **not** establish: that the list is COMPLETE. It judges the entries
    that were written; a consumer left off the list is invisible to it, and the run says so on
@@ -280,6 +284,63 @@ nothing measured.
     reports that as exit 1 is recorded `fail`. And a row whose Expect is pure prose is decided
     on its exit status alone — the run says so on that row, and the output hash is what a
     reviewer weighs for the rest. `verifyrun` narrows the unproven set; it does not close it.
+
+51. **A Verify row whose Expect is a clean repo-wide statusgen lint is credited when `statusgen --lint --acceptance-forge` is clean at the pinned revision, witnessed in the host lane.** Ruling: https://github.com/medici-finance/assay/issues/4823#issuecomment-6725046323
+
+    The offline lint re-audits every `verified` or `done` brief that carries an
+    `Acceptance-Transition:` record, and that record's approval can be read only from the
+    forge. Offline, each such brief is a PROBLEM, for example `could-not-check human
+    authority: --acceptance-forge is required`, or `could-not-check repository authority:
+    …` in a checkout without a usable github.com origin. So once any transitioned brief is
+    closed, a row that runs the bare repo-wide lint cannot pass anywhere off the forge. The
+    authoritative CI lint already runs with `--acceptance-forge`
+    ([protected paths](protected-paths.md)).
+
+    What this rule changes, and what it does not:
+
+    - **It says what credits the row. It does not change the lint.** The offline PROBLEM
+      stays as it is, and `--acceptance-forge` still grants no approval: it only lets the
+      lint read the recorded one, and it corroborates that record afresh on every run.
+    - **What counts.** The same pinned statusgen release, at the revision the row's witness
+      names, run with `--acceptance-forge` in the host lane (a network-off `check:ci`
+      sandbox cannot reach the forge), exits 0 with `LINT: PASS`.
+    - **Which credential reads the approval.** The run is made under a verifier-admission
+      signal (an admitted `statusgen verifyrun`, a `DESK_LOOP` naming a verify loop, or a
+      working repository holding the verifier attestation file) or with
+      `GH_TOKEN`/`GITHUB_TOKEN` set explicitly. Under those conditions the binary reads the
+      approval with that credential only and never falls back to a stored forge login. The
+      binary does not enforce this outside them, so a run made outside them is not credited.
+    - **What does not count.** A forge-enabled run is `could-not-run` when any PROBLEM
+      says an authority read did not complete: `could-not-check repository authority: …`,
+      or `human approval could not be corroborated: …` because the record could not be read
+      from the checkout or the forge did not answer: no forge client, a fetch error, an
+      HTTP error on the comment other than not-found or gone, any HTTP error on the issue,
+      or a payload that did not parse. That holds even when other
+      PROBLEMs are present: the weaker state of knowledge wins, as in rule 37. A read that
+      completed and refuted the approval is `fail`. That covers a malformed ruling link; a
+      comment that is deleted or never existed (not-found or gone), edited, bot-authored, or by an unmapped or
+      wrong author; a comment on another repository, issue or pull request, or on an issue
+      without the record's marker; a record the comment does not name; and an approval
+      that does not name the exact transition payload. Any other PROBLEM is also `fail`.
+      Neither is credit, though the lint exits 1 for both. A row whose Expect asks for
+      something other than a clean repo-wide lint (one brief's lint, a named NOTICE, a
+      problem count) is outside this rule.
+    - **The row is not rewritten.** The Verify row keeps its authored command, because
+      editing a protected row needs its own transition. The Evidence entry records the
+      forge-enabled run beside the row's offline witness and cites this rule.
+    - **The record is not a rule-36 witness, and it is not written as a table row.** No tool
+      writes it. `statusgen` reads every `|` table row in an `## Evidence` section, so a
+      row in the witness columns would become the Verify row's newest witness, recording a
+      command the row does not carry. `verifyrun --check` would then report the row
+      `could-not-run`, and the witness gate would refuse the close. Record the run as
+      prose or a fenced block outside any table, with no line starting with `|`. State
+      the command as run, its exit status and the state decided above, the revision, the
+      date, who ran it, and the `sha256:` fingerprint of the combined output. Include the
+      run's primary output too: the `LINT: PASS` line, and the stderr line
+      `acceptance transition: reading approval <url>` for each approval read, which shows
+      the corroboration ran rather than being skipped. The identity is as stated by whoever
+      records the run, not derived, so a reviewer re-runs the command and compares the
+      fingerprint.
 
 ## Derived status cells
 
@@ -671,7 +732,14 @@ passing run — which is why they are lint rules and not review vigilance.
       on-behalf-of annotation for the repo the rows are written into — runs
       the admission check, digests the home's tree and writes the receipt
       (check JSON, `tree`, `opened`, `runner`, `runner_source`,
-      `runner_tree`, `on_behalf_of`) outside the home; (2) in the container, `verifyrun --sandbox=container-netns
+      `runner_tree`, `on_behalf_of`) outside the home — when the home lists Go
+      module roots in `images/verify-runner/go-module-roots.txt` it also
+      requires `--module-cache <dir>`, a new empty directory outside the home
+      and outside the host's own module cache, downloads each root's modules
+      there against its committed `go.sum` with checksum verification on,
+      records the cache's digest as the receipt's `module_cache` (a failed
+      download is could-not-check with no receipt, never the image's baked
+      cache) and prints the container flags that mount it read-only; (2) in the container, `verifyrun --sandbox=container-netns
       --admission-receipt <receipt> --container-image-digest sha256:<64 hex>
       --witness <file>` never runs admission or derives an identity itself,
       refuses `could-not-attribute` before any row when the receipt names no
@@ -682,8 +750,12 @@ passing run — which is why they are lint rules and not review vigilance.
       environment), refuses before any row unless its mounted root digests
       to the receipt's `tree` and the receipt admits this brief, refuses after
       the rows if they changed that tree (then no attestation or
-      `Tree-Digest` is written), and writes the witness table, then
-      `Tree-Digest:`, `Container-Image:` and the `Verification-Attestation:`
+      `Tree-Digest` is written), under a `module_cache` receipt refuses before
+      any row unless the cache at GOMODCACHE is mounted read-only, digests to
+      the receipt's, and runs with `GOPROXY=off`, `GOTOOLCHAIN=local` and no
+      checksum-loosening setting, and writes the witness table, then
+      `Tree-Digest:`, `Container-Image:`, `Module-Cache:` (with a
+      `module_cache` receipt) and the `Verification-Attestation:`
       line to a new file outside the home; (3) on the host, `verifyrun
       --close-bracket --root <home> --brief <path> --admission-receipt
       <receipt> --witness <file>` re-runs the check and appends one
@@ -691,7 +763,8 @@ passing run — which is why they are lint rules and not review vigilance.
       opened=… closed=… before=receipt after=check-verifier` line only when the
       check re-admits the run the witness names, the Runner cell it
       re-derives on the host (runner, source, tree token, annotation) equals
-      the receipt's and every row's Runner cell is exactly that cell, and the
+      the receipt's and every row's Runner cell is exactly that cell, the
+      witness's `Module-Cache` is the receipt's (none when it has none), and the
       home still digests to
       both the receipt's `tree` and the witness's `Tree-Digest`, read only
       from the span that ends at the append position (a span with more than
@@ -829,6 +902,19 @@ passing run — which is why they are lint rules and not review vigilance.
       (the `Verification-Table:` line alone) needs no `--acceptance-forge`;
       it refuses an original row whose delivered definition differs from
       its original one, and witnesses supplemental rows `author-added`.
+      A protected or transition record may instead run inside a closed
+      **container-netns transition bracket**, opened and closed on the dispatch
+      host with the same `--acceptance-record` descriptor. The host plans and
+      re-plans through the shared evaluator, re-reading transition approvals
+      with `--acceptance-forge`. Inside it the container executes the receipt's
+      planned table, not the current table; the container refuses forge reads.
+      Close compares the exact table, descriptor, source, changes and witness
+      commands. `deskdispatch --check-verifier` runs only on the dispatch host:
+      a different runtime still refuses `environment changed since admission:
+      runtime`; never re-admit inside the runner. `--in-container`, `--check`
+      and cross-repository admission with the record stay refused. Protected
+      container execution needs explicit `--root` and refuses `--fail-first`,
+      whose baseline history is outside this plan. Credit is unchanged (`credit=credited` only); a digest match alone grants none.
     - `check` — deterministic but ENV-BOUND (a live PEM, a real queue, a tool on
       PATH). A runner executes it; CI skips an explicitly-classed one (its verdict
       rests on the verifier's authorship+signature, not on a CI re-run).
@@ -878,6 +964,34 @@ passing run — which is why they are lint rules and not review vigilance.
     via its table cell in the first draft. Do not leave `findstr` with cmd quoting and
     backslash paths on implicit `sh`. Changing a command or its shell requires a reviewed
     Verify-table change, never an Evidence-only edit by the verifier.
+
+    A Verify table MAY ALSO declare WHERE each row runs, in an optional `Env`
+    column (issue #6065) — `| # | Class | Env | Command | Expect |`. The class says
+    who executes a row; the environment says what that executor needs, so a
+    non-implementer knows where to witness it. A closed grammar, lower-cased:
+    - `tree` — the checkout alone, network-off: what CI re-executes.
+    - `host` or `host:<name>` — the witness's own machine (installed tools, local
+      config).
+    - `service:<name>` — a NAMED NON-PRODUCTION service instance: a database, an
+      API, a staging deployment. `<name>` is the identifier the brief's
+      `## Context` (or its spec) describes. A production instance is never a
+      Verify environment.
+    - `cluster:<name>` — a live cluster, run by the pod runner (`check:cluster`).
+
+    `<name>` is lower-case letters, digits, `.`, `_` and `-`. In a table that
+    carries the column, `statusgen --lint` hard-errors (PROBLEM) on an Env cell
+    outside the grammar; on a `check:ci` row naming anything but `tree` (CI reaches
+    no host, service or cluster, so the row can only fail or be faked there); on a
+    row naming a non-tree environment in a table with no `Class` column (an
+    unclassed row is legacy `check`, which the scheduled main re-run still
+    executes); and on an explicitly classed `check` or `check:cluster` row with an
+    empty Env (an env-bound row must say where it is witnessed). Gate rows are
+    judged, not executed: their Env cell is informational. A table without the
+    column lints exactly as before; add it whenever a row needs anything beyond
+    the checkout. A row that needs a project secret or a live service is witnessed
+    by someone other than the implementer, in the environment it names; the
+    implementer's own report of its run is not that witness (see the verify-desk
+    and pr-review-desk skills).
 
     *(Numbering note: the authoring repo's copy of this file allocated this rule and
     the typed-edge rule in the Dependencies section the same number in parallel —

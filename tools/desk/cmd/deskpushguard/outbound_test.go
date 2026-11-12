@@ -101,3 +101,37 @@ func TestRun_OutboundUnreadableBaseIsCouldNotCheck(t *testing.T) {
 		t.Fatalf("an unreadable range was not announced as could-not-check:\n%s", out)
 	}
 }
+
+// A pre-push refusal names the variable the hook reads, never the flag `git push` does not
+// take — and a non-overridable one names neither.
+//
+// regression: #6059
+func TestRun_OutboundHintNamesEnv(t *testing.T) {
+	addr := "someone.real" + "@" + "corp-mail.dev"
+	dir, sha := newOutboundPushFixture(t, "ping "+addr+" for access")
+	rc, out := runOutboundPush(t, dir, sha, "example-org/tracker")
+	if rc != deskkit.ExitRefused || !strings.Contains(out, "re-run the push with "+EnvScanOverride+"=") ||
+		strings.Contains(out, deskkit.ScanOverrideFlag) {
+		t.Fatalf("rc=%d: the refusal must name %s and never --%s\n%s", rc, EnvScanOverride, deskkit.ScanOverrideFlag, out)
+	}
+
+	t.Setenv(EnvScanOverride, "too short")
+	rc, out = runOutboundPush(t, dir, sha, "example-org/tracker")
+	if rc != deskkit.ExitRefused || !strings.Contains(out, "refused: "+EnvScanOverride+" reason is") ||
+		strings.Contains(out, deskkit.ScanOverrideFlag) {
+		t.Fatalf("rc=%d: a malformed reason must refuse naming %s only\n%s", rc, EnvScanOverride, out)
+	}
+
+	t.Setenv(EnvScanOverride, "")
+	t.Setenv(deskkit.EnvWithheldIdentifiers, obPGWithheld)
+	dir, sha = newOutboundPushFixture(t, "mirrors the "+obPGWithheld+" stream")
+	rc, out = runOutboundPush(t, dir, sha, "example-org/example-k8s")
+	if rc != deskkit.ExitRefused || !strings.Contains(out, deskkit.RuleWithheldIdentifier) {
+		t.Fatalf("rc=%d, want a %s refusal\n%s", rc, deskkit.RuleWithheldIdentifier, out)
+	}
+	for _, ad := range []string{EnvScanOverride, deskkit.ScanOverrideFlag, "re-run"} {
+		if strings.Contains(out, ad) {
+			t.Fatalf("a non-overridable refusal advertises %q\n%s", ad, out)
+		}
+	}
+}

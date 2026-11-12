@@ -514,6 +514,71 @@ Lifecycle: this block leaves row 06 at implemented. A verifier never sets verifi
 | 6 | `s=$PWD/tools/desk/scripts/count-git-exec.sh; d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q -f --detach cc0ef547~1 && cp "$s" "$d/tools/desk/scripts/" && b=$(cd "$d" && sh tools/desk/scripts/count-git-exec.sh) && git -C "$d" checkout -q -f --detach cc0ef547 && cp "$s" "$d/tools/desk/scripts/" && a=$(cd "$d" && sh tools/desk/scripts/count-git-exec.sh); rm -rf "$d"; echo "$b"; echo "$a"; case "$b" in "git-exec sites: 166 "*) case "$a" in "git-exec sites: 165 "*) exit 0;; esac;; esac; exit 1` | pass exit=0 | sha256:f5bd03087a97 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
 Verification-Attestation: medici-finance/assay#5251 run=23a677f18688218fda08459868c07d32953789288899c5c99bda4414564fe4b3 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/desktools-go-git/brief-06-migrate-push-retire-ambient.md model=claude-opus-5-5 tier=strong
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -F -e 'gitcore.PushOpts{' tools/desk/cmd/deskpr/push.go tools/desk/cmd/verifyloop/durable.go && ! grep -F -e '"push"' tools/desk/cmd/deskpr/deskpr.go tools/desk/cmd/deskpr/push.go tools/desk/cmd/verifyloop/durable.go && cd tools/desk && go build ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/ && go vet ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/` | pass exit=0 | sha256:8a749ff53a0f | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `o=$(mktemp "${TMPDIR:-/tmp}/g06r2.XXXXXX") && cd tools/desk && go test -count=1 -timeout 300s -v -run '^TestPushLandsRef$' ./cmd/deskpr/ > "$o" 2>&1 && grep -F -e '--- PASS: TestPushLandsRef' "$o" && go test -count=1 -timeout 300s -v -run '^TestDurablePushLandsMain$' ./cmd/verifyloop/ > "$o" 2>&1 && grep -F -e '--- PASS: TestDurablePushLandsMain' "$o" && rm -f "$o"` | pass exit=0 | sha256:2b34f9f28e03 | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `o=$(mktemp "${TMPDIR:-/tmp}/g06r3.XXXXXX") && cd tools/desk && go test -count=1 -timeout 300s -v -run '^TestForcePushRejected$' ./cmd/deskpr/ > "$o" 2>&1 && grep -F -e '--- PASS: TestForcePushRejected' "$o" && go test -count=1 -timeout 300s -v -run '^TestDurablePushRaceRejected$' ./cmd/verifyloop/ > "$o" 2>&1 && grep -F -e '--- PASS: TestDurablePushRaceRejected' "$o" && rm -f "$o"` | pass exit=0 | sha256:427a3a638eee | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -cE -e 'dry-run' -e 'GIT_TERMINAL_PROMPT' tools/desk/internal/deskkit/preflight.go` | pass exit=1 | sha256:9a271f2a916b | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `o=$(mktemp "${TMPDIR:-/tmp}/g06r5.XXXXXX") && cd tools/desk && go test -count=1 -timeout 300s -v -run '^TestPreflightReachabilityCaller$' ./internal/deskkit/ > "$o" 2>&1 && grep -F -e '--- PASS: TestPreflightReachabilityCaller' "$o" && go test -count=1 -timeout 300s -v -run '^TestPreflightReachabilityLocal$' ./internal/deskkit/ > "$o" 2>&1 && grep -F -e '--- PASS: TestPreflightReachabilityLocal' "$o" && go test -count=1 -timeout 300s -v -run '^TestPreflightReachability401$' ./internal/deskkit/ > "$o" 2>&1 && grep -F -e '--- PASS: TestPreflightReachability401' "$o" && rm -f "$o"` | pass exit=0 | sha256:f293255c0f9b | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `s=$PWD/tools/desk/scripts/count-git-exec.sh; d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q -f --detach cc0ef547~1 && cp "$s" "$d/tools/desk/scripts/" && b=$(cd "$d" && sh tools/desk/scripts/count-git-exec.sh) && git -C "$d" checkout -q -f --detach cc0ef547 && cp "$s" "$d/tools/desk/scripts/" && a=$(cd "$d" && sh tools/desk/scripts/count-git-exec.sh); rm -rf "$d"; echo "$b"; echo "$a"; case "$b" in "git-exec sites: 166 "*) case "$a" in "git-exec sites: 165 "*) exit 0;; esac;; esac; exit 1` | fail exit=1 | sha256:986433c2eda6 | 2026-11-06 | assay-verifier-app[bot] @ bc078e9179c8 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5616 run=97aacaec6521a600c26048d15f011edb188c1415156b1172d7008fbdb6a59a7d source=bc078e9179c862dde02b367d35177f8ffdf1b421 brief=docs/streams/desktools-go-git/brief-06-migrate-push-retire-ambient.md model=claude-opus-5-5 tier=any
+
+Re-verify 2026-11-06 by a non-implementer (claude-opus-5-5) at merged main bc078e9179c862dde02b367d35177f8ffdf1b421. The brief's change landed as cc0ef5475 (#2298). Admission: deskdispatch --check-verifier (v1.0.75) exited 0 before any row ran, Run 97aacaec6521…, Issue #5616.
+
+The witness table above is the output of statusgen verifyrun v1.0.75, the installed release binary, run once over the whole table from the admitted home in write mode with --timeout 40m, from 17:39:42Z to 17:39:58Z. It printed `row N: pass` for rows 1 to 5 and `row 6: fail (exit=1, sha256:986433c2eda6) — exit 1, expected 0`, and exited 1. statusgen verifyrun --check then reported 5 pass, 1 fail, 0 could-not-run/missing (of 6 Verify rows) and exited 1. Runner: the host, darwin/arm64, go1.27.2, git 2.56.0, KUBECONFIG=/dev/null, no GH_TOKEN, the session's normal HOME, TMPDIR and PATH (cell shim directory first), and the real Go build and module caches. No row is check:ci-classed, so no container bracket was needed.
+
+Per-row observations (each row's verdict comes from the witness; these add detail only):
+- Row 1: pass exit=0, output hash 8a749ff53a0f, the same hash the 2026-11-02 block recorded for this command.
+- Row 2: pass exit=0, output hash 2b34f9f28e03.
+- Row 3: pass exit=0, output hash 427a3a638eee.
+- Row 4: pass exit=1, output hash 9a271f2a916b, the sha256 of the output 0 followed by a newline.
+- Row 5: pass exit=0, output hash f293255c0f9b.
+- Row 6: failed, exit=1, output hash 986433c2eda6. The 2026-11-02 pass at 2c6c21336a60 recorded f5bd03087a97.
+
+Row 6 cause. The row copies the counting script from the verified tree (tools/desk/scripts/count-git-exec.sh) into throwaway checkouts of cc0ef547~1 and cc0ef547. Since the 2026-11-02 pass, that script was changed by 9e5ca6e4c ("turn the git-exec counter into a pinned ratchet") and bd1dac192 ("anchor the test-file exclusion"), both desktools-go-git/08 work that is not in 2c6c21336a60. Two things follow. First, the script now reads a pin file, tools/desk/scripts/git-exec-pin.txt, that neither old checkout carries, so it exits 2 after printing its count; the row's `b=$(…) && …` chain stops at the first checkout and `a` is never set. Second, the anchored test-file exclusion moves both counts down by one, to 165 before and 164 after, so the row's literal case patterns for 166 and 165 cannot match either. The output the row produced is the script's pin-file refusal on stderr, then `git-exec sites: 165 (direct spawns: 45, seam call sites: 120)`, then an empty line. That reconstruction hashes to 986433c2eda6, the witness hash. The like-for-like delta across cc0ef547 is still exactly one git spawn removed. This is a check-definition defect in row 6: the row does not pin the counting script it copies, so a later change to that script breaks it. The open row 6 issue is #2337. No implementation regression was observed.
+
+Supplemental, no acceptance credit. This row discharges no Verify row.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| S1 (no acceptance credit; row 6 diagnosis) | row 6's clone, checkout and copy steps by hand into a throwaway directory outside the home, without the case test, printing each count and exit status | observation only | cc0ef547~1: `git-exec sites: 165 (direct spawns: 45, seam call sites: 120)`, then the pin-file refusal, exit 2; cc0ef547: `git-exec sites: 164 (direct spawns: 44, seam call sites: 120)`, then the pin-file refusal, exit 2 | 2026-11-06 | host verifier, claude-opus-5-5 @ bc078e9179c8 |
+
+Attempt disclosure: one witness run over the whole table, credited, with no retries.
+
+Fail-first: the frontmatter answers all four risk questions no and no Verify row carries a risk-bearing, live, mutating or end-to-end tag, so verifyrun selects no risk-bearing row and no fail-first witness is owed.
+
+Risk-bearing values. Enumerated over the non-test Go and script diff of cc0ef5475 against its parent, with line numbers re-read at bc078e917:
+- PushOpts.Force unset (Go zero value false), with RefSpecs = hash.String() + ":" + dstRef @ tools/desk/cmd/deskpr/push.go:109-111
+- PushOpts.Force unset, with RefSpecs = head.String() + ":refs/heads/main" @ tools/desk/cmd/verifyloop/durable.go:129-131
+- the "+" force prefix is added only when force is true @ gitcore/gitcore.go:513-514
+- len(dests) != 1 refuses @ tools/desk/cmd/deskpr/push.go:177
+- listTimeout = 45 * time.Second @ tools/desk/internal/deskkit/preflight.go:1146
+- pre-push hook stdin remote sha = strings.Repeat("0", len(srcSHA)) @ tools/desk/internal/deskkit/prepush.go:69
+- hook executable test = Perm()&0o111 @ tools/desk/internal/deskkit/prepush.go:104
+
+Ranked:
+1. The force bit and the refspec shape. A wrong value overwrites remote history, and a force-overwritten main cannot be undone by an edit and a redeploy.
+2. The single-destination rule and the hook remote-sha fill.
+3. The timeout and the executable mask. Both are reversible knobs.
+
+RISK-VALUE: DERIVED — PushOpts.Force = false (unset) @ tools/desk/cmd/deskpr/push.go:109 and tools/desk/cmd/verifyloop/durable.go:129, with RefSpecs carrying no "+" @ push.go:111 and durable.go:131. buildRefSpecs (gitcore/gitcore.go:510-514) adds "+" only when force is true, and Push (gitcore/gitcore.go:612 and 628) passes the same Force to go-git. Both refspec sources are resolved hashes, which cannot begin with "+", so these pushes can only fast-forward, which is the brief's stated requirement that a force-requiring push is rejected.
+RISK-VALUE: DERIVED — len(dests) != 1 refuses @ tools/desk/cmd/deskpr/push.go:177. git push sends to every push URL a remote lists, while gitcore.Push sends to one URL. Refusing anything but exactly one URL keeps a migrated push from silently reaching fewer destinations than git would.
+RISK-VALUE: NAMED, NOT DERIVED — pre-push hook remote sha = all zeros @ tools/desk/internal/deskkit/prepush.go:69 — the fill is deliberate (git's "not known to exist" id), but whether every hook a checkout might carry tolerates it is open-ended and not derived here. The question stays open as #4194 (read open on 2026-11-06).
+
+listTimeout = 45s and the 0o111 mask are reversible operational knobs, ranked last, so no derivation is owed.
+
+Lifecycle: this block leaves row 06 at implemented. A verifier never sets verified and never hand-writes the Verified stamp.
+
+#### Correction — 2026-11-06 rework
+
+Two statements in this block are wrong. This paragraph corrects them. The verdict and the routing to #2337 do not change.
+
+Row 6 attribution. The "Row 6 cause" paragraph above says the anchored test-file exclusion moves both counts down by one. It does not. The shift comes from the anchored internal/gitexec exclusion that 9e5ca6e4c added: `grep -v '/internal/gitexec/'` became `grep -v '^internal/gitexec/'`, so the script stopped counting the sanctioned spawn in internal/gitexec/gitexec.go, which the unanchored pattern had counted. The test-file anchor from bd1dac192 (`'_test\.go:'` became `'^[^:]*_test\.go:'`) changes nothing in these two trees. Re-measured on 2026-11-06 in a throwaway clone outside the home, copying each revision's count-git-exec.sh into cc0ef547~1 and then cc0ef547: the 2c6c21336a60 script prints 166 then 165 (direct spawns 46 then 45) and exits 0 on both trees; the 9e5ca6e4c, bd1dac192 and bc078e917 scripts, each run with `--count`, all print 165 then 164 (direct spawns 45 then 44). Seam call sites are 120 in every run. A repair that pins row 6 to the script as of 9e5ca6e4c would therefore still count 165 then 164 and still need the pin file. Only a script from before 9e5ca6e4c, such as the 2c6c21336a60 one, reproduces the 166 then 165 the row's case patterns expect.
+
+Lifecycle. The Lifecycle sentence above says this block leaves row 06 at implemented. Row 06 is not at implemented. docs/streams/desktools-go-git/README.md:43 in this block's tree reads `verified`, stamped `2026-10-30 assay-verifier-app[bot] @ 40925e8233c8 (forge-identity)`. This block does not edit that row. Once this block merges, its FAIL becomes the latest verdict in this brief's Evidence. statusgen's flipLatestPass (statusgen/verifyflip.go on main), which the reconcile fold uses to derive `verified`, refuses when the latest verdict is anything other than a PASS. This rework did not run a regen against the merged tree, so it does not state what the board will show for row 06 after merge. The merging reviewer should read this FAIL as landing on a row that is currently `verified`.
+
+**VERIFY: FAIL** — row 6 exit=1 on the single credited witness run at bc078e917 (5 pass, 1 fail, 0 could-not-run). Check-definition defect: the counting script row 6 copies was changed by desktools-go-git/08 (pin file, anchored exclusion), so it now prints 165 then 164 and exits 2 in the old trees; the one-spawn removal still holds. Rows 1 to 5 pass. Route: #2337.
 
 ## Review
 Gate: model (all four risk answers no — the sensitive credential path was reviewed in

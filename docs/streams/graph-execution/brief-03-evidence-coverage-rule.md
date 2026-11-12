@@ -1100,9 +1100,137 @@ Ranking: revision-shape bounds first, then exit codes, then the search bound and
   - The 2026-09-30 amendment says file non-overlap is not proof. A row that reads docs/streams, such as row 9's lint, could keep a reused pass after an edit there.
 
 **VERIFY: BLOCKED** — check-definition: row 10 (medici-finance/assay#1927, still open). Its `; echo rc=$?` masks the exit status its Expect is read against, and on merged main it prints rc=2 (could-not-check), never a pass. Row 9 is held too: its cell is exit-status only and its printed rc is 1, from the main-wide lint red on desktools-v2/65 (medici-finance/assay#4823, open); no lint PROBLEM names this brief. Witness at 7b0fa99b57c3: the other 12 rows pass with their Expect met (10 in the bracketed network-off container, digest match; 2 on the host). Coverage stays held on rows 9 and 10.
+### Non-implementer verifier re-run — 2026-11-10 claude-opus-5-5 verifier at 612750a12406 (container + host verifyrun witness; FAIL on row 1, admitted-env Git-fixture class, medici-finance/assay#2715; row 10 held on check-definition, medici-finance/assay#1927; row 9 held by the main-wide lint red, medici-finance/assay#4823)
+
+A fresh, independent claude-opus-5-5 verifier (tier strong) ran this pass against merged main 612750a12406f19a96a83e6ea7687d794f772f9f. Frontmatter: `gate: model`, `risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}`.
+
+`deskdispatch --check-verifier` admitted the run before any row ran (rc=0, attestation medici-finance/assay#5980). `deskpathguard rederive` re-derived all 14 rows from the base 612750a12406, with 0 author-added.
+
+The home was a clean detached checkout of that commit for both witnesses, ignored files included.
+
+Tools came from the installed release v1.0.81: statusgen v1.0.81, with the host binary's sha256 matching the release checksums. The verify-runner image was pinned by digest from the release's verify-runner-image asset, whose sha256 also matches the checksums. It ran on git 2.56.0 and go1.27.3.
+
+Times are UTC, 2026-11-10:
+- The admission bracket opened at 06:32:34Z.
+- Container rows ran 06:32:58Z to 06:33:39Z, under `--network none`, `--read-only` and `--cap-drop ALL`, with a fresh module cache and GOPROXY=off.
+- The bracket closed at 06:33:49Z, and `--bracket-digest` reported verdict=match.
+- Host rows 6, 7, 9 and 10 ran 06:39:13Z to 06:42:50Z through `statusgen verifyrun --rows`.
+- Supplemental readings followed and finished by 06:48Z. A second admission check after drafting passed (rc=0) with the same binding.
+
+**Grounding, from the brief before any diff was read.**
+- The result vocabulary has six values.
+- A could-not-run witness maps to could-not-check and holds.
+- A witness at another revision is wrong-revision and holds.
+- A join needs a +flow row or holds on integration-check.
+- observe is declared in the pattern spec and schema.
+- autoflip refuses an unreleased brief and names the claim.
+- The CLI exits 0, or 2 on an unreadable tree.
+- Advice is never a witness.
+- A changed acceptance or policy dependency holds the claim.
+- An old-head pass never releases a new subject.
+
+**Changes since the prior source, 7b0fa99b57c3.**
+- The coverage evaluator, the coverage CLI, autoflip, consumers, verifyrun, the pattern spec and the schema all changed.
+- build-less-brittle/15 added the read-set floor: statusgen/evaluation/readset.go, statusgen/readset_platform.go (readSetRecorderShipped = false), and the read-set adapter and time tests that row 1's prefix now selects.
+- EvaluatorVersion moved from statusgen-evaluation/4 to statusgen-evaluation/5.
+- Each claim's exit codes, revision bounds and tree-SHA truncation have the same values as before, at new line numbers.
+- The only commit since the prior run that touched this brief is aeb8f7a51592. It rewords the accepted residual on medici-finance/assay#2339 and changes no Verify row.
+
+**Container witness** (bracketed, network-off, release-pinned image):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test -run TestCoverage ./...` | fail exit=1 sandbox=container-netns | sha256:fb584e24e996 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && go test -run TestCoverageWrongRevisionHolds ./...` | pass exit=0 sandbox=container-netns | sha256:80fe3bb58406 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test -run TestCoverageCouldNotCheckIsNotPass ./...` | pass exit=0 sandbox=container-netns | sha256:f4245b96d12f | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test -run TestAutoFlipRefusesUnreleasedCoverage ./...` | pass exit=0 sandbox=container-netns | sha256:66196cef8f0e | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && go test -run TestCoverageJoinRequiresIntegrationRow ./...` | pass exit=0 sandbox=container-netns | sha256:0d2f33bed678 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && go test -run TestAutoFlipNoOverride ./... && go test -run TestEvidenceActor ./...` | pass exit=0 sandbox=container-netns | sha256:1ff112c63bf5 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd statusgen && go test -count=1 -v -run TestCoverageAdviceCannotSupplyWitness ./...` | pass exit=0 sandbox=container-netns | sha256:aa3ec56bb6d6 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd statusgen && go test -count=1 -v -run TestCoverageAcceptanceDigestChanged ./...` | pass exit=0 sandbox=container-netns | sha256:5a17089117af | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 13 | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCoveragePolicyDependencyChanged.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoveragePolicyDependencyChanged$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCoveragePolicyDependencyChanged " "$wi_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 14 | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCoverageReuseDoesNotRetargetPass.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoverageReuseDoesNotRetargetPass$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCoverageReuseDoesNotRetargetPass " "$wi_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:bbf58e1999a2879bff899fd22c5d41834fbc884451654c5085000f4eedc075b6
+Container-Image: sha256:03a2949dfe483f2645e14b85369c1923f1fb4710c7e5ea37a9b915d0073dde59
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#5980 run=7d3cc4c7bbcc195a6669548a067e1322e44665bb4530e13d76941e14dc2a703d source=612750a12406f19a96a83e6ea7687d794f772f9f brief=docs/streams/graph-execution/brief-03-evidence-coverage-rule.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=7d3cc4c7bbcc195a6669548a067e1322e44665bb4530e13d76941e14dc2a703d source=612750a12406f19a96a83e6ea7687d794f772f9f tree=sha256:bbf58e1999a2879bff899fd22c5d41834fbc884451654c5085000f4eedc075b6 witness=sha256:5c6361c604c21652a17a2ef04357cc9fc0cc24694be6da0ee6d20db9eb44cfd7 opened=2026-11-10T06:32:34Z closed=2026-11-10T06:33:49Z before=receipt after=check-verifier
+
+**Host witness** (rows 6, 7, 9 and 10, `statusgen verifyrun --rows 6,7,9,10`, in the same home at the same source):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 6 | `statusgen --coverage --json --root . > /tmp/ge03.json; python3 -c 'import json;d=json.load(open("/tmp/ge03.json"));print(sorted({c["result"] for b in d for c in b["claims"]}))'` | pass exit=0 | sha256:3cbbbf42db05 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -c 'observe' spec/workflow-pattern-v1.md schemas/workflow-pattern-v1.json spec/lifecycle-v1.md` | pass exit=0 | sha256:38af6536faaa | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --lint; echo rc=$?` | pass exit=0 | sha256:8f5966454239 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --consumers --brief graph-execution/03 --root .; echo rc=$?` | fail exit=0 | sha256:c664f56b7a82 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5980 run=7d3cc4c7bbcc195a6669548a067e1322e44665bb4530e13d76941e14dc2a703d source=612750a12406f19a96a83e6ea7687d794f772f9f brief=docs/streams/graph-execution/brief-03-evidence-coverage-rule.md model=claude-opus-5-5 tier=strong
+
+**Row 1 diagnosis.** Row 1 exits 1 only under the admitted row environment, and the cause is the `GIT_CONFIG_COUNT=2` group that verifyrun's admitted environment sets.
+- The same command in the same pinned container, with the admitted git variables left out, exits 0.
+- Bisecting the admitted variables one group at a time, only the `GIT_CONFIG_COUNT` group (grep.patternType, grep.extendedRegexp) reproduces the failure. `GIT_CONFIG_NOSYSTEM`, `GIT_ATTR_NOSYSTEM`, `GIT_NO_REPLACE_OBJECTS` and `GIT_TERMINAL_PROMPT`/`GIT_ASKPASS` each pass on their own.
+- Six tests fail: TestCoverageCallersApplyFloor, TestCoverageStatDirNowFile, TestCoverageObserveBudgetSharedHistory, TestCoverageObserveBudgetTouchCompares, TestCoverageObserveLaunches and TestCoverageObserveDeadline. All are read-set tests that build-less-brittle/15 added, and they match row 1's TestCoverage prefix. They reached main on 2026-11-08 through the medici-finance/assay#5127 merge 737a1caf6f0b, after this brief's last passing row 1.
+- With `GIT_CONFIG_COUNT` present, gitCoreFor (statusgen/gitcore_read.go:98) moves git reads to the native profile, and these tests expect the in-process profile.
+- Every failure moves in the fail-closed direction. A fixture that expected a release stays held as wrong-revision, and a fixture that expected an observation to be refused or cut short is observed in full. None of the failures releases a claim.
+- This is the open defect class medici-finance/assay#2715, which was read during this run. The occurrence is attached there: https://github.com/medici-finance/assay/issues/2715#issuecomment-6761000386
+- The coverage tests this brief named all pass in the container. Rows 2, 3, 4, 5, 11, 12, 13 and 14 each select their test by its full name, and all ten named tests exist in the source tree. Rows 13 and 14 hash to the empty output, because the row redirects go test into a temp file and passes only on its grep.
+
+**Supplemental readings (no acceptance credit).** These are direct runs of each row's own command in the home, with the same installed binary on PATH. The home stayed clean afterwards.
+- Row 9 printed `LINT: FAIL 3 problem(s)` and then rc=1. The three PROBLEMs are acceptance-transition could-not-checks ("--acceptance-forge is required") on desk-tools/37, desktools-v2/65 and forge-neutral/54. None of them names this brief. This is the main-wide lint red tracked on medici-finance/assay#4823, which was open when read during this run.
+- Row 10 printed "statusgen: --consumers: COULD-NOT-CHECK: … the brief's delivery could not be derived: the committed Evidence has no Verification-Table marker naming the delivery. No routing claim was corroborated and none was disproved." It then printed rc=2. The verifyrun cell records exit 0 against an Expect of 2, because `; echo rc=$?` masks the exit status.
+  - With the delivery passed explicitly, `--delivery` 909101d1aa20 (the medici-finance/assay#1682 merge) and `--base` de45ad17171a (its first parent), it found 4 routing claims corroborated, 0 disproved and 2 unchecked (the two out-of-scope entries), and printed rc=0.
+- Row 6 printed exactly the six permitted results.
+  - Across the tree: 603 briefs, 4960 claims, 13 pass claims, 0 briefs released.
+  - This brief is held. Its 13 claims are wrong-revision against the 2026-10-30 witness at 7b0fa99b57c3, because .claude-plugin/marketplace.json (or .gitattributes, for row 7) differs between the two trees and the witness speaks for it. Row 10's claim is fail.
+- Row 7's counts were 9, 5 and 2, the same as the prior run's.
+
+**Reasoning.** Eleven of the fourteen rows pass with their Expect met under a tree-stamped verifyrun witness on merged main 612750a12406:
+- 9 rows in the bracketed network-off container (digest match): rows 2, 3, 4, 5, 8, 11, 12, 13 and 14.
+- 2 rows on the host: rows 6 and 7.
+
+Three rows do not pass:
+- Row 1 fails (exit 1, expected 0), from the admitted-env Git-fixture class described above (medici-finance/assay#2715).
+- Row 10 stays could-not-check on its check definition (medici-finance/assay#1927, still open).
+- Row 9 is held. Its printed rc is 1 because of the main-wide lint red (medici-finance/assay#4823, open), and no PROBLEM names this brief.
+
+The row 1 failure is real in the admitted lane. The diagnosis isolates it to the admitted environment's git variables rather than to the coverage rule this brief delivered. Even so, the admitted run is the one that counts, and a substituted or env-stripped run earns no credit. This pass therefore records FAIL against the open class issue. A fresh verifier dispatch is due once medici-finance/assay#2715 lands.
+
+**Risk-bearing values.** The trigger did not fire. Risk metadata is present, irreversible is no, and the change is statusgen tooling. The values were enumerated anyway, and re-read at 612750a12406 over statusgen/coverage.go, statusgen/evaluation/coverage.go, coverage_api.go, coverage_repo.go, identity.go and the verifyrun truncation. The read-set floor's own constants (maxFloorRuns, readSetRecorderShipped) belong to build-less-brittle/15 and are not enumerated here. Every entry can be reversed by an edit and a redeploy.
+
+Ranking: the revision-shape bounds come first, then the exit codes, then the search bound and the version label.
+- RISK-VALUE: DERIVED — TreeSHALen = 12 @ statusgen/evaluation/coverage_api.go:22.
+  - statusgen/coverage.go:51 aliases it, and statusgen/verifyrun.go:1250-1251 truncates to it. The witness writer and the coverage reader share one constant.
+  - At 12 hex digits, the chance that a random tree SHA matches by coincidence is 2^-48.
+- RISK-VALUE: DERIVED — hexRevisionRe = `^[0-9a-fA-F]{12,40}$` @ statusgen/evaluation/coverage.go:542.
+  - The lower bound equals TreeSHALen, the exact length verifyrun writes, and 40 is a full SHA-1 id.
+  - Hex-only stops a symbolic ref from tracking HEAD. A longer token is refused, and that can only hold a claim, never release it.
+- RISK-VALUE: DERIVED — minRevisionTokenLen = TreeSHALen (12) @ statusgen/evaluation/coverage.go:528. It is the same floor, and a shorter token resolves could-not-check.
+- RISK-VALUE: DERIVED — acceptance revision length 40 or 64, lowercase hex only @ statusgen/evaluation/coverage.go:414.
+  - These are full SHA-1 and SHA-256 object ids, the two git object formats.
+  - An abbreviated or symbolic value resolves could-not-check, so a wrong value can only over-hold.
+- RISK-VALUE: DERIVED — coverageExitOK = 0, coverageExitCouldNot = 2 @ statusgen/coverage.go:392-393.
+  - This is Task 5's literal contract, "Exit 0; exit 2 on an unreadable tree".
+  - Row 6's witness observed exit 0 on the real tree.
+- RISK-VALUE: DERIVED — DefaultMaxLandingCandidates = 1000 @ statusgen/evaluation/coverage_repo.go:105.
+  - It bounds the cost of the squash-landing search. A witness past the bound is could-not-check, never assumed landed, so the bound can only over-hold.
+  - It is a reversible operational knob and ranks last.
+- RISK-VALUE: DERIVED — EvaluatorVersion = "statusgen-evaluation/5" @ statusgen/evaluation/identity.go:13.
+  - It is a label, not a threshold. It must change whenever a verdict can change for the same observations, and it changed from /4 with the read-set work.
+  - Its exact value carries no bound.
+- RISK-VALUE: NAMED, NOT DERIVED — isBoardBookkeepingPath: p == "STATUS.md" or prefix "docs/streams/" @ statusgen/evaluation/coverage.go:802-803 — accepted residual, ruled on medici-finance/assay#2339 (decision A, recorded in this brief's Review section). It is not counted as a row failure.
+  - A change made only under docs/streams, or only to STATUS.md, never stales a witness in the conservative scope.
+  - A row that reads docs/streams, such as row 9's lint, could keep a reused pass after an edit there.
+
+**VERIFY: FAIL** — row 1: `go test -run TestCoverage ./...` exits 1 under verifyrun's admitted row env (GIT_CONFIG_COUNT), six read-set tests from build-less-brittle/15, class medici-finance/assay#2715 (open; occurrence attached). Row 10 is held on its check definition (medici-finance/assay#1927, open), and row 9 on the main-wide lint red (medici-finance/assay#4823, open). Witness at 612750a12406: the other 11 rows pass with their Expect met (9 in the bracketed network-off container, digest match; 2 on the host). Coverage stays held.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
 Reviewer question: name one input state in which coverage reports `released` while a
 mandatory claim has no passing result at the item's revision. If one exists, the rule is
 not deterministic and the brief is bounced.
+
+### Accepted residual: board-bookkeeping exemption from witness invalidation
+Ruling: https://github.com/medici-finance/assay/issues/2339#issuecomment-6454859047 — maintainer decision A, accepted residual.
+- Residual: in the conservative scope, `isBoardBookkeepingPath` (in `statusgen/evaluation/coverage.go`) exempts `STATUS.md` and paths under `docs/streams/` from staling a witness. A row takes the conservative scope when no complete dependency manifest is supplied and its command's read set cannot be derived from its text; a derived scope decides from the paths the command reads. This is kept as is; no code change.
+- Consequence: a Verify row that reads `docs/streams/` content (for example a lint run) can keep a reused PASS after an outcome-changing edit made only there, until the row is run again.
+- Rule: declaring an artifact in `files:` restores invalidation only for a `docs/streams/` artifact that verify and regen do not necessarily write. An edit to `STATUS.md`, a stream `README.md`, a `brief-*.md` file or the verify outcome log never stales a witness, declared or not (`isVerifyWrittenPath`; a derived scope that reads one of them widens back to the conservative scope). A lint run reads exactly those files, so a lint row is not protected by a declaration.

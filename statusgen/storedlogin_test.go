@@ -276,7 +276,8 @@ func TestStoredLoginCorroborate(t *testing.T) {
 
 // regression: #4274
 // TestStoredLoginClaimDecay: claimdecay_github.go's credential
-// (githubDecayToken), for github.com and an enterprise host alike.
+// (githubDecayToken), for github.com and an enterprise host alike. The stored
+// login is now retired in both ordinary and admitted contexts (forge-neutral/49).
 func TestStoredLoginClaimDecay(t *testing.T) {
 	for _, c := range []struct {
 		endpoint string
@@ -290,11 +291,8 @@ func TestStoredLoginClaimDecay(t *testing.T) {
 				}
 				tok, source, _ := githubDecayToken(c.endpoint, c.derived)
 				_, statErr := os.Stat(log)
-				if admitted && (tok != "" || statErr == nil) {
-					t.Errorf("admitted %s: token %q from %q (stored login started: %v), want none", c.endpoint, tok, source, statErr == nil)
-				}
-				if !admitted && tok != slStoredToken {
-					t.Errorf("control %s: token %q from %q, want the stored login", c.endpoint, tok, source)
+				if tok != "" || source != "" || !os.IsNotExist(statErr) {
+					t.Errorf("admitted=%v %s: token %q from %q (stored login started: %v), want no token and no subprocess", admitted, c.endpoint, tok, source, statErr == nil)
 				}
 			})
 		})
@@ -450,7 +448,7 @@ func ghLaunchesUnguarded(t *testing.T, files map[string]string) []string {
 		guarded := map[ast.Node]bool{}
 		ast.Inspect(f, func(n ast.Node) bool {
 			if c, ok := n.(*ast.CallExpr); ok {
-				if id, ok := c.Fun.(*ast.Ident); ok && id.Name == "ghGuard" && len(c.Args) == 1 {
+				if id, ok := c.Fun.(*ast.Ident); ok && id.Name == "ghGuard" && (len(c.Args) == 1 || len(c.Args) == 2) {
 					guarded[c.Args[0]] = true
 				}
 			}

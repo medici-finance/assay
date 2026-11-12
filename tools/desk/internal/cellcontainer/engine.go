@@ -49,6 +49,7 @@ type Inspection struct {
 	State       struct {
 		Status                      string
 		Running, Paused, Restarting bool
+		Pid                         int64
 	}
 	Config struct {
 		User           string
@@ -79,6 +80,9 @@ type Inspection struct {
 
 // ImageConfig holds the image defaults a container inherits when nothing overrides them.
 type ImageConfig struct {
+	User       string
+	Volumes    map[string]json.RawMessage
+	Cmd        []string
 	Env        []string
 	Entrypoint []string
 }
@@ -197,7 +201,6 @@ func (p *Plan) Validate(s *Inspection) error {
 			return fail("environment has an unplanned setting " + k)
 		}
 	}
-	h := s.HostConfig
 	switch {
 	case !slices.Equal(s.Config.Cmd, []string{p.Action}):
 		return fail("entrypoint arguments differ")
@@ -207,70 +210,12 @@ func (p *Plan) Validate(s *Inspection) error {
 		return fail("user differs")
 	case !s.Config.Tty || !s.Config.OpenStdin:
 		return fail("terminal settings differ")
-	case !h.ReadonlyRootfs:
-		return fail("root filesystem is writable")
-	case h.Privileged:
-		return fail("is privileged")
-	case len(h.CapAdd) > 0:
-		return fail("adds capabilities")
-	case !slices.Equal(h.CapDrop, []string{"ALL"}):
-		return fail("does not drop all capabilities")
-	case len(h.Devices) > 0:
-		return fail("has devices")
-	case len(h.DeviceRequests) > 0:
-		return fail("requests devices (such as GPUs)")
-	case len(h.Binds) > 0:
-		return fail("has unplanned bind mounts")
-	case len(h.GroupAdd) > 0:
-		return fail("adds groups")
-	case len(h.PortBindings) > 0 || h.PublishAllPorts:
-		return fail("publishes ports")
-	case h.PidsLimit != PidsLimit:
-		return fail("process limit differs")
-	case h.Memory != MemoryBytes:
-		return fail("memory limit differs")
-	case h.NanoCpus != NanoCPUs:
-		return fail("CPU limit differs")
-	case h.PidMode != "":
-		return fail("shares a process namespace")
-	case h.IpcMode == "host" || strings.HasPrefix(h.IpcMode, "container:"):
-		return fail("shares an IPC namespace")
-	case h.UsernsMode != "":
-		return fail("user namespace mode differs")
 	}
-	if len(h.SecurityOpt) != 1 || (h.SecurityOpt[0] != "no-new-privileges" && h.SecurityOpt[0] != "no-new-privileges=true") {
-		return fail("security options differ")
+	if reason := isolationFailure(s, runtimeRestrictions{PidsLimit, MemoryBytes, NanoCPUs, TmpfsOptions, p.Network}); reason != "" {
+		return fail(reason)
 	}
-	if len(h.Tmpfs) != 1 || h.Tmpfs["/tmp"] != TmpfsOptions {
-		return fail("temporary filesystem differs")
-	}
-	if h.NetworkMode != p.Network || len(s.NetworkSettings.Networks) != 1 {
-		return fail("network differs")
-	}
-	if _, ok := s.NetworkSettings.Networks[p.Network]; !ok {
-		return fail("network differs")
-	}
-	mounts := map[string]Mount{}
-	for _, m := range s.Mounts {
-		if m.Type == "tmpfs" && m.Destination == "/tmp" {
-			continue
-		}
-		source := m.Source
-		if m.Type == "volume" {
-			source = m.Name
-		}
-		if _, ok := mounts[m.Destination]; ok {
-			return fail("duplicate mount target")
-		}
-		mounts[m.Destination] = Mount{m.Type, source, m.Destination, !m.RW}
-	}
-	if len(mounts) != len(p.Mounts) {
-		return fail("mount count differs")
-	}
-	for _, m := range p.Mounts {
-		if mounts[m.Target] != m {
-			return fail("mount differs at " + m.Target)
-		}
+	if reason := mountFailure(s, p.Mounts); reason != "" {
+		return fail(reason)
 	}
 	return nil
 }

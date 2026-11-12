@@ -4,7 +4,7 @@ title: Admitted incremental forge readers for mirror ingestion
 why: "The mirror cannot avoid repeated full sweeps while its provider adapters accept no update bound. Two bounded incremental reads through existing admitted transports supply reusable ingestion without a new credential owner, database or service prerequisite."
 wave: 2
 depends: ["forge-neutral/36"]
-unblocks: ["forge-neutral/37"]
+unblocks: ["forge-neutral/37", "forge-neutral/48", "forge-neutral/50"]
 split-from: forge-neutral/37
 effort: M
 gate: human

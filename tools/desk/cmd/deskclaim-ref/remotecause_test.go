@@ -42,7 +42,7 @@ func TestRefusedCreateCauseCarriesServerMessage(t *testing.T) {
 	installHook(t, server)
 	g := &gogitStore{url: server, host: "local-test-server"}
 	id := "at--issue-4243"
-	if res := g.CreateIfAbsent(id, claimMessage(id, "sess-A", "claimed", "-", "")); res != deskkit.ClaimWriteRejected {
+	if res := g.CreateIfAbsent(id, claimTestMessage(id, "sess-A", "claimed", "-", "")); res != deskkit.ClaimWriteRejected {
 		t.Fatalf("create against a refusing server = %v, want Rejected", res)
 	}
 	if c := g.TransportCause(); !strings.Contains(c, hookSays) {
@@ -54,7 +54,7 @@ func TestRefusedReleaseCauseCarriesServerMessage(t *testing.T) {
 	server := refusingServer(t)
 	g := &gogitStore{url: server, host: "local-test-server"}
 	id := "at--issue-4244"
-	if res := g.CreateIfAbsent(id, claimMessage(id, "sess-A", "claimed", "-", "")); res != deskkit.ClaimWriteApplied {
+	if res := g.CreateIfAbsent(id, claimTestMessage(id, "sess-A", "claimed", "-", "")); res != deskkit.ClaimWriteApplied {
 		t.Fatalf("seed create = %v, want Applied; cause=%q", res, g.TransportCause())
 	}
 	installHook(t, server)

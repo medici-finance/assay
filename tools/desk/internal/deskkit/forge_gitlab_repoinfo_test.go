@@ -1,6 +1,9 @@
 package deskkit
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab proves the public-repo WRITE gate
 // (repovis.go's PublicRepoGate) runs correctly on a GitLab-resolved repo through the generic
@@ -51,6 +54,64 @@ func TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab(t *testing.T) {
 		err := PublicRepoGate(fetcher, glRepo.Owner, glRepo.Name)
 		if err == nil || !IsRefused(err) {
 			t.Fatalf("a public repo absent from the roster must be refused (exit 5), got %v", err)
+		}
+	})
+
+	// #5514: a GitLab `internal` project listed `:public` passes — the gate tolerates the
+	// mislabel, since the entry states a wider audience than the project has. `:internal` is
+	// the accurate token and passes too; every entry that does not rank at least as exposed as
+	// live-internal still refuses, naming live-internal and its cause.
+	t.Run("internal project listed :public passes", func(t *testing.T) {
+		installRoster(t, "ASSAY_ALLOWED_REPOS="+glRepo.Owner+"/"+glRepo.Name+":ci:public\n")
+		s := newGLServer(t)
+		s.project = map[string]any{"visibility": "internal"}
+		if err := PublicRepoGate(ForgeRepoInfoFetcher{Forge: s.forge()}, glRepo.Owner, glRepo.Name); err != nil {
+			t.Fatalf("an internal project listed :public must pass, got %v", err)
+		}
+	})
+
+	t.Run("public project listed :internal is refused", func(t *testing.T) {
+		installRoster(t, "ASSAY_ALLOWED_REPOS="+glRepo.Owner+"/"+glRepo.Name+":ci:internal\n")
+		s := newGLServer(t)
+		s.project = map[string]any{"visibility": "public"}
+		err := PublicRepoGate(ForgeRepoInfoFetcher{Forge: s.forge()}, glRepo.Owner, glRepo.Name)
+		if !IsRefused(err) {
+			t.Fatalf("a public project listed :internal must be refused (exit 5), got %v", err)
+		}
+		if msg := err.Error(); !strings.Contains(msg, "reads live-public") || !strings.Contains(msg, glRepo.Owner+"/"+glRepo.Name+":public") {
+			t.Fatalf("the refusal must read the project as public and name the :public entry: %v", err)
+		}
+	})
+
+	for _, tc := range []struct{ name, roster, cause string }{
+		{"internal project listed :private is refused", glRepo.Owner + "/" + glRepo.Name + ":ci:private", "a :private entry authorizes no outward write"},
+		{"internal project matched only by a pattern is refused", glRepo.Owner + "/*", "matched only by an owner/* pattern"},
+		{"internal project listed with no token is refused", glRepo.Owner + "/" + glRepo.Name + ":ci", "the entry carries no visibility token"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			installRoster(t, "ASSAY_ALLOWED_REPOS="+tc.roster+"\n")
+			s := newGLServer(t)
+			s.project = map[string]any{"visibility": "internal"}
+			err := PublicRepoGate(ForgeRepoInfoFetcher{Forge: s.forge()}, glRepo.Owner, glRepo.Name)
+			if !IsRefused(err) {
+				t.Fatalf("%s: got %v, want Refused/exit 5", tc.name, err)
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "reads live-internal") || strings.Contains(msg, "live-public") || !strings.Contains(msg, tc.cause) {
+				t.Fatalf("%s: the refusal must read the project as internal and name its cause %q: %v", tc.name, tc.cause, err)
+			}
+		})
+	}
+
+	t.Run("internal project listed :internal passes", func(t *testing.T) {
+		installRoster(t, "ASSAY_ALLOWED_REPOS="+glRepo.Owner+"/"+glRepo.Name+":ci:internal\n")
+		s := newGLServer(t)
+		s.project = map[string]any{"visibility": "internal"}
+		if err := PublicRepoGate(ForgeRepoInfoFetcher{Forge: s.forge()}, glRepo.Owner, glRepo.Name); err != nil {
+			t.Fatalf("an internal project listed :internal must pass, got %v", err)
+		}
+		if RepoVisibility(glRepo.Owner+"/"+glRepo.Name) != VisibilityInternal {
+			t.Fatal("a :internal entry must configure VisibilityInternal, never public")
 		}
 	})
 

@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance|TestDirectProvider|TestPerfProcessCoverage|TestGitHubMinter|TestGitLabCred'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestRefusalNamesCallerForm|TestDeskprRefusalNamesFlag|TestPushGuard|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance|TestDirectProvider|TestPerfProcessCoverage|TestGitHubMinter|TestDesktokenExec|TestGitLabCred'",
   "schemata": true,
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
@@ -101,8 +101,32 @@
     {
       "name": "stop the refusal advertising the override (#585 re-opens)",
       "file": "internal/deskkit/scanoverride.go",
-      "old": "\t\treturn RefusedFinding(scanErr.Error()+OverrideHint(), f)",
+      "old": "\t\treturn RefusedFinding(scanErr.Error()+OverrideHint(o.Form), f)",
       "new": "\t\treturn RefusedFinding(scanErr.Error(), f)"
+    },
+    {
+      "name": "#6059 — every refusal names the flag, whatever the caller's form",
+      "file": "internal/deskkit/scanoverride.go",
+      "old": "\tif form == OverrideByEnv {\n\t\treturn \" If this is a false positive, re-run the push with \"",
+      "new": "\tif false && form == OverrideByEnv {\n\t\treturn \" If this is a false positive, re-run the push with \""
+    },
+    {
+      "name": "#6059 — the form's name always spells the flag",
+      "file": "internal/deskkit/scanoverride.go",
+      "old": "\tif f == OverrideByEnv {\n\t\treturn EnvPushGuardScanOverride",
+      "new": "\tif false && f == OverrideByEnv {\n\t\treturn EnvPushGuardScanOverride"
+    },
+    {
+      "name": "#6059 — the hook's context drops its env form",
+      "file": "internal/deskkit/outboundpush.go",
+      "old": "OverrideReason: reason, OverrideForm: OverrideByEnv})",
+      "new": "OverrideReason: reason})"
+    },
+    {
+      "name": "#6059 — a non-overridable outbound refusal advertises the override",
+      "file": "internal/deskkit/outbound.go",
+      "old": "\t\t\treturn RefusedFinding(msg, r.finding)",
+      "new": "\t\t\treturn RefusedFinding(msg+OverrideHint(ctx.OverrideForm), r.finding)"
     },
     {
       "name": "make the impersonation guard overridable",
@@ -205,6 +229,48 @@
       "file": "internal/deskkit/bodycheck.go",
       "old": "if isGitSHA(run) || isPathLike(run) || isIdentifierLike(run) || isAssignmentLike(run) || isAllEquals(run) {",
       "new": "if isGitSHA(run) || isPathLike(run) || isIdentifierLike(run) || isAssignmentLike(run) || isAllEquals(run) || strings.ToLower(run) != run {"
+    },
+    {
+      "name": "#1642 caps-key — the exemption accepts ANY value behind an ALL-CAPS key (a base62 run, an AWS secret, a CamelCase head on an entropy tail written as TEST=<value> scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif !isGitSHA(val) && !isPathLike(val) && !isIdentifierLike(val) {",
+      "new": "\tif len(val) == 0 {"
+    },
+    {
+      "name": "#5974 caps-key — the SHA arm accepts any 40- or 64-char value (a base62 run or 48/upper-case hex sized like a SHA behind DELIVERY_HEAD= scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif !isGitSHA(val) && !isPathLike(val) && !isIdentifierLike(val) {",
+      "new": "\tif !(len(val) == 40 || len(val) == 64) && !isPathLike(val) && !isIdentifierLike(val) {"
+    },
+    {
+      "name": "#5825 caps-key — the path arm accepts any value carrying a '/' (an entropy segment or an AWS secret key behind PGDATA= scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif !isGitSHA(val) && !isPathLike(val) && !isIdentifierLike(val) {",
+      "new": "\tif !isGitSHA(val) && !strings.Contains(val, \"/\") && !isIdentifierLike(val) {"
+    },
+    {
+      "name": "#1642 caps-key — drop the credential-stem check on the full env-var name (PASSWORD=<CamelCase passphrase>, API_KEY_TEST=<identifier> scan clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tname := envNameAt(raw, start, key)\n\tif hasCredentialStem(name) {",
+      "new": "\tname := envNameAt(raw, start, key)\n\tif false && hasCredentialStem(name) {"
+    },
+    {
+      "name": "#1642 caps-key — drop the digest/HEX name check (BASE_DIGEST_HEX=<passphrase> scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\t\tif seg == \"HEX\" || slices.Contains(digestKeys, seg) {",
+      "new": "\t\tif seg == \"\" && slices.Contains(digestKeys, seg) {"
+    },
+    {
+      "name": "#1642 caps-key — drop the key-length bound (a 17+ letter ALL-CAPS key in front of an identifier scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif eq <= 0 || eq > maxCapsAssignKey {",
+      "new": "\tif eq <= 0 {"
+    },
+    {
+      "name": "#1642 caps-key — accept any key byte, not only A-Z (TEST1= / TESt= in front of an identifier scan clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\t\tif key[i] < 'A' || key[i] > 'Z' {",
+      "new": "\t\tif key[i] == 0 {"
     },
     {
       "name": "#203 — make the public-repo self-containment scan a no-op on every repo",
@@ -853,6 +919,12 @@
       "file": "internal/deskkit/bodycheck.go",
       "old": "\t\tbad := strings.LastIndexAny(s[m[2]:m[5]], \"/?#[]\")",
       "new": "\t\tbad := strings.IndexAny(s[m[2]:m[5]], \"/?#[]\")"
+    },
+    {
+      "name": "fork desktoken again from repohardenguard's auditor mint (a caller steps around the in-process minter by exec'ing the binary first on PATH; the exec half of the #1573 class guard must fire)",
+      "file": "cmd/repohardenguard/forge.go",
+      "old": "\ttok, _, err := githubRoleTokenFn(\"auditor\", repoSlug)",
+      "new": "\ttok, _, err := githubRoleTokenFn(\"auditor\", repoSlug)\n\t_ = []string{\"desktoken\", \"auditor\", \"--repo\", repoSlug}"
     }
   ],
   "_not_mutated": {

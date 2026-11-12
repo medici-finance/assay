@@ -1,0 +1,15 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/files/vendor%2Flib",
+      "query": "ref=feat%2Fx"
+    }
+  ],
+  "result": {
+    "Content": "",
+    "SHA": "commit-1",
+    "Exists": true,
+    "Kind": "unproven"
+  }
+}

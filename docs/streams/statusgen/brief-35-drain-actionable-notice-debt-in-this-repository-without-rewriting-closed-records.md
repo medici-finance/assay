@@ -2,8 +2,8 @@
 brief: assay:assay:statusgen:35
 title: "Drain actionable notice debt in this repository without rewriting closed records"
 why: "Repair tools do not remove the existing backlog until someone applies and reviews their output. One bounded corpus cleanup proves that the tools reduce real debt without changing old evidence."
-wave: 3
-depends: ["statusgen/27", "statusgen/28", "statusgen/29", "statusgen/30", "statusgen/31", "statusgen/32"]
+wave: 8
+depends: ["statusgen/27", "statusgen/28", "statusgen/29", "statusgen/30", "statusgen/31", "statusgen/32", "statusgen/38", "desk-tools/47", "verification-handoff/05"]
 unblocks: ["statusgen/33"]
 effort: M
 gate: model
@@ -12,13 +12,15 @@ issues: []
 schema: brief-v2
 authored: "2026-10-17 by the maintainer-directed lint-debt refresh"
 sources:
+  - "docs/proposals/fixed-delivery-verification/README.md — fixed-delivery completion amendment, 2026-10-27; planning only"
+  - "freshness-checked 2026-10-27 @ 9a58a792c; existing PR 4579 and source/caller work map"
   - "docs/streams/statusgen/README.md"
   - "freshness-checked 2026-10-17 @ 8f1206fe5eb4b4ab19f5f2f7266c515aa71f8eae"
 exec-tier: strong
 exec-tier-why: "Cross-artifact classification, rewrite semantics and consumer verification must agree."
 domain: complicated
 outcome: none
-version: 1
+version: 2
 id: 3f2aaf9c-d1b0-4d3e-9771-92bc874aed2a
 consumers:
   - "docs/streams/*/brief-*.md: follow-up statusgen/35 (this brief; change is owed at implementation)"
@@ -55,6 +57,41 @@ single-point-of-failure: A mislabeled finding could evade the authoring gate; ge
 - Stop at implementation; an independent verifier records the execution evidence.
 
 ## Task
+
+### Fixed-delivery completion amendment — 2026-10-27
+
+This is a planning amendment under [fixed-delivery
+verification](../../proposals/fixed-delivery-verification/README.md), not runtime implementation or
+activation. Preserve the original Verify table and Evidence. The changed fixed-subject,
+historical-subject and row-reuse policy waits for the precise existing authority decisions; an old
+decision token grants none of these changes. Existing approved work retains its original contract.
+At pickup, pin this brief/version, the controlling contracts, actual producer/consumer versions and
+open PRs; adapt or hold only the affected slice. No new evaluator, record store, desk, tracer or
+qualification stage is authorized.
+
+**Owner: execute and report the bounded active historical cohort.** Consume /31's reviewed metadata
+dispositions, /38's bounded compatibility/backfill, /47's continuation and handoff/05's
+repair-return contract. These are actual prerequisites for this expanded migration; they do not make
+/35 a prerequisite for the fixed-delivery runtime or synthetic qualification in handoff/06.
+
+- Refresh the old replay cohort with one pinned released binary/source and record the
+  population/cutoff. Separate applicable proof awaiting bookkeeping, missing delivery attribution,
+  protected amendment authority, missing conditions/artifacts and substantive failures. Record
+  per-case existing owner and next action; candidate counts are not eligible closures. - Apply only
+  admitted metadata/backfill/continuation operations under their existing owners and permissions.
+  This corpus brief cannot approve a changed criterion, mint a binding, rewrite Evidence, fabricate
+  output or sign a human gate. Keep failed/unrecoverable cases explicitly owned; a named residual is
+  not a successful acceptance. - Cover implemented and verified-but-not-done historical entries,
+  including original incident obligations 4560/4563. Preserve all already-done records and original
+  observation hashes. Record original D/A and any independently admitted repair successor without
+  silently substituting current main. Use the existing active-notice cleanup report, not a new
+  migration ledger. - Extend the existing cleanup/ratchet fixtures and report read-back with a
+  bookkeeping-only continuation, a missing historical artifact, an unchanged completed record and a
+  real consumer disproval. Keep original notice-debt criteria and prerequisites; do not suppress
+  debt or promise that every hold will clear. Stop at reviewed corpus changes and owned residuals;
+  independent acceptance remains separate.
+
+### Existing task obligations
 
 1. Capture binary version and digest, exact base revision, per-rule/per-status counts and closed-record hashes before editing.
 2. Apply both repair tools in dry run, review the proposed changes, and apply only semantics-preserving active changes. Repair remaining active author-owed defects with explicit evidence; do not fabricate names or execute out-of-scope live infrastructure.
