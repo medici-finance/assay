@@ -200,6 +200,24 @@
       "new": "cmp, err := fg.CompareRefs(fr, head, tip)\n\tif false && err != nil {"
     },
     {
+      "name": "branch board skips the compare for every tip, not only the home's own HEAD (a branch that moved past the judged board is never read) — #6270",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if sameCommit(head, tip) {\n\t\treturn nil, nil",
+      "new": "if true {\n\t\treturn nil, nil"
+    },
+    {
+      "name": "same-commit test matches an abbreviated id (a prefix that may name another commit skips the compare) — #6270",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "return deskkit.IsFullSHA(a) && deskkit.IsFullSHA(b) && a == b",
+      "new": "return a != \"\" && b != \"\" && (strings.HasPrefix(a, b) || strings.HasPrefix(b, a))"
+    },
+    {
+      "name": "delivery join admits every merge without a compare (a merge the admitted source does not contain is admitted) — #6270",
+      "file": "cmd/deskevidence/outcomebinding.go",
+      "old": "if sameCommit(entry.MergeSHA, source) {",
+      "new": "if true {"
+    },
+    {
       "name": "branch board lets an unreadable changed file through (a changed board file the judge never sees)",
       "file": "cmd/deskevidence/decisiongate.go",
       "old": "fc, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: f.Filename, Ref: tip})\n\t\tif rerr != nil {",
