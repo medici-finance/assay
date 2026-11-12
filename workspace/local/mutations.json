@@ -14,10 +14,10 @@
       "new": "\tif false && gi.Mode().IsRegular() {"
     },
     {
-      "name": "a store whose .git resolves to another checkout's common directory is accepted",
+      "name": "a store whose Git directory resolves to, or points at, another checkout's common directory is accepted",
       "file": "local/repository.go",
-      "old": "\tif !gi.IsDir() || gitDir != own || commonDir != own {",
-      "new": "\tif false && (!gi.IsDir() || gitDir != own || commonDir != own) {"
+      "old": "\tif !gi.IsDir() || gitDir != own || commonDir != own {\n\t\treturn \"\", refusal(workspace.ReasonIdentityMismatch, \"store.common-dir\", \"the store's Git common directory is not its own .git\")\n\t}\n\tif _, err := os.Lstat(filepath.Join(own, \"commondir\")); err == nil {",
+      "new": "\tif false && (!gi.IsDir() || gitDir != own || commonDir != own) {\n\t\treturn \"\", refusal(workspace.ReasonIdentityMismatch, \"store.common-dir\", \"the store's Git common directory is not its own .git\")\n\t}\n\tif _, err := os.Lstat(filepath.Join(own, \"commondir\")); false && err == nil {"
     },
     {
       "name": "a store borrowing objects through alternates is accepted",
@@ -46,8 +46,38 @@
     {
       "name": "a second root claiming a bound cell identity is accepted (a copied cell runs as the original)",
       "file": "local/repository.go",
-      "old": "\t\tif strings.TrimSpace(string(b)) != root {",
-      "new": "\t\tif false && strings.TrimSpace(string(b)) != root {"
+      "old": "\t\tif bound != root {",
+      "new": "\t\tif false && bound != root {"
+    },
+    {
+      "name": "a store whose objects/ or config is a symlink into another checkout is accepted",
+      "file": "local/repository.go",
+      "old": "\tif err := checkNoLinks(dotgit, gi); err != nil {",
+      "new": "\tif err := checkNoLinks(dotgit, gi); false && err != nil {"
+    },
+    {
+      "name": "an origin URL that does not parse is accepted as credential-free",
+      "file": "local/repository.go",
+      "old": "\tif err != nil {\n\t\treturn true\n\t}\n\tif u.User == nil {",
+      "new": "\tif err != nil {\n\t\treturn false\n\t}\n\tif u.User == nil {"
+    },
+    {
+      "name": "a refused placement still creates the store directory through a symlinked repos/",
+      "file": "local/repository.go",
+      "old": "\tif err := checkPlacement(cell, req.Repo, legacy); err != nil {\n\t\treturn workspace.StoreEntry{}, err\n\t}\n\tif err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {\n\t\treturn workspace.StoreEntry{}, unknown(\"store.path\", err)\n\t}",
+      "new": "\tif err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {\n\t\treturn workspace.StoreEntry{}, unknown(\"store.path\", err)\n\t}\n\tif err := checkPlacement(cell, req.Repo, legacy); err != nil {\n\t\treturn workspace.StoreEntry{}, err\n\t}"
+    },
+    {
+      "name": "a failed observation of an existing store is reported as foreign state",
+      "file": "local/repository.go",
+      "old": "\t\t\tif r, ok := workspace.ReasonOf(err); ok && r == workspace.ReasonEvidenceUnavailable {",
+      "new": "\t\t\tif r, ok := workspace.ReasonOf(err); false && ok && r == workspace.ReasonEvidenceUnavailable {"
+    },
+    {
+      "name": "an empty registry entry refuses its own root as another cell's",
+      "file": "local/repository.go",
+      "old": "\t\tif bound == \"\" {",
+      "new": "\t\tif false && bound == \"\" {"
     }
   ]
 }

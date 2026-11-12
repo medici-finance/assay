@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/workspace"
@@ -171,8 +172,42 @@ func readStoreMapping(cell workspace.CellRef) (*workspace.StoreMapping, error) {
 	return &m, nil
 }
 
-// writeStoreMapping replaces the mapping atomically: a temporary file in the control directory,
-// renamed over the old one only after the published generation is re-read unchanged.
+// mappingLockWait bounds how long a publisher waits for another publisher of the same cell's
+// mapping; a variable so a test can shorten it. Past it the publication is refused as busy.
+var mappingLockWait = 5 * time.Second
+
+// lockMapping takes the exclusive advisory lock that serializes publishers of one cell's mapping.
+// The lock file is a sibling of the mapping, never the mapping itself: the mapping is replaced by
+// rename, which would leave a lock on a replaced inode. It fails closed: a lock this process could
+// not take within mappingLockWait is a busy refusal, never permission to proceed.
+func lockMapping(path string) (func(), error) {
+	lf, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, &workspace.Refusal{Reason: workspace.ReasonEvidenceUnavailable, Field: "mapping", Msg: err.Error()}
+	}
+	deadline := time.Now().Add(mappingLockWait)
+	for {
+		err := deskkit.TryLockExclusive(lf)
+		if err == nil {
+			return func() { _ = deskkit.UnlockFile(lf); _ = lf.Close() }, nil
+		}
+		if !errors.Is(err, deskkit.ErrLockBusy) {
+			_ = lf.Close()
+			return nil, &workspace.Refusal{Reason: workspace.ReasonEvidenceUnavailable, Field: "mapping", Msg: err.Error()}
+		}
+		if time.Now().After(deadline) {
+			_ = lf.Close()
+			return nil, &workspace.Refusal{Reason: workspace.ReasonBusy, Field: "mapping", Msg: "another publication of this cell's mapping is in progress"}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// writeStoreMapping replaces the mapping atomically and exclusively: under the publication lock it
+// re-reads the published generation and, only if it is still the one this mapping follows,
+// renames a fully written temporary file over the old mapping. Two publishers at the same
+// expected generation cannot both succeed; the second is refused as stale (or busy past the
+// bound), and the loser's temporary file is removed.
 func writeStoreMapping(cell workspace.CellRef, m workspace.StoreMapping) error {
 	b, err := workspace.EncodeStoreMapping(m)
 	if err != nil {
@@ -181,6 +216,22 @@ func writeStoreMapping(cell workspace.CellRef, m workspace.StoreMapping) error {
 	path := workspace.MappingPath(cell)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return &workspace.Refusal{Reason: workspace.ReasonEvidenceUnavailable, Field: "mapping", Msg: err.Error()}
+	}
+	unlock, err := lockMapping(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	cur, err := readStoreMapping(cell)
+	if err != nil {
+		return err
+	}
+	have := uint64(0)
+	if cur != nil {
+		have = cur.Generation
+	}
+	if have != m.Generation-1 {
+		return &workspace.Refusal{Reason: workspace.ReasonStaleGeneration, Field: "generation", Msg: "the mapping was published concurrently"}
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".stores-*.json")
 	if err != nil {
@@ -196,17 +247,6 @@ func writeStoreMapping(cell workspace.CellRef, m workspace.StoreMapping) error {
 	}
 	if werr != nil {
 		return &workspace.Refusal{Reason: workspace.ReasonEvidenceUnavailable, Field: "mapping", Msg: werr.Error()}
-	}
-	cur, err := readStoreMapping(cell)
-	if err != nil {
-		return err
-	}
-	have := uint64(0)
-	if cur != nil {
-		have = cur.Generation
-	}
-	if have != m.Generation-1 {
-		return &workspace.Refusal{Reason: workspace.ReasonStaleGeneration, Field: "generation", Msg: "the mapping was published concurrently"}
 	}
 	if err := os.Rename(tmp.Name(), path); err != nil {
 		return &workspace.Refusal{Reason: workspace.ReasonEvidenceUnavailable, Field: "mapping", Msg: err.Error()}

@@ -1917,7 +1917,9 @@ What cellctl owns once the decision is recorded:
   cellctl reads the legacy keys to work out this scope and never writes them. Rollback, child and
   container profiles keep the same legacy keys, so they see the same checkouts as before.
 - **Publication.** cellctl writes `<cell>/run/workspaces/stores.json`, a generation-stamped
-  mapping, and writes it only after every store has verified. A managed-aware reader takes store
+  mapping, and writes it only after every store has verified. The generation check and the
+  rename happen under an exclusive lock beside the file, bounded: two publishers from one prior
+  generation cannot both succeed, and one that cannot get the lock in time is refused as `busy`. A managed-aware reader takes store
   paths from this file alone. The mapping is never exported as an environment variable, so a
   reader that knows nothing of it still sees the legacy keys exactly as before.
 - **Cell binding.** The cell's UUID is recorded against its resolved root in a machine-level
@@ -1936,7 +1938,7 @@ Proposed configuration, for the activation decision only. None of these keys is 
 | `CELL_WORKSPACE_REGISTRY` | The machine-level cell-identity registry. Absent means `<cells root>/.registry`. |
 
 Tests: `TestCellRepositoryIsolation` and `TestCellRootBinding` (`workspace/local`, with mutation
-entries in `workspace/local/mutations.json`), and `TestWorkspaceRootMapAtomic` (`cellctl`).
+entries in `workspace/local/mutations.json`), and `TestWorkspaceRootMapAtomic` and `TestWorkspaceMappingPublishExclusive` (`cellctl`).
 
 ## Container cells
 

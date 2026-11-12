@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -154,6 +155,20 @@ func copyTree(t *testing.T, src, dst string) {
 	}
 }
 
+// linkIntoHost clones normally, then replaces one entry of the clone's Git directory with a
+// symlink to the same entry of the host checkout: the store then reads, and writes, the host's.
+func linkIntoHost(ctx context.Context, c cloneFrom, r workspace.RepoRef, d, host, entry string) error {
+	if err := c.Clone(ctx, r, d); err != nil {
+		return err
+	}
+	own := filepath.Join(d, ".git", entry)
+	if err := os.RemoveAll(own); err != nil {
+		return err
+	}
+	return os.Symlink(filepath.Join(host, ".git", entry), own)
+}
+
+// regression: F-store-symlinked-git-internals
 func TestCellRepositoryIsolation(t *testing.T) {
 	ctx := context.Background()
 	base := t.TempDir()
@@ -267,6 +282,26 @@ func TestCellRepositoryIsolation(t *testing.T) {
 			cmd.Env = gitEnv()
 			return cmd.Run()
 		}, workspace.ReasonForeignState, "store.config"},
+		{"unparseable origin URL (cannot be shown credential-free)", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			if err := (cloneFrom{repo: src}).Clone(ctx, r, d); err != nil {
+				return err
+			}
+			cmd := exec.Command("git", "-C", d, "remote", "set-url", "origin", "https://user:p%zz@forge.example/acme/tools.git")
+			cmd.Env = gitEnv()
+			return cmd.Run()
+		}, workspace.ReasonForeignState, "store.config"},
+		{"commondir pointer into the host's common directory", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			if err := (cloneFrom{repo: src}).Clone(ctx, r, d); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(d, ".git", "commondir"), []byte(filepath.Join(host, ".git")+"\n"), 0o644)
+		}, workspace.ReasonIdentityMismatch, "store.common-dir"},
+		{"objects/ is a symlink into the host checkout", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			return linkIntoHost(ctx, cloneFrom{repo: src}, r, d, host, "objects")
+		}, workspace.ReasonIdentityMismatch, "store.common-dir"},
+		{"config is a symlink to the host checkout's config", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			return linkIntoHost(ctx, cloneFrom{repo: src}, r, d, host, "config")
+		}, workspace.ReasonIdentityMismatch, "store.common-dir"},
 		{"wrong repository", func(ctx context.Context, r workspace.RepoRef, d string) error {
 			return cloneFrom{r: other}.Clone(ctx, r, d)
 		}, workspace.ReasonIdentityMismatch, "store.subject"},
@@ -281,7 +316,7 @@ func TestCellRepositoryIsolation(t *testing.T) {
 		}, workspace.ReasonIdentityMismatch, "store.git"},
 	}
 	for i, sub := range subs {
-		cell := newCell(t, base, "sub-"+string(rune('a'+i)), "00000000-0000-4000-8000-00000000003"+string(rune('0'+i)))
+		cell := newCell(t, base, "sub-"+string(rune('a'+i)), fmt.Sprintf("00000000-0000-4000-8000-0000000030%02d", i))
 		lg := legacy
 		lg.Cleanup = append(append([]string(nil), legacy.Cleanup...), filepath.Join(cell.Root, "worktrees"))
 		_, err := Stores{Transport: sub.clone}.Provision(ctx, cell, req, lg)
@@ -316,6 +351,15 @@ func TestCellRepositoryIsolation(t *testing.T) {
 	}
 	_, err = never.Provision(ctx, cellR, req, Legacy{Cleanup: []string{filepath.Join(cellR.Root, "worktrees")}})
 	wantRefusal(t, "repos directory linked into the legacy worktrees", err, workspace.ReasonIdentityMismatch, "store.path")
+	// A refused placement makes nothing in the place the link points at, even when the key
+	// directory does not exist yet.
+	if entries, err := os.ReadDir(filepath.Join(cellR.Root, "worktrees", "x")); err != nil || len(entries) != 0 {
+		t.Fatalf("a refused placement wrote into the link target: %v, %v", entries, err)
+	}
+	// An observation that could not be made keeps its own kind: with no usable git, an existing
+	// store is evidence-unavailable, not foreign state.
+	_, err = Stores{Transport: cloneFrom{repo: src}, Git: filepath.Join(base, "no-such-git")}.Provision(ctx, cellA, req, legacy)
+	wantRefusal(t, "existing store, git unavailable", err, workspace.ReasonEvidenceUnavailable, "store.git")
 	tracker := newCell(t, filepath.Join(base, "scratch-old"), "cell", "00000000-0000-4000-8000-000000000060")
 	_, err = never.Provision(ctx, tracker, req, Legacy{Cleanup: []string{filepath.Join(base, "scratch-*")}})
 	wantRefusal(t, "cell under an old sanctioned prefix", err, workspace.ReasonIdentityMismatch, "store.path")
@@ -342,6 +386,17 @@ func TestCellRootBinding(t *testing.T) {
 	// A second UUID at an already bound root is refused.
 	err = BindCell(registry, workspace.CellRef{UUID: "00000000-0000-4000-8000-000000000080", Root: cell.Root})
 	wantRefusal(t, "second identity at one root", err, workspace.ReasonIdentityMismatch, "cell.uuid")
+	// An entry is linked into place whole and leaves no temporary file behind; an entry that
+	// is empty (an interrupted write by an older writer) is an unavailable observation, never
+	// a refusal of the root as foreign.
+	if leftovers, _ := filepath.Glob(filepath.Join(registry, ".bind-*")); len(leftovers) > 0 {
+		t.Fatalf("bind left temporary files: %v", leftovers)
+	}
+	wedged := newCell(t, base, "wedged", "00000000-0000-4000-8000-000000000090")
+	if err := os.WriteFile(filepath.Join(registry, wedged.UUID), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wantRefusal(t, "empty registry entry", BindCell(registry, wedged), workspace.ReasonEvidenceUnavailable, "registry")
 	b, err := os.ReadFile(filepath.Join(registry, cell.UUID))
 	if err != nil {
 		t.Fatal(err)

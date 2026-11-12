@@ -9,7 +9,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/workspace"
 	"github.com/medici-finance/assay/workspace/local"
@@ -255,4 +257,88 @@ func wsWantReason(t *testing.T, err error, want workspace.Reason) {
 	if !errors.As(err, &r) || r.Reason != want {
 		t.Fatalf("want %s, got %v", want, err)
 	}
+}
+
+// regression: F-mapping-publish-cas-window — the generation check and the rename are one critical
+// section under a bounded lock, so two publishers at one expected generation cannot both win.
+func TestWorkspaceMappingPublishExclusive(t *testing.T) {
+	cell := workspace.CellRef{UUID: "00000000-0000-4000-8000-000000000091", Root: filepath.Join(t.TempDir(), "cell")}
+	if err := os.MkdirAll(cell.Root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	next := func(prior *workspace.StoreMapping, expected uint64) workspace.StoreMapping {
+		t.Helper()
+		repo := workspace.RepoRef{Forge: "github.com", Repository: "acme/tools"}
+		sp := workspace.StorePath(cell, repo)
+		entry := workspace.StoreEntry{Repo: repo, RepoKey: workspace.RepoKey(repo), Path: sp,
+			CommonDir: filepath.Join(sp, ".git"), Subject: strings.Repeat("a", 40)}
+		m, err := workspace.NextMapping(prior, expected, cell, []workspace.StoreEntry{entry})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	leftovers := func() {
+		t.Helper()
+		got, _ := filepath.Glob(filepath.Join(filepath.Dir(workspace.MappingPath(cell)), ".stores-*.json"))
+		if len(got) != 0 {
+			t.Fatalf("temporary mapping files left behind: %v", got)
+		}
+	}
+
+	// A publisher that cannot take the lock inside the bound is refused as busy, and publishes nothing.
+	defer func(d time.Duration) { mappingLockWait = d }(mappingLockWait)
+	mappingLockWait = 50 * time.Millisecond
+	path := workspace.MappingPath(cell)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := lockMapping(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeStoreMapping(cell, next(nil, 0)); err == nil {
+		t.Fatal("a publication proceeded while another held the lock")
+	} else {
+		wsWantReason(t, err, workspace.ReasonBusy)
+	}
+	if _, err := os.Lstat(path); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("a busy publication wrote a mapping (%v)", err)
+	}
+	unlock()
+	leftovers()
+
+	// Concurrent publishers, all expecting the same prior generation: exactly one wins, the rest
+	// are stale (or busy past the bound), and the published mapping is the winner's, whole.
+	mappingLockWait = 10 * time.Second
+	const n = 8
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			errs[i] = writeStoreMapping(cell, next(nil, 0))
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	won := 0
+	for _, err := range errs {
+		if err == nil {
+			won++
+			continue
+		}
+		wsWantReason(t, err, workspace.ReasonStaleGeneration)
+	}
+	if won != 1 {
+		t.Fatalf("%d publishers won generation 1, want exactly one: %v", won, errs)
+	}
+	got, err := readStoreMapping(cell)
+	if err != nil || got == nil || got.Generation != 1 {
+		t.Fatalf("published mapping: %+v, %v", got, err)
+	}
+	leftovers()
 }

@@ -80,15 +80,23 @@ func (s Stores) Provision(ctx context.Context, cell workspace.CellRef, req works
 		return workspace.StoreEntry{}, refusal(workspace.ReasonUnsupportedCapability, "transport", "no transport was composed for provisioning")
 	}
 	path := workspace.StorePath(cell, req.Repo)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return workspace.StoreEntry{}, unknown("store.path", err)
-	}
+	// Placement is judged before anything is created: a symlinked repos/ or key directory is
+	// refused while it is still only a path, so a refused call never makes a directory in the
+	// place the link points at.
 	if err := checkPlacement(cell, req.Repo, legacy); err != nil {
 		return workspace.StoreEntry{}, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return workspace.StoreEntry{}, unknown("store.path", err)
 	}
 	if _, err := os.Lstat(path); err == nil {
 		e, err := s.Observe(ctx, cell, req, legacy)
 		if err != nil {
+			// An observation that could not be made keeps its own kind (unknown); only a store
+			// that was observed and does not verify is foreign state.
+			if r, ok := workspace.ReasonOf(err); ok && r == workspace.ReasonEvidenceUnavailable {
+				return workspace.StoreEntry{}, err
+			}
 			return workspace.StoreEntry{}, refusal(workspace.ReasonForeignState, "store.path", "an existing directory is not this repository's verified store: %v", err)
 		}
 		return e, nil
@@ -147,11 +155,11 @@ func checkPlacement(cell workspace.CellRef, repo workspace.RepoRef, legacy Legac
 		return unknown("cell.root", err)
 	}
 	dir := filepath.Dir(workspace.StorePath(cell, repo))
-	got, err := filepath.EvalSymlinks(dir)
+	// resolve follows every existing link, including a dangling one, and keeps a missing tail
+	// under its resolved ancestor: a store directory that does not exist yet still resolves
+	// through a symlinked repos/, so the link is caught before anything is made inside it.
+	got, err := resolve(dir)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil // nothing placed yet; Provision creates it, and verify resolves it again
-		}
 		return unknown("store.path", err)
 	}
 	if want := filepath.Join(root, workspace.ReposDir, workspace.RepoKey(repo)); got != want {
@@ -187,6 +195,13 @@ func (s Stores) verify(ctx context.Context, dir string, req workspace.StoreReque
 	}
 	if gi.Mode().IsRegular() {
 		return "", refusal(workspace.ReasonIdentityMismatch, "store.git", "the store is a linked worktree of another checkout")
+	}
+	// Nothing inside the Git directory may be a link: a symlinked objects/, refs/, config or
+	// packed-refs puts the store's storage in another checkout while Git still reports the
+	// store's own directory as the common directory. Every probe below reads through whatever
+	// an entry points at, so the walk comes first.
+	if err := checkNoLinks(dotgit, gi); err != nil {
+		return "", err
 	}
 
 	// Its own common directory: what Git resolves must be this directory's own .git, a real
@@ -245,6 +260,32 @@ func (s Stores) verify(ctx context.Context, dir string, req workspace.StoreReque
 	return real, nil
 }
 
+// checkNoLinks refuses a store whose .git, or any entry beneath it, is a symbolic link. A fresh
+// clone's Git directory holds none; a link there is how a store's objects, refs or
+// configuration end up in another checkout. The walk never follows a link.
+func checkNoLinks(dotgit string, gi fs.FileInfo) error {
+	const msg = "the store's Git directory holds a symbolic link, so part of it may live in another checkout"
+	if gi.Mode()&fs.ModeSymlink != 0 {
+		return refusal(workspace.ReasonIdentityMismatch, "store.common-dir", msg)
+	}
+	if !gi.IsDir() {
+		return nil
+	}
+	err := filepath.WalkDir(dotgit, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			return refusal(workspace.ReasonIdentityMismatch, "store.common-dir", msg)
+		}
+		return nil
+	})
+	if err != nil {
+		return unknown("store.git", err)
+	}
+	return nil
+}
+
 // allowedConfig is everything a fresh clone writes into its own configuration. Any other key —
 // a credential helper, an include, a hooks path, an identity, another remote — was inherited or
 // planted, and refuses the store.
@@ -282,7 +323,8 @@ func (s Stores) checkConfig(ctx context.Context, own string) error {
 		}
 		return unknown("store.config", err)
 	}
-	for _, u := range strings.Fields(string(raw)) {
+	// One value per line: a value is never split on whitespace, so it is judged whole.
+	for _, u := range strings.Split(strings.TrimRight(string(raw), "\r\n"), "\n") {
 		if hasCredential(u) {
 			return refusal(workspace.ReasonForeignState, "store.config", "the store's origin URL carries a credential")
 		}
@@ -291,10 +333,20 @@ func (s Stores) checkConfig(ctx context.Context, own string) error {
 }
 
 // hasCredential reports a URL with userinfo on an http(s) remote, where the user part is a
-// credential (a token or password), as opposed to an ssh login name.
+// secret or password, as opposed to an ssh login name. It fails closed: a URL that does not
+// parse cannot be shown to be free of a credential, so it is reported as carrying one. A form
+// with no scheme (the scp style, or a path) carries one when the text before its first "@"
+// holds a colon.
 func hasCredential(raw string) bool {
+	if !strings.Contains(raw, "://") {
+		i := strings.Index(raw, "@")
+		return i >= 0 && strings.Contains(raw[:i], ":")
+	}
 	u, err := url.Parse(raw)
-	if err != nil || u.User == nil {
+	if err != nil {
+		return true
+	}
+	if u.User == nil {
 		return false
 	}
 	if _, ok := u.User.Password(); ok {
@@ -489,22 +541,36 @@ func BindCell(registry string, cell workspace.CellRef) error {
 		return unknown("registry", err)
 	}
 	entry := filepath.Join(registry, cell.UUID)
-	f, err := os.OpenFile(entry, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	switch {
+	// The entry is written whole to a temporary file and linked into place, so it appears
+	// complete or not at all: a crash or a full disk cannot leave an empty entry that refuses
+	// the same root forever. Link fails if the entry exists, which is the exclusive create.
+	tmp, err := os.CreateTemp(registry, ".bind-*")
+	if err != nil {
+		return unknown("registry", err)
+	}
+	defer os.Remove(tmp.Name())
+	_, werr := tmp.WriteString(root + "\n")
+	if serr := tmp.Sync(); werr == nil {
+		werr = serr
+	}
+	if cerr := tmp.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		return unknown("registry", werr)
+	}
+	switch err := os.Link(tmp.Name(), entry); {
 	case err == nil:
-		_, werr := f.WriteString(root + "\n")
-		if cerr := f.Close(); werr == nil {
-			werr = cerr
-		}
-		if werr != nil {
-			return unknown("registry", werr)
-		}
 	case errors.Is(err, fs.ErrExist):
 		b, rerr := os.ReadFile(entry)
 		if rerr != nil {
 			return unknown("registry", rerr)
 		}
-		if strings.TrimSpace(string(b)) != root {
+		bound := strings.TrimSpace(string(b))
+		if bound == "" {
+			return refusal(workspace.ReasonEvidenceUnavailable, "registry", "the cell's registry entry is incomplete")
+		}
+		if bound != root {
 			return refusal(workspace.ReasonForeignState, "cell.root", "the cell is already active at another root")
 		}
 	default:
