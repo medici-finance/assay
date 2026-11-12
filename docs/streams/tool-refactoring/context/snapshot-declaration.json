@@ -1,0 +1,63 @@
+{
+  "declared_by": "assay:assay:tool-refactoring:01",
+  "target": {
+    "state": "proposed",
+    "revision": "680102a0877755feab9ef85dc4e1d3f52a137a54",
+    "approval": null,
+    "intent": "Consolidate existing semantic owners and current CLI adapters for cross-repository work, row definitions/observations/outcomes, local lifecycle and publication; preserve existing control authority and future runtime ownership.",
+    "contracts": [
+      {
+        "name": "operation-subject",
+        "from": "existing-workref-domain",
+        "to": "shared-projection"
+      },
+      {
+        "name": "verification-definition",
+        "from": "caller-local-projections",
+        "to": "shared-briefdoc"
+      },
+      {
+        "name": "verification-outcome",
+        "from": "producer-reader-copies",
+        "to": "shared-evaluation"
+      },
+      {
+        "name": "publication",
+        "from": "mixed-preparation-effect",
+        "to": "bound-preparation-fresh-admission"
+      }
+    ],
+    "transition": "Draft parked plan; pure owners and current adapters first, retained runtime/release/activation owners later. No policy adoption granted.",
+    "acceptance_source": "docs/streams/tool-refactoring/spec.md"
+  },
+  "terms": [
+    "verifyrun",
+    "deskdispatch",
+    "cellctl",
+    "deskpr",
+    "deskevidence",
+    "declaredscope",
+    "verifyoutcomes",
+    "publication"
+  ],
+  "deciding_role": "brief-author",
+  "sources": [
+    {
+      "id": "assay",
+      "cell": "assay",
+      "repo": "assay",
+      "role": "plan",
+      "required": true
+    },
+    {
+      "id": "guidelines",
+      "cell": "assay",
+      "repo": "assay",
+      "role": "guideline",
+      "required": true
+    }
+  ],
+  "edges": [],
+  "claims": [],
+  "proposals": []
+}

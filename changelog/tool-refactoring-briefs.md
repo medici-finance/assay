@@ -1,0 +1,2 @@
+- Add a parked class-refactoring plan for verification, dispatch, local cell operation and publication, with eleven bounded briefs, issue routing and existing-work reconciliation.
+- Preserve existing witness, credential, scanner and runtime owners; propose no implementation or activation in this authoring change.

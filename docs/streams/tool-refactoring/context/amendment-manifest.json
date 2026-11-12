@@ -1,0 +1,30 @@
+{
+  "schema": "amendment-manifest-v1",
+  "declared_by": "assay:assay:tool-refactoring:01",
+  "handoff": "sha256:64e304e058ac41edfb6c368672a0cdff713862147cbc3d173d14d61623b3e4b7",
+  "entries": [
+    {
+      "obligation": "statusgen-37-inverse-edge",
+      "brief": "assay:assay:statusgen:37",
+      "action": "amend",
+      "delivery_paths": [
+        "docs/streams/statusgen/brief-37-content-bound-witness-schema-v2-writers.md"
+      ],
+      "contract_version": null,
+      "depends": [
+        "assay:assay:tool-refactoring:11"
+      ],
+      "test_commands": [
+        "statusgen --root . --lint"
+      ],
+      "active_work": "Claims not freshly queried; inverse-edge-only authoring amendment, no Task/Verify rebind; refresh required before dispatch.",
+      "effort": "S",
+      "binding": {
+        "patch": {
+          "base_revision": "f6eff788230d6d8f950257d3879acb7d89ab8ca8",
+          "digest": "sha256:196e3b8f9cb71f94cc32d6406781b302e0e5066b340cc2ff5880f11406f9d58e"
+        }
+      }
+    }
+  ]
+}
