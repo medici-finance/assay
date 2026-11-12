@@ -1,0 +1,186 @@
+{
+  "schema": "milestone-mutations-v1",
+  "runner": "python3 statusgen/testdata/milestone-support/07-mutate.py",
+  "cases": [
+    {
+      "name": "prerequisite-work-omitted",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "walk(prereq)",
+      "new": "// prerequisite work omitted",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "shared-work-double-counted",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "r.WorkRemaining = len(r.Remaining)",
+      "new": "r.WorkRemaining = len(r.Holds)",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "verified-finishes-work",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "} else if w.Status != \"done\" {",
+      "new": "} else if w.Status != \"done\" && w.Status != \"verified\" {",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "withdrawal-finishes-work",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "} else if w.Status != \"done\" {",
+      "new": "} else if w.Status != \"done\" && w.Status != \"withdrawn\" {",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "prerequisite-acceptance-ignored",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "if state != StateSatisfied {\n\t\t\t\tcomplete = false",
+      "new": "if false && state != StateSatisfied {\n\t\t\t\tcomplete = false",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "subject-match-omitted",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "a.Milestone == ref && a.Subject == subject",
+      "new": "a.Milestone == ref",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "version-match-omitted",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "a.Milestone == ref && a.Subject == subject",
+      "new": "a.Subject == subject",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "revocation-satisfied",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "a := matches[0]",
+      "new": "a := matches[0]\n if a.State == AcceptanceRevoked { return a, StateSatisfied, \"\" }",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "unknown-revocation-cleared",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "|| len(a.Unknowns) != 0",
+      "new": "",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "other-holds-overridden",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "out.Eligibility = evaluateEdges(in)\n\treturn out\n}",
+      "new": "out.Eligibility = evaluateEdges(in)\n for id, e := range out.Eligibility { e.Holds = nil; e.Verdict = VerdictEligible; out.Eligibility[id] = e }\n return out\n}",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "scope-match-omitted",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "scope.Environment != r.Subject.Environment",
+      "new": "false",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "coverage-gap-cleared",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "if !w.Found || !knownWorkStatus(w.Status) {",
+      "new": "if false && (!w.Found || !knownWorkStatus(w.Status)) {",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "final-gates-inherited",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "s := BriefStart{Key: b.Key, Root: b.Root, ID: b.ID, Membership: membership[b.Key], OnCycle: onCycle[briefNode(b.Key)]}",
+      "new": "s := BriefStart{Key: b.Key, Root: b.Root, ID: b.ID, Membership: membership[b.Key], OnCycle: onCycle[briefNode(b.Key)]}\n for _, m := range membership[b.Key] { b.Requires = append(b.Requires, records[m].Requires...) }",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "start-gates-as-feathers",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "b.Gates = append(b.Gates, Edge{Ref: e.Ref, Type: e.Type, Reason: e.Reason, Resolved: e.State, Why: e.Why})",
+      "new": "b.Feathers = append(b.Feathers, Edge{Ref: e.Ref, Type: e.Type, Reason: e.Reason, Resolved: e.State, Why: e.Why})",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "absent-resolved-satisfied",
+      "target": "statusgen/evaluation/eligibility.go",
+      "old": "return resolveGraphEdge(edge.Ref, in)",
+      "new": "return StateSatisfied, \"\"",
+      "module": "statusgen",
+      "package": "./evaluation",
+      "test": "TestMilestoneEligibility"
+    },
+    {
+      "name": "host-gates-as-feathers",
+      "target": "statusgen/milestonegraph.go",
+      "old": "row.Gates = gates",
+      "new": "row.Feathers = gates",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestNextupMilestoneCoverage"
+    },
+    {
+      "name": "host-readiness-not-applied",
+      "target": "statusgen/milestonegraph.go",
+      "old": "for _, gate := range result.StartGates[key] {",
+      "new": "for _, gate := range result.StartGates[\"absent\"] {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestNextupMilestoneCoverage"
+    },
+    {
+      "name": "host-subject-token-dropped",
+      "target": "statusgen/milestoneacceptance.go",
+      "old": "Token: domain.ContentDigest(raw)",
+      "new": "Token: string(raw[:0])",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestNextupMilestoneCoverage"
+    },
+    {
+      "name": "host-revocation-ignored",
+      "target": "statusgen/milestoneacceptance.go",
+      "old": "if h.Revoked {",
+      "new": "if false && h.Revoked {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestNextupMilestoneCoverage"
+    },
+    {
+      "name": "host-history-dropped",
+      "target": "statusgen/milestoneacceptance.go",
+      "old": "HistoryCount: len(a.History)",
+      "new": "HistoryCount: 0",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestNextupMilestoneCoverage"
+    }
+  ]
+}
