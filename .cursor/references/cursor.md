@@ -60,9 +60,9 @@ They do not exist in Cursor.
 The in-editor agent is a supported install surface. Headless `cursor-agent` is the
 smoke/automation surface (HP/13); blocked live smoke does not mean "do not copy skills."
 
-Every mechanism and degradation cell below cites the measured Cursor capability matrix
-(HP/12, documentary + public-docs sweep, 2026-08-26 — **no live Cursor environment**;
-the rows a live install must settle stay flagged `[needs: live-install confirmation]`).
+The Cursor capability matrix (HP/12) records the documentary sweep from 2026-08-26.
+Rows that still need a live check are marked `[needs: live-install confirmation]`.
+The interactive cadence row also has a live test recorded under Freshness.
 
 Source of the capability set: the closed vocabulary block in
 [`../../../docs/streams/harness-portability/README.md`](../../../docs/streams/harness-portability/README.md).
@@ -74,6 +74,59 @@ Three guarantees **never degrade** on any harness (stream README §3; ruling C):
 cannot provide the underlying capability, the affected skill **refuses** rather
 than dropping the guarantee. Only *convenience* gaps (no parallel dispatch, no
 reliable background notification) may degrade — explicitly, and in-session.
+
+## Commit and PR attribution — a host setting, `false` on desk hosts
+
+The Cursor CLI adds attribution to agent output by default. Two settings control it
+(#5892):
+
+| Setting | What it does when `true` | Default | Required on a host that runs desks |
+|---|---|---|---|
+| `attribution.attributeCommitsToAgent` | Appends a "Made with Cursor" trailer to every commit the agent makes, amends included. | `true` | `false` |
+| `attribution.attributePRsToAgent` | Appends a "Made with Cursor" footer to every PR the agent opens. | `true` | `false` |
+
+Assay forbids attribution lines in commits, PRs, issues and comments (the
+no-attribution guardrail every desk skill states). With the defaults, a desk worker on
+Cursor writes commits its own rules reject, and the push guard's outbound scan can
+refuse the push. The harness re-adds the trailer on every commit, so a worker cannot fix
+it from inside the session.
+
+Both settings live only in the **global** CLI config. By default that is
+`~/.cursor/cli-config.json` on macOS and Linux, `%USERPROFILE%\.cursor\cli-config.json` on
+Windows. Two environment variables override the location: `CURSOR_CONFIG_DIR` (a custom
+directory) and, on Linux/BSD, `XDG_CONFIG_HOME` (`$XDG_CONFIG_HOME/cursor/cli-config.json`).
+Cursor's reference states no precedence between them and the default. A project's
+`.cursor/cli.json` carries permissions only, so no file placed in a repo can turn
+attribution off. An absent file or an absent key means `true`. Set, in the global file (in
+every one of them when an override is set):
+
+```json
+{
+  "attribution": {
+    "attributeCommitsToAgent": false,
+    "attributePRsToAgent": false
+  }
+}
+```
+
+`deskinstall --harness cursor` (placement, `--check` and `--dry-run`) and
+`upgrade-assay --harness cursor` read every global file the CLI may read (each override
+that is set, plus the default) and report each setting as off, on or could-not-check. A
+setting is off only when it is `false` in all of them; an override set to a relative path
+is could-not-check. The report names each file and the value to set. It is report-only:
+the installer does not own the global config, so it never edits it, and the report
+never changes the run's exit code.
+
+When a push is refused over a trailer the harness added, the worker STOPS and reports
+the setting. It never rewrites history or re-commits to strip the trailer and never
+pushes by another route. The host's operator sets the values above to `false`. Commits
+already made still carry the trailer; what happens to them is the operator's call, not
+the worker's.
+
+Source: [CLI configuration](https://cursor.com/docs/cli/reference/configuration).
+Documentary check: 2026-11-11 (the settings, their `true` defaults, the global-only
+scope, and the `CURSOR_CONFIG_DIR` / `XDG_CONFIG_HOME` overrides with no stated
+precedence). Not live-tested on a desk host.
 
 ## Why Cursor is lighter than Codex
 
@@ -87,14 +140,14 @@ background agents run in isolated git worktrees natively. So more skills `run` h
 
 | Capability | Cursor mechanism (HP/12 §) |
 |---|---|
-| `capability:dispatch-worker` | IDE: in-session subagents + **cloud background agents in isolated git worktrees** (Firecracker microVMs, ~8 parallel) (§2.5). Headless (`cursor-agent -p`): scriptable invocation; whether parallel headless dispatch reaches the ~8-agent worktree model is `[needs: live-install confirmation]` (§2.5). **Where headless parallel dispatch is not confirmed**, the convenience-degradation floor applies: the fan-out runs **serially, one item at a time, stating the degradation**. |
+| `capability:dispatch-worker` | IDE: in-session subagents + **cloud background agents in isolated git worktrees** (Firecracker microVMs, ~8 parallel) (§2.5). Headless (`cursor-agent -p`): scriptable invocation; whether parallel headless dispatch reaches the ~8-agent worktree model is `[needs: live-install confirmation]` (§2.5). **Where headless parallel dispatch is not confirmed**, the convenience-degradation floor applies: the fan-out runs **serially, one item at a time, stating the degradation**. **Model selection:** follow [Execution model selection](#execution-model-selection) below when the brief requires `exec-tier: strong`; serial dispatch retains the same tier requirement. |
 | `capability:message-agent` | Follow-up messages to a background/subagent in the IDE; headless follow-up via `cursor-agent` session continuation (`--resume`) — present, durability across process restarts is `partial`/unconfirmed (§2.6). Prefer re-dispatch fresh when durability matters. |
 | `capability:isolate-workspace` | IDE: cloud background agents run in **isolated git worktrees** natively (§2.9 `supported`) — the isolation Codex CLI lacked. Headless: `cursor-agent` inherits the shell's git, so the skill runs `git worktree add` itself as on Claude Code; whether the default headless permission posture permits that ref-write unprompted (§2.8) — and whether the background-worktree isolation is reachable from the adopter's own flow — is `[needs: live-install confirmation]` (§2.9). **If reachable, isolation runs; if the sandbox blocks the worktree ref-write, the no-isolation floor applies and the affected skill refuses rather than implement in the shared checkout.** |
 | `capability:invoke-skill` | `SKILL.md` discovery from `.cursor/skills/` and `.agents/skills/` — the **same `SKILL.md` open standard** (agentskills.io, Cursor v2.4) Assay's plugin already uses (§2.2 `supported`); frontmatter `name` + `description`, progressive disclosure. Description-driven auto-trigger is documented; whether headless `cursor-agent` fires it with IDE ergonomics is `[needs: live-install confirmation]` (§2.3) — **invoke-by-name is the floor** where auto-trigger is unconfirmed (parity of availability, not of trigger ergonomics). |
 | `capability:session-notifications` | Headless: `cursor-agent -p --output-format json\|stream-json` returns a structured completion signal the caller reads directly (§2.7 `supported`). IDE: `stop`/`subagentStop` hook events + in-app agent-complete signals (§2.7 `supported`). Judge liveness by these signals and elapsed time, never by an empty output file. |
 | `capability:stop-worker` | IDE: stop a background/subagent from the agent list; headless: terminate the `cursor-agent` child process driving the run (§2.5/§2.6). Whether a headless parallel worker is individually addressable for a targeted stop is `[needs: live-install confirmation]` (§2.5) — where it is not, the per-run stop reaches its worker as the cooperative STOP.run.<key> flag alone (Guard refuses that run's next desk verb), the convenience floor stated in-session; the flag layer is never degraded. |
 | `capability:durable-monitor` | **No confirmed durable cross-turn wake signal.** The §2.7 completion signals are per-turn, not a re-arming poll, and `cursor-agent` session continuation (`--resume`) has `partial`/unconfirmed durability across process restarts (§2.6) — so there is no verified re-arming monitor that survives a session restart. A durable wake-signal is a **convenience**, not one of the three never-degrade guarantees (isolation / evidence / gates) → the convenience floor applies: the capability **degrades** unless a live install confirms a durable poll (`[needs: live-install confirmation]`, §2.6/§2.7). The skill falls back to the **event-driven + fixed-cadence board sweep** (the same backstop Claude Code pairs with its Monitor — the fixed-cadence sweep is the real liveness safeguard, the durable monitor only ever best-effort) and **states the gap in-session**. The durable liveness home is the always-on observability service, not the harness. |
-| `capability:cadence-tick` | **No confirmed in-session recurring prompt (§2.6/§2.7): the tick comes from OUTSIDE the session.** Neither the IDE agent nor headless `cursor-agent` is confirmed to re-prompt a standing session on a clock (`[needs: live-install confirmation]`), so a standing window cannot arm this capability itself. The binding is the **cell launcher's interval / an outer scheduler** — a cron or container job that invokes the role in tick mode every cadence interval (`cursor-agent -p … --tick`, or `ASSAY_TICK=1` in the job's environment; the trigger, bounded pass and summary line are [`tick-contract.md`](./tick-contract.md)), where each fire IS one "fresh sweep → drain → one quiet line" pass. The cadence and the prompt are the role body's, unchanged. A standing window with no such outer schedule reports `cadence-tick: could-not-check — no in-session scheduler` at boot and FILES it, exactly as the role's boot step says — it never runs keystroke-driven in silence. This is the fixed-cadence sweep the `durable-monitor` row already falls back to; it is a **convenience** (never one of the three never-degrade guarantees), so the capability **degrades** to the outer schedule, stated in-session, unless a live install confirms a native scheduled prompt. |
+| `capability:cadence-tick` | Local interactive desks use Cursor's built-in `/loop` skill to wake the same chat. Follow [Interactive desk cadence](#interactive-desk-cadence) during role boot. Headless desk ticks get their cadence from the caller and run one bounded pass under [the tick contract](./tick-contract.md). |
 
 **Resident-rules channel** (not one of the five dispatch capabilities, but the
 load-bearing delivery mechanism): Cursor reads **`AGENTS.md` natively** and
@@ -106,6 +159,69 @@ Assay's only hook is a session-start resident-rules injection, which Cursor does
 headless hook-drop caveat (§2.4) is a watch-item for future hook use, never a current
 blocker. (The shared `AGENTS.md` fragment and the generated `.cursor/rules` rule are
 produced by `tools/harnessgen`, which arrives with the tool de-house follow-on.)
+
+## Execution model selection
+
+The worker skill already routes `exec-tier: strong` to a strong-tier worker. On Cursor,
+resolve that tier to the adopter's configured concrete model ID before dispatch; `strong`
+is an Assay requirement, not a Cursor model ID. Keep the model choice in adopter
+configuration so the binding does not hard-code a vendor or a model generation.
+
+- **IDE subagent:** confirm the selected custom subagent's `.cursor/agents/<name>.md`
+  frontmatter sets `model: <configured-model-id>`, then invoke it with `/name`.
+  `model: inherit` is sufficient only when the parent's resolved model is confirmed
+  to meet the requirement. Where the launch tool exposes explicit model selection,
+  it may name the configured ID directly; do not assume every tool schema accepts it.
+- **Headless:** use `cursor-agent --list-models` to check available IDs, then launch
+  in the worker's isolated worktree with
+  `cursor-agent -p --model "<configured-model-id>" --output-format stream-json "<worker-kit prompt>"`.
+  Retain the adopter's existing permission posture. Availability alone does not
+  establish a model's execution tier.
+- **Attestation and pickup:** before `deskdispatch`, confirm the launch configuration
+  resolves to the required model. Pass `--tier strong` and that model's concrete ID
+  as `--model`, dropping any bracketed options for the stamp (which accepts lowercase
+  letters, digits, dots and dashes); retain the full options in the actual launch.
+  The pin records the request, not proof of what was served. Check Cursor's subagent
+  task card or the CLI's `system` / `init` event `model` field against that request;
+  the CLI field is a display name, not necessarily the stamp ID. Keep the worker kit's
+  pickup-STOP check. An unresolvable identity, weaker fallback, or pickup tier failure
+  holds the item and is filed under the worker skill's existing procedure. Retain
+  its attestation receipt and coordinator stamp handoff; never self-attest or
+  replace an unresolved model identity with the requested one.
+
+Cursor documents fallback when a configured model is unavailable because of plan or
+admin restrictions. A prompt asking for a strong model, Auto, or an unconfirmed inherited
+model does not establish a strong launch. If the IDE cannot select the required model,
+use an explicitly pinned CLI worker where available; otherwise hold the item. Running
+serially preserves the execution-tier requirement.
+
+Sources: [subagent model configuration](https://cursor.com/docs/subagents#model-configuration),
+[CLI parameters](https://cursor.com/docs/cli/reference/parameters), and
+[CLI output format](https://cursor.com/docs/cli/reference/output-format).
+Documentary check: 2026-11-09; local `cursor-agent` 2026.11.05-86047df confirms
+`--model`, `--list-models` and `--output-format` in `--help`. Model routing and
+fallback were not live-tested; this does not close the existing live-install gaps.
+
+## Interactive desk cadence
+
+During a standing role's boot, complete the role's required preflight and arm
+one fixed-interval loop before the first queue sweep. Use the role's own sweep
+prompt and interval. Use a 30-minute interval when the role gives no interval.
+
+1. Use Cursor's built-in [`/loop` skill](https://cursor.com/docs/skills#built-in-cursor-skills).
+   Follow its local monitored-shell procedure using the shell tool's output
+   notification. Check this chat for an active matching watcher before arming.
+   Reuse a confirmed watcher that already wakes this chat for the same sweep.
+   Keep separate event and completion watchers where the role calls for them.
+2. The role's normal first sweep counts as the immediate run. Each later wake
+   runs the due sweep in the same chat, under the role's current stop flags,
+   width, and approval gates. Coalesce wakes for a sweep already handled or in
+   progress. Return control to the chat while waiting for the next wake.
+3. Read back the watched task, interval, and sweep prompt before reporting the
+   loop armed. If the skill or watched-shell notification is unavailable, or
+   the watcher cannot be confirmed, report `cadence-tick: could-not-check`
+   and follow the role's escalation procedure. Stop the watcher on an operator
+   stop request. Headless tick launches follow the tick contract above.
 
 ## Degradation — per skill (Cursor, both surfaces, headless-first)
 
@@ -146,8 +262,12 @@ permitted degradation, always stated.
 
 ## Freshness
 
-This binding is behavioural fact about a live harness, measured documentarily on
-2026-08-26 with no live environment. It is registered in `freshness.yaml`
-(harness-portability/12) so it expires on a clock, and the
-`[needs: live-install confirmation]` rows are re-measured once a Cursor environment
-exists (the live smoke is the stream's external head, human:<name>'s).
+The broader documentary review is registered in `freshness.yaml`
+(harness-portability/12). The rows marked `[needs: live-install confirmation]`
+remain open for live smoke testing.
+
+Interactive cadence was tested live on 2026-11-05 with Cursor CLI
+`2026.11.05-86047df`. In a fresh cell with a disposable 45-second verify desk,
+Cursor invoked `/loop` at boot. One shell approval let the timer start, and
+two scheduled wakes reached the original chat without further input.
+[Live test evidence](https://github.com/medici-finance/assay/pull/5521#validation)

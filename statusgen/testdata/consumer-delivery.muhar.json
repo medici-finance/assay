@@ -11,8 +11,8 @@
     {
       "name": "inherited claims suppress delivery evidence",
       "file": "consumerdelivery.go",
-      "old": "corroborateBrief(snapshot, streams, changed, nil, bf)",
-      "new": "corroborateBrief(snapshot, streams, changed, func() map[string]bool { inherited := map[string]bool{}; for _,entry := range bf.Consumers { inherited[strings.TrimSpace(entry)] = true }; return inherited }(), bf)"
+      "old": "corroborateBriefWithSnapshot(snapshot, streams, changed, nil, bf, tree)",
+      "new": "corroborateBriefWithSnapshot(snapshot, streams, changed, func() map[string]bool { inherited := map[string]bool{}; for _,entry := range bf.Consumers { inherited[strings.TrimSpace(entry)] = true }; return inherited }(), bf, tree)"
     },
     {
       "name": "delivery accepts a wider history range",

@@ -16,9 +16,9 @@ func TestGateRefusalNamesGatedVerbs(t *testing.T) {
 	installRoster(t, internalGateRoster)
 
 	cases := []struct{ live, repo string }{
-		{"public", "bare"},      // live public, no visibility tag
-		{"public", "inner"},     // live public, tagged :internal
-		{"internal", "pubrepo"}, // live internal, tagged :public (history clause too)
+		{"public", "bare"},       // live public, no visibility tag
+		{"public", "inner"},      // live public, tagged :internal
+		{"internal", "privrepo"}, // live internal, tagged :private (#5514: :public now passes)
 		{"internal", "not-in-set"},
 	}
 	for _, c := range cases {

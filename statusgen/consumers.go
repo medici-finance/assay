@@ -183,6 +183,10 @@ type site struct {
 // site. The three kinds map onto the three instrument states: only siteRepoPath
 // can be corroborated or disproved here.
 func classifySite(root, raw string) site {
+	return classifySiteUsing(root, raw, resolveSitePath)
+}
+
+func classifySiteUsing(root, raw string, resolve func(string, string) ([]string, error)) site {
 	s := strings.TrimSpace(raw)
 	if s == "" {
 		return site{Kind: siteProse, Reason: "empty site"}
@@ -197,7 +201,7 @@ func classifySite(root, raw string) site {
 	if !pathish(tok) {
 		return site{Kind: siteProse, Reason: "names a component in prose, not a path this root can resolve"}
 	}
-	matches, err := resolveSitePath(root, tok)
+	matches, err := resolve(root, tok)
 	if err != nil {
 		return site{Kind: siteProse, Token: tok, Reason: err.Error()}
 	}
@@ -405,7 +409,7 @@ func consumersCheck(root string, streams []*Stream) (problems, notices []string)
 			// residue no machine can settle is written for a human to weigh
 			// (F-impl-claims-unproven, recommendation 2).
 			if open && !strings.Contains(bf.Verify, "--consumers") {
-				notice("%s: brief %s carries consumers: but no Verify row runs `statusgen --consumers` — the routing claims are asserted in frontmatter with nothing corroborating them", path, bf.Brief)
+				notice("%s: brief %s carries consumers: but no Verify row runs `statusgen --consumers` — the routing claims are asserted in frontmatter with nothing corroborating them (the bare row `statusgen --consumers --brief %s` also re-runs after the merge, pinned to the delivery its Evidence marker or its single `Brief:` trailer commit names)", path, bf.Brief, bf.Brief)
 			}
 			for _, raw := range bf.Consumers {
 				e := parseConsumerEntry(raw)
@@ -754,6 +758,19 @@ func selectConsumerBriefs(root string, streams []*Stream, changed map[string]boo
 // claims belong to the branch that wrote them and are UNCHECKED here (see
 // consumerEntriesAtBase).
 func corroborateBrief(root string, streams []*Stream, changed map[string]bool, inherited map[string]bool, bf *BriefFile) []consumerVerdict {
+	return corroborateBriefWithSnapshot(root, streams, changed, inherited, bf, nil)
+}
+
+func corroborateBriefWithSnapshot(root string, streams []*Stream, changed map[string]bool, inherited map[string]bool, bf *BriefFile, snapshot *consumerSnapshot) []consumerVerdict {
+	resolve := resolveSitePath
+	isDir := func(rel string) bool {
+		st, err := os.Stat(filepath.Join(root, rel))
+		return err == nil && st.IsDir()
+	}
+	if snapshot != nil {
+		resolve = snapshot.resolveSitePath
+		isDir = func(rel string) bool { return snapshot.dirs[filepath.ToSlash(rel)] }
+	}
 	var out []consumerVerdict
 	add := func(state, entry, reason string) {
 		out = append(out, consumerVerdict{Brief: bf.Brief, Entry: entry, State: state, Reason: reason})
@@ -777,8 +794,8 @@ func corroborateBrief(root string, streams []*Stream, changed map[string]bool, i
 			// the cheapest way past the gate.
 			add(stateDisproved, raw, "no routing token — end the entry with `: fixed-here`, `: follow-up <stream>/<NN>` or `: out-of-scope (<why>)`; an entry stating no routing claims nothing and can corroborate nothing")
 		case routingFixedHere:
-			st := classifySite(root, e.Site)
-			missing := untouched(root, changed, st.Matches)
+			st := classifySiteUsing(root, e.Site, resolve)
+			missing := untouchedUsing(changed, st.Matches, isDir)
 			switch {
 			case st.Kind != siteRepoPath:
 				add(stateUnchecked, raw, st.Reason)
@@ -798,7 +815,7 @@ func corroborateBrief(root string, streams []*Stream, changed map[string]bool, i
 				// which is what stranded desk-containers/08's debugging.
 				add(stateDisproved, raw, fmt.Sprintf("claims fixed-here but %q fails BOTH checks — tree-lookup: FAILED (no file or directory under the root matches this path/glob) — diff-deletion-lookup: FAILED (no diff entry equals %q exactly, so this is not a delete/rename either) — if this is an authoring PR that only declares a path its implementation will create, route it `follow-up <stream>/<NN>` at the brief itself (the deferred disposition) and flip it to fixed-here in the change that adds the path", st.Token, st.Token))
 			case len(missing) == 0:
-				add(stateCorroborated, raw, directoryEvidence(root, changed, st.Matches))
+				add(stateCorroborated, raw, directoryEvidenceUsing(changed, st.Matches, isDir))
 			case len(missing) == len(st.Matches):
 				add(stateDisproved, raw, fmt.Sprintf("claims fixed-here but fails the diff-lookup check — tree-lookup: OK (resolves to %s) — diff-lookup: FAILED (none of those path(s) appear in the diff) — if this is an authoring PR that only declares the path, route it `follow-up <stream>/<NN>` at the brief itself (the deferred disposition) and flip it to fixed-here in the change that edits the path", strings.Join(st.Matches, ", ")))
 			default:
@@ -823,7 +840,7 @@ func corroborateBrief(root string, streams []*Stream, changed map[string]bool, i
 			// Most out-of-scope judgements are genuinely unsettleable. This one
 			// sub-case is not: the branch that declares a consumer excluded and
 			// then edits it contradicts itself, and the diff says so outright.
-			if st := classifySite(root, e.Site); st.Kind == siteRepoPath {
+			if st := classifySiteUsing(root, e.Site, resolve); st.Kind == siteRepoPath {
 				if hit := exactlyChanged(changed, st.Matches); hit != "" {
 					add(stateDisproved, raw, fmt.Sprintf("claims out-of-scope but this diff changes %s — the branch contradicts its own exclusion", hit))
 					continue
@@ -939,11 +956,18 @@ func touched(root string, changed map[string]bool, rel string) bool {
 // thinly. Naming the evidence keeps widening visible without rejecting it (the
 // any-match rule for directories is finding 5's fix and is deliberately kept).
 func touchedBy(root string, changed map[string]bool, rel string) []string {
+	return touchedByUsing(changed, rel, func(rel string) bool {
+		st, err := os.Stat(filepath.Join(root, rel))
+		return err == nil && st.IsDir()
+	})
+}
+
+func touchedByUsing(changed map[string]bool, rel string, isDir func(string) bool) []string {
 	rel = filepath.ToSlash(strings.TrimSuffix(rel, "/"))
 	if changed[rel] {
 		return []string{rel}
 	}
-	if st, err := os.Stat(filepath.Join(root, rel)); err != nil || !st.IsDir() {
+	if !isDir(rel) {
 		return nil
 	}
 	prefix := rel + "/"
@@ -962,17 +986,23 @@ func touchedBy(root string, changed map[string]bool, rel string) []string {
 // the corroboration actually rests on. Returns "" when no resolved path is a
 // directory, which keeps a plain file site's verdict reason empty as before.
 func directoryEvidence(root string, changed map[string]bool, matches []string) string {
+	return directoryEvidenceUsing(changed, matches, func(rel string) bool {
+		st, err := os.Stat(filepath.Join(root, rel))
+		return err == nil && st.IsDir()
+	})
+}
+
+func directoryEvidenceUsing(changed map[string]bool, matches []string, isDir func(string) bool) string {
 	var parts []string
 	for _, m := range matches {
 		rel := filepath.ToSlash(strings.TrimSuffix(m, "/"))
 		if changed[rel] {
 			continue // named outright by the diff; nothing widened
 		}
-		st, err := os.Stat(filepath.Join(root, rel))
-		if err != nil || !st.IsDir() {
+		if !isDir(rel) {
 			continue
 		}
-		hits := touchedBy(root, changed, rel)
+		hits := touchedByUsing(changed, rel, isDir)
 		if len(hits) == 0 {
 			continue
 		}
@@ -1004,9 +1034,16 @@ const maxDirectoryEvidencePaths = 5
 // `docs/streams/*/README.md: fixed-here` says every stream README was updated —
 // and an entry that fixed only part of its set says so by being split.
 func untouched(root string, changed map[string]bool, paths []string) []string {
+	return untouchedUsing(changed, paths, func(rel string) bool {
+		st, err := os.Stat(filepath.Join(root, rel))
+		return err == nil && st.IsDir()
+	})
+}
+
+func untouchedUsing(changed map[string]bool, paths []string, isDir func(string) bool) []string {
 	var out []string
 	for _, p := range paths {
-		if !touched(root, changed, p) {
+		if len(touchedByUsing(changed, p, isDir)) == 0 {
 			out = append(out, p)
 		}
 	}

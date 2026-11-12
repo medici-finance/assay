@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/cellcache ./internal/cellprocess ./cmd/cellctl ./cmd/deskdispatch ./cmd/deskwt -run 'TestCache|TestStorage|TestReap|TestLoadMarkedPolicy|TestDomainFor|TestCheckRecorded|TestAdmitRecorded|TestPruneCache' -count=1 -timeout=60s",
+  "test": "go test ./internal/cellcache ./internal/cellrunner ./cmd/cellctl ./cmd/deskdispatch ./cmd/deskwt -run 'TestCache|TestStorage|TestReap|TestLoadMarkedPolicy|TestDomainFor|TestCheckRecorded|TestAdmitRecorded|TestPruneCache' -count=1 -timeout=60s",
   "control": {
     "name": "CONTROL \u2014 an invalid CELL_GO_CACHE mode is accepted as off",
     "file": "internal/cellcache/policy.go",
@@ -63,7 +63,7 @@
     },
     {
       "name": "lose process custody",
-      "file": "internal/cellprocess/run.go",
+      "file": "internal/cellrunner/launch.go",
       "old": "lease, err := cellcache.Acquire(env)",
       "new": "lease, err := cellcache.Acquire(nil)"
     },
@@ -78,12 +78,6 @@
       "file": "internal/cellcache/cache.go",
       "old": "if kv != want {",
       "new": "if false && kv != want {"
-    },
-    {
-      "name": "planted second raw launch",
-      "file": "internal/cellprocess/run.go",
-      "old": "const pipeWait =",
-      "new": "func secondSite() { _, _, _ = run(context.Background(), nil, nil, \"\", nil, nil, newProcessTree) }\n\nconst pipeWait ="
     },
     {
       "name": "follow replaced cache root outside custody",

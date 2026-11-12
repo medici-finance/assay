@@ -25,6 +25,7 @@ import (
 
 	"github.com/medici-finance/assay/forgeread/adapters"
 	ghissues "github.com/medici-finance/assay/forgeread/adapters/github"
+	"github.com/medici-finance/assay/forgeread/adapters/pager"
 )
 
 // forge_github.go — the GitHub implementation of Forge, seated on the official go-gh
@@ -269,14 +270,14 @@ func (g *GitHubForge) doJSONHeader(method, path string, in, out any) (http.Heade
 		attachRequestPoints(capture.body, decodeRequestPoints(raw, perfrec.UnitGitHubPoints))
 	}
 	if readErr != nil {
-		return nil, Unverifiable(fmt.Sprintf("%s %s response body cut off mid-transfer (%d bytes arrived) — refusing to treat a partial answer as a complete one", method, path, len(raw)), readErr)
+		return nil, transientRead(Unverifiable(fmt.Sprintf("%s %s response body cut off mid-transfer (%d bytes arrived) — refusing to treat a partial answer as a complete one", method, path, len(raw)), readErr))
 	}
 	if out != nil {
 		if len(raw) == 0 {
-			return nil, Unverifiable(fmt.Sprintf("%s %s returned HTTP %d with an empty body where a JSON answer was expected — an absent answer is not an empty one", method, path, resp.StatusCode), nil)
+			return nil, transientRead(Unverifiable(fmt.Sprintf("%s %s returned HTTP %d with an empty body where a JSON answer was expected — an absent answer is not an empty one", method, path, resp.StatusCode), nil))
 		}
 		if uerr := json.Unmarshal(raw, out); uerr != nil {
-			return nil, Unverifiable(fmt.Sprintf("cannot parse %s %s response", method, path), uerr)
+			return nil, transientRead(Unverifiable(fmt.Sprintf("cannot parse %s %s response", method, path), uerr))
 		}
 	}
 	return resp.Header, nil
@@ -479,6 +480,21 @@ type ghCheckRunsWire struct {
 		StartedAt   string `json:"started_at"`
 		CompletedAt string `json:"completed_at"`
 	} `json:"check_runs"`
+}
+
+// ghCheckSuitesWire is one page of GET /commits/{sha}/check-suites.
+type ghCheckSuitesWire struct {
+	TotalCount  int `json:"total_count"`
+	CheckSuites []struct {
+		ID         int64  `json:"id"`
+		Status     string `json:"status"`
+		Conclusion string `json:"conclusion"`
+		App        struct {
+			Slug string `json:"slug"`
+		} `json:"app"`
+		LatestCheckRunsCount int    `json:"latest_check_runs_count"`
+		CreatedAt            string `json:"created_at"`
+	} `json:"check_suites"`
 }
 
 // ghLabelWire is one entry of the repo/issue label listings.
@@ -702,10 +718,10 @@ func (g *GitHubForge) SearchIssues(repo ForgeRepo, in SearchIssuesInput) ([]Issu
 		if err := validateDecisionSearch(in); err != nil {
 			return nil, err
 		}
-		return g.searchDecisionMarkers(repo, in.DecisionGateBrief)
+		return g.searchDecisionMarkers(repo, in)
 	}
-	if in.DecisionGateBrief != "" {
-		return nil, Refused("decision-marker brief requires marker discovery mode")
+	if in.DecisionGateBrief != "" || in.DecisionGateLegacy {
+		return nil, Refused("decision-marker brief or legacy key requires marker discovery mode")
 	}
 	q := strings.TrimSpace(fmt.Sprintf("repo:%s is:issue %s", repo.Slug(), strings.TrimSpace(in.Query)))
 	path := fmt.Sprintf("/search/issues?q=%s&per_page=%d", url.QueryEscape(q), forgeSearchPerPage)
@@ -749,12 +765,21 @@ func (g *GitHubForge) ListLabels(repo ForgeRepo) ([]string, error) {
 }
 
 // forgeIssuePerPage / forgeOpenChangesCap bound the two bulk board reads. The issue read
-// paginates to exhaustion (per_page=100); the open-change read is a SINGLE bounded page
-// whose cap is reported (OpenChanges.Cap) so a read that came back exactly full signals a
-// possibly-truncated population rather than a confident count over an unknown remainder.
+// paginates to exhaustion (per_page=100); the open-change read is a bounded cursor walk of at
+// most forgeOpenChangesCap changes whose cap is reported (OpenChanges.Cap), so a forge holding
+// more than the cap signals a truncated population rather than a confident count over an
+// unknown remainder.
 const (
 	forgeIssuePerPage   = 100
 	forgeOpenChangesCap = 100
+	// forgeOpenChangesPage / forgeOpenChangesMinPage / forgeOpenChangesRetries bound the
+	// open-change walk (#3096): pages of 25 changes, halved on a transient failure to a floor
+	// of 6, with at most 4 smaller retries across the whole walk. One unpaginated page of 100
+	// changes with their reviews, labels and rollup contexts outran the forge's own time
+	// budget (a 504, an empty 200 or a body cut off mid-JSON) while pages of 20-50 answered.
+	forgeOpenChangesPage    = 25
+	forgeOpenChangesMinPage = 6
+	forgeOpenChangesRetries = 4
 	// forgeMaxIssuePages bounds the open-issue walk (the GitLab arm's gitlabMaxIssuePage
 	// twin): a forge still advertising more pages past it is a could-not-check, never a
 	// silently truncated listing.
@@ -784,7 +809,7 @@ const (
 // node already requested — no extra request, and no scope beyond `checks:read`. The head
 // commit's oid and committedDate are scalars on that same commit node, selected for the
 // stale-approval test (#3093, ReviewPredatesHead) at the same zero request/point cost.
-const ghOpenChangesQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+const ghOpenChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$first,after:$after,orderBy:{field:CREATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
 
 // ghListChangesQuery is the states-scoped, cursor-paginated changes read behind ListChanges. It
 // requests EXACTLY the ChangeRef fields — number, state, head oid, source branch (headRefName),
@@ -811,11 +836,12 @@ const ghReviewQueueReviewsSel = `reviews(first:100){pageInfo{hasNextPage} nodes{
 // ghReviewQueueQuery is the ReviewQueueSnapshot document: ghOpenChangesQuery with
 // ghReviewQueueReviewsSel inserted after baseRefName, plus the repository visibility scalar
 // consumed by actions' policy-drift alarm (TestReviewQueueQueryIsOpenChangesPlusReviews
-// pins exactly those additions). ONE POST answers the whole queue — change metadata, CI
-// rollup contexts and every change's reviews — so the head a change is classified at and the
-// reviews reduced against it come from one consistent read. Its point cost is the open-changes
-// read's plus one nested connection per change (see the stream's query-cost record).
-const ghReviewQueueQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){visibility pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+// pins exactly those additions). Each page answers its changes whole — change metadata, CI
+// rollup contexts and every change's reviews on one node — so the head a change is classified
+// at and the reviews reduced against it come from one consistent response. Its point cost is
+// the open-changes read's plus one nested connection per change (see the stream's query-cost
+// record).
+const ghReviewQueueQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String){repository(owner:$owner,name:$name){visibility pullRequests(states:OPEN,first:$first,after:$after,orderBy:{field:CREATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
 
 // forgeQueueReviewsCap is the per-change review bound of ghReviewQueueReviewsSel's first:.
 const forgeQueueReviewsCap = 100
@@ -894,6 +920,10 @@ type ghOpenChangesEnvelope struct {
 		Repository struct {
 			Visibility   string `json:"visibility"`
 			PullRequests struct {
+				PageInfo struct {
+					HasNextPage bool   `json:"hasNextPage"`
+					EndCursor   string `json:"endCursor"`
+				} `json:"pageInfo"`
 				Nodes []ghOpenChangeNode `json:"nodes"`
 			} `json:"pullRequests"`
 		} `json:"repository"`
@@ -903,34 +933,100 @@ type ghOpenChangesEnvelope struct {
 	} `json:"errors"`
 }
 
-// openChangesRead POSTs one open-change document (ghOpenChangesQuery or ghReviewQueueQuery)
-// and returns its nodes. Any GraphQL-level error fails the whole read could-not-check, exactly
-// as the open-changes read always has — a partial response is never mapped.
-func (g *GitHubForge) openChangesRead(repo ForgeRepo, query, what string) ([]ghOpenChangeNode, string, error) {
-	in := map[string]any{
-		"query": query,
-		"variables": map[string]any{
-			"owner": repo.Owner, "name": repo.Name, "limit": forgeOpenChangesCap,
-		},
-	}
-	var out ghOpenChangesEnvelope
-	if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
-		return nil, "", err
-	}
-	if len(out.Errors) > 0 {
-		msgs := make([]string, 0, len(out.Errors))
-		for _, e := range out.Errors {
-			msgs = append(msgs, e.Message)
+// openChangesRead walks one open-change document (ghOpenChangesQuery or ghReviewQueueQuery)
+// page by page through the shared pager (forgeread/adapters/pager) and returns its nodes, the
+// repository visibility and whether the forge holds more open changes than forgeOpenChangesCap.
+//
+// Each page is ONE POST; a change's head and its reviews still come from one node of one
+// response, so no change can straddle a push. The population is the union of the pages, newest
+// first, de-duplicated by number (a change opened during the walk can shift one change across
+// a page boundary; one opened after the first page is read next cycle).
+//
+// A transient page failure — a 5xx, an HTTP 200 with an empty body, a body cut off mid-transfer
+// or one that does not parse (ghReadClass) — is retried for the SAME cursor at half the page
+// size, down to forgeOpenChangesMinPage and within forgeOpenChangesRetries for the whole walk.
+// Authentication, permission, not-found and rate-limit answers and GraphQL-level errors are
+// never retried. Any failure fails the whole read could-not-check, exactly as the single-page
+// read always has: a partial page set is never mapped.
+func (g *GitHubForge) openChangesRead(repo ForgeRepo, query, what string) ([]ghOpenChangeNode, string, bool, error) {
+	visibility := ""
+	fetch := func(_ context.Context, req pager.Request) (pager.Page[ghOpenChangeNode], error) {
+		vars := map[string]any{"owner": repo.Owner, "name": repo.Name, "first": req.Size, "after": nil}
+		if req.Cursor != "" {
+			vars["after"] = req.Cursor
 		}
-		return nil, "", Unverifiable(what+" GraphQL error: "+strings.Join(msgs, "; "), nil)
+		var out ghOpenChangesEnvelope
+		if err := g.doJSON(http.MethodPost, "/graphql", map[string]any{"query": query, "variables": vars}, &out); err != nil {
+			return pager.Page[ghOpenChangeNode]{}, err
+		}
+		if len(out.Errors) > 0 {
+			msgs := make([]string, 0, len(out.Errors))
+			for _, e := range out.Errors {
+				msgs = append(msgs, e.Message)
+			}
+			return pager.Page[ghOpenChangeNode]{}, Unverifiable(what+" GraphQL error: "+strings.Join(msgs, "; "), nil)
+		}
+		if req.Cursor == "" {
+			visibility = strings.ToLower(out.Data.Repository.Visibility)
+		}
+		conn := out.Data.Repository.PullRequests
+		return pager.Page[ghOpenChangeNode]{Items: conn.Nodes, More: conn.PageInfo.HasNextPage, Next: conn.PageInfo.EndCursor}, nil
 	}
-	visibility := strings.ToLower(out.Data.Repository.Visibility)
+	res, err := pager.Walk(context.Background(), pager.Policy{
+		PageSize: forgeOpenChangesPage, MinPageSize: forgeOpenChangesMinPage,
+		MaxItems: forgeOpenChangesCap, MaxRetries: forgeOpenChangesRetries,
+		Classify: ghReadClass,
+	}, func(n ghOpenChangeNode) string { return strconv.Itoa(n.Number) }, fetch)
+	if err != nil {
+		var ex *pager.ExhaustedError
+		var st *pager.StalledError
+		var bud *pager.BudgetError
+		switch {
+		case errors.As(err, &ex):
+			return nil, "", false, Unverifiable(fmt.Sprintf("%s read could not be completed: %d request(s), %d retried at a smaller page, last page size %d (%s)",
+				what, ex.Stats.Requests, ex.Stats.Retries, ex.Size, ex.Reason), ex.Cause)
+		case errors.As(err, &st), errors.As(err, &bud):
+			return nil, "", false, Unverifiable(what+" read could not be completed", err)
+		}
+		return nil, "", false, err
+	}
 	switch visibility {
 	case "public", "private", "internal":
 	default:
 		visibility = "" // missing or future enum: never manufacture a policy observation
 	}
-	return out.Data.Repository.PullRequests.Nodes, visibility, nil
+	return res.Items, visibility, res.Truncated, nil
+}
+
+// ghReadClass classifies a failed open-change page for the pager. TRANSIENT is only what a
+// smaller page of the same read can cure: a 500/502/503/504 that is not a rate-limit answer, and
+// the doJSON refusals transientRead marks (an empty body, a body cut off mid-transfer, a body
+// that does not parse). Everything else — 401/403/404, a rate limit, a GraphQL error, a transport
+// failure — is a STOP: a retry would not clear it, and a rate limit must not be compounded.
+func ghReadClass(err error) pager.Class {
+	if IsForgeRateLimited(err) {
+		return pager.Stop
+	}
+	var de *DeskError
+	if errors.As(err, &de) && de.transientRead {
+		return pager.Transient
+	}
+	var ae *ForgeAPIError
+	if errors.As(err, &ae) {
+		switch ae.Status {
+		case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+			return pager.Transient
+		}
+	}
+	return pager.Stop
+}
+
+// transientRead marks a doJSON refusal as a degraded ANSWER (empty, cut off, unparseable) rather
+// than a refusal by the forge. The mark is out of band: Error() and the exit code are unchanged,
+// and only a paged read's classifier (ghReadClass) reads it.
+func transientRead(e *DeskError) *DeskError {
+	e.transientRead = true
+	return e
 }
 
 // ghOpenChange maps one open-change node to the seam's OpenChange.
@@ -976,7 +1072,7 @@ func ghOpenChange(n ghOpenChangeNode) OpenChange {
 }
 
 func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
-	nodes, _, err := g.openChangesRead(repo, ghOpenChangesQuery, "open-changes")
+	nodes, _, truncated, err := g.openChangesRead(repo, ghOpenChangesQuery, "open-changes")
 	if err != nil {
 		return nil, err
 	}
@@ -987,12 +1083,13 @@ func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 	return &OpenChanges{
 		Changes:        changes,
 		Cap:            forgeOpenChangesCap,
-		TruncatedAtCap: len(changes) >= forgeOpenChangesCap,
+		TruncatedAtCap: truncated,
 	}, nil
 }
 
-// ReviewQueueSnapshot is ListOpenChanges and every change's ReviewsAtHead in ONE GraphQL
-// POST (ghReviewQueueQuery). Each change is mapped through the same ghOpenChange the list
+// ReviewQueueSnapshot is ListOpenChanges and every change's ReviewsAtHead in the same paged
+// GraphQL read (ghReviewQueueQuery, one POST per page; see openChangesRead). Each change is
+// mapped through the same ghOpenChange the list
 // read uses; each review carries exactly what ReviewsAtHead's REST read reports, rendered
 // the same way:
 //
@@ -1009,7 +1106,7 @@ func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 // connection at all — comes back with ReviewsComplete=false and no reviews, and the caller
 // reads that one change with ReviewsAtHead.
 func (g *GitHubForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) {
-	nodes, visibility, err := g.openChangesRead(repo, ghReviewQueueQuery, "review-queue")
+	nodes, visibility, truncated, err := g.openChangesRead(repo, ghReviewQueueQuery, "review-queue")
 	if err != nil {
 		return nil, err
 	}
@@ -1040,7 +1137,7 @@ func (g *GitHubForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) 
 		Visibility:     visibility,
 		Changes:        changes,
 		Cap:            forgeOpenChangesCap,
-		TruncatedAtCap: len(changes) >= forgeOpenChangesCap,
+		TruncatedAtCap: truncated,
 	}, nil
 }
 
@@ -1416,6 +1513,35 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 			})
 		}
 		if len(cr.CheckRuns) < forgeCIPerPage {
+			break
+		}
+	}
+	return out, nil
+}
+
+// CheckSuitesAtHead reads GET /repos/{o}/{r}/commits/{sha}/check-suites, paginated under the
+// same bound as the rollups. A walk that stops short of the asserted total is returned as-is
+// (len < TotalCount) so the caller fails closed, exactly as ChecksAtHead does. The read is
+// under `checks: read`.
+func (g *GitHubForge) CheckSuitesAtHead(repo ForgeRepo, sha string) (*CheckSuitesAtHead, error) {
+	out := &CheckSuitesAtHead{}
+	for page := 1; page <= forgeMaxCIPages; page++ {
+		var w ghCheckSuitesWire
+		path := fmt.Sprintf("/repos/%s/%s/commits/%s/check-suites?per_page=%d&page=%d",
+			repo.Owner, repo.Name, sha, forgeCIPerPage, page)
+		if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+			return nil, err
+		}
+		if page == 1 {
+			out.TotalCount = w.TotalCount
+		}
+		for _, cs := range w.CheckSuites {
+			out.Suites = append(out.Suites, CheckSuite{
+				ID: checkRunID(cs.ID), App: cs.App.Slug, Status: cs.Status, Conclusion: cs.Conclusion,
+				RunCount: cs.LatestCheckRunsCount, CreatedAt: cs.CreatedAt,
+			})
+		}
+		if len(w.CheckSuites) < forgeCIPerPage {
 			break
 		}
 	}

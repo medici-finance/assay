@@ -634,11 +634,10 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	notices = append(notices, verifyPortabilityNotices(checkStreams)...)
 	// Missing EXECUTION WITNESS (ground-truth/01, #284): a brief the README
 	// calls verified/done whose Evidence carries no record that a Verify row was
-	// actually executed. NOTICE this phase for the same reason the rule above is
-	// one — every brief closed before the witness existed lacks one by
-	// construction, and hand-writing witnesses into closed briefs to green the
-	// gate would manufacture exactly the evidence the witness exists to replace.
-	// Flip to a hard problem once the active streams are backfilled.
+	// actually executed. A NOTICE over the inherited corpus: absence alone
+	// proves neither non-execution nor closure age, and hand-writing witnesses
+	// into closed briefs would manufacture the evidence the witness replaces.
+	// New closures are gated separately by witnessAbsenceGateChecks below.
 	notices = append(notices, witnessNotices(checkStreams)...)
 	// CONTRADICTED status cell (ground-truth/02, #284): a brief the README
 	// calls verified/done whose own Evidence carries a witness recording a
@@ -1376,6 +1375,14 @@ func main() {
 		exitProcess(runVerifyclosure(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen evidenceverdict` — the READ-ONLY landing question "may this
+	// run's verdict be appended to this brief's Evidence?" (evidenceverdict.go):
+	// a non-decisive verdict on a verified or done brief belongs in the outcome
+	// record only. deskevidence asks it before any Evidence write.
+	if len(os.Args) > 1 && os.Args[1] == "evidenceverdict" {
+		exitProcess(runEvidenceverdict(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen verifyflip` — the sanctioned implemented → verified README flip
 	// for a gate: model brief, its Verified stamp derived from the recorded strict
 	// PASS (verifyflip.go, #2074). Own flag namespace, so intercepted here.
@@ -1652,7 +1659,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, verifyflip, mergecheck, shardcheck, conform, brief, context, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, evidenceverdict, verifyflip, mergecheck, shardcheck, conform, brief, context, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			exitProcess(2)
 		}

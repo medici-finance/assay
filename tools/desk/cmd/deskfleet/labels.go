@@ -1,103 +1,44 @@
 package main
 
-// labels.go — ONE label table (tables.go fleetLabels), two forge backends. `deskfleet labels`
+// labels.go — ONE label table (internal/forgelabels), two forge backends. `deskfleet labels`
 // drives either backend; `deskfleet provision --project` drives the GitLab one. Creation is
-// idempotent on both: a label that already exists is a named no-op, never an error.
+// idempotent on both: a label that already exists — on GitLab, one inherited from an
+// ancestor group too — is a named no-op, never an error. `labels --check` is the read-only
+// form: it names each label of the set the target lacks and creates nothing.
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/forgelabels"
 )
 
-// labelBackend creates one label on one forge. exists=true means the forge reported the
-// label already present (a no-op).
-type labelBackend interface {
-	forge() string
-	create(l fleetLabel) (exists bool, err error)
-}
+// fleetTransport carries forgelabels' requests over this verb's apiClient: the credential
+// stays in the client's header, redirects stay refused, and the base URL stays validated.
+type fleetTransport struct{ c *apiClient }
 
-// gitlabLabels: POST /projects/:id/labels. GitLab answers a duplicate with 409 on some
-// versions and 400 "already exists" / "has already been taken" on others — both are success.
-type gitlabLabels struct {
-	c           *apiClient
-	projectPath string // "/projects/<id-or-encoded-path>"
-}
-
-func (g *gitlabLabels) forge() string { return "gitlab" }
-
-func (g *gitlabLabels) create(l fleetLabel) (bool, error) {
-	resp, err := g.c.do("POST", g.projectPath+"/labels",
-		map[string]any{"name": l.Name, "color": "#" + l.Color, "description": l.Description})
+func (t fleetTransport) Do(method, path string, body any) (forgelabels.Response, error) {
+	resp, err := t.c.do(method, path, body)
 	if err != nil {
-		return false, err
+		return forgelabels.Response{}, err
 	}
-	switch {
-	case resp.Status == 200 || resp.Status == 201:
-		return false, nil
-	case resp.Status == 409:
-		return true, nil
-	case resp.Status == 400:
-		body := string(resp.Body)
-		if strings.Contains(body, "already exists") || strings.Contains(body, "has already been taken") {
-			return true, nil
-		}
-	}
-	return false, errors.New(statusText(resp))
+	return forgelabels.Response{Status: resp.Status, Body: resp.Body}, nil
 }
 
-// githubLabels: POST /repos/:owner/:repo/labels. GitHub answers a duplicate with 422 and an
-// `already_exists` error code.
-type githubLabels struct {
-	c    *apiClient
-	repo string // owner/name
-}
-
-func (g *githubLabels) forge() string { return "github" }
-
-func (g *githubLabels) create(l fleetLabel) (bool, error) {
-	owner, name, _ := strings.Cut(g.repo, "/")
-	resp, err := g.c.do("POST", "/repos/"+url.PathEscape(owner)+"/"+url.PathEscape(name)+"/labels",
-		map[string]any{"name": l.Name, "color": l.Color, "description": l.Description})
-	if err != nil {
-		return false, err
-	}
-	if resp.Status == 201 {
-		return false, nil
-	}
-	if resp.Status == 422 {
-		var e struct {
-			Errors []struct {
-				Code string `json:"code"`
-			} `json:"errors"`
-		}
-		if json.Unmarshal(resp.Body, &e) == nil {
-			for _, x := range e.Errors {
-				if x.Code == "already_exists" {
-					return true, nil
-				}
-			}
-		}
-	}
-	return false, errors.New(statusText(resp))
-}
-
-// ensureLabels creates every fleetLabels row through b. A failure is reported through fail
-// and does not stop the rows after it.
-func ensureLabels(b labelBackend, out io.Writer, fail func(string, ...any)) {
-	for _, l := range fleetLabels {
-		exists, err := b.create(l)
+// ensureLabels creates every row of ls through b. A failure is reported through fail and does
+// not stop the rows after it.
+func ensureLabels(b forgelabels.Backend, ls []fleetLabel, out io.Writer, fail func(string, ...any)) {
+	for _, r := range forgelabels.Ensure(b, ls) {
 		switch {
-		case err != nil:
+		case r.Err != nil:
 			fail("label '%s' not created on %s (%v) — the desk write that reaches for it (deskflip queue swap / "+
-				"deskfile --raised-by) degrades silently until fixed", l.Name, b.forge(), err)
-		case exists:
-			fmt.Fprintf(out, "label: '%s' already exists (no-op)\n", l.Name)
+				"deskfile --raised-by / --to) degrades silently until fixed", r.Label.Name, b.Forge(), r.Err)
+		case r.Exists:
+			fmt.Fprintf(out, "label: '%s' already exists (no-op)\n", r.Label.Name)
 		default:
-			fmt.Fprintf(out, "label: created '%s' (#%s)\n", l.Name, l.Color)
+			fmt.Fprintf(out, "label: created '%s' (#%s)\n", r.Label.Name, r.Label.Color)
 		}
 	}
 }
@@ -107,6 +48,11 @@ type labelsOpts struct {
 	forge, repo, project string
 	tokenFile            string
 	dryRun               bool
+	// check is the read-only form: list the target's labels and name the missing ones.
+	check bool
+	// rolesRaw is --roles as given ("" = not given); roles is it parsed (validateLabels).
+	rolesRaw string
+	roles    []string
 	// apiBase is GITLAB_API_BASE as the verb resolved it (environment only; --forge gitlab).
 	apiBase string
 	// target is the validated repo (github) or project (gitlab); validateLabels sets it.
@@ -131,20 +77,44 @@ func validateLabels(o *labelsOpts) error {
 	default:
 		return errors.New("--forge must be github or gitlab")
 	}
+	if o.check && o.dryRun {
+		return errors.New("--check and --dry-run are exclusive: --check already writes nothing (it reads the target's labels)")
+	}
+	if o.rolesRaw != "" {
+		roles, err := forgelabels.ParseRoles(o.rolesRaw)
+		if err != nil {
+			return err
+		}
+		o.roles = roles
+	}
 	return nil
+}
+
+// labelSet is the set one run works on: the --roles set when given, else the documented-role
+// fallback, announced on stderr so a run that silently omits a bound role cannot pass for a
+// roster-derived one.
+func labelSet(o labelsOpts, stderr io.Writer) []fleetLabel {
+	if len(o.roles) > 0 {
+		return forgelabels.Canonical(o.roles)
+	}
+	fmt.Fprintf(stderr, "NOTICE: --roles not given — using the documented desk roles (%s); pass the roster's "+
+		"role= names with --roles when the fleet binds other roles, so every `to:<role>` deskfile --to stamps exists\n",
+		strings.Join(forgelabels.DocumentedRoles(), ","))
+	return fleetLabels
 }
 
 // runLabels is the `labels` handler: the command tree has parsed and validated o.
 func runLabels(o labelsOpts, e *env) int {
 	target := o.target
+	set := labelSet(o, e.stderr)
 	if o.dryRun {
-		for _, l := range fleetLabels {
+		for _, l := range set {
 			fmt.Fprintf(e.stdout, "[dry-run] would create %s label '%s' (#%s) on %s (idempotent)\n", o.forge, l.Name, l.Color, target)
 		}
 		return exitOK
 	}
 
-	var b labelBackend
+	var b forgelabels.Backend
 	var base string
 	switch o.forge {
 	case "github":
@@ -158,7 +128,7 @@ func runLabels(o labelsOpts, e *env) int {
 			fmt.Fprintf(e.stderr, "refused: %v\n", err)
 			return exitRefused
 		}
-		b = &githubLabels{c: newGitHubClient(base, e.http, tok), repo: target}
+		b = forgelabels.GitHub(fleetTransport{newGitHubClient(base, e.http, tok)}, target)
 	case "gitlab":
 		var err error
 		base, err = gitlabAPIBase(o.apiBase)
@@ -171,20 +141,45 @@ func runLabels(o labelsOpts, e *env) int {
 			fmt.Fprintf(e.stderr, "refused: %v\n", err)
 			return exitRefused
 		}
-		b = &gitlabLabels{c: newGitLabClient(base, e.http, tok), projectPath: "/projects/" + url.PathEscape(target)}
+		b = forgelabels.GitLab(fleetTransport{newGitLabClient(base, e.http, tok)}, target)
 	}
 	// Name the target BEFORE the first request, as provision does: a network-reaching mode
 	// says where it is about to write before it writes there.
 	fmt.Fprintf(e.stdout, "target: %s %s %s\n", base, o.forge, target)
 
+	if o.check {
+		return checkLabels(b, set, e)
+	}
+
 	failed := 0
-	ensureLabels(b, e.stdout, func(format string, a ...any) {
+	ensureLabels(b, set, e.stdout, func(format string, a ...any) {
 		failed++
 		fmt.Fprintf(e.stderr, "error: "+format+"\n", a...)
 	})
 	if failed > 0 {
-		fmt.Fprintf(e.stderr, "deskfleet labels: %d of %d label(s) could not be created\n", failed, len(fleetLabels))
+		fmt.Fprintf(e.stderr, "deskfleet labels: %d of %d label(s) could not be created\n", failed, len(set))
 		return exitFailed
 	}
+	return exitOK
+}
+
+// checkLabels is `labels --check`: read-only, three states. Every label present is exit 0;
+// a missing label is named on its own line and the run exits 1; a read that fails is
+// could-not-check (exit 6), never reported as nothing missing.
+func checkLabels(b forgelabels.Backend, set []fleetLabel, e *env) int {
+	missing, err := forgelabels.Check(b, set)
+	if err != nil {
+		fmt.Fprintf(e.stderr, "could-not-check: the labels on %s %s could not be read (%v) — no label is reported present or missing\n",
+			b.Forge(), b.Target(), err)
+		return exitUnverifiable
+	}
+	for _, m := range missing {
+		fmt.Fprintf(e.stdout, "label: MISSING '%s'\n", m)
+	}
+	if len(missing) > 0 {
+		fmt.Fprintf(e.stderr, "deskfleet labels --check: %d of %d label(s) missing on %s\n", len(missing), len(set), b.Target())
+		return exitFailed
+	}
+	fmt.Fprintf(e.stdout, "label: all %d present\n", len(set))
 	return exitOK
 }

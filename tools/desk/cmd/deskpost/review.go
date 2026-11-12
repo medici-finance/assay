@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/cmd/deskpost/internal/bodycheck"
@@ -158,6 +159,12 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 	preVerb := "review:" + verdictFlag
 
 	return runOutward(args, opts, repo, pr, func(entries []deskkit.Entry, opts postOpts) writeResult {
+		// Role separation (#6069): a review verdict is the reviewer's to post. `review`,
+		// `security-review` and `finish` all reach this shared path, so a caller that skips
+		// the CLI is checked too. It runs before any body check, mint, read or write.
+		if res, refusedHere := requireReviewerLoop(preVerb, repo, pr, "deskpost "+shapeVerb(shape)); refusedHere {
+			return withDigest(res, dig)
+		}
 		if !deskkit.IsAllowedRepo(repo) {
 			return refused(preVerb, repo, pr, "", "repo "+repo+" is not in the fixed desk repo set")
 		}
@@ -373,8 +380,8 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		dup, why := appReviewExistsAt(existing, curHead, shape.state, kind, reviewBodyDigest(body))
 		// writeGates are the two gates every outward write of this verb passes: the trust
 		// gate (no write on unvetted third-party work; exit 5, audited) and the public-repo
-		// gate (private, or a listed allowed-repos entry tagged :public or :internal to match
-		// the live visibility — see deskkit.PublicRepoGate). The post below passes them; so does a merge-hold write on
+		// gate (private, or a listed allowed-repos entry whose :public or :internal tag is at
+		// least as exposed as the live visibility — see deskkit.PublicRepoGate). The post below passes them; so does a merge-hold write on
 		// the already-recorded path, which is an outward write with no post before it.
 		writeGates := func() (writeResult, bool) {
 			if terr := prTrustGate(client, pr, info.User.Login, info.User.ID); terr != nil {
@@ -474,9 +481,15 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		// readMergeHold answers the typed not-applicable and this is a no-op. A failure here
 		// exits non-zero with the verdict already posted; the run that retries it finds the
 		// verdict recorded and goes through holdForRecordedVerdict above.
+		holdNote := ""
 		if shape.wantKind == bodycheck.KindCorrectness {
-			if hErr := applyMergeHoldForVerdict(client, pr, shape.event, head); hErr != nil {
+			hNote, hErr := applyMergeHoldForVerdict(client, pr, shape.event, head)
+			if hErr != nil {
 				return withDigest(fromErr(verb, repo, pr, head, hErr), dig)
+			}
+			if hNote != "" {
+				fmt.Fprintln(stderr, "deskpost: NOTE: "+hNote)
+				holdNote = hNote
 			}
 		}
 		// Mechanical, ADVISORY verdict-time labels (diff size class + surface tier) for
@@ -492,6 +505,9 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		detail := "posted " + verdictFlag + " review as " + reviewerBotDisplay() + " at " + short(head)
 		if postNote != "" {
 			detail += " (" + postNote + ")"
+		}
+		if holdNote != "" {
+			detail += "; " + holdNote
 		}
 		return done(verb, repo, pr, head, dig, detail)
 	})
@@ -569,8 +585,10 @@ func laterVerdictByReviewer(reviews []reviewInfo, at int) (id int64, found bool)
 //     reviewer identity. Anything else exits non-zero. A release is sent only by a run that
 //     posts an approve, where the verdict and the release are one act of one run.
 //
-// A hold that cannot be read, or a change with no hold thread, exits non-zero: "could not
-// check" is never reported as agreement. A hold write here is an outward write with no post
+// A change with no hold thread is handled as the post path handles it: a recorded
+// request-changes that no later verdict follows opens one (armHoldForRequestChanges, #5898),
+// and every other verdict exits non-zero with no write. A hold that cannot be read exits
+// non-zero: "could not check" is never reported as agreement. A hold write here is an outward write with no post
 // before it, so it first passes the gates the post passes, and a dry run sends none.
 func holdForRecordedVerdict(v recordedVerdict) writeResult {
 	hold, err := v.client.readMergeHold(v.pr)
@@ -593,9 +611,35 @@ func holdForRecordedVerdict(v recordedVerdict) writeResult {
 		return noop(v.verb, v.repo, v.pr, v.head, v.found)
 	case deskkit.MergeHoldUnresolved, deskkit.MergeHoldResolved:
 	case deskkit.MergeHoldAbsent:
+		// A change opened outside the desk tooling carries no marker thread (#5898). A
+		// request-changes that no later verdict follows still owes the change a hold, so it is
+		// opened here exactly as the post path opens it. Anything else is left as it is: an
+		// approve never opens a hold, and a request-changes a later verdict follows sends no
+		// write on its account.
+		if rc {
+			if laterID, superseded := laterVerdictByReviewer(v.reviews, v.at); superseded {
+				return unverifiableNoWrite(v.verb, v.repo, v.pr, v.head, fmt.Sprintf(
+					"%s, but the PR has no merge-hold thread and a later verdict by %s (review id %d) follows "+
+						"this one, so this run did not open one.", rec, reviewerBotDisplay(), laterID), nil)
+			}
+			if wr, stop := v.gates(); stop {
+				return wr
+			}
+			if v.dryRun {
+				return dryRun(v.verb, v.repo, v.pr, v.head, "DRY RUN: "+rec+"; the PR has no merge-hold thread "+
+					"and a real run would open one — stopped before any write")
+			}
+			if _, oerr := armHoldForRequestChanges(v.client, v.pr, hold); oerr != nil {
+				return unverifiable(v.verb, v.repo, v.pr, v.head, fmt.Sprintf(
+					"%s, but the PR has no merge-hold thread and opening one failed: %v — the server-side gate "+
+						"is NOT armed. Run the command again.", rec, oerr), oerr)
+			}
+			return done(v.verb, v.repo, v.pr, v.head, v.bodyDig, v.found+"; the verdict was not posted again; "+
+				holdOpenedNote)
+		}
 		return unverifiableNoWrite(v.verb, v.repo, v.pr, v.head, rec+", but the PR has no merge-hold thread, so "+
-			"there is no server-side gate to bring into step with it. This command does not open one; the "+
-			"command that opens a change does.", nil)
+			"there is no server-side gate to bring into step with it. An approve does not open one; a "+
+			"request-changes, or the command that opens a change, does.", nil)
 	default:
 		return unverifiableNoWrite(v.verb, v.repo, v.pr, v.head, fmt.Sprintf(
 			"%s, but the PR's merge-hold reports an unrecognised state %q.", rec, hold.State), nil)
@@ -932,27 +976,31 @@ func reviewAlreadyPostedIn(entries []deskkit.Entry, repo string, pr int, head, v
 // left standing), before applying its own release or re-arm. GitHub's readMergeHold answers
 // the typed not-applicable and this is a no-op there.
 //
+// A request-changes on a change with no marker thread opens one (armHoldForRequestChanges,
+// #5898) and returns a note saying so; an approve on such a change still fails, since there
+// is no hold to release. The note is empty on every other path.
+//
 // A verdict that posted but whose hold write fails returns a non-zero error naming which half
 // landed — never a silent success that leaves the server-side gate out of step with the
 // verdict that was just recorded.
-func applyMergeHoldForVerdict(client postBackend, pr int, event, head string) error {
+func applyMergeHoldForVerdict(client postBackend, pr int, event, head string) (string, error) {
 	hold, err := client.readMergeHold(pr)
 	if err != nil {
 		if deskkit.IsMergeHoldNotApplicable(err) {
-			return nil
+			return "", nil
 		}
-		return deskkit.Unverifiable(fmt.Sprintf(
+		return "", deskkit.Unverifiable(fmt.Sprintf(
 			"the %s verdict posted, but reading PR #%d's merge-hold to release/re-arm it failed: %v — "+
 				"the verdict landed; the server-side gate may be out of step with it", event, pr, err), err)
 	}
 	if hold.State == deskkit.MergeHoldNotApplicable {
-		return nil
+		return "", nil
 	}
 	if hold.State == deskkit.MergeHoldResolved && hold.Head != "" && hold.Head != head {
 		if rerr := client.setMergeHold(pr, deskkit.MergeHoldUpdate{
 			Reason: fmt.Sprintf("new head %s", head),
 		}); rerr != nil {
-			return deskkit.Unverifiable(fmt.Sprintf(
+			return "", deskkit.Unverifiable(fmt.Sprintf(
 				"the %s verdict posted, but re-arming PR #%d's merge-hold — resolved at %s, now at %s — "+
 					"failed: %v — the verdict landed; the server-side gate is still resolved at the STALE head",
 				event, pr, short(hold.Head), short(head), rerr), rerr)
@@ -961,16 +1009,89 @@ func applyMergeHoldForVerdict(client postBackend, pr int, event, head string) er
 	switch strings.ToUpper(event) {
 	case "APPROVE":
 		if serr := client.setMergeHold(pr, deskkit.MergeHoldUpdate{Resolved: true, Head: head}); serr != nil {
-			return deskkit.Unverifiable(fmt.Sprintf(
+			return "", deskkit.Unverifiable(fmt.Sprintf(
 				"the approve verdict posted on PR #%d, but releasing its merge-hold at %s failed: %v — the "+
 					"verdict landed; the server-side gate is still UP", pr, short(head), serr), serr)
 		}
 	case "REQUEST_CHANGES":
-		if serr := client.setMergeHold(pr, deskkit.MergeHoldUpdate{Reason: "request-changes"}); serr != nil {
-			return deskkit.Unverifiable(fmt.Sprintf(
+		opened, serr := armHoldForRequestChanges(client, pr, hold)
+		if serr != nil && opened {
+			return "", deskkit.Unverifiable(fmt.Sprintf(
+				"the request-changes verdict posted on PR #%d, which carries no merge-hold thread, but opening "+
+					"one failed: %v — the verdict landed; the server-side gate is NOT armed", pr, serr), serr)
+		}
+		if serr != nil {
+			return "", deskkit.Unverifiable(fmt.Sprintf(
 				"the request-changes verdict posted on PR #%d, but re-arming its merge-hold failed: %v — the "+
 					"verdict landed; the server-side gate may still read released", pr, serr), serr)
 		}
+		if opened {
+			return holdOpenedNote, nil
+		}
 	}
-	return nil
+	return "", nil
+}
+
+// holdOpenedNote is what a run reports when its request-changes found no merge-hold thread on
+// the change and opened one.
+const holdOpenedNote = "the PR carried no merge-hold thread, so one was opened; a new thread is " +
+	"unresolved, so the merge is held"
+
+// armHoldForRequestChanges arms a merge-hold for a request-changes verdict, and is the ONE
+// caller of openMergeHold: the post path (applyMergeHoldForVerdict) and the already-recorded
+// path (holdForRecordedVerdict) both reach a change with no marker thread only through it. A
+// change with a marker thread is re-armed. A change with none — one opened outside the desk tooling, such as a human-authored merge
+// request (#5898) — gets one opened: a new marker thread is unresolved, which is the armed
+// state, so the open alone holds the merge. Before this, both paths treated "no thread" as
+// the end of the line and left the server-side gate released under a request-changes.
+//
+// opened reports which of the two writes was sent, so a caller can name it in a failure.
+// hold is the state the caller has just read; the caller handles every other state first.
+func armHoldForRequestChanges(client postBackend, pr int, hold *deskkit.MergeHold) (opened bool, err error) {
+	if hold.State == deskkit.MergeHoldAbsent {
+		return true, client.openMergeHold(pr)
+	}
+	return false, client.setMergeHold(pr, deskkit.MergeHoldUpdate{Reason: "request-changes"})
+}
+
+// reviewerRole is the App role a review verdict posts as.
+const reviewerRole = "reviewer"
+
+// shapeVerb names the CLI verb a verdict shape belongs to, for the refusal message.
+func shapeVerb(shape reviewShape) string {
+	if shape.wantKind == bodycheck.KindSecurity {
+		return "security-review"
+	}
+	return "review"
+}
+
+// requireReviewerLoop refuses a review verdict from a window whose loop does not act as the
+// reviewer role (#6069). The reviewer credential would mint from any window that can read
+// it, so without this a coordinator or a worker on its own change could post the verdict.
+// The loop is resolved from the same loop-to-role table every desk verb reads: unset is
+// refused, unknown is could-not-check, and a known non-reviewer loop is refused.
+func requireReviewerLoop(preVerb, repo string, pr int, verb string) (writeResult, bool) {
+	role, loop, err := deskkit.SessionTokenRole(verb)
+	if err != nil {
+		return fromReadErr(preVerb, repo, pr, "", err), true
+	}
+	if role == reviewerRole {
+		return writeResult{}, false
+	}
+	return refused(preVerb, repo, pr, "", fmt.Sprintf(
+		"%s posts a review verdict as the reviewer, but loop %q acts as %q; refusing to post another role's verdict (#6069). "+
+			"Verdicts come from the %s window. Keep your own DESK_LOOP identity.",
+		verb, loop, role, strings.Join(reviewerLoops(), " or "))), true
+}
+
+// reviewerLoops lists the loops that act as the reviewer role, from the shared table.
+func reviewerLoops() []string {
+	var out []string
+	for loop, role := range deskkit.LoopTokenRoles() {
+		if role == reviewerRole {
+			out = append(out, loop)
+		}
+	}
+	sort.Strings(out)
+	return out
 }

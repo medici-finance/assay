@@ -446,6 +446,26 @@ type ChecksAtHead struct {
 	CheckRuns           []CheckRun
 }
 
+// CheckSuitesAtHead is the check SUITES at a commit, with the forge's asserted total count so
+// a caller can fail CLOSED on a short walk. A suite is the container one integration (an App)
+// opens per commit; its check runs are what ChecksAtHead's rollup lists. The two readings
+// differ on exactly one shape: a suite that is still queued or running with ZERO runs adds
+// nothing to the rollup, yet the forge's merge gate can wait on it (#6234).
+type CheckSuitesAtHead struct {
+	TotalCount int
+	Suites     []CheckSuite
+}
+
+// CheckSuite is one check suite at a commit.
+type CheckSuite struct {
+	ID         string // the forge's suite id; "" when it served none
+	App        string // the integration that owns the suite (GitHub App slug)
+	Status     string // queued | in_progress | completed (and GitHub's requested | waiting | pending)
+	Conclusion string // success | failure | cancelled | stale | ... ; "" while not concluded
+	RunCount   int    // the runs in the suite's latest attempt (latest_check_runs_count)
+	CreatedAt  string // RFC3339, "" when the forge reported none
+}
+
 // DraftChangeInput is the request to open a draft change (draft PR ↔ Draft: MR).
 type DraftChangeInput struct {
 	Title string
@@ -515,6 +535,10 @@ type SearchIssuesInput struct {
 	// DecisionGateBrief optionally narrows marker discovery to one exact brief
 	// spelling. It is an opaque marker token, never provider search syntax.
 	DecisionGateBrief string
+	// DecisionGateLegacy switches marker discovery to the legacy `needs-decision:` marker key
+	// that decision issues filed before the `decision-gate:` marker carry. It is valid only
+	// with DecisionGateMarkers; the walk and its completeness rules are the same.
+	DecisionGateLegacy bool
 	// FilingKey selects the exact filing-identity lookup: OPEN issues of this repo whose body
 	// carries the key's marker, walked to completion or an error (a truncated read is unknown,
 	// never an empty answer). Query and the decision fields must be empty in this mode. The key
@@ -886,18 +910,20 @@ type OpenChange struct {
 	HeadCommittedAt string `json:",omitempty"`
 }
 
-// OpenChanges is the result of the bulk open-change read: the changes plus whether the read
-// came back exactly at the page cap, so the board can state a TRUNCATED population in-band
+// OpenChanges is the result of the bulk open-change read: the changes plus whether the forge
+// holds more than the cap, so the board can state a TRUNCATED population in-band
 // rather than printing a confident count over an unknown remainder (an absence that reads
 // like an answer). Consumer: cmd/deskboard's fetchOpenPRs, which maps TruncatedAtCap onto its
 // Header.PRPopulation.
 type OpenChanges struct {
 	// Changes are the open changes, newest first, up to Cap of them.
 	Changes []OpenChange
-	// TruncatedAtCap is true when the read returned exactly Cap changes — the forge may be
-	// holding more, so every count derived from Changes is a FLOOR, not a total.
+	// TruncatedAtCap is true when the forge may be holding more than Cap changes, so every
+	// count derived from Changes is a FLOOR, not a total. A backend that pages with the
+	// forge's own more-pages signal (GitHub) sets it when the walk stopped at Cap with more
+	// reported; a backend that cannot tell sets it when the read returned exactly Cap.
 	TruncatedAtCap bool
-	// Cap is the page cap the read was bounded to (the `first:`/`per_page` ceiling).
+	// Cap is the ceiling the read was bounded to (the total changes read, across pages).
 	Cap int
 }
 
@@ -915,9 +941,10 @@ type ReviewQueue struct {
 	Visibility string `json:",omitempty"`
 	// Changes are the open changes, newest first, up to Cap of them, each with its reviews.
 	Changes []QueuedChange
-	// TruncatedAtCap is true when the read returned exactly Cap changes (see OpenChanges).
+	// TruncatedAtCap is true when the forge may be holding more than Cap changes (see
+	// OpenChanges).
 	TruncatedAtCap bool
-	// Cap is the page cap the read was bounded to.
+	// Cap is the ceiling the read was bounded to.
 	Cap int
 }
 
@@ -1882,6 +1909,14 @@ type Forge interface {
 	ListChangedFiles(repo ForgeRepo, number int) ([]ChangedFile, error)
 	// ChecksAtHead returns the CI rollups at a commit, each with its asserted total count.
 	ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, error)
+	// CheckSuitesAtHead returns the check suites at a commit (see CheckSuitesAtHead). It
+	// exists because a suite with zero runs is invisible to ChecksAtHead: a queued suite the
+	// forge's merge gate waits on reads, through the rollup alone, as green. A forge with no
+	// suite concept (GitLab — a pipeline's pending jobs already show in the rollup) answers
+	// an empty set, never an error. Consumers: the checks-green conditions of cmd/deskflip and
+	// cmd/deskautolane, and cmd/deskpost ready's precondition (c') through its forge backend
+	// (freeze rule: this read lands with the call sites that consume it).
+	CheckSuitesAtHead(repo ForgeRepo, sha string) (*CheckSuitesAtHead, error)
 	// RequiredStatusChecks returns the status-check CONTEXTS branch protection REQUIRES on
 	// the named branch of repo — the checks whose success the forge itself gates a merge on.
 	// An EMPTY slice means the branch requires no status checks: nothing is configured to

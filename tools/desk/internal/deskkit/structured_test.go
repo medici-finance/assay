@@ -474,10 +474,12 @@ func TestScanOverrideIsLoggedOrRefused(t *testing.T) {
 // reader what the override COSTS them, or it reads as a free pass rather than an audited
 // one. The fix direction was "a flag + logged justification", not "a flag".
 func TestOverrideHintNamesTheAuditedFields(t *testing.T) {
-	h := OverrideHint()
-	for _, want := range []string{ScanOverrideFlag, "audit row", "digest", "identity", "STOP"} {
-		if !strings.Contains(h, want) {
-			t.Errorf("OverrideHint does not mention %q: %s", want, h)
+	for form, name := range map[OverrideForm]string{OverrideByFlag: ScanOverrideFlag, OverrideByEnv: EnvPushGuardScanOverride} {
+		h := OverrideHint(form)
+		for _, want := range []string{name, "audit row", "digest", "identity", "STOP"} {
+			if !strings.Contains(h, want) {
+				t.Errorf("OverrideHint(%d) does not mention %q: %s", form, want, h)
+			}
 		}
 	}
 	if err := ValidateScanOverride(""); ExitCodeOf(err) != ExitRefused {

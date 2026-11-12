@@ -27,7 +27,12 @@ CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" =
 # (`<cell>/run/tmux.sock`), and `sun_path` has a hard ~104-108 byte limit every platform enforces
 # — macOS's default $TMPDIR (/var/folders/.../T/, ~50 bytes on its own) blows that budget once
 # `cells/<longest-case-name>/run/tmux.sock` is appended; /tmp does not.
-T="$(cd "$(mktemp -d "/tmp/cellctl-scrubbed.XXXXXX")" && pwd -P)"
+# Fail closed before the EXIT trap: on bash 3.2 `cd ""` succeeds, so a failed mktemp
+# must never leave T at the caller's directory for the trap to delete (#6161).
+made="$(mktemp -d "/tmp/cellctl-scrubbed.XXXXXX")" || exit 1
+[ -n "$made" ] && [ -d "$made" ] || exit 1
+T="$(cd "$made" && pwd -P)" || exit 1
+[ -n "$T" ] || exit 1
 trap 'rm -rf "$T"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
