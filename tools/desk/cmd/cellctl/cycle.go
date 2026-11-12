@@ -31,6 +31,8 @@ import (
 const (
 	cycleDefaultDrainTimeout  = 30 * time.Minute
 	cycleDefaultHeartbeatWait = 2 * time.Minute
+	// cycleHeartbeatSkew is how far past now a checkpoint may be dated and still read as fresh.
+	cycleHeartbeatSkew = 5 * time.Minute
 )
 
 // Sync outcomes. could-not-check is never reported as a success.
@@ -223,6 +225,20 @@ func (l *interimLifecycle) cycle(o cycleOpts, ops cycleOps) cellop.Result {
 				return finish(cellop.Partial, cellop.ReasonActionFailed, fmt.Sprintf("%s: the %s placement check failed, so the role is left down: %s", role, s.Harness, s.Detail),
 					append([]string{"cellctl up " + cell + " --role " + role}, cycleRemaining(cell, groups[gi+1:])...)...)
 			}
+			// A role under a pause the cycle did not create cannot confirm a heartbeat: the cadence
+			// guard stops its supervisor before the first one is written. It is left down, with the
+			// pause kept, and Next says how to bring it back.
+			if p, perr := l.Paused(role); perr != nil || p {
+				why := "paused by an operator stop the cycle did not create"
+				if perr != nil {
+					why = "whether it is paused could not be read: " + perr.Error()
+				}
+				r.Actions = append(r.Actions, actionResult(cell, "restart:"+role, cellop.ActionNotRun, "not restarted: "+why))
+				cr.note = "left down: " + why + "; no heartbeat can be confirmed while it is paused"
+				rows = append(rows, cr)
+				return finish(cellop.Partial, cellop.ReasonActionFailed, fmt.Sprintf("%s: not restarted, %s", role, why),
+					append([]string{"cellctl resume " + cell, "cellctl up " + cell + " --role " + role}, cycleRemaining(cell, groups[gi+1:])...)...)
+			}
 			since := l.now()
 			if err := ops.restart(role); err != nil {
 				r.Actions = append(r.Actions, actionResult(cell, "restart:"+role, cellop.ActionFailed, err.Error()))
@@ -384,13 +400,10 @@ func (l *interimLifecycle) liftOwnStops(roles []string, owner string) cellop.Act
 	return actionResult(l.c.Name, id, cellop.ActionOK, detail)
 }
 
+// stoppedIn reports whether the applied result stopped role: a stop or a stop-now action of it
+// that is ok (stoppedRoles, drain's own reading), so a forced plan's partly applied confirm counts.
 func stoppedIn(r cellop.Result, role string) bool {
-	for _, a := range r.Actions {
-		if a.ID == "stop:"+role && a.Outcome == cellop.ActionOK {
-			return true
-		}
-	}
-	return false
+	return valueIn(role, stoppedRoles(&r))
 }
 
 // foldInto carries a confirm's verdict into the drain's result.
@@ -424,7 +437,9 @@ func (l *interimLifecycle) awaitHeartbeat(role string, since time.Time, wait tim
 	for {
 		hb, err := ops.heartbeat(role)
 		lastErr = err
-		if err == nil && !hb.Before(since) {
+		// Bounded below by the restart and above by now plus a clock skew, so a checkpoint dated
+		// in the future is not a fresh heartbeat.
+		if err == nil && !hb.Before(since) && !hb.After(l.now().Add(cycleHeartbeatSkew)) {
 			return hb, nil
 		}
 		if !l.now().Before(deadline) {
@@ -618,10 +633,19 @@ func claudeSync(wt string, cli pluginCLI) syncReport {
 		s.Outcome, s.Detail = syncCouldNotCheck, "the project settings could not be read: "+err.Error()
 		return s
 	}
+	mode := os.FileMode(0o644)
+	if fi, serr := os.Stat(settings); serr == nil {
+		mode = fi.Mode().Perm()
+	}
 	uerr := cli.update()
 	if after, rerr := os.ReadFile(settings); rerr != nil || !bytes.Equal(after, before) {
-		if werr := os.WriteFile(settings, before, 0o644); werr != nil {
+		// The update may have replaced the file, so the original mode is set again after the write.
+		if werr := os.WriteFile(settings, before, mode); werr != nil {
 			s.Outcome, s.Detail = syncFailed, "the project settings could not be restored after the update: "+werr.Error()
+			return s
+		}
+		if cerr := os.Chmod(settings, mode); cerr != nil {
+			s.Outcome, s.Detail = syncFailed, "the project settings mode could not be restored after the update: "+cerr.Error()
 			return s
 		}
 	}
@@ -634,7 +658,7 @@ func claudeSync(wt string, cli pluginCLI) syncReport {
 		return s
 	}
 	s.Outcome = syncFailed
-	s.Detail = fmt.Sprintf("the project record is %s, the pin %s", s.New, pin)
+	s.Detail = fmt.Sprintf("the project record %s differs from the pin %s", s.New, pin)
 	if uerr != nil {
 		s.Detail += fmt.Sprintf(" (the update failed: %v)", uerr)
 	}
@@ -783,13 +807,15 @@ func cycleCmd() *cobra.Command {
 		v := resolve(set, nil)
 		c := lifecycleCell("cycle", args)
 		roles := args[1:]
-		checkRoles("cycle", roles)
 		if len(roles) == 0 {
 			roles = append([]string(nil), c.Roles...)
 		}
 		if len(roles) == 0 {
 			die("cycle: cell %s names no roles", c.Name)
 		}
+		// Named or defaulted from cell.env ROLES, every name is allowlisted before a path or the
+		// child `up` argv is built from it.
+		checkRoles("cycle", roles)
 		o := cycleOpts{Roles: roles, DrainTimeout: v.Duration("drain-timeout"), HandoffWait: v.Duration("handoff-wait"),
 			HeartbeatWait: v.Duration("heartbeat-wait"), Force: v.Bool("force-after-timeout"), AllAtOnce: v.Bool("all-at-once")}
 		if o.DrainTimeout <= 0 || o.HeartbeatWait <= 0 || o.HandoffWait < 0 {

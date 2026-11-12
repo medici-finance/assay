@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/cellctl -count=1 -timeout 300s -run '^(TestCycleWaitsForClaim|TestCycleTimeoutLeavesRunning|TestCycleForceAfterTimeout|TestCycleSyncFailLeavesDown|TestCycleUncheckedNotOK|TestCycleNeedsFreshBeat|TestCycleSkipsDownRole|TestCycleAllAtOnce|TestCycleAllAtOnceTimeoutStopped|TestCycleTimeoutKeepsOperatorPause|TestCycleKeepsPauseSetDuringDrain|TestCycleSuccessKeepsOperatorPause|TestCycleDeclinedConfirmLifts|TestMarketplacePinStrict|TestClaudeSyncToPin|TestClaudeSyncStaysStale|TestCursorSyncChecks)$'",
+  "test": "go test ./cmd/cellctl -count=1 -timeout 300s -run '^(TestCycleWaitsForClaim|TestCycleTimeoutLeavesRunning|TestCycleForceAfterTimeout|TestCycleSyncFailLeavesDown|TestCycleUncheckedNotOK|TestCycleNeedsFreshBeat|TestCycleSkipsDownRole|TestCycleAllAtOnce|TestCycleAllAtOnceTimeoutStopped|TestCycleTimeoutKeepsOperatorPause|TestCycleKeepsPauseSetDuringDrain|TestCyclePausedRoleStaysDown|TestCycleDeclinedConfirmLifts|TestCycleForcePartialConfirm|TestCycleFutureBeatNotFresh|TestMarketplacePinStrict|TestClaudeSyncToPin|TestClaudeSyncStaysStale|TestClaudeSyncRestoresMode|TestClaudeSyncAheadOfPin|TestCursorSyncChecks)$'",
   "control": {
     "name": "invert the restart-count assertion",
     "file": "cmd/cellctl/cycle_test.go",
@@ -46,8 +46,8 @@
     {
       "name": "cycle-heartbeat-fresh: any heartbeat accepted",
       "file": "cmd/cellctl/cycle.go",
-      "old": "if err == nil && !hb.Before(since) {",
-      "new": "if err == nil {"
+      "old": "if err == nil && !hb.Before(since) &&",
+      "new": "if err == nil && true &&"
     },
     {
       "name": "cycle-skips-down-role: a down role is cycled",
@@ -138,6 +138,36 @@
       "file": "cmd/cellctl/cycle.go",
       "old": "\tif !pinVersion.MatchString(ref) {",
       "new": "\tif false && !pinVersion.MatchString(ref) {"
+    },
+    {
+      "name": "cycle-force-partial-confirm: stoppedIn drops the stop-now arm",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\treturn valueIn(role, stoppedRoles(&r))\n",
+      "new": "\tfor _, a := range r.Actions {\n\t\tif a.ID == \"stop:\"+role && a.Outcome == cellop.ActionOK {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n"
+    },
+    {
+      "name": "cycle-success-keeps-operator-pause: a paused role is restarted",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "if p, perr := l.Paused(role); perr != nil || p {",
+      "new": "if p, perr := l.Paused(role); false && (perr != nil || p) {"
+    },
+    {
+      "name": "cycle-heartbeat-upper-bound: a future-dated checkpoint reads fresh",
+      "file": "cmd/cellctl/cycle.go",
+      "old": " && !hb.After(l.now().Add(cycleHeartbeatSkew))",
+      "new": ""
+    },
+    {
+      "name": "cycle-settings-mode: the restore leaves the mode the update wrote",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "if cerr := os.Chmod(settings, mode); cerr != nil {",
+      "new": "if cerr := error(nil); cerr != nil {"
+    },
+    {
+      "name": "cycle-claude-ahead: the mismatch message says behind",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "differs from the pin %s",
+      "new": "is behind the pin %s"
     }
   ]
 }

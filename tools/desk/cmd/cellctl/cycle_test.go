@@ -332,10 +332,11 @@ func TestCycleKeepsPauseSetDuringDrain(t *testing.T) {
 	}
 }
 
-// A completed cycle restarts the role but keeps a pause that was in place before it: the role
-// comes back paused, as the operator left it.
+// A pause the operator set before the cycle is kept, and a paused role cannot confirm a heartbeat
+// (the cadence guard stops its supervisor before the first one is written), so the cycle syncs it,
+// leaves it down, and says how to bring it back.
 // regression: cycle-success-keeps-operator-pause
-func TestCycleSuccessKeepsOperatorPause(t *testing.T) {
+func TestCyclePausedRoleStaysDown(t *testing.T) {
 	w := newLCWorld(t)
 	w.cadenceRole("worker-desk", "tmux")
 	if _, err := w.lc.Pause([]string{"worker-desk"}); err != nil {
@@ -343,11 +344,80 @@ func TestCycleSuccessKeepsOperatorPause(t *testing.T) {
 	}
 	f := newCycleFakes(w)
 	r := w.lc.cycle(cycleOptsFor("worker-desk"), f.ops())
-	if r.Outcome != cellop.OK || len(f.restarts) != 1 {
-		t.Fatalf("outcome %s restarts %v: %v", r.Outcome, f.restarts, deref(r.Detail))
+	if r.Outcome != cellop.Partial || len(f.restarts) != 0 || len(f.syncs) != 1 {
+		t.Fatalf("outcome %s restarts %v syncs %v: %v", r.Outcome, f.restarts, f.syncs, deref(r.Detail))
 	}
 	if p, _ := w.lc.Paused("worker-desk"); !p {
 		t.Error("a completed cycle lifted the operator's own earlier pause")
+	}
+	if line := reportLine(t, r, "worker-desk"); !strings.Contains(line, "left down") || !strings.Contains(line, "paused") {
+		t.Errorf("the paused role reads %q", line)
+	}
+	for _, want := range []string{"cellctl resume " + w.c.Name, "cellctl up " + w.c.Name + " --role worker-desk"} {
+		if !valueIn(want, r.Next) {
+			t.Errorf("Next lacks %q: %v", want, r.Next)
+		}
+	}
+}
+
+// Under --all-at-once --force-after-timeout a forced confirm may apply only in part: a role whose
+// stop-now applied is down, and is reported so with `up` in Next, never "left running".
+// regression: cycle-force-partial-confirm
+func TestCycleForcePartialConfirm(t *testing.T) {
+	w := newLCWorld(t)
+	w.cadenceRole("worker-desk", "tmux")
+	w.cadenceRole("pr-review-desk", "tmux")
+	w.receipt("pr-review-desk", "tmux", "@9")
+	w.procs.kids[92] = []int{harnessPID}
+	w.claim("worker-desk", "example--brief-7")
+	w.claim("pr-review-desk", "example--brief-8")
+	f := newCycleFakes(w)
+	ops := f.ops()
+	full := ops.confirm
+	ops.confirm = func(actions []cellop.Action) cellop.Result {
+		var head []cellop.Action
+		for _, a := range actions {
+			if a.ID == "stop-now:pr-review-desk" {
+				break
+			}
+			head = append(head, a)
+		}
+		r := full(head)
+		r.Actions = append(r.Actions, actionResult(w.c.Name, "stop-now:pr-review-desk", cellop.ActionFailed, "the close was refused"))
+		r.Finish(cellop.Failed, cellop.ReasonActionFailed, "the close was refused", w.clock)
+		return r
+	}
+	o := cycleOptsFor("worker-desk", "pr-review-desk")
+	o.AllAtOnce, o.Force = true, true
+	r := w.lc.cycle(o, ops)
+	if r.Outcome == cellop.OK || len(f.restarts) != 0 {
+		t.Fatalf("outcome %s restarts %v", r.Outcome, f.restarts)
+	}
+	if line := reportLine(t, r, "worker-desk"); !strings.Contains(line, "left down") || strings.Contains(line, "left running") {
+		t.Errorf("the stopped role reads %q", line)
+	}
+	if line := reportLine(t, r, "pr-review-desk"); !strings.Contains(line, "left running") {
+		t.Errorf("the role whose stop failed reads %q", line)
+	}
+	if !valueIn("cellctl up "+w.c.Name+" --role worker-desk", r.Next) {
+		t.Errorf("Next does not bring the stopped role back: %v", r.Next)
+	}
+	if p, _ := w.lc.Paused("worker-desk"); p {
+		t.Error("the stopped role kept the cycle's stop")
+	}
+}
+
+// A checkpoint dated in the future is not a fresh heartbeat: freshness is bounded above as well.
+// regression: cycle-heartbeat-upper-bound
+func TestCycleFutureBeatNotFresh(t *testing.T) {
+	w := newLCWorld(t)
+	w.cadenceRole("worker-desk", "tmux")
+	f := newCycleFakes(w)
+	ops := f.ops()
+	ops.heartbeat = func(string) (time.Time, error) { return w.clock.Add(24 * time.Hour), nil }
+	r := w.lc.cycle(cycleOptsFor("worker-desk"), ops)
+	if r.Outcome != cellop.Partial {
+		t.Fatalf("a future-dated checkpoint read as fresh: outcome %s", r.Outcome)
 	}
 }
 
@@ -494,4 +564,46 @@ func deref(p *string) string {
 		return ""
 	}
 	return *p
+}
+
+// The restore keeps the settings file's own mode even when the update replaced the file.
+// regression: cycle-settings-mode
+func TestClaudeSyncRestoresMode(t *testing.T) {
+	wt := pinnedWorktree(t, "v1.0.45")
+	settings := filepath.Join(wt, ".claude", "settings.json")
+	if err := os.Chmod(settings, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rec := "1.0.30"
+	cli := pluginCLI{
+		list: func() ([]byte, error) { return pluginList(wt, rec), nil },
+		update: func() error {
+			rec = "1.0.45"
+			if err := os.Remove(settings); err != nil {
+				return err
+			}
+			return os.WriteFile(settings, []byte(`{"rewritten":true}`), 0o644)
+		},
+	}
+	if s := claudeSync(wt, cli); s.Outcome != syncOK {
+		t.Fatalf("sync %+v", s)
+	}
+	fi, err := os.Stat(settings)
+	if err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("the restored settings mode is %v (%v), want 0600", fi.Mode().Perm(), err)
+	}
+}
+
+// A record AHEAD of the pin fails the check too, and the message does not call it behind.
+// regression: cycle-claude-ahead
+func TestClaudeSyncAheadOfPin(t *testing.T) {
+	wt := pinnedWorktree(t, "v1.0.45")
+	cli := pluginCLI{
+		list:   func() ([]byte, error) { return pluginList(wt, "1.0.50"), nil },
+		update: func() error { return nil },
+	}
+	s := claudeSync(wt, cli)
+	if s.Outcome != syncFailed || !strings.Contains(s.Detail, "differs from the pin") || strings.Contains(s.Detail, "behind") {
+		t.Fatalf("a record ahead of the pin: %+v", s)
+	}
 }
