@@ -247,13 +247,16 @@ func applyEnvKVsKind(e *Env, envfile string, force bool, kvs []string, pinKind s
 }
 
 // shadowedPinNotices names every model pin in kvs that the cell, as it now stands, will not read.
+// namespaceChosen is true for the role-sugar call that names --harness: the operator picked the pin
+// namespace on purpose (the flag selects it and is not persisted), so a pin there is not an accident
+// of the cell's own harness and gets no namespace notice. A policy or provider defaults still do.
 // It runs after the write: it judges the cell the next launch will build. Two things make a
 // written pin dead. The cell resolves its models through a policy file or the provider defaults,
 // which supersede every DESK_MODEL_*/CODEX_MODEL_*/CURSOR_MODEL_* pin outright (the same
 // cellModelPolicy a launch asks, so the two cannot disagree); or the pin sits in a namespace the
 // cell's harness does not read. The write is never refused here: a pin written ahead of removing
 // a provider-defaults file is legitimate, so this only says what decides instead.
-func shadowedPinNotices(envfile string, kvs []string) []string {
+func shadowedPinNotices(envfile string, kvs []string, namespaceChosen bool) []string {
 	var notes []string
 	var c *Cell
 	var policySource string
@@ -282,7 +285,7 @@ func shadowedPinNotices(envfile string, kvs []string) []string {
 			shared, _ := configuredPath(c.Env, "CELL_PROVIDER_DEFAULTS", "providers.json", cellsRoot(c.Env))
 			local, _ := configuredPath(c.Env, "CELL_PROVIDER_OVERRIDES", "providers.json", c.Dir)
 			notes = append(notes, fmt.Sprintf("[set] notice: %s is written but NOT read: this cell takes its models from the provider defaults %s, which supersede every model pin in cell.env; change the role's tier in that file (every cell) or in this cell's own override file %s (this cell only), and restart the cell's running windows", key, shared, local))
-		case pinHarness != c.Harness:
+		case pinHarness != c.Harness && !namespaceChosen:
 			prefix, def := "", ""
 			for _, sp := range pinSpaces {
 				if sp.harness == c.Harness {
@@ -519,7 +522,7 @@ func cmdSet(cell string, v *cli.Values, pos []string) {
 	applyEnvKVsKind(e, envfile, force, kvs, pinKind)
 	// After the normal success lines, never instead of them: the write stands and the exit code
 	// is unchanged. A pin nothing reads is the one outcome those lines cannot show.
-	for _, note := range shadowedPinNotices(envfile, kvs) {
+	for _, note := range shadowedPinNotices(envfile, kvs, role != "" && harness != "") {
 		fmt.Fprintln(os.Stderr, note)
 	}
 }

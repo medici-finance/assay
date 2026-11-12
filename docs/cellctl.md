@@ -1224,7 +1224,8 @@ model pin as before, with the same exit code, and then prints one notice on stde
 current resolution will not read it: the cell resolves through a model policy or provider defaults
 (the notice names the key and the file or files that decide, the shared provider-defaults file and the
 per-cell override path), or the key belongs to a pin namespace the cell's harness does not read (it
-names the namespace the harness reads). A pin written ahead of removing a provider-defaults file is
+names the namespace the harness reads; the role-sugar call that names `--harness` chose its
+namespace on purpose and gets no namespace notice). A pin written ahead of removing a provider-defaults file is
 legitimate, so the write is not refused; `cellctl desk --set` refuses in the same situation because it
 cannot persist what it was asked to.
 

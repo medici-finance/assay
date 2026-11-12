@@ -217,6 +217,11 @@ func TestSetShadowedPinNotice(t *testing.T) {
 		if code != 0 || !strings.Contains(errOut, "CURSOR_MODEL_intake_desk") || !strings.Contains(errOut, "NOT read") {
 			t.Errorf("a cursor pin on a codex cell: code=%d stderr=%q; want a notice naming it", code, errOut)
 		}
+		// The role-sugar call that names --harness picks the namespace on purpose: no notice.
+		code, _, errOut = setNotice(t, "h", "worker-desk", "--harness", "claude", "--model", "sonnet")
+		if code != 0 || strings.Contains(errOut, "NOT read") || strings.Contains(errOut, "could not check") {
+			t.Errorf("role sugar naming --harness: code=%d stderr=%q; want success and no notice", code, errOut)
+		}
 		// The pin the codex harness does read gets no notice.
 		code, _, errOut = setNotice(t, "h", "CODEX_MODEL_intake_desk=gpt-5.6-terra")
 		if code != 0 || strings.Contains(errOut, "NOT read") || strings.Contains(errOut, "could not check") {
