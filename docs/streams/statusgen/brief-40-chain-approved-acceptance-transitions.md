@@ -10,6 +10,8 @@ gate: human
 risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}
 gate-why: "It relaxes a verification control that every adopter's protected tables rely on: after this lands, a delivered table may carry more than one approved change and one approved row may change both of its cells. A defect here would credit a row against text no human approved. The driver confirms the open questions below before work starts, and accepts the change at done."
 decision-trigger: start
+decision-issue: 6064
+ruling: "https://github.com/medici-finance/assay/issues/6064#issuecomment-6810709991"
 design: DR-transition-chain
 issues: [6064, 5211]
 schema: brief-v2
@@ -34,6 +36,7 @@ consumers:
   - "statusgen/acceptancetransition.go, statusgen/protectedclosure.go, statusgen/verifyrun.go (the `--acceptance-record` descriptor check only): follow-up statusgen/40"
   - "statusgen/transitionchain_test.go and statusgen/transitionchain-mutations.json (new files): follow-up statusgen/40"
   - "statusgen/acceptance-mutations.json: follow-up statusgen/40 (anchor text only; every existing mutant name is kept, see Verify row 12)"
+  - "statusgen/git-launches.json: follow-up statusgen/40 (shared resolver read inventory; native-call ceilings stay unchanged)"
   - "docs/protected-paths.md (§Explicit human-approved acceptance transitions) and docs/contracts.md (R-original-table-closure): follow-up statusgen/40"
   - "plugins/assay/skills/verify-desk/SKILL.md (the `--acceptance-record` paragraph), .cursor/skills/verify-desk/SKILL.md and .cursor/assay-managed.json (the generated Cursor mirror): follow-up statusgen/40"
   - "desk-containers/17 (delivered at v1, amended to v2 and v3 after delivery): out-of-scope (its table and Evidence are not edited; once this ships and is pinned, the driver approves its v2 and v3 links and verify-desk re-verifies it)"
@@ -45,7 +48,7 @@ consumers:
 
 ## Context
 
-files: statusgen/acceptancetransition.go, statusgen/protectedclosure.go, statusgen/verifyrun.go (descriptor check only), statusgen/transitionchain_test.go (new), statusgen/transitionchain-mutations.json (new), statusgen/acceptance-mutations.json (anchor text only), docs/protected-paths.md, docs/contracts.md (the R-original-table-closure row only), plugins/assay/skills/verify-desk/SKILL.md, .cursor/skills/verify-desk/SKILL.md (generated mirror), .cursor/assay-managed.json (generated mirror digest)
+files: statusgen/acceptancetransition.go, statusgen/protectedclosure.go, statusgen/verifyrun.go (descriptor check only), statusgen/transitionchain_test.go (new), statusgen/transitionchain-mutations.json (new), statusgen/acceptance-mutations.json (anchor text only), statusgen/git-launches.json (shared resolver read inventory; ceilings unchanged), docs/protected-paths.md, docs/contracts.md (the R-original-table-closure row only), plugins/assay/skills/verify-desk/SKILL.md, .cursor/skills/verify-desk/SKILL.md (generated mirror), .cursor/assay-managed.json (generated mirror digest)
 
 facts:
 - The resolver is `acceptanceTransition` (`statusgen/acceptancetransition.go:44`). Its only production caller is the protected plan (`statusgen/protectedclosure.go:195`; the one test caller is `statusgen/transitioncontext_test.go:114`), which feeds both `verifyrun --acceptance-record` and the lint audit. It requires exactly one literal `Acceptance-Transition: amendment=<sha> approval=<url>` marker (`:46`-`:53`).
@@ -94,6 +97,8 @@ Q3. Whether a chain has a maximum length.
 Default if no answer: none — blocks until answered
 
 Silence cannot settle this: Q1's recommended answer goes past the letter of the ruling, and Q1's alternative fails the first table waiting on it. Before `in-progress` (rule 48), the driver approves a design-decision record that records the answer to each question.
+
+**Ruling (2026-11-11): option 1.** The driver bound option 1 for Q1, Q2 and Q3 to statusgen/40 in [DR-transition-chain](../decisions/DR-transition-chain.md).
 
 Answered 2026-11-10 by the driver, each from the driver's own account, each choosing option 1 (the recommended option; the comments call it "A"). The record is [DR-transition-chain](../decisions/DR-transition-chain.md), cited by `design:` above; the driver approved it on #6064: https://github.com/medici-finance/assay/issues/6064#issuecomment-6773695768
 - Q1: option 1, a `Command+Expect` row may replace its whole Command cell with row ID, order, class and shell fixed: https://github.com/medici-finance/assay/issues/6064#issuecomment-6773099410

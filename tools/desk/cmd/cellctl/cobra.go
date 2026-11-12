@@ -714,7 +714,8 @@ func upCmd() *cobra.Command {
 			"  up      its cadence lease is held by a live process: reported already-up, never relaunched, its window\n" +
 			"          never touched;\n" +
 			"  stale   a running checkpoint with no live holder (a crashed session): plain up never reconciles it, the\n" +
-			"          role is reported failed and the exact recovery is named (up --plan, then up --apply);\n" +
+			"          role is reported failed naming the verb that clears its class (up --plan, then up --apply, for a\n" +
+			"          dead record; cadence recover --confirm-stopped, then up --role, for any other whose lease is free);\n" +
 			"  absent  launched, in the resolved COCKPIT: a tmux session \"<cell>-cell\" (an existing session gets only\n" +
 			"          the missing windows), a labelled herdr tab per role, or an orca terminal per role.\n" +
 			"A house cell opens no deskd window unless DESKD=1. --cockpit overrides cell.env CELL_COCKPIT for this run.\n" +
