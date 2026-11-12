@@ -87,6 +87,7 @@ func checkHandoffExamples(doc string) (int, []string) {
 
 // TestHandoffProcedureExamples keeps every record the reference teaches in step
 // with the shipped assessment, and requires one example per judgment row.
+// regression: F-intake-handoff-examples
 func TestHandoffProcedureExamples(t *testing.T) {
 	raw, err := os.ReadFile(handoffReferencePath)
 	if err != nil {
@@ -117,6 +118,7 @@ func TestHandoffProcedureExamples(t *testing.T) {
 
 // TestHandoffExamplesFlagPlant proves the check above fails on a reference whose
 // example disagrees with the shipped assessment, so a green run is not vacuous.
+// regression: F-intake-handoff-examples
 func TestHandoffExamplesFlagPlant(t *testing.T) {
 	raw, err := os.ReadFile("testdata/handoff-procedure-plant.md")
 	if err != nil {
