@@ -336,6 +336,32 @@ func TestRulesReadFailRefuses(t *testing.T) {
 	}
 }
 
+// regression: F-2
+// The reported head again, with the ruleset half truncated instead of missing: the legacy
+// endpoint 404s, the branch-rules listing is paginated, thirty non-status rules fill page 1
+// (with `Link: rel="next"`), and the required_status_checks rule naming build-test and
+// changelog is on page 2. A one-page read saw no required context, read that as "nothing
+// required", and checks-green passed a head carrying only leak-sweep.
+func TestRulesPageTwoMissing(t *testing.T) {
+	s := newStub()
+	s.rollup = []rollupEntry{{Context: "leak-sweep", State: "SUCCESS"}}
+	s.requiredChecks = nil
+	s.rulesPages = []string{
+		"[" + strings.TrimSuffix(strings.Repeat(`{"type":"deletion"},`, 30), ",") + "]",
+		`[{"type":"required_status_checks","parameters":{"required_status_checks":[
+			{"context":"build-test"},{"context":"changelog"}]}}]`,
+	}
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("page-2 ruleset checks never reported rc = %d, want %d (not green)", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("flipped though build-test and changelog never reported: %v", m)
+	}
+}
+
 // regression: #6198
 // The same class on the 403 (no `administration`) path: rulesets name the out-of-band
 // leak-sweep verdict, classic protection requires build and changelog, and only the branch

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -63,6 +64,20 @@ type reqChecksMux struct {
 	rulesBody           string
 	sawBranch, sawRules bool
 	branchNil, rulesNil bool // handler intentionally not wired (must not be hit)
+	// rulesPages, when set, serves the rules read as a paginated listing: page N (the `page`
+	// query parameter; absent reads as 1) is rulesPages[N-1], and every page but the last
+	// carries `Link: rel="next"`. rulesFailPage answers that page with a 500; rulesEndless
+	// advertises a next page forever (pages past the list serve `[]`).
+	rulesPages    []string
+	rulesFailPage int
+	rulesEndless  bool
+	rulesReads    int
+}
+
+// deletionRules is one rules page of n non-status rules: enough of them push a
+// required_status_checks rule off the first page of the branch-rules listing.
+func deletionRules(n int) string {
+	return "[" + strings.TrimSuffix(strings.Repeat(`{"type":"deletion"},`, n), ",") + "]"
 }
 
 func newReqChecksServer(t *testing.T, m *reqChecksMux) *httptest.Server {
@@ -98,6 +113,27 @@ func newReqChecksServer(t *testing.T, m *reqChecksMux) *httptest.Server {
 			if m.rulesNil {
 				m.t.Errorf("rules/branches/{b} endpoint was hit but the scenario did not expect it")
 			}
+			if m.rulesPages != nil || m.rulesEndless {
+				m.rulesReads++
+				n := 1
+				if p := r.URL.Query().Get("page"); p != "" {
+					n, _ = strconv.Atoi(p)
+				}
+				if n == m.rulesFailPage {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				if m.rulesEndless || n < len(m.rulesPages) {
+					w.Header().Set("Link", fmt.Sprintf(`<http://%s%s?per_page=100&page=%d>; rel="next"`, r.Host, rulesPath, n+1))
+				}
+				body := `[]`
+				if n >= 1 && n <= len(m.rulesPages) {
+					body = m.rulesPages[n-1]
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(body))
+				return
+			}
 			if m.rulesStatus == 0 || m.rulesStatus == http.StatusOK {
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(m.rulesBody))
@@ -122,6 +158,7 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 		wantSet       []string
 		wantErr       bool     // could-not-check
 		wantErrSubstr []string // fail-first (assay#1020): every substring must appear in err.Error()
+		wantErrNot    []string // no substring may appear in err.Error()
 		wantSawBr     bool
 		wantSawRule   bool
 	}{
@@ -169,6 +206,80 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 			wantErrSubstr: []string{"legacy endpoint answered 404", "rulesets"},
 		},
 		{
+			// (a1c) regression F-2 (#6198 reached through truncation): the rules listing is
+			// paginated. Legacy 404, thirty non-status rules fill page 1 with `rel="next"`, and the
+			// required_status_checks rule is on page 2. A one-page read returned the empty set with
+			// a nil error ("nothing required"); the walk must reach page 2.
+			name: "legacy_404_rules_page_two",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusNotFound,
+				branchNil:    true,
+				rulesPages: []string{deletionRules(30),
+					`[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"build-test"},{"context":"changelog"}]}}]`},
+			},
+			wantSet:     []string{"build-test", "changelog"},
+			wantSawRule: true,
+		},
+		{
+			// (a1d) regression F-2: page 1 read, page 2 fails. A walk cut short is a partial
+			// list, so the set is could-not-check, never page 1's contexts alone.
+			name: "legacy_404_rules_page_two_fails",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusNotFound,
+				branchNil:    true,
+				rulesPages: []string{
+					`[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`,
+					deletionRules(1)},
+				rulesFailPage: 2,
+			},
+			wantErr:       true,
+			wantSawRule:   true,
+			wantErrSubstr: []string{"legacy endpoint answered 404", "rulesets"},
+		},
+		{
+			// (a1f) regression F-2 on the legacy 200 path: the classic half is read whole, and
+			// the ruleset half's page-2 context is unioned in, not dropped.
+			name: "legacy_200_rules_page_two",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusOK,
+				legacyBody:   `{"contexts":["ci/build"]}`,
+				branchNil:    true,
+				rulesPages: []string{deletionRules(30),
+					`[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"changelog"}]}}]`},
+			},
+			wantSet:     []string{"changelog", "ci/build"},
+			wantSawRule: true,
+		},
+		{
+			// (a1g) regression F-2 on the 403 path: the branch read shows an empty classic
+			// summary, and the ruleset's required context is on page 2.
+			name: "legacy_403_rules_page_two",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusForbidden,
+				branchStatus: http.StatusOK,
+				branchBody: `{"name":"main","protected":true,"protection":{"enabled":true,
+					"required_status_checks":{"enforcement_level":"off","contexts":[],"checks":[]}}}`,
+				rulesPages: []string{deletionRules(30),
+					`[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`},
+			},
+			wantSet:     []string{"leak-sweep"},
+			wantSawBr:   true,
+			wantSawRule: true,
+		},
+		{
+			// (a1e) regression F-2: a listing that never stops advertising a next page is not
+			// walked forever, and what was read before the bound is not presented as complete.
+			name: "legacy_404_rules_walk_unbounded",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusNotFound,
+				branchNil:    true,
+				rulesEndless: true,
+			},
+			wantErr:       true,
+			wantSawRule:   true,
+			wantErrSubstr: []string{"next page"},
+		},
+		{
 			// (a2) legacy 200 with real contexts ⇒ used directly, the branch read NOT
 			// consulted. This is the path a classic-protected repo takes once the calling App
 			// is granted `administration: read` (assay#1020's actual fix: a permission grant,
@@ -199,16 +310,71 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 			wantErrSubstr: []string{"requires 1 context(s)", "rulesets"},
 		},
 		{
-			// (b) legacy 403 + branch not protected ⇒ empty; rules not consulted.
+			// (b) legacy 403 + branch not protected + no rulesets ⇒ empty. `protected: false`
+			// rules out CLASSIC protection only; the rules read is still made (F5: every path is
+			// the union) and is empty here.
 			name: "legacy_403_unprotected_empty",
 			mux: &reqChecksMux{
 				legacyStatus: http.StatusForbidden,
 				branchStatus: http.StatusOK,
 				branchBody:   `{"name":"main","protected":false}`,
-				rulesNil:     true,
+				rulesStatus:  http.StatusOK,
+				rulesBody:    `[]`,
 			},
-			wantSet:   nil,
-			wantSawBr: true,
+			wantSet:     nil,
+			wantSawBr:   true,
+			wantSawRule: true,
+		},
+		{
+			// (b2) F5: legacy 403 + `protected: false` while a ruleset requires a context. The
+			// classic half is positively empty; the ruleset half is the required set. Returning
+			// empty off the branch flag alone skipped it.
+			name: "legacy_403_unprotected_rules_contexts",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusForbidden,
+				branchStatus: http.StatusOK,
+				branchBody:   `{"name":"main","protected":false}`,
+				rulesStatus:  http.StatusOK,
+				rulesBody:    `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`,
+			},
+			wantSet:     []string{"leak-sweep"},
+			wantSawBr:   true,
+			wantSawRule: true,
+		},
+		{
+			// (b3) F5: legacy 403 + `protected: false` + the rules read fails ⇒ could-not-check,
+			// never the empty classic half alone.
+			name: "legacy_403_unprotected_rules_fail",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusForbidden,
+				branchStatus: http.StatusOK,
+				branchBody:   `{"name":"main","protected":false}`,
+				rulesStatus:  http.StatusInternalServerError,
+			},
+			wantErr:       true,
+			wantSawBr:     true,
+			wantSawRule:   true,
+			wantErrSubstr: []string{"not protected", "rulesets"},
+		},
+		{
+			// (b4) F7: protected, the branch read's classic summary is present and EMPTY, and the
+			// rulesets name nothing. Still could-not-check (protected with no visible requirement
+			// is not proven empty), but the refusal states what was seen: it must not blame a
+			// classic summary the read did show.
+			name: "legacy_403_classic_seen_empty",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusForbidden,
+				branchStatus: http.StatusOK,
+				branchBody: `{"name":"main","protected":true,"protection":{"enabled":true,
+					"required_status_checks":{"enforcement_level":"off","contexts":[],"checks":[]}}}`,
+				rulesStatus: http.StatusOK,
+				rulesBody:   `[]`,
+			},
+			wantErr:       true,
+			wantSawBr:     true,
+			wantSawRule:   true,
+			wantErrSubstr: []string{"summary names no required", "administration: read"},
+			wantErrNot:    []string{"the tell of CLASSIC branch protection"},
 		},
 		{
 			// (c) legacy 403 + protected + rules carry contexts ⇒ that union.
@@ -409,6 +575,11 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 						t.Errorf("error message missing expected substring %q\ngot: %s", sub, err.Error())
 					}
 				}
+				for _, sub := range tc.wantErrNot {
+					if strings.Contains(err.Error(), sub) {
+						t.Errorf("error message carries %q, which misstates what was read\ngot: %s", sub, err.Error())
+					}
+				}
 			} else {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -428,6 +599,9 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 			}
 			if tc.mux.sawRules != tc.wantSawRule {
 				t.Errorf("rules/branches/{b} consulted=%v, want %v", tc.mux.sawRules, tc.wantSawRule)
+			}
+			if tc.mux.rulesEndless && tc.mux.rulesReads != forgeMaxRulePages {
+				t.Errorf("endless rules listing read %d pages, want the bound %d", tc.mux.rulesReads, forgeMaxRulePages)
 			}
 		})
 	}

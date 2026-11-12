@@ -150,6 +150,10 @@ type stub struct {
 	// required-set path, not only the 403 one. rulesErr makes it answer 500.
 	rulesBody string
 	rulesErr  bool
+	// rulesPages, when set, serves the rules read as a paginated listing instead of rulesBody:
+	// page N (the `page` query parameter; absent reads as 1) is rulesPages[N-1], and every page
+	// but the last carries `Link: rel="next"`, as the forge paginates `/rules/branches/{b}`.
+	rulesPages []string
 
 	// headCommittedAt is the committer date GET /commits/{sha} serves for the head — the
 	// date an APPROVED's submitted_at must not predate (#3093: GitHub re-anchors an old
@@ -304,6 +308,19 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 				return
 			}
 			body := s.rulesBody
+			if s.rulesPages != nil {
+				n := 1
+				if p := r.URL.Query().Get("page"); p != "" {
+					n, _ = strconv.Atoi(p)
+				}
+				body = ""
+				if n >= 1 && n <= len(s.rulesPages) {
+					body = s.rulesPages[n-1]
+				}
+				if n < len(s.rulesPages) {
+					w.Header().Set("Link", `<http://`+r.Host+path+`?per_page=100&page=`+strconv.Itoa(n+1)+`>; rel="next"`)
+				}
+			}
 			if body == "" {
 				body = `[]`
 			}
