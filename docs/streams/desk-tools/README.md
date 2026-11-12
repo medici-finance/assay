@@ -236,7 +236,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 56 | [Make mutation reports resumable and measurable](brief-56-make-mutation-reports-resumable-and-measurable.md) | 1 | M | todo | — | — |
 | 57 | [Budget concurrent mutation work across the host](brief-57-budget-concurrent-mutation-work-across-the-host.md) | 1 | M | implemented | — | — |
 | 58 | [Benchmark compile-once mutation execution](brief-58-benchmark-compile-once-mutation-execution.md) | 1 | M | todo | — | — |
-| 59 | [Remove incidental prune mutation fixture work](brief-59-remove-incidental-prune-mutation-fixture-work.md) | 1 | M | implemented | — | — |
+| 59 | [Remove incidental prune mutation fixture work](brief-59-remove-incidental-prune-mutation-fixture-work.md) | 1 | M | verified | — | — |
 | 60 | [Operate is human, and the gate ladder — what an agent fleet owns, what a human owns, and the written condition under which a human gate may ever widen (every threshold recorded as not set)](brief-60-operate-is-human-and-the-gate-ladder.md) | 1 | S | todo | — | — |
 | 61 | [Declare the secret scan's benign shapes in one registry, each entry bounded by a refusal it must keep](brief-61-benign-shape-registry.md) | 1 | L | todo | — | — |
 | 62 | [Name the file, line and side of a branch-diff secret-scan refusal, not its line in the stripped diff](brief-62-diff-finding-file-line.md) | 1 | M | todo | — | — |
