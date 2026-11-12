@@ -276,7 +276,7 @@ func TestDownRoundTripOwnerReleased(t *testing.T) {
 // The same exit, but down is told a different checkpoint than the one the owner left: nothing
 // proves the record is the signalled owner's, so it stays unfinished.
 // regression: #6251
-func TestDownSettleReleasedOwnerOtherRecord(t *testing.T) {
+func TestDownSettleReleasedOtherRec(t *testing.T) {
 	c := roundTripCell(t)
 	first := startRoundTripOwner(t, c, "released")
 	waitFor(t, c, first, "first up", childStarted(c))
