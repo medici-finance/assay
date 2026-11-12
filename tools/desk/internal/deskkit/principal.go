@@ -201,7 +201,8 @@ func resolveSessionName(session string) string {
 // sessionNameSafeRe is the character set a session name must stay within before this
 // file will pass it to AckBeaconPath, which joins it directly into a filesystem path.
 // On THIS path the name is attacker-influenced in a way AckBeaconPath's other callers'
-// names are not: it comes straight from $DESK_SESSION / $CLAUDE_SESSION_ID, two
+// names are not: it comes from the caller's explicit session argument (no production
+// caller passes one today) or from $DESK_SESSION / $CLAUDE_SESSION_ID, two
 // environment variables any process sharing this one's environment controls, with no
 // prior validation. A traversing value ("../../etc/passwd" and friends) would otherwise
 // reach os.ReadFile via an ordinary path.Join. The impact is already bounded — the
@@ -299,9 +300,9 @@ func HumanNeutralName(login string) (string, bool) {
 // neutral name. An environment variable is NEVER consulted for the login itself — see the
 // file comment.
 //
-// session, when non-empty, is used only if neither $DESK_SESSION nor $CLAUDE_SESSION_ID
-// is set (mirrors deskroster's own resolution order); pass "" to use the ambient session
-// only.
+// session, when non-empty, wins over $DESK_SESSION and $CLAUDE_SESSION_ID; the order is
+// explicit session, then $DESK_SESSION, then $CLAUDE_SESSION_ID (ResolveSessionName, the
+// same order deskroster uses). Pass "" to use the ambient session only.
 //
 // Returns a *DeskError (Refused, exit 5) when no principal can be resolved — the roster
 // is unconfigured, the bless login is somehow absent from the human map (defensive; see

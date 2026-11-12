@@ -32,16 +32,28 @@ func TestResolveSessionFlagWins(t *testing.T) {
 	}
 }
 
-// sessionEnvRead matches a direct read of a session environment variable.
-var sessionEnvRead = regexp.MustCompile(`(Getenv|LookupEnv)\("(DESK_SESSION|CLAUDE_SESSION_ID)"\)`)
+// sessionEnvRead matches the NAME of a session environment variable as a quoted literal,
+// so it sees a direct Getenv/LookupEnv read, a loop over both names, and a name handed to
+// any helper alike. A matcher keyed to the Getenv call shape alone misses the loop form.
+var sessionEnvRead = regexp.MustCompile(`"(DESK_SESSION|CLAUDE_SESSION_ID)"`)
 
-// sessionEnvReaders lists the non-test Go files under the desk commands that read a
-// session variable directly; each such file must be on the allow-list below.
+// sessionEnvReaders lists the non-test Go files under the desk commands that name a session
+// variable; each must be on this list with the reason it cannot put the environment ahead
+// of an explicit --session. A file that resolves a session name for a command with a
+// --session flag belongs on neither side of this list: it calls ResolveSessionName.
 var sessionEnvReaders = map[string]string{
-	// Presence check only ("is this a desk session at all?"), never resolves a name.
-	"writeguard/guard.go": "presence check",
-	// resolveOwner: --owner flag first, then $DESK_SESSION, then SessionTag.
-	"deskclaim/claim.go": "flag-first owner attribution",
+	"writeguard/guard.go":          "presence check (is this a desk session at all?), never resolves a name",
+	"deskclaim/claim.go":           "resolveOwner reads --owner first, then the environment",
+	"deskclaim-ref/args.go":        "defaultOwner is the fallback after --owner, which it consults first",
+	"deskdispatch/dispatch.go":     "dispatchSessionSuffix takes no flag; it names the dispatcher's own session",
+	"cellctl/codex_environment.go": "launcher: forwards the variable to a child, resolves no name",
+	"cellctl/comms.go":             "launcher: sets the variable for a child, resolves no name",
+	"cellctl/cobra.go":             "declares --session with the variable as its default; the flag layer applies the flag first",
+	"cellctl/env.go":               "launcher: allow-list and value table for the child environment, resolves no name",
+	"cellctl/envkeys.go":           "launcher: documents the variable in the environment-key table",
+	"cellctl/helper_custody.go":    "launcher: sets the variable for a child, resolves no name",
+	"cellctl/launch.go":            "launcher: sets the variable for a child, resolves no name",
+	"cellctl/scratch_launch.go":    "reads the launched session's own value for scratch ownership; no --session flag is in play",
 }
 
 // regression: #6147
@@ -50,12 +62,19 @@ var sessionEnvReaders = map[string]string{
 // --session again. Session-name resolution goes through ResolveSessionName; a new direct
 // reader fails here until it is routed through the resolver or allow-listed with a reason.
 func TestSessionEnvReadsUseResolver(t *testing.T) {
-	// Positive control: the matcher flags a planted env-first resolver.
-	if !sessionEnvRead.MatchString(`if s := os.Getenv("DESK_SESSION"); s != "" {`) {
-		t.Fatal("matcher no longer recognises a direct DESK_SESSION read")
+	// Positive control: the matcher flags a planted env-first resolver in both shapes the
+	// tree uses, the direct read and the loop over both names.
+	for _, planted := range []string{
+		`if s := os.Getenv("DESK_SESSION"); s != "" {`,
+		`for _, env := range []string{"DESK_SESSION", "CLAUDE_SESSION_ID"} {`,
+	} {
+		if !sessionEnvRead.MatchString(planted) {
+			t.Fatalf("matcher no longer recognises a planted session read: %s", planted)
+		}
 	}
 	root := filepath.Join("..", "..", "cmd")
 	var offenders []string
+	seen := map[string]bool{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -71,17 +90,27 @@ func TestSessionEnvReadsUseResolver(t *testing.T) {
 			return nil
 		}
 		rel, _ := filepath.Rel(root, path)
-		if _, ok := sessionEnvReaders[filepath.ToSlash(rel)]; !ok {
-			offenders = append(offenders, filepath.ToSlash(rel))
+		rel = filepath.ToSlash(rel)
+		seen[rel] = true
+		if _, ok := sessionEnvReaders[rel]; !ok {
+			offenders = append(offenders, rel)
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatalf("walk %s: %v", root, err)
 	}
+	// An allow-list entry that no longer names a session variable is stale: drop it, so the
+	// list never grants a file an exemption it has no use for.
+	for rel := range sessionEnvReaders {
+		if !seen[rel] {
+			offenders = append(offenders, "stale allow-list entry: "+rel)
+		}
+	}
 	sort.Strings(offenders)
 	if len(offenders) > 0 {
-		t.Fatalf("these desk commands read a session env var directly; resolve the session "+
-			"with deskkit.ResolveSessionName so an explicit --session wins: %v", offenders)
+		t.Fatalf("these desk commands name a session env var outside the allow-list; resolve the "+
+			"session with deskkit.ResolveSessionName so an explicit --session wins, or "+
+			"allow-list the file with a reason: %v", offenders)
 	}
 }
