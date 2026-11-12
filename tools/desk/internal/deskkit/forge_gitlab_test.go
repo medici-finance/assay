@@ -1140,6 +1140,13 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) { return f.ChecksAtHead(glRepo, "abc123") },
 		},
 		{
+			// #6234: GitLab has no check-suite container, so the read answers the EMPTY set and
+			// issues no request — the golden's empty request trace pins that.
+			name: "check_suites_at_head_none", method: "CheckSuitesAtHead",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.CheckSuitesAtHead(glRepo, "abc123") },
+		},
+		{
 			// issue #1411 — the merge_request_event shape #1125 / PR #1134 missed: the commit
 			// document carries NO `last_pipeline`, yet a GREEN pipeline exists at the head SHA
 			// and is reachable through the SAME by-SHA read ListOpenChanges already uses

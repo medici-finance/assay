@@ -61,6 +61,9 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 		"RunLog", "RetryRun",
 		// Op 64, added under the freeze rule by the label-removal hold brief with deskread's `label-events` kind as its consumer.
 		"IssueLabelHistory",
+		// Added under the freeze rule with the checks-green conditions of cmd/deskflip and
+		// cmd/deskautolane merge, and cmd/deskpost ready's precondition (c'), as its consumers (#6234).
+		"CheckSuitesAtHead",
 	}
 	sort.Strings(want)
 
