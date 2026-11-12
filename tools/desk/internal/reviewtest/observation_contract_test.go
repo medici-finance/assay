@@ -1,6 +1,7 @@
 package reviewtest_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -376,4 +377,50 @@ func TestReviewContractRoundTrip(t *testing.T) {
 		t.Fatal("round trip changed result", e)
 	}
 
+}
+
+// Old v1 snapshots did not carry Mergeable. That absence remains readable but
+// cannot make a BLOCKED draft eligible. Explicit null remains a malformed fact.
+func TestReviewMergeableCompatibility(t *testing.T) {
+	for _, verdict := range []string{"", "MERGEABLE"} {
+		t.Run(verdict, func(t *testing.T) {
+			in, policy := observationFixture()
+			c := &in.Changes[0]
+			approve(c)
+			c.Facts.Change.IsDraft = true
+			c.Facts.Change.MergeStateStatus = "BLOCKED"
+			c.Facts.Change.Mergeable = verdict
+			data, err := json.Marshal(observation(t, in, policy))
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := rf.DecodeObservation(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := rf.PlanObservation(decoded, policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "MERGE-STATE-UNKNOWN"
+			if verdict == "MERGEABLE" {
+				want = "FLIP"
+			}
+			if got := plan.Result.Rows[0].Action; got != want {
+				t.Fatalf("got %s want %s", got, want)
+			}
+			if verdict == "" && len(plan.Verbs) != 0 {
+				t.Fatal("missing conflict verdict acquired an effect")
+			}
+			if verdict == "MERGEABLE" {
+				nullData := bytes.Replace(data, []byte(`"Mergeable":"MERGEABLE"`), []byte(`"Mergeable":null`), 1)
+				if bytes.Equal(nullData, data) {
+					t.Fatal("mergeable fact absent from encoded observation")
+				}
+				if _, err := rf.DecodeObservation(nullData); err == nil {
+					t.Fatal("null Mergeable accepted")
+				}
+			}
+		})
+	}
 }
