@@ -355,7 +355,7 @@ func TestChainRefusesForgedApproval(t *testing.T) {
 
 // regression: #6064
 func TestChainRefusesReplayedApproval(t *testing.T) {
-	for _, mode := range []string{"duplicate-url", "replay", "amendment", "predecessor", "brief", "v1"} {
+	for _, mode := range []string{"duplicate-url", "replay", "link", "amendment", "predecessor", "brief", "v1"} {
 		t.Run(mode, func(t *testing.T) {
 			f := chainFixtureAt(t, "repeat")
 			switch mode {
@@ -363,6 +363,8 @@ func TestChainRefusesReplayedApproval(t *testing.T) {
 				f.descriptor = strings.Replace(f.descriptor, f.urls[1], f.urls[0], 1)
 			case "replay":
 				f.payloads[1] = f.payloads[0]
+			case "link":
+				f.payloads[1] = strings.Replace(f.payloads[1], "\nlink=2\n", "\nlink=1\n", 1)
 			case "v1":
 				f.payloads[1] = fmt.Sprintf("Approve acceptance-transition v1\nrepo=%s\nbrief=%s\ndelivery=%s\nbase=%s\noriginal=%s\namendment=%s\nrows=12", rlRepo, vfBriefRel, f.delivery, f.base, f.base, f.amendments[1])
 			default:
