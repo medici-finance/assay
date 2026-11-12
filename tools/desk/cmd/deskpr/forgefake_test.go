@@ -256,7 +256,10 @@ func (f *envForge) EditChange(repo deskkit.ForgeRepo, number int, in deskkit.Edi
 	return nil
 }
 
-func (f *envForge) PostComment(repo deskkit.ForgeRepo, number int, body string) (*deskkit.CommentRef, error) {
+func (f *envForge) PostCommentTyped(repo deskkit.ForgeRepo, number int, kind deskkit.TargetKind, body string) (*deskkit.CommentRef, error) {
+	if kind != deskkit.TargetChange {
+		return nil, deskkit.Refused("fixture: deskpr comments land on a PR, never another kind") // #6264
+	}
 	f.commentNums = append(f.commentNums, number) // the ATTEMPT, recorded before any failure
 	f.ops = append(f.ops, "comment")
 	if os.Getenv("FAKEGH_COMMENT_FAIL") == "1" {

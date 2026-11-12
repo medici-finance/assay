@@ -212,7 +212,9 @@ func (r *issueReader) fetchOpenIssues() ([]ghIssue, error) {
 }
 
 // fetchIssueState positively reads ONE issue's current state (and title) through the typed
-// GetIssue op — the read every RETIRE row rests on (#1032). It is NOT best effort: an issue
+// issue read (GetIssueTyped, kind issue: a placeholder names an issue, and GitLab's separate
+// merge-request sequence makes the bare number ambiguous, #6264) — the read every RETIRE row
+// rests on (#1032). It is NOT best effort: an issue
 // absent from the open listing is only "closed" once THIS read says `closed`. Before #1032
 // this was a title-only read whose error the caller swallowed, so absence from the listing
 // alone decided RETIRE — and a listing that stopped early (a slow/partial page, a rate
@@ -221,7 +223,7 @@ func (r *issueReader) fetchOpenIssues() ([]ghIssue, error) {
 // tool's contract: never a partial board), naming the issue.
 func (r *issueReader) fetchIssueState(num int) (state, title string, err error) {
 	f, fr, repo := r.forge, r.repo, r.repo.Slug()
-	iss, gerr := f.GetIssue(fr, num)
+	iss, gerr := f.GetIssueTyped(fr, num, deskkit.TargetIssue)
 	if gerr != nil {
 		return "", "", deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: %s#%d is absent from the open-issue listing but its state could not be read — "+
@@ -934,7 +936,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 		// Gather only the same positive reads the serial loop needs. Observations
 		// are held in this repository/invocation only; no closure is cached. The
 		// wrapped capability batches bounded positive reads where supported and
-		// preserves each original GetIssue read everywhere else.
+		// preserves each original typed issue read everywhere else.
 		var absent []int
 		uniqueAbsent := map[int]bool{}
 		groupPositive := true

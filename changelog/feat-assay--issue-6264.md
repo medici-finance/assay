@@ -1,0 +1,4 @@
+### Fixed
+- On GitLab, where issue #N and merge request !N can share a number, the issue board's RETIRE read (work-ready and intake projections) and `scanloop run`'s trust-gate author read now ask for the issue by kind instead of the bare-number resolver, which refused such numbers as could-not-check.
+- The other desk-tool callers that already know their kind now use the typed operations too: verifyloop and deskevidence for `/issues/` blocker references, scanloop's hand-off successor read, deskinbox's issue detail, desksupervise's `issue-<N>` claim read, deskdisposition's PR label read, and the PR comments deskautolane, deskpr `edit` and deskprovenance post. Callers whose kind is genuinely unknown, including bare `#N` references, still go through the resolver and still refuse ambiguous numbers.
+- A source-tree guard test now fails when a new `GetIssue` or `PostComment` call appears that is not on its reasoned allow-list.
