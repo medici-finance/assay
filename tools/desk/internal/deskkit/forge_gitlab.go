@@ -3315,6 +3315,14 @@ func (g *GitLabForge) SetMergeHold(repo ForgeRepo, number int, in MergeHoldUpdat
 	return nil
 }
 
+// CheckSuitesAtHead answers the EMPTY set: GitLab has no check-suite container. A pipeline's
+// queued or running jobs are already jobs in ChecksAtHead's rollup, and a pipeline at the head
+// is published there as the `pipeline` status, so nothing the merge gate waits on hides
+// behind a run-less container the way a GitHub suite can. No request is issued.
+func (g *GitLabForge) CheckSuitesAtHead(repo ForgeRepo, sha string) (*CheckSuitesAtHead, error) {
+	return &CheckSuitesAtHead{}, nil
+}
+
 // MarkReadyForReview clears the `Draft:` prefix — GitLab's only ready transition.
 //
 // The nodeID is the opaque id this backend minted (see gitlabNodeIDScheme); anything else is
