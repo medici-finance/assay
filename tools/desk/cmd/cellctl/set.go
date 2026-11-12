@@ -161,13 +161,7 @@ func validateKindChange(envfile, kind string, kvs []string) {
 // happens to run `set` neither satisfies a precondition (a launcher, a stream-root map) nor
 // hides a missing line the next launch, from another shell, would trip on.
 func effectiveCellEnv(envfile string, kvs []string) *Env {
-	boot := newEnvFromProcess()
-	if _, _, err := overlayCellDefaults(boot, cellDefaultsFor(envfile)); err != nil {
-		die("set: %v; nothing written", err)
-	}
-	if err := parseCellEnv(boot, envfile); err != nil {
-		die("set: %v", err)
-	}
+	boot := bootCellEnv(envfile)
 	for _, kv := range kvs {
 		if k, v, ok := splitKV(kv); ok {
 			if k != "CELL_COMMS_CONFIG" {
@@ -183,6 +177,22 @@ func effectiveCellEnv(envfile string, kvs []string) *Env {
 		}
 	}
 	return e
+}
+
+// bootCellEnv is the environment a launch from this shell builds before any per-kind step: the
+// process environment, the machine-wide defaults file, then the cell's own file read through the
+// loader. effectiveCellEnv overlays a call's pairs on it and keeps only the two file layers;
+// shadowedPinNotices keeps all of it, because where the shared model files live is a process
+// setting (CELLS_ROOT) as much as a file one.
+func bootCellEnv(envfile string) *Env {
+	boot := newEnvFromProcess()
+	if _, _, err := overlayCellDefaults(boot, cellDefaultsFor(envfile)); err != nil {
+		die("set: %v; nothing written", err)
+	}
+	if err := parseCellEnv(boot, envfile); err != nil {
+		die("set: %v", err)
+	}
+	return boot
 }
 
 func splitKV(kv string) (string, string, bool) {
@@ -234,6 +244,55 @@ func applyEnvKVsKind(e *Env, envfile string, force bool, kvs []string, pinKind s
 		setEnvKey(envfile, key, value, force)
 	}
 	recordPins(envfile, kvs, pinKind, time.Now())
+}
+
+// shadowedPinNotices names every model pin in kvs that the cell, as it now stands, will not read.
+// It runs after the write: it judges the cell the next launch will build. Two things make a
+// written pin dead. The cell resolves its models through a policy file or the provider defaults,
+// which supersede every DESK_MODEL_*/CODEX_MODEL_*/CURSOR_MODEL_* pin outright (the same
+// cellModelPolicy a launch asks, so the two cannot disagree); or the pin sits in a namespace the
+// cell's harness does not read. The write is never refused here: a pin written ahead of removing
+// a provider-defaults file is legitimate, so this only says what decides instead.
+func shadowedPinNotices(envfile string, kvs []string) []string {
+	var notes []string
+	var c *Cell
+	var policySource string
+	var policyErr error
+	for _, kv := range kvs {
+		key, _, _ := splitKV(kv)
+		pinHarness, _, ok := modelPinKey(key)
+		if !ok {
+			continue
+		}
+		if c == nil {
+			e := bootCellEnv(envfile)
+			c = &Cell{Dir: filepath.Dir(envfile), Env: e, Kind: e.GetOr("CELL_KIND", "k8s"), Harness: e.GetOr("CELL_HARNESS", "claude")}
+			var policy *ModelPolicy
+			policy, policySource, policyErr = c.cellModelPolicy()
+			if policyErr == nil && policy == nil {
+				policySource = ""
+			}
+		}
+		switch {
+		case policyErr != nil:
+			notes = append(notes, fmt.Sprintf("[set] could not check whether %s is read: %v", key, policyErr))
+		case c.Env.Get("CELL_MODEL_POLICY") != "":
+			notes = append(notes, fmt.Sprintf("[set] notice: %s is written but NOT read: this cell takes its models from the model policy %s (CELL_MODEL_POLICY), which supersedes every model pin in cell.env; edit that file to change the role's model", key, policySource))
+		case policySource != "":
+			shared, _ := configuredPath(c.Env, "CELL_PROVIDER_DEFAULTS", "providers.json", cellsRoot(c.Env))
+			local, _ := configuredPath(c.Env, "CELL_PROVIDER_OVERRIDES", "providers.json", c.Dir)
+			notes = append(notes, fmt.Sprintf("[set] notice: %s is written but NOT read: this cell takes its models from the provider defaults %s, which supersede every model pin in cell.env; change the role's tier in that file (every cell) or in this cell's own override file %s (this cell only), and restart the cell's running windows", key, shared, local))
+		case pinHarness != c.Harness:
+			prefix, def := "", ""
+			for _, sp := range pinSpaces {
+				if sp.harness == c.Harness {
+					prefix, def = sp.prefix, sp.def
+				}
+			}
+			notes = append(notes, fmt.Sprintf("[set] notice: %s is written but NOT read: this cell's harness is %s, which reads %s<role> and %s, not the %s pins; set the %s key instead, or change CELL_HARNESS", key, c.Harness, prefix, def, pinHarness, c.Harness))
+		}
+	}
+	return notes
 }
 
 // backupCellEnv writes one `cell.env.bak-<stamp>` copy of envfile and returns its path.
@@ -458,4 +517,9 @@ func cmdSet(cell string, v *cli.Values, pos []string) {
 		}
 	}
 	applyEnvKVsKind(e, envfile, force, kvs, pinKind)
+	// After the normal success lines, never instead of them: the write stands and the exit code
+	// is unchanged. A pin nothing reads is the one outcome those lines cannot show.
+	for _, note := range shadowedPinNotices(envfile, kvs) {
+		fmt.Fprintln(os.Stderr, note)
+	}
 }

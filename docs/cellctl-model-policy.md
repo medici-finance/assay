@@ -57,6 +57,25 @@ number" lesson makes auto-adopting a future Opus a choice, reversible by raising
 Without `CELL_MODEL_POLICY`, existing launcher behavior is unchanged; rollout must enable
 it on each cell that needs the prohibition.
 
+## Seeded desk tiers and the intake pin
+
+`cellctl providers init` creates `CELLS_ROOT/providers.json` from the embedded seed and never
+overwrites an existing file. The seed gives `intake-desk` tier `strong` under every provider, like
+`pr-review-desk` and `verify-desk`; `worker-desk` and the other desks stay as they were. The intake
+skill reserves its judgment work for a strong tier, and a session on a lower one does mechanical
+work only. New cells also scaffold `DESK_MODEL_intake_desk=opus`, which is what decides on a
+container or scrubbed cell, because those never take provider defaults. On a house or k8s cell the
+provider defaults (or a `CELL_MODEL_POLICY`) decide instead and the `DESK_MODEL_*` pins are not read.
+
+Existing installations are not rewritten. To move one: set `intake-desk` to tier `strong` in the
+shared provider-defaults file (every cell); put only that key in the cell's own `providers.json`, or
+the file `CELL_PROVIDER_OVERRIDES` names, which is merged over the shared file (one cell); or, on a
+cell that resolves through neither, run `cellctl set <cell> DESK_MODEL_intake_desk=opus`. A cell
+carrying `CELL_MODEL_POLICY` takes its whole policy from that file, so edit the file. A window pins
+the policy it launched under and refuses once it changes, so changing a provider-defaults file a
+running cell reads requires restarting that cell's windows. `cellctl set` prints a notice, and still
+writes, when a model pin it wrote is not read by the cell.
+
 ## Harness adapters and child agents
 
 Claude receives `--model`, `--effort`, the four `ANTHROPIC_DEFAULT_*_MODEL` mappings and

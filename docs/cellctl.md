@@ -1172,19 +1172,61 @@ cell saying so, which is the kind of drift a cell exists to keep out.
 ```
 DESK_MODEL_DEFAULT=sonnet     # every role that has no override
 DESK_MODEL_the_desk=fable     # per-role override: the role name with `-` replaced by `_`
+DESK_MODEL_intake_desk=opus   # the intake role's judgment work needs a strong tier
 ```
 
 An override is `DESK_MODEL_<role>` with hyphens replaced by underscores — `DESK_MODEL_the_desk`,
 `DESK_MODEL_pr_review_desk`, `DESK_MODEL_verify_desk`, and so on. Values are whatever
 `claude --model` accepts: an alias (`fable`, `opus`, `sonnet`, `haiku`) or a full model id, including
 a long-context variant. `DESK_MODEL_DEFAULT` itself falls back to `sonnet` if `cell.env` omits it, and
-`cellctl new` scaffolds both lines above so a fresh cell is pinned from the start.
+`cellctl new` scaffolds all three lines above so a fresh cell is pinned from the start.
 
 **Why the defaults are shaped that way.** The four loop roles are mechanical dispatchers: they read a
 board, claim an item, open a worktree, and hand the actual judgment to the agent they dispatch. The
 coordinator window is where judgment happens in the loop itself. So the loops get the cheaper model
 and `the-desk` gets the top tier available — and the loops' pin can be moved per cell, which is the
 point of putting it in `cell.env` rather than in the launcher's source.
+
+**The intake role is the exception among the loops.** Its skill reserves its judgment work (triage,
+decision authoring, scoping, recording a handoff for every issue it judges) for a strong model tier,
+and a session on a lower tier is told to do mechanical work only. A cell whose intake role started on
+`sonnet` therefore judged nothing until an operator noticed. New cells scaffold
+`DESK_MODEL_intake_desk=opus` (`opus` is the strong-tier alias), and the seeded provider defaults give
+`intake-desk` tier `strong` under every provider. The cost is a stronger model for that one role;
+removing the line returns the role to `DESK_MODEL_DEFAULT`. Which tier alias means which model is owned
+by the alias table in `policy.go`, not by this section.
+
+**Which of the two settings applies depends on the cell kind.** Two mechanisms decide a role's model
+and the first wins outright:
+
+| Cell kind | What decides the model | Where the intake change lives |
+|---|---|---|
+| house or k8s cell with `CELL_MODEL_POLICY` | that policy file, whole | nothing here rewrites a policy file; edit it |
+| house or k8s cell with no policy | the provider defaults: `CELLS_ROOT/providers.json`, with the cell's own `providers.json` (or the file `CELL_PROVIDER_OVERRIDES` names) merged over it key by key; the `DESK_MODEL_*` pins are not read | the seed `providers.json`, which `cellctl providers init` copies once |
+| container or scrubbed cell | the pins in `cell.env` (container and scrubbed cells never take provider defaults) | the scaffolded `DESK_MODEL_intake_desk` line |
+
+**Moving an existing installation.** No existing `cell.env` and no existing provider-defaults file is
+rewritten by an upgrade, and `cellctl providers init` never overwrites a file that exists. Three ways,
+by reach:
+
+- **Every cell:** set `intake-desk` to tier `strong` in the shared `CELLS_ROOT/providers.json`.
+- **One cell:** put only that key in the cell's own `providers.json`, for example
+  `{"providers":{"anthropic":{"desks":{"intake-desk":{"tier":"strong"}}}}}`. It is merged over the
+  shared file.
+- **A cell that resolves through neither a policy nor provider defaults:**
+  `cellctl set <cell> DESK_MODEL_intake_desk=opus`.
+
+A running window pins the SHA-256 of the policy it launched under and refuses once that file changes,
+so **changing a provider-defaults file a running cell reads requires restarting that cell's windows.**
+
+**A pin the cell does not read says so.** `cellctl set <cell> KEY=VALUE` (and the role sugar) writes a
+model pin as before, with the same exit code, and then prints one notice on stderr when the cell's
+current resolution will not read it: the cell resolves through a model policy or provider defaults
+(the notice names the key and the file or files that decide, the shared provider-defaults file and the
+per-cell override path), or the key belongs to a pin namespace the cell's harness does not read (it
+names the namespace the harness reads). A pin written ahead of removing a provider-defaults file is
+legitimate, so the write is not refused; `cellctl desk --set` refuses in the same situation because it
+cannot persist what it was asked to.
 
 **The coordinator's pin cannot be moved down to Opus.** `opus` is no longer the top tier, and the
 coordinator role is defined to run on whichever model is. `cellctl desk <cell> the-desk` (including
