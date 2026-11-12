@@ -43,7 +43,7 @@ const legacyScanWorktreeLeaf = "intake-scan-"
 // defaultScanWorktreeBase is the directory scan worktrees are cut under when --worktree-base is not
 // given: the prefix `deskwt add` targets on this host.
 //
-//   - POSIX: the tmp base, so the worktree is `<tmp base>/tracker-intake-scan-<pass>`.
+//   - POSIX: the tmp base, so the worktree is `<tmp base>/<scanWorktreeLeaf><pass>`.
 //   - Windows: `<repo-root>/.claude/worktrees`, deskwt's portable prefix (the tmp base is not a
 //     usable absolute path there). That directory sits inside the MAIN checkout, so when --root IS
 //     the main checkout the scan worktree would be nested in the checkout being scanned, which the

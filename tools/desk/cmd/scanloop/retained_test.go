@@ -78,7 +78,7 @@ func newHeldFixture(t *testing.T, leaf string) (*heldFixture, string) {
 		return "", fmt.Errorf("unexpected command %s", name)
 	}}
 
-	if _, err := f.lane.Execute(f.req(t, "tracker-intake-scan-fresh", nil)); err != nil {
+	if _, err := f.lane.Execute(f.req(t, scanWorktreeLeaf+"fresh", nil)); err != nil {
 		t.Fatalf("fresh pass: %v", err)
 	}
 	held := filepath.Join(f.base, leaf)
@@ -95,12 +95,12 @@ func (f *heldFixture) req(t *testing.T, leaf string, open *OpenScanPR) LaneReque
 // coalesce runs one coalescing pass whose OWN worktree path is new, as worktreeFor's per-pass path
 // always is.
 func (f *heldFixture) coalesce(t *testing.T) (LaneOutcome, error) {
-	return f.lane.Execute(f.req(t, "tracker-intake-scan-next", openPR(3*time.Minute)))
+	return f.lane.Execute(f.req(t, scanWorktreeLeaf+"next", openPR(3*time.Minute)))
 }
 
 // regression: #6282
 func TestCoalesceReusesCleanRetained(t *testing.T) {
-	f, held := newHeldFixture(t, "tracker-intake-scan-retained")
+	f, held := newHeldFixture(t, scanWorktreeLeaf+"retained")
 	if _, err := f.coalesce(t); err != nil {
 		t.Fatalf("a coalesce refused although the retained scan worktree holding %s is clean and at the "+
 			"remote carrier tip: %v", heldBranch, err)
@@ -111,7 +111,7 @@ func TestCoalesceReusesCleanRetained(t *testing.T) {
 	if _, err := os.Stat(held); !os.IsNotExist(err) {
 		t.Fatalf("the reused worktree %s was not put back at the end of the pass (stat err %v)", held, err)
 	}
-	if _, err := os.Stat(filepath.Join(f.base, "tracker-intake-scan-next")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(f.base, scanWorktreeLeaf+"next")); !os.IsNotExist(err) {
 		t.Fatalf("the pass cut a second worktree although it reused the retained one (stat err %v)", err)
 	}
 }
@@ -130,7 +130,7 @@ func assertHeldUntouched(t *testing.T, f *heldFixture, held, marker string) {
 
 // regression: #6282
 func TestCoalesceRefusesDirtyHeld(t *testing.T) {
-	f, held := newHeldFixture(t, "tracker-intake-scan-retained")
+	f, held := newHeldFixture(t, scanWorktreeLeaf+"retained")
 	if err := os.WriteFile(filepath.Join(held, "diagnosis.txt"), []byte("keep me\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestCoalesceRefusesDirtyHeld(t *testing.T) {
 
 // regression: #6282
 func TestCoalesceRefusesDivergedHeld(t *testing.T) {
-	f, held := newHeldFixture(t, "tracker-intake-scan-retained")
+	f, held := newHeldFixture(t, scanWorktreeLeaf+"retained")
 	if err := os.WriteFile(filepath.Join(held, "local.txt"), []byte("unpushed\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
