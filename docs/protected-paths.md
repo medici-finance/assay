@@ -350,7 +350,9 @@ Acceptance-Transition: link=2 amendment=<sha2> approval=<url2>
 ```
 
 Each link has its own unedited mapped-human approval on the same repository's
-marked issue. Its exact payload is (CRLF may be normalized to LF):
+marked issue. Its exact payload is (CRLF may be normalized to LF). Leading or
+trailing whitespace, including a final newline after the rows value, is refused:
+
 
 ```text
 Approve acceptance-transition v2
@@ -378,9 +380,22 @@ Every first-parent Verify or version change from delivery through HEAD must be
 exactly one ordered amendment. Each parent table and unique two-parent merge base
 must match the preceding table; the version increases by one at each amendment.
 Evidence preservation, including only the existing empty-placeholder exception,
-stays unchanged. Structural checks precede approval reads. Refusals name the link;
-a missing amendment names `link <k> missing at <12-hex>`. An unreachable approval
-is could-not-check, not permission. There is no chain-length cap and no approval cache.
+stays unchanged. Immutable history and row-shape checks precede approval reads.
+Retention of an unnamed Expect depends on the actual prior approvals: if a later
+Command correction uses a parent row carrying that unapproved Expect, it refuses
+with "a changed command must still carry its complete prior definition", after
+reading earlier approvals. Explicitly approving the earlier Expect allows the later
+Command-only correction against that effective prior row. A later combined approval
+does not repair the missing prior definition.
+
+Refusals name the link; a missing amendment names `link <k> missing at <12-hex>`.
+A fetch failure is could-not-check and grants no credit. A directly observed HTTP
+404 or 410 refuses as "human approval could not be corroborated" through the shared
+ruling reader; neither result grants acceptance credit.
+There is no chain-length cap and no approval cache. The complete first-parent walk
+reads each commit's table and version, so its cost grows with history since delivery.
+It deliberately retains the complete walk rather than applying path-history
+simplification that could omit an acceptance edit.
 
 The same protected planner produces one effective table, per-row last approved
 amendment revisions, and one net `Acceptance-Changes:` receipt. Its tokens are

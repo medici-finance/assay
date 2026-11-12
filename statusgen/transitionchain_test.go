@@ -15,6 +15,7 @@ type chainFixture struct {
 	root, path, base, delivery, body, descriptor string
 	amendments, branches, payloads, urls         []string
 	replies                                      map[int]string
+	statuses                                     map[int]int
 	issue                                        string
 	reads                                        int
 	offline                                      bool
@@ -133,6 +134,7 @@ func (f *chainFixture) bind(t *testing.T) {
 				return nil, fmt.Errorf("fixture forge unreachable")
 			}
 			body := f.issue
+			status := http.StatusOK
 			if strings.Contains(r.URL.Path, "/comments/") {
 				n, e := strconv.Atoi(filepath.Base(r.URL.Path))
 				if e != nil {
@@ -148,8 +150,11 @@ func (f *chainFixture) bind(t *testing.T) {
 				if override, ok := f.replies[i]; ok {
 					body = override
 				}
+				if code := f.statuses[i]; code != 0 {
+					status = code
+				}
 			}
-			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+			return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
 		})}}
 	}
 	transitionForge = true
@@ -283,7 +288,7 @@ func TestTransitionCombinedColumns(t *testing.T) {
 
 // regression: #6064
 func TestChainRefusesForgedApproval(t *testing.T) {
-	for _, mode := range []string{"bot", "unmapped", "edited", "marker", "other-repo", "unreachable", "whitespace", "repo", "brief", "delivery", "base", "original", "link", "predecessor", "amendment", "rows"} {
+	for _, mode := range []string{"bot", "unmapped", "edited", "marker", "other-repo", "unreachable", "deleted404", "deleted410", "whitespace", "trailing-newline", "trailing-space", "repo", "brief", "delivery", "base", "original", "link", "predecessor", "amendment", "rows"} {
 		t.Run(mode, func(t *testing.T) {
 			f := chainFixtureAt(t, "container")
 			login, _ := HumanLogin("alex")
@@ -304,8 +309,16 @@ func TestChainRefusesForgedApproval(t *testing.T) {
 				repo = "other/project"
 			case "unreachable":
 				f.offline = true
+			case "deleted404":
+				f.statuses = map[int]int{1: http.StatusNotFound}
+			case "deleted410":
+				f.statuses = map[int]int{1: http.StatusGone}
 			case "whitespace":
 				body = "\n" + body
+			case "trailing-newline":
+				body += "\n"
+			case "trailing-space":
+				body += " "
 			default:
 				body = strings.Replace(body, "\n"+mode+"=", "\n"+mode+"=wrong-", 1)
 			}
@@ -332,6 +345,8 @@ func TestChainRefusesForgedApproval(t *testing.T) {
 			expected := "acceptance transition: link 2: "
 			if mode == "unreachable" {
 				expected += "could-not-check"
+			} else if mode == "deleted404" || mode == "deleted410" {
+				expected += "human approval could not be corroborated: comment"
 			}
 			f.refuse(t, expected, false)
 		})
@@ -349,11 +364,15 @@ func TestChainRefusesReplayedApproval(t *testing.T) {
 			case "replay":
 				f.payloads[1] = f.payloads[0]
 			case "v1":
-				f.payloads[1] = strings.Replace(f.payloads[1], "transition v2", "transition v1", 1)
+				f.payloads[1] = fmt.Sprintf("Approve acceptance-transition v1\nrepo=%s\nbrief=%s\ndelivery=%s\nbase=%s\noriginal=%s\namendment=%s\nrows=12", rlRepo, vfBriefRel, f.delivery, f.base, f.base, f.amendments[1])
 			default:
 				f.payloads[1] = strings.Replace(f.payloads[1], "\n"+mode+"=", "\n"+mode+"=wrong-", 1)
 			}
-			f.refuse(t, "link 2:", mode == "duplicate-url")
+			expected := "link 2:"
+			if mode == "v1" {
+				expected = "link 2: only link 1 may cite a v1 approval"
+			}
+			f.refuse(t, expected, mode == "duplicate-url")
 		})
 	}
 }
@@ -478,7 +497,7 @@ func TestChainRefusesReorderedChain(t *testing.T) {
 
 // regression: #6064
 func TestChainRefusesEditAfterApproval(t *testing.T) {
-	for _, mode := range []string{"current", "evidence", "history", "unnamed-command", "repeat-unnamed", "expect-drift"} {
+	for _, mode := range []string{"current", "evidence", "history", "unnamed-command", "repeat-unnamed", "expect-drift", "expect-drift-command"} {
 		t.Run(mode, func(t *testing.T) {
 			f := chainFixtureAt(t, "repeat")
 			switch mode {
@@ -498,6 +517,24 @@ func TestChainRefusesEditAfterApproval(t *testing.T) {
 				f.payloads[0] = strings.Replace(f.payloads[0], "rows=12,15", "rows=15", 1)
 			case "repeat-unnamed":
 				f.payloads[1] = strings.Replace(f.payloads[1], "rows=12:Command", "rows=", 1)
+			case "expect-drift-command":
+				// Link 3 leaves row 1's Expect unnamed; link 4 cannot use that
+				// unapproved parent definition even with a combined approval.
+				f.amend(t, strings.Replace(strings.Replace(f.body, "| 1 | `true` | exit 0", "| 1 | `true` | exit 1", 1), "| 12 | `true && true && true` |", "| 12 | `true && true && true && true` |", 1), "12:Command", false)
+				f.amend(t, strings.Replace(f.body, "| 1 | `true` | exit 1", "| 1 | `true && true` | exit 1", 1), "1:Command+Expect", false)
+				f.refuse(t, "link 4: a changed command must still carry its complete prior definition", false)
+				if f.reads == 0 {
+					t.Fatal("approval-dependent retention was not evaluated")
+				}
+				// Explicitly approving the earlier Expect makes the later
+				// Command-only correction valid against the effective prior row.
+				f.payloads[2] = strings.Replace(f.payloads[2], "rows=12:Command", "rows=1:Expect,12:Command", 1)
+				f.payloads[3] = strings.Replace(f.payloads[3], "rows=1:Command+Expect", "rows=1:Command", 1)
+				p, why := f.plan(t)
+				if why != "" || briefVerifyRows(p.Verify)[0].Expect != "exit 1" || p.Revisions["1"] != f.amendments[3] {
+					t.Fatalf("approved prior Expect was refused or lost: %s %+v", why, p)
+				}
+				return
 			case "expect-drift":
 				f.amend(t, strings.Replace(strings.Replace(f.body, "| 1 | `true` | exit 0", "| 1 | `true` | exit 1", 1), "| 12 | `true && true && true` |", "| 12 | `true && true && true && true` |", 1), "12:Command", false)
 				p, why := f.plan(t)

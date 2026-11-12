@@ -22,8 +22,8 @@
     {
       "name": "accept another links approval",
       "file": "acceptancetransition.go",
-      "old": "rawIDs, matched = strings.CutPrefix(approvalBody, payloadPrefix)",
-      "new": "_, rawIDs, _ = strings.Cut(approvalBody, \"\\nrows=\")\n        matched = true\n        _ = payloadPrefix"
+      "old": "repo, rel, delivery, base, original, chain.number, chain.predecessor, amendment",
+      "new": "repo, rel, delivery, base, original, 1, chain.predecessor, amendment"
     },
     {
       "name": "skip first-parent order between links",
@@ -60,6 +60,12 @@
       "file": "acceptancetransition.go",
       "old": "effective, prior = next, amended",
       "new": "effective, prior = baseline, amended\n            _ = next"
+    },
+    {
+      "name": "v1 approval allowed past link 1",
+      "file": "acceptancetransition.go",
+      "old": "if chain.number != 1 {",
+      "new": "if false && chain.number != 1 {"
     }
   ]
 }
