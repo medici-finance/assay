@@ -278,7 +278,7 @@ func TestCellRepositoryIsolation(t *testing.T) {
 			if err := (cloneFrom{repo: src}).Clone(ctx, r, d); err != nil {
 				return err
 			}
-			cmd := exec.Command("git", "-C", d, "remote", "set-url", "origin", "https://x-access-token:secret@forge.example/acme/tools.git")
+			cmd := exec.Command("git", "-C", d, "remote", "set-url", "origin", "https://x-access-token:$FIXTURE_PW@forge.example/acme/tools.git")
 			cmd.Env = gitEnv()
 			return cmd.Run()
 		}, workspace.ReasonForeignState, "store.config"},
@@ -286,7 +286,7 @@ func TestCellRepositoryIsolation(t *testing.T) {
 			if err := (cloneFrom{repo: src}).Clone(ctx, r, d); err != nil {
 				return err
 			}
-			cmd := exec.Command("git", "-C", d, "remote", "set-url", "origin", "https://user:p%zz@forge.example/acme/tools.git")
+			cmd := exec.Command("git", "-C", d, "remote", "set-url", "origin", "https://user:$FIXTURE_PW%zz@forge.example/acme/tools.git")
 			cmd.Env = gitEnv()
 			return cmd.Run()
 		}, workspace.ReasonForeignState, "store.config"},
