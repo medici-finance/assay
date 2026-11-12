@@ -700,8 +700,13 @@ func flipSHAAgree(a, b string) bool {
 // flipQualRe matches one trailing parenthetical qualifier of a Runner cell.
 var flipQualRe = regexp.MustCompile(`^\s*\(([^()]*)\)`)
 
+// flipTreeSuffixRe matches the text that sits directly after the sha in a
+// Runner cell, before the first space or parenthesis: the tree suffix
+// (+dirty, +unknown) the host derives, or nothing.
+var flipTreeSuffixRe = regexp.MustCompile(`^[^()\s]*`)
+
 // flipSourceTags is the closed set of derived source tags a Runner cell may
-// end its qualifier list with: the verifyrun identity sources a container
+// carry in its qualifier list: the verifyrun identity sources a container
 // bracket stamps, and the tag a model verifier records on its own rows. They
 // say how the login was read, never who ran the row.
 var flipSourceTags = map[string]bool{
@@ -714,9 +719,12 @@ var flipSourceTags = map[string]bool{
 // qualifier tail (#5530): every qualifier whose whole text is a tag in
 // flipSourceTags is dropped, and everything else is kept byte for byte. An
 // on-behalf-of principal, +dirty, an unknown or near-miss tag, and any text
-// that is not a clean qualifier list still compare.
+// that is not a clean qualifier list still compare. A tree suffix that
+// follows the sha (+dirty, +unknown) is kept verbatim ahead of the qualifier
+// list, so rows that share it still differ only in their source tag.
 func flipRunnerTail(tail string) string {
-	kept := ""
+	kept := flipTreeSuffixRe.FindString(tail)
+	tail = tail[len(kept):]
 	for tail != "" {
 		q := flipQualRe.FindStringSubmatch(tail)
 		if q == nil {

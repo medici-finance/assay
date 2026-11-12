@@ -28,12 +28,15 @@ func TestFlipSourceTagOneRunner(t *testing.T) {
 	cases := []struct {
 		name  string
 		tails []string
-		stamp string // the derived Verified stamp's tail, when accepted
+		stamp string // the derived Verified stamp's tail, when accepted; "-": the stamp is not under test
 	}{
 		{"forge-model", []string{rsOBO + " (forge-identity)", " (model verifier)" + rsOBO}, ""},
 		{"forge-none", []string{rsOBO + " (forge-identity)", rsOBO}, ""},
 		{"gitcfg-forge", []string{rsOBO + " (git-config)", rsOBO + " (forge-identity)"}, ""},
 		{"no-obo-mixed", []string{" (forge-identity)", ""}, ""},
+		{"dirty-mixed", []string{"+dirty" + rsOBO + " (forge-identity)", "+dirty (model verifier)" + rsOBO, "+dirty" + rsOBO}, "-"},
+		{"dirty-bare-mixed", []string{"+dirty (forge-identity)", "+dirty"}, "+dirty"},
+		{"unknown-mixed", []string{"+unknown (forge-identity)", "+unknown"}, "+unknown"},
 		{"uniform-kept", []string{rsOBO + " (forge-identity)", rsOBO + " (forge-identity)"}, " (forge-identity)"},
 	}
 	for _, c := range cases {
@@ -42,8 +45,14 @@ func TestFlipSourceTagOneRunner(t *testing.T) {
 			if err != nil {
 				t.Fatalf("one runner refused: %v", err)
 			}
-			if want := "2026-08-13 " + vfRunner + " @ " + vfSHA + c.stamp; p.Stamp != want || p.Runner != vfRunner {
-				t.Fatalf("runner %q stamp %q, want %q", p.Runner, p.Stamp, want)
+			if p.Runner != vfRunner {
+				t.Fatalf("runner %q, want %q", p.Runner, vfRunner)
+			}
+			if c.stamp == "-" {
+				return // a principal beside a tree suffix is judged by flipStamp, which this fix leaves alone
+			}
+			if want := "2026-08-13 " + vfRunner + " @ " + vfSHA + c.stamp; p.Stamp != want {
+				t.Fatalf("stamp %q, want %q", p.Stamp, want)
 			}
 		})
 	}
@@ -68,6 +77,10 @@ func TestFlipSourceTagNearMiss(t *testing.T) {
 		{"other-suffix", []string{at + rsOBO + " (forge-identity)", at + rsOBO + " (claude-x)"}, "runner mismatch"},
 		{"dirty", []string{at + rsOBO + " (forge-identity)", at + "+dirty" + rsOBO}, "runner mismatch"},
 		{"dirty-bare", []string{at + " (forge-identity)", at + "+dirty"}, "runner mismatch"},
+		{"trailing-text", []string{at + rsOBO + " (forge-identity) x", at + rsOBO + " y"}, "runner mismatch"},
+		{"dirty-vs-unknown", []string{at + "+dirty (forge-identity)", at + "+unknown (model verifier)"}, "runner mismatch"},
+		{"dirty-obo", []string{at + "+dirty" + rsOBO + " (forge-identity)", at + "+dirty (on-behalf-of human:alex)"}, "runner mismatch"},
+		{"dirty-tag", []string{at + "+dirty (forge-identity)", at + "+dirty (ci-env)"}, "runner mismatch"},
 		{"no-sha", []string{at + rsOBO + " (forge-identity)", vfRunner + rsOBO}, "sha mismatch"},
 	}
 	for _, c := range cases {

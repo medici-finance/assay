@@ -164,6 +164,18 @@
       "new": "\t\t\treturn kept\n"
     },
     {
+      "name": "the tree suffix after the sha is not kept apart from the qualifier list (a shared +dirty or +unknown blocks the normaliser)",
+      "file": "verifyflip.go",
+      "old": "\tkept := flipTreeSuffixRe.FindString(tail)\n\ttail = tail[len(kept):]\n",
+      "new": "\tkept := \"\"\n"
+    },
+    {
+      "name": "the tree suffix after the sha is dropped (+dirty agrees with a bare sha)",
+      "file": "verifyflip.go",
+      "old": "\tkept := flipTreeSuffixRe.FindString(tail)\n\ttail = tail[len(kept):]\n",
+      "new": "\tkept := \"\"\n\ttail = tail[len(flipTreeSuffixRe.FindString(tail)):]\n"
+    },
+    {
       "name": "the stamp keeps the first row's source tag when the rows' tags differ",
       "file": "verifyflip.go",
       "old": "\t\tif m[3] != tail {",
