@@ -46,6 +46,9 @@ spec:
               value: verify-desk
             - name: ASSAY_APP_PEM_FILE
               value: /run/secrets/assay/app.pem
+            # CVE-2026-98432 stopgap: no MPTCP listeners; patched node kernels are the fix.
+            - name: GODEBUG
+              value: multipathtcp=0
           envFrom:
             - secretRef:
                 name: verify-desk-model

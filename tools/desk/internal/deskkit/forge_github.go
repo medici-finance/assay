@@ -482,6 +482,21 @@ type ghCheckRunsWire struct {
 	} `json:"check_runs"`
 }
 
+// ghCheckSuitesWire is one page of GET /commits/{sha}/check-suites.
+type ghCheckSuitesWire struct {
+	TotalCount  int `json:"total_count"`
+	CheckSuites []struct {
+		ID         int64  `json:"id"`
+		Status     string `json:"status"`
+		Conclusion string `json:"conclusion"`
+		App        struct {
+			Slug string `json:"slug"`
+		} `json:"app"`
+		LatestCheckRunsCount int    `json:"latest_check_runs_count"`
+		CreatedAt            string `json:"created_at"`
+	} `json:"check_suites"`
+}
+
 // ghLabelWire is one entry of the repo/issue label listings.
 type ghLabelWire struct {
 	Name string `json:"name"`
@@ -703,10 +718,10 @@ func (g *GitHubForge) SearchIssues(repo ForgeRepo, in SearchIssuesInput) ([]Issu
 		if err := validateDecisionSearch(in); err != nil {
 			return nil, err
 		}
-		return g.searchDecisionMarkers(repo, in.DecisionGateBrief)
+		return g.searchDecisionMarkers(repo, in)
 	}
-	if in.DecisionGateBrief != "" {
-		return nil, Refused("decision-marker brief requires marker discovery mode")
+	if in.DecisionGateBrief != "" || in.DecisionGateLegacy {
+		return nil, Refused("decision-marker brief or legacy key requires marker discovery mode")
 	}
 	q := strings.TrimSpace(fmt.Sprintf("repo:%s is:issue %s", repo.Slug(), strings.TrimSpace(in.Query)))
 	path := fmt.Sprintf("/search/issues?q=%s&per_page=%d", url.QueryEscape(q), forgeSearchPerPage)
@@ -1498,6 +1513,35 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 			})
 		}
 		if len(cr.CheckRuns) < forgeCIPerPage {
+			break
+		}
+	}
+	return out, nil
+}
+
+// CheckSuitesAtHead reads GET /repos/{o}/{r}/commits/{sha}/check-suites, paginated under the
+// same bound as the rollups. A walk that stops short of the asserted total is returned as-is
+// (len < TotalCount) so the caller fails closed, exactly as ChecksAtHead does. The read is
+// under `checks: read`.
+func (g *GitHubForge) CheckSuitesAtHead(repo ForgeRepo, sha string) (*CheckSuitesAtHead, error) {
+	out := &CheckSuitesAtHead{}
+	for page := 1; page <= forgeMaxCIPages; page++ {
+		var w ghCheckSuitesWire
+		path := fmt.Sprintf("/repos/%s/%s/commits/%s/check-suites?per_page=%d&page=%d",
+			repo.Owner, repo.Name, sha, forgeCIPerPage, page)
+		if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+			return nil, err
+		}
+		if page == 1 {
+			out.TotalCount = w.TotalCount
+		}
+		for _, cs := range w.CheckSuites {
+			out.Suites = append(out.Suites, CheckSuite{
+				ID: checkRunID(cs.ID), App: cs.App.Slug, Status: cs.Status, Conclusion: cs.Conclusion,
+				RunCount: cs.LatestCheckRunsCount, CreatedAt: cs.CreatedAt,
+			})
+		}
+		if len(w.CheckSuites) < forgeCIPerPage {
 			break
 		}
 	}

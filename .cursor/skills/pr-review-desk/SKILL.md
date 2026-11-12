@@ -1332,7 +1332,11 @@ concluding anything about install state.
   content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
   either side of the test — the test never routes around one.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
-  or comments.
+  or comments. If a push is refused over an attribution trailer your harness added, not you (on
+  Cursor the host setting `attribution.attributeCommitsToAgent`, and `attribution.attributePRsToAgent`
+  for PR footers; both default to true), STOP: never rewrite history or re-commit to strip it, and
+  never push by another route. Report the setting and the refusal line; the host's operator sets
+  it to false.
 - Model-tier awareness: if downgraded mid-session, stop synthesis/judgment and fall back to
   transcription-grade work. Probe vs assertion (2026-07-10): human:<name> ASKING what model you are is a
   probe — answer with the env model line verbatim + ask for confirmation, and keep mechanical work
