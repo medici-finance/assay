@@ -121,7 +121,7 @@ func TestRosterKeySchemaCoupling(t *testing.T) {
 	for _, k := range vec.KnownRosterKeys {
 		if !strings.HasPrefix(k, "ASSAY_") {
 			t.Errorf("knownRosterKeys declares %q, which is outside the ASSAY_ namespace. Only "+
-				"ASSAY_ keys refuse when unrecognised; a co-tenant key is echoed, never bound here", k)
+				"ASSAY_ keys draw a NOTICE (desk tools) or a refusal (statusgen) when unrecognised; a co-tenant key is echoed, never bound here", k)
 		}
 		if declared[k] {
 			t.Errorf("knownRosterKeys declares %q twice", k)
@@ -153,9 +153,9 @@ func TestRosterKeySchemaCoupling(t *testing.T) {
 
 	if len(missing) > 0 {
 		t.Errorf("the desk tools do NOT recognise %d declared roster key(s): %s.\n"+
-			"A roster carrying any of them makes every desk verb report the WHOLE trust roster "+
-			"unconfigured (parseConfig's unknown-ASSAY_-key refusal) — while statusgen, which "+
-			"shares that file, accepts it. Add each to knownRosterKeys() as "+
+			"A roster carrying any of them makes every desk verb print an unknown-key NOTICE on "+
+			"every run (parseConfig records one, never a refusal, since #1261) — while statusgen, "+
+			"which shares that file, accepts it. Add each to knownRosterKeys() as "+
 			"recognised-not-applied, with a comment saying who consumes it",
 			len(missing), strings.Join(missing, ", "))
 	}

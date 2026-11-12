@@ -739,7 +739,13 @@ Two consequences worth stating before you debug them:
 - A stray unrecognised `ASSAY_*` key — a one-character typo, or a key a newer release added —
   is NOT applied: the desk tools print an `assay-config: NOTICE —` line naming the key and keep
   the rest of the roster, so whatever the key meant to configure keeps its unset behaviour (a
-  misspelt trust key leaves that trust surface empty, which fails closed). `statusgen` still
+  misspelt trust key leaves that trust surface empty, which fails closed). A misspelt optional
+  HARDENING key is different: its unset default is the weaker setting, so a NOTICE naming one
+  means that control is off — `ASSAY_WITHHELD_IDENTIFIERS` (the withheld-identifier category of
+  the public-body self-containment scan does not run), `ASSAY_RISK_PATH_TRIGGERS_EXTRA` and
+  `ASSAY_RISK_CALLOUT` (risk classification uses the compiled patterns only),
+  `ASSAY_WRITEGUARD_CALLOUT` (compiled indicators only) and `ASSAY_OUTBOUND_CALLOUT` with its
+  `ASSAY_OUTBOUND_CALLOUT_REQUIRED` switch (no house outbound check). Read every such NOTICE. `statusgen` still
   refuses the whole configuration on such a key (see below). Keys outside the `ASSAY_` namespace
   are echoed and ignored, so a co-tenant tool may share the file.
 - `ASSAY_HUMAN_LOGIN_MAP` is load-bearing for the trust-dependent checks in

@@ -279,11 +279,12 @@ const (
 	// and a desk session must never inherit — the WRITEGUARD_SHARED_OK shape.
 	//
 	// It is declared and RECOGNISED here for one reason: it lives in the ASSAY_
-	// namespace, and an unrecognised ASSAY_ key in roster.env refuses the WHOLE
-	// configuration (parseConfig). An operator who records the opt-in in the
+	// namespace, and an unrecognised ASSAY_ key in roster.env draws a NOTICE (the desk
+	// tools stopped refusing the whole configuration on one in #1261; statusgen still
+	// does). An operator who records the opt-in in the
 	// shared roster.env — a natural mistake, since that is where every other
-	// ASSAY_ knob lives — would otherwise take every desk tool's trust roster
-	// down at once. Recognised and ignored is the fail-safe reading. Same
+	// ASSAY_ knob lives — would otherwise get an unknown-key NOTICE on every run.
+	// Recognised and ignored is the fail-safe reading. Same
 	// treatment as EnvSweepWithheldStreams below. (EnvWithheldIdentifiers used to
 	// belong to this list and no longer does: since #490 it is parsed and APPLIED,
 	// which is what recognised-and-ignored keys are one bug report away from being.)
@@ -292,9 +293,10 @@ const (
 	// EnvHomeRepo and EnvScanRepos are STATUSGEN-only roster values (the home repo
 	// and the --scan-issues scope). deskkit does not consume them — but the two
 	// readers share one roster.env, and an unknown key in the ASSAY_ namespace
-	// REFUSES the whole configuration (parseConfig). So deskkit must RECOGNISE them,
-	// or a roster.env that configures statusgen would collapse every desk tool's
-	// configuration. They are recognised here and otherwise ignored. KEEP IN SYNC
+	// is a NOTICE here since #1261 (statusgen still REFUSES the whole configuration).
+	// So deskkit must RECOGNISE them, or a roster.env that configures statusgen would
+	// draw an unknown-key NOTICE from the desk tools on every run. They are recognised
+	// here and otherwise ignored. KEEP IN SYNC
 	// with statusgen/rosterconfig.go's scanEnvHomeRepo / scanEnvScanRepos.
 	EnvHomeRepo  = "ASSAY_HOME_REPO"
 	EnvScanRepos = "ASSAY_SCAN_REPOS"
@@ -302,9 +304,10 @@ const (
 	// EnvAuthorizedAuthors is the STATUSGEN-only rostered authorized-author set
 	// (the scan-transcribe lane's R-7 clause-1 boarding predicate). deskkit does
 	// not consume it — but the two readers share one roster.env, and an unknown
-	// key in the ASSAY_ namespace REFUSES the whole configuration, so deskkit must
-	// RECOGNISE it or a roster.env that arms the scan lane would collapse every
-	// desk tool's configuration fleet-wide. Recognised here and otherwise ignored.
+	// key in the ASSAY_ namespace is a NOTICE here since #1261 (statusgen still REFUSES
+	// the whole configuration), so deskkit must RECOGNISE it or a roster.env that arms
+	// the scan lane would draw an unknown-key NOTICE from the desk tools on every run.
+	// Recognised here and otherwise ignored.
 	// KEEP IN SYNC with statusgen/rosterconfig.go's scanEnvAuthorizedAuthors.
 	EnvAuthorizedAuthors = "ASSAY_AUTHORIZED_AUTHORS"
 
@@ -312,10 +315,11 @@ const (
 	// (name:login for departed humans who were confirmed at some past point), which
 	// statusgen's verifier floor consults as the "confirmed historically" half of its
 	// human-token exemption. deskkit does not consume it — but the two readers share
-	// one roster.env, and an unknown key in the ASSAY_ namespace REFUSES the whole
-	// configuration (parseConfig), so deskkit must RECOGNISE it or a roster.env that
-	// records departed humans for statusgen would collapse every desk tool's
-	// configuration fleet-wide. Recognised here and otherwise ignored. KEEP IN SYNC
+	// one roster.env, and an unknown key in the ASSAY_ namespace is a NOTICE here since
+	// #1261 (statusgen still REFUSES the whole configuration), so deskkit must RECOGNISE
+	// it or a roster.env that records departed humans for statusgen would draw an
+	// unknown-key NOTICE from the desk tools on every run. Recognised here and otherwise
+	// ignored. KEEP IN SYNC
 	// with statusgen/rosterconfig.go's scanEnvFormerHumanLoginMap.
 	EnvFormerHumanLoginMap = "ASSAY_FORMER_HUMAN_LOGIN_MAP"
 
@@ -323,10 +327,10 @@ const (
 	// path to statusgen's --lint accepted-channel-drift register — a de-housed
 	// withheld-stream path the house supplies at runtime). deskkit does not
 	// consume it — but the two readers share one roster.env, and an unknown key
-	// in the ASSAY_ namespace REFUSES the whole configuration, so deskkit must
-	// RECOGNISE it or a roster.env that arms statusgen's in-house channel sweep
-	// would collapse every desk tool's configuration fleet-wide. Recognised here
-	// and otherwise ignored. KEEP IN SYNC with statusgen/rosterconfig.go's
+	// in the ASSAY_ namespace is a NOTICE here since #1261 (statusgen still REFUSES the
+	// whole configuration), so deskkit must RECOGNISE it or a roster.env that arms
+	// statusgen's in-house channel sweep would draw an unknown-key NOTICE from the desk
+	// tools on every run. Recognised here and otherwise ignored. KEEP IN SYNC with statusgen/rosterconfig.go's
 	// scanEnvChannelDriftTarget.
 	EnvChannelDriftTarget = "ASSAY_CHANNEL_DRIFT_TARGET"
 
@@ -336,10 +340,10 @@ const (
 	// EnvDeterministicGatePatterns — a house's own build- or contract-specific
 	// gate name).
 	// deskkit does not consume it — but the two readers share one roster.env, and
-	// an unknown key in the ASSAY_ namespace REFUSES the whole configuration
-	// (parseConfig). So deskkit must RECOGNISE it, or a roster.env that configures
-	// statusgen's gate classification would collapse every desk tool's
-	// configuration. It is recognised here and otherwise ignored. KEEP IN SYNC with
+	// an unknown key in the ASSAY_ namespace is a NOTICE here since #1261 (statusgen still
+	// REFUSES the whole configuration). So deskkit must RECOGNISE it, or a roster.env that
+	// configures statusgen's gate classification would draw an unknown-key NOTICE from
+	// the desk tools on every run. It is recognised here and otherwise ignored. KEEP IN SYNC with
 	// statusgen/rosterconfig.go's scanEnvDeterministicGatePatterns.
 	EnvDeterministicGatePatterns = "ASSAY_DETERMINISTIC_GATE_PATTERNS"
 
@@ -406,8 +410,9 @@ const (
 	// desk side resolves the committing GitLab account to its username ONLINE via the typed
 	// forge (deskevidence's attribution check, GetCommit -> gitlabLoginForEmail), so it never
 	// needs the declared display name. But the two readers share one ~/.config/assay/roster.env
-	// and both REFUSE the whole configuration on an unrecognised ASSAY_ key, so a roster that
-	// arms the statusgen offline fallback would collapse deskkit's whole configuration unless
+	// and statusgen REFUSES the whole configuration on an unrecognised ASSAY_ key (the desk
+	// tools only NOTICE one, since #1261), so a roster that arms the statusgen offline fallback
+	// would draw an unknown-key NOTICE from the desk tools on every run unless
 	// this key is RECOGNISED here. Recognised, not applied. KEEP IN SYNC with statusgen's
 	// scanEnvGitLabDisplayNames.
 	EnvGitLabDisplayNames = "ASSAY_GITLAB_DISPLAY_NAMES"
@@ -416,17 +421,19 @@ const (
 	// number of active streams (attention-budget/04). statusgen consumes it (the
 	// `stream-cap` --lint rule); deskkit does not — but the operator records it in
 	// the SAME shared ~/.config/assay/roster.env, so it must be RECOGNISED here or a
-	// roster carrying it collapses the whole desk-tools configuration on the
-	// unknown-ASSAY_-key refusal (the ASSAY_REPO_FORGES outage class). Recognised,
+	// roster carrying it draws an unknown-key NOTICE from the desk tools on every run
+	// (an unknown ASSAY_ key is a NOTICE here since #1261; statusgen still refuses
+	// one — the ASSAY_REPO_FORGES outage class). Recognised,
 	// not applied. KEEP IN SYNC with statusgen/rosterconfig.go's scanEnvStreamCap.
 	EnvStreamCap = "ASSAY_STREAM_CAP"
 
 	// EnvCriticalStampAuthorities (ASSAY_CRITICAL_STAMP_AUTHORITIES) is the
 	// STATUSGEN-only ratified authority set for the drives critical tier's
 	// stamped-security arm. statusgen consumes it; deskkit does not — but it lives
-	// in the SAME shared roster.env, so it must be RECOGNISED here or a roster that
-	// configures the authority set collapses the whole desk-tools configuration on
-	// the unknown-ASSAY_-key refusal. Recognised, not applied. KEEP IN SYNC with
+	// in the SAME shared roster.env, so it must be RECOGNISED here or the desk tools
+	// print an unknown-key NOTICE on every run for a roster that configures the
+	// authority set (an unknown ASSAY_ key is a NOTICE here since #1261; statusgen
+	// still refuses one). Recognised, not applied. KEEP IN SYNC with
 	// statusgen/rosterconfig.go's scanEnvCriticalStampAuthorities.
 	EnvCriticalStampAuthorities = "ASSAY_CRITICAL_STAMP_AUTHORITIES"
 
@@ -437,8 +444,9 @@ const (
 	// a bot-approved PR measures agreement between two instances of one model, not
 	// against an independent judge. deskcalibrate (cmd/deskcalibrate) CONSUMES it
 	// directly via os.Getenv; parseConfig here only RECOGNISES it so a roster.env
-	// carrying it does not collapse the whole desk-tools configuration on the
-	// unknown-ASSAY_-key refusal (the ASSAY_REPO_FORGES outage class). Documented
+	// carrying it draws no unknown-key NOTICE from the desk tools (an unknown ASSAY_ key
+	// is a NOTICE here since #1261, and still a whole-roster refusal in statusgen, which
+	// must recognise it too — the ASSAY_REPO_FORGES outage class). Documented
 	// in roster.env, never written by the brief. KEEP IN SYNC with
 	// statusgen/rosterconfig.go's scanEnvReviewerVendor and the coupling vector.
 	EnvReviewerVendor = "ASSAY_REVIEWER_VENDOR"
@@ -589,11 +597,13 @@ func autoLaneRawKeys() []string {
 // WHY THE BINDING EXISTS. Both binaries read the SAME ~/.config/assay/roster.env.
 // statusgen REFUSES the whole configuration on an ASSAY_ key it does not recognise;
 // this reader did too until #1261, and now records a NOTICE instead (see the comment
-// in parseConfig). The per-key comments above that say an unknown key "REFUSES the
-// whole configuration" record why each key was registered, and still hold for
-// statusgen. So a key one binary knows and the other does not still makes a roster
-// that is valid and REQUIRED for one tool a total refusal for the other, with no
-// roster edit able to satisfy both. That is not hypothetical:
+// in parseConfig). The per-key comments above record why each key was registered:
+// the desk tools print a NOTICE for a key they do not recognise, and statusgen
+// still refuses the whole configuration on one. So a key deskkit knows and statusgen
+// does not still makes a roster that is valid and REQUIRED for one tool a total
+// refusal for the other, with no roster edit able to satisfy both; the reverse
+// (a statusgen key deskkit does not know) is only a NOTICE on every desk-tool run.
+// That is not hypothetical:
 // ASSAY_REPO_FORGES is the only way the desk verbs resolve a repo to a forge, and
 // while statusgen did not recognise it, a roster carrying it took the whole
 // --scan-issues intake lane down.
