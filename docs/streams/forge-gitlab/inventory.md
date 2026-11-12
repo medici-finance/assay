@@ -463,3 +463,9 @@ The incremental source reads use existing admitted transports and explicit read-
 A ceiling is `Incomplete`, a failed page returns no successful population, and the conditional
 capability is explicitly unsupported in this baseline. They grant no mirror retention,
 scheduling, persistence, review/check completeness or service activation.
+
+| 67 | `ConvertToDraft(nodeID)` | return a just-flipped change to draft; its ONE caller is the post-flip backstop (`deskkit.ReadyBackstop`, used by `deskflip` and `deskpost ready`), which reverts the flip when the forge reports the change `BLOCKED` or `DIRTY`. Never a verb of its own ([ruling](https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155)) | GraphQL `convertPullRequestToDraft` | read the current title, then put the `Draft:` prefix back via `PUT`; an MR already a draft is not written | implemented |
+
+The backstop reads the merge verdict from `PullRequest.MergeStateStatus` (GitHub's REST `mergeable_state`,
+upper-cased). GitLab serves none yet, so on GitLab the backstop reports could-not-check and leaves the change
+ready. The goldens `convert_to_draft*` on both backends pin the wire.

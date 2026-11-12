@@ -277,6 +277,11 @@ func (f *ciRecordingForge) MarkReadyForReview(nodeID string) error {
 	return nil
 }
 
+func (f *ciRecordingForge) ConvertToDraft(nodeID string) error {
+	f.rec("ConvertToDraft")
+	return nil
+}
+
 func (f *ciRecordingForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error) {
 	f.rec("ApplyLabels")
 	return nil, nil

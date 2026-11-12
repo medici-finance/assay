@@ -55,17 +55,27 @@ func TestFlipsWhenEveryConditionHolds(t *testing.T) {
 		t.Errorf("the queue labels were not swapped: %v", s.requests)
 	}
 	// The TOCTOU re-read must happen, and it must happen BEFORE the mutation. On the seam the
-	// re-read is a SECOND change read, so the ordering assertion is "the last change read
-	// precedes the mutation".
-	readIdx := s.lastIndexOf(http.MethodGet, "/pulls/7")
-	flipIdx := s.indexOf(http.MethodPost, "/graphql")
-	if readIdx < 0 || flipIdx < 0 || readIdx > flipIdx {
-		t.Errorf("last head re-read at %d, flip at %d — the re-read is the LAST thing before the mutation",
-			readIdx, flipIdx)
+	// re-read is a SECOND change read, so the assertion is "at least two change reads precede
+	// the mutation". Reads AFTER it are the post-flip backstop's merge-verdict read (#6242).
+	flipIdx := -1
+	for i, r := range s.requests {
+		if r.Method == http.MethodPost && strings.Contains(r.Body, "markPullRequestReadyForReview") {
+			flipIdx = i
+			break
+		}
 	}
-	if s.count(http.MethodGet, "/pulls/7") < 2 {
-		t.Errorf("the change was read %d time(s) — the pre-mutation head re-read is a second read",
-			s.count(http.MethodGet, "/pulls/7"))
+	reads := 0
+	for i := 0; i < flipIdx; i++ {
+		if s.requests[i].Method == http.MethodGet && strings.HasSuffix(s.requests[i].Path, "/pulls/7") {
+			reads++
+		}
+	}
+	if flipIdx < 0 || reads < 2 {
+		t.Errorf("the change was read %d time(s) before the flip at %d — the pre-mutation head re-read is a "+
+			"second read", reads, flipIdx)
+	}
+	if len(s.comments) != 0 {
+		t.Errorf("a CLEAN merge state posted a comment: %q", s.comments)
 	}
 }
 

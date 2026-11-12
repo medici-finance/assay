@@ -144,6 +144,16 @@ type stub struct {
 	headCommittedAt string
 	commitErr       bool
 	commitReads     int
+
+	// mergeStates is the forge's merge verdict (REST mergeable_state) each read of the change
+	// AFTER the ready mutation serves, in order; the last entry repeats. nil serves "clean".
+	// Reads before the mutation serve none. It drives the post-flip backstop (#6242).
+	mergeStates []string
+	mergeReads  int
+	// convertFail makes the convertPullRequestToDraft mutation answer 500.
+	convertFail bool
+	// comments records every comment body the verb posted on the change.
+	comments []string
 }
 
 // defaultHeadCommittedAt predates every SubmittedAt the fixtures carry (they start at
@@ -237,6 +247,24 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 			empty := map[string]any{"pageInfo": map[string]any{"hasNextPage": false}, "nodes": []any{}}
 			enc(map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
 				"lastEditedAt": edited, "comments": empty, "reviews": empty, "reviewThreads": empty}}}})
+
+		case r.Method == http.MethodPost && path == "/graphql" &&
+			strings.Contains(rec.Body, "convertPullRequestToDraft"):
+			if s.convertFail {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			enc(map[string]any{"data": map[string]any{
+				"convertPullRequestToDraft": map[string]any{
+					"pullRequest": map[string]any{"isDraft": true}}}})
+
+		case r.Method == http.MethodPost && strings.HasSuffix(path, "/issues/7/comments"):
+			var c struct {
+				Body string `json:"body"`
+			}
+			_ = json.Unmarshal([]byte(rec.Body), &c)
+			s.comments = append(s.comments, c.Body)
+			enc(map[string]any{"id": len(s.comments), "node_id": "IC_1", "html_url": "https://example.invalid/c"})
 
 		case r.Method == http.MethodPost && path == "/graphql":
 			enc(map[string]any{"data": map[string]any{
@@ -356,6 +384,14 @@ func (s *stub) servedPR() map[string]any {
 		"head":   map[string]any{"sha": head, "ref": "feat/x"},
 		"base":   map[string]any{"ref": "main"},
 		"labels": labels,
+	}
+	if s.flipped() {
+		st := "clean"
+		if len(s.mergeStates) > 0 {
+			st = s.mergeStates[min(s.mergeReads, len(s.mergeStates)-1)]
+		}
+		s.mergeReads++
+		out["mergeable_state"] = st
 	}
 	switch s.pr.Mergeable {
 	case deskkit.Mergeable:

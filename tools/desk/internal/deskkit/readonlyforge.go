@@ -269,6 +269,10 @@ func (r *readOnlyForge) MarkReadyForReview(nodeID string) error {
 	return readOnlyRefusal("MarkReadyForReview")
 }
 
+func (r *readOnlyForge) ConvertToDraft(nodeID string) error {
+	return readOnlyRefusal("ConvertToDraft")
+}
+
 func (r *readOnlyForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error) {
 	return nil, readOnlyRefusal("ApplyLabels")
 }

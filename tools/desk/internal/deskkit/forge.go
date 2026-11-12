@@ -126,6 +126,13 @@ type PullRequest struct {
 	// Consumer: cmd/deskflip's `mergeable` condition (the freeze rule's same-change
 	// requirement — this field lands with the call site that reads it).
 	Mergeable string
+	// MergeStateStatus is the forge's own merge-readiness verdict for the change, upper-cased
+	// (GitHub's mergeStateStatus enum: CLEAN, BLOCKED, DIRTY, BEHIND, UNSTABLE, HAS_HOOKS,
+	// DRAFT, UNKNOWN; read from the REST `mergeable_state`). EMPTY where the backend serves
+	// none (GitLab: no 1:1 mapping, as on ListOpenChanges). Consumer: ReadyBackstop, the
+	// post-flip check in cmd/deskflip and cmd/deskpost ready. omitempty keeps a change read
+	// that carried no state byte-identical in the forge golden corpus.
+	MergeStateStatus string `json:",omitempty"`
 	// Labels are the label NAMES currently on the change. Consumer: cmd/deskflip's
 	// already-flipped no-op path, which must be able to tell "the queue label is already
 	// correct" (write nothing) from "the queue label is stale" (re-gate, then write)
@@ -2106,9 +2113,16 @@ type Forge interface {
 	PostCommentTyped(repo ForgeRepo, number int, kind TargetKind, body string) (*CommentRef, error)
 	// PostReview submits a head-pinned review/approval on a change.
 	PostReview(repo ForgeRepo, number int, in ReviewInput) error
-	// MarkReadyForReview flips a draft change to ready (the only transition this seam
-	// exposes — there is no un-ready, merge, or edit).
+	// MarkReadyForReview flips a draft change to ready. With ConvertToDraft below it is one
+	// of the two state transitions this seam exposes — there is no merge or edit.
 	MarkReadyForReview(nodeID string) error
+	// ConvertToDraft returns a ready change to draft. It exists for ONE caller: the post-flip
+	// backstop (ReadyBackstop), which un-readies a change the forge reports as BLOCKED or
+	// DIRTY right after a ready flip, so that ready keeps meaning mergeable per the forge. It
+	// is never exposed as a verb of its own. Ruling:
+	// https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
+	// The nodeID is the same backend-minted opaque id MarkReadyForReview takes.
+	ConvertToDraft(nodeID string) error
 	// ApplyLabels reconciles the labels of ONE issue or change in one operation (see
 	// LabelChange; change.Target says which kind number names, and an unset target is
 	// refused before any request). It is idempotent: applying an already-present label and

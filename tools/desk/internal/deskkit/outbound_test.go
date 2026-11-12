@@ -577,7 +577,7 @@ var obClass = map[string]string{
 	"WriteFile": "text",
 
 	"CloseIssue": "notext", "CloseIssueTyped": "notext", "ReopenIssue": "notext",
-	"MarkReadyForReview": "notext", "SetMergeHold": "notext", "DeleteRef": "notext",
+	"MarkReadyForReview": "notext", "ConvertToDraft": "notext", "SetMergeHold": "notext", "DeleteRef": "notext",
 	"OpenMergeHold": "notext", "RunWorkflow": "notext", "ApproveGate": "notext",
 	"RetryRun": "notext",
 

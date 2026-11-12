@@ -570,6 +570,11 @@ func flip(o flipOpts) error {
 		}
 		return deskkit.Unverifiable(msg, err)
 	}
+	// The post-flip backstop (#6242): ready means mergeable per the forge. A revert returns
+	// here, before the queue label moves to the merge queue.
+	if err := readyBackstop(fg, fr, o.pr, pr.change, head); err != nil {
+		return err
+	}
 	if err := ensureLabelSwap(o, fg, fr, pr); err != nil {
 		return err
 	}
