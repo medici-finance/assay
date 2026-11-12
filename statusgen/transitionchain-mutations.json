@@ -11,7 +11,7 @@
       "name": "skip unapproved-edit enumeration",
       "file": "acceptancetransition.go",
       "old": "\tprevious, previousTable := delivery, delivered\n\tpreviousVersion, e := version(delivery)\n\tif e != nil {\n\t\treturn fail(1, e.Error())\n\t}\n\tposition := 0\n\tfor _, rev := range strings.Fields(string(history)) {\n\t\ttable, e := read(rev)\n\t\tif e != nil {\n\t\t\treturn fail(position+1, \"cannot read acceptance history\")\n\t\t}\n\t\tv, e := version(rev)\n\t\tif e != nil {\n\t\t\treturn fail(position+1, e.Error())\n\t\t}\n\t\tif strings.TrimSpace(table) != strings.TrimSpace(previousTable) || v != previousVersion {\n\t\t\tif position >= len(links) || links[position].amendment != rev {\n\t\t\t\treturn fail(position+1, fmt.Sprintf(\"link %d missing at %.12s\", position+1, rev))\n\t\t\t}\n\t\t\tlinks[position].predecessor = previous\n\t\t\tprevious = rev\n\t\t\tposition++\n\t\t}\n\t\tpreviousTable, previousVersion = table, v\n\t}\n\tif position != len(links) {\n\t\treturn fail(position+1, \"amendment is not an ordered first-parent acceptance change\")\n\t}\n",
-      "new": "\tprevious := delivery\n\tfor i := range links {links[i].predecessor=previous;previous=links[i].amendment}\n\tpreviousVersion, e := version(previous)\n\tif e != nil {return fail(1,e.Error())}\n"
+      "new": "\t_ = history\n\tprevious := delivery\n\tfor i := range links {links[i].predecessor=previous;previous=links[i].amendment}\n\tpreviousVersion, e := version(previous)\n\tif e != nil {return fail(1,e.Error())}\n"
     },
     {
       "name": "drop predecessor from payload check",

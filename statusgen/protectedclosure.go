@@ -269,8 +269,8 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 // One Verification-Table line is a protected record (#4499): it names the
 // immutable delivery coordinates and nothing else, so which rows are original
 // and which are supplemental is derived from git at those coordinates, never
-// read from the record. That line plus one Acceptance-Transition line is an
-// acceptance transition. Any other shape, including an extra line that would
+// read from the record. That line plus one legacy Acceptance-Transition line
+// or ordered chain lines is a transition. Any other shape, including a line that would
 // carry a verifier-supplied row list, is refused.
 func acceptanceRecordKind(descriptor string) (transition bool, why string) {
 	lines := strings.Split(descriptor, "\n")

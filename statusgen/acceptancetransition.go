@@ -462,7 +462,6 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 		}
 		approvalBody := strings.TrimSpace(strings.ReplaceAll(out.Body, "\r\n", "\n"))
 		if chain != nil {
-			approvalBody = strings.ReplaceAll(out.Body, "\r\n", "\n")
 			v1 := strings.HasPrefix(approvalBody, "Approve acceptance-transition v1\n")
 			if v1 {
 				if chain.number != 1 {
@@ -474,6 +473,7 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 					}
 				}
 			} else {
+				approvalBody = strings.ReplaceAll(out.Body, "\r\n", "\n")
 				payloadPrefix = fmt.Sprintf("Approve acceptance-transition v2\nrepo=%s\nbrief=%s\ndelivery=%s\nbase=%s\noriginal=%s\nlink=%d\npredecessor=%s\namendment=%s\nrows=", repo, rel, delivery, base, original, chain.number, chain.predecessor, amendment)
 				typed = true
 			}

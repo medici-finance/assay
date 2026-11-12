@@ -214,6 +214,12 @@ func TestTransitionChain(t *testing.T) {
 			if f.reads != 4 {
 				t.Fatalf("each link must read its own comment and issue: %d", f.reads)
 			}
+			if shape == "repeat" {
+				f.payloads[0] = "\n" + strings.ReplaceAll(f.payloads[0], "\n", "\r\n") + "\n"
+				if _, why := f.plan(t); why != "" {
+					t.Fatalf("v1 normalization changed: %s", why)
+				}
+			}
 		})
 	}
 }

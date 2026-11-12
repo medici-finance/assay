@@ -2064,7 +2064,8 @@ Flags:
                     delivered; every delivered row the original table lacks
                     (derived from git at the coordinates, never from the file)
                     is witnessed author-added with no acceptance credit. That
-                    line plus an Acceptance-Transition line is a transition,
+                    line plus one legacy or ordered chain of Acceptance-Transition
+                    lines is a transition,
                     which also needs --acceptance-forge and executes the
                     canonical original-plus-approved obligation plan.
   --sandbox <mode>  the network-off sandbox (default unshare). unshare wraps each
