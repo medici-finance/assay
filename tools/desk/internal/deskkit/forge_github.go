@@ -519,8 +519,27 @@ type ghRequiredStatusChecksWire struct {
 // `GET /repos/{o}/{r}/branches/{b}`: whether ANYTHING protects the branch. This endpoint is
 // readable by a plain repo token (no `administration` scope), unlike the legacy protection
 // endpoint, so it answers "is the required set necessarily empty" without admin rights.
+//
+// It also carries the branch's CLASSIC-protection summary (`protection`), which the same plain
+// read can see: `enabled` says whether classic branch protection applies at all, and its
+// `required_status_checks` names the contexts that protection requires. All three are pointers
+// so an ABSENT field is told apart from an explicit one: an absent summary, or an absent
+// `enabled` with no required-checks summary, means classic protection cannot be ruled out. No
+// premise is taken about how a ruleset-governed branch fills this in (one observed
+// ruleset-governed branch reads `enabled: true` with an empty, `enforcement_level: "off"`
+// required-checks summary), so a summary that is present is read for its contexts whatever
+// `enabled` says.
 type ghBranchProtectedWire struct {
-	Protected bool `json:"protected"`
+	Protected  bool `json:"protected"`
+	Protection *struct {
+		Enabled              *bool `json:"enabled"`
+		RequiredStatusChecks *struct {
+			Contexts []string `json:"contexts"`
+			Checks   []struct {
+				Context string `json:"context"`
+			} `json:"checks"`
+		} `json:"required_status_checks"`
+	} `json:"protection"`
 }
 
 // ghBranchRuleWire is one entry of `GET /repos/{o}/{r}/rules/branches/{b}` — the EFFECTIVE
@@ -1549,12 +1568,25 @@ func (g *GitHubForge) CheckSuitesAtHead(repo ForgeRepo, sha string) (*CheckSuite
 	return out, nil
 }
 
-// RequiredStatusChecks reads the branch's required status-check contexts from GitHub branch
-// protection (`GET /repos/{o}/{r}/branches/{branch}/protection/required_status_checks`).
+// RequiredStatusChecks reads the branch's required status-check contexts. GitHub can require a
+// check from TWO places, and no single endpoint shows both:
 //
-// The 404 IS the answer, not an error. GitHub returns 404 both for a branch with no
-// protection AND for a protected branch that requires no status checks; in either case
-// nothing gates the merge on a check, so the required set is EMPTY and no error is returned.
+//   - CLASSIC branch protection, read here from the legacy
+//     `GET /repos/{o}/{r}/branches/{branch}/protection/required_status_checks` endpoint, which
+//     does not show rulesets; and
+//   - RULESETS, read from `GET /repos/{o}/{r}/rules/branches/{branch}` (rulesetRequiredContexts),
+//     which does not show classic protection.
+//
+// The required set is therefore always the UNION of the two halves, and a half that could not be
+// read makes the whole set could-not-check, never a partial set that looks complete (#6198: the
+// legacy endpoint answered 404 on a branch whose rulesets required `leak-sweep`, `build-test` and
+// `changelog`, the 404 was read as "nothing required", and checks-green passed a head carrying
+// only the leak-sweep status).
+//
+// A legacy 404 is the CLASSIC half's answer, not an error. GitHub returns 404 both for a branch
+// with no classic protection AND for a classically protected branch that requires no status
+// checks; either way classic protection adds nothing. It is not the whole answer: the rulesets
+// are still read, and they are the required set.
 //
 // A 403 is NOT the answer, but it is not a dead end either. The legacy protection endpoint
 // needs the `administration` scope, which the reviewer/worker App tokens do not carry, so it
@@ -1579,10 +1611,10 @@ func (g *GitHubForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]str
 		repo.Owner, repo.Name, url.PathEscape(branch))
 	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
 		if IsForgeNotFound(err) {
-			// No branch protection, or protection with no required checks: nothing is
-			// required to merge, so the required set is empty. This is the honest "green" for
-			// an absent rollup, and it is distinct from the error return below.
-			return nil, nil
+			// Classic protection requires no status checks (or there is none). That settles
+			// the classic half only; the rulesets are the required set.
+			return g.withRulesetContexts(repo, branch, nil,
+				"classic branch protection requires no status checks (the legacy endpoint answered 404)")
 		}
 		if IsForgeForbidden(err) {
 			// The token lacks `administration` for the legacy endpoint. Re-resolve the same
@@ -1591,22 +1623,85 @@ func (g *GitHubForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]str
 		}
 		return nil, err
 	}
-	return dedupContexts(w.Contexts, contextsOf(w.Checks)), nil
+	classic := dedupContexts(w.Contexts, contextsOf(w.Checks))
+	return g.withRulesetContexts(repo, branch, classic,
+		fmt.Sprintf("classic branch protection requires %d context(s)", len(classic)))
 }
+
+// withRulesetContexts completes a required set whose CLASSIC half is already known (classic,
+// described by classicDesc for the refusal) with the RULESET half. A failed rules read is
+// could-not-check: the classic half alone is a lower bound, and a check a ruleset requires
+// would pass unseen.
+func (g *GitHubForge) withRulesetContexts(repo ForgeRepo, branch string, classic []string, classicDesc string) ([]string, error) {
+	rulesets, err := g.rulesetRequiredContexts(repo, branch)
+	if err != nil {
+		return nil, Unverifiable(fmt.Sprintf(
+			"cannot establish the complete required status-check set for %s@%s: %s, but the rulesets "+
+				"that may require more could not be read (%v). The classic half alone is could-not-check, "+
+				"never complete: a check a ruleset requires that never reported would pass unseen.",
+			repo.Slug(), branch, classicDesc, err), nil)
+	}
+	return dedupContexts(classic, rulesets), nil
+}
+
+// rulesetRequiredContexts reads `GET /repos/{o}/{r}/rules/branches/{b}`, the rules every active
+// ruleset applies to the branch (readable without `administration`), and returns the union of
+// every `required_status_checks` rule's contexts. It cannot see classic branch protection. An
+// error is returned as-is for the caller to fail closed on.
+//
+// The listing is paginated (30 rules per page by default), so the read walks it to exhaustion
+// at per_page=100. The walk goes on while EITHER the page came back full OR the forge's
+// `Link: rel="next"` advertises more, as ListOpenIssues does (#1032). A required_status_checks
+// rule can sit on any page, and a first page alone is a partial set that looks complete, so a
+// failed page read, or a listing that outruns forgeMaxRulePages, is an error, never the
+// contexts gathered so far.
+func (g *GitHubForge) rulesetRequiredContexts(repo ForgeRepo, branch string) ([]string, error) {
+	var ctxs []string
+	for page := 1; ; page++ {
+		if page > forgeMaxRulePages {
+			return nil, Unverifiable(fmt.Sprintf(
+				"the branch rules for %s@%s still advertise a next page after %d pages of %d; the rules "+
+					"read so far are a partial list, not the whole one", repo.Slug(), branch,
+				forgeMaxRulePages, forgeCIPerPage), nil)
+		}
+		var rules []ghBranchRuleWire
+		rpath := fmt.Sprintf("/repos/%s/%s/rules/branches/%s?per_page=%d&page=%d",
+			repo.Owner, repo.Name, url.PathEscape(branch), forgeCIPerPage, page)
+		hdr, err := g.doJSONHeader(http.MethodGet, rpath, nil, &rules)
+		if err != nil {
+			return nil, err
+		}
+		for _, rule := range rules {
+			for _, c := range rule.Parameters.RequiredStatusChecks {
+				ctxs = append(ctxs, c.Context)
+			}
+		}
+		if len(rules) < forgeCIPerPage && !hasNextLink(hdr) {
+			break
+		}
+	}
+	return dedupContexts(ctxs), nil
+}
+
+// forgeMaxRulePages bounds the branch-rules walk: 25 pages of 100 rules. A listing still
+// advertising a next page past it is could-not-check, never the rules read so far.
+const forgeMaxRulePages = 25
 
 // requiredChecksAdminFree re-resolves the branch's required status-check contexts WITHOUT the
 // `administration` scope the legacy protection endpoint demands, for tokens that get a 403
 // there (every reviewer/worker App). It uses two endpoints a plain repo token can read:
 //
-//  1. GET /repos/{o}/{r}/branches/{b} → `.protected`. If the branch is NOT protected at all,
-//     nothing gates the merge on a check, so the required set is empty (⇒ green). This is the
+//  1. GET /repos/{o}/{r}/branches/{b} → `.protected`. If the branch is NOT protected,
+//     classic protection requires nothing, and the required set is the rulesets' alone (step 2
+//     still runs): empty (⇒ green) only when no ruleset requires a check either. This is the
 //     ONLY admin-free path to an empty/green answer.
 //  2. GET /repos/{o}/{r}/rules/branches/{b} → the branch's RULESET rules (NOT classic branch
 //     protection — the rules API surfaces rulesets only). The union of every
 //     `required_status_checks` rule's contexts is the required set from rulesets.
 //
 // This is a flip GATE, so it fails CLOSED: the only outputs are an empty set (positively
-// unprotected), a NON-empty set (rulesets name required contexts), or could-not-check. In
+// unprotected, and no ruleset requires a check), a NON-empty set (the union of the halves the
+// reads could see), or could-not-check. In
 // particular a branch that is `protected: true` but whose rules endpoint returns NO
 // required_status_checks contexts is could-not-check, NOT empty: the tell of CLASSIC branch
 // protection, which protects the branch (and may require checks) but is invisible to the
@@ -1618,15 +1713,16 @@ func (g *GitHubForge) requiredChecksAdminFree(repo ForgeRepo, branch string, leg
 	bpath := fmt.Sprintf("/repos/%s/%s/branches/%s", repo.Owner, repo.Name, url.PathEscape(branch))
 	brErr := g.doJSON(http.MethodGet, bpath, nil, &bp)
 	if brErr == nil && !bp.Protected {
-		// The branch is not protected: nothing GitHub enforces gates the merge on a check, so
-		// the required set is empty. This is the only admin-free empty/green answer.
-		return nil, nil
+		// The branch is not protected: classic protection requires nothing. That settles the
+		// classic half only, as a legacy 404 does; the rulesets are still read and are the
+		// required set (empty when none applies). A failed rules read is could-not-check.
+		return g.withRulesetContexts(repo, branch, nil,
+			"the branch read says the branch is not protected (classic protection requires nothing)")
 	}
 	// The branch is protected, or its protection flag could not be read. Read the ruleset rules
 	// for any required contexts they name.
-	var rules []ghBranchRuleWire
-	rpath := fmt.Sprintf("/repos/%s/%s/rules/branches/%s", repo.Owner, repo.Name, url.PathEscape(branch))
-	if rErr := g.doJSON(http.MethodGet, rpath, nil, &rules); rErr != nil {
+	ctxs, rErr := g.rulesetRequiredContexts(repo, branch)
+	if rErr != nil {
 		if brErr != nil {
 			// BOTH admin-free fallbacks failed: the required set could not be read at all.
 			// Fail closed — an absent rollup must never be read as green off a set this tool
@@ -1642,13 +1738,23 @@ func (g *GitHubForge) requiredChecksAdminFree(repo ForgeRepo, branch string, leg
 			"cannot read the required status checks for %s@%s: %s is protected but its effective rules "+
 				"could not be read (%v)", repo.Slug(), branch, branch, rErr), nil)
 	}
-	var ctxs []string
-	for _, rule := range rules {
-		for _, c := range rule.Parameters.RequiredStatusChecks {
-			ctxs = append(ctxs, c.Context)
+	// The rules API shows RULESETS only. Classic branch protection can require further
+	// contexts that no ruleset names, so a ruleset-derived set is only a LOWER bound unless the
+	// branch read positively shows the classic half: its required-checks summary, or protection
+	// explicitly off. This is the same union RequiredStatusChecks takes on the legacy 404 and
+	// 200 paths, with the classic half taken from the branch read instead.
+	classic, classicSeen := classicRequiredContexts(bp, brErr)
+	if set := dedupContexts(ctxs, classic); len(set) > 0 {
+		if !classicSeen {
+			return nil, Unverifiable(fmt.Sprintf(
+				"cannot establish the complete required status-check set for %s@%s: the rulesets name %d "+
+					"required context(s) (%s), but whether classic branch protection requires more could not "+
+					"be read — the branch read carried no classic-protection summary, and the legacy "+
+					"endpoint that would show it is forbidden to this identity (needs the `administration: "+
+					"read` repository permission). A partial set is could-not-check, never complete: a required "+
+					"check that never reported would pass unseen.",
+				repo.Slug(), branch, len(ctxs), strings.Join(ctxs, ", ")), nil)
 		}
-	}
-	if set := dedupContexts(ctxs); len(set) > 0 {
 		return set, nil
 	}
 	// Protected (or protection-flag unreadable) AND the rules API named no required contexts.
@@ -1665,6 +1771,23 @@ func (g *GitHubForge) requiredChecksAdminFree(repo ForgeRepo, branch string, leg
 	// this as an ordinary could-not-check and re-asks a human on every flip attempt is treating
 	// a fixed fact as if it might resolve itself. Naming the permission here is what lets an
 	// operator or desk recognise "grant this once" instead of "decide this again."
+	//
+	// When the branch read DID show the classic half (a present, empty required-checks summary,
+	// or protection explicitly off), invisible classic protection is not the cause, and the
+	// refusal says what was seen instead. It still fails closed: a protected branch with no
+	// requirement this identity can see is not proven to require nothing, and the legacy
+	// endpoint (the same permission) is what would answer for classic protection directly.
+	if _, seen := classicRequiredContexts(bp, brErr); seen {
+		return nil, Unverifiable(fmt.Sprintf(
+			"cannot read the required status checks for %s@%s: %s is protected, its classic-protection "+
+				"summary names no required status checks, and the rulesets name none, so nothing this "+
+				"identity can read names a requirement. A protected branch with no visible requirement is "+
+				"not proven to require nothing (could-not-check, never read as green). The legacy "+
+				"branch-protection endpoint (GET /repos/{owner}/{repo}/branches/{branch}/protection/"+
+				"required_status_checks) answers for classic protection directly; it needs the "+
+				"`administration: read` repository permission, which the calling App lacks.",
+			repo.Slug(), branch, branch), nil)
+	}
 	return nil, Unverifiable(fmt.Sprintf(
 		"cannot read the required status checks for %s@%s: %s is protected but the rules API named no "+
 			"required status checks — the tell of CLASSIC branch protection, which the rules API cannot "+
@@ -1676,6 +1799,26 @@ func (g *GitHubForge) requiredChecksAdminFree(repo ForgeRepo, branch string, leg
 			"until that permission is granted ONCE — escalate it as a permission grant, not as a recurring "+
 			"human decision.",
 		repo.Slug(), branch, branch), nil)
+}
+
+// classicRequiredContexts reads the classic-branch-protection required contexts off the
+// admin-free branch read. seen is true only when that read POSITIVELY showed the classic
+// answer: a required-checks summary (its contexts are taken whatever `enabled` says, so a
+// summary is never discarded on the strength of one flag), or no summary with protection
+// EXPLICITLY off. An unreadable branch, an absent protection summary, or no required-checks
+// summary with `enabled` true or absent is NOT seen: classic protection may require contexts
+// this read cannot show, and the caller must treat the rules-derived set as incomplete.
+func classicRequiredContexts(bp ghBranchProtectedWire, brErr error) (contexts []string, seen bool) {
+	if brErr != nil || bp.Protection == nil {
+		return nil, false
+	}
+	if rsc := bp.Protection.RequiredStatusChecks; rsc != nil {
+		return dedupContexts(rsc.Contexts, contextsOf(rsc.Checks)), true
+	}
+	if en := bp.Protection.Enabled; en != nil && !*en {
+		return nil, true
+	}
+	return nil, false
 }
 
 // contextsOf flattens the `checks` shape (context + optional app id) to its context names.

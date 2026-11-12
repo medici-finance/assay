@@ -130,8 +130,9 @@ type stub struct {
 
 	// requiredChecks is the branch-protection required-status-check set the fake forge serves
 	// at the required_status_checks endpoint. nil serves a 404 — GitHub's answer for a branch
-	// with no protection / no required checks, which the backend reads as the EMPTY set
-	// (nothing required). A non-empty slice serves those contexts as required. It is only ever
+	// whose classic protection requires no checks, which the backend reads as an empty CLASSIC
+	// half (the ruleset half, rulesBody, is still unioned in). A non-empty slice serves those
+	// contexts as required. It is only ever
 	// consulted on the empty-rollup path, where deskflip has to tell "nothing is required"
 	// from "the required checks have not reported".
 	requiredChecks []string
@@ -140,6 +141,19 @@ type stub struct {
 	// rather than assume nothing is required.
 	requiredChecksErr bool
 	reqCheckReads     int
+	// adminFreeBranch, when non-empty, makes the legacy required_status_checks endpoint answer
+	// 403 (an identity without `administration`) and serves this JSON body from the admin-free
+	// branch read.
+	adminFreeBranch string
+	// rulesBody is the JSON the branch-rules read (`/rules/branches/{b}`, the RULESET half of
+	// the required set) serves; empty serves `[]`, no rulesets. The rules read is made on every
+	// required-set path, not only the 403 one. rulesErr makes it answer 500.
+	rulesBody string
+	rulesErr  bool
+	// rulesPages, when set, serves the rules read as a paginated listing instead of rulesBody:
+	// page N (the `page` query parameter; absent reads as 1) is rulesPages[N-1], and every page
+	// but the last carries `Link: rel="next"`, as the forge paginates `/rules/branches/{b}`.
+	rulesPages []string
 
 	// headCommittedAt is the committer date GET /commits/{sha} serves for the head — the
 	// date an APPROVED's submitted_at must not predate (#3093: GitHub re-anchors an old
@@ -278,11 +292,42 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+			if s.adminFreeBranch != "" {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
 			if s.requiredChecks == nil {
 				w.WriteHeader(http.StatusNotFound) // no protection / none required
 				return
 			}
 			enc(map[string]any{"contexts": s.requiredChecks})
+
+		case strings.Contains(path, "/rules/branches/"):
+			if s.rulesErr {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			body := s.rulesBody
+			if s.rulesPages != nil {
+				n := 1
+				if p := r.URL.Query().Get("page"); p != "" {
+					n, _ = strconv.Atoi(p)
+				}
+				body = ""
+				if n >= 1 && n <= len(s.rulesPages) {
+					body = s.rulesPages[n-1]
+				}
+				if n < len(s.rulesPages) {
+					w.Header().Set("Link", `<http://`+r.Host+path+`?per_page=100&page=`+strconv.Itoa(n+1)+`>; rel="next"`)
+				}
+			}
+			if body == "" {
+				body = `[]`
+			}
+			_, _ = w.Write([]byte(body))
+
+		case s.adminFreeBranch != "" && strings.Contains(path, "/branches/"):
+			_, _ = w.Write([]byte(s.adminFreeBranch))
 
 		case strings.HasSuffix(path, "/status"):
 			enc(s.servedStatuses())
