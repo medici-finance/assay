@@ -9,7 +9,7 @@ alternatives:
   - "Option 3: reshape each affected brief's rows so they need no tracking checkout, or split the brief so tracking-repository rows move to a brief homed there. Not chosen as the default. It is per-brief, every row change is a reviewed Verify-table change (a driver act, and a protected table also needs the acceptance-transition route), and it does not generalise: the next cross-repository brief with a tracking-repository row reopens the same gap. It stays available case by case."
 accepted:
   - "Proposed, not ruled. The open step digests the isolated tracking checkout the host admission check has already verified, records it in the bracket receipt as `tracking_tree`, and marks the receipt with an explicit bracket version. The container and the close step each recompute that digest and refuse on any mismatch. The tracking checkout is mounted read-only beside the home and never inside it."
-  - "Proposed, not ruled. A row runs in the tracking tree only when its Verify table says so in a per-row `Root` cell (`home` by default, or `tracking`), on the precedent of the `Shell` column. The root is never guessed from the command text. A `tracking` row with no bound tracking tree is could-not-run, never a fail and never run in the home."
+  - "Proposed, not ruled. A row runs in the tracking tree only when its Verify table says so in a per-row `Root` cell (`home` by default, or `tracking`), on the precedent of the `Shell` column. The root is never guessed from the command text. A `tracking` row that a binary reading the `Root` column finds no bound tracking tree for is could-not-run, never a fail and never run in the home. A binary that predates the column ignores it and runs every row in the home, so no `Root: tracking` cell may land in a brief before the pinned chain reads it, and a reader that credits must refuse such a row from a span without the new digest line (see Migration and version negotiation)."
   - "Unchanged: `--network none`, the read-only home and receipt mounts, the host UID/GID as the container user, no credential passed into the bracket, the image digest on every credited row, the home tree digest, the attestation line naming both repositories and both commits, and the credit rule (the tracking repository is the brief's own; the source repository is in the configured repository set)."
   - "Threat-model delta: rows may now read and execute any file of the tracking tree, not just the brief. Those bytes come from the same repository and the same attested commit as the brief whose Verify commands already run in the bracket, and they are digest-bound and read-only."
   - "Implementation is a separate brief. This record changes no code, no skill text and no rule text."
@@ -19,12 +19,15 @@ accepted:
 
 **Approval state: placeholder-unratified. This is not an approved design
 record.** It is a desk-decided default: the pull request that adds it declares the choice in
-its `## Desk-decided` section, and the driver ratifies it, or chooses another option, at merge.
-No ruling comment exists yet, so `decided-by` keeps the public placeholder and the record
-carries no `ruling:` link. `statusgen --corroborate` is expected to report it
-`placeholder-unratified` until the driver rules (see the [register README](README.md)). No
-brief cites this record in `design:` yet. The implementation brief that does must wait for
-the ratification.
+its `## Desk-decided` section, and the driver ratifies it, or chooses another option, by ruling
+on the decision. No ruling comment exists yet, so `decided-by` keeps the public placeholder and
+the record carries no `ruling:` link. The [register README](README.md) puts the ruling before
+the record lands with its `ruling:` link, and says `statusgen --corroborate` fails a record
+still awaiting its ruling on the pull request that adds it with `placeholder-unratified`. The
+`corroborate` check on this pull request did not evaluate the record (the step returns early
+for a pull request that touches no findings entry), so a green result there says nothing
+about the ruling state. Until the driver rules, read the record as a proposal. No brief cites
+it in `design:` yet. The implementation brief that does must wait for the ratification.
 
 ## Context
 
@@ -129,7 +132,7 @@ rows on the host lane.
   row. Nothing mounts them read-only. A change is caught later, by admission at landing,
   not prevented.
 - **Identity.** The row runs as the host user, with that user's stored logins and
-  configuration in reach. `admittedRowEnv` (`statusgen/verifieradmission.go:130-170`) strips
+  configuration in reach. `admittedRowEnv` (`statusgen/verifieradmission.go:144-170`) strips
   forge-token variables and pins git config, but its own comment says it cannot remove a
   stored login: "Containment is a runner that holds no credential but the verifier's own."
 - **No read-only mounts and no image.** No digest-pinned image is recorded, and no tree
@@ -210,8 +213,19 @@ the relations between them are binding.
 
 **Row roots:** a `home` row (the default) runs with the home as its working directory,
 exactly as today. A `tracking` row runs with the tracking root as its working directory.
-The row environment carries no extra variable that names the other tree. A row that needs
-both trees reaches the other one by a relative path the Verify table states.
+The row environment carries no extra variable that names the other tree. The concrete mount
+points are not part of the contract (see open question 5), so in the first implementation a
+row reads and executes only files under its own root. A row that needs files from both trees
+is not supported.
+
+**No git directory in either mount.** The tracking checkout's `.git` is not covered by the
+tree digest (`homeTreeDigest` skips a top-level `.git`, whether it is a gitfile or a
+directory), and a full clone keeps a remote URL or an extra HTTP header, and so possibly a
+credential, in `.git/config`. A row could read that file and print it into a witness that
+lands as Evidence. The open step therefore refuses when the tracking root's top-level `.git`
+is a directory and accepts only a gitfile (a linked worktree), or the mount masks the
+entry. Which of the two is for the implementation brief to state and test. The home has the
+same exposure today, so a linked follow-up may apply the same rule to it.
 
 ### What stays unchanged
 
@@ -230,21 +244,33 @@ neither adds nor assumes it.
   does not resolve under it. Container admission is refused before any row, and the run is
   could-not-run.
 - **Commit mismatch.** The tracking checkout's HEAD is not `tracking-source`. The host check
-  refuses at open and at close (`verifiercrossrepo.go:379-384`, which reruns the version-1 local checks against the tracking tree at `tracking-source`). The container has no
-  git directory, so inside it the digest is the binding.
+  refuses at open and at close (`verifiercrossrepo.go:379-384`, which reruns the version-1 local checks against the tracking tree at `tracking-source`). Inside the container there is
+  no git history to compare (the mount carries no `.git` directory, see Mount model), so
+  inside it the digest is the binding.
 - **Tracking tree dirty.** A modified, untracked or ignored file in the tracking checkout
   fails the host check's version-1 local checks at open. Inside the container, any change
   after open fails the start digest. A change made by a row fails the end digest. *The
   untracked/ignored case comes from reading the reused checks, not from running them*
   (**unverified**).
 - **Trees overlap**, or the tracking root equals the home: refused.
-- **`tracking` row without a bound tracking tree** (a version-1 brief, a `bracket`-absent
-  receipt, or the host lane before it adopts the same rule): could-not-run, with the reason.
-  Never a fail, and never run in the home.
+- **`tracking` row without a bound tracking tree, read by a `Root`-aware binary** (a
+  version-1 brief, a `bracket`-absent receipt, or the host lane before it adopts the same
+  rule): could-not-run, with the reason. Never a fail, and never run in the home. This bullet
+  covers only binaries that read the `Root` column. The next bullets cover the ones that do not.
 - **Old container binary, new receipt.** Go's JSON decoding ignores unknown fields, so an
   old runner would run without writing `Tracking-Tree-Digest`. The new close step refuses
-  that span, because the receipt says `bracket: 2`. The failure is closed, at close. How an
-  old runner treats an unknown `Root` column is **unverified**.
+  that span, because the receipt says `bracket: 2`. The failure is closed, at close.
+- **All-old chain, brief already carrying `Root` cells.** This case is verified, and it is
+  open unless the migration rules below hold. At `d497f2a73`, `verifyRowTable`
+  (`statusgen/verifyrows.go:1747-1772`) finds columns by header name and knows only
+  `command`, `expect`, `#`, `class` and `shell`, so a `Root` header is silently ignored.
+  `rowRoot` (`statusgen/verifyrun.go:2439-2449`) then runs every row in the home. An old open
+  writes no `bracket` field, and an old close requires no `Tracking-Tree-Digest` line
+  (the span-line counts are `tree-digest`, `container-image` and `attestation`,
+  `statusgen/verifyrun.go:2035`). So an all-old chain runs a `Root: tracking` row in the
+  home, binds nothing for the tracking tree, and can credit the row when its command happens
+  to pass in the home (an absence check, or a grep that expects no match). Nothing the old
+  binaries do refuses it. Only the rules in Migration and version negotiation close it.
 
 ### Threat-model delta
 
@@ -269,14 +295,17 @@ is limited as follows:
 
 What a malicious tracking tree still cannot do: change which commits the attestation names,
 alter the witness after the rows end (the witness file is new and is written by statusgen
-after the rows), or have a `tracking` row credited in a bracket that did not bind the
-tracking tree.
+after the rows), or have a `tracking` row credited, by a chain that reads the `Root` column and the new
+credit rule, from a bracket that did not bind the tracking tree. A chain that predates the
+column is outside that sentence. The landing-order rule in Migration and version negotiation
+is what keeps such a chain from meeting a `Root: tracking` cell.
 
 ### Migration and version negotiation
 
 - **Attestation binding versions 1 and 2 keep their meaning**, field for field.
 - **A receipt without `bracket` keeps exactly today's meaning:** home-bound only. Its
-  version-2 runs keep running home rows, and its `tracking` rows are could-not-run.
+  version-2 runs keep running home rows. Read by a binary that knows the `Root` column, its
+  `tracking` rows are could-not-run.
 - **A `bracket` value the reader does not know is refused**, never read as the nearest known
   one.
 - **Witness spans:** a span without `Tracking-Tree-Digest` is read exactly as today. Already
@@ -284,6 +313,27 @@ tracking tree.
 - **`Root` column:** absent or empty means `home`, so every existing table runs byte-for-byte
   as today. `statusgen --lint` hard-errors on an unknown value, as it does for `Shell`.
 - **The `--in-container` refusal for cross-repository runs stays** (see open question 3).
+- **Landing order for `Root` cells.** No `Root` column and no `Root: tracking` cell lands in
+  any brief until the statusgen and desk-tools release that reads the column in every step
+  (lint, open, container run, close, credit and the landing check) is the pinned release.
+  Adding a `Root` cell is a reviewed Verify-table change (open question 2), so the review of
+  that change checks the pin. The implementation brief carries the pin bump as the
+  precondition of its first `Root` cell. This rule is the only control for the window in
+  which an old chain might meet such a cell, because an old binary cannot be made to refuse
+  a column it does not read.
+- **Credit-side refusal, whichever binary wrote the span.** A row whose brief declares
+  `Root: tracking` is not credited from a span that lacks a `Tracking-Tree-Digest` line,
+  whether or not a `bracket: 2` receipt exists. A reader that knows the column applies it to
+  a span written by any earlier binary. This covers a `Root: tracking`
+  cell that landed early and was run by an old chain, once a new reader sees the witness. It
+  does not undo a credit an old reader already gave, so the landing-order rule stays the
+  primary control.
+- **New-format span read by an older `--bracket-digest --credit`.** The older reader counts
+  only the `tree-digest`, `container-image` and `attestation` lines
+  (`statusgen/containerbracket.go:930-944`). It digests a `Tracking-Tree-Digest` line as part
+  of the span but cannot check it, and credit then rests on the close step and the
+  forge-attributed record, which are unchanged. The implementation brief states whether an
+  older reader must refuse a span carrying a line it does not know.
 
 ### Tests and mutations the implementation brief must carry
 
@@ -300,6 +350,10 @@ mutation entry. Near-miss refusals, each a separate case:
 - an unknown `bracket` value
 - an unknown `Root` value at lint
 - a `tracking` row under a version-1 brief, which is could-not-run, not fail
+- a committed old-format witness span (no `Tracking-Tree-Digest` line) next to a brief
+  whose row declares `Root: tracking`, which the credit step must refuse
+- a tracking root whose top-level `.git` is a directory, which the open step refuses (or the
+  mount masks it, as the brief chooses)
 
 Positive cases:
 
@@ -312,6 +366,7 @@ Mutation entries that must turn the suite red:
 - skipping the end digest
 - dropping the line from the bracket digest
 - accepting a missing `tracking_tree`
+- dropping the credit-side refusal for a `Root: tracking` row without the span line
 
 ## Open questions for the driver
 
@@ -322,7 +377,14 @@ Mutation entries that must turn the suite red:
    reviewed Verify-table change, and a protected table's existing acceptance route applies.
 3. **The `--in-container` launcher** (`verifyrun.go:2460-2469`). Default: it stays refused
    for cross-repository runs, and the bracket is the supported lane.
-4. **Out of scope** unless the driver says otherwise: briefs that bind further sibling
+4. **Landing order.** Is the rule that no `Root` cell lands before the pinned chain reads
+   the column (Migration and version negotiation) the right control for the old-chain
+   window, or should the first implementation hold every `Root` cell behind a further gate?
+   Default: the landing-order rule, plus the credit-side refusal.
+5. **Mount layout.** Should the relation between the two mount points become part of the
+   contract so a row can reach the other tree by a relative path? Default: no. A row reads
+   only its own root, and the layout stays unspecified.
+6. **Out of scope** unless the driver says otherwise: briefs that bind further sibling
    sources (#4876), `--history-pack` fail-first for cross-repository briefs, and
    `--acceptance-record` for cross-repository runs. Each would get its own record.
 
