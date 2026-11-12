@@ -59,9 +59,10 @@ func runGitStreams(dir string, args ...string) (stdout, stderr string, err error
 	// any git argv" assertion still runs against the real constructed argv.
 	r := deskkit.Run(deskkit.ToolCall{Name: "git", Args: args, Dir: dir, Start: execCommand})
 	if r.Failed() {
-		// The message reads as it always did — `git <argv> failed — git said: <first line>`
-		// — but the whole diagnosis now RIDES on the error rather than only being rendered
-		// into it: git's exit status, its stderr in full, and the argv as executed, which is
+		// The message reads `git <argv> failed — git said: <stderr>`, every stderr line joined
+		// onto one line (deskkit ToolRun.Said): git prints progress such as `Preparing worktree`
+		// ahead of the `fatal:` line that names the cause (#6115). The whole diagnosis also
+		// RIDES on the error rather than only being rendered into it: git's exit status, its stderr in full, and the argv as executed, which is
 		// what DESK_TRACE prints. Before this, a deskwt failure gave a trace nothing to show.
 		//
 		// The verdict is deliberately ExitUnverifiable, not ExitRefused. git's own exit

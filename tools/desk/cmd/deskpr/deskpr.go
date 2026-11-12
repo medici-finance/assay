@@ -1380,6 +1380,11 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 	if !filepath.IsAbs(root) {
 		root = filepath.Join(dir, root)
 	}
+	if deskkit.NegotiatedWorkSyntax(trs[0].Value) {
+		// Resolve against the immutable owning source before any legacy reducer.
+		// The operation remains held until its full reader set is qualified.
+		return 0, deskkit.CheckLocalWorkTrailer(body, root)
+	}
 	if trs[0].Kind == deskkit.TrailerAuthors {
 		ids, aerr := deskkit.SplitAuthorsTrailer(trs[0].Value)
 		if aerr != nil {

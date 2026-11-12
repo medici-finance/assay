@@ -12,7 +12,12 @@
 #   `--keep-deskd --cockpit tmux` TOGETHER both take effect — the old dispatcher line
 #   (`cmd_down "${2:?cell}" "${3:-}"`) only ever forwarded ONE token past the cell, so the second
 #   flag's value silently never reached cmd_down
-#   an actually-unexpected positional (not a flag) is still refused, same as before
+#   an actually-unexpected positional (not a flag) is still refused, and so is a bare trailing
+#   `--cockpit` — each exits non-zero, names what it refused, and runs no teardown. The wording
+#   differs by implementation and both are accepted: the shell oracle says "unexpected argument
+#   'x'" and "--cockpit needs a value"; the Go binary reads a word after the cell as a role
+#   (`down <cell> <role...>`, desk-containers/18) and refuses it as an unknown role, and its flag
+#   parser refuses a value flag with no value in its own words (the recorded parse-text change)
 #
 # No network, no tmux server: `tmux`/`herdr`/`orca` are absent from this test's PATH entirely, so
 # `down` resolves to the tmux cockpit (which reports "no session" rather than launching anything).
@@ -24,7 +29,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The binary under test. $CELLCTL lets the SAME suite run against either implementation
 # (the bash oracle, the default, or the Go port) — desk-containers/10.
 CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
-T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-down.XXXXXX")" && pwd -P)"
+# Fail closed before the EXIT trap: on bash 3.2 `cd ""` succeeds, so a failed mktemp
+# must never leave T at the caller's directory for the trap to delete (#6161).
+made="$(mktemp -d "${TMPDIR:-/tmp}/cellctl-down.XXXXXX")" || exit 1
+[ -n "$made" ] && [ -d "$made" ] || exit 1
+T="$(cd "$made" && pwd -P)" || exit 1
+[ -n "$T" ] || exit 1
 trap 'rm -rf "$T"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
@@ -103,10 +113,12 @@ assert "flags in the other order also both take effect" '[[ $rc -eq 0 ]] && grep
 
 # ---------------------------------------------------------------- genuine bad input still refused
 echo "[still refused]"
+# Refused means: non-zero exit, the refusal names the offending word, and down never reached its
+# teardown (no "no session" line). Oracle wording / Go wording are both accepted — see the header.
 out="$("$CELLCTL" down example-cell not-a-flag 2>&1)" && rc=0 || rc=$?
-assert "a real stray positional is still refused (not silently swallowed)" '[[ $rc -ne 0 ]] && grep -q "unexpected argument .not-a-flag." <<<"$out"'
+assert "a real stray positional is still refused (not silently swallowed)" '[[ $rc -ne 0 ]] && grep -Eq "unexpected argument .not-a-flag.|unknown role .not-a-flag." <<<"$out" && ! grep -q "no session" <<<"$out"'
 out="$("$CELLCTL" down example-cell --cockpit 2>&1)" && rc=0 || rc=$?
-assert "--cockpit with no value is still refused" '[[ $rc -ne 0 ]] && grep -q "needs a value" <<<"$out"'
+assert "--cockpit with no value is still refused" '[[ $rc -ne 0 ]] && grep -Eq -e "--cockpit needs a value|flag needs an argument: --cockpit" <<<"$out" && ! grep -q "no session" <<<"$out"'
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "down.test.sh: OK"; else echo "down.test.sh: $fails FAILED"; exit 1; fi

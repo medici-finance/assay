@@ -81,15 +81,15 @@
     },
     {
       "name": "row 14 — GitLab's 409 'already exists' is treated as an error",
-      "file": "cmd/deskfleet/labels.go",
+      "file": "internal/forgelabels/forge.go",
       "old": "\tcase resp.Status == 409:\n\t\treturn true, nil",
       "new": "\tcase resp.Status == 409:\n\t\treturn false, errors.New(\"conflict\")"
     },
     {
       "name": "row 13 — the GitHub backend drops the approval-needed row (the forges diverge)",
-      "file": "cmd/deskfleet/labels.go",
-      "old": "\towner, name, _ := strings.Cut(g.repo, \"/\")",
-      "new": "\tif l.Name == \"approval-needed\" {\n\t\treturn false, nil\n\t}\n\towner, name, _ := strings.Cut(g.repo, \"/\")"
+      "file": "internal/forgelabels/forge.go",
+      "old": "\tresp, err := g.c.Do(\"POST\", g.reposPath()+\"/labels\",",
+      "new": "\tif l.Name == \"approval-needed\" {\n\t\treturn false, nil\n\t}\n\tresp, err := g.c.Do(\"POST\", g.reposPath()+\"/labels\","
     },
     {
       "name": "row 10 — the written name drifts from the name desktoken --forge gitlab <role> reads (the old <prefix>-<role>-bot spelling)",

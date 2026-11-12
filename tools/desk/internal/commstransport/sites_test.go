@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -24,19 +25,16 @@ func rawEndpointCall(call *ast.CallExpr) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	// An inline net.Dialer is a raw endpoint primitive too. Keep context-aware
-	// Unix dialing inside the same ownership boundary as package-level calls.
-	if inlineNetDialer(sel.X) {
+	// A net.Dialer remains a raw endpoint primitive when stored in a variable.
+	if netDialerExpr(endpointDeclaration(sel.X)) {
 		network := 0
 		if sel.Sel.Name == "DialContext" {
 			network = 1
 		} else if sel.Sel.Name != "Dial" {
 			return "", false
 		}
-		if len(call.Args) > network {
-			if lit, ok := call.Args[network].(*ast.BasicLit); ok && lit.Value == `"unix"` {
-				return "net.Dialer." + sel.Sel.Name + `("unix")`, true
-			}
+		if len(call.Args) > network && unixNetwork(call.Args[network]) {
+			return "net.Dialer." + sel.Sel.Name + `("unix")`, true
 		}
 		return "", false
 	}
@@ -54,29 +52,66 @@ func rawEndpointCall(call *ast.CallExpr) (string, bool) {
 		case "DialUnix", "ListenUnix":
 			return "net." + sel.Sel.Name, true
 		case "Dial", "DialTimeout", "Listen":
-			if len(call.Args) > 0 {
-				if lit, ok := call.Args[0].(*ast.BasicLit); ok && lit.Value == `"unix"` {
-					return "net." + sel.Sel.Name + `("unix")`, true
-				}
+			if len(call.Args) > 0 && unixNetwork(call.Args[0]) {
+				return "net." + sel.Sel.Name + `("unix")`, true
 			}
 		}
 	}
 	return "", false
 }
 
-func inlineNetDialer(x ast.Expr) bool {
-	switch x := x.(type) {
-	case *ast.ParenExpr:
-		return inlineNetDialer(x.X)
-	case *ast.UnaryExpr:
-		return x.Op == token.AND && inlineNetDialer(x.X)
-	case *ast.CompositeLit:
-		sel, ok := x.Type.(*ast.SelectorExpr)
-		if !ok || sel.Sel.Name != "Dialer" {
-			return false
+// endpointDeclaration follows one lexical binding to its declared value or type.
+func endpointDeclaration(x ast.Expr) ast.Expr {
+	id, ok := ast.Unparen(x).(*ast.Ident)
+	if !ok || id.Obj == nil {
+		return x
+	}
+	switch decl := id.Obj.Decl.(type) {
+	case *ast.AssignStmt:
+		if len(decl.Lhs) != len(decl.Rhs) {
+			return x
 		}
-		pkg, ok := sel.X.(*ast.Ident)
-		return ok && pkg.Name == "net"
+		for i, lhs := range decl.Lhs {
+			if name, ok := lhs.(*ast.Ident); ok && name.Obj == id.Obj {
+				return decl.Rhs[i]
+			}
+		}
+	case *ast.ValueSpec:
+		for i, name := range decl.Names {
+			if name.Obj != id.Obj {
+				continue
+			}
+			if i < len(decl.Values) {
+				return decl.Values[i]
+			}
+			if decl.Type != nil {
+				return decl.Type
+			}
+		}
+	}
+	return x
+}
+
+func unixNetwork(x ast.Expr) bool {
+	lit, ok := ast.Unparen(endpointDeclaration(x)).(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return false
+	}
+	network, err := strconv.Unquote(lit.Value)
+	return err == nil && network == "unix"
+}
+
+func netDialerExpr(x ast.Expr) bool {
+	switch x := ast.Unparen(x).(type) {
+	case *ast.UnaryExpr:
+		return x.Op == token.AND && netDialerExpr(x.X)
+	case *ast.StarExpr:
+		return netDialerExpr(x.X)
+	case *ast.CompositeLit:
+		return netDialerExpr(x.Type)
+	case *ast.SelectorExpr:
+		pkg, ok := x.X.(*ast.Ident)
+		return ok && pkg.Name == "net" && x.Sel.Name == "Dialer"
 	}
 	return false
 }
@@ -84,6 +119,11 @@ func inlineNetDialer(x ast.Expr) bool {
 type endpointSite struct {
 	site  string // file:func
 	calls map[string]bool
+}
+
+// Both the real-tree walk and its plants require lexical object resolution.
+func parseEndpointFile(fset *token.FileSet, name string, src any) (*ast.File, error) {
+	return parser.ParseFile(fset, name, src, 0)
 }
 
 func scanEndpointSites(fset *token.FileSet, name string, file *ast.File) []endpointSite {
@@ -171,7 +211,7 @@ func TestEndpointSitesAreConfined(t *testing.T) {
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		file, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		file, err := parseEndpointFile(fset, path, nil)
 		if err != nil {
 			return err
 		}
@@ -207,15 +247,36 @@ func a() { net.DialTimeout("unix", p, d) }
 func b() { winio.DialPipe(p, &d) }
 func c() { (&net.Dialer{}).DialContext(ctx, "unix", p) }
 func d() { (&net.Dialer{}).Dial("unix", p) }
+func e() { d := net.Dialer{}; d.DialContext(ctx, "unix", p) }
+func f() { nw := "unix"; (&net.Dialer{}).DialContext(ctx, nw, p) }
+func g() { d, nw := &net.Dialer{}, "unix"; d.DialContext(ctx, nw, p) }
+func h() { var d net.Dialer; const nw = "unix"; d.Dial(nw, p) }
+func i() { nw := "unix"; net.DialTimeout(nw, p, d) }
+func otherDialer() { d := other.Dialer{}; d.DialContext(ctx, "unix", p) }
+func shadowedNetwork() {
+	nw := "unix"
+	{
+		nw := "tcp"
+		d := net.Dialer{}
+		d.DialContext(ctx, nw, p)
+	}
+	_ = nw
+}
 `
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "plant.go", src, 0)
+	file, err := parseEndpointFile(fset, "plant.go", src)
 	if err != nil {
 		t.Fatal(err)
 	}
 	bad := checkEndpointSites(scanEndpointSites(fset, "cmd/plant/plant.go", file))
-	if len(bad) != 4 {
-		t.Fatalf("plant not flagged: %v", bad)
+	want := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i"}
+	if len(bad) != len(want) {
+		t.Fatalf("unexpected planted endpoint sites: %v", bad)
+	}
+	for i, name := range want {
+		if expected := "cmd/plant/plant.go:" + name + ": raw endpoint call outside commstransport"; bad[i] != expected {
+			t.Errorf("site %d: got %q, want %q", i, bad[i], expected)
+		}
 	}
 	unchecked := endpointSite{site: "internal/commstransport/local_windows.go:dialOwnedBy", calls: map[string]bool{}}
 	if bad := checkEndpointSites([]endpointSite{unchecked}); len(bad) != 1 {

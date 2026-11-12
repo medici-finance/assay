@@ -102,5 +102,68 @@ All fixtures are offline and synthetic. Named PASS output is mandatory; a missin
 ## Evidence
 <!-- Independent verifier appends exact source, command, output and negative-control evidence. No acceptance is asserted by authoring or implementation. -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 3 | `sh tools/desk/scripts/forge-ban.sh` | pass exit=0 | sha256:deebaebc1d5f | 2026-11-06 | assay-verifier-app[bot] @ 8592383261fb (on-behalf-of human:ian) (forge-identity) |
+| 4 | `statusgen --root . --consumers --brief forge-neutral/49 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | fail exit=2 | sha256:d1d8367d382d | 2026-11-06 | assay-verifier-app[bot] @ 8592383261fb (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5558 run=a3ecc13aaf0b06cda1bc7169eeba875467543ca429b9e54eac941e78cde5eebc source=8592383261fb8f59c261b785cae5f22169654852 brief=docs/streams/forge-neutral/brief-49-retire-claim-decay-stored-github-login-fallback.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout=90s -v -run '^TestDecayNoStoredLogin$' . > "$o" && grep -F -- '--- PASS: TestDecayNoStoredLogin ' "$o")` | pass exit=0 sandbox=container-netns | sha256:b514dee5226d | 2026-11-06 | assay-verifier-app[bot] @ 8592383261fb (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout=90s -v -run '^TestDecayTokenStaysOnItsHost$' . > "$o" && grep -F -- '--- PASS: TestDecayTokenStaysOnItsHost ' "$o")` | pass exit=0 sandbox=container-netns | sha256:4d49385845dd | 2026-11-06 | assay-verifier-app[bot] @ 8592383261fb (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:27598ceee2eaa30e2851ab3f18afc14ee7e8128caf4757c1f91d8f2452d12392
+Container-Image: sha256:732786a33ebfa6dc1d80d396781df1f31c5331f67a8c0bd97518785f5a72b173
+Verification-Attestation: medici-finance/assay#5558 run=a3ecc13aaf0b06cda1bc7169eeba875467543ca429b9e54eac941e78cde5eebc source=8592383261fb8f59c261b785cae5f22169654852 brief=docs/streams/forge-neutral/brief-49-retire-claim-decay-stored-github-login-fallback.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=a3ecc13aaf0b06cda1bc7169eeba875467543ca429b9e54eac941e78cde5eebc source=8592383261fb8f59c261b785cae5f22169654852 tree=sha256:27598ceee2eaa30e2851ab3f18afc14ee7e8128caf4757c1f91d8f2452d12392 witness=sha256:7719c0854f246f10a2f62ac5c89013e7346e7786d6f1cefa48e0a44c1ed6eb60 opened=2026-11-06T14:05:53Z closed=2026-11-06T14:06:53Z before=receipt after=check-verifier
+
+**VERIFY: BLOCKED** — row 4 could-not-check at merged main (check-definition); rows 1-3 pass.
+
+Verifier claude-opus-5-5 (strong, non-implementer) at merged main 8592383261fb, statusgen v1.0.75, KUBECONFIG=/dev/null, GH_TOKEN unset. Delivery: PR 5391, merge 32f85d97060e, first parent 6bceac0fa40e. Rows 1 and 2 ran in the container admission bracket (verify-runner v1.0.75, network none, sandbox container-netns, bracket-digest verdict=match); rows 3 and 4 ran on the host.
+
+Row 3 reads 74 sites (desk 36, statusgen 38), class a statusgen=30; the same scan at the first parent reads 75 sites, statusgen 39, class a statusgen=31, which is the Expect.
+
+Row 4 exits 2 with COULD-NOT-CHECK: after the merge, the merge-base of origin/main and HEAD is HEAD itself (8592383261fb), so the diff is empty and the run carries no evidence about the brief's claims. This is not a disproof. The row's own Expect says the mainline delivery and its first parent must be pinned before post-merge verification, and the command does not pin them. The repair is a row definition that pins merge 32f85d97060e and first parent 6bceac0fa40e (a reviewed check-definition change, owner: brief owner). Supplemental observation, no acceptance credit: the same command at the delivery head 877a9a25c1d7 with base 6db77ad394e4 exits 0 with 8 corroborated, 0 disproved, 2 unchecked.
+
+Fail-first: owed on no row. The brief's risk fields are all no and no row is marked risk-bearing, live, mutating or end-to-end. A fail-first run at base 6bceac0fa40e was refused by the tool because that base predates the brief (exit 2, no rows ran).
+
+Supplemental production-mutation probes (restore the CLI fallback, treat missing as empty, drop host separation) were blocked by the session's write guard and abandoned. They carry no acceptance credit and no Verify row depended on them.
+
+RISK-VALUE: DERIVED public and operator-endpoint variable order GH_TOKEN then GITHUB_TOKEN, statusgen/claimdecay_github.go:68, unchanged by the delivery.
+RISK-VALUE: DERIVED derived-enterprise host takes only GH_ENTERPRISE_TOKEN then GITHUB_ENTERPRISE_TOKEN, statusgen/claimdecay_github.go:70, so a lookalike host never receives the public credential.
+RISK-VALUE: NAMED reversible knobs, request timeout 30s at statusgen/claimdecay_github.go:57 and page ceiling 1000 at statusgen/claimdecay_github.go:52, unchanged by the delivery.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout=90s -v -run '^TestDecayNoStoredLogin$' . > "$o" && grep -F -- '--- PASS: TestDecayNoStoredLogin ' "$o")` | pass exit=0 sandbox=container-netns | sha256:b514dee5226d | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout=90s -v -run '^TestDecayTokenStaysOnItsHost$' . > "$o" && grep -F -- '--- PASS: TestDecayTokenStaysOnItsHost ' "$o")` | pass exit=0 sandbox=container-netns | sha256:4d49385845dd | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:bbf58e1999a2879bff899fd22c5d41834fbc884451654c5085000f4eedc075b6
+Container-Image: sha256:03a2949dfe483f2645e14b85369c1923f1fb4710c7e5ea37a9b915d0073dde59
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6029 run=7316aada845c35754cec52072f9b148c71a2874969d6d1c2cd49ec51134ca6d0 source=612750a12406f19a96a83e6ea7687d794f772f9f brief=docs/streams/forge-neutral/brief-49-retire-claim-decay-stored-github-login-fallback.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=7316aada845c35754cec52072f9b148c71a2874969d6d1c2cd49ec51134ca6d0 source=612750a12406f19a96a83e6ea7687d794f772f9f tree=sha256:bbf58e1999a2879bff899fd22c5d41834fbc884451654c5085000f4eedc075b6 witness=sha256:449a0af09143973f1685c3df284360310e7b627da4fe50804cb3af81b8227e6f opened=2026-11-10T10:30:22Z closed=2026-11-10T10:32:01Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 3 | `sh tools/desk/scripts/forge-ban.sh` | pass exit=0 | sha256:1c1cfd806f3e | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `statusgen --root . --consumers --brief forge-neutral/49 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | fail exit=2 | sha256:bd96b2ab0e45 | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6029 run=7316aada845c35754cec52072f9b148c71a2874969d6d1c2cd49ec51134ca6d0 source=612750a12406f19a96a83e6ea7687d794f772f9f brief=docs/streams/forge-neutral/brief-49-retire-claim-decay-stored-github-login-fallback.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: BLOCKED** — row 4 could-not-check at merged main (check-definition, medici-finance/assay#5564 still open); rows 1-3 pass.
+
+Re-verification by claude-opus-5-5 (strong, non-implementer) at merged main 612750a12406, statusgen v1.0.81, KUBECONFIG=/dev/null, GH_TOKEN unset. Delivery: PR 5391, merge 32f85d97060e, first parent 6bceac0fa40e. Rows 1 and 2 ran in the container admission bracket (verify-runner v1.0.81 from the release pin, network none, sandbox container-netns, fresh module cache, bracket-digest verdict=match). Rows 3 and 4 ran on the host.
+
+Row 3 at 612750a12406 reads 68 sites (desk 37, statusgen 31), class a statusgen=22, exit 0. The scan script is unchanged since before the delivery. Its Expect pins counts to the pickup source, so the same script was also run on exported trees: the first parent reads 75 sites, statusgen 39, class a statusgen=31; the delivery merge reads 74, 38 and 30. That is the Expect's one fewer subprocess. The later drop at main comes from other work and is no /18 cutover claim.
+
+Row 4 exits 2 with COULD-NOT-CHECK, unchanged from the earlier run. After the merge, the merge-base of origin/main and HEAD is HEAD itself, so the diff is empty and the run carries no evidence about the brief's claims. This is not a disproof. The row's own Expect says the delivery and its first parent must be pinned for post-merge verification. The command does not pin them, and the row definition is unchanged at this source. The repair is still the reviewed check-definition change tracked in medici-finance/assay#5564 (next actor: brief owner).
+
+Supplemental, no acceptance credit: at main, githubDecayToken reads only the named token variables and has no executable lookup or subprocess; the delivery diff removes the os/exec import, the lookup and the stored-login subprocess.
+
+Fail-first: owed on no row. Risk fields are all no, and no row is marked risk-bearing, live, mutating or end-to-end.
+
+RISK-VALUE: DERIVED — public and operator-endpoint vars = GH_TOKEN, GITHUB_TOKEN @ statusgen/claimdecay_github.go:68 — Task 1 requires these explicit names and this order unchanged; the delivery diff leaves the line as context.
+RISK-VALUE: DERIVED — derived-enterprise vars = GH_ENTERPRISE_TOKEN, GITHUB_ENTERPRISE_TOKEN @ statusgen/claimdecay_github.go:70 — a host guessed from origin gets only an enterprise credential, so a lookalike host never receives the github.com token; unchanged and exercised by row 2.
+RISK-VALUE: NAMED, NOT DERIVED — githubDecayClient Timeout = 30s @ statusgen/claimdecay_github.go:57 and githubDecayMaxPages = 1000 @ statusgen/claimdecay_github.go:52 — reversible operational knobs, not changed by the delivery, ranked last.
+
 ## Review
 Gate: model. Apply the security-review skill to the authentication lookup boundary and trace selected tokens to the existing request sink. Confirm the CLI path is absent, explicit tokens stay on their current host, missing data remains unavailable and every parent obligation remains. The original /18 delivery is still partial after this contribution.

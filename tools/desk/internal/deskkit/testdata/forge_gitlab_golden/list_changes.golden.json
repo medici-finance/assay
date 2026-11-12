@@ -20,6 +20,7 @@
         "Title": "open work",
         "Body": "Brief: example-a/00",
         "MergedAt": "",
+        "UpdatedAt": "2026-09-01T12:00:00Z",
         "Author": {
           "Login": "worker-bot",
           "ID": 99
@@ -34,6 +35,7 @@
         "Title": "landed work",
         "Body": "Brief: example-b/01",
         "MergedAt": "2026-09-10T12:00:00Z",
+        "UpdatedAt": "2026-09-01T12:00:00Z",
         "Author": {
           "Login": "worker-bot",
           "ID": 99

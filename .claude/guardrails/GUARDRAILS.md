@@ -133,7 +133,9 @@ irreducibles, not drift. intake-desk: see "What is NOT here".
 
 No AI-attribution stamps in any artifact. The short paraphrases ("No attribution
 lines anywhere.") are replaced by the one full sentence. intake-desk: see "What
-is NOT here".
+is NOT here". The second sentence covers a trailer the harness adds on its own
+(#5892): the push guard refuses it, and the way out is the host setting, never a
+history rewrite.
 
 - site: plugins/assay/skills/the-desk/SKILL.md
 - site: plugins/assay/skills/worker-desk/SKILL.md
@@ -143,7 +145,11 @@ is NOT here".
 
 ```text
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
-  or comments.
+  or comments. If a push is refused over an attribution trailer your harness added, not you (on
+  Cursor the host setting `attribution.attributeCommitsToAgent`, and `attribution.attributePRsToAgent`
+  for PR footers; both default to true), STOP: never rewrite history or re-commit to strip it, and
+  never push by another route. Report the setting and the refusal line; the host's operator sets
+  it to false.
 ```
 
 ## guardrail: default-forward-reversibility
