@@ -91,6 +91,10 @@ type ClassifyInput struct {
 	SecurityPass  bool
 	CiGreen       bool
 	MergeConflict bool
+	// BLOCKED is a policy hold. A draft may enter the ready gate only with a
+	// separate positive conflict verdict; neither shape recommends a merge.
+	MergePolicyBlocked bool
+	MergeableRaw       string
 	// mergeStateUnknown (#400 R3): the mergeStateStatus could not be read (UNKNOWN,
 	// absent, or a value this code does not recognise). Distinct from mergeConflict —
 	// that is a measured "no", this is "we did not measure". It blocks MERGE-NOW.
@@ -286,6 +290,23 @@ func Classify(in ClassifyInput, reviewer string) (action, note string) {
 		if in.HumanGate {
 			return ActHumanGate, HumanGateNote(in.Draft, in.HumanGateReason, ciPhrase+checkedZero, reviewer)
 		}
+		// #6262: GitHub BLOCKED includes branch-policy holds and draft readiness. It
+		// does not mean the merge has conflicts. Only the separately read MERGEABLE
+		// verdict admits a draft to the independent ready gate; policy holds never
+		// become MERGE-NOW, even after readiness changes.
+		if in.MergePolicyBlocked {
+			if in.MergeableRaw != "MERGEABLE" {
+				return ActMergeStateUnknown, "mergeStateStatus is BLOCKED and the separate mergeable verdict is " +
+					MergeStateDisplay(in.MergeableRaw) + "; conflict freedom is not established — re-read before any ready evaluation"
+			}
+			if in.Draft {
+				return ActFlip, reviewer + " APPROVED at head, " + ciPhrase + checkedZero +
+					", draft, mergeable is MERGEABLE — review-desk may evaluate the normal ready gates. " +
+					"MERGE-NOW is WITHHELD: mergeStateStatus is BLOCKED (forge policy hold, not a merge conflict)"
+			}
+			return ActCheck, "mergeable is MERGEABLE, but mergeStateStatus is BLOCKED — inspect the forge policy hold; " +
+				"no merge conflict was reported and MERGE-NOW is WITHHELD"
+		}
 		// #400 R3: mergeability was never established. MERGE-NOW is a recommendation to
 		// merge, and it must rest on a READ merge state, not on the absence of a
 		// conflict signal. Flipping a draft ready is still safe here (it does not depend
@@ -333,7 +354,7 @@ func Classify(in ClassifyInput, reviewer string) (action, note string) {
 	case in.Pending > 0:
 		return ActWaitCI, "bot APPROVED, CI still pending"
 	case in.MergeConflict:
-		return ActConflict, "mergeStateStatus is DIRTY/BLOCKED — PR cannot be merged; flip is unsafe"
+		return ActConflict, "merge conflicts reported by DIRTY or CONFLICTING — PR cannot be merged; flip is unsafe"
 	// #400 R2: this arm used to be `case in.ApprovedAtHead:` returning FLIP with a note
 	// that ASSERTED "CI green" while never consulting ciGreen — every FLIP the live board
 	// has ever printed came out of here, and every one of them was a row whose CI was

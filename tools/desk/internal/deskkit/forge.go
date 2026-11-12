@@ -880,7 +880,8 @@ type RollupNode struct {
 // login the trust set expects (a bot carries the "<slug>[bot]" suffix), matching the
 // per-forge rendering GetPullRequest already applies. MergeStateStatus is the forge's own
 // merge-readiness enum verbatim (GitHub's mergeStateStatus: BEHIND/BLOCKED/CLEAN/DIRTY/
-// UNKNOWN/…) — the consumer reads its four-state mergeVerdict off it, and an empty value is
+// UNKNOWN/…). Mergeable independently reports merge conflicts; BLOCKED is a policy hold,
+// not a conflict verdict. An empty merge-readiness value is
 // could-not-check, never mergeable. Consumer: cmd/deskboard's fetchOpenPRs → prBase.
 type OpenChange struct {
 	Number       int
@@ -901,6 +902,7 @@ type OpenChange struct {
 	HeadRef          string
 	BaseRef          string
 	MergeStateStatus string
+	Mergeable        string `json:",omitempty"` // same three-state conflict verdict as PullRequest.Mergeable
 	Rollup           []RollupNode
 	// HeadCommittedAt is the head commit's COMMITTER date (RFC3339), read on the same node
 	// the rollup already comes from — no extra request. It is set only when that commit's oid

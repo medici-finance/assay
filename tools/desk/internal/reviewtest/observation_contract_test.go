@@ -91,6 +91,22 @@ func TestReviewContractFlow(t *testing.T) {
 				c.Lanes[0].State = "stale"
 			}},
 			{"body-human-gate", "HUMAN-GATE", "SURFACE", func(c *rf.ObservedChange) { approve(c); c.Facts.Change.Body = "Gate: human" }},
+			{"draft-policy-hold", "FLIP", "FLIP-VERB", func(c *rf.ObservedChange) {
+				approve(c)
+				c.Facts.Change.IsDraft = true
+				c.Facts.Change.MergeStateStatus = "BLOCKED"
+				c.Facts.Change.Mergeable = "MERGEABLE"
+			}},
+			{"ready-policy-hold", "CHECK", "SURFACE", func(c *rf.ObservedChange) {
+				approve(c)
+				c.Facts.Change.MergeStateStatus = "BLOCKED"
+				c.Facts.Change.Mergeable = "MERGEABLE"
+			}},
+			{"unread-policy-hold", "MERGE-STATE-UNKNOWN", "SURFACE", func(c *rf.ObservedChange) {
+				approve(c)
+				c.Facts.Change.IsDraft = true
+				c.Facts.Change.MergeStateStatus = "BLOCKED"
+			}},
 			{"body-reverified", "MERGE-NOW", "SURFACE", func(c *rf.ObservedChange) { approve(c); c.Facts.Reviews.BodyEditReverified = true }},
 			{"same-head-block", "SUSPECT-APPROVAL", "SURFACE", func(c *rf.ObservedChange) {
 				c.Facts.Reviews = rf.ReduceReviews([]rf.ReviewFact{{Reviewer: true, State: "CHANGES_REQUESTED", CommitID: c.Identity.Head}, {Reviewer: true, State: "APPROVED", CommitID: c.Identity.Head}}, c.Identity.Head)
