@@ -636,6 +636,57 @@ func TestDecisionGateBranchBoard(t *testing.T) {
 	})
 }
 
+// gitlabAtTip is the GitLab backend (CompareRefs is could-not-check) with the branch tip
+// resolved to a fixed commit, so the branch-board read gets past the tip and reaches the
+// compare it cannot be served.
+type gitlabAtTip struct {
+	*deskkit.GitLabForge
+	tip string
+}
+
+func (g gitlabAtTip) GetCommit(_ deskkit.ForgeRepo, _ string) (*deskkit.RepoCommit, error) {
+	return &deskkit.RepoCommit{SHA: g.tip}, nil
+}
+
+// A landing home whose HEAD is the branch tip itself judged the board the write lands on,
+// so a forge that serves no compare is never asked for one. Any other tip (another
+// commit, or an abbreviation of the HEAD) still needs the compare and stays could-not-check.
+// regression: #6270
+func TestBranchBoardSameCommit(t *testing.T) {
+	const target = "docs/streams/sdlc/README.md"
+	root, head := freshHome(t)
+	fr := deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}
+	t.Run("GitLab, HEAD is the tip", func(t *testing.T) {
+		edits, err := decisionGateBranchBoard(gitlabAtTip{&deskkit.GitLabForge{}, head}, fr, root, "main", target)
+		if err != nil || len(edits) != 0 {
+			t.Fatalf("got edits %+v, err %v; want no edits and no error when HEAD is the tip", edits, err)
+		}
+	})
+	for _, c := range []struct{ name, tip string }{
+		{"GitLab, another commit", strings.Repeat("ab", 20)},
+		{"GitLab, an abbreviated HEAD", head[:7]},
+		{"GitLab, an upper-case HEAD", strings.ToUpper(head)},
+		{"GitLab, HEAD with a suffix", head + "0"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := decisionGateBranchBoard(gitlabAtTip{&deskkit.GitLabForge{}, c.tip}, fr, root, "main", target)
+			if err == nil || !deskkit.IsUnverifiable(err) || !strings.Contains(err.Error(), "cannot compare") {
+				t.Fatalf("got %v, want could-not-check naming the compare", err)
+			}
+		})
+	}
+	t.Run("no compare and no read at the tip", func(t *testing.T) {
+		f := &fakeForge{commitSHAs: map[string]string{"main": head}, cmpErr: deskkit.Unverifiable("compare failed", nil)}
+		edits, err := decisionGateBranchBoard(f, fr, root, "refs/heads/main", target)
+		if err != nil || len(edits) != 0 {
+			t.Fatalf("got edits %+v, err %v; want no edits and no error", edits, err)
+		}
+		if len(f.cmpCalls) != 0 || len(f.reads) != 0 {
+			t.Fatalf("compare calls %v, reads %v; want none when HEAD is the tip", f.cmpCalls, f.reads)
+		}
+	})
+}
+
 // briefOf renders the fixture's brief with the given gate and an optional trailing note.
 func briefOf(gate, note string) string {
 	return "---\nbrief: sdlc/18\ntitle: Brief 18\nwave: 1\neffort: M\ngate: " + gate + "\n---\n\n# Brief 18\n" + note
