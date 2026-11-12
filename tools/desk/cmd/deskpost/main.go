@@ -547,12 +547,15 @@ targets:
                  `+"`comment`"+` — they never report it as unverifiable (exit 6).
 
 after the ready flip:
-  ready          reads the forge's merge state (GitHub's mergeStateStatus), re-reading an
-                 UNKNOWN for up to 30s: ready means mergeable per the forge. BLOCKED or
-                 DIRTY returns the PR to draft with one comment naming the state and the
-                 head, and exits 5 (exit 6, nothing retried, if the return to draft fails).
-                 CLEAN, HAS_HOOKS, UNSTABLE and BEHIND leave it ready. Anything else at
-                 30s leaves it ready with a could-not-check comment and notice. This is
+  ready          reads the forge's merge state (GitHub's mergeStateStatus) with the PR's
+                 draft flag, re-reading an UNKNOWN or DRAFT state, or a PR that still reads
+                 as a draft, for up to 30s: ready means mergeable per the forge. GitHub
+                 reports a draft as BLOCKED, so a draft read is never a revert. BLOCKED or
+                 DIRTY on a PR that is NOT a draft returns it to draft with one comment
+                 naming the state and the head, and exits 5 (exit 6, nothing retried, if
+                 the return to draft fails). CLEAN, HAS_HOOKS, UNSTABLE and BEHIND leave
+                 it ready. Anything else at 30s, a draft included, leaves it ready with a
+                 could-not-check comment and notice. This is
                  the only un-ready and never a verb of its own (ruling:
                  https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155).
 

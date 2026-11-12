@@ -1411,10 +1411,11 @@ func TestForeignRepoRefused(t *testing.T) {
 // seventh because it buys a PAGINATED label-event timeline. Nothing else moved — in particular
 // checks-green still sits BEHIND reviewer-approved, because checkonlycr_test.go records the
 // rule that the check-only-CR exemption must decide first, so an operator rejected for a
-// non-CI reason is not sent to the CI gate.
+// non-CI reason is not sent to the CI gate. It was edited again to ADD not-reverted (#6253
+// review F2) right before head-stable, which stays last.
 func TestConditionListIsTheDocumentedContract(t *testing.T) {
 	want := []string{"caller-role", "app-token", "pr-open-draft", "mergeable", "reviewer-approved",
-		"checks-green", "desk-decided", "model-floor", "security-verdict", "head-stable"}
+		"checks-green", "desk-decided", "model-floor", "security-verdict", "not-reverted", "head-stable"}
 	if len(flipConditions) != len(want) {
 		t.Fatalf("flipConditions has %d entries, want %d", len(flipConditions), len(want))
 	}

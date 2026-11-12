@@ -147,3 +147,48 @@ func TestReadyBackstopConvertFail(t *testing.T) {
 		t.Errorf("stderr does not say the flip was NOT reverted:\n%s", errBuf)
 	}
 }
+
+// GitHub reports a draft as BLOCKED, so a post-flip read that still shows the PR as a draft is
+// settling: (BLOCKED, draft) then (CLEAN, not draft) stays ready, silently (#6253 review F1).
+//
+// regression: #6242
+func TestReadyDraftBlockedSettles(t *testing.T) {
+	fakeBackstopClock(t)
+	f, errBuf := setupFake(t)
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+	f.status = greenStatus()
+	f.mergeStates = []string{"blocked", "clean"}
+	f.mergeDrafts = []bool{true, false}
+	code := run(readyArgs(exampleRepo))
+	if code != 0 || f.converts != 0 || len(bodies(f)) != 0 {
+		t.Fatalf("exit=%d converts=%d comments=%q, want 0/0/none: a draft read is not a revert\n%s",
+			code, f.converts, bodies(f), errBuf)
+	}
+	if f.mergeReads != 2 {
+		t.Errorf("merge state read %d times, want 2 (re-read while still a draft)", f.mergeReads)
+	}
+}
+
+// (BLOCKED, draft) through the whole bound ends could-not-check, like UNKNOWN: never a revert.
+//
+// regression: #6242
+func TestReadyDraftAtDeadline(t *testing.T) {
+	fakeBackstopClock(t)
+	f, errBuf := setupFake(t)
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+	f.status = greenStatus()
+	f.mergeStates = []string{"blocked"}
+	f.mergeDrafts = []bool{true}
+	code := run(readyArgs(exampleRepo))
+	if code != 0 || f.converts != 0 {
+		t.Fatalf("exit=%d converts=%d, want 0/0: still a draft at the deadline is not a revert\n%s",
+			code, f.converts, errBuf)
+	}
+	cs := bodies(f)
+	if len(cs) != 1 || !strings.Contains(cs[0], "Could not check") || f.mergeReads != 11 {
+		t.Errorf("comments=%q reads=%d, want ONE could-not-check comment after 11 reads", cs, f.mergeReads)
+	}
+	if !strings.Contains(errBuf.String(), "could-not-verify") {
+		t.Errorf("no could-not-verify notice on stderr:\n%s", errBuf)
+	}
+}

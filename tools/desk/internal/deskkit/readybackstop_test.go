@@ -11,6 +11,7 @@ import (
 // when the backstop sleeps, so the 30s bound runs instantly (#6242).
 type backstopRig struct {
 	states   []string
+	drafts   []bool // the draft flag per read, the last repeating; nil reads "not a draft"
 	readErr  error
 	convErr  error
 	reads    int
@@ -23,10 +24,14 @@ func (r *backstopRig) run() BackstopOutcome {
 	r.now = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	return ReadyBackstop{
 		Repo: "o/r", Number: 7, HeadSHA: "abc123",
-		ReadState: func() (string, error) {
+		ReadState: func() (string, bool, error) {
 			i := min(r.reads, len(r.states)-1)
+			draft := false
+			if len(r.drafts) > 0 {
+				draft = r.drafts[min(r.reads, len(r.drafts)-1)]
+			}
 			r.reads++
-			return r.states[i], r.readErr
+			return r.states[i], draft, r.readErr
 		},
 		ConvertToDraft: func() error { r.converts++; return r.convErr },
 		Comment:        func(b string) error { r.comments = append(r.comments, b); return nil },
@@ -113,5 +118,49 @@ func TestBackstopUnreadable(t *testing.T) {
 		if out.Verdict != BackstopUnchecked || r.converts != 0 || len(r.comments) != 1 {
 			t.Errorf("%s: %+v converts=%d comments=%d", name, out, r.converts, len(r.comments))
 		}
+	}
+}
+
+// GitHub reports a draft as BLOCKED: a read that still shows the change as a draft is settling,
+// so (BLOCKED, draft) then (CLEAN, not draft) stays ready with no comment (#6253 review F1).
+//
+// regression: #6242
+func TestBackstopDraftBlockedSettles(t *testing.T) {
+	r := &backstopRig{states: []string{"BLOCKED", "CLEAN"}, drafts: []bool{true, false}}
+	out := r.run()
+	if out.Verdict != BackstopPass || out.Err != nil || r.converts != 0 || len(r.comments) != 0 || r.reads != 2 {
+		t.Errorf("%+v reads=%d converts=%d comments=%d, want a silent pass after 2 reads", out, r.reads, r.converts, len(r.comments))
+	}
+}
+
+// (BLOCKED, draft) through the whole bound is could-not-check, like UNKNOWN, never a revert.
+//
+// regression: #6242
+func TestBackstopDraftAtDeadline(t *testing.T) {
+	r := &backstopRig{states: []string{"BLOCKED"}, drafts: []bool{true}}
+	out := r.run()
+	if out.Verdict != BackstopUnchecked || out.Err != nil || r.converts != 0 || r.reads != 11 {
+		t.Fatalf("%+v reads=%d converts=%d, want could-not-check after 11 reads, no revert", out, r.reads, r.converts)
+	}
+	if len(r.comments) != 1 || !strings.Contains(r.comments[0], "still read as a draft") {
+		t.Errorf("comments = %q, want ONE could-not-check comment naming the draft read", r.comments)
+	}
+}
+
+// The revert comment carries the hidden marker for its head, matched as an exact line.
+//
+// regression: #6242
+func TestBackstopRevertMarker(t *testing.T) {
+	r := &backstopRig{states: []string{"DIRTY"}}
+	r.run()
+	if len(r.comments) != 1 || !HasReadyBackstopRevert(r.comments[0], "abc123") {
+		t.Fatalf("comments = %q, want ONE carrying the marker for abc123", r.comments)
+	}
+	if HasReadyBackstopRevert(r.comments[0], "def456") || HasReadyBackstopRevert(r.comments[0], "") {
+		t.Error("the marker matched another head or an empty head")
+	}
+	inline := "see " + ReadyBackstopRevertMarker("abc123") + " here"
+	if HasReadyBackstopRevert(inline, "abc123") {
+		t.Error("a marker inside free text matched; only an exact line may")
 	}
 }

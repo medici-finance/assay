@@ -183,6 +183,9 @@ type fakeGH struct {
 	// the flip serve none. It drives `ready`'s post-flip backstop (#6242).
 	mergeStates []string
 	mergeReads  int
+	// mergeDrafts is the PR's draft flag on each of those same post-flip reads, the last
+	// repeating. nil serves "not a draft": the flip is visible at once.
+	mergeDrafts []bool
 	// convertFail makes the convertPullRequestToDraft mutation answer 500; converts counts it.
 	convertFail bool
 	converts    int
@@ -367,6 +370,10 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 			p.MergeableState = "clean"
 			if len(f.mergeStates) > 0 {
 				p.MergeableState = f.mergeStates[min(f.mergeReads, len(f.mergeStates)-1)]
+			}
+			p.Draft = false
+			if len(f.mergeDrafts) > 0 {
+				p.Draft = f.mergeDrafts[min(f.mergeReads, len(f.mergeDrafts)-1)]
 			}
 			f.mergeReads++
 		}

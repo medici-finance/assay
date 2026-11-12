@@ -160,3 +160,100 @@ func TestBackstopConvertFails(t *testing.T) {
 		t.Errorf("stderr does not say the flip was NOT reverted:\n%s", out)
 	}
 }
+
+// GitHub reports a draft as BLOCKED, so a post-flip read that still shows the PR as a draft is
+// settling: (BLOCKED, draft) then (CLEAN, not draft) stays ready, silently (#6253 review F1).
+//
+// regression: #6242
+func TestBackstopDraftBlockedSettles(t *testing.T) {
+	s := newStub()
+	s.mergeDrafts = []bool{true, false}
+	rc, out := flipWith(t, s, "blocked", "clean")
+	if rc != deskkit.ExitOK || s.converts() != 0 || len(s.comments) != 0 {
+		t.Fatalf("rc=%d converts=%d comments=%q, want 0/0/none: a draft read is not a revert\n%s",
+			rc, s.converts(), s.comments, out)
+	}
+	if s.mergeReads != 2 {
+		t.Errorf("merge state read %d times, want 2 (re-read while still a draft)", s.mergeReads)
+	}
+}
+
+// (BLOCKED, draft) through the whole bound ends could-not-check, like UNKNOWN: never a revert.
+//
+// regression: #6242
+func TestBackstopDraftAtDeadline(t *testing.T) {
+	s := newStub()
+	s.mergeDrafts = []bool{true}
+	rc, out := flipWith(t, s, "blocked")
+	if rc != deskkit.ExitOK || s.converts() != 0 {
+		t.Fatalf("rc=%d converts=%d, want 0/0: still a draft at the deadline is not a revert\n%s",
+			rc, s.converts(), out)
+	}
+	if len(s.comments) != 1 || !strings.Contains(s.comments[0], "Could not check") || s.mergeReads != 11 {
+		t.Errorf("comments=%q reads=%d, want ONE could-not-check comment after 11 reads", s.comments, s.mergeReads)
+	}
+	if !strings.Contains(out, "could-not-verify") {
+		t.Errorf("no could-not-verify notice on stderr:\n%s", out)
+	}
+}
+
+// revertMarker is the backstop's hidden revert marker, spelled out so the wire format is pinned.
+func revertMarker(head string) string {
+	return "<!-- assay:ready-backstop-revert head=" + head + " -->"
+}
+
+// A head the backstop already reverted is never flipped again: the not-reverted condition
+// refuses could-not-check, names the comment, and writes nothing (#6253 review F2).
+//
+// regression: #6242
+func TestReflipSameHeadRefused(t *testing.T) {
+	s := newStub()
+	s.priorComments = [][2]string{{reviewerBot(t), "Returned to draft by the post-flip check.\n\n" + revertMarker(headSHA)}}
+	rc, out := flipWith(t, s, "clean")
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("rc = %d, want %d: a reverted head is could-not-check\n%s", rc, deskkit.ExitUnverifiable, out)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a reverted head produced mutations: %v", m)
+	}
+	if !strings.Contains(out, "not-reverted") || !strings.Contains(out, "issuecomment-900") {
+		t.Errorf("the refusal does not name the condition and the comment:\n%s", out)
+	}
+}
+
+// A new head clears the condition: a marker for an earlier head does not hold the flip.
+//
+// regression: #6242
+func TestReflipNewHeadFlips(t *testing.T) {
+	s := newStub()
+	old := "0000000011111111222222223333333344444444"
+	s.priorComments = [][2]string{{reviewerBot(t), "Returned to draft by the post-flip check.\n\n" + revertMarker(old)}}
+	rc, out := flipWith(t, s, "clean")
+	if rc != deskkit.ExitOK || !s.flipped() {
+		t.Fatalf("rc=%d flipped=%v, want a flip: the marker names an earlier head\n%s", rc, s.flipped(), out)
+	}
+	if s.commentReads != 1 {
+		t.Errorf("comment thread read %d time(s), want 1", s.commentReads)
+	}
+}
+
+// Only a trusted author's marker counts: a stranger cannot hold a change out of ready by
+// planting one.
+func TestReflipUntrustedMarker(t *testing.T) {
+	s := newStub()
+	s.priorComments = [][2]string{{"drive-by-user", revertMarker(headSHA)}}
+	rc, out := flipWith(t, s, "clean")
+	if rc != deskkit.ExitOK || !s.flipped() {
+		t.Fatalf("rc=%d flipped=%v, want a flip: an untrusted marker is ignored\n%s", rc, s.flipped(), out)
+	}
+}
+
+// An unreadable comment thread is could-not-check: the condition cannot be shown to hold.
+func TestReflipUnreadableThread(t *testing.T) {
+	s := newStub()
+	s.commentErr = true
+	rc, out := flipWith(t, s, "clean")
+	if rc != deskkit.ExitUnverifiable || s.flipped() {
+		t.Fatalf("rc=%d flipped=%v, want %d and no flip\n%s", rc, s.flipped(), deskkit.ExitUnverifiable, out)
+	}
+}

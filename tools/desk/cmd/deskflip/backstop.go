@@ -26,12 +26,14 @@ var (
 func readyBackstop(fg deskkit.Forge, fr deskkit.ForgeRepo, number int, change *deskkit.PullRequest, head string) error {
 	out := deskkit.ReadyBackstop{
 		Repo: fr.Slug(), Number: number, HeadSHA: head,
-		ReadState: func() (string, error) {
+		// The draft flag travels with the merge state: GitHub reports a draft as BLOCKED, so a
+		// read that still shows the change as a draft is settling, never a revert.
+		ReadState: func() (string, bool, error) {
 			p, err := fg.GetPullRequest(fr, number)
 			if err != nil {
-				return "", err
+				return "", false, err
 			}
-			return p.MergeStateStatus, nil
+			return p.MergeStateStatus, p.Draft, nil
 		},
 		// The opaque id is the one the change read returned, as for the flip itself.
 		ConvertToDraft: func() error { return fg.ConvertToDraft(change.NodeID) },

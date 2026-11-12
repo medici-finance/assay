@@ -26,12 +26,14 @@ func readyBackstop(client postBackend, repo string, pr int, nodeID, head string)
 		Repo:    repo,
 		Number:  pr,
 		HeadSHA: head,
-		ReadState: func() (string, error) {
+		// The draft flag travels with the merge state: GitHub reports a draft as BLOCKED, so a
+		// read that still shows the PR as a draft is settling, never a revert.
+		ReadState: func() (string, bool, error) {
 			info, err := client.getPR(pr)
 			if err != nil {
-				return "", err
+				return "", false, err
 			}
-			return info.MergeableState, nil
+			return info.MergeableState, info.Draft, nil
 		},
 		ConvertToDraft: func() error { return client.convertToDraft(nodeID) },
 		Comment:        func(body string) error { return client.postComment(pr, body) },
