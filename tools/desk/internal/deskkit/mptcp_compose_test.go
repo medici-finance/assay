@@ -116,7 +116,7 @@ func patchMptcpProblems(node any, where string) []string {
 }
 
 // regression: #6213
-func TestMPTCPOffOnEveryComposeService(t *testing.T) {
+func TestMptcpOffOnEveryComposeSvc(t *testing.T) {
 	const svc = "services:\n  a:\n    image: i\n"
 	for _, c := range []struct {
 		name, text string
@@ -186,7 +186,7 @@ func TestMPTCPOffOnEveryComposeService(t *testing.T) {
 }
 
 // regression: #6213
-func TestMPTCPKustomizePatchesKeepBaseEntry(t *testing.T) {
+func TestMptcpPatchesKeepBaseEntry(t *testing.T) {
 	for _, c := range []struct {
 		name, text string
 		bad        bool
