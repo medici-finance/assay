@@ -122,8 +122,8 @@ RUN set -eux; \
 
 # ---- Final ----------------------------------------------------------------
 # Small runtime: Alpine + bash + git + gh CLI + ca-certificates + file.
-# github-cli lives in the Alpine community repo, so gh installs cleanly with
-# apk — no third-party package repo needed. `bash` is required, not a
+# github-cli lives in the Alpine community repo, so gh comes from apk — no
+# third-party package repo needed — in the ghbin stage, as a binary only. `bash` is required, not a
 # convenience: `statusgen verifyrun` executes every Verify row under
 # `bash -o pipefail`, and `--in-container` re-invokes verifyrun INSIDE this
 # image, so without a pipefail-capable bash on PATH every POSIX row records
@@ -158,6 +158,16 @@ RUN set -eux; \
     make $opts DESTDIR=/out install; \
     test "$(/out/usr/bin/git version)" = "git version ${GIT_VERSION}"
 
+# gh from the distro repository, taken as a binary only. The github-cli package
+# declares a dependency on the distro git package, so installing it in the final
+# stage would leave the distro git executables, helper tree and package record
+# beside the source-built git. Only the gh binary (it needs just musl, which
+# the final stage already has) is copied across; the package and its git dependency stay in this stage.
+FROM alpine:3.21 AS ghbin
+RUN set -eux; \
+    apk add --no-cache github-cli; \
+    test -x /usr/bin/gh
+
 FROM alpine:3.21
 
 # The explicit /work bind mount may be owned by root on a Docker Desktop backend;
@@ -165,18 +175,26 @@ FROM alpine:3.21
 # launcher (statusgen verifyincontainer.go) ALSO marks safe.directory=/work via
 # per-run env — this system config is the second layer, so a direct
 # `docker run <img> git …` against /work still works without the launcher.
-RUN apk add --no-cache bash github-cli ca-certificates file libcurl expat pcre2 zlib \
+RUN apk add --no-cache bash ca-certificates file libcurl expat pcre2 zlib \
     && addgroup -S desk \
     && adduser -S -G desk -h /home/desk desk
 
-# Replace the distro executable and helpers together; assert the runtime copy.
+# No distro git is installed in this stage (gh arrives as a bare binary), so the
+# source-built git owns /usr/bin and /usr/lib/git-core outright. The assertions
+# below fail the build if distro git ever returns by any route: a package record,
+# the distro helper tree, or a git helper outside the source-built tree.
 COPY --from=gitbuild /out/usr/ /usr/
+COPY --from=ghbin /usr/bin/gh /usr/bin/gh
 RUN set -eu; \
     test "$(/usr/bin/git version)" = "git version 2.56.1"; \
     test -x /usr/lib/git-core/git-remote-https; \
+    if apk info -e git | grep .; then echo "distro git package is installed" >&2; exit 1; fi; \
+    if test -e /usr/libexec/git-core; then echo "distro git helper tree is present" >&2; exit 1; fi; \
+    if find / -xdev -name 'git-remote-http*' -not -path '/usr/lib/git-core/*' | grep .; then echo "git-remote-http outside the source-built tree" >&2; exit 1; fi; \
     ldd /usr/lib/git-core/git-remote-https > /tmp/git-ldd; \
     if grep 'not found' /tmp/git-ldd; then exit 1; fi; \
-    rm /tmp/git-ldd
+    rm /tmp/git-ldd; \
+    gh --version
 
 RUN git config --system --add safe.directory /work
 

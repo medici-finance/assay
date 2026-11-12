@@ -584,7 +584,14 @@ func TestBaseImagePinsTarballs(t *testing.T) {
 	}
 	// A plain curl that writes the one file its stage may fetch, chained after
 	// an unchecked one: the last `-o` names an allowed file, the first does not.
-	gitShaArg := once("ARG GIT_TARBALL_SHA256=" + knownGitTarballs["2.56.0"] + "\n")
+	// The git pin the Dockerfile carries, never a hard-coded release: the next
+	// bump must not leave this anchor behind (it did once, at 2.56.0).
+	gitVer := dockerfileToolVersion(text, "GIT")
+	gitSha, ok := knownGitTarballs[gitVer]
+	if !ok {
+		t.Fatalf("containers/base/Dockerfile pins GIT_VERSION=%q, which is not a reviewed row in knownGitTarballs", gitVer)
+	}
+	gitShaArg := once("ARG GIT_TARBALL_SHA256=" + gitSha + "\n")
 	mutants["class: curl chained before an allowed one"] = swap(gitShaArg, gitShaArg+
 		"RUN set -eux; curl -fsSL https://example.com/t.tgz -o /tmp/t.tgz && curl -fsSL "+gitCurlHTTPSOnly+" https://example.com/g.txz -o /tmp/git.txz\n")
 	// The gitbuild download is held to the same exact curl shape and the same
