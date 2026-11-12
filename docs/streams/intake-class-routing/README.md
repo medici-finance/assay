@@ -179,8 +179,9 @@ In scope:
    that already exists, or authors one class brief for it, or releases the members as direct
    repairs.
 4. The replay bound can be raised for a drain without raising the poller's burst bound.
-5. A newly scaffolded cell starts its intake role on a strong tier, so the judgment work
-   above can run from the first boot.
+5. A new installation starts its intake role on a strong tier, in both the seeded provider
+   defaults and the scaffolded cell file, so the judgment work above can run from the first
+   boot.
 
 Out of scope, with the reason:
 
@@ -333,10 +334,12 @@ No milestone promises a close rate. The measures are reported, not targeted.
 
 Not briefs; each is an act only an operator or maintainer can perform.
 
-- **Pin the intake role to a strong tier on existing cells**, with the cell launcher's
-  per-role model setting. The skill already requires it for judgment work; the session
-  observed was not on one. Brief 05 makes this the scaffolded default for new cells only; it
-  rewrites no existing cell.
+- **Move the intake role to a strong tier on existing installations.** Where a
+  provider-defaults file or model policy exists it decides the model and a per-role pin is
+  ignored, so the tier is changed there, and that cell's running windows are restarted. Where
+  none exists, the per-role pin applies. The skill already requires a strong tier for judgment
+  work; the session observed was not on one. Brief 05 changes the seeded and scaffolded
+  defaults for new installations only; it rewrites no existing file.
 - **Clear what blocks the intake carrier** on the installation being drained. Two open bugs sit
   on that path here: [issue 6199](https://github.com/medici-finance/assay/issues/6199)
   (disposition store unreadable under a held lock) and
@@ -374,7 +377,7 @@ replay bound (§1.1 source table). What is checked after implementation, and by 
 | A judged exit with no handoff is stopped | negative-path test on `land` (brief 02) | the enforcement silently not firing |
 | The replay bound moves alone | test sets the new knob and asserts the poller's burst bound is unchanged (brief 03) | the two bounds still coupled |
 | Grouping yields the stated record set | fixture batch with one matched group, one triggered class, one below-trigger pair, one quarantined item (brief 04) | a member left owed, or quarantined text routed |
-| A new cell's intake role resolves to the strong pin | scaffold test over each cell kind, with a neighbouring role left on the default (brief 05) | a scaffold site missed, or the pin written where resolution does not read it |
+| A new installation's intake role resolves to a strong tier | seed test over every provider and scaffold test over each cell kind, each with a neighbouring role left unchanged (brief 05) | the seed left on mid and overriding the pin, or a scaffold site missed |
 | The path works on a live installation | milestone m-01 acceptance, witnessed by a non-implementer | everything the fixtures do not model |
 
 No check here needs a database or an external service. The live-installation check runs
