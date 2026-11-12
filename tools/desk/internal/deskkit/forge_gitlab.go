@@ -1065,6 +1065,7 @@ func (g *GitLabForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 				MergedAt: gitlabTime(mr.MergedAt),
 				BaseRef:  mr.TargetBranch,
 			}
+			ref.UpdatedAt = gitlabTime(mr.UpdatedAt)
 			if mr.Author != nil {
 				ref.Author = types.resolve(gitlabAccount(mr.Author.ID, mr.Author.Username))
 			}
@@ -3370,6 +3371,43 @@ func (g *GitLabForge) MarkReadyForReview(nodeID string) error {
 	if updated.Draft {
 		return Unverifiable(fmt.Sprintf(
 			"could-not-check: merge request !%d in %s is still marked draft after clearing its title marker",
+			iid, repo.Slug()), nil)
+	}
+	return nil
+}
+
+// ConvertToDraft puts the `Draft:` prefix back on a merge request's title, GitLab's only
+// draft transition and the inverse of MarkReadyForReview. Its one caller is the post-flip
+// backstop (ReadyBackstop); see the interface doc for the ruling that admits it.
+//
+// Like MarkReadyForReview it reads the CURRENT title first, so a stale copy never reverts an
+// edit made in between, and it is idempotent: an MR that is already a draft returns success
+// without a write.
+func (g *GitLabForge) ConvertToDraft(nodeID string) error {
+	repo, iid, err := parseGitLabNodeID(nodeID)
+	if err != nil {
+		return err
+	}
+	cl, cerr := g.client()
+	if cerr != nil {
+		return cerr
+	}
+	path := fmt.Sprintf("/projects/%s/merge_requests/%d", g.projectPath(repo), iid)
+	mr, _, gerr := cl.MergeRequests.GetMergeRequest(repo.Slug(), int64(iid), nil)
+	if gerr != nil {
+		return g.mapErr(http.MethodGet, path, gerr)
+	}
+	if mr.Draft {
+		return nil
+	}
+	updated, _, uerr := cl.MergeRequests.UpdateMergeRequest(repo.Slug(), int64(iid),
+		&gitlab.UpdateMergeRequestOptions{Title: gitlab.Ptr("Draft: " + mr.Title)})
+	if uerr != nil {
+		return g.mapErr(http.MethodPut, path, uerr)
+	}
+	if !updated.Draft {
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: merge request !%d in %s is still not a draft after adding its title marker",
 			iid, repo.Slug()), nil)
 	}
 	return nil

@@ -141,9 +141,20 @@ type BriefStart struct {
 	OnCycle    bool
 }
 
+// MilestoneWork retains the source observation for a contribution. Key is the
+// canonical identity; a missing pin never borrows another revision's status.
+type MilestoneWork struct {
+	Key    string
+	Status string
+	Found  bool
+	Why    string
+}
+
 // MilestoneNode is a milestone's derived completion view.
 type MilestoneNode struct {
 	Ref           string
+	Work          []MilestoneWork
+	Coverage      []string // own loader gaps, excluding graph-only acceptance unknowns
 	Contributors  []string // deduplicated logical brief keys
 	Prerequisites []string
 	Completion    GraphState
@@ -176,7 +187,7 @@ func briefNode(key string) string     { return "brief " + key }
 func milestoneNode(ref string) string { return "milestone " + ref }
 
 // BuildMilestoneGraph derives the combined graph from explicit values. It feeds
-// the S-eligibility owner (EvaluateEligibility) pre-resolved start gates; it is
+// the S-eligibility owner (EvaluateReadiness) graph observations; it is
 // not a second eligibility implementation and carries no semantic marker.
 func BuildMilestoneGraph(in MilestoneGraphInput) MilestoneGraph {
 	g := MilestoneGraph{Briefs: map[string]BriefStart{}, Milestones: map[string]MilestoneNode{}}
@@ -255,7 +266,7 @@ func BuildMilestoneGraph(in MilestoneGraphInput) MilestoneGraph {
 			return n
 		}
 		m := records[ref]
-		n := MilestoneNode{Ref: ref}
+		n := MilestoneNode{Ref: ref, Coverage: cloneList(m.Unknowns)}
 		var own, inherited closure
 		if onCycle[milestoneNode(ref)] {
 			n.Completion = GraphCycle
@@ -270,6 +281,11 @@ func BuildMilestoneGraph(in MilestoneGraphInput) MilestoneGraph {
 			seen[pin.Key] = true
 			n.Contributors = append(n.Contributors, pin.Key)
 			obs := contributor[ref+"\x00"+pin.Key]
+			key := pin.Key
+			if obs.Found && obs.Brief.Key != "" {
+				key = obs.Brief.Key
+			}
+			n.Work = append(n.Work, MilestoneWork{Key: key, Status: obs.Brief.Status, Found: obs.Found, Why: obs.Why})
 			switch {
 			case !obs.Found:
 				own.unknowns = append(own.unknowns, "contributor "+pinSpelling(pin)+" is unknown: "+obs.Why)

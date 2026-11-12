@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -86,13 +87,19 @@ func (c *clock) set(t time.Time) {
 	c.now = t
 }
 
+var idSeq atomic.Int64
+
+// newID is a two-word id no other test plan in this run has: "test-" and a counter spelled in
+// letters, so tests never collide by chance the way two random draws could.
 func newID(t *testing.T) string {
 	t.Helper()
-	id, err := NewID()
-	if err != nil {
-		t.Fatal(err)
+	n := idSeq.Add(1)
+	var b [4]byte
+	for i := len(b) - 1; i >= 0; i-- {
+		b[i] = byte('a' + n%26)
+		n /= 26
 	}
-	return id
+	return "test-" + string(b[:])
 }
 
 // testPlan is a one-action drain plan on cell whose precondition "state" was measured as value.
