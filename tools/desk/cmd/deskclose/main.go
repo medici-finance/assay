@@ -83,8 +83,10 @@ USAGE:
       comment ON the issue authored by a roster-trusted account and not minimized (a
       bare marker string, a minimized one, or one by an untrusted author does NOT
       authorize). --disposition human-decided closes only on the human's OWN ruling
-      comment on the issue (--decision <url>), fetched and its author verified as the
-      blessing authority — a blanket ruling grant never stands in for it. --tracker is
+      comment on the issue (--decision <url>: a GitHub #issuecomment-<id> permalink or a
+      GitLab #note_<id> link, on the forge, host and project serving the issue), fetched
+      and its author verified as the blessing authority — a blanket ruling grant never
+      stands in for it. --tracker is
       never authority: when given it must name an EXISTING item (verified by a read),
       and it is required for human-decided (the close NAMES the continuing work). A
       needs-decision item is refused in both dispositions; not-planned also refuses a

@@ -29,7 +29,7 @@ var dayFilePattern = regexp.MustCompile(`\\d\{4\}-\\d\{2\}-\\d\{2\}\)?\\\.jsonl`
 
 // secondWriters returns the non-test Go files under root, outside the perfrec directory, that
 // carry a perf writer's fingerprint in a string literal or call: a perf-v1 literal or the bare
-// perf-v2 tag; a day-file
+// perf-v2 or perf-v5 tag; a day-file
 // pattern (a date regexp naming .jsonl); the install-id file name together with the
 // 32-hex id pattern; or a getrusage CPU read. Comments are not literals, so prose may still
 // name them.
@@ -64,7 +64,8 @@ func secondWriters(t *testing.T, root string) []string {
 				v := x.Value
 				// perf-v1 as before (any literal naming it); perf-v2 as the bare tag, since
 				// deskperf's report legitimately labels its perf-v2 group in prose.
-				schema = schema || strings.Contains(v, "perf-v1") || v == strconv.Quote(perfrec.SchemaV2) || v == "`"+perfrec.SchemaV2+"`"
+				schema = schema || strings.Contains(v, "perf-v1") || v == strconv.Quote(perfrec.SchemaV2) || v == "`"+perfrec.SchemaV2+"`" ||
+					v == strconv.Quote(perfrec.SchemaV5) || v == "`"+perfrec.SchemaV5+"`"
 				dayFile = dayFile || dayFilePattern.MatchString(v)
 				idName = idName || strings.Contains(v, "install-id")
 				idPattern = idPattern || strings.Contains(v, "[0-9a-f]{32}")
@@ -200,12 +201,17 @@ func importsInNonTest(t *testing.T, dir, path string) bool {
 // TestPerfSharedConstantsAgree pins the equality perfrec cannot assert itself, because it
 // cannot import this package: its exit codes and result strings are the desk kit's.
 func TestPerfSharedConstantsAgree(t *testing.T) {
-	for exit, want := range map[int]string{
-		ExitOK: ResultOK, ExitDisabled: ResultDisabled, ExitRefused: ResultRefused,
-		ExitUnverifiable: ResultUnverifiable, 42: ResultUnverifiable,
+	// Pairs, not a map keyed by the codes: duplicate keys stop this package compiling
+	// under the exit-code neighbour mutation (#6201; TestNoConstSwitchOnExitCodes).
+	for _, c := range []struct {
+		exit int
+		want string
+	}{
+		{ExitOK, ResultOK}, {ExitDisabled, ResultDisabled}, {ExitRefused, ResultRefused},
+		{ExitUnverifiable, ResultUnverifiable}, {42, ResultUnverifiable},
 	} {
-		if got := perfrec.ResultForExit(exit); got != want {
-			t.Errorf("perfrec.ResultForExit(%d) = %q, want the desk kit's %q", exit, got, want)
+		if got := perfrec.ResultForExit(c.exit); got != c.want {
+			t.Errorf("perfrec.ResultForExit(%d) = %q, want the desk kit's %q", c.exit, got, c.want)
 		}
 	}
 	if perfrec.RoleNone != "none" || perfrec.Other != "other" {

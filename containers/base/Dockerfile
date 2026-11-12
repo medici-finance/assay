@@ -62,7 +62,7 @@
 # ---- Reused binary suite --------------------------------------------------
 # Pin the already-published desk-tools image; its static binaries (desk-tools
 # suite + statusgen) are copied into the final stage rather than recompiled.
-ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v1.0.69@sha256:5232eba2782784f3b587c03d47e4fd37c8b5f075326fbaaa7575dc9d2ef95351
+ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v1.0.79@sha256:c8e80b75647e6c960e12dd52bc72c6378c88e85863a6fe7ba2b6dfbd5c3c7e19
 FROM ${DESK_TOOLS_IMAGE} AS desktools
 
 # ---- git, built from a pinned upstream release ---------------------------
@@ -334,3 +334,7 @@ CMD ["/bin/bash"]
 
 # Disable next-prompt generation for interactive and scheduled Claude processes.
 ENV CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false
+
+# CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
+# them off. A fragile stopgap only; patched node kernels are the real fix.
+ENV GODEBUG=multipathtcp=0
