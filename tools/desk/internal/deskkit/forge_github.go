@@ -821,7 +821,7 @@ const ghOpenChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$afte
 // added the base branch (baseRefName), the fork facts (isCrossRepository, headRepository) and
 // the author with its kind and numeric id (the Actor interface carries no databaseId, so the id
 // is read through the concrete-type fragments) — still no rollup.
-const ghListChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String,$states:[PullRequestState!]){repository(owner:$owner,name:$name){pullRequests(states:$states,first:$first,after:$after,orderBy:{field:UPDATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number state headRefOid headRefName baseRefName title body mergedAt isCrossRepository headRepository{nameWithOwner} author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}`
+const ghListChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String,$states:[PullRequestState!]){repository(owner:$owner,name:$name){pullRequests(states:$states,first:$first,after:$after,orderBy:{field:UPDATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number state headRefOid headRefName baseRefName title body mergedAt updatedAt isCrossRepository headRepository{nameWithOwner} author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}`
 
 // ghReviewQueueReviewsSel is the ONE selection ReviewQueueSnapshot adds to the open-changes
 // read. It is held as its own constant so a test can prove the snapshot query is EXACTLY
@@ -1190,6 +1190,7 @@ func (g *GitHubForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 							Title       string `json:"title"`
 							Body        string `json:"body"`
 							MergedAt    string `json:"mergedAt"`
+							UpdatedAt   string `json:"updatedAt"`
 							// Pointers so a null stays distinguishable from false / absent.
 							IsCrossRepository *bool `json:"isCrossRepository"`
 							HeadRepository    *struct {
@@ -1219,7 +1220,7 @@ func (g *GitHubForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 			ref := ChangeRef{
 				Number: n.Number, State: strings.ToUpper(n.State), HeadSHA: n.HeadRefOid,
 				HeadRef: n.HeadRefName, Title: n.Title, Body: n.Body, MergedAt: n.MergedAt,
-				Author: gqlActorAccount(n.Author), BaseRef: n.BaseRefName,
+				UpdatedAt: n.UpdatedAt, Author: gqlActorAccount(n.Author), BaseRef: n.BaseRefName,
 			}
 			// A null isCrossRepository leaves CrossRepo EMPTY (could-not-check), never
 			// CrossRepoSame; a null headRepository (a deleted fork) leaves HeadRepo EMPTY,

@@ -2366,10 +2366,10 @@ func main() {
 		exitProcess(runFlow(*root, *forgeMode, *doraJSON, *since, *doraTimingUntil, *ciHoursPerDay))
 	}
 	if *firstPassYieldMode {
-		exitProcess(runFirstPassYield(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}))
+		exitProcess(runFirstPassYield(*root, *since, *doraTimingUntil, *doraJSON, defaultBFPRSource))
 	}
 	if *reviewReworkMode {
-		exitProcess(runReviewRework(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}))
+		exitProcess(runReviewRework(*root, *since, *doraTimingUntil, *doraJSON, defaultBFPRSource))
 	}
 	if *decisionLatencyMode {
 		exitProcess(runDecisionLatency(*root, *since, *doraTimingUntil, *doraJSON, defaultDecisionQueueSource))
@@ -2378,7 +2378,7 @@ func main() {
 		exitProcess(runNetFlow(*root, *since, *doraTimingUntil, *doraJSON))
 	}
 	if *assayScoreMode {
-		exitProcess(runAssayScore(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}, defaultDecisionQueueSource))
+		exitProcess(runAssayScore(*root, *since, *doraTimingUntil, *doraJSON, defaultBFPRSource, defaultDecisionQueueSource))
 	}
 	// Roadmap deck overview + per-stream pages — RETAINED (Ian ruling #1213).
 	// DevLake feeds INTO these internal pages; roadmapdora.go computes the DORA

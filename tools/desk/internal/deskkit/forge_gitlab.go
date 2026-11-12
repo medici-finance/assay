@@ -1065,6 +1065,7 @@ func (g *GitLabForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 				MergedAt: gitlabTime(mr.MergedAt),
 				BaseRef:  mr.TargetBranch,
 			}
+			ref.UpdatedAt = gitlabTime(mr.UpdatedAt)
 			if mr.Author != nil {
 				ref.Author = types.resolve(gitlabAccount(mr.Author.ID, mr.Author.Username))
 			}
