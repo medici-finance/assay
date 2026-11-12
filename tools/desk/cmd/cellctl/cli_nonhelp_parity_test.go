@@ -459,7 +459,7 @@ func labelsCheckDiff() deliberateDiff {
 		stderrReplace: []string{"", ""}, why: whyLabels}
 }
 
-const whyIntakePin = "intake-class-routing/05: a freshly scaffolded cell pins the intake role to a strong tier (DESK_MODEL_intake_desk=opus), so show reports that one role line from the new pin instead of the default"
+const whyIntakePin = "a freshly scaffolded cell pins the intake role to a strong tier (DESK_MODEL_intake_desk=opus), so show reports that one role line from the new pin instead of the default"
 
 func intakePinShowDiff() deliberateDiff {
 	return deliberateDiff{code: 0, stdoutReplace: func() []string {
@@ -484,7 +484,7 @@ var deliberateDiffs = map[string]deliberateDiff{
 	"new-trailing-value/4": labelsNewDiff("f4"),
 	"new-trailing-value/5": labelsNewDiff("f5"),
 
-	// intake-class-routing/05: a new house cell pins the intake role to a strong tier, so `show` on a
+	// A new house cell pins the intake role to a strong tier, so `show` on a
 	// freshly scaffolded cell reports it. Every other byte and all stderr still must match.
 	"new-house/1":          intakePinShowDiff(),
 	"new-trailing-value/2": intakePinShowDiff(),

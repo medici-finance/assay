@@ -12,7 +12,7 @@ import (
 // the skill reserves its judgment work for a strong tier, and the scaffold's default pin is mid.
 const intakePinLine = "DESK_MODEL_intake_desk=opus"
 
-// regression: intake-class-routing/05
+// regression: F-intake-pin
 func TestSeedIntakeTierStrong(t *testing.T) {
 	policy, err := parseProviderCatalog(defaultProviders, "embedded providers.json", "")
 	if err != nil {
@@ -78,7 +78,7 @@ func countLine(body, line string) int {
 	return n
 }
 
-// regression: intake-class-routing/05
+// regression: F-intake-pin
 func TestNewPinsIntakeStrong(t *testing.T) {
 	for kind, body := range scaffoldedCellEnvs(t) {
 		t.Run(kind, func(t *testing.T) {
@@ -99,7 +99,7 @@ func TestNewPinsIntakeStrong(t *testing.T) {
 	}
 }
 
-// regression: intake-class-routing/05
+// regression: F-intake-pin
 func TestIntakePinSurvivesReset(t *testing.T) {
 	late := resetNow.Add(365 * 24 * time.Hour)
 	for kind, body := range scaffoldedCellEnvs(t) {
@@ -158,7 +158,7 @@ func scaffoldHouse(t *testing.T, harness string) (cells, cellDir string) {
 	return cells, cellDir
 }
 
-// regression: intake-class-routing/05
+// regression: F-intake-pin
 func TestSetShadowedPinNotice(t *testing.T) {
 	t.Run("provider defaults", func(t *testing.T) {
 		cells, cellDir := scaffoldHouse(t, "")
