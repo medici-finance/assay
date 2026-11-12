@@ -188,11 +188,11 @@ that comment removal is idempotent grants an exemption or older-row credit.
 ### Explicit human-approved acceptance transitions
 
 The immutable-delivery rule above remains the default. A versioned brief may opt
-into one later, separately landed command or Expect correction. This is a new human act,
+into later, separately landed command or Expect corrections. This is a new human act,
 not an authority inferred from merging a source edit, incrementing `version:`, a
 label, a local record, an APPROVED review, or a bot relaying a person's words.
 
-The transition supports a command-only or an Expect-only correction to an existing
+The legacy one-line transition supports a command-only or an Expect-only correction to an existing
 original row. A command correction retains its exact Expect, class, shell, order and
 obligations. It must occupy one unambiguous code span with byte-identical surrounding
 context, and its delivered row must still match the complete original definition.
@@ -319,7 +319,59 @@ committing a final transition verdict. This source change does not activate any
 repository's workflows or provide any actual amendment approval.
 
 Transition execution inside `--in-container` or with cross-repository admission is
-unsupported and refuses. The fenced runner gains no network access. Chained
-transitions, row retirement, class changes, combined command-and-Expect changes in
-one row, and table-layout migrations also remain unsupported. Human closure gates, independent review and release/pin
+unsupported and refuses. The fenced runner gains no network access. Row retirement,
+class and shell changes, row add/delete/renumber, supplemental amendment or promotion,
+and table-layout migrations remain unsupported. Human closure gates, independent review and release/pin
 requirements remain separate; this mechanism performs none of those actions.
+
+#### Ordered approval chains
+
+A descriptor may instead follow its one `Verification-Table:` line with contiguous
+chain markers in order, starting at 1. It cannot mix chain and legacy markers,
+repeat an approval URL, or include another line:
+
+```text
+Acceptance-Transition: link=1 amendment=<sha1> approval=<url1>
+Acceptance-Transition: link=2 amendment=<sha2> approval=<url2>
+```
+
+Each link has its own unedited mapped-human approval on the same repository's
+marked issue. Its exact payload is (CRLF may be normalized to LF):
+
+```text
+Approve acceptance-transition v2
+repo=<owner/repo>
+brief=<brief path>
+delivery=<sha>
+base=<sha>
+original=<sha>
+link=<k>
+predecessor=<previous amendment; delivery for link 1>
+amendment=<sha>
+rows=<id>:<Command|Expect|Command+Expect>,...
+```
+
+Rows appear in table order with their exact changed-column token. Every changed
+Command must be named. An unnamed Expect drift retains the prior effective Expect.
+Each link is applied to the preceding effective rows, so a previously corrected row
+may be corrected again. A `Command+Expect` approval may replace the whole Command
+cell, including prose and multiple spans; row ID, order, class, shell and obligations
+remain fixed. Command-only corrections retain the one-span/context rule. Link 1
+alone may reuse a v1 approval under the unchanged v1 rules, without combined cells.
+Legacy one-line descriptors retain their original rules and refusal verdicts.
+
+Every first-parent Verify or version change from delivery through HEAD must be
+exactly one ordered amendment. Each parent table and unique two-parent merge base
+must match the preceding table; the version increases by one at each amendment.
+Evidence preservation, including only the existing empty-placeholder exception,
+stays unchanged. Structural checks precede approval reads. Refusals name the link;
+a missing amendment names `link <k> missing at <12-hex>`. An unreachable approval
+is could-not-check, not permission. There is no chain-length cap and no approval cache.
+
+The same protected planner produces one effective table, per-row last approved
+amendment revisions, and one net `Acceptance-Changes:` receipt. Its tokens are
+`ID=Command`, `ID=Expect`, and `ID=Command+Expect`. Every original row needs a fresh
+witness at or after the final amendment. This shape is also the integration contract
+for desktools-v2/81; chain support alone does not enable container transition execution.
+Verify-desk drafts each link's payload for the driver, never posts an approval, and
+performs independent verification only after the implementation ships and is pinned.

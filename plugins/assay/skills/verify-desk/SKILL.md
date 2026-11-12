@@ -266,6 +266,11 @@ With `--acceptance-record`, execute the protected host rows in **one** host invo
 clean committed source, before inserting uncommitted Evidence. Include every supplemental
 row so the producer records `author-added; no acceptance credit`. Select these host rows
 with `--rows`; use `--acceptance-forge` when the descriptor names an approved transition.
+A chain descriptor carries `Acceptance-Transition: link=<k> amendment=<sha> approval=<url>`
+for each contiguous link after the one `Verification-Table:` line. Draft each link's
+exact v2 payload for the driver; never post an approval. Link 1 alone may retain a v1
+approval under its existing rules. The shared plan derives `Command`, `Expect` or
+`Command+Expect` changes, and every original witness must follow the final amendment.
 Then bracket the disjoint container-witnessable rows on that same source and land the
 closed witness through the sanctioned Evidence path. The selections together cover the
 whole protected table, and the assembled run carries exactly one `Verification-Table:`

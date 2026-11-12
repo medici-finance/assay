@@ -2642,7 +2642,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	var protectedExecution protectedPlan
 	// transitionDescriptor is the --acceptance-record text: a protected record
 	// (one Verification-Table line, #4499) or an acceptance transition (that
-	// line plus one Acceptance-Transition line). transitionRun is the latter.
+	// line plus one legacy or an ordered chain of Acceptance-Transition lines).
+	// transitionRun is the latter.
 	var transitionDescriptor string
 	var transitionRun bool
 	if *transitionRecord != "" {

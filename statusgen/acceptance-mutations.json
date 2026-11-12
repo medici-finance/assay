@@ -3,8 +3,8 @@
   "control": {
     "name": "approval payload binding removed",
     "file": "acceptancetransition.go",
-    "old": "rawIDs, matched := strings.CutPrefix(approvalBody, payloadPrefix)",
-    "new": "_, rawIDs, _ := strings.Cut(approvalBody, \"\\nrows=\")\n\tmatched := true\n\t_ = payloadPrefix"
+    "old": "rawIDs, matched = strings.CutPrefix(approvalBody, payloadPrefix)",
+    "new": "_, rawIDs, _ = strings.Cut(approvalBody, \"\\nrows=\")\n\tmatched = true\n\t_ = payloadPrefix"
   },
   "mutations": [
     {

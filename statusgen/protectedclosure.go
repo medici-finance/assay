@@ -130,6 +130,10 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 	if !isObjectID(delivery) || !isObjectID(base) || !isObjectID(original) || len(paths) != 1 || paths[0] == "" {
 		return protectedPlan{}, "protected table: full object ids and the brief's repository path are required"
 	}
+	// Chain grammar is checked before even deliveryCoordinates reads Git.
+	if _, why := transitionLinks(evidence); why != "" {
+		return protectedPlan{}, why
+	}
 	dir, file := filepath.Dir(paths[0]), filepath.Base(paths[0])
 	refuse := func(err any) (protectedPlan, string) { return protectedPlan{}, fmt.Sprint("protected table: ", err) }
 	// Reuse the qualified source-provenance primitive. This authenticates the
@@ -194,6 +198,9 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 		originalVerify := baseline
 		baseline, revisions, why = acceptanceTransition(paths[0], verify, fullEvidence, evidence, delivery, base, original, baseline, delivered, proposal == "", read)
 		if why != "" {
+			if strings.HasPrefix(why, "acceptance transition: link ") {
+				return protectedPlan{}, why
+			}
 			return refuse(why)
 		}
 		changes = acceptanceChanges(originalVerify, baseline, revisions)
@@ -267,6 +274,15 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 // carry a verifier-supplied row list, is refused.
 func acceptanceRecordKind(descriptor string) (transition bool, why string) {
 	lines := strings.Split(descriptor, "\n")
+	if len(lines) > 1 && strings.HasPrefix(lines[0], "Verification-Table:") {
+		links, why := transitionLinks(strings.Join(lines[1:], "\n"))
+		if why != "" {
+			return false, "statusgen verifyrun: --acceptance-record: " + why
+		}
+		if len(links) > 0 && len(links) == len(lines)-1 {
+			return true, ""
+		}
+	}
 	switch {
 	case len(lines) == 1 && strings.HasPrefix(lines[0], "Verification-Table:"):
 		return false, ""
@@ -398,6 +414,11 @@ func acceptanceChanges(original, effective string, revisions map[string]string) 
 		column := "Command"
 		if row.Expect != old[row.ID].Expect {
 			column = "Expect"
+			if row.CommandCell != old[row.ID].CommandCell {
+				column = "Command+Expect"
+			}
+		} else if row.CommandCell == old[row.ID].CommandCell {
+			continue
 		}
 		changes = append(changes, row.ID+"="+column)
 	}

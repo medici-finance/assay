@@ -1,0 +1,65 @@
+{
+  "test": "go test . -run '^Test(AcceptanceTransition|TransitionExecution|TransitionCISkip|TransitionContext|ContextExecution|ProtectedRecordRun|ProtectedRecordRefusal|ProtectedRecordCredit|ExpectOnlyTransition|ExpectTransitionExecution|ExpectTransitionRefusals|ExpectScopeExecution|TransitionDeliveredPlaceholder|TransitionChain|TransitionCombinedColumns|ChainRefusesForgedApproval|ChainRefusesReplayedApproval|ChainRefusesSkippedLink|ChainRefusesReorderedChain|ChainRefusesEditAfterApproval|ChainExecution|TransitionV1Unchanged)$' -count=1 -timeout 240s",
+  "control": {
+    "name": "drop per-link payload binding",
+    "file": "acceptancetransition.go",
+    "old": "rawIDs, matched = strings.CutPrefix(approvalBody, payloadPrefix)",
+    "new": "_, rawIDs, _ = strings.Cut(approvalBody, \"\\nrows=\")\n        matched = true\n        _ = payloadPrefix"
+  },
+  "mutations": [
+    {
+      "name": "skip unapproved-edit enumeration",
+      "file": "acceptancetransition.go",
+      "old": "\tprevious, previousTable := delivery, delivered\n\tpreviousVersion, e := version(delivery)\n\tif e != nil {\n\t\treturn fail(1, e.Error())\n\t}\n\tposition := 0\n\tfor _, rev := range strings.Fields(string(history)) {\n\t\ttable, e := read(rev)\n\t\tif e != nil {\n\t\t\treturn fail(position+1, \"cannot read acceptance history\")\n\t\t}\n\t\tv, e := version(rev)\n\t\tif e != nil {\n\t\t\treturn fail(position+1, e.Error())\n\t\t}\n\t\tif strings.TrimSpace(table) != strings.TrimSpace(previousTable) || v != previousVersion {\n\t\t\tif position >= len(links) || links[position].amendment != rev {\n\t\t\t\treturn fail(position+1, fmt.Sprintf(\"link %d missing at %.12s\", position+1, rev))\n\t\t\t}\n\t\t\tlinks[position].predecessor = previous\n\t\t\tprevious = rev\n\t\t\tposition++\n\t\t}\n\t\tpreviousTable, previousVersion = table, v\n\t}\n\tif position != len(links) {\n\t\treturn fail(position+1, \"amendment is not an ordered first-parent acceptance change\")\n\t}\n",
+      "new": "\tprevious := delivery\n\tfor i := range links {links[i].predecessor=previous;previous=links[i].amendment}\n\tpreviousVersion, e := version(previous)\n\tif e != nil {return fail(1,e.Error())}\n"
+    },
+    {
+      "name": "drop predecessor from payload check",
+      "file": "acceptancetransition.go",
+      "old": "predecessor=%s\\namendment=%s\\nrows=\", repo, rel, delivery, base, original, chain.number, chain.predecessor, amendment",
+      "new": "amendment=%s\\nrows=\", repo, rel, delivery, base, original, chain.number, amendment"
+    },
+    {
+      "name": "accept another links approval",
+      "file": "acceptancetransition.go",
+      "old": "rawIDs, matched = strings.CutPrefix(approvalBody, payloadPrefix)",
+      "new": "_, rawIDs, _ = strings.Cut(approvalBody, \"\\nrows=\")\n        matched = true\n        _ = payloadPrefix"
+    },
+    {
+      "name": "skip first-parent order between links",
+      "file": "acceptancetransition.go",
+      "old": "if !found {",
+      "new": "if chain == nil && !found {"
+    },
+    {
+      "name": "let one-line record accept combined cells",
+      "file": "acceptancetransition.go",
+      "old": "if chain != nil && source.CommandCell != next.CommandCell && source.Expect != next.Expect {",
+      "new": "if source.CommandCell != next.CommandCell && source.Expect != next.Expect {"
+    },
+    {
+      "name": "fresh witnesses checked against link 1",
+      "file": "acceptancetransition.go",
+      "old": "audit && i == len(links)-1",
+      "new": "audit && i == 0"
+    },
+    {
+      "name": "accept link-number gap",
+      "file": "acceptancetransition.go",
+      "old": "f[1] != fmt.Sprintf(\"link=%d\", k)",
+      "new": "(false && f[1] != fmt.Sprintf(\"link=%d\", k))"
+    },
+    {
+      "name": "reuse approval URL across links",
+      "file": "acceptancetransition.go",
+      "old": "if seen[key] {",
+      "new": "if false && seen[key] {"
+    },
+    {
+      "name": "judge successor rows against original",
+      "file": "acceptancetransition.go",
+      "old": "effective, prior = next, amended",
+      "new": "effective, prior = baseline, amended\n            _ = next"
+    }
+  ]
+}
