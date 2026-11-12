@@ -20,13 +20,13 @@ exec-tier: strong
 exec-tier-why: "Resume correctness depends on source identity, interruption cleanup and durable-state invariants that a green final report alone cannot prove."
 domain: complicated
 consumers:
-  - "tools/desk/cmd/muhar/README.md: follow-up desk-tools/56 (this brief; flips to fixed-here when the state contract is documented)"
+  - "tools/desk/cmd/muhar/README.md: fixed-here (documents the state schema, identity, cleanup and operator-owned path contract)"
 ---
 
 # Brief 56 — Make mutation reports resumable and measurable
 
 ## Context
-files: tools/desk/cmd/muhar/main.go, tools/desk/cmd/muhar/harness.go, tools/desk/cmd/muhar/runner.go, tools/desk/cmd/muhar/state.go, tools/desk/cmd/muhar/state_test.go, tools/desk/cmd/muhar/README.md, changelog/muhar-resume-state.md
+files: tools/desk/cmd/muhar/main.go, tools/desk/cmd/muhar/harness.go, tools/desk/cmd/muhar/runner.go, tools/desk/cmd/muhar/state.go, tools/desk/cmd/muhar/state_test.go, tools/desk/cmd/muhar/README.md, docs/contracts.md, changelog/muhar-resume-state.md
 facts:
 - The existing runner prints its final report at completion; an interrupted sweep has no resumable result record.
 - A healthy harness can exit zero with NOT_CAUGHT or COULD_NOT_MUTATE, so resume must preserve verdicts verbatim rather than infer health from exit status.
@@ -53,7 +53,7 @@ design-fit:
 3. On a same-identity retry, rerun the pristine baseline and positive control, then skip only mutations with complete definitive records. Do not reuse HARNESS BROKEN, interrupted, infrastructure-error, or partially written records. The final report must include resumed and freshly executed results in the original spec order.
 4. Serialize writers to one state file with the existing cross-platform lock owner (`deskkit.TryLockExclusive`/`UnlockFile` in `tools/desk/internal/deskkit`; muhar is in the same `tools/desk` module, so the import adds no release dependency). Flush each record before reporting the mutation complete. On SIGINT/SIGTERM, kill child process groups (Unix process groups as today; on Windows the existing top-process-only kill remains, as `process_windows.go` documents), restore the source tree, and leave a syntactically valid state file that a later invocation can resume.
 5. Add `TestStateResume`, `TestStateRejectsNewTree`, `TestStateSkipsNoErrors`, and `TestStateEndToEnd`. `TestStateResume` covers interruption after a completed record and corrupt trailing data (truncate or refuse on a partial trailing record, never resume past it); `TestStateRejectsNewTree` covers changed source/tests/toolchain identity and changed run mode (`-select` off→on, `-shard i/n` changed or removed); `TestStateSkipsNoErrors` covers non-reuse of HARNESS BROKEN, interrupted and infrastructure-error records; `TestStateEndToEnd` covers concurrent writers (the lock holder writes, the second writer refuses without writing) and exact final-report parity with an uninterrupted run.
-6. Document the state schema, identity, cleanup, and operator-owned path contract. Change the consumer entry to `fixed-here` in the implementation PR.
+6. Document the state schema, identity, cleanup, and operator-owned path contract. Record its identity/writer/reuse invariant in the existing `docs/contracts.md` rule-register census; this documents the same optional state contract and adds no verb. Change the consumer entry to `fixed-here` in the implementation PR.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |

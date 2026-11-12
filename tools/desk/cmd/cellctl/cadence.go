@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
-	"github.com/medici-finance/assay/tools/desk/internal/cellprocess"
+	"github.com/medici-finance/assay/tools/desk/internal/cellrunner"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/tick"
 )
@@ -56,7 +56,7 @@ func (c *Cell) runInteractiveHarness(role string, argv, env []string, wt string)
 	if c.cadenceLease == nil {
 		die("interactive launch requires the role ownership lease")
 	}
-	ctx, stop := cellprocess.NotifyContext(context.Background())
+	ctx, stop := cellrunner.NotifyContext(context.Background())
 	defer stop()
 	code := -1
 	err := c.cadenceLease.RunInteractive(ctx, c.Name, role, func(child context.Context) cellcadence.Result {
@@ -73,7 +73,10 @@ func (c *Cell) runInteractiveHarness(role string, argv, env []string, wt string)
 			}
 		}
 		childArgs := scratchArgv(harness, argv, childEnv)
-		code, uncertain, err = cellprocess.RunInteractiveObserved(child, childArgs, childEnv, wt, os.Stdin, interactiveOutput(os.Stdout, scratch.tail), interactiveOutput(os.Stderr, scratch.tail), c.childStarted(scratch))
+		// The terminal is the child's: maintenance logs to its file only.
+		stopMaintenance := c.startScratchMaintenance(child, role, nil)
+		code, uncertain, err = cellrunner.RunInteractiveObserved(child, childArgs, childEnv, wt, os.Stdin, interactiveOutput(os.Stdout, scratch.tail), interactiveOutput(os.Stderr, scratch.tail), c.childStarted(scratch))
+		stopMaintenance()
 		c.recordRoleChild(0)
 		result := cellcadence.Result{ExitCode: code, Uncertain: uncertain, Err: err}
 		scratch.finish(&result)
@@ -104,12 +107,14 @@ func (c *Cell) runCadencedHarness(role, harness string, argv, env []string, wt s
 	if err != nil {
 		die("cadence: %v", err)
 	}
-	ctx, stop := cellprocess.NotifyContext(context.Background())
+	ctx, stop := cellrunner.NotifyContext(context.Background())
 	defer stop()
 	fmt.Printf("[cadence] cell=%s role=%s interval=%s budget=%s state=%s; Go supervisor owns subsequent passes\n", c.Name, role, c.Cadence.Interval, c.Cadence.Budget, c.cadenceDir(role))
+	stopMaintenance := c.startScratchMaintenance(ctx, role, os.Stderr)
 	err = c.cadenceLease.Run(ctx, c.cadenceConfig(role), func(pass context.Context) cellcadence.Result {
 		return c.executeCadencePass(pass, role, harness, args, env, wt)
 	})
+	stopMaintenance()
 	if err != nil && !errors.Is(err, context.Canceled) {
 		die("cadence: %v", err)
 	}
@@ -150,6 +155,10 @@ func (c *Cell) recordRoleChild(pid int) {
 	}
 }
 
+// errStoppedByFlag marks cadenceGuard's "a stop flag covers this role" answer, as distinct from
+// a flag that could not be checked.
+var errStoppedByFlag = errors.New("stopped by")
+
 func (c *Cell) cadenceGuard(role string) error {
 	paths := []string{filepath.Join(c.cadenceDir(role), "STOP"), filepath.Join(c.Config, "DISABLED"), filepath.Join(c.Config, "STOP"), filepath.Join(c.Config, "STOP."+role)}
 	// The cell-scoped stop flags (STOP.cell.<cell>, STOP.cell.<cell>.<role>) stop the
@@ -169,7 +178,7 @@ func (c *Cell) cadenceGuard(role string) error {
 	for _, p := range paths {
 		_, err := os.Lstat(p)
 		if err == nil {
-			return fmt.Errorf("stopped by %s", p)
+			return fmt.Errorf("%w %s", errStoppedByFlag, p)
 		}
 		if !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("cannot check stop flag %s: %w", p, err)
@@ -202,7 +211,7 @@ func (c *Cell) executeCadencePass(ctx context.Context, role, harness string, arg
 		f.Close()
 		runArgs = append(runArgs[:len(runArgs)-1], "--output-last-message", resultFile, runArgs[len(runArgs)-1])
 	}
-	exit, uncertain, err := cellprocess.RunObserved(ctx, runArgs, env, wt, io.MultiWriter(os.Stdout, out, scratch.tail), io.MultiWriter(os.Stderr, scratch.tail), c.childStarted(scratch))
+	exit, uncertain, err := cellrunner.RunObserved(ctx, runArgs, env, wt, io.MultiWriter(os.Stdout, out, scratch.tail), io.MultiWriter(os.Stderr, scratch.tail), c.childStarted(scratch))
 	c.recordRoleChild(0)
 	result = cellcadence.Result{Outcome: "could-not-check", ExitCode: exit, Uncertain: uncertain, Err: err}
 	if err != nil || exit != 0 || uncertain {
@@ -386,11 +395,59 @@ func (c *Cell) stopCadences() error {
 		return nil
 	}
 	for _, role := range knownRoles {
-		dir := c.cadenceDir(role)
-		_, err := cellcadence.Read(dir)
-		if err != nil && !errors.Is(err, cellcadence.ErrNoState) {
+		if err := c.stopRoleCadence(role, cadenceStopWait); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// cadenceStopWait bounds how long a stop waits for a cadence-mode role's lease after writing its
+// STOP file.
+const cadenceStopWait = 20 * time.Second
+
+// stopRoleCadence is the per-role part of stopCadences: an idle lease is checked for an
+// unfinished pass; a busy cadence-mode lease gets the role's STOP file (downStopReason, which the
+// role's next launch removes) and up to wait for the supervisor to let go; a busy interactive-mode
+// lease is left to the caller (its harness holds the lease until the cockpit's close stops it;
+// cell-wide `down` then waits for it). The per-role `down <cell> <role...>` calls it for one role
+// alone.
+func (c *Cell) stopRoleCadence(role string, wait time.Duration) error {
+	dir := c.cadenceDir(role)
+	_, err := cellcadence.Read(dir)
+	if err != nil && !errors.Is(err, cellcadence.ErrNoState) {
+		return err
+	}
+	lease, err := cellcadence.Acquire(dir)
+	if err == nil {
+		state, readErr := cellcadence.Read(dir)
+		lease.Close()
+		if readErr == nil && (state.Cell != c.Name || state.Role != role) {
+			return fmt.Errorf("foreign cadence checkpoint scope")
+		}
+		if readErr != nil && !errors.Is(readErr, cellcadence.ErrNoState) {
+			return readErr
+		}
+		if state.Running {
+			return cellcadence.ErrUnfinished
+		}
+		return nil
+	}
+	if !errors.Is(err, cellcadence.ErrBusy) {
+		return err
+	}
+	mode, err := readRoleMode(dir)
+	if err != nil {
+		return err
+	}
+	if mode == "interactive" {
+		return nil
+	}
+	if err := writeDownStop(dir); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(wait)
+	for {
 		lease, err := cellcadence.Acquire(dir)
 		if err == nil {
 			state, readErr := cellcadence.Read(dir)
@@ -404,48 +461,16 @@ func (c *Cell) stopCadences() error {
 			if state.Running {
 				return cellcadence.ErrUnfinished
 			}
-			continue
+			return nil
 		}
 		if !errors.Is(err, cellcadence.ErrBusy) {
 			return err
 		}
-		mode, err := readRoleMode(dir)
-		if err != nil {
-			return err
+		if time.Now().After(deadline) {
+			return fmt.Errorf("cadence %s has not stopped; cockpit left open for inspection", role)
 		}
-		if mode == "interactive" {
-			continue
-		}
-		if err := os.WriteFile(filepath.Join(dir, "STOP"), []byte("cellctl down\n"), 0600); err != nil {
-			return err
-		}
-		deadline := time.Now().Add(20 * time.Second)
-		for {
-			lease, err := cellcadence.Acquire(dir)
-			if err == nil {
-				state, readErr := cellcadence.Read(dir)
-				lease.Close()
-				if readErr == nil && (state.Cell != c.Name || state.Role != role) {
-					return fmt.Errorf("foreign cadence checkpoint scope")
-				}
-				if readErr != nil && !errors.Is(readErr, cellcadence.ErrNoState) {
-					return readErr
-				}
-				if state.Running {
-					return cellcadence.ErrUnfinished
-				}
-				break
-			}
-			if !errors.Is(err, cellcadence.ErrBusy) {
-				return err
-			}
-			if time.Now().After(deadline) {
-				return fmt.Errorf("cadence %s has not stopped; cockpit left open for inspection", role)
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
+		time.Sleep(100 * time.Millisecond)
 	}
-	return nil
 }
 
 func writeRoleMode(dir, mode string) error {

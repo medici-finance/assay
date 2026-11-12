@@ -52,9 +52,15 @@ does not own or mutate native Goal state.
 Explicit `--cadence` / `CELL_CADENCE` durations select the existing headless supervisor;
 `--cadence off` or saved `CELL_CADENCE=off` explicitly selects interactive mode.
 A tick budget requires an explicit cadence; `off` ignores a saved budget. Codex tick
-launches disable native Goals and never receive the standing bootstrap. Claude and
-Cursor keep their existing behavior. Defaults do not rewrite cell.env or change
-already-running sessions.
+launches disable native Goals and never receive the standing bootstrap.
+
+Interactive Cursor desks opened by `desk` or `up` use Cursor's built-in
+`/loop` skill during role boot. The loop wakes the same chat for its due sweep,
+with normal operator input and approvals in that chat. Use the updated Cursor
+bundle in the role worktree so the boot can read the
+[interactive cadence binding](../plugins/assay/references/cursor.md#interactive-desk-cadence).
+An explicit duration still selects the headless supervisor. Changes to these
+launch defaults apply the next time a session starts.
 
 The same bootstrap covers host and scrubbed Codex desk argv. Native container cells
 run an independently pinned image entrypoint with its own paused/handoff contract;
@@ -83,7 +89,10 @@ selects the interactive default unless cell.env saves a duration.
 `supervisor=active` identifies a cadence owner; `supervisor=interactive` does not.
 If status instead reports `unfinished`, follow the recovery procedure below only after
 confirming the old harness and all children have stopped. Do not delete locks or
-checkpoints to force a second owner. A launch never clears a stop flag itself.
+checkpoints to force a second owner. A launch clears exactly one stop flag itself: the
+per-role stop request `cellctl down` wrote (its body reads `cellctl down`), removed by the
+role's next launch under the role lease. A stop written by `cadence stop`, an empty marker
+or any other body, and every cell-wide flag, stays until `resume` or its own owner lifts it.
 
 ## Configuration and ownership
 
@@ -117,8 +126,18 @@ cellctl desk house pr-review-desk --cadence 30m
 
 A stop request cancels an active pass on the next supervisor heartbeat (normally five
 seconds), then reaps its process tree. `cellctl down` requests this cancellation
-before closing cockpit windows. `resume` clears only the local stop request; it does
+before closing cockpit windows, and never overwrites a stop request already there.
+`resume` clears only the local stop request; it does
 not launch a model, clear the cell's STOP/DISABLED flags, or discard a checkpoint.
+
+An interactive role stops on the hangup the cockpit's close delivers. `cellctl down`
+names each interactive owner (its pid and start time) before closing anything, then
+waits for them, 20 seconds for them all. When an owner's own cleanup could not prove
+itself finished, its checkpoint would stay `running`; down records the stop instead,
+but only when the reconcile preflight's evidence below shows the owner it signalled,
+that owner's role child and every process carrying the role's marker gone. Otherwise
+down finishes the teardown, exits 1 and names `cellctl up <cell> --plan`. So `down`
+then `up` needs no recovery in between.
 
 A supervisor crash during a pass or interactive session is ambiguous: the agent might still be running.
 An unfinished checkpoint therefore refuses all replacement launches, even when the
@@ -207,7 +226,9 @@ one answer instead of one recovery per role. The preflight:
    lets the launch continue as it always has.
 
 There is deliberately no `--yes` flag: clearing stays a human act, as `--confirm-stopped`
-intends. `cellctl up <cell> --dry-run` (or `DRY_RUN=1`) prints the inventory and the plan
+intends. The operator's `cellctl down` is that act for the one record it clears itself: the
+interactive checkpoint of an owner that down named before it signalled it, on the dead
+evidence above. A crashed owner with no down behind it still needs this preflight or `recover`. `cellctl up <cell> --dry-run` (or `DRY_RUN=1`) prints the inventory and the plan
 and changes nothing. The preflight never touches queued, held or acknowledged comms
 messages, keys, configuration, worktrees, branches or the Go cache. When its plan stops or
 clears anything, it points at `cellctl cache <cell> status` and
@@ -276,7 +297,8 @@ Windows compilation alone does not establish those behaviors.
 The offline Windows runtime checks can be run from `tools/desk` in PowerShell:
 
 ```powershell
-go test ./internal/cellcadence ./internal/cellprocess
+go test ./internal/cellcadence ./internal/cellrunner
+cd ../../loopadmin && go test ./process && cd ../tools/desk
 go test ./cmd/cellctl -run 'TestCodex|TestWindowsCommandEnvironment|TestInteractiveOwner'
 ```
 
@@ -290,12 +312,16 @@ cell launcher. A local initialization receipt is bound to cell/configuration,
 profile and binary generation; it grants no role lease, stop exemption or storage
 allowance. Every launch still checks current role authority and storage custody.
 Scratch completion records outcomes and evidence without sweeping historical data.
-Explicit `cellctl scratch <cell> sweep --apply` owns reclamation.
+The scratch sweep owns reclamation: an explicit `cellctl scratch <cell> sweep --apply`,
+or the periodic sweep a running desk supervisor starts beside its child (see
+[Periodic maintenance](cellctl-scratch.md#periodic-maintenance)).
 
 Managed Go-cache preparation and final process enrollment never recursively inventory
 the cache. Fresh clean accounting, current free-space headroom and owned root metadata
 are required; missing, stale, dirty or corrupt accounting refuses with a request to run
-`cellctl cache <cell> clean`. A newly created empty owned root is initialized with
+`cellctl cache <cell> clean`. `cellctl up` alone runs that clean itself, once, when the
+refusal is the size or free-space margin or a stale measurement, then prepares again
+([Managed Go caches](cellctl-go-cache.md#cellctl-up-cleans-once-on-a-reclaimable-deferral)). A newly created empty owned root is initialized with
 bounded metadata reads. Maintenance inventory releases admission custody while walking,
 then reacquires it and revalidates consumer enrollment and current free space before
 cleanup. A consumer admitted during inventory invalidates that pass even if it exits
@@ -310,4 +336,4 @@ or permission for live enrollment is introduced.
 
 In cache-enabled cadence, the existing supervisor triggers cache maintenance after each completed pass and again at the next due boundary, so normal build writes and accounting aging during the interval do not require manual clean between passes. Fresh clean accounting avoids a recursive scan. A needed refresh waits the existing two-second filesystem timestamp margin before measurement, then uses the same cache clean owner, unlocked inventory and final custody revalidation. The supervisor keeps its role lease and heartbeat while maintenance runs. Its checkpoint records `maintenance` as `checked-clean` or `could-not-check`; failures preserve the next enrollment’s ordinary fail-closed refusal. Uncertain child shutdown never triggers maintenance. This is between-pass work, outside startup and Finish, with no new service or scheduler.
 
-Interactive mode (`--cadence off`) has no between-pass supervisor. Missing, dirty, stale or corrupt accounting there still requires the operator to run `cellctl cache <cell> clean` after writes settle before retrying. First startup also retains bounded admission and its corrective maintenance refusal. Scratch retention still requires explicit operator sweep. See the [scope reconciliation](https://github.com/medici-finance/assay/issues/4172#issuecomment-6354063056).
+Interactive mode (`--cadence off`) has no between-pass supervisor. Missing, dirty, stale or corrupt accounting there still requires the operator to run `cellctl cache <cell> clean` after writes settle before retrying. First startup also retains bounded admission and its corrective maintenance refusal. Scratch retention does not: the desk process runs the periodic scratch sweep beside the interactive child as well, and writes nothing to its terminal ([Periodic maintenance](cellctl-scratch.md#periodic-maintenance)). See the [scope reconciliation](https://github.com/medici-finance/assay/issues/4172#issuecomment-6354063056).

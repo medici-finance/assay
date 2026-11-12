@@ -291,10 +291,12 @@ A conforming milestone implementation MUST demonstrate at least:
 This is a specification draft, not a rollout. First implement explicit capability
 advertisement/refusal for milestone records, stream opt-in and brief start requirements.
 Old readers currently tolerate unknown keys in several places: inserting new YAML keys
-alone is unsafe because they may silently ignore a required gate. A future negotiated
-brief schema (provisionally `brief-v4`, subject to allocation at implementation) MUST
-be used for `requires-milestones`; supported brief schemas remain v1–v3 today.
-No JSON schema, release support entry or live declaration is added by this draft.
+alone is unsafe because they may silently ignore a required gate. The negotiated
+brief schema `brief-v4` (allocated in brief §3.5 with `schemas/brief-v4.json`; no
+supporting release yet) MUST be used for `requires-milestones`, and a conforming linter
+refuses the key on brief-v1–v3. No release support entry or live declaration is added
+by this draft; the record loader below adds `schemas/milestone-v1.json` for the record
+frontmatter only.
 
 The implementation handoff MUST enumerate parser/schema/lint, graph resolution, eligibility,
 Next-up/dispatch, board/deskboard, historian/export and trace report consumers. Unsupported
@@ -327,6 +329,251 @@ they do not prevent reviewing this proposed semantic contract.
 
 The envelope/stream opt-in allocation from §10 is now defined by
 [reader-capabilities-v1](reader-capabilities-v1.md). The shared pure assessment and
-named legacy consumer preflights do not implement milestone loading, assessment,
-dispatch or acceptance. Those capabilities remain unadvertised. Operational milestone
-declarations and adoption remain held until coordinated readers are qualified.
+named legacy consumer preflights do not implement milestone assessment, dispatch or
+acceptance; the record loader below reads records only. Those capabilities remain
+unadvertised. Operational milestone declarations and adoption remain held until
+coordinated readers are qualified.
+
+## Record loader implementation
+
+statusgen milestone discovery (`statusgen/milestones.go`) is the record reader for §2–§3.
+It is not advertised: statusgen's reader-capabilities document still omits
+`milestone-v1`. The loader assesses each opted-in stream's `reader-requirements`
+against that same advertisement before reading anything, so until the capability is
+advertised every command that loads streams leaves the records unread and the
+stream's milestone coverage unknown. Separately, the lint and write paths' tree gate
+refuses an opted-in tree. Graph, readiness, report and acceptance consumers are
+later work; the loader grants no dispatch, approval or acceptance.
+
+**Opt-in.** A stream opts in only through its README's top-level `reader-requirements`
+envelope: any required operation that lists `milestone-v1` as a schema or semantic.
+Body prose never opts in. A stream without that envelope entry is legacy: its
+`milestones/` directory, if any, is not read, and its lifecycle, dependency and
+dispatch behavior are unchanged. An unreadable envelope leaves milestone coverage unknown.
+
+**Location.** Records are regular files named `m-<NN>-<slug>.md` directly under
+`docs/streams/<stream>/milestones/`; a `README.md` index there is ignored. The host
+adapter reads through a root-confined filesystem view. A symlink, nested directory or
+special entry is refused; any other unrecognized entry leaves coverage unknown
+because it may hide a record. A missing or unreadable `milestones/` directory of an
+opted-in stream is unknown coverage, never an empty plan.
+
+**Identity and version.** The owning root is the graph alias registry's cell and its
+`self:` alias (or its single published alias). The `milestone` key resolves through the
+shared typed reference resolver with the milestone profile; it must carry no `@`
+selector and must name the owning cell, repository and stream. The earlier draft
+`<cell>:<repo>:<stream>/m-<NN>` spelling and registered repository aliases normalize
+to the same identity. The graph alias registry does not yet list historical aliases
+for a repository, so in production only the registered alias itself matches; a record
+naming an older alias is refused as an ownership mismatch. The version is `contract-version`; filenames and `-vN` suffixes
+are never read for identity or version. Two records with the same identity and version,
+including through an alias, are both refused with both locations named; other records
+still load. Distinct versions of one identity are all retained.
+
+**Fields.** The §3 key set is closed; missing, unknown or wrongly typed keys refuse the
+record. `contributes` resolves with the brief profile and keeps each exact optional
+authored-brief revision; a milestone reference there is a wrong-kind refusal, as is a
+brief reference in `requires-milestones`. A title that is only an ID or wave label is
+refused. `schemas/milestone-v1.json` describes the frontmatter shape; ownership,
+duplicates, coverage and provenance are the loader's cross-record rules.
+
+**Body.** Each §3 section must be present with content. `Acceptance` holds a Markdown
+table whose first column is `ID`, one row per criterion, IDs `C<NN>`, unique.
+`Coverage` holds a `Criterion | Contributors | Evidence` table: contributors are
+comma-separated brief references that must appear in `contributes`; evidence is
+comma-separated repository-relative paths; `—`, `-` or `none` marks an empty cell. A
+coverage row for an undefined criterion, a contributor not in `contributes` or a
+malformed table refuses the record.
+
+**Coverage states.** The loaded plan is `known` only when no record was refused and no
+gap was found. These gaps leave it `unknown`, with the record still loaded: a criterion
+with no coverage row (uncovered, not satisfied); a criterion with neither a contributor
+nor evidence (unmapped work — an empty `contributes` is justified only when every
+criterion cites existing evidence); a contribution mapped to no criterion; a source or
+evidence path that is missing, unreadable or not checkable offline (URLs and issue
+references); and a prerequisite version that is not a loaded record. A source or
+evidence path that is absolute or escapes the repository refuses the record. Records
+carry identities, versions, criterion IDs and paths only: no body text, credentials,
+or private repository names behind unpublished aliases enter the plan.
+
+The tests `TestMilestoneRecords` and `TestMilestoneUnknownCoverage` exercise this
+contract; `statusgen/testdata/milestone-support/03-mutations.json` holds their executable
+mutation controls.
+
+## Combined graph implementation
+
+statusgen builds the §4–§5 combined graph in the pure `statusgen/evaluation` package
+(`BuildMilestoneGraph`). The function takes explicit values and returns a typed result:
+the scanned briefs with their own `depends` and `requires-milestones`, the loaded
+milestone records, and a read-only source port that observes a contributor at its own
+root's selected source snapshot. It does not fetch, claim, approve or write. The
+statusgen adapter (`statusgen/milestonegraph.go`) maps the scan onto those values after
+every root is read, so a cycle that crosses roots is visible.
+
+**Edges.** A brief points to each brief it `depends` on and to each milestone version it
+lists in `requires-milestones`. A milestone points to each contributor and to each
+prerequisite milestone version. These are the only edges. Membership is derived from
+`contributes`, keyed by the canonical brief identity, so a brief named by two spellings
+or shared by two milestones counts once. A brief gets no start gate from a milestone it
+contributes to, and no milestone is chained to another unless a record lists it.
+
+**Completion.** A milestone with known remaining work is `blocked`: a contributor that is
+not `done` (`implemented` and `verified` are unfinished), a withdrawn contributor, or a
+prerequisite with its own blockers. A contributor the source port cannot observe (an
+unloaded root, a missing brief, or a pinned revision that is not the observed one) is
+`unknown`; the port never substitutes another revision. A prerequisite that is not a
+loaded record version is `unknown`. Known blockers are kept alongside unknowns, and a
+record's own coverage unknowns are carried with it.
+
+**Start gates.** The graph supplies a brief's own explicit requirements. The
+readiness integration below resolves those through current receipt observations.
+Without such observations the graph's known blockers stay unsatisfied and absent
+acceptance stays could-not-check. While `milestone-v1` is unadvertised, records
+remain unread and every requirement stays could-not-check. No final-only
+requirement is inherited by a contributor.
+
+**Cycles.** Strongly connected components over the combined edge set are reported. A
+cycle that passes through a milestone, including a brief requiring its own containing
+milestone and an indirect cycle across roots, is a lint PROBLEM, and the brief's gate
+on that milestone is typed `cycle`. Brief-only `depends` cycles stay with the existing
+wave check.
+
+**Collisions.** A logical brief key claimed by more than one scanned brief (two roots
+whose registries resolve to one cell and alias, sharing a stream and number) never picks
+a winner. Every claimant is left out of the graph and the source port, and its start
+requirements hold `could-not-check`, naming the collision. A milestone version declared
+by more than one loaded record stays `unknown` for the same reason.
+
+**Bounded detail.** A milestone's transitive blockers and unknowns are qualified once,
+at the milestone they come from, and deduplicated, so a lattice of shared prerequisites
+stays linear in the records. A start gate's hold reason lists at most 20 entries and
+counts the rest.
+
+The tests `TestMilestoneMixedGraph`, `TestMilestoneGraphUnknowns` and
+`TestMilestoneLatticeStaysLinear` exercise this
+contract on the §4 example (`statusgen/testdata/milestone-support/05/`);
+`statusgen/testdata/milestone-support/05-mutations.json` holds their executable mutation
+controls. Exporting milestone nodes from `--graph`, stream and deskboard views, dispatch
+checks and report views remain later work; acceptance/readiness follow below.
+
+## Receipt adapter implementation — milestone-support/06
+
+The approved [DR-milestone-support-06](../docs/streams/decisions/DR-milestone-support-06.md)
+is implemented by `domain.AssessMilestone` and the statusgen host seam
+`readMilestoneAcceptance` in `milestoneacceptance.go`. The public domain API accepts
+explicit normalized values and returns immutable historical receipt references plus
+present `supported`, `blocked` or `unknown` applicability, with both blockers and
+unknowns retained. It grants no effect admission. Readiness integration is described below;
+dispatch/pickup remains /10. No acceptance capability is advertised or activated.
+
+An explicitly selected repository Evidence file contains `MilestoneManifest` with
+schema `milestone-receipt-v1`. Its bytes are compact JSON with sorted object keys,
+array order preserved, standard encoding/json escaping and positive integer version
+selectors; its SHA-256 digest excludes the later human decision pointer. The host
+requires those exact canonical bytes and their selected digest. No directory scan,
+branch, ambient HEAD, newest artifact or implicit profile is a fallback. The Coverage
+Evidence path links this explicit manifest; it is not an approval store.
+
+The manifest fields are `schema`, `milestone` (typed versioned reference), `contract`
+(an EvidencePointer), `subject`, `contributors`, `prerequisites`, `criteria`,
+`authority`, `observed-at` and `evaluator`. An EvidencePointer identifies repository,
+full commit, root-relative path, digest and row/anchor; snapshot hosts confine paths
+and establish anchor/record provenance. The subject contains exact domain Candidates,
+artifact digests, environment/configuration manifest digests, interface and profile.
+Contributors carry canonical brief identity, UUID, authored revision, source and exact
+Evidence pointers. The protected contract supplies the contributor pins, criterion
+set and criterion-to-contributor mapping; the producer cannot shrink any set.
+Each criterion records result, observation time, verifier, provenance pointer and
+immutable evidence. The selected provenance must match that criterion's contributor,
+verifier, time and environment. Prerequisites bind exact milestone version, manifest
+digest, decision pointer and environment/interface/profile; this bounded adapter
+requires exact profile equality and invents no compatibility conversion.
+
+The host obtains the existing `MilestoneRecord` at the manifest's contract snapshot,
+and the authority policy selected by its Acceptance authority section. The policy
+artifact uses `milestone-authority-v1`: `schema`, exact `milestone`, bound
+`decision-issue`, authorized `humans`, existing
+`duty` policy and mandatory `separate-acceptor`. Its source pointer is external to
+its bytes, avoiding a self-digest cycle. Both source commits require an observation
+proving reachability from the declaring root's protected default branch. An observed
+unmerged source blocks; unavailable protection/reachability is unknown. The pure core
+checks these independently of host admission. Owner/team metadata grants no authority.
+
+The entire unedited human comment is a `MilestoneDecisionPayload` JSON object:
+`schema: milestone-decision-v1`, `milestone`, exact `contract`, `manifest` digest,
+`disposition` and optional `replaces` decision pointer. Dispositions are `accept`,
+`reject`, `hold`, `revoke` and `supersede`. A successor must name its exact replaced
+repository/issue/comment/content-digest pointer. The same-repository issue explicitly
+carries `<!-- milestone-decision: <canonical milestone@version> -->`; DR/brief markers
+are insufficient. Existing `resolveRulingOn` authentication, author mapping, bot,
+parent-issue, unedited-comment and named-record checks all remain in use, with a
+separate milestone issue-binding predicate. Its legacy consumers are unchanged.
+Duplicate/unknown payload fields are refused and unknown versions remain unknown.
+Actor corroboration, discussion prose, issue closure and completed work never accept.
+
+Trusted host composition supplies exact historical verification records and selected
+provenance. Actual brief evidence uses `domain.Assess`, `EvaluateDuty` and `Corroborate`;
+no milestone is coerced into WorkIdentity or given a fabricated workflow instance.
+The existing identity owner must select the acceptor's accountable lineage; a login,
+key or issuer is insufficient. Missing selectors, lineage or evidence-only criteria
+without delivered trusted brief provenance remain unknown. No production selector is
+installed here, and a caller that echoes manifest claims is not a trusted composition.
+
+Authorized revocations/successors use the bound acceptance policy and exact original
+receipt. Unauthorized comments, including malformed forged successors, are quarantined
+before they can become conflicts. A same-issue observation from a mapped policy
+human whose comment is edited or whose recognized decision payload is malformed
+retains an unknown hold; it never authenticates or accepts that changed content.
+An exact authorized restricting successor with overlapping contributor lineage also
+holds current applicability, while separation remains mandatory for acceptance. Different-target revocations do not revoke this
+receipt; conflicting authorized successors make present applicability unknown alongside
+known holds. Complete decision-thread coverage is mandatory; missing pages cannot prove
+no revocation. Accepted history remains addressable after revocation, evidence loss,
+expiry or subject change. Current applicability additionally checks every selected
+Evidence pointer, exact source/subject, explicit evaluator and time bounds, prerequisite
+availability and shared `readercaps.Assess`; no freshness duration is defaulted.
+
+`TestMilestoneAcceptSubject` and `TestMilestoneRevocation` exercise the real host,
+loader, ruling and verification seams. `testdata/milestone-support/06-mutations.json`
+records executable compiling faults, including the planted second-contributor evidence
+substitution and protected-source checks below the host seam. Fixture observations
+are not human outcome acceptance or live-state qualification.
+
+
+## Readiness implementation — milestone-support/07
+
+[DR-milestone-support-07](../docs/streams/decisions/DR-milestone-support-07.md)
+approves `evaluation.EvaluateReadiness`. Its optional `EligibilityInput.Milestones`
+contains the normalized combined graph, explicitly selected subjects, plain present
+acceptance observations and root/plan coverage gaps. `EvaluateEligibility` projects
+the same result; absent milestone input keeps the legacy wire bytes unchanged.
+
+Each outcome reports separate remaining-work count/list, completion requirements
+met, acceptance outstanding, accepted-for-subject, current availability, history
+count, typed holds, nearest blocking heads and incomplete coverage. Remaining work
+traverses contributing and prerequisite milestone records and deduplicates canonical
+brief identities. Implemented and verified work stays unfinished. Withdrawn work
+is a blocker, never progress. Missing pins, records, subjects and observations stay
+unknown; known blockers are retained alongside unknowns. Completion additionally
+requires current acceptance of every prerequisite for the consuming environment,
+interface and workload profile. Accepted history alone never releases a gate.
+
+The host maps `domain.MilestoneAssessment`; it does not derive acceptance again.
+An exact subject token hashes the entire selected domain subject, including artifact
+and configuration identity. `Subjects` selects one exact subject per milestone for
+this evaluation; callers evaluating another subject must supply another explicit
+input. Wrong-version/subject observations cannot satisfy, duplicate matching
+observations are unknown, and revoked/superseded history stays unsatisfied.
+
+Only the brief's explicit start gates are appended to `Gates`. The gate is satisfied
+only for supported current availability and exact acceptance; it removes no other
+hold. An absent pre-resolved state still fails closed through the existing edge
+resolver. The host retains the canonical result for reporting; parked/paused work
+is visible in required heads and remains excluded by existing Next-up policy.
+No CLI envelope, production selector, reader advertisement or admission authority
+is added. Operational selection/activation remains with /10 and /14.
+
+`TestMilestoneEligibility` and `TestNextupMilestoneCoverage` exercise the public
+owner and host/Next-up flow. The declared compiling faults are in
+`statusgen/testdata/milestone-support/07-mutations.json`; the shared bounded runner
+is invoked by `07-mutate.py` after committing the source.

@@ -190,6 +190,76 @@ Verdict accounting: 4 required rows; 4 pass, witnessed in one closed bracket; 0 
 
 **VERIFY: PASS** — 4/4 rows at 011f14965, each named mutation killed (supplemental).
 
+### Independent verification — 2026-11-02 (run 3, batch re-witness, source 2c6c21336, container bracket)
+
+Runner: assay-verifier-app[bot], model claude-opus-5-5, admitted tier strong; independent non-implementer, fresh context. Observed source: merged main 2c6c21336a606e64df057294f21177f16db7b9f8, the pinned commit of the batch re-witness, detached home admitted by `deskdispatch --check-verifier` (#5285). This block takes nothing from runs 1 and 2; every row was executed afresh.
+
+Delivery: the work landed in the merge of #4337 (08b39a8cc951f0eaca1942d2e450c372f0d92e7a), an ancestor of the observed source. Between the run 2 source 011f14965 and this source, the delivered paths (statusgen/portfolio, statusgen/testdata/portfolio, statusgen/portfolio_schema_test.go, the portfolio schema and spec, loopadmin) are byte-identical.
+
+Runner class: local container, `--network none`, default seccomp, image ghcr.io/medici-finance/verify-runner by digest sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4 (statusgen v1.0.66 in the image, host statusgen v1.0.69), run as user 501:20 with the home bind-mounted read-only at its own path. Every row is check:ci and the darwin host has no `unshare`, so rows 1–4 ran inside one closed admission bracket: `statusgen verifyrun --open-bracket` on the host, `--sandbox=container-netns` in the container, `--close-bracket` on the host; `--bracket-digest` on the closed witness reports verdict=match with span-lines tree-digest:1, container-image:1, attestation:1. The table and the four lines after it are the closed witness bytes.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestPortfolioLedgerIdentityAndUnits$" ./portfolio/ > "$check_output" && grep -F -- "--- PASS: TestPortfolioLedgerIdentityAndUnits " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:5d9276a14eda | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestPortfolioUnknownAndZero$" ./portfolio/ > "$check_output" && grep -F -- "--- PASS: TestPortfolioUnknownAndZero " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:0e2bdcc129da | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestPortfolioRunnerAdapterFlow$" ./portfolio/ > "$check_output" && grep -F -- "--- PASS: TestPortfolioRunnerAdapterFlow " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:3324fe5ee14a | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestPortfolioTargetNotConsumption$" ./portfolio/ > "$check_output" && grep -F -- "--- PASS: TestPortfolioTargetNotConsumption " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:f7a2f7a3d21f | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c
+Container-Image: sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4
+Verification-Attestation: medici-finance/assay#5285 run=3d38b2f5d35043be45e06ef914895482e8bb16b435cb2801ffdac625ef920060 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/statusgen/brief-24-portfolio-allocation-and-capacity-accounting.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=3d38b2f5d35043be45e06ef914895482e8bb16b435cb2801ffdac625ef920060 source=2c6c21336a606e64df057294f21177f16db7b9f8 tree=sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c witness=sha256:c58e1f5ba99efa3fb45cfc2678d8e8aa17161b5b9df77030f3992d6fc5914558 opened=2026-11-02T02:08:37Z closed=2026-11-02T02:09:02Z before=receipt after=check-verifier
+
+Fail-first: no row is risk-bearing (the brief's risk answers are all "no", and no row carries a risk-bearing, live, mutating or end-to-end tag), so no fail-first base witness is required. This re-witness ran no mutation probes; the rows' discrimination evidence is the mutation probes recorded in runs 1 and 2 on byte-identical delivered paths.
+
+Risk-bearing values. Gate model, not irreversible, no risk-classed path touched. Enumeration over the delivery's non-test Go source (statusgen/portfolio records.go, ledger.go, compare.go, decode.go, runner.go, checked.go), re-read at this source, found the same literals at the same lines; none is irreversible.
+
+- RISK-VALUE: DERIVED — Schema = "portfolio-measurement/v1" @ statusgen/portfolio/records.go:12 — equals the const at schemas/portfolio-measurement-v1.json line 9; the brief asks for a versioned contract.
+- RISK-VALUE: DERIVED — tolerance ceiling, per-party sum bound and share ceiling 10000 @ statusgen/portfolio/decode.go:140, decode.go:171, decode.go:190 — one basis point is 1/10000 of the whole, so 10000 is exactly 100 percent.
+- RISK-VALUE: DERIVED — share scale 10000 @ statusgen/portfolio/compare.go:76 — |numerator*10000 - want*denominator| <= tolerance*denominator is the basis-point aligned rule with the fraction cleared, in exact big.Int arithmetic.
+- RISK-VALUE: DERIVED — reqRE slug bound {8,18} @ statusgen/portfolio/decode.go:16 — one leading and one trailing [a-z0-9] plus 8–18 middle characters gives 10–20 characters, the REQ-slug grammar of spec/registers-v1.md line 120.
+- RISK-VALUE: DERIVED — RunnerVersion = "loop-admin-runner/v1" @ statusgen/portfolio/runner.go:13 — equals the const at schemas/loop-admin-runner-v1.json line 12, so the adapter consumes the runner contract unchanged.
+- RISK-VALUE: DERIVED — ModelWeight milli unit 1000 = 1.0 @ statusgen/portfolio/records.go:86 — weights are adopter-supplied thousandths with no default shipped.
+- Ranked last, no derivation needed: tokenRE length {0,127} @ statusgen/portfolio/decode.go:14 — an identifier length cap on synthetic offline records.
+
+Verdict accounting: 4 required rows; 4 pass, witnessed in one closed bracket; 0 fail; 0 could-not-run.
+
+**VERIFY: PASS** — 4/4 rows at 2c6c21336 (batch re-witness).
+### Independent verification — 2026-11-10 (run 4, source 612750a12, container bracket)
+
+Runner: assay-verifier-app[bot], model claude-opus-5-5, admitted tier strong; independent non-implementer, fresh context. Observed source: merged main 612750a12406f19a96a83e6ea7687d794f772f9f, detached home admitted by `deskdispatch --check-verifier` (#6019). This block takes nothing from runs 1 to 3; every row was executed afresh.
+
+Delivery: the work landed in the merge of #4337 (08b39a8cc951f0eaca1942d2e450c372f0d92e7a), an ancestor of the observed source. Between the run 3 source 2c6c21336 and this source, the delivered paths (statusgen/portfolio, statusgen/testdata/portfolio, statusgen/portfolio_schema_test.go, the portfolio schema and spec, the loop-admin-runner schema and the loopadmin runner fixtures row 3 reads) are byte-identical. Other loopadmin files changed in that span (the process runner moved into loopadmin/process, plus runner conformance and request tests); none is read by the four row tests.
+
+Runner class: local container, `--network none`, read-only root, all capabilities dropped, no-new-privileges, run as user 501:20, image ghcr.io/medici-finance/verify-runner:v1.0.81 by digest sha256:03a2949dfe483f2645e14b85369c1923f1fb4710c7e5ea37a9b915d0073dde59 (the house image lock pin; statusgen v1.0.81 in the image and on the host). The home was bind-mounted read-only at its own path, and a fresh module cache from `--open-bracket --module-cache` was mounted read-only with GOPROXY=off, GOTOOLCHAIN=local and GOFLAGS=-mod=readonly. Every row is check:ci and the darwin host has no `unshare`, so rows 1–4 ran inside one closed admission bracket: `statusgen verifyrun --open-bracket` on the host, `--sandbox=container-netns` in the container, `--close-bracket` on the host; `--bracket-digest` on the closed witness reports verdict=match with span-lines tree-digest:1, container-image:1, attestation:1. The table and the five lines after it are the closed witness bytes.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestPortfolioLedgerIdentityAndUnits$" ./portfolio/ > "$check_output" && grep -F -- "--- PASS: TestPortfolioLedgerIdentityAndUnits " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:5d9276a14eda | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestPortfolioUnknownAndZero$" ./portfolio/ > "$check_output" && grep -F -- "--- PASS: TestPortfolioUnknownAndZero " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:0e2bdcc129da | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestPortfolioRunnerAdapterFlow$" ./portfolio/ > "$check_output" && grep -F -- "--- PASS: TestPortfolioRunnerAdapterFlow " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:3324fe5ee14a | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestPortfolioTargetNotConsumption$" ./portfolio/ > "$check_output" && grep -F -- "--- PASS: TestPortfolioTargetNotConsumption " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:f7a2f7a3d21f | 2026-11-10 | assay-verifier-app[bot] @ 612750a12406 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:bbf58e1999a2879bff899fd22c5d41834fbc884451654c5085000f4eedc075b6
+Container-Image: sha256:03a2949dfe483f2645e14b85369c1923f1fb4710c7e5ea37a9b915d0073dde59
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6019 run=3cc85fda2158edc3455ca34655664e46d794ab37efbedc4ace01b2f72df2d30f source=612750a12406f19a96a83e6ea7687d794f772f9f brief=docs/streams/statusgen/brief-24-portfolio-allocation-and-capacity-accounting.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=3cc85fda2158edc3455ca34655664e46d794ab37efbedc4ace01b2f72df2d30f source=612750a12406f19a96a83e6ea7687d794f772f9f tree=sha256:bbf58e1999a2879bff899fd22c5d41834fbc884451654c5085000f4eedc075b6 witness=sha256:e7928f0f5e3d0ba8a6d0ef9aadfd06e6399137e85910a1339617eeb6968e6b5f opened=2026-11-10T09:34:09Z closed=2026-11-10T09:34:52Z before=receipt after=check-verifier
+
+Fail-first: no row is risk-bearing (the brief's risk answers are all "no", and no row carries a risk-bearing, live, mutating or end-to-end tag), so no fail-first base witness is required. This run executed no mutation probes; the rows' discrimination evidence is the mutation probes recorded in runs 1 and 2, on delivered paths byte-identical to this source.
+
+Risk-bearing values. Gate model, not irreversible, no risk-classed path touched. Enumeration over the delivery's non-test Go source (statusgen/portfolio records.go, ledger.go, compare.go, decode.go, runner.go, checked.go), re-read at this source, found the same literals at the same lines; none is irreversible.
+
+- RISK-VALUE: DERIVED — Schema = "portfolio-measurement/v1" @ statusgen/portfolio/records.go:12 — equals the const at schemas/portfolio-measurement-v1.json line 9; the brief asks for a versioned contract.
+- RISK-VALUE: DERIVED — tolerance ceiling, per-party sum bound and share ceiling 10000 @ statusgen/portfolio/decode.go:140, decode.go:171, decode.go:190 — one basis point is 1/10000 of the whole, so 10000 is exactly 100 percent.
+- RISK-VALUE: DERIVED — share scale 10000 @ statusgen/portfolio/compare.go:76 — the observed numerator is scaled by 10000 so a numerator/denominator share compares with a basis-point target in exact big.Int arithmetic.
+- RISK-VALUE: DERIVED — reqRE slug bound {8,18} @ statusgen/portfolio/decode.go:16 — one leading and one trailing [a-z0-9] plus 8–18 middle characters gives 10–20 characters, the REQ-slug grammar of spec/registers-v1.md line 120.
+- RISK-VALUE: DERIVED — RunnerVersion = "loop-admin-runner/v1" @ statusgen/portfolio/runner.go:13 — equals the const at schemas/loop-admin-runner-v1.json line 12, so the adapter consumes the runner contract unchanged.
+- RISK-VALUE: DERIVED — ModelWeight milli unit 1000 = 1.0 @ statusgen/portfolio/records.go:86 — weights are adopter-supplied thousandths with no default shipped.
+- Ranked last, no derivation needed: tokenRE length {0,127} @ statusgen/portfolio/decode.go:14 — an identifier length cap on synthetic offline records.
+
+Verdict accounting: 4 required rows; 4 pass, witnessed in one closed bracket; 0 fail; 0 could-not-run. One attempt, credited.
+
+**VERIFY: PASS** — 4/4 rows at 612750a12.
+
 ## Review
 
 Gate: model; all risk answers no because this slice processes synthetic/explicit offline

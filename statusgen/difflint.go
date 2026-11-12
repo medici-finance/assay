@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -65,6 +66,12 @@ type diffLintConfig struct {
 	relFromTop  func(root string) (string, error)
 	worktreeFn  func(root, sha string) (dir string, cleanup func(), err error)
 	lintRunner  func(treeRoot string, budget []string, changed, scope string) (problems, notices []string, err error)
+	// baseLintRunner lints the BASE tree; nil falls back to lintRunner. It is
+	// separate because the base run must not see the pull request's event: the
+	// decision-gate delivery check reads the PR from GITHUB_EVENT_NAME and
+	// GITHUB_EVENT_PATH, and applied to the base tree it would report the same
+	// delivery problems there, demoting the head's as "pre-existing on base".
+	baseLintRunner func(treeRoot string, budget []string, changed, scope string) (problems, notices []string, err error)
 	// changedBriefs lists the brief files the head tree adds or edits relative
 	// to baseSHA (head path -> base path, "" when added). A nil seam or an error
 	// makes the notice ratchet could-not-check, never a clean comparison.
@@ -182,7 +189,11 @@ func runDiffLintOne(cfg diffLintConfig) (diffLintResult, error) {
 	defer cleanup()
 
 	baseRoot := filepath.Join(dir, rel)
-	baseProblems, baseNotices, err := cfg.lintRunner(baseRoot, cfg.budget, cfg.changed, cfg.scope)
+	baseRunner := cfg.lintRunner
+	if cfg.baseLintRunner != nil {
+		baseRunner = cfg.baseLintRunner
+	}
+	baseProblems, baseNotices, err := baseRunner(baseRoot, cfg.budget, cfg.changed, cfg.scope)
 	if err != nil {
 		return fail(fmt.Sprintf("base lint against %s failed to execute (%v) — full-strength lint, none demoted", short(baseSHA), err))
 	}
@@ -333,7 +344,12 @@ func diffLintProductionConfig(root, baseRef string, budget []string, changed, sc
 		resolveBase: productionResolveBase,
 		relFromTop:  productionRelFromTop,
 		worktreeFn:  productionWorktree, // shared with lintaudit.go
-		lintRunner:  productionDiffLintRunner,
+		lintRunner: func(treeRoot string, budget []string, changed, scope string) ([]string, []string, error) {
+			return productionDiffLintRunner(treeRoot, budget, changed, scope, false)
+		},
+		baseLintRunner: func(treeRoot string, budget []string, changed, scope string) ([]string, []string, error) {
+			return productionDiffLintRunner(treeRoot, budget, changed, scope, true)
+		},
 
 		changedBriefs: productionChangedBriefs,
 	}
@@ -380,8 +396,13 @@ func productionRelFromTop(root string) (string, error) {
 // deliberately ignored: a base or head tree legitimately reports problems, and
 // the differential is a set comparison, not an exit-code relay. A genuine
 // inability to execute the binary is surfaced as an error.
-func productionDiffLintRunner(treeRoot string, budget []string, changed, scope string) ([]string, []string, error) {
-	exe, err := os.Executable()
+//
+// base marks the run against the BASE tree. That run gets the inherited
+// environment minus the pull request event (withoutPREvent): the PR being
+// linted is the head's delivery, never the base's. This only narrows the
+// environment the function already inherits; it adds no new reader of it.
+func productionDiffLintRunner(treeRoot string, budget []string, changed, scope string, base bool) ([]string, []string, error) {
+	exe, err := diffLintExeFn()
 	if err != nil {
 		exe = "statusgen"
 	}
@@ -404,6 +425,9 @@ func productionDiffLintRunner(treeRoot string, budget []string, changed, scope s
 		args = append(args, "--scope", scope)
 	}
 	cmd := exec.Command(exe, args...)
+	if base {
+		cmd.Env = withoutPREvent(cmd.Environ())
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		// exec.ExitError means the binary ran and exited non-zero (the normal
@@ -423,4 +447,26 @@ func productionDiffLintRunner(treeRoot string, budget []string, changed, scope s
 		}
 	}
 	return problems, notices, nil
+}
+
+// diffLintExeFn names the binary the differential re-runs; tests point it at a
+// built statusgen so the parent side (this process) is the code under test.
+var diffLintExeFn = os.Executable
+
+// prEventVars are the variables the decision-gate delivery check reads the
+// pull request from (prDeliveryFromEvent).
+var prEventVars = []string{"GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH"}
+
+// withoutPREvent returns env without the pull request event variables, so the
+// base-tree lint of a differential run is never judged against the head's PR.
+func withoutPREvent(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		if slices.Contains(prEventVars, name) {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }

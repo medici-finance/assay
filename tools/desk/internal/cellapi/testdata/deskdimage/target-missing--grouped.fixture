@@ -1,0 +1,7 @@
+# regression: #4769
+# A second rule naming deskd-image as a grouped target (&:) with no blank
+# before the & still overrides the held recipe.
+want: target-missing
+file: Makefile
+replace: "\n## skillslint: validate"
+with: "\nother deskd-image&:\n\t@echo \"skipped\"\n\n## skillslint: validate"

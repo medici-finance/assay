@@ -70,10 +70,14 @@ COPY comms/ ./comms/
 # The perfrec module (the shared perf-v1 writer) is the same kind of stdlib-only sibling:
 # statusgen resolves it through `replace ../perfrec`, tools/desk through `replace ../../perfrec`.
 COPY perfrec/ ./perfrec/
+# The loopadmin module owns the shared process runner (graph-execution/26): tools/desk
+# resolves it through `replace ../../loopadmin`, and it resolves perfrec the same way.
+COPY loopadmin/ ./loopadmin/
 # Test-support replacement module required when loading either module graph.
 COPY gitquiet/ ./gitquiet/
 COPY gitcore/ ./gitcore/
 COPY deskcore ./deskcore/
+COPY workflow/ ./workflow/
 COPY statusgen/go.mod statusgen/go.sum ./statusgen/
 COPY tools/desk/go.mod ./tools/desk/
 RUN cd statusgen && go mod download
@@ -162,6 +166,10 @@ LABEL org.opencontainers.image.title="assay desk-tools" \
       org.opencontainers.image.revision="${SOURCE_SHA}" \
       org.opencontainers.image.created="${BUILT_AT}" \
       org.opencontainers.image.licenses="Apache-2.0"
+
+# CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
+# them off. A fragile stopgap only; patched node kernels are the real fix.
+ENV GODEBUG=multipathtcp=0
 
 USER desk
 WORKDIR /home/desk

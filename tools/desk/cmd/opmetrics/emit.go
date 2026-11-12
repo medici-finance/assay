@@ -44,6 +44,11 @@ import (
 //	reader keeps working; the bump is a courtesy signal that the new block is
 //	available, not a break. statusgen's consumer view (autonomy.go opDayFile)
 //	reads only additive-tolerant fields and parses both versions with no change.
+//
+//	The dispatch and token_efficiency blocks were added WITHOUT a bump: they are
+//	new keys, no existing key changed, and the consumer already declared them
+//	optional (a day-file without them reads "unmeasured", one with them reads
+//	measured).
 const SchemaVersion = "opmetrics/2"
 
 // Status is the three-state marker every block carries.
@@ -70,6 +75,9 @@ const (
 	ReasonClaimsUnreadable   Reason = "claims-dir-unreadable"
 	ReasonNoPriorDayFiles    Reason = "no-prior-day-files"
 	ReasonNoOperatorMessages Reason = "no-operator-messages"
+	// ReasonDispatchOriginUnrecorded: dispatches were read, but not one carried a
+	// harness origin stamp, so the loop/operator split is blind (dispatch.go).
+	ReasonDispatchOriginUnrecorded Reason = "dispatch-origin-unrecorded"
 )
 
 // AllReasons is the closed set, exported for the vocabulary test.
@@ -77,6 +85,7 @@ var AllReasons = []Reason{
 	ReasonNone, ReasonTranscriptsUnread, ReasonNoTranscriptFiles, ReasonGHNotSupplied,
 	ReasonGHUnreadable, ReasonNoMergedPRs, ReasonNoLatencySamples, ReasonRosterUnreadable,
 	ReasonClaimsUnreadable, ReasonNoPriorDayFiles, ReasonNoOperatorMessages,
+	ReasonDispatchOriginUnrecorded,
 }
 
 // Unmeasured codes. Stated, not silently omitted: a metric this collector deliberately
@@ -180,6 +189,35 @@ type CorrectionBlock struct {
 	RecurrenceCandidate *int   `json:"recurrence_candidates"`
 }
 
+// DispatchBlock is the main-session subagent dispatch split by origin — the input to
+// the autonomy ladder's rung 3. Unattributed dispatches (no harness origin stamp) are
+// counted, never folded into either side. See dispatch.go for the origin table.
+type DispatchBlock struct {
+	Status            Status `json:"status"`
+	Reason            Reason `json:"reason,omitempty"`
+	TotalDispatches   *int   `json:"total_dispatches"`
+	LoopInitiated     *int   `json:"loop_initiated"`
+	OperatorInitiated *int   `json:"operator_initiated"`
+	Unattributed      *int   `json:"unattributed"`
+}
+
+// TokenEfficiencyBlock is subagent token spend and the no-op run rate — the input to
+// the autonomy ladder's rung 4. Its population is subagent RUNS started on the day;
+// total_dispatches is that run count. subagent_tokens sums input, output,
+// cache-creation and cache-read tokens, each assistant message counted once.
+type TokenEfficiencyBlock struct {
+	Status          Status `json:"status"`
+	Reason          Reason `json:"reason,omitempty"`
+	SubagentTokens  *int   `json:"subagent_tokens"`
+	MergedPRs       *int   `json:"merged_prs"`
+	NoopDispatches  *int   `json:"noop_dispatches"`
+	TotalDispatches *int   `json:"total_dispatches"`
+	// ReportsUnread counts runs with no final report to classify. They stay in
+	// total_dispatches and are never counted as no-ops.
+	ReportsUnread  *int   `json:"reports_unread"`
+	NoopClassifier string `json:"noop_classifier"`
+}
+
 // TrendDelta is one headline number's movement against the prior window.
 type TrendDelta struct {
 	PriorMean *float64 `json:"prior_mean"`
@@ -215,6 +253,10 @@ type Report struct {
 	DecisionLatency      LatencyBlock      `json:"decision_latency"`
 	SessionHygiene       HygieneBlock      `json:"session_hygiene"`
 	CorrectionRecurrence CorrectionBlock   `json:"correction_recurrence"`
+	// Dispatch and TokenEfficiency are additive within opmetrics/2; the statusgen
+	// consumer (autonomy.go opDayFile) reads both as optional.
+	Dispatch        DispatchBlock        `json:"dispatch"`
+	TokenEfficiency TokenEfficiencyBlock `json:"token_efficiency"`
 
 	// Unmeasured lists, by code, what this collector deliberately does not measure.
 	Unmeasured []string    `json:"unmeasured"`

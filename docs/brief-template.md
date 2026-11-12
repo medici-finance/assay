@@ -153,6 +153,15 @@ keep it to scope + intent, not a keystroke script.>
 # AUTHORING: prefer `grep -F` and forward-slash paths for portable checks. Native Windows
 # syntax MUST have explicit `cmd` or `pwsh` in the Shell cell from the first draft; never
 # leave `findstr /c:"…" a\b.md` on implicit sh. Evidence-only edits cannot change the shell.
+# OPTIONAL `Env` column (issue #6065): WHERE a row runs, so a non-implementer knows where to
+# witness it — | # | Class | Env | Command | Expect |. Values: tree (the checkout alone,
+# network-off: what CI re-executes) / host or host:<name> (the witness's own machine) /
+# service:<name> (a NAMED NON-PRODUCTION instance — a database, an API, a staging deployment —
+# described in ## Context) / cluster:<name> (a live cluster, the pod runner). Add it whenever a
+# row needs more than the checkout. `statusgen --lint` PROBLEMs a check:ci row naming anything
+# but tree, an env-bound check / check:cluster row with an empty Env, a non-tree Env in a table
+# with no Class column (legacy rows are CI re-executed), and any Env outside this grammar.
+# (The frontmatter `target` above stays reserved and unenforced; Env is the enforced per-row field.)
 # SCRIPTED rows: a check:ci / check row may be a reviewed script instead of an inline command —
 #   docs/streams/<stream>/verify.d/brief-NN/row-K.sh  (executable, exit 0 = PASS)
 # and then the row's Command cell IS that script path. The reviewer who approves the brief
@@ -182,8 +191,9 @@ keep it to scope + intent, not a keystroke script.>
 # but "the cross-component flow that depends on this value still completes end-to-end."
 # It also carries the consumers: corroboration — `statusgen --consumers --brief <stream>/<NN>`,
 # expecting exit 0 with the UNCHECKED entries named in the Expect column for the reviewer to weigh.
-# Re-run after the merge it exits 2 (COULD-NOT-CHECK): the diff that made the claims true is gone.
-# To re-corroborate a merged brief, give it that diff — see brief-rules.md rule 9 for the recipe.
+# Re-run after the merge, the same row pins itself to the delivery: the Evidence's
+# Verification-Table marker, else the one first-parent commit carrying `Brief: <stream>/<NN>`.
+# With neither it exits 2 (COULD-NOT-CHECK) — see brief-rules.md rule 9.
 # If this brief adds a CHECK or guard, add a MUTATION-TEST row (brief-rules.md rule 16):
 # revert the fix or break the guarded thing, confirm the check goes RED.
 # If this brief touches a shared lister/flag/query, add a NEIGHBOUR row (brief-rules.md rule 17):

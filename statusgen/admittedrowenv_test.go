@@ -131,8 +131,9 @@ func TestAdmittedRowEnvShape(t *testing.T) {
 // wraps historyGit's literal `git` reads, which start no Verify row, and adds
 // GIT_GRAFT_FILE to what a fixed-tool launch would inherit anyway) and the
 // forge CLI guard (ghGuard: it only wraps statusgen's own literal `gh` reads,
-// which start no Verify row, and only ever removes CELLCTL_GH_AMBIENT and adds
-// a placeholder for an unset token family).
+// which start no Verify row, snapshots the existing CI environment for retries,
+// removes CELLCTL_GH_AMBIENT when admission requires it, and adds a placeholder
+// for an unset token family).
 var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer", "historyGitEnv", "ghGuard"}
 
 // rowLaunchShells are the programs a Verify row's command text runs under.
@@ -141,10 +142,11 @@ var rowLaunchShells = []string{"sh", "bash", "pwsh", "powershell", "cmd"}
 // implicitEnvAllowed names every function that may start a shell or a program
 // it does not name literally without setting the process environment, so the
 // process inherits the caller's: the statusgen self re-runs of the lint and
-// diff-lint audits, the forge reader binary, the merge check (which runs the
+// diff-lint audits, the forge reader binary (readVerb, the one launch behind the per-item and
+// merged-list reads; IssueList and OpenIssues keep their own), the merge check (which runs the
 // operator's own command line, not a Verify row) and the probes that run only
 // `exit 0` or `true` to learn what the host supports.
-var implicitEnvAllowed = []string{"productionDiffLintRunner", "productionLintRunner", "OpenIssues", "readItem", "IssueList", "execOverTree", "probeShell", "networkOffWrapper", "netnsFacility"}
+var implicitEnvAllowed = []string{"productionDiffLintRunner", "productionLintRunner", "OpenIssues", "readVerb", "IssueList", "execOverTree", "probeShell", "networkOffWrapper", "netnsFacility"}
 
 // environCallers returns "file: func" for every os.Environ call outside the
 // allowed functions in the given sources, and for every function outside

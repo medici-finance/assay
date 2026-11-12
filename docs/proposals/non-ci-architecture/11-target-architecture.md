@@ -1,5 +1,8 @@
 # Assay’s future architecture
 
+> **Proposed delta, 25 October 2026:** [desk instances and rolling replacement](30-desk-instances-and-rolling-replacement.md) amends worker/review singleton assumptions below. Historical approval and deployment claims are unchanged; the delta requires its own review.
+
+
 **Status: future architecture we are moving towards. Updated 21 October 2026; includes the requested extensible JSON amendment.** This is the whole-system direction for Assay, including portfolio-directed improvement and drift assessment. It describes the destination, not the currently deployed system. Detailed contract/schema amendments, implementation and activation retain their own review and qualification requirements; this designation does not approve every mechanism or grant deployment authority. The [implementation boundary](#implemented-foundations-and-work-still-to-build) below separates inspected foundations from work still to build.
 
 The target starts with one host containing multiple isolated cells, permits command breaks where they simplify the design, reconciles affected unfinished plans together, and includes the service and cockpit in public Assay. PostgreSQL coordinates runtime work; recovery should reconstruct useful state while permitting classified transient loss and safe repeated work. See [storage and recovery](14-storage-forge-graph.md).
@@ -250,6 +253,7 @@ source and quality evidence in the affected implementation briefs.
 | External PR/review/issue/deployment facts | External provider, captured as attributed observations | Every read says what was covered, when, under which scope and whether complete. A page limit cannot mean an empty or complete result. |
 | In-flight attempts, claims, schedules, effects and runtime coordination | PostgreSQL operational store | Transactional during normal operation; after complete loss reconstruct obligations from canonical sources, reconcile effects and repeat safe work. Some transient history can be lost. |
 | Raw evidence, logs, receipts and durable exports | Git-stored retained artifacts and the existing governed publication path for this phase | Scratch can be disposable; canonical evidence needed for recovery must have a durable source; transient diagnostics need an explicit loss policy. A later non-Git evidence store needs an explicit migration. |
+| Optional performance observations (performance-event-v1) | A local spool under the state directory (`performance-events/`); later, a separate optional performance database, never the PostgreSQL operational store | Collection is consented and optional. With it off, every operational record works unchanged. Records confer no work, acceptance, budget or effect authority. Retired or unsent data is reported as coverage loss, never as zero, and losing the whole store loses only observations. |
 | Board, context graph, cockpit lists, reports and search indexes | Rebuildable projections | Show projection revision/watermark and source coverage. Display lag is not authority to repeat an effect. |
 
 For the revised target, use **PostgreSQL in local Docker, then CloudNativePG on Kubernetes**. PostgreSQL owns operational transactions and query indexes; Git retains canonical definitions and published evidence, while the forge owns external objects. The [storage amendment](14-storage-forge-graph.md) defines HA limits, reconstruction with permitted transient loss, the forge mirror and graph queries.
@@ -309,6 +313,16 @@ outward-write limiter this target replaces keeps that behavior and is its refere
 never a closed breaker; `tools/desk/cmd/deskfile/deskfile.go:267` new-issue cap). This
 amendment relaxes no brake. Relaxing one is a separate human decision, recorded by the
 maintainer and naming its compensating bound; nothing here makes that decision.
+
+**Desk work target clarification — 26 October 2026.** The aggregate number of active
+worker/review tasks is an approximate instantaneous occupancy gauge used for refill pacing,
+not a hard budget or authority boundary. Desks may temporarily over/undershoot and correct
+as observations refresh and tasks finish. No centralized role-capacity mutex, leased slot,
+serialized count-and-reserve or per-launch exact global read is required. This gauge has
+no cumulative window/reset allowance; do not repurpose the effect-class count rules below
+into an exact role-slot allocator. Item claims, instance ownership, uncertain effects and
+independent recursive-launch/time/cost/resource/write safety brakes remain unchanged.
+See [the instance contract](30-desk-instances-and-rolling-replacement.md#work-assignment-and-capacity).
 
 **Pacing counts are best effort.** A pacing count only shapes the throughput of
 operations that are already authorized and already bounded by the brakes, for example
@@ -519,6 +533,14 @@ logical requests and latency, per-handler/cache/coalescing work, and actual dire
 or background provider requests/cost. Keep these observation kinds distinct and charge shared
 refreshes once; see the [boundary contract](../../performance-attribution-spec.md#querycache-service-and-passthrough-boundaries).
 
+Collection delivery note, 1 November 2026: performance-collection/01 implements the local
+`performance-event-v1` contract, spool and offline report in the separate `perfdata` module
+([specification](../../../spec/performance-event-v1.md)). The optional performance database,
+collector and sender are later briefs of that stream and stay separate from the operational
+store. Collection owns the meaning of collection only. Measurement meanings stay with their
+existing owners. Human acceptance of the field and loss contract is pending, and no remote
+destination is active.
+
 ## Local write policy — amendment, 18 October 2026
 
 The proposed [shared write-policy contract](../../write-policy.md) places deterministic
@@ -568,3 +590,8 @@ Delivery reuses desk-tools/39–45 and /51, graph-execution/27, desktools-v2's e
 query/custody boundaries and forge-neutral/37–43. Existing adopter role cutovers qualify
 same-input prose/discrete parity. The ranked request model and A11–A12 acceptance live in
 the efficiency spec; this pointer grants no new activation or revision-bound approval.
+
+
+## Desk instances amendment — requested 25 October 2026
+
+Worker and review roles support multiple automatically named desk instances under the existing runtime. R2 owns instance/generation records and approximate role work target; R3 owns instance process/workspace lifecycle. R4 role authority is unchanged. Qualified replacement starts a successor after the predecessor stops admission, while the predecessor drains; exclusive work claims and outstanding-effect reconciliation remain mandatory. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.

@@ -100,6 +100,17 @@ const (
 // claim lands or whether two dispatchers collide. Issues 708 and 1151.
 const goClaimBinary = "deskclaim-ref"
 
+// goDecisionBinary is the pure-Go port of the decision helper's `ensure` verb
+// (cmd/deskdecision), installed with desk-tools. It is resolved the claim tool's way: on PATH
+// FIRST, then tools/decision-issue.sh under the resolved root, then a refusal naming both — so a
+// repo that carries no decision script still gates its human-gated items (issue 6131). It speaks
+// the script's protocol (argument contract, exit codes, issue title and body, the
+// `decision-gate:` and legacy `needs-decision:` markers, a read-only `decision-issue:`
+// frontmatter field), so a brief filed by either is found by the other. Unlike the script it
+// reads no credential from its environment: it resolves the dispatching role's own credential
+// through the deskkit forge resolver (GitHub or GitLab), named by `--as`.
+const goDecisionBinary = "deskdecision"
+
 // itemKeyRe bounds what may be passed to a shell script as a claim key. The key goes into
 // an argv slice, never a shell string, so this is defence in depth rather than the only
 // guard — but a key carrying a path segment or a leading dash is a key that would be read
@@ -160,6 +171,9 @@ type dispatchOpts struct {
 	// repo its item-key prefix or brief-v2 id names, and its deliverable PR opens in --repo. Without
 	// it, a --repo that differs from the resolved repo stays the HARD FAIL (deliverable.go).
 	crossRepo bool
+	// contextSnapshot and contextReceipt are --context-snapshot / --context-receipt (statusgen/21,
+	// pickup.go): the receipt is rechecked against the snapshot before the claim.
+	contextSnapshot, contextReceipt string
 	// briefShown is how the prompt spells the specification: the caller's own spelling when the file
 	// sits under --root, else its absolute path (resolveBrief). brief itself is the resolved absolute
 	// path every reader uses.
@@ -221,6 +235,11 @@ func dispatch(o dispatchOpts) error {
 	// a tidiness preference.
 	plan, err := validateCallerPreconditions(o)
 	if err != nil {
+		return err
+	}
+	// CONTEXT PICKUP — before the claim and before any child process (pickup.go): a receipt
+	// that must be reconciled or cannot be confirmed holds here, never after a launch.
+	if plan.pickup, err = pickupAdmit(o); err != nil {
 		return err
 	}
 	if err := resolveResume(o, &plan); err != nil {
@@ -581,7 +600,7 @@ func dispatch(o dispatchOpts) error {
 	// pre-claim and is carried on the plan.
 	// The script child runs under the credential the claim step resolved (auth.scriptEnv), never
 	// the ambient login — issue 1146.
-	gate, gerr := stepDecision(o, plan.gateHuman, repo, plan.decisionScript, plan.ruling, auth)
+	gate, gerr := stepDecision(o, plan.gateHuman, repo, plan.decisionTool, plan.ruling, auth)
 	if gerr != nil {
 		return held.settle(gerr)
 	}
@@ -683,7 +702,7 @@ func (o dispatchOpts) notLaunched(plan dispatchPlan, repo, home string) {
 	if tool == "" {
 		tool = claimScriptRel
 	}
-	cred := claimCredArg(tool, stampRoleForKit(o.kit), repo)
+	cred := claimCredArg(tool, stampRoleForKit(o.kit), repo, dispatcherLoop())
 	branch := plan.branch
 	if branch == "" {
 		branch = "-" // a detached review/verify home has no branch; the claim records "-"
@@ -729,10 +748,12 @@ type dispatchPlan struct {
 	// script under --root, the resolved absolute path under --claim-root, or the bare
 	// goClaimBinary name when the Go fallback is in use.
 	claimReleaseHint string
-	// decisionScript is the RESOLVED consumer decision-script path (under --claim-root when
-	// given, else --root), derived once here so the presence check and the invocation cannot
-	// drift onto two different files.
-	decisionScript string
+	// decisionTool is the RESOLVED decision-gate tool, set only for a human-gated item: the bare
+	// goDecisionBinary name when it resolves on PATH, else the absolute tools/decision-issue.sh
+	// path under the resolved root (--claim-root when given, else --root). Derived once so the
+	// presence check and the invocation cannot drift onto two different tools; stepDecision
+	// tells the two apart by that bare name.
+	decisionTool string
 	// ruling is the brief's RECORDED ruling (#2079, recordedruling.go) — a `**Ruling (<date>):
 	// option <N>.**` line transcribed as a decision record — parsed offline before the claim;
 	// nil when the brief records none, and the decision gate then runs the script as before.
@@ -761,6 +782,8 @@ type dispatchPlan struct {
 	// through the alias registry, and the tracking checkout the PR's `Brief:` trailer resolves
 	// against. Inactive when the item declared no alias — the legacy path, unchanged.
 	dl deliverable
+	// pickup is the admitted context recheck (pickup.go), or nil when no receipt was given.
+	pickup *pickupResult
 	// followUpOf is the MERGED PR a --rework dispatch follows up (0 = not a follow-up). Set by
 	// applyFollowUp, pre-claim, so the worktree branch and the prompt agree.
 	followUpOf int
@@ -796,6 +819,10 @@ type dispatchPlan struct {
 	// and its round number, read before the claim. The zero value — every non-review
 	// dispatch, --dry-run, and a run with no forge read wired — states a full pass.
 	round reviewRound
+	// rules is the role's dispatch-instruction file this run's kit took from
+	// ASSAY_DISPATCH_INSTRUCTIONS, read and digest-checked before the claim
+	// (dispatchinstructions.go); nil when the value is unset or names other kits only.
+	rules *dispatchRules
 }
 
 // validateCallerPreconditions checks EVERY caller-controlled precondition, and it runs
@@ -1105,8 +1132,6 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		}
 		scriptsRoot = abs
 	}
-	plan.decisionScript = filepath.Join(scriptsRoot, filepath.FromSlash(decisionScriptRel))
-
 	// The claim TOOL: prefer the pure-Go goClaimBinary when it resolves on PATH (it is
 	// installed with desk-tools, takes the role credential as a --token-file flag, and runs
 	// with no shell on every host), else fall back to the legacy tools/dispatch-claim.sh
@@ -1161,20 +1186,25 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		plan.gateHuman = true
 	}
 	if plan.gateHuman {
-		// The decision helper resolves from the same resolved root as the claim tool's script
-		// (--claim-root when given, else --root). The claim tool tries its PATH port FIRST and the
-		// script second (above); the decision helper has NO PATH port today (see consumerHelpers),
-		// so the file under the resolved root is its only location, and a missing file REFUSES —
-		// it never skips the gate. The refusal names every location in that
-		// order and the --claim-root way out: the claim tool's PATH port means a dispatch from
-		// a repo without the scripts no longer needs --claim-root to CLAIM, so this step is
-		// where such a dispatch first learns it needs one.
-		if _, err := os.Stat(plan.decisionScript); err != nil {
+		// The decision helper resolves in the claim tool's order (issue 6131): its pure-Go PATH
+		// port goDecisionBinary FIRST, then tools/decision-issue.sh under the same resolved root as
+		// the claim script (--claim-root when given, else --root). Only when NEITHER is available
+		// does this REFUSE — it never skips the gate. The refusal names every location in that
+		// order and the --claim-root way out.
+		decisionScriptPath := filepath.Join(scriptsRoot, filepath.FromSlash(decisionScriptRel))
+		_, portErr := lookPath(goDecisionBinary)
+		switch {
+		case portErr == nil:
+			plan.decisionTool = goDecisionBinary
+		case fileExists(decisionScriptPath):
+			plan.decisionTool = decisionScriptPath
+		default:
 			return plan, deskkit.Unverifiable(fmt.Sprintf(
 				"step %s: no decision helper is available, so the human-decision gate cannot be ensured — %s. "+
 					"Dispatching a human-gated item with nothing in front of the human is the failure this "+
-					"gate exists to close, so this refuses rather than skip the gate%s.",
-				stepDecisionGate, helperLocationsTried(o, decisionScriptRel, scriptsRoot), claimRootHint(o)), err)
+					"gate exists to close, so this refuses rather than skip the gate%s. Installing desk-tools "+
+					"puts %s on PATH.",
+				stepDecisionGate, helperLocationsTried(o, decisionScriptRel, scriptsRoot), claimRootHint(o), goDecisionBinary), portErr)
 		}
 		// A recorded ruling is parsed and its corroborating tool probed HERE, before the claim, so a
 		// line this gate cannot accept costs nothing durable (#2079).
@@ -1229,6 +1259,14 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		}
 		plan.home = home
 	}
+
+	// The role's dispatch-instruction file: read, custody-checked and
+	// digest-checked here, so a refusal leaves no claim, worktree or record line.
+	rules, err := resolveDispatchRules(o)
+	if err != nil {
+		return plan, err
+	}
+	plan.rules = rules
 
 	return plan, nil
 }
@@ -1311,7 +1349,7 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, auth claimAut
 						"flight, a branch-as-claim the tool keeps) reclaim deliberately with `%s steal %s "+
 						"--repo %s --reason <why>%s`. This verb still does not steal inline. Existing claim: %s.",
 					stepClaimAcquire, claimKey, state, ageMin, script, claimKey, repo,
-					claimCredArg(script, stampRoleForKit(o.kit), repo), holder))
+					claimCredArg(script, stampRoleForKit(o.kit), repo, dispatcherLoop()), holder))
 			}
 			return deskkit.Refused(fmt.Sprintf(
 				"step %s: %s is already claimed by a LIVE holder — do not proceed. Existing claim: %s. "+
@@ -1399,7 +1437,7 @@ func releaseClaim(o dispatchOpts, script string, auth claimAuth, claimKey, repo 
 	r := runCmdEnv(o.root, auth.env, script, append([]string{"release", claimKey, "--repo", repo}, auth.args...)...)
 	if r.err != nil {
 		return "NOT released (release failed: " + r.run.Said() + ") — release it by hand: " +
-			script + " release " + claimKey + " --repo " + repo + claimCredArg(script, stampRoleForKit(o.kit), repo)
+			script + " release " + claimKey + " --repo " + repo + claimCredArg(script, stampRoleForKit(o.kit), repo, dispatcherLoop())
 	}
 	return "released"
 }
@@ -1796,27 +1834,45 @@ func stepDecision(o dispatchOpts, gateHuman bool, repo, script string, ruling *r
 	if !gateHuman {
 		return "SKIPPED: item is not human-gated", nil
 	}
-	if auth.scriptEnv == nil && strings.TrimSpace(os.Getenv("GH_TOKEN")) == "" {
+	// The PATH port resolves the dispatching role's own credential itself and reads none from
+	// its environment, so only an environment-authenticated child — the script, or the ruling
+	// corroboration — needs the handed-over credential.
+	port := script == goDecisionBinary
+	if (ruling != nil || !port) && auth.scriptEnv == nil && strings.TrimSpace(os.Getenv("GH_TOKEN")) == "" {
+		child := script
+		if ruling != nil {
+			child = statusgenBinary
+		}
 		return "", deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: no credential was handed to %s and no GH_TOKEN is exported, so the decision issue for %s "+
 				"would be filed under the AMBIENT forge login. NOT run: this verb never starts a forge-writing "+
 				"script on ambient auth. Export GH_TOKEN to choose the identity deliberately.",
-			stepDecisionGate, script, o.brief), nil)
+			stepDecisionGate, child, o.brief), nil)
 	}
 	if ruling != nil {
 		return checkRecordedRuling(o, ruling, auth.scriptEnv)
 	}
-	// The script runs from --root, so a brief under --root keeps the caller's own relative spelling
-	// (briefArg); a brief found only under --claim-root is handed over by its resolved absolute path,
-	// so the gate is filed from the SAME file the gate detection read.
-	r := runCmdEnv(o.root, auth.scriptEnv, script, "ensure", briefArg(o), "--repo", repo, "--at", "start")
+	// Either tool runs from --root, so a brief under --root keeps the caller's own relative
+	// spelling (briefArg); a brief found only under --claim-root is handed over by its resolved
+	// absolute path, so the gate is filed from the SAME file the gate detection read.
+	var r runResult
+	source := auth.scriptSource
+	if port {
+		// The port takes the script's argv plus --as: the role the claim was taken under, whose
+		// own credential it resolves through the roster. It is handed no credential.
+		role := stampRoleForKit(o.kit)
+		r = runCmdEnv(o.root, nil, goDecisionBinary, "ensure", briefArg(o), "--repo", repo, "--at", "start", "--as", role)
+		source = "the " + role + " role credential (resolved by " + goDecisionBinary + ")"
+	} else {
+		r = runCmdEnv(o.root, auth.scriptEnv, script, "ensure", briefArg(o), "--repo", repo, "--at", "start")
+	}
 	if r.err != nil {
 		return "", r.run.FailVerbatim(deskkit.ExitUnverifiable, fmt.Sprintf(
 			"step %s: the decision-issue gate for %s could not be ensured (%s) — a possible duplicate is the "+
 				"cheap direction and a missing gate is the expensive one, so this fails closed.",
 			stepDecisionGate, o.brief, r.run.Said()))
 	}
-	return "OK: " + firstLine(r.stdout) + ", authenticated by " + auth.scriptSource, nil
+	return "OK: " + firstLine(r.stdout) + ", authenticated by " + source, nil
 }
 
 // stepStamp computes the dispatcher's model attestation and applies it when a PR is known.
@@ -2143,13 +2199,12 @@ type consumerHelper struct {
 // a new helper cannot ship with a refusal that names one directory and leaves the operator to
 // guess whether anywhere else was consulted (the shape the decision gate's refusal had).
 //
-// The decision helper has no PATH port: there is no pure-Go `ensure` equivalent of
-// tools/decision-issue.sh yet (statusgen renders decision bodies but files nothing). Until
-// one ships, a target repo that does not carry the script dispatches human-gated items only
-// with --claim-root pointing at a checkout that does.
+// Both helpers have a PATH port (issue 6131 shipped the decision helper's), so a target repo
+// that carries neither script dispatches with no --claim-root once desk-tools is installed.
+// TestHelperPathPortsAreBuilt fails if an entry names a port no tools/desk/cmd directory builds.
 var consumerHelpers = []consumerHelper{
 	{rel: claimScriptRel, pathPort: goClaimBinary},
-	{rel: decisionScriptRel, pathPort: ""},
+	{rel: decisionScriptRel, pathPort: goDecisionBinary},
 }
 
 // helperLocationsTried states every location this verb looked for the consumer helper rel, for
@@ -2222,6 +2277,11 @@ func claimRootHint(o dispatchOpts) string {
 // made passing the translated key by hand corrupt the dispatch instead of working around
 // it.
 func claimKeyFor(item, repo string) string {
+	// Preserve the complete spelling for the qualified claim adapter. Returning
+	// a selector in a new transport key would create a second lock for one work.
+	if deskkit.NegotiatedWorkSyntax(item) || strings.Contains(item, ":") {
+		return item
+	}
 	if strings.Contains(item, "--") {
 		return item
 	}

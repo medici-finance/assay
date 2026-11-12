@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -260,7 +261,7 @@ func retainingMonitor(dir string, scope []string, poll func() (*MonitorReport, e
 			exits, err = readExitRecords(filepath.Join(state, intakeExitsFile))
 			return err
 		}); err != nil {
-			return nil, deskkit.Unverifiable("cannot read accountable intake dispositions", err)
+			return nil, newAuditReadError(err)
 		}
 
 		before, err := baselineObservations(dir, scope)
@@ -382,3 +383,25 @@ func retainingMonitor(dir string, scope []string, poll func() (*MonitorReport, e
 		return report, nil
 	}
 }
+
+// AuditReadError is a pass that could not read the accountable intake dispositions (the exit
+// records and hand-off records under the desk audit lock). It is exit 6 like every could-not-check,
+// but it is NOT a blind poll: the inbound poll was never attempted, and the cause is the audit
+// store (a busy lock, an unreadable record), not the inbound surface. Its text leads with
+// "AUDIT-READ FAILURE" so a scheduled tick can report it as that and not as a blind pass.
+type AuditReadError struct{ Cause error }
+
+func newAuditReadError(cause error) *AuditReadError {
+	var de *deskkit.DeskError
+	if !errors.As(cause, &de) {
+		cause = deskkit.Unverifiable("audit store unreadable", cause)
+	}
+	return &AuditReadError{Cause: cause}
+}
+
+func (e *AuditReadError) Error() string {
+	return "scanloop run: AUDIT-READ FAILURE (not a blind poll — the inbound poll was not attempted): " +
+		"cannot read accountable intake dispositions: " + e.Cause.Error()
+}
+
+func (e *AuditReadError) Unwrap() error { return e.Cause }

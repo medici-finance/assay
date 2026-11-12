@@ -8,6 +8,9 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cellstop"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // codexCommandEnvironment is applied by Codex only to command subprocesses.
@@ -65,11 +68,24 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 	}
 	// Forward only named non-secret launch context. Values are config overrides
 	// on argv, so copying the entire environment here would disclose credentials.
-	for _, key := range []string{"CLAUDE_CONFIG_DIR", "GOCACHE", "GOMODCACHE", "GOPATH", "GOFLAGS", "ASSAY_GO_CACHE_POLICY", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION", "ASSAY_PERF_PROFILE", "ASSAY_PERF_SESSION_ID", "ASSAY_PERF_AGENT_ID", "ASSAY_PERF_PARENT_AGENT_ID", "ASSAY_PERF_PARENT_INVOCATION_ID", "ASSAY_PERF_ROLE", "ASSAY_PERF_WORK", envCellDBDSN, envCellDBPassfile} {
+	for _, key := range []string{"CLAUDE_CONFIG_DIR", "GOCACHE", "GOMODCACHE", "GOPATH", "GOFLAGS", "ASSAY_GO_CACHE_POLICY", "MUHAR_LEASE_DIR", "MUHAR_TOTAL_SLOTS", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION", "ASSAY_PERF_PROFILE", "ASSAY_PERF_SESSION_ID", "ASSAY_PERF_AGENT_ID", "ASSAY_PERF_PARENT_AGENT_ID", "ASSAY_PERF_PARENT_INVOCATION_ID", "ASSAY_PERF_ROLE", "ASSAY_PERF_WORK", envCellDBDSN, envCellDBPassfile} {
 		for _, kv := range env {
 			k, value, ok := strings.Cut(kv, "=")
 			if ok && strings.EqualFold(k, key) {
 				values[key] = value
+			}
+		}
+	}
+	// A role's dispatch-instruction value and, only beside it, the cell marker
+	// directory deskdispatch checks custody against. A role without the value forwards neither, so
+	// its argv is what it was before the key existed.
+	for _, kv := range env {
+		if k, value, ok := strings.Cut(kv, "="); ok && strings.EqualFold(k, deskkit.EnvDispatchInstructions) && value != "" {
+			values[deskkit.EnvDispatchInstructions] = value
+			for _, kv := range env {
+				if k, dir, ok := strings.Cut(kv, "="); ok && strings.EqualFold(k, cellstop.EnvCellDir) {
+					values[cellstop.EnvCellDir] = dir
+				}
 			}
 		}
 	}

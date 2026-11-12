@@ -370,8 +370,16 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 		// When the repair-admission opt-in is on, show it composed into the launch — the exact
 		// KEY=VALUE the child process (and, through it, deskdispatch) will carry. Off/unset is
 		// absent here, matching the composed environment (deskLaunch omits it).
+		for _, kv := range c.muharBudgetEnv(nil) {
+			fmt.Printf("[dry-run] env %s (host mutation budget opt-in)\n", kv)
+		}
 		if rav := c.repairAdmissionValue(); rav != "" {
 			fmt.Printf("[dry-run] env %s=%s (repair-admission dispatch gate opt-in)\n", deskkit.EnvRepairAdmission, rav)
+		}
+		// The role's dispatch-instruction value, exactly as deskLaunch composes it, so the line can
+		// be fed to `deskdispatch --dry-run`. Absent when the role declares none.
+		if v := c.dispatchInstructionsValue(role, harness); v != "" {
+			fmt.Printf("[dry-run] env %s=%s (role-context dispatch_instructions)\n", deskkit.EnvDispatchInstructions, v)
 		}
 		// The cell database pointer, one line each, exactly as deskLaunch composes it: absent
 		// when CELL_DB_DSN is unset. Neither value is a password.
@@ -409,45 +417,66 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 
 	c.printCachePolicy()
 	if c.Kind == "house" {
-		// A sibling launch of this role may hold the lease for a moment; wait a little,
-		// then name the holder and say whether it is current. Only an explicit
-		// --end-stale-lock-holder lets a proven-stale own-cell holder be ended.
-		var lease *cellcadence.Lease
-		err := launchStep("launch-role-lease", func() (aerr error) {
-			lease, aerr = cellcadence.AcquireRole(c.cadenceDir(role), cellcadence.RoleLock{
-				Cell: c.Name, Role: role, Wait: roleLeaseWait, EndStale: o.EndStaleLockHolder,
-				OptIn: "--end-stale-lock-holder", Log: os.Stderr,
-			})
-			return aerr
-		})
+		lease, err := c.admitRole(role, o.EndStaleLockHolder)
 		if err != nil {
-			die("desk: role already owned or cannot lock: %v", err)
+			die("desk: %v", err)
 		}
 		defer lease.Close()
 		c.cadenceLease = lease
-		// An unfinished prior child may survive its supervisor. Never start even an
-		// interactive replacement until the operator has reconciled that child.
-		state, err := cellcadence.Read(c.cadenceDir(role))
-		if err != nil && !errors.Is(err, cellcadence.ErrNoState) {
-			die("desk: cadence state unreadable: %v", err)
-		}
-		if err == nil && (state.Cell != c.Name || state.Role != role) {
-			die("desk: cadence checkpoint belongs to another cell or role")
-		}
-		if state.Running {
-			die("desk: unfinished cadence pass; inspect and reconcile before restarting")
-		}
-	}
-	if c.Kind == "house" {
-		mode := "interactive"
-		if c.Cadence != nil {
-			mode = "cadence"
-		}
-		if err := writeRoleMode(c.cadenceDir(role), mode); err != nil {
-			die("desk: cannot record role ownership: %v", err)
-		}
 	}
 	c.deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider, prov, deskRoots, persist, persistKVs, policyRes, cockpit, o.Performance)
+}
+
+// admitRole is a house role window's admission: it takes the role lease, clears a STOP that
+// `cellctl down` wrote, refuses an unfinished prior owner, and records the owner mode. Every
+// error leaves the lease released.
+func (c *Cell) admitRole(role string, endStale bool) (*cellcadence.Lease, error) {
+	dir := c.cadenceDir(role)
+	// A sibling launch of this role may hold the lease for a moment; wait a little,
+	// then name the holder and say whether it is current. Only an explicit
+	// --end-stale-lock-holder lets a proven-stale own-cell holder be ended.
+	var lease *cellcadence.Lease
+	err := launchStep("launch-role-lease", func() (aerr error) {
+		lease, aerr = cellcadence.AcquireRole(dir, cellcadence.RoleLock{
+			Cell: c.Name, Role: role, Wait: roleLeaseWait, EndStale: endStale,
+			OptIn: "--end-stale-lock-holder", Log: os.Stderr,
+		})
+		return aerr
+	})
+	if err != nil {
+		return nil, fmt.Errorf("role already owned or cannot lock: %w", err)
+	}
+	refuse := func(err error) (*cellcadence.Lease, error) {
+		_ = lease.Close()
+		return nil, err
+	}
+	// A STOP that `cellctl down` wrote ends with that down: under the lease no supervisor of
+	// this role is reading it. A STOP an operator or another tool wrote stays (#6116).
+	if removed, err := clearDownStop(dir); err != nil {
+		return refuse(fmt.Errorf("cannot clear the stop cellctl down wrote: %w", err))
+	} else if removed {
+		fmt.Fprintf(os.Stderr, "[cadence] %s: cleared the stop cellctl down wrote\n", role)
+	}
+	// An unfinished prior child may survive its supervisor. Never start even an
+	// interactive replacement until the operator has reconciled that child.
+	state, err := cellcadence.Read(dir)
+	if err != nil && !errors.Is(err, cellcadence.ErrNoState) {
+		return refuse(fmt.Errorf("cadence state unreadable: %w", err))
+	}
+	if err == nil && (state.Cell != c.Name || state.Role != role) {
+		return refuse(errors.New("cadence checkpoint belongs to another cell or role"))
+	}
+	if state.Running {
+		return refuse(errors.New("unfinished cadence pass; inspect and reconcile before restarting"))
+	}
+	mode := "interactive"
+	if c.Cadence != nil {
+		mode = "cadence"
+	}
+	if err := writeRoleMode(dir, mode); err != nil {
+		return refuse(fmt.Errorf("cannot record role ownership: %w", err))
+	}
+	return lease, nil
 }
 
 func orDefault(v, def string) string {

@@ -52,7 +52,7 @@ ticked without a case behind it.
 | 20 | `RequiredStatusChecks(repo, branch)` | read the status checks branch protection REQUIRES on a branch | `deskflip` `readRequiredChecks` (`GET /repos/{o}/{r}/branches/{branch}/protection/required_status_checks`; 404 = no protection / none required = empty set, every other non-2xx = could-not-check) — union of the legacy `contexts` and the newer `checks[].context` | `GET /projects/:id` `only_allow_merge_if_pipeline_succeeds` — the all-tier pipeline-gating setting; ON → the `pipeline` context (a check IS required) — the SAME `GitLabPipelineContext` constant op 5 publishes the head pipeline under, so the gate requires a verdict this backend actually serves; before #1125 the name matched no rollup entry and every GitLab flip refused could-not-check. OFF → empty. External status checks stay in the Ultimate/MR-scoped lane (op 5) | implemented |
 
 | 21 | `WriteFile(repo, in)` | write a file's whole content on a branch (Evidence landing) | `deskevidence` `commitFile` (`PUT /repos/{o}/{r}/contents/{path}`, base64, branch) | `POST`/`PUT /projects/:id/repository/files/:path` (Repository Files API); `start_branch` creates the side branch inline; the default branch is protected (pilot D-8) so a direct write to it returns the `DefaultBranchNotWritable` sentinel — nothing written, no write call | implemented |
-| 22 | `ReadFile(repo, in)` | read a file's content at a ref (Evidence merge) | `deskevidence` `fetchRemoteFile` (`GET /repos/{o}/{r}/contents/{path}?ref=`) | `GET /projects/:id/repository/files/:path?ref=`; `last_commit_id` → the opaque `FileContent.SHA` an update cites; a 404 propagates as a could-not-check the caller tests with `IsForgeNotFound` | implemented |
+| 22 | `ReadFile(repo, in)` | read a file's content at a ref (Evidence merge) | `deskevidence` `fetchRemoteFile` (`GET /repos/{o}/{r}/contents/{path}?ref=`) | `GET /projects/:id/repository/files/:path?ref=`; `last_commit_id` → the opaque `FileContent.SHA` an update cites; a 404 propagates as a could-not-check the caller tests with `IsForgeNotFound`; the response names no entry type, so `FileContent.Kind` is set from content hashing to `blob_id` plus the parent directory's `GET /projects/:id/repository/tree?path=&ref=` entry mode for that blob (#6163) | implemented |
 
 **Ops 21–22 were added by brief `forge-neutral/04` under the same freeze rule**, with `deskevidence` as
 the consuming call site in the same change: it routes its Evidence write through `WriteFile` and its
@@ -454,3 +454,19 @@ because a log read must never require the capability that can cancel or delete r
 terminal control sequences before it is printed. The goldens `run_log*` and `retry_run*` on both backends pin
 the wire against recorded fixtures, including a multi-job GitLab pipeline whose every job trace is read and a
 retry that touches only failed jobs; no live run or pipeline is exercised.
+
+
+| 65 | `ChangesUpdatedSince(ctx, repo, query)` | Bounded all-state changes updated at or after an inclusive bound; consumed by the admitted `MirrorReadSource` | `GET /repos/{o}/{r}/pulls?state=all&sort=updated&direction=desc`, bounded descending walk/filter; the endpoint has no server-side since filter, reported explicitly | `GET /projects/:id/merge_requests?state=all&updated_after=…&order_by=updated_at&sort=desc`, bounded pages; MR identities and explicit merge state preserved | implemented |
+| 66 | `IssuesUpdatedSince(ctx, repo, query)` | Bounded issues-only incremental observations; consumed by the admitted `MirrorReadSource` | `GET /repos/{o}/{r}/issues?state=all&since=…&sort=updated&direction=desc`, PR entries excluded | `GET /projects/:id/issues?state=all&updated_after=…&order_by=updated_at&sort=desc`, issue numbering retained | implemented |
+| 67 | `CheckSuitesAtHead(repo, sha)` | the check SUITES at a commit with their asserted total — the container whose zero-run, unconcluded state the check-run rollup cannot show (#6234). Consumers: `deskflip` checks-green, `deskautolane` merge checks-green and `deskpost ready` precondition (c') | `GET /repos/{o}/{r}/commits/{sha}/check-suites?per_page=100`, paginated (25 pages); suite id, app slug, status, conclusion (null → empty), `latest_check_runs_count`, `created_at`; a short walk is returned short so the caller fails closed. Under `checks: read` only | no check-suite container: the EMPTY set, no request — a pipeline's pending jobs already appear in `ChecksAtHead` | implemented |
+
+The incremental source reads use existing admitted transports and explicit read-only wrappers.
+A ceiling is `Incomplete`, a failed page returns no successful population, and the conditional
+capability is explicitly unsupported in this baseline. They grant no mirror retention,
+scheduling, persistence, review/check completeness or service activation.
+
+| 68 | `ConvertToDraft(nodeID)` | return a just-flipped change to draft; its ONE caller is the post-flip backstop (`deskkit.ReadyBackstop`, used by `deskflip` and `deskpost ready`), which reverts the flip when the forge reports the change `BLOCKED` or `DIRTY`. Never a verb of its own ([ruling](https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155)) | GraphQL `convertPullRequestToDraft` | read the current title, then put the `Draft:` prefix back via `PUT`; an MR already a draft is not written | implemented |
+
+The backstop reads the merge verdict from `PullRequest.MergeStateStatus` (GitHub's REST `mergeable_state`,
+upper-cased). GitLab serves none yet, so on GitLab the backstop reports could-not-check and leaves the change
+ready. The goldens `convert_to_draft*` on both backends pin the wire.

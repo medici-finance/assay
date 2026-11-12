@@ -76,6 +76,25 @@ func TestStatusgenRegen_DryRunForwardsFlag(t *testing.T) {
 	}
 }
 
+// TestStatusgenRegen_GitlabAnchorsTarget: the anchor-refresh target (#5004)
+// is in the closed set, so a migration naming it runs the pinned statusgen
+// with it rather than being refused.
+//
+// regression: #5004
+func TestStatusgenRegen_GitlabAnchorsTarget(t *testing.T) {
+	argv := fakeStatusgen(t)
+	mig := Migration{
+		ID: "0005", From: "v1.0.73", To: "v1.0.74", Notes: "x",
+		Apply: []Step{{StatusgenRegen: &StatusgenRegen{Verb: "migrate", Args: []string{"gitlab-anchors"}}}},
+	}
+	if _, err := RunMigrations(t.TempDir(), []Migration{mig}, false); err != nil {
+		t.Fatalf("gitlab-anchors target refused or failed: %v", err)
+	}
+	if got, _ := os.ReadFile(argv); !strings.Contains(string(got), "gitlab-anchors") {
+		t.Errorf("statusgen was not invoked with gitlab-anchors; argv:\n%s", got)
+	}
+}
+
 func TestStatusgenRegen_UnknownVerbRefused(t *testing.T) {
 	fakeStatusgen(t)
 	root := t.TempDir()

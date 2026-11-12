@@ -957,6 +957,21 @@ func checkChecksGreen(fg laneForge, fr deskkit.ForgeRepo, f *facts) error {
 		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s — required check(s) never reported at this "+
 			"head: %s", condChecksGreen, strings.Join(missing, ", ")), nil)
 	}
+	// A suite with no conclusion and no runs never reaches the rollup, yet holds the forge's
+	// merge gate (#6234). Pending is could-not-check, never an ejection.
+	suites, serr := fg.CheckSuitesAtHead(fr, f.head)
+	if serr != nil {
+		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s — the check suites at %s could not be read",
+			condChecksGreen, short(f.head)), serr)
+	}
+	if suites == nil || suites.TotalCount > len(suites.Suites) {
+		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s — the check suites at %s were not read in full",
+			condChecksGreen, short(f.head)), nil)
+	}
+	if held := deskkit.PendingCheckSuites(suites.Suites); len(held) > 0 {
+		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s — check suite(s) at this head have not "+
+			"concluded: %s", condChecksGreen, strings.Join(held, "; ")), nil)
+	}
 	return nil
 }
 
