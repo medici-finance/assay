@@ -160,17 +160,20 @@ func fetchRecentCommits(repo string) (shas []string, empty bool, err error) {
 	return shas, len(shas) == 0, nil
 }
 
-// fetchCheckRuns returns the check runs for one commit. truncated is true when the API
-// reported more runs than it returned — the caller must then report could-not-check
-// rather than judge a partial list.
-func fetchCheckRuns(repo, sha string) (runs []checkRun, truncated bool, err error) {
+// fetchHeadChecks collects both CI channels once through the typed provider.
+func fetchHeadChecks(repo, sha string) (*deskkit.ChecksAtHead, error) {
 	f, fr, ferr := forgeFor(repo)
 	if ferr != nil {
-		return nil, false, ferr
+		return nil, ferr
 	}
-	checks, gerr := f.ChecksAtHead(fr, sha)
-	if gerr != nil {
-		return nil, false, gerr
+	return f.ChecksAtHead(fr, sha)
+}
+
+// fetchCheckRuns returns check runs and explicitly reports an incomplete walk.
+func fetchCheckRuns(repo, sha string) (runs []checkRun, truncated bool, err error) {
+	checks, err := fetchHeadChecks(repo, sha)
+	if err != nil {
+		return nil, false, err
 	}
 	runs = make([]checkRun, 0, len(checks.CheckRuns))
 	for _, c := range checks.CheckRuns {
