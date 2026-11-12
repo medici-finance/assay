@@ -88,6 +88,19 @@ func transitionLinks(run string) ([]transitionLink, string) {
 	return links, ""
 }
 
+// transitionFirstParents owns the ordered history read shared by chain
+// enumeration and per-link ancestry membership. Membership does not depend on
+// output order; both forms use the same first-parent range and error behavior.
+func transitionFirstParents(dir, predecessor string) ([]byte, error) {
+	return historyGit(dir, "rev-list", "--first-parent", "--reverse", "HEAD", "^"+predecessor).Output()
+}
+
+// transitionBriefBytes owns the raw version-source read for both record forms.
+// Parsing and refusal wording remain with the existing callers.
+func transitionBriefBytes(dir, file, rev string) ([]byte, error) {
+	return historyGit(dir, "show", "--end-of-options", rev+":./"+file).Output()
+}
+
 func acceptanceTransition(path, verify, full, run, delivery, base, original, baseline, delivered string, audit bool, read func(string) (string, error)) (string, map[string]string, string) {
 	links, why := transitionLinks(run)
 	if why != "" {
@@ -101,7 +114,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	}
 	dir, file := filepath.Dir(path), filepath.Base(path)
 	version := func(rev string) (int, error) {
-		raw, e := historyGit(dir, "show", "--end-of-options", rev+":./"+file).Output()
+		raw, e := transitionBriefBytes(dir, file, rev)
 		if e != nil {
 			return 0, e
 		}
@@ -112,7 +125,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		return bf.Version, nil
 	}
 	// Account for every Verify OR version change, including a reverted edit.
-	history, e := historyGit(dir, "rev-list", "--first-parent", "--reverse", "HEAD", "^"+delivery).Output()
+	history, e := transitionFirstParents(dir, delivery)
 	if e != nil {
 		return fail(1, "cannot read amendment ancestry")
 	}
@@ -224,7 +237,7 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 	if chain != nil {
 		predecessor = chain.predecessor
 	}
-	ancestors, e := historyGit(dir, "rev-list", "--first-parent", "HEAD", "^"+predecessor).Output()
+	ancestors, e := transitionFirstParents(dir, predecessor)
 	if e != nil {
 		return fail("cannot read amendment ancestry")
 	}
@@ -327,7 +340,7 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 	// Bind the existing brief-v2 acceptance version, not an invented counter.
 	versions := map[string]int{}
 	for _, rev := range []string{pp[0], amendment} {
-		raw, err := historyGit(dir, "show", "--end-of-options", rev+":./"+file).Output()
+		raw, err := transitionBriefBytes(dir, file, rev)
 		if err != nil {
 			return fail("cannot read acceptance version")
 		}

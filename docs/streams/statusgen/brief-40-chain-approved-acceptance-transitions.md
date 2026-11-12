@@ -36,6 +36,7 @@ consumers:
   - "statusgen/acceptancetransition.go, statusgen/protectedclosure.go, statusgen/verifyrun.go (the `--acceptance-record` descriptor check only): follow-up statusgen/40"
   - "statusgen/transitionchain_test.go and statusgen/transitionchain-mutations.json (new files): follow-up statusgen/40"
   - "statusgen/acceptance-mutations.json: follow-up statusgen/40 (anchor text only; every existing mutant name is kept, see Verify row 12)"
+  - "statusgen/git-launches.json: follow-up statusgen/40 (shared resolver read inventory; native-call ceilings stay unchanged)"
   - "docs/protected-paths.md (§Explicit human-approved acceptance transitions) and docs/contracts.md (R-original-table-closure): follow-up statusgen/40"
   - "plugins/assay/skills/verify-desk/SKILL.md (the `--acceptance-record` paragraph), .cursor/skills/verify-desk/SKILL.md and .cursor/assay-managed.json (the generated Cursor mirror): follow-up statusgen/40"
   - "desk-containers/17 (delivered at v1, amended to v2 and v3 after delivery): out-of-scope (its table and Evidence are not edited; once this ships and is pinned, the driver approves its v2 and v3 links and verify-desk re-verifies it)"
@@ -47,7 +48,7 @@ consumers:
 
 ## Context
 
-files: statusgen/acceptancetransition.go, statusgen/protectedclosure.go, statusgen/verifyrun.go (descriptor check only), statusgen/transitionchain_test.go (new), statusgen/transitionchain-mutations.json (new), statusgen/acceptance-mutations.json (anchor text only), docs/protected-paths.md, docs/contracts.md (the R-original-table-closure row only), plugins/assay/skills/verify-desk/SKILL.md, .cursor/skills/verify-desk/SKILL.md (generated mirror), .cursor/assay-managed.json (generated mirror digest)
+files: statusgen/acceptancetransition.go, statusgen/protectedclosure.go, statusgen/verifyrun.go (descriptor check only), statusgen/transitionchain_test.go (new), statusgen/transitionchain-mutations.json (new), statusgen/acceptance-mutations.json (anchor text only), statusgen/git-launches.json (shared resolver read inventory; ceilings unchanged), docs/protected-paths.md, docs/contracts.md (the R-original-table-closure row only), plugins/assay/skills/verify-desk/SKILL.md, .cursor/skills/verify-desk/SKILL.md (generated mirror), .cursor/assay-managed.json (generated mirror digest)
 
 facts:
 - The resolver is `acceptanceTransition` (`statusgen/acceptancetransition.go:44`). Its only production caller is the protected plan (`statusgen/protectedclosure.go:195`; the one test caller is `statusgen/transitioncontext_test.go:114`), which feeds both `verifyrun --acceptance-record` and the lint audit. It requires exactly one literal `Acceptance-Transition: amendment=<sha> approval=<url>` marker (`:46`-`:53`).
