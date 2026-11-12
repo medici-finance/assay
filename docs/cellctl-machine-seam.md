@@ -24,7 +24,7 @@ A plan made off a terminal, by the fixture verb:
 {
   "schema": "cell-op-v1",
   "kind": "cell-op-plan",
-  "id": "7c68e5630cdcab44d18df158",
+  "id": "quiet-lynx",
   "verb": "cellop-fixture",
   "cells": [
     "example"
@@ -45,8 +45,8 @@ A plan made off a terminal, by the fixture verb:
   "children": [],
   "created": "2026-10-15T01:46:23Z",
   "expires": "2026-10-15T01:56:23Z",
-  "digest": "5041f675752af6542783cb7abe12635bd3563c6b1fa9fecdc0be4cadb1931c03",
-  "confirm_code": "5041f675"
+  "digest": "2b07ff56ef9f897fd6b8355971ddcd4fa5bc0493e5dbadca3406124873a861ce",
+  "confirm_code": "2b07ff56"
 }
 ```
 
@@ -104,7 +104,7 @@ When a verb lands, its stand-in in the fixture build (below) steps aside for it,
 
 `cellctl up <cell>` converges the cell (see [the command reference](cellctl.md#cellctl-desk-up-down)). Its three forms:
 
-- **bare**: starts the roles that are not running, one window at a time, and prints a table with one row per targeted role (`up`, `already-up`, `reconciled+up`, `scheduled`, `failed`). A running role is never relaunched; a stale one is a `failed` row naming `up --plan`. Allowed off a terminal. With `--json` the same result is a `cell-op-result` with one entry per role and nothing else on stdout; a dry run under `--json` lists each role as `already-up`, `stale` or `would-start`, and `--apply` cannot be combined with `--automate`.
+- **bare**: starts the roles that are not running, one window at a time, and prints a table with one row per targeted role (`up`, `already-up`, `reconciled+up`, `scheduled`, `failed`). A running role is never relaunched; a stale one is a `failed` row naming the verb that clears its class: `up --plan` for a dead record, `cadence recover --confirm-stopped` then `up --role` for an alive or could-not-check one, and a hand repair when its lease could not be probed. Allowed off a terminal. With `--json` the same result is a `cell-op-result` with one entry per role and nothing else on stdout; a dry run under `--json` lists each role as `already-up`, `stale` or `would-start`, and `--apply` cannot be combined with `--automate`.
 - **`--plan`**: writes ONE plan for the whole cell, one `reconcile-<role>` action per stale role (and `reconcile-comms` for stale comms state). Each action's preconditions are the role's measured disposition and stale class. A cell with nothing stale writes no plan and returns an ok result. Works off a terminal.
 - **`--apply <plan-id>`** (annotated, terminal only): shows the plan, takes the typed confirm, re-measures every action and runs it, then launches the targeted roles. A role that came alive since the plan is refused `plan-stale` (exit 5) naming the role, and nothing is launched. Alive and could-not-check records are never planned.
 
@@ -121,7 +121,7 @@ With `CELLOP_FIXTURE_TRACE` set, every arrival at the apply path appends the com
 
 | Test | Build | What it holds |
 |---|---|---|
-| `go -C tools/desk test ./internal/cellop/ -count=1` | release | exit codes, JCS digests, store modes and strict decode, the apply order, 16 concurrent applies running once, re-measure, expiry and foreign cell, the consumed-marker bound, batch consume-first-and-stop, and every JSON example in the spec and this page against the schema |
+| `go -C tools/desk test ./internal/cellop/ -count=1` | release | exit codes, JCS digests, store modes and strict decode, the apply order, 16 concurrent applies running once, re-measure, expiry and foreign cell, the consumed-marker bound, batch consume-first-and-stop, two-word plan ids (word lists, redraw on a stored or consumed id, apply by a two-word or a legacy hex id), and every JSON example in the spec and this page against the schema |
 | `TestNoApprovalSurface`, `TestOneApplyPath`, `TestConsentTreeChecks` in `cmd/cellctl` | release | no `approve`, `--approval`, `--yes`, `-y`, `--assume-yes` or `--skip-verify` anywhere in the tree; `cellop.Session` built only in `cellop_cli.go`; the tree checks catch planted gaps |
 | `TestEveryStateChangingInvocationRequiresTTY` | `cellopfixture` | the enumerated list is registered and annotated; every annotated invocation is refused off a terminal (stdin, stdout or both not a terminal) without reaching apply; every `--plan` works off a terminal; every form of every adopting verb, run on a pseudo-terminal, reaches apply only when annotated; exempting any one invocation is caught |
 | `TestApplyRefusesDeskSession` | `cellopfixture` | each annotated invocation with each desk-session marker is refused on a terminal |

@@ -71,11 +71,11 @@ const securityFailMarker = "Security-Review: fail"
 // between what the desk can see and what it may annotate.
 const verifyGateLabel = deskkit.VerifyGateLabel
 
-// prListLimit caps the open-PR read (the GraphQL `pullRequests(first: …)` page) explicitly.
-// A >prListLimit-PR board would truncate and the desk would sweep an incomplete queue with no
-// signal (#80, same silent-truncation class as #79). When a repo returns exactly this
-// many open PRs, fetchOpenPRs logs a possible-truncation WARN so widening is never left
-// to guesswork. It is also the ceiling of a single GraphQL page (`first:` maxes at 100).
+// prListLimit caps the open-PR read explicitly. A >prListLimit-PR board would truncate and the
+// desk would sweep an incomplete queue with no signal (#80, same silent-truncation class as
+// #79). The read is a cursor walk of small pages up to this ceiling (#3096); when the forge
+// still reports more open PRs at the ceiling, fetchOpenPRs logs a truncation WARN so widening
+// is never left to guesswork. It must match the deskkit open-change read's own ceiling.
 const prListLimit = 100
 
 // ---------------------------------------------------------------------------
@@ -193,8 +193,9 @@ type review struct {
 // ever returns a silent empty result on error.
 // ---------------------------------------------------------------------------
 
-// fetchOpenPRs returns a repo's open PRs and whether that population may be TRUNCATED —
-// the read came back exactly at the cap, so the forge may be holding more.
+// fetchOpenPRs returns a repo's open PRs and whether that population is TRUNCATED — the read
+// stopped at the cap while the forge reports more (a backend that cannot tell reports a read
+// that came back exactly at the cap).
 //
 // #400 T2: truncation used to be a stderr WARNING and nothing else. Every count the board
 // prints rides on this population (mergeNowCount, unreviewedCount, the row set itself), and

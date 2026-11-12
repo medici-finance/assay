@@ -60,7 +60,7 @@ WEIGHTS = {
     "internal/gitmaintenance": 10.9,
     "cmd/deskmonitor": 9.3,
     "cmd/verifyloop": 7.1,
-    "internal/cellprocess": 6.4,
+    "internal/cellrunner": 6.4,
     "internal/avatar": 6.2,
     "cmd/deskcomms": 6.0,
     "internal/cellstop": 5.7,

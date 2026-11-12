@@ -109,7 +109,7 @@ func TestListMissingTagObjectE2E(t *testing.T) {
 	server := refusingServer(t) // a plain bare repo; no hook is installed
 	g := &gogitStore{url: server, host: "local-test-server"}
 	good := "at--issue-2831"
-	if res := g.CreateIfAbsent(good, claimMessage(good, "sess-A", "claimed", "-", "")); res != deskkit.ClaimWriteApplied {
+	if res := g.CreateIfAbsent(good, claimTestMessage(good, "sess-A", "claimed", "-", "")); res != deskkit.ClaimWriteApplied {
 		t.Fatalf("seed create = %v, want Applied; cause=%q", res, g.TransportCause())
 	}
 	// Plant a loose ref at an object id the repository does not hold. `git update-ref` refuses a

@@ -21,8 +21,9 @@ import (
 //   - up:     a live process holds the role's cadence lease. The role is left alone: no second launch,
 //     no window closed, no window re-created.
 //   - stale:  the lease is free but the checkpoint still says running, or a marked orphan is left. Plain
-//     `up` never reconciles it; `up --plan` writes ONE cell-op plan for the whole cell and
-//     `up --apply <plan-id>` clears it on a terminal, after the typed confirm.
+//     `up` never reconciles it. A dead record (or orphans alone): `up --plan` writes ONE cell-op plan
+//     for the whole cell and `up --apply <plan-id>` clears it on a terminal, after the typed confirm.
+//     Any other class is refused by --plan; its row names its own recovery (staleRecovery).
 //   - absent: nothing is running and nothing is left. The role is launched.
 //
 // Launches are serialized: the next role's window opens only once the previous role's launch has
@@ -74,6 +75,10 @@ type upProbe struct {
 	Since  time.Time
 	Entry  *reconcileEntry // the stale evidence, when there is a record
 	Orphan bool            // a marked orphan of a free role was found
+	// Running are this stale role's processes still running: the record's live pids and the
+	// marked processes of the role. A record --plan cannot clear names them, so the operator
+	// knows what must stop before `cadence recover --confirm-stopped`.
+	Running []int
 }
 
 // class is the reconcile class that decides whether a stale role can be planned: only a proven-dead
@@ -109,7 +114,7 @@ func (c *Cell) probeUpRoles(roles []string, comms *deskCommsConfig) ([]upProbe, 
 		switch {
 		case err != nil:
 			p.Kind = probeStale
-			p.Entry = &reconcileEntry{Role: role, Class: reconcileCNC, Evidence: []string{"the lease could not be probed: " + err.Error()}}
+			p.Entry = &reconcileEntry{Role: role, Class: reconcileCNC, unprobed: true, Evidence: []string{"the lease could not be probed: " + err.Error()}}
 		case busy:
 			p.Kind = probeUp
 			if h, herr := cellcadence.Holder(c.cadenceDir(role)); herr == nil && h != nil {
@@ -121,6 +126,9 @@ func (c *Cell) probeUpRoles(roles []string, comms *deskCommsConfig) ([]upProbe, 
 			p.Kind, p.Orphan = probeStale, true
 		default:
 			p.Kind = probeAbsent
+		}
+		if p.Kind == probeStale && p.Entry != nil {
+			p.Running = p.Entry.running()
 		}
 		out = append(out, p)
 	}
@@ -185,15 +193,59 @@ func (c *Cell) upTargets(requested []string, noTheDesk bool) []string {
 func (c *Cell) staleHint(p upProbe) string {
 	why := "stale state from a previous session"
 	if p.Entry != nil && len(p.Entry.Evidence) > 0 {
-		why = p.Entry.Evidence[0]
+		why = staleWhy(p.Entry.Evidence, p.class())
 	} else if p.Orphan {
 		why = "a marked process of this role survived its window"
 	}
-	cmd := "cellctl up " + c.Name + " --plan"
-	if p.class() != reconcileDead {
-		cmd = "inspect it first (" + p.class() + "): cellctl up " + c.Name + " --plan names what can be cleared"
+	unprobed := p.Entry != nil && p.Entry.unprobed
+	return "stale (" + why + "); not reconciled by up: " + c.staleRecovery(p.Role, p.class(), unprobed, p.Running)
+}
+
+// commsStaleHint is staleHint for the comms service's stale record.
+func (c *Cell) commsStaleHint(e *reconcileEntry) string {
+	why := "stale state from a previous session"
+	if len(e.Evidence) > 0 {
+		why = staleWhy(e.Evidence, e.Class)
 	}
-	return "stale (" + why + "); not reconciled by up: " + cmd
+	return "stale (" + why + "); not reconciled by up: " + c.staleRecovery("comms", e.Class, e.unprobed, e.running())
+}
+
+// staleWhy is the evidence a stale hint shows. A proven-dead record shows its first line, as it
+// always has. Any other class shows every line: the first alone ("no owner record survived ...")
+// does not say what made the record alive or could-not-check, and the rest names the pids.
+func staleWhy(evidence []string, class string) string {
+	if class == reconcileDead {
+		return evidence[0]
+	}
+	return strings.Join(evidence, "; ")
+}
+
+// staleRecovery names the way out of a stale role (or comms) record by the one verb that accepts
+// its class (#6192). `up --plan` plans only a proven-dead record, so only that class is pointed at
+// it. Any other record whose lease is free (alive, or could-not-check: no owner record survived
+// with a start time, an unreadable or foreign checkpoint) is refused by --plan and cleared by
+// `cadence recover --confirm-stopped` (`comms recover --confirm-stopped` for the service) once the
+// operator has confirmed the prior harness stopped. A lease that could not be probed is refused by
+// both, since each takes the lease; it is named as such, never pointed at either.
+func (c *Cell) staleRecovery(role, class string, unprobed bool, running []int) string {
+	if class == reconcileDead {
+		return "cellctl up " + c.Name + " --plan"
+	}
+	recheckCmd := "check it with cellctl cadence " + c.Name + " status " + role + ", then run cellctl up " + c.Name + " --role " + role
+	recoverCmd := "cellctl cadence " + c.Name + " recover " + role + " --confirm-stopped, then cellctl up " + c.Name + " --role " + role
+	stopped := "the prior harness and all its children have stopped"
+	if role == "comms" {
+		recheckCmd = "run cellctl up " + c.Name
+		recoverCmd = "cellctl comms " + c.Name + " recover --confirm-stopped, then cellctl up " + c.Name
+		stopped = "the prior gateway, drain and every owned child have stopped"
+	}
+	if len(running) > 0 {
+		stopped += " (still running: pid " + joinInts(running) + ")"
+	}
+	if unprobed {
+		return "neither --plan nor a recover verb can clear it (" + class + ": its lease could not be probed, and both take the lease): once " + stopped + ", repair the lease file by hand, then " + recheckCmd
+	}
+	return "--plan does not clear it (" + class + "): once " + stopped + ", run " + recoverCmd
 }
 
 // awaitRoleLease waits for the window just opened for role to take the role lease and start its
@@ -389,7 +441,7 @@ func (c *Cell) upActions(probes []upProbe, comms *reconcileEntry) (actions []cel
 				},
 			})
 		} else {
-			notPlanned = append(notPlanned, "comms: "+comms.Class+": inspect it first")
+			notPlanned = append(notPlanned, "comms: "+c.commsStaleHint(comms))
 		}
 	}
 	return actions, notPlanned

@@ -41,8 +41,8 @@ func TestNodeIDNotConstructed(t *testing.T) {
 		}
 		var mutations int
 		for _, r := range s.requests {
-			if r.Method != http.MethodPost || r.Path != "/graphql" {
-				continue
+			if r.Method != http.MethodPost || r.Path != "/graphql" || isTrustRead(r.Body) || isCommentWalk(r.Body) {
+				continue // only the mutations carry the change id; the GraphQL reads are skipped
 			}
 			mutations++
 			var body struct {

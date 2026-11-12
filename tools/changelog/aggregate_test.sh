@@ -288,6 +288,227 @@ else
   bad "F2 a nested fragment is not aggregated"
 fi
 
+# R1..R6: `roll --at-ref` / `--clear` / duplicate-tag refusal (assay#2605).
+#     The roll used to aggregate every fragment in the working tree and the
+#     caller then deleted every one, so a fragment that merged AFTER the tag was
+#     filed under the wrong version and lost. These cases run in a throwaway git
+#     repo (git is local, so the test stays offline). They are new-engine only:
+#     the retired engine (testdata/old-aggregate.py) is skipped, like A6; point
+#     AGG_IMPL at a pre-fix copy NAMED aggregate.py to see R1..R5 go red.
+rollrepo() {
+  # A repo with README + two fragments committed and tagged v0.2.0, then one
+  # more fragment committed AFTER the tag (the late arrival).
+  newcase
+  git -C "$D" init -q
+  printf 'readme\n' > "$D/changelog/README.md"
+  echo '- `early-one` shipped.' > "$D/changelog/early-one.md"
+  printf '### Fixed\n- `early-two` fixed.\n' > "$D/changelog/early-two.md"
+  git -C "$D" add -A
+  git -C "$D" -c user.name=t -c user.email=t@example.invalid commit -q -m seed
+  git -C "$D" tag v0.2.0
+  echo '- `late-one` shipped after the tag.' > "$D/changelog/late-one.md"
+  git -C "$D" add -A
+  git -C "$D" -c user.name=t -c user.email=t@example.invalid commit -q -m late
+}
+if [ "$(basename "$AGG")" = "aggregate.py" ]; then
+  # R1: a fragment present at the ref is rolled AND cleared; README is kept.
+  rollrepo
+  out="$(python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 --clear 2>&1)"; rc=$?
+  sec="$(awk '/^## v0.2.0/{f=1;next} /^## /{f=0} f' "$D/CHANGELOG.md")"
+  if [ "$rc" = 0 ] && grep -q 'early-one' <<<"$sec" && grep -q 'early-two' <<<"$sec" \
+     && [ ! -e "$D/changelog/early-one.md" ] && [ ! -e "$D/changelog/early-two.md" ] \
+     && [ -e "$D/changelog/README.md" ] \
+     && grep -q 'removed .*early-one.md' <<<"$out" && grep -q 'removed .*early-two.md' <<<"$out" \
+     && ! grep -q 'removed .*README.md' <<<"$out"; then
+    ok "R1 fragment present at the ref is rolled and cleared (README kept)"
+  else
+    bad "R1 at-ref roll + clear (rc: $rc)"; printf '%s\n' "$out"; printf '%s\n' "$sec"
+  fi
+
+  # R2: a post-ref fragment stays on disk, out of the section and unlisted,
+  #     while the at-ref fragments ARE rolled — a no-op roll cannot satisfy this.
+  rollrepo
+  out="$(python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 --clear 2>&1)"; rc=$?
+  sec="$(awk '/^## v0.2.0/{f=1;next} /^## /{f=0} f' "$D/CHANGELOG.md")"
+  if [ "$rc" = 0 ] && grep -q 'early-one' <<<"$sec" && ! grep -q 'late-one' "$D/CHANGELOG.md" \
+     && [ -e "$D/changelog/late-one.md" ] && [ ! -e "$D/changelog/early-one.md" ] \
+     && ! grep -q 'removed .*late-one' <<<"$out"; then
+    ok "R2 post-ref fragment stays on disk and out of the section"
+  else
+    bad "R2 post-ref fragment untouched (rc: $rc)"; ls "$D/changelog"
+  fi
+
+  # R3: an unresolvable ref fails closed (exit 4), nothing changed, no fallback.
+  rollrepo
+  before="$(cd "$D" && cat CHANGELOG.md && ls changelog)"
+  out="$(python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v9.9.9 --clear 2>&1)"; rc=$?
+  after="$(cd "$D" && cat CHANGELOG.md && ls changelog)"
+  if [ "$rc" = 4 ] && [ "$before" = "$after" ] && grep -q 'v9.9.9' <<<"$out"; then
+    ok "R3 unresolvable ref fails closed (rc 4, files unchanged)"
+  else
+    bad "R3 unresolvable ref (rc: $rc)"; printf '%s\n' "$out"
+  fi
+
+  # R3b: a fragment dir outside any git work tree also fails closed.
+  newcase
+  echo '- `loose` shipped.' > "$D/changelog/loose.md"
+  out="$(GIT_CEILING_DIRECTORIES="$(dirname "$D")" python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 2>&1)"; rc=$?
+  if [ "$rc" = 4 ] && [ -e "$D/changelog/loose.md" ] && ! grep -q 'v0.2.0' "$D/CHANGELOG.md"; then
+    ok "R3b not a git work tree fails closed (rc 4)"
+  else
+    bad "R3b outside a work tree (rc: $rc)"; printf '%s\n' "$out"
+  fi
+
+  # R3c: an option-shaped ref is refused, never handed to git.
+  rollrepo
+  out="$(python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref=--all 2>&1)"; rc=$?
+  if [ "$rc" = 4 ] && [ -e "$D/changelog/early-one.md" ]; then
+    ok "R3c option-shaped ref refused (rc 4)"
+  else
+    bad "R3c option-shaped ref (rc: $rc)"; printf '%s\n' "$out"
+  fi
+
+  # R3d: a ref carrying shell metacharacters is quoted, never interpreted: git
+  #      cannot resolve it (rc 4) and the injected command does not run.
+  rollrepo
+  evil="v0.2.0';touch $D/pwned;'"
+  out="$(python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref "$evil" 2>&1)"; rc=$?
+  evil2='$(touch '"$D"'/pwned2)'
+  out2="$(python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref "$evil2" 2>&1)"; rc2=$?
+  if [ "$rc" = 4 ] && [ "$rc2" = 4 ] && [ ! -e "$D/pwned" ] && [ ! -e "$D/pwned2" ] \
+     && [ -e "$D/changelog/early-one.md" ]; then
+    ok "R3d shell-shaped ref is quoted, not run (rc 4, no side effect)"
+  else
+    bad "R3d shell-shaped ref (rc: $rc rc2: $rc2)"; printf '%s\n%s\n' "$out" "$out2"; ls "$D"
+  fi
+
+  # R3e: git that cannot be run fails closed (rc 4, files unchanged) AND is
+  #      reported as "cannot run git": the shell's exit 127 must not pass for
+  #      "not a work tree" or "cannot resolve the ref". Both git calls are
+  #      covered: (a) no git on PATH, so rev-parse gets 127; (b) a stand-in git
+  #      that answers rev-parse but exits 127 on ls-tree.
+  rollrepo
+  py="$(command -v python3)"; realgit="$(command -v git)"
+  out="$(PATH=/nonexistent "$py" "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 --clear 2>&1)"; rc=$?
+  fake="$(mktemp -d "${TMPDIR:-/tmp}/clagg-XXXXXX")"
+  printf '#!/bin/sh\ncase " $* " in *" ls-tree "*) exit 127;; esac\nexec "%s" "$@"\n' "$realgit" > "$fake/git"
+  chmod +x "$fake/git"
+  outb="$(PATH="$fake:$PATH" python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 --clear 2>&1)"; rcb=$?
+  if [ "$rc" = 4 ] && grep -q 'cannot run git' <<<"$out" \
+     && [ "$rcb" = 4 ] && grep -q 'cannot run git' <<<"$outb" \
+     && [ -e "$D/changelog/early-one.md" ] && ! grep -q 'v0.2.0' "$D/CHANGELOG.md"; then
+    ok "R3e git not runnable fails closed as 'cannot run git' (rc 4, files unchanged)"
+  else
+    bad "R3e git not runnable (rc: $rc rcb: $rcb)"; printf '%s\n%s\n' "$out" "$outb"
+  fi
+
+  # R3f: a work tree whose path holds a space and a single quote still
+  #      resolves: every path handed to git is quoted, so the roll succeeds.
+  rollrepo
+  odd="$(mktemp -d "${TMPDIR:-/tmp}/clagg-XXXXXX")/it's a dir"
+  mv "$D" "$odd"; D="$odd"
+  out="$(python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 2>&1)"; rc=$?
+  if [ "$rc" = 0 ] && grep -q 'early-one' "$D/CHANGELOG.md" && ! grep -q 'late-one' "$D/CHANGELOG.md"; then
+    ok "R3f quoted work-tree path resolves at the ref"
+  else
+    bad "R3f odd work-tree path (rc: $rc)"; printf '%s\n' "$out"
+  fi
+
+  # R3g: a fragment dir whose name holds a single quote and a dollar sign is
+  #      quoted as the ls-tree path spec: the roll reads it at the ref and the
+  #      text in the name never runs.
+  newcase
+  fd="$D/frag's \$(touch pwned3)"
+  mkdir -p "$fd"
+  echo '- `spec-early` shipped.' > "$fd/spec-early.md"
+  git -C "$D" init -q
+  git -C "$D" add -A
+  git -C "$D" -c user.name=t -c user.email=t@example.invalid commit -q -m seed
+  git -C "$D" tag v0.2.0
+  echo '- `spec-late` shipped after the tag.' > "$fd/spec-late.md"
+  out="$(cd "$D" && python3 "$AGG" roll "$fd" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 2>&1)"; rc=$?
+  if [ "$rc" = 0 ] && grep -q 'spec-early' "$D/CHANGELOG.md" && ! grep -q 'spec-late' "$D/CHANGELOG.md" \
+     && [ ! -e "$D/pwned3" ]; then
+    ok "R3g quoted fragment-dir path spec resolves at the ref"
+  else
+    bad "R3g odd fragment-dir name (rc: $rc)"; printf '%s\n' "$out"
+  fi
+
+  # R4: a duplicate `## <tag>` section is refused (exit 3), every file unchanged.
+  rollrepo
+  python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 --at-ref v0.2.0 >/dev/null 2>&1
+  before="$(cd "$D" && cat CHANGELOG.md && ls changelog)"
+  out="$(python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-03 --at-ref v0.2.0 --clear 2>&1)"; rc=$?
+  after="$(cd "$D" && cat CHANGELOG.md && ls changelog)"
+  n="$(grep -c '^## v0.2.0' "$D/CHANGELOG.md")"
+  if [ "$rc" = 3 ] && [ "$before" = "$after" ] && [ "$n" = 1 ]; then
+    ok "R4 duplicate tag section refused (rc 3, files unchanged)"
+  else
+    bad "R4 duplicate tag (rc: $rc n=$n)"; printf '%s\n' "$out"
+  fi
+
+  # R4b: the duplicate refusal needs no ref and no flags — it is the no-flag path too.
+  newcase
+  echo '- `dup` shipped.' > "$D/changelog/dup.md"
+  python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-02 >/dev/null 2>&1
+  before="$(cat "$D/CHANGELOG.md")"
+  python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-03 >/dev/null 2>&1; rc=$?
+  if [ "$rc" = 3 ] && [ "$before" = "$(cat "$D/CHANGELOG.md")" ] && [ -e "$D/changelog/dup.md" ]; then
+    ok "R4b duplicate tag refused on the no-flag path"
+  else
+    bad "R4b duplicate tag, no flags (rc: $rc)"
+  fi
+
+  # R4d: tag section present AND nothing to aggregate -> rc 2 (not 3), files
+  #      unchanged. A retry after a concurrent roll must read 2.
+  newcase
+  printf '# Changelog\n\n## Unreleased\n\n## v0.2.0 — 2026-02-02\n\n### Added\n- rolled\n\n## v0.1.0 — 2026-01-01\n' > "$D/CHANGELOG.md"
+  printf 'readme\n' > "$D/changelog/README.md"
+  before="$(cat "$D/CHANGELOG.md")"
+  python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.0 2026-02-03 >/dev/null 2>&1; rc1=$?
+  if [ "$rc1" = 2 ] && [ "$before" = "$(cat "$D/CHANGELOG.md")" ] && [ -e "$D/changelog/README.md" ]; then
+    ok "R4d duplicate tag with no fragments reads rc 2, files unchanged"
+  else
+    bad "R4d empty set + existing section (rc: $rc1)"
+  fi
+
+  # R4c: a tag that merely PREFIXES an existing heading is not a duplicate.
+  newcase
+  printf '# Changelog\n\n## Unreleased\n\n## v0.2.10 — 2026-01-05\n\n### Added\n- seed\n' > "$D/CHANGELOG.md"
+  echo '- `pfx` shipped.' > "$D/changelog/pfx.md"
+  python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.2.1 2026-02-02 >/dev/null 2>&1; rc=$?
+  if [ "$rc" = 0 ] && grep -q '^## v0.2.1 ' "$D/CHANGELOG.md"; then
+    ok "R4c a prefix of an existing tag is not a duplicate"
+  else
+    bad "R4c prefix tag (rc: $rc)"
+  fi
+
+  # R5: the new flags are refused on the other subcommands.
+  newcase
+  echo '- `x` shipped.' > "$D/changelog/x.md"
+  python3 "$AGG" highlights "$D/changelog" "$D/CHANGELOG.md" --clear >/dev/null 2>&1; rc1=$?
+  python3 "$AGG" credits "$D/changelog" --at-ref HEAD >/dev/null 2>&1; rc2=$?
+  if [ "$rc1" = 2 ] && [ "$rc2" = 2 ] && [ -e "$D/changelog/x.md" ]; then
+    ok "R5 --clear/--at-ref refused outside roll"
+  else
+    bad "R5 flags outside roll (rc: $rc1 rc2: $rc2)"
+  fi
+else
+  echo "ok   - R1..R5 at-ref/clear/duplicate (skipped for retired impl)"; pass=$((pass+1))
+fi
+
+# R6: with neither new flag, roll keeps its old behaviour — every fragment is
+#     aggregated, none is removed (the caller still owns the delete), exit 0.
+rollrepo
+python3 "$AGG" roll "$D/changelog" "$D/CHANGELOG.md" v0.3.0 2026-03-03 >/dev/null 2>&1; rc=$?
+sec="$(awk '/^## v0.3.0/{f=1;next} /^## /{f=0} f' "$D/CHANGELOG.md")"
+if [ "$rc" = 0 ] && grep -q 'early-one' <<<"$sec" && grep -q 'late-one' <<<"$sec" \
+   && [ -e "$D/changelog/early-one.md" ] && [ -e "$D/changelog/late-one.md" ]; then
+  ok "R6 no-flag roll aggregates everything and removes nothing"
+else
+  bad "R6 no-flag roll (rc: $rc)"; printf '%s\n' "$sec"
+fi
+
 echo "---"
 echo "aggregate_test: $pass passed, $fail failed (impl: $AGG)"
 [ "$fail" = 0 ]

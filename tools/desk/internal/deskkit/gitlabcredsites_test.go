@@ -53,6 +53,10 @@ var gitlabCredSites = map[string]string{
 	// deskgitlab (the fleet provisioner): newAPIClient sets CheckRedirect to ErrUseLastResponse
 	// on every API client, so a 3xx comes back unfollowed as its own status.
 	"cmd/deskgitlab/client.go|send|header": "TestAPIClientDoesNotFollowRedirects",
+	// The shared label ensure/check (cellctl's install-path label step): NewHTTPTransport
+	// copies the caller's client with CheckRedirect = ErrUseLastResponse, so a 3xx to another
+	// host comes back as the answer and the other host receives nothing.
+	"internal/forgelabels/http.go|NewHTTPTransport|header": "TestNewHTTPTransportRefusesRedirects",
 }
 
 // gitlabCredHeaders are the GitLab credential header names, compared case-insensitively

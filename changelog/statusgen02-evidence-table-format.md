@@ -1,2 +1,0 @@
-### Fixed
-- Escape pipeline delimiters in four historical statusgen/02 Evidence command cells so Markdown and the table parser retain the original date and verifier columns. Commands, observations, dates and actors are unchanged; this records no new verification.
