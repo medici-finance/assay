@@ -46,8 +46,8 @@
     {
       "name": "original complete definition unbound",
       "file": "acceptancetransition.go",
-      "old": "if !reflect.DeepEqual(source, old) {",
-      "new": "if false && !reflect.DeepEqual(source, old) {"
+      "old": "if !reflect.DeepEqual(source, old) {\n\t\t\treturn fail(\"a changed command must still carry its complete original delivered definition\")",
+      "new": "if false && !reflect.DeepEqual(source, old) {\n\t\t\treturn fail(\"a changed command must still carry its complete original delivered definition\")"
     },
     {
       "name": "whole cell rewrite drops context",
