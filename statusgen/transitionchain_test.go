@@ -283,7 +283,7 @@ func TestTransitionCombinedColumns(t *testing.T) {
 
 // regression: #6064
 func TestChainRefusesForgedApproval(t *testing.T) {
-	for _, mode := range []string{"bot", "unmapped", "edited", "marker", "other-repo", "unreachable", "repo", "brief", "delivery", "base", "original", "link", "predecessor", "amendment", "rows"} {
+	for _, mode := range []string{"bot", "unmapped", "edited", "marker", "other-repo", "unreachable", "whitespace", "repo", "brief", "delivery", "base", "original", "link", "predecessor", "amendment", "rows"} {
 		t.Run(mode, func(t *testing.T) {
 			f := chainFixtureAt(t, "container")
 			login, _ := HumanLogin("alex")
@@ -304,6 +304,8 @@ func TestChainRefusesForgedApproval(t *testing.T) {
 				repo = "other/project"
 			case "unreachable":
 				f.offline = true
+			case "whitespace":
+				body = "\n" + body
 			default:
 				body = strings.Replace(body, "\n"+mode+"=", "\n"+mode+"=wrong-", 1)
 			}
@@ -327,7 +329,11 @@ func TestChainRefusesForgedApproval(t *testing.T) {
 					return old()
 				}
 			}
-			f.refuse(t, "acceptance transition: link 2: ", false)
+			expected := "acceptance transition: link 2: "
+			if mode == "unreachable" {
+				expected += "could-not-check"
+			}
+			f.refuse(t, expected, false)
 		})
 	}
 }
@@ -410,7 +416,11 @@ func TestChainRefusesSkippedLink(t *testing.T) {
 				f.urls = append(f.urls, rlURL(rlRepo, rlIssue, rlComment+2))
 				f.record()
 			}
-			f.refuse(t, "acceptance transition: link ", true)
+			expected := "acceptance transition: link "
+			if mode == "intermediate" {
+				expected = "link 2 missing at " + f.amendments[1][:12]
+			}
+			f.refuse(t, expected, true)
 		})
 	}
 }
@@ -439,7 +449,7 @@ func TestChainRefusesReorderedChain(t *testing.T) {
 			t.Fatalf("per-link ancestry accepted: %q", why)
 		}
 	})
-	for _, mode := range []string{"lines", "amendments", "non-descendant", "branch", "mixed", "malformed", "url"} {
+	for _, mode := range []string{"lines", "amendments", "non-descendant", "branch", "mixed", "malformed", "broken-link", "url"} {
 		t.Run(mode, func(t *testing.T) {
 			f := chainFixtureAt(t, "repeat")
 			lines := strings.Split(f.descriptor, "\n")
@@ -456,6 +466,8 @@ func TestChainRefusesReorderedChain(t *testing.T) {
 				f.descriptor = strings.Replace(f.descriptor, "link=1 ", "", 1)
 			case "malformed":
 				f.descriptor = strings.Replace(f.descriptor, "link=2", "link=02", 1)
+			case "broken-link":
+				f.descriptor = strings.Replace(f.descriptor, "link=2", "link =2", 1)
 			case "url":
 				f.descriptor = strings.Replace(f.descriptor, f.urls[1], "https://other.invalid/approval", 1)
 			}
@@ -485,7 +497,7 @@ func TestChainRefusesEditAfterApproval(t *testing.T) {
 			case "unnamed-command":
 				f.payloads[0] = strings.Replace(f.payloads[0], "rows=12,15", "rows=15", 1)
 			case "repeat-unnamed":
-				f.payloads[1] = strings.Replace(f.payloads[1], "rows=12:Command", "rows=15:Command", 1)
+				f.payloads[1] = strings.Replace(f.payloads[1], "rows=12:Command", "rows=", 1)
 			case "expect-drift":
 				f.amend(t, strings.Replace(strings.Replace(f.body, "| 1 | `true` | exit 0", "| 1 | `true` | exit 1", 1), "| 12 | `true && true && true` |", "| 12 | `true && true && true && true` |", 1), "12:Command", false)
 				p, why := f.plan(t)
@@ -498,7 +510,11 @@ func TestChainRefusesEditAfterApproval(t *testing.T) {
 				return
 			}
 			structural := mode == "current" || mode == "evidence" || mode == "history"
-			f.refuse(t, "acceptance transition: link ", structural)
+			expected := "acceptance transition: link "
+			if mode == "unnamed-command" || mode == "repeat-unnamed" {
+				expected = "row 12"
+			}
+			f.refuse(t, expected, structural)
 		})
 	}
 }

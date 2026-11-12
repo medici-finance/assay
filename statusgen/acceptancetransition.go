@@ -53,7 +53,8 @@ func transitionLinks(run string) ([]transitionLink, string) {
 	markers := protectedMarkersNamed(normalizedProtectedEvidence(run), "Acceptance-Transition:")
 	chain := false
 	for _, m := range markers {
-		chain = chain || strings.Contains(m.text, "link=")
+		fields := strings.Fields(m.text)
+		chain = chain || (len(fields) > 1 && strings.HasPrefix(fields[1], "link"))
 	}
 	if !chain {
 		return nil, ""
@@ -248,7 +249,7 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 			return fail("amendment has no unique merge base")
 		}
 		divergence, err := read(bases[0])
-		if err != nil || !reflect.DeepEqual(briefVerifyRows(divergence), briefVerifyRows(before)) {
+		if err != nil || !reflect.DeepEqual(briefVerifyRows(divergence), briefVerifyRows(before)) || (chain != nil && strings.TrimSpace(divergence) != strings.TrimSpace(before)) {
 			return fail("amendment divergence differs from pre-merge main acceptance")
 		}
 	}
@@ -479,7 +480,11 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 			}
 		}
 		rawIDs, matched = strings.CutPrefix(approvalBody, payloadPrefix)
-		for _, item := range strings.Split(rawIDs, ",") {
+		items := strings.Split(rawIDs, ",")
+		if chain != nil && rawIDs == "" {
+			items = nil
+		}
+		for _, item := range items {
 			id := item
 			if typed {
 				var column string
