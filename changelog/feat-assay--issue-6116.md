@@ -1,3 +1,0 @@
-### Fixed
-- `cellctl down` then `cellctl up` is a round trip again: `down` waits, within one 20-second bound, for each interactive role it stopped and leaves its checkpoint finished when the stop is proven (owner, role child and every marked process gone), so the next `up` needs no `--plan` or `cadence recover`; an unproven stop exits 1 and names `cellctl up <cell> --plan`.
-- A role's next launch removes the cadence stop request that `cellctl down` wrote, and only that one; `down` no longer overwrites a stop request an operator already wrote, so an operator's stop, an empty marker and every cell-wide flag stay in force.
