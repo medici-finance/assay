@@ -31,8 +31,8 @@ sources:
   - "freshness-checked 2026-10-22 @ a631d47ea71b3270ab33ba08af47d3dde8c9e7d5"
 consumers:
   - "statusgen/evaluation/: fixed-here (canonical readiness implementation)"
-  - "statusgen/nextup.go: fixed-here (canonical readiness implementation)"
-  - "statusgen/eligibility.go: fixed-here (canonical readiness implementation)"
+  - "statusgen/nextup.go: out-of-scope (no reader edit is required; its existing gate/map contract consumes the changed post-scan host and is exercised by TestNextupMilestoneCoverage)"
+  - "statusgen/eligibility.go: out-of-scope (the existing per-brief adapter stays unchanged; the shared EvaluateEligibility projection and post-scan host own this change, with library/CLI parity checked)"
   - "statusgen/testdata/milestone-support/07/: fixed-here (canonical readiness implementation)"
   - "docs/library-first.md: fixed-here (canonical readiness implementation)"
   - "docs/streams/milestone-support/brief-10-enforce-milestone-capabilities-at-dispatch-and-pickup.md: follow-up milestone-support/10 (consumes this delivery; exact runtime readers enumerated at pickup)"
@@ -44,7 +44,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/evaluation/`, `statusgen/nextup.go`, `statusgen/eligibility.go`, `statusgen/testdata/milestone-support/07/`, `docs/library-first.md`, `changelog/milestone-support-07.md`, `statusgen/testdata/milestone-support/07-mutations.json` — Implementation paths; independent Evidence remains below.
+files: `statusgen/evaluation/`, `statusgen/nextup.go`, `statusgen/eligibility.go`, `statusgen/milestonegraph.go`, `statusgen/milestoneacceptance.go`, `statusgen/model.go`, `statusgen/readiness_test.go`, `statusgen/testdata/milestone-support/07/`, `statusgen/testdata/milestone-support/07-mutate.py`, `statusgen/testdata/milestone-support/07-mutations.json`, `statusgen/testdata/milestone-support/05-mutations.json`, `docs/contracts.md`, `docs/library-first.md`, `spec/milestone-v1.md`, `docs/streams/decisions/DR-milestone-support-07.md`, `changelog/milestone-support-07.md` — Existing Next-up/eligibility readers retain their contracts without edits; the host and canonical owner supply the changed values.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.
