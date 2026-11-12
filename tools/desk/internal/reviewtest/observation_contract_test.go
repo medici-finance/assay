@@ -382,6 +382,14 @@ func TestReviewContractRoundTrip(t *testing.T) {
 // Old v1 snapshots did not carry Mergeable. That absence remains readable but
 // cannot make a BLOCKED draft eligible. Explicit null remains a malformed fact.
 func TestReviewMergeableCompatibility(t *testing.T) {
+	var schema map[string]any
+	raw, err := os.ReadFile(filepath.Join(moduleRoot(t), "..", "..", "schemas", "review-observation-v1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
 	for _, verdict := range []string{"", "MERGEABLE"} {
 		t.Run(verdict, func(t *testing.T) {
 			in, policy := observationFixture()
@@ -392,6 +400,13 @@ func TestReviewMergeableCompatibility(t *testing.T) {
 			c.Facts.Change.Mergeable = verdict
 			data, err := json.Marshal(observation(t, in, policy))
 			if err != nil {
+				t.Fatal(err)
+			}
+			var doc any
+			if err := json.Unmarshal(data, &doc); err != nil {
+				t.Fatal(err)
+			}
+			if err := checkSchema(schema, schema, doc); err != nil {
 				t.Fatal(err)
 			}
 			decoded, err := rf.DecodeObservation(data)
