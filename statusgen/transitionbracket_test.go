@@ -331,7 +331,7 @@ func TestTransitionBracketRefusals(t *testing.T) {
 			}
 		})
 	}
-	for _, name := range []string{"edited-approval", "unreadable-approval", "replan", "descriptor", "changes", "command", "supplement-command", "table-bytes", "no-record", "ordinary-descriptor", "ordinary-changes", "no-plan", "no-descriptor", "no-changes"} {
+	for _, name := range []string{"edited-approval", "unreadable-approval", "replan", "descriptor", "changes", "command", "supplement-command", "table-bytes", "no-record", "no-plan", "no-descriptor", "no-changes"} {
 		t.Run("close/"+name, func(t *testing.T) {
 			f := newTransBracket(t, false)
 			f.start(t)
@@ -362,14 +362,6 @@ func TestTransitionBracketRefusals(t *testing.T) {
 				})
 			case "no-record":
 				record = false
-			case "ordinary-descriptor":
-				record = false
-				f.editReceipt(t, func(r *bracketReceipt) { r.Acceptance = nil })
-				body = strings.Replace(body, "Acceptance-Changes: 2=Command\n", "", 1)
-			case "ordinary-changes":
-				record = false
-				f.editReceipt(t, func(r *bracketReceipt) { r.Acceptance = nil })
-				body = strings.Replace(body, f.descriptor+"\n", "", 1)
 			case "no-plan":
 				short := briefTreeSHA(f.home, f.brief)
 				f.editReceipt(t, func(r *bracketReceipt) { r.Acceptance = nil; r.RunnerTree = short })
@@ -383,6 +375,34 @@ func TestTransitionBracketRefusals(t *testing.T) {
 			code, diag := f.close(t, record)
 			if code == 0 || getFile(t, f.witness) != body {
 				t.Fatalf("close did not refuse atomically: %d %s", code, diag)
+			}
+		})
+	}
+
+	// Start with an ordinary bracket, so no acceptance runner-tree or plan
+	// mismatch can conceal the no-plan preamble guard.
+	for _, prefix := range []string{"Verification-Table:", "Acceptance-Transition:", "Acceptance-Changes:"} {
+		t.Run("close/ordinary-"+strings.TrimSuffix(prefix, ":"), func(t *testing.T) {
+			f := newContainerFixture(t)
+			putFile(t, f.check, validCheck)
+			opened, _ := time.Parse(time.RFC3339, fixtureOpened)
+			oldNow := nowFunc
+			nowFunc = func() time.Time { return opened }
+			t.Cleanup(func() { nowFunc = oldNow })
+			res, diag := captureVerifyrun(t, []string{"--open-bracket", "--root", f.home, "--brief", f.brief, "--out", f.receipt})
+			if res.code != 0 {
+				t.Fatalf("ordinary open: %d %s", res.code, diag)
+			}
+			res, diag = captureVerifyrun(t, f.runArgs())
+			if res.code != 0 {
+				t.Fatalf("ordinary container: %d %s", res.code, diag)
+			}
+			body := prefix + " injected\n" + getFile(t, f.witness)
+			putFile(t, f.witness, body)
+			nowFunc = func() time.Time { return opened.Add(time.Minute) }
+			res, diag = captureVerifyrun(t, []string{"--close-bracket", "--root", f.home, "--brief", f.brief, "--admission-receipt", f.receipt, "--witness", f.witness})
+			if res.code == 0 || !strings.Contains(diag, "witness carries acceptance preamble without a host plan") || getFile(t, f.witness) != body {
+				t.Fatalf("ordinary preamble did not refuse atomically at its own guard: %d %s", res.code, diag)
 			}
 		})
 	}
