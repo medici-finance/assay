@@ -53,15 +53,6 @@ id: c3f52e25-c133-4e70-a242-c6392d215efb
 
 ## Context
 
-files:
-- `tools/desk/scripts/forge-ban.sh` + NEW `tools/desk/scripts/forge-ban-probe.sh` (planned) — classes e and f, still advisory.
-- `docs/streams/desktools-v2/forge-ban-baseline.txt` — the `desktools-v2/13` line.
-- `statusgen/` — the Verify-row portability NOTICE and its test.
-- `.github/workflows/ci.yml`, `windows-ci-leg.yml` (live copy, retired #4106) — staged as a patch for the human to apply; never pushed by this brief's implementer.
-- `docs/streams/desktools-v2/brief-06-installation-token-scoping.md` — the re-derivation, offered to its human gate.
-- `docs/streams/desk-containers/README.md` — row 10 corrected.
-- `changelog/<branch>.md` — the per-PR fragment this repository requires.
-
 Issue #1836's other half: the gates. Today a Windows compile break in `tools/desk` is first
 seen at release time (PR CI builds it on Linux only; the cross-build loop runs in
 `release.yml`), and the seam contract's ban counter covers only its GitHub half — class (a)
@@ -79,6 +70,15 @@ non-workflow half on the branch (the scripts, the lint, the triage) plus a ready
 workflow patch file and a `human-runsheet` entry; the human applies the workflow commit
 themselves at merge time. The Verify rows for those deliverables are written against the
 applied state and are expected to pass after the human's commit lands.
+
+files:
+- `tools/desk/scripts/forge-ban.sh` + `tools/desk/scripts/forge-ban-probe.sh` (new, planned) — classes e and f, still advisory.
+- `docs/streams/desktools-v2/forge-ban-baseline.txt` — the `desktools-v2/13` line.
+- `statusgen/` — the Verify-row portability NOTICE and its test.
+- `.github/workflows/ci.yml`, `windows-ci-leg.yml` (live copy, retired #4106) — staged as a patch for the human to apply; never pushed by this brief's implementer.
+- `docs/streams/desktools-v2/brief-06-installation-token-scoping.md` — the re-derivation, offered to its human gate.
+- `docs/streams/desk-containers/README.md` — row 10 corrected.
+- **create a fragment in** `changelog/` — the per-PR fragment this repository requires, `changelog/<branch>.md` (its name varies per PR, so the directory is declared).
 
 ## Deliverables
 
