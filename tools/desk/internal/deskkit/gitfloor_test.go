@@ -385,6 +385,7 @@ func wordAt(args []string, w string) int {
 // adds a row in the same change as the Dockerfile (see its "To bump" note).
 var knownGitTarballs = map[string]string{
 	"2.56.0": "26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3",
+	"2.56.1": "f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f",
 }
 
 // failClosedProblem returns why a RUN step could let a failing command pass:
@@ -643,8 +644,8 @@ func TestBaseImageRunsGitFloor(t *testing.T) {
 	runTail := "    fi; \\\n    git-floor-check\n"
 	shaLine := `    echo "${GIT_TARBALL_SHA256}  /tmp/git.txz" | sha256sum -c -; \` + "\n"
 	tarLine := "    tar -C /tmp -xJf /tmp/git.txz; \\\n"
-	shaArg := "ARG GIT_TARBALL_SHA256=" + knownGitTarballs["2.56.0"] + "\n"
-	verArg := "ARG GIT_VERSION=2.56.0\n"
+	shaArg := "ARG GIT_TARBALL_SHA256=" + knownGitTarballs["2.56.1"] + "\n"
+	verArg := "ARG GIT_VERSION=2.56.1\n"
 	testX := "    test -x /usr/local/bin/git; \\\n"
 	aptAnchor := "        libcurl3-gnutls \\\n"
 	volAnchor := "VOLUME /work\n"
