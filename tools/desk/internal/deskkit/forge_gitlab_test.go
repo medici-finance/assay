@@ -105,7 +105,15 @@ type glServer struct {
 	// and the give-up path (set it at/above the cap). It names the request's own
 	// source_branch in the message, so a fixture cannot fake a branch it was not asked for.
 	createMRTransientFails int
-	labelEvents            []map[string]any
+	// createMRTransientKeyed switches the transient 400 above to GitLab's FIELD-KEYED
+	// validation body, `{"message":{"source_branch":["does not exist"]}}` — the shape the
+	// reporter of issue #6281 received, which the sentence-form classifier never matched.
+	createMRTransientKeyed bool
+	// mrListStatus, when non-zero, is the status the merge-request LIST route answers instead
+	// of 200 (forceStatus cannot fail it alone: the CREATE route shares its path). It models
+	// the duplicate-guard read failing between two create attempts (issue #6281).
+	mrListStatus int
+	labelEvents  []map[string]any
 	// issueList is the project-issues LIST payload (SearchIssues), and projLabels the
 	// project-labels LIST payload (ListLabels).
 	issueList  []map[string]any
@@ -451,6 +459,10 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPut && lMR.MatchString(path):
 		enc(s.updateMR)
 	case r.Method == http.MethodGet && lMRRoot.MatchString(path):
+		if s.mrListStatus != 0 {
+			w.WriteHeader(s.mrListStatus)
+			return
+		}
 		enc(s.mrList)
 	case r.Method == http.MethodPost && lMRRoot.MatchString(path):
 		if s.createMRTransientFails > 0 {
@@ -464,6 +476,10 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 			}
 			_ = json.Unmarshal(body, &reqBody)
 			w.WriteHeader(http.StatusBadRequest)
+			if s.createMRTransientKeyed {
+				enc(map[string]any{"message": map[string]any{"source_branch": []string{"does not exist"}}})
+				return
+			}
 			enc(map[string]any{"message": []string{
 				fmt.Sprintf("Source branch %q does not exist", reqBody.SourceBranch)}})
 			return
