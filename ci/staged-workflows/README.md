@@ -100,6 +100,13 @@ reviewable artifact, not a run.
   the live workflow commits nothing, but the refusal reaches its generic first-attempt branch.
   That branch leaves the card closed and comments a reason that does not name the decision
   issue or the remedy.
+- `assay-statusgen.yml` — status-historian part: the `regen` job runs `statusgen --record`
+  after each STATUS.md write (the first run and every push retry), and its commit step adds
+  `docs/streams/.history.jsonl` beside `STATUS.md` in the same `[skip-status-regen]` commit.
+  The `push:` paths gain `!docs/streams/.history.jsonl` after `docs/**`, so that commit still
+  cannot retrigger the workflow (loop guard 1). The same text is in the live file and this copy;
+  `TestBoardRegenRecordsHistory` (with its negative control) in `statusgen` pins both. The
+  `tools/ci-load/activation/` copy predates it and is not updated (stale, #1187).
 - `loopadmin.yml` — the loopadmin module's test job (graph-execution/20): `gofmt`, `go vet`,
   `go test` and the mutation gate (`go run ./mutate`) from `loopadmin/`, on path triggers for the
   module, `spec/loop-admin-runner-v1.md` and `schemas/loop-admin-runner-v1.json`. **Staged, not

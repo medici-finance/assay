@@ -49,11 +49,16 @@ on:
   push:
     branches: [main]
     # STATUS.md is deliberately NOT listed and lives at the repo root (outside
-    # docs/**), so the regen job's own commit — which touches only STATUS.md —
+    # docs/**), and docs/streams/.history.jsonl is excluded below, so the regen
+    # job's own commit — which touches only those two files —
     # cannot retrigger this workflow (loop guard 1). The regen job's `if:` also
     # skips any [skip-status-regen] commit (loop guard 2, belt and suspenders).
     paths:
       - "docs/**"
+      # The status historian (--record, below) is committed by the regen job in
+      # its own [skip-status-regen] commit, beside STATUS.md. Excluded here so
+      # that commit still cannot retrigger this workflow (loop guard 1).
+      - "!docs/streams/.history.jsonl"
       # A release clears changelog/; lint reads brief paths into it, so a release
       # that reds the lint must red it on its own commit (#722).
       - "changelog/**"
@@ -329,7 +334,13 @@ jobs:
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           "${RUNNER_TEMP}/statusgen" --root . --acceptance-forge
+          # The status historian (statusgen/history.go): append this commit's
+          # brief status transitions to docs/streams/.history.jsonl. Single
+          # writer, wired here only, after STATUS.md regenerates (main.go
+          # run() "record"); the commit step below lands it with STATUS.md.
+          "${RUNNER_TEMP}/statusgen" --root . --record --acceptance-forge
       - name: Commit STATUS.md if it changed
         env:
           ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
@@ -353,14 +364,16 @@ jobs:
           attempts=3
           attempt=1
           while : ; do
-            git add STATUS.md
+            git add -- STATUS.md
+            # The historian is absent only before its first --record run.
+            if [ -e docs/streams/.history.jsonl ]; then git add -- docs/streams/.history.jsonl; fi
             # BOOTSTRAP-SAFE GUARD: guard on `git status --porcelain -- STATUS.md`,
             # NOT `git diff --quiet -- STATUS.md`. git diff sees only TRACKED files,
             # so on a repo with no STATUS.md yet the diff guard mis-fires ("nothing
             # to commit") and the first board is NEVER created; porcelain reports
             # the new/staged file.
-            if [ -z "$(git status --porcelain -- STATUS.md)" ]; then
-              echo "STATUS.md already current — nothing to commit"
+            if [ -z "$(git status --porcelain -- STATUS.md docs/streams/.history.jsonl)" ]; then
+              echo "STATUS.md and the status history already current — nothing to commit"
               exit 0
             fi
             git commit -m 'chore(status): regenerate [skip-status-regen]'
@@ -377,6 +390,7 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             "${RUNNER_TEMP}/statusgen" --root . --acceptance-forge
+            "${RUNNER_TEMP}/statusgen" --root . --record --acceptance-forge
           done
   # verified→done auto-flip for `gate: model` briefs (the third half of the
   # single-writer shape; wired per the 2026-09-02 ruling on the house tracker).
