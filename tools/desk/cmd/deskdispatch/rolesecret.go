@@ -115,7 +115,11 @@ func roleSecretAdmission(o dispatchOpts, repo string) (string, error) {
 	if q, ok := itemRepoQualifier(o.item); ok && !strings.EqualFold(q, repo) {
 		return "", deskkit.Refused(fmt.Sprintf("refused: item %q names repository %s, not the dispatch target %s", o.item, q, repo) + roleSecretRefusalTail)
 	}
-	iss, err := fg.GetIssue(fr, n)
+	// The item names an issue, so the read is typed: on a forge that numbers issues and changes
+	// separately it reads only the issue, and on one shared sequence a pull request under this
+	// number comes back as an error, not as the issue. The IsPullRequest check below stays for a
+	// forge that hands one back anyway.
+	iss, err := fg.GetIssueTyped(fr, n, deskkit.TargetIssue)
 	if err != nil || iss == nil {
 		return "", deskkit.Unverifiable(fmt.Sprintf("cannot read issue #%d for the role-secret trust check", n)+roleSecretRefusalTail, err)
 	}

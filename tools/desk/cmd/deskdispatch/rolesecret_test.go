@@ -24,9 +24,15 @@ type rsForge struct {
 	cmp      *deskkit.RefComparison
 	cmpErr   error
 	compared [2]string
+	kinds    []deskkit.TargetKind
 }
 
-func (f *rsForge) GetIssue(deskkit.ForgeRepo, int) (*deskkit.Issue, error) {
+// GetIssueTyped is the only issue read rsForge answers: a bare GetIssue call promotes off the
+// nil interface and panics, so the admission cannot fall back to the bare-number resolver.
+// It hands the issue back whatever its kind, so the admission's own IsPullRequest check is
+// what a pull-request case exercises.
+func (f *rsForge) GetIssueTyped(_ deskkit.ForgeRepo, _ int, kind deskkit.TargetKind) (*deskkit.Issue, error) {
+	f.kinds = append(f.kinds, kind)
 	if f.issue == nil {
 		return nil, errors.New("no such issue")
 	}
@@ -166,6 +172,14 @@ func TestRoleSecretUntrustedHead(t *testing.T) {
 					o.item = tc.item
 				}
 				_, err := roleSecretAdmission(o, allowedRepo)
+				if tc.item == "" && len(f.kinds) == 0 {
+					t.Fatal("the admission decided an issue item without reading the issue")
+				}
+				for _, k := range f.kinds {
+					if k != deskkit.TargetIssue {
+						t.Fatalf("an issue item was read as kind %q, want %q", k, deskkit.TargetIssue)
+					}
+				}
 				if tc.want == "" {
 					if err != nil {
 						t.Fatalf("refused: %v", err)
