@@ -741,6 +741,29 @@ jobs:
           set -euo pipefail
           go version
           go build -o "${RUNNER_TEMP}/statusgen" .
+      # The human-gate sign-off digest (statusgen/signoffdigest.go): every brief
+      # awaiting a human sign-off, oldest first, each with its Evidence link,
+      # written to this tick's job summary. Read-only and offline: it reads main's
+      # tree as cloned above, holds no token and writes nothing to the forge
+      # (no issue, no comment). A could-not-check digest (exit non-zero) still
+      # renders its could-not-check body, warns, and never fails the tick.
+      - name: Sign-off digest to the job summary
+        working-directory: ${{ runner.temp }}/board-src
+        env:
+          # Evidence links resolve against the home repo; the roster as in compute.
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+          ASSAY_HOME_REPO: ${{ vars.ASSAY_HOME_REPO || github.repository }}
+        run: |
+          set -uo pipefail
+          digest="${RUNNER_TEMP}/signoff-digest.md"
+          rc=0
+          "${RUNNER_TEMP}/statusgen" --root . --signoff-digest > "$digest" || rc=$?
+          cat "$digest"
+          cat "$digest" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::statusgen --signoff-digest exited ${rc}: its inputs could not be read, so the digest reports nothing about the queue (see its body); the reconcile tick continues"
+          fi
       # Always the pinned tarball, never a gh already on PATH: the publish step
       # hands it the board-writer token.
       - name: Install gh CLI (pinned, checksum-verified)

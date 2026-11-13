@@ -1,0 +1,2 @@
+### Changed
+- The hourly board reconcile job writes `statusgen --signoff-digest` to its job summary: every brief awaiting a human sign-off, with its Evidence link, oldest first once the status historian has ages. The step is read-only, holds no token and posts nothing to issues or comments. A could-not-check digest prints its could-not-check body and a warning, and the tick goes on. Lands with a maintainer's workflow push.
