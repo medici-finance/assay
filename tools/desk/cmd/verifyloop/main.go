@@ -320,6 +320,13 @@ are explicit planner inputs, never read from ambient state. An explicit --root i
 observation, not proof that all roots are idle. Evidence-repair discovery remains unknown
 until the repair-discovery owner supplies that lane; empty Awaiting alone never establishes desk idle.
 
+LANDING CAPACITY is not a plan input and the plan never sizes a pool. Each DISPATCH item still
+has to land its Evidence through deskevidence's own write budget (two writes per item: the row
+and the outcome record). Before widening verify-desk on a deep plan, read
+'deskroster capacity --role verify-desk --repo <owner/name> --depth <dispatch count>': it reads
+that enforced meter (never a copied cap), reserves the in-flight items, and says COULD-NOT-CHECK
+rather than spare capacity when the meter is unreadable.
+
 'plan' FAILS SAFE on risk: any brief with gate:human OR any risk answer yes (irreversible
 first) is bucketed under awaiting-human / ROUTE-HUMAN, never DISPATCH. A model MAY gather
 Evidence for such a brief — its member line says 'Evidence-only (never flip-eligible)' — but

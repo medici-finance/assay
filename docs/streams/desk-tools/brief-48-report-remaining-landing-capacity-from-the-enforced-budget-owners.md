@@ -10,6 +10,7 @@ gate: human
 risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}
 gate-why: "Changes verification scheduling/landing behavior relied on by adopters; human review must confirm the preserved provenance and authority boundaries."
 decision-trigger: start
+decision-issue: 5837
 issues: []
 schema: brief-v2
 authored: "2026-10-17 maintainer-directed verify-flow refresh"
@@ -23,15 +24,15 @@ outcome: none
 version: 2
 id: 31b86553-356d-406c-9fb2-2b4513fd5a49
 consumers:
-  - "tools/desk/cmd/deskroster/flow_48_test.go: follow-up desk-tools/48 (planned test contract)"
-  - "tools/desk/cmd/deskboard/flow_48_test.go: follow-up desk-tools/48 (planned test contract)"
-  - "tools/desk/internal/deskkit/ratelimit.go: follow-up desk-tools/48 (this implementation brief)"
-  - "tools/desk/internal/deskkit/ratelimitread.go: follow-up desk-tools/48 (this implementation brief)"
-  - "tools/desk/internal/deskkit/width.go: follow-up desk-tools/48 (this implementation brief)"
-  - "tools/desk/cmd/deskroster/main.go: follow-up desk-tools/48 (this implementation brief)"
-  - "tools/desk/cmd/deskboard/throughput.go: follow-up desk-tools/48 (this implementation brief)"
-  - "tools/desk/cmd/verifyloop/main.go: follow-up desk-tools/48 (this implementation brief)"
-  - "changelog/verify-landing-capacity.md: follow-up desk-tools/48 (this implementation brief)"
+  - "tools/desk/cmd/deskroster/flow_48_test.go: fixed-here (planned test contract)"
+  - "tools/desk/cmd/deskboard/flow_48_test.go: fixed-here (planned test contract)"
+  - "tools/desk/internal/deskkit/ratelimit.go: fixed-here (this implementation brief)"
+  - "tools/desk/internal/deskkit/ratelimitread.go: fixed-here (this implementation brief)"
+  - "tools/desk/internal/deskkit/width.go: fixed-here (this implementation brief)"
+  - "tools/desk/cmd/deskroster/main.go: fixed-here (this implementation brief)"
+  - "tools/desk/cmd/deskboard/throughput.go: fixed-here (this implementation brief)"
+  - "tools/desk/cmd/verifyloop/main.go: fixed-here (this implementation brief)"
+  - "changelog/verify-landing-capacity.md: fixed-here (this implementation brief)"
 ---
 
 # Brief 48 — Report remaining landing capacity from the enforced budget owners

@@ -80,6 +80,29 @@ type stageRow struct {
 	// rows. The advice never widens a stage on a partial depth.
 	Partial   string `json:"partial,omitempty"`
 	DepthNote string `json:"depthNote"`
+	// Landing is the stage's remaining LANDING capacity, read from the gate
+	// its landing write calls, across every watched repo. Widening a pool past what its
+	// landing writes will admit only moves the queue into a refusal, so the advice is bounded
+	// by it; an unread landing never widens.
+	Landing landingRow `json:"landing"`
+	// landCap is the binding reading Landing renders; it bounds the widen advice.
+	landCap *deskkit.LoopCapacity
+}
+
+// landingRow is the serialised landing-capacity reading for one stage. Items is nil when
+// the meters were not read (Blind says why) — absent is not zero here either.
+type landingRow struct {
+	Repo          string `json:"repo,omitempty"`
+	Gate          string `json:"gate,omitempty"`
+	Items         *int   `json:"items"`
+	Remaining     *int   `json:"remaining"`
+	Blocked       bool   `json:"blocked"`
+	FreeAt        string `json:"freeAt,omitempty"`
+	InFlight      int    `json:"inFlight"`
+	WritesPerItem int    `json:"writesPerItem"`
+	Scope         string `json:"scope"`
+	Provider      string `json:"provider"`
+	Blind         string `json:"blind,omitempty"`
 }
 
 type throughputReport struct {
@@ -128,6 +151,44 @@ func slotsFor(row *stageRow) {
 		row.Reserve = deskkit.FormatReserve(reserve)
 	} else {
 		row.Blind = appendBlind(row.Blind, "reserve: "+rerr.Error())
+	}
+}
+
+// landingFor reads the stage's landing capacity on every watched repo and keeps the
+// binding one: any blocked repo, else the fewest further items. One unreadable repo blinds
+// the reading — a partial minimum would read as spare capacity that nobody measured.
+func landingFor(row *stageRow, now time.Time) {
+	row.Landing = landingRow{Scope: deskkit.LedgerScope, Provider: deskkit.ProviderCapacityUnknown}
+	repos := deskkit.AllowedRepos()
+	sort.Strings(repos)
+	if len(repos) == 0 {
+		row.Landing.Blind = "no watched repo is configured, so no landing meter was read"
+		return
+	}
+	var bind *deskkit.LoopCapacity
+	var blind []string
+	for _, repo := range repos {
+		c, err := deskkit.ReadLoopCapacity(row.Loop, repo, -1, 0, now)
+		if err != nil {
+			blind = append(blind, repo+": "+err.Error())
+			continue
+		}
+		if bind == nil || (c.Blocked && !bind.Blocked) ||
+			(!bind.Blocked && !c.Blocked && c.Items < bind.Items) {
+			bind = c
+		}
+	}
+	if len(blind) > 0 {
+		row.Landing.Blind = "landing meters unreadable: " + strings.Join(blind, "; ")
+		return
+	}
+	row.landCap = bind
+	l := &row.Landing
+	l.Repo, l.Gate = bind.Repo, string(bind.Snapshot.Target.Gate)
+	l.Items, l.Remaining = intp(bind.Items), intp(bind.Snapshot.Remaining)
+	l.Blocked, l.InFlight, l.WritesPerItem = bind.Blocked, bind.InFlight, bind.WritesPerItem
+	if bind.Blocked && !bind.Snapshot.FreeAt.IsZero() {
+		l.FreeAt = bind.Snapshot.FreeAt.UTC().Format(time.RFC3339)
 	}
 }
 
@@ -281,8 +342,10 @@ func cmdThroughput(hdr Header, mergeNowThreshold, unreviewedThreshold time.Durat
 	intakeStage.Blind = appendBlind(intakeStage.Blind,
 		"depth: not read — `issueboard intake` owns this population and is a separate binary")
 
+	landAt := time.Now().UTC()
 	for _, s := range []*stageRow{&dispatchStage, &reviewStage, &verifyStage, &intakeStage} {
 		slotsFor(s)
+		landingFor(s, landAt)
 		s.finish()
 		rep.Stages = append(rep.Stages, *s)
 	}
@@ -361,9 +424,24 @@ func throughputAdvice(rep *throughputReport) string {
 				"or the bound has to change, and the bound is a separate decision.",
 				s.Stage, *s.Depth, s.Slots, s.MaxSlots, s.BoundBy)
 		}
+		// The roster ceiling is not the only bound: the landing writes the extra lanes would
+		// need must fit what the enforced meters still admit.
+		if s.landCap == nil {
+			return fmt.Sprintf("%s is the bottleneck (%d waiting / %d slots) but its landing capacity "+
+				"is COULD-NOT-CHECK (%s). NOT advising a width change: an unread meter is not spare "+
+				"capacity.", s.Stage, *s.Depth, s.Slots, s.Landing.Blind)
+		}
+		target, why := deskkit.WidenBound(s.Slots, s.MaxSlots, *s.Depth, s.landCap)
+		if why == "the roster maximum" {
+			why = s.BoundBy
+		}
+		if target <= s.Slots {
+			return fmt.Sprintf("%s is the bottleneck (%d waiting / %d slots = %.2f) but no widening — "+
+				"bound by %s. Widening never buys landing budget.", s.Stage, *s.Depth, s.Slots, *s.Ratio, why)
+		}
 		return fmt.Sprintf("%s is the bottleneck (%d waiting / %d slots = %.2f). It may widen to %d "+
 			"(bound by %s): deskroster set --role %s --width %d",
-			s.Stage, *s.Depth, s.Slots, *s.Ratio, s.MaxSlots, s.BoundBy, s.Loop, s.MaxSlots)
+			s.Stage, *s.Depth, s.Slots, *s.Ratio, target, why, s.Loop, target)
 	}
 	return ""
 }
@@ -386,10 +464,21 @@ func throughputDetail(rep *throughputReport) string {
 		strings.Join(parts, " "), b, rep.StagesRead, rep.StagesTotal)
 }
 
+// landingCell is the LANDING column: further items that fit, "blocked", or "n/a" when unread.
+func landingCell(l landingRow) string {
+	switch {
+	case l.Blind != "" || l.Items == nil:
+		return "n/a"
+	case l.Blocked:
+		return "blocked"
+	}
+	return fmt.Sprintf("%d", *l.Items)
+}
+
 func renderThroughput(w io.Writer, rep *throughputReport) {
 	fmt.Fprintf(w, "asOf %s\n", rep.Header.AsOf)
-	fmt.Fprintf(w, "%-9s %-15s %-7s %-6s %-16s %-7s %-5s %s\n",
-		"STAGE", "LOOP", "DEPTH", "SLOTS", "RESERVE", "RATIO", "MAX", "NOTE")
+	fmt.Fprintf(w, "%-9s %-15s %-7s %-6s %-16s %-7s %-5s %-8s %s\n",
+		"STAGE", "LOOP", "DEPTH", "SLOTS", "RESERVE", "RATIO", "MAX", "LANDING", "NOTE")
 	for _, s := range rep.Stages {
 		depth, ratio := "n/a", "n/a"
 		if s.Depth != nil {
@@ -408,9 +497,20 @@ func renderThroughput(w io.Writer, rep *throughputReport) {
 		} else if s.Partial != "" {
 			note = "PARTIAL (lower bound) — " + s.Partial
 		}
-		fmt.Fprintf(w, "%-9s %-15s %-7s %-6d %-16s %-7s %-5d %s\n",
-			s.Stage, s.Loop, depth, s.Slots, reserve, ratio, s.MaxSlots, note)
+		fmt.Fprintf(w, "%-9s %-15s %-7s %-6d %-16s %-7s %-5d %-8s %s\n",
+			s.Stage, s.Loop, depth, s.Slots, reserve, ratio, s.MaxSlots, landingCell(s.Landing), note)
 	}
+	for _, s := range rep.Stages {
+		if l := s.Landing; l.Blind != "" {
+			fmt.Fprintf(w, "landing %s: COULD-NOT-CHECK — %s\n", s.Stage, l.Blind)
+		} else if l.Blocked {
+			fmt.Fprintf(w, "landing %s: BLOCKED on %s until %s (gate %s)\n", s.Stage, l.Repo, l.FreeAt, l.Gate)
+		} else {
+			fmt.Fprintf(w, "landing %s: %d more item(s) on %s (%d writes left, %d in flight x %d each, gate %s)\n",
+				s.Stage, *l.Items, l.Repo, *l.Remaining, l.InFlight, l.WritesPerItem, l.Gate)
+		}
+	}
+	fmt.Fprintf(w, "landing scope: %s; provider/cross-host: %s\n", deskkit.LedgerScope, deskkit.ProviderCapacityUnknown)
 	fmt.Fprintf(w, "\nread %d of %d stages\n", rep.StagesRead, rep.StagesTotal)
 	fmt.Fprintf(w, "%s\n", rep.Advice)
 	for _, r := range rep.Roots {
