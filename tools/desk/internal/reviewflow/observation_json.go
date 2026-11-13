@@ -12,6 +12,8 @@ import (
 
 // DecodeObservation accepts one closed v1 JSON value, including explicit false,
 // zero, and empty collections. Missing/null fields are not silently defaulted.
+// The additive ChangeFact.Mergeable field may be absent in older v1 observations;
+// absence means no independent conflict evidence, so BLOCKED cannot propose a flip.
 // Call PlanObservation with a caller-owned policy before using its contents.
 func DecodeObservation(data []byte) (Observation, error) {
 	d := json.NewDecoder(bytes.NewReader(data))
@@ -106,6 +108,11 @@ func requiredShape(v any, t reflect.Type, path string) error {
 			fields[name] = true
 			item, ok := obj[name]
 			if !ok {
+				// #6262: the only optional v1 fact. Do not make omitempty a
+				// blanket exemption for authority, coverage or boolean fields.
+				if t == reflect.TypeOf(ChangeFact{}) && name == "Mergeable" {
+					continue
+				}
 				return fmt.Errorf("%s.%s is required", path, name)
 			}
 			if err := requiredShape(item, f.Type, path+"."+name); err != nil {

@@ -1450,6 +1450,26 @@ func glCases() []glCase {
 			run:   func(f *GitLabForge) (any, error) { return nil, f.MarkReadyForReview("PR_kwDOabc123") },
 		},
 		{
+			// The post-flip backstop's revert (#6242): the draft marker goes back on the title.
+			name: "convert_to_draft", method: "ConvertToDraft",
+			setup: func(s *glServer) {
+				s.mr = glMR(map[string]any{"draft": false, "title": "add the thing"})
+				s.updateMR = glMR(map[string]any{"draft": true, "title": "Draft: add the thing"})
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.ConvertToDraft(gitlabNodeID(glRepo, 7))
+			},
+		},
+		{
+			// Already a draft: no write is emitted. The empty request tail after the read is
+			// the assertion.
+			name: "convert_to_draft_already_draft", method: "ConvertToDraft",
+			setup: func(s *glServer) { s.mr = glMR(nil) },
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.ConvertToDraft(gitlabNodeID(glRepo, 7))
+			},
+		},
+		{
 			name: "file_issue", method: "FileIssue",
 			setup: func(s *glServer) {
 				s.createIssue = glIssue(map[string]any{"iid": 33,

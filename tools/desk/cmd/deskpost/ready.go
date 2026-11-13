@@ -12,7 +12,11 @@ import (
 
 // runReady flips a converged draft PR to ready-for-HUMAN-review. It re-verifies EVERY
 // precondition in-tool immediately before acting — it never trusts the
-// caller's claim of state. It has NO other power: no un-ready, no merge, no close.
+// caller's claim of state. It has NO other power: no merge, no close, and no un-ready
+// except the post-flip backstop's (below), which returns the PR to draft only when the forge
+// reports it BLOCKED or DIRTY right after the flip — ready means mergeable per the forge.
+// The un-ready is never a verb of its own. Ruling:
+// https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
 // The flip is not an approval and not a merge; the merge stays the owner's.
 //
 // Preconditions (all re-read here, in order):
@@ -330,6 +334,10 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		}
 		if err := client.markReadyForReview(info.NodeID); err != nil {
 			return fromErr("ready", repo, pr, head, err)
+		}
+		// The post-flip backstop (#6242): ready means mergeable per the forge.
+		if out := readyBackstop(client, repo, pr, info.NodeID, head); out.Err != nil {
+			return fromErr("ready", repo, pr, head, out.Err)
 		}
 		return done("ready", repo, pr, head, "", "flipped PR #"+fmt.Sprint(pr)+" ready-for-human at "+short(head))
 	})
