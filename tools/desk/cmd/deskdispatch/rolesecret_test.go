@@ -289,5 +289,28 @@ func TestRoleSecretMountHolds(t *testing.T) {
 	if !holdingRoleSecret() {
 		t.Fatal("a mounted role secret with no variable was not a holding window")
 	}
-	wantRefusal(t, "mount-only review kit", roleSecretPrecheck(dispatchOpts{item: "assay--issue-12", kit: "review", pr: 7}), "review-kit dispatch")
+	err := roleSecretPrecheck(dispatchOpts{item: "assay--issue-12", kit: "review", pr: 7})
+	wantRefusal(t, "mount-only review kit", err, "review-kit dispatch")
+	// A mount-only window carries no variable, so the refusal must name the mount as a trigger
+	// too, or it points the operator at a variable the window does not have.
+	if !strings.Contains(err.Error(), "/run/secrets/role-*") {
+		t.Fatalf("mount-only refusal does not name the mount trigger: %v", err)
+	}
+}
+
+// The package's other tests never call rsWindow, so they must not read the real environment or
+// the real mount path: run inside a holding container, they would otherwise hit the holding-window
+// refusals for reasons unrelated to what they test. TestMain pins both seams to an unheld window.
+// regression: #6065
+func TestRoleSecretSeamsPinned(t *testing.T) {
+	if deskkit.HoldsRoleSecret(os.Environ()) {
+		t.Fatal("the test process kept a role-secret variable, so every child env is rewritten")
+	}
+	t.Setenv("ASSAY_ROLE_SECRET_FAKE_SVC_FILE", "/run/secrets/role-fake-svc")
+	if holdingRoleSecret() {
+		t.Fatal("a test outside rsWindow read the process environment as a holding window")
+	}
+	if m, _ := filepath.Glob(roleSecretMountGlob); len(m) > 0 || roleSecretMountGlob == "/run/secrets/role-*" {
+		t.Fatalf("a test outside rsWindow reads the real mount path %q", roleSecretMountGlob)
+	}
 }

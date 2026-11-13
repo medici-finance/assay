@@ -65,8 +65,10 @@ func holdingRoleSecret() bool {
 	return len(m) > 0
 }
 
-const roleSecretRefusalTail = " — this window holds a role-secret path (ASSAY_ROLE_SECRET_*), so only work shown to be " +
-	"trusted from forge data is dispatched from it; nothing was claimed."
+// roleSecretRefusalTail names BOTH triggers holdingRoleSecret reads, so a window held only by its
+// mount is not pointed at a variable it does not carry.
+const roleSecretRefusalTail = " — this window holds a role secret (an ASSAY_ROLE_SECRET_* variable or a /run/secrets/role-* " +
+	"mount), so only work shown to be trusted from forge data is dispatched from it; nothing was claimed."
 
 // roleSecretPrecheck refuses, before anything else runs, the dispatches a holding window never
 // admits whatever the forge says: a review kit, and an item with no forge item behind it.

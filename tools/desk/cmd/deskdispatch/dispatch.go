@@ -242,8 +242,9 @@ func dispatch(o dispatchOpts) error {
 	if err != nil {
 		return err
 	}
-	// The role-secret trust boundary: in a holding window, an untrusted item or a --pr head not
-	// provably pushed by roster logins is refused here, before the claim (rolesecret.go).
+	// The role-secret trust boundary: in a holding window, an untrusted item or a --pr item whose
+	// head commits are not all attributed to roster logins is refused here, before the claim
+	// (rolesecret.go).
 	admittedHead, err := roleSecretAdmission(o, plan.repo)
 	if err != nil {
 		return err
