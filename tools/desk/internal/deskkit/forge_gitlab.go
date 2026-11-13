@@ -2855,7 +2855,7 @@ func (g *GitLabForge) CreateDraftChange(repo ForgeRepo, in DraftChangeInput) (*P
 			}
 			if existing != nil {
 				return nil, Unverifiable(fmt.Sprintf(
-					"could-not-check: POST %s — not retried: merge request !%d is already open on source branch %q",
+					"could-not-check: POST %s — not retried: merge request !%d is already open on source branch %q; this call did not open it and holds no merge-hold on it",
 					path, existing.Number, StripControl(in.Head)), mapped)
 			}
 			continue

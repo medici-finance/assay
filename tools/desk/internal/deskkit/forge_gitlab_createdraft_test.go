@@ -326,6 +326,9 @@ func TestGLCreateMRNoRetryWhenOpen(t *testing.T) {
 	if !strings.Contains(err.Error(), "!44 is already open") || !strings.Contains(err.Error(), glKeyedMissingBody) {
 		t.Fatalf("error must name the open MR and keep GitLab's body, got: %v", err)
 	}
+	if !strings.Contains(err.Error(), "this call did not open it and holds no merge-hold on it") {
+		t.Fatalf("error must say the open MR is not this call's held change, got: %v", err)
+	}
 	if ExitCodeOf(err) != ExitUnverifiable {
 		t.Fatalf("expected the could-not-check exit, got %d", ExitCodeOf(err))
 	}
