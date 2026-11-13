@@ -56,38 +56,61 @@ func exportContainerHistory(home, out, source string) error {
 // the ordinary ancestry and brief-at-base checks cannot silently degrade.
 func importContainerHistory(home, brief, pack, source string) (string, string, func(), error) {
 	noop := func() {}
-	if !isObjectID(source) {
-		return "", "", noop, fmt.Errorf("history import needs the admitted full source commit")
-	}
 	rel, inside := relWithin(home, brief)
 	if !inside {
-		return "", "", noop, fmt.Errorf("history import currently requires a home-relative brief")
+		return "", "", noop, fmt.Errorf("history import of a brief outside the home needs a cross-repository (version 2) receipt")
+	}
+	repo, cleanup, err := importHistoryPack(home, pack, source)
+	if err != nil {
+		return "", "", noop, err
+	}
+	// The mapped brief need not exist in the metadata-only repository.
+	return repo, filepath.Join(repo, filepath.FromSlash(rel)), cleanup, nil
+}
+
+// importCrossRepoHistory is the version 2 receipt form: the brief lives in the
+// tracking checkout, outside the deliverable home, and its bytes are bound by
+// the receipt, so nothing maps it into the imported repository. The base rows
+// still run in that repository, at a deliverable commit. A brief inside the
+// home is refused: it is not a cross-repository run.
+func importCrossRepoHistory(home, brief, pack, source string) (string, func(), error) {
+	noop := func() {}
+	if _, inside := relWithin(home, brief); inside {
+		return "", noop, fmt.Errorf("cross-repository history import needs a brief outside the deliverable home")
+	}
+	return importHistoryPack(home, pack, source)
+}
+
+func importHistoryPack(home, pack, source string) (string, func(), error) {
+	noop := func() {}
+	if !isObjectID(source) {
+		return "", noop, fmt.Errorf("history import needs the admitted full source commit")
 	}
 	if _, inside := relWithin(home, pack); inside {
-		return "", "", noop, fmt.Errorf("history pack must be outside the admitted home")
+		return "", noop, fmt.Errorf("history pack must be outside the admitted home")
 	}
 	info, err := os.Stat(pack)
 	if err != nil || !info.Mode().IsRegular() {
-		return "", "", noop, fmt.Errorf("history pack must be a readable regular file outside the home")
+		return "", noop, fmt.Errorf("history pack must be a readable regular file outside the home")
 	}
 	pack, err = filepath.Abs(pack)
 	if err != nil {
-		return "", "", noop, err
+		return "", noop, err
 	}
 	tmp, err := os.MkdirTemp("", "verifyrun-history-")
 	if err != nil {
-		return "", "", noop, err
+		return "", noop, err
 	}
 	cleanup := func() { _ = os.RemoveAll(tmp) }
 	if _, inside := relWithin(home, tmp); inside {
 		cleanup()
-		return "", "", noop, fmt.Errorf("history scratch must be outside the admitted home; move TMPDIR")
+		return "", noop, fmt.Errorf("history scratch must be outside the admitted home; move TMPDIR")
 	}
 	repo := filepath.Join(tmp, "history")
 	in, err := os.Open(pack)
 	if err != nil {
 		cleanup()
-		return "", "", noop, err
+		return "", noop, err
 	}
 	err = gitcore.ReadHistoryPack(repo, source, in)
 	closeErr := in.Close()
@@ -96,10 +119,8 @@ func importContainerHistory(home, brief, pack, source string) (string, string, f
 	}
 	if err != nil {
 		cleanup()
-		return "", "", noop, err
+		return "", noop, err
 	}
-	// The mapped brief need not exist in the metadata-only repository. Resolve
-	// the existing parent first (not the absent leaf), including macOS /var links.
-	repo = canonicalPath(repo)
-	return repo, filepath.Join(repo, filepath.FromSlash(rel)), cleanup, nil
+	// Resolve the existing parent (not an absent leaf), including macOS /var links.
+	return canonicalPath(repo), cleanup, nil
 }
