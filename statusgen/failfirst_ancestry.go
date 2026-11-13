@@ -70,9 +70,29 @@ var commitIsAncestor = func(root, base, of string) (bool, string) {
 	}
 	var ee *exec.ExitError
 	if errors.As(err, &ee) && ee.ExitCode() == 1 {
-		return false, "it is not the merge-base of HEAD and origin/main, nor an ancestor of it (HEAD's own commit, a commit of this branch, or a sibling tree)"
+		return false, notMergeBaseAncestor
 	}
 	return false, "the ancestry could not be checked: " + err.Error()
+}
+
+// notMergeBaseAncestor is commitIsAncestor's answer for a commit this clone
+// holds that is not `of` and not an ancestor of it.
+const notMergeBaseAncestor = "it is not the merge-base of HEAD and origin/main, nor an ancestor of it (HEAD's own commit, a commit of this branch, or a sibling tree)"
+
+// crossRepoBaseAncestry is the cross-repository form of the base question
+// (#5549). A version-2 run's base is a deliverable-repository commit, which the
+// tracking clone never holds, so it is asked in the deliverable clone
+// (deliverable, from the operator's configured roots) against the source the
+// run's attestation binds (source, the deliverable commit the rows ran at):
+// the base must be that commit or an ancestor of it. It is the same
+// commitIsAncestor query, fail-closed the same way: a base or source the clone
+// does not hold, or an ancestry git cannot answer, is never an ancestor.
+func crossRepoBaseAncestry(deliverable, base, source string) (bool, string) {
+	ok, why := commitIsAncestor(deliverable, base, source)
+	if why == notMergeBaseAncestor {
+		why = "it is not the attested deliverable source, nor an ancestor of it (a later commit, a commit of another branch, or a sibling tree)"
+	}
+	return ok, why
 }
 
 // failFirstMergeBase is the merge-base of HEAD and the default branch as an
