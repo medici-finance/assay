@@ -715,6 +715,82 @@ Cited issues, read 2026-11-01 with the verifier token: #5011, #4823, #4159, #410
 This verifier made no commit, push, post, filing, dispatch or claim change.
 
 **VERIFY: FAIL** — row 6 prints `3`, not `1`, as at the previous pass: besides cellctl, deskkit hotfix.go carries two non-test `/opt/desk-tools` defaults from the 2026-10-25 hotfix overlay (#5011). Rows 5, 8 and 10 could not run here: no native Windows host (#1942); no identity that reads open PRs on every watched repo (#4159); offline whole-tree lint is red only on desktools-v2/65's acceptance transition (#4823). Rows 1, 2, 3, 4, 7, 9 and 11 meet their Expect; row 9 is vacuous (#1927). Three risk-bearing values are NAMED, NOT DERIVED (#1940, #3432, #1942), and the risk-classing question is open (#1941). Status stays implemented.
+### Non-implementer verifier re-run — 2026-11-13, merged main f9c836b11e51
+
+Merged main f9c836b11e51bd5f9661b0da40f7a63ed1c18f0e, medici-finance/assay. Brief frontmatter: gate: model; risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}. Dispatched non-implementer verifier (claude-opus-5-5, tier strong) as assay-verifier-app[bot], admitted by `deskdispatch --check-verifier` (exit 0, attestation record medici-finance/assay#6398). Since the previous pass at 703a1d9ca092 the Verify table was re-authored (commits 4d0165377, 65e6432c2 and 9eb7bc14b): rows 1–11 are now deterministic offline, and the native-Windows and live-forge checks moved to rows 12 and 13, both classed `gate:human`. The code under the risk-bearing values (deskrelease github.go, deskpushguard hookinstall.go, skillslint posixtoken.go) is unchanged since that pass.
+
+One attempt, credited: rows 1–11 ran through the pinned statusgen v1.0.83 `verifyrun --rows 1-11` inside one closed admission bracket, in the published verify-runner v1.0.83 image by digest (linux/arm64, go1.27.3, git 2.56.0), with `--network none`, a read-only root filesystem, all capabilities dropped, no-new-privileges, the host user, GOPROXY=off, GOFLAGS=-mod=readonly, GOTOOLCHAIN=local, a fresh read-only module cache, and no GIT_CONFIG_GLOBAL. The home, its git directory, the admission receipt and a copy of the operator roster were mounted read-only; only a scratch output directory was writable. Attempt window 2026-11-13T06:10:28Z to 06:11:38Z. `statusgen verifyrun --bracket-digest` reports `verdict=match`. The home stayed clean.
+
+Execution witness, rows 1–11 (check, check:ci, check +mutation), closed admission bracket:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `{ test -s plugins/assay/skills/pr-review-desk/SKILL.md && test -s plugins/assay/skills/pr-shepherd/SKILL.md && test -s plugins/assay/skills/worker-desk/SKILL.md; } && { grep -n -e 'mktemp' -e '/tmp/' -e '~/.config' plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/pr-shepherd/SKILL.md plugins/assay/skills/worker-desk/SKILL.md \| grep -vc 'desk-shell.md'; test $? -eq 1; }` | pass exit=0 sandbox=container-netns | sha256:9a271f2a916b | 2026-11-13 | assay-verifier-app[bot] @ f9c836b11e51 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -c -e '## Scratch files' -e '## Config home' plugins/assay/references/desk-shell.md` | pass exit=0 sandbox=container-netns | sha256:53c234e5e847 | 2026-11-13 | assay-verifier-app[bot] @ f9c836b11e51 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `t=$(mktemp -d) && trap 'rm -rf "$t"' EXIT && (cd tools/desk && go build -o "$t/deskboard" ./cmd/deskboard) && "$t/deskboard" actions --help 2>&1 \| grep -c -e '--out'` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-13 | assay-verifier-app[bot] @ f9c836b11e51 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test -count=1 -v -run 'TestHookInstallUnix$' ./cmd/deskpushguard/ \| grep -c -e '^--- PASS: TestHookInstallUnix '` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-13 | assay-verifier-app[bot] @ f9c836b11e51 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && GOOS=windows go vet ./cmd/deskpushguard/ && go test -count=1 -v -run 'TestHookInstallWindows$' ./cmd/deskpushguard/ \| grep -c -e '^--- PASS: TestHookInstallWindows '` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-13 | assay-verifier-app[bot] @ f9c836b11e51 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `git grep -q -e 'exec.LookPath' HEAD -- tools/desk/cmd/deskrelease/github.go && ! git grep -q -e '"/opt/desk-tools' HEAD -- tools/desk/cmd/deskrelease ':!*_test.go'` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-13 | assay-verifier-app[bot] @ f9c836b11e51 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/skillslint && go test -count=1 -v -run 'TestPosixTokenRow$' ./... \| grep -c -e '^--- PASS: TestPosixTokenRow '` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-13 | assay-verifier-app[bot] @ f9c836b11e51 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `grep -c -F -e 'deskboard actions --out' plugins/assay/skills/pr-review-desk/SKILL.md` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-13 | assay-verifier-app[bot] @ f9c836b11e51 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `grep -c -F -e 'windows-port/12 (closed)' docs/streams/windows-port/portability-audit.md` | pass exit=0 sandbox=container-netns | sha256:53c234e5e847 | 2026-11-13 | assay-verifier-app[bot] @ f9c836b11e51 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `t=$(mktemp -d) && trap 'rm -rf "$t"' EXIT && (cd tools/skillslint && go build -o "$t/skillslint" .) && "$t/skillslint" --root . 2>&1 \| grep -c -e '^POSIX-TOKEN: PASS'` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-13 | assay-verifier-app[bot] @ f9c836b11e51 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && go test -count=1 -v -run 'TestHookInstallIdempotentAndForeignRefusal$' ./cmd/deskpushguard/ \| grep -c -e '^--- PASS: TestHookInstallIdempotentAndForeignRefusal '` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-13 | assay-verifier-app[bot] @ f9c836b11e51 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ddf3f991f55d0a522bcbc08983a0f8ff908262ab3891e6b58cb7c43f76d46bfa
+Container-Image: sha256:472a3fce50e18c742c36ac54d6898331ea7edad409c2499dc2d8855e8dac71b4
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6398 run=a43e09b0fc5ff9e2588e54afebabe368d05a373519529f46b11394f3e5903273 source=f9c836b11e51bd5f9661b0da40f7a63ed1c18f0e brief=docs/streams/windows-port/brief-12-deposix-skill-prose-and-constants.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=a43e09b0fc5ff9e2588e54afebabe368d05a373519529f46b11394f3e5903273 source=f9c836b11e51bd5f9661b0da40f7a63ed1c18f0e tree=sha256:ddf3f991f55d0a522bcbc08983a0f8ff908262ab3891e6b58cb7c43f76d46bfa witness=sha256:7c6bfa0f4c3f781bf8e32c4efdce05b02799b3221876d8f1fa90c93fb3c89eb2 opened=2026-11-13T06:10:43Z closed=2026-11-13T06:11:38Z before=receipt after=check-verifier
+
+Rows 12 and 13 are classed `gate:human` and were left out of the `--rows` selection: a person decides them on the verify-gate, outside the model transcription lane, and this verifier could not run either one here.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 12 | on native Windows with Git for Windows: `deskpushguard hook-install`, then a real `git push` | the push is refused or passed by deskpushguard.exe, not by a missing-shim error | could-not-run: needs a native Windows host with Git for Windows; this verifier had a darwin/arm64 host and a linux container, and the Windows CI leg is retired (medici-finance/assay#4106). Row 5 covers the shim content for a windows target | 2026-11-13 | assay-verifier-app[bot] @ f9c836b11e51 (on-behalf-of human:ian) |
+| 13 | `t=$(mktemp -d) && trap 'rm -rf "$t"' EXIT && deskboard actions --out "$t/actions.json" && reviewloop plan --actions "$t/actions.json" > "$t/plan.txt" && grep -c -e '^dispositions: ' "$t/plan.txt"` | exit 0; output is `1` | could-not-run: needs a live forge identity that reads open PRs on every watched repo; the admitted run is network-off with no forge credential (medici-finance/assay#4159). Row 8 covers the prose-to-verb tie-out offline | 2026-11-13 | assay-verifier-app[bot] @ f9c836b11e51 (on-behalf-of human:ian) |
+
+Hand-run reading of each witnessed row against its Expect (output hashes checked against the printed values with `shasum -a 256`):
+
+- **Row 1**: expected exit 0 and `0`; observed exit 0, output hash 9a271f2a916b, which is `0` plus newline. The one raw grep hit is worker-desk SKILL.md line 1060, which names desk-shell.md §Config home. Expect met.
+- **Row 2**: expected `2`; observed exit 0, hash 53c234e5e847 (`2`). The headings are at desk-shell.md lines 103 (Scratch files) and 160 (Config home). Expect met.
+- **Row 3**: expected `>= 1` from a deskboard built from the tree; observed exit 0, hash 4355a46b19d3 (`1`). Expect met.
+- **Row 4**: expected `1`; observed exit 0, `1`: `--- PASS: TestHookInstallUnix`. Expect met.
+- **Row 5**: expected exit 0 and `1`; observed exit 0, `1`: the GOOS=windows vet exits 0 and `--- PASS: TestHookInstallWindows` (writeHooks with a windows target writes the `pre-push.cmd` pair). Expect met.
+- **Row 6**: expected exit 0, silent; observed exit 0 with empty output (hash e3b0c44298fc). deskrelease github.go carries `exec.LookPath` at line 80, and no non-test deskrelease file carries an `/opt/desk-tools` literal. Expect met.
+- **Row 7**: expected `1`; observed exit 0, `1`: `--- PASS: TestPosixTokenRow`. Expect met.
+- **Row 8**: expected `>= 1`; observed exit 0, `1`, the step at pr-review-desk SKILL.md line 379. Expect met.
+- **Row 9**: expected `2`; observed exit 0, `2`: portability-audit.md lines 30 (push-guard shim) and 32 (deskrelease desktoken path). Expect met.
+- **Row 10**: expected `1`; observed exit 0, `1`: a tree-built skillslint printed `POSIX-TOKEN: PASS` network-off. Expect met.
+- **Row 11**: expected `1`; observed exit 0, `1`: `--- PASS: TestHookInstallIdempotentAndForeignRefusal`. Expect met.
+
+Supplemental probes, no row credit, run 2026-11-13 06:11:57Z–06:12:39Z on the host in a git-archive copy of f9c836b11e51 outside the home:
+
+- Row 11 mutation: hookinstall.go line 197 `if force {` changed to `if true || force {` gives `--- FAIL: TestHookInstallIdempotentAndForeignRefusal` with `hookinstall_test.go:127: writeHooks over a foreign hook without --force should refuse, got no error`. Unmutated, the same copy passes. The control discriminates.
+- Row 7 fail-first: with posixTokenPattern replaced by a never-matching regexp, `--- FAIL: TestPosixTokenRow` with `posixtoken_test.go:38: notices = 0, want 3 (mktemp, /tmp/, ~/.config), got []`.
+
+**Risk-bearing values.** Triggered because the brief's own paths include a risk-classed one (tools/desk/cmd/deskpushguard) and the change rebinds the identity-mint binary deskrelease executes. Enumeration covered deskrelease github.go, deskpushguard hookinstall.go and skillslint posixtoken.go, re-read at f9c836b11e51:
+
+- `name := "desktoken"` @ tools/desk/cmd/deskrelease/github.go:70; `"desktoken.exe"` @ github.go:72; sibling `filepath.Join(filepath.Dir(exe), name)` @ github.go:75; fallback `exec.LookPath(name)` @ github.go:80.
+- unix shim target `exec "$(command -v deskpushguard)" "$@"` @ tools/desk/cmd/deskpushguard/hookinstall.go:55; Windows shim target `deskpushguard.exe %*` @ hookinstall.go:65.
+- anchored legacy hook body ending `exec /opt/desk-tools/bin/deskpushguard "$@"` @ hookinstall.go:76; foreign-hook gate `if force {` @ hookinstall.go:197; migration decision `return targetOS == "windows", nil` @ hookinstall.go:201.
+- modes `0o755` @ hookinstall.go:91,99 and `0o644` @ hookinstall.go:101.
+- `posixTokenPattern = mktemp|/tmp/|~/\.config` @ tools/skillslint/posixtoken.go:34; `unixExampleFenceMarker = "unix"` @ posixtoken.go:42.
+
+Ranked: (1) the desktoken binding, since a wrong binary receives the identity-mint call during a release and a leaked credential is not undone by a redeploy; (2) the anchored-hook match and migration decision, which decide whether a root-owned absolute guard path is swapped for PATH resolution; (3) the shim exec targets, since a wrong target means the push guard does not run. Modes and the advisory lint pattern are reversible and rank last.
+
+RISK-VALUE: DERIVED — desktoken sibling = filepath.Join(filepath.Dir(os.Executable()), "desktoken") @ tools/desk/cmd/deskrelease/github.go:75 — both installers put every tools/desk/cmd binary into one install directory, so in an installed layout the sibling is the installed desktoken; substituting it needs write access to the directory that already holds the running deskrelease.
+RISK-VALUE: NAMED, NOT DERIVED — desktoken fallback = exec.LookPath("desktoken") @ tools/desk/cmd/deskrelease/github.go:80 — reached only when no co-located sibling exists; then PATH order decides which binary gets the identity-mint call. Keeping this fallback or refusing is a policy call for a human (medici-finance/assay#1940, open).
+RISK-VALUE: DERIVED — migration decision = return targetOS == "windows", nil @ tools/desk/cmd/deskpushguard/hookinstall.go:201 — on Unix the exact anchored hook runs the guard from the root-owned install dir, so keeping it without --force never downgrades to a PATH-resolved guard; on Windows that /opt path cannot exist, so migrating is the only working outcome. A foreign hook is refused without --force, which row 11 and its mutation probe exercise.
+RISK-VALUE: NAMED, NOT DERIVED — unix shim exec target = "$(command -v deskpushguard)" @ tools/desk/cmd/deskpushguard/hookinstall.go:55 — it matches the brief's PATH resolution and fails closed when the binary is absent. Whether a fresh install should anchor the guard by PATH at all, given that a same-named binary earlier on PATH would run instead, is an open maintainer decision (medici-finance/assay#3432).
+RISK-VALUE: NAMED, NOT DERIVED — Windows shim target = deskpushguard.exe %* @ tools/desk/cmd/deskpushguard/hookinstall.go:65 — matches the brief's "the .cmd calling deskpushguard.exe from PATH"; its behaviour under cmd.exe is row 12's native-Windows check (medici-finance/assay#1942), with the same PATH-anchor question (medici-finance/assay#3432).
+
+The three NAMED, NOT DERIVED values are policy or native-host questions held on open issues. None is a value this brief's rows could show wrong, and none was observed wrong here; the risk-classing question itself is open (medici-finance/assay#1941).
+
+Cited issues, read 2026-11-13 as the verifier App: medici-finance/assay#4823, #4159, #4106, #3432, #1942, #1941, #1940 and #1435 are open; #6398 is the closed attestation record.
+
+This verifier made no code change and filed no issue. Its only forge writes are the dispatch claim, this Evidence landing, its outcome record and the draft PR that carries them.
+
+**VERIFY: PASS** — rows 1–11 meet their Expect at f9c836b11e51 in one closed, network-off admission bracket (bracket digest verdict=match); the row 11 mutation and row 7 fail-first probes discriminate. Rows 12 (native Windows host) and 13 (live forge identity) are `gate:human` and could not run here; they stay with a person on the verify-gate. Three risk-bearing values remain NAMED, NOT DERIVED on open issues (medici-finance/assay#1940, #3432, #1942). The verified flip is held while the closure lint is red elsewhere (medici-finance/assay#4823); status stays implemented.
 
 ## Review
 Gate: **model**. Reviewer's questions: (1) is the prose diff a pure how-rename — same steps, same

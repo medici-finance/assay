@@ -328,6 +328,17 @@ func TestBinaryDispatchRulesFlow(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			// A brief-shaped worker key names its brief, and deskdispatch reads it for the human
+			// gate (#6173): the scratch checkout carries that brief, not human-gated.
+			if c.kit == "worker" {
+				brief := filepath.Join(root, "docs", "streams", "example-stream", "brief-30-example.md")
+				if err := os.MkdirAll(filepath.Dir(brief), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(brief, []byte("---\nbrief: example-stream/30\ngate: model\n---\n\n# Example\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 			home := t.TempDir()
 			if err := os.MkdirAll(filepath.Join(home, ".config", "assay"), 0o755); err != nil {
 				t.Fatal(err)
