@@ -140,7 +140,7 @@ background agents run in isolated git worktrees natively. So more skills `run` h
 
 | Capability | Cursor mechanism (HP/12 §) |
 |---|---|
-| `capability:dispatch-worker` | IDE: in-session subagents + **cloud background agents in isolated git worktrees** (Firecracker microVMs, ~8 parallel) (§2.5). Headless (`cursor-agent -p`): scriptable invocation; whether parallel headless dispatch reaches the ~8-agent worktree model is `[needs: live-install confirmation]` (§2.5). **Where headless parallel dispatch is not confirmed**, the convenience-degradation floor applies: the fan-out runs **serially, one item at a time, stating the degradation**. **Model selection:** follow [Execution model selection](#execution-model-selection) below when the brief requires `exec-tier: strong`; serial dispatch retains the same tier requirement. |
+| `capability:dispatch-worker` | IDE: in-session subagents + **cloud background agents in isolated git worktrees** (Firecracker microVMs, ~8 parallel) (§2.5). Headless (`cursor-agent -p`): scriptable invocation; whether parallel headless dispatch reaches the ~8-agent worktree model is `[needs: live-install confirmation]` (§2.5). **Where headless parallel dispatch is not confirmed**, the convenience-degradation floor applies: the fan-out runs **serially, one item at a time, stating the degradation**. **Model selection:** every launch that must run at strong tier, from any loop, follows [Execution model selection](#execution-model-selection) below; serial dispatch retains the same tier requirement. |
 | `capability:message-agent` | Follow-up messages to a background/subagent in the IDE; headless follow-up via `cursor-agent` session continuation (`--resume`) — present, durability across process restarts is `partial`/unconfirmed (§2.6). Prefer re-dispatch fresh when durability matters. |
 | `capability:isolate-workspace` | IDE: cloud background agents run in **isolated git worktrees** natively (§2.9 `supported`) — the isolation Codex CLI lacked. Headless: `cursor-agent` inherits the shell's git, so the skill runs `git worktree add` itself as on Claude Code; whether the default headless permission posture permits that ref-write unprompted (§2.8) — and whether the background-worktree isolation is reachable from the adopter's own flow — is `[needs: live-install confirmation]` (§2.9). **If reachable, isolation runs; if the sandbox blocks the worktree ref-write, the no-isolation floor applies and the affected skill refuses rather than implement in the shared checkout.** |
 | `capability:invoke-skill` | `SKILL.md` discovery from `.cursor/skills/` and `.agents/skills/` — the **same `SKILL.md` open standard** (agentskills.io, Cursor v2.4) Assay's plugin already uses (§2.2 `supported`); frontmatter `name` + `description`, progressive disclosure. Description-driven auto-trigger is documented; whether headless `cursor-agent` fires it with IDE ergonomics is `[needs: live-install confirmation]` (§2.3) — **invoke-by-name is the floor** where auto-trigger is unconfirmed (parity of availability, not of trigger ergonomics). |
@@ -162,37 +162,64 @@ produced by `tools/harnessgen`, which arrives with the tool de-house follow-on.)
 
 ## Execution model selection
 
-The worker skill already routes `exec-tier: strong` to a strong-tier worker. On Cursor,
-resolve that tier to the adopter's configured concrete model ID before dispatch; `strong`
-is an Assay requirement, not a Cursor model ID. Keep the model choice in adopter
-configuration so the binding does not hard-code a vendor or a model generation.
+`exec-tier: strong` and `--tier strong` are Assay requirements, not Cursor model IDs. On
+Cursor, every loop that launches an agent which must run at strong tier, or that must
+itself run in a strong-tier session, resolves `strong` to the adopter's configured
+concrete model ID before the launch. Keep the model choice in adopter configuration so
+the binding does not hard-code a vendor or a model generation. The same procedure
+applies to every row below. Only the dispatch kit and its admission check differ.
+The routine verify drain is the exception: it runs at the local session model and never
+launches a stronger configured model (see its row).
+
+| Loop | What must run at strong tier |
+|---|---|
+| `worker-desk` | A worker for an item whose brief declares `exec-tier: strong`, and a re-dispatch or shepherd pass on a finding class at round ≥ 2: `deskdispatch --kit worker --tier strong --model <id>`. |
+| `verify-desk` | Only the floor-tier re-verify of a `gate: human` brief, the one sanctioned pass above the local tier: `deskdispatch --kit verifier --tier strong --model <id>`. Every other verifier runs at the local session model, never at a stronger configured model (`verify-desk`, "Tier — the two-stamp model"). A brief that declares `exec-tier: strong` keeps that tier in the verifier admission. If the local session model is below strong, hold the item; never launch a stronger model to clear it. |
+| `pr-review-desk` | A reviewer for a risk-flagged item, a weight-growth review, the security lane on a risk-classed PR, and the deep-set correctness, fact-check and fail-first lanes: `deskdispatch --kit review --tier strong --model <id>`. The session that issues a ready-flip must also be strong-tier. |
+| `intake-desk` | The window that does judgment triage (classifying entries, authoring decision issues, scoping, inline brief authoring), and the worker it fans out to merge a duplicate's evidence. |
+| `the-desk` | The coordinator window itself, and the brief authoring it fans out (design-tier work under `author-brief`'s model-tier gate). Its research and drafting fan-out names no tier. |
 
 - **IDE subagent:** confirm the selected custom subagent's `.cursor/agents/<name>.md`
   frontmatter sets `model: <configured-model-id>`, then invoke it with `/name`.
   `model: inherit` is sufficient only when the parent's resolved model is confirmed
-  to meet the requirement. Where the launch tool exposes explicit model selection,
-  it may name the configured ID directly; do not assume every tool schema accepts it.
+  to meet the requirement. Switching the parent session to a strong model does not by
+  itself set a subagent whose definition pins another model. Where the launch tool
+  exposes explicit model selection, it may name the configured ID directly; do not
+  assume every tool schema accepts it.
 - **Headless:** use `cursor-agent --list-models` to check available IDs, then launch
-  in the worker's isolated worktree with
-  `cursor-agent -p --model "<configured-model-id>" --output-format stream-json "<worker-kit prompt>"`.
-  Retain the adopter's existing permission posture. Availability alone does not
-  establish a model's execution tier.
+  in the agent's isolated worktree with
+  `cursor-agent -p --model "<configured-model-id>" --output-format stream-json "<kit prompt>"`,
+  where the prompt is the one `deskdispatch` emitted for that kit. Retain the adopter's
+  existing permission posture. Availability alone does not establish a model's
+  execution tier.
+- **The loop's own session:** where the row names a window rather than a dispatch
+  (intake judgment, the coordinator, a ready-flip), start that window on the configured
+  model: headless with the same `--model` flag, in the IDE by selecting that model for
+  the chat. Auto, or a model the session cannot confirm, does not meet the floor.
 - **Attestation and pickup:** before `deskdispatch`, confirm the launch configuration
   resolves to the required model. Pass `--tier strong` and that model's concrete ID
   as `--model`, dropping any bracketed options for the stamp (which accepts lowercase
   letters, digits, dots and dashes); retain the full options in the actual launch.
   The pin records the request, not proof of what was served. Check Cursor's subagent
   task card or the CLI's `system` / `init` event `model` field against that request;
-  the CLI field is a display name, not necessarily the stamp ID. Keep the worker kit's
-  pickup-STOP check. An unresolvable identity, weaker fallback, or pickup tier failure
-  holds the item and is filed under the worker skill's existing procedure. Retain
-  its attestation receipt and coordinator stamp handoff; never self-attest or
-  replace an unresolved model identity with the requested one.
+  the CLI field is a display name, not necessarily the stamp ID. Every kit dispatched
+  at `--tier strong` carries the pickup-STOP line; keep it. Keep each kit's own
+  admission check too: the worker's attestation receipt and coordinator stamp handoff,
+  the verifier's `deskdispatch --check-verifier` receipt, and the review dispatch's
+  model stamp that the ready-flip floor reads. Never self-attest or replace an
+  unresolved model identity with the requested one.
+- **Hold:** a missing pin, Auto, an unconfirmed inherit, a weaker fallback, an
+  unresolvable identity or a pickup tier failure holds the item, for every loop. File
+  it under that loop's own escalation procedure. A session below the floor does
+  only the work its skill allows below it: intake queues the judgment work instead of
+  doing it inline, the review loop escalates a ready-flip instead of issuing it, and
+  the verify drain holds an `exec-tier: strong` brief its local session model cannot
+  meet instead of launching a stronger model.
 
 Cursor documents fallback when a configured model is unavailable because of plan or
 admin restrictions. A prompt asking for a strong model, Auto, or an unconfirmed inherited
 model does not establish a strong launch. If the IDE cannot select the required model,
-use an explicitly pinned CLI worker where available; otherwise hold the item. Running
+use an explicitly pinned CLI launch where available; otherwise hold the item. Running
 serially preserves the execution-tier requirement.
 
 Sources: [subagent model configuration](https://cursor.com/docs/subagents#model-configuration),
@@ -201,6 +228,8 @@ Sources: [subagent model configuration](https://cursor.com/docs/subagents#model-
 Documentary check: 2026-11-09; local `cursor-agent` 2026.11.05-86047df confirms
 `--model`, `--list-models` and `--output-format` in `--help`. Model routing and
 fallback were not live-tested; this does not close the existing live-install gaps.
+The loop table was derived from the skill bodies and the dispatch kits on 2026-11-12,
+not from a live run of each loop on Cursor.
 
 ## Interactive desk cadence
 
@@ -239,18 +268,18 @@ degradations than Codex** because isolation is native on the IDE surface and the
 | `dailies` | **runs** — report generation is sequential CLI work; any report fan-out **degrades: runs serially with an explicit in-session statement** if headless parallel dispatch is unconfirmed (§2.5); dispatch is a convenience here, not a safety guarantee. |
 | `human-runsheet` | **runs** — writes one file (`RUNSHEET.md`) to the session's own scratch home; a local text write needs no `gh`, no dispatch, no isolation and no gate authority. No dispatch/isolation/gate surface. |
 | `install` | **runs** — the turnkey install verb; needs `resident-rules-channel` §2.1, `skills-discovery` §2.2 and `install-mechanism` §2.10, all `supported`. Its scaffold write and pinned-binary acquisition need a write-capable, network-permitted posture → permission-posture preconditions (§2.8), stated in-session rather than half-run. It opens draft PRs only and escalates every human-gated step; no dispatch/isolation/gate surface. |
-| `intake-desk` | **runs** — triage/classification is interactive text plus `gh` reads/writes; `gh` write verbs need the adopter's permission posture to allow them (§2.8) — a config precondition, not a gate degradation. |
+| `intake-desk` | **runs** — triage/classification is interactive text plus `gh` reads/writes; `gh` write verbs need the adopter's permission posture to allow them (§2.8) — a config precondition, not a gate degradation. Its judgment window and its duplicate-merge worker run at strong tier per [Execution model selection](#execution-model-selection); below that floor it queues the judgment work, never authors inline. |
 | `market-intelligence` | **runs** — research + reads; no dispatch/isolation/gate needs. |
 | `pdfingest` | **runs** — local PDF ingestion, no dispatch/isolation/gate surface; the default posture allows local reads. Any outbound fetch or external-binary call is a permission-posture precondition (§2.8) → the skill states the blocked fetch in-session rather than silently skipping it. |
-| `pr-review-desk` | **runs** — the review **verdict** is text and is never degraded; posting the review and the draft→ready flip need `gh` writes → permission-posture precondition (§2.8). The review gate is upheld or the skill refuses; it never silently degrades. |
+| `pr-review-desk` | **runs** — the review **verdict** is text and is never degraded; posting the review and the draft→ready flip need `gh` writes → permission-posture precondition (§2.8). The review gate is upheld or the skill refuses; it never silently degrades. Strong-tier review dispatches and the ready-flip session follow [Execution model selection](#execution-model-selection). |
 | `pr-shepherd` | **runs on the IDE surface** — cloud background agents provide **native isolated git worktrees** (§2.9 `supported`), which is the one capability this skill treats as a floor. **Headless (`cursor-agent`): conditional on `[needs: live-install confirmation]`** — if the headless posture permits `git worktree add` (§2.8) it **runs**; if the sandbox blocks that ref-write it **refuses rather than drive the PR from the shared checkout**. Its watch loop needs no durable poll — the body states the periodic `gh pr view` read as the primary form and `capability:durable-monitor` only as an alternative, so the §2.6/§2.7 gap **degrades to the stated poll**, not to blindness. Discovery-mode fan-out (one shepherd per PR) **degrades: serial, one PR at a time, stated in-session** where headless parallel dispatch is unconfirmed (§2.5). Gates are unchanged: it never flips, merges or closes, and the security-gate carve-out is a refusal, never a degradation. *(Derived from this file's own capability rows plus the skill's declared needs — not a separate live measurement.)* |
 | `session-coach` | **runs** — reads the session's own record (transcript, tool calls, subagent transcripts) and writes one coaching note outside any repository; no `gh`, no dispatch, no isolation and no gate authority. Where the note's location is one the permission posture does not let it write (§2.8), that is a permission-posture precondition stated in-session — the note is never written into the repository instead. A piece of the record the session cannot read is marked as such in the note, per the body. No dispatch/isolation/gate surface.  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |
 | `system-demo` | **runs** — authoring a storyboard and, when requested, a local static player is text/local-file work; it writes only within the session's own workspace, needs no `gh`, no dispatch, no isolation and no gate authority. No dispatch/isolation/gate surface. |
-| `the-desk` | **runs** — coordination; its worker fan-out **degrades: serial with an in-session statement** if headless parallel dispatch is unconfirmed (§2.5); the review/merge gate is unchanged (the human merges). Isolation of dispatched implementers is delegated to `worker-desk` (below). |
+| `the-desk` | **runs** — coordination; its worker fan-out **degrades: serial with an in-session statement** if headless parallel dispatch is unconfirmed (§2.5); the review/merge gate is unchanged (the human merges). Isolation of dispatched implementers is delegated to `worker-desk` (below). The coordinator window and its brief-authoring fan-out follow [Execution model selection](#execution-model-selection). |
 | `trace-path-to-live` | **runs** — read-only: it fetches each stream root, runs the existing `statusgen` and `deskboard` readers, and writes one self-contained page outside any repository; no dispatch, no isolation and no gate authority. The forge reads (fetch, open PRs, claims) need network and `gh` access; where the permission posture blocks one (§2.8), that reader is marked `could-not-check` on the page and stated in-session, never shown as empty. Where the page's location cannot be written, that is stated in-session; the page is never written into the repository instead.  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |
 | `upgrade-assay` | **runs** — the dry-run-first order is the skill's own invariant and is never degraded; the apply step writes the tree and version pins → needs a write-capable posture, and where the posture blocks the write it states BLOCKED rather than half-applying (§2.8). No dispatch/isolation/gate surface beyond that. |
-| `verify-desk` | **runs** — executes the Verify table and records **real command evidence** (`evidence-not-claims` intact); `gh` writes need the permission posture (§2.8). The evidence guarantee is never degraded. |
-| `worker-desk` | **runs on the IDE surface** — cloud background agents provide **native isolated git worktrees** (§2.9 `supported`), so the pool isolates each implementer as the floor requires. **Headless (`cursor-agent`): conditional on `[needs: live-install confirmation]`** — if the headless posture permits `git worktree add` (§2.8) so the skill can create its own isolated worktree (as on Claude Code), it **runs**; if the sandbox blocks that ref-write, per the no-isolation→refuse floor it **refuses rather than implement in the shared checkout** (the outcome Codex CLI hit). Dispatch gap → **degrades: the pool runs serially, one brief at a time, with an explicit in-session statement**. Isolation is never silently degraded. |
+| `verify-desk` | **runs** — executes the Verify table and records **real command evidence** (`evidence-not-claims` intact); `gh` writes need the permission posture (§2.8). The evidence guarantee is never degraded. The floor-tier re-verify of a `gate: human` brief follows [Execution model selection](#execution-model-selection); the routine drain stays at the local session model and holds an `exec-tier: strong` brief that model cannot meet. |
+| `worker-desk` | **runs on the IDE surface** — cloud background agents provide **native isolated git worktrees** (§2.9 `supported`), so the pool isolates each implementer as the floor requires. **Headless (`cursor-agent`): conditional on `[needs: live-install confirmation]`** — if the headless posture permits `git worktree add` (§2.8) so the skill can create its own isolated worktree (as on Claude Code), it **runs**; if the sandbox blocks that ref-write, per the no-isolation→refuse floor it **refuses rather than implement in the shared checkout** (the outcome Codex CLI hit). Dispatch gap → **degrades: the pool runs serially, one brief at a time, with an explicit in-session statement**. Isolation is never silently degraded. A strong-tier worker follows [Execution model selection](#execution-model-selection). |
 
 **Floor check** — isolation: `worker-desk` **runs** on the IDE surface (native worktrees)
 and, headless, either runs or **refuses** when it cannot isolate (never degrades).

@@ -35,7 +35,8 @@ type ScanLoop struct {
 	// look like a property of the INBOUND repo, so an issue on a read-only-scope repo dead-ended.
 	ScanTarget string
 	// WorktreeBase is the ABSOLUTE directory scan worktrees are cut under. It must sit outside
-	// Root — the isolation guard refuses otherwise.
+	// Root — the isolation guard refuses otherwise. Empty means the sanctioned worktree prefix
+	// (defaultScanWorktreeBase).
 	WorktreeBase string
 	// Policy is the coalesce window.
 	Policy CoalescePolicy
@@ -51,6 +52,14 @@ type ScanLoop struct {
 	// one". An error means the answer could not be read, and the scan dispatch is refused rather
 	// than cutting a possible duplicate. It is consulted only for the scan-carrier lane.
 	OpenPR func() (*OpenScanPR, error)
+	// Carriers reports every open scan carrier by this App on the scan target (carriers.go). The
+	// scan dispatch excludes the placeholders they already carry, so a fresh carrier is never a
+	// superset of a sealed one. nil means none is known. An error refuses the scan dispatch: the
+	// full delta is never written on an unread answer.
+	Carriers func() ([]OpenScanPR, error)
+	// CarrierFiles reads the files one open carrier carries. Required whenever Carriers names a
+	// carrier other than the one being written to.
+	CarrierFiles func(number int) ([]deskkit.ChangedFile, error)
 	// Exec is the lanes' process seam. nil = run for real.
 	Exec Exec
 	// Write is the lanes' file seam (the captured title and body). nil = write for real.
@@ -535,6 +544,13 @@ func (s *ScanLoop) Dispatch(it loopengine.Item, tier loopengine.Tier) (loopengin
 			req.Branch = open.Branch
 		}
 	}
+	if lane.Name() == LaneScanCarrierPR {
+		carried, err := s.carriedPaths(req.Branch)
+		if err != nil {
+			return nil, err
+		}
+		req.Carried = carried
+	}
 
 	outcome, lerr := lane.Execute(req)
 	fmt.Fprintf(s.emit(), "\n=== DISPATCH %s (tier=%s lane=%s) ===\n", it.ID, tier, lane.Name())
@@ -684,17 +700,21 @@ var newPassToken = func() string {
 }
 
 // worktreeFor is the pass's isolated scan worktree. The path is ABSOLUTE and outside the target
-// checkout; both are re-checked by the lane's own guard before anything runs.
+// checkout; both are re-checked by the lane's own guard before anything runs. With no
+// WorktreeBase it sits under the sanctioned worktree prefix (defaultScanWorktreeBase), so a
+// worktree the lane has to retain can be removed through the sanctioned tooling. A base that
+// cannot be resolved yields "", which the lane's guard refuses before anything runs.
 func (s *ScanLoop) worktreeFor(loopengine.Item) string {
 	base := s.WorktreeBase
 	if base == "" {
-		abs, err := filepath.Abs(s.Root)
+		def, err := defaultScanWorktreeBase(s.Root)
 		if err != nil {
 			return ""
 		}
-		base = filepath.Dir(abs)
+		base = def
 	}
-	return filepath.Join(base, "intake-scan-"+sanitizeSegment(s.passName()))
+	leaf := scanWorktreeLeaf + sanitizeSegment(s.passName())
+	return filepath.Join(base, leaf)
 }
 
 // branchFor is the pass's scan branch. It is time-suffixed on purpose: the bounded coalesce window

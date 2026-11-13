@@ -77,8 +77,8 @@ FROM ${DESK_TOOLS_IMAGE} AS desktools
 # tools/desk/internal/deskkit/gitfloor_test.go, and set the same two ARGs in
 # images/verify-runner/Dockerfile (a test requires the two pairs to match).
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS gitbuild
-ARG GIT_VERSION=2.56.0
-ARG GIT_TARBALL_SHA256=26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
+ARG GIT_VERSION=2.56.1
+ARG GIT_TARBALL_SHA256=f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \
     apt-get update; \
@@ -303,6 +303,7 @@ RUN set -eux; \
 # providing (git-remote-http carries the libcurl link). /usr/local must be
 # root-owned throughout, since git now lives there.
 RUN set -eux; \
+    test "$(/usr/local/bin/git version)" = "git version 2.56.1"; \
     test -x /usr/local/bin/git; \
     test -x /usr/local/libexec/git-core/git-remote-http; \
     if ldd /usr/local/bin/git /usr/local/libexec/git-core/git-remote-http | grep 'not found'; then \
@@ -334,3 +335,7 @@ CMD ["/bin/bash"]
 
 # Disable next-prompt generation for interactive and scheduled Claude processes.
 ENV CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false
+
+# CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
+# them off. A fragile stopgap only; patched node kernels are the real fix.
+ENV GODEBUG=multipathtcp=0

@@ -1,0 +1,2 @@
+### Changed
+- `cellctl <verb> --plan` names each plan with two words, such as `amber-falcon`, instead of 24 hex characters, so the printed `--apply` line is easy to read and type on another terminal. The words come from fixed lists built into `cellctl`. An id is never reused within a cell's plan store, including plans already applied, and a taken id is drawn again. Plans stored under a hex id still apply by that id. The `cell-op-v1` schema's plan id accepts both forms. Apply still requires the typed confirm code.

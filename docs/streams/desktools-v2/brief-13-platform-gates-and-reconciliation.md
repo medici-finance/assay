@@ -53,15 +53,6 @@ id: c3f52e25-c133-4e70-a242-c6392d215efb
 
 ## Context
 
-files:
-- `tools/desk/scripts/forge-ban.sh` + NEW `tools/desk/scripts/forge-ban-probe.sh` (planned) — classes e and f, still advisory.
-- `docs/streams/desktools-v2/forge-ban-baseline.txt` — the `desktools-v2/13` line.
-- `statusgen/` — the Verify-row portability NOTICE and its test.
-- `.github/workflows/ci.yml`, `windows-ci-leg.yml` (live copy, retired #4106) — staged as a patch for the human to apply; never pushed by this brief's implementer.
-- `docs/streams/desktools-v2/brief-06-installation-token-scoping.md` — the re-derivation, offered to its human gate.
-- `docs/streams/desk-containers/README.md` — row 10 corrected.
-- `changelog/<branch>.md` — the per-PR fragment this repository requires.
-
 Issue #1836's other half: the gates. Today a Windows compile break in `tools/desk` is first
 seen at release time (PR CI builds it on Linux only; the cross-build loop runs in
 `release.yml`), and the seam contract's ban counter covers only its GitHub half — class (a)
@@ -79,6 +70,15 @@ non-workflow half on the branch (the scripts, the lint, the triage) plus a ready
 workflow patch file and a `human-runsheet` entry; the human applies the workflow commit
 themselves at merge time. The Verify rows for those deliverables are written against the
 applied state and are expected to pass after the human's commit lands.
+
+files:
+- `tools/desk/scripts/forge-ban.sh` + `tools/desk/scripts/forge-ban-probe.sh` (new, planned) — classes e and f, still advisory.
+- `docs/streams/desktools-v2/forge-ban-baseline.txt` — the `desktools-v2/13` line.
+- `statusgen/` — the Verify-row portability NOTICE and its test.
+- `.github/workflows/ci.yml`, `windows-ci-leg.yml` (live copy, retired #4106) — staged as a patch for the human to apply; never pushed by this brief's implementer.
+- `docs/streams/desktools-v2/brief-06-installation-token-scoping.md` — the re-derivation, offered to its human gate.
+- `docs/streams/desk-containers/README.md` — row 10 corrected.
+- **create a fragment in** `changelog/` — the per-PR fragment this repository requires, `changelog/<branch>.md` (its name varies per PR, so the directory is declared).
 
 ## Deliverables
 
@@ -1096,3 +1096,72 @@ RISK-VALUE: DERIVED — desktools-v2/13 glab=0 gitlab-literal=45 @ docs/streams/
 
 **VERIFY: PASS** — all 13 obligations met at merged main a3741ab45718. Rows 1 to 5 and 7 to 13 pass by the execution witness. Row 6 passes by brief rule 51's forge-enabled host-lane lint (exit 0, LINT: PASS, approval reads shown); its credential-stripped in-row witness sits in the table above. Row 12 is vacuous on merged main (medici-finance/assay#1281). Gate model, every risk answer no.
 
+### Non-implementer verifier run — 2026-11-13 claude-opus-5-5 verifier at 5165c60fa5b4 (12 rows by the execution witness; row 6 credited by brief rule 51's host-lane lint)
+
+- Target: merged main @ 5165c60fa5b4b2cf9ee47a1cae200d4d0e171106, the admitted source. The dispatcher's check-verifier receipt (medici-finance/assay#6341) admitted the run before any row and is re-checked after this Evidence edit.
+- Host and tools: darwin/arm64, installed statusgen v1.0.83, KUBECONFIG=/dev/null, real Go build and module caches, TMPDIR at a scratch directory outside the home.
+- Execution witness: the table below was written by statusgen verifyrun in write mode over the whole Verify table (all 13 rows, no row filter), from the admitted home on a clean tree at the source SHA. Its stamps and its Verification-Attestation line are as the tool wrote them. Every row is plain check class, so no row needed the network-off sandbox or the container bracket. verifyrun --check reads 12 pass, 1 fail (row 6), 0 could-not-run.
+- Attempts: one run of the table in this dispatch (attempt 1, 13 rows, 2026-11-13T01:25:14Z to 01:26:53Z), credited. The lint runs recorded under row 6 below are supplemental host-lane runs, not runs of the table.
+- Fail-first: the brief's risk fields all read no, and no row's Command or Expect cell carries a risk-bearing, live, mutating or end-to-end tag, so no fail-first witness is owed.
+- Since the previous pass at a3741ab45718 (623 commits), three non-merge commits touched the paths the rows read: two edit the ci.yml workflow, whose cross-compile lines that row 1 reads are still present at ci.yml lines 155 to 157, and one edits the desk-containers README without changing its row 10, which still reads implemented.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -q -F -e 'GOOS=windows' .github/workflows/ci.yml && grep -q -F -e 'go test -c' .github/workflows/ci.yml` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-13 | assay-verifier-app[bot] @ 5165c60fa5b4 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(d=$(mktemp -d) && trap 'rm -rf "$d"' 0 && sh tools/desk/scripts/forge-ban.sh > "$d/r2.out" && grep -F -e 'class e (glab subprocess):' "$d/r2.out" && grep -F -e 'class f (GitLab API literal):' "$d/r2.out")` | pass exit=0 | sha256:568bbd222745 | 2026-11-13 | assay-verifier-app[bot] @ 5165c60fa5b4 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `sh tools/desk/scripts/forge-ban-probe.sh` | pass exit=0 | sha256:406d6e54ba92 | 2026-11-13 | assay-verifier-app[bot] @ 5165c60fa5b4 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -E -e '^desktools-v2/02 [0-9]+$' docs/streams/desktools-v2/forge-ban-baseline.txt && grep -E -e '^desktools-v2/13 glab=[0-9]+ gitlab-literal=[0-9]+$' docs/streams/desktools-v2/forge-ban-baseline.txt` | pass exit=0 | sha256:df26954dfed8 | 2026-11-13 | assay-verifier-app[bot] @ 5165c60fa5b4 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `d=$(mktemp -d) && cd statusgen && go test -run '^TestVerifyRowPortability$' -v . > "$d/r5.out" 2>&1 && grep -E -e '^--- PASS: TestVerifyRowPortability \(' "$d/r5.out" && sh testdata/portability-mutation.sh` | pass exit=0 | sha256:ba5a5d0eeafc | 2026-11-13 | assay-verifier-app[bot] @ 5165c60fa5b4 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `(d=$(mktemp -d) && trap 'rm -rf "$d"' 0 && cd statusgen && go build -o "$d/statusgen" . && cd .. && "$d/statusgen" --root . --lint --acceptance-forge >/dev/null 2>&1)` | fail exit=1 | sha256:e3b0c44298fc | 2026-11-13 | assay-verifier-app[bot] @ 5165c60fa5b4 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -rlE 'windows-(latest\|[0-9]+\|11-arm)\|runs-on:.*windows' .github/workflows/ ci/staged-workflows/; echo "exit=$?"` | pass exit=0 | sha256:cf205dbb8cea | 2026-11-13 | assay-verifier-app[bot] @ 5165c60fa5b4 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `grep -n -e 1145 -e 1146 -e 1223 docs/streams/desktools-v2/brief-06-*.md; test $? -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-13 | assay-verifier-app[bot] @ 5165c60fa5b4 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `f=$(ls docs/streams/desktools-v2/brief-06-*.md); grep -q -F -e 'cmd/cellctl' "$f" && grep -q -E -e '^gate: human$' "$f" && grep -q -F -e '(desktools-v2/13 GitLab row)' "$f" && grep -q -F -e '(desktools-v2/13 Windows row)' "$f"` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-13 | assay-verifier-app[bot] @ 5165c60fa5b4 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `miss=0; for n in 641 642 1604 1621 1418 1424 1805 1435 1644 678 1569 1693 1573 1203 655 676 677 1477 1411 1412 1415 865 1667 1794; do grep -q -E -e "^[\|] #$n [\|] desktools-v2/[0-9]+" -e "^[\|] #$n [\|] out-of-scope" docs/streams/desktools-v2/brief-13-platform-gates-and-reconciliation.md \|\| { echo "UNOWNED #$n"; miss=1; }; done; test $miss -eq 0` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-13 | assay-verifier-app[bot] @ 5165c60fa5b4 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 11 | `grep -q -E -e '^[\|] 10 [\|].*[\|] implemented [\|]' -e '^[\|] 10 [\|].*[\|] verified [\|]' -e '^[\|] 10 [\|].*[\|] done [\|]' docs/streams/desk-containers/README.md` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-13 | assay-verifier-app[bot] @ 5165c60fa5b4 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 12 | `statusgen --consumers --root .` | pass exit=0 | sha256:8cdb197c5de3 | 2026-11-13 | assay-verifier-app[bot] @ 5165c60fa5b4 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 13 | `miss=0; for n in 641 642 1604 1621 1418 1424 1805 1435 1644 678 1569 1693 1573 1203 655 676 677 1477 1411 1412 1415 865 1667 1794; do c=$(statusgen rowread comments --issue medici-finance/assay#$n --body-contains '(desktools-v2/13 triage)') \|\| { echo "READ FAILED #$n"; miss=1; continue; }; test -n "$c" \|\| { echo "NO TRIAGE COMMENT #$n"; miss=1; }; done; c=$(statusgen rowread comments --issue medici-finance/assay#1836 --body-contains '(desktools-v2/13 triage)') \|\| { echo "READ FAILED #1836"; miss=1; }; test -z "$c" \|\| { echo "CONTROL MATCHED #1836"; miss=1; }; test $miss -eq 0` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-13 | assay-verifier-app[bot] @ 5165c60fa5b4 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6341 run=ca5375932822f9643ab1c2a468490a51cb3c53e7d06f9bf3e77f72dc2f3a1e9b source=5165c60fa5b4b2cf9ee47a1cae200d4d0e171106 brief=docs/streams/desktools-v2/brief-13-platform-gates-and-reconciliation.md model=claude-opus-5-5 tier=strong
+
+Row 6 — brief rule 51 (Ruling: https://github.com/medici-finance/assay/issues/4823#issuecomment-6725046323). Row 6's Expect is a clean repo-wide statusgen lint, so it is credited by a forge-enabled host-lane lint at the pinned revision, recorded here beside the row's witness as rule 51 requires. The row is not rewritten, and this record is not a table row.
+
+- Why the witness reads exit 1. verifyrun strips forge credential variables from every admitted row's environment, and inside an admitted row the binary refuses the stored forge login, so the row's own --acceptance-forge lint cannot complete its approval reads. Its output goes to /dev/null, so the witness hash is the empty-string hash. A supplemental reproduction with the row's freshly built binary, run at the source SHA with no forge credential variable set and the verify-loop signal present, exited 1 with LINT: FAIL 3 problem(s). Each was on a neighbour brief's protected-table acceptance transition (desk-tools/37, desktools-v2/65, forge-neutral/54), and each ended "human approval could not be corroborated: fetching comment … could-not-check: no forge … variable is set and the stored forge login is not used where verifier admission is required". Under rule 51 that in-row state is could-not-run, not a failed obligation. No problem names this brief.
+- The credited run. It ran from the root of a scratch clone detached at 5165c60fa5b4b2cf9ee47a1cae200d4d0e171106, clean tree, origin set to the github.com repository, origin/main ref at the same SHA. Command as run:
+
+```
+GH_TOKEN=<verifier App credential> statusgen --root . --lint --acceptance-forge
+```
+
+  Binary: the installed pinned release statusgen v1.0.83, the release the admission names. GH_TOKEN was set explicitly and DESK_LOOP named the verify loop. Exit 0, state: credited (clean). Primary output: LINT: PASS. The approval reads on stderr were "acceptance transition: reading approval https://github.com/medici-finance/assay/issues/4230#issuecomment-6373797887" (3 lines), "acceptance transition: reading approval https://github.com/medici-finance/assay/issues/5157#issuecomment-6561647076" (3 lines) and "acceptance transition: reading approval https://github.com/medici-finance/assay/issues/5725#issuecomment-6715519410" (3 lines), so the corroboration ran. Combined output sha256:3e177dbb3b92fb4c1dd9941343e9e198ec61d4b0c7239ae411a699335c70cdd0. Date 2026-11-13 (01:25:35Z to 01:26:32Z). Runner: assay-verifier-app[bot], claude-opus-5-5 verifier.
+- Same result with the row's own build. The binary the row builds from source at this SHA, run in the same clone with the same explicit credential, also exited 0 with LINT: PASS. This is supplemental and earns no extra credit.
+- NOTICE count. The forge-enabled lint at this SHA prints 107 lines tagged verify-row-portability. They are notice-level and fail no lint.
+
+Hand reading at 5165c60fa5b4, in the scratch clone at the same SHA. It adds no rows.
+
+- Row 2, counter output: class e (glab subprocess): desk=0 statusgen=0 / class f (GitLab API literal): desk=68 statusgen=9. It also printed forge reach-around sites: 67 (desk: 38, statusgen: 29), statusgen sites: 29 and forgeread sites: 0.
+- Row 3: after the probe, the home's git status for tools/desk was empty; the only change in the home was this brief's own Evidence append.
+- Row 4: desktools-v2/02 63 / desktools-v2/13 glab=0 gitlab-literal=45.
+- Row 12: consumers: no brief files in the diff against 5165c60fa5b4b2cf9ee47a1cae200d4d0e171106 — nothing to corroborate. The row is vacuous on merged main. That is the tool-side gap medici-finance/assay#1281; its state was not re-read this run.
+- Row 13 (witness only): exit 0 with empty output, so no READ FAILED, NO TRIAGE COMMENT or CONTROL MATCHED line printed. All 24 issues carry the triage comment, and the #1836 control matches nothing.
+
+Findings. These are advisory; none is a Verify-row failure.
+
+- **An admitted row cannot run a forge-enabled lint.** Unchanged since the previous pass: verifyrun strips the credential from the row's environment, so the witness reads fail exit=1 and verifyrun --check counts row 6 as fail, though the forge-enabled lint is clean. Rule 51's prose record is the only credit path.
+- **Drift.** The class f desk count is 68 at this SHA (66 at a3741ab45718) against the recorded gitlab-literal=45. The forge reach-around total is 67 against the recorded desktools-v2/02 baseline of 63. Classes e and f feed no total and no gate, row 3 proves the exclusion, and --baseline corrects the drift.
+
+Risk-bearing values. The risk metadata reads no for regulatory, customer, irreversible and sensitive-data, and the gate is model. The delivered work touches .github/workflows and a counting control, so the values were enumerated anyway, over the counter script, the probe, the baseline file, the statusgen portability detector, the mutation script, ci.yml and the rowread verb at this SHA.
+
+- desktools-v2/13 glab=0 gitlab-literal=45 @ forge-ban-baseline.txt:2. A recorded baseline; a value set too low would hide growth. Reversible with --baseline.
+- desktools-v2/02 63 @ forge-ban-baseline.txt:1. Not this brief's value, and untouched by it. Reversible.
+- GLAB_SUBCMDS, the eleven glab subcommand names @ forge-ban.sh:181. Reversible.
+- class f pattern = /api/v4 or gitlab.com @ forge-ban.sh:187, with the statusgen variant at :195. Reversible.
+- BACKEND_EXCLUDE = forge_github, forge_gitlab @ forge-ban.sh:75. Reversible.
+- probe plants exec.Command("glab", "api") and "/api/v4" @ forge-ban-probe.sh:13 and :14. Reversible.
+- detector regexes verifyOSMarker, verifyShellC, verifyFindstr and verifyTmpPath @ statusgen verifyportability.go:11 to 14. Notice-level only. Reversible.
+- cross-compile targets GOOS=windows GOARCH=amd64 and GOOS=darwin GOARCH=arm64 @ ci.yml:155 to 157. Reversible.
+- rowreadExitCouldNot = 6 @ statusgen rowread.go:46, and -timeout 45s @ portability-mutation.sh:17. Operational.
+
+None of these is irreversible. Top-ranked entry:
+
+RISK-VALUE: DERIVED — desktools-v2/13 glab=0 gitlab-literal=45 @ docs/streams/desktools-v2/forge-ban-baseline.txt:2 — an independent git grep recount over the commit objects, not the counter, applied the brief's class f definition: lines matching /api/v4 or gitlab.com in .go and .sh files under tools/desk, tools/cellctl and plugins/assay, excluding the two forge backends, _test.go, .test.sh and the counter itself. It gives 45 at the delivering commit 85aeeb8e1f8d, matching the recorded baseline, and 68 at this SHA, matching the live count in row 2.
+
+**VERIFY: PASS** — all 13 obligations met at merged main 5165c60fa5b4. Rows 1 to 5 and 7 to 13 pass by the execution witness. Row 6 passes by brief rule 51's forge-enabled host-lane lint (exit 0, LINT: PASS, approval reads shown); its credential-stripped in-row witness sits in the table above. Row 12 is vacuous on merged main (medici-finance/assay#1281). Gate model, every risk answer no.

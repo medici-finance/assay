@@ -350,7 +350,8 @@ func cmdEdit(args []string) (err error) {
 	// edited, so a landed relink always has its record; the reverse (a record for an edit that
 	// then failed) is named in the record itself and in the error below.
 	if rl != nil {
-		if _, aErr := fg.PostComment(fr, pr.Number, relinkAudit(oldLink, newLink, rl.reason)); aErr != nil {
+		// Typed (#6264): the record lands on a PR; a bare number is ambiguous on GitLab.
+		if _, aErr := fg.PostCommentTyped(fr, pr.Number, deskkit.TargetChange, relinkAudit(oldLink, newLink, rl.reason)); aErr != nil {
 			return deskkit.Unverifiable("the link-correction audit comment could not be posted, so the body was NOT edited — "+
 				"re-run once the forge is reachable", aErr)
 		}
@@ -373,7 +374,8 @@ func cmdEdit(args []string) (err error) {
 	// it. This comment is that event. It is posted BEFORE the --decided label write (review
 	// finding F4): a label failure must never swallow the one event that tells the review
 	// loop the body changed.
-	_, cErr := fg.PostComment(fr, pr.Number, reviewNotice(changed))
+	// Typed (#6264): the notice lands on the PR this verb just edited.
+	_, cErr := fg.PostCommentTyped(fr, pr.Number, deskkit.TargetChange, reviewNotice(changed))
 	if cErr != nil {
 		ac.detail += " — re-review notice FAILED"
 	}

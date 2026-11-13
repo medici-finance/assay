@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/cmd/deskpost/internal/bodycheck"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -11,7 +12,11 @@ import (
 
 // runReady flips a converged draft PR to ready-for-HUMAN-review. It re-verifies EVERY
 // precondition in-tool immediately before acting — it never trusts the
-// caller's claim of state. It has NO other power: no un-ready, no merge, no close.
+// caller's claim of state. It has NO other power: no merge, no close, and no un-ready
+// except the post-flip backstop's (below), which returns the PR to draft only when the forge
+// reports it BLOCKED or DIRTY right after the flip — ready means mergeable per the forge.
+// The un-ready is never a verb of its own. Ruling:
+// https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
 // The flip is not an approval and not a merge; the merge stays the owner's.
 //
 // Preconditions (all re-read here, in order):
@@ -22,6 +27,7 @@ import (
 //	    the PR carries a CURRENT blessing (deskkit/trust.go)
 //	(b) the reviewer App's latest verdict is APPROVED, submitted at the CURRENT head
 //	(c) the CI rollup at the head is green (per-repo policy for an empty rollup)
+//	(c') no check suite at the head is unconcluded (deskkit.PendingCheckSuites, #6234)
 //	(e) if the PR is risk-classed — repo visibility (a PUBLIC repo always is, the public-repo risk rule)
 //	    or the repo's path triggers — an App review at the CURRENT head carries the
 //	    literal `Security-Review: pass` line (#216)
@@ -219,6 +225,25 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 			// proceed
 		}
 
+		// (c') No check suite at the head holds the forge's merge gate (#6234). A suite with no
+		// conclusion and no runs adds nothing to either rollup above, so they read green while
+		// the forge reads BLOCKED. Which suites hold is deskkit.PendingCheckSuites, the rule
+		// deskflip and deskautolane merge share.
+		suites, err := client.checkSuitesAt(head)
+		if err != nil {
+			return fromReadErr("ready", repo, pr, head, ciReadErr("check suites", head, err))
+		}
+		if suites == nil || suites.TotalCount > len(suites.Suites) {
+			return unverifiableNoWrite("ready", repo, pr, head,
+				"the check suites at "+short(head)+" could not be read in full — a pending suite may be in "+
+					"the part not read, so green cannot be verified", nil)
+		}
+		if held := deskkit.PendingCheckSuites(suites.Suites); len(held) > 0 {
+			return unverifiableNoWrite("ready", repo, pr, head,
+				"the rollups at "+short(head)+" read green, but check suite(s) at that head have not concluded ("+
+					strings.Join(held, "; ")+") — the forge holds the merge gate on them, so green cannot be verified", nil)
+		}
+
 		// (e0) An explicit security FAIL at head blocks the flip, RISK-CLASSED OR NOT.
 		//
 		// This is unconditional on purpose. A `Security-Review: fail` is a reviewer's
@@ -309,6 +334,10 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		}
 		if err := client.markReadyForReview(info.NodeID); err != nil {
 			return fromErr("ready", repo, pr, head, err)
+		}
+		// The post-flip backstop (#6242): ready means mergeable per the forge.
+		if out := readyBackstop(client, repo, pr, info.NodeID, head); out.Err != nil {
+			return fromErr("ready", repo, pr, head, out.Err)
 		}
 		return done("ready", repo, pr, head, "", "flipped PR #"+fmt.Sprint(pr)+" ready-for-human at "+short(head))
 	})

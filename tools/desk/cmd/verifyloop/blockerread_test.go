@@ -146,7 +146,8 @@ func TestForgeIssueSourceStates(t *testing.T) {
 		{"example-org/tracker#1", "open", false, deskkit.BlockerOpen, "issue"},
 		{"example-org/tracker#1", "OPENED", false, deskkit.BlockerOpen, "issue"},
 		{"example-org/tracker#1", "closed", false, deskkit.BlockerClosed, "issue"},
-		{"https://github.com/example-org/tracker/issues/1", "closed", false, deskkit.BlockerClosed, "issue"},
+		// An /issues/ URL states its kind, so the read is the typed issue read (#6264).
+		{"https://github.com/example-org/tracker/issues/1", "closed", false, deskkit.BlockerClosed, "typed:issue"},
 		{"https://github.com/example-org/tracker/pull/1", "merged", false, deskkit.BlockerClosed, "typed:change"},
 		{"https://github.com/example-org/tracker/pull/1", "open", false, deskkit.BlockerOpen, "typed:change"},
 		{"example-org/tracker#1", "locked", false, deskkit.BlockerCouldNotCheck, "issue"},
