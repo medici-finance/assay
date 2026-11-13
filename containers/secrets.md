@@ -122,11 +122,15 @@ docker run -it --name <desk-name> \
   -v <desk-name>-work:/work \
   --mount type=bind,src=<host-path-to>/app.pem,dst=/run/secrets/assay/app.pem,ro \
   --env-file <operator-path>/desk.env \
+  -e GODEBUG=multipathtcp=0 \
   ghcr.io/medici-finance/assay/<desk-name>:<tag>
 ```
 
 `--mount …,ro` gives the read-only PEM at the canonical path; `--env-file`
-carries the §3 variables. No credential appears on the command line.
+carries the §3 variables. No credential appears on the command line. The `-e`
+repeats the MPTCP-off setting the images already carry (CVE-2026-98432
+stopgap), so an older image tag or an env-file cannot leave it unset; an
+explicit `-e` outranks `--env-file`. Patched host kernels are the real fix.
 
 ### 4.2 docker compose
 

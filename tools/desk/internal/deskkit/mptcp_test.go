@@ -31,16 +31,20 @@ import (
 
 const mptcpOff = "multipathtcp=0"
 
-// godebugDisablesMPTCP reports whether a GODEBUG value turns MPTCP off. The
-// runtime applies settings left to right, so the last multipathtcp setting wins.
+// godebugDisablesMPTCP reports whether a GODEBUG value turns MPTCP off, reading
+// the list the way the Go runtime does (internal/godebug parse): entries split at
+// ",", the name ends at the first "=", the last entry for a name wins, and
+// nothing is trimmed. Net dial turns MPTCP listeners off only when the value is
+// exactly "0", so "multipathtcp=0 " (trailing space) and "a=1, multipathtcp=0"
+// (the second name is " multipathtcp") both leave them on.
 func godebugDisablesMPTCP(value string) bool {
 	last := ""
 	for _, kv := range strings.Split(value, ",") {
-		if kv = strings.TrimSpace(kv); strings.HasPrefix(kv, "multipathtcp=") {
-			last = kv
+		if name, arg, ok := strings.Cut(kv, "="); ok && name == "multipathtcp" {
+			last = arg
 		}
 	}
-	return last == mptcpOff
+	return last == "0"
 }
 
 // mptcpSweep counts pod specs and containers and names each container whose
@@ -471,6 +475,8 @@ func TestMPTCPSweepRejectsPlants(t *testing.T) {
 		{"init-container", pod("      initContainers:\n        - name: init\n          image: x\n      containers:\n        - name: app\n          image: x\n" + ok), 1},
 		{"second-container", pod("      containers:\n        - name: app\n          image: x\n" + ok + "        - name: sidecar\n          image: y\n"), 1},
 		{"re-enabled", pod("      containers:\n        - name: app\n          image: x\n          env:\n            - name: GODEBUG\n              value: multipathtcp=0,multipathtcp=1\n"), 1},
+		{"space-after-comma", pod("      containers:\n        - name: app\n          image: x\n          env:\n            - name: GODEBUG\n              value: \"multipathtcp=1, multipathtcp=0\"\n"), 1},
+		{"trailing-space", pod("      containers:\n        - name: app\n          image: x\n          env:\n            - name: GODEBUG\n              value: \"multipathtcp=0 \"\n"), 1},
 		{"later-override", pod("      containers:\n        - name: app\n          image: x\n" + ok + "            - name: GODEBUG\n              value: multipathtcp=2\n"), 1},
 		{"from-secret", pod("      containers:\n        - name: app\n          image: x\n          env:\n            - name: GODEBUG\n              valueFrom: {secretKeyRef: {name: s, key: k}}\n"), 1},
 		{"cronjob", "kind: CronJob\nspec:\n  jobTemplate:\n    spec:\n      template:\n        spec:\n          containers:\n            - name: tick\n              image: x\n", 1},
