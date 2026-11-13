@@ -36,6 +36,8 @@ sources:
   - "freshness-checked 2026-09-12 @ e96b7f6d (origin/main) — no tier vocabulary exists anywhere in the tree; the roster carries trusted logins, a blessing authority, a human-login map and trusted bot slugs, and nothing between trusted and untrusted."
 design: DR-trust-tiers-ledger
 decision-trigger: creation
+decision-issue: 2479
+ruling: "https://github.com/medici-finance/assay/issues/2479#issuecomment-6561567674"
 exec-tier: strong
 exec-tier-why: >-
   (c) trust plumbing — a subtle error in the resolution order or the fail-closed default
@@ -132,6 +134,15 @@ Options:
    repeated stranger-grade assessment of known-good contributors continues.
 
 Default if no answer: none — blocks until answered. Everything downstream keys on the answer.
+
+**Ruled 2026-11-01: option 1, outside the repository**, per the driver's ruling on decision
+issue medici-finance/assay#2479:
+https://github.com/medici-finance/assay/issues/2479#issuecomment-6561567674
+The implementation already on main, delivered by medici-finance/assay#971 with the follow-up
+medici-finance/assay#5294, follows that design; the ruling does not mention it. The design is
+recorded in [DR-trust-tiers-ledger](../decisions/DR-trust-tiers-ledger.md). The ruling answers
+where the ledger lives. It does not sign off the per-tier capability list, which stays with
+the brief's review and human sign-off.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating kubectl. Leave commits per the task
