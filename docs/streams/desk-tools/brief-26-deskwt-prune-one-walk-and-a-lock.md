@@ -1393,6 +1393,55 @@ The brief is gate: model with all four risk answers no. Its status is left where
 
 **VERIFY: BLOCKED** — 17/21 rows pass on merged main 40925e8, 0 fail on the deliverable. Row 11 passes: all 55 mutations caught. Rows 9, 17 and 18 are could-not-check because they name the desk module's internal/gitcore, which was lifted to the top-level gitcore module (check-definition, #1927). Row 17's deskwt half also deadlocks in TestHelpWritesNoAuditRow on the container's 8 KiB pipes, which is the cause behind #4179. Row 19 is could-not-check on the main-wide lint defect #4823. Row 20 passes, with its summary check shown by a same-image diagnostic because of the unescaped-pipe defect #4453.
 
+### Non-implementer verifier re-run — 2026-11-08 claude-opus-5-5-verifier
+
+Runner: assay-verifier-app[bot], strong tier, model claude-opus-5-5, desk tools v1.0.78, on source 2e1ddcbd72c2 (merged main). `deskdispatch --check-verifier` exited 0 before the run; its attestation line closes each witness below. The check:ci rows ran in the pinned verify-runner image (v1.0.75, linux/arm64 variant sha256:576cb2e4…) inside the admission bracket with no network. Rows 2 and 11 are not check:ci and ran in the host lane under the same admission.
+
+Container lane, rows 18, 19 and 20 (bracket opened 07:59:39Z, closed 08:02:01Z, bracket digest match):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 18 | `cd tools/desk && gofmt -l cmd/deskwt internal/gitcore > /tmp/dt26-fmt.out; test ! -s /tmp/dt26-fmt.out` | pass exit=0 sandbox=container-netns | sha256:dd008be03068 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 19 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:605c12888b3d | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 20 | `o=$(statusgen --root . --consumers --brief desk-tools/26 --delivery b02ea2b35e9f74b8331478dd59490bb7a8e906dd --base 86e3a434e5f17c4260efda925404b214df48ba74); s=$?; printf '%s\n' "$o"; test "$s" -eq 0` | pass exit=0 sandbox=container-netns | sha256:fa803f05f321 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:1d843a770e690a7bd01d131ad76d41f0ed001b69b9bdc86fdb9bd443b1d0db82
+Container-Image: sha256:576cb2e49407447769b79a32af370a23e1c108d62842b8f1772a809d1d3b7617
+Verification-Attestation: medici-finance/assay#5832 run=56c4bbd347eab2e56a29e9621a5029e58f08200a3371f801c24b0034443a1988 source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f brief=docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=56c4bbd347eab2e56a29e9621a5029e58f08200a3371f801c24b0034443a1988 source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f tree=sha256:1d843a770e690a7bd01d131ad76d41f0ed001b69b9bdc86fdb9bd443b1d0db82 witness=sha256:3cef99f9e450b131ebae90fabfd4ffdd4ce1f7216493e802e5cf0cc88ac27174 opened=2026-11-08T07:59:39Z closed=2026-11-08T08:02:01Z before=receipt after=check-verifier
+
+Host lane, rows 2 and 11 (08:02:15Z to 08:50:20Z):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 2 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneRemovalSetUnchanged$' -count=1 -timeout 300s` | pass exit=0 | sha256:5b86a235be88 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && report=$(go run ./cmd/muhar -spec cmd/deskwt/prune-mutations.json) && printf '%s\n' "$report" && case "$report" in *'Totals: 55 caught, 0 NOT CAUGHT, 0 could-not-mutate.'*) ;; *) exit 1;; esac` | pass exit=0 | sha256:b88575a46112 | 2026-11-08 | assay-verifier-app[bot] @ 2e1ddcbd72c2 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5832 run=56c4bbd347eab2e56a29e9621a5029e58f08200a3371f801c24b0034443a1988 source=2e1ddcbd72c2dbe2674821bd7eac6c16c6189e0f brief=docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md model=claude-opus-5-5 tier=strong
+
+Totals: 2/21 rows credited (rows 2 and 11), 0 fail on the deliverable, 19 not run.
+
+- Row 2: pass. Row 11: pass; the muhar report met the "Totals: 55 caught, 0 NOT CAUGHT, 0 could-not-mutate." gate.
+- Rows 1, 3–8, 10, 12–16 and 16b: not run. They build the tools/desk Go tests, and the pinned image's module cache does not cover the desk module: `go list` under GOPROXY=off stops at github.com/mattn/go-isatty v0.0.24, and verifyrun reports that the image module cache does not match go.sum. This is the known image gap, #4683. On darwin these rows go only through the container bracket, so no host run stands in for them.
+- Rows 9 and 17: not run, for the same image gap. They also still name the desk module's internal/gitcore, which was lifted to the top-level gitcore module (check-definition, #1927).
+- Row 18: verifyrun recorded exit 0; not credited. Its output hash sha256:dd008be03068 equals the 2026-10-30 run, where the output was gofmt's lstat error on internal/gitcore. The row formats cmd/deskwt only and does not cover the path it names (#1927).
+- Row 19: verifyrun recorded exit 0; not credited. The trailing `echo $?` makes the exit always 0, so the printed lint result decides the row, and the witness carries only its hash. A supplemental lint read of the same tree with the installed v1.0.78 statusgen (not a Verify row, not credited) reports LINT: FAIL with 3 problems, all `acceptance transition`, on desk-tools/37, desktools-v2/65 and forge-neutral/54. None names this brief (#4823).
+- Row 20: verifyrun recorded exit 0; not credited. The command cell contains an unescaped `||`, so the witnessed command stops before the exact-summary check (#4453).
+
+Fail-first: none owed. Frontmatter risk is no on all four axes, and no Verify row is tagged risk-bearing, live, mutating or end-to-end.
+
+Inputs since the last recorded run (2026-10-30, source 40925e8233c8, tool v1.0.66): `git diff --stat 40925e8233c8 2e1ddcbd72c2` over that outcome record's declared inputs, the brief excluded, reports 2 files changed, 405 insertions(+), 32 deletions(-): tools/desk/README.md (336) and tools/desk/cmd/deskwt/deskwt.go (101). prune.go, prunesingleton.go, the three prune test files, prune-mutations.json and the changelog fragment did not change, and the tool moved from v1.0.66 to v1.0.78. Rows 2 and 11 ran against this head, so their credit does not rest on these files being unchanged.
+
+Risk-bearing values, re-read at 2e1ddcbd (prune.go and prunesingleton.go are unchanged since 40925e8):
+
+RISK-VALUE: DERIVED — merge-gate baseline = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:705 — logOriginMain resolves the ref once and builds the ancestor set (:689). The membership test is at :759, and a nil set returns Unverifiable (:746–750).
+
+RISK-VALUE: DERIVED (second) — fresh-at-tip guard = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:1438 — a resolve failure returns Unverifiable (:1440).
+
+RISK-VALUE: DERIVED (reversible, ranks last) — defaultSingletonTTL = 10 * time.Minute @ tools/desk/cmd/deskwt/prunesingleton.go:57 — a debounce only. Stamp schema "deskwt-prune-singleton-v1" (:51), lock dir mode 0o700 (:177), stamp file mode 0o600 (:182).
+
+The brief is gate: model with all four risk answers no. Its status is left where it is.
+
+**VERIFY: BLOCKED** — 2/21 rows credited on source 2e1ddcbd72c2 (row 2, and row 11 with 55/55 mutations caught), 0 fail on the deliverable. Sixteen Go rows were not run because of the pinned-image module gap (#4683). Rows 9, 17 and 18 still name the removed internal/gitcore (check-definition, #1927). Row 19's lint is red on other briefs (#4823). Row 20's summary check is truncated at `||` (#4453).
+
 ## Review
 
 Gate: model (all four risk answers no). Model-gated because the destructive hazard is
