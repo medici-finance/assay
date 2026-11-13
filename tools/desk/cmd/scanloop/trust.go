@@ -161,7 +161,7 @@ func AdmissionCounts(as []Admission) (admitted, quarantined, couldNotCheck int) 
 }
 
 // forgeTrustProbe is the production probe, reaching the forge through deskkit.ForgeFor (never
-// the `gh` CLI): one cheap author read (GetIssue) plus — for untrusted authors ONLY — one
+// the `gh` CLI): one cheap author read (GetIssueTyped, kind issue) plus — for untrusted authors ONLY — one
 // bounded thread read (IssueTrustEvents). A trusted author costs no second call, which is what
 // keeps the API growth bounded on a busy scope. resolve is the forge-resolution seam so a test
 // can inject a recorded backend without a network.
@@ -174,7 +174,9 @@ func forgeTrustProbe(resolve func(repo string) (deskkit.Forge, deskkit.ForgeRepo
 		if ferr != nil {
 			return "", time.Time{}, nil, false, ferr
 		}
-		iss, err := f.GetIssue(fr, number)
+		// Inbound items are issues (the open-issue listing), so the kind is stated: GitLab's
+		// separate merge-request sequence makes a bare number ambiguous (#6264).
+		iss, err := f.GetIssueTyped(fr, number, deskkit.TargetIssue)
 		if err != nil {
 			return "", time.Time{}, nil, false, fmt.Errorf("cannot read the author of %s#%d: %w", repo, number, err)
 		}

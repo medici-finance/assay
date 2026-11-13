@@ -91,6 +91,16 @@ func (f *fakeForge) GetIssue(_ deskkit.ForgeRepo, n int) (*deskkit.Issue, error)
 	return nil, deskkit.Unverifiable(fmt.Sprintf("no GetIssue fixture for %s#%d", f.repo, n), nil)
 }
 
+// GetIssueTyped is the board's per-issue state read (#6264: a placeholder names an ISSUE, so
+// the kind is stated). The fixture holds issues only, so any other kind is refused; an issue
+// read is served — and logged as the "GetIssue" single-issue read — exactly as GetIssue is.
+func (f *fakeForge) GetIssueTyped(fr deskkit.ForgeRepo, n int, kind deskkit.TargetKind) (*deskkit.Issue, error) {
+	if kind != deskkit.TargetIssue {
+		return nil, deskkit.Unverifiable(fmt.Sprintf("fixture %s#%d holds issues only, asked for %q", f.repo, n, kind), nil)
+	}
+	return f.GetIssue(fr, n)
+}
+
 func (f *fakeForge) IssueTrustEvents(_ deskkit.ForgeRepo, n int) (*deskkit.TrustPayload, error) {
 	*f.calls = append(*f.calls, forgeCall{op: "IssueTrustEvents", repo: f.repo, num: n})
 	if f.data != nil {

@@ -158,7 +158,7 @@ func checkHandoffSuccessor(h issueflow.IntakeHandoff, sourceRepo string) error {
 		if err != nil {
 			return err
 		}
-		issue, err := f.GetIssue(fr, number)
+		issue, err := f.GetIssueTyped(fr, number, deskkit.TargetIssue)
 		if err != nil {
 			return deskkit.Unverifiable("cannot read handoff successor", err)
 		}
