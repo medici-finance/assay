@@ -262,6 +262,8 @@ clear what blocked the removal, then remove it through the project's sanctioned 
 never with `--force`, and never by deleting the directory. A coalesce that finds the carrier branch
 still checked out in a retained scan worktree carries on IN it when that worktree is clean and at the
 carrier's remote tip; a dirty or diverged one refuses the pass (exit 5) and is left exactly as it is.
+A reused worktree is removed at the end of that pass like any scan worktree, and that removal also
+deletes its gitignored files: copy anything you need out of a retained scan worktree before the next pass.
 
 **Exit records.** Every exit `run` lands is also appended as a `decided_by: mechanical` record to
 `<state dir>/intake-exits.jsonl` (`--dry-run` writes none). A JUDGMENT item is parked, never

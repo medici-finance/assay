@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -52,6 +53,15 @@ const legacyScanWorktreeLeaf = "intake-scan-"
 //     name a base with --worktree-base.
 func defaultScanWorktreeBase(root string) (string, error) {
 	if scanGOOS != "windows" {
+		// The sanctioned tmp base is a fixed path. It exists on macOS but not on every POSIX host
+		// (a stock Linux has no /private), and git would otherwise fail on every pass when it
+		// creates the worktree. That case is refused up front, by name, never moved somewhere the
+		// sanctioned tooling cannot remove.
+		if fi, err := os.Stat(scanTmpBase); err != nil || !fi.IsDir() {
+			return "", deskkit.Refused("scanloop: the sanctioned scan worktree base " + scanTmpBase +
+				" is not a directory on this host, so no default scan worktree can be cut under it. " +
+				"Pass --worktree-base <abs dir>")
+		}
 		return scanTmpBase, nil
 	}
 	absRoot, err := filepath.Abs(root)
@@ -92,10 +102,22 @@ func resolvedOrSelf(p string) string {
 	return p
 }
 
-// isScanWorktreeName reports whether a worktree's directory name is one this loop cuts (or cut
-// before the move under a sanctioned prefix).
-func isScanWorktreeName(leaf string) bool {
-	return strings.HasPrefix(leaf, scanWorktreeLeaf) || strings.HasPrefix(leaf, legacyScanWorktreeLeaf)
+// isScanWorktree reports whether the worktree at held is one this loop cut. A current-leaf name
+// qualifies wherever it sits (--worktree-base can put it anywhere). A legacy-leaf name qualifies
+// ONLY at the location this loop used to cut it, beside --root: a clean, at-tip worktree that merely
+// happens to carry the old leaf somewhere else on the host is not adopted (and so not removed at
+// the end of the pass).
+func isScanWorktree(held, root string) bool {
+	leaf := filepath.Base(held)
+	if strings.HasPrefix(leaf, scanWorktreeLeaf) {
+		return true
+	}
+	if !strings.HasPrefix(leaf, legacyScanWorktreeLeaf) {
+		return false
+	}
+	parent := filepath.Dir(filepath.Clean(held))
+	oldBase := filepath.Dir(filepath.Clean(root))
+	return parent == oldBase || resolvedOrSelf(parent) == resolvedOrSelf(oldBase)
 }
 
 // worktreeHoldingBranch returns the path of the registered worktree that has refs/heads/<branch>
@@ -127,7 +149,8 @@ func worktreeHoldingBranch(porcelain, branch string) string {
 // It returns "" when no worktree holds the branch (cut a fresh one, as before), the retained path
 // when it is safe to reuse, and a refusal otherwise. Reuse needs ALL of:
 //
-//   - the worktree is a scan worktree by name (this loop's, not one a person checked out);
+//   - the worktree is a scan worktree by name (this loop's, not one a person checked out; a legacy
+//     name only at the old location beside --root);
 //   - it passes the same isolation guard a fresh scan worktree does;
 //   - `git status --porcelain` in it is empty — nothing modified, staged or untracked;
 //   - its HEAD is exactly the fetched remote carrier tip, the commit `-B` would have reset to.
@@ -150,7 +173,7 @@ func retainedCarrierWorktree(capture func(dir, name string, args ...string) (str
 			", and " + why + ". It is left exactly as it is: inspect it, then remove it through the project's " +
 			"sanctioned worktree tooling (never with --force) and the next pass will coalesce")
 	}
-	if !isScanWorktreeName(filepath.Base(held)) {
+	if !isScanWorktree(held, req.Root) {
 		return "", refuse("that worktree is not a scan worktree this loop cut, so it is not reused")
 	}
 	// git lists a worktree by its symlink-resolved path, so the guard runs on the resolved pair as

@@ -165,3 +165,25 @@ func TestCoalesceRefusesForeignHeld(t *testing.T) {
 	}
 	assertHeldUntouched(t, f, held, "seed.txt")
 }
+
+// regression: #6282
+//
+// TestLegacyLeafOnlyBesideRoot — a worktree with the pre-move leaf is adopted only at the location
+// this loop used to cut it, beside --root. Anywhere else it is someone's checkout that merely
+// carries the name, and a coalesce refuses it and leaves it untouched.
+func TestLegacyLeafOnlyBesideRoot(t *testing.T) {
+	f, held := newHeldFixture(t, filepath.Join("elsewhere", legacyScanWorktreeLeaf+"old"))
+	_, err := f.coalesce(t)
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(fmt.Sprint(err), "not a scan worktree") {
+		t.Fatalf("err = %v, want a refusal: a legacy-named worktree away from the old location is not reused", err)
+	}
+	assertHeldUntouched(t, f, held, "seed.txt")
+
+	f, held = newHeldFixture(t, legacyScanWorktreeLeaf+"old")
+	if _, err := f.coalesce(t); err != nil {
+		t.Fatalf("a legacy-named worktree at the old location beside --root was not reused: %v", err)
+	}
+	if _, err := os.Stat(held); !os.IsNotExist(err) {
+		t.Fatalf("the reused legacy worktree %s was not put back at the end of the pass (stat err %v)", held, err)
+	}
+}

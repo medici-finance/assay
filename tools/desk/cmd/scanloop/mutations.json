@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/scanloop/ -run 'TestCoalesce(Reuses|Refuses)|TestScanWorktreeIsSanctioned|TestWindowsScanBaseUnderRepo' -count=1 -timeout 300s",
+  "test": "go test ./cmd/scanloop/ -run 'TestCoalesce(Reuses|Refuses)|TestScanWorktreeIsSanctioned|TestWindowsScanBaseUnderRepo|TestPosixBaseMissingRefuses|TestLegacyLeafOnlyBesideRoot|TestScanMeta' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — a coalesce never reuses the retained scan worktree (the carrier branch stays blocked by it, #6282)",
     "file": "cmd/scanloop/lane.go",
@@ -22,8 +22,8 @@
     {
       "name": "a worktree this loop did not cut is reused because it happens to hold the carrier branch",
       "file": "cmd/scanloop/scanworktree.go",
-      "old": "\tif !isScanWorktreeName(filepath.Base(held)) {",
-      "new": "\tif false && !isScanWorktreeName(filepath.Base(held)) {"
+      "old": "\tif !isScanWorktree(held, req.Root) {",
+      "new": "\tif false && !isScanWorktree(held, req.Root) {"
     },
     {
       "name": "the scan worktree leaf loses the sanctioned tracker- prefix (deskwt refuses to remove a retained one)",
@@ -48,6 +48,30 @@
       "file": "cmd/scanloop/scanworktree.go",
       "old": "\twant := \"branch refs/heads/\" + branch",
       "new": "\twant := \"branch refs/remotes/\" + branch"
+    },
+    {
+      "name": "a legacy-named worktree is adopted wherever it sits, not only at the old location beside --root",
+      "file": "cmd/scanloop/scanworktree.go",
+      "old": "\treturn parent == oldBase || resolvedOrSelf(parent) == resolvedOrSelf(oldBase)",
+      "new": "\t_, _ = parent, oldBase; return true"
+    },
+    {
+      "name": "the POSIX default base is returned although it is not a directory on this host",
+      "file": "cmd/scanloop/scanworktree.go",
+      "old": "\t\tif fi, err := os.Stat(scanTmpBase); err != nil || !fi.IsDir() {",
+      "new": "\t\tif fi, err := os.Stat(scanTmpBase); false && (err != nil || !fi.IsDir()) {"
+    },
+    {
+      "name": "the title and body files go back beside the worktree, in the shared tmp base, at a predictable name",
+      "file": "cmd/scanloop/lane.go",
+      "old": "\ttitleFile, bodyFile := scanMetaFiles(metaDir)",
+      "new": "\t_ = metaDir; titleFile, bodyFile := filepath.Clean(req.Worktree)+\".scan-title\", filepath.Clean(req.Worktree)+\".scan-body\""
+    },
+    {
+      "name": "the private metadata directory is left behind at the end of the pass",
+      "file": "cmd/scanloop/lane.go",
+      "old": "\tif out.metaDir != \"\" {",
+      "new": "\tif false && out.metaDir != \"\" {"
     }
   ]
 }

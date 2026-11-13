@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -22,6 +24,14 @@ func TestScanWorktreeIsSanctioned(t *testing.T) {
 	}
 	root := filepath.Join(t.TempDir(), "target")
 	wt := (&ScanLoop{Root: root}).worktreeFor(loopengine.Item{ID: "example-org/tracker#5"})
+	if fi, err := os.Stat(deskkit.SanctionedWorktreeTmpBase); err != nil || !fi.IsDir() {
+		// A host without the tmp base (a stock Linux) has no default: it is refused up front, and
+		// TestPosixBaseMissingRefuses pins that. What must hold here is that no path is invented.
+		if wt != "" {
+			t.Fatalf("the tmp base is absent on this host, yet a default scan worktree %q was produced", wt)
+		}
+		return
+	}
 	if wt == "" {
 		t.Fatal("no default scan worktree path")
 	}
@@ -63,5 +73,24 @@ func TestWindowsScanBaseUnderRepo(t *testing.T) {
 
 	if _, err := defaultScanWorktreeBase(mainDir); deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 		t.Fatalf("from the main checkout: err = %v, want a refusal — the prefix is nested in the scanned checkout", err)
+	}
+}
+
+// regression: #6282
+//
+// TestPosixBaseMissingRefuses — the sanctioned tmp base is a fixed path that not every POSIX host
+// has (a stock Linux has no /private). Without --worktree-base the default must be refused up
+// front, by name, never handed to git to fail on every pass.
+func TestPosixBaseMissingRefuses(t *testing.T) {
+	prevOS, prevBase := scanGOOS, scanTmpBase
+	scanGOOS, scanTmpBase = "linux", filepath.Join(t.TempDir(), "absent")
+	t.Cleanup(func() { scanGOOS, scanTmpBase = prevOS, prevBase })
+
+	_, err := defaultScanWorktreeBase(filepath.Join(t.TempDir(), "target"))
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(fmt.Sprint(err), "--worktree-base") {
+		t.Fatalf("err = %v, want a refusal that names --worktree-base", err)
+	}
+	if wt := (&ScanLoop{Root: filepath.Join(t.TempDir(), "target")}).worktreeFor(loopengine.Item{ID: "example-org/tracker#5"}); wt != "" {
+		t.Fatalf("worktreeFor = %q with no usable base, want \"\" (the lane's guard refuses it)", wt)
 	}
 }
