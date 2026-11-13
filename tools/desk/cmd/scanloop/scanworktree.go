@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -121,22 +122,146 @@ func isScanWorktree(held, root string) bool {
 }
 
 // worktreeHoldingBranch returns the path of the registered worktree that has refs/heads/<branch>
-// checked out, read from `git worktree list --porcelain`, or "" when none does.
-func worktreeHoldingBranch(porcelain, branch string) string {
+// checked out, read from `git worktree list --porcelain`, or "" when none does. prunable reports
+// whether git marked that entry `prunable`: its directory is gone and only the registration is left.
+// The whole entry is read before it answers, because git prints the `prunable` line after `branch`.
+func worktreeHoldingBranch(porcelain, branch string) (path string, prunable bool) {
 	want := "branch refs/heads/" + branch
-	cur := ""
-	for _, line := range strings.Split(porcelain, "\n") {
+	cur, holds, stale := "", false, false
+	for _, line := range strings.Split(porcelain+"\n", "\n") {
 		line = strings.TrimRight(line, "\r")
 		switch {
 		case strings.HasPrefix(line, "worktree "):
-			cur = strings.TrimPrefix(line, "worktree ")
+			cur, holds, stale = strings.TrimPrefix(line, "worktree "), false, false
 		case line == "":
-			cur = ""
-		case line == want && cur != "":
-			return cur
+			if holds && cur != "" {
+				return cur, stale
+			}
+			cur, holds, stale = "", false, false
+		case line == want:
+			holds = true
+		case line == "prunable" || strings.HasPrefix(line, "prunable "):
+			stale = true
 		}
 	}
-	return ""
+	return "", false
+}
+
+// registrationFor returns the registration directory (<git-common-dir>/worktrees/<id>) whose gitdir
+// file names the listed worktree path, read from the repository's own administrative files rather
+// than from anything inside that path. It refuses (via refuse) unless exactly one registration names
+// it and that registration has refs/heads/<branch> checked out.
+//
+// The leaf of the path is compared as written, never symlink-resolved: resolving it would follow a
+// link planted at a vacated path straight to whatever it points at. Only the parent directory is
+// resolved, because git may record either spelling of a symlinked tmp root.
+func registrationFor(common, held, branch string, refuse func(string) error) (string, error) {
+	admin := filepath.Join(common, "worktrees")
+	entries, err := os.ReadDir(admin)
+	if err != nil {
+		return "", deskkit.Unverifiable("scan-carrier lane: cannot read the worktree registrations under "+admin, err)
+	}
+	var matches []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		reg := filepath.Join(admin, e.Name())
+		b, err := os.ReadFile(filepath.Join(reg, "gitdir"))
+		if err != nil {
+			continue // a registration with no gitdir file names no path
+		}
+		p := strings.TrimSpace(string(b))
+		if p == "" {
+			continue
+		}
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(reg, p)
+		}
+		p = filepath.Clean(p)
+		if filepath.Base(p) == ".git" {
+			p = filepath.Dir(p)
+		}
+		if sameListedPath(p, held) {
+			matches = append(matches, reg)
+		}
+	}
+	if len(matches) != 1 {
+		return "", refuse(fmt.Sprintf("%d registrations under %s name that path, so it cannot be proved to be the "+
+			"registered worktree", len(matches), admin))
+	}
+	head, err := os.ReadFile(filepath.Join(matches[0], "HEAD"))
+	if err != nil {
+		return "", deskkit.Unverifiable("scan-carrier lane: cannot read the HEAD of the registration "+matches[0], err)
+	}
+	if strings.TrimSpace(string(head)) != "ref: refs/heads/"+branch {
+		return "", refuse("the registration that names that path (" + matches[0] + ") does not hold " + branch +
+			", so the path is not the registered worktree that does")
+	}
+	return matches[0], nil
+}
+
+// sameListedPath reports whether a (from a registration's gitdir file) and b (from the listing) name
+// the same worktree path: equal when cleaned, or the same leaf under the same resolved parent.
+func sameListedPath(a, b string) bool {
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	if a == b {
+		return true
+	}
+	return filepath.Base(a) == filepath.Base(b) && resolvedOrSelf(filepath.Dir(a)) == resolvedOrSelf(filepath.Dir(b))
+}
+
+// assertRegisteredWorktree proves that the directory now at the listed path held IS the worktree
+// git has registered there, before anything runs in it. The retained worktree's directory can
+// vanish while its registration stays behind (the tmp base is cleared), and the vacated name in the
+// shared tmp base can then be re-created by another local account — as a symlink to another
+// worktree of the repo, or as a directory holding its own .git. Status and HEAD read IN that
+// directory would look right in both cases, so they prove nothing about which directory it is.
+//
+// The proof, in this order, so no git command runs in the directory until it is known to be a real
+// directory this user owns:
+//
+//   - the registration naming the path is found from the repository's administrative files;
+//   - os.Lstat(held) is a real directory, not a symlink, and on POSIX owned by the invoking user;
+//   - `git rev-parse --absolute-git-dir` run in it resolves to that registration's own directory —
+//     the "points back" test git's own `worktree remove` applies.
+//
+// Any mismatch is a refusal, and nothing is changed.
+func assertRegisteredWorktree(capture func(dir, name string, args ...string) (string, error), req LaneRequest,
+	held string, refuse func(string) error) error {
+	common, err := gitcore.CommonDir(req.Root)
+	if err != nil || common == "" {
+		return deskkit.Unverifiable("scan-carrier lane: cannot resolve the git-common-dir of --root "+req.Root+
+			" to find the registration of the retained worktree "+held, err)
+	}
+	reg, err := registrationFor(common, held, req.Branch, refuse)
+	if err != nil {
+		return err
+	}
+	fi, err := os.Lstat(held)
+	switch {
+	case os.IsNotExist(err):
+		return refuse("its directory is missing (git lists the registration prunable), so it is never reused")
+	case err != nil:
+		return deskkit.Unverifiable("scan-carrier lane: cannot lstat the retained worktree "+held, err)
+	case fi.Mode()&os.ModeSymlink != 0:
+		return refuse("the path is a symlink, not the registered worktree's own directory")
+	case !fi.IsDir():
+		return refuse("the path is not a directory, so it is not the registered worktree")
+	}
+	if err := checkScanWorktreeOwner(fi); err != nil {
+		return refuse(err.Error() + ", so it is not the registered worktree this loop cut")
+	}
+	gitDir, err := capture(held, "git", "rev-parse", "--absolute-git-dir")
+	if err != nil {
+		return deskkit.Unverifiable("scan-carrier lane: cannot read the git dir of the retained worktree "+held, err)
+	}
+	got := resolvedOrSelf(filepath.Clean(strings.TrimSpace(gitDir)))
+	if want := resolvedOrSelf(reg); got != want {
+		return refuse("it does not point back to its registration: git resolves its git dir to " + got +
+			", not the registration's own " + want + ", so it is not the registered worktree")
+	}
+	return nil
 }
 
 // retainedCarrierWorktree answers, for a coalesce, whether the carrier branch is already checked out
@@ -152,6 +277,8 @@ func worktreeHoldingBranch(porcelain, branch string) string {
 //   - the worktree is a scan worktree by name (this loop's, not one a person checked out; a legacy
 //     name only at the old location beside --root);
 //   - it passes the same isolation guard a fresh scan worktree does;
+//   - git does not list it `prunable`, and the directory at the path IS the registered worktree
+//     (assertRegisteredWorktree), proved before any git command runs in it;
 //   - `git status --porcelain` in it is empty — nothing modified, staged or untracked;
 //   - its HEAD is exactly the fetched remote carrier tip, the commit `-B` would have reset to.
 //
@@ -164,7 +291,7 @@ func retainedCarrierWorktree(capture func(dir, name string, args ...string) (str
 		return "", deskkit.Unverifiable("scan-carrier lane: cannot read `git worktree list` to check whether "+
 			req.Branch+" is already checked out", err)
 	}
-	held := worktreeHoldingBranch(listing, req.Branch)
+	held, prunable := worktreeHoldingBranch(listing, req.Branch)
 	if held == "" {
 		return "", nil
 	}
@@ -184,6 +311,12 @@ func retainedCarrierWorktree(capture func(dir, name string, args ...string) (str
 	}
 	if err := assertIsolatedScanRoot(resolvedOrSelf(req.Root), resolvedOrSelf(held)); err != nil {
 		return "", refuse("it fails the scan worktree isolation guard (" + err.Error() + ")")
+	}
+	if prunable {
+		return "", refuse("its directory is missing (git lists the registration prunable), so it is never reused")
+	}
+	if err := assertRegisteredWorktree(capture, req, held, refuse); err != nil {
+		return "", err
 	}
 	status, err := capture(held, "git", "status", "--porcelain")
 	if err != nil {
