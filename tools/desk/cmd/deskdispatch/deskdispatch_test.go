@@ -31,6 +31,13 @@ func (s *stub) install(t *testing.T) (home, root string) {
 	oldAttest := attestVerifierDispatchFn
 	attestVerifierDispatchFn = func(dispatchOpts, string, string) (string, error) { return "OK: fixture pre-work attestation", nil }
 	t.Cleanup(func() { attestVerifierDispatchFn = oldAttest })
+	// A brief-shaped item key names a brief, and one that resolves nowhere is refused (#6173). Most
+	// fixtures here dispatch a brief-shaped key over a checkout that carries no board at all, so the
+	// harness relaxes only that case (boardlessKeyBrief); a fixture that plants the stream's
+	// directory gets the real resolver, and briefkey_test.go pins the refusal itself.
+	oldKeyBrief := keyBriefFn
+	keyBriefFn = boardlessKeyBrief
+	t.Cleanup(func() { keyBriefFn = oldKeyBrief })
 	t.Setenv("DESK_LOOP", "the-desk")
 	home = t.TempDir()
 	root = t.TempDir()
