@@ -1,0 +1,2 @@
+### Fixed
+- `scanloop` reuses a retained carrier worktree only after proving it is the registered worktree. The listed path must be a real directory, not a symlink, and the invoking user must own it. The one registration naming that path must hold the carrier branch, and `git rev-parse --absolute-git-dir` run there must resolve back to that registration. A symlink, a foreign `.git`, or a registration git lists as prunable at a vacated path in the shared tmp base is now refused (exit 5) and left untouched (#6423).

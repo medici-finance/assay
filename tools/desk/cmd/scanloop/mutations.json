@@ -72,6 +72,36 @@
       "file": "cmd/scanloop/lane.go",
       "old": "\tif out.metaDir != \"\" {",
       "new": "\tif false && out.metaDir != \"\" {"
+    },
+    {
+      "name": "the retained worktree is reused without proving it is the registered worktree (a symlink or a foreign .git at a vacated path is run in, #6423)",
+      "file": "cmd/scanloop/scanworktree.go",
+      "old": "\tif err := assertRegisteredWorktree(capture, req, held, refuse); err != nil {",
+      "new": "\tif err := assertRegisteredWorktree(capture, req, held, refuse); false && err != nil {"
+    },
+    {
+      "name": "the points-back test is skipped (a directory holding its own .git at a vacated path is reused, #6423)",
+      "file": "cmd/scanloop/scanworktree.go",
+      "old": "\tif want := resolvedOrSelf(reg); got != want {",
+      "new": "\tif want := resolvedOrSelf(reg); false && got != want {"
+    },
+    {
+      "name": "the points-back test refuses every retained worktree (the clean, registered, at-tip reuse #6282 restored is lost again)",
+      "file": "cmd/scanloop/scanworktree.go",
+      "old": "\tif want := resolvedOrSelf(reg); got != want {",
+      "new": "\tif want := resolvedOrSelf(reg); got == got || got != want {"
+    },
+    {
+      "name": "a retained worktree directory another account owns is reused (#6423)",
+      "file": "cmd/scanloop/scanworktree.go",
+      "old": "\tif err := checkScanWorktreeOwner(fi); err != nil {",
+      "new": "\tif err := checkScanWorktreeOwner(fi); false && err != nil {"
+    },
+    {
+      "name": "the registration naming the listed path is not required to hold the carrier branch (a relative-path registration lists a planted link's target, #6423)",
+      "file": "cmd/scanloop/scanworktree.go",
+      "old": "\tif strings.TrimSpace(string(head)) != \"ref: refs/heads/\"+branch {",
+      "new": "\tif false && strings.TrimSpace(string(head)) != \"ref: refs/heads/\"+branch {"
     }
   ]
 }
