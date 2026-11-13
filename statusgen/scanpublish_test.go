@@ -384,7 +384,7 @@ func TestScanPublishScrubBoundary(t *testing.T) {
 		{"public root", public, url(public), homeRepo, homeRepo, onlyTyped},
 		{"unlisted root", unlisted, url(unlisted), homeRepo, homeRepo, onlyTyped},
 		{"private root", private, url(private), homeRepo, homeRepo, all},
-		{"private root, scp-style origin", private, "git@github.com:" + private + ".git", homeRepo, homeRepo, all},
+		{"private root, scp-style origin", private, "git@example.com:" + private + ".git", homeRepo, homeRepo, all},
 		{"public root scanning an issue from a private repo", public, url(public), private, homeRepo, onlyTyped},
 		{"private root scanning an issue from a public repo", private, url(private), public, homeRepo, all},
 		{"home marked private, target public", public, url(public), homeRepo, homeRepo, onlyTyped},
