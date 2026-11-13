@@ -275,7 +275,7 @@ class ReleaseContractStepTest(unittest.TestCase):
         step = step_block(job, STEP)
         deadline = re.search(r'(?m)^        timeout-minutes: .*$', step).group(0) + '\n'
         header = '    runs-on: medici-builder-public\n'
-        top = '  GO_VERSION: "1.27.3"\n\njobs:\n'
+        top = '  GO_VERSION: "1.27.4"\n\njobs:\n'
         keys = 'the step must hold only ' + ', '.join(STEP_KEYS)
         workflow = 'the workflow environment must hold only GO_VERSION'
         plants = {

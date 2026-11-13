@@ -2,6 +2,8 @@ module github.com/medici-finance/assay/qualgen
 
 go 1.27.0
 
+toolchain go1.27.4
+
 require (
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/spf13/cobra v1.10.2

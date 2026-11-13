@@ -1,0 +1,2 @@
+### Changed
+- The fleet's Go toolchain moves from 1.27.3 to 1.27.4 (security fixes to cgo, the go command, the compiler, the linker and net/http): every go.mod gains `toolchain go1.27.4` (its `go 1.27.0` line is unchanged), and the Dockerfile golang bases (digest-pinned ones re-pinned to the 1.27.4 index digest), the base image's Go tarball pins, the staged and activation workflow copies and the reviewed tarball digests all move together. The live `.github/workflows/` pins follow in a maintainer-applied commit.

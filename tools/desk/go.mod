@@ -2,6 +2,8 @@ module github.com/medici-finance/assay/tools/desk
 
 go 1.27.0
 
+toolchain go1.27.4
+
 require (
 	github.com/Microsoft/go-winio v0.6.3
 	github.com/a2aproject/a2a-go/v2 v2.5.0
