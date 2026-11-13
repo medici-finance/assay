@@ -93,9 +93,14 @@ hiding a stuck row behind a green run. Other exit codes:
 
 `--check` does not imply `--dry-run`. Add `--dry-run` to report without writing.
 
-The statusgen workflow does not pass `--check` yet, and it reports any non-zero
-exit from the flip step as a misconfiguration. Until it passes `--check` and
-tells exit 2 from exit 1, the roll-up table is where a stuck row shows.
+The statusgen workflow's `model-autoflip` job passes `--check` and tells exit 2
+from exit 1. Exit 1 fails the job as a misconfiguration. Exit 2 writes a
+`::warning::` annotation and a job-summary line with the flipped, REFUSED and
+COULD-NOT-CHECK counts, and the job stays green: while the underlying refusals
+are the norm, a red job on every push to main would be noise. Set the
+repository variable `ASSAY_AUTOFLIP_STUCK_FAILS` to `true` to make exit 2 fail
+the job instead. Flips that did happen are committed before the exit is decided.
+The roll-up table still lists every stuck row.
 
 ## Cross-repository execution evidence
 

@@ -148,6 +148,14 @@ reviewable artifact, not a run.
   and this copy's line is now byte-identical to it; the rest of the staged copy (#2910) stays
   pending. `TestBoardRegenFullHistory` in `statusgen` pins the line on the live file, this copy
   and the `tools/ci-load/activation/` copy.
+- `assay-statusgen.yml` — auto-flip `--check` part: the `model-autoflip` step runs
+  `statusgen --auto-flip-model --check`, keeps its stdout, and tells exit 2 (a candidate left
+  unflipped: a `::warning::` and a job-summary count line, green unless the repository variable
+  `ASSAY_AUTOFLIP_STUCK_FAILS` is `true`) from exit 1 (a misconfiguration, red). The same text
+  is in the live file's step and in this copy, so promoting either leaves the other current;
+  `TestModelAutoflipStepPassesCheck` and `TestModelAutoflipExitPolicyRuns` in `statusgen` pin
+  and execute it on both. The `tools/ci-load/activation/` copy predates it and is not updated
+  (that copy is stale, #1187).
 - `gremlins-daily.yml` — the daily Gremlins mutation sweep (#2647) over the desk tools'
   muhar-spec packages (`tools/gremlins/run.sh`). **Discovery, never a gate**: surviving
   mutants go to the job summary and the uploaded JSON artifact as leads, and survivors in
