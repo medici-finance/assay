@@ -63,7 +63,7 @@ component list, build/run topology, and open questions.
 | 31 | [Operate trusted compatibility Kubernetes desks through cellctl](brief-31-operate-trusted-compatibility-kubernetes-desks-through-cellctl.md) | 8 | M | blocked | — | — |
 | 32 | [Qualify the compatibility Kubernetes desk cell](brief-32-qualify-the-compatibility-kubernetes-desk-cell.md) | 9 | M | todo | — | — |
 | 33 | [Automatic desk instances and desired population through the shared runtime](brief-33-automatic-desk-instances-and-desired-population-through-the-shared-runtime.md) | 9 | M | todo | — | — |
-| 34 | [Project secrets reach dispatched worker and verifier windows, never an untrusted head](brief-34-project-secrets-reach-dispatched-windows.md) | 9 | M | todo | — | — |
+| 34 | [Project secrets reach dispatched worker and verifier windows, never an untrusted head](brief-34-project-secrets-reach-dispatched-windows.md) | 9 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

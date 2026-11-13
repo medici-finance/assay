@@ -46,6 +46,10 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 		die("unknown role '%s'", role)
 	}
 
+	// Role secrets bind only on a verified container surface; every other surface refuses here,
+	// before anything is composed (the native plan re-verifies the files itself).
+	c.roleSecretLaunchGate()
+
 	if c.kubeSelected() {
 		c.kubeOptions(o)
 		c.kubeStart(role)
