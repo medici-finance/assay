@@ -278,8 +278,10 @@ func ciAssertPublicLayoutRow(t *testing.T, test string) {
 					t.Error(fault)
 				}
 			}
-			if _, ignored := ciOnEventKey(t, content, e.workflow, event, "paths-ignore"); ignored {
-				t.Fatal(test + ": dependency reads must not be hidden by an unqualified paths-ignore filter")
+			if ignored, ok := ciOnEventKey(t, content, e.workflow, event, "paths-ignore"); ok {
+				for _, fault := range ciReadCoverage(t, root, ciPathsIgnoreGlobs(ignored), e.reads) {
+					t.Error(test + ": dependency read hidden by on." + event + ".paths-ignore: " + fault)
+				}
 			}
 		}
 		return
@@ -325,8 +327,10 @@ func TestGitcoreConsumerCI(t *testing.T) {
 					t.Error(fault)
 				}
 			}
-			if _, ignored := ciOnEventKey(t, content, e.workflow, event, "paths-ignore"); ignored {
-				t.Fatal("runner dependency reads must not be hidden by an unqualified paths-ignore filter")
+			if ignored, ok := ciOnEventKey(t, content, e.workflow, event, "paths-ignore"); ok {
+				for _, fault := range ciReadCoverage(t, root, ciPathsIgnoreGlobs(ignored), e.reads) {
+					t.Error(e.test + ": runner dependency read hidden by on." + event + ".paths-ignore: " + fault)
+				}
 			}
 		}
 		delete(want, e.test)
@@ -2924,11 +2928,13 @@ func TestRegressionCIEntrypoints(t *testing.T) {
 			ciAssertEventReachesJob(t, string(raw), e.workflow, e.module, event, job, e.runInvokes, e.test, e.why)
 			globs, filtered := ciOnEventKey(t, string(raw), e.workflow, event, "paths")
 			if !filtered {
-				if _, ignored := ciOnEventKey(t, string(raw), e.workflow, event, "paths-ignore"); ignored {
-					t.Fatalf("floor workflow %s has paths-ignore; enumerate its coverage before trusting it", e.workflow)
-				}
 				globs = []string{"**"}
-			} // ci.yml deliberately runs on every change; reachability above still checks the event and job
+				// A paths-ignore filter is trusted only through its enumerated
+				// coverage: every read must survive the ignore list.
+				if ignored, ok := ciOnEventKey(t, string(raw), e.workflow, event, "paths-ignore"); ok {
+					globs = ciPathsIgnoreGlobs(ignored)
+				}
+			} // ci.yml runs on every change but its push leg's board-regen-output ignore; reachability above still checks the event and job
 			for _, fault := range ciReadCoverage(t, "../../../..", globs, e.reads) {
 				t.Errorf("%s %s: %s", e.workflow, event, fault)
 			}

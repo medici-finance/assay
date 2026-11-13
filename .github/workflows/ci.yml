@@ -15,8 +15,25 @@ on:
   # push is limited to main: a PR branch is already built by its pull_request
   # run, so a push trigger on every branch built each PR head twice. main keeps
   # its push run (the post-merge build of record).
+  #
+  # The push leg skips ONE commit shape: a push whose only changed file is
+  # STATUS.md, the board regen's `chore(status): regenerate
+  # [skip-status-regen]` commit (212 of the 247 board-writer and Actions-bot
+  # commits on main from 2026-10-26 to 2026-11-09). No job here builds
+  # STATUS.md and no CI-registry row (citrigger_test.go) reads it; statusgen
+  # wrote it only after its own checks passed on that tree. paths-ignore skips
+  # only when EVERY changed file matches, so a commit touching anything else —
+  # a stream README (auto-flip), docs/streams/.history.jsonl (a docs/streams
+  # read the registry rows still cover), changelog/ or CHANGELOG.md (a release
+  # roll, which also stamps the plugin manifest) — still runs in full. The
+  # pull_request leg has NO filter: build-test and changelog are required
+  # checks on pull requests and must always report.
+  # TestCIPushSkipsOnlyStatusMD (tools/desk/internal/deskkit) pins both legs,
+  # and the registry coverage guards check every read against the ignore list.
   push:
     branches: [main]
+    paths-ignore:
+      - "STATUS.md"
   pull_request:
 
 permissions:
