@@ -33,7 +33,7 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - "STATUS.md"
+      - STATUS.md
   pull_request:
 
 permissions:
