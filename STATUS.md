@@ -22,7 +22,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/11 | 2026-11-11 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 3/34 | 2026-11-13 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 9/37 | 2026-11-13 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/62 | 2026-11-12 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/62 | 2026-11-13 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-11-06 |  |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 4/65 | 2026-11-12 | 15 withdrawn |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-11-12 |  |
@@ -269,7 +269,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
 | graph-execution | 13 [exec:strong] | implemented | 15510 | 27 | — | operator | environment blocker, cite medici-finance/assay#5048 | — | — |
-| desk-tools | 38 [exec:strong] | implemented | 12500 | 23 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
+| desk-tools | 38 [exec:strong] | implemented | 12500 | 23 | — | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 | forge-neutral | 33 [exec:strong] | implemented | 12020 | 20 | — | operator | environment blocker, cite #4322 | — | — |
 | desktools-v2 | 66 [exec:strong] | implemented | 11500 | 21 | — | operator | environment blocker, cite medici-finance/assay#5112 | — | — |
 | desk-supervision | 34 [exec:strong] | implemented | 10000 | 18 | — | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
