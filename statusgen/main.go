@@ -1285,20 +1285,6 @@ func (b *budgetFlags) Set(v string) error {
 	return nil
 }
 
-// statusgenVersion is the release tag this binary was built from, stamped at
-// link time by the release workflow:
-//
-//	go build -ldflags "-X main.statusgenVersion=statusgen/v0.3.0"
-//
-// It defaults to "dev" for a local `go build`/`go run`, which is the honest
-// answer: an unstamped binary is not a pinned release.
-//
-// This exists so a consumer can CHECK the pin rather than assume it. Consumers
-// pin statusgen by tag + sha256 in `.assay-versions`; until now nothing could
-// ask a running binary which release it is, so a stale install produced a stale
-// board with no signal.
-var statusgenVersion = "dev"
-
 func main() {
 	// The check:ci network-off sandbox re-executes statusgen as its in-namespace
 	// helper (netns.go, issue #1925). Dispatched first: it brings loopback up,
