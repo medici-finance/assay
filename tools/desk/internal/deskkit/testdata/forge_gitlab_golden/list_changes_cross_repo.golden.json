@@ -20,6 +20,7 @@
         "Title": "add the thing",
         "Body": "",
         "MergedAt": "",
+        "UpdatedAt": "2026-09-01T12:00:00Z",
         "Author": {
           "Login": "worker-bot",
           "ID": 99,
@@ -37,6 +38,7 @@
         "Title": "add the thing",
         "Body": "",
         "MergedAt": "",
+        "UpdatedAt": "2026-09-01T12:00:00Z",
         "Author": {
           "Login": "worker-bot",
           "ID": 99,
