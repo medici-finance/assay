@@ -75,6 +75,14 @@
 //     the second push. Regeneration is structural here: the push step and the regenerate step are
 //     one function that cannot perform half of itself.
 //
+// # The replay bound
+//
+// One pass presents at most N RETAINED events per repo; the rest stay retained and are named as
+// deferred. N is INTAKE_REPLAY_CAP when that is a positive integer, else INBOUND_MONITOR_BURST_CAP
+// when that is, else 25. A value above the burst bound enlarges the judged batch per pass for a
+// backlog that is already retained, and does not change what the poller admits for a fresh delta:
+// the poller never reads INTAKE_REPLAY_CAP.
+//
 // # Subcommands
 //
 //	scanloop plan --root <repo> [--inbound <file|->] ...
