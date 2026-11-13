@@ -21,10 +21,9 @@ import (
 // into the beacon path.
 func TestSetRefusesMultiSegmentSessionName(t *testing.T) {
 	rosterSetup(t)
-	// --session must be exercised directly, not shadowed by an ambient/inherited
-	// DESK_SESSION or CLAUDE_SESSION_ID (both take precedence over --session in
-	// resolveSession) — clear both exactly as roster_test.go's own
-	// TestUnresolvableSessionExit6 does.
+	// --session wins over DESK_SESSION and CLAUDE_SESSION_ID in resolveSession; both are
+	// still cleared, exactly as roster_test.go's own TestUnresolvableSessionExit6 does, so
+	// the test never depends on the ambient environment.
 	t.Setenv("DESK_SESSION", "")
 	t.Setenv("CLAUDE_SESSION_ID", "")
 

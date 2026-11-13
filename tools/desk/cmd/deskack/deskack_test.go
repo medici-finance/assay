@@ -224,3 +224,24 @@ func TestAckKillSwitchPrecedesUsageCorrection(t *testing.T) {
 		t.Fatalf("disabled desk returned %d, want 3 even for malformed input", rc)
 	}
 }
+
+// regression: #6147
+// TestAckSessionFlagBeatsEnv: --session wins over an inherited $DESK_SESSION, so the
+// receipt lands on the same beacon `deskroster --session` uses.
+func TestAckSessionFlagBeatsEnv(t *testing.T) {
+	withEnv(t) // DESK_SESSION=sess-1
+	rc, _, errOut := runAck([]string{"--session", "sess-2", "flag wins"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("rc = %d, want 0; stderr: %s", rc, errOut)
+	}
+	if b := loadBeacon(t, "sess-2"); b["acks"] == nil {
+		t.Fatalf("receipt missing from sess-2's beacon: %v", b)
+	}
+	path, err := deskkit.AckBeaconPath("sess-1")
+	if err != nil {
+		t.Fatalf("AckBeaconPath: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("sess-1's beacon must not be written, stat err = %v", err)
+	}
+}

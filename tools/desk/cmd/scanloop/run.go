@@ -172,17 +172,32 @@ func cmdRun(args []string, stdout io.Writer) error {
 	// flags were the only source, and the drain is invoked without them, so every tick cut a
 	// duplicate of the scan PR it should have joined.
 	openPR := func() (*OpenScanPR, error) { return o.openScanPR(), nil }
+	// The open scan CARRIERS are read the same way, for a different question: which placeholders
+	// they already carry, so this pass's carrier is never a superset of a sealed one (carriers.go).
+	// Every arm wires them; an arm that cannot read them refuses the scan dispatch rather than
+	// writing the full delta.
+	window := CoalescePolicy{Window: o.window}.window()
+	forgeOpenPR, carriers := forgeScanReads(target, now, window)
+	carrierFiles := carrierFilesOn(target)
 	switch {
 	case o.openScanPR() != nil:
+		named := *o.openScanPR()
+		carriers = func() ([]OpenScanPR, error) { return []OpenScanPR{named}, nil }
 		fmt.Fprintf(stdout, "open scan PR: #%d, as named by --scan-pr (the forge is not read for it)\n", o.scanPR)
+		fmt.Fprintf(stdout, "open scan carriers: ONLY #%d, as named by --scan-pr — other open carriers are NOT read, and a fresh scan may repeat their placeholders\n", o.scanPR)
 	case o.offline:
+		carriers = func() ([]OpenScanPR, error) {
+			return nil, deskkit.Unverifiable("scanloop: --offline — the open scan carriers are not read", nil)
+		}
 		fmt.Fprintf(stdout, "open scan PR: NOT READ (--offline) — only a --scan-pr can be coalesced into\n")
+		fmt.Fprintf(stdout, "open scan carriers: NOT READ (--offline) — a scan dispatch is refused\n")
 	case o.window < 0:
 		fmt.Fprintf(stdout, "open scan PR: not read — coalescing is disabled by configuration\n")
+		fmt.Fprintf(stdout, "open scan carriers: read from %s at the scan dispatch — their placeholders are left out\n", target)
 	default:
-		window := CoalescePolicy{Window: o.window}.window()
-		openPR = onePerPass(func() (*OpenScanPR, error) { return discoverOpenScanPR(target, now, window) })
+		openPR = forgeOpenPR
 		fmt.Fprintf(stdout, "open scan PR: read from %s at the scan dispatch — any open scan PR by this App, from any session\n", target)
+		fmt.Fprintf(stdout, "open scan carriers: read from %s at the scan dispatch — their placeholders are left out\n", target)
 	}
 	loop := &ScanLoop{
 		Root:         o.root,
@@ -193,6 +208,8 @@ func cmdRun(args []string, stdout io.Writer) error {
 		Monitor:      source,
 		Probe:        probe,
 		OpenPR:       openPR,
+		Carriers:     carriers,
+		CarrierFiles: carrierFiles,
 		Emit:         stdout,
 		DryRun:       o.dryRun,
 		Now:          func() time.Time { return now },

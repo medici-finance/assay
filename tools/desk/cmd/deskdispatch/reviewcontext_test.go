@@ -114,6 +114,11 @@ ASSAY_REPO_FORGES=example-org/tracker=github
 			}
 			return 200, `{"contexts":["build"]}`
 		}
+		// The required set unions the branch rulesets into the classic contexts, so the
+		// policy read also asks for the branch rules. No ruleset here: the set stays classic.
+		if strings.Contains(path, "/rules/branches/") {
+			return 200, `[]`
+		}
 		if strings.HasSuffix(path, "/check-runs") {
 			conclusion := "success"
 			if f.prReads > 1 && f.moved == "checks" {
@@ -231,7 +236,10 @@ func TestReviewPrepareAdaptersFlow(t *testing.T) {
 	if len(p.content) != 1 {
 		t.Fatal("immutable content was not memoized once")
 	}
-	if beforeCalls != 17 || len(f.transport.Snapshot()) != 14 {
+	// Each required-check policy read is two provider attempts (the classic endpoint and the
+	// branch rules it is unioned with): one policy read in the legacy round, two (initial and
+	// terminal) in the prepared round.
+	if beforeCalls != 18 || len(f.transport.Snapshot()) != 16 {
 		t.Fatalf("unexpected cold cost before=%d after=%d", beforeCalls, len(f.transport.Snapshot()))
 	}
 	if len(f.transport.Snapshot()) >= beforeCalls {
