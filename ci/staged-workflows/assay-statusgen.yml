@@ -615,6 +615,11 @@ jobs:
           case "$flip_rc" in
             0) ;;
             2)
+              # A Go runtime panic also exits 2: a 2 with no stuck line is a crash, not a warning.
+              if [ "$((refused + cnc))" -eq 0 ]; then
+                echo "::error::statusgen --auto-flip-model --check exited 2 but printed no REFUSED or COULD-NOT-CHECK line, so this is not a stuck candidate (a Go runtime panic also exits 2) — see its output above"
+                exit 1
+              fi
               msg="${refused} gate:model brief(s) REFUSED and ${cnc} COULD-NOT-CHECK stay \`verified\` (${flipped} flipped) — each reason is on its line above; \`statusgen --root . --auto-flip-model --dry-run\` reproduces them"
               if [ "${ASSAY_AUTOFLIP_STUCK_FAILS}" = "true" ]; then
                 echo "::error::${msg} (ASSAY_AUTOFLIP_STUCK_FAILS=true)"

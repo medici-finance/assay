@@ -199,5 +199,28 @@ func TestModelAutoflipExitPolicyRuns(t *testing.T) {
 				t.Errorf("%s rc=%s: job summary lacks the counts line: %q", path, c.rc, sum)
 			}
 		}
+		// A Go runtime panic also exits 2. An exit 2 with no REFUSED or
+		// COULD-NOT-CHECK line is a crash and must fail, whatever the switch says.
+		for _, sw := range []string{"", "true"} {
+			dir := t.TempDir()
+			crash := "panic: runtime error: index out of range\n"
+			if err := os.WriteFile(filepath.Join(dir, "autoflip-out.txt"), []byte(crash), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("bash", "-c", "set -uo pipefail\nflip_rc=2\n"+block)
+			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "RUNNER_TEMP=" + dir,
+				"GITHUB_STEP_SUMMARY=" + filepath.Join(dir, "summary.md"), "ASSAY_AUTOFLIP_STUCK_FAILS=" + sw}
+			got, err := cmd.CombinedOutput()
+			code := 0
+			if ee, ok := err.(*exec.ExitError); ok {
+				code = ee.ExitCode()
+			} else if err != nil {
+				t.Fatalf("run: %v", err)
+			}
+			if code != 1 || !strings.Contains(string(got), "not a stuck candidate") {
+				t.Errorf("%s crash rc=2 switch=%q: exit %d (want 1), output must say it is not a stuck candidate:\n%s",
+					path, sw, code, got)
+			}
+		}
 	}
 }
