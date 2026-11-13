@@ -659,6 +659,76 @@ RISK-VALUE: DERIVED — delta-scope = "Scope: DELTA" @ tools/desk/cmd/deskdispat
 
 **VERIFY: BLOCKED** — 4 of 6 rows pass at 8f5bb307de31 (rows 1 to 4, on the witness). Row 5 is not run: the check-definition question is still open (medici-finance/assay#1927). Row 6 is could-not-run: the lint could not clear two neighbour briefs' human approval (desk-tools/37, desktools-v2/65) in this run, offline or with `--acceptance-forge` (medici-finance/assay#4823); skillslint passes. No implementation failure was observed.
 
+### Re-verification 2026-11-12 (source 4d3593517a8a)
+
+Fresh non-implementer verifier, dispatched model claude-opus-5-5, tier strong, platform Darwin arm64, git 2.56.1, go 1.27.4, desk tools v1.0.83. Admission (`deskdispatch --check-verifier`) exited 0 before any row, binding source 4d3593517a8a77c04ea004982bfddce4ecd64adc (attestation medici-finance/assay#6314). The table below is the write-mode `statusgen verifyrun` execution witness (installed v1.0.83), run 2026-11-12T22:01:12Z to 22:02:55Z from the repo root of the detached admitted worktree on a clean tree at the source, under the normal HOME, with TMPDIR set to a scratch directory outside the worktree, the real Go build and module caches, KUBECONFIG=/dev/null and no forge sign-in variable in the row environment. Every Verify row is class check (row 5 check +flow, row 6 check +neighbour); none is check:ci, so no network-off bracket applies. The frontmatter risk fields are all present and all no, and no row carries a risk-bearing, live, mutating or end-to-end tag, so no fail-first base run is owed.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -q 'spec-intent' tools/desk/cmd/deskdispatch/references/review-prompt.md && grep -q 'callers-blast-radius' tools/desk/cmd/deskdispatch/references/review-prompt.md && grep -q 'structure-ownership' tools/desk/cmd/deskdispatch/references/review-prompt.md && grep -q 'silence is not accounting' tools/desk/cmd/deskdispatch/references/review-prompt.md && echo ok` | pass exit=0 | sha256:dc51b8c96c2d | 2026-11-12 | assay-verifier-app[bot] @ 4d3593517a8a (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 2 | ``grep -c -E '^[\|] `[a-z0-9-]+`[ ]*[\|]' tools/desk/cmd/deskdispatch/references/review-prompt.md > "${TMPDIR:-/tmp}/dt31-reg.txt"; [ "$(cat "${TMPDIR:-/tmp}/dt31-reg.txt")" -ge 14 ] && echo ok`` | pass exit=0 | sha256:dc51b8c96c2d | 2026-11-12 | assay-verifier-app[bot] @ 4d3593517a8a (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `grep -q -F '## Coverage' plugins/assay/skills/pr-review-desk/references/verdict-format.md && grep -q 'checked-clean' plugins/assay/skills/pr-review-desk/references/verdict-format.md && grep -q 'could-not-check' plugins/assay/skills/pr-review-desk/references/verdict-format.md && grep -q '16 KiB' plugins/assay/skills/pr-review-desk/references/verdict-format.md && grep -q 'neither requires nor refuses' plugins/assay/skills/pr-review-desk/references/verdict-format.md && echo ok` | pass exit=0 | sha256:dc51b8c96c2d | 2026-11-12 | assay-verifier-app[bot] @ 4d3593517a8a (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -q 'coverage contract' plugins/assay/skills/pr-review-desk/SKILL.md && grep -q 'never removes a base' plugins/assay/skills/pr-review-desk/SKILL.md && echo ok` | pass exit=0 | sha256:dc51b8c96c2d | 2026-11-12 | assay-verifier-app[bot] @ 4d3593517a8a (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `## Coverage` | could-not-run exit=- — prose-led-command: not executed; the first span ## Coverage is a shell comment (a command starting `#` is ignored by the shell: it exits 0 with no output and measures nothing), not a command. Mark the real command with a cmd: code span where one exists; otherwise keep the row a manual procedure with its evidence, never a command that merely exits 0 | sha256: | 2026-11-12 | assay-verifier-app[bot] @ 4d3593517a8a (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt31-sg" . && "${TMPDIR:-/tmp}/dt31-sg" --root .. --lint 2>&1 \| grep -q 'LINT: PASS' && cd ../tools/skillslint && go run . --root ../.. > /dev/null 2>&1 && echo ok` | fail exit=1 | sha256:e3b0c44298fc | 2026-11-12 | assay-verifier-app[bot] @ 4d3593517a8a (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6314 run=779869e75d94a52041253b5362e9e4ead45386aefd3a5e7574db9209494b4557 source=4d3593517a8a77c04ea004982bfddce4ecd64adc brief=docs/streams/desk-tools/brief-31-correctness-lane-coverage-contract.md model=claude-opus-5-5 tier=strong
+
+Witness reading. Rows 1 to 4 exit 0 with output hash dc51b8c96c2d, the SHA-256 of `ok` plus a newline. Row 2's count file holds 17: the 14 register rows at review-prompt.md lines 688 to 701 plus 3 state-table rows (lines 712, 713 and 715). Row 5 is could-not-run on the witness: verifyrun refuses the prose row (prose-led-command), which is the correct handling of a row with no command. Row 6 exits 1 with empty output (hash e3b0c44298fc): the row pipes the lint into `grep -q`, so the witness itself does not show which step failed. `statusgen verifyrun` printed 4 pass, 1 fail, 1 could-not-run of 6 rows (exit 2).
+
+Row 6 diagnosis (labelled, no row credit). In the admitted home at the source, with TMPDIR outside it: the row's `go build` exited 0, and the binary it built, run again as `--root . --lint` without the row's grep, exits 1 with exactly three PROBLEM lines, for desk-tools/37, desktools-v2/65 and forge-neutral/54, each `protected table: acceptance transition: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority`, then `LINT: FAIL 3 problem(s)`. No PROBLEM line names desk-tools/31 or any file this delivery touched. skillslint alone (`go run . --root ../..` from tools/skillslint) exits 0.
+
+Row 6 credit under brief-rules rule 51 (a clean repo-wide statusgen lint is credited when `statusgen --lint --acceptance-forge` is clean at the pinned revision, witnessed in the host lane; ruling https://github.com/medici-finance/assay/issues/4823#issuecomment-6725046323). Recorded as prose, outside any table; the Verify row is unchanged.
+
+- Command as run, from the repo root of the admitted home: `statusgen --root . --lint --acceptance-forge`, installed statusgen v1.0.83 (the pinned release), host lane, `DESK_LOOP` naming the verify loop and `GH_TOKEN` set explicitly to the verifier App's credential for this repository.
+- Revision: 4d3593517a8a77c04ea004982bfddce4ecd64adc, the tree changed only by this block's Evidence append to this brief.
+- Run 2026-11-12T22:05:01Z by assay-verifier-app[bot] (claude-opus-5-5 verifier session).
+- Exit 0, zero PROBLEM lines. State decided: pass (every authority read completed and none refuted an approval).
+- Combined output fingerprint: sha256:5c19b711917e2494547f471265af61ff58da8dfe664609b5dd0290d38c230499 (2104 lines, 2069 of them NOTICE).
+- Primary output, in order:
+
+```text
+acceptance transition: reading approval https://github.com/medici-finance/assay/issues/5157#issuecomment-6561647076
+acceptance transition: reading approval https://github.com/medici-finance/assay/issues/4230#issuecomment-6373797887
+acceptance transition: reading approval https://github.com/medici-finance/assay/issues/5725#issuecomment-6715519410
+acceptance transition: reading approval https://github.com/medici-finance/assay/issues/5725#issuecomment-6715519410
+acceptance transition: reading approval https://github.com/medici-finance/assay/issues/5725#issuecomment-6715519410
+acceptance transition: reading approval https://github.com/medici-finance/assay/issues/5157#issuecomment-6561647076
+acceptance transition: reading approval https://github.com/medici-finance/assay/issues/4230#issuecomment-6373797887
+acceptance transition: reading approval https://github.com/medici-finance/assay/issues/5725#issuecomment-6715519410
+acceptance transition: reading approval https://github.com/medici-finance/assay/issues/5157#issuecomment-6561647076
+acceptance transition: reading approval https://github.com/medici-finance/assay/issues/4230#issuecomment-6373797887
+acceptance transition: reading approval https://github.com/medici-finance/assay/issues/5725#issuecomment-6715519410
+acceptance transition: reading approval https://github.com/medici-finance/assay/issues/5157#issuecomment-6561647076
+acceptance transition: reading approval https://github.com/medici-finance/assay/issues/4230#issuecomment-6373797887
+acceptance transition: reading approval https://github.com/medici-finance/assay/issues/5725#issuecomment-6715519410
+LINT: PASS
+```
+
+With the forge-enabled lint clean, the row's build exit 0 and skillslint exit 0 observed above, row 6's obligation (the tree lints clean and skillslint passes) is credited under rule 51.
+
+Row 5. The row text is unchanged at this source and still names no command and no specific review. The check-definition question of which review the row means is still open with no re-authoring or ruling recorded (medici-finance/assay#1927, state OPEN, read this run). Row 5 is not run; a further re-dispatch cannot change that until the row is re-authored or ruled.
+
+Delivery still in place. The delivering change is PR #2598 (merge 7808e0f17daae18a2b38891c1d2d18147fba9459). Since the 2026-11-06 source 8f5bb307de31, review-prompt.md and SKILL.md changed in other clauses (30 insertions, 5 deletions across the two) and verdict-format.md is unchanged; no added or removed line mentions coverage, the register, silence, n/a or checked-clean. Clause 21 now starts at review-prompt.md line 673, the register sits at lines 688 to 701, and the SKILL.md paragraph at lines 1090 to 1099. The 14 register rows match the brief's Task 1 table byte for byte (diff exit 0, this run). A search of the deskpost non-test Go sources for "coverage" finds nothing, so design boundary 3 still holds.
+
+Risk trigger: all frontmatter risk fields are present and set to no, and the gate is model. Enumeration covered the delivering diff 7808e0f17daa, the later edits to the three delivered files, and the literals the Deliverables name, re-read at source 4d3593517a8a:
+- register ids = the 14 kebab ids spec-intent through structure-ownership @ tools/desk/cmd/deskdispatch/references/review-prompt.md:688 to :701.
+- state tokens = finding, checked-clean, n/a and the unchecked state @ tools/desk/cmd/deskdispatch/references/review-prompt.md:712 to :715; state-count = "four" @ :705.
+- delta-scope = "Scope: DELTA" @ tools/desk/cmd/deskdispatch/references/review-prompt.md:717; full-scope = "Scope: FULL PASS" @ :719.
+- clause-number = 21 @ tools/desk/cmd/deskdispatch/references/review-prompt.md:673.
+- coverage-heading = "## Coverage" @ plugins/assay/skills/pr-review-desk/references/verdict-format.md:58.
+- base-count = 14 @ plugins/assay/skills/pr-review-desk/references/verdict-format.md:83; body-budget = "16 KiB" @ :84.
+
+Ranking: none of these is irreversible. Each is doctrine text, so an edit and a release undo it. Rank 1 (a wrong value narrows what a review must account for): register ids, state tokens, base-count, body-budget, scope tokens. Rank 2 (navigation only): clause-number, heading, state-count word.
+
+RISK-VALUE: DERIVED — register ids = the 14 kebab ids @ tools/desk/cmd/deskdispatch/references/review-prompt.md:688 — they match the brief's Task 1 table byte for byte (diff exit 0, this run), and none is a security class (Context boundary 1).
+RISK-VALUE: DERIVED — base-count = 14 @ plugins/assay/skills/pr-review-desk/references/verdict-format.md:83 — counted two ways that agree: the brief's Task 1 table has 14 rows, and review-prompt.md lines 688 to 701 hold 14 rows.
+RISK-VALUE: DERIVED — state tokens = finding / checked-clean / n/a / the unchecked state @ tools/desk/cmd/deskdispatch/references/review-prompt.md:712 — the brief requires four mutually exclusive outcomes; checked-clean and the unchecked state reuse the C4 vocabulary verbatim, and n/a is the one new shape.
+RISK-VALUE: DERIVED — body-budget = "16 KiB" @ plugins/assay/skills/pr-review-desk/references/verdict-format.md:84 — it equals the enforced cap MaxBodyBytes = 16 * 1024 @ tools/desk/cmd/deskpost/internal/bodycheck/bodycheck.go:28 and the schema line at verdict-format.md:43 (16384 bytes).
+RISK-VALUE: DERIVED — delta-scope = "Scope: DELTA" @ tools/desk/cmd/deskdispatch/references/review-prompt.md:717 (full-scope @ :719) — these are the scope tokens clause 19 defines (Context boundary 2).
+
+**VERIFY: BLOCKED** — 5 of 6 rows pass at 4d3593517a8a (rows 1 to 4 on the witness; row 6 credited under brief-rules rule 51 by a clean forge-enabled lint plus skillslint exit 0). Row 5 is not run: the check-definition question is still open (medici-finance/assay#1927). No implementation failure was observed.
+
+
 ## Review
 Gate: model (from frontmatter). The reviewer answers, in the verdict: (1) is the register
 correctness-only — no class that belongs to the security lane or to a deterministic control?
