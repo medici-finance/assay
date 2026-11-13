@@ -286,8 +286,8 @@
     {
       "name": "issue #1415 Part 2 — widen the transient classifier to any 'source branch' 400 (drop the 'does not exist' requirement so a genuine validation 400 gets retried)",
       "file": "internal/deskkit/forge_gitlab.go",
-      "old": "\treturn strings.Contains(b, \"source branch\") && strings.Contains(b, \"does not exist\")",
-      "new": "\treturn strings.Contains(b, \"source branch\")"
+      "old": "\tif strings.Contains(b, \"source branch\") && strings.Contains(b, \"does not exist\") {",
+      "new": "\tif strings.Contains(b, \"source branch\") {"
     },
     {
       "name": "issue #1415 Part 2 — loosen the bounded retry by one attempt (the give-up bound is off by one)",
@@ -306,6 +306,36 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\t\tif mr.SourceProjectID != mr.TargetProjectID {\n",
       "new": "\t\tif mr.SourceProjectID == mr.TargetProjectID {\n"
+    },
+    {
+      "name": "#6163 — leave a GitLab file read untyped when the response names no blob id or path, typed as a plain file instead (an entry the adapter cannot identify would read as a record)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif f.FilePath == \"\" || f.BlobID == \"\" {\n\t\treturn \"\"\n",
+      "new": "\tif f.FilePath == \"\" || f.BlobID == \"\" {\n\t\treturn FileKindRegular\n"
+    },
+    {
+      "name": "#6163 — drop the blob proof on a GitLab file read (a submodule's empty body, or bytes that are not the served blob, reach the tree lookup)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "f.Encoding != \"base64\" || !gitBlobMatches(f.BlobID, content) {",
+      "new": "f.Encoding != \"base64\" || false {"
+    },
+    {
+      "name": "#6163 — type a GitLab tree entry of mode 120000 as a plain file (a symbolic link's target text reads as a record)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\tcase glModeSymlink:\n\t\t\t\treturn FileKindSymlink\n",
+      "new": "\t\t\tcase glModeSymlink:\n\t\t\t\treturn FileKindRegular\n"
+    },
+    {
+      "name": "#6163 — accept a GitLab tree entry naming a different blob than the Files API served (a ref that moved between the two reads types the wrong entry)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\tif n.ID == \"\" || !strings.EqualFold(n.ID, blobID) {\n",
+      "new": "\t\t\tif n.ID == \"\" {\n"
+    },
+    {
+      "name": "#6163 — ignore execute_filemode against a 100755 tree entry (two reads that disagree on the entry's mode type it as a plain file)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\t\tif !executable {\n\t\t\t\t\treturn FileKindUnproven\n",
+      "new": "\t\t\t\tif false {\n\t\t\t\t\treturn FileKindUnproven\n"
     }
   ]
 }

@@ -465,6 +465,7 @@ func TestRun_RelativeWorktreeBaseRefuses(t *testing.T) {
 // TestWorktreeFor_IsOutsideTheTargetCheckout — the lane's guard is the backstop; the default path
 // must not need it.
 func TestWorktreeFor_IsOutsideTheTargetCheckout(t *testing.T) {
+	pinScanTmpBase(t)
 	root := filepath.Join(t.TempDir(), "target")
 	s := &ScanLoop{Root: root}
 	wt := s.worktreeFor(loopengine.Item{ID: "example-org/tracker#5"})
@@ -484,6 +485,7 @@ func TestWorktreeFor_IsOutsideTheTargetCheckout(t *testing.T) {
 // pass, is second-granular, and carries a random suffix, so neither two items in a pass nor two
 // passes in a second can produce the same name.
 func TestBranchFor_IsPerPassAndSecondGranular(t *testing.T) {
+	pinScanTmpBase(t)
 	s := &ScanLoop{Now: func() time.Time { return coalesceNow }}
 	first := s.branchFor(loopengine.Item{ID: "a#1"})
 	second := s.branchFor(loopengine.Item{ID: "a#2"})

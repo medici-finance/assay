@@ -1,0 +1,293 @@
+{
+  "test": "go test ./cmd/deskpr/ -run 'Relink|EditNoFlag|TestEditRefusesATrailerChange' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — the --relink-* new-issue gate is never run",
+    "file": "cmd/deskpr/edit.go",
+    "old": "\t\tif gerr := relinkIssueGate(fg, fr, rl.to); gerr != nil {",
+    "new": "\t\tif gerr := relinkIssueGate(fg, fr, rl.to); false && gerr != nil {"
+  },
+  "mutations": [
+    {
+      "name": "a partial --relink-* set is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif len(missing) > 0 {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "a multi-line reason is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif strings.ContainsAny(reason, \"\\r\\n\") {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "an over-long reason is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif len(reason) > relinkMaxReason {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "a cross-repository Fixes: link counts as this repository's",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif trs[0].Repo != \"\" && !strings.EqualFold(trs[0].Repo, repo) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "the replacement body need not carry an Issue-kind link",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tt, ok := sameRepoIssue(body, repo)\n\tif !ok {",
+      "new": "\tt, ok := sameRepoIssue(body, repo)\n\tif false && !ok {"
+    },
+    {
+      "name": "the replacement body need not carry --relink-to",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif t.Value != strconv.Itoa(r.to) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "the PR's current trailer need not be an Issue-kind link",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tcur, ok := sameRepoIssue(curBody, repo)\n\tif !ok {",
+      "new": "\tcur, ok := sameRepoIssue(curBody, repo)\n\tif false && !ok {"
+    },
+    {
+      "name": "--relink-from need not match the current trailer",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif cur.Value != strconv.Itoa(r.from) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "a relink that changes nothing is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif oldLink == newLink {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "a missing new issue reads as unverifiable, not refused",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\t\tif deskkit.IsForgeNotFound(err) {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "a pull request is admitted as the new issue",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif is.IsPullRequest {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "a closed new issue is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif !strings.EqualFold(strings.TrimSpace(is.State), \"open\") {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "the trust gate is skipped for an untrusted author",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif !deskkit.TrustedAuthorID(is.Author.Login, is.Author.ID) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "an unblessed untrusted issue is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\t\tif tp == nil || !tp.Complete || !deskkit.Blessed(tp.BodyEdited, tp.Events) {",
+      "new": "\t\tif tp == nil {"
+    },
+    {
+      "name": "an unreadable trust record is not exit 6",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\t\tif terr != nil {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "a gated new issue is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif gated, why := relinkGated(is); gated {",
+      "new": "\tif gated, why := relinkGated(is); false && gated {"
+    },
+    {
+      "name": "a human-gate declaration does not gate",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif ok, why := reviewflow.HumanGateDeclared(is.Title, is.Body, is.Labels); ok {",
+      "new": "\tif ok, why := reviewflow.HumanGateDeclared(is.Title, is.Body, is.Labels); false && ok {"
+    },
+    {
+      "name": "the needs-decision label does not gate",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\t\tif name == deskkit.DecisionLabel {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "a one-way label does not gate",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\t\t\tif name == ow {",
+      "new": "\t\t\tif false {"
+    },
+    {
+      "name": "a decision-gate marker does not gate",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif strings.Contains(is.Body, deskkit.DecisionGateMarkerPrefix+\":\") {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "edit does not validate the --relink-* flags",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\tif rlerr != nil {\n\t\treturn rlerr\n\t}",
+      "new": "\tif false {\n\t\treturn rlerr\n\t}"
+    },
+    {
+      "name": "edit does not scan the relink reason",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\t\t}, deskkit.ScanSurface(\"relink reason\", []byte(rl.reason))); serr != nil {",
+      "new": "\t\t}, deskkit.ScanSurface(\"relink reason\", []byte(rl.reason))); false && serr != nil {"
+    },
+    {
+      "name": "edit does not check the replacement body against --relink-to",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\t\tif rerr := rl.checkBody(body, facts.repo); rerr != nil {",
+      "new": "\t\tif rerr := rl.checkBody(body, facts.repo); false && rerr != nil {"
+    },
+    {
+      "name": "edit does not admit against the current trailer",
+      "file": "cmd/deskpr/edit.go",
+      "old": "rl.admit([]byte(cur.Body), body, facts.repo); aerr != nil {",
+      "new": "rl.admit([]byte(cur.Body), body, facts.repo); false && aerr != nil {"
+    },
+    {
+      "name": "edit does not gate the new issue",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\t\tif gerr := relinkIssueGate(fg, fr, rl.to); gerr != nil {",
+      "new": "\t\tif gerr := relinkIssueGate(fg, fr, rl.to); false && gerr != nil {"
+    },
+    {
+      "name": "the audit comment is not posted",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\tif rl != nil {\n\t\t// Typed (#6264): the record lands on a PR; a bare number is ambiguous on GitLab.\n\t\tif _, aErr := fg.PostCommentTyped(",
+      "new": "\tif false {\n\t\t// Typed (#6264): the record lands on a PR; a bare number is ambiguous on GitLab.\n\t\tif _, aErr := fg.PostCommentTyped("
+    },
+    {
+      "name": "a failed audit comment does not stop the edit",
+      "file": "cmd/deskpr/edit.go",
+      "old": "relinkAudit(oldLink, newLink, rl.reason)); aErr != nil {",
+      "new": "relinkAudit(oldLink, newLink, rl.reason)); false && aErr != nil {"
+    },
+    {
+      "name": "without --relink-* a link change is admitted (the default refusal is gone)",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\t} else if hadLink && oldLink != newLink {",
+      "new": "\t} else if hadLink && false {"
+    },
+    {
+      "name": "a failed edit after the audit gives the generic error, not the which-link advice",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\t\tif rl != nil {\n\t\t\treturn deskkit.Unverifiable(\"edit change failed after",
+      "new": "\t\tif false {\n\t\t\treturn deskkit.Unverifiable(\"edit change failed after"
+    },
+    {
+      "name": "the relink reason skips the self-containment scan",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\tif rl != nil {\n\t\tif serr := deskkit.HandleScanRefusal(",
+      "new": "\tif false {\n\t\tif serr := deskkit.HandleScanRefusal("
+    },
+    {
+      "name": "a blessing on an incomplete trust record counts",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\t\tif tp == nil || !tp.Complete || !deskkit.Blessed(",
+      "new": "\t\tif tp == nil || !deskkit.Blessed("
+    },
+    {
+      "name": "a nil issue record is not refused as unverifiable",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif is == nil {\n\t\treturn deskkit.Unverifiable(",
+      "new": "\tif false {\n\t\treturn deskkit.Unverifiable("
+    },
+    {
+      "name": "the audit-ledger row omits the link change",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\tif rl != nil {\n\t\tac.detail += \" (link \"",
+      "new": "\tif false {\n\t\tac.detail += \" (link \""
+    },
+    {
+      "name": "a pull-request number reads as unverifiable, not refused",
+      "file": "cmd/deskpr/relink.go",
+      "old": "cerr == nil && ch != nil && ch.IsPullRequest {",
+      "new": "false && cerr == nil && ch != nil && ch.IsPullRequest {"
+    },
+    {
+      "name": "a garbling reason is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\tif bad := relinkReasonGarble(reason); bad != \"\" {",
+      "new": "\tif bad := relinkReasonGarble(reason); false && bad != \"\" {"
+    },
+    {
+      "name": "an HTML comment opener in the reason is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "if strings.Contains(reason, \"<!--\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "a backtick in the reason is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "if strings.Contains(reason, \"`\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "a line or paragraph separator in the reason is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "r == '\\u2028' || r == '\\u2029' || unicode.IsControl(r)",
+      "new": "unicode.IsControl(r)"
+    },
+    {
+      "name": "a relink from another checkout is admitted through rule 2",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\t\tif relink {\n",
+      "new": "\t\tif false {\n"
+    },
+    {
+      "name": "a blank --relink-reason alone is silently ignored",
+      "file": "cmd/deskpr/edit.go",
+      "old": "if strings.HasPrefix(fl.Name, \"relink-\") {",
+      "new": "if strings.HasPrefix(fl.Name, \"relink-\") && fl.Name != \"relink-reason\" {"
+    },
+    {
+      "name": "a re-run after a landed correction is not told it landed",
+      "file": "cmd/deskpr/relink.go",
+      "old": "cur.IssueLink() == nt.IssueLink() {",
+      "new": "false && cur.IssueLink() == nt.IssueLink() {"
+    },
+    {
+      "name": "the reason is not rendered in a code span",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\"Reason: `%s`\\n\\n\"+",
+      "new": "\"Reason: %s\\n\\n\"+"
+    },
+    {
+      "name": "a plain issue-read failure is classified by a change read (separate sequences)",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\t\tif !relinkKindMismatch(err) {",
+      "new": "\t\tif false && !relinkKindMismatch(err) {"
+    },
+    {
+      "name": "a kind-mismatch error carrying a cause still counts as one",
+      "file": "cmd/deskpr/relink.go",
+      "old": "de.Code == deskkit.ExitUnverifiable && de.Err == nil &&",
+      "new": "de.Code == deskkit.ExitUnverifiable &&"
+    },
+    {
+      "name": "Issue: -> Fixes: on the same number skips the new-issue gate",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\t\tif gerr := relinkIssueGate(fg, fr, rl.to); gerr != nil {",
+      "new": "\t\tif gerr := relinkIssueGate(fg, fr, rl.to); rl.from != rl.to && gerr != nil {"
+    },
+    {
+      "name": "an invisible format character in the reason is admitted",
+      "file": "cmd/deskpr/relink.go",
+      "old": "\t\tif unicode.Is(unicode.Cf, r) {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "the GitHub backend's kind-mismatch wording drifts from the phrase the gate recognises",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\"could-not-check: %s#%d is a pull request, not an issue — state the kind you mean (--kind pr)\",",
+      "new": "\"could-not-check: %s#%d is a PR, not an issue — state the kind you mean (--kind pr)\","
+    }
+  ]
+}

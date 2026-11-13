@@ -87,6 +87,9 @@ const (
 // counters (their meanings live on as counters with explicit coverage). wallMs and cpuMs
 // are deltas over Boundary; CPU names the CPU coverage state, and cpuMs is present only when
 // it is CPUMeasured.
+//
+// perf-v5: exactly the perf-v2 field set plus ReleaseTag — the release tag the writing binary
+// was stamped with, which only WithRelease sets and no other schema carries.
 type Record struct {
 	Schema      string `json:"schema"`
 	TS          string `json:"ts"`
@@ -116,6 +119,9 @@ type Record struct {
 	PhaseOverlap bool              `json:"phaseOverlap,omitempty"`
 	Counters     map[Counter]int64 `json:"counters,omitempty"`
 	Unavailable  []Counter         `json:"unavailable,omitempty"`
+
+	// perf-v5 only: the writing binary's release tag (ReleasePattern), never inferred.
+	ReleaseTag string `json:"releaseTag,omitempty"`
 }
 
 // Enabled reports whether local perf logging is armed: ASSAY_TELEMETRY compared to "1"

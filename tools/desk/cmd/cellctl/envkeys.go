@@ -97,6 +97,11 @@ var envKeys = buildEnvKeys()
 
 func buildEnvKeys() []envKey {
 	keys := []envKey{
+		// Explicit host-budget inputs, reviewed through the existing registry.
+		{key: "MUHAR_LEASE_DIR", class: envMachine, group: envGroupHarness,
+			desc: "Explicit shared host mutation slot directory; requires MUHAR_TOTAL_SLOTS. Unset by default."},
+		{key: "MUHAR_TOTAL_SLOTS", class: envMachine, group: envGroupHarness,
+			desc: "Explicit positive host mutation worker total; requires MUHAR_LEASE_DIR. Unset by default."},
 		// ── settable machine-wide ────────────────────────────────────────────────────────────
 		{key: "CELL_GO_CACHE", class: envMachine, group: envGroupCache, def: "off",
 			desc: "Managed per-cell Go build cache: on or off (macOS and Linux only)."},
@@ -208,6 +213,8 @@ func buildEnvKeys() []envKey {
 			why: "is the one checkout a cell's role worktrees are created from"},
 		envKey{key: "CELL_REPO_SLUG", class: envCell, desc: "Scrubbed cells: the one repository the cell is scoped to.",
 			why: "is the one repository a scrubbed cell is scoped to"},
+		envKey{key: "CELL_LABELS_TOKEN_FILE", class: envCell, desc: "House cells: a FILE holding an operator credential that can read labels; `check` reads the cell's forge label set with it (unset: the labels rows are could-not-check).",
+			why: "is one operator credential file for one cell's repos"},
 		envKey{key: "CELL_ROOTS", class: envCell, desc: "The cell's stream-root map, exported to its role windows.",
 			why: "is one cell's stream-root map, the scope its desks read"},
 		envKey{key: "CELLS_CONFIG", class: envCell, desc: "The cell's cells.yaml slice (default: cells-<cell>.yaml in the cell's directory).",

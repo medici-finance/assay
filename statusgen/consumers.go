@@ -409,7 +409,7 @@ func consumersCheck(root string, streams []*Stream) (problems, notices []string)
 			// residue no machine can settle is written for a human to weigh
 			// (F-impl-claims-unproven, recommendation 2).
 			if open && !strings.Contains(bf.Verify, "--consumers") {
-				notice("%s: brief %s carries consumers: but no Verify row runs `statusgen --consumers` — the routing claims are asserted in frontmatter with nothing corroborating them", path, bf.Brief)
+				notice("%s: brief %s carries consumers: but no Verify row runs `statusgen --consumers` — the routing claims are asserted in frontmatter with nothing corroborating them (the bare row `statusgen --consumers --brief %s` also re-runs after the merge, pinned to the delivery its Evidence marker or its single `Brief:` trailer commit names)", path, bf.Brief, bf.Brief)
 			}
 			for _, raw := range bf.Consumers {
 				e := parseConsumerEntry(raw)

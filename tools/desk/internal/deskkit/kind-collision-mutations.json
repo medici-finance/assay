@@ -1,0 +1,47 @@
+{
+  "test": "go test ./cmd/issueboard ./cmd/scanloop ./cmd/verifyloop ./cmd/deskevidence ./cmd/deskdisposition ./internal/deskkit -run '^(TestRetireKindCollision|TestTrustProbeKindCollision|TestBlockerReadKindCollision|TestForgeIssueSourceStates|TestBlockerObservationReuse|TestBlockerRefKindCollision|TestReadEmitsTheEvidenceForDeskclose|TestBareResolverCallers|TestBareResolverPlanted)$' -count=1",
+  "control": {
+    "name": "trust read asks for the merge request at the inbound issue's number",
+    "file": "cmd/scanloop/trust.go",
+    "old": "f.GetIssueTyped(fr, number, deskkit.TargetIssue)",
+    "new": "f.GetIssueTyped(fr, number, deskkit.TargetChange)"
+  },
+  "mutations": [
+    {
+      "name": "single RETIRE read asks for the merge request",
+      "file": "cmd/issueboard/board.go",
+      "old": "f.GetIssueTyped(fr, num, deskkit.TargetIssue)",
+      "new": "f.GetIssueTyped(fr, num, deskkit.TargetChange)"
+    },
+    {
+      "name": "serial positive-state read asks for the merge request",
+      "file": "internal/deskkit/issuestates.go",
+      "old": "f.GetIssueTyped(repo, n, TargetIssue)",
+      "new": "f.GetIssueTyped(repo, n, TargetChange)"
+    },
+    {
+      "name": "a kind-stating blocker reference reads through the bare resolver",
+      "file": "cmd/verifyloop/blockerread.go",
+      "old": "if kind != \"\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "a bare blocker reference shares the typed issue observation",
+      "file": "cmd/verifyloop/blockerread.go",
+      "old": "key := blockerObservationKey{repo: repo.Slug(), kind: kind, number: ref.Number}",
+      "new": "key := blockerObservationKey{repo: repo.Slug(), kind: deskkit.TargetIssue, number: ref.Number}"
+    },
+    {
+      "name": "an /issues/ blocker_ref reads through the bare resolver",
+      "file": "cmd/deskevidence/receiptvalidate.go",
+      "old": "case \"issue\":",
+      "new": "case \"issue-never\":"
+    },
+    {
+      "name": "disposition label read asks for the issue at the PR's number",
+      "file": "cmd/deskdisposition/verbs.go",
+      "old": "fg.GetIssueTyped(fr, pr, deskkit.TargetChange)",
+      "new": "fg.GetIssueTyped(fr, pr, deskkit.TargetIssue)"
+    }
+  ]
+}

@@ -23,7 +23,7 @@ import (
 // cache-run, container-run) are covered by the legacy-forms and boundary tests.
 var visibleVerbs = []string{
 	"ls", "version", "new", "set", "show", "check", "deskd", "desk", "up", "down", "pause", "resume", "drain",
-	"reset", "models", "smoke", "status", "attach", "cadence", "scratch", "cache", "comms", "defaults", "hotfix", "providers",
+	"reset", "models", "smoke", "status", "attach", "compat-prepare", "cadence", "scratch", "cache", "comms", "defaults", "hotfix", "providers",
 }
 
 // snapshotTree is a stable fingerprint of every path under dir: name, mode, size and mtime.
@@ -261,6 +261,7 @@ func (w *cliWorld) deskPlan(t *testing.T, env []string, extra ...string) (cliRun
 // spelling the contract defines, and each declared setting resolves from its sources in the
 // documented order. The resolved value is observed in the real dry-run plan of the binary.
 func TestCLIConfigFlow(t *testing.T) {
+	t.Run("compat-preparation", testCompatPreparationConfigFlow)
 	w := newCLIWorld(t, "")
 	t.Run("spellings-and-values", func(t *testing.T) {
 		for _, form := range clicontract.OptionForms {
@@ -474,6 +475,7 @@ func readFileOrEmpty(p string) []byte {
 // line used before the migration still works. The strongest witness is the tool's own output:
 // each per-role command `up` prints is re-executed verbatim and must reproduce the plan.
 func TestCLILegacyForms(t *testing.T) {
+	t.Run("compat-preparation", testCompatPreparationLegacyForms)
 	w := newCLIWorld(t, "")
 	lineRE := regexp.MustCompile(`(?m)^\[dry-run\] ([a-z-]+): (.+)$`)
 

@@ -22,7 +22,7 @@ var getwd = os.Getwd
 // dir; production keeps the compiled-in `/private/tmp`. It is deliberately NOT wired to
 // any env var or flag — an operator-relocatable prefix would defeat the point of a
 // fixed allowlist.
-var tmpBaseDir = "/private/tmp"
+var tmpBaseDir = deskkit.SanctionedWorktreeTmpBase
 
 // goos is the seam for the host OS. Production reads runtime.GOOS; white-box tests set
 // it to "windows" to exercise the portable-prefix target selection without a Windows
@@ -160,15 +160,11 @@ func (g *pathGuard) worktreeTarget(leaf string) string {
 }
 
 // allowed reports whether a RESOLVED path is a sanctioned worktree location: a direct
-// `tracker-*` child of the resolved tmp dir, or strictly under the resolved worktrees dir.
+// `tracker-*` child of the resolved tmp dir, or strictly under the resolved worktrees dir. The rule
+// itself lives in deskkit (InSanctionedWorktreePrefix) so a tool that CREATES worktrees places them
+// where this check accepts them, against the same code rather than a copy of it.
 func (g *pathGuard) allowed(rt string) bool {
-	if filepath.Dir(rt) == g.tmpDir && strings.HasPrefix(filepath.Base(rt), "tracker-") {
-		return true
-	}
-	if strings.HasPrefix(rt, g.worktreesDir+string(filepath.Separator)) {
-		return true
-	}
-	return false
+	return deskkit.InSanctionedWorktreePrefix(rt, g.tmpDir, g.worktreesDir)
 }
 
 // worktreePaths returns the set of registered worktree roots (resolved) for the repo
@@ -1002,8 +998,19 @@ func addLockReason(session string) string {
 // the fixture suite can drive the two outcomes real git will not produce on demand — a
 // lock that fails, and one that reports success without taking — and prove add rolls the
 // tree back on both; production never assigns it.
+//
+// role-init's stale-registration recovery (recoverOwnStaleRegistration) restores a lock
+// through it too, so that restore adds no git-exec site of its own.
 var worktreeLockFn = func(dir, reason, rt string) error {
 	_, err := runGit(dir, "worktree", "lock", "--reason", reason, rt)
+	return err
+}
+
+// worktreeUnlock runs `git worktree unlock <rt>`. It is the one spelling of the unlock that
+// role-clean, role-init's stale-registration recovery and the husk remover share, so the
+// git-exec ratchet (scripts/count-git-exec.sh) counts one site for all three.
+func worktreeUnlock(dir, rt string) error {
+	_, err := runGit(dir, "worktree", "unlock", rt)
 	return err
 }
 

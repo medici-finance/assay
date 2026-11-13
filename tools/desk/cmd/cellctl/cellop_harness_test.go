@@ -98,18 +98,13 @@ func (w *cellopWorld) store() cellop.Store { return cellop.StoreFor(w.cellDir) }
 // fixturePlan stores a valid plan for the example cell, as `cellop-fixture --plan` would.
 func (w *cellopWorld) fixturePlan(t *testing.T, verb string) cellop.Plan {
 	t.Helper()
-	id, err := cellop.NewID()
+	p, err := w.store().SaveNew(func(id string) (cellop.Plan, error) {
+		return cellop.NewPlan(id, verb, []string{"example"}, []cellop.Action{{
+			ID: verb, Cell: "example", Summary: "fixture: " + verb,
+			Preconditions: []cellop.Precondition{{Key: "fixture/state", Value: "absent"}},
+		}}, nil, time.Now())
+	})
 	if err != nil {
-		t.Fatal(err)
-	}
-	p, err := cellop.NewPlan(id, verb, []string{"example"}, []cellop.Action{{
-		ID: verb, Cell: "example", Summary: "fixture: " + verb,
-		Preconditions: []cellop.Precondition{{Key: "fixture/state", Value: "absent"}},
-	}}, nil, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w.store().Save(p); err != nil {
 		t.Fatal(err)
 	}
 	return p

@@ -14,6 +14,12 @@ derives the receipt when it lands the record:
   Source and Evidence requires fresh independent dispatch and verification at the current
   target branch before recording an outcome. The old run cannot provide hashes for new files;
   existing input-coverage checks remain enforced.
+- One record names no Evidence commit: a `blocked` or `needs_context` re-run of a brief that
+  is already verified or done, whose Evidence append `deskevidence` refuses. It lands with
+  `--outcome-record <file> --outcome-only`, states
+  `"evidence_withheld":"non-decisive-verdict-on-verified-brief"`, and its `sha` is the
+  admitted observation's Source commit. The writer accepts that mode only when the Evidence
+  append would be refused, and refuses `evidence_withheld` on any other record.
 - `blocker_kind` and `blocker_ref` come from the caller and are required. `blocker_ref` must be
   a reference: `#N`, `<owner>/<repo>#N`, or an issue, pull-request or CI-run URL. A
   placeholder such as `to file` is refused with exit 5. A run URL is accepted, but a run has
