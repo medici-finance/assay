@@ -93,9 +93,11 @@ func liveIssueReader() func(string, int) (*deskkit.Issue, error) {
 		if err != nil {
 			return nil, err
 		}
-		issue, err := forge.GetIssue(repo, n)
+		// An issue-<N> claim names an ISSUE; the read is typed so a GitLab merge request
+		// sharing the number neither answers it nor makes it ambiguous (#6264).
+		issue, err := forge.GetIssueTyped(repo, n, deskkit.TargetIssue)
 		if err != nil {
-			return nil, fmt.Errorf("GetIssue %s#%d: %w", repoStr, n, err)
+			return nil, fmt.Errorf("GetIssueTyped %s#%d: %w", repoStr, n, err)
 		}
 		return issue, nil
 	}

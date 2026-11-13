@@ -1,0 +1,59 @@
+{
+  "test": "go test ./cmd/scanloop/ -count=1 -timeout 300s -run 'TestCarriers_|TestRun_CarriersReadWired'",
+  "control": {
+    "name": "CONTROL — no carried path is recognised (every fresh scan writes the full superset again)",
+    "file": "cmd/scanloop/carriers.go",
+    "old": "\t\t\t\tif !strings.HasPrefix(p, deskkit.ScanDir+\"/\") {",
+    "new": "\t\t\t\tif strings.HasPrefix(p, deskkit.ScanDir+\"/\") {"
+  },
+  "mutations": [
+    {
+      "name": "the exclusion step never runs (carried paths are known but still committed)",
+      "file": "cmd/scanloop/lane.go",
+      "old": "\tif len(req.Carried) > 0 {",
+      "new": "\tif false && len(req.Carried) > 0 {"
+    },
+    {
+      "name": "an unreadable open-carrier list reads as none (silent fall-back to the superset)",
+      "file": "cmd/scanloop/carriers.go",
+      "old": "\tcs, err := s.Carriers()\n\tif err != nil {",
+      "new": "\tcs, err := s.Carriers()\n\tif false && err != nil {"
+    },
+    {
+      "name": "an unreadable carrier file list reads as empty (that carrier's placeholders are written again)",
+      "file": "cmd/scanloop/carriers.go",
+      "old": "\t\tif ferr != nil {",
+      "new": "\t\tif false && ferr != nil {"
+    },
+    {
+      "name": "a truncated open-change list is trusted (a carrier past the cap reads as absent)",
+      "file": "cmd/scanloop/carriers.go",
+      "old": "\tif r.oc.TruncatedAtCap {",
+      "new": "\tif false && r.oc.TruncatedAtCap {"
+    },
+    {
+      "name": "any scan-shaped branch counts as a carrier, whoever authored it (a foreign change suppresses placeholders)",
+      "file": "cmd/scanloop/carriers.go",
+      "old": "\t\tif !strings.HasPrefix(c.HeadRef, scanBranchPrefix) || !strings.EqualFold(c.Author.Login, r.login) {",
+      "new": "\t\tif !strings.HasPrefix(c.HeadRef, scanBranchPrefix) {"
+    },
+    {
+      "name": "a pass with nothing of its own still commits and opens a carrier",
+      "file": "cmd/scanloop/lane.go",
+      "old": "\t\tif !req.DryRun && len(changed) > 0 && excluded == len(changed) {",
+      "new": "\t\tif false && !req.DryRun && len(changed) > 0 && excluded == len(changed) {"
+    },
+    {
+      "name": "scanloop run never wires the open-carrier read (the fix is dead in the shipped command)",
+      "file": "cmd/scanloop/run.go",
+      "old": "\t\tCarriers:     carriers,",
+      "new": "\t\tCarriers:     func() ([]OpenScanPR, error) { _ = carriers; return nil, nil },"
+    },
+    {
+      "name": "second instance — a coalesce push skips the exclusion (the young carrier picks up the sealed one's placeholders)",
+      "file": "cmd/scanloop/adapter.go",
+      "old": "\tif lane.Name() == LaneScanCarrierPR {\n\t\tcarried, err := s.carriedPaths(req.Branch)",
+      "new": "\tif lane.Name() == LaneScanCarrierPR && req.Branch == s.branchFor(it) {\n\t\tcarried, err := s.carriedPaths(req.Branch)"
+    }
+  ]
+}

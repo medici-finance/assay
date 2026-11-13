@@ -36,8 +36,6 @@ consumers:
 
 ## Context
 
-files: statusgen/verifyrun.go, statusgen/verifyincontainer.go and their tests (new tests in statusgen/verifyrunrows_test.go); statusgen/unrun.go, statusgen/protectedclosure.go, statusgen/containerbracket.go, statusgen/htmlcomment.go (read only); docs/brief-rules.md (rule 45); plugins/assay/skills/verify-desk/SKILL.md and its generated Cursor mirror; changelog/<slug>.md (new, top level)
-
 ruling: https://github.com/medici-finance/assay/issues/4247#issuecomment-6377158517
 
 analysis: https://github.com/medici-finance/assay/issues/4247#issuecomment-6377148170
@@ -59,6 +57,8 @@ design-fit:
   why-add: "The ruling chose a selector over an audit change. A could-not-run-does-not-supersede audit rule was considered and rejected by the ruling, because it would let an older pass outlive a newer failing witness. The run is the only place that knows which rows it can witness."
 
 single-point-of-failure: the closure audit (`verifyrun --check` and the closure verbs) reading the whole Verify table, which still reports every unselected, unwitnessed row as could-not-run. It is backed by the selector's own refusals, which stop a bad selection before any row runs.
+
+files: statusgen/verifyrun.go, statusgen/verifyincontainer.go and tests (their tests); statusgen/verifyrunrows_test.go (new tests); statusgen/unrun.go, statusgen/protectedclosure.go, statusgen/containerbracket.go, statusgen/htmlcomment.go (read only); docs/brief-rules.md (rule 45); plugins/assay/skills/verify-desk/SKILL.md and .cursor/skills/verify-desk/SKILL.md (its generated Cursor mirror); changelog/ (new top-level fragment changelog/<slug>, named per PR, so the directory is declared)
 
 ## Ground rules
 

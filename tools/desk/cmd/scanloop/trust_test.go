@@ -132,6 +132,15 @@ func (f *fakeForge) GetIssue(deskkit.ForgeRepo, int) (*deskkit.Issue, error) {
 	return &deskkit.Issue{Author: deskkit.Account{Login: f.author}}, nil
 }
 
+// GetIssueTyped is the probe's author read since #6264 (inbound items are issues). It counts as
+// the same author read; a kind other than issue is refused.
+func (f *fakeForge) GetIssueTyped(fr deskkit.ForgeRepo, n int, kind deskkit.TargetKind) (*deskkit.Issue, error) {
+	if kind != deskkit.TargetIssue {
+		return nil, deskkit.Unverifiable("fixture holds issues only", nil)
+	}
+	return f.GetIssue(fr, n)
+}
+
 func (f *fakeForge) IssueTrustEvents(deskkit.ForgeRepo, int) (*deskkit.TrustPayload, error) {
 	f.issueTrustCalls++
 	return f.trust, nil

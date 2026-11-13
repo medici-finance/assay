@@ -21,6 +21,12 @@ func (f *guardedPositiveStateForge) GetIssue(ForgeRepo, int) (*Issue, error) {
 	return nil, Refused("unknown decorator's original read guard")
 }
 
+// The serial path's read is the typed issue read (#6264), so the decorator guards that too.
+func (f *guardedPositiveStateForge) GetIssueTyped(ForgeRepo, int, TargetKind) (*Issue, error) {
+	f.guardReads++
+	return nil, Refused("unknown decorator's original read guard")
+}
+
 // regression: #4360
 // regression: class issue-positive-state-batch
 func TestPositiveIssueStatesScopeAndObserver(t *testing.T) {

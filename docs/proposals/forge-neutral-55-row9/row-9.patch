@@ -1,0 +1,12 @@
+--- a/docs/streams/forge-neutral/brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md
++++ b/docs/streams/forge-neutral/brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md
+@@ -17,3 +17,3 @@
+ schema: brief-v2
+-version: 4
++version: 5
+ authored: 2026-11-04 by statusgen newbrief
+@@ -164,3 +164,3 @@
+ | 8 | check:ci +flow | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestWorkflowRefreshProvisionCI$' ./internal/deskkit > "$o" && grep -F -- '--- PASS: TestWorkflowRefreshProvisionCI ' "$o")` | Named PASS; actual dedicated workflow triggers cover every dependency read, use the admitted Docker-capable runner, require nonempty DSN and exact provisioned-join PASS. Ordinary missing-DSN skips cannot qualify this row. |
+-| 9 | check | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && GOWORK=off go vet ./... && GOWORK=off go test -count=1 -race ./...)` | Exit 0 on the actual disposable container; all foundation/Store/Gate/provisioning and owned-role cleanup checks pass without skipped integration credit. |
++| 9 | check | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && GOWORK=off go vet ./... && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -race -v ./... > "$o" && for n in TestPGRefreshProvisionSchema TestPGRefreshProvision TestPGRefreshProvisionReplay TestPGRefreshProvisionProcesses; do if ! grep -F -- "--- PASS: $n " "$o"; then exit 1; fi; done && ! grep -F -- '--- SKIP' "$o")` | Exit 0 on the actual disposable container; all foundation/Store/Gate/provisioning and owned-role cleanup checks pass without skipped integration credit. |
+ | 10 | check +dereference | `GOWORK=off go -C statusgen run . --root .. --consumers --brief forge-neutral/55 --delivery ef8316b8814dc2625ba701089909ddd8a399e96a --base 33b78e4273a2c68395a7cff18d8d831bca9b882f` | Before merge, actual delivery edits corroborate consumers and identify unchecked uses. Before post-merge verification, use independently established immutable delivery/base bounds. Source/role configuration, authorization, deployment and parent acceptance remain distinct. Any forge lookup uses the verifier's explicitly checked managed identity. |

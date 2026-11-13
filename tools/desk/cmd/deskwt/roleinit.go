@@ -153,16 +153,7 @@ func roleSpellings() string {
 // $CLAUDE_SESSION_ID, else "" (which the caller refuses — a role worktree MUST be
 // session-scoped, never a shared fixed name).
 func resolveSession(flagVal string) string {
-	if s := strings.TrimSpace(flagVal); s != "" {
-		return s
-	}
-	if s := strings.TrimSpace(os.Getenv("DESK_SESSION")); s != "" {
-		return s
-	}
-	if s := strings.TrimSpace(os.Getenv("CLAUDE_SESSION_ID")); s != "" {
-		return s
-	}
-	return ""
+	return deskkit.ResolveSessionName(flagVal)
 }
 
 // roleInitParams is the validated, derived shape shared by role-init and role-clean so the
