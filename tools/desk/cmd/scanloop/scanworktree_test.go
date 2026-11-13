@@ -24,7 +24,7 @@ func TestScanWorktreeIsSanctioned(t *testing.T) {
 	}
 	root := filepath.Join(t.TempDir(), "target")
 	wt := (&ScanLoop{Root: root}).worktreeFor(loopengine.Item{ID: "example-org/tracker#5"})
-	if fi, err := os.Stat(deskkit.SanctionedWorktreeTmpBase); err != nil || !fi.IsDir() {
+	if fi, err := os.Stat(scanTmpBase); err != nil || !fi.IsDir() {
 		// A host without the tmp base (a stock Linux) has no default: it is refused up front, and
 		// TestPosixBaseMissingRefuses pins that. What must hold here is that no path is invented.
 		if wt != "" {
@@ -93,4 +93,16 @@ func TestPosixBaseMissingRefuses(t *testing.T) {
 	if wt := (&ScanLoop{Root: filepath.Join(t.TempDir(), "target")}).worktreeFor(loopengine.Item{ID: "example-org/tracker#5"}); wt != "" {
 		t.Fatalf("worktreeFor = %q with no usable base, want \"\" (the lane's guard refuses it)", wt)
 	}
+}
+
+// pinScanTmpBase points the POSIX default tmp base at an existing private directory for one test,
+// so a test about the shape of the default path holds on a host without the real tmp base (a stock
+// Linux runner), where the default is refused up front instead.
+//
+// regression: #6282
+func pinScanTmpBase(t *testing.T) {
+	t.Helper()
+	prev := scanTmpBase
+	scanTmpBase = t.TempDir()
+	t.Cleanup(func() { scanTmpBase = prev })
 }
