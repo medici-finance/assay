@@ -269,7 +269,16 @@ func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 
 	// 2. derive the delta. The scanner is wrapped, never re-implemented, and it refuses a shared
 	//    checkout on its own account — this lane's guard is the earlier, cheaper one.
-	if err := step(req.Worktree, "statusgen", "--root", ".", "--scan-issues"); err != nil {
+	//    The judgment log and the target name are handed over so the scan can publish each judged
+	//    item's handoff (the scan stays the only placeholder writer). The target is the drain's
+	//    resolved target repo and nothing broader: statusgen compares it with the checkout's own
+	//    origin before it lets free text out.
+	state, err := deskkit.StateDir()
+	if err != nil {
+		return out, deskkit.Unverifiable("scan-carrier lane: cannot resolve the desk state dir for the judgment log", err)
+	}
+	if err := step(req.Worktree, "statusgen", "--root", ".", "--scan-issues",
+		"--judgments", filepath.Join(state, handoffRecordsFile), "--scan-target", repo); err != nil {
 		return out, err
 	}
 

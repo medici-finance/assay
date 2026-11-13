@@ -29,6 +29,7 @@ import (
 type Placeholder struct {
 	HandoffAssessment issueflow.IntakeAssessment
 	Handoff           string
+	HandoffOpened     string // the `handoff-opened:` key, as written
 	Path              string
 	Brief             string   // "<stream>/<stem>", e.g. "issue-loop/issue-300"
 	Issue             int      // GitHub issue number
@@ -364,6 +365,7 @@ func parsePlaceholderFile(path string) (*Placeholder, bool, error) {
 	handoff, _ := data["handoff"].(string)
 	ph.Handoff = handoff
 	opened, _ := data["handoff-opened"].(string)
+	ph.HandoffOpened = opened
 	h, herr := readIntakeHandoff(path, handoff)
 	ph.HandoffAssessment = assessRecordedIntake(h, fmt.Sprintf("%s#%d", ph.Repo, ph.Issue), opened, ph.Labels, herr == nil)
 	return ph, true, nil

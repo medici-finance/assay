@@ -108,6 +108,26 @@ func TestScanCarrierLane_FreshPRStepSequence(t *testing.T) {
 	}
 }
 
+// TestScanCarrierLane_SuppliesJudgments — the scan is handed the local judgment log and the
+// drain's resolved target, so it can publish each judged item's handoff. A scan with neither
+// publishes nothing, which is how a recorded judgment stayed stranded.
+//
+// regression: F-judged-no-publisher — the lane ran a bare `statusgen --scan-issues`, so the
+// recorded handoff never reached the placeholder.
+func TestScanCarrierLane_SuppliesJudgments(t *testing.T) {
+	state := isolatedDeskHome(t)
+	it := scanItem("medici-finance/assay", string(LaneScanCarrierPR))
+	out, err := scanCarrierPRLane{}.Execute(laneReq(t, it, nil))
+	if err != nil {
+		t.Fatalf("lane refused: %v", err)
+	}
+	want := "statusgen --root . --scan-issues --judgments " + filepath.Join(state, handoffRecordsFile) +
+		" --scan-target medici-finance/assay"
+	if joined := strings.Join(out.Steps, "\n"); !strings.Contains(joined, want) {
+		t.Fatalf("the scan step is missing %q:\n%s", want, joined)
+	}
+}
+
 // TestScanCarrierLane_CoalescedPushRegeneratesTheBody — the recurring finding this closes is a body
 // still stating the FIRST push's counts against a much larger diff. Every coalesced push must
 // re-derive both halves.
