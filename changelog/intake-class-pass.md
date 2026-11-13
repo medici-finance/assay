@@ -1,0 +1,2 @@
+### Added
+- The intake skill now groups each pass's owed batch by mechanism before judging it, through a new reference, `intake-class-pass.md`. A group already owned by a brief or class issue is recorded as a duplicate of it, a group that meets the existing class trigger is authored as one class brief that closes its members, and a smaller group is released as direct repairs. A test decodes and assesses every example record in the reference, and a second test proves the reader catches a quarantined item that was given a record.
