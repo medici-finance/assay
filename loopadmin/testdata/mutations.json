@@ -1594,5 +1594,61 @@
     "file": "process/run.go",
     "old": "if r == nil || r.custody == nil {\n\t\treturn -1, false, ErrNoCustody\n\t}\n\tadmission, err := r.custody.Admit(env)",
     "new": "var admission Admission\n\tvar err error\n\tif r != nil && r.custody != nil {\n\t\tadmission, err = r.custody.Admit(env)\n\t}"
+  },
+  {
+    "test": "TestJournalSharedStoreRestart",
+    "why": "graph-execution/26 row 6: relaunch when the journal lost the intent row",
+    "file": "journal/journal.go",
+    "old": "\tif prior != nil {\n\t\t// The caller holds a receipt the journal has no record of.",
+    "new": "\tif false {\n\t\t// The caller holds a receipt the journal has no record of."
+  },
+  {
+    "test": "TestJournalIncarnationPaused",
+    "why": "graph-execution/26 row 7: resume under a mismatched incarnation",
+    "file": "journal/incarnation.go",
+    "old": "if id != cur.ID || key != cur.KeyRef {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestNoEmbeddedJournalEngine",
+    "why": "graph-execution/26 row 8: stop refusing SQLite drivers",
+    "file": "journal/engine_test.go",
+    "old": "\t\"sqlite\", // mattn",
+    "new": "\t\"sqlite-disabled\", // mattn"
+  },
+  {
+    "test": "TestNoGraphDependency",
+    "why": "graph-execution/26: admit an unlisted module's packages",
+    "file": "runner/request_test.go",
+    "old": "\t\tif !ok {\n\t\t\treturn fmt.Errorf(\"runner module closure includes an unadmitted dependency\")",
+    "new": "\t\tif false && !ok {\n\t\t\treturn fmt.Errorf(\"runner module closure includes an unadmitted dependency\")"
+  },
+  {
+    "test": "TestJournalIncarnationPaused",
+    "why": "F-pause-race: a stale gate pauses whatever activation the cell now holds",
+    "file": "journal/incarnation.go",
+    "old": "WHERE cell_id = $1 AND incarnation_id = $2 AND key_ref = $3\", cell, seen.id, seen.key)",
+    "new": "WHERE cell_id = $1\", cell)"
+  },
+  {
+    "test": "TestJournalIncarnationPaused",
+    "why": "F-pause-race, reverse order: a gate that read an older operator snapshot pauses the newer activation it then saw",
+    "file": "journal/incarnation.go",
+    "old": "if err != nil || (fresh.ID == seen.id && fresh.KeyRef == seen.key) {",
+    "new": "if err != nil || fresh.ID == \"\" {"
+  },
+  {
+    "test": "TestNoGraphDependency",
+    "why": "F-graph-offline: stop reading the local perfrec edge's own requirements",
+    "file": "runner/request_test.go",
+    "old": "\tfor _, r := range local.Require {\n\t\tif strings.HasPrefix(r.Path,",
+    "new": "\tfor _, r := range local.Require {\n\t\tif false && strings.HasPrefix(r.Path,"
+  },
+  {
+    "test": "TestJournalConfigRefuses",
+    "why": "security advisory: %#v prints the Config password",
+    "file": "journal/config.go",
+    "old": "func (c Config) GoString() string",
+    "new": "func (c Config) goString() string"
   }
 ]
