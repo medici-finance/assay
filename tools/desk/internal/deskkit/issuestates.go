@@ -14,8 +14,12 @@ type PositiveIssueState = ghissues.IssueState
 
 const PositiveIssueStateBatchSize = ghissues.IssueStateBatchSize
 
+// issueStateGetter is the typed issue read. Every number this reads is a placeholder's ISSUE,
+// so the kind is stated: on a forge that numbers issues and changes in separate sequences
+// (GitLab) the bare-number resolver refuses a number that names both, and this read must not
+// inherit that ambiguity (#6264).
 type issueStateGetter interface {
-	GetIssue(ForgeRepo, int) (*Issue, error)
+	GetIssueTyped(ForgeRepo, int, TargetKind) (*Issue, error)
 }
 
 type positiveIssueStateReader interface {
@@ -24,7 +28,7 @@ type positiveIssueStateReader interface {
 
 // ReadPositiveIssueStates retains the original wrapped reader. Only an explicit
 // read capability opts into batching; every other backend/wrapper uses its own
-// original GetIssue method. A failed batch never retries through another path.
+// original typed issue read. A failed batch never retries through another path.
 func ReadPositiveIssueStates(f issueStateGetter, repo ForgeRepo, numbers []int) ([]PositiveIssueState, error) {
 	seen := map[int]bool{}
 	for _, n := range numbers {
@@ -38,7 +42,7 @@ func ReadPositiveIssueStates(f issueStateGetter, repo ForgeRepo, numbers []int) 
 	}
 	out := make([]PositiveIssueState, 0, len(numbers))
 	for _, n := range numbers {
-		issue, err := f.GetIssue(repo, n)
+		issue, err := f.GetIssueTyped(repo, n, TargetIssue)
 		if err != nil {
 			return nil, Unverifiable(fmt.Sprintf("could-not-check: positive issue state for %s#%d could not be read", repo.Slug(), n), err)
 		}
@@ -50,7 +54,7 @@ func ReadPositiveIssueStates(f issueStateGetter, repo ForgeRepo, numbers []int) 
 	return out, nil
 }
 
-// An unknown decorator may override GetIssue while embedding a backend whose
+// An unknown decorator may override GetIssueTyped while embedding a backend whose
 // optional method is promoted by Go. Its inherited batch method must not bypass
 // that decorator's control. Only these explicit owners opt into forwarding.
 func positiveIssueStateBatchAllowed(f issueStateGetter) bool {

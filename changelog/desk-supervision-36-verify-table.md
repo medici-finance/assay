@@ -1,0 +1,2 @@
+### Fixed
+- The directory scope-key brief's Verify table now runs offline and fails on a tree without the scope-key delivery: the delivery-scope row diffs the pinned delivery merge instead of searching the forge, the flow row runs named tests with bounded anchored runs and requires each `--- PASS:` line, the consumers row is pinned to the delivery and its first parent, and the sweep row requires the delivery and runs each control test on its own anchored pattern.

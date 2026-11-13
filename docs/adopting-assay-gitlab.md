@@ -928,14 +928,16 @@ ASSAY_GITLAB_DISPLAY_NAMES=example-verifier-bot=Assay verifier (fleet bot)
 - Renaming the service account's display name to equal its username is a valid deployment
   workaround, but it silently re-breaks whenever an admin edits the display name; declaring it
   here is the durable fix.
-- **Online alternative — not available yet.** The desk verb that lands Evidence
-  (`deskevidence`) can resolve a landed commit's GitLab account to its username through the
-  typed forge (`GET /users?search=`) and compare that to the verifier binding, but on GitLab it
-  never reaches that step today: before any write it runs the decision-gate hold's branch-board
-  read, which needs a ref compare, and the GitLab backend serves none. Every `deskevidence`
-  landing on GitLab therefore stops as **could-not-check (exit 6)** with nothing written, until
-  the GitLab backend serves a compare; [adopting-assay.md](adopting-assay.md) gives the reason
-  (the decision-gate hold, under "PRIMITIVE: add-statusgen-ci"). The offline map above is what
+- **Online alternative — only from a checkout at the branch tip.** The desk verb that lands
+  Evidence (`deskevidence`) can resolve a landed commit's GitLab account to its username through
+  the typed forge (`GET /users?search=`) and compare that to the verifier binding, but before any
+  write it runs the decision-gate hold's branch-board read, which needs a ref compare, and the
+  GitLab backend serves none. The read needs no compare when the landing checkout's HEAD is the
+  target branch's tip (the same commit by full object id, never a prefix), so such a landing goes
+  ahead. Any other `deskevidence` landing on GitLab stops as **could-not-check (exit 6)** with
+  nothing written, until the GitLab backend serves a compare;
+  [adopting-assay.md](adopting-assay.md) gives the reason (the decision-gate hold, under
+  "PRIMITIVE: add-statusgen-ci"). The offline map above is what
   the network-free `--lint` path compares against; unset, that path is could-not-check for the
   display-name case (never a false pass).
 

@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestRefusalNamesCallerForm|TestDeskprRefusalNamesFlag|TestPushGuard|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance|TestDirectProvider|TestPerfProcessCoverage|TestGitHubMinter|TestDesktokenExec|TestGitLabCred'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestRefusalNamesCallerForm|TestDeskprRefusalNamesFlag|TestPushGuard|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance|TestDirectProvider|TestPerfProcessCoverage|TestGitHubMinter|TestDesktokenExec|TestGitLabCred|TestGitLabCreateDraft|TestGitLabIsTransient|TestGLCreateMR'",
   "schemata": true,
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
@@ -925,6 +925,48 @@
       "file": "cmd/repohardenguard/forge.go",
       "old": "\ttok, _, err := githubRoleTokenFn(\"auditor\", repoSlug)",
       "new": "\ttok, _, err := githubRoleTokenFn(\"auditor\", repoSlug)\n\t_ = []string{\"desktoken\", \"auditor\", \"--repo\", repoSlug}"
+    },
+    {
+      "name": "#6281: drop the field-keyed arm of the transient missing-source-branch classifier (GitLab's {message: {source_branch: [does not exist]}} is surfaced unretried again)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\treturn reGitLabKeyedMissingSource.MatchString(b)\n}",
+      "new": "\treturn false\n}"
+    },
+    {
+      "name": "#6281: widen the field-keyed classifier to ANY key's \"does not exist\" (a missing TARGET branch is retried)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "regexp.MustCompile(`\\{source_branch: \\[[^\\]]*does not exist`)",
+      "new": "regexp.MustCompile(`does not exist`)"
+    },
+    {
+      "name": "#6281: let the field-keyed match run past the source_branch key's own list (a sibling target_branch complaint is retried)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "regexp.MustCompile(`\\{source_branch: \\[[^\\]]*does not exist`)",
+      "new": "regexp.MustCompile(`\\{source_branch: \\[.*does not exist`)"
+    },
+    {
+      "name": "#6281: retry the create although a merge request is already open on the source branch (the duplicate guard disarmed)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\tif existing != nil {\n\t\t\t\treturn nil, Unverifiable(fmt.Sprintf(\n\t\t\t\t\t\"could-not-check: POST %s — not retried: merge request",
+      "new": "\t\t\tif false && existing != nil {\n\t\t\t\treturn nil, Unverifiable(fmt.Sprintf(\n\t\t\t\t\t\"could-not-check: POST %s — not retried: merge request"
+    },
+    {
+      "name": "#6281: retry the create blind when the open-merge-request read before it failed",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\texisting, lerr := g.OpenChangeForBranch(repo, in.Head)\n\t\t\tif lerr != nil {",
+      "new": "\t\t\texisting, lerr := g.OpenChangeForBranch(repo, in.Head)\n\t\t\tif false && lerr != nil {"
+    },
+    {
+      "name": "#6281: flatten the create-retry backoff to a constant wait (no doubling)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\treturn gitlabCreateMRRetryDelay << (attempt - 1)",
+      "new": "\treturn gitlabCreateMRRetryDelay"
+    },
+    {
+      "name": "#6281: one more create attempt, pushing the total wait past the 30s bound",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tgitlabCreateMRAttempts   = 5",
+      "new": "\tgitlabCreateMRAttempts   = 6"
     }
   ],
   "_not_mutated": {

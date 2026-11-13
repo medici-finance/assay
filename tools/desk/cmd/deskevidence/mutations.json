@@ -200,6 +200,24 @@
       "new": "cmp, err := fg.CompareRefs(fr, head, tip)\n\tif false && err != nil {"
     },
     {
+      "name": "branch board skips the compare for every tip, not only the home's own HEAD (a branch that moved past the judged board is never read) — #6270",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if sameCommit(head, tip) {\n\t\treturn nil, nil",
+      "new": "if true {\n\t\treturn nil, nil"
+    },
+    {
+      "name": "same-commit test matches an abbreviated id (a prefix that may name another commit skips the compare) — #6270",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "return deskkit.IsFullSHA(a) && deskkit.IsFullSHA(b) && a == b",
+      "new": "return a != \"\" && b != \"\" && (strings.HasPrefix(a, b) || strings.HasPrefix(b, a))"
+    },
+    {
+      "name": "delivery join admits every merge without a compare (a merge the admitted source does not contain is admitted) — #6270",
+      "file": "cmd/deskevidence/outcomebinding.go",
+      "old": "if sameCommit(entry.MergeSHA, source) {",
+      "new": "if true {"
+    },
+    {
       "name": "branch board lets an unreadable changed file through (a changed board file the judge never sees)",
       "file": "cmd/deskevidence/decisiongate.go",
       "old": "fc, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: f.Filename, Ref: tip})\n\t\tif rerr != nil {",
@@ -430,26 +448,80 @@
     {
       "name": "the publication snapshot accepts a non-regular destination mode (a symlink's target-path text or an executable is read as the brief's prior content and written over)",
       "file": "internal/deskkit/evidencelanding_github.go",
-      "old": "\t\tif f.Mode != 0100644 || b == nil || b.Typename != \"Blob\"",
-      "new": "\t\tif b == nil || b.Typename != \"Blob\""
+      "old": "f.Mode != gitModeRegular || ",
+      "new": ""
     },
     {
       "name": "the publication snapshot accepts a blob GitHub flags as binary (converted bytes become the destination's prior content)",
       "file": "internal/deskkit/evidencelanding_github.go",
-      "old": "b.IsBinary == nil || *b.IsBinary || b.Text == nil",
-      "new": "b.IsBinary == nil || b.Text == nil"
+      "old": "|| *b.IsBinary ||",
+      "new": "||"
     },
     {
       "name": "the publication snapshot stops comparing the blob's byte size with the returned text (partial or converted text is taken as the whole file)",
       "file": "internal/deskkit/evidencelanding_github.go",
-      "old": "b.ByteSize == nil || *b.ByteSize != len(*b.Text) {",
-      "new": "b.ByteSize == nil {"
+      "old": "*b.ByteSize == len(*b.Text) && ",
+      "new": ""
     },
     {
       "name": "the publication snapshot stops binding the returned text to the Git blob id (same-length altered bytes are written under the real blob's compare-and-swap)",
       "file": "internal/deskkit/evidencelanding_github.go",
-      "old": "\t\tif fmt.Sprintf(\"%x\", h.Sum(nil)) != b.OID {",
-      "new": "\t\tif false && fmt.Sprintf(\"%x\", h.Sum(nil)) != b.OID {"
+      "old": "&& gitBlobMatches(b.OID, []byte(*b.Text)) {",
+      "new": "&& true {"
+    },
+    {
+      "name": "the blob read stops comparing the served size with the snapshot's byte size (a blob answer of another size is taken as the destination) — #5543",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "|| *w.Size != size {",
+      "new": "{"
+    },
+    {
+      "name": "the blob read stops comparing the decoded length with the snapshot's byte size (partial content reaches the hash check as if whole) — #5543",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "err != nil || len(content) != size ||",
+      "new": "err != nil ||"
+    },
+    {
+      "name": "the blob read stops binding the served bytes to the Git blob id (same-length altered bytes are written under the real blob's compare-and-swap) — #5543",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "if !gitBlobMatches(oid, content) {",
+      "new": "if false {"
+    },
+    {
+      "name": "the blob read accepts an answer that is not base64-served (content the transport may have rewritten is decoded as the blob) — #5543",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "w.Encoding != \"base64\" || ",
+      "new": ""
+    },
+    {
+      "name": "the blob read accepts an answer naming another blob (bytes of another object become the destination) — #5543",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "|| !strings.EqualFold(w.SHA, oid) ||",
+      "new": "||"
+    },
+    {
+      "name": "the blob read accepts an answer with no size (an unsized answer is taken as complete) — #5543",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "|| w.Size == nil ||",
+      "new": "||"
+    },
+    {
+      "name": "the blob read accepts bytes that are not UTF-8 text (a converted or binary body becomes the destination) — #5543",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "|| !utf8.Valid(content) {",
+      "new": "{"
+    },
+    {
+      "name": "the blob read puts an oid of the wrong length into the request path — #5543",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "if len(oid) != 40 && len(oid) != 64 {",
+      "new": "if false {"
+    },
+    {
+      "name": "the blob read puts a non-hex oid into the request path — #5543",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "if _, err := hex.DecodeString(oid); err != nil {",
+      "new": "if _, err := hex.DecodeString(oid); false && err != nil {"
     },
     {
       "name": "the publication snapshot hands an attestation with unknown body-edit history to the trust reducer",
