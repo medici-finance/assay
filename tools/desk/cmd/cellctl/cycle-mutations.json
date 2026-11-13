@@ -1,0 +1,173 @@
+{
+  "test": "go test ./cmd/cellctl -count=1 -timeout 300s -run '^(TestCycleWaitsForClaim|TestCycleTimeoutLeavesRunning|TestCycleForceAfterTimeout|TestCycleSyncFailLeavesDown|TestCycleUncheckedNotOK|TestCycleNeedsFreshBeat|TestCycleSkipsDownRole|TestCycleAllAtOnce|TestCycleAllAtOnceTimeoutStopped|TestCycleTimeoutKeepsOperatorPause|TestCycleKeepsPauseSetDuringDrain|TestCyclePausedRoleStaysDown|TestCycleDeclinedConfirmLifts|TestCycleForcePartialConfirm|TestCycleFutureBeatNotFresh|TestMarketplacePinStrict|TestClaudeSyncToPin|TestClaudeSyncStaysStale|TestClaudeSyncRestoresMode|TestClaudeSyncAheadOfPin|TestCursorSyncChecks)$'",
+  "control": {
+    "name": "invert the restart-count assertion",
+    "file": "cmd/cellctl/cycle_test.go",
+    "old": "if len(w.sleeps) < 2 || len(f.restarts) != 1 {",
+    "new": "if len(w.sleeps) < 2 || len(f.restarts) == 1 {"
+  },
+  "mutations": [
+    {
+      "name": "cycle-waits-claim: restart before the drain is idle",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\tcase res.Outcome == cellop.OK && len(rep.Confirm) == 0:\n",
+      "new": "\tcase len(rep.Confirm) == 0:\n"
+    },
+    {
+      "name": "cycle-timeout-no-force: the cycle's own stops are kept",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\tif _, _, err := l.resumeWhere(func(f createdFlag) bool { return owner",
+      "new": "\tif _, _, err := l.resumeWhere(func(f createdFlag) bool { return false && owner"
+    },
+    {
+      "name": "cycle-timeout-no-force: the held claims are not named",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\"the drain timed out after %s; not restarted, left running: %s\", o.DrainTimeout, heldText",
+      "new": "\"the drain timed out after %s; not restarted, left running%.0s\", o.DrainTimeout, heldText"
+    },
+    {
+      "name": "cycle-force-after-timeout: force ignored",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\tif !o.Force {\n\t\tres.Actions = append(res.Actions, l.liftOwnStops",
+      "new": "\tif true {\n\t\tres.Actions = append(res.Actions, l.liftOwnStops"
+    },
+    {
+      "name": "cycle-sync-fail-down: a failed check still restarts",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\t\t\tdefault:\n\t\t\t\tr.Actions = append(r.Actions, actionResult(cell, \"sync:\"+role, cellop.ActionFailed, s.Detail))\n\t\t\t\tcr.note",
+      "new": "\t\t\tcase \"never\":\n\t\t\t\tr.Actions = append(r.Actions, actionResult(cell, \"sync:\"+role, cellop.ActionFailed, s.Detail))\n\t\t\t\tcr.note"
+    },
+    {
+      "name": "cycle-unchecked-not-ok: could-not-check reads ok",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\t\t\t\tunchecked = true\n",
+      "new": "\t\t\t\tunchecked = false\n"
+    },
+    {
+      "name": "cycle-heartbeat-fresh: any heartbeat accepted",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "if err == nil && !hb.Before(since) &&",
+      "new": "if err == nil && true &&"
+    },
+    {
+      "name": "cycle-skips-down-role: a down role is cycled",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\t\t\tif !cr.Held {\n\t\t\t\trows",
+      "new": "\t\t\tif false && !cr.Held {\n\t\t\t\trows"
+    },
+    {
+      "name": "cycle-all-at-once: flag ignored",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\tif o.AllAtOnce {\n\t\tgroups",
+      "new": "\tif false {\n\t\tgroups"
+    },
+    {
+      "name": "cycle-all-at-once-timeout: a role the drain stopped reads running",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\t\t\t\tif stoppedIn(res, role) {\n\t\t\t\t\tstopped = append(stopped, role)",
+      "new": "\t\t\t\tif false && stoppedIn(res, role) {\n\t\t\t\t\tstopped = append(stopped, role)"
+    },
+    {
+      "name": "cycle-timeout-keeps-operator-pause: a stop the cycle did not create is lifted",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "return owner != \"\" && f.By == owner && paths[f.Path]",
+      "new": "return paths[f.Path]"
+    },
+    {
+      "name": "cycle-claude-sync: settings not restored",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "if after, rerr := os.ReadFile(settings); rerr != nil || !bytes.Equal(after, before) {",
+      "new": "if after, rerr := os.ReadFile(settings); rerr != nil && !bytes.Equal(after, before) {"
+    },
+    {
+      "name": "cycle-claude-sync: the other worktree's record is read",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "cleanPath(p.ProjectPath) == want && p.Version",
+      "new": "(cleanPath(p.ProjectPath) == want || true) && p.Version"
+    },
+    {
+      "name": "cycle-claude-stale: a stale record reads ok",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\tif s.New == pin {\n\t\ts.Outcome, s.Detail = syncOK",
+      "new": "\tif s.New != \"\" {\n\t\ts.Outcome, s.Detail = syncOK"
+    },
+    {
+      "name": "cycle-claude-stale: an unreadable pin is skipped",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\tpin, err := marketplacePin(wt)\n\tif err != nil {\n\t\ts.Outcome, s.Detail = syncCouldNotCheck, err.Error()\n\t\treturn s\n\t}",
+      "new": "\tpin, err := marketplacePin(wt)\n\t_ = err"
+    },
+    {
+      "name": "cycle-cursor-sync: could-not-check reads ok",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\tcase 0:\n\t\ts.Old, s.New, s.Outcome, s.Detail = pin, pin, syncOK",
+      "new": "\tcase 0, 2:\n\t\ts.Old, s.New, s.Outcome, s.Detail = pin, pin, syncOK"
+    },
+    {
+      "name": "cycle-cursor-sync: drift after placing reads ok",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\t\ts.New, s.Outcome, s.Detail = \"drift\", syncFailed,",
+      "new": "\t\ts.New, s.Outcome, s.Detail = \"drift\", syncOK,"
+    },
+    {
+      "name": "cycle-keeps-pause-set-during-drain: the cycle's flags carry no invocation id",
+      "file": "cmd/cellctl/lifecycle.go",
+      "old": "Created: cellop.Stamp(l.now()), By: by})",
+      "new": "Created: cellop.Stamp(l.now()), By: \"\"})"
+    },
+    {
+      "name": "cycle-success-keeps-operator-pause: the drain lifts every recorded stop of a stopped role",
+      "file": "cmd/cellctl/drain.go",
+      "old": "if len(rep.Confirm) == 0 && o.Owner == \"\" {",
+      "new": "if len(rep.Confirm) == 0 {"
+    },
+    {
+      "name": "cycle-success-keeps-operator-pause: the success lift is drain's liftAfterStop",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\tcase res.Outcome == cellop.OK && len(rep.Confirm) == 0:\n\t\tres.Actions = append(res.Actions, l.liftOwnStops(stoppedRoles(&res), owner))",
+      "new": "\tcase res.Outcome == cellop.OK && len(rep.Confirm) == 0:\n\t\tl.liftAfterStop(stoppedRoles(&res))"
+    },
+    {
+      "name": "cycle-declined-confirm-lifts: a declined confirm keeps the cycle's stop",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\tif len(running) > 0 {",
+      "new": "\tif false && len(running) > 0 {"
+    },
+    {
+      "name": "cycle-pin-strict: any pin is accepted",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\tif !pinVersion.MatchString(ref) {",
+      "new": "\tif false && !pinVersion.MatchString(ref) {"
+    },
+    {
+      "name": "cycle-force-partial-confirm: stoppedIn drops the stop-now arm",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\treturn valueIn(role, stoppedRoles(&r))\n",
+      "new": "\tfor _, a := range r.Actions {\n\t\tif a.ID == \"stop:\"+role && a.Outcome == cellop.ActionOK {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n"
+    },
+    {
+      "name": "cycle-success-keeps-operator-pause: a paused role is restarted",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "if p, perr := l.Paused(role); perr != nil || p {",
+      "new": "if p, perr := l.Paused(role); false && (perr != nil || p) {"
+    },
+    {
+      "name": "cycle-heartbeat-upper-bound: a future-dated checkpoint reads fresh",
+      "file": "cmd/cellctl/cycle.go",
+      "old": " && !hb.After(l.now().Add(cycleHeartbeatSkew))",
+      "new": ""
+    },
+    {
+      "name": "cycle-settings-mode: the restore leaves the mode the update wrote",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "if cerr := os.Chmod(settings, mode); cerr != nil {",
+      "new": "if cerr := error(nil); cerr != nil {"
+    },
+    {
+      "name": "cycle-claude-ahead: the mismatch message says behind",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "differs from the pin %s",
+      "new": "is behind the pin %s"
+    }
+  ]
+}

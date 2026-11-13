@@ -497,7 +497,7 @@ func buildRoot() *cobra.Command {
 		return cmd.Help()
 	}
 	root.AddCommand(
-		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(), pauseCmd(), resumeCmd(), drainCmd(),
+		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(), pauseCmd(), resumeCmd(), drainCmd(), cycleCmd(),
 		smokeCmd(), statusCmd(), attachCmd(), compatPrepareCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), hotfixCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(), scrubbedRunCmd(),
 	)
