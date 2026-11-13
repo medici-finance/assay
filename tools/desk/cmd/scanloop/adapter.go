@@ -35,7 +35,8 @@ type ScanLoop struct {
 	// look like a property of the INBOUND repo, so an issue on a read-only-scope repo dead-ended.
 	ScanTarget string
 	// WorktreeBase is the ABSOLUTE directory scan worktrees are cut under. It must sit outside
-	// Root — the isolation guard refuses otherwise.
+	// Root — the isolation guard refuses otherwise. Empty means the sanctioned worktree prefix
+	// (defaultScanWorktreeBase).
 	WorktreeBase string
 	// Policy is the coalesce window.
 	Policy CoalescePolicy
@@ -699,17 +700,21 @@ var newPassToken = func() string {
 }
 
 // worktreeFor is the pass's isolated scan worktree. The path is ABSOLUTE and outside the target
-// checkout; both are re-checked by the lane's own guard before anything runs.
+// checkout; both are re-checked by the lane's own guard before anything runs. With no
+// WorktreeBase it sits under the sanctioned worktree prefix (defaultScanWorktreeBase), so a
+// worktree the lane has to retain can be removed through the sanctioned tooling. A base that
+// cannot be resolved yields "", which the lane's guard refuses before anything runs.
 func (s *ScanLoop) worktreeFor(loopengine.Item) string {
 	base := s.WorktreeBase
 	if base == "" {
-		abs, err := filepath.Abs(s.Root)
+		def, err := defaultScanWorktreeBase(s.Root)
 		if err != nil {
 			return ""
 		}
-		base = filepath.Dir(abs)
+		base = def
 	}
-	return filepath.Join(base, "intake-scan-"+sanitizeSegment(s.passName()))
+	leaf := scanWorktreeLeaf + sanitizeSegment(s.passName())
+	return filepath.Join(base, leaf)
 }
 
 // branchFor is the pass's scan branch. It is time-suffixed on purpose: the bounded coalesce window
