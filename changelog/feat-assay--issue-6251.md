@@ -1,2 +1,0 @@
-### Fixed
-- `cellctl down` settles an interactive role whose owner exited on the hangup and released its lease. The release removes the owner record, and down then refused every such role as "not the one the signalled owner wrote", exiting 3 and leaving all roles for the next `up` to class stale. Down now attributes the record to the checkpoint (sequence, start time and pid) it read before it signalled the owner; an owner that has not exited, or a record belonging to another run, is still left unfinished.
