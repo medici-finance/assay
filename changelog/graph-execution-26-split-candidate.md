@@ -1,0 +1,1 @@
+- Propose bounded source increments for shared process supervision while preserving the complete original acceptance contract and existing startup implementation.
