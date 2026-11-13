@@ -152,6 +152,16 @@ not have to rediscover them.
    `changelog-check.yml` moved to `ubuntu-latest` in the #3939 fix. The `statusgen-board`
    lint job is still on the self-hosted pool.
 
+   *Update (push-leg STATUS.md skip):* the live `ci.yml` push leg now carries
+   `paths-ignore: ["STATUS.md"]` and nothing else, the narrow part of this directory's
+   `ci.yml` filter that still holds. The staged copy's `pull_request` filter predates
+   `build-test` and `changelog` becoming required checks on pull requests; landed now,
+   it would leave a docs-only PR with those checks unreported, which is why the live
+   file's `scope` job, not a trigger filter, decides the docs-only PR case. Its push
+   filter (`docs/**`, `changelog/**`, `CHANGELOG.md`) is also not taken over: build-test
+   reads `docs/` and a release roll stamps the plugin manifest. Do not copy this
+   directory's `ci.yml` over the live one.
+
 2. **A `paths:` filter on `verify-gate-open.yml`.** It runs on every push to `main` with no
    filter, and its input is `statusgen --root . --verify-issues` over `docs/streams/**` plus
    the existing issue markers — so a `main` push touching only Go code cannot make a brief

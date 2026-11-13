@@ -1,0 +1,2 @@
+### Changed
+- `ci` no longer runs on a push to main whose only changed file is `STATUS.md`, the board regen's own `[skip-status-regen]` commit. That commit was 212 of the 247 bot commits on main from 2026-10-26 to 2026-11-09, each a full 12-job run. Pull request runs are unfiltered, so the required `build-test` and `changelog` checks still report on every PR. Any push that touches another file still runs in full. The leak sweeps, `plugin-drift` and `verify-gate-open` keep running on every push to main. Lands with a maintainer's workflow push.
