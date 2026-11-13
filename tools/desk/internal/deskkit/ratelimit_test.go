@@ -148,6 +148,10 @@ func TestChargingAndBreakerClassByResult(t *testing.T) {
 		// refused: no budget charge, but it still trips the breaker so a repeated
 		// failed-precondition loop is bounded by something.
 		{"unwritten does not charge, it trips the breaker", ResultUnwritten, RateLimitPerPRPerHour, "breaker"},
+		// #6227: an audit-lock wait that ran out happened before anything was read or sent, so it
+		// is contention, not a loop. Invisible to both meters, past the breaker's own trip point.
+		{"contended feeds neither meter", ResultContended, RateLimitPerPRPerHour, "none"},
+		{"a long lock-wait run feeds neither meter", ResultContended, BreakerTrip * 10, "none"},
 		// #180: a no-op is the tool confirming the desired state already holds, the shape of
 		// a healthy idempotent idle loop rather than a spinning caller. It charges no budget
 		// AND is invisible to the breaker, so a standing loop re-asserting an unchanged

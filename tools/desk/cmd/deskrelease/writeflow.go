@@ -95,6 +95,10 @@ func deskDir() (string, error) {
 // as stale → Unverifiable (exit 6).
 type auditLock struct{ l *deskkit.AuditLock }
 
+// lockWait is how long acquireAuditLock waits for a contended lock before refusing. A package
+// var only so a test can shorten it; production is the shared 60s bound, with no flag or env override.
+var lockWait = deskkit.AuditLockWait
+
 func acquireAuditLock() (*auditLock, error) {
 	dir, err := deskDir()
 	if err != nil {
@@ -102,7 +106,7 @@ func acquireAuditLock() (*auditLock, error) {
 	}
 	// The one choke point for the audit lock: it records the holder's pid and start beside the lock,
 	// and a lock still busy after the wait names the lock file, that holder and the clearing action.
-	l, err := deskkit.AcquireAuditLock(dir, deskkit.AuditLockWait)
+	l, err := deskkit.AcquireAuditLock(dir, lockWait)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +133,7 @@ func (l *auditLock) release() { l.l.Release() }
 func runOutward(args []string, plan func(entries []deskkit.Entry) writeResult) int {
 	lock, err := acquireAuditLock()
 	if err != nil {
-		return finishAudit(args, writeResult{verb: toolName, result: deskkit.ResultUnverifiable, detail: err.Error(), err: err})
+		return finishAudit(args, writeResult{verb: toolName, result: deskkit.LockStepResult(err, deskkit.ResultUnverifiable), detail: err.Error(), err: err})
 	}
 	defer lock.release()
 

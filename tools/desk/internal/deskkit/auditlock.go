@@ -77,7 +77,7 @@ func acquireAudit(dir string, spec LockSpec) (*AuditLock, error) {
 		root.Close()
 		var busy *BusyError
 		if errors.As(err, &busy) {
-			return nil, Unverifiable(AuditBusyMessage(busy), nil)
+			return nil, AuditLockContended(AuditBusyMessage(busy))
 		}
 		if errors.Is(err, ErrLockBusy) { // a probe: the caller reads only ok
 			return nil, err
