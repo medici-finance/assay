@@ -625,6 +625,10 @@ func flipReadRun(lines []string, start, from, end int) (flipPass, error) {
 		return flipPass{}, refuseFlip("bad date: the latest PASS is dated %s, after today (%s UTC)", date, today)
 	}
 	m0 := flipRunnerRe.FindStringSubmatch(runner)
+	tail := ""
+	if m0 != nil {
+		tail = m0[3]
+	}
 	// One run, one sha (#4299): a container bracket records the receipt's
 	// 12-hex tree token while a host transition run records the 40-hex HEAD.
 	// The run's sha is its longest form; every row's sha must be that sha or
@@ -652,15 +656,20 @@ func flipReadRun(lines []string, start, from, end int) (flipPass, error) {
 		if !flipSHAAgree(strings.ToLower(m[2]), strings.ToLower(sha)) {
 			return flipPass{}, refuseFlip("sha mismatch: rows of the latest PASS name %s and %s", sha, m[2])
 		}
-		// Login, sha form and every qualifier after it (+dirty, on-behalf-of,
-		// the identity source) must read the same; only the sha's length may
-		// differ, and only as an exact prefix.
-		if m[3] != m0[3] || !flipSHAAgree(m[2], sha) {
+		// Login, sha form and every qualifier after it (+dirty, on-behalf-of)
+		// must read the same; only the sha's length may differ, and only as an
+		// exact prefix. The derived source tag alone may differ (#5530): a
+		// container bracket row and a row the verifier recorded itself are one
+		// runner when nothing else in the cell differs.
+		if flipRunnerTail(m[3]) != flipRunnerTail(m0[3]) || !flipSHAAgree(m[2], sha) {
 			return flipPass{}, refuseFlip("runner mismatch: rows of the latest PASS read %q and %q", runner, r[1])
+		}
+		if m[3] != tail {
+			tail = flipRunnerTail(m0[3]) // rows disagree on the source: the stamp names none
 		}
 	}
 	p := flipPass{Runner: m0[1], SHA: sha, Run: strings.Join(lines[from:end], "\n"), RunStart: start}
-	p.Stamp, p.StampErr = flipStamp(date, []string{m0[0], m0[1], sha, m0[3]})
+	p.Stamp, p.StampErr = flipStamp(date, []string{m0[0], m0[1], sha, tail})
 	for _, i := range at {
 		p.Marks = append(p.Marks, from+i)
 	}
@@ -690,6 +699,44 @@ func flipSHAAgree(a, b string) bool {
 
 // flipQualRe matches one trailing parenthetical qualifier of a Runner cell.
 var flipQualRe = regexp.MustCompile(`^\s*\(([^()]*)\)`)
+
+// flipTreeSuffixRe matches the text that sits directly after the sha in a
+// Runner cell, before the first space or parenthesis: the tree suffix
+// (+dirty, +unknown) the host derives, or nothing.
+var flipTreeSuffixRe = regexp.MustCompile(`^[^()\s]*`)
+
+// flipSourceTags is the closed set of derived source tags a Runner cell may
+// carry in its qualifier list: the verifyrun identity sources a container
+// bracket stamps, and the tag a model verifier records on its own rows. They
+// say how the login was read, never who ran the row.
+var flipSourceTags = map[string]bool{
+	runnerSourceForge:     true,
+	runnerSourceGitConfig: true,
+	"model verifier":      true,
+}
+
+// flipRunnerTail is the one place the run reader normalises a Runner cell's
+// qualifier tail (#5530): every qualifier whose whole text is a tag in
+// flipSourceTags is dropped, and everything else is kept byte for byte. An
+// on-behalf-of principal, +dirty, an unknown or near-miss tag, and any text
+// that is not a clean qualifier list still compare. A tree suffix that
+// follows the sha (+dirty, +unknown) is kept verbatim ahead of the qualifier
+// list, so rows that share it still differ only in their source tag.
+func flipRunnerTail(tail string) string {
+	kept := flipTreeSuffixRe.FindString(tail)
+	tail = tail[len(kept):]
+	for tail != "" {
+		q := flipQualRe.FindStringSubmatch(tail)
+		if q == nil {
+			return kept + tail
+		}
+		if !flipSourceTags[q[1]] {
+			kept += q[0]
+		}
+		tail = tail[len(q[0]):]
+	}
+	return kept
+}
 
 // flipStamp renders the Verified stamp from the recorded runner. A qualifier
 // naming a `human:` principal (the Evidence row's `on-behalf-of human:<name>`
