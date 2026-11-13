@@ -187,3 +187,120 @@ func TestLegacyLeafOnlyBesideRoot(t *testing.T) {
 		t.Fatalf("the reused legacy worktree %s was not put back at the end of the pass (stat err %v)", held, err)
 	}
 }
+
+// assertOtherUntouched pins that a refused coalesce moved nothing in dir, the directory that took
+// the place of a retained worktree whose own directory vanished: same HEAD, same branch, clean, and
+// the carrier branch on the remote still at head.
+func assertOtherUntouched(t *testing.T, f *heldFixture, dir, branch, head string) {
+	t.Helper()
+	if got := strings.TrimSpace(scanGit(t, dir, "rev-parse", "HEAD")); got != head {
+		t.Fatalf("the refused coalesce moved HEAD of %s from %s to %s", dir, head, got)
+	}
+	if got := strings.TrimSpace(scanGit(t, dir, "branch", "--show-current")); got != branch {
+		t.Fatalf("the refused coalesce changed the branch of %s to %q, want %q", dir, got, branch)
+	}
+	if got := strings.TrimSpace(scanGit(t, dir, "status", "--porcelain")); got != "" {
+		t.Fatalf("the refused coalesce left changes in %s:\n%s", dir, got)
+	}
+	if got := strings.TrimSpace(scanGit(t, f.origin, "rev-parse", heldBranch)); got != head {
+		t.Fatalf("the refused coalesce pushed %s to %s (want it still at %s)", heldBranch, got, head)
+	}
+}
+
+// regression: #6423
+//
+// TestCoalesceRefusesSymlinkHeld — the retained worktree's directory vanished (the tmp base was
+// cleared) and a symlink now sits at its registered path, pointing at another clean worktree of the
+// same repo at the carrier tip. Status and HEAD read through the link look right; the coalesce must
+// still refuse, and the other worktree must be left exactly as it was.
+func TestCoalesceRefusesSymlinkHeld(t *testing.T) {
+	f, held := newHeldFixture(t, scanWorktreeLeaf+"retained")
+	tip := strings.TrimSpace(scanGit(t, f.root, "rev-parse", heldBranch))
+	if err := os.RemoveAll(held); err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(f.base, "other")
+	scanGit(t, f.root, "worktree", "add", "-b", "other-branch", other, tip)
+	if err := os.Symlink(other, held); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.coalesce(t)
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(fmt.Sprint(err), "registered worktree") {
+		t.Fatalf("err = %v, want a refusal: a symlink at a stale registered path is not that worktree", err)
+	}
+	assertOtherUntouched(t, f, other, "other-branch", tip)
+	if got := strings.TrimSpace(scanGit(t, f.origin, "branch", "--list", "other-branch")); got != "" {
+		t.Fatalf("the refused coalesce pushed the other worktree's branch: %q", got)
+	}
+}
+
+// regression: #6423
+//
+// TestCoalesceRefusesForeignGitDir — a plain directory holding its own .git (here a clone at the
+// carrier tip) now sits at the stale registered path. It is clean and at the tip, but it is not the
+// registered worktree, so the coalesce refuses and changes nothing in it.
+func TestCoalesceRefusesForeignGitDir(t *testing.T) {
+	f, held := newHeldFixture(t, scanWorktreeLeaf+"retained")
+	tip := strings.TrimSpace(scanGit(t, f.root, "rev-parse", heldBranch))
+	if err := os.RemoveAll(held); err != nil {
+		t.Fatal(err)
+	}
+	scanGit(t, f.base, "clone", "-b", heldBranch, f.origin, held)
+	_, err := f.coalesce(t)
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(fmt.Sprint(err), "registered worktree") {
+		t.Fatalf("err = %v, want a refusal: a directory with its own .git at a stale registered path is not that worktree", err)
+	}
+	assertOtherUntouched(t, f, held, heldBranch, tip)
+}
+
+// regression: #6423
+//
+// TestCoalesceRefusesRelativeLink — a retained worktree registered with relative paths: git then
+// lists it by the symlink-RESOLVED path, so a link planted at the vacated path makes the listing
+// name the link's target. Here that target is another scan-named worktree of the repo at the
+// carrier tip, which is a real directory and points back to its own registration. It must still be
+// refused, because the registration naming that path does not hold the carrier branch.
+func TestCoalesceRefusesRelativeLink(t *testing.T) {
+	f, held := newHeldFixture(t, scanWorktreeLeaf+"retained")
+	tip := strings.TrimSpace(scanGit(t, f.root, "rev-parse", heldBranch))
+	scanGit(t, f.root, "worktree", "remove", held)
+	if _, err := heldGitRun(t, f.root, "worktree", "add", "--relative-paths", held, heldBranch); err != nil {
+		t.Skipf("this git cannot register a worktree with relative paths: %v", err)
+	}
+	if err := os.RemoveAll(held); err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(f.base, scanWorktreeLeaf+"other")
+	scanGit(t, f.root, "worktree", "add", "-b", "other-branch", other, tip)
+	if err := os.Symlink(other, held); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.coalesce(t)
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(fmt.Sprint(err), "registered worktree") {
+		t.Fatalf("err = %v, want a refusal: the listed path is not the registered worktree holding the carrier", err)
+	}
+	assertOtherUntouched(t, f, other, "other-branch", tip)
+}
+
+// regression: #6423
+//
+// TestCoalesceRefusesPrunableHeld — the retained worktree's directory is gone and nothing took its
+// place, so git lists the registration `prunable`. It is never reused, and the refusal changes
+// neither the registration nor the remote carrier.
+func TestCoalesceRefusesPrunableHeld(t *testing.T) {
+	f, held := newHeldFixture(t, scanWorktreeLeaf+"retained")
+	tip := strings.TrimSpace(scanGit(t, f.root, "rev-parse", heldBranch))
+	if err := os.RemoveAll(held); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.coalesce(t)
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(fmt.Sprint(err), "prunable") {
+		t.Fatalf("err = %v, want a refusal: a registration whose directory is missing is never reused", err)
+	}
+	if !strings.Contains(scanGit(t, f.root, "worktree", "list", "--porcelain"), "prunable") {
+		t.Fatal("the refused coalesce changed the stale registration")
+	}
+	if got := strings.TrimSpace(scanGit(t, f.origin, "rev-parse", heldBranch)); got != tip {
+		t.Fatalf("the refused coalesce pushed %s to %s", heldBranch, got)
+	}
+}
