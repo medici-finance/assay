@@ -38,7 +38,8 @@ func readyBackstop(fg deskkit.Forge, fr deskkit.ForgeRepo, number int, change *d
 		// The opaque id is the one the change read returned, as for the flip itself.
 		ConvertToDraft: func() error { return fg.ConvertToDraft(change.NodeID) },
 		Comment: func(body string) error {
-			_, err := fg.PostComment(fr, number, body)
+			// Typed (#6264): the backstop comments on the change it just flipped.
+			_, err := fg.PostCommentTyped(fr, number, deskkit.TargetChange, body)
 			return err
 		},
 		Deadline: backstopDeadline, Interval: backstopInterval, Sleep: backstopSleep, Now: backstopNow,

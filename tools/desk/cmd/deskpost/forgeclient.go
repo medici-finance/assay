@@ -344,7 +344,8 @@ func (b *forgeBackend) convertToDraft(nodeID string) error {
 }
 
 func (b *forgeBackend) postComment(pr int, body string) error {
-	_, err := b.fg.PostComment(b.repo, pr, body)
+	// Typed (#6264): the only caller is the ready backstop, commenting on a pull request.
+	_, err := b.fg.PostCommentTyped(b.repo, pr, deskkit.TargetChange, body)
 	return err
 }
 
