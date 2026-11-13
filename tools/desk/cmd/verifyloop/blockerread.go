@@ -76,9 +76,16 @@ func (s *forgeIssueSource) IssueState(ref deskkit.BlockerRef) (deskkit.BlockerSt
 	if err != nil {
 		return deskkit.BlockerCouldNotCheck, oneLine(err)
 	}
-	kind := deskkit.TargetIssue
-	if ref.Kind == "change" {
+	// A bare #N names no kind, so its observation is keyed apart from the typed ones: a typed
+	// issue read must never answer a bare reference whose number the resolver would refuse as
+	// both-kinds (#6264). The reverse is safe — a bare read the resolver answered as an issue
+	// is unambiguous — and is shared below.
+	var kind deskkit.TargetKind
+	switch ref.Kind {
+	case "change":
 		kind = deskkit.TargetChange
+	case "issue":
+		kind = deskkit.TargetIssue
 	}
 	key := blockerObservationKey{repo: repo.Slug(), kind: kind, number: ref.Number}
 	if s.blockers == nil {
@@ -87,9 +94,13 @@ func (s *forgeIssueSource) IssueState(ref deskkit.BlockerRef) (deskkit.BlockerSt
 	observed, ok := s.blockers[key]
 	if !ok {
 		var iss *deskkit.Issue
-		if kind == deskkit.TargetChange {
+		if kind != "" {
+			// The reference states its kind (a /pull/ or /issues/ URL), so the read is typed:
+			// on GitLab issue #N and merge request !N coexist and the bare resolver refuses
+			// such a number (#6264).
 			iss, err = fg.GetIssueTyped(repo, ref.Number, kind)
 		} else {
+			// A bare #N names no kind; the bare resolver decides it, or refuses when it cannot.
 			iss, err = fg.GetIssue(repo, ref.Number)
 		}
 		observed.state = deskkit.BlockerCouldNotCheck
@@ -109,6 +120,15 @@ func (s *forgeIssueSource) IssueState(ref deskkit.BlockerRef) (deskkit.BlockerSt
 			}
 		}
 		s.blockers[key] = observed
+		if kind == "" && err == nil && iss != nil && !iss.IsPullRequest {
+			// The resolver answered this number as an issue, unambiguously: the same
+			// observation serves a later /issues/ reference to it.
+			typed := key
+			typed.kind = deskkit.TargetIssue
+			if _, seen := s.blockers[typed]; !seen {
+				s.blockers[typed] = observed
+			}
+		}
 	}
 	if observed.state == deskkit.BlockerCouldNotCheck {
 		return observed.state, "reading " + ref.Raw + ": " + observed.why

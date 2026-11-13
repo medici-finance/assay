@@ -126,6 +126,13 @@ type PullRequest struct {
 	// Consumer: cmd/deskflip's `mergeable` condition (the freeze rule's same-change
 	// requirement — this field lands with the call site that reads it).
 	Mergeable string
+	// MergeStateStatus is the forge's own merge-readiness verdict for the change, upper-cased
+	// (GitHub's mergeStateStatus enum: CLEAN, BLOCKED, DIRTY, BEHIND, UNSTABLE, HAS_HOOKS,
+	// DRAFT, UNKNOWN; read from the REST `mergeable_state`). EMPTY where the backend serves
+	// none (GitLab: no 1:1 mapping, as on ListOpenChanges). Consumer: ReadyBackstop, the
+	// post-flip check in cmd/deskflip and cmd/deskpost ready. omitempty keeps a change read
+	// that carried no state byte-identical in the forge golden corpus.
+	MergeStateStatus string `json:",omitempty"`
 	// Labels are the label NAMES currently on the change. Consumer: cmd/deskflip's
 	// already-flipped no-op path, which must be able to tell "the queue label is already
 	// correct" (write nothing) from "the queue label is stale" (re-gate, then write)
@@ -880,7 +887,8 @@ type RollupNode struct {
 // login the trust set expects (a bot carries the "<slug>[bot]" suffix), matching the
 // per-forge rendering GetPullRequest already applies. MergeStateStatus is the forge's own
 // merge-readiness enum verbatim (GitHub's mergeStateStatus: BEHIND/BLOCKED/CLEAN/DIRTY/
-// UNKNOWN/…) — the consumer reads its four-state mergeVerdict off it, and an empty value is
+// UNKNOWN/…). Mergeable independently reports merge conflicts; BLOCKED is a policy hold,
+// not a conflict verdict. An empty merge-readiness value is
 // could-not-check, never mergeable. Consumer: cmd/deskboard's fetchOpenPRs → prBase.
 type OpenChange struct {
 	Number       int
@@ -901,6 +909,7 @@ type OpenChange struct {
 	HeadRef          string
 	BaseRef          string
 	MergeStateStatus string
+	Mergeable        string `json:",omitempty"` // same three-state conflict verdict as PullRequest.Mergeable
 	Rollup           []RollupNode
 	// HeadCommittedAt is the head commit's COMMITTER date (RFC3339), read on the same node
 	// the rollup already comes from — no extra request. It is set only when that commit's oid
@@ -1018,6 +1027,13 @@ type ChangeRef struct {
 	Title    string
 	Body     string
 	MergedAt string // RFC3339, "" unless State == MERGED
+	// UpdatedAt is the forge's last-modified time for the change, RFC3339, EMPTY where the forge did
+	// not report one (could-not-check, never "unchanged"). ListChanges walks most-recently-updated
+	// first, so a consumer that must know whether the bounded walk already passed a time window
+	// reads this: a change merged at T has UpdatedAt >= T. Consumer: cmd/deskread's `changes` kind,
+	// for statusgen's brief-flow review (forge-neutral brief 18). omitempty keeps every list that
+	// predates the field byte-identical.
+	UpdatedAt string `json:",omitempty"`
 	// Author is the change's author, Type per Account.Type (empty where unresolved). An author
 	// the forge does not report (a deleted account) keeps ID == 0, which is could-not-check.
 	// Consumer: cmd/deskread's `changes` kind (forge-neutral brief 33), for statusgen's autonomy
@@ -2134,9 +2150,16 @@ type Forge interface {
 	PostCommentTyped(repo ForgeRepo, number int, kind TargetKind, body string) (*CommentRef, error)
 	// PostReview submits a head-pinned review/approval on a change.
 	PostReview(repo ForgeRepo, number int, in ReviewInput) error
-	// MarkReadyForReview flips a draft change to ready (the only transition this seam
-	// exposes — there is no un-ready, merge, or edit).
+	// MarkReadyForReview flips a draft change to ready. With ConvertToDraft below it is one
+	// of the two state transitions this seam exposes — there is no merge or edit.
 	MarkReadyForReview(nodeID string) error
+	// ConvertToDraft returns a ready change to draft. It exists for ONE caller: the post-flip
+	// backstop (ReadyBackstop), which un-readies a change the forge reports as BLOCKED or
+	// DIRTY right after a ready flip, so that ready keeps meaning mergeable per the forge. It
+	// is never exposed as a verb of its own. Ruling:
+	// https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
+	// The nodeID is the same backend-minted opaque id MarkReadyForReview takes.
+	ConvertToDraft(nodeID string) error
 	// ApplyLabels reconciles the labels of ONE issue or change in one operation (see
 	// LabelChange; change.Target says which kind number names, and an unset target is
 	// refused before any request). It is idempotent: applying an already-present label and

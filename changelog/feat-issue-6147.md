@@ -1,0 +1,2 @@
+### Fixed
+- `deskroster` and `deskack`: an explicit `--session` now wins over an inherited `$DESK_SESSION` / `$CLAUDE_SESSION_ID`. Before, the flag was silently ignored whenever either variable was set, so `deskroster drop --session NAME` could drop the ambient session's entry instead of NAME's. Session-name resolution now goes through one shared resolver (`--session` → `$DESK_SESSION` → `$CLAUDE_SESSION_ID`).

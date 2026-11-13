@@ -339,7 +339,7 @@ func upsertLiveCard(repoSlug string, prNumber int, role, body string) error {
 			return forge.EditComment(fr, comments[i].ID, body)
 		}
 	}
-	_, err = forge.PostComment(fr, prNumber, body)
+	_, err = forge.PostCommentTyped(fr, prNumber, deskkit.TargetChange, body) // the card lands on a PR (#6264)
 	return err
 }
 

@@ -57,9 +57,12 @@ type LaneRequest struct {
 	Base     string // the ref the worktree is cut from (a fetched REMOTE head, never a local branch)
 	DiffBase string // the ref the derived counts are diffed against
 	Open     *OpenScanPR
-	Policy   CoalescePolicy
-	Now      time.Time
-	DryRun   bool
+	// Carried maps each scan-directory path another open scan carrier already carries to that
+	// carrier's number. The lane puts those paths back before committing (carriers.go).
+	Carried map[string]int
+	Policy  CoalescePolicy
+	Now     time.Time
+	DryRun  bool
 }
 
 // LaneOutcome is what a lane hands back to Land.
@@ -268,6 +271,65 @@ func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 	//    checkout on its own account — this lane's guard is the earlier, cheaper one.
 	if err := step(req.Worktree, "statusgen", "--root", ".", "--scan-issues"); err != nil {
 		return out, err
+	}
+
+	// 2b. put back what another open scan carrier already carries, so this carrier is its own
+	//     delta and merges in any order (carriers.go). Untracked files are cleaned, tracked ones
+	//     restored to the base this worktree was cut from — both inside the isolated worktree only.
+	if len(req.Carried) > 0 {
+		st, err := capture(req.Worktree, "git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", deskkit.ScanDir)
+		if err != nil {
+			return out, err
+		}
+		changed := parseStatusZ(st)
+		var restore, clean []string
+		by := map[int]bool{}
+		first := 0
+		for _, c := range changed {
+			n, ok := req.Carried[c.path]
+			if !ok {
+				continue
+			}
+			by[n] = true
+			if first == 0 || n < first {
+				first = n
+			}
+			if c.untracked {
+				clean = append(clean, c.path)
+			} else {
+				restore = append(restore, c.path)
+			}
+		}
+		if len(restore) > 0 {
+			if err := step(req.Worktree, "git", append([]string{"--literal-pathspecs", "checkout", "-q", "HEAD", "--"}, restore...)...); err != nil {
+				return out, err
+			}
+		}
+		if len(clean) > 0 {
+			if err := step(req.Worktree, "git", append([]string{"--literal-pathspecs", "clean", "-f", "-q", "--"}, clean...)...); err != nil {
+				return out, err
+			}
+		}
+		excluded := len(restore) + len(clean)
+		note := fmt.Sprintf("# exclude: %d path(s) already carried by open scan carrier(s) %s left out of this carrier",
+			excluded, carriersNamed(by))
+		if req.DryRun {
+			note = fmt.Sprintf("# exclude: any of %d path(s) carried by other open scan carrier(s) are left out of this carrier",
+				len(req.Carried))
+		}
+		out.Steps = append(out.Steps, note)
+		if !req.DryRun && len(changed) > 0 && excluded == len(changed) {
+			// Everything the scan wrote is already on an open carrier: nothing of this pass's own
+			// to commit, so no commit and no PR. The item's placeholder is on that carrier.
+			out.Artifact = fmt.Sprintf("%s#%d", repo, first)
+			if err := step(req.Root, "git", "worktree", "remove", req.Worktree); err != nil {
+				out.warn("cleanup: could not remove worktree " + req.Worktree + ": " + err.Error() +
+					" — worktree retained for diagnosis; nothing was committed or published")
+				releaseRetainedBranch(&out, step, req)
+			}
+			out.Steps = append(out.Steps, "# coalesce: "+string(decision)+" — "+why)
+			return out, nil
+		}
 	}
 
 	// 3. commit the delta, path-scoped: the run is not done until it is committed.

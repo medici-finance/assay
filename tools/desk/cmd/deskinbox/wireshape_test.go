@@ -50,13 +50,17 @@ func oracleDetail(body string, cs []wireComment) jqDetail {
 	return d
 }
 
-// bodyForge serves GetIssue's body — the one typed Forge op fetchDetail reads.
+// bodyForge serves the issue body — the one typed Forge op fetchDetail reads. The bare
+// GetIssue is not served (the embedded nil Forge panics): the detail read names its kind (#6264).
 type bodyForge struct {
 	deskkit.Forge
 	body string
 }
 
-func (f *bodyForge) GetIssue(_ deskkit.ForgeRepo, number int) (*deskkit.Issue, error) {
+func (f *bodyForge) GetIssueTyped(_ deskkit.ForgeRepo, number int, kind deskkit.TargetKind) (*deskkit.Issue, error) {
+	if kind != deskkit.TargetIssue {
+		return nil, deskkit.Unverifiable("fixture holds issues only", nil)
+	}
 	return &deskkit.Issue{Number: number, State: "open", Body: f.body}, nil
 }
 

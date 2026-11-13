@@ -83,7 +83,7 @@ func (f *recForge) ListChanges(repo deskkit.ForgeRepo, states deskkit.ChangeStat
 	}
 	return &deskkit.ChangeList{Changes: []deskkit.ChangeRef{
 		{Number: 21, State: "MERGED", HeadSHA: "abc", HeadRef: "feat/x", Title: "t", Body: "Brief: x",
-			MergedAt: "2026-09-04T00:00:00Z", Author: deskkit.Account{Login: "example-app[bot]", ID: 300000001, Type: "Bot"},
+			MergedAt: "2026-09-04T00:00:00Z", UpdatedAt: "2026-09-05T00:00:00Z", Author: deskkit.Account{Login: "example-app[bot]", ID: 300000001, Type: "Bot"},
 			BaseRef: "main", CrossRepo: deskkit.CrossRepoFork},
 	}, Incomplete: false, PageCap: 5}, nil
 }
@@ -249,7 +249,7 @@ func TestDeskreadNewKindsRoundTrip(t *testing.T) {
 			t.Fatalf("changes = %+v", r.Changes)
 		}
 		c := r.Changes[0]
-		if c.Author == nil || c.Author.Type != "Bot" || c.BaseRef != "main" || c.CrossRepo != deskkit.CrossRepoFork || c.HeadRepo != "" || c.Body != "Brief: x" {
+		if c.Author == nil || c.Author.Type != "Bot" || c.BaseRef != "main" || c.CrossRepo != deskkit.CrossRepoFork || c.HeadRepo != "" || c.Body != "Brief: x" || c.UpdatedAt != "2026-09-05T00:00:00Z" {
 			t.Errorf("change = %+v, want author type, base, fork facts, body; empty headRepo stays empty", c)
 		}
 		if r.Incomplete == nil || *r.Incomplete || r.PageCap != 5 {

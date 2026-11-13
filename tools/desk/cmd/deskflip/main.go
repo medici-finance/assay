@@ -16,7 +16,11 @@
 // THE FLIP IS NOT AN APPROVAL AND NOT A MERGE. It moves a PR out of draft and swaps the
 // queue-legibility labels so the PR now reads as waiting on the human rather than on the
 // review lane. The merge remains the human's, always. deskflip has no un-ready verb, no
-// merge verb, and no override flag — a gate a caller can wave past is not a gate.
+// merge verb, and no override flag — a gate a caller can wave past is not a gate. Its one
+// un-ready is the post-flip backstop's: right after the flip it reads the forge's merge
+// state and returns the PR to draft when the forge reports BLOCKED or DIRTY, so ready keeps
+// meaning mergeable per the forge. That is never a verb of its own. Ruling:
+// https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
 //
 // ROLE-GATED ON PURPOSE. The flip belongs to the role that WATCHED the review, so
 // deskflip refuses unless the session presents that role's loop identity. That is not
@@ -142,6 +146,11 @@ nothing is mutated:
   security-verdict  on a RISK-CLASSED PR (a public repo is always one), an App review at
                     the CURRENT head carries the literal Security-Review: pass line. An
                     explicit fail at head blocks the flip whether risk-classed or not.
+  not-reverted      the post-flip check (below) has not already returned the PR to draft at
+                    the CURRENT head: its revert comment carries a hidden marker naming the
+                    head, and a trusted comment carrying it for this head is could-not-check
+                    (exit 6), naming the comment. Flipping that head again would only be
+                    reverted again. A new head clears it. Read only for a draft PR.
   head-stable       the head AND the reviewer verdicts are re-read immediately before the
                     mutation. A moved head means the verified state is stale; an unchanged
                     head is not enough on its own, because a security verdict can be
@@ -150,10 +159,27 @@ nothing is mutated:
 ON PASS it performs the ready mutation and swaps the queue-legibility labels: the PR stops
 reading as waiting on the review lane and starts reading as waiting on the human.
 
-There is NO override flag, no un-ready verb, and no merge verb. The merge is the human's.
+AFTER THE FLIP it reads the forge's merge state (GitHub's mergeStateStatus) with the PR's
+draft flag, re-reading an UNKNOWN or DRAFT state, or a PR that still reads as a draft, for up
+to 30s: ready means mergeable per the forge. GitHub reports a draft as BLOCKED, so a read
+that still shows the PR as a draft is never a revert.
+  BLOCKED, DIRTY    (and NOT a draft) the forge disagrees: the PR goes back to draft, one
+                    comment names the state and the head and carries the not-reverted
+                    marker, the queue label is not swapped, and the exit is 5. If the
+                    return to draft fails, the exit is 6 and nothing is retried.
+  CLEAN, HAS_HOOKS, UNSTABLE, BEHIND
+                    (and NOT a draft) the PR stays ready.
+  anything else     still unsettled at 30s (UNKNOWN, or still a draft), or unreadable: the
+                    PR stays ready, one comment says the verdict could not be checked, and
+                    a could-not-verify notice is printed.
 
-Exit: 0 flipped or already-flipped · 3 disabled · 5 refused (a condition failed, named) ·
-6 unverifiable (a condition could not be read).`
+There is NO override flag, no un-ready verb, and no merge verb. The return to draft above is
+the only un-ready and is never a verb of its own (ruling: https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155).
+The merge is the human's.
+
+Exit: 0 flipped or already-flipped · 3 disabled · 5 refused (a condition failed, named, or
+the forge's merge state reverted the flip) · 6 unverifiable (a condition could not be read,
+or the revert failed).`
 
 func main() {
 	os.Exit(deskkit.PerfRun("deskflip", nil, os.Args[1:], func([]string) int {

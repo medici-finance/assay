@@ -1,6 +1,7 @@
 package reviewtest_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -91,6 +92,22 @@ func TestReviewContractFlow(t *testing.T) {
 				c.Lanes[0].State = "stale"
 			}},
 			{"body-human-gate", "HUMAN-GATE", "SURFACE", func(c *rf.ObservedChange) { approve(c); c.Facts.Change.Body = "Gate: human" }},
+			{"draft-policy-hold", "FLIP", "FLIP-VERB", func(c *rf.ObservedChange) {
+				approve(c)
+				c.Facts.Change.IsDraft = true
+				c.Facts.Change.MergeStateStatus = "BLOCKED"
+				c.Facts.Change.Mergeable = "MERGEABLE"
+			}},
+			{"ready-policy-hold", "CHECK", "SURFACE", func(c *rf.ObservedChange) {
+				approve(c)
+				c.Facts.Change.MergeStateStatus = "BLOCKED"
+				c.Facts.Change.Mergeable = "MERGEABLE"
+			}},
+			{"unread-policy-hold", "MERGE-STATE-UNKNOWN", "SURFACE", func(c *rf.ObservedChange) {
+				approve(c)
+				c.Facts.Change.IsDraft = true
+				c.Facts.Change.MergeStateStatus = "BLOCKED"
+			}},
 			{"body-reverified", "MERGE-NOW", "SURFACE", func(c *rf.ObservedChange) { approve(c); c.Facts.Reviews.BodyEditReverified = true }},
 			{"same-head-block", "SUSPECT-APPROVAL", "SURFACE", func(c *rf.ObservedChange) {
 				c.Facts.Reviews = rf.ReduceReviews([]rf.ReviewFact{{Reviewer: true, State: "CHANGES_REQUESTED", CommitID: c.Identity.Head}, {Reviewer: true, State: "APPROVED", CommitID: c.Identity.Head}}, c.Identity.Head)
@@ -360,4 +377,65 @@ func TestReviewContractRoundTrip(t *testing.T) {
 		t.Fatal("round trip changed result", e)
 	}
 
+}
+
+// Old v1 snapshots did not carry Mergeable. That absence remains readable but
+// cannot make a BLOCKED draft eligible. Explicit null remains a malformed fact.
+func TestReviewMergeableCompatibility(t *testing.T) {
+	var schema map[string]any
+	raw, err := os.ReadFile(filepath.Join(moduleRoot(t), "..", "..", "schemas", "review-observation-v1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	for _, verdict := range []string{"", "MERGEABLE"} {
+		t.Run(verdict, func(t *testing.T) {
+			in, policy := observationFixture()
+			c := &in.Changes[0]
+			approve(c)
+			c.Facts.Change.IsDraft = true
+			c.Facts.Change.MergeStateStatus = "BLOCKED"
+			c.Facts.Change.Mergeable = verdict
+			data, err := json.Marshal(observation(t, in, policy))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var doc any
+			if err := json.Unmarshal(data, &doc); err != nil {
+				t.Fatal(err)
+			}
+			if err := checkSchema(schema, schema, doc); err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := rf.DecodeObservation(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := rf.PlanObservation(decoded, policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "MERGE-STATE-UNKNOWN"
+			if verdict == "MERGEABLE" {
+				want = "FLIP"
+			}
+			if got := plan.Result.Rows[0].Action; got != want {
+				t.Fatalf("got %s want %s", got, want)
+			}
+			if verdict == "" && len(plan.Verbs) != 0 {
+				t.Fatal("missing conflict verdict acquired an effect")
+			}
+			if verdict == "MERGEABLE" {
+				nullData := bytes.Replace(data, []byte(`"Mergeable":"MERGEABLE"`), []byte(`"Mergeable":null`), 1)
+				if bytes.Equal(nullData, data) {
+					t.Fatal("mergeable fact absent from encoded observation")
+				}
+				if _, err := rf.DecodeObservation(nullData); err == nil {
+					t.Fatal("null Mergeable accepted")
+				}
+			}
+		})
+	}
 }
