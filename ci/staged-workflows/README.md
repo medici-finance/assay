@@ -106,8 +106,8 @@ reviewable artifact, not a run.
   live** — a maintainer promotes it to `.github/workflows/loopadmin.yml`. Until then `ci.yml`'s
   build-test job still builds and vets the module (it discovers every `go.mod`) but runs no tests.
 - `workspace.yml` — the shared workspace contract module's job (`spec/cell-workspaces-v1.md`):
-  `gofmt`, `go vet`, `go test` and the mutation gate (`muhar -spec mutations.json`, harness built
-  from `tools/desk`) from `workspace/`, on path triggers for the module, its spec, its schema and
+  `gofmt`, `go vet`, `go test` and the mutation gates (`muhar -spec mutations.json` and
+  `muhar -spec local/mutations.json`, harness built from `tools/desk`) from `workspace/`, on path triggers for the module, its spec, its schema and
   `docs/workspace-callers.md`. **Staged, not live** — a maintainer promotes it to
   `.github/workflows/workspace.yml`. Until then `ci.yml` builds and vets the module, and the desk
   suite runs its tests on every change (`TestWorkspaceModuleSuite` in

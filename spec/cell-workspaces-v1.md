@@ -115,6 +115,37 @@ Every transition is a compare-and-set on the record's generation: the caller nam
 
 `managed` records were allocated under this contract. `legacy` records describe a checkout that existed before it and was adopted by evidence; a legacy record is never `allocating` or `ready`, because it was never allocated here, and adoption grants it no cleanup right of its own.
 
+### 5.4 Repository stores and the store mapping
+
+A cell owns one independent clone of each repository it works in, its store, at `<cell root>/repos/<repo key>/source`. Workspaces are later allocated from the store; the store is never a workspace itself. The layout keeps the store outside the legacy `<cell root>/worktrees` directory. Protected control records live in `<cell root>/run/workspaces/`.
+
+A store is accepted only if the effect boundary observes all of the following. Each failure is the reason shown, never a silent repair:
+
+| Observation | Refused as |
+|---|---|
+| The resolved path is the layout's path for this cell, and is neither inside nor around any legacy checkout or cleanup root (resolved identity, symlinks followed) | `identity-mismatch` (`store.path`) |
+| `.git` is a directory, not a linked worktree's `.git` file | `identity-mismatch` (`store.git`) |
+| No symbolic link anywhere inside the store's `.git` directory (a link could place part of the Git directory in another checkout) | `identity-mismatch` (`store.common-dir`) |
+| Git resolves the store's Git directory and common directory to its own `.git`, which has no `commondir` pointer and is not the common directory of a legacy checkout | `identity-mismatch` (`store.common-dir`) |
+| No `objects/info/alternates` or `http-alternates` | `identity-mismatch` (`store.alternates`) |
+| Configuration holds only what a fresh clone writes, and an origin URL without a credential; no `config.worktree` | `foreign-state` (`store.config`) |
+| No worktree registrations; no hooks except the stock samples | `foreign-state` (`store.worktrees`, `store.hooks`) |
+| The requested subject commit is present | `identity-mismatch` (`store.subject`) |
+
+The checks reject a linked worktree, a shared-common-dir substitute, a `--shared` clone and a recursive copy of an existing checkout. A copy is caught by the configuration, registrations and hooks it inherits. A pristine copy that inherits none of them cannot be told apart from a clone, and it holds no shared state either.
+
+The **store mapping** (`run/workspaces/stores.json`, schema `cell-workspace/v1`) lists each verified store with:
+
+- its repository;
+- its repository key;
+- its resolved path;
+- its common directory;
+- its subject.
+
+The mapping is stamped with the cell and a generation, and each publication is a compare-and-set on that generation. The generation check and the replacement are one critical section under an exclusive advisory lock beside the mapping: the publisher re-reads the published generation, and only if it is still the one this publication follows does it replace the mapping, by renaming a fully written temporary file. Two publishers that read the same generation cannot both succeed; the second is `stale-generation`. A publisher that cannot take the lock within its bound is `busy` and publishes nothing. A publication happens only once every requested store, and every store already in the mapping, verifies. One failed repository means nothing is published, and each repository's outcome is reported. The mapping is never exported under, or folded into, a legacy key (`CELL_REPO`, `CELL_ROOTS`), and publishing it never rewrites those keys or a legacy checkout.
+
+A cell UUID is bound to one resolved root through a machine-level registry. A second root claiming the same UUID is `foreign-state` (`cell.root`): this covers a copied or moved cell directory. A root already bound to a different UUID is `identity-mismatch` (`cell.uuid`). A binding appears complete or not at all: it is written to a temporary file and linked into place, so a crash leaves no entry that could be mistaken for a foreign root; an entry found empty is `evidence-unavailable` (`registry`), never `foreign-state`. An existing store path whose observation could not be made (for example Git cannot run) is reported as `evidence-unavailable`, not as foreign state.
+
 ## 6. Results and outcomes
 
 A result (`$defs.Result`) answers one request by its `request_id`. Its outcome kind is one of:

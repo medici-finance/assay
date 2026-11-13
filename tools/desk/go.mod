@@ -17,6 +17,7 @@ require (
 	github.com/medici-finance/assay/perfrec v0.0.0-00010101000000-000000000000
 	github.com/medici-finance/assay/statusgen v0.0.0-00010101000000-000000000000
 	github.com/medici-finance/assay/workflow v0.0.0
+	github.com/medici-finance/assay/workspace v0.0.0-00010101000000-000000000000
 	github.com/spf13/cast v1.7.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
@@ -133,3 +134,5 @@ replace github.com/medici-finance/assay/gitcore => ../../gitcore
 replace github.com/medici-finance/assay/workflow => ../../workflow
 
 replace github.com/medici-finance/assay/loopadmin => ../../loopadmin
+
+replace github.com/medici-finance/assay/workspace => ../../workspace
