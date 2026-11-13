@@ -8,7 +8,7 @@ feathers:
   - ref: "statusgen/40"
     type: ordering-gate
     reason: "The I-2 slice re-routes the protected transition audit, whose chain and combined-correction limits statusgen/40 defines. Landing statusgen/40 first avoids building I-2 on the one-link, one-column limits it replaces. This is a feather (a notice), not a hold: the rest of this brief does not need it."
-unblocks: ["statusgen/38", "desk-tools/46", "statusgen/29", "statusgen/31"]
+unblocks: ["statusgen/38", "desk-tools/46", "statusgen/29", "statusgen/31", "tool-refactoring/11"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}

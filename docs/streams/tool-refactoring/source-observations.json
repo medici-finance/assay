@@ -1,0 +1,493 @@
+{
+  "source_commit": "680102a0877755feab9ef85dc4e1d3f52a137a54",
+  "observed": "2026-11-12",
+  "briefs": [
+    {
+      "brief": "statusgen/15",
+      "path": "docs/streams/statusgen/brief-15-extract-canonical-eligibility-and-coverage-evaluation-api.md",
+      "version": "1",
+      "state": "verified",
+      "digest": "sha256:2babba2efbd558aa1a53b35a105596916a7a00ce2d96d1b997922da98ae8d6fe",
+      "reused_by": []
+    },
+    {
+      "brief": "statusgen/19",
+      "path": "docs/streams/statusgen/brief-19-context-handoff-contracts.md",
+      "version": "1",
+      "state": "verified",
+      "digest": "sha256:7840729b722651510827e548fb763df7f10970561b57602728e7449f9fb5482a",
+      "reused_by": []
+    },
+    {
+      "brief": "statusgen/20",
+      "path": "docs/streams/statusgen/brief-20-offline-context-resolver.md",
+      "version": "4",
+      "state": "verified",
+      "digest": "sha256:8cfa9d9e350d9781260e2ea4d78afa32e26c280af8667438ed2402082da861ca",
+      "reused_by": []
+    },
+    {
+      "brief": "statusgen/21",
+      "path": "docs/streams/statusgen/brief-21-author-skill-handoff.md",
+      "version": "3",
+      "state": "verified",
+      "digest": "sha256:7a59296e009a6fec18896a32676c6c86d03f2201ee50ef8f5b0bffcc6987748e",
+      "reused_by": [
+        "02"
+      ]
+    },
+    {
+      "brief": "statusgen/29",
+      "path": "docs/streams/statusgen/brief-29-run-the-existing-structural-row-checks-before-writing-a-new-brief.md",
+      "version": "2",
+      "state": "todo",
+      "digest": "sha256:bb182001379b1887795d6190368e78c49305667d46e86e30ab464719ac7a1592",
+      "reused_by": [
+        "03"
+      ]
+    },
+    {
+      "brief": "statusgen/30",
+      "path": "docs/streams/statusgen/brief-30-repair-deterministic-defects-in-active-verify-rows-with-a-reviewed-dry-run.md",
+      "version": "1",
+      "state": "todo",
+      "digest": "sha256:5193dad23db82a90999bbe0d834826e81d9480ee157984837d67c747b61eeb6d",
+      "reused_by": [
+        "03"
+      ]
+    },
+    {
+      "brief": "statusgen/34",
+      "path": "docs/streams/statusgen/brief-34-one-owned-scratch-path-for-verify-rows.md",
+      "version": "2",
+      "state": "todo",
+      "digest": "sha256:fd42f454010f2c10332d4b40135cd97574d63d01328c44de71ab317c0b327373",
+      "reused_by": [
+        "03"
+      ]
+    },
+    {
+      "brief": "statusgen/36",
+      "path": "docs/streams/statusgen/brief-36-content-bound-witness-schema-v2-reader.md",
+      "version": "2",
+      "state": "implemented",
+      "digest": "sha256:3a6e2df6525013c4d3163d5bead80508477e5895a616420e49dda465d18fbacc",
+      "reused_by": []
+    },
+    {
+      "brief": "statusgen/37",
+      "path": "docs/streams/statusgen/brief-37-content-bound-witness-schema-v2-writers.md",
+      "version": "3",
+      "state": "todo",
+      "digest": "sha256:ab1f1ae9fc3bfa0a8a5a998d43671bc3a7338c8059a80c5bb70dc51123afc8fe",
+      "reused_by": [
+        "03",
+        "04",
+        "05",
+        "10",
+        "11"
+      ]
+    },
+    {
+      "brief": "statusgen/38",
+      "path": "docs/streams/statusgen/brief-38-one-time-v1-to-v2-witness-backfill.md",
+      "version": "2",
+      "state": "todo",
+      "digest": "sha256:bf1cc2dba669b136333d08bb93e0adda4f9c52079804ef93757a0777098afc0f",
+      "reused_by": []
+    },
+    {
+      "brief": "statusgen/40",
+      "path": "docs/streams/statusgen/brief-40-chain-approved-acceptance-transitions.md",
+      "version": "2",
+      "state": "implemented",
+      "digest": "sha256:777cd560d116f227f989f44bd8e3ef92c6d9ca76c0614569259ba55987e8c7e0",
+      "reused_by": [
+        "03"
+      ]
+    },
+    {
+      "brief": "desk-tools/30",
+      "path": "docs/streams/desk-tools/brief-30-verify-desk-landing-by-verdict-issue.md",
+      "version": "1",
+      "state": "todo",
+      "digest": "sha256:654d1bfebf7cc6e15165ab37e425623a158422bf8c7aea99166bab3f9a6146d7",
+      "reused_by": [
+        "10"
+      ]
+    },
+    {
+      "brief": "desk-tools/45",
+      "path": "docs/streams/desk-tools/brief-45-expose-the-canonical-verification-queue-to-its-consumers.md",
+      "version": "4",
+      "state": "implemented",
+      "digest": "sha256:2ff39f48c4070b16683e2a344881e6b98bf7192c39067ef2508d2d9faac4596b",
+      "reused_by": []
+    },
+    {
+      "brief": "desk-tools/46",
+      "path": "docs/streams/desk-tools/brief-46-reuse-accepted-verification-inputs-to-stop-repeated-pass-dispatch.md",
+      "version": "3",
+      "state": "todo",
+      "digest": "sha256:ffa78a108ad0171e726184d165b9816a002ffd788560a2ddf42b05cd60f66da9",
+      "reused_by": [
+        "05",
+        "10"
+      ]
+    },
+    {
+      "brief": "desk-tools/47",
+      "path": "docs/streams/desk-tools/brief-47-resume-interrupted-evidence-landing-through-the-existing-sanctioned-paths.md",
+      "version": "3",
+      "state": "todo",
+      "digest": "sha256:982dd4dfe9957bda2b2396b0303eb34daebd7346c03d540f397846b42744e2e4",
+      "reused_by": [
+        "05",
+        "10"
+      ]
+    },
+    {
+      "brief": "desk-tools/48",
+      "path": "docs/streams/desk-tools/brief-48-report-remaining-landing-capacity-from-the-enforced-budget-owners.md",
+      "version": "2",
+      "state": "todo",
+      "digest": "sha256:7962dc9790b82282650e830166a3be37c0b31f7514e8a200d51076bb33e86b3c",
+      "reused_by": []
+    },
+    {
+      "brief": "desk-tools/49",
+      "path": "docs/streams/desk-tools/brief-49-deduplicate-verifier-filings-by-their-canonical-work-identity.md",
+      "version": "2",
+      "state": "todo",
+      "digest": "sha256:5447b8fec46b67620b8f7777c9d5e43bb5f95d3844c4c604b9b3c3e40789b40b",
+      "reused_by": [
+        "05"
+      ]
+    },
+    {
+      "brief": "desk-tools/50",
+      "path": "docs/streams/desk-tools/brief-50-bind-verifier-environment-evidence-to-the-run-admission.md",
+      "version": "2",
+      "state": "todo",
+      "digest": "sha256:a2e0bd52f7e0ae7ec6c3006fdd62d41174e1a96044922967e91210584d1c8d15",
+      "reused_by": [
+        "10"
+      ]
+    },
+    {
+      "brief": "desk-tools/51",
+      "path": "docs/streams/desk-tools/brief-51-drive-the-verifier-skill-from-the-current-queue-and-landing-contract.md",
+      "version": "5",
+      "state": "todo",
+      "digest": "sha256:84117d4d48bfefb15662e3231b4d9f0bf7b3879551a570c38ecd0b311185faee",
+      "reused_by": []
+    },
+    {
+      "brief": "desk-tools/61",
+      "path": "docs/streams/desk-tools/brief-61-benign-shape-registry.md",
+      "version": "1",
+      "state": "todo",
+      "digest": "sha256:27c09fd008378b30d13ca214af334244d607b900b93f37f7dab518fa4d0fece7",
+      "reused_by": [
+        "09"
+      ]
+    },
+    {
+      "brief": "desk-tools/62",
+      "path": "docs/streams/desk-tools/brief-62-diff-finding-file-line.md",
+      "version": "1",
+      "state": "todo",
+      "digest": "sha256:a303332715491a5f76d741a7887142b85456ada3d99fe8688518cc8d7a8f305e",
+      "reused_by": [
+        "09"
+      ]
+    },
+    {
+      "brief": "desk-tools/63",
+      "path": "docs/streams/desk-tools/brief-63-registry-acceptance-shapes.md",
+      "version": "1",
+      "state": "todo",
+      "digest": "sha256:be0006d5dbf6f6a2c2a0949f9df4bd49fbf0c15e41124207b81ff0e70479d2dd",
+      "reused_by": [
+        "09"
+      ]
+    },
+    {
+      "brief": "desk-tools/64",
+      "path": "docs/streams/desk-tools/brief-64-diff-scan-scope.md",
+      "version": "1",
+      "state": "todo",
+      "digest": "sha256:898712b5d2813b5ef6356a339216e989307d53398d24c5a72c2875a9a1636b34",
+      "reused_by": [
+        "09"
+      ]
+    },
+    {
+      "brief": "desktools-v2/06",
+      "path": "docs/streams/desktools-v2/brief-06-installation-token-scoping.md",
+      "version": "5",
+      "state": "todo",
+      "digest": "sha256:265a6fe8558bbb2aff09d05ebbba4073e8fb3128488a9d0914526a594e7aed26",
+      "reused_by": [
+        "02",
+        "07"
+      ]
+    },
+    {
+      "brief": "desktools-v2/14",
+      "path": "docs/streams/desktools-v2/brief-14-regression-floor.md",
+      "version": "4",
+      "state": "verified",
+      "digest": "sha256:12d55e562532c19870ad814b3ae4c9d536928af302c6884c0a04d5d666dc4c31",
+      "reused_by": [
+        "11"
+      ]
+    },
+    {
+      "brief": "desktools-v2/58",
+      "path": "docs/streams/desktools-v2/brief-58-extract-the-role-credential-provider-and-retire-internal-desktoken-callouts.md",
+      "version": "3",
+      "state": "todo",
+      "digest": "sha256:1555d41b153d3e4c7d3c65189ea6512b0ebe6f470790e84c8885de0597765d93",
+      "reused_by": []
+    },
+    {
+      "brief": "desktools-v2/73",
+      "path": "docs/streams/desktools-v2/brief-73-make-deskevidence-own-the-on-behalf-of-principal-on-runner-cells.md",
+      "version": "1",
+      "state": "todo",
+      "digest": "sha256:34f23026bff63ed5fd2beaba8461213b21d5f5afd8b30ad1c4811266dbb0095c",
+      "reused_by": []
+    },
+    {
+      "brief": "desktools-v2/75",
+      "path": "docs/streams/desktools-v2/brief-75-build-the-shared-forge-library-and-make-the-desk-verbs-thin-wrappers.md",
+      "version": "3",
+      "state": "todo",
+      "digest": "sha256:a702c1f775d3ef8f5077e063a4473ca7c727d56e061e6e277bdb9120e78e36f4",
+      "reused_by": [
+        "08"
+      ]
+    },
+    {
+      "brief": "milestone-support/01",
+      "path": "docs/streams/milestone-support/brief-01-extract-one-shared-typed-work-reference-resolver.md",
+      "version": "1",
+      "state": "done",
+      "digest": "sha256:b71c3da9f9df7cfe7d0a2d890872a06cb8c3e8a3c22b35bbee373aabe268fd35",
+      "reused_by": [
+        "01"
+      ]
+    },
+    {
+      "brief": "milestone-support/08",
+      "path": "docs/streams/milestone-support/brief-08-normalize-pr-trailers-and-claims-through-the-shared-resolver.md",
+      "version": "1",
+      "state": "todo",
+      "digest": "sha256:8efd27192fd2c93abf35ad558a23870f2416971a3082e86de0f78e0fcf7760b2",
+      "reused_by": [
+        "01",
+        "09"
+      ]
+    },
+    {
+      "brief": "milestone-support/14",
+      "path": "docs/streams/milestone-support/brief-14-qualify-the-two-binary-rollout-and-prepare-release-adoption.md",
+      "version": "1",
+      "state": "todo",
+      "digest": "sha256:aa4d05a1948078601de02b1431dcaa01f908c1bd3c44a3ac66de015c8825e6ef",
+      "reused_by": [
+        "11"
+      ]
+    },
+    {
+      "brief": "graph-execution/04",
+      "path": "docs/streams/graph-execution/brief-04-recovery-contract.md",
+      "version": "5",
+      "state": "verified",
+      "digest": "sha256:12346a7d502775909d1c6e94949af408a3e3bec16ed341403a38fe25336fb745",
+      "reused_by": [
+        "08"
+      ]
+    },
+    {
+      "brief": "graph-execution/20",
+      "path": "docs/streams/graph-execution/brief-20-runner-contract.md",
+      "version": "2",
+      "state": "verified",
+      "digest": "sha256:e0068d8d6da27bfa05d82f7d53afa275feae6dbfb595961de07a39b632327ed1",
+      "reused_by": [
+        "06"
+      ]
+    },
+    {
+      "brief": "graph-execution/25",
+      "path": "docs/streams/graph-execution/brief-25-publication-review-bridge.md",
+      "version": "2",
+      "state": "todo",
+      "digest": "sha256:5998179ac60568d606105f211d8db720ccfb849ad1a9e04af6c236e2f578aeaf",
+      "reused_by": [
+        "11"
+      ]
+    },
+    {
+      "brief": "graph-execution/26",
+      "path": "docs/streams/graph-execution/brief-26-shared-loop-admin.md",
+      "version": "12",
+      "state": "todo",
+      "digest": "sha256:85cbffc9729935cb836fb549fcdfcfdf9c27fc58afc8c97543517dab855c9577",
+      "reused_by": [
+        "06"
+      ]
+    },
+    {
+      "brief": "graph-execution/27",
+      "path": "docs/streams/graph-execution/brief-27-standing-desk-loop-admin.md",
+      "version": "11",
+      "state": "todo",
+      "digest": "sha256:3719170b281a494c9a8c88c87e3bb947afb884f583e0fd24c7b47626e9548083",
+      "reused_by": []
+    },
+    {
+      "brief": "graph-execution/28",
+      "path": "docs/streams/graph-execution/brief-28-verifier-domain-contracts.md",
+      "version": "7",
+      "state": "verified",
+      "digest": "sha256:94ede06e0ca3acd1c8dd618bfc85c85629cb0d79b8845e1a2f1d0baae474edfc",
+      "reused_by": [
+        "01"
+      ]
+    },
+    {
+      "brief": "graph-execution/29",
+      "path": "docs/streams/graph-execution/brief-29-verifier-regression-floor.md",
+      "version": "2",
+      "state": "verified",
+      "digest": "sha256:f3e40b2ad33d235ff536c9ad76df3752479dfda03451bd526b39364a996904cc",
+      "reused_by": []
+    },
+    {
+      "brief": "agent-execution/01",
+      "path": "docs/streams/agent-execution/brief-01-qualified-execution-profile.md",
+      "version": "2",
+      "state": "implemented",
+      "digest": "sha256:c6b83c9ab02a2209f6356ce260dab97a44000eae4a42937da414b882bbddd018",
+      "reused_by": [
+        "02"
+      ]
+    },
+    {
+      "brief": "agent-execution/02",
+      "path": "docs/streams/agent-execution/brief-02-prepared-environment-receipts.md",
+      "version": "3",
+      "state": "todo",
+      "digest": "sha256:94c811ae497db94b25191465fdc8332cf95676ea6d63ec5ff3b20983d566265f",
+      "reused_by": []
+    },
+    {
+      "brief": "agent-execution/03",
+      "path": "docs/streams/agent-execution/brief-03-local-readiness-enforcement.md",
+      "version": "3",
+      "state": "todo",
+      "digest": "sha256:1296a6dbff33dd1d3d77b9d9c209fbeae7aa3d9ea781f93123b90d6066487125",
+      "reused_by": [
+        "02",
+        "07"
+      ]
+    },
+    {
+      "brief": "desk-containers/15",
+      "path": "docs/streams/desk-containers/brief-15-cell-op-machine-seam.md",
+      "version": "2",
+      "state": "implemented",
+      "digest": "sha256:9e00da7449575a302e3f762878430060bd1dfdf42bb5a3032f699ee198091fb0",
+      "reused_by": [
+        "06"
+      ]
+    },
+    {
+      "brief": "desk-containers/17",
+      "path": "docs/streams/desk-containers/brief-17-up-converges-the-cell.md",
+      "version": "3",
+      "state": "implemented",
+      "digest": "sha256:927835f450971895e9a3186db26b98cd9696710b328fc8934ed3052cfcd35eb1",
+      "reused_by": [
+        "06"
+      ]
+    },
+    {
+      "brief": "desk-containers/18",
+      "path": "docs/streams/desk-containers/brief-18-drain-pause-resume-handoff.md",
+      "version": "1",
+      "state": "9",
+      "digest": "sha256:dbf4ef8d6e97c8dfd48f3858136f3d6cfca230eaf52a4c92d26e3439ad9d1207",
+      "reused_by": [
+        "06"
+      ]
+    },
+    {
+      "brief": "desk-containers/19",
+      "path": "docs/streams/desk-containers/brief-19-restart-rolling.md",
+      "version": "3",
+      "state": "todo",
+      "digest": "sha256:da81f48878a66c99fe19de722fd71ea3351fab5830bd7842ccbd73ec18646a7d",
+      "reused_by": []
+    },
+    {
+      "brief": "desk-containers/20",
+      "path": "docs/streams/desk-containers/brief-20-status-overview.md",
+      "version": "3",
+      "state": "todo",
+      "digest": "sha256:82f59983fc5b3246d3a5dbb83cd34da1431154084ca5c773cab248f47465b7ad",
+      "reused_by": []
+    },
+    {
+      "brief": "desk-containers/21",
+      "path": "docs/streams/desk-containers/brief-21-doctor.md",
+      "version": "3",
+      "state": "todo",
+      "digest": "sha256:416ad0628608c2cb15fb9626318412d1a7c6904eb91d3dc9078c7e8f8c90569d",
+      "reused_by": []
+    },
+    {
+      "brief": "desk-containers/23",
+      "path": "docs/streams/desk-containers/brief-23-upgrade.md",
+      "version": "3",
+      "state": "todo",
+      "digest": "sha256:74fca15d996f8894af7830934c43cf9036e67b906c3e943b15673f8c0adbfdec",
+      "reused_by": []
+    },
+    {
+      "brief": "desk-containers/24",
+      "path": "docs/streams/desk-containers/brief-24-gc.md",
+      "version": "3",
+      "state": "todo",
+      "digest": "sha256:93da479f2795ae2f497e78718465edbde03acb7ca6df770dc91db260a24e8550",
+      "reused_by": []
+    },
+    {
+      "brief": "desk-containers/28",
+      "path": "docs/streams/desk-containers/brief-28-package-in-cluster-cellctl-and-bind-the-interactive-desk-profile.md",
+      "version": "5",
+      "state": "todo",
+      "digest": "sha256:df47295e07a671f3927a2a86141cdf2ee64b20063b0acf79a2275c5986278499",
+      "reused_by": [
+        "07"
+      ]
+    },
+    {
+      "brief": "desk-containers/29",
+      "path": "docs/streams/desk-containers/brief-29-qualify-the-kubernetes-desk-cell-and-operator-recovery-end-to-end.md",
+      "version": "6",
+      "state": "todo",
+      "digest": "sha256:7f11772e31cd27ffb3ffd6ef418d0c454fd456830538395e456b6ed258b07fa8",
+      "reused_by": [
+        "07"
+      ]
+    }
+  ],
+  "open_pr_count": 84,
+  "public_issue_count": 216,
+  "claim_coverage": "not freshly queried; no active Task/Verify rebinding performed",
+  "reproduction": "source inspection and issue observations; no production probe"
+}
