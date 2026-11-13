@@ -829,10 +829,13 @@ jobs:
           go build -o "${RUNNER_TEMP}/statusgen" .
       # The human-gate sign-off digest (statusgen/signoffdigest.go): every brief
       # awaiting a human sign-off, oldest first, each with its Evidence link,
-      # written to this tick's job summary. Read-only and offline: it reads main's
-      # tree as cloned above, holds no token and writes nothing to the forge
-      # (no issue, no comment). A could-not-check digest (exit non-zero) still
-      # renders its could-not-check body, warns, and never fails the tick.
+      # written to this tick's job summary. Read-only: it reads main's tree as
+      # cloned above and writes nothing to the forge (no issue, no comment). Like
+      # every board call (acceptanceci_test.go) it resolves acceptance transitions
+      # with --acceptance-forge, reading through the job's own read-only
+      # github.token and never an App token. A could-not-check digest (exit
+      # non-zero) still renders its could-not-check body, warns, and never fails
+      # the tick.
       - name: Sign-off digest to the job summary
         working-directory: ${{ runner.temp }}/board-src
         env:
@@ -840,11 +843,12 @@ jobs:
           ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
           ASSAY_HOME_REPO: ${{ vars.ASSAY_HOME_REPO || github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -uo pipefail
           digest="${RUNNER_TEMP}/signoff-digest.md"
           rc=0
-          "${RUNNER_TEMP}/statusgen" --root . --signoff-digest > "$digest" || rc=$?
+          "${RUNNER_TEMP}/statusgen" --root . --signoff-digest --acceptance-forge > "$digest" || rc=$?
           cat "$digest"
           cat "$digest" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
           if [ "$rc" -ne 0 ]; then

@@ -4,9 +4,10 @@ package main
 // board workflow's scheduled reconcile job. The digest is a surfacing-only
 // roll-up: the job writes it to the tick's job summary and nowhere else. These
 // tests pin that on the live workflow and its staged twin: the step runs
-// --signoff-digest on main's tree before the compute step, holds no token,
-// writes to the job summary, and a could-not-check digest warns without
-// failing the tick.
+// --signoff-digest on main's tree before the compute step, holds only the
+// job's own github.token (for --acceptance-forge; never an App token), writes
+// to the job summary, and a could-not-check digest warns without failing the
+// tick.
 
 import (
 	"os"
@@ -55,12 +56,20 @@ func TestReconcileSignoffDigestStep(t *testing.T) {
 		if !strings.HasPrefix(st.WorkingDirectory, runnerTempExpr+"/board-src") {
 			t.Errorf("%s: digest step working-directory %q, want the job-local clone", path, st.WorkingDirectory)
 		}
+		// The one credential allowed is the job's own read-only token, which
+		// --acceptance-forge needs (acceptanceci_test.go); no App or other token.
 		for k, v := range st.Env {
-			if strings.Contains(v, "token") || k == "GH_TOKEN" || k == "GITHUB_TOKEN" {
-				t.Errorf("%s: digest step env %s=%s: it must hold no token", path, k, v)
+			if k == "GH_TOKEN" && v == "${{ github.token }}" {
+				continue
+			}
+			if strings.Contains(strings.ToLower(v), "token") || strings.Contains(strings.ToLower(k), "token") {
+				t.Errorf("%s: digest step env %s=%s: it may hold only GH_TOKEN: ${{ github.token }}", path, k, v)
 			}
 		}
-		for _, need := range []string{`--root . --signoff-digest > "$digest" || rc=$?`, `>> "${GITHUB_STEP_SUMMARY:-/dev/null}"`, "::warning::"} {
+		if st.Env["GH_TOKEN"] != "${{ github.token }}" {
+			t.Errorf("%s: digest step env lacks GH_TOKEN: ${{ github.token }} for --acceptance-forge", path)
+		}
+		for _, need := range []string{`--root . --signoff-digest --acceptance-forge > "$digest" || rc=$?`, `>> "${GITHUB_STEP_SUMMARY:-/dev/null}"`, "::warning::"} {
 			if !strings.Contains(st.Run, need) {
 				t.Errorf("%s: digest step lacks %q", path, need)
 			}
