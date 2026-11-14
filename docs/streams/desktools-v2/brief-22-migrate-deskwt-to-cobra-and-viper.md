@@ -390,6 +390,10 @@ RISK-VALUE: DERIVED — singleton-ttl default = defaultSingletonTTL (10 * time.M
 
 **VERIFY: BLOCKED** — 9 of 10 obligations discharged at 876ca4bca37c and no obligation failed; row 9 exits 0 but its unpinned --consumers form judges no consumer on merged main, a check-definition blocker tracked at medici-finance/assay#1927 (bare-row shape: medici-finance/assay#5346).
 
+#### Correction — 2026-11-14
+
+The row 9 note above misattributes its quoted output. The "summary: 0 corroborated, 0 disproved, 9 unchecked, 0 brief(s) claiming nothing" and "UNCHECKED entries are NOT passes" lines came from a supplemental re-run taken while this verifier's uncommitted Evidence edit to this brief was in the working tree. That edit put this brief into the default diff, so the output is not merged main's. On clean merged main 876ca4bca37c, row 9 exits 0 and prints only "consumers: no brief files in the diff against 876ca4bca37c465d80158bc8c11a5f9346736ef0 — nothing to corroborate", with no summary line and no UNCHECKED line. Reproduction: in a detached clean checkout at 876ca4bca37c465d80158bc8c11a5f9346736ef0, with origin/main at that commit and statusgen v1.0.84, run statusgen --root . --consumers. It prints that single line and exits 0. Copy this brief with the uncommitted Evidence edit into the tree and the same command prints the "9 unchecked" summary. Restore the file and the single line comes back. Either way row 9 judges no consumer on merged main, so the conclusion stands. No row result changes: row 9 stays deferred and the other nine rows stay pass. The BLOCKED verdict (9 of 10 obligations discharged) does not change.
+
 
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.
