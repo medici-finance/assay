@@ -140,13 +140,16 @@ func cmdRun(args []string, stdout io.Writer) error {
 		probe = forgeTrustProbe(nil)
 	}
 
+	// The default is the sanctioned worktree prefix `deskwt add` targets, so a scan worktree the lane
+	// retains after a failure can be removed through the sanctioned tooling. It was the parent of
+	// --root, which deskwt's prefix check refuses. --worktree-base remains an explicit override.
 	worktreeBase := o.worktrees
 	if worktreeBase == "" {
-		abs, aerr := filepath.Abs(o.root)
-		if aerr != nil {
-			return deskkit.Unverifiable("scanloop run: cannot resolve --root", aerr)
+		def, derr := defaultScanWorktreeBase(o.root)
+		if derr != nil {
+			return derr
 		}
-		worktreeBase = filepath.Dir(abs)
+		worktreeBase = def
 	}
 	if !filepath.IsAbs(worktreeBase) {
 		return deskkit.Refused("scanloop run: --worktree-base must be an ABSOLUTE path (" + worktreeBase + ")")

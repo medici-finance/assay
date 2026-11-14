@@ -719,7 +719,7 @@ item, and the cockpit is only a nicer way to reach it.
 `gate: human` / `irreversible: yes` items DISPATCH NORMALLY (2026-07-10): the gate binds APPROVAL —
 review, merge, verify sign-off — not implementation, and every human control point sits downstream.
 But **a human gate with no filed issue is an empty decision surface** (human:<name> 2026-08-23), so pass
-`--gate-human` (or a `--brief` whose metadata gates), which runs `decision-issue ensure … --at start` between claim and launch — idempotent by its hidden marker, swept `--state all`, landing a
+`--gate-human` (or a `--brief` whose metadata gates; with no `--brief`, a brief-shaped item key's own brief gates the same way, and a key whose brief does not resolve is refused pre-claim), which runs `decision-issue ensure … --at start` between claim and launch — idempotent by its hidden marker, swept `--state all`, landing a
 `needs-decision` issue that enters the weekly digest. Three non-filing outcomes: `deferred:
 decision-trigger=spec` — the decision is only well-formed at the pickup design step, so the prompt
 instructs the executor to author the brief's `## Human decision` section in its PR and report
