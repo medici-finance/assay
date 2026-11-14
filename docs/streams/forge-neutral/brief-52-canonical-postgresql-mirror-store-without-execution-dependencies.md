@@ -12,6 +12,7 @@ gate-why: "The shared mirror needs durable scoped rows and honest coverage befor
 split-from: forge-neutral/37
 decision-trigger: spec
 decision-issue: 5401
+ruling: "https://github.com/medici-finance/assay/issues/5401#issuecomment-6621965962"
 issues: []
 schema: brief-v2
 version: 3
