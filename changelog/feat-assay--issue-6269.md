@@ -1,2 +1,0 @@
-### Changed
-- The Cursor binding's execution model selection now covers every loop that launches a strong-tier agent or needs a strong-tier session (worker, the floor-tier verifier re-verify, risk-classed review and ready-flip, intake judgment, coordinator brief authoring), and each of those per-skill rows links to it. The routine verify drain stays at the local session model and holds an `exec-tier: strong` brief that model cannot meet.
