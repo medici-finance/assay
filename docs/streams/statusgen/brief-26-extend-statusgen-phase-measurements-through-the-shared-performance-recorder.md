@@ -319,6 +319,67 @@ RISK-VALUE: NAMED, NOT DERIVED — deskread probe timeout = 15*time.Second @ sta
 
 **VERIFY: PASS** — 4 of 4 rows pass at source f9c836b11e51 (rows 1-3 in the closed container bracket, verdict=match; row 4 in the host lane with its pinned delivery range). Gate model, every risk answer no. The verified flip is held by medici-finance/assay#4823, and the outcome record is blocked on it.
 
+### Non-implementer verifier run — 2026-11-14 — claude-opus-5-5 (strong), source 876ca4bca37c
+
+Fresh re-verification of statusgen/26 at merged main 876ca4bca37c465d80158bc8c11a5f9346736ef0 in a new dispatched detached home (attestation medici-finance/assay#6472, claude-opus-5-5, tier strong). The runner is not the implementer. This block is a new run under a new admission. It changes nothing in the 2026-11-13 block above, whose rows and prose stay as landed. Deliveries: PR #3759 (merge 44829891e8f7) and its follow-up PR #4541 (merge 5a4a3edda5c8, first parent 4264d1027198, an ancestor of the verified head). Brief frontmatter: gate model, every risk answer no, not irreversible. Installed statusgen and deskdispatch v1.0.84 throughout; no locally built binary.
+
+Changes since the earlier passes, from `git diff --stat` over the brief's Context files and its consumers entries (statusgen/perfrecord.go, perfrecord_test.go, main.go, load.go, parse.go, forgeread.go, readmemo.go, perfsnapshot_test.go, perfworkload_test.go, go.mod, go.sum, statusgen/bench/, statusgen/testdata/perfworkload/, perfrec/, tools/desk/cmd/deskperf/, docs/telemetry.md, docs/streams/desktools-v2/cli-migration.json and tools/desk/internal/clicontract/perfworkload_test.go):
+
+- Since the 2026-11-13 pass at f9c836b11e51: no file in that scope changed. The same holds over the whole of statusgen/, perfrec/ and tools/desk/cmd/deskperf/.
+- Since the 2026-11-10 pass at 612750a12406: 14 files changed, 807 insertions and 22 deletions. They are docs/streams/desktools-v2/cli-migration.json, docs/telemetry.md, perfrec/README.md, perfrec/perfrec.go, perfrec/release_test.go, perfrec/schema.go, statusgen/forgeread.go, statusgen/main.go, statusgen/perfrecord.go, statusgen/perfrecord_test.go, tools/desk/cmd/deskperf/forgetag-mutations.json, tools/desk/cmd/deskperf/forgetag_test.go, tools/desk/cmd/deskperf/main.go and tools/desk/cmd/deskperf/report.go. The 2026-11-13 block above says only statusgen/perfrecord.go changed; this list is the complete set for that scope.
+
+Correction to the 2026-11-13 block above, which this block leaves as landed: its prose gives 05:24:44Z as the bracket open. 05:24:44Z is when the host open step started. Its witness's Admission-Bracket line records opened=2026-11-13T05:24:58Z and closed=2026-11-13T05:25:41Z.
+
+One attempt under one admission (run a424d6e1cd13194c), in two lanes whose `--rows` selections are disjoint and together cover all 4 rows. Before it, a first host open step started at 02:21:38Z and was refused at 02:36:44Z with no receipt written: `go mod download` for tools/desk hit a proxy stream error on golang.org/x/text@v0.43.0. No container started and no row ran, so it is not an attempt. The open step was then repeated with a new, empty module cache.
+
+- Rows 1-3 (check:ci) ran in the released verify-runner v1.0.84 image (ghcr.io/medici-finance/verify-runner:v1.0.84, linux/arm64, native; statusgen v1.0.84, go1.27.3, git 2.56.1), pinned by digest sha256:a0d6bbd15f1e1891bca9429673015f8e8ce85fc63cd561fe9cf7303f2ef3f279, with `--timeout 45m` and every row's command unchanged. The witness's Admission-Bracket line records the bracket as opened=2026-11-14T02:54:02Z and closed=2026-11-14T02:54:48Z; those are the bracket's open and close times. The host open step started at 02:37:55Z and spent the time before the recorded open filling the module cache outside the home. The container ran with network none, a read-only root, all capabilities dropped, no-new-privileges and a non-root uid. The home, its repository's git directory, the module cache and the receipt were mounted read-only, with GOPROXY=off, GOTOOLCHAIN=local and GOFLAGS=-mod=readonly. The witness below is reproduced byte for byte.
+- Row 4 (class check) reads git history, so it ran on the darwin-arm64 host from 02:55:55Z to 02:56:10Z, after the bracket closed. It used the installed statusgen v1.0.84 as `statusgen verifyrun --rows 4 --dry-run`, under a minimal PATH (the desk tools, git, go and jq only), offline (GOPROXY=off, GOTOOLCHAIN=local), with KUBECONFIG pointed at the null device and no forge credential in the environment. The table and attestation line below are reproduced unchanged, and nothing was written to the home.
+
+#### Container-lane witness (rows 1-3)
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedPhaseRecorderFlow$' ./... > "$out" && grep -F -- '--- PASS: TestSharedPhaseRecorderFlow ' "$out")` | pass exit=0 sandbox=container-netns | sha256:480481a8bf4d | 2026-11-14 | assay-verifier-app[bot] @ 876ca4bca37c (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestInvocationSnapshotReuseParity$' ./... > "$out" && grep -F -- '--- PASS: TestInvocationSnapshotReuseParity ' "$out")` | pass exit=0 sandbox=container-netns | sha256:f510179cf6d2 | 2026-11-14 | assay-verifier-app[bot] @ 876ca4bca37c (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerformanceKeepsCredentialBoundary$' ./... > "$out" && grep -F -- '--- PASS: TestPerformanceKeepsCredentialBoundary ' "$out")` | pass exit=0 sandbox=container-netns | sha256:583a0fd89775 | 2026-11-14 | assay-verifier-app[bot] @ 876ca4bca37c (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:91378ff254042b32cbaed37048db853565b9dee9fb49afd6a4997d4cbfa7a8b0
+Container-Image: sha256:a0d6bbd15f1e1891bca9429673015f8e8ce85fc63cd561fe9cf7303f2ef3f279
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6472 run=a424d6e1cd13194ce0f9dfbe5fca92814b008c115e6e0ffe2b0526f0ff8cc559 source=876ca4bca37c465d80158bc8c11a5f9346736ef0 brief=docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=a424d6e1cd13194ce0f9dfbe5fca92814b008c115e6e0ffe2b0526f0ff8cc559 source=876ca4bca37c465d80158bc8c11a5f9346736ef0 tree=sha256:91378ff254042b32cbaed37048db853565b9dee9fb49afd6a4997d4cbfa7a8b0 witness=sha256:024c674da110a160e0bca8607dfb19406c43b3752f42959dae4b188ae71ded74 opened=2026-11-14T02:54:02Z closed=2026-11-14T02:54:48Z before=receipt after=check-verifier
+
+#### Host lane (row 4, class check)
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `(out=$(mktemp) && trap 'rm -f "$out"' 0 && statusgen --root . --consumers --brief statusgen/26 --delivery 5a4a3edda5c801b72e4e40bd17d68bfc6f946550 --base 4264d1027198b8f257a95e1630f07cac358fcd6f > "$out" && grep -F -- 'summary: 12 corroborated, 0 disproved, 3 unchecked,' "$out")` | pass exit=0 | sha256:30d75ac63742 | 2026-11-14 | assay-verifier-app[bot] @ 876ca4bca37c (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6472 run=a424d6e1cd13194ce0f9dfbe5fca92814b008c115e6e0ffe2b0526f0ff8cc559 source=876ca4bca37c465d80158bc8c11a5f9346736ef0 brief=docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md model=claude-opus-5-5 tier=strong
+
+#### Row accounting
+
+- Rows 1, 2 and 3 pass inside the container bracket, and row 4 passes in the host lane: 4 of 4 required rows, none unrun.
+- Each of rows 1-3 greps its own named PASS line, so a missing selector would have failed the row.
+- Row 4's grep for the exact summary line discriminates: it passes only on "12 corroborated, 0 disproved, 3 unchecked".
+- The admission check (`deskdispatch --check-verifier`) returned rc=0 before any row ran and again before this block was written, and the home was clean after both lanes.
+- `statusgen verifyrun --bracket-digest` on the closed witness (02:54:48Z, run from inside the home) reported witness=sha256:024c674da110a160e0bca8607dfb19406c43b3752f42959dae4b188ae71ded74 recorded=sha256:024c674da110a160e0bca8607dfb19406c43b3752f42959dae4b188ae71ded74 verdict=match span-lines=tree-digest:1,container-image:1,attestation:1. Its `--credit` reading needs the witness lines committed, so it is taken after this block lands and is reported in the outcome record.
+
+#### Supplemental observations — no acceptance credit
+
+These were recorded on 2026-11-14 by the same verifier session, assay-verifier-app[bot] (claude-opus-5-5), at the same source. They discharge no row.
+
+- S1 (02:56:25Z, darwin-arm64 host, clean home, minimal PATH, GOPROXY=off): the row 4 statusgen command without the grep exited 0 and printed "summary: 12 corroborated, 0 disproved, 3 unchecked, 0 brief(s) claiming nothing". The 3 unchecked entries are the brief's declared out-of-scope claims (tools/desk/cmd/deskread, statusgen/contexthandoff/ and qualgen/), left to review as the row's Expect states.
+- Negative controls, read at this source: the three named tests exercise the production owners with the stated breaks planted. TestSharedPhaseRecorderFlow has the copied-writer parity control (statusgen/perfrecord_test.go:1101-1135). TestInvocationSnapshotReuseParity plants the head-only mutant in brieffile.go and the prior-readset mutant in readmemo.go (statusgen/perfsnapshot_test.go:213 and :218). TestPerformanceKeepsCredentialBoundary plants a direct credential getter (statusgen/perfrecord_test.go:1383-1393, the "no credential getter" subtest), which must be seen.
+
+#### Risk-bearing values
+
+Brief risk metadata is present and every field is no; the item is not irreversible. Enumerated over the literals the deliveries introduce in statusgen/perfrecord.go, statusgen/readmemo.go, statusgen/bench/perfworkload.sh and statusgen/testdata/perfworkload/sizes.json, re-read at this source. None of those four files changed since the 2026-11-13 pass, so every literal sits at the line the block above names. The highest-ranked is the phase roster, because records written under a wrong roster stay wrong for deskperf readers; it is still reversible by an edit and a release.
+
+RISK-VALUE: DERIVED — perfV3Phases = {"discover","parse","evaluate","render","write","deskread"} @ statusgen/perfrecord.go:261 — covers the brief's Interface contract (discovery/load, parse, evaluation, rendering, and the deskread child), plus the write phase, and matches the phase roster docs/telemetry.md line 370 documents element for element.
+RISK-VALUE: DERIVED — perfToolName = "statusgen" @ statusgen/perfrecord.go:51 — the record's tool field, a constant rather than argv[0], so a renamed or wrapped binary still emits records under the tool name the brief names.
+RISK-VALUE: NAMED, NOT DERIVED — deskread probe timeout = 15*time.Second @ statusgen/perfrecord.go:436, cmd.WaitDelay = time.Second @ statusgen/perfrecord.go:440, bench SAMPLES default 20 @ statusgen/bench/perfworkload.sh:13, go test -timeout=240s @ statusgen/bench/perfworkload.sh:16, workload sizes small 2x4 and large 12x20 @ statusgen/testdata/perfworkload/sizes.json:1 — reversible operational knobs; ranked last and out of scope for derivation by design.
+
+**VERIFY: PASS** — 4 of 4 rows pass at source 876ca4bca37c (rows 1-3 in the closed container bracket, verdict=match; row 4 in the host lane with its pinned delivery range). Gate model, every risk answer no. The verified flip is held by medici-finance/assay#4823, and the outcome record is blocked on it.
+
 ## Review
 
 Gate: model; all risk answers are no. Reject false-zero, stale-hit, silently changed legacy semantics or unmeasured savings claims.
