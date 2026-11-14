@@ -1316,6 +1316,10 @@ Result: rows_passed=11, rows_total=15. Rows 2, 4, 8 and 15 fail on implementatio
 
 **VERIFY: FAIL** — 11/15 pass in one container-netns bracket at 876ca4bca37c; row 2 fails on every platform because the test stub lacks `codex features list` (#6171, and on Linux #4317); rows 8 and 15 fail on Linux on the oracle's GNU-stat mode probe (#4317); row 4 fails on every platform on the conditional `ASSAY_TELEMETRY` plan key (#4316).
 
+#### Correction — 2026-11-14
+
+The "Why this re-pass" paragraph of the 2026-11-14 pass above says that tools/desk/cmd/cellctl/ is byte-identical since the previous landed pass at c77685c72dd8. That is wrong. `git diff --stat c77685c72dd8664fdb275de1050248d412626898 876ca4bca37c465d80158bc8c11a5f9346736ef0 -- tools/cellctl/ tools/desk/cmd/cellctl/ docs/cellctl.md` prints one changed file, tools/desk/cmd/cellctl/rolecontext_dispatch_test.go, with 11 insertions (a brief-shaped worker-key test fixture for #6173, commits 43a85e7f3 and 81cc9f66b). tools/cellctl/ and docs/cellctl.md are byte-identical, as stated, and so are the non-test Go sources under tools/desk/cmd/cellctl/. The changed file is a `_test.go` file: row 11's `go build ./cmd/cellctl` does not compile it, and no row builds or runs it. No row result and no verdict changes.
+
 ## Review
 Gate: model (all four risk answers no — a new cell kind plus three verbs on a host launcher;
 it composes an environment with STRICTLY LESS of the operator's authority than the existing
