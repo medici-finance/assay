@@ -762,7 +762,7 @@ jobs:
           ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
           ASSAY_HOME_REPO: ${{ vars.ASSAY_HOME_REPO || github.repository }}
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -uo pipefail
           digest="${RUNNER_TEMP}/signoff-digest.md"

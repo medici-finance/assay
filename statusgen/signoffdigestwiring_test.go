@@ -57,17 +57,19 @@ func TestReconcileSignoffDigestStep(t *testing.T) {
 			t.Errorf("%s: digest step working-directory %q, want the job-local clone", path, st.WorkingDirectory)
 		}
 		// The one credential allowed is the job's own read-only token, which
-		// --acceptance-forge needs (acceptanceci_test.go); no App or other token.
+		// --acceptance-forge needs (acceptanceci_test.go). It is GITHUB_TOKEN, as
+		// on the compute step: in this job only the publish step may set GH_TOKEN
+		// (TestReconcileJobStepWiring). No App or other token.
 		for k, v := range st.Env {
-			if k == "GH_TOKEN" && v == "${{ github.token }}" {
+			if k == "GITHUB_TOKEN" && v == "${{ github.token }}" {
 				continue
 			}
 			if strings.Contains(strings.ToLower(v), "token") || strings.Contains(strings.ToLower(k), "token") {
-				t.Errorf("%s: digest step env %s=%s: it may hold only GH_TOKEN: ${{ github.token }}", path, k, v)
+				t.Errorf("%s: digest step env %s=%s: it may hold only GITHUB_TOKEN: ${{ github.token }}", path, k, v)
 			}
 		}
-		if st.Env["GH_TOKEN"] != "${{ github.token }}" {
-			t.Errorf("%s: digest step env lacks GH_TOKEN: ${{ github.token }} for --acceptance-forge", path)
+		if st.Env["GITHUB_TOKEN"] != "${{ github.token }}" {
+			t.Errorf("%s: digest step env lacks GITHUB_TOKEN: ${{ github.token }} for --acceptance-forge", path)
 		}
 		for _, need := range []string{`--root . --signoff-digest --acceptance-forge > "$digest" || rc=$?`, `>> "${GITHUB_STEP_SUMMARY:-/dev/null}"`, "::warning::"} {
 			if !strings.Contains(st.Run, need) {
