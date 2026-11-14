@@ -15,11 +15,10 @@ import (
 
 // ghListChangesServer serves the paginated GraphQL read. It routes on the `after` cursor in the
 // request variables: an absent/null cursor is page 1. Each entry in `pages` is one page's
-// response nodes; hasNextPage is true for every page but the last unless alwaysMore is set (the
-// truncation case, where the forge keeps advertising more past the client's ceiling).
+// response nodes; hasNextPage is true for every page but the last. The truncation case is served
+// by pagedOpenChanges, whose cursors advance as a real forge's do.
 type ghListChangesServer struct {
 	pages       [][]map[string]any
-	alwaysMore  bool
 	seenStates  []any // the `states` variable of the FIRST request, for the states-scope assertion
 	pageRequest int
 }
@@ -44,7 +43,7 @@ func (s *ghListChangesServer) forge(t *testing.T) *GitHubForge {
 			idx = len(s.pages) - 1
 		}
 		nodes := s.pages[idx]
-		hasNext := s.alwaysMore || idx < len(s.pages)-1
+		hasNext := idx < len(s.pages)-1
 		resp := map[string]any{"data": map[string]any{"repository": map[string]any{
 			"pullRequests": map[string]any{
 				"pageInfo": map[string]any{"hasNextPage": hasNext, "endCursor": "cursor-after-page"},
@@ -95,26 +94,25 @@ func TestListChangesGitHubWalksPagesToTheEnd(t *testing.T) {
 }
 
 // TestListChangesGitHub_ReportsIncompleteAtCeiling is the FAIL-FIRST proof of the truncation
-// contract: a forge that keeps advertising more past the page ceiling must come back
+// contract: a forge that keeps advertising more past the 500-change window must come back
 // Incomplete=true (never a silent partial). Pre-fix, the walk that ignored hasNextPage at the
-// ceiling — or dropped the Incomplete flag — returns Incomplete=false and reddens this test.
+// ceiling — or dropped the Incomplete flag — returns Incomplete=false and reddens this test. The
+// window is walked in 20 pages of 25 (#6475), so the walk stops at the ceiling after 20 requests.
 func TestListChangesGitHub_ReportsIncompleteAtCeiling(t *testing.T) {
-	s := &ghListChangesServer{
-		pages:      [][]map[string]any{{node(1, "OPEN", "Brief: example-a/00")}},
-		alwaysMore: true,
-	}
-	cl, err := s.forge(t).ListChanges(forgeTestRepo, OpenAndMerged())
+	fake := &pagedOpenChanges{n: 600}
+	cl, err := pagedForge(t, fake).ListChanges(forgeTestRepo, OpenAndMerged())
 	if err != nil {
 		t.Fatalf("ListChanges: %v", err)
 	}
-	if !cl.Incomplete {
-		t.Fatalf("a read that hit the page ceiling with the forge still paginating must be Incomplete: %+v", cl)
+	if !cl.Incomplete || len(cl.Changes) != 500 {
+		t.Fatalf("a read that hit the window with the forge still paginating must be Incomplete with the "+
+			"500-change window: incomplete=%v changes=%d", cl.Incomplete, len(cl.Changes))
 	}
-	if cl.PageCap != forgeListChangesMaxPages {
-		t.Errorf("PageCap must report the ceiling %d, got %d", forgeListChangesMaxPages, cl.PageCap)
+	if cl.PageCap != 20 {
+		t.Errorf("PageCap must report the ceiling in starting-size pages (20 of 25), got %d", cl.PageCap)
 	}
-	if s.pageRequest != forgeListChangesMaxPages {
-		t.Errorf("the walk must stop at the ceiling (%d pages), made %d requests", forgeListChangesMaxPages, s.pageRequest)
+	if len(fake.requests) != 20 {
+		t.Errorf("the walk must stop at the ceiling (20 pages), made %d requests", len(fake.requests))
 	}
 }
 

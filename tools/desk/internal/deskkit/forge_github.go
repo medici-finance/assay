@@ -808,15 +808,22 @@ const (
 	// twin): a forge still advertising more pages past it is a could-not-check, never a
 	// silently truncated listing.
 	forgeMaxIssuePages = 100
-	// forgeListChangesPerPage / forgeListChangesMaxPages bound the ListChanges read: up to
-	// forgeListChangesMaxPages pages of forgeListChangesPerPage, most-recently-updated first.
-	// Unlike the open-issue walk this does NOT refuse at the ceiling — the represented-PR
-	// reconciliation would rather work off the recent window than hold every dispatch on a repo
-	// whose lifetime merged-PR count exceeds the ceiling — so the ceiling is reported as
-	// ChangeList.Incomplete and the consumer decides. The window (500 recent changes) covers the
-	// currently-active briefs a phantom check reasons about.
-	forgeListChangesPerPage  = 100
-	forgeListChangesMaxPages = 5
+	// forgeListChangesWindow bounds the ListChanges read to the forgeListChangesWindow most
+	// recently updated changes. Unlike the open-issue walk this does NOT refuse at the ceiling —
+	// the represented-PR reconciliation would rather work off the recent window than hold every
+	// dispatch on a repo whose lifetime merged-PR count exceeds it — so the ceiling is reported
+	// as ChangeList.Incomplete and the consumer decides. The window (500 recent changes) covers
+	// the currently-active briefs a phantom check reasons about.
+	//
+	// forgeListChangesPage / forgeListChangesMinPage / forgeListChangesRetries are the walk's
+	// paging (#6475), the open-change walk's figures: pages of 25 changes, halved on a transient
+	// failure to a floor of 6, with at most 4 smaller retries across the whole walk. Each change
+	// carries its whole body (the `Brief:` trailer is read from it), and on a repo with a large
+	// PR history the forge cut a page of 100 off mid-transfer (~400 KB) on every run.
+	forgeListChangesWindow  = 500
+	forgeListChangesPage    = 25
+	forgeListChangesMinPage = 6
+	forgeListChangesRetries = 4
 )
 
 // ghOpenChangesQuery is the bulk open-PR read, hand-authored so it requests EXACTLY the
@@ -1003,17 +1010,7 @@ func (g *GitHubForge) openChangesRead(repo ForgeRepo, query, what string) ([]ghO
 		Classify: ghReadClass,
 	}, func(n ghOpenChangeNode) string { return strconv.Itoa(n.Number) }, fetch)
 	if err != nil {
-		var ex *pager.ExhaustedError
-		var st *pager.StalledError
-		var bud *pager.BudgetError
-		switch {
-		case errors.As(err, &ex):
-			return nil, "", false, Unverifiable(fmt.Sprintf("%s read could not be completed: %d request(s), %d retried at a smaller page, last page size %d (%s)",
-				what, ex.Stats.Requests, ex.Stats.Retries, ex.Size, ex.Reason), ex.Cause)
-		case errors.As(err, &st), errors.As(err, &bud):
-			return nil, "", false, Unverifiable(what+" read could not be completed", err)
-		}
-		return nil, "", false, err
+		return nil, "", false, ghPagedReadErr(what, err)
 	}
 	switch visibility {
 	case "public", "private", "internal":
@@ -1023,7 +1020,25 @@ func (g *GitHubForge) openChangesRead(repo ForgeRepo, query, what string) ([]ghO
 	return res.Items, visibility, res.Truncated, nil
 }
 
-// ghReadClass classifies a failed open-change page for the pager. TRANSIENT is only what a
+// ghPagedReadErr renders a failed pager walk of a GraphQL read: an exhausted backoff, a stalled
+// cursor or a spent request budget is could-not-check naming the walk; any other failure (a Stop
+// the classifier passed through unchanged) is returned as-is.
+func ghPagedReadErr(what string, err error) error {
+	var ex *pager.ExhaustedError
+	var st *pager.StalledError
+	var bud *pager.BudgetError
+	switch {
+	case errors.As(err, &ex):
+		return Unverifiable(fmt.Sprintf("%s read could not be completed: %d request(s), %d retried at a smaller page, last page size %d (%s)",
+			what, ex.Stats.Requests, ex.Stats.Retries, ex.Size, ex.Reason), ex.Cause)
+	case errors.As(err, &st), errors.As(err, &bud):
+		return Unverifiable(what+" read could not be completed", err)
+	}
+	return err
+}
+
+// ghReadClass classifies a failed page of a paged GraphQL read (the open-change documents and
+// ListChanges) for the pager. TRANSIENT is only what a
 // smaller page of the same read can cure: a 500/502/503/504 that is not a rate-limit answer, and
 // the doJSON refusals transientRead marks (an empty body, a body cut off mid-transfer, a body
 // that does not parse). Everything else — 401/403/404, a rate limit, a GraphQL error, a transport
@@ -1183,22 +1198,45 @@ func ghChangeStates(states ChangeStates) []string {
 	return out
 }
 
+// ghListChangeNode is one node of ghListChangesQuery's pullRequests connection.
+type ghListChangeNode struct {
+	Number      int    `json:"number"`
+	State       string `json:"state"`
+	HeadRefOid  string `json:"headRefOid"`
+	HeadRefName string `json:"headRefName"`
+	BaseRefName string `json:"baseRefName"`
+	Title       string `json:"title"`
+	Body        string `json:"body"`
+	MergedAt    string `json:"mergedAt"`
+	UpdatedAt   string `json:"updatedAt"`
+	// Pointers so a null stays distinguishable from false / absent.
+	IsCrossRepository *bool `json:"isCrossRepository"`
+	HeadRepository    *struct {
+		NameWithOwner string `json:"nameWithOwner"`
+	} `json:"headRepository"`
+	Author *gqlActor `json:"author"`
+}
+
+// ListChanges walks ghListChangesQuery through the shared pager, as openChangesRead walks the
+// open-change documents: pages of forgeListChangesPage, a transient page failure (ghReadClass —
+// a 5xx, an empty body, a body cut off mid-transfer, one that does not parse) retried for the
+// SAME cursor at half the size, and every other failure final. Any failure fails the whole read
+// could-not-check with NO changes: a partial page set is never handed back as a shorter list,
+// which the represented-PR reconciliation would read as "no PR exists" (#6475).
 func (g *GitHubForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeList, error) {
 	if !states.Any() {
 		return nil, Unverifiable("ListChanges was asked for no states — the state set must be stated "+
 			"(open/merged/closed), never defaulted to a whole-repo scan", nil)
 	}
 	wantStates := ghChangeStates(states)
-	out := &ChangeList{PageCap: forgeListChangesMaxPages}
-	var after *string
-	for page := 1; page <= forgeListChangesMaxPages; page++ {
+	fetch := func(_ context.Context, req pager.Request) (pager.Page[ghListChangeNode], error) {
 		vars := map[string]any{
 			"owner": repo.Owner, "name": repo.Name,
-			"first": forgeListChangesPerPage, "states": wantStates,
+			"first": req.Size, "states": wantStates, "after": nil, // nil: GraphQL null, the start
 		}
-		// A nil `after` on page 1 is sent as GraphQL null — the connection's start.
-		vars["after"] = after
-		in := map[string]any{"query": ghListChangesQuery, "variables": vars}
+		if req.Cursor != "" {
+			vars["after"] = req.Cursor
+		}
 		var resp struct {
 			Data struct {
 				Repository struct {
@@ -1207,23 +1245,7 @@ func (g *GitHubForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 							HasNextPage bool   `json:"hasNextPage"`
 							EndCursor   string `json:"endCursor"`
 						} `json:"pageInfo"`
-						Nodes []struct {
-							Number      int    `json:"number"`
-							State       string `json:"state"`
-							HeadRefOid  string `json:"headRefOid"`
-							HeadRefName string `json:"headRefName"`
-							BaseRefName string `json:"baseRefName"`
-							Title       string `json:"title"`
-							Body        string `json:"body"`
-							MergedAt    string `json:"mergedAt"`
-							UpdatedAt   string `json:"updatedAt"`
-							// Pointers so a null stays distinguishable from false / absent.
-							IsCrossRepository *bool `json:"isCrossRepository"`
-							HeadRepository    *struct {
-								NameWithOwner string `json:"nameWithOwner"`
-							} `json:"headRepository"`
-							Author *gqlActor `json:"author"`
-						} `json:"nodes"`
+						Nodes []ghListChangeNode `json:"nodes"`
 					} `json:"pullRequests"`
 				} `json:"repository"`
 			} `json:"data"`
@@ -1231,49 +1253,49 @@ func (g *GitHubForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 				Message string `json:"message"`
 			} `json:"errors"`
 		}
+		in := map[string]any{"query": ghListChangesQuery, "variables": vars}
 		if err := g.doJSON(http.MethodPost, "/graphql", in, &resp); err != nil {
-			return nil, err
+			return pager.Page[ghListChangeNode]{}, err
 		}
 		if len(resp.Errors) > 0 {
 			msgs := make([]string, 0, len(resp.Errors))
 			for _, e := range resp.Errors {
 				msgs = append(msgs, e.Message)
 			}
-			return nil, Unverifiable("list-changes GraphQL error: "+strings.Join(msgs, "; "), nil)
+			return pager.Page[ghListChangeNode]{}, Unverifiable("list-changes GraphQL error: "+strings.Join(msgs, "; "), nil)
 		}
 		conn := resp.Data.Repository.PullRequests
-		for _, n := range conn.Nodes {
-			ref := ChangeRef{
-				Number: n.Number, State: strings.ToUpper(n.State), HeadSHA: n.HeadRefOid,
-				HeadRef: n.HeadRefName, Title: n.Title, Body: n.Body, MergedAt: n.MergedAt,
-				UpdatedAt: n.UpdatedAt, Author: gqlActorAccount(n.Author), BaseRef: n.BaseRefName,
-			}
-			// A null isCrossRepository leaves CrossRepo EMPTY (could-not-check), never
-			// CrossRepoSame; a null headRepository (a deleted fork) leaves HeadRepo EMPTY,
-			// never the base repository (forge-neutral brief 33 Task 2.4).
-			if n.IsCrossRepository != nil {
-				if *n.IsCrossRepository {
-					ref.CrossRepo = CrossRepoFork
-				} else {
-					ref.CrossRepo = CrossRepoSame
-				}
-			}
-			if n.HeadRepository != nil {
-				ref.HeadRepo = n.HeadRepository.NameWithOwner
-			}
-			out.Changes = append(out.Changes, ref)
+		return pager.Page[ghListChangeNode]{Items: conn.Nodes, More: conn.PageInfo.HasNextPage, Next: conn.PageInfo.EndCursor}, nil
+	}
+	res, err := pager.Walk(context.Background(), pager.Policy{
+		PageSize: forgeListChangesPage, MinPageSize: forgeListChangesMinPage,
+		MaxItems: forgeListChangesWindow, MaxRetries: forgeListChangesRetries,
+		Classify: ghReadClass,
+	}, func(n ghListChangeNode) string { return strconv.Itoa(n.Number) }, fetch)
+	if err != nil {
+		return nil, ghPagedReadErr("list-changes", err)
+	}
+	out := &ChangeList{PageCap: forgeListChangesWindow / forgeListChangesPage, Incomplete: res.Truncated}
+	for _, n := range res.Items {
+		ref := ChangeRef{
+			Number: n.Number, State: strings.ToUpper(n.State), HeadSHA: n.HeadRefOid,
+			HeadRef: n.HeadRefName, Title: n.Title, Body: n.Body, MergedAt: n.MergedAt,
+			UpdatedAt: n.UpdatedAt, Author: gqlActorAccount(n.Author), BaseRef: n.BaseRefName,
 		}
-		if !conn.PageInfo.HasNextPage {
-			return out, nil
+		// A null isCrossRepository leaves CrossRepo EMPTY (could-not-check), never
+		// CrossRepoSame; a null headRepository (a deleted fork) leaves HeadRepo EMPTY,
+		// never the base repository (forge-neutral brief 33 Task 2.4).
+		if n.IsCrossRepository != nil {
+			if *n.IsCrossRepository {
+				ref.CrossRepo = CrossRepoFork
+			} else {
+				ref.CrossRepo = CrossRepoSame
+			}
 		}
-		if page == forgeListChangesMaxPages {
-			// The ceiling was reached with the forge still paginating — report the population
-			// as larger than the window rather than hand back a silent partial.
-			out.Incomplete = true
-			return out, nil
+		if n.HeadRepository != nil {
+			ref.HeadRepo = n.HeadRepository.NameWithOwner
 		}
-		cursor := conn.PageInfo.EndCursor
-		after = &cursor
+		out.Changes = append(out.Changes, ref)
 	}
 	return out, nil
 }
