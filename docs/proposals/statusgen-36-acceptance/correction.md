@@ -2,7 +2,9 @@
 
 Issue #5684. The version-3 draft changes only the Command cells of Verify rows
 12 and 23. Every original row, Expect, class and historical Evidence entry
-survives. Rows 14 and 15 retain the repairs delivered by #5689. This amendment
+survives. The row-12 worktree/sample path separation and row-15 fixture-scoped
+lint correction from #5689 are retained; row 12 is amended again here. Row 14's
+Command remains unchanged. This amendment
 supplies no approval, independent witness or lifecycle change. Row 23 remains
 unresolved.
 
@@ -126,7 +128,10 @@ This protected-table baseline is the divergence baseline. The consumer check
 separately requires the delivering merge's first parent; they are different
 contracts and cannot be substituted for each other.
 
-After review and human merge, verify-desk identifies the actual immutable
+This PR must be merged with a two-parent merge commit, never squashed or rebased:
+the helper pin is a branch commit and must remain reachable in a fresh mainline
+clone. This is a requirement on the driver's merge act, not merge authority for
+the worker. After review and human merge, verify-desk identifies the actual immutable
 first-parent amendment and drafts link 2 for the driver. Its predecessor is
 `37872cfb9961db6ad8825d0b628e6a2793fb3d21`; changed rows in table order are
 `12:Command,23:Command`. The driver posts the exact unedited v2 payload on the
