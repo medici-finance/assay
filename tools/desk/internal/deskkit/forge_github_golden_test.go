@@ -584,6 +584,27 @@ func TestForgeGithubGolden(t *testing.T) {
 			run: func(f *GitHubForge) (any, error) { return f.CheckSuitesAtHead(forgeTestRepo, "abc123") },
 		},
 		{
+			// #6508: the merge-requirement read is ONE POST /graphql. A ruleset requires
+			// build-test (absent from the rollup) and changelog (latest run SUCCESS after a
+			// CANCELLED one); leak-sweep is required through the rollup's isRequired flag.
+			name: "merge_requirements",
+			setup: func(s *goldenServer) {
+				s.graphql = map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
+					"mergeable": "MERGEABLE", "reviewDecision": "REVIEW_REQUIRED", "headRefOid": "abc123",
+					"baseRef": map[string]any{"branchProtectionRule": nil, "rules": map[string]any{"totalCount": 1,
+						"nodes": []any{map[string]any{"type": "REQUIRED_STATUS_CHECKS", "parameters": map[string]any{
+							"requiredStatusChecks": []any{map[string]any{"context": "build-test"}, map[string]any{"context": "changelog"}}}}}}},
+					"commits": map[string]any{"nodes": []any{map[string]any{"commit": map[string]any{"oid": "abc123",
+						"statusCheckRollup": map[string]any{"contexts": map[string]any{"totalCount": 3, "nodes": []any{
+							map[string]any{"__typename": "CheckRun", "name": "changelog", "status": "COMPLETED", "conclusion": "CANCELLED", "startedAt": "2026-11-11T20:00:00Z", "isRequired": true},
+							map[string]any{"__typename": "CheckRun", "name": "changelog", "status": "COMPLETED", "conclusion": "SUCCESS", "startedAt": "2026-11-11T20:05:00Z", "isRequired": true},
+							map[string]any{"__typename": "CheckRun", "name": "leak-sweep", "status": "IN_PROGRESS", "conclusion": nil, "startedAt": "2026-11-11T20:01:00Z", "isRequired": true},
+						}}}}}}},
+				}}}}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.MergeRequirements(forgeTestRepo, 7) },
+		},
+		{
 			// Branch protection with required checks in BOTH shapes GitHub serves: the legacy
 			// flat `contexts` list and the newer `checks` array. The two are unioned, and a
 			// context named in both (go-test) appears once. The legacy endpoint does not show
