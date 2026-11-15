@@ -28,11 +28,11 @@ outcome: none
 
 ## Context
 
-files: `statusgen/brieffile.go`, `statusgen/load.go`, `statusgen/hydrate_budget_test.go` (planned), `statusgen/testdata/hydrate-plant/` (planned), `statusgen/bench/README.md`, `statusgen/bench/workload-results.md`, `statusgen/bench/hydration-profile.md` (planned), `statusgen/bench/` corpus generator, `changelog/statusgen-hydration-budget.md` (planned).
+files: `statusgen/brieffile.go`, `statusgen/load.go`, `statusgen/hydrate_budget_test.go` (planned), `statusgen/testdata/hydrate-plant/` (planned), `statusgen/bench/README.md`, `statusgen/bench/workload-results.md`, `statusgen/bench/hydration-profile.md` (planned), `statusgen/bench/perfworkload.sh`, `changelog/statusgen-hydration-budget.md` (planned).
 
-facts (876ca4bca, 14 November 2026; timings are wall time of the released v1.0.84 binary on this
-repository's tree: 38 streams plus 2 archived, 614 brief files of about 23 MB, 711 verify-outcome
-records):
+facts (876ca4bca, 14 November 2026):
+- Timings below are wall time of the released v1.0.84 binary on this repository's tree: 38
+  streams plus 2 archived, 614 brief files of about 23 MB, 711 verify-outcome records.
 - Bare load: `--graph` 0.17 s, `brief <key> --json` 0.02 s. Both call `loadStreams` (`load.go:195`).
 - Hydrated load: `--gate-scores` 10.8 s and 10.9 s (two separate runs), `--eligibility --json`
   10.6 s, `--launch` 11.6 s, `--next-up` 18.4 s (it also reads git and remote branches). All call
@@ -91,7 +91,7 @@ design-fit:
 2. **Remove the dominant cost.** Fix every term that alone accounts for 20% or more of the
    hydrated wall time, in descending order, until step 4's budget holds. Prefer doing work once
    per load over caching across loads.
-3. **Make the benchmark reproduce it.** Extend the bench corpus generator with a real-shape
+3. **Make the benchmark reproduce it.** Extend the bench corpus generator (`statusgen/bench/perfworkload.sh`) with a real-shape
    profile that exhibits the cost the profile found (for example long Evidence sections, many
    verify-outcome records, or many cross-references, whichever it was), so the synthetic workload
    would have caught it. Record before and after in `statusgen/bench/workload-results.md`.
