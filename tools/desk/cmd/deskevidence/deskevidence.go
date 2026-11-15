@@ -112,7 +112,7 @@ func admitVerifierEvidence(root, repo, target string, fg deskkit.Forge, ac *audi
 // admitLanding is the one place a landing obtains its credential, its forge and its
 // admission, in the only order that works:
 //
-//  1. mint the verifier App installation token (mintTokenFn → `desktoken verifier`). The
+//  1. mint the verifier App installation token (mintTokenFn → deskkit.WriteVerbRoleCredential, #5457). The
 //     JWT→installation-token exchange lives in the identity layer, not in this package;
 //  2. resolve the forge that serves the repo under that token. The custody step refuses when
 //     no token has been minted and never falls back to an ambient identity;

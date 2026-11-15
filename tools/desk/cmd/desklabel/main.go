@@ -35,8 +35,8 @@
 // the stated target, whose own idempotency (present label = no-op, absent removal = no-op)
 // this verb inherits and reports.
 //
-// IDENTITY: the session-role App installation token (DESK_LOOP-selected) minted via
-// desktoken and handed to the resolved deskkit.Forge under that App's custody — the
+// IDENTITY: the session-role App installation token (DESK_LOOP-selected) minted
+// read in process (deskkit.WriteVerbRoleCredential, #5457) and handed to the resolved deskkit.Forge under that App's custody — the
 // deskclose precedent, verbatim. There is no ambient fallback and no worker default: an
 // unresolvable role is a refusal, because the vocabulary is keyed on it.
 //

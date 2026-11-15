@@ -1,14 +1,17 @@
 package main
 
 import (
-	"os/exec"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // deskevidence lands Evidence as the verifier App from whichever window dispatched the
-// verifier, so a foreign loop passes desktoken's audited override and the verifier's own
-// loop passes none. The child is stubbed to fail: only the argv is under test.
+// verifier, so under a foreign loop the in-process credential read admits the audited
+// cross-role override (#6069) and under the verifier's own loop it records none.
 // regression: #6069
 func TestVerifierMintCrossRole(t *testing.T) {
 	for _, tc := range []struct {
@@ -18,25 +21,37 @@ func TestVerifierMintCrossRole(t *testing.T) {
 		{"verify-desk", false}, {"", false}, {"the-desk", true}, {"worker-desk", true},
 	} {
 		t.Run(tc.loop, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			plantFixtureRoster(t, home)
+			t.Setenv("DESK_TOOLS_DISABLED", "")
+			t.Setenv("CLAUDE_SESSION_ID", "test")
 			t.Setenv("DESK_LOOP", tc.loop)
-			var got []string
-			old := execCommand
-			execCommand = func(name string, args ...string) *exec.Cmd {
-				got = append([]string{name}, args...)
-				return exec.Command("false")
+
+			cred := filepath.Join(t.TempDir(), "verifier-cred")
+			if err := os.WriteFile(cred, []byte("fake-verifier-cred\n"), 0o600); err != nil {
+				t.Fatal(err)
 			}
-			t.Cleanup(func() { execCommand = old })
-			_ = mintVerifierToken("example-org/tracker")
-			joined := strings.Join(got, " ")
-			if !strings.HasPrefix(joined, "desktoken verifier --repo example-org/tracker") {
-				t.Fatalf("argv = %q", joined)
+			restore := deskkit.SetRoleTokenMinter(func(role, owner string) (string, string, error) {
+				return cred, "", nil
+			})
+			t.Cleanup(restore)
+
+			if err := mintVerifierToken("example-org/tracker"); err != nil {
+				t.Fatalf("mintVerifierToken as loop %q: %v", tc.loop, err)
 			}
-			has := strings.Contains(joined, "--cross-role")
-			if has != tc.override {
-				t.Fatalf("loop %q: --cross-role present=%v, want %v: %q", tc.loop, has, tc.override, joined)
+			entries, err := deskkit.LoadEntries()
+			if err != nil {
+				t.Fatal(err)
 			}
-			if tc.override && !strings.Contains(joined, "deskevidence posts as the verifier App by design; loop "+tc.loop) {
-				t.Fatalf("override reason does not name the verb and loop: %q", joined)
+			var rows int
+			for _, e := range entries {
+				if e.Tool == "desktoken" && strings.Contains(e.Detail, "deskevidence posts as the verifier App by design; loop "+tc.loop) {
+					rows++
+				}
+			}
+			if (rows > 0) != tc.override {
+				t.Fatalf("loop %q: %d override audit rows, want override=%v", tc.loop, rows, tc.override)
 			}
 		})
 	}
