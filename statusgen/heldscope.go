@@ -2103,11 +2103,12 @@ var (
 	// output (hashOutput), never caller text.
 	heldDigestRe = regexp.MustCompile(`^sha256:[0-9a-f]{12}$`)
 	// heldBaseCellRe is the Base cell a fail-first verifyrun run writes for
-	// every witness row (failFirstCell): the merge-base SHA or "-", the base
-	// run's state (an exit code only after red or green), and the head tree
-	// as treeSHA renders it. It records the run at the merge-base, never the
+	// every witness row (failFirstCell): the base SHA or "-", the base run's
+	// state (an exit code only after red or green), the head tree as treeSHA
+	// renders it and, after red or green, the delivering commit when the run
+	// named one (#2721). It records the run at the merge-base, never the
 	// head outcome, and none of it is caller text.
-	heldBaseCellRe = regexp.MustCompile(`^base=(?:[0-9a-f]{7,40}|-) (?:(?:red|green) rc=(?:-|[0-9]+) · head=(?:[0-9a-f]{7,40}(?:\+dirty|\+unknown)?|no-git)(?: output=sha256:[0-9a-f]{64} log=row-[0-9]{6}\.log)?|(?:unproven|not-selected) · head=(?:[0-9a-f]{7,40}(?:\+dirty|\+unknown)?|no-git))$`)
+	heldBaseCellRe = regexp.MustCompile(`^base=(?:[0-9a-f]{7,40}|-) (?:(?:red|green) rc=(?:-|[0-9]+) · head=(?:[0-9a-f]{7,40}(?:\+dirty|\+unknown)?|no-git)(?: · delivering=[0-9a-f]{7,40})?(?: output=sha256:[0-9a-f]{64} log=row-[0-9]{6}\.log)?|(?:unproven|not-selected) · head=(?:[0-9a-f]{7,40}(?:\+dirty|\+unknown)?|no-git))$`)
 	// heldStrikeRe is a struck span as GFM renders one: the text between the
 	// tildes neither starts nor ends with a space. "~~ HELD ~~" is not a
 	// strike on GitHub, so the cover keeps it.

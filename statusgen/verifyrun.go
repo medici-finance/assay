@@ -2002,7 +2002,7 @@ const verifyrunUsage = `statusgen verifyrun — execution witness for a brief's 
 
 Usage:
   statusgen verifyrun --brief <path> [--dry-run] [--timeout <dur>] [--root <dir>] [--sandbox <mode>]
-  statusgen verifyrun --brief <path> --fail-first [--base <rev>] [--dry-run]
+  statusgen verifyrun --brief <path> --fail-first [--base <rev>] [--delivering-commit <rev>] [--dry-run]
   statusgen verifyrun --brief <path> --rows <id>[,<id>...] [any run flags above or below]
   statusgen verifyrun --check <path>
   statusgen verifyrun --open-bracket --root <home> --brief <path> --out <receipt>
@@ -2221,17 +2221,23 @@ Flags:
                     non-discriminating and folds the exit code to 1. The lint
                     refuses a new closure whose risk-bearing row has no such
                     current witness, is non-discriminating, or names a base that
-                    is not the merge-base or an ancestor of it. Refused with
-                    --check and --in-container.
+                    is neither the merge-base nor the parent of the delivering
+                    commit the witness records. Refused with --check and
+                    --in-container.
   --base <rev>      the base for --fail-first (default: the exact merge-base of
-                    HEAD and origin/main); it may name that merge-base or an
-                    ancestor of it. After the change has merged, pass the
-                    parent of the delivering merge. On a cross-repository
-                    (version 2 receipt) run the base must be the deliverable
-                    merge-base exactly, and the run is refused before any row
-                    when it cannot be resolved or is HEAD itself (post-merge,
-                    and always in the container). With no resolvable
-                    merge-base any --base is refused
+                    HEAD and origin/main); it must name that merge-base, or,
+                    beside --delivering-commit, that commit's parent. On a
+                    cross-repository (version 2 receipt) run the base must be
+                    the deliverable merge-base exactly, and the run is refused
+                    before any row when it cannot be resolved or is HEAD itself
+                    (post-merge, and always in the container). With no
+                    resolvable merge-base any --base is refused
+  --delivering-commit <rev>  with --fail-first, after the change has merged
+                    (the merge-base then already holds it): the commit that
+                    delivered the change, HEAD or an ancestor of HEAD. Its
+                    first parent is the base, and the Base cell records
+                    ` + "`· delivering=<sha>`" + `; the lint checks both again (#2721).
+                    Refused on a cross-repository run, which does not bind it
   --env-file <path> role env-file forwarded to the container as --env-file (the
                     PATH only; its contents are never read or logged). Defaults to
                     the ASSAY_VERIFY_ENV_FILE environment variable. Omit for offline.
@@ -2298,7 +2304,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	inContainer := fs.Bool("in-container", false, "run the Verify rows inside the pinned harness container (the supported witness runner on Windows) instead of on the host")
 	sandbox := fs.String("sandbox", sandboxUnshare, "network-off sandbox for check:ci rows: "+sandboxUnshare+" (default) or "+sandboxContainerNetns+" (runner already inside a --network none container; refused in CI)")
 	failFirstMode := fs.Bool("fail-first", false, "run each risk-bearing row at the merge-base first and record red/green in a Base column")
-	baseRev := fs.String("base", "", "base revision for --fail-first (default: the merge-base of HEAD and origin/main)")
+	baseRev := fs.String("base", "", "base revision for --fail-first: the merge-base of HEAD and origin/main (the default), or the parent of --delivering-commit")
+	deliveringRev := fs.String("delivering-commit", "", "with --fail-first after the change merged: the commit that delivered it (HEAD or an ancestor of HEAD); its parent is the base and the witness records it")
 	baseLog := fs.String("base-log", "", "with --fail-first: retain base primary output in a new private directory outside the home")
 	envFile := fs.String("env-file", "", "role env-file passed to the container as --env-file (path only; contents never read/logged); defaults to $"+inContainerEnvFileVar)
 	admissionReceipt := fs.String("admission-receipt", "", "container-netns and --close-bracket: the receipt file --open-bracket wrote, read-only and outside the home")
@@ -2509,6 +2516,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 
 	if *baseRev != "" && !*failFirstMode {
 		fmt.Fprintln(stderr, "statusgen verifyrun: --base only applies to --fail-first")
+		return verifyrunExitUsageError
+	}
+	if *deliveringRev != "" && !*failFirstMode {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --delivering-commit only applies to --fail-first")
 		return verifyrunExitUsageError
 	}
 	if *failFirstMode && (*checkMode || *inContainer) {
@@ -2782,12 +2793,18 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			defer cleanup()
 		}
 		ffCrossRepo = crossRepo
-		var base string
+		var base, delivering string
 		var berr error
-		if crossRepo {
+		switch {
+		case crossRepo && *deliveringRev != "":
+			// The cross-repository resolver binds the base to the deliverable
+			// merge-base and never to a delivering commit, so the flag would be
+			// silently ignored and no delivering= recorded: refuse it instead.
+			berr = errors.New("--delivering-commit is refused on a cross-repository (version 2 receipt) run: its base is bound to the deliverable merge-base exactly, and that arm does not bind a delivering commit")
+		case crossRepo:
 			base, berr = failFirstCrossRepoBaseRev(baseRoot, *baseRev)
-		} else {
-			base, berr = failFirstBaseRev(baseRoot, *baseRev, baseBrief)
+		default:
+			base, delivering, berr = failFirstBaseRev(baseRoot, *baseRev, *deliveringRev, baseBrief)
 		}
 		if berr != nil {
 			fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first:", berr)
@@ -2822,6 +2839,12 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first:", ferr)
 			return verifyrunExitCouldNot
 		}
+		for id, f := range ff {
+			if delivering != "" && (f.State == baseRed || f.State == baseGreen) {
+				f.Delivering = ffShort(delivering)
+				ff[id] = f
+			}
+		}
 	}
 	executionTree := container.cell.RunnerTree
 	if !netnsContainer {
@@ -2849,6 +2872,9 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		for i := range ws {
 			f := ff[ws[i].ID]
 			ws[i].Base = failFirstCell(f.Base, f.State, f.Exit, ws[i].Tree)
+			if f.Delivering != "" {
+				ws[i].Base += " · delivering=" + f.Delivering
+			}
 			if f.OutputDigest != "" {
 				ws[i].Base += " output=" + f.OutputDigest + " log=" + f.LogName
 			}

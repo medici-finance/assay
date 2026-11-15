@@ -24,11 +24,12 @@ path to the ordinary container invocation:
 ```sh
 statusgen verifyrun --root /work --brief /work/docs/streams/example/brief-01-example.md \
   --sandbox=container-netns --admission-receipt /input/receipt.json \
-  --container-image-digest "$image_digest" --fail-first --base "$delivery_base" \
+  --container-image-digest "$image_digest" --fail-first --delivering-commit "$delivering_commit" \
   --history-pack /input/history.pack --witness /output/witness.md
 ```
 
-Use the actual admitted brief, immutable delivery base and image digest; these
+Use the actual admitted brief, the commit that delivered the change (its first parent is the
+base) and image digest; these
 examples supply no approval or verification authority. Existing `--rows`
 selection remains available for disjoint host and container obligations.
 The pack is owner-readable only. On POSIX hosts run the container as the host
