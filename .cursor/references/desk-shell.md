@@ -184,6 +184,27 @@ cross-platform note. The literal path is correct on every platform; what a skill
 stop implying is that the `~/` spelling is a unix-only shell expansion rather than a resolved
 Go path.
 
+## HEARTBEAT lease
+
+**Mechanism.** The optional `HEARTBEAT` file in the config home is a dead-man lease: when it
+exists and its mtime is older than 24h, every desk verb refuses (STOP-ALL); when it is absent
+the feature is off. A progressing cell renews a fresh lease, and only a lapsed lease needs a
+human. The renewal is made by the desk tools, never by a desk's own `touch`: when a verb
+completes an outward mutating act the forge confirmed (a branch push, a PR create or edit, a
+review or comment post, an issue file or attach, an Evidence landing, a ready flip), the same
+call that writes the act's audit row re-reads the lease's age and, only if it is still fresh,
+sets its mtime to now; the row ends ` | heartbeat=renewed`. A lease already stale at that
+moment is left stale (` | heartbeat=stale-not-renewed`), and an absent file is never created.
+
+**Signal.** A session reasoning that because it is alive (ticking, reading the board, minting a
+credential, sweeping a quiet queue) the lease should stay fresh; or one about to `touch` the
+file itself after a stale-lease refusal.
+
+**Correct form.** Liveness never renews; only a successful outward act does, and the tools do
+it. A stale-lease refusal is the lease firing: quote it, stand down, and leave the revival to
+the driver (or a cron the driver owns). A desk never creates, touches or deletes `HEARTBEAT`
+by hand.
+
 ## Role separation: one config home per role window
 
 **A shared config home gives no separation between roles.** Every desk tool reads a role's

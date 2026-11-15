@@ -266,6 +266,11 @@ With `--acceptance-record`, execute the protected host rows in **one** host invo
 clean committed source, before inserting uncommitted Evidence. Include every supplemental
 row so the producer records `author-added; no acceptance credit`. Select these host rows
 with `--rows`; use `--acceptance-forge` when the descriptor names an approved transition.
+A chain descriptor carries `Acceptance-Transition: link=<k> amendment=<sha> approval=<url>`
+for each contiguous link after the one `Verification-Table:` line. Draft each link's
+exact v2 payload for the driver; never post an approval. Link 1 alone may retain a v1
+approval under its existing rules. The shared plan derives `Command`, `Expect` or
+`Command+Expect` changes, and every original witness must follow the final amendment.
 Then bracket the disjoint container-witnessable rows on that same source and land the
 closed witness through the sanctioned Evidence path. The selections together cover the
 whole protected table, and the assembled run carries exactly one `Verification-Table:`
@@ -730,7 +735,8 @@ admission; with `--root`, `deskevidence` refuses a relative or in-home `--outcom
 `attempts`: one entry per run of the Verify table in the dispatch, as the verifier reported them (window,
 `rows_run`, disposition and reason; a discarded run keeps its entry). `deskperf reruns` counts them. On PASS write the same row's shape with `"outcome":"verified"` only AFTER
 the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
-landed on the target branch and `statusgen --lint` accepts that same tree. Before writing,
+landed on the target branch and `statusgen --lint --acceptance-forge` accepts that same tree
+on the host. Before writing,
 refresh only the brief in the verifier home from the target branch
 (`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`).
 Use the full `git -C <home> rev-parse FETCH_HEAD` as the record's Evidence commit SHA.
@@ -798,6 +804,23 @@ where admission is checked. The admitted forms are:
 - Evidence rows: `--brief-path <brief> --evidence-file <absolute fragment path>`, with the fragment written to the desk's own scratch OUTSIDE the home (a fragment inside the home is an untracked file and refuses admission).
 - Stream-index flip: edit the home's tracked `README.md` row, then `--evidence-file docs/streams/<stream>/README.md --row <NN>`.
 - Outcome record: `--outcome-record <absolute file outside the home>`.
+For GitHub, all three forms and `deskevidence flip` pass `--acceptance-forge` explicitly
+on the host. The full landed closure lint may need fresh corroboration of an approved
+transition on another brief; the emitted outcome command carries that permission too.
+It supplies no approval or acceptance credit and does not alter authored Verify commands
+or network-off execution. Unknown repository authority, an unavailable approval read and
+a refuted approval still hold or refuse the landing. Keep the diagnostic and route the
+missing capability; never retry by stripping Git configuration, changing the origin or
+borrowing a stored human login. Diagnose the run environment separately from the missing
+opt-in, because the flag cannot resolve an authority-bearing Git include.
+Opted-in approval audits and recorded human rulings use the landing invocation's own
+minted GitHub verifier credential; missing, foreign or unknown forge custody is withheld
+before the child starts. Without opt-in, audits receive only a noncredential refusal marker
+that closes stored-login fallback; a decision gate requiring a recorded ruling remains held
+because it cannot authenticate. Local flip corroboration
+requires the existing verifier session's own authority and a proven authorized origin,
+and never changes a worker's role.
+Other forges retain the ordinary landing path; unsupported GitHub approval reads remain held.
 Release the home only after the last landing for its run.
 
 **Leave Runner cells unannotated; `deskevidence` owns the on-behalf-of principal.** Never type an
@@ -1120,8 +1143,21 @@ staging deployment) — its `Env` cell names `service:<name>`, or its command pl
 NOT the Phase-0 class above. That class covers a credential **only the implementer can hold**. A
 project secret is held by the project, so a non-implementer can hold it, and the implementer's own
 report of the run (a pasted output, a "passed locally", a record in the PR body) is never this row's
-Evidence. Until a channel exists that brings project secrets to dispatched verifier windows (the
-`desk-containers/34` brief, `gate: human`), this desk:
+Evidence.
+
+A channel that brings a project secret to a verifier window now exists on one surface only. A native
+container cell can bind a project role secret into worker and verifier containers as a read-only file
+named by `ASSAY_ROLE_SECRET_<SERVICE>_FILE` (`containers/secrets.md` §4.4). It changes who can hold the
+environment, not the rule below. Until the signed verdict lane is enacted, a `service:` row still goes
+through the Environment-blocked queue. A verifier window that holds the path for the row's service is
+one place the queue's operator can run the row: the operator is the queue's human owner, never this
+desk and never a dispatched agent, so a run inside a holding window by an agent is a run report, not
+Evidence. The operator runs the row verbatim, on merged main, never on a PR head. Only the row's
+command reads the file, and its value never reaches Evidence, a comment or a log. A window holding
+such a path cannot hand the row to a dispatched child: `deskdispatch` refuses there every
+dispatch it cannot show to be trusted from forge data, and in this release that includes every
+brief-keyed and verifier-kit dispatch. On every surface, holding window or not, this desk follows the
+steps below:
 
 1. **Records the row could-not-check with the EXACT command** and the environment it needs, never a
    bare "needs creds". That places the brief in the board's **Environment-blocked** queue

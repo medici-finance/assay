@@ -20,101 +20,35 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
-// fakeDesktokenSource is compiled once (TestMain) into a temp dir placed FIRST on PATH, so
-// the tool's `desktoken worker` invocation hits this canned stand-in instead of a real App
-// mint. It appends its argv to FAKEGH_LOG when set; the in-process execCommand recorder is
-// the authoritative one used by assertions.
+// The worker credential read is in process (deskkit.WriteVerbRoleCredential, #5457), so the
+// suite installs a fake MINTER through deskkit.SetRoleTokenMinter rather than a fake binary on
+// PATH. It models the real cross-installation failure mode from #562, not just a canned
+// success: the minter is asked for an OWNER, and the credential VALUE it hands back encodes
+// that owner ("fake-worker-installation-token-for-<owner>"). The fake forge (forgeRecorder)
+// then checks that the credential presented in the Authorization header belongs to the owner
+// of the repo the request addresses, and answers a mismatch the way GitHub's real API does for
+// an installation credential scoped to the wrong org. A deskreply that resolved the wrong
+// owner reproduces the bug, and TestReplyMintsWorkerTokenScopedToOwnRepo /
+// TestReplyMediciFinanceRepoSucceeds fail exactly as the real tool did.
 //
-// It models the REAL cross-installation failure mode from #562, not just a canned success:
-// `desktoken worker` resolves an "owner" from `--repo <slug>` — defaulting to "example-org"
-// when the flag is ABSENT, exactly like the production tool — and mints a token whose VALUE
-// encodes that owner ("fake-worker-installation-token-for-<owner>"). The fake forge
-// (forgeRecorder, below) then checks that the token presented in the Authorization header
-// belongs to the owner of the repo the request addresses, and answers a mismatch the way
-// GitHub's real API does for an installation token scoped to the wrong org. Without deskreply
-// forwarding --repo, that pairing reproduces the bug and
-// TestReplyMintsWorkerTokenScopedToOwnRepo / TestReplyMediciFinanceRepoSucceeds fail exactly
-// as the real tool did.
-//
-// (The `gh` half of this fake is gone with the transport: deskreply launches no forge CLI, so
-// there is nothing left for a fake CLI to stand in for. The owner-mismatch assertion it
-// carried moved to the fake forge, one layer down, where it checks the credential that was
-// actually presented rather than an environment variable that was handed over.)
-const fakeDesktokenSource = `package main
-
-import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-)
-
-func main() {
-	args := os.Args[1:]
-	if log := os.Getenv("FAKEGH_LOG"); log != "" {
-		if f, err := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
-			fmt.Fprintln(f, strings.Join(args, "\x00"))
-			f.Close()
+// The per-process memo in deskkit means a later case may reuse an earlier case's value for
+// the same (role, owner) pair without calling the minter again, so the cases assert on what
+// the FORGE was presented, never on a mint count.
+func fakeWorkerMinter(dir string) func(role, owner string) (string, string, error) {
+	return func(role, owner string) (string, string, error) {
+		f, err := os.CreateTemp(dir, "fake-"+role+"-*")
+		if err != nil {
+			return "", "", err
 		}
-	}
-	has := func(s string) bool {
-		for _, a := range args {
-			if a == s {
-				return true
-			}
+		_, werr := f.WriteString("fake-" + role + "-installation-token-for-" + owner + "\n")
+		cerr := f.Close()
+		if werr != nil || cerr != nil {
+			os.Remove(f.Name())
+			return "", "", fmt.Errorf("write the fake %s credential: %v %v", role, werr, cerr)
 		}
-		return false
+		return f.Name(), "", nil
 	}
-	flagVal := func(name string) string {
-		for i, a := range args {
-			if a == name && i+1 < len(args) {
-				return args[i+1]
-			}
-		}
-		return ""
-	}
-	owner := func(repoSlug string) string {
-		if i := strings.IndexByte(repoSlug, '/'); i >= 0 {
-			return repoSlug[:i]
-		}
-		return repoSlug
-	}
-	if !has("worker") {
-		os.Exit(0)
-	}
-	// desktoken worker [--repo <slug>]: mirror the REAL desktoken default — owner is parsed
-	// from --repo when present, else defaults to "example-org" (the bug #562 fixed was
-	// deskreply never passing --repo, so this always resolved "example-org").
-	o := "example-org"
-	if repo := flagVal("--repo"); repo != "" {
-		o = owner(repo)
-	}
-	// The token lands under FAKE_TOKEN_DIR (set by the TestMain, removed with the fake's
-	// own directory), never loose in the real temp dir.
-	f, err := os.CreateTemp(os.Getenv("FAKE_TOKEN_DIR"), "fake-worker-token-*")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "create temp token: %v\n", err)
-		os.Exit(1)
-	}
-	if _, werr := f.WriteString("fake-worker-installation-token-for-" + o + "\n"); werr != nil {
-		f.Close()
-		os.Remove(f.Name())
-		os.Exit(1)
-	}
-	f.Close()
-	if cerr := os.Chmod(f.Name(), 0o600); cerr != nil {
-		os.Remove(f.Name())
-		os.Exit(1)
-	}
-	abs, _ := filepath.Abs(f.Name())
-	fmt.Println(abs)
 }
-`
-
-var (
-	fakeGHDir string
-	origPATH  string
-)
 
 // TestMain installs the roster fixture, runs the suite through runTests (whose defers
 // fire, unlike anything deferred here), then hands the exit code through
@@ -128,40 +62,16 @@ func TestMain(m *testing.M) {
 }
 
 func runTests(m *testing.M) int {
-	origPATH = os.Getenv("PATH")
-	dir, err := os.MkdirTemp("", "deskreply-fakegh")
+	dir, err := os.MkdirTemp("", "deskreply-fakemint")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 	defer os.RemoveAll(dir)
-	if werr := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module fakegh\n\ngo 1.25\n"), 0o644); werr != nil {
-		fmt.Fprintln(os.Stderr, werr)
-		return 1
-	}
-	if werr := os.WriteFile(filepath.Join(dir, "main.go"), []byte(fakeDesktokenSource), 0o644); werr != nil {
-		fmt.Fprintln(os.Stderr, werr)
-		return 1
-	}
-	buildDT := exec.Command("go", "build", "-o", filepath.Join(dir, "desktoken"), ".")
-	buildDT.Dir = dir
-	buildDT.Env = fakeBuildEnv()
-	if out, berr := goquiet.Cmd(buildDT).CombinedOutput(); berr != nil {
-		fmt.Fprintf(os.Stderr, "build fake desktoken: %v\n%s\n", berr, out)
-		return 1
-	}
-	// The fake desktoken's token files land here, inside the directory this function
-	// removes — never in the real temp dir, where nothing would ever remove them.
-	tokens := filepath.Join(dir, "tokens")
-	if merr := os.Mkdir(tokens, 0o700); merr != nil {
-		fmt.Fprintln(os.Stderr, merr)
-		return 1
-	}
-	if serr := os.Setenv("FAKE_TOKEN_DIR", tokens); serr != nil {
-		fmt.Fprintln(os.Stderr, serr)
-		return 1
-	}
-	fakeGHDir = dir
+	// The fake credential files land here, inside the directory this function removes —
+	// never loose in the real temp dir.
+	restore := deskkit.SetRoleTokenMinter(fakeWorkerMinter(dir))
+	defer restore()
 	return gitquiet.Run(m)
 }
 
@@ -230,8 +140,8 @@ func newMediciFixture(t *testing.T) string {
 	return work
 }
 
-// withEnv points deskkit's runtime dir at a fresh HOME, prepends the fake desktoken to PATH,
-// binds getwd to work, installs the in-process command recorder AND the fake forge, and
+// withEnv points deskkit's runtime dir at a fresh HOME (the fake minter is process-wide,
+// installed by runTests), binds getwd to work, installs the in-process command recorder AND the fake forge, and
 // returns the recorded argv slice. The forge recorder is reachable as forgeRec(t) — it is
 // stored per-test so the many existing cases that only need the argv slice keep their
 // signature.
@@ -246,7 +156,6 @@ func withEnv(t *testing.T, work string) *[][]string {
 	// match against). Every case below exercises the verb PAST that gate, so the harness
 	// presents a loop identity; the refusal itself has its own test.
 	t.Setenv("DESK_LOOP", "worker-desk")
-	t.Setenv("PATH", fakeGHDir+string(os.PathListSeparator)+origPATH)
 
 	oldwd := getwd
 	getwd = func() (string, error) { return work, nil }
@@ -432,13 +341,31 @@ func assertNoGitPush(t *testing.T, calls [][]string) {
 	}
 }
 
+// anyDesktokenCall reports whether the verb launched the desktoken binary at all. Since #5457
+// it never may: the worker credential is read in process, and a forked `desktoken worker
+// --repo <slug>` is the shape that rotates a GitLab-bound role's PAT.
 func anyDesktokenCall(calls [][]string) bool {
 	for _, c := range calls {
-		if len(c) >= 2 && filepath.Base(c[0]) == "desktoken" && c[1] == "worker" {
+		if len(c) >= 1 && filepath.Base(c[0]) == "desktoken" {
 			return true
 		}
 	}
 	return false
+}
+
+// assertPresentedWorkerCred fails unless the forge saw at least one request and EVERY request
+// carried the worker credential the fake minter hands out for owner.
+func assertPresentedWorkerCred(t *testing.T, rec *forgeRecorder, owner string) {
+	t.Helper()
+	want := "fake-worker-installation-token-for-" + owner
+	if len(rec.requests) == 0 {
+		t.Fatal("deskreply made no forge request — nothing to check the presented credential on")
+	}
+	for _, r := range rec.requests {
+		if !strings.Contains(r.Auth, want) {
+			t.Fatalf("%s %s did not present the worker credential for %s", r.Method, r.Path, owner)
+		}
+	}
 }
 
 // --- tests ----------------------------------------------------------------------
@@ -469,37 +396,27 @@ func TestReplyMintsWorkerToken(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("reply rc = %d, want 0", rc)
 	}
-	if !anyDesktokenCall(*calls) {
-		t.Fatalf("expected `desktoken worker` call; calls: %v", *calls)
+	assertPresentedWorkerCred(t, forgeRec(t), "example-org")
+	// regression: #5457 — the credential is read in process; the binary is never forked.
+	if anyDesktokenCall(*calls) {
+		t.Fatalf("deskreply forked desktoken — a write verb reads its credential in process (#5457); calls: %v", *calls)
 	}
 }
 
-// TestReplyMintsWorkerTokenScopedToOwnRepo is the direct regression test for #562:
-// deskreply must pass `--repo <this worktree's own repo>` to `desktoken worker`, not
-// mint blind. Before the fix, mintWorkerToken called `desktoken worker` with no --repo
-// at all, so desktoken (in production) fell back to its hardcoded "example-org" default
-// owner regardless of the actual target repo.
+// TestReplyMintsWorkerTokenScopedToOwnRepo is the direct regression test for #562: the
+// worker credential must be read for THIS worktree's own repo owner, never a default one.
+// (Before #5457 that meant forwarding --repo to a forked `desktoken worker`; it now means the
+// owner deskkit.WriteVerbRoleCredential resolves from the repo slug.)
 func TestReplyMintsWorkerTokenScopedToOwnRepo(t *testing.T) {
 	work := newBaseFixture(t)
-	calls := withEnv(t, work)
-	body := bodyFileWith(t, "desktoken must be told which repo it's minting for")
+	withEnv(t, work)
+	body := bodyFileWith(t, "the credential read must be told which repo it is for")
 
 	rc := run([]string{"example-org/tracker", "7", "--body-file", body})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("reply rc = %d, want 0", rc)
 	}
-	found := false
-	for _, c := range *calls {
-		if len(c) >= 2 && filepath.Base(c[0]) == "desktoken" && c[1] == "worker" {
-			found = true
-			if !callContainsAll(c, "--repo", "example-org/tracker") {
-				t.Fatalf("desktoken worker call did not forward --repo <this worktree's repo>: %v", c)
-			}
-		}
-	}
-	if !found {
-		t.Fatalf("expected a `desktoken worker` call; calls: %v", *calls)
-	}
+	assertPresentedWorkerCred(t, forgeRec(t), "example-org")
 }
 
 // TestReplyMediciFinanceRepoSucceeds is the end-to-end regression test for #562: a
@@ -524,7 +441,7 @@ func TestReplyMediciFinanceRepoSucceeds(t *testing.T) {
 	rc := run([]string{"medici-finance/assay", "7", "--body-file", body})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("reply on a medici-finance-origin worktree rc = %d, want 0 (#562 regression: "+
-			"desktoken must resolve the medici-finance installation, not silently default to example-org)", rc)
+			"the worker credential must resolve the medici-finance installation, not silently default to example-org)", rc)
 	}
 	if !forgeRec(t).posted() {
 		t.Fatalf("expected a comment post; forge writes: %v", forgeRec(t).writes())
@@ -679,7 +596,7 @@ func TestReplyRateLimitedNoCall(t *testing.T) {
 // TestNoReviewerAppPath is the mechanical proof of the identity separation (
 // updated for the worker-App cutover): the deskreply package must NOT import the
 // deskpost reviewer-App mint package and must NOT read any REVIEWER App env vars. The
-// WORKER App token IS allowed — deskreply shells out to `desktoken worker` to mint it —
+// WORKER App token IS allowed — deskreply reads it in process through deskkit.WriteVerbRoleCredential (#5457) —
 // but the reviewer App voice must remain exclusive to deskpost so the unforgeable review
 // gate holds. It walks the AST of every non-test source file (so explanatory comments that
 // mention deskpost/REVIEWER_* do not false-positive — comments are not AST nodes here) and
@@ -688,7 +605,7 @@ func TestNoAppTokenPath(t *testing.T) {
 	// deskpost = reviewer App mint path. deskreply must never import it.
 	forbiddenImportSub := []string{"deskpost"}
 	// Only REVIEWER App env vars are forbidden; WORKER App identity is accessed
-	// via desktoken worker (shell-out), not via env vars or imports.
+	// via deskkit.WriteVerbRoleCredential, not via env vars or imports.
 	forbiddenLiteralSub := []string{"REVIEWER_APP_ID", "REVIEWER_INSTALL_ID", "REVIEWER_APP_PRIVATE_KEY"}
 
 	files, err := filepath.Glob("*.go")

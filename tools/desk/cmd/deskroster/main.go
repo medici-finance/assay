@@ -73,7 +73,8 @@ unpinned). It never gates and never changes TrustedAuthor/TrustedHumanAuthor/Ble
 verdict — see tools/desk/README.md's "Roster liveness" section. GitHub-only in this
 version; a non-GitHub-backed --repo prints one explicit line rather than skipping silently.
 
-Session resolution: $DESK_SESSION → $CLAUDE_SESSION_ID → --session flag.
+Session resolution: --session flag → $DESK_SESSION → $CLAUDE_SESSION_ID.
+An explicit --session always wins over an inherited environment variable.
 Unresolvable → exit 6 (never guess a session identity).
 
 Storage (out-of-git, machine-local): ~/.config/assay/roster/<session>.json

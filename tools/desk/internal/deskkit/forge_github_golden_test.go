@@ -59,6 +59,7 @@ type goldenServer struct {
 	checks     map[string]any
 	suites     map[string]any
 	reqChecks  map[string]any
+	brRules    []map[string]any // branch-rules read (the RULESET half of the required set); nil serves `[]`
 	reactions  []map[string]any
 	pull       map[string]any
 	issue      map[string]any
@@ -136,6 +137,7 @@ var (
 	gCommits   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits$`)
 	gCommitPRs = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits/[^/]+/pulls$`)
 	gReqChecks = regexp.MustCompile(`/branches/[^/]+/protection/required_status_checks$`)
+	gBrRules   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/rules/branches/[^/]+$`)
 	gRepo      = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
 	gReactions = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
 	gGitRef    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/git/refs/.+$`)
@@ -282,6 +284,12 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.fileCommits)
 	case r.Method == http.MethodGet && gCommitPRs.MatchString(path):
 		enc(s.commitPulls)
+	case r.Method == http.MethodGet && gBrRules.MatchString(path):
+		if s.brRules == nil {
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		enc(s.brRules)
 	case r.Method == http.MethodGet && gReqChecks.MatchString(path):
 		// A branch with no protection (or no required checks) answers 404 — the "nothing
 		// required" case, distinct from a served object. A case that wants the 404 sets it via
@@ -576,9 +584,32 @@ func TestForgeGithubGolden(t *testing.T) {
 			run: func(f *GitHubForge) (any, error) { return f.CheckSuitesAtHead(forgeTestRepo, "abc123") },
 		},
 		{
+			// #6508: the merge-requirement read is ONE POST /graphql. A ruleset requires
+			// build-test (absent from the rollup) and changelog (latest run SUCCESS after a
+			// CANCELLED one); leak-sweep is required through the rollup's isRequired flag.
+			name: "merge_requirements",
+			setup: func(s *goldenServer) {
+				s.graphql = map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
+					"mergeable": "MERGEABLE", "reviewDecision": "REVIEW_REQUIRED", "headRefOid": "abc123",
+					"baseRef": map[string]any{"branchProtectionRule": nil, "rules": map[string]any{"totalCount": 1,
+						"nodes": []any{map[string]any{"type": "REQUIRED_STATUS_CHECKS", "parameters": map[string]any{
+							"requiredStatusChecks": []any{map[string]any{"context": "build-test"}, map[string]any{"context": "changelog"}}}}}}},
+					"commits": map[string]any{"nodes": []any{map[string]any{"commit": map[string]any{"oid": "abc123",
+						"statusCheckRollup": map[string]any{"contexts": map[string]any{"totalCount": 3, "nodes": []any{
+							map[string]any{"__typename": "CheckRun", "name": "changelog", "status": "COMPLETED", "conclusion": "CANCELLED", "startedAt": "2026-11-11T20:00:00Z", "isRequired": true},
+							map[string]any{"__typename": "CheckRun", "name": "changelog", "status": "COMPLETED", "conclusion": "SUCCESS", "startedAt": "2026-11-11T20:05:00Z", "isRequired": true},
+							map[string]any{"__typename": "CheckRun", "name": "leak-sweep", "status": "IN_PROGRESS", "conclusion": nil, "startedAt": "2026-11-11T20:01:00Z", "isRequired": true},
+						}}}}}}},
+				}}}}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.MergeRequirements(forgeTestRepo, 7) },
+		},
+		{
 			// Branch protection with required checks in BOTH shapes GitHub serves: the legacy
 			// flat `contexts` list and the newer `checks` array. The two are unioned, and a
-			// context named in both (go-test) appears once.
+			// context named in both (go-test) appears once. The legacy endpoint does not show
+			// rulesets, so the branch-rules read follows and its contexts are unioned in
+			// (changelog here; leak-sweep is named by both and appears once).
 			name: "required_status_checks",
 			setup: func(s *goldenServer) {
 				s.reqChecks = map[string]any{
@@ -587,15 +618,30 @@ func TestForgeGithubGolden(t *testing.T) {
 						{"context": "go-test"}, {"context": "leak-sweep"},
 					},
 				}
+				s.brRules = []map[string]any{{"type": "required_status_checks", "parameters": map[string]any{
+					"required_status_checks": []map[string]any{{"context": "leak-sweep"}, {"context": "changelog"}}}}}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.RequiredStatusChecks(forgeTestRepo, "main") },
 		},
 		{
-			// An unprotected branch (or one requiring no checks) answers 404, which the backend
-			// reads as the EMPTY required set — nothing required, no error.
+			// An unprotected branch (or one whose classic protection requires no checks) answers
+			// 404: the classic half is empty. With no rulesets either, the required set is
+			// EMPTY — nothing required, no error.
 			name: "required_status_checks_unprotected_branch",
 			setup: func(s *goldenServer) {
 				s.forceStatus["/required_status_checks"] = http.StatusNotFound
+			},
+			run: func(f *GitHubForge) (any, error) { return f.RequiredStatusChecks(forgeTestRepo, "main") },
+		},
+		{
+			// #6198: the legacy endpoint 404s (classic protection requires nothing) while a
+			// ruleset requires three contexts. The required set is the ruleset contexts.
+			name: "required_status_checks_legacy_404_rulesets",
+			setup: func(s *goldenServer) {
+				s.forceStatus["/required_status_checks"] = http.StatusNotFound
+				s.brRules = []map[string]any{{"type": "required_status_checks", "parameters": map[string]any{
+					"required_status_checks": []map[string]any{
+						{"context": "leak-sweep"}, {"context": "build-test"}, {"context": "changelog"}}}}}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.RequiredStatusChecks(forgeTestRepo, "main") },
 		},
@@ -638,6 +684,14 @@ func TestForgeGithubGolden(t *testing.T) {
 				s.graphql = map[string]any{"data": map[string]any{"markPullRequestReadyForReview": map[string]any{"pullRequest": map[string]any{"isDraft": false}}}}
 			},
 			run: func(f *GitHubForge) (any, error) { return nil, f.MarkReadyForReview("PR_node") },
+		},
+		{
+			// The post-flip backstop's revert (#6242) — the inverse mutation, same transport.
+			name: "convert_to_draft",
+			setup: func(s *goldenServer) {
+				s.graphql = map[string]any{"data": map[string]any{"convertPullRequestToDraft": map[string]any{"pullRequest": map[string]any{"isDraft": true}}}}
+			},
+			run: func(f *GitHubForge) (any, error) { return nil, f.ConvertToDraft("PR_node") },
 		},
 		{
 			// The applier-aware label-event read: `labeled` events survive with the actor

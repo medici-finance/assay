@@ -60,7 +60,7 @@ func TestRefuseIntroducedProblem(t *testing.T) {
 			abs := filepath.Join(root, briefPath)
 			var seen []string
 			old := statusgenLintFn
-			statusgenLintFn = func(r string) ([]string, error) {
+			statusgenLintFn = func(r string, options childOptions) ([]string, error) {
 				if r != root {
 					t.Fatalf("statusgen ran against %q, not the landing worktree %q", r, root)
 				}

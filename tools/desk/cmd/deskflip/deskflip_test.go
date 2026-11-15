@@ -55,17 +55,27 @@ func TestFlipsWhenEveryConditionHolds(t *testing.T) {
 		t.Errorf("the queue labels were not swapped: %v", s.requests)
 	}
 	// The TOCTOU re-read must happen, and it must happen BEFORE the mutation. On the seam the
-	// re-read is a SECOND change read, so the ordering assertion is "the last change read
-	// precedes the mutation".
-	readIdx := s.lastIndexOf(http.MethodGet, "/pulls/7")
-	flipIdx := s.indexOf(http.MethodPost, "/graphql")
-	if readIdx < 0 || flipIdx < 0 || readIdx > flipIdx {
-		t.Errorf("last head re-read at %d, flip at %d — the re-read is the LAST thing before the mutation",
-			readIdx, flipIdx)
+	// re-read is a SECOND change read, so the assertion is "at least two change reads precede
+	// the mutation". Reads AFTER it are the post-flip backstop's merge-verdict read (#6242).
+	flipIdx := -1
+	for i, r := range s.requests {
+		if r.Method == http.MethodPost && strings.Contains(r.Body, "markPullRequestReadyForReview") {
+			flipIdx = i
+			break
+		}
 	}
-	if s.count(http.MethodGet, "/pulls/7") < 2 {
-		t.Errorf("the change was read %d time(s) — the pre-mutation head re-read is a second read",
-			s.count(http.MethodGet, "/pulls/7"))
+	reads := 0
+	for i := 0; i < flipIdx; i++ {
+		if s.requests[i].Method == http.MethodGet && strings.HasSuffix(s.requests[i].Path, "/pulls/7") {
+			reads++
+		}
+	}
+	if flipIdx < 0 || reads < 2 {
+		t.Errorf("the change was read %d time(s) before the flip at %d — the pre-mutation head re-read is a "+
+			"second read", reads, flipIdx)
+	}
+	if len(s.comments) != 0 {
+		t.Errorf("a CLEAN merge state posted a comment: %q", s.comments)
 	}
 }
 
@@ -290,6 +300,154 @@ func TestMissingLeakGateIsCouldNotCheck(t *testing.T) {
 	if s.reqCheckReads == 0 {
 		t.Errorf("the required-status-checks endpoint was never read on the green path — a green rollup "+
 			"missing a required verdict was not cross-checked against the required set: %v", s.requests)
+	}
+}
+
+// regression: #6198
+// The reported head, in the shape the forge actually serves: the legacy required-checks
+// endpoint answers 404 because classic protection requires nothing, a RULESET requires
+// leak-sweep, build-test and changelog, and the head's workflows were never allowed to run, so
+// the rollup holds the one leak-sweep status. Reading the 404 as "nothing required" made
+// checks-green pass 1/1 on a head whose build and tests never ran.
+func TestLegacy404RulesetMissing(t *testing.T) {
+	s := newStub()
+	s.rollup = []rollupEntry{{Context: "leak-sweep", State: "SUCCESS"}}
+	s.requiredChecks = nil // legacy endpoint 404s: classic protection requires nothing
+	s.rulesBody = `[{"type":"deletion"},{"type":"required_status_checks","parameters":{"required_status_checks":[
+		{"context":"leak-sweep"},{"context":"build-test"},{"context":"changelog"}]}}]`
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("ruleset checks never reported rc = %d, want %d (not green)", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("flipped though build-test and changelog never reported: %v", m)
+	}
+}
+
+// regression: #6198
+// The same head when the ruleset half cannot be read: a legacy 404 says only that classic
+// protection requires nothing, so the set is of unknown completeness — could-not-check,
+// never "nothing required".
+func TestRulesReadFailRefuses(t *testing.T) {
+	s := newStub()
+	s.rollup = []rollupEntry{{Context: "leak-sweep", State: "SUCCESS"}}
+	s.requiredChecks = nil
+	s.rulesErr = true
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("unreadable rulesets rc = %d, want %d (could-not-check)", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("flipped on a required set whose ruleset half was unread: %v", m)
+	}
+}
+
+// regression: F-2
+// The reported head again, with the ruleset half truncated instead of missing: the legacy
+// endpoint 404s, the branch-rules listing is paginated, thirty non-status rules fill page 1
+// (with `Link: rel="next"`), and the required_status_checks rule naming build-test and
+// changelog is on page 2. A one-page read saw no required context, read that as "nothing
+// required", and checks-green passed a head carrying only leak-sweep.
+func TestRulesPageTwoMissing(t *testing.T) {
+	s := newStub()
+	s.rollup = []rollupEntry{{Context: "leak-sweep", State: "SUCCESS"}}
+	s.requiredChecks = nil
+	s.rulesPages = []string{
+		"[" + strings.TrimSuffix(strings.Repeat(`{"type":"deletion"},`, 30), ",") + "]",
+		`[{"type":"required_status_checks","parameters":{"required_status_checks":[
+			{"context":"build-test"},{"context":"changelog"}]}}]`,
+	}
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("page-2 ruleset checks never reported rc = %d, want %d (not green)", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("flipped though build-test and changelog never reported: %v", m)
+	}
+}
+
+// regression: #6198
+// The same class on the 403 (no `administration`) path: rulesets name the out-of-band
+// leak-sweep verdict, classic protection requires build and changelog, and only the branch
+// read's protection summary shows the classic half. The union catches the absent ones.
+func TestClassicChecksMissing(t *testing.T) {
+	s := newStub()
+	s.rollup = []rollupEntry{{Context: "leak-sweep", State: "SUCCESS"}}
+	s.adminFreeBranch = `{"name":"main","protected":true,"protection":{"enabled":true,
+		"required_status_checks":{"enforcement_level":"everyone","contexts":["build-test","changelog"]}}}`
+	s.rulesBody = `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("required checks never reported rc = %d, want %d (not green)", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("flipped though build-test and changelog never reported: %v", m)
+	}
+}
+
+// regression: #6198
+// The 403 path when the classic protection's required list cannot be seen at all: the
+// branch read carries no protection summary, so the set the rules read gave is a lower bound
+// of unknown completeness. That is could-not-check, never a pass.
+func TestRulesNoSummaryRefuses(t *testing.T) {
+	s := newStub()
+	s.rollup = []rollupEntry{{Context: "leak-sweep", State: "SUCCESS"}}
+	s.adminFreeBranch = `{"name":"main","protected":true}`
+	s.rulesBody = `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("unseen classic protection rc = %d, want %d (could-not-check)", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("flipped on a required set of unknown completeness: %v", m)
+	}
+}
+
+// The ruleset-only repo still flips on the 403 path: the branch read's required-checks summary
+// is present and empty (the observed shape of a ruleset-governed branch: `enabled: true`,
+// `enforcement_level: "off"`), so classic protection adds nothing, the rules read IS the whole
+// required set, and a present leak-sweep verdict satisfies it.
+func TestRulesetOnlyStillFlips(t *testing.T) {
+	s := newStub()
+	s.rollup = []rollupEntry{{Context: "leak-sweep", State: "SUCCESS"}}
+	s.adminFreeBranch = `{"name":"main","protected":true,"protection":{"enabled":true,
+		"required_status_checks":{"enforcement_level":"off","contexts":[],"checks":[]}}}`
+	s.rulesBody = `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"leak-sweep"}]}}]`
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("ruleset-only repo with its verdict present rc = %d, want %d", rc, deskkit.ExitOK)
+	}
+}
+
+// The legacy-404 ruleset repo flips once every ruleset-required context has reported green:
+// the union only refuses an ABSENT required check, never a present one.
+func TestLegacy404RulesetFlips(t *testing.T) {
+	s := newStub()
+	s.rollup = []rollupEntry{
+		{Context: "leak-sweep", State: "SUCCESS"},
+		{Name: "build-test", Status: "COMPLETED", Conclusion: "SUCCESS"},
+		{Name: "changelog", Status: "COMPLETED", Conclusion: "SUCCESS"},
+	}
+	s.requiredChecks = nil
+	s.rulesBody = `[{"type":"required_status_checks","parameters":{"required_status_checks":[
+		{"context":"leak-sweep"},{"context":"build-test"},{"context":"changelog"}]}}]`
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("legacy-404 ruleset repo with every check green rc = %d, want %d", rc, deskkit.ExitOK)
 	}
 }
 
@@ -1401,10 +1559,11 @@ func TestForeignRepoRefused(t *testing.T) {
 // seventh because it buys a PAGINATED label-event timeline. Nothing else moved — in particular
 // checks-green still sits BEHIND reviewer-approved, because checkonlycr_test.go records the
 // rule that the check-only-CR exemption must decide first, so an operator rejected for a
-// non-CI reason is not sent to the CI gate.
+// non-CI reason is not sent to the CI gate. It was edited again to ADD not-reverted (#6253
+// review F2) right before head-stable, which stays last.
 func TestConditionListIsTheDocumentedContract(t *testing.T) {
 	want := []string{"caller-role", "app-token", "pr-open-draft", "mergeable", "reviewer-approved",
-		"checks-green", "desk-decided", "model-floor", "security-verdict", "head-stable"}
+		"checks-green", "desk-decided", "model-floor", "security-verdict", "not-reverted", "head-stable"}
 	if len(flipConditions) != len(want) {
 		t.Fatalf("flipConditions has %d entries, want %d", len(flipConditions), len(want))
 	}

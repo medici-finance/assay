@@ -217,6 +217,17 @@ func failedWitnessRows(findings []checkFinding) []string {
 //   - is green at base — `non-discriminating`: it passes with or without the
 //     change.
 //
+// When the latest PASS run binds a literal cross-repository attestation
+// (failFirstCrossAnchor, #5549), the two base rules above are replaced by one
+// exact rule (ruling A on #5544): the base must BE the deliverable merge-base,
+// the merge-base of the attested source and origin/main in the deliverable
+// checkout the operator configured; no ancestor of it and no later commit is
+// accepted, and the brief-held rule is not applied. A cross-repository run the
+// gate cannot bind, whose deliverable has no configured checkout, whose
+// deliverable merge-base cannot be resolved, or whose deliverable merge-base is
+// the attested source itself (origin/main already holds the change), is a
+// PROBLEM on every risk-bearing row; it never falls back to the tracking clone.
+//
 // Rows are enumerated by briefVerifyRows, the SAME parser the runner uses, so no
 // row the runner executes and witnesses escapes the gate; text in the Verify
 // section that parser cannot place (verifyUnplacedRows) is itself a PROBLEM on
@@ -285,6 +296,7 @@ func failFirstClosureChecks(root, id, status string, art briefArtifacts, plan pr
 		problems = append(problems, fmt.Sprintf("%s: cannot close as %s — the Verify section holds %s that `statusgen verifyrun` cannot place, so it is never run, witnessed or held to a fail-first record. Give the table a `Command` column (and a Command cell on every row)", id, status, u))
 	}
 	evidence := parseEvidenceRows(plan.Evidence)
+	cross, crossWhy, crossRemedy := failFirstCrossAnchor(art.Path, art.Evidence)
 	for _, r := range rows {
 		ff, found, stale := latestFailFirst(evidence[r.ID], r.Command)
 		if !risky[r.ID] {
@@ -294,7 +306,14 @@ func failFirstClosureChecks(root, id, status string, art briefArtifacts, plan pr
 			continue
 		}
 		fact := evaluation.FailFirst{Required: true, Found: found, Stale: stale, State: ff.State}
-		if found && !stale && ff.State != baseUnproven {
+		if found && !stale && ff.State != baseUnproven && (cross != nil || crossWhy != "") {
+			fact.AncestryProblem = crossWhy
+			if cross != nil {
+				if why := crossRepoBaseExact(cross, ff.Base); why != "" {
+					fact.AncestryProblem = why
+				}
+			}
+		} else if found && !stale && ff.State != baseUnproven {
 			if !mergeBaseDone {
 				mergeBase, mergeBaseDone = failFirstMergeBase(root), true
 			}
@@ -313,6 +332,10 @@ func failFirstClosureChecks(root, id, status string, art briefArtifacts, plan pr
 		case problem == "unproven":
 			problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s could not run at base %s, so it was never shown to fail. Make the row runnable on the base tree, or re-author it, and re-run `statusgen verifyrun --fail-first`", id, status, r.ID, ff.Base))
 		default:
+			if why := fact.AncestryProblem; problem == "ancestry" && (cross != nil || crossWhy != "") {
+				problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its fail-first base comes from a cross-repository run and is not shown to be the deliverable merge-base exactly (base %s: %s), so its %s is not shown to be about the tree without this change. %s", id, status, r.ID, ff.Base, why, ff.State, crossRemedy))
+				continue
+			}
 			if why := fact.AncestryProblem; problem == "ancestry" {
 				problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its fail-first base is not the merge-base or an ancestor of it (base %s: %s), so its %s is not about the tree without this change. Re-run `statusgen verifyrun --fail-first` (default base, or --base <an ancestor of the merge-base>)", id, status, r.ID, ff.Base, why, ff.State))
 				continue
@@ -327,6 +350,182 @@ func failFirstClosureChecks(root, id, status string, art briefArtifacts, plan pr
 		}
 	}
 	return problems, notices
+}
+
+// crossRepoRemedy is what a cross-repository base PROBLEM asks for when the
+// attestation binds and the base cannot be resolved or is not the deliverable
+// merge-base. It names only the default base: under ruling A on #5544 no other
+// base is accepted, so advising an ancestor or the source would be advice the
+// gate refuses.
+const crossRepoRemedy = "Name the deliverable checkout in DESK_ROOTS (or --sibling-root <owner>/<repo>=<path>) with the attested source and origin/main fetched, or re-run `statusgen verifyrun --fail-first` with its default base, the deliverable merge-base"
+
+// crossRepoPostMergeRemedy is what it asks for when the deliverable merge-base
+// is the attested source itself: origin/main already holds the change, so no
+// base can show a row failing without it. It is word for word the hint the
+// cross-repository runner proposed in #5550 gives for its own case
+// (merge-base == HEAD); that runner refusal is owned by #5550 and is not
+// claimed here. A cross-repository run accepts no other base, so there is no
+// --base to suggest.
+const crossRepoPostMergeRemedy = "A cross-repository run accepts no other base, so no --base can fix this; run from a deliverable clone whose HEAD is the delivering change and whose origin/main does not yet hold it (binding the base to the delivering change is #2721)"
+
+// crossRepoBindingRemedy is what it asks for when the attestation itself is
+// refused (unbound, malformed, or not for this brief): no checkout or --base
+// change clears that, only a run that records a binding attestation.
+const crossRepoBindingRemedy = "Re-run the cross-repository verify for this brief so its selected PASS run records the binding attestation that run emits, and commit that run's Evidence"
+
+// ffCrossAnchor is where the closure gate resolves a cross-repository run's
+// fail-first base: root is the deliverable checkout, source the deliverable
+// commit the run's attestation binds, and mergeBase the deliverable merge-base
+// (of source and origin/main in root) the base must equal. failFirstCrossAnchor
+// never builds one whose mergeBase is source: that is the post-merge case, a
+// refusal on every risk-bearing row, so crossRepoBaseExact never accepts the
+// source as a base.
+type ffCrossAnchor struct {
+	root, source, mergeBase string
+}
+
+// crossDeliverableMergeBase is the deliverable merge-base of a
+// cross-repository run: the one merge-base of the attested source and the
+// deliverable checkout's origin/main, resolved exactly (exactRefCommit) and
+// asked of git as object ids only (flipMergeBases). It is asked of the
+// attested source rather than the checkout's HEAD, because the operator's
+// checkout need not be at the source. why is non-empty, and mergeBase "",
+// when origin/main is absent, the checkout lacks the source, git cannot
+// answer, or the history has more than one best merge-base: each is a
+// refusal, never a fallback (ruling A on #5544: fail closed when it cannot be
+// resolved).
+func crossDeliverableMergeBase(root, source string) (mergeBase, why string) {
+	tip := exactRefCommit(root, remoteMainRef)
+	if tip == "" {
+		return "", "origin/main does not resolve in the configured deliverable checkout"
+	}
+	bases, err := flipMergeBases(root, tip, source)
+	if err != nil {
+		return "", "the configured deliverable checkout cannot answer it (" + err.Error() + "); fetch the attested source into it"
+	}
+	if len(bases) != 1 || !isObjectID(bases[0]) {
+		return "", fmt.Sprintf("the attested source and origin/main have %d best merge-bases in the configured deliverable checkout, not exactly one", len(bases))
+	}
+	return bases[0], ""
+}
+
+// crossRepoBaseExact is the per-row cross-repository base rule (ruling A on
+// #5544): the Base cell must name the anchor's deliverable merge-base itself.
+// An ancestor of it predates the change; a later commit carries part of it;
+// neither is "without this change". The source itself never matches: the
+// anchor is never built when the merge-base is the source (the post-merge
+// case, refused in failFirstCrossAnchor). It returns "" when
+// the base is the merge-base, else why it is not. The cell is validated as
+// hex before git sees it, so no Evidence text reaches git as an option.
+func crossRepoBaseExact(cross *ffCrossAnchor, base string) string {
+	if !hexSHARe.MatchString(base) {
+		return "it is not a commit id"
+	}
+	full, err := resolveCommit(cross.root, base)
+	if err != nil || !isObjectID(full) {
+		return "it names no commit in the configured deliverable checkout"
+	}
+	if full != cross.mergeBase {
+		return "it is not the deliverable merge-base " + cross.mergeBase[:12] + " of the attested source and origin/main (an older commit predates the change; a later commit carries part of it)"
+	}
+	return ""
+}
+
+// failFirstDeliverableRoot finds the deliverable repository's checkout in the
+// operator's configured roots (DESK_ROOTS and --sibling-root, the map the
+// cross-root readers use), never in a value the scanned tree supplies. The map
+// is matched without regard to letter case, and its keys are not normalized,
+// so two entries for one repository that differ only in case and name
+// different paths are refused: picking one would depend on map order. why is
+// non-empty, and path "", when no checkout or more than one is configured. A
+// package var so tests can stand in for the configuration.
+var failFirstDeliverableRoot = func(repo string) (path, why string) {
+	paths := map[string]bool{}
+	for name, p := range effectiveSiblingRootOverrides(siblingRootFlagValues) {
+		if validSiblingRepo(name) && strings.EqualFold(name, repo) && p != "" {
+			paths[p] = true
+			path = p
+		}
+	}
+	switch len(paths) {
+	case 0:
+		return "", "the deliverable repository " + repo + " has no configured checkout"
+	case 1:
+		return path, ""
+	}
+	return "", fmt.Sprintf("the deliverable repository %s has %d configured checkouts, under names that differ only in letter case; configure exactly one", repo, len(paths))
+}
+
+// failFirstCrossAnchor decides where a brief's fail-first bases are resolved
+// (#5549). A verifier run on a version-2 (cross-repository) receipt records a
+// Base cell naming a DELIVERABLE commit, which the tracking clone the gate runs
+// in never holds; resolving it there refuses every valid cross-repository
+// closure. So when the latest PASS run binds a literal version-2 attestation
+// (selectedRunCrossBinding, the reader the brief-version read shares), the base
+// is resolved in the deliverable checkout the attestation's source-repo= names
+// and must equal the deliverable merge-base of the source= it binds
+// (crossDeliverableMergeBase, ruling A on #5544), and the brief-held rule is
+// not applied: no deliverable commit holds the tracking brief. This gate never reads the
+// verifier receipt: the brief's bytes are checked against its BriefSHA256 on
+// verifyrun's container lane (crossRepoBindingProblem) and on the desk tools'
+// verifier and landing paths, not here. Every other run keeps the
+// tracking-clone rule unchanged.
+//
+// It fails closed: why is non-empty, and every risk-bearing row's ancestry is
+// a PROBLEM, when the Evidence names a cross-repository run the gate cannot
+// bind (selectedRunCrossBinding's refusals), when the binding is not for the
+// brief at path (crossBindingBriefIdentity, the identity checks the
+// brief-version read applies), when the attested source is not a commit
+// object in the deliverable checkout (a tag id would never equal the peeled
+// merge-base and so would skip the post-merge refusal), when the deliverable repository
+// has no configured checkout (or more than one), when the deliverable
+// merge-base cannot be resolved there, or when that merge-base is the attested
+// source itself. The last is the post-merge case: origin/main already holds the
+// change, so the only base the rule accepts is the changed tree, where a green
+// says nothing and a red would be false credit. Without a base the rule
+// can honestly accept, the base cannot be checked, which is never a pass.
+// remedy is the step the PROBLEM asks for: crossRepoBindingRemedy when the
+// attestation itself is refused, crossRepoPostMergeRemedy after the merge,
+// crossRepoRemedy otherwise.
+func failFirstCrossAnchor(path, evidence string) (anchor *ffCrossAnchor, why, remedy string) {
+	p, err := flipLatestPass(evidence)
+	if err != nil {
+		if unboundCrossAttestation(evidence) {
+			return nil, "its Evidence records a cross-repository attestation but no PASS run the gate can read binds it (" + err.Error() + ")", crossRepoBindingRemedy
+		}
+		return nil, "", ""
+	}
+	b, err := selectedRunCrossBinding(evidence, p)
+	if err != nil {
+		return nil, "its cross-repository attestation cannot be bound: " + err.Error(), crossRepoBindingRemedy
+	}
+	if b == nil {
+		return nil, "", ""
+	}
+	if err := crossBindingBriefIdentity(path, b); err != nil {
+		return nil, "its cross-repository attestation cannot be bound: " + err.Error(), crossRepoBindingRemedy
+	}
+	root, rootWhy := failFirstDeliverableRoot(b.sourceRepo)
+	if rootWhy != "" {
+		return nil, "could not check: " + rootWhy + ", so the base cannot be resolved", crossRepoRemedy
+	}
+	mergeBase, mbWhy := crossDeliverableMergeBase(root, b.source)
+	if mbWhy != "" {
+		return nil, "could not check: the deliverable merge-base cannot be resolved: " + mbWhy, crossRepoRemedy
+	}
+	// git merge-base peels a tag to its commit, so the merge-base is always a
+	// commit id. The post-merge comparison below is only sound when source= is
+	// that commit's own id: an annotated tag's id would never equal it and
+	// would skip the refusal. A source= that is not a commit object is refused
+	// here, after the merge-base step, so a checkout lacking the source keeps
+	// the merge-base reason.
+	if peeled, err := resolveCommit(root, b.source); err != nil || peeled != b.source {
+		return nil, "its cross-repository attestation cannot be bound: the attested source " + b.source[:12] + " is not a commit object in the configured deliverable checkout (a tag or other object id never stands for the delivering commit)", crossRepoBindingRemedy
+	}
+	if mergeBase == b.source {
+		return nil, "could not check: the deliverable merge-base of the attested source and origin/main is the source itself (" + b.source[:12] + "): origin/main already holds this change, so the base rows would run on the changed tree and cannot show it failing", crossRepoPostMergeRemedy
+	}
+	return &ffCrossAnchor{root: root, source: b.source, mergeBase: mergeBase}, "", crossRepoRemedy
 }
 
 // latestFailFirst reads a row's LATEST witness and answers whether it is a

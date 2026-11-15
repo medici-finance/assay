@@ -37,6 +37,9 @@ type verifyRow struct {
 	// gatherRowFacts never probes such a row, neither as rename proof nor as
 	// behaviour (#2684, #3147).
 	Refused string
+	// BriefPath is the file the row was read from (set by loadBrief). The safe:count history
+	// proof blames the row and its Evidence line in that file; "" means no proof (#5529).
+	BriefPath string
 }
 
 // loadedBrief is a brief resolved to a file, with its risk declaration and Verify rows.
@@ -77,6 +80,9 @@ func loadBrief(repo, repoRoot, brief string) (loadedBrief, error) {
 	content := string(raw)
 	classed, reason, hasFrontmatter := deskkit.RiskFromBriefContent(content)
 	lb := loadedBrief{Path: path, Content: content, Rows: parseVerifyRows(content)}
+	for i := range lb.Rows {
+		lb.Rows[i].BriefPath = path
+	}
 	if !hasFrontmatter {
 		lb.RiskBearing = true
 		lb.Unverifiable = true

@@ -647,8 +647,8 @@ func TestCalloutAnswerParsing(t *testing.T) {
 	}
 }
 
-// TestRosterRecognisesOutboundCalloutKeys — a roster carrying the three keys loads (without
-// the parser change it refuses the WHOLE roster), they land on the config, and the P3 echo
+// TestRosterRecognisesOutboundCalloutKeys — a roster carrying the three keys loads, they land on
+// the config (without the parser change each would draw an unknown-key NOTICE and not be applied), and the P3 echo
 // prints both the path and the required mode.
 func TestRosterRecognisesOutboundCalloutKeys(t *testing.T) {
 	withRoster(t, map[string]string{

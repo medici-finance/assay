@@ -794,6 +794,8 @@ func TestVerifyrunRowsTransitionSplitRunsDoNotClose(t *testing.T) {
 func TestVerifyrunRowsFailFirstScope(t *testing.T) {
 	f := newRowsFixture(t, "| # | Command | Expect |\n|---|---|---|\n| 1 | `true` | exit 0 (live) |\n| 2 | `true` | exit 0 |\n")
 	base := mustGitOut(t, f.root, "rev-parse", "HEAD")
+	// --base is checked against the merge-base, so the clone needs origin/main.
+	runGit(t, f.root, "update-ref", remoteMainRef, base)
 	// Selecting the risk-bearing row 1 prints no notice (its exit is the
 	// fail-first verdict: green at base is non-discriminating).
 	for _, c := range []struct {

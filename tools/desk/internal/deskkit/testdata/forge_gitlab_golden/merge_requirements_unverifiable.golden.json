@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": null,
+  "err": "the GitLab backend serves no viewer-independent merge-requirement read",
+  "not_found": false
+}
