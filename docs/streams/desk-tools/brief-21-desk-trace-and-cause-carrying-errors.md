@@ -1365,6 +1365,117 @@ Tally: 15 of 16 rows pass (1-10, 12-16), 0 fail, 1 not counted (11, vacuous chec
 
 **VERIFY: BLOCKED** — 15/16 rows pass on the execution witnesses, 0 fail. Row 11 is a check-definition defect (#1306): both of its named tests are absent from cmd/deskfile, so its exit 0 is vacuous. Row 12 passes on the second container bracket; its first-bracket fail is the runner container's missing init process, which leaves deskwt's TestLegacyDeadlineTree unable to confirm cleanup. Status stays implemented.
 
+### Non-implementer verifier re-run: 2026-11-15, host witness plus container-netns bracket, merged main a0ef717386ab19b39efbd80d53c3bd3bb41aefea
+
+The 2026-11-06 re-run above was BLOCKED at 8f5bb307de31 on row 11 alone. Its Evidence could not land because main moved past its attested inputs, so this is a fresh run of every row at the current merged main. No witness from an earlier run is reused.
+
+Source: a0ef717386ab19b39efbd80d53c3bd3bb41aefea. Between 8f5bb307de31 and this source, scrub.go, trace.go, trace-mutations.json
+and cmd/deskfile are unchanged. runtool.go changed in one place: `Said` now joins every non-empty stderr line of a git
+child onto one line with " | " (git prints progress ahead of its `fatal:` line, #6115), and trace_test.go gained
+TestToolRunGitSaidKeepsFatal for it. exitcodes.go gained two unexported, unrendered DeskError flags (transientRead,
+lockContended), and bodycheck.go, cmd/deskdispatch, cmd/deskwt and cmd/desktoken also changed. The delivering change is
+still 1003557e167b97c74534d83bf5e47811118fa39c (#729). No Verify row carries a risk-bearing, live, mutating or
+end-to-end tag, and every answer under the brief's risk questions is no, so no row owes a fail-first witness. Main has
+since moved to 3437018e9d85 without touching this brief or any file it names.
+
+Admission: `deskdispatch --check-verifier` exit 0 for this detached home at the source above (desk-tools v1.0.84)
+before any row ran. The rows were split into two disjoint selections that together cover all 16 rows.
+
+- Rows 1-4 and 6-15 (container-netns): `statusgen verifyrun --open-bracket` on the host (receipt and a new empty module
+  cache outside the home), then `statusgen verifyrun --sandbox=container-netns --rows 1,2,3,4,6,7,8,9,10,11,12,13,14,15`
+  inside `docker run --init --network none --read-only --cap-drop ALL --security-opt no-new-privileges` on the
+  verify-runner v1.0.84 image (linux/arm64, go1.27.3, git 2.56.1, statusgen v1.0.84). The home and its common git
+  directory were mounted read-only at their own paths, the module cache read-only, with uid 501 and a read-only
+  /etc/passwd entry for it, GOPROXY=off, GOTOOLCHAIN=local, GOFLAGS=-mod=readonly, KUBECONFIG=/dev/null, a tmpfs HOME
+  and /tmp, no forge credential and no injected git identity. Three brackets ran with identical selections, commands
+  and container flags:
+  - First bracket (opened 19:10:36Z, closed 19:27:05Z, `--bracket-digest` verdict=match, witness sha256:ff2cf6a15da6):
+    every selected row passes except row 12, which reads fail exit=1. Host load (1-minute average) was about 27 at the
+    start. A labelled diagnostic re-run of the row 12 command in the same image and mounts (no acceptance credit),
+    started at load 46, showed deskdispatch, deskwt, desktoken, deskfile and untrustcorpus `ok`, and deskkit `FAIL`
+    with `panic: test timed out after 5m0s`. The test running when the timer fired had been running for 0s, so no single test hung.
+    The package's 2074 tests ran past the row's fixed 300s budget on a contended host. Discarded as an environment
+    fault, the same class as #4179 (a fixed `go test` timeout that a loaded host no longer fits).
+  - Second bracket (opened 20:21:13Z, closed 20:31:08Z, verdict=match, witness sha256:dd778ae221a0): the same result,
+    row 12 fail exit=1, every other selected row pass, load 29-40 during the run. The witness keeps no per-row output
+    (#4335). A labelled diagnostic re-run straight after it (no acceptance credit) passed every package, with deskkit at
+    271.1s against the 300s budget, so this is read as the same environment fault and discarded on the same cause.
+  - Third bracket (opened 20:37:19Z, closed 20:46:10Z): all 14 selected rows pass and `--bracket-digest` reads
+    verdict=match. The second table below, with its Tree-Digest, Container-Image, Module-Cache, attestation and
+    Admission-Bracket lines, is that witness file's bytes. The first two witnesses are kept outside the home and
+    discharge nothing.
+- Rows 5 and 16 (host, darwin/arm64, go1.27.4, KUBECONFIG=/dev/null, real module and build caches, no forge credential
+  and no GIT_CONFIG_GLOBAL in the row environment): the first table below is the tool's own write-mode
+  `statusgen verifyrun --rows 5,16` output, written into this section from the home after all three brackets had
+  closed, and left as written (20:46:32Z-20:48:48Z, load 16.7). muhar exits 0 even when a mutant survives (#4383), so a
+  labelled supplemental re-run of the row 16 command straight afterwards (no acceptance credit) was read for its Totals:
+  `Harness healthy: baseline GREEN, positive control CAUGHT.`, each of the ten named mutations CAUGHT, and
+  `Totals: 10 caught, 0 NOT CAUGHT, 0 could-not-mutate.`
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestTraceNeverPrintsACredential$' -count=1` | pass exit=0 | sha256:925c4ba73969 | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 16 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/trace-mutations.json` | pass exit=0 | sha256:d163d94cc7ef | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6532 run=a51c16951b4c9329b6814c65576a91f18949fbe90964dd49e03ca0b96f7631c9 source=a0ef717386ab19b39efbd80d53c3bd3bb41aefea brief=docs/streams/desk-tools/brief-21-desk-trace-and-cause-carrying-errors.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestToolRunSaidSkipsPreambleAndCarriesTheToolsOwnMessage$' -count=1 && go test ./internal/deskkit/ -run '^TestToolRunFailShapeAndCarriedDetail$' -count=1` | pass exit=0 sandbox=container-netns | sha256:9f21315dc077 | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestReportErrorOffIsByteIdentical$' -count=1 && go test ./internal/deskkit/ -run '^TestReportErrorOnPrintsChainCommandsAndTimings$' -count=1` | pass exit=0 sandbox=container-netns | sha256:15f0dd56079a | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestScrubRedactsEveryTransportShape$' -count=1` | pass exit=0 sandbox=container-netns | sha256:6a2dd7e9149b | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestRefusedWithCauseStaysARefusal$' -count=1 && go test ./internal/deskkit/ -run '^TestTraceEnabledReadsTheEnvSpellings$' -count=1` | pass exit=0 sandbox=container-netns | sha256:3dd8ceeed79e | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestClaimAcquireFailureNamesTheClaimToolsOwnMessage$' -count=1 && go test ./cmd/deskdispatch/ -run '^TestGitOutFailureCarriesGitStderr$' -count=1` | pass exit=0 sandbox=container-netns | sha256:548cfff31693 | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestWorktreeCreateFailureCarriesDeskwtStderrAndTheCommandLine$' -count=1 && go test ./cmd/deskdispatch/ -run '^TestTraceIsOffByDefaultAndOutputIsUnchanged$' -count=1` | pass exit=0 sandbox=container-netns | sha256:1ffbf4041d27 | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestRunGitFailureCarriesStderrCommandAndExitStatus$' -count=1 && go test ./cmd/deskwt/ -run '^TestDeskwtTraceOffIsByteIdenticalAndOnCarriesTheCommand$' -count=1` | pass exit=0 sandbox=container-netns | sha256:d90dbfe1ce12 | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/desktoken/ -run '^TestTokenPathNoticeIsPrintedOnStderrNotStdout$' -count=1` | pass exit=0 sandbox=container-netns | sha256:12c5bc38648e | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && go test ./cmd/deskfile/ -run '^TestDedupeSearchOutageNamesTheAPIStatus$' -count=1 && go test ./cmd/deskfile/ -run '^TestGhStderrStripsControlBytes$' -count=1` | pass exit=0 sandbox=container-netns | sha256:a81819111003 | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/desk && go test -timeout 300s ./internal/deskkit/... ./cmd/deskdispatch/... ./cmd/deskwt/... ./cmd/desktoken/... ./cmd/deskfile/... -count=1` | pass exit=0 sandbox=container-netns | sha256:3686f8586573 | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 13 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestS2' -count=1 && go test ./internal/deskkit/ -run 'TestCorpus' -count=1` | pass exit=0 sandbox=container-netns | sha256:e6d0f4b6f136 | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 14 | `cd tools/desk && gofmt -l internal/deskkit/trace.go internal/deskkit/runtool.go internal/deskkit/scrub.go internal/deskkit/exitcodes.go cmd/deskdispatch cmd/deskwt cmd/desktoken cmd/deskfile > /tmp/dt21-fmt.out; test ! -s /tmp/dt21-fmt.out` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 15 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:fb4c4da95a23 | 2026-11-15 | assay-verifier-app[bot] @ a0ef717386ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:e2b2f7abefb96016f6c09f24e8f545748d9a9745ae20325bd6f6cd00198c475c
+Container-Image: sha256:a0d6bbd15f1e1891bca9429673015f8e8ce85fc63cd561fe9cf7303f2ef3f279
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6532 run=a51c16951b4c9329b6814c65576a91f18949fbe90964dd49e03ca0b96f7631c9 source=a0ef717386ab19b39efbd80d53c3bd3bb41aefea brief=docs/streams/desk-tools/brief-21-desk-trace-and-cause-carrying-errors.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=a51c16951b4c9329b6814c65576a91f18949fbe90964dd49e03ca0b96f7631c9 source=a0ef717386ab19b39efbd80d53c3bd3bb41aefea tree=sha256:e2b2f7abefb96016f6c09f24e8f545748d9a9745ae20325bd6f6cd00198c475c witness=sha256:9b6bfb66cb28fd6c5b320aa317d80345544aff55f4bf2275a2863a8edb720dea opened=2026-11-15T20:37:19Z closed=2026-11-15T20:46:13Z before=receipt after=check-verifier
+
+How each row is counted:
+
+- Rows 1-4, 6-10 and 12-15 pass on the third container-netns witness (exit 0, sandbox=container-netns).
+- Rows 5 and 16 pass on the host witness (exit 0); row 16's Totals line is quoted above.
+- Row 12: pass on the third bracket. Its fails in the first two brackets are accounted for above as an environment
+  fault (#4179 class): the same command, unchanged, passes once the host is less loaded, and no test in it failed on
+  its own.
+- Row 11: not counted, although its witness reads pass. The row is vacuous. A labelled supplemental probe on the host
+  (`go test ./cmd/deskfile/ -list 'Dedupe|GhStderr'`, which discharges no row) lists neither
+  TestDedupeSearchOutageNamesTheAPIStatus nor TestGhStderrStripsControlBytes. The dedupe-search tests declared in
+  cmd/deskfile at this source are TestDedupeSearchPropagatesTheForgeDiagnosis and
+  TestDedupeSearchControlBytesStrippedByBackend. The check-definition repair is still open as #1306.
+
+Risk-bearing values (enumerated over trace.go, runtool.go, scrub.go and exitcodes.go at this source):
+
+- `traceStepCap = 200` @ tools/desk/internal/deskkit/trace.go:54 (ledger size, a reversible operational knob).
+- `envTruthy` spellings `"1", "true", "yes", "on"` @ tools/desk/internal/deskkit/trace.go:98 (reversible).
+- `redactedMarker = "<redacted>"` @ tools/desk/internal/deskkit/scrub.go:51 (reversible display text).
+- `reURLUserinfo`, `reAuthHeader`, `reSecretEnvAssign` @ tools/desk/internal/deskkit/scrub.go:33, :38, :44-45.
+  These rank first: a credential printed into a trace that is then shared cannot be withdrawn by a redeploy.
+- `RefusedWithCause` builds `Code: ExitRefused` @ tools/desk/internal/deskkit/exitcodes.go:196, with
+  `ExitRefused = 5` @ exitcodes.go:51 (a changed code would let a caller treat a refusal as something else,
+  reversible by an edit).
+- New since the 2026-11-06 run: the git `Said` line join with `" | "` in runtool.go (#6115). It changes only how a
+  child's stderr is displayed, is reversible by an edit, and is covered by TestToolRunGitSaidKeepsFatal in row 12's
+  deskkit package. The two new exitcodes.go flags are never rendered.
+
+RISK-VALUE: DERIVED — reURLUserinfo = `://([^:/@\s]*):([^@\s]+)@` @ tools/desk/internal/deskkit/scrub.go:33 — RFC 3986 userinfo is `user:password` ending at the first `@` before the host, the user part may be empty, and a literal `@` inside a password must be percent-encoded, so `[^:/@\s]*` covers every user part (including the empty one of the password-only form) and `[^@\s]+` after the colon spans the whole password of any well-formed URL.
+RISK-VALUE: DERIVED — RefusedWithCause Code = ExitRefused (5) @ tools/desk/internal/deskkit/exitcodes.go:196 — the brief's ground rule "no exit code changes" and its design fact that RefusedWithCause stays a refusal require the same code `Refused` returns (exitcodes.go:182).
+RISK-VALUE: NAMED, NOT DERIVED — reSecretEnvAssign name keywords TOKEN|SECRET|PASSWORD|PASSWD|APIKEY|API_KEY|PRIVATE_KEY|CREDENTIAL|PAT @ tools/desk/internal/deskkit/scrub.go:44-45 — a keyword list is a heuristic with no closed derivation; a credential variable named outside it (for example one ending in _AUTH or _KEY) is caught only if its value matches a body-scanner token shape. Completeness is tracked by #1616.
+RISK-VALUE: NAMED, NOT DERIVED — reAuthHeader = `(?i)(authorization\s*[:=]\s*)(token |bearer |basic )?\S+` @ tools/desk/internal/deskkit/scrub.go:38 — it redacts only the first whitespace-free run after the optional scheme word, which covers the three named schemes; for any other scheme word the scheme is redacted and the credential after it is left to the body-scanner shapes. No spec text fixes the scheme set (#1616).
+
+Tally: 15 of 16 rows pass (1-10, 12-16), 0 fail, 1 not counted (11, vacuous check-definition, #1306).
+
+**VERIFY: BLOCKED** — 15/16 rows pass on the execution witnesses, 0 fail. Row 11 is a check-definition defect (#1306): both of its named tests are absent from cmd/deskfile, so its exit 0 is vacuous. Row 12 passes on the third container bracket; its fails in the first two were a loaded-host timeout (#4179 class) and discharge nothing.
+
 ## Review
 
 Gate: model (all four risk answers no). Model-gated because the two hazards this change
