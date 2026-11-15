@@ -14,14 +14,31 @@ import (
 // nativeEngine is the Docker engine constructor, replaced in tests.
 var nativeEngine = cellcontainer.Docker
 
-func (c *Cell) nativeContainerConfig() *cellcontainer.Config {
+// nativeContainerConfig loads the container configuration and installs the cell's role-secret
+// bindings (rolesecret.go). verify is set for every path that launches or checks a container, so
+// the files and the surface are re-verified on each; status and down pass false and only re-plan
+// what is running.
+func (c *Cell) nativeContainerConfig(verify bool) *cellcontainer.Config {
 	cfg, err := cellcontainer.Load(c.Env.Get("CELL_CONTAINER_CONFIG"))
 	if err != nil {
 		die("container config: %v", err)
 	}
+	if err := c.applyRoleSecrets(cfg, verify); err != nil {
+		if verify {
+			die("role secrets: %v", err)
+		}
+		fmt.Fprintf(os.Stderr, "cellctl: role secrets: %v (planning without them)\n", err)
+	}
 	return cfg
 }
 func (c *Cell) nativeContainerPlan(role, harness, model string) *cellcontainer.Plan {
+	p, _ := c.nativeContainerPlanCfg(role, harness, model)
+	return p
+}
+
+// nativeContainerPlanCfg is nativeContainerPlan, also returning the verified configuration the
+// plan was made from.
+func (c *Cell) nativeContainerPlanCfg(role, harness, model string) (*cellcontainer.Plan, *cellcontainer.Config) {
 	// This also protects the internal runner, which can be invoked without desk.
 	policy, _, policyErr := c.cellModelPolicy()
 	if policyErr != nil {
@@ -30,7 +47,7 @@ func (c *Cell) nativeContainerPlan(role, harness, model string) *cellcontainer.P
 	if policy != nil || c.Env.Get("CELL_PROVIDER") != "" {
 		die("native containers do not accept host model policies or providers")
 	}
-	cfg := c.nativeContainerConfig()
+	cfg := c.nativeContainerConfig(true)
 	key, err := cfg.RoleKey(c.Name, role)
 	if err != nil {
 		die("%v", err)
@@ -46,7 +63,7 @@ func (c *Cell) nativeContainerPlan(role, harness, model string) *cellcontainer.P
 	if role == "the-desk" && p.Harness == "claude" {
 		refuseOpusForTheDesk(p.Model)
 	}
-	return p
+	return p, cfg
 }
 func (c *Cell) nativeContainer(args ...string) {
 	switch verb := args[0]; verb {
@@ -57,6 +74,7 @@ func (c *Cell) nativeContainer(args ...string) {
 		p := c.nativeContainerPlan(args[1], args[3], args[5])
 		if c.Env.Get("DRY_RUN") == "1" {
 			fmt.Printf("[dry-run] native container %s target=%s name=%s harness=%s model=%s\n", verb, p.Host, p.Name, p.Harness, p.Model)
+			printRoleSecretPlan(p)
 			for _, a := range append([]string{"docker", "--host", p.Host}, p.RunArgs()...) {
 				fmt.Printf("%s ", bashQuote(a))
 			}
@@ -100,7 +118,7 @@ func (c *Cell) nativeContainer(args ...string) {
 // container is validated against the harness and model it was launched with, so a per-launch
 // override never strands it, and a refusal for one role never skips the others.
 func (c *Cell) nativeLifecycle(verb string) {
-	cfg := c.nativeContainerConfig()
+	cfg := c.nativeContainerConfig(false)
 	var failed []string
 	for _, role := range c.Roles {
 		key, err := cfg.RoleKey(c.Name, role)
@@ -237,7 +255,7 @@ func cmdContainerRun(args []string) {
 	if !valueIn(args[1], c.Roles) {
 		die("role is not enabled")
 	}
-	p := c.nativeContainerPlan(args[1], args[2], args[3])
+	p, cfg := c.nativeContainerPlanCfg(args[1], args[2], args[3])
 	path := p.HostLock
 	if path == "" {
 		path = filepath.Join(c.Dir, "run", p.RoleKey+".lock")
@@ -245,6 +263,11 @@ func cmdContainerRun(args []string) {
 	lock := containerLock(path)
 	defer lock.Close()
 	fmt.Printf("[container] run target=%s name=%s\n", p.Host, p.Name)
+	// The receipt is written under the lifetime lock, after the plan re-verified every bound
+	// file, and before the engine runs: a binding that is not recorded is not made.
+	if err := c.writeRoleSecretReceipts(cfg, p); err != nil {
+		die("role secrets: cannot write the launch receipt: %v", err)
+	}
 	if err := nativeEngine(p.Host).Run(p); err != nil {
 		die("container run: %v", err)
 	}

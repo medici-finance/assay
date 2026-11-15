@@ -221,10 +221,12 @@ const cockpitBlock = "# The cockpit `cellctl up` opens the role windows in: auto
 const pinnedBlock = "# Pinned models (values `claude --model` accepts); the CLI default is never used.\n" +
 	"DESK_MODEL_DEFAULT=sonnet\n" +
 	"DESK_MODEL_the_desk=fable\n" +
+	"# The intake role's judgment work needs a strong tier; removing this line returns the role to DESK_MODEL_DEFAULT.\n" +
+	"DESK_MODEL_intake_desk=opus\n" +
 	"# The harness a role window boots on: claude (default) or codex. `cellctl desk`/`up --harness`\n" +
 	"# overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.\n" +
 	"CELL_HARNESS=claude\n" +
-	"# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two\n" +
+	"# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the\n" +
 	"# DESK_MODEL_* lines above are Claude-only and are never read on --harness codex. Absent here,\n" +
 	"# a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:\n" +
 	"# CODEX_MODEL_default=gpt-5.6-terra\n" +
@@ -316,7 +318,7 @@ func newContainer(e *Env, root, cell, repo, launcher, roles, roots string) {
 	body := "# Container cell registration; the launcher owns runtime custody.\n" +
 		fmt.Sprintf("CELL=%s\nCELL_KIND=container\nCELL_REPO=%s\n", bashQuote(cell), bashQuote(repo)) +
 		fmt.Sprintf("CELL_CONTAINER_LAUNCHER=%s\nROLES=%s\nCELL_ROOTS=%s\n", bashQuote(launcher), bashQuote(roles), bashQuote(roots)) +
-		"CELL_HARNESS=claude\nDESK_MODEL_DEFAULT=sonnet\nDESK_MODEL_the_desk=fable\nDESKD=0\n"
+		"CELL_HARNESS=claude\nDESK_MODEL_DEFAULT=sonnet\nDESK_MODEL_the_desk=fable\nDESK_MODEL_intake_desk=opus\nDESKD=0\n"
 	writeFile(filepath.Join(d, "cell.env"), body)
 	_ = os.Chmod(filepath.Join(d, "cell.env"), 0o600)
 	fmt.Printf("[new] registered %s (container) — cellctl check %s, then cellctl up %s\n", d, cell, cell)
@@ -543,6 +545,8 @@ ROLES="%s"
 		"# Pinned models (values `claude --model` accepts); the CLI default is never used.\n"+
 		"DESK_MODEL_DEFAULT=sonnet\n"+
 		"DESK_MODEL_the_desk=fable\n"+
+		"# The intake role's judgment work needs a strong tier; removing this line returns the role to DESK_MODEL_DEFAULT.\n"+
+		"DESK_MODEL_intake_desk=opus\n"+
 		"# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — absent\n"+
 		"# here, a role falls back to the tier map (docs/cellctl.md's Pinned models section):\n"+
 		"# CODEX_MODEL_default=gpt-5.6-terra\n"+

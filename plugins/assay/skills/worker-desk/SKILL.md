@@ -643,6 +643,20 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Serialize out-of-repo items** — no worktree isolation, no branch-as-claim: at most ONE in
   flight across all streams, the declaration is the claim, so check in-flight PRs for overlaps first.
 - **Placeholders are dispatchable** (ruling 2, 2026-08-24); `fanoutloop plan` includes them.
+- **A window holding a project role secret dispatches only work proven trusted.** A native container
+  cell can export a project role secret into a worker window as a path variable,
+  `ASSAY_ROLE_SECRET_<SERVICE>_FILE` (`containers/secrets.md` §4.4). Every agent dispatched from that
+  window inherits the variable, so `deskdispatch` refuses, before the claim, the following:
+  - any brief-keyed or review-kit item;
+  - an issue or change whose author is not trusted and that carries no current blessing;
+  - a `--pr` item whose head commits are not all on the base repository, with a linked author and
+    committer that are both roster logins (commit attribution, not proof of who pushed).
+
+  Unreadable forge data counts as untrusted. Treat that refusal like any guard refusal: it is a
+  STOP for the item in that window. Never route around it by unsetting the variable: the
+  file stays mounted, and an existing `/run/secrets/role-*` file makes the window a holding one
+  anyway. `deskdispatch` also strips every such variable from the tool processes it
+  starts.
 
 ## Cockpit-aware worktree creation — additive, chosen by `ASSAY_COCKPIT` or detected on PATH, never required
 
@@ -1056,12 +1070,16 @@ worker-desk's own.
   bindings), the desk falls back to the event-driven + fixed-cadence board sweep at the same 30-minute
   cadence and **states the gap in-session**; a durable wake is a convenience, never one of the three
   never-degrade guarantees.
-- **A tick never renews the dead-man lease.** When the `HEARTBEAT` file in the config home
-  (desk-shell.md §Config home: `~/.config/assay`) exists and was last touched outside its
-  staleness window, the desk tools refuse to run: that is STOP-ALL by construction. Renewal is a
-  HUMAN act. The driver, or a cron the driver owns, touches the file. No agent or loop touches,
-  renews or deletes it, on any tick, because a loop that keeps its own lease fresh defeats the
-  dead-man semantics. A `heartbeat stale (age …)` refusal is the lease firing. Quote it verbatim
+- **A tick never renews the dead-man lease; only progress does.** When the `HEARTBEAT` file in the
+  config home (desk-shell.md §Config home: `~/.config/assay`) exists and was last touched outside
+  its staleness window, the desk tools refuse to run: that is STOP-ALL by construction. A FRESH
+  lease is renewed by the desk tools themselves, and only when a verb completes an outward act the
+  forge confirmed (a push, a PR, a review or comment, an issue, an Evidence landing, a ready flip);
+  the act's audit row records it (desk-shell.md §HEARTBEAT lease). A tick, a read, a mint or a
+  failed act renews nothing, so a loop that only polls still lapses. A LAPSED lease is revived only
+  by a human: the driver, or a cron the driver owns, touches the file. No agent or loop touches,
+  creates or deletes it by hand, on any tick. A `heartbeat stale (age …)` refusal is the lease
+  firing. Quote it verbatim
   in the hand-off note, print ONE loud line naming it, and stand down. Never ask the driver how
   to proceed.
 - **A tick reads the armed per-run stops and stops each run's worker.** Every tick, read the armed

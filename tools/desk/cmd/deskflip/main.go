@@ -18,7 +18,8 @@
 // review lane. The merge remains the human's, always. deskflip has no un-ready verb, no
 // merge verb, and no override flag — a gate a caller can wave past is not a gate. Its one
 // un-ready is the post-flip backstop's: right after the flip it reads the forge's merge
-// state and returns the PR to draft when the forge reports BLOCKED or DIRTY, so ready keeps
+// state and returns the PR to draft when the forge reports DIRTY, or BLOCKED with a merge
+// requirement unmet or unreadable (#6508: BLOCKED alone is viewer-relative), so ready keeps
 // meaning mergeable per the forge. That is never a verb of its own. Ruling:
 // https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
 //
@@ -163,10 +164,18 @@ AFTER THE FLIP it reads the forge's merge state (GitHub's mergeStateStatus) with
 draft flag, re-reading an UNKNOWN or DRAFT state, or a PR that still reads as a draft, for up
 to 30s: ready means mergeable per the forge. GitHub reports a draft as BLOCKED, so a read
 that still shows the PR as a draft is never a revert.
-  BLOCKED, DIRTY    (and NOT a draft) the forge disagrees: the PR goes back to draft, one
+  DIRTY             (and NOT a draft) the forge disagrees: the PR goes back to draft, one
                     comment names the state and the head and carries the not-reverted
                     marker, the queue label is not swapped, and the exit is 5. If the
                     return to draft fails, the exit is 6 and nothing is retried.
+  BLOCKED           (and NOT a draft) GitHub computes BLOCKED for the reader, so it then
+                    reads the requirements every reader sees alike: no merge conflict
+                    (mergeable), the review decision, and every required check at the
+                    head. Any one unmet, a read that fails, or a base-branch rule the
+                    read sees but does not evaluate (conversation resolution, signed
+                    commits, a merge queue ...) reverts exactly as DIRTY does, the comment
+                    naming each one. All met, with no such rule: the PR stays ready with
+                    a could-not-check comment and notice.
   CLEAN, HAS_HOOKS, UNSTABLE, BEHIND
                     (and NOT a draft) the PR stays ready.
   anything else     still unsettled at 30s (UNKNOWN, or still a draft), or unreadable: the

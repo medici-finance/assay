@@ -109,7 +109,7 @@ EOF
 chmod +x "$T/bin/claude"
 # The codex stub. Control files under $CODEX_TEST_DIR (exported, so it survives cellctl's own
 # `env VAR=... codex ...` exec — env only ADDS vars, it does not clear the inherited ones) toggle
-# authentication, the multi_agent config value, and skills-discoverable, independent of PATH
+# authentication, the multi_agent effective feature state, and skills-discoverable, independent of PATH
 # presence (removing/restoring the binary itself is the "codex missing" case).
 export CODEX_TEST_DIR="$T/codex-state"; mkdir -p "$CODEX_TEST_DIR"
 cat > "$T/bin/codex" <<'EOF'
@@ -120,9 +120,10 @@ esac
 case "${1:-} ${2:-}" in
   "login status")
     [[ -f "$CODEX_TEST_DIR/authed" ]] && exit 0 || exit 1 ;;
-  "config --help") printf 'Commands:\n  get     read a config value\n  set     write a config value\n'; exit 0 ;;
-  "config get")
-    if [[ -f "$CODEX_TEST_DIR/multiagent" ]]; then cat "$CODEX_TEST_DIR/multiagent"; else echo ""; fi
+  # cellctl reads Codex's EFFECTIVE feature state from `codex features list` (one
+  # `<name> <stage> <true|false>` row per feature), never a literal config read (f53fed97f, ea4f9842d).
+  "features list")
+    if [[ -f "$CODEX_TEST_DIR/multiagent" ]]; then printf 'multi_agent stable %s\n' "$(cat "$CODEX_TEST_DIR/multiagent")"; fi
     exit 0 ;;
   "plugin --help") printf 'Commands:\n  list    list installed plugins\n  add     add a plugin\n'; exit 0 ;;
   "plugin list")
@@ -267,7 +268,7 @@ assert "check passes when every codex precondition holds" '[[ $rc -eq 0 ]]'
 assert "codex on PATH row is ok" 'grep -q "ok    codex on PATH" <<<"$out"'
 assert "codex --version row is ok" 'grep -q "ok    codex --version" <<<"$out"'
 assert "codex authenticated row is ok" 'grep -q "ok    codex authenticated" <<<"$out"'
-assert "multi_agent row is ok" 'grep -q "ok    \[features\] multi_agent" <<<"$out"'
+assert "multi_agent row is ok" 'grep -qF "ok    Codex multi_agent effective state is enabled (codex features list)" <<<"$out"'
 assert "resident-rules fragment row is ok" 'grep -q "ok    resident-rules fragment present" <<<"$out"'
 assert "skills discoverable row is ok" 'grep -q "ok    skills discoverable" <<<"$out"'
 
@@ -303,7 +304,7 @@ echo "[check: codex cell — multi_agent off]"
 printf 'false\n' > "$CODEX_TEST_DIR/multiagent"
 out="$("$CELLCTL" check codex-cell 2>&1)" && rc=0 || rc=$?
 assert "check fails when multi_agent is off (exit 1)" '[[ $rc -ne 0 ]]'
-assert "names the multi_agent row as the MISS" 'grep -q "MISS  \[features\] multi_agent" <<<"$out"'
+assert "names the multi_agent row as the MISS" 'grep -qF "MISS  Codex multi_agent effective state is enabled (codex features list)" <<<"$out"'
 printf 'true\n' > "$CODEX_TEST_DIR/multiagent"
 
 echo "[check: codex cell — resident-rules fragment missing]"
@@ -328,12 +329,15 @@ out="$("$CELLCTL" set house-cell CELL_HARNESS=codex 2>&1)" && rc=0 || rc=$?
 assert "set exits 0" '[[ $rc -eq 0 ]]'
 assert "cell.env now carries CELL_HARNESS=codex" 'grep -qx "CELL_HARNESS=codex" "$CELL/cell.env"'
 assert "prints before -> after" 'grep -q "CELL_HARNESS: claude -> codex" <<<"$out"'
+# The refusal names every accepted harness. The Go binary accepts cursor too (f53fed97f) and
+# says "one of claude|codex|cursor"; the shell oracle predates cursor and says "claude or codex".
+harness_refusal="CELL_HARNESS must be (claude or codex|one of claude\|codex\|cursor), got 'bogus'"
 out="$("$CELLCTL" set house-cell CELL_HARNESS=bogus 2>&1)" && rc=0 || rc=$?
 assert "an invalid CELL_HARNESS value is refused (non-zero exit)" '[[ $rc -ne 0 ]]'
-assert "names claude or codex" 'grep -q "CELL_HARNESS must be claude or codex" <<<"$out"'
+assert "names every accepted harness" 'grep -qE "$harness_refusal" <<<"$out"'
 assert "cell.env is untouched by the refusal" 'grep -qx "CELL_HARNESS=codex" "$CELL/cell.env"'
 out="$("$CELLCTL" set house-cell CELL_HARNESS=bogus --force 2>&1)" && rc=0 || rc=$?
-assert "--force does not bypass the value check" '[[ $rc -ne 0 ]] && grep -q "CELL_HARNESS must be claude or codex" <<<"$out"'
+assert "--force does not bypass the value check" '[[ $rc -ne 0 ]] && grep -qE "$harness_refusal" <<<"$out"'
 # restore claude for the remaining tests
 "$CELLCTL" set house-cell CELL_HARNESS=claude >/dev/null
 

@@ -25,18 +25,17 @@ the review and the human merge are the independent layers behind it.
 | Class | Proof required | Status |
 |-------|----------------|--------|
 | `safe:rename` | The row pins a path that no longer exists, and git records a **single** rename/move hop from it to a path that exists now (`git log --follow`). The row is then **re-run** with the old path rewritten to the new one in its Command and Expect, and it must pass that Expect. Only whole literal path tokens are rewritten; similarly named paths keep their meaning. The work is intact; only the pinned path moved. | **live** |
-| `safe:count` | The row's Expect is a count whose current value differs, and the target files changed **only by additions** since the Evidence date — the higher count is growth, not a regression. | *not yet implemented* |
-| `safe:idiom` | The row pins a tool idiom **retired by a recorded ruling** (e.g. a renamed flag). The command idiom moved; the checked behaviour did not. | *not yet implemented* |
+| `safe:count` | The row's Expect pins **one** count as its `output is` line, and the command now runs with the pinned exit and prints a **larger** bare integer, so the Expect rewritten to the new count passes. Git history must then prove the growth: the row's Evidence commit is the commit that wrote its latest Evidence line, which must record a `pass` of the same command, with the Verify row unchanged since. `git diff` from that commit to `HEAD` over every path the command names must show **only added lines**: zero deletions, no rename, delete or mode change, no binary change, every target present at both ends and clean in the tree. A shallow clone, a dirty target or any git error refuses. | **live** |
+| `safe:idiom` | The row's command uses a tool idiom (one flag or command word, matched as a whole shell word) that an entry of the checked-in list [`retired-idioms.json`](../tools/desk/cmd/deskrebaseline/retired-idioms.json) retires. Each entry names the idiom, its replacement and the **ruling reference** (`#N`, `owner/repo#N` or an issue/pull URL) that retired it; an entry without one is ignored. The row is re-run with the idiom replaced and must pass its own Expect. Nothing is inferred from a pattern match alone. | **live** (the list ships empty) |
 
-> **Only `safe:rename` fires in the shipped verb today.** The classifier and the row-rewrite
-> code carry the `safe:count` and `safe:idiom` arms, but the fact-gatherer
-> (`tools/desk/cmd/deskrebaseline/facts.go`) does not yet populate the count/idiom facts, so
-> those two verdicts are never produced in production — a count-drift or retired-idiom row
-> falls through to `refused:unclassified` and is filed exactly as today. Wiring the count/idiom
-> facts (and reconciling the behaviour probe, which currently pre-empts a count drift written
-> as `test $(...) -eq N` before `safe:count` could fire) is a tracked follow-up. The two rows
-> above are marked *not yet implemented* so no reader expects re-baselines the verb cannot
-> produce. This fails **closed** — the not-yet-wired classes refuse, never launder.
+> **The retired-idiom list ships empty.** An idiom becomes re-baselineable only when a reviewed
+> change adds its entry with the ruling that retired it. Until then no row is `safe:idiom`, and
+> such a row is filed exactly as today. Both classes fail **closed**: a count drift the history
+> cannot prove, or an idiom the list does not name, refuses; neither launders a change.
+>
+> Both are decided **before** the behaviour probe's refusal, because the drifted count or the
+> retired idiom is exactly what fails the row's Expect. A count drift the history proof rejects
+> still lands in `refused:behaviour-changed`, as before.
 
 ## The refusal set — the verb MUST file, not re-baseline
 
