@@ -18,10 +18,11 @@ func TestBriefInfoFailFirstMatchesFlipLint(t *testing.T) {
 		{name: "not selected", kind: "not-selected", want: "no fail-first witness"},
 		{name: "green base", kind: "green", want: "non-discriminating"},
 		{name: "unproven base", kind: "unproven", want: "could not run at base"},
-		{name: "head as base", kind: "head", want: "not the merge-base or an ancestor"},
-		{name: "stray base", kind: "stray", want: "not the merge-base or an ancestor"},
+		{name: "head as base", kind: "head", want: "neither the merge-base nor the parent of a delivering commit"},
+		{name: "stray base", kind: "stray", want: "neither the merge-base nor the parent of a delivering commit"},
 		{name: "red base", kind: "red"},
-		{name: "older base holding brief", kind: "older"},
+		{name: "older base with no delivering commit", kind: "older", want: "an older base is accepted only as the parent of a recorded --delivering-commit"},
+		{name: "older base as the delivering commit's parent", kind: "delivered"},
 		{name: "ordinary rerun replaces fail-first", kind: "rerun", want: "no fail-first witness"},
 		{name: "brief-wide risk", kind: "missing", wide: true, want: "no fail-first witness"},
 		{name: "non-risk ordinary witness", kind: "missing", plain: true},
@@ -47,6 +48,8 @@ func TestBriefInfoFailFirstMatchesFlipLint(t *testing.T) {
 				cell = failFirstCell(stray[:12], baseRed, 1, head[:12])
 			case "older":
 				cell = failFirstCell(older[:12], baseRed, 1, head[:12])
+			case "delivered":
+				cell = failFirstCell(older[:12], baseRed, 1, head[:12]) + " · delivering=" + base[:12]
 			}
 			evidence := ffTable(cell, cell)
 			if tc.kind == "rerun" {

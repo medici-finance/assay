@@ -42,8 +42,9 @@ func crossFFFixture(t *testing.T) (containerFixture, string, string, string, str
 // merge-base exactly (ruling A on #5544). An older ancestor, a later
 // (delivering) commit and an unknown commit are refused, and an unresolvable
 // merge-base refuses with or without --base. The same-repository check still
-// applies its own brief-held rule to an outside brief (an ancestor of the
-// merge-base is refused there for that reason), so the cross-repository rule
+// applies its own merge-base rule to an outside brief (an ancestor of the
+// merge-base is refused there, as on every same-repository run with no
+// delivering commit), so the cross-repository rule
 // applies only where the caller chose the cross-repository form.
 func TestCrossFFBaseRev(t *testing.T) {
 	fx, _, older, base, head := crossFFFixture(t)
@@ -53,7 +54,7 @@ func TestCrossFFBaseRev(t *testing.T) {
 	if got, err := failFirstCrossRepoBaseRev(fx.home, ""); err != nil || got != base {
 		t.Fatalf("default cross-repository base: %q %v", got, err)
 	}
-	if _, err := failFirstBaseRev(fx.home, older, fx.brief); err == nil || !strings.Contains(err.Error(), "cannot be shown to hold the brief") {
+	if _, _, err := failFirstBaseRev(fx.home, older, "", fx.brief); err == nil || !strings.Contains(err.Error(), "it is not the merge-base of HEAD and origin/main") {
 		t.Fatalf("same-repository check accepted a base for an outside brief: %v", err)
 	}
 	for name, rev := range map[string]string{"older ancestor": older, "delivering commit": head} {
@@ -82,7 +83,7 @@ func TestCrossFFBaseRev(t *testing.T) {
 	// The same-repository check, reached by an unadmitted run with this
 	// outside brief, fails closed too: no --base is accepted unchecked.
 	for _, rev := range []string{older, base, head} {
-		if _, err := failFirstBaseRev(fx.home, rev, fx.brief); err == nil || !strings.Contains(err.Error(), "cannot be resolved") {
+		if _, _, err := failFirstBaseRev(fx.home, rev, "", fx.brief); err == nil || !strings.Contains(err.Error(), "cannot be resolved") {
 			t.Fatalf("same-repository check with no merge-base accepted --base %s: %v", rev, err)
 		}
 	}
@@ -140,6 +141,31 @@ func TestCrossFFHostLane(t *testing.T) {
 	}
 	if got := getFile(t, fx.brief); !strings.Contains(got, "base="+base[:treeSHALen]+" red rc=1") {
 		t.Fatalf("no baseline red at the deliverable base: %s", got)
+	}
+}
+
+// regression: #2721
+// TestCrossFFNoDelivering: an admitted version 2 run refuses
+// --delivering-commit (exit 2, before any row runs). That arm binds the base
+// to the deliverable merge-base exactly and never to a delivering commit, so
+// accepting the flag would record a delivering= the gate never checked.
+func TestCrossFFNoDelivering(t *testing.T) {
+	fx, tracking, _, base, head := crossFFFixture(t)
+	t.Setenv("DESK_LOOP", "verify-desk")
+	body := "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `test -f delivered.txt` | risk-bearing exit 0 |\n\n## Evidence\n\n## Review\n"
+	putFile(t, fx.brief, body)
+	b := crossBinding(t, fx)
+	b.Source = head
+	putFile(t, fx.check, crossCheck(t, b, tracking, fx.home))
+	for _, extra := range [][]string{{"--delivering-commit", head}, {"--delivering-commit", head, "--base", base}} {
+		args := append([]string{"--brief", fx.brief, "--root", fx.home, "--fail-first"}, extra...)
+		res, stderr := captureVerifyrunOut(t, args)
+		if res.code != verifyrunExitCouldNot || !strings.Contains(stderr, "--delivering-commit is refused on a cross-repository") {
+			t.Fatalf("%v: %d %s", extra, res.code, stderr)
+		}
+		if got := getFile(t, fx.brief); got != body {
+			t.Fatalf("%v: a row ran before the refusal:\n%s", extra, got)
+		}
 	}
 }
 
@@ -270,18 +296,18 @@ func TestSameFFOutsideHead(t *testing.T) {
 		}
 	}
 	root, brief, _, base, head := outsideBriefRepo(t, "delivered", false)
-	if got, err := failFirstBaseRev(root, "", brief); err != nil || got != base {
+	if got, _, err := failFirstBaseRev(root, "", "", brief); err != nil || got != base {
 		t.Fatalf("pre-merge outside brief: default base %q %v, want the merge-base %s", got, err, base)
 	}
-	if _, err := failFirstBaseRev(root, head, brief); err == nil {
+	if _, _, err := failFirstBaseRev(root, head, "", brief); err == nil {
 		t.Fatal("pre-merge outside brief: --base <HEAD> accepted")
 	}
 }
 
 // regression: #5544
 // TestCrossFFHint: the non-discriminating hint never tells a cross-repository
-// run to pass an older --base, which its resolver refuses; a same-repository
-// run keeps the --base <parent> hint.
+// run to pass an older --base or a delivering commit, which its resolver
+// refuses; a same-repository run gets the --delivering-commit hint.
 func TestCrossFFHint(t *testing.T) {
 	ws := []witness{{ID: "1", State: statePass}}
 	ff := map[string]failFirst{"1": {Base: "abcdef012345", State: baseGreen}}
@@ -289,8 +315,8 @@ func TestCrossFFHint(t *testing.T) {
 		cross     bool
 		want, not string
 	}{
-		{true, "a cross-repository run accepts only the deliverable merge-base as its base, so strengthen the row until it fails there", "--base <the parent"},
-		{false, "if the change is already merged, pass --base <the parent of the delivering merge>", "cross-repository"},
+		{true, "a cross-repository run accepts only the deliverable merge-base as its base, so strengthen the row until it fails there", "--delivering-commit"},
+		{false, "if the change is already merged, pass --delivering-commit <the commit that delivered it>", "cross-repository"},
 	} {
 		path := filepath.Join(t.TempDir(), "out")
 		f, err := os.Create(path)
