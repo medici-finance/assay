@@ -118,7 +118,7 @@ design-fit:
   owner: statusgen
   contract: board-view-v1 (owned by statusgen/39; this brief is a reader and defines no new meaning)
   retires: ["the delegated could-not-check answer of the roadmap and portfolio reads for every cell whose tree is configured", "the reference to a statusgen --json mode that does not exist"]
-  weight: "verbs 0, flags +1 (the repository root map), refusals 0, rule-text lines 0"
+  weight: "verbs 0, flags +1 (the repository root map), refusals 0 (the board loader's existing reader-capabilities refusal is surfaced as could-not-check per cell; no new refusal kind), rule-text lines 0"
   why-add: "The service has no checkout and must be told where one is. Reusing the streams_root key was considered and rejected: it is a path inside a repository, not a location of one."
 
 ## Human decision
@@ -183,6 +183,12 @@ task step succeeds, and 2 when it does not.
   decision, and it is not this brief's to take.
 - Unknown is not empty. A cell with no configured directory, an unreadable directory or a
   partial view answers could-not-check with the reason, exactly as the reads do today.
+- Reader-capabilities admission is not skipped. The service reads planning trees it did not
+  write, and the board loader refuses a tree that declares a reader requirement it does not
+  support (statusgen/39 Task 3). Pass the service's own reader advertisement into the loader's
+  options; never pass an empty one, and never retry a refused load without it. A cell whose tree
+  is refused, or whose admission cannot be checked, serves no rows from that load and answers
+  could-not-check with the refusal reason.
 - Filter before counting. No count, total or error text may reveal a row the caller may not read.
 - A working tree is not the remote. Every answer names the directory it was read from and when,
   and never claims to be the head of the repository's default branch.
@@ -206,7 +212,10 @@ task step succeeds, and 2 when it does not.
 3. **One loader, refreshed on the poll cycle.** Hold one board loader for the process. On each
    poll cycle load every cell's configured repositories once and keep the resulting view in
    memory; requests are served from that view and never trigger a load. Memory is bounded by the
-   loader's own bound.
+   loader's own bound. Load each cell separately, with the service's reader advertisement in the
+   options, so that one cell's refused tree cannot withhold or mix another cell's rows. When a
+   cell's load is refused or its admission cannot be checked, drop any view that cell held from
+   an earlier cycle and answer could-not-check with the reason until a later cycle admits it.
 4. **Mapping.** Map a view to the two responses, taking the caller's allowed repository set as
    an argument and dropping every other row first.
    - Roadmap: per stream, its status and priority, counts of briefs by lifecycle state, the count
@@ -281,6 +290,7 @@ the exact PASS line, so a selector that matches nothing fails the row.
 | 12 | check +flow | tree | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && "${TMPDIR:-/tmp}/sg-ca10" --root . --consumers --brief cell-api/10 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0, post-merge: `ASSAY_DELIVERY_SHA` is the merged delivery commit and `ASSAY_DELIVERY_BASE_SHA` its first parent. The report corroborates each `consumers:` line above with no unchecked obligation; record its exact counts |
 | 13 | check:ci +mutation | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadSurfacesDeny$" ./internal/serve/ ./web/ > "$check_output" && test "$(grep -c -F -- "--- PASS: TestBoardReadSurfacesDeny " "$check_output")" -eq 2)` | exit 0; the PASS line is printed once for each of the two packages. With trees configured for cells A and B and an authorizer wired that denies cell B's repository, `GET /v1/roadmap`, `GET /v1/portfolio`, the un-versioned roadmap route and the roadmap page each return cell A's rows and no row, count, stream name or error text from cell B's tree; a handler variant that hands the mapping every configured repository fails the same assertion |
 | 14 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestChatBindingNoBoardReads$" ./internal/chat/ > "$check_output" && grep -F -- "--- PASS: TestChatBindingNoBoardReads " "$check_output")` | exit 0; PASS line printed. Neither `desk__roadmap` nor `desk__portfolio` is in the question-answering feature's allow-list, both are in its forbidden list, and a registry that advertises them cannot be bound |
+| 15 | check:ci +mutation | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadAdmission$" ./internal/boardread/ > "$check_output" && grep -F -- "--- PASS: TestBoardReadAdmission " "$check_output")` | exit 0; PASS line printed. With trees configured for cells A and B, where B's tree holds a brief record declaring a reader requirement the service does not support, cell A's reads return its rows and cell B's answer could-not-check with the refusal reason and no row, count or stream name from B's tree, including a view B held from an earlier admitted cycle; an unreadable requirement record in B gives the same answer; the loader options the service builds carry a non-empty advertisement. With the advertisement removed by the test's hook, the same assertions fail |
 
 | Failure mode of the work | Caught by |
 |---|---|
@@ -290,6 +300,7 @@ the exact PASS line, so a selector that matches nothing fails the row.
 | Planning rows reach a model backend through the question-answering feature | row 14 |
 | A symbolic link in a configured tree exposes a file outside it | row 5 |
 | An unconfigured or unreadable tree is served as "no work" | row 5 |
+| A tree declaring a reader requirement the service does not support is served, or one cell's refusal leaks into or blanks another cell | row 15 |
 | A request triggers a full load and the service stalls | row 5 |
 | The package grows a dependency that blocks moving it to the public composition | row 6 |
 | The image build silently breaks | row 9 |

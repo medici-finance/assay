@@ -56,6 +56,19 @@ facts (876ca4bca, 14 November 2026):
   the `--next-up` document from one call over several roots.
 - Today a failed or missing statusgen binary makes these verbs report could-not-check
   (`deskkit.Unverifiable`, exit 6), never an empty queue.
+- `resolveRootsOnce` (`roots.go:77-115`) applies two fail-closed gates besides the binary lookup.
+  The reader-capabilities admission (`roots.go:94-99`, `capstree.Check`) refuses a configured
+  root that declares a requirement deskboard does not support (exit 5) and answers any other
+  non-supported result could-not-check (exit 6). It is the only admission these verbs apply to a
+  configured sibling root: statusgen exits for `--gate-scores` and `--next-up`
+  (`statusgen/main.go:2415-2422`) before its own admission (`statusgen/main.go:2616`).
+  `TestDeskCapsPreflight` (`tools/desk/cmd/deskboard/capabilities_test.go`) pins it. The pin check
+  (`resolveStatusgenPin`, `nextup.go:252-303`) answers could-not-check (exit 6) when no configured
+  root carries a statusgen pin, or the pin it finds is malformed or unusable.
+- The `parseVerifyRows` and `parseVerifyRowsIn` parser in `verifyrows.go` is also read by the
+  verdict runner (`verdictrun.go:456`), which executes Command cells, and by the pending-Evidence
+  reader (`pending.go:492`), which parses a brief's bytes at a landed revision. Neither is a board
+  read.
 - `tools/desk/internal/arch` enforces dependency direction and the hub allow-list
   (`arch.go:11-27`); a new import from a command package must satisfy both.
 - A shared golden, `statusgen/testdata/flowqueue/gate-scores.golden.json`, is read by
@@ -69,13 +82,16 @@ single point of failure: the fail-closed behaviour used to be the process bounda
 binary could not look like an empty queue). After this change it is the view's per-root
 `readable` flag and availability states. Two independent layers hold it: the consumers map an
 unreadable root to could-not-check (row 3), and a structural guard keeps the removed subprocess
-calls from coming back (rows 5 and 6).
+calls from coming back (rows 5 and 6). The two gates `resolveRootsOnce` applies before any root
+is read are not part of the subprocess boundary and do not move: the reader-capabilities
+admission still runs ahead of the library load (rows 11 and 12), and a missing pin is still
+could-not-check (row 13).
 
 design-fit:
   owner: statusgen
   contract: none — no meaning changes; these consumers read the same rows through a call instead of a process
-  retires: ["one statusgen subprocess per root in deskboard awaiting, dispatch and throughput, and in verifyloop plan", "the stream-table, frontmatter and Verify-row parser copies in tools/desk/cmd/verifyloop", "the flat frontmatter reader in tools/desk/cmd/issueboard"]
-  weight: "verbs 0, flags 0, refusals 0, rule-text lines 0; about 900 lines of copied parser removed"
+  retires: ["one statusgen subprocess per root in deskboard awaiting, dispatch and throughput, and in verifyloop plan", "the statusgen binary lookup in deskboard's root resolution (the reader-capabilities admission and the pin check stay)", "the stream-table and frontmatter parser copies in tools/desk/cmd/verifyloop, and the plan scan's own Verify-row parse", "the flat frontmatter reader in tools/desk/cmd/issueboard"]
+  weight: "verbs 0, flags 0, refusals 0, rule-text lines 0; the copied parser bodies (about 130 lines) and the plan-scan file reads that feed them are removed"
   why-add: n/a
 
 ## Read first
@@ -94,6 +110,11 @@ design-fit:
 - Could-not-check stays could-not-check. An unreadable root, a partial view or an unknown claims
   state is reported exactly as a failed subprocess is reported today, with the same exit code.
 - Delete what is replaced, in the same change. No copied parser is left behind as a fallback.
+- Keep both fail-closed gates of `resolveRootsOnce`. The reader-capabilities admission stays where
+  it is and runs before the library load, with the same refusal (exit 5) and could-not-check
+  (exit 6) results; do not rely on the library's own admission in its place. The pin check stays a
+  gate with the same could-not-check result. Do not edit `TestDeskCapsPreflight` to make a row
+  pass. Removing or weakening either gate is outside this brief: STOP and report NEEDS_CONTEXT.
 - The version line these verbs print keeps naming the statusgen version in use; it now reports
   the linked module version, and says so.
 - Leave every out-of-scope caller in `consumers:` untouched.
@@ -105,10 +126,20 @@ design-fit:
 1. **deskboard.** `awaiting`, `dispatch`, `throughput` and `stalled` load every configured root
    once through `statusgen/board/tree` and call `statusgen/board/queue` once per queue. Remove
    the per-root subprocess calls and the worker pool that existed to run them. Keep the root
-   resolution in `roots.go`.
+   resolution in `roots.go`, and in it, in the same order: root resolution, the
+   reader-capabilities admission (`capstree.Check`, before the library load) and the pin check
+   (`resolveStatusgenPin`). Replace only the binary lookup (`resolveStatusgen`) and
+   `statusgenVersionOf`: the running version becomes the linked module version, still compared
+   with the pin for the skew field. Rewrite the comment at `roots.go:92-93`, which places the
+   admission "before any reader process is started", to say it runs before the library load.
 2. **verifyloop.** `plan` reads the awaiting rows from the library. Replace `parseStreamTable`,
-   the frontmatter extractor and the Verify-row scan with fields of the board view's brief row,
-   and delete them. The queue-class logic that is verifyloop's own stays.
+   the frontmatter extractor (`parseFrontmatter` and `parseRisk` in `frontmatter.go`) and the
+   plan scan's calls to the Verify-row parser with fields of the board view's brief row. Delete
+   `parseStreamTable`, `parseFrontmatter` and `parseRisk`. The Verify-row parser in
+   `verifyrows.go` stays, because the verdict runner and the pending-Evidence reader still use it
+   (Context facts); after this change no other file in the package calls it. If the view lacks a
+   field the plan scan needs, extend the view additively, as statusgen/39 provides. The
+   queue-class logic that is verifyloop's own stays.
 3. **issueboard.** Read placeholder and intake rows from the board view and delete
    `parseFrontmatter`.
 4. **Fail closed.** Map an unreadable root, a partial view and an unknown claims state to the
@@ -134,16 +165,21 @@ the exact PASS line, so a selector that matches nothing fails the row.
 | 4 | check:ci | `(cd tools/desk && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestIssueRowsFromView$" ./cmd/issueboard/ > "$check_output" && grep -F -- "--- PASS: TestIssueRowsFromView " "$check_output")` | exit 0; PASS line printed. Placeholder and intake rows on a fixture tree equal the committed pre-change expectation |
 | 5 | check:ci +mutation | `(cd tools/desk && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestNoBoardExec$" ./internal/arch/ > "$check_output" && grep -F -- "--- PASS: TestNoBoardExec " "$check_output")` | exit 0; PASS line printed. Every call in `tools/desk` that starts the statusgen binary is on the allow-list, and no allow-listed call is in `deskboard`, `verifyloop` or `issueboard` |
 | 6 | check:ci +mutation | `(cd tools/desk && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestNoBoardExecFlagsPlant$" ./internal/arch/ > "$check_output" && grep -F -- "--- PASS: TestNoBoardExecFlagsPlant " "$check_output")` | exit 0; PASS line printed. Run over `testdata/board-exec-plant/` (one planted `--gate-scores` subprocess call outside the allow-list), the guard reports that call |
-| 7 | check:ci | `test -z "$(grep -l -e "func parseStreamTable" -e "func parseFrontmatter" tools/desk/cmd/verifyloop/briefscan.go tools/desk/cmd/issueboard/board.go)"` | exit 0 and no file name printed: neither copied parser is defined in either file any more |
+| 7 | check:ci | `test -z "$(grep -rl --include='*.go' -e 'func parseStreamTable' -e 'func parseFrontmatter' -e 'func parseRisk' tools/desk/cmd/verifyloop tools/desk/cmd/issueboard)" && test -z "$(grep -rl --include='*.go' --exclude='*_test.go' --exclude=verifyrows.go --exclude=verdictrun.go --exclude=pending.go -e 'parseVerifyRowsIn(' -e 'parseVerifyRows(' tools/desk/cmd/verifyloop)"` | exit 0 and no file name printed: no copied stream-table or frontmatter parser is defined anywhere in either package, and no file of verifyloop other than the parser itself, the verdict runner and the pending-Evidence reader calls the Verify-row parser, so the plan scan reads Verify row identifiers from the view |
 | 8 | check:ci +neighbour | `(cd tools/desk && GOWORK=off go test -count=1 ./cmd/deskboard/... ./cmd/verifyloop/... ./cmd/issueboard/... ./internal/arch/...) && (cd statusgen && GOWORK=off go test -count=1 -run "^TestEvaluationExternalConsumer" .)` | exit 0; every existing test of the three consumers and the architecture rules passes, and statusgen's manifest still names nothing under `tools/desk` |
-| 9 | check +flow +dereference | `(cd tools/desk && GOWORK=off go build -o "${TMPDIR:-/tmp}/deskboard-43" ./cmd/deskboard) && STATUSGEN_BIN="${TMPDIR:-/tmp}/no-such-statusgen-43" DESK_ROOTS="medici-finance/assay=$(pwd)" "${TMPDIR:-/tmp}/deskboard-43" awaiting --json > "${TMPDIR:-/tmp}/awaiting-43.json" && grep -F -o '"queueVersion":1' "${TMPDIR:-/tmp}/awaiting-43.json"` | exit 0; with this repository as the one configured root and `STATUSGEN_BIN` naming a file that does not exist, `deskboard awaiting` still prints versioned awaiting rows, which it could not do if it started the binary (flow row: root resolution, loader, queue projection, deskboard rendering; it dereferences the claim that no subprocess is used) |
-| 10 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && "${TMPDIR:-/tmp}/sg-43" --root . --consumers --brief statusgen/43 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0, post-merge: `ASSAY_DELIVERY_SHA` is the merged delivery commit and `ASSAY_DELIVERY_BASE_SHA` its first parent, and `sg-43` is built by `(cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg-43" .)`. The report corroborates each `consumers:` line above with no unchecked obligation; record its exact counts |
+| 9 | check +flow +dereference | `(cd tools/desk && GOWORK=off go build -o "${TMPDIR:-/tmp}/deskboard-43" ./cmd/deskboard) && pin_root=$(mktemp -d) && mkdir -p "$pin_root/docs/streams" && printf 'statusgen v0.0.0-pin-43 %s\n' 0000000000000000000000000000000000000000000000000000000000000000 > "$pin_root/.assay-versions" && STATUSGEN_BIN="${TMPDIR:-/tmp}/no-such-statusgen-43" DESK_ROOTS="medici-finance/assay=$(pwd),example-org/pin-root=$pin_root" "${TMPDIR:-/tmp}/deskboard-43" awaiting --json > "${TMPDIR:-/tmp}/awaiting-43.json" && grep -F -o '"queueVersion":1' "${TMPDIR:-/tmp}/awaiting-43.json"` | exit 0; with this repository and a second root that carries only a statusgen pin configured, and `STATUSGEN_BIN` naming a file that does not exist, `deskboard awaiting` still prints versioned awaiting rows, which it could not do if it started the binary. The pin root is there because this repository carries no `.assay-versions` and the pin check stays a gate (row 13); the output reports skew, since the pinned tag is not the linked module version (flow row: root resolution, admission, pin check, loader, queue projection, deskboard rendering; it dereferences the claim that no subprocess is used) |
+| 10 | check +flow | `(cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg-43" .) && test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && "${TMPDIR:-/tmp}/sg-43" --root . --consumers --brief statusgen/43 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0, post-merge: `ASSAY_DELIVERY_SHA` is the merged delivery commit and `ASSAY_DELIVERY_BASE_SHA` its first parent. The report corroborates each `consumers:` line above with no unchecked obligation; record its exact counts |
+| 11 | check:ci | `(cd tools/desk && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestDeskCapsPreflight$" ./cmd/deskboard/ > "$check_output" && grep -F -- "--- PASS: TestDeskCapsPreflight " "$check_output")` | exit 0; PASS line printed. The existing test, unedited in its assertions: `dispatch` refuses with exit 5 and writes no output for a root that declares an unsupported requirement, and `resolveRootsOnce` still refuses a configured root that declares one |
+| 12 | check:ci +mutation | `(cd tools/desk && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardCapsRefusedFirst$" ./cmd/deskboard/ > "$check_output" && grep -F -- "--- PASS: TestBoardCapsRefusedFirst " "$check_output")` | exit 0; PASS line printed. With two configured roots, one declaring a requirement deskboard does not support, `awaiting` and `dispatch` each exit 5, print no row, and never call the board loader (a test hook counts loads: zero); with that root's requirement record unreadable, each exits 6. With the admission call removed by the test's hook, the same assertions fail |
+| 13 | check +flow | `nopin_root=$(mktemp -d) && mkdir -p "$nopin_root/docs/streams" && { STATUSGEN_BIN="${TMPDIR:-/tmp}/no-such-statusgen-43" DESK_ROOTS="example-org/no-pin=$nopin_root" "${TMPDIR:-/tmp}/deskboard-43" awaiting --json > /dev/null 2> "${TMPDIR:-/tmp}/awaiting-43-nopin.err"; rc=$?; } ; test "$rc" -eq 6 && grep -F -o 'carry a readable' "${TMPDIR:-/tmp}/awaiting-43-nopin.err"` | exit 0, using the binary built in row 9: with the one configured root carrying no `.assay-versions`, `deskboard awaiting` still answers could-not-check (exit 6) naming the missing pin file, as it does today, even though no statusgen binary is started |
 
 | Failure mode of the work | Caught by |
 |---|---|
 | A verb's output changes when its source changes | rows 1, 2 and 4, against goldens and committed expectations |
 | An unreadable root becomes an empty queue | row 3 |
-| A copied parser is left in place as a fallback | row 7 |
+| A copied parser is left in place as a fallback, in the cited file or a sibling file of the package | row 7 |
+| The reader-capabilities admission is dropped with the subprocess boundary, so an unsupported tree is rendered as queue rows | rows 11 and 12 |
+| The pin check is dropped with the binary lookup, so a missing pin stops being could-not-check | row 13 |
 | A subprocess call creeps back into these verbs | rows 5 and 6 |
 | The import breaks the module or architecture rules | row 8 |
 | The whole chain fails on a real tree though fixtures pass | row 9 |

@@ -97,7 +97,7 @@ design-fit:
   owner: statusgen
   contract: board-view-v1 (planned; register its semantic owner in docs/contracts.md)
   retires: ["the loader and hydration bodies inside the command package, kept only as forwarding adapters", "the per-edge reload of a sibling root in siblingLookup", "the second load of every root in crossRootProblems"]
-  weight: "verbs +1 (statusgen board), flags 0, refusals 0, rule-text lines 0"
+  weight: "verbs +1 (statusgen board), flags 0, refusals 0 (the loader applies the existing reader-capabilities refusal, readercaps/record.Check, at its own seam; no new refusal kind), rule-text lines 0"
   why-add: "No existing reader is importable or crosses roots. Extending --graph was considered and rejected: it would change an established single-root wire shape, and it carries no brief rows and no gates or feathers edges."
 
 ## Read first
@@ -153,6 +153,18 @@ design-fit:
    arguments; parsing `DESK_ROOTS` stays in the command package), no write to standard output or
    error, no process exit. Two loads may run at once, and a second load after a file changes
    sees the change.
+   **Reader-capabilities admission is inside `Load`.** Today a tree that declares a reader
+   requirement this reader does not support is refused before any record is read
+   (`statusgen/versiongate.go`, `refuseIfTreeTooNew`; `capstree.Check` in deskboard). Those checks
+   walk directories, so they cannot cover a root handed in as an `fs.FS`, and a consumer that
+   calls the library skips the command's own admission. The options therefore carry the reader's
+   `readercaps.Advertisement`, and for every stream index and brief record the loader reads, it
+   runs `readercaps/record.Check` on the same bytes it parses. An unsupported requirement refuses
+   the whole load with a typed refusal naming the root, the file and the reason, and returns no
+   view. A result that cannot be checked marks that root could-not-check with its reason and
+   contributes no rows from it. Options with no advertisement are refused the same way, never
+   read as permission to skip the check. A symbolic link to a record is refused, as
+   `capstree.Check` does today.
 4. **The command package becomes an adapter.** `loadStreams`, `loadHydratedStreams`,
    `parseStreamREADME`, `parseBriefTable` and the hydration half of `checkBriefFiles` call the
    library; the model types become aliases, as `eligibility.go:35-50` does for the evaluator.
@@ -175,7 +187,10 @@ design-fit:
    `statusgen board [--root <path>]... [--sibling-root <owner>/<repo>=<path>]...`, which prints
    the document. It is positional, so the meaning of a bare `--json` elsewhere does not move.
    Exit codes: 0 complete; 3 partial (any could-not-check node or an unreadable non-home root);
-   2 when the home root is unreadable.
+   2 when the home root is unreadable; 5 when the loader refuses an unsupported reader
+   requirement, and 6 when the home root's admission could not be checked (the existing
+   `statusgenExitUnsupportedCaps` and `statusgenExitTreeTooNew` codes). A refusal prints no
+   document.
 8. **Performance.** Loading this repository's tree through the library stays within the budget
    statusgen/44 set, using that brief's harness. A two-root load reads each root once.
 9. **Documents.** Document the library and the command in `statusgen/README.md`; add the
@@ -188,6 +203,8 @@ import "github.com/medici-finance/assay/statusgen/board"
 import "github.com/medici-finance/assay/statusgen/board/tree"
 
 view, err := tree.NewLoader(options).Load(ctx, roots)   // one call, every root
+// options.Reader is the caller's readercaps.Advertisement; an unsupported
+// requirement in any record read returns a typed refusal and no view.
 ```
 
 ```
@@ -229,6 +246,7 @@ the exact PASS line, so a selector that matches nothing fails the row.
 | 13 | gate:model +dereference | `grep -n -F -e "statusgen board" statusgen/README.md && grep -n -F "board-view-v1" docs/contracts.md && grep -n -F "statusgen/board" docs/library-first.md && test -f schemas/board-view-v1.json` | exit 0; the reviewer then reads the matched sections: the README documents the library call, the command, its roots, output and exit codes; `docs/contracts.md` names statusgen as owner of `board-view-v1`; the schema and the README agree on every top-level key |
 | 14 | check | `"${TMPDIR:-/tmp}/sg-39" --root . --lint` | exit 0; output contains "LINT: PASS" (the binary built in row 11). If the run reports a problem on a brief this delivery did not touch, the row is could-not-check for that reason, never passed: record the problem lines and re-run where the tree lints clean |
 | 15 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && "${TMPDIR:-/tmp}/sg-39" --root . --consumers --brief statusgen/39 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0, post-merge: `ASSAY_DELIVERY_SHA` is the merged delivery commit and `ASSAY_DELIVERY_BASE_SHA` its first parent. The report corroborates each `consumers:` line above with no unchecked obligation; record its exact counts |
+| 16 | check:ci +mutation | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardLoadAdmission$" ./board/tree/ > "$check_output" && grep -F -- "--- PASS: TestBoardLoadAdmission " "$check_output")` | exit 0; PASS line printed. On a two-root fixture, built once from directory paths and once as in-memory `fs.FS` roots, a brief record in the second root that declares an unsupported reader requirement makes `Load` return the typed refusal and no view; an unreadable requirement record leaves that root could-not-check with no rows; options with no advertisement are refused; a symbolic-link record is refused. `statusgen board` on the planted fixture exits 5 and prints no document. With the admission call removed by the test's hook, the same assertions fail |
 
 | Failure mode of the work | Caught by |
 |---|---|
@@ -238,6 +256,7 @@ the exact PASS line, so a selector that matches nothing fails the row.
 | An existing flag's output shifts because its loader moved | row 9 |
 | The view lacks a field a later consumer needs (Verify row identifiers, Evidence-empty) | row 4 |
 | The library works only inside this repository's module graph | row 8 |
+| The library reads a tree that declares an unsupported reader requirement, because the admission lived only in the command, or only covers directory roots | row 16 |
 | Moving the code makes the load slower than statusgen/44 left it | row 12 |
 | The schema is well-formed but describes a different shape than the command prints | rows 10 and 13 |
 | Whether the row field list is the right list for every future consumer | review-only: statusgen/42 and statusgen/43 extend the view additively if a field is missing |
