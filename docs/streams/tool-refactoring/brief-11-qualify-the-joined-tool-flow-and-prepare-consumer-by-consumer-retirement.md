@@ -43,9 +43,18 @@ decision-trigger: start
 
 ## Context
 
-files: tools/desk/internal/deskkit/toolrefactor_flow_test.go, statusgen/toolrefactor_flow_test.go, docs/streams/tool-refactoring/qualification.md, docs/streams/tool-refactoring/issue-routing.csv, docs/library-first.md, docs/contracts.md, docs/contracts.md, docs/library-first.md, tools/desk/README.md, changelog/tool-refactoring-11.md. Newly named Go/test files are planned deliverables; the existing source paths are the starting seams. No out-of-repository files.
+files:
+- tools/desk/internal/deskkit/toolrefactor_flow_test.go
+- statusgen/toolrefactor_flow_test.go
+- docs/streams/tool-refactoring/qualification.md
+- docs/streams/tool-refactoring/issue-routing.csv
+- docs/library-first.md
+- docs/contracts.md
+- tools/desk/README.md
+- changelog/tool-refactoring-11.md
 
 facts (2026-11-12, source `680102a08777`):
+- Planned paths above identify new Go/test deliverables and existing starting seams; no out-of-repository files are changed.
 - Class: qualify the joined tool flow and prepare consumer-by-consumer retirement; the issue cases in sources nominate this mechanism, not a claim that every old report still reproduces.
 - Existing owner: existing qualification and release/pin owners; no new controller.
 - Required reading: [scope](spec.md), [retained work and active PRs](existing-work.md), `docs/library-first.md`, `docs/contracts.md`, and the source paths above. Source inspection precedes any implementation effect.
@@ -96,7 +105,7 @@ Exercise every migrated adapter through the joined flow and enumerate remaining 
 
 ## Interface contract
 
-existing qualification and release/pin owners; no new controller owns the stated meaning. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
+Existing qualification owners own joined-flow evidence; release and pin owners retain consumer adoption. This brief adds no controller. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
 
 ## Verify
 

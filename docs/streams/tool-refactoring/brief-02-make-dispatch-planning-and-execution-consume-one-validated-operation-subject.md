@@ -45,9 +45,20 @@ decision-trigger: start
 
 ## Context
 
-files: tools/desk/cmd/deskdispatch/dispatch.go, tools/desk/cmd/deskdispatch/deliverable.go, tools/desk/cmd/deskdispatch/prompt.go, tools/desk/cmd/deskdispatch/packet_verifier.go, tools/desk/cmd/deskdispatch/operationplan.go, tools/desk/cmd/deskdispatch/operationplan_test.go, docs/contracts.md, docs/library-first.md, tools/desk/README.md, changelog/tool-refactoring-02.md. Newly named Go/test files are planned deliverables; the existing source paths are the starting seams. No out-of-repository files.
+files:
+- tools/desk/cmd/deskdispatch/dispatch.go
+- tools/desk/cmd/deskdispatch/deliverable.go
+- tools/desk/cmd/deskdispatch/prompt.go
+- tools/desk/cmd/deskdispatch/packet_verifier.go
+- tools/desk/cmd/deskdispatch/operationplan.go
+- tools/desk/cmd/deskdispatch/operationplan_test.go
+- docs/contracts.md
+- docs/library-first.md
+- tools/desk/README.md
+- changelog/tool-refactoring-02.md
 
 facts (2026-11-12, source `680102a08777`):
+- Planned paths above identify new Go/test deliverables and existing starting seams; no out-of-repository files are changed.
 - Class: make dispatch planning and execution consume one validated operation subject; the issue cases in sources nominate this mechanism, not a claim that every old report still reproduces.
 - Existing owner: deskdispatch application orchestration over existing domain, claim and admission owners.
 - Required reading: [scope](spec.md), [retained work and active PRs](existing-work.md), `docs/library-first.md`, `docs/contracts.md`, and the source paths above. Source inspection precedes any implementation effect.
@@ -98,7 +109,7 @@ Enumerate worker, reviewer, verifier and resume dispatch plans. Plant a second k
 
 ## Interface contract
 
-deskdispatch application orchestration over existing domain, claim and admission owners owns the stated meaning. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
+Deskdispatch owns dispatch orchestration. Existing domain, claim and admission owners retain their judgments and effect authority. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
 
 ## Verify
 

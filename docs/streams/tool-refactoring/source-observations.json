@@ -419,7 +419,7 @@
       "brief": "desk-containers/18",
       "path": "docs/streams/desk-containers/brief-18-drain-pause-resume-handoff.md",
       "version": "1",
-      "state": "9",
+      "state": "implemented",
       "digest": "sha256:dbf4ef8d6e97c8dfd48f3858136f3d6cfca230eaf52a4c92d26e3439ad9d1207",
       "reused_by": [
         "06"
@@ -489,5 +489,17 @@
   "open_pr_count": 84,
   "public_issue_count": 216,
   "claim_coverage": "not freshly queried; no active Task/Verify rebinding performed",
-  "reproduction": "source inspection and issue observations; no production probe"
+  "reproduction": "source inspection and issue observations; no production probe",
+  "corrections": [
+    {
+      "date": "2026-11-15",
+      "brief": "desk-containers/18",
+      "field": "state",
+      "previous": "9",
+      "corrected": "implemented",
+      "source_commit": "680102a0877755feab9ef85dc4e1d3f52a137a54",
+      "reason": "Honor escaped Markdown pipes when locating the Status column; the earlier split read Wave as state.",
+      "review": "https://github.com/medici-finance/assay/pull/6303"
+    }
+  ]
 }

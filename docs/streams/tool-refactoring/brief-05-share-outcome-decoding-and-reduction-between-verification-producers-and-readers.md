@@ -46,9 +46,22 @@ consumers:
 
 ## Context
 
-files: statusgen/evaluation/outcome.go, statusgen/evaluation/outcome_test.go, statusgen/awaiting_bucket.go, tools/desk/internal/deskkit/verifyoutcomes.go, tools/desk/internal/deskkit/verifywake.go, tools/desk/cmd/deskevidence/outcome.go, tools/desk/cmd/deskevidence/outcomerecord.go, tools/desk/cmd/deskevidence/outcomeprotocol_test.go, docs/contracts.md, docs/library-first.md, tools/desk/README.md, changelog/tool-refactoring-05.md. Newly named Go/test files are planned deliverables; the existing source paths are the starting seams. No out-of-repository files.
+files:
+- statusgen/evaluation/outcome.go
+- statusgen/evaluation/outcome_test.go
+- statusgen/awaiting_bucket.go
+- tools/desk/internal/deskkit/verifyoutcomes.go
+- tools/desk/internal/deskkit/verifywake.go
+- tools/desk/cmd/deskevidence/outcome.go
+- tools/desk/cmd/deskevidence/outcomerecord.go
+- tools/desk/cmd/deskevidence/outcomeprotocol_test.go
+- docs/contracts.md
+- docs/library-first.md
+- tools/desk/README.md
+- changelog/tool-refactoring-05.md
 
 facts (2026-11-12, source `680102a08777`):
+- Planned paths above identify new Go/test deliverables and existing starting seams; no out-of-repository files are changed.
 - Class: share outcome decoding and reduction between verification producers and readers; the issue cases in sources nominate this mechanism, not a claim that every old report still reproduces.
 - Existing owner: statusgen/evaluation outcome package with adapters in deskkit and statusgen.
 - Required reading: [scope](spec.md), [retained work and active PRs](existing-work.md), `docs/library-first.md`, `docs/contracts.md`, and the source paths above. Source inspection precedes any implementation effect.
@@ -97,7 +110,7 @@ Enumerate every outcome writer and queue/closure reader, including legacy and pe
 
 ## Interface contract
 
-statusgen/evaluation outcome package with adapters in deskkit and statusgen owns the stated meaning. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
+The statusgen/evaluation outcome package owns outcome decoding and reduction. Deskkit and statusgen retain their source and publication adapters. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
 
 ## Verify
 

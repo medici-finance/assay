@@ -1,6 +1,6 @@
 ---
 brief: assay:assay:tool-refactoring:09
-title: "Migrate PR create update and edit to the shared publication plan"
+title: "Migrate PR create, update and edit to the shared publication plan"
 why: "PR create, update and edit derive roots, remote tips and failure recovery separately. A shared publication plan removes wrong-repository and partial-success behavior without relaxing scan or identity checks."
 wave: 2
 depends: ["tool-refactoring/01", "tool-refactoring/08"]
@@ -41,13 +41,23 @@ gate-why: "Changes admission, process/environment isolation or conditional publi
 decision-trigger: start
 ---
 
-# Brief 09 — Migrate PR create update and edit to the shared publication plan
+# Brief 09 — Migrate PR create, update and edit to the shared publication plan
 
 ## Context
 
-files: tools/desk/cmd/deskpr/deskpr.go, tools/desk/cmd/deskpr/createpublish.go, tools/desk/cmd/deskpr/edit.go, tools/desk/cmd/deskpr/operationplan_test.go, tools/desk/internal/deskkit/publishidentity.go, docs/contracts.md, docs/library-first.md, tools/desk/README.md, changelog/tool-refactoring-09.md. Newly named Go/test files are planned deliverables; the existing source paths are the starting seams. No out-of-repository files.
+files:
+- tools/desk/cmd/deskpr/deskpr.go
+- tools/desk/cmd/deskpr/createpublish.go
+- tools/desk/cmd/deskpr/edit.go
+- tools/desk/cmd/deskpr/operationplan_test.go
+- tools/desk/internal/deskkit/publishidentity.go
+- docs/contracts.md
+- docs/library-first.md
+- tools/desk/README.md
+- changelog/tool-refactoring-09.md
 
 facts (2026-11-12, source `680102a08777`):
+- Planned paths above identify new Go/test deliverables and existing starting seams; no out-of-repository files are changed.
 - Class: migrate pr create update and edit to the shared publication plan; the issue cases in sources nominate this mechanism, not a claim that every old report still reproduces.
 - Existing owner: deskpr command adapter over publication, work-selection and forge owners.
 - Required reading: [scope](spec.md), [retained work and active PRs](existing-work.md), `docs/library-first.md`, `docs/contracts.md`, and the source paths above. Source inspection precedes any implementation effect.
@@ -96,7 +106,7 @@ Exercise create, update and edit through actual adapters. A second path that sub
 
 ## Interface contract
 
-deskpr command adapter over publication, work-selection and forge owners owns the stated meaning. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
+Deskpr owns its command adapter. Existing publication, work-selection and forge owners retain their shared meanings and effect boundaries. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
 
 ## Verify
 

@@ -46,9 +46,20 @@ consumers:
 
 ## Context
 
-files: statusgen/briefdoc/verification.go, statusgen/briefdoc/verification_test.go, statusgen/verifyrun.go, statusgen/evaluation/declared_api.go, tools/desk/internal/deskkit/declaredscope.go, tools/desk/internal/deskkit/verificationdefinition_test.go, docs/contracts.md, docs/library-first.md, tools/desk/README.md, changelog/tool-refactoring-03.md. Newly named Go/test files are planned deliverables; the existing source paths are the starting seams. No out-of-repository files.
+files:
+- statusgen/briefdoc/verification.go
+- statusgen/briefdoc/verification_test.go
+- statusgen/verifyrun.go
+- statusgen/evaluation/declared_api.go
+- tools/desk/internal/deskkit/declaredscope.go
+- tools/desk/internal/deskkit/verificationdefinition_test.go
+- docs/contracts.md
+- docs/library-first.md
+- tools/desk/README.md
+- changelog/tool-refactoring-03.md
 
 facts (2026-11-12, source `680102a08777`):
+- Planned paths above identify new Go/test deliverables and existing starting seams; no out-of-repository files are changed.
 - Class: compile verify rows and declared inputs through the existing document owner; the issue cases in sources nominate this mechanism, not a claim that every old report still reproduces.
 - Existing owner: statusgen/briefdoc for syntax; statusgen/evaluation for normalized evaluation inputs.
 - Required reading: [scope](spec.md), [retained work and active PRs](existing-work.md), `docs/library-first.md`, `docs/contracts.md`, and the source paths above. Source inspection precedes any implementation effect.
@@ -97,7 +108,7 @@ Enumerate Verify-row and Context-declaration parsers/projections across statusge
 
 ## Interface contract
 
-statusgen/briefdoc for syntax; statusgen/evaluation for normalized evaluation inputs owns the stated meaning. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
+Statusgen/briefdoc owns document syntax. Statusgen/evaluation owns normalized evaluation inputs; adapters retain source enumeration and path confinement. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
 
 ## Verify
 

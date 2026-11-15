@@ -45,9 +45,21 @@ decision-trigger: start
 
 ## Context
 
-files: statusgen/verifyrun.go, statusgen/failfirst.go, statusgen/verifyincontainer.go, statusgen/containerbracket.go, statusgen/rowobservation.go, statusgen/rowobservation_test.go, statusgen/rowobservation-mutations.json, docs/contracts.md, docs/library-first.md, tools/desk/README.md, changelog/tool-refactoring-04.md. Newly named Go/test files are planned deliverables; the existing source paths are the starting seams. No out-of-repository files.
+files:
+- statusgen/verifyrun.go
+- statusgen/failfirst.go
+- statusgen/verifyincontainer.go
+- statusgen/containerbracket.go
+- statusgen/rowobservation.go
+- statusgen/rowobservation_test.go
+- statusgen/rowobservation-mutations.json
+- docs/contracts.md
+- docs/library-first.md
+- tools/desk/README.md
+- changelog/tool-refactoring-04.md
 
 facts (2026-11-12, source `680102a08777`):
+- Planned paths above identify new Go/test deliverables and existing starting seams; no out-of-repository files are changed.
 - Class: produce bounded row observations with base and head provenance; the issue cases in sources nominate this mechanism, not a claim that every old report still reproduces.
 - Existing owner: verifyrun execution adapter; evaluation owns judgment and existing witness-v2 owns serialization.
 - Required reading: [scope](spec.md), [retained work and active PRs](existing-work.md), `docs/library-first.md`, `docs/contracts.md`, and the source paths above. Source inspection precedes any implementation effect.
@@ -96,7 +108,7 @@ Enumerate host/container/base/head execution paths and result constructors. Plan
 
 ## Interface contract
 
-verifyrun execution adapter; evaluation owns judgment and existing witness-v2 owns serialization owns the stated meaning. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
+The verifyrun adapter owns execution observations. Statusgen/evaluation owns judgment, and the existing witness-v2 owner owns serialization. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
 
 ## Verify
 

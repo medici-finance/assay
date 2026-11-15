@@ -29,7 +29,7 @@ neither replace the approved architecture nor claim existing fixes are absent.
 | 06 | [Model local cell lifecycle transitions using the existing cell-operation contract](brief-06-model-local-cell-lifecycle-transitions-using-the-existing-cell-operation-contract.md) | 0 | M | todo | — | — |
 | 07 | [Qualify the real cellctl binary with isolated lifecycle and environment fixtures](brief-07-qualify-the-real-cellctl-binary-with-isolated-lifecycle-and-environment-fixtures.md) | 1 | L | todo | — | — |
 | 08 | [Separate immutable publication preparation from fresh effect admission](brief-08-separate-immutable-publication-preparation-from-fresh-effect-admission.md) | 1 | M | todo | — | — |
-| 09 | [Migrate PR create update and edit to the shared publication plan](brief-09-migrate-pr-create-update-and-edit-to-the-shared-publication-plan.md) | 2 | M | todo | — | — |
+| 09 | [Migrate PR create, update and edit to the shared publication plan](brief-09-migrate-pr-create-update-and-edit-to-the-shared-publication-plan.md) | 2 | M | todo | — | — |
 | 10 | [Migrate Evidence publication to bounded deltas and typed outcome admission](brief-10-migrate-evidence-publication-to-bounded-deltas-and-typed-outcome-admission.md) | 2 | M | todo | — | — |
 | 11 | [Qualify the joined tool flow and prepare consumer-by-consumer retirement](brief-11-qualify-the-joined-tool-flow-and-prepare-consumer-by-consumer-retirement.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->

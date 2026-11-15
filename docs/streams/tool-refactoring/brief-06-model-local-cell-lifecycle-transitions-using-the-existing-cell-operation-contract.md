@@ -43,9 +43,19 @@ consumers:
 
 ## Context
 
-files: tools/desk/internal/cellcadence/lifecycle.go, tools/desk/internal/cellcadence/lifecycle_test.go, tools/desk/cmd/cellctl/down_settle.go, tools/desk/internal/cellcadence/interactive.go, tools/desk/cmd/cellctl/lifecycleplan_test.go, docs/contracts.md, docs/library-first.md, tools/desk/README.md, changelog/tool-refactoring-06.md. Newly named Go/test files are planned deliverables; the existing source paths are the starting seams. No out-of-repository files.
+files:
+- tools/desk/internal/cellcadence/lifecycle.go
+- tools/desk/internal/cellcadence/lifecycle_test.go
+- tools/desk/cmd/cellctl/down_settle.go
+- tools/desk/internal/cellcadence/interactive.go
+- tools/desk/cmd/cellctl/lifecycleplan_test.go
+- docs/contracts.md
+- docs/library-first.md
+- tools/desk/README.md
+- changelog/tool-refactoring-06.md
 
 facts (2026-11-12, source `680102a08777`):
+- Planned paths above identify new Go/test deliverables and existing starting seams; no out-of-repository files are changed.
 - Class: model local cell lifecycle transitions using the existing cell-operation contract; the issue cases in sources nominate this mechanism, not a claim that every old report still reproduces.
 - Source repair already present: `down_settle.go` captures Sequence/LastStart and `recordIsOwners` matches the checkpoint after holder removal for issue 6251; preserve it, do not implement it again.
 - Existing owner: tools/desk/internal/cellcadence; loopadmin remains process-supervision owner.
@@ -96,7 +106,7 @@ Enumerate up, reconcile, down and settle transitions and checkpoint writers. Pla
 
 ## Interface contract
 
-tools/desk/internal/cellcadence; loopadmin remains process-supervision owner owns the stated meaning. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
+The existing internal/cellcadence owner owns role-state judgments. Loopadmin retains process supervision, and cellop retains operator plan envelopes. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
 
 ## Verify
 

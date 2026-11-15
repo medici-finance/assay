@@ -47,9 +47,20 @@ decision-trigger: start
 
 ## Context
 
-files: tools/desk/cmd/deskevidence/deskevidence.go, tools/desk/cmd/deskevidence/writeflow.go, tools/desk/cmd/deskevidence/outcome.go, tools/desk/cmd/deskevidence/outcomejoin.go, tools/desk/cmd/deskevidence/publicationplan_test.go, tools/desk/internal/deskkit/evidencelanding.go, docs/contracts.md, docs/library-first.md, tools/desk/README.md, changelog/tool-refactoring-10.md. Newly named Go/test files are planned deliverables; the existing source paths are the starting seams. No out-of-repository files.
+files:
+- tools/desk/cmd/deskevidence/deskevidence.go
+- tools/desk/cmd/deskevidence/writeflow.go
+- tools/desk/cmd/deskevidence/outcome.go
+- tools/desk/cmd/deskevidence/outcomejoin.go
+- tools/desk/cmd/deskevidence/publicationplan_test.go
+- tools/desk/internal/deskkit/evidencelanding.go
+- docs/contracts.md
+- docs/library-first.md
+- tools/desk/README.md
+- changelog/tool-refactoring-10.md
 
 facts (2026-11-12, source `680102a08777`):
+- Planned paths above identify new Go/test deliverables and existing starting seams; no out-of-repository files are changed.
 - Class: migrate evidence publication to bounded deltas and typed outcome admission; the issue cases in sources nominate this mechanism, not a claim that every old report still reproduces.
 - Existing owner: deskevidence adapter over publication and canonical outcome/definition owners.
 - Required reading: [scope](spec.md), [retained work and active PRs](existing-work.md), `docs/library-first.md`, `docs/contracts.md`, and the source paths above. Source inspection precedes any implementation effect.
@@ -98,7 +109,7 @@ Exercise direct Evidence-file, row and outcome-record publication forms. A secon
 
 ## Interface contract
 
-deskevidence adapter over publication and canonical outcome/definition owners owns the stated meaning. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
+Deskevidence owns its command adapter. Existing publication, outcome and definition owners retain their shared meanings and admission boundaries. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
 
 ## Verify
 

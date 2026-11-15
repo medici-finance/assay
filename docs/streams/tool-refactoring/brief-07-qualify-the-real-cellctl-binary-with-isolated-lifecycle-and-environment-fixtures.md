@@ -46,9 +46,20 @@ decision-trigger: start
 
 ## Context
 
-files: tools/desk/cmd/cellctl/lifecycleintegration_test.go, tools/desk/cmd/cellctl/shellfloor_test.go, tools/desk/cmd/cellctl/launch.go, tools/desk/cmd/cellctl/shims.go, tools/cellctl/tests/, docs/streams/desktools-v2/cli-migration.json, docs/contracts.md, docs/library-first.md, tools/desk/README.md, changelog/tool-refactoring-07.md. Newly named Go/test files are planned deliverables; the existing source paths are the starting seams. No out-of-repository files.
+files:
+- tools/desk/cmd/cellctl/lifecycleintegration_test.go
+- tools/desk/cmd/cellctl/shellfloor_test.go
+- tools/desk/cmd/cellctl/launch.go
+- tools/desk/cmd/cellctl/shims.go
+- tools/cellctl/tests/
+- docs/streams/desktools-v2/cli-migration.json
+- docs/contracts.md
+- docs/library-first.md
+- tools/desk/README.md
+- changelog/tool-refactoring-07.md
 
 facts (2026-11-12, source `680102a08777`):
+- Planned paths above identify new Go/test deliverables and existing starting seams; no out-of-repository files are changed.
 - Class: qualify the real cellctl binary with isolated lifecycle and environment fixtures; the issue cases in sources nominate this mechanism, not a claim that every old report still reproduces.
 - Existing owner: cellctl integration adapters and existing execution-profile conformance.
 - Required reading: [scope](spec.md), [retained work and active PRs](existing-work.md), `docs/library-first.md`, `docs/contracts.md`, and the source paths above. Source inspection precedes any implementation effect.
@@ -101,7 +112,7 @@ Enumerate every product launch path and shell suite in the source inventory. Pla
 
 ## Interface contract
 
-cellctl integration adapters and existing execution-profile conformance owns the stated meaning. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
+Cellctl owns the local integration adapters. Existing execution-profile owners retain profile semantics and conformance requirements. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
 
 ## Verify
 

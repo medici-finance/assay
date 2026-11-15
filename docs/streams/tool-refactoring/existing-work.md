@@ -51,7 +51,7 @@ migration/qualification; they do not claim to replace these owners.
 | [agent-execution/03](../agent-execution/brief-03-local-readiness-enforcement.md) | todo; version 3 | Retain; reused or preserved by /02, /07. |
 | [desk-containers/15](../desk-containers/brief-15-cell-op-machine-seam.md) | implemented; version 2 | Retain; reused or preserved by /06. |
 | [desk-containers/17](../desk-containers/brief-17-up-converges-the-cell.md) | implemented; version 3 | Retain; reused or preserved by /06. |
-| [desk-containers/18](../desk-containers/brief-18-drain-pause-resume-handoff.md) | 9; version 1 | Retain; reused or preserved by /06. |
+| [desk-containers/18](../desk-containers/brief-18-drain-pause-resume-handoff.md) | implemented; version 1 | Retain; reused or preserved by /06. |
 | [desk-containers/19](../desk-containers/brief-19-restart-rolling.md) | todo; version 3 | Retain; reused or preserved by future/neighbor consumer or preserved foundation. |
 | [desk-containers/20](../desk-containers/brief-20-status-overview.md) | todo; version 3 | Retain; reused or preserved by future/neighbor consumer or preserved foundation. |
 | [desk-containers/21](../desk-containers/brief-21-doctor.md) | todo; version 3 | Retain; reused or preserved by future/neighbor consumer or preserved foundation. |
@@ -127,3 +127,11 @@ Completed Evidence and dated source accounts are preserved. If a later worker
 finds an old report already fixed, retain its regression obligation and route
 tracker resolution through the existing close process. Do not manufacture an
 implementation to make the issue-routing row look complete.
+
+## Observation correction — 15 November 2026
+
+The desk-containers/18 row above corrects the original snapshot parser: its title
+contains escaped pipes, and a naive delimiter split read Wave 9 as Status. The
+pinned board says implemented. The original value and correction provenance are
+retained in source-observations.json; its Retain disposition and source cutoff
+are unchanged.

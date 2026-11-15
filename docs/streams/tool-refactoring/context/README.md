@@ -1,6 +1,6 @@
 # Source-pinned context handoff
 
-Generated with installed statusgen v1.0.83. `discovery.json` is the original
+Regenerated 2026-11-15 with installed statusgen v1.0.85; the 2026-11-12 source cutoff is preserved. `discovery.json` is the original
 candidate discovery; `handoff.json` records the focused author dispositions.
 `snapshot-declaration.json` and `source-membership.json` identify the selected
 source universe and exclusions. Reconstruct the snapshot from the pinned Git

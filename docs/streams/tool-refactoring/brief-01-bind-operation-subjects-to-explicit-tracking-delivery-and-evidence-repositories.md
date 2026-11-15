@@ -41,9 +41,19 @@ consumers:
 
 ## Context
 
-files: statusgen/domain/operation.go, statusgen/domain/operation_test.go, tools/desk/internal/deskkit/workselection.go, tools/desk/internal/deskkit/operationcontext.go, tools/desk/internal/deskkit/operationcontext_test.go, docs/contracts.md, docs/library-first.md, tools/desk/README.md, changelog/tool-refactoring-01.md. Newly named Go/test files are planned deliverables; the existing source paths are the starting seams. No out-of-repository files.
+files:
+- statusgen/domain/operation.go
+- statusgen/domain/operation_test.go
+- tools/desk/internal/deskkit/workselection.go
+- tools/desk/internal/deskkit/operationcontext.go
+- tools/desk/internal/deskkit/operationcontext_test.go
+- docs/contracts.md
+- docs/library-first.md
+- tools/desk/README.md
+- changelog/tool-refactoring-01.md
 
 facts (2026-11-12, source `680102a08777`):
+- Planned paths above identify new Go/test deliverables and existing starting seams; no out-of-repository files are changed.
 - Class: bind operation subjects to explicit tracking, delivery and evidence repositories; the issue cases in sources nominate this mechanism, not a claim that every old report still reproduces.
 - Existing owner: statusgen/domain composed with statusgen/workref; deskkit remains the observation adapter.
 - Required reading: [scope](spec.md), [retained work and active PRs](existing-work.md), `docs/library-first.md`, `docs/contracts.md`, and the source paths above. Source inspection precedes any implementation effect.
@@ -94,7 +104,7 @@ Enumerate all operation-subject constructors and every dispatch/review/PR/Eviden
 
 ## Interface contract
 
-statusgen/domain composed with statusgen/workref; deskkit remains the observation adapter owns the stated meaning. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
+statusgen/domain, composed with statusgen/workref, owns the operation-subject contract. Deskkit remains its observation adapter. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
 
 ## Verify
 

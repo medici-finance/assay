@@ -1,7 +1,7 @@
 {
   "schema": "amendment-manifest-v1",
   "declared_by": "assay:assay:tool-refactoring:01",
-  "handoff": "sha256:64e304e058ac41edfb6c368672a0cdff713862147cbc3d173d14d61623b3e4b7",
+  "handoff": "sha256:020d96486ce005657ec83ca286656571ea12756e89e93e6f261f6ef48242743a",
   "entries": [
     {
       "obligation": "statusgen-37-inverse-edge",

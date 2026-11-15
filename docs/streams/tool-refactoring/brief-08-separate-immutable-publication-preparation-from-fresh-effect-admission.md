@@ -39,9 +39,19 @@ consumers:
 
 ## Context
 
-files: tools/desk/internal/deskkit/publicationplan.go, tools/desk/internal/deskkit/publicationplan_test.go, tools/desk/internal/deskkit/publishidentity.go, tools/desk/internal/deskkit/evidencelanding.go, tools/desk/cmd/deskevidence/writeflow.go, docs/contracts.md, docs/library-first.md, tools/desk/README.md, changelog/tool-refactoring-08.md. Newly named Go/test files are planned deliverables; the existing source paths are the starting seams. No out-of-repository files.
+files:
+- tools/desk/internal/deskkit/publicationplan.go
+- tools/desk/internal/deskkit/publicationplan_test.go
+- tools/desk/internal/deskkit/publishidentity.go
+- tools/desk/internal/deskkit/evidencelanding.go
+- tools/desk/cmd/deskevidence/writeflow.go
+- docs/contracts.md
+- docs/library-first.md
+- tools/desk/README.md
+- changelog/tool-refactoring-08.md
 
 facts (2026-11-12, source `680102a08777`):
+- Planned paths above identify new Go/test deliverables and existing starting seams; no out-of-repository files are changed.
 - Class: separate immutable publication preparation from fresh effect admission; the issue cases in sources nominate this mechanism, not a claim that every old report still reproduces.
 - Existing owner: deskkit publication application seam; existing guard, budget and forge owners retain authority.
 - Required reading: [scope](spec.md), [retained work and active PRs](existing-work.md), `docs/library-first.md`, `docs/contracts.md`, and the source paths above. Source inspection precedes any implementation effect.
@@ -90,7 +100,7 @@ Enumerate PR/Evidence publication entrypoints and their AllowWrite-to-effect-to-
 
 ## Interface contract
 
-deskkit publication application seam; existing guard, budget and forge owners retain authority owns the stated meaning. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
+Deskkit owns publication preparation and orchestration. Existing guard, budget and forge owners retain their authority at the effect boundary. Inputs are explicit observations; outputs are typed decisions/records with unavailable states. Internal refactoring does not change a public schema, numeric exit contract, gate policy or custody boundary without its existing owner approval. Source-only success is not released/adopted capability.
 
 ## Verify
 
