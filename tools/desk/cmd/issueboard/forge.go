@@ -69,7 +69,7 @@ var forgeFor = func(repo string, observers ...deskkit.RequestObserver) (deskkit.
 // Forge is retained: no unwrapping, alternate identity or new request path.
 type issueReadForge interface {
 	ListOpenIssues(deskkit.ForgeRepo) ([]deskkit.IssueSummary, error)
-	GetIssue(deskkit.ForgeRepo, int) (*deskkit.Issue, error)
+	GetIssueTyped(deskkit.ForgeRepo, int, deskkit.TargetKind) (*deskkit.Issue, error)
 	IssueTrustEvents(deskkit.ForgeRepo, int) (*deskkit.TrustPayload, error)
 	IssueContentEvents(deskkit.ForgeRepo, int) (*deskkit.TrustPayload, error)
 	IssueLabelHistory(deskkit.ForgeRepo, int) (*deskkit.LabelHistory, error)

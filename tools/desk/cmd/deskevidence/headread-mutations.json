@@ -1,0 +1,65 @@
+{
+  "test": "go test ./cmd/deskevidence -run '^(TestBoardHeadWithoutProcess|TestBaseHeadWithoutProcess|TestHeadReadProfiles)$' -count=1 -timeout=90s",
+  "control": {
+    "name": "CONTROL: restore native branch-board HEAD process",
+    "file": "cmd/deskevidence/decisiongate.go",
+    "old": "head, err := landingHead(root)\n\tif err != nil || head == \"\" {\n\t\treturn nil, deskkit.Unverifiable",
+    "new": "head, err := nativeLandingHead(root)\n\tif err != nil || head == \"\" {\n\t\treturn nil, deskkit.Unverifiable"
+  },
+  "mutations": [
+    {
+      "name": "restore native base HEAD process",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "head, err := landingHead(root)\n\tif err != nil || head == \"\" {\n\t\treturn fail(\"HEAD does not resolve\", err)",
+      "new": "head, err := nativeLandingHead(root)\n\tif err != nil || head == \"\" {\n\t\treturn fail(\"HEAD does not resolve\", err)"
+    },
+    {
+      "name": "ignore shallow native profile",
+      "file": "cmd/deskevidence/headread.go",
+      "old": "r.NativeDiscoveryReason, r.NativeHistoryReadReason, r.NativeReplacementReadReason",
+      "new": "r.NativeDiscoveryReason, r.NativeReplacementReadReason"
+    },
+    {
+      "name": "ignore replacement native profile",
+      "file": "cmd/deskevidence/headread.go",
+      "old": "r.NativeDiscoveryReason, r.NativeHistoryReadReason, r.NativeReplacementReadReason",
+      "new": "r.NativeDiscoveryReason, r.NativeHistoryReadReason"
+    },
+    {
+      "name": "retry an object read failure through native Git",
+      "file": "cmd/deskevidence/headread.go",
+      "old": "why, err = r.CommitTreeReadReason(\"HEAD\")\n\tif err != nil {\n\t\treturn \"\", err\n\t}",
+      "new": "why, err = r.CommitTreeReadReason(\"HEAD\")\n\tif err != nil {\n\t\treturn nativeLandingHead(root)\n\t}"
+    },
+    {
+      "name": "ignore repository-affecting environment",
+      "file": "cmd/deskevidence/headread.go",
+      "old": "for _, key := range headReadEnv {",
+      "new": "for _, key := range headReadEnv[:0] {"
+    },
+    {
+      "name": "drop injected configuration from the native list",
+      "file": "cmd/deskevidence/headread.go",
+      "old": "\t\"GIT_CONFIG_COUNT\",\n",
+      "new": ""
+    },
+    {
+      "name": "route an unrelated editor variable to native Git",
+      "file": "cmd/deskevidence/headread.go",
+      "old": "\t\"GIT_DIR\",\n",
+      "new": "\t\"GIT_DIR\",\n\t\"GIT_EDITOR\",\n"
+    },
+    {
+      "name": "route an unrelated identity variable to native Git",
+      "file": "cmd/deskevidence/headread.go",
+      "old": "\t\"GIT_DIR\",\n",
+      "new": "\t\"GIT_DIR\",\n\t\"GIT_AUTHOR_NAME\",\n"
+    },
+    {
+      "name": "skip native noncommit object profile",
+      "file": "cmd/deskevidence/headread.go",
+      "old": "why, err = r.CommitTreeReadReason(\"HEAD\")",
+      "new": "why, err = \"\", error(nil)"
+    }
+  ]
+}

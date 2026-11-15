@@ -312,6 +312,54 @@ These commands, run in a full clone at the Evidence PR head, reproduce every cla
 - `git show <rev>:docs/streams/desktools-v2/cli-migration.json | jq -c '[.. | objects | select(.owner? == "desktools-v2/46")]' | shasum -a 256` gives f66df0c79411 (5 entries) at both 2e1ddcbd72c2 and 612750a12406.
 
 **VERIFY: PASS** — unchanged by this correction: 9 of 9 Verify rows pass at 612750a12406; only the what-moved statement is restated, from the log over the record's declared inputs.
+### Non-implementer re-verification — 2026-11-13 at 570cc3149c29 (claude-opus-5-5)
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskrelease ./cmd/deskrebaseline ./cmd/deskmanifest ./cmd/deskprovenance ./cmd/deskpins -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 5` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-13 | assay-verifier-app[bot] @ 570cc3149c29 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskrelease ./cmd/deskrebaseline ./cmd/deskmanifest ./cmd/deskprovenance ./cmd/deskpins -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 5` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-13 | assay-verifier-app[bot] @ 570cc3149c29 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskrelease ./cmd/deskrebaseline ./cmd/deskmanifest ./cmd/deskprovenance ./cmd/deskpins -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 5` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-13 | assay-verifier-app[bot] @ 570cc3149c29 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd tools/desk && s=internal/clicontract/testdata/mutations/desktools-v2-46.json && n=$(jq -e '.mutations \| length' "$s") && test "$n" -gt 0 && o=$(mktemp) && trap 'rm -f "$o"' 0 && { go run ./cmd/muhar -j 1 -spec "$s" > "$o"; r=$?; cat "$o"; test "$r" -eq 0; } && test "$(tail -n 1 "$o")" = "Totals: $n caught, 0 NOT CAUGHT, 0 could-not-mutate.")` | pass exit=0 | sha256:547de3ae56ad | 2026-11-13 | assay-verifier-app[bot] @ 570cc3149c29 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskrelease/... ./cmd/deskrebaseline/... ./cmd/deskmanifest/... ./cmd/deskprovenance/... ./cmd/deskpins/...` | pass exit=0 | sha256:43e9f11234b5 | 2026-11-13 | assay-verifier-app[bot] @ 570cc3149c29 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskrelease ./cmd/deskrebaseline ./cmd/deskmanifest ./cmd/deskprovenance ./cmd/deskpins` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-13 | assay-verifier-app[bot] @ 570cc3149c29 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/46 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:e0ede939d93f | 2026-11-13 | assay-verifier-app[bot] @ 570cc3149c29 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:1411509618ca | 2026-11-13 | assay-verifier-app[bot] @ 570cc3149c29 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `o=$(statusgen --root . --consumers --brief desktools-v2/46 --base 02d17896bad026f191583de4100e783e89c01c33 --delivery 3f2b1fc589b4b7c6854a9cf84cb6745d4117c717); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 20 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | pass exit=0 | sha256:50374019de9c | 2026-11-13 | assay-verifier-app[bot] @ 570cc3149c29 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6354 run=6c21f22b14d8923677aa73e0a9573f49522ede714e222321fa4be4ede276ebd9 source=570cc3149c2982273060e8934901562951dfa866 brief=docs/streams/desktools-v2/brief-46-migrate-the-release-and-provenance-verbs-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+Re-verification at merged main 570cc3149c29 under desk tools v1.0.83, woken because two of the record's declared inputs moved in code since the last admitted run at 612750a12406. The home was detached and admitted by deskdispatch --check-verifier (attestation medici-finance/assay#6354). The witness table above is one host statusgen verifyrun over all 9 rows, 2026-11-13 02:32:30Z to 02:34:50Z, on darwin arm64 with a minimal PATH, no forge credential and no Kubernetes config; the home read clean afterwards. No row is a check:ci row, so no container bracket applies. deskpathguard rederive reads 9 rows, all from-base, 0 author-added.
+
+What moved between 612750a12406 and 570cc3149c29, read from the log over the record's declared inputs (this brief, docs/streams/desktools-v2/cli-migration.json, the five command directories under tools/desk/cmd/ for deskmanifest, deskpins, deskprovenance, deskrebaseline and deskrelease, the desktools-v2-46 mutation spec and changelog/cli-release.md):
+
+- tools/desk/cmd/deskprovenance/main.go, one line in d8815f6c7: the PR card post now goes through forge.PostCommentTyped with deskkit.TargetChange instead of forge.PostComment (medici-finance/assay#6264). The posted body and the error path are unchanged.
+- tools/desk/cmd/deskrelease/writeflow.go in 8ee3b6a33: acquireAuditLock now calls deskkit.AcquireAuditLock(dir, deskkit.AuditLockWait) in place of its own inline flock loop (medici-finance/assay#6199). The wait is the same 60 seconds (RISK-VALUE line below).
+- docs/streams/desktools-v2/cli-migration.json in bc4e007b3 and 1457c23b9: entries owned by desktools-v2/56 and desktools-v2/57 plus two ownerless entries for cellctl test scripts. The five entries owned by desktools-v2/46 hash identically at both ends (sha256 f66df0c79411, 5 entries).
+- This brief, in 2e27c9083 and 379eea1c3: the previous Evidence landing (medici-finance/assay#6046), appending inside the Evidence section only.
+- deskmanifest, deskpins, deskrebaseline, the mutation spec and changelog/cli-release.md have no commit in the range.
+
+Observed against each row's Expect cell:
+
+- Rows 1-3 exit 0; each command itself asserts that its test (TestCLIHelpOffline, TestCLIConfigFlow, TestCLILegacyForms) prints a PASS line in all 5 owned packages.
+- Row 4 exits 0. The command fails unless the spec holds more than 0 mutations, muhar exits 0 and muhar's last line is exactly Totals: N caught, 0 NOT CAUGHT, 0 could-not-mutate. with N read from the spec, so that clean Totals line was observed (the spec is unchanged in the range and holds 20 mutations).
+- Row 5 exits 0 over the five owned package trees, including the moved deskprovenance and deskrelease code.
+- Row 6 exits 0: the five owned packages vet for Windows.
+- Row 7 exits 0 and greps the TestCLIOwnerMigrated PASS line.
+- Row 8 exits 0: every regression floor seed passes.
+- Row 9 exits 0 and fails on any other summary, so the summary was exactly 20 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing. A supplemental read of the same command, with no acceptance credit, lists all 20 consumer entries as CORROBORATED by their follow-up routes; as the row says, these are self-routed passes, not diff corroboration.
+
+The Runner cells carry the tool's note that its read recorder is Linux-only and could not record reads on this darwin host. Row 1's zero-config-read obligation is held by the TestCLIHelpOffline cases themselves, not by that recorder.
+
+Fail-first: no row is risk-bearing (every risk answer is "no"; the row tags are +dereference, +flow and +mutation, none of risk-bearing, live, mutating or end-to-end), so no fail-first witness is owed.
+
+Risk-bearing values, enumerated over the diff since 612750a12406 in the owned scope (the audit-lock wait the deskrelease change moved onto the shared helper) plus the help and usage-exit bindings the delivery introduced, re-read at 570cc3149c29:
+
+RISK-VALUE: DERIVED — audit lock wait = deskkit.AuditLockWait = 60 * time.Second @ tools/desk/internal/deskkit/auditlock.go:27 — the inline loop it replaces in tools/desk/cmd/deskrelease/writeflow.go waited 60 seconds, so the deskrelease write flow's lock budget is unchanged.
+RISK-VALUE: DERIVED — isHelpWord = len(rest) == 1 with "-h" or "--help" @ tools/desk/cmd/deskrelease/main.go:323 — unchanged; the ruling at https://github.com/medici-finance/assay/issues/5095#issuecomment-6583473388 makes only the bare help word after cut the verb's help.
+RISK-VALUE: DERIVED — UsageExit (deskrelease) = cli.ExitUsage = 2 @ tools/desk/cmd/deskrelease/main.go:252, tools/desk/internal/cli/cli.go:20 — the pre-migration dispatcher returned 2 for an unknown subcommand.
+RISK-VALUE: DERIVED — UsageExit (deskpins, deskrebaseline) = deskkit.ExitRefused = 5 @ tools/desk/cmd/deskpins/main.go:129, tools/desk/cmd/deskrebaseline/main.go:195, tools/desk/internal/deskkit/exitcodes.go:51 — both pre-migration parsers returned ExitRefused on a bad command line.
+RISK-VALUE: DERIVED — UsageExit (deskmanifest, deskprovenance) = 2 @ tools/desk/cmd/deskmanifest/main.go:144, tools/desk/cmd/deskmanifest/lint.go:21, tools/desk/cmd/deskprovenance/main.go:198 — both pre-migration parsers returned 2 on a bad command line.
+
+**VERIFY: PASS** — 9 of 9 Verify rows pass at 570cc3149c29 in one credited host verifyrun pass, with 0 obligations failed; the deskprovenance typed-post change and the deskrelease audit-lock move keep every row green and the 60-second lock wait unchanged.
 
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.

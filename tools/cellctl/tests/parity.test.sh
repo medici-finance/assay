@@ -4,7 +4,9 @@
 # Two implementations, one fixture, one diff. For every cell in the matrix below this runs
 # `DRY_RUN=1 <impl> <verb> <args>` under BOTH implementations against byte-identical fixtures,
 # normalises the two things that legitimately differ (the implementation's own path, and the
-# fixture root each copy was given), and diffs stdout+stderr and the exit code. Any difference is
+# fixture root each copy was given), adds the explicitly declared Go extensions to
+# the frozen oracle expectation (parity-extensions.sh), and diffs stdout+stderr and
+# the exit code. Any difference is
 # a divergence naming `<kind>/<harness>/<cockpit>/<verb>`, and the harness exits 1.
 #
 #   CELLCTL_A=tools/cellctl/testdata/cellctl-shell-oracle.sh CELLCTL_B=tools/desk/cellctl bash tools/cellctl/tests/parity.test.sh
@@ -36,6 +38,9 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=parity-extensions.sh
+source "$HERE/parity-extensions.sh" || exit 2
 abspath(){ case "$1" in /*) printf '%s\n' "$1";; *) printf '%s\n' "$PWD/$1";; esac; }
 CELLCTL_A="$(abspath "${CELLCTL_A:-$HERE/../testdata/cellctl-shell-oracle.sh}")"
 CELLCTL_B="$(abspath "${CELLCTL_B:-$HERE/../testdata/cellctl-shell-oracle.sh}")"
@@ -356,9 +361,9 @@ normalise(){
     -e 's#scaffolded [0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}#scaffolded <date>#g'
 }
 
-# run_impl <root> <impl> <outfile> <verb-and-args...>
+# run_impl <root> <impl> <outfile> <kind> <harness> <verb-and-args...>
 run_impl(){
-  local root="$1" impl="$2" out="$3"; shift 3
+  local root="$1" impl="$2" out="$3" kind="$4" harness="$5"; shift 5
   local rc=0
   env -i \
     HOME="$root/home" \
@@ -378,7 +383,10 @@ run_impl(){
     ${CELLCTL_PARITY_MUTATE:+CELLCTL_PARITY_MUTATE="$CELLCTL_PARITY_MUTATE"} \
     DRY_RUN=1 \
     "$impl" "$@" > "$out.raw" 2>&1 < /dev/null || rc=$?
-  normalise "$root" "$impl" < "$out.raw" > "$out"
+  if ! normalise "$root" "$impl" < "$out.raw" | expect_extensions "$impl" "$kind" "$harness" "$@" > "$out"; then
+    echo "parity: could not construct expected output for $kind/$harness/$1" >&2
+    exit 2
+  fi
   printf 'exit=%d\n' "$rc" >> "$out"
 }
 
@@ -388,7 +396,7 @@ tree_manifest(){
   local root="$1" impl="$2" dir="$3" p mode
   [[ -d "$dir" ]] || { echo "<no tree>"; return 0; }
   while IFS= read -r p; do
-    mode="$(stat -f '%Lp' "$p" 2>/dev/null || stat -c '%a' "$p" 2>/dev/null)"
+    mode="$(stat -c '%a' "$p" 2>/dev/null || stat -f '%Lp' "$p" 2>/dev/null)"
     printf '%s %s %s\n' "$(printf '%s' "${p#$dir}")" "$mode" "$( [[ -L "$p" ]] && echo link || ( [[ -d "$p" ]] && echo dir || echo file ) )"
     if [[ -f "$p" && ! -L "$p" ]]; then
       normalise "$root" "$impl" < "$p" | sed 's/^/    | /'
@@ -436,8 +444,8 @@ cell_case(){
   mk_fixture "$rootA" "$kind" "$harness" "$cockpit" github
   mk_fixture "$rootB" "$kind" "$harness" "$cockpit" github
   fixture_ok "$id" "$rootA" "$rootB" || return 0
-  run_impl "$rootA" "$CELLCTL_A" "$T/outA" "$@"
-  run_impl "$rootB" "$CELLCTL_B" "$T/outB" "$@"
+  run_impl "$rootA" "$CELLCTL_A" "$T/outA" "$kind" "$harness" "$@"
+  run_impl "$rootB" "$CELLCTL_B" "$T/outB" "$kind" "$harness" "$@"
   cells=$((cells+1))
   verdict "$id"
   rm -rf "$rootA" "$rootB"
@@ -477,8 +485,8 @@ new_case(){
     sa="${a//ROOT/$rootA}"; sa="${sa//REPO/$rootA/repo}"; argsA+=("$sa")
     sb="${a//ROOT/$rootB}"; sb="${sb//REPO/$rootB/repo}"; argsB+=("$sb")
   done
-  run_impl "$rootA" "$CELLCTL_A" "$T/outA" "${argsA[@]}"
-  run_impl "$rootB" "$CELLCTL_B" "$T/outB" "${argsB[@]}"
+  run_impl "$rootA" "$CELLCTL_A" "$T/outA" "$kind" claude "${argsA[@]}"
+  run_impl "$rootB" "$CELLCTL_B" "$T/outB" "$kind" claude "${argsB[@]}"
   tree_manifest "$rootA" "$CELLCTL_A" "$rootA/cells/${cell%%/*}" >> "$T/outA"
   tree_manifest "$rootB" "$CELLCTL_B" "$rootB/cells/${cell%%/*}" >> "$T/outB"
   cells=$((cells+1))

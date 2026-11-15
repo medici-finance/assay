@@ -299,7 +299,10 @@ func TestUnhonouredFlagRefused(t *testing.T) {
 			t.Run(route+"/"+fl, func(t *testing.T) {
 				f, errBuf := setupFake(t)
 				mints := 0
-				mintTokenFn = func(string) error { mints++; return nil }
+				mintTokenFn = func(string) (deskkit.RoleCredential, error) {
+					mints++
+					return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
+				}
 				args := append([]string{fixtureRepo, "main"}, base[route]...)
 				if v, ok := value[fl]; ok {
 					args = append(args, "--"+fl, v)

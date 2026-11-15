@@ -2,6 +2,8 @@ module github.com/medici-finance/assay/loopadmin
 
 go 1.27.0
 
+toolchain go1.27.4
+
 require (
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/medici-finance/assay/perfrec v0.0.0-00010101000000-000000000000
