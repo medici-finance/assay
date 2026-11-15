@@ -191,7 +191,12 @@ func foldVerified(d reconcileFoldData, coverage map[string]Coverage) (w WitnessI
 	}
 	version, verr := briefVersionForPass(d.path, d.evidence, p)
 	if verr != nil {
-		return WitnessInfo{}, false, fmt.Sprintf("could-not-check the brief version for run source %s: %v", p.SHA, verr)
+		// Diagnostic only: briefVersionForPass owns the coordinate read.
+		sourceDescription := p.SHA
+		if p.RecordRun != "" {
+			sourceDescription = p.RecordRun
+		}
+		return WitnessInfo{}, false, fmt.Sprintf("could-not-check the brief version for run source %s: %v", sourceDescription, verr)
 	}
 	run := p.Runner + " @ " + p.SHA
 	if p.RecordLanding != "" {
