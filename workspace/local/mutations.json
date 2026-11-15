@@ -62,6 +62,12 @@
       "new": "\tif err != nil {\n\t\treturn false\n\t}\n\tif u.User == nil {"
     },
     {
+      "name": "an origin with more than one URL is accepted",
+      "file": "local/repository.go",
+      "old": "\tif len(urls) != 1 {",
+      "new": "\tif false && len(urls) != 1 {"
+    },
+    {
       "name": "a refused placement still creates the store directory through a symlinked repos/",
       "file": "local/repository.go",
       "old": "\tif err := checkPlacement(cell, req.Repo, legacy); err != nil {\n\t\treturn workspace.StoreEntry{}, err\n\t}\n\tif err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {\n\t\treturn workspace.StoreEntry{}, unknown(\"store.path\", err)\n\t}",

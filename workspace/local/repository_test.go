@@ -290,6 +290,14 @@ func TestCellRepositoryIsolation(t *testing.T) {
 			cmd.Env = gitEnv()
 			return cmd.Run()
 		}, workspace.ReasonForeignState, "store.config"},
+		{"second origin URL (a push would fan out to another repository)", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			if err := (cloneFrom{repo: src}).Clone(ctx, r, d); err != nil {
+				return err
+			}
+			cmd := exec.Command("git", "-C", d, "config", "--add", "remote.origin.url", host)
+			cmd.Env = gitEnv()
+			return cmd.Run()
+		}, workspace.ReasonForeignState, "store.config"},
 		{"commondir pointer into the host's common directory", func(ctx context.Context, r workspace.RepoRef, d string) error {
 			if err := (cloneFrom{repo: src}).Clone(ctx, r, d); err != nil {
 				return err

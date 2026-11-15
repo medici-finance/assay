@@ -1929,6 +1929,8 @@ What cellctl owns once the decision is recorded:
   generation cannot both succeed, and one that cannot get the lock in time is refused as `busy`. A managed-aware reader takes store
   paths from this file alone. The mapping is never exported as an environment variable, so a
   reader that knows nothing of it still sees the legacy keys exactly as before.
+  The lock file `stores.json.lock` stays beside the mapping after a publication; a rollback
+  removes it together with `stores.json`.
 - **Cell binding.** The cell's UUID is recorded against its resolved root in a machine-level
   registry. A copied or moved cell directory that presents the same UUID is refused.
 

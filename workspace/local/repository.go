@@ -324,7 +324,13 @@ func (s Stores) checkConfig(ctx context.Context, own string) error {
 		return unknown("store.config", err)
 	}
 	// One value per line: a value is never split on whitespace, so it is judged whole.
-	for _, u := range strings.Split(strings.TrimRight(string(raw), "\r\n"), "\n") {
+	urls := strings.Split(strings.TrimRight(string(raw), "\r\n"), "\n")
+	// A second origin URL makes "git push origin" fan out to another repository, so a fresh
+	// clone's single value is the only shape accepted.
+	if len(urls) != 1 {
+		return refusal(workspace.ReasonForeignState, "store.config", "the store's origin carries more than one URL")
+	}
+	for _, u := range urls {
 		if hasCredential(u) {
 			return refusal(workspace.ReasonForeignState, "store.config", "the store's origin URL carries a credential")
 		}
