@@ -397,7 +397,10 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	t.Cleanup(func() { forgeForFn = oldForge })
 
 	oldMint := mintTokenFn
-	mintTokenFn = func(string) error { ghToken = "test-verifier-token"; return nil }
+	mintTokenFn = func(string) (deskkit.RoleCredential, error) {
+		ghToken = "test-verifier-token"
+		return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
+	}
 	t.Cleanup(func() { mintTokenFn = oldMint; ghToken = "" })
 
 	// verify-reset/03: the receipt derivation reads git history at the record's sha, which
@@ -428,7 +431,9 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	lintDiffFn = func(string, string, []byte, childOptions) ([]string, error) { return nil, nil }
 	t.Cleanup(func() { lintDiffFn = oldLintDiff })
 	oldDecisionGate := decisionGateDiffFn
-	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit) ([]string, error) { return nil, nil }
+	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit, childOptions) ([]string, error) {
+		return nil, nil
+	}
 	t.Cleanup(func() { decisionGateDiffFn = oldDecisionGate })
 	oldBranchBoard := decisionGateBranchBoardFn
 	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) { return nil, nil }
@@ -1656,7 +1661,7 @@ func TestDryRunRefusesOnMintFailure(t *testing.T) {
 		errors.New("mint boom"))
 
 	oldMint := mintTokenFn
-	mintTokenFn = func(string) error { return mintErr }
+	mintTokenFn = func(string) (deskkit.RoleCredential, error) { return deskkit.RoleCredential{}, mintErr }
 	t.Cleanup(func() { mintTokenFn = oldMint })
 
 	evidencePath := "docs/streams/x/brief.md"

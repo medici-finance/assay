@@ -86,7 +86,7 @@ func guardVerifiedOutcomes(root, landedRoot, target string, before, after []byte
 func checkVerifiedClosure(root, key string, options childOptions) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "statusgen", options.args("brief", "--root", root, "--json", "--check-verified", "--check-attribution", key)...)
+	cmd := statusgenAudit(ctx, auditBrief, root, options, "--json", "--check-verified", "--check-attribution", key)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

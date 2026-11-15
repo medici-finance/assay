@@ -20,6 +20,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -108,6 +109,11 @@ func runFlip(args []string, options childOptions) error {
 	}
 
 	name, email, err := deskkit.RoleWorktreeCommitIdentity("verifier")
+	if err != nil {
+		return err
+	}
+
+	options, err = prepareFlipApproval(abs, options)
 	if err != nil {
 		return err
 	}
@@ -229,11 +235,11 @@ func statusgenVerifyFlip(root, brief, sha, runner string, dryRun bool, options c
 	if _, lerr := exec.LookPath("statusgen"); lerr != nil {
 		return "", "", deskkit.Unverifiable("flip: statusgen is not on PATH", lerr)
 	}
-	args := []string{"verifyflip", "--root", root, "--brief", brief, "--sha", sha, "--runner", runner}
+	args := []string{"--brief", brief, "--sha", sha, "--runner", runner}
 	if dryRun {
 		args = append(args, "--dry-run")
 	}
-	cmd := exec.Command("statusgen", options.args(args...)...)
+	cmd := statusgenAudit(context.Background(), auditFlip, root, options, args...)
 	cmd.Dir = os.TempDir()
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb

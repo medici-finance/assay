@@ -140,7 +140,9 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 		return sha
 	}
 	oldMint := mintTokenFn
-	mintTokenFn = func(string) error { return nil }
+	mintTokenFn = func(string) (deskkit.RoleCredential, error) {
+		return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
+	}
 	t.Cleanup(func() { mintTokenFn = oldMint })
 	oldBudget := evidenceWriteBudget
 	budgetCalls := 0
@@ -156,7 +158,9 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 	// hold; the hold has its own suites (decisiongate_test.go), so the fake
 	// forge here does not serve the compare/tip reads it needs.
 	oldDecisionGate := decisionGateDiffFn
-	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit) ([]string, error) { return nil, nil }
+	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit, childOptions) ([]string, error) {
+		return nil, nil
+	}
 	t.Cleanup(func() { decisionGateDiffFn = oldDecisionGate })
 	oldBranchBoard := decisionGateBranchBoardFn
 	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) { return nil, nil }
