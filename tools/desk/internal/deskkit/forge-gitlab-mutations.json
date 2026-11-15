@@ -286,8 +286,8 @@
     {
       "name": "issue #1415 Part 2 — widen the transient classifier to any 'source branch' 400 (drop the 'does not exist' requirement so a genuine validation 400 gets retried)",
       "file": "internal/deskkit/forge_gitlab.go",
-      "old": "\treturn strings.Contains(b, \"source branch\") && strings.Contains(b, \"does not exist\")",
-      "new": "\treturn strings.Contains(b, \"source branch\")"
+      "old": "\tif strings.Contains(b, \"source branch\") && strings.Contains(b, \"does not exist\") {",
+      "new": "\tif strings.Contains(b, \"source branch\") {"
     },
     {
       "name": "issue #1415 Part 2 — loosen the bounded retry by one attempt (the give-up bound is off by one)",
