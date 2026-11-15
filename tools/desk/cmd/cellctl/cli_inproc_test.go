@@ -17,6 +17,7 @@ func inproc(args ...string) int { return runTree(args) }
 // probe), so a test can observe what the parser handed over without running the handler.
 func runTreeWith(t *testing.T, args []string, mutate func(root *cobra.Command)) (code int) {
 	t.Helper()
+	defer endRun()
 	defer func() {
 		if r := recover(); r != nil {
 			ec, ok := r.(exitCode)

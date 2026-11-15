@@ -54,6 +54,10 @@
         },
         "Title": {
           "type": "string"
+        },
+        "Mergeable": {
+          "type": "string",
+          "description": "Optional independent forge conflict verdict. Older v1 snapshots omit this field; absence supplies no evidence for ready evaluation of a BLOCKED draft."
         }
       },
       "required": [
