@@ -25,6 +25,11 @@ const (
 	MappingFile = "stores.json"
 )
 
+// StoreSchema is the schema string of the store mapping. Provisioning has its own separately
+// versioned protocol, so a mapping is never a cell-workspace/v1 document and the v1 wire reader
+// refuses it as an unknown schema before any member rule.
+const StoreSchema = "cell-repository/v1"
+
 // StorePath is the clone a cell owns for one repository: <root>/repos/<repo-key>/source. The
 // key, not the repository's name, places it, so two repositories with the same base name never
 // share a directory.
@@ -109,7 +114,7 @@ func PlanStores(cell CellRef, reqs []StoreRequest) ([]StoreRequest, error) {
 // is the store path the layout gives that repository, its common directory is that path's own
 // `.git`, and no repository appears twice.
 func (m StoreMapping) Validate() error {
-	if err := checkSchema(m.Schema); err != nil {
+	if err := checkSchemaIs(m.Schema, StoreSchema); err != nil {
 		return err
 	}
 	if err := m.Cell.validate("cell"); err != nil {
@@ -171,7 +176,7 @@ func NextMapping(prior *StoreMapping, expected uint64, cell CellRef, entries []S
 	for _, s := range entries {
 		merged[s.RepoKey] = s
 	}
-	next := StoreMapping{Schema: Schema, Cell: cell, Generation: have + 1}
+	next := StoreMapping{Schema: StoreSchema, Cell: cell, Generation: have + 1}
 	for _, s := range merged {
 		next.Stores = append(next.Stores, s)
 	}
@@ -190,7 +195,7 @@ func EncodeStoreMapping(m StoreMapping) ([]byte, error) {
 // DecodeStoreMapping strictly decodes and validates a mapping document.
 func DecodeStoreMapping(data []byte) (StoreMapping, error) {
 	var m StoreMapping
-	if err := decode(data, &m); err != nil {
+	if err := decodeAs(data, &m, StoreSchema); err != nil {
 		return StoreMapping{}, err
 	}
 	return m, m.Validate()

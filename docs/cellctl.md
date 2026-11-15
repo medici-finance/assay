@@ -1927,8 +1927,11 @@ What cellctl owns once the decision is recorded:
   mapping, and writes it only after every store has verified. The generation check and the
   rename happen under an exclusive lock beside the file, bounded: two publishers from one prior
   generation cannot both succeed, and one that cannot get the lock in time is refused as `busy`. A managed-aware reader takes store
-  paths from this file alone. The mapping is never exported as an environment variable, so a
-  reader that knows nothing of it still sees the legacy keys exactly as before.
+  paths from this file alone, and finds it through one key, `CELL_WORKSPACE_STORES_V1` (below).
+  The mapping's contents are never exported as environment variables, so a reader that knows
+  nothing of it still sees the legacy keys exactly as before. The file carries the separately
+  versioned schema `cell-repository/v1`, which the workspace v1 reader refuses as an unknown
+  schema.
   The lock file `stores.json.lock` stays beside the mapping after a publication; a rollback
   removes it together with `stores.json`.
 - **Cell binding.** The cell's UUID is recorded against its resolved root in a machine-level
@@ -1942,13 +1945,16 @@ refused), whose branches track anything but `origin`, or whose Git directory car
 remote-definition file it did not make. Before the mapping is written, every
 store the call made is read again.
 
-Proposed configuration, for the activation decision only. None of these keys is read today:
+Proposed configuration, for the activation decision only. The key is not registered and nothing
+reads it today:
 
 | Key | Meaning |
 |---|---|
-| `CELL_WORKSPACE_MODE` | `legacy` (today's behaviour) or `managed`. Absent means `legacy`. |
-| `CELL_WORKSPACE_REPOS` | The repositories to provision, as `owner/name` slugs on the cell's forge. Absent means every `CELL_ROOTS` key. |
-| `CELL_WORKSPACE_REGISTRY` | The machine-level cell-identity registry. Absent means `<cells root>/.registry`. |
+| `CELL_WORKSPACE_STORES_V1` | The absolute path of the cell's store mapping file (schema `cell-repository/v1`). No default: when absent, the cell has no managed stores, and nothing is inferred from `CELL_REPO`, `CELL_ROOTS` or any other key. |
+
+It is the only key. There is no mode key, no repository-list key and no registry key. The
+repository allowlist, the transport and the cell-identity registry location are inputs of an
+activation, named by its own manifest and ruling, and none of them has a default.
 
 Tests: `TestCellRepositoryIsolation` and `TestCellRootBinding` (`workspace/local`, with mutation
 entries in `workspace/local/mutations.json`), and `TestStoreOriginNames` (`workspace/local`), and `TestWorkspaceRootMapAtomic`, `TestWorkspacePublishRereadsProvisioned` and `TestWorkspaceMappingPublishExclusive` (`cellctl`).
