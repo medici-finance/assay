@@ -665,5 +665,66 @@ Next actor: worker-desk or the image owner. Four fixes are open:
 
 The image should also carry a passwd entry for its runner uid and an init process, which this run supplied. After those fixes, verify-desk re-runs row 1. Status remains implemented.
 
+### Non-implementer verification — 2026-11-14
+
+This re-run is at merged main 876ca4bca37c (delivery: squash ccc4318c397d, #2423), under desk tools v1.0.84 with a fresh admission (attestation #6469). The verify-runner image named for it is ghcr.io/medici-finance/verify-runner:v1.0.84 (sha256:a0d6bbd15f1e…). Between the 2026-11-14 v1.0.83 draft source 48e6fddbec36 and this source, only docs, STATUS.md and verify-outcome records changed, so nothing under tools/desk changed. Since the 2026-11-12 source 680102a08777, the delivered record writer, its tests, its mutation manifest, forgeresolve.go, the ci-check-v1 schema doc and deskflip's cicheck_test.go are all byte-identical. Neighbours forge.go, forge_github.go, outboundforge.go and one forge golden file changed. The databaseId selections the record's attempt field reads are still at forge_github.go:836 and :868, and checkRunID still maps from them at :1089.
+
+Rows 1–9 (all check:ci) did not run, because no admission bracket opened. Four opens of the container-netns bracket ran against this home with a new empty module cache each time. All four refused in the open step, and no receipt was written, so no container row ran and no attempt is credited. They started at 02:22:15Z, 02:35:57Z, 02:49:11Z and 03:19:07Z. The third set GODEBUG=http2client=0 to force HTTP/1.1 and failed the same way. The fourth opened after row 10's host run had appended its witness below. Each refusal was a transient HTTP/2 stream error from the public Go module proxy during the open step's `go mod download`. The failing modules varied between attempts (golang.org/x/image, golang.org/x/text, golang.org/x/crypto, github.com/pjbgf/sha1cd, google.golang.org/protobuf, k8s.io/api, k8s.io/client-go, k8s.io/kube-openapi). The fourth refusal, verbatim up to its first module:
+
+```
+statusgen verifyrun --open-bracket: refused, no receipt written: could-not-check — `go mod download` for tools/desk failed (exit status 1): go: golang.org/x/image@v0.47.0: read "https://proxy.golang.org/golang.org/x/image/@v/v0.47.0.zip": stream error: stream ID 495; INTERNAL_ERROR; received from peer
+```
+
+Other verifiers' open steps were downloading into their own caches at the same time. The open step downloads at all because the image's baked cache predates main's go.mod (#4683). No row 1–9 result from an earlier source carries over to this one.
+
+Row 10's local command ran on the desk host (03:18:24Z–03:18:28Z) and exited 0 with records printed. Just before verifyrun ran row 10, this verifier read the record file. It held 3668 lines, and the newest observed_at was 2026-11-14T02:52:01Z. 3490 of the lines were numeric-attempt check-run records.
+
+- by tool: deskboard 2451, deskmonitor 1009, deskdispatch 27, deskflip 3
+- by repository: medici-finance/assay 2579, five other repositories 911
+
+This verifier completed the forge dereference half of row 10's Expect. It read the check-runs endpoint of medici-finance/assay as the verifier App at 03:18:54Z for the newest recorded attempt from each of the two main recording tools:
+
+- 132302430675: recorded by deskboard as close, skipped, at head 876ca4bca37c465d80158bc8c11a5f9346736ef0. The forge returned close, skipped, same head.
+- 132305042178: recorded by deskmonitor as build-test, success, at head fe5d63a2a714417192c43a804fd53b154ab2ea07. The forge returned build-test, success, same head.
+
+Both attempts dereference to the recorded conclusion and head.
+
+Host witness, row 10, verbatim:
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 10 | `jq -r 'select(.kind=="check-run" and (.attempt\|test("^[0-9]+$"))) \| "\(.repo) \(.attempt) \(.conclusion)"' ~/.config/assay/ci-checks.jsonl` | pass exit=0 | sha256:4ac68d960d8d | 2026-11-14 | assay-verifier-app[bot] @ 876ca4bca37c (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6469 run=05dc0732af25d0e9cef8a8ccf9f8700288e20751671391fb4734a227fbe2fa58 source=876ca4bca37c465d80158bc8c11a5f9346736ef0 brief=docs/streams/desk-supervision/brief-31-ci-check-history.md model=claude-opus-5-5 tier=strong
+
+Risk enumeration: cicheckhistory.go was last changed by the delivery (ccc4318c3), so every risk literal is unchanged and on the same line as on 2026-10-30.
+
+- CICheckSchema = "ci-check-v1" (line 47)
+- ciMaxWriteLine = 64 << 10 (61)
+- ciMaxReadLine = 1 << 20 (64)
+- key separator "\x1f" (97)
+- ciLockWait = 2 * time.Second (104)
+- directory mode 0o700 (375)
+- file mode 0o600 (426) and lock-file mode 0o600 (470)
+- group/other mask 0o077 (449–450)
+- lock poll 10 * time.Millisecond (488)
+
+The ranking is unchanged:
+
+1. The privacy modes and the mask, because a disclosure cannot be undone.
+2. The bounded lock wait, because it bounds latency on the flip and board read paths.
+3. The schema, key and size literals. These are analysis-integrity identifiers whose vocabulary the Task defines.
+4. The poll interval.
+
+The brief's risk block is all "no", and no row's Command or Expect carries a risk-bearing keyword. So no fail-first witness is owed, and none was run.
+
+RISK-VALUE: DERIVED — state-directory mode = 0o700 @ tools/desk/internal/deskkit/cicheckhistory.go:375 — Task 5 fixes the directory at 0700, so only the owning account can list, create or traverse record files.
+RISK-VALUE: DERIVED — record-file mode = 0o600 @ tools/desk/internal/deskkit/cicheckhistory.go:426 — Task 5 fixes the file at 0600, so only the owner can read or append records; the lock file uses the same 0o600 at line 470.
+RISK-VALUE: DERIVED — group/other permission mask = 0o077 @ tools/desk/internal/deskkit/cicheckhistory.go:449 — octal 077 is exactly the group and other rwx bits; clearing them at line 450 narrows a pre-existing wider file to owner-only without adding owner permissions.
+RISK-VALUE: DERIVED — recorder lock wait = 2 * time.Second @ tools/desk/internal/deskkit/cicheckhistory.go:104 — Task 4 bounds the lock wait at ≤ 2 s before the batch is dropped, so a busy lock adds at most 2 s to a flip or board read.
+
+**VERIFY: BLOCKED** — 1 of 10 rows passes the witness (10). Row 10's local command passes on the host, and its forge dereference matches for both named attempts. Rows 1–9 could not run on this source: every open of the v1.0.84 container-netns admission bracket refused in its module download, as quoted above, so no bracket witness exists. No acceptance obligation was observed failing in the deliverable. Blocker attached to #4683.
+
+Next actor: verify-desk. Re-run rows 1–9 in a container-netns bracket once an open step completes its module download, either when proxy load is lower or once the image's cache covers main's go.mod (#4683). Row 1's image causes (b)–(d) of 2026-11-12 are still open in #4683 as well. Status remains implemented.
+
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.
