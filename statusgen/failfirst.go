@@ -37,7 +37,9 @@ package main
 // equal the deliverable merge-base exactly, and the run is refused when that
 // merge-base cannot be resolved or is HEAD itself (failFirstCrossRepoBaseRev).
 // Neither resolver accepts a --base it cannot check: with no merge-base both
-// refuse.
+// refuse. Neither accepts HEAD for a brief that no tracked tree holds: the
+// same-repository resolver refuses a HEAD base when the brief does not resolve
+// under the root (baseHeadOutsideBrief).
 //
 // THE LIMIT, stated here and wherever the guarantee is claimed (the doc's
 // Fail-first section, the verify-desk step, the PR body): the gate proves only
@@ -244,7 +246,49 @@ func truncateRunes(s string, n int) string {
 // ancestor of it: in a post-merge verify the merge-base already holds the
 // change, so the verifier passes the delivering change's parent), or by
 // default the exact merge-base of HEAD and origin/main.
+//
+// Both arms end at one check (baseHeadOutsideBrief): when the brief does not
+// resolve under the root, briefHeldAtBase accepts only the merge-base, and a
+// merge-base that is HEAD itself leaves the base rows on the changed tree, so
+// that base is refused too.
 func failFirstBaseRev(root, rev, briefPath string) (string, error) {
+	base, err := failFirstSameRepoBase(root, rev, briefPath)
+	if err != nil {
+		return "", err
+	}
+	if why := baseHeadOutsideBrief(root, briefPath, base); why != "" {
+		if rev == "" {
+			return "", errors.New("the default base (the merge-base) is refused: " + why)
+		}
+		return "", fmt.Errorf("--base %q is refused: %s", rev, why)
+	}
+	return base, nil
+}
+
+// baseHeadOutsideBrief returns the reason a same-repository base is refused
+// because it is HEAD while the brief does not resolve under root, and "" when
+// that rule does not apply. With the brief outside the clone no tracked file
+// ties the base to the brief, and at HEAD the base rows run on the changed
+// tree: a green says nothing and a red (a git-ignored file only this checkout
+// holds is absent from the base worktree) would be false credit. This is the
+// same-repository arm of ruling A on #5544, which the cross-repository
+// resolver applies as its "HEAD itself" refusal. An unresolvable HEAD refuses.
+func baseHeadOutsideBrief(root, briefPath, base string) string {
+	if _, resolved := briefRelPath(root, briefPath); resolved {
+		return ""
+	}
+	head, err := resolveCommit(root, "HEAD")
+	if err != nil || !isObjectID(head) {
+		return "the brief does not resolve under this clone and HEAD cannot be resolved, so the base cannot be shown to differ from it"
+	}
+	if base != head {
+		return ""
+	}
+	return "the base is HEAD itself (" + head + ") and the brief does not resolve under this clone: the base rows would run on the changed tree and cannot show it failing, and no other base is accepted for a brief outside the root, so no --base can fix this; run from a clone whose origin/main does not yet hold the change, or on a cross-repository admission"
+}
+
+// failFirstSameRepoBase is failFirstBaseRev without the final HEAD check.
+func failFirstSameRepoBase(root, rev, briefPath string) (string, error) {
 	if rev != "" {
 		if strings.HasPrefix(rev, "-") {
 			return "", fmt.Errorf("--base %q is not a revision", rev)

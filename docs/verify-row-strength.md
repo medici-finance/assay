@@ -134,9 +134,11 @@ says nothing and a red (for example from an ignored file only the home holds) wo
 credit. Every one of these refusals is exit 2 and comes before any row runs. A discriminating
 cross-repository run needs a deliverable clone whose HEAD is the delivering change and whose
 origin/main does not yet hold it. The exception follows from the receipt and never from where the
-brief file sits: an unadmitted run with a brief outside the root takes the same-repository check,
-which refuses every base it cannot show holds the brief, and refuses any `--base` when the
-merge-base cannot be resolved.
+brief file sits: an unadmitted run with a brief outside the root takes the same-repository check.
+There the brief path does not resolve under the root, so only the merge-base itself is accepted;
+when that merge-base is HEAD itself the base is refused too (exit 2, before any row runs, with or
+without `--base`, for the same reason as above); and any `--base` is refused when the merge-base
+cannot be resolved.
 The witness table gains a `Base` column, appended to the right of `Runner` (readers of Date and
 Runner skip it):
 
@@ -150,7 +152,7 @@ The base states are:
 - **`unproven`**: the row could not run at base.
 - **`not-selected`**: the row is not risk-bearing, or `--ci` skips it, and it was not run at base.
 
-**After the change has merged**, the merge-base of HEAD and `origin/main` is HEAD itself or a
+For a same-repository run, **after the change has merged**, the merge-base of HEAD and `origin/main` is HEAD itself or a
 commit that already contains the change, so every row is green. The verifier passes
 `--base <the parent of the delivering merge>`. Only the latest witness of a row counts, and it
 must carry the row's current command; a later plain run or an edited command drops the record.
@@ -159,7 +161,7 @@ runner, and Verify-shaped text it cannot place on a closure is a PROBLEM (see "V
 runner cannot place" below). A live, mutating or
 end-to-end row runs a second time at base, so check it is safe to run twice.
 
-The lint gate on a closure **this branch makes** treats each risk-bearing row as follows. A row is
+For a same-repository run, the lint gate on a closure **this branch makes** treats each risk-bearing row as follows. A row is
 a **PROBLEM** when it has no fail-first witness, its witness is `unproven`, its witness is
 non-discriminating, its witness is for an earlier command or has been superseded by a later plain
 run, or its witness names a base that is not the merge-base or an ancestor of it, or names a base

@@ -213,3 +213,95 @@ func TestCrossHistoryRefusesInner(t *testing.T) {
 		t.Fatalf("imported history: want a refusal naming the admitted source %s: %v", head, err)
 	}
 }
+
+// outsideBriefRepo is an unadmitted same-repository shape with the brief
+// outside the clone: base -> head, where head adds delivered.txt, and a
+// git-ignored ignored.txt only the checkout holds. origin/main is at head when mainAtHead, else at base.
+func outsideBriefRepo(t *testing.T, row string, mainAtHead bool) (root, brief, body, base, head string) {
+	t.Helper()
+	t.Setenv("DESK_LOOP", "")
+	t.Setenv("GITHUB_ACTIONS", "")
+	root = t.TempDir()
+	gitInit(t, root, "t", "t@example.invalid")
+	putFile(t, filepath.Join(root, "pre.txt"), "pre\n")
+	runGit(t, root, "add", "pre.txt")
+	runGit(t, root, "commit", "-q", "-m", "base")
+	base = gitOutT(t, root, "rev-parse", "HEAD")
+	putFile(t, filepath.Join(root, "delivered.txt"), "delivered\n")
+	runGit(t, root, "add", "delivered.txt")
+	runGit(t, root, "commit", "-q", "-m", "delivery")
+	head = gitOutT(t, root, "rev-parse", "HEAD")
+	putFile(t, filepath.Join(root, ".git", "info", "exclude"), "ignored.txt\n")
+	putFile(t, filepath.Join(root, "ignored.txt"), "checkout only\n")
+	mainAt := base
+	if mainAtHead {
+		mainAt = head
+	}
+	runGit(t, root, "update-ref", remoteMainRef, mainAt)
+	brief = filepath.Join(t.TempDir(), "brief.md")
+	body = "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `test -f " + row + ".txt` | risk-bearing exit 0 |\n\n## Evidence\n\n## Review\n"
+	putFile(t, brief, body)
+	resetReadMemo()
+	return root, brief, body, base, head
+}
+
+// regression: #5544
+// TestSameFFOutsideHead: an unadmitted run whose brief is outside the root,
+// with origin/main at HEAD, is refused (exit 2) before any row runs, with no
+// --base and with --base <HEAD>. Before, a row on a git-ignored file only the
+// checkout holds was credited (exit 0, base=<HEAD> red), and a delivering row
+// was reported as a defect (exit 1). Pre-merge the merge-base is still
+// accepted, so only the HEAD base is refused.
+func TestSameFFOutsideHead(t *testing.T) {
+	for _, row := range []string{"delivered", "ignored"} {
+		for _, flag := range []string{"", "head"} {
+			root, brief, body, _, head := outsideBriefRepo(t, row, true)
+			args := []string{"--brief", brief, "--root", root, "--fail-first"}
+			if flag != "" {
+				args = append(args, "--base", head)
+			}
+			res, out := captureVerifyrunOut(t, args)
+			if res.code != verifyrunExitCouldNot || !strings.Contains(out, "HEAD itself ("+head+")") {
+				t.Errorf("%s row, --base %q, outside brief at HEAD: %d %s", row, flag, res.code, out)
+			}
+			if got := getFile(t, brief); got != body {
+				t.Errorf("%s row, --base %q: a row ran before the refusal:\n%s", row, flag, got)
+			}
+		}
+	}
+	root, brief, _, base, head := outsideBriefRepo(t, "delivered", false)
+	if got, err := failFirstBaseRev(root, "", brief); err != nil || got != base {
+		t.Fatalf("pre-merge outside brief: default base %q %v, want the merge-base %s", got, err, base)
+	}
+	if _, err := failFirstBaseRev(root, head, brief); err == nil {
+		t.Fatal("pre-merge outside brief: --base <HEAD> accepted")
+	}
+}
+
+// regression: #5544
+// TestCrossFFHint: the non-discriminating hint never tells a cross-repository
+// run to pass an older --base, which its resolver refuses; a same-repository
+// run keeps the --base <parent> hint.
+func TestCrossFFHint(t *testing.T) {
+	ws := []witness{{ID: "1", State: statePass}}
+	ff := map[string]failFirst{"1": {Base: "abcdef012345", State: baseGreen}}
+	for _, c := range []struct {
+		cross     bool
+		want, not string
+	}{
+		{true, "a cross-repository run accepts only the deliverable merge-base as its base, so strengthen the row until it fails there", "--base <the parent"},
+		{false, "if the change is already merged, pass --base <the parent of the delivering merge>", "cross-repository"},
+	} {
+		path := filepath.Join(t.TempDir(), "out")
+		f, err := os.Create(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		code := foldFailFirst(ws, ff, map[string]bool{"1": true}, verifyrunExitPass, c.cross, f)
+		f.Close()
+		out := getFile(t, path)
+		if code != verifyrunExitFail || !strings.Contains(out, c.want) || strings.Contains(out, c.not) {
+			t.Errorf("crossRepo=%v: exit %d, hint %q", c.cross, code, out)
+		}
+	}
+}
