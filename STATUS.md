@@ -119,9 +119,9 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
 
-> **Already delivered or re-homed — held out of dispatch (3):** intake-class-routing/01 → already-merged-unflipped (merged PR #6309, Brief: trailer), intake-class-routing/03 → already-merged-unflipped (merged PR #6307, Brief: trailer), intake-class-routing/05 → already-merged-unflipped (merged PR #6310, Brief: trailer). Each is a board-honesty finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose brief file is gone); reconcile or retire the row to clear it.
+> **Already delivered or re-homed — held out of dispatch (4):** intake-class-routing/01 → already-merged-unflipped (merged PR #6309, Brief: trailer), intake-class-routing/03 → already-merged-unflipped (merged PR #6307, Brief: trailer), intake-class-routing/04 → already-merged-unflipped (merged PR #6308, Brief: trailer), intake-class-routing/05 → already-merged-unflipped (merged PR #6310, Brief: trailer). Each is a board-honesty finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose brief file is gone); reconcile or retire the row to clear it.
 
-_Next-up: 20 of 49 eligible — 29 held back (15 by per-stream caps, 14 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 20 of 48 eligible — 28 held back (15 by per-stream caps, 13 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
 _Held by per-stream caps: 15 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (14), desk-tools (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
@@ -152,7 +152,7 @@ _Held by per-stream caps: 15 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: a84199777 2026-11-15T19:13:24Z_
+_last regen: 0e4e2f9af 2026-11-15T20:35:18Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: a84199777 2026-11-15T19:13:24Z_
+_last regen: 0e4e2f9af 2026-11-15T20:35:18Z_
 
 **Progress:** 36/98 brief items done.
 

@@ -178,9 +178,11 @@ reviewable artifact, not a run.
   git push
   ```
 - `assay-statusgen.yml` — sign-off digest part: the hourly `reconcile` job gains a read-only
-  step, before its compute step, that runs `statusgen --signoff-digest` on the fresh clone of
-  main and writes the digest to the tick's job summary. It holds no token, posts no issue or
-  comment, and a could-not-check digest warns without failing the tick. The same step is in the
+  step, before its compute step, that runs `statusgen --signoff-digest --acceptance-forge` on
+  the fresh clone of main and writes the digest to the tick's job summary. Its only credential
+  is the job's own read-only `github.token` (as `GITHUB_TOKEN`, for `--acceptance-forge`), never
+  an App token. It posts no issue or comment, and a could-not-check digest warns without failing
+  the tick. The same step is in the
   live file and this copy; `TestReconcileSignoffDigestStep` and
   `TestReconcileSignoffDigestStepRuns` in `statusgen` pin and execute it on both.
 - `winparity.yml` — the Windows-build ↔ Makefile target-parity gate (#665). Runs
