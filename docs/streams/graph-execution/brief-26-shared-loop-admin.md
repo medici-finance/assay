@@ -422,11 +422,21 @@ a delivered current-owner repair records reuse and requalification, not new deli
 | Follow-ons: canonical ownership, perf-v3/unknown usage, no separate Kubernetes/controller launch owner | /42 | 1,2,4; real adapters/cutovers remain /22,/27,/21 and existing consumer owners |
 | Human acceptance and independent exact-subject full-/26 Evidence | /43 | 3–15 rerun all parent commands; decision #5492 remains open |
 
+Delivery record, added at the 2026-11-14 merge of main: the /40 runner move landed
+as increment 1 of #5492 in merged PR #5903 (merge aae4fbf71; the move is 957f953b7).
+The old `tools/desk/internal/cellprocess` package is gone and `loopadmin/process`
+holds the runner. In the table above, the three /40 Task 1 rows (move, importer
+migration, audit re-key) and the startup-item rows map to the same /40 owner and
+rows; only their state changed. /40 is recorded as delivered but is not retired: its
+scope, rows and gate are unchanged, and independent verification and the human gate
+still own its acceptance. /40 row 6 was amended to exclude the two provenance notes
+that name the former location.
+
 ### Dispatch and review limits
 
 No open PR among the 47 current open changes listed a /40–43 body reference or
 changed a /40–43 brief file at the pickup check; all file lists were complete.
-Main at the recorded source has none of those paths. These numbers are proposed,
+Main at the recorded source had none of those paths; /40 has since been delivered by merged PR #5903 (see below). These numbers are proposed,
 not an exclusive reservation; recheck main/open changes before each pickup. No
 existing work or review is closed, superseded or certified by this authoring.
 The parent claim is acknowledged here and in the draft handoff; decomposition
