@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "1.0.84",
+  "version": "1.0.85",
   "files": {
     ".cursor/references/claude-code.md": "e516df336b5f36b2809b27d058b223d02ad6477ec21fe6b7f66b764bfdd8bf98",
     ".cursor/references/codex.md": "1b53dee41663e068838624783661337e393efe34656e514eddecf678b8325895",
@@ -12,7 +12,7 @@
     ".cursor/references/milestone-authoring.md": "f510d0d74761d1bb7840f26860eb33ac375b9e838678a4c8c45fcf6af4ac6f00",
     ".cursor/references/standing-note.md": "2f2868fdd8f122903e30e1b720a0efb7940165946e379adad2e6378a4d4e58c0",
     ".cursor/references/tick-contract.md": "65e6ac141091a31120f5eefd126891409ed1a92c376d6ef3f99fd8ea52e86ee7",
-    ".cursor/rules/assay.mdc": "81683163d62686bfdac3ffb9c7104afd539322d2feca4bad150a78ff2a25bac8",
+    ".cursor/rules/assay.mdc": "14e21ca90a1e4339fa7afd30aee2b0444dfaad7b18da543b27ece34f676bd90c",
     ".cursor/skills/adopt/SKILL.md": "e438b5a1993ca87f9e90167e01b7beda8ea772d2378bf7baeb88f0dc3bba9c5c",
     ".cursor/skills/ask-decision/SKILL.md": "dd56d7f814c1833eb8a8913ff218709574641a01aa83d76dbcaaaec412783db9",
     ".cursor/skills/author-brief/SKILL.md": "963cb1825d63f0b152f2133e1834578d688d72396e68abfd51543221615e1679",
@@ -44,5 +44,5 @@
     ".cursor/skills/worker-desk/SKILL.md": "770c383d0bbc0325ab8a3e2193ca58632c72064197bfd89caad659849bfe5d49",
     ".cursor/skills/worker-desk/references/dispatch-runbook.md": "61f6196d7830a57b9ef84c2cf4b2d4862a62207625893fc74e91f0e878b8672b"
   },
-  "bindingsSha256": "77507b44e61222a36671bb681f30be9bcb81521ce28f99013d3bacbf0b6a8b55"
+  "bindingsSha256": "b620b8c33275d916fddd27bbfa16cca265356260e1fd604a84b2f2172e1e6970"
 }
