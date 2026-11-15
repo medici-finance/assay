@@ -384,7 +384,7 @@ func TestScanPublishScrubBoundary(t *testing.T) {
 		{"public root", public, url(public), homeRepo, homeRepo, onlyTyped},
 		{"unlisted root", unlisted, url(unlisted), homeRepo, homeRepo, onlyTyped},
 		{"private root", private, url(private), homeRepo, homeRepo, all},
-		{"private root, scp-style origin", private, "git@example.com:" + private + ".git", homeRepo, homeRepo, all},
+		{"private root, scp-style origin", private, "git@github.com:" + private + ".git", homeRepo, homeRepo, all},
 		{"public root scanning an issue from a private repo", public, url(public), private, homeRepo, onlyTyped},
 		{"private root scanning an issue from a public repo", private, url(private), public, homeRepo, all},
 		{"home marked private, target public", public, url(public), homeRepo, homeRepo, onlyTyped},
@@ -468,4 +468,68 @@ func treeText(t *testing.T, root string) string {
 		return nil
 	})
 	return b.String()
+}
+
+// TestScanPublishPublicAllowlist — under a public root every string field of a judgment must be a
+// closed shape: prose in author_tier or in any verification.source field is held back, named with
+// its field, and never reaches the tree. A typed repair and a full typed verification block pass.
+//
+// regression: F-judged-free-text-public — the scrub listed four free-text fields and published the rest of the record whole.
+func TestScanPublishPublicAllowlist(t *testing.T) {
+	const prose = "see the internal runbook at the staging bastion"
+	home := scanHomeRepo()
+	item := fmt.Sprintf("%s#77", home)
+	verified := func(mut func(*issueflow.IntakeHandoff)) issueflow.IntakeHandoff {
+		h := pubRepair(item, pubOpenedA, 1, item)
+		h.Verification = &issueflow.Handoff{Schema: issueflow.HandoffSchema, Disposition: issueflow.Repair, DecidingRole: "intake-desk", Successor: item,
+			Source: issueflow.HandoffSource{Repo: home, Brief: "alpha/01", SourceVersion: "1", SourceRevision: "0123abcd", ReceiptID: "receipt-1", CaseID: "repair/existing", Rows: []int{1, 2}, BlockerRef: "#12"}}
+		if mut != nil {
+			mut(&h)
+		}
+		return h
+	}
+	cases := []struct {
+		name  string
+		h     issueflow.IntakeHandoff
+		field string // "" = published
+	}{
+		{"typed repair", pubRepair(item, pubOpenedA, 1, item), ""},
+		{"typed verification block", verified(nil), ""},
+		{"author_tier prose", verified(func(h *issueflow.IntakeHandoff) { h.AuthorTier = prose }), "author_tier"},
+		{"source_version prose", verified(func(h *issueflow.IntakeHandoff) { h.Verification.Source.SourceVersion = prose }), "verification.source.source_version"},
+		{"source_revision prose", verified(func(h *issueflow.IntakeHandoff) { h.Verification.Source.SourceRevision = prose }), "verification.source.source_revision"},
+		{"receipt_id prose", verified(func(h *issueflow.IntakeHandoff) { h.Verification.Source.ReceiptID = prose }), "verification.source.receipt_id"},
+		{"case_id prose", verified(func(h *issueflow.IntakeHandoff) { h.Verification.Source.CaseID = prose }), "verification.source.case_id"},
+		{"overlong evidence", pubRepair(item, pubOpenedA, 1, "F-"+strings.Repeat("a", 200)), "evidence"},
+		{"external_role prose", func() issueflow.IntakeHandoff { h := pubRepair(item, pubOpenedA, 1, item); h.ExternalRole = prose; return h }(), "external_role"},
+		{"deciding_role prose", func() issueflow.IntakeHandoff { h := pubRepair(item, pubOpenedA, 1, item); h.DecidingRole = prose; return h }(), "deciding_role"},
+		{"successor prose", func() issueflow.IntakeHandoff { h := pubRepair(item, pubOpenedA, 1, item); h.Successor = prose; return h }(), "successor"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root, dir := pubRoot(t)
+			path := pubPlaceholder(t, dir, home, 77)
+			var res scanPublishResult
+			var err error
+			stderr := captureStderr(t, func() {
+				res, err = publishHandoffs(root, scanPublishOpts{Judgments: pubLog(t, tc.h)}, false, io.Discard)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			published := pubParse(t, path).Handoff != ""
+			if tc.field == "" {
+				if !published || res.Published != 1 {
+					t.Fatalf("a closed-shape judgment was held back: %+v\n%s", res, stderr)
+				}
+				return
+			}
+			if published || res.Unpublished != 1 || !strings.Contains(stderr, tc.field) {
+				t.Fatalf("published=%v res=%+v, want unpublished naming %q:\n%s", published, res, tc.field, stderr)
+			}
+			if strings.Contains(treeText(t, root), "staging bastion") {
+				t.Fatal("prose from a withheld field reached the tree")
+			}
+		})
+	}
 }

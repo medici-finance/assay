@@ -335,3 +335,75 @@ func TestScanCarrierLane_CoalesceTwoPassRealGit(t *testing.T) {
 		t.Fatalf("the open branch should carry the fresh delta plus both coalesced ones:\n%s", got)
 	}
 }
+
+// TestScanCarrierLane_CompanionFollowsPlaceholder — a published handoff companion is carried by
+// whichever carrier carries its placeholder. Real git; only the outward binaries are stubbed.
+//
+// regression: F-judged-no-publisher — step 2b restored a carried placeholder but kept its uncarried
+// companion, so a fresh carrier committed the companion alone and the judgment was never published.
+func TestScanCarrierLane_CompanionFollowsPlaceholder(t *testing.T) {
+	isolatedDeskHome(t)
+	base := t.TempDir()
+	origin := filepath.Join(base, "origin.git")
+	root := filepath.Join(base, "target")
+	scanGit(t, base, "init", "--bare", "-b", "main", origin)
+	scanGit(t, base, "clone", origin, root)
+	scanGit(t, root, "checkout", "-b", "main")
+	if err := os.WriteFile(filepath.Join(root, "seed.txt"), []byte("seed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scanGit(t, root, "add", "seed.txt")
+	scanGit(t, root, "commit", "-m", "seed")
+	scanGit(t, root, "push", "origin", "main")
+
+	carriedMD := filepath.ToSlash(filepath.Join(deskkit.ScanDir, "issue-7.md"))
+	exec := Exec(func(dir, name string, args ...string) (string, error) {
+		switch name {
+		case "git":
+			return scanGit(t, dir, args...), nil
+		case "statusgen":
+			d := filepath.Join(dir, deskkit.ScanDir)
+			if err := os.MkdirAll(d, 0o755); err != nil {
+				return "", err
+			}
+			for _, f := range []string{"issue-7.md", "issue-7.handoff.json", "issue-8.md"} {
+				if err := os.WriteFile(filepath.Join(d, f), []byte("x\n"), 0o600); err != nil {
+					return "", err
+				}
+			}
+			return "", nil
+		case "deskscanbody":
+			return "derived\n", nil
+		case "deskpr":
+			if args[0] == "create" || args[0] == "update" {
+				scanGit(t, dir, "push", "origin", "HEAD:refs/heads/"+strings.TrimSpace(scanGit(t, dir, "branch", "--show-current")))
+			}
+			return "", nil
+		}
+		return "", fmt.Errorf("unexpected command %s", name)
+	})
+	lane := scanCarrierPRLane{exec: exec, write: func(string, string) error { return nil }}
+	r := laneReq(t, scanItem("medici-finance/assay", string(LaneScanCarrierPR)), nil)
+	r.Root, r.Worktree, r.DryRun = root, filepath.Join(base, "wt"), false
+	r.Branch = "chore/intake-scan-2026-08-24-1140"
+	r.Carried = map[string]int{carriedMD: 41}
+	if _, err := lane.Execute(r); err != nil {
+		t.Fatalf("lane: %v", err)
+	}
+	got := scanGit(t, origin, "ls-tree", "-r", "--name-only", r.Branch)
+	if !strings.Contains(got, "issue-8.md") {
+		t.Fatalf("the carrier's own file was not committed:\n%s", got)
+	}
+	if strings.Contains(got, "issue-7.md") || strings.Contains(got, "issue-7.handoff.json") {
+		t.Fatalf("the pair another carrier carries was split or duplicated:\n%s", got)
+	}
+}
+
+func TestCarriedBy_TheCompanionFollowsItsPlaceholder(t *testing.T) {
+	c := map[string]int{"d/issue-7.md": 41}
+	for path, want := range map[string]bool{"d/issue-7.md": true, "d/issue-7.handoff.json": true, "d/issue-8.handoff.json": false, "d/issue-8.md": false} {
+		if _, ok := carriedBy(c, path); ok != want {
+			t.Errorf("carriedBy(%s) = %v, want %v", path, ok, want)
+		}
+	}
+}

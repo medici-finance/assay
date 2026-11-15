@@ -19,6 +19,7 @@ gate-why: >-
   human confirms where the scrub boundary sits for that automated copy, and confirms the
   refusal ruled as D2 in the scoping document.
 decision-trigger: start
+decision-issue: 6364
 issues: []
 outcome: none
 schema: brief-v2

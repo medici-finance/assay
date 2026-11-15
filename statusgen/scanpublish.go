@@ -73,20 +73,93 @@ func isHandoffTypedRef(s string) bool {
 	return false
 }
 
+// Closed shapes for the string fields a public root may carry. Each is bounded, so a field that
+// passes is a reference or an opaque id and cannot work as a text channel.
+var (
+	pubItemRef   = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}/[A-Za-z0-9_.-]{1,64}#[1-9][0-9]{0,8}$`)
+	pubSuccessor = regexp.MustCompile(`^(([A-Za-z0-9_.-]{1,64}/[A-Za-z0-9_.-]{1,64})?#[1-9][0-9]{0,8}|[a-z0-9][a-z0-9-]{0,39}/[0-9]{1,4})$`)
+	pubSlug      = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+	pubOpaque    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$`)
+	pubVersion   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$`)
+	pubRepoRef   = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}/[A-Za-z0-9_.-]{1,64}$`)
+)
+
+// pubEnum reports whether v is empty (when allowEmpty) or one of the listed values.
+func pubEnum(v string, allowEmpty bool, vals ...string) bool {
+	if v == "" {
+		return allowEmpty
+	}
+	for _, x := range vals {
+		if v == x {
+			return true
+		}
+	}
+	return false
+}
+
 // publicFormRefusal names the first field that keeps a judgment out of a public repository, or "".
-// A public root takes a judgment only when its evidence is a typed reference and its required action
-// and wake condition are empty (the verification block repeats the required action, so it is held to
-// the same rule).
+// The check is an ALLOWLIST over every string field of the record: a public root takes a judgment
+// only when each string field is a closed enum value, a bounded typed reference or an opaque id,
+// and the free-text fields (required action, wake condition, in the verification block too) are
+// empty. A field added to the record later is refused by default until it is listed here.
 func publicFormRefusal(h issueflow.IntakeHandoff) string {
+	closed := func(field string) string { return field + " is not a closed shape" }
 	switch {
-	case !isHandoffTypedRef(h.Evidence):
+	case !isHandoffTypedRef(h.Evidence) || len(h.Evidence) > 96:
 		return "evidence is not a typed reference"
 	case h.RequiredAction != "":
 		return "required_action is free text"
 	case h.WakeCondition != "":
 		return "wake_condition is free text"
-	case h.Verification != nil && h.Verification.RequiredAction != "":
-		return "verification.required_action is free text"
+	case h.Schema != issueflow.IntakeHandoffSchema:
+		return closed("schema")
+	case !pubItemRef.MatchString(h.Item):
+		return closed("item")
+	case !pubSlug.MatchString(h.DecidingRole):
+		return closed("deciding_role")
+	case !pubEnum(string(h.Disposition), false, string(issueflow.Unresolved), string(issueflow.NeedsScoping), string(issueflow.Repair), string(issueflow.External), string(issueflow.Duplicate)):
+		return closed("disposition")
+	case !pubEnum(h.Route, true, "authoring", "repair", "qualification", "duplicate", "external"):
+		return closed("route")
+	case h.Successor != "" && !pubSuccessor.MatchString(h.Successor):
+		return closed("successor")
+	case !pubEnum(h.AuthorTier, true, "any", "strong"):
+		return closed("author_tier")
+	case !pubEnum(h.ExternalRole, true, "human", "operator", "brief-author", "verifier"):
+		return closed("external_role")
+	}
+	if v := h.Verification; v != nil {
+		src := v.Source
+		switch {
+		case v.RequiredAction != "":
+			return "verification.required_action is free text"
+		case !issueflow.SupportsHandoff(v.Schema):
+			return closed("verification.schema")
+		case !pubRepoRef.MatchString(src.Repo):
+			return closed("verification.source.repo")
+		case !pubSuccessor.MatchString(src.Brief):
+			return closed("verification.source.brief")
+		case !pubVersion.MatchString(src.SourceVersion):
+			return closed("verification.source.source_version")
+		case !pubOpaque.MatchString(src.SourceRevision):
+			return closed("verification.source.source_revision")
+		case !pubOpaque.MatchString(src.ReceiptID):
+			return closed("verification.source.receipt_id")
+		case !pubOpaque.MatchString(src.CaseID):
+			return closed("verification.source.case_id")
+		case !pubSuccessor.MatchString(src.BlockerRef):
+			return closed("verification.source.blocker_ref")
+		case len(src.Rows) > 64:
+			return closed("verification.source.rows")
+		case !pubEnum(string(v.Disposition), false, string(issueflow.Unresolved), string(issueflow.NeedsScoping), string(issueflow.Repair), string(issueflow.External), string(issueflow.Duplicate)):
+			return closed("verification.disposition")
+		case !pubSlug.MatchString(v.DecidingRole):
+			return closed("verification.deciding_role")
+		case v.Successor != "" && !pubSuccessor.MatchString(v.Successor):
+			return closed("verification.successor")
+		case !pubEnum(v.ExternalRole, true, "human", "operator", "brief-author", "verifier"):
+			return closed("verification.external_role")
+		}
 	}
 	return ""
 }
