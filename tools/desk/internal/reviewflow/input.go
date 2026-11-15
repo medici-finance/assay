@@ -4,6 +4,7 @@ import "strings"
 
 type ChangeFact struct {
 	Title, Body, MergeStateStatus string
+	Mergeable                     string `json:",omitempty"`
 	IsDraft                       bool
 	Labels                        []string
 	Checks                        []CheckFact
@@ -12,15 +13,16 @@ type MergeVerdict int
 
 const (
 	MergeVerdictOK      MergeVerdict = iota // a recognised state that permits a merge
-	MergeVerdictBlocked                     // DIRTY / BLOCKED — definitely not mergeable
+	MergeVerdictBlocked                     // DIRTY — merge conflicts
 	MergeVerdictUnknown                     // could-not-check: UNKNOWN, absent, or unrecognised
 	// MergeVerdictBehind (#54) — BEHIND: the base has moved since the head was last synced.
 	// The review's "correctness" was established against a `main` that is now stale.
 	MergeVerdictBehind
+	MergeVerdictPolicyBlocked // BLOCKED — forge policy hold, not a conflict verdict
 )
 
 // ReadMergeState maps the raw `mergeStateStatus` string to its verdict. The recognised
-// mergeable set is GitHub's own enum minus the two blocking values and BEHIND: CLEAN,
+// mergeable set is GitHub's own enum minus conflicts, policy holds and BEHIND: CLEAN,
 // HAS_HOOKS, UNSTABLE (only non-required checks are failing), and DRAFT (the board flips
 // drafts, so draft-ness is not a merge-state objection here). BEHIND (base moved on) is its
 // own verdict (#54) — a merge is still mechanically possible, but the review that approved
@@ -31,8 +33,10 @@ func ReadMergeState(s string) MergeVerdict {
 		return MergeVerdictOK
 	case "BEHIND":
 		return MergeVerdictBehind
-	case "DIRTY", "BLOCKED":
+	case "DIRTY":
 		return MergeVerdictBlocked
+	case "BLOCKED":
+		return MergeVerdictPolicyBlocked
 	default:
 		return MergeVerdictUnknown
 	}
@@ -69,6 +73,7 @@ func BuildClassifyInput(p ChangeFact, rs ReviewState, ciRequired bool, zeroCI st
 	humanGate, hgReason := HumanGateDeclared(p.Title, p.Body, p.Labels)
 
 	mv := ReadMergeState(p.MergeStateStatus)
+	mergeable := strings.ToUpper(strings.TrimSpace(p.Mergeable))
 
 	return ClassifyInput{
 		Ever: rs.Ever, AtHead: rs.AtHead, Blocking: rs.Blocking,
@@ -79,7 +84,9 @@ func BuildClassifyInput(p ChangeFact, rs ReviewState, ciRequired bool, zeroCI st
 		CiUnknown:              unknownChecks,
 		HumanGate:              humanGate,
 		HumanGateReason:        hgReason,
-		MergeConflict:          mv == MergeVerdictBlocked,
+		MergeConflict:          mv == MergeVerdictBlocked || mergeable == "CONFLICTING",
+		MergePolicyBlocked:     mv == MergeVerdictPolicyBlocked,
+		MergeableRaw:           mergeable,
 		MergeStateUnknown:      mv == MergeVerdictUnknown,
 		MergeBehind:            mv == MergeVerdictBehind,
 		MergeStateRaw:          p.MergeStateStatus,

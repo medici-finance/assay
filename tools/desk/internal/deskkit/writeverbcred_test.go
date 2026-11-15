@@ -10,8 +10,18 @@ import (
 	"testing"
 )
 
+// neutralLoop clears the ambient DESK_LOOP for a test that is about the credential read and
+// not the loop-role check (TestWriteVerbCredLoopRole sets the loop per case). The helper runs
+// RequireLoopRole first, so a window whose loop acts as another role would otherwise see a
+// loop-role refusal in place of what the test asserts (#5480 5480-c4).
+func neutralLoop(t *testing.T) {
+	t.Helper()
+	t.Setenv(loopEnv, "")
+}
+
 // regression: #5457
 func TestWriteVerbCredGitLabReadOnly(t *testing.T) {
+	neutralLoop(t)
 	repo := ForgeRepo{Owner: "example-org", Name: "gitlab-pilot"}
 	rosterWithForge(t, repo.Slug(), "gitlab")
 	custody := plantCustody(t, "worker", "gitlab-pat-stub")
@@ -39,6 +49,7 @@ func TestWriteVerbCredGitLabReadOnly(t *testing.T) {
 
 // regression: #5457
 func TestWriteVerbCredGitLabRefuses(t *testing.T) {
+	neutralLoop(t)
 	repo := ForgeRepo{Owner: "example-org", Name: "gitlab-pilot"}
 	rosterWithForge(t, repo.Slug(), "gitlab")
 	t.Setenv(EnvConfigHome, t.TempDir()) // nothing provisioned
@@ -60,6 +71,7 @@ func TestWriteVerbCredGitLabRefuses(t *testing.T) {
 
 // regression: #5457
 func TestWriteVerbCredGitHubMints(t *testing.T) {
+	neutralLoop(t)
 	repo := ForgeRepo{Owner: "example-org", Name: "tracker"}
 	rosterWithForge(t, repo.Slug(), "github")
 	plantCustody(t, "worker", "gitlab-pat-stub") // present, and must NOT be read
@@ -77,6 +89,7 @@ func TestWriteVerbCredGitHubMints(t *testing.T) {
 
 // regression: #5457
 func TestWriteVerbCredEmptyRefused(t *testing.T) {
+	neutralLoop(t)
 	repo := ForgeRepo{Owner: "example-org", Name: "tracker"}
 	rosterWithForge(t, repo.Slug(), "github")
 	minterDetector(t, plantAppToken(t, "   "))
@@ -89,6 +102,7 @@ func TestWriteVerbCredEmptyRefused(t *testing.T) {
 
 // regression: #5457
 func TestWriteVerbCredEmptyGitLab(t *testing.T) {
+	neutralLoop(t)
 	repo := ForgeRepo{Owner: "example-org", Name: "gitlab-pilot"}
 	rosterWithForge(t, repo.Slug(), "gitlab")
 	plantCustody(t, "worker", "   \n")

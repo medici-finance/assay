@@ -508,6 +508,10 @@ func (e *fleetEnv) plantCredential(t *testing.T) []string {
 		"WORKER_APP_ID=" + fixtureWorkerAppID,
 		"WORKER_INSTALL_ID=" + fixtureWorkerInstallID,
 		"WORKER_TOKEN=" + cache,
+		// Blank the other inputs the provider can mint from, so an operator's own App key in
+		// os.Environ() can never be used even if the planted cache were stale.
+		"WORKER_PEM=",
+		"WORKER_APP=",
 	}
 }
 
