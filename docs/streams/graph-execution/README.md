@@ -91,7 +91,7 @@ or removing any human gate (spec §5 states the divergence).
 | 08 | [Signal-triggered pattern — incident and regression](brief-08-signal-triggered-pattern.md) | 2 | M | todo | — | — |
 | 09 | [Versioned workflow instances and shared identity](brief-09-instance-contract.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | 10 | [Typed advice and separate deterministic policy records](brief-10-decision-contract.md) | 0 | M | done | 2026-09-30 assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1499 @ f4c4e5222b775331f2d255daf981984b029023b3) |
-| 11 | [Optional pinned Laya provider with explicit CPU and GPU profiles](brief-11-laya-local-provider.md) | 1 | M | todo | — | — |
+| 11 | [Optional pinned Laya provider with explicit CPU and GPU profiles](brief-11-laya-local-provider.md) | 1 | M | blocked | — | — |
 | 12 | [Reproducible decision evaluation and calibration manifests](brief-12-decision-evaluation.md) | 2 | M | todo | — | — |
 | 13 | [Deterministic admission over facts and bounded probabilistic advice](brief-13-agentic-admission.md) | 1 | M | implemented | — | — |
 | 14 | [Bind admission and graph eligibility at the dispatch boundary](brief-14-admission-dispatch-binding.md) | 6 | M | todo | — | — |
