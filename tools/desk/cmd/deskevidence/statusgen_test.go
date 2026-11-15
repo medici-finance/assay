@@ -140,7 +140,7 @@ func TestApprovalForgeCustody(t *testing.T) {
 	t.Cleanup(func() { acceptanceForge, ghToken, ghTokenForge = oldFlag, oldToken, oldForge })
 	for _, forge := range []deskkit.ForgeKind{deskkit.ForgeGitLab, ""} {
 		ghTokenForge = forge
-		for _, kind := range []closureAudit{auditLint, auditBrief, auditClosure, auditFlip, auditVerdict} {
+		for _, kind := range []closureAudit{auditLint, auditBrief, auditClosure, auditFlip, auditVerdict, auditDecision} {
 			cmd := statusgenAudit(context.Background(), kind, "example-root")
 			if !deskkit.IsUnverifiable(cmd.Err) {
 				t.Errorf("%s accepts an unproven or foreign-forge approval credential", kind)

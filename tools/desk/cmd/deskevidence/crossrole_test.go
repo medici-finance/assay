@@ -33,12 +33,18 @@ func TestVerifierMintCrossRole(t *testing.T) {
 				t.Fatal(err)
 			}
 			restore := deskkit.SetRoleTokenMinter(func(role, owner string) (string, string, error) {
+				if role != "verifier" || owner != "example-org" {
+					t.Fatalf("wrong role/repository custody: role=%s owner=%s", role, owner)
+				}
 				return cred, "", nil
 			})
 			t.Cleanup(restore)
 
 			if err := mintVerifierToken("example-org/tracker"); err != nil {
 				t.Fatalf("mintVerifierToken as loop %q: %v", tc.loop, err)
+			}
+			if os.Getenv("DESK_LOOP") != tc.loop {
+				t.Fatal("credential read changed the actual caller loop")
 			}
 			entries, err := deskkit.LoadEntries()
 			if err != nil {

@@ -224,9 +224,11 @@ credited.
   still holds the landing, and a refuted approval still refuses it. Retain the diagnostic
   and route the missing capability; never clear Git configuration, substitute an origin
   or borrow a stored human login to make authority pass.
-  The landing tool binds its own minted verifier credential only to these host audits;
-  other audits receive only a noncredential refusal marker that closes stored-login
-  fallback. Local flip corroboration requires the current
+  The landing tool binds its own minted GitHub verifier credential to opted-in host audits,
+  including recorded human rulings. Missing or foreign custody holds before launch. Without
+  opt-in, audits receive a noncredential refusal marker that closes stored-login fallback;
+  a decision gate requiring a recorded ruling remains held because it cannot authenticate.
+  Local flip corroboration requires the current
   verifier session's own authority and a proven authorized origin, and never changes roles.
   Other forges retain the ordinary landing path; unsupported GitHub approval reads remain held.
 - Record Evidence and the verdict. Land Evidence as it is produced — a PASS in hand and not

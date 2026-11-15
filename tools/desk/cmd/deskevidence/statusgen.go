@@ -61,7 +61,7 @@ func statusgenAudit(ctx context.Context, kind closureAudit, root string, args ..
 		return cmd
 	}
 	argv = append(argv, args...)
-	permitted := acceptanceForge && kind != auditDecision
+	permitted := acceptanceForge
 	if permitted {
 		argv = append(argv, "--acceptance-forge")
 	}
@@ -80,11 +80,11 @@ func statusgenAudit(ctx context.Context, kind closureAudit, root string, args ..
 	cmd.Env = env
 	if permitted {
 		if strings.TrimSpace(ghToken) == "" {
-			cmd.Err = deskkit.Unverifiable("approval audit requires a minted verifier credential; ambient forge credentials are not used", nil)
+			cmd.Err = deskkit.Unverifiable("host audit requires a minted verifier credential; ambient forge credentials are not used", nil)
 			return cmd
 		}
 		if ghTokenForge != deskkit.ForgeGitHub {
-			cmd.Err = deskkit.Unverifiable("approval audit requires GitHub verifier custody; an unknown or foreign-forge credential is not forwarded", nil)
+			cmd.Err = deskkit.Unverifiable("host audit requires GitHub verifier custody; an unknown or foreign-forge credential is not forwarded", nil)
 			return cmd
 		}
 		cmd.Env = append(env, "GH_TOKEN="+ghToken, "GH_HOST=github.com")

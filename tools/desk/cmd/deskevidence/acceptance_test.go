@@ -30,6 +30,7 @@ func TestAcceptanceChildPermission(t *testing.T) {
 		{"outcome", func() { checkVerifiedClosure(dir, "vf/01") }},
 		{"lint", func() { statusgenLintAt(dir) }},
 		{"flip", func() { statusgenVerifyFlip(dir, "vf/01", "abc", "verifier", true) }},
+		{"decision", func() { statusgenDecisionGateAt(dir, "HEAD") }},
 	}
 	for _, enabled := range []bool{false, true} {
 		for _, c := range calls {
@@ -107,7 +108,7 @@ exit 1
 					_ = os.Remove(log)
 					err := c.run()
 					raw, readErr := os.ReadFile(log)
-					permitted := enabled && c.name != "decision"
+					permitted := enabled
 					if permitted && !minted {
 						if !os.IsNotExist(readErr) || !deskkit.IsUnverifiable(err) {
 							t.Fatalf("missing custody launched child or did not hold: child=%q error=%v", raw, err)

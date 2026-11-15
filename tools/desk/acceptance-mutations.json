@@ -6,5 +6,12 @@
     "old": "\t\targv = append(argv, \"--acceptance-forge\")",
     "new": "\t\t// mutation: explicit approval-read permission is not forwarded"
   },
-  "mutations": []
+  "mutations": [
+    {
+      "name": "withhold explicit recorded-ruling permission and credential from the decision audit",
+      "file": "cmd/deskevidence/statusgen.go",
+      "old": "\tpermitted := acceptanceForge",
+      "new": "\tpermitted := acceptanceForge && kind != auditDecision"
+    }
+  ]
 }
