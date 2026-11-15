@@ -53,7 +53,7 @@ func TestShellOracleParity(t *testing.T) {
 		{"label-state", "house/claude/tmux/check", `sed 's/?     could-not-check: labels:/MISS  labels:/'`},
 		{"false-clean-summary", "house/claude/tmux/check", `sed 's/^\[check\] every checked.*/[check] all preconditions met/'`},
 		{"new-label-state", "house/github/-/new", `sed 's/labels: NOT ENSURED/labels: ensured/'`},
-		{"other-diagnostic", "house/claude/tmux/check", `cat; printf '\nunexpected diagnostic\n'`},
+		{"other-diagnostic", "house/claude/tmux/check", `cat; printf 'unexpected diagnostic\n'`},
 		{"exit-status", "house/claude/tmux/check", `cat`},
 		{"unknown-set-notice", "k8s/codex/tmux/set", `cat; printf '[set] notice: unexpected extension\n'`},
 		{"second-site", "container/claude/tmux/status", `cat; printf '  ?     could-not-check: labels: unexpected second site\n'`},
