@@ -258,6 +258,9 @@ type createdFlag struct {
 	Inode   uint64 `json:"inode"`
 	Ctime   string `json:"ctime"`
 	Created string `json:"created"`
+	// By is the creating invocation's own id when one asked to be told its flags apart (a cycle,
+	// which lifts only the stops it created); empty for an operator's plain pause.
+	By string `json:"by,omitempty"`
 }
 
 const pauseRecordSchema = "cellctl-pause-record-v1"
@@ -289,7 +292,10 @@ func (l *interimLifecycle) writePauseRecord(rec pauseRecord) error {
 }
 
 // Pause creates each flag only if it is absent, and records each one it created.
-func (l *interimLifecycle) Pause(roles []string) ([]string, error) {
+func (l *interimLifecycle) Pause(roles []string) ([]string, error) { return l.pauseAs(roles, "") }
+
+// pauseAs is Pause with each created flag's record stamped with by, the creating invocation's id.
+func (l *interimLifecycle) pauseAs(roles []string, by string) ([]string, error) {
 	targets := []string{l.pauseFlag("")}
 	if len(roles) > 0 {
 		targets = targets[:0]
@@ -325,7 +331,7 @@ func (l *interimLifecycle) Pause(roles []string) ([]string, error) {
 			fmt.Fprintf(os.Stderr, "NOTICE: pause created %s but cannot record its identity (%v); resume will leave it\n", p, err)
 			continue
 		}
-		rec.Flags = append(rec.Flags, createdFlag{Path: p, Inode: ino, Ctime: ctime, Created: cellop.Stamp(l.now())})
+		rec.Flags = append(rec.Flags, createdFlag{Path: p, Inode: ino, Ctime: ctime, Created: cellop.Stamp(l.now()), By: by})
 		created = append(created, p)
 	}
 	if len(created) > 0 {
@@ -343,6 +349,12 @@ func (l *interimLifecycle) Resume() ([]string, []string, error) { return l.resum
 // resumeOnly is Resume limited to the recorded flags in allowed (nil: every recorded flag);
 // a recorded flag outside allowed stays recorded and in place.
 func (l *interimLifecycle) resumeOnly(allowed map[string]bool) ([]string, []string, error) {
+	return l.resumeWhere(func(f createdFlag) bool { return allowed == nil || allowed[f.Path] })
+}
+
+// resumeWhere is Resume limited to the recorded flags match selects; a recorded flag it does not
+// select stays recorded and in place.
+func (l *interimLifecycle) resumeWhere(match func(createdFlag) bool) ([]string, []string, error) {
 	rec, err := l.readPauseRecord()
 	if err != nil {
 		return nil, nil, err
@@ -350,7 +362,7 @@ func (l *interimLifecycle) resumeOnly(allowed map[string]bool) ([]string, []stri
 	var lifted, kept []string
 	var remain []createdFlag
 	for _, f := range rec.Flags {
-		if allowed != nil && !allowed[f.Path] {
+		if !match(f) {
 			remain = append(remain, f)
 			continue
 		}

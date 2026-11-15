@@ -1,0 +1,1 @@
+[set] notice: DESK_MODEL_DEFAULT is written but NOT read: this cell's harness is codex, which reads CODEX_MODEL_<role> and CODEX_MODEL_default, not the claude pins; set the codex key instead, or change CELL_HARNESS

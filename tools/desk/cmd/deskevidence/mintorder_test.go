@@ -95,13 +95,13 @@ func newLandingFixture(t *testing.T) *landingFixture {
 	oldBase := forgeAPIBase
 	forgeAPIBase = srv.URL
 	t.Cleanup(func() { forgeAPIBase = oldBase })
-	mintTokenFn = func(string) error {
+	mintTokenFn = func(string) (deskkit.RoleCredential, error) {
 		lf.mints++
 		if lf.mintErr != nil {
-			return lf.mintErr
+			return deskkit.RoleCredential{}, lf.mintErr
 		}
 		ghToken = fakeVerifierToken
-		return nil
+		return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
 	}
 
 	lf.api.files = map[string]string{fixtureBrief: fixturePlan}
@@ -368,10 +368,10 @@ func TestLandingUsesOneForgeForAdmissionAndWrite(t *testing.T) {
 			f, errBuf := setupFake(t)
 			var steps []string
 			var resolved, admitted deskkit.Forge
-			mintTokenFn = func(string) error {
+			mintTokenFn = func(string) (deskkit.RoleCredential, error) {
 				steps = append(steps, "mint")
 				ghToken = fakeVerifierToken
-				return nil
+				return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
 			}
 			forgeForFn = func(owner, name string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 				steps = append(steps, "forge")
@@ -443,10 +443,10 @@ func TestPreMintRefusalsNeverMint(t *testing.T) {
 				t.Setenv("VERIFIER_MAIN_OK", tc.mainOK)
 			}
 			var steps []string
-			mintTokenFn = func(string) error {
+			mintTokenFn = func(string) (deskkit.RoleCredential, error) {
 				steps = append(steps, "mint")
 				ghToken = fakeVerifierToken
-				return nil
+				return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
 			}
 			forgeForFn = func(string, string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 				steps = append(steps, "forge")

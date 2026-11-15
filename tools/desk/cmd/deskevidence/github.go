@@ -71,7 +71,8 @@ func forgeFor(owner, name string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 	return fg, fr, nil
 }
 
-// mintTokenFn mints the verifier token for a repo and sets ghToken. It is a package var so a
+// mintTokenFn returns the fixed verifier role credential for this invocation;
+// the existing forge hook also retains its baseline ghToken binding. It is a package var so a
 // test can inject a token without a real credential read; production binds it to mintVerifierToken.
 var mintTokenFn = mintVerifierToken
 
@@ -125,13 +126,13 @@ func publishEvidenceIdentityGate(dir string, receipt deskkit.VerifierReceipt) er
 // deskevidence lands Evidence as the verifier App by design, including for a verifier agent
 // a coordinator window dispatched, so under another loop the helper admits the audited
 // cross-role override (#6069) rather than refusing it. The reason names this verb.
-func mintVerifierToken(repoSlug string) error {
+func mintVerifierToken(repoSlug string) (deskkit.RoleCredential, error) {
 	cred, err := deskkit.WriteVerbRoleCredential("deskevidence", "verifier", repoSlug)
 	if err != nil {
-		return err
+		return deskkit.RoleCredential{}, err
 	}
 	ghToken = cred.Token
-	return nil
+	return cred, nil
 }
 
 // verifierBotDisplay is for MESSAGE TEXT only — never a comparison.

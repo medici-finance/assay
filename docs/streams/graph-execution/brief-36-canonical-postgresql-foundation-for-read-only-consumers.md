@@ -12,6 +12,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "The new CI job executes repository source with runner and checkout-token access, and the explicit database configuration handles credentials. Human acceptance reviews this boundary after disposable-fixture evidence; no operational service or database is authorized."
 decision-trigger: spec
 decision-issue: 5405
+ruling: "https://github.com/medici-finance/assay/issues/5405#issuecomment-6621165749"
 issues: []
 schema: brief-v2
 version: 3
@@ -90,7 +91,9 @@ The isolated PostgreSQL foundation is ready for independent review of its bounde
 
 Default if no answer: none — blocks until answered
 
-This blocks acceptance. Offline contract, source and disposable-container fixture work may proceed. No production connection, live migration, role grant, service enrollment, tool cutover or activation follows from this decision. The separate dependency installation blessing, passing tests, publication and merge do not supply this acceptance. The human records the selected option in their own account; a worker relay is not a ruling.
+**Recorded disposition:** [The human ruling on #5405](https://github.com/medici-finance/assay/issues/5405#issuecomment-6621165749) accepts the bounded PostgreSQL foundation in merged [PR #5418](https://github.com/medici-finance/assay/pull/5418), relying on independent security review and the correctness review of the credential, migration and CI boundary. It also required the PostgreSQL `test` job, including `-race`, and both review lanes to pass at that PR's merge candidate head. This records the ruling; it does not supply post-merge Verify evidence. The complete domain-store, mirror-retention, deployment and activation gates remain in place, and full /19 acceptance remains owed.
+
+This decision governed foundation acceptance. Offline contract, source and disposable-container fixture work was permitted before that acceptance. No production connection, live migration, role grant, service enrollment, tool cutover or activation follows from this decision. The separate dependency installation blessing, passing tests, publication and merge do not supply this acceptance. The human records the selected option in their own account; a worker relay is not a ruling.
 
 ## Ground rules
 
@@ -143,4 +146,4 @@ The real PostgreSQL rows are explicitly environment-bound (`check`), so the inde
 <!-- A NON-implementer supplies independent Verify evidence; no prospective row is claimed passed here. -->
 
 ## Review
-Gate: human. Acceptance follows concrete fixture/CI/credential-boundary evidence; source and disposable fixture work may proceed before that acceptance. No operational database, provider credentials, deployed service or irreversible production migration is in scope.
+Gate: human. The bounded foundation acceptance is recorded by the linked ruling on #5405; independent post-merge verification still owns the Verify table and Evidence. No operational database, provider credentials, deployed service or irreversible production migration is in scope. Complete domain-store, mirror-retention, deployment and activation gates remain unchanged.

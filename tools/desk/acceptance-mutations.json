@@ -1,10 +1,47 @@
 {
-  "test": "go test ./cmd/deskevidence -run '^TestAcceptanceChildPermission$' -count=1 -timeout 60s",
+  "test": "go test ./cmd/deskevidence -run '^(TestAcceptanceChildPermission|TestAcceptanceIsolation|TestApprovalChildCustody|TestAuditParallelCustody)$' -count=1 -timeout 60s",
   "control": {
     "name": "explicit approval-read permission not forwarded",
     "file": "cmd/deskevidence/main.go",
-    "old": "if acceptanceForge {",
-    "new": "if false && acceptanceForge {"
+    "old": "if o.acceptanceForge {",
+    "new": "if false && o.acceptanceForge {"
   },
-  "mutations": []
+  "mutations": [
+    {
+      "name": "force optional read permission into offline children",
+      "file": "cmd/deskevidence/main.go",
+      "old": "if o.acceptanceForge {",
+      "new": "if true || o.acceptanceForge {"
+    },
+    {
+      "name": "drop parsed invocation permission",
+      "file": "cmd/deskevidence/main.go",
+      "old": "options.acceptanceForge = true",
+      "new": "options.acceptanceForge = false"
+    },
+    {
+      "name": "drop outward invocation option binding",
+      "file": "cmd/deskevidence/writeflow.go",
+      "old": "&auditCtx{verb: \"commit\", options: options}",
+      "new": "&auditCtx{verb: \"commit\"}"
+    },
+    {
+      "name": "verdict gate drops invocation permission",
+      "file": "cmd/deskevidence/verdictgate.go",
+      "old": "statusgenAudit(context.Background(), auditVerdict, absRoot, options, args...)",
+      "new": "statusgenAudit(context.Background(), auditVerdict, absRoot, childOptions{}, args...)"
+    },
+    {
+      "name": "withhold explicit recorded-ruling credential from the decision audit",
+      "file": "cmd/deskevidence/statusgen.go",
+      "old": "\tpermitted := options.acceptanceForge",
+      "new": "\tpermitted := options.acceptanceForge && kind != auditDecision"
+    },
+    {
+      "name": "audit child borrows legacy forge-hook credential instead of invocation custody",
+      "file": "cmd/deskevidence/statusgen.go",
+      "old": "\"GH_TOKEN=\"+options.credential.Token",
+      "new": "\"GH_TOKEN=\"+ghToken"
+    }
+  ]
 }
