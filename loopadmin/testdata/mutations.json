@@ -1638,6 +1638,20 @@
     "new": "if err != nil || fresh.ID == \"\" {"
   },
   {
+    "test": "TestJournalIncarnationPaused",
+    "why": "A-reread-error-untested: a failed re-read of the operator source pauses the newer record the gate saw",
+    "file": "journal/incarnation.go",
+    "old": "if err != nil || (fresh.ID == seen.id && fresh.KeyRef == seen.key) {",
+    "new": "if err == nil && (fresh.ID == seen.id && fresh.KeyRef == seen.key) {"
+  },
+  {
+    "test": "TestJournalIncarnationPaused",
+    "why": "A-reread-error-untested: compare only the identity, so a key-only move of the operator source clears the record",
+    "file": "journal/incarnation.go",
+    "old": "if err != nil || (fresh.ID == seen.id && fresh.KeyRef == seen.key) {",
+    "new": "if err != nil || fresh.ID == seen.id {"
+  },
+  {
     "test": "TestNoGraphDependency",
     "why": "F-graph-offline: stop reading the local perfrec edge's own requirements",
     "file": "runner/request_test.go",

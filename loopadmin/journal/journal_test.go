@@ -367,6 +367,30 @@ func TestJournalIncarnationPaused(t *testing.T) {
 		t.Fatal("a record equal to the operator source must never be paused")
 	}
 	launchOK(j2, "inv-6")
+
+	// Order 2 with an unreadable re-read: the source proves nothing, so the
+	// newer record the gate saw is not paused (advisory A-reread-error-untested).
+	j3, c3, o3 := setup()
+	snap = snapshot(o3)
+	o3.rotate(testCell, "inc-b", "key-b")
+	must(t, Activate(ctx, c3, testCell, o3, StopConfirmation{Receipt: "stop-b"}))
+	seen = gateSeen(j3, snap)
+	o3.err = errors.New("operator state unavailable")
+	settle(j3, o3, seen)
+	o3.err = nil
+	if n := rows(t, ctx, c3, "SELECT count(*) FROM loopadmin.activation WHERE paused"); n != 0 {
+		t.Fatal("an unreadable re-read must pause nothing durably")
+	}
+	launchOK(j3, "inv-7")
+
+	// A source that moved only its key reference has still moved past the
+	// record: the identity alone does not clear it.
+	j4, c4, o4 := setup()
+	o4.rotate(testCell, "inc-a", "key-z")
+	settle(j4, o4, gateSeen(j4, snapshot(o4)))
+	if n := rows(t, ctx, c4, "SELECT count(*) FROM loopadmin.activation WHERE paused"); n != 1 {
+		t.Fatal("a record whose key the operator source moved past must be paused")
+	}
 }
 
 // TestJournalConfigRefuses pins the explicit-connection rules offline.
