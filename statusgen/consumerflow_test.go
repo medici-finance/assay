@@ -16,7 +16,11 @@ import (
 func v2ConsumerFixture(t *testing.T, configure func(*gitV2Fixture)) *gitV2Fixture {
 	t.Helper()
 	f := newGitV2Fixture(t)
-	f.ExtraFiles = map[string]string{"tools/x/go.sum": ""}
+	readmeBytes, err := os.ReadFile(filepath.Join("..", "docs", "streams", "witnesses", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ExtraFiles = map[string]string{"tools/x/go.sum": "", "docs/streams/witnesses/README.md": string(readmeBytes)}
 	if configure != nil {
 		configure(f)
 	}

@@ -143,7 +143,7 @@ func consumerSubject(t *testing.T, root, packet, legacy, caller string) ([]byte,
 		shim := `package main
 import("encoding/json";"os";"os/exec";"fmt")
 func legacyConsumerCoverage(root string,streams []*Stream,opts coverageOptions)map[string]Coverage{
- out,err:=exec.Command(os.Getenv("SG_LEGACY_BIN"),"--root",root,"--coverage","--json").CombinedOutput();if err!=nil{panic(fmt.Sprintf("legacy control read failed: %v %s",err,out))}
+ out,err:=exec.Command(os.Getenv("SG_LEGACY_BIN"),"--root",root,"--coverage","--json").Output();if err!=nil{panic(fmt.Sprintf("legacy control read failed: %v %s",err,out))}
  var all []Coverage;if err:=json.Unmarshal(out,&all);err!=nil{panic(err)}
  result:=map[string]Coverage{};for _,c:=range all{result[c.BriefID]=c}
  c,ok:=result["wv/01"];if !ok||len(c.Claims)!=2||c.Released{panic("legacy control did not read and refuse the actual two v2 claims")}
