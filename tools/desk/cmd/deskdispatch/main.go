@@ -15,10 +15,10 @@
 // the engine's Go API, which is what lets the engine's internals change without a prose
 // rewrite anywhere.
 //
-// WRAP, NEVER RE-IMPLEMENT. The durable claim and the decision-issue gate are consumer
-// scripts that live in the repo being worked (`tools/dispatch-claim.sh`,
-// `tools/decision-issue.sh`). deskdispatch INVOKES them; it does not carry a copy of
-// either. A second implementation of a claim protocol is two claim protocols, and two
+// WRAP, NEVER RE-IMPLEMENT. The durable claim and the decision-issue gate are separate tools:
+// the consumer scripts `tools/dispatch-claim.sh` and `tools/decision-issue.sh`, or their
+// pure-Go PATH ports (below). deskdispatch INVOKES them; it does not carry a copy of either
+// in-process. A second implementation of a claim protocol is two claim protocols, and two
 // claim protocols dispatch the same item twice — which is the exact failure the durable
 // claim exists to prevent. Both scripts already speak the deskkit exit-code contract, so
 // their verdicts pass straight through.
@@ -32,6 +32,16 @@
 // root's `tools/dispatch-claim.sh` is the fallback for a tree that predates the binary.
 // Because both speak the same protocol and land the claim in the same ref, a Go dispatcher
 // and a still-running bash dispatcher collide on one claim and never double-dispatch.
+//
+// THE DECISION GATE, THE SAME WAY (issue 6131). A repo that never received
+// `tools/decision-issue.sh` refused every human-gated dispatch, since that script had no PATH
+// port. `deskdecision` (cmd/deskdecision) is that port. It speaks the script's protocol: the
+// same argv, exit codes, issue title and body, and dedupe markers. So a brief gated by either
+// one is found by the other, and no second gate is filed. Resolution follows the claim tool:
+// the binary on PATH first, then the script under the resolved root, then a refusal naming both.
+// The binary reads no credential from its environment. It is passed `--as <role>`, the role
+// the claim was taken under, and resolves that role's own credential through the deskkit
+// forge resolver.
 //
 // THE CLAIM CHILD RUNS AS THE DISPATCHING ROLE, NEVER ON AMBIENT AUTH (issue 1151). Both
 // claim tools read only the credential they are handed — `--token-file` for the binary,

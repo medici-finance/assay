@@ -179,7 +179,8 @@ paths without truncating required source or canonical quality evidence.
 From `tools/desk`:
 
 ```sh
-go test ./internal/cellscratch ./cmd/cellctl ./internal/cellprocess -run 'TestScratch|TestObserved|TestRun|TestCadenceExecutes|TestInteractiveOwner' -count=1 -timeout 45s
+go test ./internal/cellscratch ./cmd/cellctl ./internal/cellrunner -run 'TestScratch|TestObserved|TestRun|TestCadenceExecutes|TestInteractiveOwner' -count=1 -timeout 45s
+(cd ../../loopadmin && go test ./process -run 'TestObserved|TestRun|TestCacheObservedRoutes' -count=1 -timeout 45s)
 go run ./cmd/muhar -spec internal/cellscratch/mutations.json
 ```
 
@@ -188,7 +189,7 @@ surviving children, pending/resumable/foreign/Git paths, path escapes, competing
 sweeps, partial deletion and retry, snapshot completeness and bounds, and repeated
 worker/reviewer/verifier passes across the supported host harnesses.
 
-Maintenance streams directory entries and retains at most 262,144 inventory entries per walk/list and 64 directory levels. Exceeding either limit reports partial accounting and performs no reclamation from that incomplete sweep. A wider legacy inventory returns an error rather than presenting a prefix as complete. These are reversible local safety defaults, not latency objectives.
+Maintenance streams directory entries and retains at most 262,144 inventory entries per walk/list and 64 directory levels. Exceeding either limit reports partial accounting. When the scratch root's own listing is over the limit, the sweep reclaims nothing. When one entry's walk is over either limit, that entry alone is kept, with the reason `over the maintenance inventory limit` in its report row and its name in the sweep's error, and the rest of the plan still runs: fully measured tasks beside it are reclaimed by the usual rules. A task whose execution lease is live or unavailable is kept for that reason before its walk is judged, so it is neither named nor makes the sweep partial. The kept entry's bytes are what the walk counted before it stopped, a lower bound, so the budget rules can only reclaim less, never more. Any other failed inspection still withholds reclamation from the whole sweep. A sweep with a contained over-limit entry is partial, so the periodic sweep records a failed attempt rather than a stamp. A wider legacy inventory returns an error rather than presenting a prefix as complete. These are reversible local safety defaults, not latency objectives.
 
 For an inventory wider than the default, explicitly raise the maintenance-only budget, for example `ASSAY_MAINTENANCE_ENTRY_LIMIT=524288 cellctl cache house clean` (or the existing scratch sweep command). Values must be 1 through 1,048,576. Invalid values and exhausted budgets fail closed; there is no unlimited fallback. This setting does not change retained-data protections, per-role authority or launch pressure policy. Trees beyond the finite ceiling or depth limit remain incomplete and require owner-assisted layout correction.
 

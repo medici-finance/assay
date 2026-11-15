@@ -56,7 +56,7 @@ func (o *planOptions) bind(fs *flag.FlagSet, withRun bool) {
 	fs.StringVar(&o.prCreated, "scan-pr-created", "", "the open scan PR's RFC3339 createdAt — an unread age never coalesces")
 	fs.StringVar(&o.prState, "scan-pr-state", "", "the open scan PR's draft/ready state: 'draft' (still in the review loop — the window decides) or 'ready' (flipped for-human — push-quiet, so a fresh PR is cut). Empty is unread and never coalesces")
 	if withRun {
-		fs.StringVar(&o.worktrees, "worktree-base", "", "ABSOLUTE dir the isolated scan worktrees are cut under (default: the parent of --root)")
+		fs.StringVar(&o.worktrees, "worktree-base", "", "ABSOLUTE dir the isolated scan worktrees are cut under (default: the sanctioned worktree prefix, so retained scan worktrees stay removable by the worktree tooling)")
 		fs.BoolVar(&o.dryRun, "dry-run", false, "print every lane step without running it; the poller runs against a throwaway copy of the state dir, so the real baselines are not advanced")
 		fs.BoolVar(&o.offline, "offline", false, "do not run the monitor or the trust probe; take events from --inbound only")
 	}

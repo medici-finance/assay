@@ -110,7 +110,7 @@ type raceStore struct {
 func (r *raceStore) CreateIfAbsent(id, msg string) deskkit.ClaimWriteOutcome {
 	out := r.fakeStore.CreateIfAbsent(id, msg)
 	if out == deskkit.ClaimWriteApplied {
-		r.claims[r.rival] = fakeClaim{sha: r.nextSHA(), msg: claimMessage(r.rival, "sess-R", "dispatched", "", ""), date: r.rivalDate}
+		r.claims[r.rival] = fakeClaim{sha: r.nextSHA(), msg: claimTestMessage(r.rival, "sess-R", "dispatched", "", ""), date: r.rivalDate}
 	}
 	return out
 }
@@ -329,7 +329,7 @@ func TestReclaim_refused_by_live_alias(t *testing.T) {
 	if rc != exitRefused {
 		t.Fatalf("rc = %d, want 5", rc)
 	}
-	if f.claims["b--pr-7"].msg == claimMessage("b--pr-7", "s-C", "claimed", "", "") {
+	if f.claims["b--pr-7"].msg == claimTestMessage("b--pr-7", "s-C", "claimed", "", "") {
 		t.Error("the stale claim was taken over despite a live alias")
 	}
 }

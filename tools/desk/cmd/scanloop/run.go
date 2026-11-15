@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -68,6 +69,11 @@ func cmdRun(args []string, stdout io.Writer) error {
 	// touch the poller at all — that is the CI-testable surface, and it is also what a session
 	// already holding the harness monitor's output wants.
 	var source func() (*MonitorReport, error)
+	// armDir is the state dir the pass's poll arms (the throwaway copy under --dry-run), re-read
+	// after the pass; probeRefused names every owner the poller-identity probe was refused a
+	// credential for (issue 5890). Both reach the exit code below.
+	armDir := stateDir
+	var probeRefused []string
 	if o.offline {
 		source = func() (*MonitorReport, error) {
 			if strings.TrimSpace(o.inbound) == "" {
@@ -104,6 +110,7 @@ func cmdRun(args []string, stdout io.Writer) error {
 				}
 			}()
 			pollDir = copyDir
+			armDir = copyDir
 			fmt.Fprintf(stdout, "dry-run: the poller runs against a THROWAWAY COPY of the state dir (%s), "+
 				"removed after the pass — the real baselines in %s are not advanced\n", copyDir, stateDir)
 		}
@@ -118,6 +125,11 @@ func cmdRun(args []string, stdout io.Writer) error {
 			// repo. Resolved per pass so a long-lived session never hands over an expired file.
 			id := ResolveMonitorIdentity(scope)
 			renderMonitorIdentity(stdout, id)
+			probeRefused = probeRefused[:0]
+			for o, why := range id.Refused {
+				probeRefused = append(probeRefused, o+" ("+why+")")
+			}
+			sort.Strings(probeRefused)
 			return RunMonitor(script, pollDir, scope, id.TokenFiles, nil)
 		}
 		source = retainingMonitor(pollDir, scope, source)
@@ -128,13 +140,16 @@ func cmdRun(args []string, stdout io.Writer) error {
 		probe = forgeTrustProbe(nil)
 	}
 
+	// The default is the sanctioned worktree prefix `deskwt add` targets, so a scan worktree the lane
+	// retains after a failure can be removed through the sanctioned tooling. It was the parent of
+	// --root, which deskwt's prefix check refuses. --worktree-base remains an explicit override.
 	worktreeBase := o.worktrees
 	if worktreeBase == "" {
-		abs, aerr := filepath.Abs(o.root)
-		if aerr != nil {
-			return deskkit.Unverifiable("scanloop run: cannot resolve --root", aerr)
+		def, derr := defaultScanWorktreeBase(o.root)
+		if derr != nil {
+			return derr
 		}
-		worktreeBase = filepath.Dir(abs)
+		worktreeBase = def
 	}
 	if !filepath.IsAbs(worktreeBase) {
 		return deskkit.Refused("scanloop run: --worktree-base must be an ABSOLUTE path (" + worktreeBase + ")")
@@ -157,17 +172,32 @@ func cmdRun(args []string, stdout io.Writer) error {
 	// flags were the only source, and the drain is invoked without them, so every tick cut a
 	// duplicate of the scan PR it should have joined.
 	openPR := func() (*OpenScanPR, error) { return o.openScanPR(), nil }
+	// The open scan CARRIERS are read the same way, for a different question: which placeholders
+	// they already carry, so this pass's carrier is never a superset of a sealed one (carriers.go).
+	// Every arm wires them; an arm that cannot read them refuses the scan dispatch rather than
+	// writing the full delta.
+	window := CoalescePolicy{Window: o.window}.window()
+	forgeOpenPR, carriers := forgeScanReads(target, now, window)
+	carrierFiles := carrierFilesOn(target)
 	switch {
 	case o.openScanPR() != nil:
+		named := *o.openScanPR()
+		carriers = func() ([]OpenScanPR, error) { return []OpenScanPR{named}, nil }
 		fmt.Fprintf(stdout, "open scan PR: #%d, as named by --scan-pr (the forge is not read for it)\n", o.scanPR)
+		fmt.Fprintf(stdout, "open scan carriers: ONLY #%d, as named by --scan-pr — other open carriers are NOT read, and a fresh scan may repeat their placeholders\n", o.scanPR)
 	case o.offline:
+		carriers = func() ([]OpenScanPR, error) {
+			return nil, deskkit.Unverifiable("scanloop: --offline — the open scan carriers are not read", nil)
+		}
 		fmt.Fprintf(stdout, "open scan PR: NOT READ (--offline) — only a --scan-pr can be coalesced into\n")
+		fmt.Fprintf(stdout, "open scan carriers: NOT READ (--offline) — a scan dispatch is refused\n")
 	case o.window < 0:
 		fmt.Fprintf(stdout, "open scan PR: not read — coalescing is disabled by configuration\n")
+		fmt.Fprintf(stdout, "open scan carriers: read from %s at the scan dispatch — their placeholders are left out\n", target)
 	default:
-		window := CoalescePolicy{Window: o.window}.window()
-		openPR = onePerPass(func() (*OpenScanPR, error) { return discoverOpenScanPR(target, now, window) })
+		openPR = forgeOpenPR
 		fmt.Fprintf(stdout, "open scan PR: read from %s at the scan dispatch — any open scan PR by this App, from any session\n", target)
+		fmt.Fprintf(stdout, "open scan carriers: read from %s at the scan dispatch — their placeholders are left out\n", target)
 	}
 	loop := &ScanLoop{
 		Root:         o.root,
@@ -178,6 +208,8 @@ func cmdRun(args []string, stdout io.Writer) error {
 		Monitor:      source,
 		Probe:        probe,
 		OpenPR:       openPR,
+		Carriers:     carriers,
+		CarrierFiles: carrierFiles,
 		Emit:         stdout,
 		DryRun:       o.dryRun,
 		Now:          func() time.Time { return now },
@@ -197,6 +229,8 @@ func cmdRun(args []string, stdout io.Writer) error {
 	}
 
 	rerr := drainPass(cfg, loop, stdout)
+
+	renderAuditReadFailure(stdout, rerr)
 
 	// The pass report is printed whether or not the drain errored: a drain that failed halfway
 	// still has to say what left and what did not.
@@ -221,6 +255,23 @@ func cmdRun(args []string, stdout io.Writer) error {
 	if rep := loop.Report(); rep != nil && rep.Blind() {
 		return deskkit.Unverifiable("scanloop run: the inbound surface was not fully readable this pass "+
 			"(degraded repos or a suppressed burst) — blind is not idle", nil)
+	}
+	// UNWATCHED IS NOT IDLE (issue 5890). A pass whose poller never armed a single repo watched
+	// nothing, and a probe that was refused a credential cannot say which identity it read as:
+	// either way exit 0 would report an unwatched surface as a clean, empty drain. Same
+	// could-not-check exit `plan` gives.
+	post, perr := ReadMonitorState(armDir, scope)
+	if perr != nil {
+		return perr
+	}
+	if !post.Armed {
+		return deskkit.Unverifiable("scanloop run: the inbound monitor is still NOT ARMED after this pass — no "+
+			"rostered repo has a baseline, so nothing is being watched: COULD-NOT-CHECK, never a clean empty drain", nil)
+	}
+	if len(probeRefused) > 0 {
+		return deskkit.Unverifiable("scanloop run: the poller-identity probe was REFUSED a credential for "+
+			fmt.Sprint(len(probeRefused))+" owner(s): "+strings.Join(probeRefused, "; ")+
+			" — this pass cannot say which identity those repos were read as: COULD-NOT-CHECK", nil)
 	}
 	return nil
 }
@@ -391,4 +442,17 @@ func renderPassReport(w io.Writer, loop *ScanLoop) {
 			fmt.Fprintf(w, "  RETIRED (terminal disposition recorded; a newer event is read again): %s\n", r)
 		}
 	}
+}
+
+// renderAuditReadFailure names an unreadable audit store on its own line, ahead of the pass report:
+// the report's empty trust-gate and ledger counts would otherwise read as a pass that saw nothing.
+// It reports whether err was that failure.
+func renderAuditReadFailure(w io.Writer, err error) bool {
+	var ae *AuditReadError
+	if !errors.As(err, &ae) {
+		return false
+	}
+	fmt.Fprintf(w, "\nAUDIT READ: FAILED — the accountable intake dispositions could not be read, so which events "+
+		"are still owed is unknown this pass. The inbound poll did not run: this is an audit-read failure, not a blind poll. %v\n", ae.Cause)
+	return true
 }

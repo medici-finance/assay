@@ -22,8 +22,8 @@
     {
       "name": "collapse changing live visibility to private",
       "file": "internal/deskkit/forge_github.go",
-      "old": "visibility := strings.ToLower(out.Data.Repository.Visibility)",
-      "new": "visibility := \"private\""
+      "old": "visibility = strings.ToLower(out.Data.Repository.Visibility)",
+      "new": "visibility = \"private\""
     },
     {
       "name": "guess private when the live fallback read fails",

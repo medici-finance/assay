@@ -448,7 +448,7 @@ func ghLaunchesUnguarded(t *testing.T, files map[string]string) []string {
 		guarded := map[ast.Node]bool{}
 		ast.Inspect(f, func(n ast.Node) bool {
 			if c, ok := n.(*ast.CallExpr); ok {
-				if id, ok := c.Fun.(*ast.Ident); ok && id.Name == "ghGuard" && len(c.Args) == 1 {
+				if id, ok := c.Fun.(*ast.Ident); ok && id.Name == "ghGuard" && (len(c.Args) == 1 || len(c.Args) == 2) {
 					guarded[c.Args[0]] = true
 				}
 			}

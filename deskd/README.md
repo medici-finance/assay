@@ -22,8 +22,10 @@ with this directory as the only build context. The image is tagged
 and must pass the repository's layer-secret scan. Without `docker` or a reachable
 daemon the target exits non-zero with a named could-not-check reason. The image is
 local-only: the target never pushes, logs in or exports to a registry, and its tag
-is a build name, not an artifact pin. It stays local until a separate release act
-publishes it. On Windows, `scripts/build-windows.ps1 deskd-build` builds
+is a build name, not an artifact pin. Publication belongs to the umbrella assay
+release, which builds deskd from the same Dockerfile and context, checks it and
+pushes it with the other release images; that release's `release-images.json`
+records the deskd reference to pin. On Windows, `scripts/build-windows.ps1 deskd-build` builds
 `deskd\dist\deskd.exe`, and `deskd-image` refuses as unsupported.
 
 ## Architecture pickup

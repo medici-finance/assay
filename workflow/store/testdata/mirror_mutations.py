@@ -44,10 +44,12 @@ def mutate(name):
         change(state,code,'''if err = admitMirror(ctx, a, u.Scope); err != nil {
 		return mirror.Snapshot{}, err
 	}
-	if err = tx.Commit();''','''if err = admitMirror(ctx, a, u.Scope); err != nil && false {
+	if owned {
+		if err = tx.Commit();''','''if err = admitMirror(ctx, a, u.Scope); err != nil && false {
 		return mirror.Snapshot{}, err
 	}
-	if err = tx.Commit();''')
+	if owned {
+		if err = tx.Commit();''')
     elif name=="cas":
         change(state,code,'WHERE scope_key=$1 AND version=$2 RETURNING version','WHERE scope_key=$1 AND ($2::bigint>=0) RETURNING version')
     elif name=="admission-partition":

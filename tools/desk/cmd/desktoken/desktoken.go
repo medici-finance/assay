@@ -62,6 +62,11 @@ type auditCtx struct {
 	// skips (skip), exactly as a refusal by run()'s guard writes no desktoken row.
 	recorded bool
 	skip     bool
+	// override is the audit text of a --cross-role mint (#6069). When set, finalize always
+	// writes the row, even for a cache reuse, and leads its detail with this text: an
+	// override that left no trace would be exactly the unaudited cross-role mint the check
+	// exists to stop.
+	override string
 }
 
 func (a *auditCtx) log(result, detail string) {
@@ -80,14 +85,17 @@ func (a *auditCtx) finalize(err error) {
 	// A help screen is not an invocation of the verb, so it appends NO row. The ledger this
 	// would land in is append-only, never rotated, and counted per tool for the write budget
 	// and the circuit breaker (deskkit/audit.go, ratelimit.go) — see helprequest.go.
-	if deskkit.IsHelpRequest(err) || a.skip {
+	if deskkit.IsHelpRequest(err) {
+		return
+	}
+	if a.skip && a.override == "" {
 		return
 	}
 	if err == nil {
-		if a.suppress {
+		if a.suppress && a.override == "" {
 			return // a cache reuse performed no act — see auditCtx.suppress
 		}
-		a.log(deskkit.ResultOK, a.detail)
+		a.log(deskkit.ResultOK, joinDetail(a.override, a.detail))
 		return
 	}
 	var result string
@@ -101,7 +109,18 @@ func (a *auditCtx) finalize(err error) {
 	default:
 		result = deskkit.ResultUnverifiable
 	}
-	a.log(result, err.Error())
+	a.log(result, joinDetail(a.override, err.Error()))
+}
+
+// joinDetail leads an audit detail with the cross-role override text, when there is one.
+func joinDetail(override, detail string) string {
+	switch {
+	case override == "":
+		return detail
+	case detail == "":
+		return override
+	}
+	return override + "; " + detail
 }
 
 // adapters wires the provider to this invocation: deskkit's controls (the same ones the
@@ -518,6 +537,7 @@ func cmdTokenMeasured(args []string, measurement *perfrec.Session, sinks ...func
 	forge := fs.String("forge", "", "forge backend: empty/github (default) mints a GitHub App installation token; gitlab rotates the role's PAT in place (rotate-on-mint custody)")
 	ttl := fs.Bool("ttl", false, "print remaining TTL of cached token (does not mint)")
 	fresh := fs.Bool("fresh", false, "delete any cached token and its .perms/.owner sidecars before minting, and bypass the install-id caches — forces a fresh mint after a GitHub-App permission change (the cached token otherwise carries the old grant for up to the ~50-min reuse window)")
+	crossRole := fs.String("cross-role", "", "take a role's credential from a window whose loop acts as another role (#6069). The value is the reason, and the audit log records it with the loop and role on every use, a cache reuse included")
 	noRotate := fs.Bool("no-rotate", false, "read-only credential lookup: verify the role's existing custody and print its PATH without performing a destructive rotation. GitLab: skips the self-rotation (and its network contact) entirely — the shape a read-only or dry-run verb asks for. GitHub: no effect, the App mint is cached and non-destructive already, so the flag is accepted for callers that do not know the forge before they ask")
 
 	positionals, perr := parseInterspersed(fs, args)
@@ -539,6 +559,9 @@ func cmdTokenMeasured(args []string, measurement *perfrec.Session, sinks ...func
 		return deskkit.Refused("unknown role " + role + "; valid: " + strings.Join(roleNames(), ", "))
 	}
 	ac.role = role
+	if err := admitLoopRole(role, *crossRole, ac); err != nil {
+		return err
+	}
 
 	// Forge dispatch. gitlab takes an entirely different custody path — rotate-on-mint
 	// against an existing PAT file — and needs no App PEM or App ID, so it dispatches BEFORE
@@ -619,5 +642,23 @@ func cmdTokenMeasured(args []string, measurement *perfrec.Session, sinks ...func
 	if cred.Outcome == credential.OutcomeReused {
 		ac.suppress = true // no network call, no mint, nothing changed — no audit row
 	}
+	return nil
+}
+
+// admitLoopRole refuses a credential for a role the calling window's loop does not act as
+// (deskkit.RequireLoopRole, #6069), before any custody is read on either forge. A refusal
+// passes only with a non-empty --cross-role reason, and that reason goes into this
+// invocation's audit row.
+func admitLoopRole(role, reason string, ac *auditCtx) error {
+	loop, loopRole, err := deskkit.RequireLoopRole("desktoken "+role, role)
+	if err == nil {
+		return nil
+	}
+	reason = strings.Join(strings.Fields(reason), " ")
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || reason == "" {
+		return err
+	}
+	ac.override = fmt.Sprintf("cross-role override: loop=%s acts-as=%s role=%s reason=%q", loop, loopRole, role, reason)
+	fmt.Fprintf(os.Stderr, "desktoken: %s (recorded in the audit log)\n", ac.override)
 	return nil
 }

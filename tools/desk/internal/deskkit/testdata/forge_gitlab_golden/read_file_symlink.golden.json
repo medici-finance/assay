@@ -1,0 +1,20 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/files/docs%2FEVIDENCE%2Emd",
+      "query": "ref=feat%2Fx"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/tree",
+      "query": "page=1\u0026path=docs\u0026per_page=100\u0026ref=feat%2Fx"
+    }
+  ],
+  "result": {
+    "Content": "Li4vc2hhcmVkL0VWSURFTkNFLm1k",
+    "SHA": "commit-1",
+    "Exists": true,
+    "Kind": "symlink"
+  }
+}

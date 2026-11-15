@@ -49,8 +49,8 @@
     },
     {
       "name": "blocked-read-as-unknown",
-      "target": "statusgen/milestonegraph.go",
-      "old": "if gate.State == evaluation.GraphBlocked || gate.State == evaluation.GraphCycle {",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "if r.Availability == AvailabilityBlocked || g.State == GraphCycle {",
       "new": "if false {",
       "module": "statusgen",
       "package": ".",

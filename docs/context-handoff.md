@@ -215,6 +215,34 @@ disposition from another role.
 | 2 | Usage error, such as a missing `--snapshot` or an unknown verb |
 | 3 | Hold: could-not-check, including partial coverage on either side, such as a query truncated at its result limit |
 
+## Compatibility and supported versions
+
+| Capability | First release |
+|---|---|
+| `statusgen context discover`, `recheck`, `check`; `context-handoff-v1`; `amendment-manifest-v1` | v1.0.55 |
+| `context-handoff-v2` (withdrawn impacts) | v1.0.55 (schema from v1.0.50) |
+| `context-handoff-v3` (product-target binding), `statusgen context dispose`, the recheck `assess` class | v1.0.63 |
+| `deskdispatch --context-snapshot DIR --context-receipt FILE` (recheck before the claim) | the first release whose `CHANGELOG.md` names `--context-snapshot` |
+
+`statusgen context --help` lists the verbs an install carries. Every verb refuses a
+schema version it does not know rather than reading it as the nearest one, and
+`deskdispatch` refuses such a receipt before any claim.
+
+The `author-spec`, `author-brief` and `worker-desk` skills and the implementation pickup
+reference (`plugins/assay/references/implementation-pickup.md`) use these verbs where the
+install supports them. They keep the manual bootstrap: a source-pinned pickup assessment
+that records its own coverage, for an install that lacks the verb or the receipt's schema.
+
+**Migrating.**
+
+- From prose hand-offs: run `discover` on the next spec change and keep the receipt with
+  the brief PR. Briefs already delivered need no receipt.
+- From v1.0.55 to v1.0.63: a v1 or v2 receipt still rechecks. Discovery writes v3 only
+  when the snapshot carries product targets, so an adopter without them sees no change.
+- To deskdispatch with a receipt: upgrade both statusgen and desk-tools to the same
+  release, because deskdispatch links the same resolver package. An older desk-tools
+  rejects the two flags as unknown rather than ignoring them.
+
 ## Limits
 
 Default read limits:

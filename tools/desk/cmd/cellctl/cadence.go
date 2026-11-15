@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
-	"github.com/medici-finance/assay/tools/desk/internal/cellprocess"
+	"github.com/medici-finance/assay/tools/desk/internal/cellrunner"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/tick"
 )
@@ -56,7 +56,7 @@ func (c *Cell) runInteractiveHarness(role string, argv, env []string, wt string)
 	if c.cadenceLease == nil {
 		die("interactive launch requires the role ownership lease")
 	}
-	ctx, stop := cellprocess.NotifyContext(context.Background())
+	ctx, stop := cellrunner.NotifyContext(context.Background())
 	defer stop()
 	code := -1
 	err := c.cadenceLease.RunInteractive(ctx, c.Name, role, func(child context.Context) cellcadence.Result {
@@ -75,7 +75,7 @@ func (c *Cell) runInteractiveHarness(role string, argv, env []string, wt string)
 		childArgs := scratchArgv(harness, argv, childEnv)
 		// The terminal is the child's: maintenance logs to its file only.
 		stopMaintenance := c.startScratchMaintenance(child, role, nil)
-		code, uncertain, err = cellprocess.RunInteractiveObserved(child, childArgs, childEnv, wt, os.Stdin, interactiveOutput(os.Stdout, scratch.tail), interactiveOutput(os.Stderr, scratch.tail), c.childStarted(scratch))
+		code, uncertain, err = cellrunner.RunInteractiveObserved(child, childArgs, childEnv, wt, os.Stdin, interactiveOutput(os.Stdout, scratch.tail), interactiveOutput(os.Stderr, scratch.tail), c.childStarted(scratch))
 		stopMaintenance()
 		c.recordRoleChild(0)
 		result := cellcadence.Result{ExitCode: code, Uncertain: uncertain, Err: err}
@@ -107,7 +107,7 @@ func (c *Cell) runCadencedHarness(role, harness string, argv, env []string, wt s
 	if err != nil {
 		die("cadence: %v", err)
 	}
-	ctx, stop := cellprocess.NotifyContext(context.Background())
+	ctx, stop := cellrunner.NotifyContext(context.Background())
 	defer stop()
 	fmt.Printf("[cadence] cell=%s role=%s interval=%s budget=%s state=%s; Go supervisor owns subsequent passes\n", c.Name, role, c.Cadence.Interval, c.Cadence.Budget, c.cadenceDir(role))
 	stopMaintenance := c.startScratchMaintenance(ctx, role, os.Stderr)
@@ -211,7 +211,7 @@ func (c *Cell) executeCadencePass(ctx context.Context, role, harness string, arg
 		f.Close()
 		runArgs = append(runArgs[:len(runArgs)-1], "--output-last-message", resultFile, runArgs[len(runArgs)-1])
 	}
-	exit, uncertain, err := cellprocess.RunObserved(ctx, runArgs, env, wt, io.MultiWriter(os.Stdout, out, scratch.tail), io.MultiWriter(os.Stderr, scratch.tail), c.childStarted(scratch))
+	exit, uncertain, err := cellrunner.RunObserved(ctx, runArgs, env, wt, io.MultiWriter(os.Stdout, out, scratch.tail), io.MultiWriter(os.Stderr, scratch.tail), c.childStarted(scratch))
 	c.recordRoleChild(0)
 	result = cellcadence.Result{Outcome: "could-not-check", ExitCode: exit, Uncertain: uncertain, Err: err}
 	if err != nil || exit != 0 || uncertain {
@@ -407,9 +407,11 @@ func (c *Cell) stopCadences() error {
 const cadenceStopWait = 20 * time.Second
 
 // stopRoleCadence is the per-role part of stopCadences: an idle lease is checked for an
-// unfinished pass; a busy cadence-mode lease gets the role's STOP file and up to wait for the
-// supervisor to let go; a busy interactive-mode lease is left to the caller (its harness holds the
-// lease until it exits). The per-role `down <cell> <role...>` calls it for one role alone.
+// unfinished pass; a busy cadence-mode lease gets the role's STOP file (downStopReason, which the
+// role's next launch removes) and up to wait for the supervisor to let go; a busy interactive-mode
+// lease is left to the caller (its harness holds the lease until the cockpit's close stops it;
+// cell-wide `down` then waits for it). The per-role `down <cell> <role...>` calls it for one role
+// alone.
 func (c *Cell) stopRoleCadence(role string, wait time.Duration) error {
 	dir := c.cadenceDir(role)
 	_, err := cellcadence.Read(dir)
@@ -441,7 +443,7 @@ func (c *Cell) stopRoleCadence(role string, wait time.Duration) error {
 	if mode == "interactive" {
 		return nil
 	}
-	if err := os.WriteFile(filepath.Join(dir, "STOP"), []byte("cellctl down\n"), 0600); err != nil {
+	if err := writeDownStop(dir); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(wait)

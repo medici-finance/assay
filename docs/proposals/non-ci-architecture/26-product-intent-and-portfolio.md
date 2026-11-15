@@ -127,3 +127,8 @@ Keep the verifier R1–R8 critical path independent of this portfolio lane. R2 a
 (PRs #2750 and #2743) under their own owners; neither needed portfolio automation to complete. Existing
 legacy selection, claims, gates, observation privacy and independent verification remain
 controlling until their own qualified migration. Completed Evidence is never rewritten.
+
+
+## Desk instances amendment — requested 25 October 2026
+
+The configured role work target is shared across that cell's instances and repositories; actual work is estimated and may temporarily drift above/below it. Desks independently throttle/refill toward the target without a central mutex, leased slots or exact count-and-reserve. Optional instance targets shape refill rather than allocate global slots. Include observed paused/draining active work and expose freshness/uncertainty. Keep canonical work claims and genuine safety/provider-enforced limits exact and separate. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.

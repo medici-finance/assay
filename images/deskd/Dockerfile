@@ -63,5 +63,9 @@ COPY --from=build /out/passwd /etc/passwd
 COPY --from=build /out/group /etc/group
 COPY --from=build /out/deskd /deskd
 
+# CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
+# them off. A fragile stopgap only; patched node kernels are the real fix.
+ENV GODEBUG=multipathtcp=0
+
 USER 65532:65532
 ENTRYPOINT ["/deskd"]

@@ -197,8 +197,8 @@ func TestRoleInitBadArgs(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
 	// Clear BOTH session sources so no session can be resolved for the missing-session case:
-	// resolveSession consults $DESK_SESSION before $CLAUDE_SESSION_ID, so an ambient
-	// DESK_SESSION (a real desk running the suite) would otherwise satisfy the refusal case.
+	// with no --session, resolveSession falls back to $DESK_SESSION then $CLAUDE_SESSION_ID,
+	// so an ambient DESK_SESSION (a real desk running the suite) would otherwise satisfy the refusal case.
 	t.Setenv("DESK_SESSION", "")
 	t.Setenv("CLAUDE_SESSION_ID", "")
 

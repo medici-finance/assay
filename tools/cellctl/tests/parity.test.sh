@@ -44,7 +44,12 @@ CELLCTL_B="$(abspath "${CELLCTL_B:-$HERE/../testdata/cellctl-shell-oracle.sh}")"
 
 # /tmp, never $TMPDIR: a scrubbed fixture's cell dir carries `run/tmux.sock`, and `sun_path` has a
 # hard ~104-byte limit macOS's default $TMPDIR blows on its own (scrubbed-cell.test.sh's note).
-T="$(cd "$(mktemp -d /tmp/cellctl-parity.XXXXXX)" && pwd -P)"
+# Fail closed before the EXIT trap: on bash 3.2 `cd ""` succeeds, so a failed mktemp
+# must never leave T at the caller's directory for the trap to delete (#6161).
+made="$(mktemp -d /tmp/cellctl-parity.XXXXXX)" || exit 1
+[ -n "$made" ] && [ -d "$made" ] || exit 1
+T="$(cd "$made" && pwd -P)" || exit 1
+[ -n "$T" ] || exit 1
 trap 'rm -rf "$T"' EXIT
 
 ONLY="${PARITY_ONLY:-}"
@@ -73,6 +78,7 @@ EOF
 #!/usr/bin/env bash
 case "${1:-}" in
   --version) echo "codex 0.154.0 (stub)"; exit 0;;
+  features) [[ "${2:-}" == list ]] && { echo 'multi_agent stable true'; exit 0; }; exit 2;;
   login) echo "Logged in (stub)"; exit 0;;
   config) case "${2:-}" in --help) echo "Usage: codex config <get|set>"; exit 0;; get) echo true; exit 0;; esac; exit 0;;
   plugin) case "${2:-}" in --help) echo "Usage: codex plugin <list>"; exit 0;; list) echo "assay@assay"; exit 0;; esac; exit 0;;

@@ -157,6 +157,9 @@ secrets:
 containers:
   - name: <desk-name>
     image: ghcr.io/medici-finance/assay/<desk-name>:<tag>
+    env:
+      - name: GODEBUG
+        value: multipathtcp=0              # CVE-2026-98432 stopgap; patched node kernels are the fix
     envFrom:
       - secretRef:
           name: assay-model-credentials   # the §3 variables

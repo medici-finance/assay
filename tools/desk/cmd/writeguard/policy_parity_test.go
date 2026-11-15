@@ -351,7 +351,7 @@ func hookPolicyMutations(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				for _, name := range []string{"comms", "forgeread", "perfrec", "gitquiet", "deskcore"} {
+				for _, name := range []string{"comms", "forgeread", "perfrec", "gitquiet", "deskcore", "loopadmin"} {
 					target := filepath.Join(root, name)
 					if name == "deskcore" {
 						target = core

@@ -20,6 +20,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -122,10 +123,17 @@ type stub struct {
 	// regardless of how many it serves — a forge that claims more than it hands over.
 	checkTotalOverride int
 
+	// suites is the check-suite list the fake forge serves at /commits/{sha}/check-suites
+	// (#6234). nil serves an empty list; suiteTotalOverride, when non-zero, is the total_count
+	// it ASSERTS regardless of how many it serves.
+	suites             []deskkit.CheckSuite
+	suiteTotalOverride int
+
 	// requiredChecks is the branch-protection required-status-check set the fake forge serves
 	// at the required_status_checks endpoint. nil serves a 404 — GitHub's answer for a branch
-	// with no protection / no required checks, which the backend reads as the EMPTY set
-	// (nothing required). A non-empty slice serves those contexts as required. It is only ever
+	// whose classic protection requires no checks, which the backend reads as an empty CLASSIC
+	// half (the ruleset half, rulesBody, is still unioned in). A non-empty slice serves those
+	// contexts as required. It is only ever
 	// consulted on the empty-rollup path, where deskflip has to tell "nothing is required"
 	// from "the required checks have not reported".
 	requiredChecks []string
@@ -134,6 +142,19 @@ type stub struct {
 	// rather than assume nothing is required.
 	requiredChecksErr bool
 	reqCheckReads     int
+	// adminFreeBranch, when non-empty, makes the legacy required_status_checks endpoint answer
+	// 403 (an identity without `administration`) and serves this JSON body from the admin-free
+	// branch read.
+	adminFreeBranch string
+	// rulesBody is the JSON the branch-rules read (`/rules/branches/{b}`, the RULESET half of
+	// the required set) serves; empty serves `[]`, no rulesets. The rules read is made on every
+	// required-set path, not only the 403 one. rulesErr makes it answer 500.
+	rulesBody string
+	rulesErr  bool
+	// rulesPages, when set, serves the rules read as a paginated listing instead of rulesBody:
+	// page N (the `page` query parameter; absent reads as 1) is rulesPages[N-1], and every page
+	// but the last carries `Link: rel="next"`, as the forge paginates `/rules/branches/{b}`.
+	rulesPages []string
 
 	// headCommittedAt is the committer date GET /commits/{sha} serves for the head — the
 	// date an APPROVED's submitted_at must not predate (#3093: GitHub re-anchors an old
@@ -144,6 +165,24 @@ type stub struct {
 	headCommittedAt string
 	commitErr       bool
 	commitReads     int
+
+	// mergeStates is the forge's merge verdict (REST mergeable_state) each read of the change
+	// AFTER the ready mutation serves, in order; the last entry repeats. nil serves "clean".
+	// Reads before the mutation serve none. It drives the post-flip backstop (#6242).
+	mergeStates []string
+	mergeReads  int
+	// mergeDrafts is the change's draft flag on each of those same post-flip reads, the last
+	// repeating. nil serves "not a draft": the flip is visible at once.
+	mergeDrafts []bool
+	// priorComments are the comments already on the change, served to the comment-thread read
+	// (the not-reverted condition, #6253 review F2). Each is {login, body}.
+	priorComments [][2]string
+	commentReads  int
+	commentErr    bool // the comment-thread read answers 500
+	// convertFail makes the convertPullRequestToDraft mutation answer 500.
+	convertFail bool
+	// comments records every comment body the verb posted on the change.
+	comments []string
 }
 
 // defaultHeadCommittedAt predates every SubmittedAt the fixtures carry (they start at
@@ -238,6 +277,46 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 			enc(map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
 				"lastEditedAt": edited, "comments": empty, "reviews": empty, "reviewThreads": empty}}}})
 
+		case r.Method == http.MethodPost && path == "/graphql" && isCommentWalk(rec.Body):
+			s.commentReads++
+			if s.commentErr {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			nodes := make([]any, 0, len(s.priorComments))
+			for i, c := range s.priorComments {
+				login, typ := c[0], "User"
+				if b, ok := strings.CutSuffix(login, "[bot]"); ok {
+					login, typ = b, "Bot" // GraphQL reports an App by its bare slug
+				}
+				nodes = append(nodes, map[string]any{
+					"id": fmt.Sprintf("IC_%d", i+1), "databaseId": 900 + i, "body": c[1], "isMinimized": false,
+					"createdAt": "2026-01-02T00:00:00Z", "updatedAt": "2026-01-02T00:00:00Z",
+					"url":    fmt.Sprintf("https://example.invalid/pull/7#issuecomment-%d", 900+i),
+					"author": map[string]any{"login": login, "__typename": typ, "databaseId": 50 + i},
+				})
+			}
+			enc(map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
+				"comments": map[string]any{"pageInfo": map[string]any{"hasNextPage": false}, "nodes": nodes}}}}})
+
+		case r.Method == http.MethodPost && path == "/graphql" &&
+			strings.Contains(rec.Body, "convertPullRequestToDraft"):
+			if s.convertFail {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			enc(map[string]any{"data": map[string]any{
+				"convertPullRequestToDraft": map[string]any{
+					"pullRequest": map[string]any{"isDraft": true}}}})
+
+		case r.Method == http.MethodPost && strings.HasSuffix(path, "/issues/7/comments"):
+			var c struct {
+				Body string `json:"body"`
+			}
+			_ = json.Unmarshal([]byte(rec.Body), &c)
+			s.comments = append(s.comments, c.Body)
+			enc(map[string]any{"id": len(s.comments), "node_id": "IC_1", "html_url": "https://example.invalid/c"})
+
 		case r.Method == http.MethodPost && path == "/graphql":
 			enc(map[string]any{"data": map[string]any{
 				"markPullRequestReadyForReview": map[string]any{
@@ -272,11 +351,42 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+			if s.adminFreeBranch != "" {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
 			if s.requiredChecks == nil {
 				w.WriteHeader(http.StatusNotFound) // no protection / none required
 				return
 			}
 			enc(map[string]any{"contexts": s.requiredChecks})
+
+		case strings.Contains(path, "/rules/branches/"):
+			if s.rulesErr {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			body := s.rulesBody
+			if s.rulesPages != nil {
+				n := 1
+				if p := r.URL.Query().Get("page"); p != "" {
+					n, _ = strconv.Atoi(p)
+				}
+				body = ""
+				if n >= 1 && n <= len(s.rulesPages) {
+					body = s.rulesPages[n-1]
+				}
+				if n < len(s.rulesPages) {
+					w.Header().Set("Link", `<http://`+r.Host+path+`?per_page=100&page=`+strconv.Itoa(n+1)+`>; rel="next"`)
+				}
+			}
+			if body == "" {
+				body = `[]`
+			}
+			_, _ = w.Write([]byte(body))
+
+		case s.adminFreeBranch != "" && strings.Contains(path, "/branches/"):
+			_, _ = w.Write([]byte(s.adminFreeBranch))
 
 		case strings.HasSuffix(path, "/status"):
 			enc(s.servedStatuses())
@@ -284,9 +394,12 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 		case strings.HasSuffix(path, "/check-runs"):
 			enc(s.servedCheckRuns())
 
+		case strings.HasSuffix(path, "/check-suites"):
+			enc(s.servedSuites())
+
 		case r.Method == http.MethodGet && strings.Contains(path, "/commits/"):
 			// GET /commits/{sha} — the head commit's committer date (#3093). Ordered after
-			// the /status and /check-runs suffix cases, which also live under /commits/.
+			// the /status, /check-runs and /check-suites suffix cases, which also live under /commits/.
 			s.commitReads++
 			if s.commitErr {
 				w.WriteHeader(http.StatusInternalServerError)
@@ -356,6 +469,19 @@ func (s *stub) servedPR() map[string]any {
 		"head":   map[string]any{"sha": head, "ref": "feat/x"},
 		"base":   map[string]any{"ref": "main"},
 		"labels": labels,
+	}
+	if s.flipped() {
+		st := "clean"
+		if len(s.mergeStates) > 0 {
+			st = s.mergeStates[min(s.mergeReads, len(s.mergeStates)-1)]
+		}
+		draft := false
+		if len(s.mergeDrafts) > 0 {
+			draft = s.mergeDrafts[min(s.mergeReads, len(s.mergeDrafts)-1)]
+		}
+		s.mergeReads++
+		out["mergeable_state"] = st
+		out["draft"] = draft
 	}
 	switch s.pr.Mergeable {
 	case deskkit.Mergeable:
@@ -554,6 +680,32 @@ func (s *stub) servedCheckRuns() map[string]any {
 	return map[string]any{"total_count": total, "check_runs": items}
 }
 
+// servedSuites renders the stub's check suites in GitHub's check-suites shape. A suite with
+// no conclusion is served as JSON null, as GitHub serves it.
+func (s *stub) servedSuites() map[string]any {
+	items := []map[string]any{}
+	for _, c := range s.suites {
+		id, err := strconv.ParseInt(c.ID, 10, 64)
+		if err != nil {
+			panic("CheckSuite.ID must be numeric for the GitHub stub: " + c.ID)
+		}
+		var conclusion any
+		if c.Conclusion != "" {
+			conclusion = c.Conclusion
+		}
+		items = append(items, map[string]any{
+			"id": id, "status": c.Status, "conclusion": conclusion,
+			"app": map[string]any{"slug": c.App}, "latest_check_runs_count": c.RunCount,
+			"created_at": c.CreatedAt,
+		})
+	}
+	total := len(items)
+	if s.suiteTotalOverride != 0 {
+		total = s.suiteTotalOverride
+	}
+	return map[string]any{"total_count": total, "check_suites": items}
+}
+
 // --- assertions over the recording -------------------------------------------------
 
 // saw reports whether ANY request matches method and a path fragment.
@@ -628,8 +780,8 @@ func (s *stub) mutated() []string {
 		if r.Method == http.MethodGet {
 			continue
 		}
-		if r.Method == http.MethodPost && r.Path == "/graphql" && isTrustRead(r.Body) {
-			continue // a GraphQL READ (the PR body's edit time), not a mutation
+		if r.Method == http.MethodPost && r.Path == "/graphql" && (isTrustRead(r.Body) || isCommentWalk(r.Body)) {
+			continue // a GraphQL READ (the PR body's edit time, the comment thread), not a mutation
 		}
 		out = append(out, r.String())
 	}
@@ -740,6 +892,13 @@ const riskyPath = ".github/workflows/ci.yml"
 
 // isTrustRead reports whether a POST /graphql body is the trust-events READ (a query for the
 // PR's lastEditedAt) rather than a mutation. Anything carrying a mutation is never a read.
+// isCommentWalk reports whether a GraphQL body is the change comment-thread read (and not the
+// trust read, which also selects comments).
+func isCommentWalk(body string) bool {
+	return strings.Contains(body, "isMinimized") && !strings.Contains(body, "lastEditedAt") &&
+		!strings.Contains(body, "mutation")
+}
+
 func isTrustRead(body string) bool {
 	return strings.Contains(body, "lastEditedAt") && !strings.Contains(body, "mutation")
 }

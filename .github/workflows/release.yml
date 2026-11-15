@@ -1615,7 +1615,7 @@ jobs:
           name: release-runner-arm64
           retention-days: 7
           if-no-files-found: error
-          compression-level: 0
+          compression-level: 1
           path: |
             ${{ runner.temp }}/release-native-arm64/verify-runner-linux-arm64.tar
             ${{ runner.temp }}/release-native-arm64/verify-runner-linux-arm64.json
@@ -2212,12 +2212,28 @@ jobs:
       # meaningless and re-running aggregate.py against the new head IS the
       # resolution.
       #
-      # ONE ACCEPTED DIVERGENCE: a fragment merged between the tag and a retry
-      # is aggregated into the CHANGELOG.md section but is absent from the
-      # already-published release notes. Over-inclusion is the safe direction —
-      # the alternative (pinning the fragment set to the tag) would drop that
-      # fragment from the CHANGELOG entirely, since the roll deletes it either
-      # way on the next cycle.
+      # THE FRAGMENT SET IS PINNED TO THE TAG (#2605). `roll --at-ref` aggregates
+      # only the fragments that exist at the release tag, and `--clear` removes
+      # exactly those files, so a fragment that merged AFTER the tag stays on
+      # disk for the next cut instead of being filed under this version and
+      # deleted (v1.0.77, v1.0.78). The earlier shape took every fragment at the
+      # default branch's tip and deleted them all, which is why pinning used to
+      # cost a fragment; with the targeted clear it no longer does. The section
+      # therefore matches the published release notes, which were built from the
+      # same tagged tree.
+      #
+      # The tag is already in this checkout: `release` creates it before this job
+      # starts (`needs: release`), `fetch-depth: 0` above fetches every tag, and
+      # the per-attempt `fetch --no-tags` + `reset --hard` below moves only the
+      # branch, never refs/tags. The ref is spelled `refs/tags/<tag>` so a branch
+      # of the same name can never win. If the tag were missing, `roll` fails
+      # CLOSED (rc 4) rather than aggregating everything.
+      #
+      # `roll` also refuses (rc 3, nothing touched) when there ARE fragments at
+      # the tag but CHANGELOG.md already has a `## <tag>` section. That is not a
+      # completed roll: the fragments at the tag are still on disk. It is an
+      # error on every attempt. Only rc 2 (nothing left to aggregate) on a retry
+      # means a concurrent roll already landed.
       - name: CHANGELOG discipline — write the aggregated section and clear fragments
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
@@ -2243,12 +2259,14 @@ jobs:
             # set non-empty — so it is a real error. On a RETRY it CAN happen
             # legitimately: a concurrent roll (a hand-filed PR, or a re-run of
             # this job) may already have landed the section and cleared the
-            # fragments. Treat that as done, not as a failure.
+            # fragments. Treat that as done. rc 3 (fragments at the tag AND the
+            # section already present) and rc 4 (the tag ref did not resolve) are
+            # never "done": they fall through to the error below.
             roll_rc=0
             python3 tools/changelog/aggregate.py roll changelog CHANGELOG.md "$RELEASE_TAG" "$day" \
-              --credits "${CREDITS_MAP}" || roll_rc=$?
+              --credits "${CREDITS_MAP}" --at-ref "refs/tags/${RELEASE_TAG}" --clear || roll_rc=$?
             if [ "$roll_rc" -eq 2 ] && [ "$attempt" -gt 1 ]; then
-              echo "nothing left to aggregate at the new head — a concurrent roll already landed ${RELEASE_TAG}. Done."
+              echo "nothing left to aggregate at the new head (rc=${roll_rc}) — a concurrent roll already landed ${RELEASE_TAG}. Done."
               exit 0
             fi
             if [ "$roll_rc" -ne 0 ]; then
@@ -2256,11 +2274,11 @@ jobs:
               exit 1
             fi
 
-            # Clear the aggregated fragments in the SAME commit (keep README.md).
-            find changelog -maxdepth 1 -type f -name '*.md' ! -name 'README.md' -print0 \
-              | xargs -0 -r git rm -q --
-            # Path-scoped add: never STATUS.md (single writer = assay-statusgen).
-            git add CHANGELOG.md
+            # `roll --clear` already removed exactly the fragments it aggregated
+            # (README.md and any post-tag fragment are untouched). Stage the
+            # removals and the new section in the SAME commit. Path-scoped add:
+            # never STATUS.md (single writer = assay-statusgen).
+            git add -A changelog CHANGELOG.md
 
             # POST-CUT PLUGIN MANIFEST BUMP (#789), in the same commit: leave the
             # default branch on the NEXT patch version (X.Y.Z+1) so, between

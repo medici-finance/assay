@@ -350,7 +350,7 @@ func openChangesFromPRListJSON(js, repo string) (*deskkit.OpenChanges, error) {
 	for _, p := range prs {
 		change := deskkit.OpenChange{
 			Number: p.Number, Title: p.Title, Body: p.Body, State: p.State, Draft: p.IsDraft,
-			CreatedAt: p.CreatedAt, LastEditedAt: p.LastEditedAt, MergeStateStatus: p.MergeStateStatus,
+			CreatedAt: p.CreatedAt, LastEditedAt: p.LastEditedAt, MergeStateStatus: p.MergeStateStatus, Mergeable: p.Mergeable,
 			HeadSHA: p.HeadRefOid, HeadRef: p.HeadRefName, BaseRef: p.BaseRefName,
 			Author: deskkit.Account{Login: p.Author.Login}, Labels: p.labelNames(),
 			HeadCommittedAt: p.HeadCommittedDate,
@@ -1237,7 +1237,7 @@ func TestSecurityReviewRequired_216(t *testing.T) {
 		installFakeGH(t)
 		t.Setenv("DESKBOARD_GH_PR_REPO", repo)
 		// mergeStateStatus CLEAN — this test's subject is the risk/security gate,
-		// not merge state (#569 gives DIRTY/BLOCKED their own CONFLICT outcome,
+		// not merge state (#569 gives DIRTY its own CONFLICT outcome,
 		// which would otherwise shadow FLIP/SECURITY-REVIEW-REQUIRED here).
 		t.Setenv("DESKBOARD_GH_PRLIST_JSON",
 			`[{"number":42,"title":"risky","isDraft":true,"author":{"login":"app/assay-worker-app"},"headRefOid":"`+head+`","mergeStateStatus":"CLEAN","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"ci"}]}]`)
@@ -1649,17 +1649,17 @@ func TestMergeNow_ThresholdFlagParse(t *testing.T) {
 
 // TestMergeConflictGatesFlip_569 proves the #569 fix end-to-end: a PR that is otherwise
 // FLIP-eligible (bot APPROVED at head, CI green, still draft, not blocking) but whose
-// mergeStateStatus is DIRTY or BLOCKED must classify CONFLICT, never FLIP — deskboard
-// must not signal "ready to flip" on a PR GitHub itself says can't be merged.
+// mergeStateStatus is DIRTY must classify CONFLICT, never FLIP. #6262 distinguishes
+// BLOCKED policy holds using the independent conflict verdict.
 func TestMergeConflictGatesFlip_569(t *testing.T) {
 	repo := "example-org/tracker"
 	head := "deadbeefcafe"
 
-	run569 := func(t *testing.T, mergeState string) actionsReport {
+	run569 := func(t *testing.T, mergeState, mergeable string) actionsReport {
 		installFakeGH(t)
 		t.Setenv("DESKBOARD_GH_PR_REPO", repo)
 		t.Setenv("DESKBOARD_GH_PRLIST_JSON",
-			`[{"number":99,"title":"unmergeable","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"`+head+`","mergeStateStatus":"`+mergeState+`","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"ci"}]}]`)
+			`[{"number":99,"title":"unmergeable","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"`+head+`","mergeStateStatus":"`+mergeState+`","mergeable":"`+mergeable+`","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"ci"}]}]`)
 		t.Setenv("DESKBOARD_GH_REVIEWS_JSON",
 			`[{"user":{"login":"`+reviewerBotDisplay()+`"},"state":"APPROVED","commit_id":"`+head+`","body":"looks good","submitted_at":"2026-07-10T00:00:00Z"}]`)
 		t.Setenv("DESKBOARD_GH_PRFILES_JSON", `[{"filename":"README.md"}]`)
@@ -1675,17 +1675,24 @@ func TestMergeConflictGatesFlip_569(t *testing.T) {
 		return rep
 	}
 
-	for _, mergeState := range []string{"DIRTY", "BLOCKED"} {
-		t.Run(mergeState, func(t *testing.T) {
-			rep := run569(t, mergeState)
+	for _, tc := range []struct{ state, mergeable, want string }{
+		{"DIRTY", "MERGEABLE", actConflict},
+		{"BLOCKED", "CONFLICTING", actConflict},
+		{"BLOCKED", "MERGEABLE", actFlip},
+		{"BLOCKED", "UNKNOWN", actMergeStateUnknown},
+		{"BLOCKED", "", actMergeStateUnknown},
+	} {
+		t.Run(tc.state+"/"+tc.mergeable, func(t *testing.T) {
+			mergeState := tc.state
+			rep := run569(t, tc.state, tc.mergeable)
 			var found bool
 			for _, r := range rep.Rows {
 				if r.Number != 99 {
 					continue
 				}
 				found = true
-				if r.Action != actConflict {
-					t.Errorf("mergeStateStatus=%s: action = %s, want %s (must not FLIP an unmergeable PR)", mergeState, r.Action, actConflict)
+				if r.Action != tc.want {
+					t.Errorf("mergeStateStatus=%s mergeable=%s: action = %s, want %s", mergeState, tc.mergeable, r.Action, tc.want)
 				}
 			}
 			if !found {

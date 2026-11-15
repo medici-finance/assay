@@ -83,7 +83,10 @@ func runCmd(dir, name string, args ...string) runResult {
 //     write: runCmdEnv with the claimAuth resolveClaimAuth built (--token-file for the Go
 //     binary, GH_TOKEN in the environment for the legacy script);
 //   - the decision gate's tools/decision-issue.sh — a forge write through the CLI:
-//     runCmdEnv with claimAuth.scriptEnv, the SAME resolution in environment shape;
+//     runCmdEnv with claimAuth.scriptEnv, the SAME resolution in environment shape. Its
+//     PATH port deskdecision (issue 6131) is handed the ROLE, `--as <role>`, not a
+//     credential: it resolves that role's own custody through the deskkit forge resolver
+//     and reads none from its environment, so it runs with runCmdEnv(nil);
 //   - local Git probes, deskwt and deskroster set: runCmd. Resume source
 //     refresh is not a child: CheckoutGitRead binds its role credential and
 //     gitcore carries it in memory through the in-process transport.

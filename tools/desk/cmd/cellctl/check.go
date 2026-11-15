@@ -20,7 +20,14 @@ import (
 //	warn  — VISIBLE but non-fatal: it names a condition that will degrade the desks without
 //	        being a precondition cellctl can assert (staying current with an upstream is an
 //	        operator step), so it must not decide the exit code
-type checker struct{ ok bool }
+//	?     — COULD-NOT-CHECK: the precondition is real but this run could not read it (no
+//	        credential, an unreadable answer). It is never an ok row, and a run that has one
+//	        never closes "all preconditions met"; like warn it leaves the exit code alone, so
+//	        a precheck that gates on the exit code is not broken by a row it cannot act on
+type checker struct {
+	ok        bool
+	unchecked int
+}
 
 func (k *checker) chk(cond bool, format string, args ...any) {
 	if cond {
@@ -36,6 +43,10 @@ func (k *checker) na(format string, args ...any) {
 }
 func (k *checker) warn(format string, args ...any) {
 	fmt.Printf("  warn  %s\n", fmt.Sprintf(format, args...))
+}
+func (k *checker) cnc(format string, args ...any) {
+	fmt.Printf("  ?     could-not-check: %s\n", fmt.Sprintf(format, args...))
+	k.unchecked++
 }
 
 func cmdCheck(cell, cfgArg string) {
@@ -346,6 +357,17 @@ func cmdCheck(cell, cfgArg string) {
 		k.na("deskd — not required on this %s cell with DESKD=0 (set DESKD=1 in cell.env to require one)", c.Kind)
 	}
 
+	k.summary()
+}
+
+// summary closes a check: exit 1 when any row missed. A run whose only open rows are
+// could-not-check keeps exit 0 (up's precheck reads the exit) but never says "all preconditions
+// met": what was not checked is not clean.
+func (k *checker) summary() {
+	if k.ok && k.unchecked > 0 {
+		fmt.Printf("[check] every checked precondition met; %d could-not-check row(s) (?) — not clean until each is checked\n", k.unchecked)
+		return
+	}
 	if k.ok {
 		fmt.Println("[check] all preconditions met")
 		return
@@ -446,6 +468,7 @@ func (c *Cell) checkHouse(k *checker, cfgArg string) {
 		k.chk(isDir(e[1]), "root %s exists: %s", e[0], e[1])
 		k.chk(isDir(filepath.Join(e[1], "docs", "streams")), "root %s carries docs/streams/", e[0])
 	}
+	c.labelsRows(k)
 	for _, v := range strings.Fields(houseVerbs) {
 		k.chk(isExecFile(filepath.Join(deskToolsBin(c.Env), v)), "desk verb: %s/%s", deskToolsBin(c.Env), v)
 	}

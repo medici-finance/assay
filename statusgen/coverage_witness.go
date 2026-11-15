@@ -40,20 +40,66 @@ func witnessGit(root string, args ...string) *exec.Cmd {
 }
 
 func (r coverageRepo) ListTree(rev string) ([]evaluation.TreeBlob, bool) {
-	out, err := witnessGit(r.root, "ls-tree", "-r", "-z", "--full-tree", "--end-of-options", rev).Output()
+	entries, over, ok := r.listTree(rev, -1, -1)
+	return entries, ok && over == ""
+}
+
+// listTree reads rev's `ls-tree -r -z` listing as it arrives. With maxEntries
+// or maxBytes not negative it stops once the listing holds more entries or
+// more bytes than that (over names the cap, "entries" or "bytes"; git is
+// killed), so memory never holds more of the listing than the caps allow. A
+// malformed record fails the read.
+func (r coverageRepo) listTree(rev string, maxEntries int, maxBytes int64) (entries []evaluation.TreeBlob, over string, ok bool) {
+	cmd := witnessGit(r.root, "ls-tree", "-r", "-z", "--full-tree", "--end-of-options", rev)
+	out, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, false
+		return nil, "", false
 	}
-	var entries []evaluation.TreeBlob
-	for _, e := range splitNUL(out) {
-		meta, name, found := strings.Cut(e, "\t")
+	if err := cmd.Start(); err != nil {
+		return nil, "", false
+	}
+	var src io.Reader = out
+	if maxBytes >= 0 {
+		src = io.LimitReader(out, maxBytes+1)
+	}
+	br := bufio.NewReader(src)
+	var read int64
+	ok = true
+	for {
+		rec, err := br.ReadString(0)
+		read += int64(len(rec))
+		if maxBytes >= 0 && read > maxBytes {
+			over = "bytes"
+			break
+		}
+		if err == io.EOF && rec == "" {
+			break
+		}
+		if err != nil {
+			ok = false // a record not NUL-terminated, or a read error
+			break
+		}
+		meta, name, found := strings.Cut(strings.TrimSuffix(rec, "\x00"), "\t")
 		f := strings.Fields(meta)
 		if !found || len(f) != 3 {
-			return nil, false
+			ok = false
+			break
+		}
+		if maxEntries >= 0 && len(entries) == maxEntries {
+			over = "entries"
+			break
 		}
 		entries = append(entries, evaluation.TreeBlob{Mode: f[0], OID: f[2], Path: name})
 	}
-	return entries, true
+	if over != "" || !ok {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return nil, over, ok
+	}
+	if err := cmd.Wait(); err != nil {
+		return nil, "", false
+	}
+	return entries, "", true
 }
 
 func (r coverageRepo) CheckAttr(rev string, paths []string) (map[string][]string, bool) {
@@ -127,6 +173,116 @@ func (r coverageRepo) CatObjects(specs []string) (map[string]evaluation.CatObjec
 		got[s] = evaluation.CatObject{OID: f[0], Type: f[1], Content: body[:size]}
 	}
 	return got, true
+}
+
+// objectSize is one `cat-file --batch-check` answer.
+type objectSize struct {
+	Type string
+	Size int64
+}
+
+// ObjectSizes reads each named object's type and size and no content: one
+// `cat-file --batch-check`. A missing object is absent from the map.
+func (r coverageRepo) ObjectSizes(oids []string) (map[string]objectSize, bool) {
+	got := map[string]objectSize{}
+	if len(oids) == 0 {
+		return got, true
+	}
+	var in bytes.Buffer
+	for _, s := range oids {
+		if strings.ContainsAny(s, "\n\x00") {
+			return nil, false
+		}
+		in.WriteString(s + "\n")
+	}
+	cmd := witnessGit(r.root, "cat-file", "--batch-check")
+	cmd.Stdin = &in
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, false
+	}
+	lines := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+	if len(lines) != len(oids) {
+		return nil, false
+	}
+	for i, l := range lines {
+		f := strings.Fields(l)
+		if len(f) >= 2 && (f[len(f)-1] == "missing" || f[len(f)-1] == "ambiguous") {
+			continue
+		}
+		if len(f) != 3 {
+			return nil, false
+		}
+		size, err := strconv.ParseInt(f[2], 10, 64)
+		if err != nil || size < 0 {
+			return nil, false
+		}
+		got[oids[i]] = objectSize{Type: f[1], Size: size}
+	}
+	return got, true
+}
+
+// StreamObjects reads the named objects in order through one
+// `cat-file --batch` whose output is consumed as it arrives, never buffered
+// whole: each gets the object's type, size and a reader of exactly its body.
+// A missing object, a malformed header or an error from each stops the read.
+func (r coverageRepo) StreamObjects(oids []string, each func(oid, typ string, size int64, body io.Reader) error) error {
+	if len(oids) == 0 {
+		return nil
+	}
+	var in bytes.Buffer
+	for _, s := range oids {
+		if strings.ContainsAny(s, "\n\x00") {
+			return errors.New("an object name holds a line break")
+		}
+		in.WriteString(s + "\n")
+	}
+	cmd := witnessGit(r.root, "cat-file", "--batch")
+	cmd.Stdin = &in
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	read := func() error {
+		br := bufio.NewReader(out)
+		for _, s := range oids {
+			header, err := br.ReadString('\n')
+			if err != nil {
+				return err
+			}
+			f := strings.Fields(header)
+			if len(f) != 3 {
+				return errors.New("cat-file: " + s + " is not readable")
+			}
+			size, err := strconv.ParseInt(f[2], 10, 64)
+			if err != nil || size < 0 {
+				return errors.New("cat-file: a malformed size for " + s)
+			}
+			body := io.LimitReader(br, size)
+			if err := each(s, f[1], size, body); err != nil {
+				return err
+			}
+			if _, err := io.Copy(io.Discard, body); err != nil {
+				return err
+			}
+			if b, err := br.ReadByte(); err != nil || b != '\n' {
+				return errors.New("cat-file: " + s + " is not followed by a line break")
+			}
+		}
+		return nil
+	}
+	rerr := read()
+	if rerr != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+	werr := cmd.Wait()
+	if rerr != nil {
+		return rerr
+	}
+	return werr
 }
 
 // WitnessAdditions reads only which commit added which record: the log

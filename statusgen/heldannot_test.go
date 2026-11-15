@@ -172,14 +172,18 @@ func TestHeldScopeObservedOutputRefuses(t *testing.T) {
 		{"note column", note, true},
 		{"misaligned row", misaligned, true},
 		{"live held row", annObs("—", "HELD — no runner online"), true},
-		{"prose line, not a cell", annObs("0", "ok") + "PASS: a could-not-check mission section\n", true},
+		// A marker, not lower-case prose: ruling A on #4721 does not read
+		// lower-case free prose at all (heldprose_test.go).
+		{"prose line, not a cell", annObs("0", "ok") + "PASS: a COULD-NOT-CHECK mission section\n", true},
 	})
 }
 
 // TestHeldScopeZeroRatio: a summary that counts every row passed and zero
 // could-not-check ("Rows: 2 of 2 required rows passed; 0 could-not-check.")
 // is a count, not a disposition; a ratio that did not pass every row, or a
-// zero count that gives a hold reason, still refuses.
+// zero count that gives a hold reason, still refuses. The refusing lines
+// carry a marker (COULD-NOT-CHECK): ruling A on #4721 does not read the
+// lower-case word in free prose, so only a marker exercises the count rule.
 // regression: #4294
 func TestHeldScopeZeroRatio(t *testing.T) {
 	ev := func(line string) string { return annObs("0", "ok") + line + "\n" }
@@ -187,11 +191,11 @@ func TestHeldScopeZeroRatio(t *testing.T) {
 		{"the comment's line", ev("Rows: 2 of 2 required rows passed; 0 could-not-check."), false},
 		{"on the verdict line", ev("**VERIFY: PASS** — 7 of 7 rows passed, 0 HELD"), false},
 		{"checks ran", ev("3 of 3 checks ran; 0 could-not-check"), false},
-		{"ratio short", ev("Rows: 1 of 2 required rows passed; 0 could-not-check."), true},
-		{"zero ratio", ev("Rows: 0 of 0 rows passed; 0 could-not-check."), true},
-		{"reason after", ev("Rows: 2 of 2 rows passed; 0 could-not-check pending runner"), true},
-		{"two qualifiers", ev("Rows: 2 of 2 required verify rows passed; 0 could-not-check."), true},
-		{"not a count noun", ev("Rows: 2 of 2 required exits passed; 0 could-not-check."), true},
+		{"ratio short", ev("Rows: 1 of 2 required rows passed; 0 COULD-NOT-CHECK."), true},
+		{"zero ratio", ev("Rows: 0 of 0 rows passed; 0 COULD-NOT-CHECK."), true},
+		{"reason after", ev("Rows: 2 of 2 rows passed; 0 COULD-NOT-CHECK pending runner"), true},
+		{"two qualifiers", ev("Rows: 2 of 2 required verify rows passed; 0 COULD-NOT-CHECK."), true},
+		{"not a count noun", ev("Rows: 2 of 2 required exits passed; 0 COULD-NOT-CHECK."), true},
 	})
 }
 

@@ -228,7 +228,7 @@ func CaseLateResultDenied(t *testing.T, f Factory) {
 func CaseCredentialAndUsage(t *testing.T, f Factory) {
 	s, claims, c := setup(t, f)
 	ctx := context.Background()
-	secret := "gh" + "p_" + strings.Repeat("a1", 20)
+	secret := "ghp" + "_" + strings.Repeat("a1", 20)
 
 	bad := StandingRequest("secret-packet")
 	bad.Packet.Ref = "packets/worker?token=" + secret

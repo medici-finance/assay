@@ -128,8 +128,16 @@ var execCommand = exec.Command
 // --repo is not optional (mirrors deskreply/#562): an App installed on more than one account
 // mints for the wrong installation when --repo is omitted — a token with no access to the
 // target repo. The repo deskevidence passes is the one it just validated against its repo set.
+//
+// deskevidence lands Evidence as the verifier App by design, including for a verifier agent
+// a coordinator window dispatched, so under another loop it passes desktoken's audited
+// --cross-role override (#6069) rather than being refused. The reason names this verb.
 func mintVerifierToken(repoSlug string) error {
-	cmd := execCommand("desktoken", "verifier", "--repo", repoSlug)
+	args := []string{"verifier", "--repo", repoSlug}
+	if reason := deskkit.CrossRoleReason("deskevidence", "verifier"); reason != "" {
+		args = append(args, "--cross-role", reason)
+	}
+	cmd := execCommand("desktoken", args...)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb

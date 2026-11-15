@@ -59,7 +59,7 @@ func (f *fakeStore) nextSHA() string { f.n++; return fmt.Sprintf("tagsha%d", f.n
 func (f *fakeStore) seedClaim(id, owner, state, branch string, age time.Duration) {
 	f.claims[id] = fakeClaim{
 		sha:  f.nextSHA(),
-		msg:  claimMessage(id, owner, state, branch, ""),
+		msg:  claimTestMessage(id, owner, state, branch, ""),
 		date: f.now.Add(-age).Format(time.RFC3339),
 	}
 }
@@ -464,7 +464,7 @@ func (m *movingStore) Read(id string) (deskkit.ClaimStoreRecord, deskkit.ClaimRe
 // tag-OBJECT round-trip — Go reads a commit-target REST tag; a git reader reads a Go blob-target
 // tag — is proven over a real git server in internal/gitcore/claimref_test.go.)
 func TestClaimMessageGrammarRoundTrips(t *testing.T) {
-	msg := claimMessage("at--stream--07", "sess-A", "dispatched", "feat/x", "TTL dead reason")
+	msg := claimTestMessage("at--stream--07", "sess-A", "dispatched", "feat/x", "TTL dead reason")
 	// The Go builder's exact grammar.
 	want := "dispatch-claim at--stream--07 owner=sess-A state=dispatched branch=feat/x note=TTL_dead_reason"
 	if msg != want {
@@ -592,13 +592,13 @@ func TestGogitStoreRejectedCreateRecordsServerRefusal(t *testing.T) {
 	g := &gogitStore{url: server, host: "local-test-server"}
 	id := "at--issue-1631"
 
-	if res := g.CreateIfAbsent(id, claimMessage(id, "sess-A", "claimed", "-", "")); res != deskkit.ClaimWriteApplied {
+	if res := g.CreateIfAbsent(id, claimTestMessage(id, "sess-A", "claimed", "-", "")); res != deskkit.ClaimWriteApplied {
 		t.Fatalf("first create = %v, want Applied; cause=%q", res, g.TransportCause())
 	}
 	if c := g.TransportCause(); c != "" {
 		t.Fatalf("an applied create recorded cause %q, want none", c)
 	}
-	if res := g.CreateIfAbsent(id, claimMessage(id, "sess-B", "claimed", "-", "")); res != deskkit.ClaimWriteRejected {
+	if res := g.CreateIfAbsent(id, claimTestMessage(id, "sess-B", "claimed", "-", "")); res != deskkit.ClaimWriteRejected {
 		t.Fatalf("second create = %v, want Rejected", res)
 	}
 	prefix := "local-test-server: server refused " + refPrefix + "/" + id + ": "
@@ -804,4 +804,12 @@ func TestResolveHostAliasPassesThroughEmptyHost(t *testing.T) {
 	if err != nil || got != "" {
 		t.Fatalf("resolveHostAlias(\"\") = (%q, %v), want (\"\", nil)", got, err)
 	}
+}
+
+func claimTestMessage(id, owner, state, branch, note string) string {
+	msg, err := claimMessage(id, owner, state, branch, note)
+	if err != nil {
+		panic("invalid claim fixture: " + err.Error())
+	}
+	return msg
 }

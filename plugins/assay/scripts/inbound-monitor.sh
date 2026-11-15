@@ -26,7 +26,7 @@
 #           desk cell's), where an ambient login resolves to no usable
 #           account and every read 401s.
 #        2. otherwise a token minted for THAT repo, INSIDE the poll, for the
-#           session's role: `desktoken <role> --repo <owner>/<repo>` (the role
+#           session's role: `desktoken <role> --forge github --repo <owner>/<repo>` (the role
 #           comes from $DESK_LOOP). Its content reaches only the one `gh` read
 #           of that repo as `GH_TOKEN=... gh ...`; it is never exported, never
 #           printed, never reused for another repo.
@@ -128,7 +128,7 @@ It never silently goes blind:
   · it never polls as an inherited token (GH_TOKEN/GITHUB_TOKEN are unset) and
     never as the ambient `gh` login: a repo whose owner was given --token-file is
     read as that file's token, every other repo as the session's role App, with
-    that repo's token minted by `desktoken <role> --repo <slug>` ($DESK_LOOP names
+    that repo's token minted by `desktoken <role> --forge github --repo <slug>` ($DESK_LOOP names
     the role) and handed to that one `gh` call only;
   · a repo whose token cannot be minted (no role for $DESK_LOOP, no `desktoken`,
     a refused mint, an empty token file) prints
@@ -414,7 +414,11 @@ mint_for_repo() {
   # ASSAY_CONFIG_ECHO=full: the minter prints its effective-config preamble on stderr,
   # which this captures and mostly discards; "full" keeps that echo stateless so no
   # digest is recorded as seen that nobody saw. The diagnosis is the LAST stderr line.
-  out=$(ASSAY_CONFIG_ECHO=full desktoken "$ROLE" --repo "$repo" 2>"$TMP_MINT"); rc=$?
+  # --forge github: the one reader below is `gh`, which speaks to GitHub only. Without
+  # it the minter follows the roster's forge for the repo, and a repo mapped to another
+  # forge gets THAT forge's credential — sent to GitHub, a 401 every cycle. Pinned, such
+  # a repo fails here as could-not-check (no read, no baseline) instead.
+  out=$(ASSAY_CONFIG_ECHO=full desktoken "$ROLE" --forge github --repo "$repo" 2>"$TMP_MINT"); rc=$?
   if [[ "$rc" -ne 0 ]]; then
     MINT_WHY="desktoken $ROLE exited $rc: $(grep . "$TMP_MINT" | tail -n 1 | cut -c1-200)"
     return 1

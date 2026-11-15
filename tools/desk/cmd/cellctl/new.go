@@ -17,13 +17,20 @@ import (
 // parity harness diffs the whole tree each implementation writes — paths, mode bits and file
 // contents — so a stray space in a comment line here is a divergence, not a nit.
 func cmdNew(cell string, v *cli.Values) {
-	scaffoldCell(cell, v)
+	labelsEnsured := scaffoldCell(cell, v)
 	// Only after a scaffold that succeeded: a refused `new` returns through die and writes
 	// nothing, the machine-wide defaults file included.
 	seedCellDefaults()
+	// A house cell whose label set was not ensured is scaffolded but NOT finished: the step
+	// printed the command that finishes it, and the exit says so (labels.go).
+	if !labelsEnsured {
+		exitWith(1)
+	}
 }
 
-func scaffoldCell(cell string, v *cli.Values) {
+// scaffoldCell scaffolds the cell and reports whether its install steps all finished —
+// false only for a house cell whose forge label set was not ensured.
+func scaffoldCell(cell string, v *cli.Values) bool {
 	e := newEnvFromProcess()
 
 	// DESK_APP_ID is the default because `cellctl deskd` reads the CELL home's apps.env, and
@@ -33,6 +40,10 @@ func scaffoldCell(cell string, v *cli.Values) {
 	group, gitlabAPIBase, tokenStore := v.String("group"), v.String("gitlab-api-base"), v.String("gitlab-token-store")
 	roots, launcher, repoSlug, containerConfig := v.String("roots"), v.String("launcher"), v.String("repo-slug"), v.String("container-config")
 	roles, rolesSet := v.String("roles"), v.Source("roles") == cli.Flag
+	labelsToken := v.String("labels-token-file")
+	if labelsToken != "" && kind != "house" {
+		die("--labels-token-file is only valid for --kind house (the operator's own label-write credential)")
+	}
 
 	// Every path below is written bare into cell.env, where a Windows `\` would read back as a
 	// shell escape: emit it with forward slashes on Windows (cellenvpath.go; identity elsewhere).
@@ -79,13 +90,13 @@ func scaffoldCell(cell string, v *cli.Values) {
 		} else {
 			newContainer(e, root, cell, repo, launcher, roles, roots)
 		}
-		return
+		return true
 	case "scrubbed":
 		if anyGiven(yaml, orgs, pem, group, tokenStore, launcher) {
 			die("scrubbed new does not accept host credential, deskd or container-launcher configuration")
 		}
 		newScrubbed(e, root, cell, repo, repoSlug, roots, roles)
-		return
+		return true
 	}
 	if launcher != "" {
 		die("--launcher is only valid for --kind container")
@@ -93,8 +104,10 @@ func scaffoldCell(cell string, v *cli.Values) {
 	switch kind {
 	case "k8s":
 	case "house":
-		newHouse(e, root, cell, repo, roots, roles, port, houseForge{forge: forge, group: group, apiBase: gitlabAPIBase, tokenStore: tokenStore})
-		return
+		hf := houseForge{forge: forge, group: group, apiBase: gitlabAPIBase, tokenStore: tokenStore}
+		d := newHouse(e, root, cell, repo, roots, roles, port, hf)
+		return ensureCellLabels(hf.labelsForge(), hf.labelsAPIBase(e), labelRepos(roots),
+			boundRolesUnder(filepath.Join(d, "home")), labelsToken)
 	default:
 		die("new: --kind must be k8s, house, container or scrubbed, got '%s'", kind)
 	}
@@ -195,6 +208,7 @@ ROLES="%s"
 		writeFile(filepath.Join(d, "README.md"), fmt.Sprintf(gitlabReadme, cell, cell, store, cell, forgeAPIBase, group, cell, cell))
 	}
 	fmt.Printf("[new] scaffolded %s (%s cell) — see %s/README.md for the hand steps\n", d, forge, d)
+	return true
 }
 
 // cockpitBlock and pinnedBlock are the trailing comment blocks EVERY k8s cell.env carries, in
@@ -317,7 +331,9 @@ func newContainer(e *Env, root, cell, repo, launcher, roles, roots string) {
 // default; an empty value reads as github, as it always has on a house cell) writes the github
 // cell.env and links the gh CLI config; gitlab writes CELL_FORGE=gitlab with its endpoint and
 // never links a gh config, which is GitHub custody (`check` reports that row n/a there).
-func newHouse(e *Env, root, cell, repo, roots, roles, port string, f houseForge) {
+//
+// It returns the cell directory; the labels step that follows reads the roster through it.
+func newHouse(e *Env, root, cell, repo, roots, roles, port string, f houseForge) string {
 	if repo == "" || roots == "" {
 		die("new: --kind house needs --repo <checkout> and --roots '<owner>/<repo>=<abs path>,...'")
 	}
@@ -386,11 +402,32 @@ CELL_ROOTS=%s
 `+houseCellEnvTail, cell, shape, today, cell, forgeName, repo, roots, forgeLines, roles, cell, cell, port))
 	s.write(filepath.Join(d, "README.md"), fmt.Sprintf(houseReadme, cell, repo, realCfg, cell, cell, cell))
 	fmt.Printf("[new] scaffolded %s (house cell) — cellctl check %s, then cellctl desk %s <role>\n", d, cell, cell)
+	return d
 }
 
 // houseForge is the forge a house cell is scaffolded for, from `new`'s --forge, --group,
 // --gitlab-api-base and --gitlab-token-store.
 type houseForge struct{ forge, group, apiBase, tokenStore string }
+
+// labelsForge is the forge the labels step targets: github unless --forge gitlab.
+func (f houseForge) labelsForge() string {
+	if f.forge == "gitlab" {
+		return "gitlab"
+	}
+	return "github"
+}
+
+// labelsAPIBase is the API base the scaffolded cell.env names — the same derivation the
+// cell.env lines above write, so the labels step reaches the forge `check` will read.
+func (f houseForge) labelsAPIBase(e *Env) string {
+	if f.forge == "gitlab" {
+		if f.apiBase != "" {
+			return f.apiBase
+		}
+		return "https://gitlab.com/api/v4"
+	}
+	return "https://api." + e.GetOr("GITHUB_HOST", "github.com")
+}
 
 // houseGitlabLines is a gitlab house cell.env's endpoint block. The API base defaults as on a k8s
 // gitlab cell; the group is needed only by a deskd (DESKD=1), so an absent one is left as a

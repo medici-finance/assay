@@ -23,7 +23,12 @@ gomodcache="$(go env GOMODCACHE)"
 me="$(id -un)"
 mykuid="$(id -u)"
 
-tmp="$(cd "$(mktemp -d)" && pwd -P)"
+# Fail closed before the EXIT trap: on bash 3.2 `cd ""` succeeds, so a failed mktemp
+# must never leave tmp at the caller's directory for the trap to delete (#6161).
+made="$(mktemp -d)" || exit 1
+[ -n "$made" ] && [ -d "$made" ] || exit 1
+tmp="$(cd "$made" && pwd -P)" || exit 1
+[ -n "$tmp" ] || exit 1
 forge_pid=""
 cleanup() {
   [ -n "$forge_pid" ] && kill "$forge_pid" 2>/dev/null || true

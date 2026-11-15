@@ -69,7 +69,8 @@ image.
   the binaries plus `git`, `gh`, and `ca-certificates` under a non-root user.
 - `.github/workflows/release.yml` owns image publication as part of the umbrella
   release. Its single approved release job uses the prepared Linux binaries,
-  builds/checks all nine images, pushes them, then publishes the tag and release
+  builds/checks every image in the release set (the desk images, verify-runner
+  and deskd), pushes them, then publishes the tag and release
   assets with checksummed immutable image references. `dry_run` builds and checks
   without publishing. See [the release contract](release-images.md).
 
