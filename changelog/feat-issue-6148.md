@@ -1,2 +1,0 @@
-### Fixed
-- `tools/cellctl/tests/down.test.sh` passes against the Go `cellctl` binary again, and `go test` now runs it against a binary built from the tree. Its two "still refused" checks expected the shell oracle's wording; they now accept either wording, and they also check that down never reached its teardown. The Go binary already refused both inputs with exit 3: a word after the cell is read as a role (`down <cell> <role...>`), and a trailing `--cockpit` is refused by the flag parser.

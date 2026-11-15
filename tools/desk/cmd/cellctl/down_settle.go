@@ -34,6 +34,12 @@ type interactiveOwner struct {
 	Role  string
 	PID   int
 	Start string
+	// Sequence and LastStart name the checkpoint the owner was running when down read its lease
+	// record, before anything was signalled. They are what binds an owner whose record is gone
+	// to the checkpoint it left: a clean exit releases the lease, and that removes the owner
+	// record and the start time in it (#6251). Zero is a checkpoint down did not read.
+	Sequence  uint64
+	LastStart time.Time
 }
 
 // interactiveOwners lists the interactive owners holding this cell's role leases right now.
@@ -80,6 +86,10 @@ func (c *Cell) interactiveOwner(role string) (interactiveOwner, bool, error) {
 	if holderErr == nil && holder != nil && holder.PID > 0 && holder.Start != "" &&
 		holder.Cell == c.Name && holder.Role == role {
 		o.PID, o.Start = holder.PID, holder.Start
+		if s, err := cellcadence.Read(dir); err == nil && s.Mode == "interactive" && s.Running &&
+			s.Cell == c.Name && s.Role == role && s.PID == holder.PID {
+			o.Sequence, o.LastStart = s.Sequence, s.LastStart
+		}
 	}
 	return o, true, nil
 }
@@ -147,7 +157,7 @@ func (c *Cell) settleOnce(o interactiveOwner, dir string) (string, error) {
 		return "a process carrying the role's marker is still running", nil
 	case e.Class != reconcileDead:
 		return "the record is " + e.Class + ", not proven dead", nil
-	case !e.HasState || e.Start != o.Start:
+	case !e.HasState || !c.recordIsOwners(o, e):
 		return "", errors.New("the record is not the one the signalled owner wrote")
 	}
 	lease, err := cellcadence.Acquire(dir)
@@ -162,6 +172,23 @@ func (c *Cell) settleOnce(o interactiveOwner, dir string) (string, error) {
 		return "", err
 	}
 	return "", nil
+}
+
+// recordIsOwners reports whether the role's checkpoint is the one o's owner wrote. While the owner
+// record survives, that is its start time matching the one down read. A launch that exits
+// releases its lease, and the release removes the owner record: nothing then carries a start
+// time, and requiring one refused every owner that exited on the hangup (#6251). That owner is
+// attributed by the checkpoint down read before it signalled anyone: the same interactive record
+// (sequence and start), written by the same pid. The caller has already established that the
+// checkpoint is Running, that the pid is gone (an unreadable start time is never dead), and that
+// the lease is free, so a replacement owner's record (another sequence) or an unread one (zero)
+// is never matched.
+func (c *Cell) recordIsOwners(o interactiveOwner, e *reconcileEntry) bool {
+	if e.Start != "" {
+		return e.Start == o.Start
+	}
+	s := e.State
+	return o.Sequence != 0 && s.Sequence == o.Sequence && s.PID == o.PID && s.LastStart.Equal(o.LastStart)
 }
 
 // settleInteractiveOwners settles each owner against one shared deadline, so the whole wait is

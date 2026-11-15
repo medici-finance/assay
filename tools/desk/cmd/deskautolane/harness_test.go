@@ -92,6 +92,8 @@ type fakeForge struct {
 	reviews    []deskkit.Review
 	checks     *deskkit.ChecksAtHead
 	checks2    *deskkit.ChecksAtHead // what every checks read AFTER the first serves; nil = unchanged
+	suites     []deskkit.CheckSuite  // the check suites at head (#6234); nil serves none
+	suitesTot  int                   // when > len(suites), the total_count asserted: a short read
 	checkReads int
 	required   []string
 	events     []deskkit.LabelEvent
@@ -245,6 +247,17 @@ func (f *fakeForge) ChecksAtHead(r deskkit.ForgeRepo, sha string) (*deskkit.Chec
 	return f.checks, nil
 }
 
+func (f *fakeForge) CheckSuitesAtHead(r deskkit.ForgeRepo, sha string) (*deskkit.CheckSuitesAtHead, error) {
+	if err := f.rec("CheckSuitesAtHead", sha, ""); err != nil {
+		return nil, err
+	}
+	total := len(f.suites)
+	if f.suitesTot > total {
+		total = f.suitesTot
+	}
+	return &deskkit.CheckSuitesAtHead{TotalCount: total, Suites: f.suites}, nil
+}
+
 func (f *fakeForge) RequiredStatusChecks(r deskkit.ForgeRepo, branch string) ([]string, error) {
 	if err := f.rec("RequiredStatusChecks", branch, ""); err != nil {
 		return nil, err
@@ -351,7 +364,10 @@ func (f *fakeForge) ApplyLabels(r deskkit.ForgeRepo, n int, ch deskkit.LabelChan
 	return &deskkit.LabelOutcome{Added: add, Removed: ch.Remove}, nil
 }
 
-func (f *fakeForge) PostComment(r deskkit.ForgeRepo, n int, body string) (*deskkit.CommentRef, error) {
+func (f *fakeForge) PostCommentTyped(r deskkit.ForgeRepo, n int, kind deskkit.TargetKind, body string) (*deskkit.CommentRef, error) {
+	if kind != deskkit.TargetChange {
+		return nil, deskkit.Refused("fixture: the ejection comment targets a PR, never another kind") // #6264
+	}
 	if err := f.rec("PostComment", fmt.Sprint(n), body); err != nil {
 		return nil, err
 	}

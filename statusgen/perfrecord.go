@@ -175,17 +175,21 @@ func perfCountHTTP() { perfHTTPCalls.Add(1) }
 // perfSourceStamp is the ONE place the record's build stamp is read: the commit the binary was
 // built from (perfrec.Revision: the toolchain's vcs.revision). statusgen has no link-time commit
 // stamp, hence the empty one. It is never statusgenVersion: that is a release TAG, which
-// perfrec.SourceSHA's hex-only gate records as "unpinned".
+// perfrec.SourceSHA's hex-only gate records as "unpinned"; the tag has its own perf-v5 field
+// (perfBuildRecord).
 func perfSourceStamp() string { return perfrec.Revision("") }
 
 // perfBuildRecord ends the session and builds this process's record; ok is false when the
-// switch is off.
+// switch is off. A release build's record also names its release tag (perf-v5): the tag is
+// statusgenVersion, kept only when it has a release tag's shape (perfrec.WithRelease), so a dev
+// build or a free-text stamp writes the unchanged perf-v2 line.
 func perfBuildRecord(exit int) (perfrec.Record, bool) {
 	if perfSession == nil {
 		return perfrec.Record{}, false
 	}
 	perfSession.Add(perfrec.CounterHTTP, perfHTTPCalls.Load())
-	return perfSession.Finish(perfToolName, perfVerb(os.Args[1:]), perfrec.RoleNone, exit, perfSourceStamp()), true
+	rec := perfSession.Finish(perfToolName, perfVerb(os.Args[1:]), perfrec.RoleNone, exit, perfSourceStamp())
+	return perfrec.WithRelease(rec, statusgenVersion), true
 }
 
 // recordPerf appends this process's perf line when ASSAY_TELEMETRY=1: the perf-v3 summary when
