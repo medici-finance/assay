@@ -245,6 +245,13 @@ var (
 	decisionGateRegisterRe = regexp.MustCompile(`^docs/(streams|archive)/(findings|intake|verify-outcomes)/`)
 )
 
+// sameCommit reports whether a and b are one commit by exact equality of two full,
+// lowercase object ids. A prefix never matches: an abbreviated id could name another
+// commit, so anything but two full ids is left to the forge's compare.
+func sameCommit(a, b string) bool {
+	return deskkit.IsFullSHA(a) && deskkit.IsFullSHA(b) && a == b
+}
+
 // decisionGateBranchBoard returns the board files the target branch holds differently
 // from the landing home, so the judge can read the board the write lands on.
 //
@@ -279,6 +286,14 @@ func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branc
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot resolve the tip of %s on %s, so the board the write lands on cannot be judged (decision-gate hold, lifecycle-v1 §4.5)", branch, fr.Slug()), err)
 	}
 	tip := tipCommit.SHA
+	// A home whose HEAD is the tip itself judged the board the write lands on: there is no
+	// difference to read, which is what an "identical" compare with no changed files says,
+	// so no compare is asked for (a forge that serves none, GitLab, lands here). The test is
+	// equality of two FULL object ids, never a prefix: an abbreviated or otherwise
+	// non-canonical id on either side still goes to the compare.
+	if sameCommit(head, tip) {
+		return nil, nil
+	}
 	cmp, err := fg.CompareRefs(fr, head, tip)
 	if err != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot compare the landing home's HEAD %s with %s (%s) on %s, so the board the write lands on cannot be shown to match the one judged (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug()), err)

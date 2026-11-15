@@ -1,0 +1,116 @@
+name: Release object qualification
+run-name: Fixture-only object qualification at ${{ github.sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      expected_source:
+        description: Exact reviewed main commit, no release or tag
+        type: string
+        required: true
+      confirmation:
+        description: Enter ONE_PRODUCER_ONE_PUBLISHER
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: release-object-qualification
+  cancel-in-progress: false
+jobs:
+  producer:
+    if: >-
+      github.repository == 'medici-finance/assay' && github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' && inputs.expected_source == github.sha &&
+      inputs.confirmation == 'ONE_PRODUCER_ONE_PUBLISHER'
+    runs-on: assay-release-object-builder
+    environment: release-object-store-producer
+    timeout-minutes: 15
+    outputs:
+      bundle_sha256: ${{ steps.proof.outputs.bundle_sha256 }}
+      manifest_sha256: ${{ steps.proof.outputs.manifest_sha256 }}
+      bundle_bytes: ${{ steps.proof.outputs.bundle_bytes }}
+      handoff_attempt: ${{ steps.proof.outputs.handoff_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Retained offline handoff controls on the native runner
+        run: python3 -B -m unittest discover -s tools/release -p 'transport_test.py' -v
+      - name: Install checksum-pinned job-local object client
+        run: bash tools/release/install-object-client.sh "$RUNNER_TEMP/release-aws"
+      - name: Produce bounded fixture and prove narrow access
+        id: proof
+        env:
+          QUALIFICATION_SOURCE: ${{ inputs.expected_source }}
+          QUALIFICATION_CONFIRM: ${{ inputs.confirmation }}
+          RELEASE_OBJECT_ENDPOINT: ${{ secrets.RELEASE_OBJECT_ENDPOINT }}
+          RELEASE_OBJECT_BUCKET: ${{ secrets.RELEASE_OBJECT_BUCKET }}
+          RELEASE_OBJECT_REGION: ${{ secrets.RELEASE_OBJECT_REGION }}
+          RELEASE_OBJECT_ACCESS_KEY_ID: ${{ secrets.RELEASE_OBJECT_ACCESS_KEY_ID }}
+          RELEASE_OBJECT_SECRET_ACCESS_KEY: ${{ secrets.RELEASE_OBJECT_SECRET_ACCESS_KEY }}
+          RELEASE_OBJECT_SESSION_TOKEN: ${{ secrets.RELEASE_OBJECT_SESSION_TOKEN }}
+          RELEASE_OBJECT_CA_BUNDLE: /etc/release-object-ca/ca.pem
+        run: |
+          python3 -B - <<'PY'
+          import os
+          from tools.release.qualification import produce
+          try:
+            produce(os.environ, os.environ['RUNNER_TEMP']+'/release-aws/bin/aws', os.environ['RUNNER_TEMP']+'/producer-proof.json')
+          except Exception as error:
+              raise SystemExit('qualification refused at producer: '+type(error).__name__) from None
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: object-qualification-producer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/producer-proof.json
+          if-no-files-found: error
+          retention-days: 30
+  publisher:
+    needs: producer
+    if: >-
+      github.repository == 'medici-finance/assay' && github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' && inputs.expected_source == github.sha &&
+      inputs.confirmation == 'ONE_PRODUCER_ONE_PUBLISHER'
+    runs-on: assay-release-object-publisher
+    environment: release
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Retained offline handoff controls on the native runner
+        run: python3 -B -m unittest discover -s tools/release -p 'transport_test.py' -v
+      - name: Install checksum-pinned job-local object client
+        run: bash tools/release/install-object-client.sh "$RUNNER_TEMP/release-aws"
+      - name: Receive the exact producer fixture and prove read-only access
+        env:
+          QUALIFICATION_SOURCE: ${{ inputs.expected_source }}
+          QUALIFICATION_CONFIRM: ${{ inputs.confirmation }}
+          PRODUCER_ATTEMPT: ${{ needs.producer.outputs.handoff_attempt }}
+          EXPECTED_BUNDLE_SHA256: ${{ needs.producer.outputs.bundle_sha256 }}
+          EXPECTED_MANIFEST_SHA256: ${{ needs.producer.outputs.manifest_sha256 }}
+          EXPECTED_BUNDLE_BYTES: ${{ needs.producer.outputs.bundle_bytes }}
+          RELEASE_OBJECT_ENDPOINT: ${{ secrets.RELEASE_OBJECT_ENDPOINT }}
+          RELEASE_OBJECT_BUCKET: ${{ secrets.RELEASE_OBJECT_BUCKET }}
+          RELEASE_OBJECT_REGION: ${{ secrets.RELEASE_OBJECT_REGION }}
+          RELEASE_OBJECT_ACCESS_KEY_ID: ${{ secrets.RELEASE_OBJECT_ACCESS_KEY_ID }}
+          RELEASE_OBJECT_SECRET_ACCESS_KEY: ${{ secrets.RELEASE_OBJECT_SECRET_ACCESS_KEY }}
+          RELEASE_OBJECT_SESSION_TOKEN: ${{ secrets.RELEASE_OBJECT_SESSION_TOKEN }}
+          RELEASE_OBJECT_CA_BUNDLE: /etc/release-object-ca/ca.pem
+        run: |
+          python3 -B - <<'PY'
+          import os
+          from tools.release.qualification import receive
+          try:
+            receive(os.environ, os.environ['RUNNER_TEMP']+'/release-aws/bin/aws', os.environ['RUNNER_TEMP']+'/publisher-proof.json')
+          except Exception as error:
+              raise SystemExit('qualification refused at publisher: '+type(error).__name__) from None
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: object-qualification-publisher-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publisher-proof.json
+          if-no-files-found: error
+          retention-days: 30

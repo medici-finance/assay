@@ -225,9 +225,10 @@ func TestWorkerAttestationOpenOrUnstampedRecordNeverBinds(t *testing.T) {
 	// A record whose body binds this run but whose title names another run is not this run's
 	// record: only the exact-title check can refuse it.
 	f.issue.Title = WorkerAttestationTitle + strings.Repeat("d", 64)
-	if _, err := ReadWorkerAttestation(f, repo, 41); ExitCodeOf(err) != ExitRefused || !strings.Contains(err.Error(), "not the exact dispatcher-authored run record") {
-		t.Fatalf("record titled for another run bound: %v", err)
+	if _, err := ReadWorkerAttestation(f, repo, 41); ExitCodeOf(err) != ExitRefused || !strings.Contains(err.Error(), "not the exact dispatcher-authored run record: has title") {
+		t.Fatalf("record titled for another run bound, or refused without its reason: %v", err)
 	}
+	f.issue.Title = WorkerAttestationTitle + b.Run
 
 	// A closed record that was never stamped refuses on the stamp.
 	u := &verifierForge{actor: "example-desk[bot]"}
@@ -282,5 +283,37 @@ func TestAttestationRecordListingPolicy(t *testing.T) {
 	}
 	if !sharedIssueSkip(WorkerAttestationTitle+"x", "example-desk[bot]") {
 		t.Fatal("shared listing policy does not skip worker records")
+	}
+}
+
+// regression: #6085
+func TestAttestationRefusalNamesReason(t *testing.T) {
+	plantRoster(t, workerRoster)
+	const title, body = WorkerAttestationTitle + "fixture-run", "rendered body\n"
+	// A body that differs carries a planted marker; the refusal names the reason, never the body.
+	const marker = "planted-marker-not-printed"
+	desk := Account{Login: "example-desk[bot]"}
+	for _, c := range []struct {
+		name   string
+		issue  *Issue
+		reason string
+	}{
+		{"missing", nil, "missing run record"},
+		{"change", &Issue{IsPullRequest: true, Title: title, Body: body, Author: desk}, "run record is a pull request"},
+		{"author", &Issue{Title: title, Body: body, Author: Account{Login: "example-worker[bot]"}}, "run record author is not the dispatcher"},
+		{"title", &Issue{Title: title + "x", Body: body, Author: desk}, "has title"},
+		{"body", &Issue{Title: title, Body: body + marker, Author: desk}, "has a body that is not the exact rendering of its binding"},
+	} {
+		err := attestationTarget(c.issue, title, body, workerAuthority, "worker")
+		want := "worker target is not the exact dispatcher-authored run record: " + c.reason
+		if ExitCodeOf(err) != ExitRefused || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: got %v, want a refusal containing %q", c.name, err, want)
+		}
+		if err != nil && strings.Contains(err.Error(), marker) {
+			t.Errorf("%s: the refusal printed the body read back: %v", c.name, err)
+		}
+	}
+	if err := attestationTarget(&Issue{Title: title, Body: strings.TrimSuffix(body, "\n"), Author: desk}, title, body, workerAuthority, "worker"); err != nil {
+		t.Errorf("the rendering with its one trailing newline dropped refused: %v", err)
 	}
 }

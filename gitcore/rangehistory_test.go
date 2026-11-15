@@ -214,3 +214,99 @@ func TestCommitRangeHeaderParity(t *testing.T) {
 		})
 	}
 }
+
+// TestCommitRangeReachable pins ReachableCommits to `git rev-list <tip>`: the
+// same set, each record's message and parent order matching git's own, and
+// tip itself included.
+func TestCommitRangeReachable(t *testing.T) {
+	f := gittest.NewFixture(t)
+	base := mustGitOutput(t, f, "rev-parse", "HEAD")
+	f.CommitFile(t, "main.txt", "main\n", "main change")
+	f.Git("branch", "side", base)
+	f.Git("checkout", "side")
+	f.CommitFile(t, "side.txt", "side\n", "side change\n\nBrief: alpha/01")
+	f.Git("checkout", "-")
+	if _, err := f.Git("merge", "--no-ff", "side", "-m", "landing"); err != nil {
+		t.Fatal(err)
+	}
+	tip := mustGitOutput(t, f, "rev-parse", "HEAD")
+	r, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, from := range []string{tip, base} {
+		rows, err := r.ReachableCommits(from)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, row := range rows {
+			got = append(got, row.ID)
+			msg := mustGitOutput(t, f, "show", "-s", "--format=%B", row.ID)
+			if strings.TrimSpace(row.Message) != msg {
+				t.Fatalf("message %s=%q want %q", row.ID, row.Message, msg)
+			}
+			parents := strings.Fields(mustGitOutput(t, f, "show", "-s", "--format=%P", row.ID))
+			if !reflect.DeepEqual(row.Parents, parents) && len(row.Parents)+len(parents) != 0 {
+				t.Fatalf("parents %v want %v", row.Parents, parents)
+			}
+		}
+		wantText, err := f.Git("rev-list", from)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := strings.Fields(wantText)
+		sort.Strings(got)
+		sort.Strings(want)
+		if strings.Join(got, "\n") != strings.Join(want, "\n") {
+			t.Fatalf("reachable from %s=%v want %v", from, got, want)
+		}
+	}
+}
+
+// TestCommitRangeReachableRefusals: a name or an unknown id is refused, the
+// returned parents are the caller's copy, and a missing ancestor is an error,
+// never a smaller set.
+func TestCommitRangeReachableRefusals(t *testing.T) {
+	f := gittest.NewFixture(t)
+	base := mustGitOutput(t, f, "rev-parse", "HEAD")
+	f.CommitFile(t, "range.txt", "change\n", "range change")
+	tip := mustGitOutput(t, f, "rev-parse", "HEAD")
+	r, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, from := range []string{"HEAD", strings.Repeat("1", 40)} {
+		if rows, err := r.ReachableCommits(from); err == nil || rows != nil {
+			t.Fatalf("uncertain tip %q became success: %v %v", from, rows, err)
+		}
+	}
+	first, err := r.ReachableCommits(tip)
+	if err != nil || len(first) != 2 {
+		t.Fatalf("reachable from tip: %v %v", first, err)
+	}
+	for _, row := range first {
+		for i := range row.Parents {
+			row.Parents[i] = "corrupted"
+		}
+	}
+	again, err := r.ReachableCommits(tip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range again {
+		if row.ID == tip && (len(row.Parents) != 1 || row.Parents[0] != base) {
+			t.Fatalf("caller mutated shared history: %v", row.Parents)
+		}
+	}
+	if err := os.Remove(filepath.Join(f.Dir, ".git", "objects", base[:2], base[2:])); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := fresh.ReachableCommits(tip); err == nil || got != nil {
+		t.Fatalf("missing ancestor became success: %v %v", got, err)
+	}
+}

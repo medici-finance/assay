@@ -86,6 +86,15 @@ whole activation.
      `## vX.Y.Z — <date>` heading, empties `## Unreleased` to its pointer note,
      and the step `git rm`s the aggregated fragments from `changelog/` (keeping
      `README.md`) — all in ONE release commit.
+   - **pin to the tag** — `roll` also takes `--at-ref <tag>` (aggregate only the
+     fragments that exist at the tag, so one that merged after it stays for the
+     next cut) and `--clear` (remove exactly the fragments it aggregated and
+     print each path; the caller stages `git add -A changelog CHANGELOG.md`).
+     `--at-ref` fails closed (exit 4) on an unresolvable ref, and `roll` refuses
+     (exit 3, nothing touched) when there are fragments to aggregate and
+     `CHANGELOG.md` already has a `## <tag>` section. An empty set is checked
+     first and stays exit 2 ("nothing to aggregate"), whether or not the section
+     exists. See #2605.
 
    None of the tag-cut, signing, asset-upload, or immutable-release logic is
    touched; only the two changelog steps change.

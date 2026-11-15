@@ -87,7 +87,7 @@ PIN_SHA=$(git -c safe.directory="$CLONE" -C "$CLONE" rev-parse --verify 'refs/re
 # a public vanity host from the list below, or is a github.com path outside the target repo's
 # own owner. Anything else, or any path under the owner of the target repo (private by
 # default), is could-not-check and is never sent to the public proxy.
-APPROVED='^(golang[.]org/x|google[.]golang[.]org|gopkg[.]in|go[.]uber[.]org|go[.]opentelemetry[.]io|go[.]etcd[.]io|go[.]yaml[.]in|honnef[.]co|gotest[.]tools|sigs[.]k8s[.]io|k8s[.]io|cloud[.]google[.]com|modernc[.]org|rsc[.]io|lukechampine[.]com|filippo[.]io)/'
+APPROVED='^(golang[.]org/x|google[.]golang[.]org|gopkg[.]in|go[.]uber[.]org|go[.]opentelemetry[.]io|go[.]etcd[.]io|go[.]yaml[.]in|honnef[.]co|gotest[.]tools|sigs[.]k8s[.]io|k8s[.]io|cloud[.]google[.]com|modernc[.]org|rsc[.]io|lukechampine[.]com|filippo[.]io|dario[.]cat|gitlab[.]com/gitlab-org/api)/'
 GHPUB='^github[.]com/[A-Za-z0-9_.-]+/'
 OWNER_LC=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
 

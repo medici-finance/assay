@@ -22,7 +22,8 @@ func vlOld(rows ...string) string {
 }
 
 // vlVerify is a Verify table whose rows both expect exit 0, so the latest
-// run's results rows read clean to the cover (an exit=1 row does not).
+// run's results rows read clean to the cover. (A verifyrun "pass exit=1"
+// row reads clean too since #5541; these fixtures predate that.)
 const vlVerify = "| # | Command | Expect |\n|---|---------|--------|\n" +
 	"| 1 | `true` | exit 0 |\n| 2 | `true` | exit 0 |\n"
 

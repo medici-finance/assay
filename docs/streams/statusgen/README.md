@@ -54,7 +54,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 18 | [`--scan-issues`: print a notice when an open issue derives `gate: human` and its placeholder reads `gate: model` (detect only, no write)](brief-18-gate-mismatch-notice.md) | 2 | S | implemented | — | — |
 | 19 | [Context handoff contracts and synthetic fixtures](brief-19-context-handoff-contracts.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | 20 | [Offline future-state resolver with receipt and amendment validation](brief-20-offline-context-resolver.md) | 2 | L | verified | 2026-10-25 assay-verifier-app[bot] @ 0c3b558efec3 (forge-identity) | — |
-| 21 | [Author skills consume the shared context handoff](brief-21-author-skill-handoff.md) | 4 | L | todo | — | — |
+| 21 | [Author skills consume the shared context handoff](brief-21-author-skill-handoff.md) | 4 | L | verified | 2026-11-11 assay-verifier-app[bot] @ b856f281f758 (claude-opus-5-5) | — |
 | 22 | [Product target records and compatible requirement parsing](brief-22-product-target-records-and-compatible-requirement-parsing.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | 23 | [Product target binding and context drift assessment](brief-23-product-target-binding-and-context-drift-assessment.md) | 3 | M | verified | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
 | 24 | [Portfolio allocation and capacity accounting](brief-24-portfolio-allocation-and-capacity-accounting.md) | 2 | M | verified | 2026-10-29 assay-verifier-app[bot] @ 4264d1027198 (forge-identity) | — |
@@ -69,10 +69,15 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 33 | [Drive active notice severity from the existing registry after cleanup](brief-33-drive-active-notice-severity-from-the-existing-registry-after-cleanup.md) | 9 | M | todo | — | — |
 | 34 | [One owned scratch path for Verify rows](brief-34-one-owned-scratch-path-for-verify-rows.md) | 1 | L | todo | — | — |
 | 35 | [Drain actionable notice debt in this repository without rewriting closed records](brief-35-drain-actionable-notice-debt-in-this-repository-without-rewriting-closed-records.md) | 8 | M | todo | — | — |
-| 36 | [Content-bound witness schema v2: the reader and the one digest owner](brief-36-content-bound-witness-schema-v2-reader.md) | 1 | L | todo | — | — |
+| 36 | [Content-bound witness schema v2: the reader and the one digest owner](brief-36-content-bound-witness-schema-v2-reader.md) | 1 | L | implemented | — | — |
 | 37 | [Content-bound witness schema v2: the writers and the desk readers](brief-37-content-bound-witness-schema-v2-writers.md) | 2 | L | todo | — | — |
 | 38 | [One-time v1-to-v2 witness backfill where the witnessed content is still fetchable](brief-38-one-time-v1-to-v2-witness-backfill.md) | 3 | M | todo | — | — |
-| 39 | [Multi-root objective reader: prerequisite graph, critical path and ranked moves](brief-39-multi-root-objective-reader.md) | 1 | L | todo | — | — |
+| 39 | [Board reader library: importable multi-root loader and the whole-board view](brief-39-multi-root-objective-reader.md) | 2 | L | todo | — | — |
+| 40 | [Chain approved acceptance transitions, and let one approval correct a row's Command and Expect](brief-40-chain-approved-acceptance-transitions.md) | 1 | M | implemented | — | — |
+| 41 | [Objective projection over the board view: critical path and ranked moves](brief-41-objective-projection-over-the-board-view-critical-path-and-ranked-moves.md) | 3 | M | todo | — | — |
+| 42 | [Queue projections from one board load: next-up, awaiting and brief info](brief-42-queue-projections-from-one-board-load-next-up-awaiting-and-brief-info.md) | 3 | L | todo | — | — |
+| 43 | [Desk read-side consumers call the board library in-process](brief-43-desk-read-side-consumers-call-the-board-library-in-process.md) | 4 | M | todo | — | — |
+| 44 | [Hydration budget: profile a real tree and remove the dominant cost](brief-44-hydration-budget-profile-a-real-tree-and-remove-the-dominant-cost.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -101,25 +106,64 @@ statusgen/36 (witness schema v2 reader and the one digest owner) → statusgen/3
 writers and the desk readers) → statusgen/38 (one-time v1-to-v2 backfill). The writers may
 emit v2 only in a release whose reader understands it, and the backfill needs both, so 36
 leads 37 and 37 leads 38 (medici-finance/assay#2026, medici-finance/assay#3658).
-statusgen/39 (multi-root objective reader) has no in-repo `depends:`; its one prerequisite is
-the v1 objective skill of #4107, carried as a `feathers:` ordering edge (a notice, never a
-hold) because only the final skill-swap step needs it.
+statusgen/44 (hydration budget) → statusgen/39 (board reader library) → statusgen/42 (queue
+projections) → statusgen/43 (desk read-side consumers), with statusgen/41 (objective
+projection) beside /42 on /39. The head is /44: `load.go` hydrates brief rows with
+`checkBriefFiles(streams, streams) // for its hydration side effect only`, and on this
+repository's tree that step takes a hydrated load from 0.17 s to about 10.8 s. Which part of it
+costs the time is unmeasured, and /39 moves that same code, so the cost is found and bounded
+before the move. See [Board reader library](#board-reader-library--2026-11-14).
+statusgen/40 (chained acceptance transitions and combined Command-and-Expect corrections,
+medici-finance/assay#6064) has no in-repo `depends:`; its head is the human decision it
+carries (rule 48). It unblocks the acceptance of desk-containers/17 and the held statusgen/36
+correction, and it is step 1 of that held proposal. It reaches statusgen/37 only as a
+`feathers:` ordering edge (a notice, never a hold), because only /37's I-2 slice re-routes
+the transition audit whose limits /40 defines.
 Every other brief is independent and self-contained.
 
 ## Dependency waves
 - **Wave 1** — statusgen/01, statusgen/02, statusgen/04, statusgen/05, statusgen/06,
   statusgen/07, statusgen/09, statusgen/10, statusgen/11, statusgen/12, statusgen/13,
-  statusgen/14, statusgen/15, statusgen/19, statusgen/22, statusgen/36, statusgen/39 (all
-  independent; parallelizable).
+  statusgen/14, statusgen/15, statusgen/19, statusgen/22, statusgen/36, statusgen/40,
+  statusgen/44 (all independent; parallelizable).
 - **Wave 2** — statusgen/03 (depends on statusgen/02), statusgen/08 (depends on statusgen/07),
   statusgen/18 (depends on statusgen/17), statusgen/20 (depends on statusgen/19),
   statusgen/24 (depends on statusgen/22; cross-stream: continuing-operations/01 is also wave 2),
-  statusgen/37 (depends on statusgen/36).
+  statusgen/37 (depends on statusgen/36), statusgen/39 (depends on statusgen/44).
 - **Wave 3** — statusgen/23 (depends on statusgen/20 and statusgen/22; cross-stream:
   continuing-operations/02, depending on continuing-operations/01, is also wave 3),
-  statusgen/38 (depends on statusgen/37).
+  statusgen/38 (depends on statusgen/37), statusgen/41 and statusgen/42 (each depends on
+  statusgen/39).
 - **Wave 4** — statusgen/21 (depends on statusgen/20 and statusgen/23), statusgen/25 (depends on
-  statusgen/23, statusgen/24 and continuing-operations/02).
+  statusgen/23, statusgen/24 and continuing-operations/02),
+  statusgen/43 (depends on statusgen/39 and statusgen/42).
+
+## Board reader library — 2026-11-14
+
+statusgen/39 was re-scoped before first dispatch. Version 1 specified a command mode for one
+objective's closure. Version 2 is the importable, re-entrant multi-root loader and the
+whole-board view (`board-view-v1`), following the extraction method of statusgen/15 and
+[the component contract](../../library-first.md). The work that no longer fits one brief moved
+to its own briefs:
+
+| Brief | Deliverable | Wave |
+|---|---|---|
+| statusgen/44 | [Hydration budget: profile a real tree and remove the dominant cost](brief-44-hydration-budget-profile-a-real-tree-and-remove-the-dominant-cost.md) | 1 |
+| statusgen/39 | [Board reader library: importable multi-root loader and the whole-board view](brief-39-multi-root-objective-reader.md) | 2 |
+| statusgen/41 | [Objective projection over the board view: critical path and ranked moves](brief-41-objective-projection-over-the-board-view-critical-path-and-ranked-moves.md) | 3 |
+| statusgen/42 | [Queue projections from one board load: next-up, awaiting and brief info](brief-42-queue-projections-from-one-board-load-next-up-awaiting-and-brief-info.md) | 3 |
+| statusgen/43 | [Desk read-side consumers call the board library in-process](brief-43-desk-read-side-consumers-call-the-board-library-in-process.md) | 4 |
+| cell-api/10 | [Serve deskd roadmap and portfolio reads from the board library](../cell-api/brief-10-serve-deskd-roadmap-and-portfolio-reads-from-the-board-library.md) | 4 |
+
+Boundaries. Existing flags, exit codes and wire shapes stay; the library is an added seam and
+the command output remains the supported one for shell and non-Go readers. The library reads a
+tree handed to it as a filesystem: parsers that edit text in place stay with the
+brief-document unit of the
+[shared-policy consolidation plan](../../shared-policy-consolidation-plan.md). Linking the
+library into the service is cell-api/10, which is human-gated; the public service composition
+stays with cell-api/02 and is not edited here.
+statusgen/25 and milestone-support/11 keep their own records and are not changed. An Authors PR
+delivers planning only; it does not satisfy these briefs.
 
 ## Conventions
 - `statusgen --lint-audit` reports 30-day per-rule firing counts; COLD (0-firing,
@@ -339,6 +383,7 @@ statusgen/37 -> statusgen/31 -> statusgen/35
 statusgen/37 -> desk-tools/46 -> /47 -> handoff/02 -> /04 -> /05 -> /06
 desk-tools/46 -> handoff/05 -> statusgen/35
 statusgen/27..32 + /38 + desk-tools/47 + handoff/05 -> statusgen/35
+statusgen/40 ..> statusgen/37   (ordering feather on /37's I-2 slice; a notice, not a hold)
 ```
 
 The typed frontmatter is authoritative for exact edges; the sketch shows shared owners,

@@ -250,3 +250,8 @@ and a Rust server until a named consumer justifies them. Prefer existing cellctl
 The same source remains under `docs/proposals/` for link stability; “future-state” identifies
 its architectural role and never claims the target is implemented or all prior proposals
 have been ratified. This document and brief amendments authorize no live activation.
+
+
+## Desk instances amendment — requested 25 October 2026
+
+Role is an authorization/group address; instance is a delivery target. For work-bearing role messages, one eligible instance claims delivery through the existing broker. Explicit observation fanout cannot dispatch the same item repeatedly. Targeted messages bind cell/instance and any required generation, preserve idempotent delivery/ack and handle retired targets explicitly. Do not create one competing inbox or signing authority per instance; existing transport delivery owners and qualification gates carry the change. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.

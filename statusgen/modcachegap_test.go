@@ -175,9 +175,13 @@ func stubBakedRoots(t *testing.T, roots, cache string) {
 
 // TestContainerRowStoppedOnMissingModule: in container-netns mode a row that
 // exits non-zero naming a module the cache lacks is could-not-run with the
-// precise cause, even when its Expect wanted that exit; a row that fails for
-// its own reasons stays fail; a passing row passes. The unshare lane never
-// reclassifies, and with no manifest nothing is reclassified.
+// precise cause, even when its Expect wanted that exit; a row that exits
+// non-zero with NO captured output under a gap (#5766) is could-not-run too,
+// with a cause that says the output was not captured; a row that fails for its
+// own reasons (noisy, no module named) stays fail; a passing row passes, and no
+// row moves toward pass. The unshare lane never reclassifies, and with no
+// manifest, or no gap, nothing is reclassified.
+// regression: #5766
 func TestContainerRowStoppedOnMissingModule(t *testing.T) {
 	stubIfaces(t, netnoneIfaces)
 	root, cache := t.TempDir(), t.TempDir()
@@ -186,14 +190,36 @@ func TestContainerRowStoppedOnMissingModule(t *testing.T) {
 	writeGapFile(t, root, "goerr.txt", goOfflineMissing+"\n")
 	stubBakedRoots(t, "tools/desk\nstatusgen\n", cache)
 
+	run := func(sandbox string, rows []verifyRow) []witness {
+		t.Helper()
+		return runWitnessesSandboxed(resolveShellPlan(), sandbox, root, rows, "human:tester", "", "0000", "2026-10-28", 30*time.Second, false)
+	}
 	rows := []verifyRow{
 		{ID: "1", Command: "cat goerr.txt; exit 1", Expect: "exit 0"},
 		{ID: "2", Command: "echo '--- FAIL: TestX'; exit 1", Expect: "exit 0"},
 		{ID: "3", Command: "true", Expect: "exit 0"},
 		{ID: "4", Command: "cat goerr.txt; exit 1", Expect: "exit 1"},
+		// The silent-output hole (#5766): the row's output went to a file or to
+		// /dev/null, so nothing was captured to name the missing module.
+		{ID: "5", Command: "exit 1", Expect: "exit 0"},
+		{ID: "6", Command: "exit 1", Expect: "exit 1"},
+		{ID: "7", Command: ": > /dev/null; exit 0", Expect: "exit 0"},
+		{ID: "8", Command: "echo '--- FAIL: TestX' ; echo more; exit 2", Expect: "exit 0"},
+		// A second silent shape at a site the first fix shape does not name: a
+		// different exit code, output sent to a file, and to /dev/null.
+		{ID: "9", Command: "echo boom > out.log 2>&1; exit 2", Expect: "exit 0"},
+		{ID: "10", Command: "sh -c 'echo boom' >/dev/null 2>&1; exit 137", Expect: "exit 0"},
+		// No move toward pass: a silent exit 0 whose Expect wanted another exit
+		// stays fail, and a noisy row that exited as Expect wanted stays pass.
+		{ID: "11", Command: "exit 0", Expect: "exit 1"},
+		{ID: "12", Command: "echo ok", Expect: "exit 0"},
 	}
-	ws := runWitnessesSandboxed(resolveShellPlan(), sandboxContainerNetns, root, rows, "human:tester", "", "0000", "2026-10-28", 30*time.Second, false)
-	want := []string{stateCouldNotRun, stateFail, statePass, stateCouldNotRun}
+	ws := run(sandboxContainerNetns, rows)
+	want := []string{
+		stateCouldNotRun, stateFail, statePass, stateCouldNotRun,
+		stateCouldNotRun, stateCouldNotRun, statePass, stateFail,
+		stateCouldNotRun, stateCouldNotRun, stateFail, statePass,
+	}
 	for i, w := range ws {
 		if w.State != want[i] {
 			t.Errorf("row %s: state %q (%s), want %q", w.ID, w.State, w.Note, want[i])
@@ -205,18 +231,90 @@ func TestContainerRowStoppedOnMissingModule(t *testing.T) {
 			t.Errorf("row %s witness %q does not carry the module cause", ws[i].ID, ws[i].row())
 		}
 	}
-
-	// The unshare lane is not the image: its rows keep their own verdict.
-	ws = runWitnessesSandboxed(resolveShellPlan(), sandboxUnshare, root, rows[:1], "human:tester", "", "0000", "2026-10-28", 30*time.Second, false)
-	if ws[0].State != stateFail {
-		t.Errorf("unshare lane row: state %q (%s), want fail", ws[0].State, ws[0].Note)
+	// A silent row's cause names the gap and says why the module cause could
+	// not be settled; a row whose output named the module does not say that.
+	silent := regexp.MustCompile(`could-not-run exit=\d+ sandbox=container-netns — image module cache predates go\.sum \(golang\.org/x/text v0\.43\.0 vs v0\.41\.0\): ` +
+		`the row's output was not captured, so a stop on module resolution could be neither confirmed nor excluded`)
+	for _, i := range []int{4, 5, 8, 9} {
+		if !silent.MatchString(ws[i].row()) {
+			t.Errorf("row %s witness %q does not carry the silent-row cause", ws[i].ID, ws[i].row())
+		}
+		if strings.Contains(ws[i].Note, "stopped on module resolution before its check ran") {
+			t.Errorf("row %s note %q asserts a module stop it did not observe", ws[i].ID, ws[i].Note)
+		}
+	}
+	if strings.Contains(ws[0].Note, "not captured") {
+		t.Errorf("row 1 named the module in its output, but its note says the output was not captured: %q", ws[0].Note)
 	}
 
-	// No manifest: a runner that is not the image checks nothing.
+	// The unshare lane is not the image: its rows keep their own verdict, silent or not.
+	// Row 6 expected its exit 1, so its own verdict is pass.
+	for i, wantState := range map[int]string{0: stateFail, 4: stateFail, 5: statePass} {
+		if ws := run(sandboxUnshare, []verifyRow{rows[i]}); ws[0].State != wantState {
+			t.Errorf("unshare lane row %s: state %q (%s), want %q", rows[i].ID, ws[0].State, ws[0].Note, wantState)
+		}
+	}
+
+	// A manifest with no gap (the cache holds what the tree wants): the silent
+	// non-zero row has nothing to be blamed on and stays fail, as does a noisy one.
+	full := t.TempDir()
+	bakeModule(t, full, "golang.org/x/text", "v0.43.0")
+	stubBakedRoots(t, "tools/desk\nstatusgen\n", full)
+	ws = run(sandboxContainerNetns, rows)
+	wantNoGap := []string{
+		stateFail, stateFail, statePass, statePass,
+		stateFail, statePass, statePass, stateFail,
+		stateFail, stateFail, stateFail, statePass,
+	}
+	for i, w := range ws {
+		if w.State != wantNoGap[i] {
+			t.Errorf("no gap, row %s: state %q (%s), want %q", w.ID, w.State, w.Note, wantNoGap[i])
+		}
+	}
+
+	// No manifest: a runner that is not the image checks nothing, silent or not.
 	bakedModuleRootsFile = filepath.Join(t.TempDir(), "absent")
-	ws = runWitnessesSandboxed(resolveShellPlan(), sandboxContainerNetns, root, rows[:1], "human:tester", "", "0000", "2026-10-28", 30*time.Second, false)
-	if ws[0].State != stateFail {
-		t.Errorf("no-manifest row: state %q (%s), want fail", ws[0].State, ws[0].Note)
+	for i, wantState := range map[int]string{0: stateFail, 4: stateFail, 5: statePass} {
+		if ws := run(sandboxContainerNetns, []verifyRow{rows[i]}); ws[0].State != wantState {
+			t.Errorf("no-manifest row %s: state %q (%s), want %q", rows[i].ID, ws[0].State, ws[0].Note, wantState)
+		}
+	}
+}
+
+// TestModGapReclassChokePoint: the one decision every container-netns row goes
+// through. A non-zero row is reclassified when its output names a missing
+// module or is empty; nothing else is, and a row that exits 0, is already
+// could-not-run, or runs with no gap is left alone.
+// regression: #5766
+func TestModGapReclassChokePoint(t *testing.T) {
+	gaps := []modGap{{Root: "tools/desk", Path: "golang.org/x/text", Want: "v0.43.0", Have: []string{"v0.41.0"}}}
+	for _, tc := range []struct {
+		name string
+		res  runResult
+		gaps []modGap
+		want string // "" none, "named" or "silent"
+	}{
+		{"named", runResult{exit: 1, output: []byte(goOfflineMissing)}, gaps, "named"},
+		{"silent", runResult{exit: 1}, gaps, "silent"},
+		{"silent exit 2", runResult{exit: 2, output: []byte{}}, gaps, "silent"},
+		{"noisy other", runResult{exit: 1, output: []byte("--- FAIL: TestX")}, gaps, ""},
+		{"whitespace is output", runResult{exit: 1, output: []byte("\n")}, gaps, ""},
+		{"silent exit 0", runResult{exit: 0}, gaps, ""},
+		{"named exit 0", runResult{exit: 0, output: []byte(goOfflineMissing)}, gaps, ""},
+		{"silent no gap", runResult{exit: 1}, nil, ""},
+		{"already could-not-run", runResult{exit: 1, couldNotRun: true, reason: "x"}, gaps, ""},
+	} {
+		reason, ok := modGapReclass(tc.res, tc.gaps)
+		got := ""
+		switch {
+		case ok && strings.Contains(reason, "not captured"):
+			got = "silent"
+		case ok:
+			got = "named"
+		}
+		if got != tc.want {
+			t.Errorf("%s: got %q (%q), want %q", tc.name, got, reason, tc.want)
+		}
 	}
 }
 
@@ -229,14 +327,15 @@ func TestRunnerDockerfileWritesBakedRoots(t *testing.T) {
 		t.Fatal(err)
 	}
 	df := string(raw)
-	m := regexp.MustCompile(`printf '%s\\n' ([^>]+) > (\S+);`).FindStringSubmatch(df)
-	if m == nil {
-		t.Fatal("the Dockerfile writes no baked-roots manifest")
+	// The image copies the source's own manifest (#4683) to the path verifyrun
+	// reads, and downloads modules for exactly the roots it lists.
+	if !strings.Contains(df, "COPY "+moduleRootsManifest+" "+bakedModuleRootsFile+"\n") {
+		t.Fatalf("the Dockerfile does not copy %s to %s", moduleRootsManifest, bakedModuleRootsFile)
 	}
-	if m[2] != bakedModuleRootsFile {
-		t.Errorf("the Dockerfile writes %s, verifyrun reads %s", m[2], bakedModuleRootsFile)
+	listed, ok := bakedModuleRoots(filepath.Join("..", filepath.FromSlash(moduleRootsManifest)))
+	if !ok {
+		t.Fatalf("%s lists no module roots", moduleRootsManifest)
 	}
-	listed := strings.Fields(m[1])
 	var copied []string
 	for _, c := range regexp.MustCompile(`(?m)^COPY (\S+)/go\.mod (\S+)/go\.sum /tmp/modsrc/`).FindAllStringSubmatch(df, -1) {
 		copied = append(copied, c[1])

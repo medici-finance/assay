@@ -72,6 +72,33 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 	if owner == "" {
 		owner = defaultOwner()
 	}
+	var selected *subjectClaimStore
+	if id != "" && workClaimInput(id) {
+		catalog, peers, complete, err := loadClaimWork(repo)
+		if err != nil {
+			errf("unverifiable: work reference source: %v", err)
+			return exitUnverifiable
+		}
+		work, err := catalog.Select(id)
+		if err != nil {
+			errf("work reference: %v", err)
+			return deskkit.ExitCodeOf(err)
+		}
+		if err := work.Validate(); err != nil {
+			errf("work reference: %v", err)
+			return deskkit.ExitCodeOf(err)
+		}
+		if err := deskkit.CheckWorkOperation("claim", peers, complete); err != nil {
+			errf("work reference: %v", err)
+			return deskkit.ExitCodeOf(err)
+		}
+		if verb == "release" || verb == "steal" {
+			errf("refused: resolving a work reference does not authorize release or takeover; use the existing explicit physical-key operation")
+			return exitRefused
+		}
+		selected = &subjectClaimStore{selected: work, peers: peers, complete: complete, repository: repo}
+		id = work.ClaimKey
+	}
 	// The store is the RESOLVER's answer, never this tool's choice: there is no flag that
 	// selects one. The forge-ref opener is installed so that, should the resolver resolve to
 	// the legacy store (an unset key, or a valid key naming a store this build does not ship —
@@ -90,6 +117,10 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 		return exitUnverifiable
 	}
 	store = res.Store
+	if selected != nil {
+		selected.ClaimStore = store
+		store = selected
+	}
 	// The removal NOTICE is printed AFTER the verb, so the verb's own first stderr line — the
 	// one a dispatcher quotes in its step report — is never displaced by it.
 	if res.Notice != "" {

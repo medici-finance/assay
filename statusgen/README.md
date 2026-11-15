@@ -141,6 +141,14 @@ reads back the whole command), the exit code, a sha256 fingerprint of the combin
 executing identity, and the tree it ran against. The format and its rules live in
 [`../docs/brief-rules.md`](../docs/brief-rules.md) (rules 25–26).
 
+For fail-first contracts that require a named base diagnostic, add
+`--fail-first --base-log /absolute/path/to/new-directory`. It retains each executed base row's
+combined output in an owner-only directory outside the source home and binds the file's digest
+in the Base witness cell. Inspect those bytes before crediting the diagnostic. See
+[base-output retention](../docs/verify-row-strength.md#retaining-base-primary-output) for custody,
+path restrictions and the limits of that evidence. This option does not change existing runs,
+grant acceptance credit, publish logs or broaden the execution fence.
+
 Three exit codes, and they must not be collapsed: **0** every row witnessed,
 matching and passing · **1** a row failed · **2** COULD-NOT-RUN — a row has no
 witness, produced no verdict, or carries a witness for a command the Verify row no

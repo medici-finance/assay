@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
-spec = importlib.util.spec_from_file_location('prepare', HERE / 'prepare.py')
+spec = importlib.util.spec_from_file_location('prepare', HERE.parents[2] / 'tools/desk/internal/kubecompat/preparation/core.py')
 prepare = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prepare)
 

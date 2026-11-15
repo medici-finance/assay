@@ -127,7 +127,7 @@ func crossRepoRepresents(pr deskkit.PRRef, xrLink string) (deskkit.RepresentedPR
 		return deskkit.RepresentedPR{}, false
 	}
 	for _, t := range trs {
-		if t.Kind == deskkit.TrailerCrossRepoBrief && strings.EqualFold(strings.TrimSpace(t.Value), xrLink) {
+		if t.Kind == deskkit.TrailerCrossRepoBrief && validCrossLink(t.Value) && validCrossLink(xrLink) && t.Value == xrLink {
 			return deskkit.RepresentedPR{Number: pr.Number, Merged: state == "MERGED"}, true
 		}
 	}
@@ -235,4 +235,11 @@ func (p *dispatchPlan) applyFollowUp(o dispatchOpts, f phantomFollowUp) error {
 	}
 	p.followUpOf = f.pr
 	return nil
+}
+
+// Validate each original spelling before comparing; EqualFold could turn a
+// strict-refused alias into a duplicate-dispatch authorization observation.
+func validCrossLink(value string) bool {
+	_, _, _, ok := deskkit.SplitCrossRepoBriefTrailer(value)
+	return ok
 }

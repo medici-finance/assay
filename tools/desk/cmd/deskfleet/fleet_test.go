@@ -480,11 +480,14 @@ func TestFleetProtectedBranchNeverUnprotected(t *testing.T) {
 	})
 }
 
+// regression: #6127
 // Brief row 13: ONE table drives BOTH forges; each forge's emitted set carries
-// review-request, the six raised-by:* stamps and the authorization-needed/approval-needed pair.
+// review-request, the six raised-by:* stamps, the six to:* addressee stamps deskfile --to
+// reaches for, and the authorization-needed/approval-needed pair.
 func TestLabelsForgeParity(t *testing.T) {
 	required := []string{"review-request", "raised-by:desk", "raised-by:worker", "raised-by:reviewer",
 		"raised-by:verifier", "raised-by:issue-loop", "raised-by:intake-loop",
+		"to:desk", "to:worker", "to:reviewer", "to:verifier", "to:issue-loop", "to:intake-loop",
 		"authorization-needed", "approval-needed"}
 	f := newFakeForge(t)
 	h := newHarness(t, f)
@@ -545,6 +548,136 @@ func TestLabelsIdempotent(t *testing.T) {
 		if n := strings.Count(h.out.String(), "already exists (no-op)"); n != 2*len(fleetLabels) {
 			t.Fatalf("%d no-op lines, want %d\n%s", n, 2*len(fleetLabels), h.out.String())
 		}
+	}
+}
+
+// regression: #6127
+// --roles builds the role rows from the roles given — the roster's role= names — so a role
+// the documented list lacks still gets its raised-by: and to: labels, on both forges.
+func TestLabelsRolesFlagDerivesRoleRows(t *testing.T) {
+	f := newFakeForge(t)
+	h := newHarness(t, f)
+	for _, args := range [][]string{
+		{"labels", "--forge", "gitlab", "--project", fakeProject, "--token-file", h.ownerFile, "--roles", "worker,triage"},
+		{"labels", "--forge", "github", "--repo", "example-org/example-repo", "--token-file", h.ownerFile, "--roles", "worker,triage"},
+	} {
+		if code := run(args, h.e); code != exitOK {
+			t.Fatalf("%v: exit %d\n%s", args[:3], code, h.err.String())
+		}
+	}
+	for _, want := range []string{"to:triage", "raised-by:triage", "to:worker", "review-request", "approval-needed"} {
+		if !f.labels[want] || !f.ghLabels[want] {
+			t.Errorf("label %q missing on gitlab=%t github=%t", want, f.labels[want], f.ghLabels[want])
+		}
+	}
+	if f.labels["to:desk"] || f.ghLabels["to:desk"] {
+		t.Error("--roles worker,triage still created to:desk — the role rows must follow --roles")
+	}
+	if strings.Contains(h.err.String(), "NOTICE: --roles not given") {
+		t.Error("the documented-roles NOTICE printed although --roles was given")
+	}
+	if code := run([]string{"labels", "--forge", "github", "--repo", "o/r", "--roles", "to:desk", "--dry-run"}, h.e); code != exitUsage {
+		t.Errorf("--roles to:desk: exit %d, want usage (%d)", code, exitUsage)
+	}
+}
+
+// Without --roles the documented roles are used, and the run says so.
+func TestLabelsWithoutRolesNotices(t *testing.T) {
+	f := newFakeForge(t)
+	h := newHarness(t, f)
+	if code := run([]string{"labels", "--forge", "github", "--repo", "o/r", "--dry-run"}, h.e); code != exitOK {
+		t.Fatalf("exit %d\n%s", code, h.err.String())
+	}
+	if !strings.Contains(h.err.String(), "NOTICE: --roles not given") {
+		t.Errorf("no NOTICE naming the documented-role fallback:\n%s", h.err.String())
+	}
+}
+
+// regression: #6127
+// labels --check is read-only and three-state: all present (0), each missing label named (1),
+// unreadable (6, could-not-check — never "all present"). On GitLab an inherited group label
+// counts as present.
+func TestLabelsCheck(t *testing.T) {
+	gl := func(h *harness) []string {
+		return []string{"labels", "--forge", "gitlab", "--project", fakeProject, "--token-file", h.ownerFile, "--check"}
+	}
+	gh := func(h *harness) []string {
+		return []string{"labels", "--forge", "github", "--repo", "example-org/example-repo", "--token-file", h.ownerFile, "--check"}
+	}
+	for name, args := range map[string]func(*harness) []string{"gitlab": gl, "github": gh} {
+		t.Run(name+"/missing", func(t *testing.T) {
+			f := newFakeForge(t)
+			for _, l := range fleetLabels {
+				if l.Name != "to:worker" {
+					f.labels[l.Name], f.ghLabels[l.Name] = true, true
+				}
+			}
+			h := newHarness(t, f)
+			if code := run(args(h), h.e); code != exitFailed {
+				t.Fatalf("exit %d, want %d\n%s%s", code, exitFailed, h.out.String(), h.err.String())
+			}
+			if !strings.Contains(h.out.String(), "label: MISSING 'to:worker'") || strings.Count(h.out.String(), "MISSING") != 1 {
+				t.Errorf("want exactly to:worker named missing:\n%s", h.out.String())
+			}
+			for _, r := range f.requests() {
+				if r.Method != "GET" {
+					t.Errorf("--check wrote: %s %s", r.Method, r.Path)
+				}
+			}
+		})
+		t.Run(name+"/present", func(t *testing.T) {
+			f := newFakeForge(t)
+			for _, l := range fleetLabels {
+				f.labels[l.Name], f.ghLabels[l.Name] = true, true
+			}
+			h := newHarness(t, f)
+			if code := run(args(h), h.e); code != exitOK {
+				t.Fatalf("exit %d\n%s", code, h.err.String())
+			}
+		})
+		t.Run(name+"/could-not-check", func(t *testing.T) {
+			f := newFakeForge(t)
+			f.labelGetStatus = 500
+			h := newHarness(t, f)
+			if code := run(args(h), h.e); code != exitUnverifiable {
+				t.Fatalf("exit %d, want could-not-check (%d)\n%s", code, exitUnverifiable, h.err.String())
+			}
+			if !strings.Contains(h.err.String(), "could-not-check") {
+				t.Errorf("stderr does not say could-not-check:\n%s", h.err.String())
+			}
+		})
+	}
+	t.Run("gitlab/inherited", func(t *testing.T) {
+		f := newFakeForge(t)
+		for _, l := range fleetLabels {
+			f.groupLabels[l.Name] = true
+		}
+		h := newHarness(t, f)
+		if code := run(gl(h), h.e); code != exitOK {
+			t.Fatalf("all labels inherited from the group: exit %d\n%s%s", code, h.out.String(), h.err.String())
+		}
+	})
+	t.Run("exclusive-with-dry-run", func(t *testing.T) {
+		h := newHarness(t, newFakeForge(t))
+		if code := run([]string{"labels", "--forge", "github", "--repo", "o/r", "--check", "--dry-run"}, h.e); code != exitUsage {
+			t.Errorf("--check --dry-run: exit %d, want usage", code)
+		}
+	})
+}
+
+// An inherited GitLab group label is present to the ensure too: a no-op, no project copy.
+func TestLabelsGitLabKeepsGroupLabel(t *testing.T) {
+	f := newFakeForge(t)
+	f.groupLabels["to:worker"] = true
+	h := newHarness(t, f)
+	if code := run([]string{"labels", "--forge", "gitlab", "--project", fakeProject, "--token-file", h.ownerFile}, h.e); code != exitOK {
+		t.Fatalf("exit %d\n%s", code, h.err.String())
+	}
+	if f.labels["to:worker"] {
+		t.Error("a project copy of the inherited group label to:worker was created")
+	}
+	if !strings.Contains(h.out.String(), "label: 'to:worker' already exists (no-op)") {
+		t.Errorf("inherited label not reported as a no-op:\n%s", h.out.String())
 	}
 }
 

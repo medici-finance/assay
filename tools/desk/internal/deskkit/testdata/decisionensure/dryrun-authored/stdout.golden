@@ -1,0 +1,22 @@
+decision-issue: dry-run: would file on o/r as:
+--- title ---
+Decision: assay:ex:sample:07 — Pick the retention window
+--- body ---
+<!-- decision-gate: assay:ex:sample:07 -->
+
+A human decision is needed on work item `assay:ex:sample:07` — **Pick the retention window**. Everything needed to
+decide is in this issue.
+
+How to reply: comment from your own account with the board id of this item and the chosen option,
+as `sample/07: <option>` (for example `sample/07: 1`); the comment is the decision
+record. Name the board id in your own words — a bare option number or a one-word "approved"
+is not accepted as a ruling when the item later moves on the board. Then close the issue.
+
+Context: logs grow.
+
+1. Keep 30 days.
+2. Keep 90 days.
+
+Default if no answer: option 1 after 2026-12-01
+--- end ---
+decision-issue: dry-run: no existing decision issue for assay:ex:sample:07 on o/r — a real run would create one

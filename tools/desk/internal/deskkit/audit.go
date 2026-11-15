@@ -60,6 +60,16 @@ const (
 	// — which is why the flag that selects it must also be the flag that suppresses
 	// the write.
 	ResultDryRun = "dryrun"
+	// ResultContended (#6227) — the invocation waited its bounded time for the desk audit lock and
+	// never got it. The wait is the FIRST step of an outward write, before any audit read, forge
+	// read or forge write, so nothing about the caller's input was examined and nothing was sent.
+	// That is contention (a queue behind other desk writers), not a loop: the breaker exists to
+	// catch a caller spinning on a refusal it could fix, and there is nothing to fix here.
+	// Neither meter sees it — see ratelimit.go's chargesBudget and breakerIgnores — so waiting
+	// for the lock can neither open the breaker nor clear a run of genuine refusals. Emit it
+	// ONLY for a lock-wait refusal (AuditLockContended / LockStepResult); any later refusal
+	// keeps its own class and keeps counting.
+	ResultContended = "contended"
 )
 
 // Entry is one audit line. Only outward-write verbs set BodyDigest; it

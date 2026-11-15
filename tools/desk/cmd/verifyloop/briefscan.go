@@ -202,6 +202,12 @@ func scanAwaitingPass(r deskkit.RootConfig, homeRepo, targetSHA string, reader d
 			"evidence_empty": yesNo(br.evidenceEmpty),
 			"deferred_rows":  br.fm.DeferredRows,
 		}
+		// #5759: a verified or done brief's BLOCKED or could-not-check re-run is recorded in
+		// the outcome record only — deskevidence refuses its Evidence append — so the dispatch
+		// prompt names the outcome-only landing and no Evidence PR is opened for it.
+		if s := strings.ToLower(strings.TrimSpace(br.Status)); s == "verified" || s == "done" {
+			payload[nonDecisiveKey] = nonDecisiveOutcomeOnly
+		}
 		if br.couldNotCheck != "" {
 			payload["could_not_check"] = br.couldNotCheck
 		} else if futureOutcomes[br.Stream+"/"+br.Num] {

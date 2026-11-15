@@ -269,7 +269,7 @@ func TestQuietLine(t *testing.T) {
 	}
 	// Third segment: a labelled count, not a bare "N actionable" restating the
 	// summary (review Minor 1). Nothing is CI-red or conflicting here, so it is 0.
-	if !strings.HasSuffix(line, "0 ci-red/conflicting (see `actions` for the ACTION class)") {
+	if !strings.HasSuffix(line, "0 ci-red/conflicting/policy-held (see `actions` for the ACTION class)") {
 		t.Errorf("quiet line should end with the labelled attention count; got %q", line)
 	}
 
@@ -427,7 +427,7 @@ func TestPrsAttention_CountsCiRedAndConflicting(t *testing.T) {
 	if ds.Actionable != 3 {
 		t.Errorf("attention count = %d, want 3 (#2 ci-red, #3 dirty, #4 blocked)", ds.Actionable)
 	}
-	if !strings.Contains(ds.ActionableLabel, "ci-red/conflicting") {
+	if !strings.Contains(ds.ActionableLabel, "ci-red/conflicting/policy-held") {
 		t.Errorf("label must name what it counts; got %q", ds.ActionableLabel)
 	}
 }

@@ -1,0 +1,52 @@
+package main
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+)
+
+// The post-flip backstop's timing (#6242). Production uses deskkit's 30s bound; tests
+// shorten both and replace the sleep so they run instantly.
+var (
+	backstopDeadline = deskkit.ReadyBackstopDeadline
+	backstopInterval = deskkit.ReadyBackstopInterval
+	backstopSleep    = time.Sleep
+	backstopNow      = time.Now
+)
+
+// readyBackstop runs deskkit.ReadyBackstop right after `ready`'s flip landed: it reads the
+// forge's merge state and, when the forge reports DIRTY, or BLOCKED with a merge requirement
+// unmet or unreadable (#6508), returns the PR to draft with one comment. A could-not-verify
+// notice goes to stderr; out.Err is non-nil when the
+// flip was reverted (Refused) or the revert failed (Unverifiable). Ruling:
+// https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
+func readyBackstop(client postBackend, repo string, pr int, nodeID, head string) deskkit.BackstopOutcome {
+	out := deskkit.ReadyBackstop{
+		Repo:    repo,
+		Number:  pr,
+		HeadSHA: head,
+		// The draft flag travels with the merge state: GitHub reports a draft as BLOCKED, so a
+		// read that still shows the PR as a draft is settling, never a revert.
+		ReadState: func() (string, bool, error) {
+			info, err := client.getPR(pr)
+			if err != nil {
+				return "", false, err
+			}
+			return info.MergeableState, info.Draft, nil
+		},
+		ConvertToDraft: func() error { return client.convertToDraft(nodeID) },
+		Comment:        func(body string) error { return client.postComment(pr, body) },
+		// A BLOCKED read is judged by the requirements every reader sees alike (#6508).
+		Requirements: func() (*deskkit.MergeRequirements, error) { return client.mergeRequirements(pr) },
+		Deadline:     backstopDeadline,
+		Interval:     backstopInterval,
+		Sleep:        backstopSleep,
+		Now:          backstopNow,
+	}.Run()
+	if out.Notice != "" {
+		fmt.Fprintf(stderr, "deskpost: %s\n", out.Notice)
+	}
+	return out
+}

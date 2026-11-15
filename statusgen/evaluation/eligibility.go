@@ -74,7 +74,7 @@ type Edge struct {
 	Reason string
 	// Resolved, when set, is a state the caller already derived through another
 	// canonical evaluation (a milestone start requirement resolved over the
-	// combined milestone graph, BuildMilestoneGraph). The evaluator does not
+	// combined milestone graph, EvaluateReadiness). The evaluator does not
 	// re-resolve Ref by the §3.3 grammar then; Why carries the explanation.
 	Resolved EligibilityState
 	Why      string
@@ -82,6 +82,7 @@ type Edge struct {
 
 // Brief is the eligibility-relevant observation of one brief.
 type Brief struct {
+	Key      string // canonical graph identity, when milestones are supplied
 	Num      string
 	Status   string
 	Depends  []string
@@ -134,9 +135,10 @@ type SiblingLookup func(repo string) Sibling
 
 // EligibilityInput is everything EvaluateEligibility reads.
 type EligibilityInput struct {
-	Streams  []Stream
-	Registry *Registry
-	Siblings SiblingLookup
+	Streams    []Stream
+	Registry   *Registry
+	Siblings   SiblingLookup
+	Milestones *MilestoneInput
 }
 
 // Reference-grammar (§3.3) recognizers. The grammar is hierarchical and
@@ -175,6 +177,10 @@ var (
 //
 // semantic: S-eligibility
 func EvaluateEligibility(in EligibilityInput) map[string]Eligibility {
+	return EvaluateReadiness(in).Eligibility
+}
+
+func evaluateEdges(in EligibilityInput) map[string]Eligibility {
 	out := map[string]Eligibility{}
 	for _, s := range in.Streams {
 		for _, b := range s.Briefs {
