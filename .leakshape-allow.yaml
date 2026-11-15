@@ -123,6 +123,11 @@ allow:
     sha256:
       - 515739b8024f7ce0daa57dcad0937f1fef15a6d397d362a339992b3c35159da4
     reason: &fx-ssh "placeholder SSH remote in a test fixture that exercises remote-URL parsing; the host is a reserved example name, a loopback or IPv6 literal, or a deliberate alias"
+  - path: statusgen/scanpublish_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 15f5604ab344a67657e100c225d4e499b4717f57f3b5f7a6c35c48b75103cc0a
+    reason: *fx-ssh
   - path: loopadmin/runner/request_test.go
     shape: ssh-host-alias
     sha256:
