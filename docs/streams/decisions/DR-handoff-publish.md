@@ -25,7 +25,7 @@ accepted:
   - "The judgment log is read without the audit lock, so an append in flight can leave a partial last line; it is skipped, named and counted, and picked up on the next pass. The scan-carrier lane discards the scan's unpublished-judgment notices (advisory 6362-a4, deferred to a follow-up)."
 ---
 
-**Status:** proposed
+**Status:** draft
 
 **Approval state: placeholder-unratified. This is not an approved design record.**
 `decided-by` keeps the public placeholder and the record carries no `ruling:` link, because no
