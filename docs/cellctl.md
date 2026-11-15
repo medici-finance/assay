@@ -1936,7 +1936,10 @@ What cellctl owns once the decision is recorded:
 
 The clone itself goes through an injected transport, which is the role's existing forge
 credential path. cellctl picks no new credential and stores none: an origin URL that carries a
-credential is refused.
+credential is refused. So is a store whose only remote is not `origin`, whose origin is not the
+requested repository on its forge (a local path, a file URL and another owner or host are all
+refused), or whose branches track anything but `origin`. Before the mapping is written, every
+store the call made is read again.
 
 Proposed configuration, for the activation decision only. None of these keys is read today:
 
@@ -1947,7 +1950,7 @@ Proposed configuration, for the activation decision only. None of these keys is 
 | `CELL_WORKSPACE_REGISTRY` | The machine-level cell-identity registry. Absent means `<cells root>/.registry`. |
 
 Tests: `TestCellRepositoryIsolation` and `TestCellRootBinding` (`workspace/local`, with mutation
-entries in `workspace/local/mutations.json`), and `TestWorkspaceRootMapAtomic` and `TestWorkspaceMappingPublishExclusive` (`cellctl`).
+entries in `workspace/local/mutations.json`), and `TestStoreOriginNames` (`workspace/local`), and `TestWorkspaceRootMapAtomic`, `TestWorkspacePublishRereadsProvisioned` and `TestWorkspaceMappingPublishExclusive` (`cellctl`).
 
 ## Container cells
 

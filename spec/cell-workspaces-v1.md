@@ -128,7 +128,8 @@ A store is accepted only if the effect boundary observes all of the following. E
 | No symbolic link anywhere inside the store's `.git` directory (a link could place part of the Git directory in another checkout) | `identity-mismatch` (`store.common-dir`) |
 | Git resolves the store's Git directory and common directory to its own `.git`, which has no `commondir` pointer and is not the common directory of a legacy checkout | `identity-mismatch` (`store.common-dir`) |
 | No `objects/info/alternates` or `http-alternates` | `identity-mismatch` (`store.alternates`) |
-| Configuration holds only what a fresh clone writes, and an origin URL without a credential; no `config.worktree` | `foreign-state` (`store.config`) |
+| Configuration holds only what a fresh clone writes: one remote, `origin`, with a single URL that carries no credential, and branches that track only it; no `config.worktree` | `foreign-state` (`store.config`) |
+| The origin URL names the requested repository on its forge, over a scheme the forge serves (not a local path or a file URL) | `identity-mismatch` (`store.config`) |
 | No worktree registrations; no hooks except the stock samples | `foreign-state` (`store.worktrees`, `store.hooks`) |
 | The requested subject commit is present | `identity-mismatch` (`store.subject`) |
 

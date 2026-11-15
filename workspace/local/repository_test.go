@@ -72,7 +72,18 @@ func (c cloneFrom) Clone(_ context.Context, repo workspace.RepoRef, dest string)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return errors.New(string(out))
 	}
+	// A clone from the forge leaves the forge's own URL as origin; the fixture names it.
+	cmd = exec.Command("git", "-C", dest, "remote", "set-url", "origin", forgeURL(repo))
+	cmd.Env = gitEnv()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return errors.New(string(out))
+	}
 	return nil
+}
+
+// forgeURL is the origin a clone of repo from its forge carries.
+func forgeURL(repo workspace.RepoRef) string {
+	return "https://" + repo.Forge + "/" + repo.Repository + ".git"
 }
 
 type transportFunc func(ctx context.Context, repo workspace.RepoRef, dest string) error
@@ -166,6 +177,21 @@ func linkIntoHost(ctx context.Context, c cloneFrom, r workspace.RepoRef, d, host
 		return err
 	}
 	return os.Symlink(filepath.Join(host, ".git", entry), own)
+}
+
+// gitConfig clones normally, then sets key/value pairs in the clone's own configuration.
+func gitConfig(ctx context.Context, c cloneFrom, r workspace.RepoRef, d string, kv ...string) error {
+	if err := c.Clone(ctx, r, d); err != nil {
+		return err
+	}
+	for i := 0; i < len(kv); i += 2 {
+		cmd := exec.Command("git", "-C", d, "config", kv[i], kv[i+1])
+		cmd.Env = gitEnv()
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return errors.New(string(out))
+		}
+	}
+	return nil
 }
 
 // regression: F-store-symlinked-git-internals
@@ -298,6 +324,45 @@ func TestCellRepositoryIsolation(t *testing.T) {
 			cmd.Env = gitEnv()
 			return cmd.Run()
 		}, workspace.ReasonForeignState, "store.config"},
+		// regression: F-store-remote-destinations-unbound
+		{"branch remote is a path into the host checkout", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			return gitConfig(ctx, cloneFrom{repo: src}, r, d, "branch.cellwork.remote", host, "branch.cellwork.merge", "refs/heads/cellwork")
+		}, workspace.ReasonForeignState, "store.config"},
+		{"branch remote is a URL carrying a credential", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			return gitConfig(ctx, cloneFrom{repo: src}, r, d, "branch.cellwork.remote", "https://x-access-token:$FIXTURE_PW@forge.example/acme/tools.git", "branch.cellwork.merge", "refs/heads/cellwork")
+		}, workspace.ReasonForeignState, "store.config"},
+		{"branch merge is not a branch ref", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			return gitConfig(ctx, cloneFrom{repo: src}, r, d, "branch.main.remote", "origin", "branch.main.merge", "refs/tags/v1")
+		}, workspace.ReasonForeignState, "store.config"},
+		{"origin is a local path to the host checkout", func(_ context.Context, _ workspace.RepoRef, d string) error {
+			cmd := exec.Command("git", "clone", "-q", "--no-local", host, d)
+			cmd.Env = gitEnv()
+			return cmd.Run()
+		}, workspace.ReasonIdentityMismatch, "store.config"},
+		{"origin is a file URL", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			return gitConfig(ctx, cloneFrom{repo: src}, r, d, "remote.origin.url", "file://"+host)
+		}, workspace.ReasonIdentityMismatch, "store.config"},
+		{"origin is another owner's repository on the forge", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			return gitConfig(ctx, cloneFrom{repo: src}, r, d, "remote.origin.url", "https://forge.example/other/tools.git")
+		}, workspace.ReasonIdentityMismatch, "store.config"},
+		{"origin is the repository on another host", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			return gitConfig(ctx, cloneFrom{repo: src}, r, d, "remote.origin.url", "https://forge.example.invalid/acme/tools.git")
+		}, workspace.ReasonIdentityMismatch, "store.config"},
+		{"origin is the repository over a scheme the forge does not serve", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			return gitConfig(ctx, cloneFrom{repo: src}, r, d, "remote.origin.url", "git://forge.example/acme/tools.git")
+		}, workspace.ReasonIdentityMismatch, "store.config"},
+		{"a second remote whose name embeds whitespace", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			return gitConfig(ctx, cloneFrom{repo: src}, r, d, "remote.origin.url remote.origin.url", "https://x-access-token:$FIXTURE_PW@forge.example/acme/tools.git")
+		}, workspace.ReasonForeignState, "store.config"},
+		{"a second remote whose name embeds whitespace, without a url", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			return gitConfig(ctx, cloneFrom{repo: src}, r, d, "remote.origin.url remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
+		}, workspace.ReasonForeignState, "store.config"},
+		{"a second remote differing from origin only in case, without a url", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			return gitConfig(ctx, cloneFrom{repo: src}, r, d, "remote.ORIGIN.fetch", "+refs/heads/*:refs/remotes/origin/*")
+		}, workspace.ReasonForeignState, "store.config"},
+		{"a second remote differing from origin only in case", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			return gitConfig(ctx, cloneFrom{repo: src}, r, d, "remote.ORIGIN.url", host)
+		}, workspace.ReasonForeignState, "store.config"},
 		{"commondir pointer into the host's common directory", func(ctx context.Context, r workspace.RepoRef, d string) error {
 			if err := (cloneFrom{repo: src}).Clone(ctx, r, d); err != nil {
 				return err
@@ -373,6 +438,39 @@ func TestCellRepositoryIsolation(t *testing.T) {
 	wantRefusal(t, "cell under an old sanctioned prefix", err, workspace.ReasonIdentityMismatch, "store.path")
 	if calls != 0 {
 		t.Fatalf("a placement refusal reached the transport %d times", calls)
+	}
+}
+
+// regression: F-store-remote-destinations-unbound
+func TestStoreOriginNames(t *testing.T) {
+	repo := workspace.RepoRef{Forge: "forge.example", Repository: "acme/tools"}
+	for raw, want := range map[string]bool{
+		"https://forge.example/acme/tools.git":     true,
+		"https://forge.example:443/Acme/Tools":     true,
+		"ssh://git@forge.example/acme/tools.git":   true,
+		"ssh://git@forge.example:2222/acme/tools":  true,
+		"git@forge.example:Acme/tools.git":         true,
+		"forge.example:acme/tools":                 true,
+		"/srv/legacy/tools":                        false,
+		"../legacy/tools.git":                      false,
+		"./a:b/acme/tools":                         false,
+		"file:///srv/legacy/tools":                 false,
+		"git://forge.example/acme/tools.git":       false,
+		"http://forge.example/acme/tools.git":      false,
+		"https://forge.example:8443/acme/tools":    false,
+		"https://forge.example/acme/tools?x=1":     false,
+		"https://forge.example/acme/tools#frag":    false,
+		"https://forge.example/acme/tools-fork":    false,
+		"https://forge.example/acme/tools/extra":   false,
+		"https://forge.example/other/tools":        false,
+		"https://forge.example.invalid/acme/tools": false,
+		"https://evil@forge.example/acme/tools":    true, // userinfo is the credential check's
+		"https://forge.example/acme/tools .git":    false,
+		"":                                         false,
+	} {
+		if got := originNames(raw, repo); got != want {
+			t.Errorf("originNames(%q) = %v, want %v", raw, got, want)
+		}
 	}
 }
 

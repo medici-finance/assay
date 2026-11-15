@@ -236,7 +236,7 @@ func (s Stores) verify(ctx context.Context, dir string, req workspace.StoreReque
 
 	// Nothing inherited: a recursive copy of another checkout carries its configuration,
 	// worktree registrations and hooks; a fresh clone has none of them.
-	if err := s.checkConfig(ctx, own); err != nil {
+	if err := s.checkConfig(ctx, own, req.Repo); err != nil {
 		return "", err
 	}
 	if ents, err := os.ReadDir(filepath.Join(own, "worktrees")); err == nil && len(ents) > 0 {
@@ -286,56 +286,146 @@ func checkNoLinks(dotgit string, gi fs.FileInfo) error {
 	return nil
 }
 
-// allowedConfig is everything a fresh clone writes into its own configuration. Any other key —
-// a credential helper, an include, a hooks path, an identity, another remote — was inherited or
-// planted, and refuses the store.
-func allowedConfig(name string) bool {
-	switch name {
-	case "core.repositoryformatversion", "core.filemode", "core.bare", "core.logallrefupdates",
-		"core.ignorecase", "core.precomposeunicode", "core.symlinks", "extensions.objectformat",
-		"remote.origin.url", "remote.origin.fetch":
-		return true
-	}
-	if strings.HasPrefix(name, "branch.") {
-		return strings.HasSuffix(name, ".remote") || strings.HasSuffix(name, ".merge")
-	}
-	return false
+// configKey is one configuration key split the way Git defines it: the section and the variable
+// name are case-insensitive, the subsection (a remote's or a branch's name) is case-sensitive and
+// may itself hold dots, so it is whatever lies between the first and the last dot.
+type configKey struct {
+	section, sub, name string
+	hasSub             bool
 }
 
-func (s Stores) checkConfig(ctx context.Context, own string) error {
+func splitConfigKey(key string) (configKey, bool) {
+	first, last := strings.Index(key, "."), strings.LastIndex(key, ".")
+	if first <= 0 || last == len(key)-1 {
+		return configKey{}, false
+	}
+	k := configKey{section: strings.ToLower(key[:first]), name: strings.ToLower(key[last+1:])}
+	if last > first {
+		k.sub, k.hasSub = key[first+1:last], true
+	}
+	return k, true
+}
+
+// checkConfigEntry judges one configuration entry against everything a fresh clone writes. Any
+// other key — a credential helper, an include, a hooks path, an identity, another remote — was
+// inherited or planted, and refuses the store. The subsection is compared exactly: the only
+// remote a fresh clone writes is the one named "origin", spelled that way, and every branch
+// tracks it and nothing else. A branch's remote may otherwise be read by Git as a URL or a
+// path, which would make a push from the store write into another repository.
+func checkConfigEntry(key, value string) (originURL string, isURL bool, ok bool) {
+	k, split := splitConfigKey(key)
+	if !split || strings.ContainsFunc(key, func(r rune) bool { return r <= ' ' || r == 0x7f }) {
+		return "", false, false
+	}
+	switch k.section {
+	case "core":
+		switch k.name {
+		case "repositoryformatversion", "filemode", "bare", "logallrefupdates", "ignorecase", "precomposeunicode", "symlinks":
+			return "", false, !k.hasSub
+		}
+	case "extensions":
+		return "", false, !k.hasSub && k.name == "objectformat"
+	case "remote":
+		if !k.hasSub || k.sub != "origin" {
+			return "", false, false
+		}
+		switch k.name {
+		case "url":
+			return value, true, true
+		case "fetch":
+			return "", false, true
+		}
+	case "branch":
+		if !k.hasSub || k.sub == "" {
+			return "", false, false
+		}
+		switch k.name {
+		case "remote":
+			return "", false, value == "origin"
+		case "merge":
+			return "", false, strings.HasPrefix(value, "refs/heads/")
+		}
+	}
+	return "", false, false
+}
+
+func (s Stores) checkConfig(ctx context.Context, own string, repo workspace.RepoRef) error {
 	if _, err := os.Lstat(filepath.Join(own, "config.worktree")); err == nil {
 		return refusal(workspace.ReasonForeignState, "store.config", "the store carries per-worktree configuration")
 	}
-	out, err := s.git(ctx, "", "config", "--file", filepath.Join(own, "config"), "--list", "--name-only")
+	// --null makes the listing unambiguous: one "name NL value" record per NUL, so neither a
+	// name nor a value is ever split on whitespace.
+	out, err := s.git(ctx, "", "config", "--file", filepath.Join(own, "config"), "--list", "--null")
 	if err != nil {
 		return unknown("store.config", err)
 	}
-	for _, name := range strings.Fields(string(out)) {
-		if !allowedConfig(strings.ToLower(name)) {
-			return refusal(workspace.ReasonForeignState, "store.config", "the store's configuration carries a key a fresh clone does not write")
+	var urls []string
+	for _, rec := range strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00") {
+		if rec == "" {
+			continue
+		}
+		key, value, _ := strings.Cut(rec, "\n")
+		u, isURL, ok := checkConfigEntry(key, value)
+		if !ok {
+			return refusal(workspace.ReasonForeignState, "store.config", "the store's configuration carries a key or value a fresh clone does not write")
+		}
+		if isURL {
+			urls = append(urls, u)
 		}
 	}
-	raw, err := s.git(ctx, "", "config", "--file", filepath.Join(own, "config"), "--get-all", "remote.origin.url")
-	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
-			return refusal(workspace.ReasonForeignState, "store.config", "the store has no origin remote")
-		}
-		return unknown("store.config", err)
+	if len(urls) == 0 {
+		return refusal(workspace.ReasonForeignState, "store.config", "the store has no origin remote")
 	}
-	// One value per line: a value is never split on whitespace, so it is judged whole.
-	urls := strings.Split(strings.TrimRight(string(raw), "\r\n"), "\n")
 	// A second origin URL makes "git push origin" fan out to another repository, so a fresh
 	// clone's single value is the only shape accepted.
 	if len(urls) != 1 {
 		return refusal(workspace.ReasonForeignState, "store.config", "the store's origin carries more than one URL")
 	}
-	for _, u := range urls {
-		if hasCredential(u) {
-			return refusal(workspace.ReasonForeignState, "store.config", "the store's origin URL carries a credential")
-		}
+	if hasCredential(urls[0]) {
+		return refusal(workspace.ReasonForeignState, "store.config", "the store's origin URL carries a credential")
+	}
+	if !originNames(urls[0], repo) {
+		return refusal(workspace.ReasonIdentityMismatch, "store.config", "the store's origin is not the requested repository on its forge")
 	}
 	return nil
+}
+
+// originNames reports whether raw is a URL of exactly repo on repo's forge, over a scheme the
+// forge serves: https, ssh, or the scp style. A local path, a file URL, any other scheme, a URL
+// with a query or fragment, or any other host or path does not name it. Paths compare folded to
+// lowercase, as the canonical identity is.
+func originNames(raw string, repo workspace.RepoRef) bool {
+	if raw == "" || strings.ContainsFunc(raw, func(r rune) bool { return r <= ' ' || r == 0x7f }) {
+		return false
+	}
+	var host, path string
+	if strings.Contains(raw, "://") {
+		u, err := url.Parse(raw)
+		if err != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
+			return false
+		}
+		switch u.Scheme {
+		case "https":
+			if p := u.Port(); p != "" && p != "443" {
+				return false
+			}
+		case "ssh":
+		default:
+			return false
+		}
+		host, path = u.Hostname(), u.Path
+	} else {
+		i := strings.Index(raw, ":")
+		if i <= 0 || strings.Contains(raw[:i], "/") {
+			return false
+		}
+		host, path = raw[:i], raw[i+1:]
+		if at := strings.LastIndex(host, "@"); at >= 0 {
+			host = host[at+1:]
+		}
+	}
+	path = strings.TrimSuffix(strings.Trim(path, "/"), ".git")
+	return strings.ToLower(host) == repo.Forge && strings.ToLower(path) == repo.Repository
 }
 
 // hasCredential reports a URL with userinfo on an http(s) remote, where the user part is a

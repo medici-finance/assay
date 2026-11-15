@@ -139,6 +139,13 @@ func publishWorkspaceStores(ctx context.Context, stores local.Stores, scope work
 	if failed != nil {
 		return workspace.StoreMapping{}, outcomes, failed
 	}
+	// Every store this call provisioned is read once more, now that the last one is made, so the
+	// time between a store's own verification and the write is not the length of the whole call.
+	for _, e := range entries {
+		if _, err := stores.Observe(ctx, scope.Cell, workspace.StoreRequest{Repo: e.Repo, Subject: e.Subject}, scope.Legacy); err != nil {
+			return workspace.StoreMapping{}, outcomes, fmt.Errorf("provisioned store %s/%s: %w", e.Repo.Forge, e.Repo.Repository, err)
+		}
+	}
 	// The stores already published must still hold too: a mapping is republished whole.
 	if prior != nil {
 		for _, s := range prior.Stores {

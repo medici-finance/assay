@@ -63,6 +63,9 @@ type wsTransport struct {
 	origins map[workspace.RepoRef]string
 	fail    map[workspace.RepoRef]bool
 	calls   int
+	// after, when set, runs at the end of a successful clone: a writer under the cell's repos
+	// directory acting while the call is still provisioning.
+	after func(workspace.RepoRef) error
 }
 
 func (w *wsTransport) Clone(_ context.Context, repo workspace.RepoRef, dest string) error {
@@ -78,6 +81,15 @@ func (w *wsTransport) Clone(_ context.Context, repo workspace.RepoRef, dest stri
 	cmd.Env = wsGitEnv()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return errors.New(string(out))
+	}
+	// A clone from the forge leaves the forge's own URL as origin; the fixture names it.
+	cmd = exec.Command("git", "-C", dest, "remote", "set-url", "origin", "https://"+repo.Forge+"/"+repo.Repository+".git")
+	cmd.Env = wsGitEnv()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return errors.New(string(out))
+	}
+	if w.after != nil {
+		return w.after(repo)
 	}
 	return nil
 }
@@ -248,6 +260,48 @@ func TestWorkspaceRootMapAtomic(t *testing.T) {
 	}
 	if after, _ := os.ReadFile(workspace.MappingPath(scope.Cell)); !bytes.Equal(before, after) {
 		t.Fatal("a refused publication changed the published mapping")
+	}
+}
+
+// regression: F-verify-publish-toctou — a store verified early in a publication is read again
+// once the last one is made, so a writer acting while the call provisions cannot slip past.
+func TestWorkspacePublishRereadsProvisioned(t *testing.T) {
+	ctx := context.Background()
+	base := t.TempDir()
+	docs := wsRef(t, "github", "github.com", "acme/docs")
+	tools := wsRef(t, "github", "github.com", "acme/tools")
+	if workspace.RepoKey(docs) >= workspace.RepoKey(tools) {
+		t.Skip("fixture needs docs provisioned before tools")
+	}
+	docsSrc, docsAt := wsOrigin(t, base, "docs")
+	toolsSrc, toolsAt := wsOrigin(t, base, "tools")
+	cellDir := filepath.Join(base, "cell")
+	if err := os.MkdirAll(cellDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	scope := workspaceStoreScope{
+		Cell:     workspace.CellRef{UUID: "00000000-0000-4000-8000-000000000092", Root: cellDir},
+		Registry: filepath.Join(base, "registry"),
+	}
+	tr := &wsTransport{origins: map[workspace.RepoRef]string{docs: docsSrc, tools: toolsSrc}}
+	// While tools is being cloned, a writer plants a credential helper in the store of docs,
+	// which was verified a moment earlier.
+	tr.after = func(r workspace.RepoRef) error {
+		if r != tools {
+			return nil
+		}
+		cmd := exec.Command("git", "-C", workspace.StorePath(scope.Cell, docs), "config", "credential.helper", "planted")
+		cmd.Env = wsGitEnv()
+		return cmd.Run()
+	}
+	reqs := []workspace.StoreRequest{{Repo: docs, Subject: docsAt}, {Repo: tools, Subject: toolsAt}}
+	_, _, err := publishWorkspaceStores(ctx, local.Stores{Transport: tr}, scope, reqs, 0)
+	if err == nil {
+		t.Fatal("a store changed during the call was published")
+	}
+	wsWantReason(t, err, workspace.ReasonForeignState)
+	if _, err := os.Lstat(workspace.MappingPath(scope.Cell)); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("a mapping was published (%v)", err)
 	}
 }
 
