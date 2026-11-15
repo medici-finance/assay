@@ -162,7 +162,7 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) { return nil, nil }
 	t.Cleanup(func() { decisionGateBranchBoardFn = oldBranchBoard })
 	oldLint := lintDiffFn
-	lintDiffFn = func(root, path string, content []byte) ([]string, error) {
+	lintDiffFn = func(root, path string, content []byte, options childOptions) ([]string, error) {
 		if root != br {
 			t.Fatalf("lint read source instead of tracking: %s", root)
 		}
@@ -171,7 +171,7 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 	t.Cleanup(func() { lintDiffFn = oldLint })
 	// Nor the non-decisive verdict gate (verdictgate_test.go owns it).
 	oldVerdict := evidenceVerdictCheckFn
-	evidenceVerdictCheckFn = func(string, string, []byte, []byte, bool, string) (closureVerdict, string, error) {
+	evidenceVerdictCheckFn = func(string, string, []byte, []byte, bool, string, childOptions) (closureVerdict, string, error) {
 		return closureAccepted, "", nil
 	}
 	t.Cleanup(func() { evidenceVerdictCheckFn = oldVerdict })

@@ -20,7 +20,7 @@ var closureCheckFn = checkVerifiedClosure
 
 // Check only added records: historical successes must not prevent recording a
 // later failure. Reuse the canonical brief parser and witness validator.
-func guardVerifiedOutcomes(root, landedRoot, target string, before, after []byte, fg deskkit.Forge, repo deskkit.ForgeRepo, branch string) error {
+func guardVerifiedOutcomes(root, landedRoot, target string, before, after []byte, fg deskkit.Forge, repo deskkit.ForgeRepo, branch string, options childOptions) error {
 	if !isVerifyOutcomesSidecar(target) {
 		return nil
 	}
@@ -48,7 +48,7 @@ func guardVerifiedOutcomes(root, landedRoot, target string, before, after []byte
 			continue
 		}
 		seen[row.Brief] = true
-		file, err := closureCheckFn(landedRoot, row.Brief)
+		file, err := closureCheckFn(landedRoot, row.Brief, options)
 		if err != nil {
 			return err
 		}
@@ -72,7 +72,7 @@ func guardVerifiedOutcomes(root, landedRoot, target string, before, after []byte
 		}
 	}
 	if len(seen) > 0 {
-		problems, err := statusgenLintFn(landedRoot)
+		problems, err := statusgenLintFn(landedRoot, options)
 		if err != nil {
 			return err
 		}
@@ -83,10 +83,10 @@ func guardVerifiedOutcomes(root, landedRoot, target string, before, after []byte
 	return nil
 }
 
-func checkVerifiedClosure(root, key string) (string, error) {
+func checkVerifiedClosure(root, key string, options childOptions) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "statusgen", acceptanceArgs("brief", "--root", root, "--json", "--check-verified", "--check-attribution", key)...)
+	cmd := exec.CommandContext(ctx, "statusgen", options.args("brief", "--root", root, "--json", "--check-verified", "--check-attribution", key)...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
