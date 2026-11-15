@@ -43,7 +43,7 @@ func (r *backstopRig) run() BackstopOutcome {
 
 // regression: #6242
 func TestBackstopRevertStates(t *testing.T) {
-	for _, st := range []string{"blocked", "DIRTY"} {
+	for _, st := range []string{"dirty", "DIRTY"} {
 		r := &backstopRig{states: []string{st}}
 		out := r.run()
 		up := strings.ToUpper(st)
@@ -97,7 +97,7 @@ func TestBackstopUnknownThenClean(t *testing.T) {
 
 // regression: #6242
 func TestBackstopConvertFails(t *testing.T) {
-	r := &backstopRig{states: []string{"BLOCKED"}, convErr: errors.New("boom")}
+	r := &backstopRig{states: []string{"DIRTY"}, convErr: errors.New("boom")}
 	out := r.run()
 	if out.Verdict != BackstopRevertFailed || IsRefused(out.Err) || out.Err == nil || r.converts != 1 {
 		t.Fatalf("%+v converts=%d, want revert-failed, Unverifiable, exactly one attempt", out, r.converts)
@@ -170,5 +170,51 @@ func TestBackstopRevertMarker(t *testing.T) {
 	inline := "see " + ReadyBackstopRevertMarker("abc123") + " here"
 	if HasReadyBackstopRevert(inline, "abc123") {
 		t.Error("a marker inside free text matched; only an exact line may")
+	}
+}
+
+// GitHub computes BLOCKED for the identity that reads it: a role App that may not merge reads
+// BLOCKED on a change the maintainer's merge box calls ready to merge. A non-draft BLOCKED is
+// therefore could-not-check, never a revert, and never a silent pass (#6508).
+//
+// regression: #6508
+func TestBackstopBlockedUnchecked(t *testing.T) {
+	r := &backstopRig{states: []string{"blocked"}}
+	out := r.run()
+	if out.Verdict != BackstopUnchecked || out.Err != nil || r.converts != 0 || r.reads != 1 {
+		t.Fatalf("%+v converts=%d reads=%d, want could-not-check after ONE read, no revert", out, r.converts, r.reads)
+	}
+	if len(r.comments) != 1 || !strings.Contains(r.comments[0], "BLOCKED") ||
+		!strings.Contains(r.comments[0], "reading identity") || HasReadyBackstopRevert(r.comments[0], "abc123") {
+		t.Errorf("comments = %q, want ONE could-not-check comment naming BLOCKED as viewer-relative, no revert marker", r.comments)
+	}
+	if !strings.Contains(out.Notice, "could-not-verify") {
+		t.Errorf("notice = %q, want could-not-verify", out.Notice)
+	}
+}
+
+// A revert comment an earlier release posted on a BLOCKED read records a viewer-relative
+// state, so it never holds its head out of ready; a DIRTY one, or one naming no state, does.
+//
+// regression: #6508
+func TestRevertMarkerBlockedLapses(t *testing.T) {
+	withRoster(t, forgeRoster("reviewer=github:assay-reviewer-app:300000004", nil))
+	bot := "assay-reviewer-app[bot]"
+	legacy := func(state string) Comment {
+		c := Comment{Body: "Returned to draft by the post-flip check: right after this change was marked ready, " +
+			"the forge reported its merge state as `" + state + "` at head `abc123`.\n\n" + ReadyBackstopRevertMarker("abc123")}
+		c.Author.Login = bot
+		return c
+	}
+	if c, ok := FindReadyBackstopRevert([]Comment{legacy("BLOCKED")}, "abc123"); ok {
+		t.Errorf("a BLOCKED revert held the head: %q", c.Body)
+	}
+	if _, ok := FindReadyBackstopRevert([]Comment{legacy("BLOCKED"), legacy("DIRTY")}, "abc123"); !ok {
+		t.Error("a DIRTY revert did not hold the head")
+	}
+	bare := Comment{Body: ReadyBackstopRevertMarker("abc123")}
+	bare.Author.Login = bot
+	if _, ok := FindReadyBackstopRevert([]Comment{bare}, "abc123"); !ok {
+		t.Error("a revert naming no state did not hold the head")
 	}
 }

@@ -1,8 +1,8 @@
 package main
 
 // `deskpost ready`'s post-flip backstop (medici-finance/assay#6242): right after the flip it
-// reads the forge's merge state and, when the forge reports BLOCKED or DIRTY, returns the PR
-// to draft with one comment and a non-zero exit. Ruling:
+// reads the forge's merge state and, when the forge reports DIRTY, returns the PR to draft with
+// one comment and a non-zero exit. A non-draft BLOCKED is could-not-check (#6508). Ruling:
 // https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
 
 import (
@@ -68,10 +68,23 @@ func assertReadyReverted(t *testing.T, f *fakeGH, code int, errBuf *bytes.Buffer
 	}
 }
 
-// regression: #6242
-func TestReadyBackstopBlocked(t *testing.T) {
+// A non-draft BLOCKED read is viewer-relative on GitHub: the PR stays ready with one
+// could-not-check comment, never a revert (#6508).
+//
+// regression: #6508
+func TestReadyBackstopBlockedStays(t *testing.T) {
 	f, code, errBuf := readyWith(t, false, "blocked")
-	assertReadyReverted(t, f, code, errBuf, "BLOCKED")
+	if code != 0 || f.converts != 0 || f.mergeReads != 1 {
+		t.Fatalf("exit=%d converts=%d reads=%d, want 0/0/1: a viewer-relative BLOCKED is not a revert\n%s",
+			code, f.converts, f.mergeReads, errBuf)
+	}
+	cs := bodies(f)
+	if len(cs) != 1 || !strings.Contains(cs[0], "Could not check") || !strings.Contains(cs[0], "BLOCKED") {
+		t.Errorf("comments = %q, want ONE could-not-check comment naming BLOCKED", cs)
+	}
+	if !strings.Contains(errBuf.String(), "could-not-verify") {
+		t.Errorf("no could-not-verify notice on stderr:\n%s", errBuf)
+	}
 }
 
 // regression: #6242
@@ -91,7 +104,7 @@ func TestReadyBackstopClean(t *testing.T) {
 	}
 }
 
-// Every pass state leaves the PR ready: the ruling names only BLOCKED and DIRTY.
+// Every pass state leaves the PR ready.
 func TestReadyBackstopPassStates(t *testing.T) {
 	for _, st := range []string{"has_hooks", "unstable", "behind"} {
 		t.Run(st, func(t *testing.T) {
@@ -135,7 +148,7 @@ func TestReadyBackstopUnknownClean(t *testing.T) {
 
 // regression: #6242
 func TestReadyBackstopConvertFail(t *testing.T) {
-	f, code, errBuf := readyWith(t, true, "blocked")
+	f, code, errBuf := readyWith(t, true, "dirty")
 	if code != deskkit.ExitUnverifiable {
 		t.Fatalf("ready exit = %d, want %d: a failed revert is loud and non-zero\n%s",
 			code, deskkit.ExitUnverifiable, errBuf)

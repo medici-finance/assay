@@ -18,7 +18,7 @@
 // review lane. The merge remains the human's, always. deskflip has no un-ready verb, no
 // merge verb, and no override flag — a gate a caller can wave past is not a gate. Its one
 // un-ready is the post-flip backstop's: right after the flip it reads the forge's merge
-// state and returns the PR to draft when the forge reports BLOCKED or DIRTY, so ready keeps
+// state and returns the PR to draft when the forge reports DIRTY (#6508: BLOCKED is viewer-relative), so ready keeps
 // meaning mergeable per the forge. That is never a verb of its own. Ruling:
 // https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
 //

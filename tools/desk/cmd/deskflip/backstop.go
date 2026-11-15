@@ -18,8 +18,9 @@ var (
 )
 
 // readyBackstop runs deskkit.ReadyBackstop right after a successful ready mutation: ready
-// means mergeable per the forge. A BLOCKED or DIRTY merge state returns the change to draft
-// and comes back as the Refused error the verb exits with; a failed revert comes back as
+// means mergeable per the forge. A DIRTY merge state returns the change to draft and comes
+// back as the Refused error the verb exits with (a BLOCKED read is viewer-relative and is
+// could-not-check, medici-finance/assay#6508); a failed revert comes back as
 // Unverifiable; a verdict that could not be read leaves the change ready and prints the
 // could-not-verify notice. Ruling:
 // https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155

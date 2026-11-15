@@ -1,8 +1,9 @@
 package main
 
 // The post-flip backstop (medici-finance/assay#6242): right after the ready mutation the verb
-// reads the forge's merge state and, when the forge reports BLOCKED or DIRTY, returns the
-// change to draft with one comment and a non-zero exit. Ruling:
+// reads the forge's merge state and, when the forge reports DIRTY, returns the change to draft
+// with one comment and a non-zero exit. A non-draft BLOCKED is could-not-check (#6508): GitHub
+// computes it for the reading identity. Ruling:
 // https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
 
 import (
@@ -49,7 +50,7 @@ func (s *stub) converts() int {
 	return n
 }
 
-// assertReverted is the BLOCKED/DIRTY outcome: back to draft once, one comment naming the
+// assertReverted is the DIRTY outcome: back to draft once, one comment naming the
 // state and the full head, exit 5, a line saying the forge disagrees, and no label swap.
 func assertReverted(t *testing.T, s *stub, rc int, out, state string) {
 	t.Helper()
@@ -71,11 +72,27 @@ func assertReverted(t *testing.T, s *stub, rc int, out, state string) {
 	}
 }
 
-// regression: #6242
-func TestBackstopBlockedReverts(t *testing.T) {
+// GitHub computes BLOCKED for the reading identity, and a role App that may not merge reads
+// BLOCKED on a change its maintainer can merge. A non-draft BLOCKED read leaves the change
+// ready with one could-not-check comment and no revert marker (#6508).
+//
+// regression: #6508
+func TestBackstopBlockedStaysReady(t *testing.T) {
 	s := newStub()
 	rc, out := flipWith(t, s, "blocked")
-	assertReverted(t, s, rc, out, "BLOCKED")
+	if rc != deskkit.ExitOK || s.converts() != 0 {
+		t.Fatalf("rc=%d converts=%d, want 0/0: a viewer-relative BLOCKED is not a revert\n%s", rc, s.converts(), out)
+	}
+	if len(s.comments) != 1 || !strings.Contains(s.comments[0], "Could not check") ||
+		strings.Contains(s.comments[0], revertMarker(headSHA)) {
+		t.Errorf("comments = %q, want ONE could-not-check comment and no revert marker", s.comments)
+	}
+	if !strings.Contains(out, "could-not-verify") || s.mergeReads != 1 {
+		t.Errorf("reads=%d, want 1 and a could-not-verify notice:\n%s", s.mergeReads, out)
+	}
+	if !s.saw(http.MethodDelete, "/labels/"+labelBeforeFlip) {
+		t.Errorf("the queue label did not move on a flip that stays ready: %v", s.requests)
+	}
 }
 
 // regression: #6242
@@ -97,7 +114,7 @@ func TestBackstopCleanStaysReady(t *testing.T) {
 	}
 }
 
-// Every pass state leaves the change ready: the ruling names only BLOCKED and DIRTY.
+// Every pass state leaves the change ready.
 func TestBackstopPassStatesStay(t *testing.T) {
 	for _, st := range []string{"has_hooks", "unstable", "behind"} {
 		t.Run(st, func(t *testing.T) {
@@ -149,7 +166,7 @@ func TestBackstopUnknownThenClean(t *testing.T) {
 func TestBackstopConvertFails(t *testing.T) {
 	s := newStub()
 	s.convertFail = true
-	rc, out := flipWith(t, s, "blocked")
+	rc, out := flipWith(t, s, "dirty")
 	if rc != deskkit.ExitUnverifiable {
 		t.Fatalf("rc = %d, want %d: a failed revert is loud and non-zero\n%s", rc, deskkit.ExitUnverifiable, out)
 	}
@@ -234,6 +251,29 @@ func TestReflipNewHeadFlips(t *testing.T) {
 	}
 	if s.commentReads != 1 {
 		t.Errorf("comment thread read %d time(s), want 1", s.commentReads)
+	}
+}
+
+// A revert an earlier release posted on a BLOCKED read named a viewer-relative state: it does
+// not hold the head, so the flip proceeds (#6508). The DIRTY twin still refuses.
+//
+// regression: #6508
+func TestReflipBlockedRevertLapses(t *testing.T) {
+	legacy := func(state string) string {
+		return "Returned to draft by the post-flip check: right after this change was marked ready, the forge " +
+			"reported its merge state as `" + state + "` at head `" + headSHA + "`.\n\n" + revertMarker(headSHA)
+	}
+	s := newStub()
+	s.priorComments = [][2]string{{reviewerBot(t), legacy("BLOCKED")}}
+	rc, out := flipWith(t, s, "clean")
+	if rc != deskkit.ExitOK || !s.flipped() {
+		t.Fatalf("rc=%d flipped=%v, want a flip: a BLOCKED revert does not hold the head\n%s", rc, s.flipped(), out)
+	}
+	d := newStub()
+	d.priorComments = [][2]string{{reviewerBot(t), legacy("DIRTY")}}
+	if rc, out := flipWith(t, d, "clean"); rc != deskkit.ExitUnverifiable || d.flipped() {
+		t.Fatalf("rc=%d flipped=%v, want %d and no flip: a DIRTY revert holds the head\n%s",
+			rc, d.flipped(), deskkit.ExitUnverifiable, out)
 	}
 }
 

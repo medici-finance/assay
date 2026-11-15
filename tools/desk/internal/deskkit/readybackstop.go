@@ -24,12 +24,18 @@ import (
 //     to the read. GitHub reports a draft as BLOCKED, so a lagging read right after the flip
 //     says BLOCKED for a change the forge may well call mergeable once the flip shows. This is
 //     settling, never a revert (medici-finance/assay#6253 review F1).
-//   - BLOCKED, DIRTY with the change NOT a draft: the forge disagrees. Convert to draft ONCE, post one comment naming the
-//     state and the head, and fail with a Refused error. A failed conversion is never retried;
-//     it is an Unverifiable error saying the change is still ready.
+//   - DIRTY with the change NOT a draft: the forge disagrees. Convert to draft ONCE, post one
+//     comment naming the state and the head, and fail with a Refused error. A failed conversion
+//     is never retried; it is an Unverifiable error saying the change is still ready.
+//   - BLOCKED with the change NOT a draft: could-not-check, at once (medici-finance/assay#6508).
+//     GitHub computes mergeStateStatus for the identity that reads it, and a role App that may
+//     not merge reads BLOCKED on a change the maintainer's merge box calls ready to merge. So a
+//     BLOCKED read is no evidence the forge disagrees, and it is no pass either: the change stays
+//     ready with one could-not-check comment. DIRTY (a merge conflict) does not depend on who
+//     reads it, which is why it alone reverts.
 //   - CLEAN, HAS_HOOKS, UNSTABLE, BEHIND: the change stays ready (ReadyBackstopPasses).
 //     UNSTABLE (a non-required check is failing) and BEHIND (the base moved on) are still
-//     mergeable or merely need updating, and the ruling names only BLOCKED and DIRTY.
+//     mergeable or merely need updating.
 //   - UNKNOWN (and DRAFT, the flip not yet visible), or the draft flag still set: the forge
 //     has not settled. Re-read on an interval, bounded by a deadline (30s in production).
 //   - Still unsettled at the deadline, an empty state (a backend that serves none), an
@@ -46,8 +52,13 @@ const (
 // ReadyBackstopPasses lists the merge states that leave a flipped change ready.
 var ReadyBackstopPasses = []string{"CLEAN", "HAS_HOOKS", "UNSTABLE", "BEHIND"}
 
-// readyBackstopReverts lists the merge states that return a flipped change to draft.
-var readyBackstopReverts = []string{"BLOCKED", "DIRTY"}
+// readyBackstopReverts lists the merge states that return a flipped change to draft. Only a
+// state that reads the same for every identity belongs here (#6508).
+var readyBackstopReverts = []string{"DIRTY"}
+
+// readyBackstopViewerRelative lists the merge states GitHub computes for the reading identity:
+// never a revert, never a pass, always could-not-check (#6508).
+var readyBackstopViewerRelative = []string{"BLOCKED"}
 
 // readyBackstopSettling lists the states the forge reports while it has not decided yet. A
 // read whose draft flag is still set is settling too, whatever its state (backstopSettling).
@@ -65,9 +76,9 @@ type BackstopVerdict string
 const (
 	// BackstopPass: the forge's state is in ReadyBackstopPasses; nothing was written.
 	BackstopPass BackstopVerdict = "pass"
-	// BackstopReverted: the forge reported BLOCKED or DIRTY and the change is a draft again.
+	// BackstopReverted: the forge reported DIRTY and the change is a draft again.
 	BackstopReverted BackstopVerdict = "reverted"
-	// BackstopRevertFailed: the forge reported BLOCKED or DIRTY and ConvertToDraft failed.
+	// BackstopRevertFailed: the forge reported DIRTY and ConvertToDraft failed.
 	BackstopRevertFailed BackstopVerdict = "revert-failed"
 	// BackstopUnchecked: no settled verdict could be read; the change stays ready.
 	BackstopUnchecked BackstopVerdict = "could-not-check"
@@ -182,6 +193,10 @@ func (b ReadyBackstop) Run() BackstopOutcome {
 			b.Deadline.String() + " bound ran out"
 	case out.State == "":
 		why = "the forge served no merge state for the change"
+	case backstopIn(readyBackstopViewerRelative, out.State):
+		why = "the forge reported " + out.State + ", which GitHub computes for the reading identity; an " +
+			"identity that may not merge reads " + out.State + " on a change that is ready to merge, so it " +
+			"is no evidence either way"
 	case !backstopIn(readyBackstopSettling, out.State):
 		why = "the forge reported a merge state this check does not recognise (" + out.State + ")"
 	}
@@ -229,14 +244,32 @@ func HasReadyBackstopRevert(body, head string) bool {
 // FindReadyBackstopRevert returns the first comment that carries the revert marker for head
 // and was written by a trusted identity (TrustedAuthor: the backstop posts as a role App). A
 // marker from any other author is ignored, so a stranger cannot hold a change out of ready by
-// planting one.
+// planting one. A revert comment that records a viewer-relative state (a BLOCKED revert an
+// earlier release posted, #6508) is ignored too: that read was never evidence against the head.
 func FindReadyBackstopRevert(comments []Comment, head string) (Comment, bool) {
 	for _, c := range comments {
-		if TrustedAuthor(c.Author.Login) && HasReadyBackstopRevert(c.Body, head) {
+		if TrustedAuthor(c.Author.Login) && HasReadyBackstopRevert(c.Body, head) &&
+			!backstopIn(readyBackstopViewerRelative, revertedState(c.Body)) {
 			return c, true
 		}
 	}
 	return Comment{}, false
+}
+
+// revertedState returns the merge state a revert comment records (the `X` in "reported its merge
+// state as `X`"), upper-cased, or "" when the body names none.
+func revertedState(body string) string {
+	const lead = "reported its merge state as `"
+	i := strings.Index(body, lead)
+	if i < 0 {
+		return ""
+	}
+	rest := body[i+len(lead):]
+	j := strings.IndexByte(rest, '`')
+	if j < 0 {
+		return ""
+	}
+	return strings.ToUpper(strings.TrimSpace(rest[:j]))
 }
 
 func readyBackstopUncheckedBody(why, head string) string {

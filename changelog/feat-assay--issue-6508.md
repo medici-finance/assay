@@ -1,0 +1,2 @@
+### Fixed
+- `deskflip` and `deskpost ready` no longer revert a ready flip because the post-flip check read `BLOCKED`. GitHub works out that merge state for whoever is reading it, so a role App that is not allowed to merge reads `BLOCKED` on a change its maintainer can merge. A non-draft `BLOCKED` now leaves the change ready and posts one could-not-check comment. Only `DIRTY` (a merge conflict) still reverts. A head an earlier release reverted on a `BLOCKED` read is no longer refused for re-flip.

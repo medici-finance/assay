@@ -17,8 +17,8 @@ var (
 )
 
 // readyBackstop runs deskkit.ReadyBackstop right after `ready`'s flip landed: it reads the
-// forge's merge state and, when the forge reports BLOCKED or DIRTY, returns the PR to draft
-// with one comment. A could-not-verify notice goes to stderr; out.Err is non-nil when the
+// forge's merge state and, when the forge reports DIRTY, returns the PR to draft with one
+// comment (a BLOCKED read is viewer-relative and is could-not-check, #6508). A could-not-verify notice goes to stderr; out.Err is non-nil when the
 // flip was reverted (Refused) or the revert failed (Unverifiable). Ruling:
 // https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
 func readyBackstop(client postBackend, repo string, pr int, nodeID, head string) deskkit.BackstopOutcome {
