@@ -19,9 +19,9 @@ func TestAcceptanceChildPermission(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("TRANSITION_ARGV_LOG", log)
-	old, oldToken := acceptanceForge, ghToken
-	ghToken = "fixture-minted"
-	t.Cleanup(func() { acceptanceForge, ghToken = old, oldToken })
+	old, oldToken, oldForge := acceptanceForge, ghToken, ghTokenForge
+	ghToken, ghTokenForge = "fixture-minted", deskkit.ForgeGitHub
+	t.Cleanup(func() { acceptanceForge, ghToken, ghTokenForge = old, oldToken, oldForge })
 	calls := []struct {
 		name string
 		run  func()
@@ -79,8 +79,8 @@ exit 1
 		t.Setenv(key, "fixture-ambient")
 	}
 	t.Setenv("GIT_CONFIG_GLOBAL", "fixture-authority-config")
-	oldFlag, oldToken := acceptanceForge, ghToken
-	t.Cleanup(func() { acceptanceForge, ghToken = oldFlag, oldToken })
+	oldFlag, oldToken, oldForge := acceptanceForge, ghToken, ghTokenForge
+	t.Cleanup(func() { acceptanceForge, ghToken, ghTokenForge = oldFlag, oldToken, oldForge })
 	calls := []struct {
 		name string
 		run  func() error
@@ -99,9 +99,10 @@ exit 1
 		for _, minted := range []bool{false, true} {
 			for _, c := range calls {
 				t.Run(c.name+map[bool]string{false: "/offline", true: "/opted-in"}[enabled]+map[bool]string{false: "/missing", true: "/minted"}[minted], func(t *testing.T) {
-					acceptanceForge, ghToken = enabled, ""
+					acceptanceForge, ghToken, ghTokenForge = enabled, "", ""
 					if minted {
 						ghToken = "fixture-minted"
+						ghTokenForge = deskkit.ForgeGitHub
 					}
 					_ = os.Remove(log)
 					err := c.run()

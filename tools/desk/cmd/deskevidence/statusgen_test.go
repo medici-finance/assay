@@ -117,6 +117,7 @@ func TestFlipApprovalKeepsRole(t *testing.T) {
 				}
 				mints++
 				ghToken = "fixture-minted"
+				ghTokenForge = deskkit.ForgeGitHub
 				return nil
 			}
 			code := flRun(root, "--acceptance-forge", "--dry-run")
@@ -129,5 +130,26 @@ func TestFlipApprovalKeepsRole(t *testing.T) {
 			}
 			flUnchanged(t, root)
 		})
+	}
+}
+
+// regression: #4823
+func TestApprovalForgeCustody(t *testing.T) {
+	oldFlag, oldToken, oldForge := acceptanceForge, ghToken, ghTokenForge
+	acceptanceForge, ghToken = true, "fixture-foreign"
+	t.Cleanup(func() { acceptanceForge, ghToken, ghTokenForge = oldFlag, oldToken, oldForge })
+	for _, forge := range []deskkit.ForgeKind{deskkit.ForgeGitLab, ""} {
+		ghTokenForge = forge
+		for _, kind := range []closureAudit{auditLint, auditBrief, auditClosure, auditFlip, auditVerdict} {
+			cmd := statusgenAudit(context.Background(), kind, "example-root")
+			if !deskkit.IsUnverifiable(cmd.Err) {
+				t.Errorf("%s accepts an unproven or foreign-forge approval credential", kind)
+			}
+			for _, env := range cmd.Env {
+				if strings.Contains(env, "fixture-foreign") {
+					t.Error("foreign credential reached the approval child environment")
+				}
+			}
+		}
 	}
 }

@@ -61,7 +61,7 @@ retain their existing behavior. Each approval target is printed before contact.
 The closure lint covers the whole landed tree, including other briefs' transitions.
 Unknown repository authority and unavailable or refuted approvals still refuse;
 this flag neither isolates Git configuration nor falls back to a human login.
-Approval audits receive only this invocation's minted verifier credential; other
+Approval audits receive only this invocation's minted GitHub verifier credential; other
 audits receive a noncredential refusal marker, closing stored-login fallback.
 Local flip corroboration requires an existing
 verifier session and a proven, authorized repository origin; it never changes roles.
@@ -141,8 +141,10 @@ func run(args []string) int {
 	old := acceptanceForge
 	defer func() { acceptanceForge = old }()
 	oldToken := ghToken
+	oldForge := ghTokenForge
 	ghToken = ""
-	defer func() { ghToken = oldToken }()
+	ghTokenForge = ""
+	defer func() { ghToken, ghTokenForge = oldToken, oldForge }()
 	acceptanceForge = false
 	filtered := make([]string, 0, len(args))
 	for _, a := range args {

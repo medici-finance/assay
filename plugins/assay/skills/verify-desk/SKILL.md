@@ -813,7 +813,8 @@ a refuted approval still hold or refuse the landing. Keep the diagnostic and rou
 missing capability; never retry by stripping Git configuration, changing the origin or
 borrowing a stored human login. Diagnose the run environment separately from the missing
 opt-in, because the flag cannot resolve an authority-bearing Git include.
-Approval audits receive the landing invocation's own minted verifier credential;
+Approval audits receive the landing invocation's own minted GitHub verifier credential;
+foreign or unknown forge custody is withheld before the child starts;
 other audits receive only a noncredential refusal marker that closes stored-login
 fallback, including a decision gate that needs to read a human ruling. Local flip corroboration
 requires the existing verifier session's own authority and a proven authorized origin,

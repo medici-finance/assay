@@ -83,6 +83,10 @@ func statusgenAudit(ctx context.Context, kind closureAudit, root string, args ..
 			cmd.Err = deskkit.Unverifiable("approval audit requires a minted verifier credential; ambient forge credentials are not used", nil)
 			return cmd
 		}
+		if ghTokenForge != deskkit.ForgeGitHub {
+			cmd.Err = deskkit.Unverifiable("approval audit requires GitHub verifier custody; an unknown or foreign-forge credential is not forwarded", nil)
+			return cmd
+		}
 		cmd.Env = append(env, "GH_TOKEN="+ghToken, "GH_HOST=github.com")
 	} else {
 		// A child outside verify-desk may otherwise ask gh's stored login even

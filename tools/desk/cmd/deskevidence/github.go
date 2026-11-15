@@ -29,6 +29,10 @@ import (
 // back once an Evidence row is committed under the wrong actor.
 var ghToken string
 
+// Keep the resolver's forge coordinate with the credential. A GitLab PAT is
+// never a credential for statusgen's GitHub-only acceptance approval reader.
+var ghTokenForge deskkit.ForgeKind
+
 // forgeAPIBase is a TEST-ONLY override of the API base the resolved backend is pointed at. It
 // is EMPTY in production, meaning "the backend's own default", so this tool binds no forge host
 // literal of its own — and there is deliberately no flag or environment variable that sets it.
@@ -131,6 +135,7 @@ func mintVerifierToken(repoSlug string) error {
 		return err
 	}
 	ghToken = cred.Token
+	ghTokenForge = cred.Resolution.Kind
 	return nil
 }
 
