@@ -152,7 +152,7 @@ _Held by per-stream caps: 14 brief(s) across 1 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 9e563e164 2026-11-15T20:41:54Z_
+_last regen: 92304bb08 2026-11-15T20:57:56Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 9e563e164 2026-11-15T20:41:54Z_
+_last regen: 92304bb08 2026-11-15T20:57:56Z_
 
 **Progress:** 36/98 brief items done.
 
@@ -453,7 +453,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| desk-tools | 42 [exec:strong] | implemented | 10500 | 19 | — | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 42 [exec:strong] | implemented | 10500 | 19 | <1h | verify-desk | triage, then re-bucket | — | — |
 | composability | 02 | implemented | 2500 | 3 | 4h | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | 4h | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | 4h | verify-desk | dispatch one judge | — | — |
