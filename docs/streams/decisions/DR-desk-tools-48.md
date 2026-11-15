@@ -29,19 +29,25 @@ This record copies that ruling into the register for the lifecycle's design-appr
 (`spec/lifecycle-v1.md` §4.4). It makes no new decision. The human act is the driver's comment
 on #5837.
 
-**Why there is no `ruling:` link.** The ruling comment names the brief by its board id. It
-does not name this record. The register's corroboration check requires the comment's own text
-to name the record's `DR-<slug>` id (`spec/registers-v1.md` §7.5, condition 5), so a link to
-that comment would fail as `record-not-named`. The brief's own `ruling:` key does link that
-comment: the decision-gate hold (§4.5) needs a comment that names the brief, which this one
-does.
+**Why the `ruling:` link is a second comment.** The ruling comment above names the brief by its
+board id. It does not name this record. The register's corroboration check requires the
+comment's own text to name the record's `DR-<slug>` id (`spec/registers-v1.md` §7.5,
+condition 5), so a link to that comment would fail as `record-not-named`. The brief's own
+`ruling:` key links that comment instead: the decision-gate hold (§4.5) needs a comment that
+names the brief, which that one does. This record's `ruling:` links a second comment by the
+driver on #5837,
+[posted 2026-11-15T20:23:20Z](https://github.com/medici-finance/assay/issues/5837#issuecomment-6900775559)
+and not edited since, which names this record: "Approve DR-desk-tools-48 as recorded: it
+transcribes the desk-tools/48: 1 ruling and adds no decision, workflow activation or write
+scope."
 
-**What corroborates `decided-by`, and its state.** With no `ruling:` link, the corroboration
-check reads only an APPROVED review by the driver's own login on the pull request that adds this
-record, or an explicit approval comment by the driver's own login on that pull request. When this
-record was written, neither existed. If the driver instead comments on #5837 naming
-`DR-desk-tools-48`, that comment goes in this record as the `ruling:` link before merge. Without
-one of those, the stamp is not corroborated, and the record should not merge.
+**What corroborates `decided-by`, and its state.** The corroboration check resolves the
+`ruling:` link. That link is to a comment from the driver's own login, the login the
+human-login map gives for `human:ian`. The comment sits on this record's decision issue, was not
+edited after it was posted, and names `DR-desk-tools-48`. The pull request that adds this record
+was checked with its own statusgen (`--corroborate`), which reports the `decided-by` stamp as
+corroborated by that comment. Corroboration shows who approved the record and where. It does not
+show that the record matches the ruling: that is for review to judge.
 
 **The decision.** Brief desk-tools/48 asks for a dated, read-only capacity reading derived from
 the meters the landing gates already enforce, and for widen advice bounded by it. The design the
