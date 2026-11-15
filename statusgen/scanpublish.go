@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -179,7 +178,7 @@ func scanRootPublic(root, target string) bool {
 	if target == "" {
 		return onBehalfOfPublicForm("")
 	}
-	out, err := exec.Command("git", "-C", root, "remote", "get-url", "--push", "--all", "origin").Output()
+	out, err := gitRemoteOriginURLs(root, "--push", "--all")
 	if err != nil {
 		return true
 	}

@@ -404,9 +404,9 @@
       "owner": "statusgen/failfirst_ancestry.go — commitIsAncestor caller maintainer"
     },
     "s083": {
-      "operation": "exec.Command(\"git\", \"-C\", root, \"remote\", \"get-url\", \"origin\")",
+      "operation": "exec.Command(\"git\", append(args, \"origin\")...)",
       "why": "Native configuration query retains include/scope/environment and URL rewrite behavior. The existing canonical parser/local RemoteURL accessor does not by itself establish the effective native query contract; no additional configuration resolver or authority widening is added.",
-      "owner": "statusgen/forge.go — remoteOriginURL caller maintainer"
+      "owner": "statusgen/forge.go — remoteOriginURL and scanRootPublic caller maintainer"
     },
     "s084": {
       "operation": "exec.Command(d.bin, argv...)",
@@ -1531,8 +1531,8 @@
       "reason": "s082"
     },
     {
-      "key": "forge.go::remoteOriginURL::direct#1",
-      "expression": "exec.Command(\"git\", \"-C\", root, \"remote\", \"get-url\", \"origin\")",
+      "key": "forge.go::gitRemoteOriginURLs::direct#1",
+      "expression": "exec.Command(\"git\", append(args, \"origin\")...)",
       "disposition": "retained",
       "reason": "s083"
     },
