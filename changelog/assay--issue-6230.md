@@ -1,2 +1,2 @@
 ### Fixed
-- Brief 74 of the desktools-v2 stream declares its Context `files:` line with explicit paths, including the delivered changelog fragment, in a form the declaration parser accepts. For verifications run after this fix, `deskevidence` no longer refuses its outcome records with `unsupported Context files: declaration tail`.
+- The Context `files:` declaration of desktools-v2 brief 74 now names the two test files it was missing (`verifyrun_test.go` and `verifyincontainer_test.go`), so changes to them count toward that brief's verification scope. It also names the delivered changelog fragment instead of the whole `changelog/` directory, so brief 74's recorded verifications no longer wake on unrelated changelog fragments.
