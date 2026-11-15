@@ -1408,7 +1408,8 @@ func TestForgeStatusDirUnsetNearMiss(t *testing.T) {
 	forgeRefuseAll(t, []string{
 		"git -C $H status; gh pr view 1",
 		`git -C "$H" status; gh pr view 1`,
-		"git -C ~/x status; gh pr view 1",
+		"git -C ~x status; gh pr view 1",
+		"git -C a~ status; gh pr view 1",
 		"git -C a* status; gh pr view 1",
 		"git -C a:b status; gh pr view 1",
 		"git -C --x status; gh pr view 1",
