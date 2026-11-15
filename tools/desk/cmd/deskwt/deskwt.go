@@ -22,7 +22,7 @@ var getwd = os.Getwd
 // dir; production keeps the compiled-in `/private/tmp`. It is deliberately NOT wired to
 // any env var or flag — an operator-relocatable prefix would defeat the point of a
 // fixed allowlist.
-var tmpBaseDir = "/private/tmp"
+var tmpBaseDir = deskkit.SanctionedWorktreeTmpBase
 
 // goos is the seam for the host OS. Production reads runtime.GOOS; white-box tests set
 // it to "windows" to exercise the portable-prefix target selection without a Windows
@@ -160,15 +160,11 @@ func (g *pathGuard) worktreeTarget(leaf string) string {
 }
 
 // allowed reports whether a RESOLVED path is a sanctioned worktree location: a direct
-// `tracker-*` child of the resolved tmp dir, or strictly under the resolved worktrees dir.
+// `tracker-*` child of the resolved tmp dir, or strictly under the resolved worktrees dir. The rule
+// itself lives in deskkit (InSanctionedWorktreePrefix) so a tool that CREATES worktrees places them
+// where this check accepts them, against the same code rather than a copy of it.
 func (g *pathGuard) allowed(rt string) bool {
-	if filepath.Dir(rt) == g.tmpDir && strings.HasPrefix(filepath.Base(rt), "tracker-") {
-		return true
-	}
-	if strings.HasPrefix(rt, g.worktreesDir+string(filepath.Separator)) {
-		return true
-	}
-	return false
+	return deskkit.InSanctionedWorktreePrefix(rt, g.tmpDir, g.worktreesDir)
 }
 
 // worktreePaths returns the set of registered worktree roots (resolved) for the repo

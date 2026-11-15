@@ -28,7 +28,7 @@ const (
 )
 
 var (
-	classPassOutcomes = []string{"matched", "class", "below", "quarantined"}
+	classPassOutcomes = []string{"matched", "class", "below", "parked", "quarantined"}
 	classPassOutLine  = regexp.MustCompile(`^outcome: (\S+)$`)
 	classPassExpect   = regexp.MustCompile(`^expect: (none|[a-z-]+ [a-z]+( direct)?)$`)
 )
@@ -39,6 +39,7 @@ var classPassAllowed = map[string]struct{ expect, disposition string }{
 	"matched":     {"observed duplicate", "duplicate"},
 	"class":       {"observed duplicate", "duplicate"},
 	"below":       {"observed repair direct", "repair"},
+	"parked":      {"external-wait external", "external-prerequisite"},
 	"quarantined": {"none", ""},
 }
 
@@ -184,6 +185,7 @@ func TestClassPassFlagsPlant(t *testing.T) {
 	mutations := []struct{ name, from, to, want string }{
 		{"direct flag dropped", "expect: observed repair direct", "expect: observed repair", classPassAssessMsg},
 		{"group relabelled", "outcome: below", "outcome: matched", classPassNoneMsg},
+		{"parked group relabelled", "outcome: parked", "outcome: matched", classPassNoneMsg},
 		{"quarantined expectation", "\nexpect: none\n", "\nexpect: observed repair direct\n", classPassQuarMsg},
 		{"duplicate successor not a reference", `"successor": "example-stream/07"`, `"successor": "see the old brief"`, classPassDupMsg},
 	}
