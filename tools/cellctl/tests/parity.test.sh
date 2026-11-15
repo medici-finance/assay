@@ -396,7 +396,7 @@ tree_manifest(){
   local root="$1" impl="$2" dir="$3" p mode
   [[ -d "$dir" ]] || { echo "<no tree>"; return 0; }
   while IFS= read -r p; do
-    mode="$(stat -f '%Lp' "$p" 2>/dev/null || stat -c '%a' "$p" 2>/dev/null)"
+    mode="$(stat -c '%a' "$p" 2>/dev/null || stat -f '%Lp' "$p" 2>/dev/null)"
     printf '%s %s %s\n' "$(printf '%s' "${p#$dir}")" "$mode" "$( [[ -L "$p" ]] && echo link || ( [[ -d "$p" ]] && echo dir || echo file ) )"
     if [[ -f "$p" && ! -L "$p" ]]; then
       normalise "$root" "$impl" < "$p" | sed 's/^/    | /'

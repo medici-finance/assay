@@ -1706,10 +1706,12 @@ check_house(){
 
 # scrubbed_mode_is <path> <octal-mode>: the two-spelling `stat` probe every custody row in this
 # file already uses (the codex/BSD-vs-GNU `stat -f`/`stat -c` split `check_codex_harness` and the
-# existing PEM-adjacent rows try) — never a third spelling.
+# existing PEM-adjacent rows try) — never a third spelling. GNU first: GNU `stat -f` is
+# --file-system, which prints the filesystem record and exits non-zero, so a BSD-first probe
+# returns that record glued to the mode on Linux; BSD `stat -c` fails with no output.
 scrubbed_mode_is(){
   local p="$1" want="$2" m
-  m="$(stat -f '%Lp' "$p" 2>/dev/null || stat -c '%a' "$p" 2>/dev/null)" || return 1
+  m="$(stat -c '%a' "$p" 2>/dev/null || stat -f '%Lp' "$p" 2>/dev/null)" || return 1
   [[ "$m" == "$want" ]]
 }
 
