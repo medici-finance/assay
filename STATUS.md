@@ -18,7 +18,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [cellctl-windows](docs/streams/cellctl-windows/README.md) | P1 | active | 0/8 | 2026-11-06 |  |
 | [comms-core](docs/streams/comms-core/README.md) | P1 | active | 1/4 | 2026-11-15 |  |
 | [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-11-11 |  |
-| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 1/9 | 2026-11-12 |  |
+| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 1/9 | 2026-11-15 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/11 | 2026-11-13 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 3/34 | 2026-11-15 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 9/37 | 2026-11-15 |  |
@@ -26,7 +26,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-11-06 |  |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 4/65 | 2026-11-15 | 15 withdrawn |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-11-15 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 6/55 | 2026-11-13 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 6/55 | 2026-11-15 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 3/40 | 2026-11-15 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-11-13 |  |
 | [intake-class-routing](docs/streams/intake-class-routing/README.md) | P1 | active | 0/5 | 2026-11-15 |  |
@@ -152,7 +152,7 @@ _Held by per-stream caps: 14 brief(s) across 1 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 92304bb08 2026-11-15T20:57:56Z_
+_last regen: d62dafb99 2026-11-15T21:04:40Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 92304bb08 2026-11-15T20:57:56Z_
+_last regen: d62dafb99 2026-11-15T21:04:40Z_
 
 **Progress:** 36/98 brief items done.
 
@@ -441,7 +441,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 27 [exec:strong] | verified | 1000 | 0 | 4h | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 8eb028b49bc5 (claude-opus-5-5) | — |
 | desk-tools | 15 | verified | 1000 | 0 | 4h | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 810a5edf064b (claude-opus-5-5) | — |
 | desk-tools | 23 [exec:strong] | verified | 1000 | 0 | 4h | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
-| desk-tools | 56 [exec:strong] | implemented | 1000 | 0 | 1h | verify runner | none | — | — |
+| desk-tools | 56 [exec:strong] | implemented | 1000 | 0 | 2h | verify runner | none | — | — |
 | desktools-go-git | 08 | verified | 1000 | 0 | 4h | CI auto-flip | none; stuck after one main run → file | 2026-11-06 assay-verifier-app[bot] @ 8592383261fb (forge-identity) | — |
 | desktools-v2 | 05 [exec:strong] | verified | 1000 | 0 | 4h | CI auto-flip | none; stuck after one main run → file | 2026-10-02 assay-verifier-app[bot] @ 454982f91a72 (claude-opus-5-5) | — |
 | desktools-v2 | 12 [exec:strong] | verified | 1000 | 0 | 4h | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ e4d474af8bca (claude-opus-5-5) | — |
