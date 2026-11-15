@@ -12,26 +12,31 @@ import (
 
 // A local flip has no outward admission/mint. Only an existing verifier session
 // may obtain its own read credential, and only after the origin is provable.
-func prepareFlipApproval(root string) error {
-	if !acceptanceForge {
-		return nil
+func prepareFlipApproval(root string, options childOptions) (childOptions, error) {
+	if !options.acceptanceForge {
+		return options, nil
 	}
 	role, _, err := deskkit.SessionTokenRole("deskevidence flip approval")
 	if err != nil {
-		return err
+		return options, err
 	}
 	if role != "verifier" {
-		return deskkit.Refused("flip approval requires the verifier session's own forge-read authority")
+		return options, deskkit.Refused("flip approval requires the verifier session's own forge-read authority")
 	}
 	origin, err := gitcore.OriginAuthority(root)
 	if err != nil {
-		return deskkit.Unverifiable("flip approval requires proven repository authority", err)
+		return options, deskkit.Unverifiable("flip approval requires proven repository authority", err)
 	}
 	repo, err := deskkit.RemoteRepoSlug(origin)
 	if err != nil || !deskkit.IsAllowedRepo(repo) {
-		return deskkit.Refused("flip approval repository is not authorized")
+		return options, deskkit.Refused("flip approval repository is not authorized")
 	}
-	return mintTokenFn(repo)
+	credential, err := mintTokenFn(repo)
+	if err != nil {
+		return options, err
+	}
+	options.credential = credential
+	return options, nil
 }
 
 type closureAudit string
@@ -48,7 +53,7 @@ const (
 // statusgenAudit is the only statusgen child constructor. Its closed vocabulary
 // contains closure audits, never row execution. Forge custody is scoped to this
 // child and to explicit approval permission; Git configuration remains observable.
-func statusgenAudit(ctx context.Context, kind closureAudit, root string, args ...string) *exec.Cmd {
+func statusgenAudit(ctx context.Context, kind closureAudit, root string, options childOptions, args ...string) *exec.Cmd {
 	var argv []string
 	switch kind {
 	case auditLint, auditDecision:
@@ -61,10 +66,8 @@ func statusgenAudit(ctx context.Context, kind closureAudit, root string, args ..
 		return cmd
 	}
 	argv = append(argv, args...)
-	permitted := acceptanceForge
-	if permitted {
-		argv = append(argv, "--acceptance-forge")
-	}
+	permitted := options.acceptanceForge
+	argv = options.args(argv...)
 	cmd := exec.CommandContext(ctx, "statusgen", argv...)
 	cmd.Dir = os.TempDir()
 	var env []string
@@ -79,15 +82,15 @@ func statusgenAudit(ctx context.Context, kind closureAudit, root string, args ..
 	}
 	cmd.Env = env
 	if permitted {
-		if strings.TrimSpace(ghToken) == "" {
+		if strings.TrimSpace(options.credential.Token) == "" {
 			cmd.Err = deskkit.Unverifiable("host audit requires a minted verifier credential; ambient forge credentials are not used", nil)
 			return cmd
 		}
-		if ghTokenForge != deskkit.ForgeGitHub {
+		if options.credential.Resolution.Kind != deskkit.ForgeGitHub {
 			cmd.Err = deskkit.Unverifiable("host audit requires GitHub verifier custody; an unknown or foreign-forge credential is not forwarded", nil)
 			return cmd
 		}
-		cmd.Env = append(env, "GH_TOKEN="+ghToken, "GH_HOST=github.com")
+		cmd.Env = append(env, "GH_TOKEN="+options.credential.Token, "GH_HOST=github.com")
 	} else {
 		// A child outside verify-desk may otherwise ask gh's stored login even
 		// after token variables are removed. The noncredential refusal marker

@@ -50,8 +50,8 @@ USAGE:
                [--brief-path <repo-path>] [--append-only] [--allow-shrink]
                [--row <NN> [--row <NN> ...]] [--dry-run] [--acceptance-forge]
   deskevidence <owner/repo> <branch> --outcome-record <local-file> [--outcome-only]
-               [--root <dir>] [--dry-run] [--acceptance-forge]
-  deskevidence flip --root <worktree> --brief <stream>/<NN> --sha <sha> [--base main] [--dry-run] [--acceptance-forge]
+               [--root <dir>] [--dry-run]
+  deskevidence flip --root <worktree> --brief <stream>/<NN> --sha <sha> [--base main] [--dry-run]
   deskevidence --version
 
 --acceptance-forge explicitly permits fresh read-only corroboration of protected
@@ -136,21 +136,27 @@ func main() {
 	}))
 }
 
-var acceptanceForge bool
+// childOptions carries this invocation's explicit permission and admitted role custody.
+// It is a value, never package state shared by concurrent calls.
+type childOptions struct {
+	acceptanceForge bool
+	credential      deskkit.RoleCredential
+}
+
+func (o childOptions) args(args ...string) []string {
+	result := append([]string(nil), args...)
+	if o.acceptanceForge {
+		result = append(result, "--acceptance-forge")
+	}
+	return result
+}
 
 func run(args []string) int {
-	old := acceptanceForge
-	defer func() { acceptanceForge = old }()
-	oldToken := ghToken
-	oldForge := ghTokenForge
-	ghToken = ""
-	ghTokenForge = ""
-	defer func() { ghToken, ghTokenForge = oldToken, oldForge }()
-	acceptanceForge = false
+	options := childOptions{}
 	filtered := make([]string, 0, len(args))
 	for _, a := range args {
 		if a == "--acceptance-forge" {
-			acceptanceForge = true
+			options.acceptanceForge = true
 		} else {
 			filtered = append(filtered, a)
 		}
@@ -204,7 +210,7 @@ func run(args []string) int {
 			return code
 		}
 
-		err := runFlip(args[1:])
+		err := runFlip(args[1:], options)
 		if err != nil && !deskkit.IsHelpRequest(err) {
 			fmt.Fprintln(stderr, "deskevidence: "+err.Error())
 		}
@@ -217,7 +223,7 @@ func run(args []string) int {
 	// production and the captured buffer under test — so a test can assert on the
 	// refusal's wording (the origin a scan refusal names, #1161) the same way it asserts
 	// on the notices the flow prints to the same writer.
-	err := runOutward(args)
+	err := runOutward(args, options)
 	if err != nil {
 		fmt.Fprintln(stderr, "deskevidence: "+err.Error())
 	}

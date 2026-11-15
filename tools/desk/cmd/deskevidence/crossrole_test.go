@@ -40,7 +40,7 @@ func TestVerifierMintCrossRole(t *testing.T) {
 			})
 			t.Cleanup(restore)
 
-			if err := mintVerifierToken("example-org/tracker"); err != nil {
+			if _, err := mintVerifierToken("example-org/tracker"); err != nil {
 				t.Fatalf("mintVerifierToken as loop %q: %v", tc.loop, err)
 			}
 			if os.Getenv("DESK_LOOP") != tc.loop {

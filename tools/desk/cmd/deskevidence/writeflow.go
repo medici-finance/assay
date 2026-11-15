@@ -67,8 +67,8 @@ func (l *auditLock) release() { l.l.Release() }
 // FIRST) runs LAST — i.e. after `ac.finalize`. Registering them the other way round
 // would release the lock before the audit line is appended and leave the append outside
 // the critical section, which is the specific window #227 is about. Do not reorder.
-func runOutward(args []string) (err error) {
-	ac := &auditCtx{verb: "commit"}
+func runOutward(args []string, options childOptions) (err error) {
+	ac := &auditCtx{verb: "commit", options: options}
 	if len(args) > 0 {
 		ac.repo = args[0]
 	}

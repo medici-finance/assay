@@ -83,6 +83,10 @@ ro-mount | composes the secrets.md docker run
     --mount "type=bind,src=$pem,dst=$pem_dst,ro" \
     --mount "type=bind,src=$pem,dst=$pem_dst" \
 
+mptcp-off | composes the secrets.md docker run
+    -e GODEBUG=multipathtcp=0 \
+    -e GODEBUG=multipathtcp=1 \
+
 pem-comma | PEM path with a comma
     *,* | *\"* | *"$nl"*)
     *\"* | *"$nl"*)

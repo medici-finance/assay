@@ -91,10 +91,7 @@ func secondSite() { exec.Command("statusgen", "verifyclosure") }
 
 // regression: #4823
 func TestAuditCannotExecuteRows(t *testing.T) {
-	oldFlag, oldToken := acceptanceForge, ghToken
-	acceptanceForge, ghToken = true, "fixture-minted"
-	t.Cleanup(func() { acceptanceForge, ghToken = oldFlag, oldToken })
-	cmd := statusgenAudit(context.Background(), closureAudit("verifyrun"), "example-root", "--brief", "example.md")
+	cmd := statusgenAudit(context.Background(), closureAudit("verifyrun"), "example-root", childOptions{acceptanceForge: true}, "--brief", "example.md")
 	if !deskkit.IsUnverifiable(cmd.Err) {
 		t.Fatal("row executor received an approval audit command")
 	}
@@ -111,14 +108,13 @@ func TestFlipApprovalKeepsRole(t *testing.T) {
 			root := flRoot(t)
 			flGit(t, root, "remote", "add", "origin", "https://github.com/example-org/tracker.git")
 			mints := 0
-			mintTokenFn = func(repo string) error {
+			mintTokenFn = func(repo string) (deskkit.RoleCredential, error) {
 				if repo != "example-org/tracker" {
 					t.Fatalf("wrong approval subject: %s", repo)
 				}
 				mints++
 				ghToken = "fixture-minted"
-				ghTokenForge = deskkit.ForgeGitHub
-				return nil
+				return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
 			}
 			code := flRun(root, "--acceptance-forge", "--dry-run")
 			wantCode, wantMints := deskkit.ExitOK, 1
@@ -135,13 +131,10 @@ func TestFlipApprovalKeepsRole(t *testing.T) {
 
 // regression: #4823
 func TestApprovalForgeCustody(t *testing.T) {
-	oldFlag, oldToken, oldForge := acceptanceForge, ghToken, ghTokenForge
-	acceptanceForge, ghToken = true, "fixture-foreign"
-	t.Cleanup(func() { acceptanceForge, ghToken, ghTokenForge = oldFlag, oldToken, oldForge })
 	for _, forge := range []deskkit.ForgeKind{deskkit.ForgeGitLab, ""} {
-		ghTokenForge = forge
+		options := fixtureAuditOptions(true, "fixture-foreign", forge)
 		for _, kind := range []closureAudit{auditLint, auditBrief, auditClosure, auditFlip, auditVerdict, auditDecision} {
-			cmd := statusgenAudit(context.Background(), kind, "example-root")
+			cmd := statusgenAudit(context.Background(), kind, "example-root", options)
 			if !deskkit.IsUnverifiable(cmd.Err) {
 				t.Errorf("%s accepts an unproven or foreign-forge approval credential", kind)
 			}
