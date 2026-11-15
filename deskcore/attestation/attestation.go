@@ -179,10 +179,19 @@ func TargetProblem(present, isPR, authority bool, title, body, wantTitle, wantBo
 		return "run record author is not the dispatcher"
 	case title != wantTitle:
 		return fmt.Sprintf("has title %q, not %q", title, wantTitle)
-	case body != wantBody:
+	case !bodyIsRendering(body, wantBody):
 		return "has a body that is not the exact rendering of its binding"
 	}
 	return ""
+}
+
+// bodyIsRendering admits a read-back body that is the exact rendering, or the rendering with
+// exactly one trailing "\n" removed: GitLab stores an issue description without the newline
+// the renderers end it with (#6085). That byte carries no binding data. Nothing else is
+// admitted: not a second dropped newline, not a "\r\n" or a space in its place, not any other
+// difference. Every reader of a pre-work record compares through this one rule.
+func bodyIsRendering(body, want string) bool {
+	return body == want || body+"\n" == want
 }
 func HistoryProblem(known, complete, edited bool) string {
 	switch {

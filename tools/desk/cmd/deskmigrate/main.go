@@ -26,21 +26,25 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/spf13/cobra"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-const usage = `deskmigrate — the version migration runner.
+// helpLong is the root help's prose. The flags are generated from the command tree
+// (desktools-v2/47); this is what the tree cannot say on its own.
+const helpLong = `deskmigrate — the version migration runner.
 
-USAGE:
   deskmigrate --from vX.Y.Z --to vX.Y.Z --root <dir> [--dry-run] [--notes]
   deskmigrate --version
 
@@ -53,75 +57,158 @@ actions, so an empty selection is legible rather than silent.
 Exit codes:
   0  applied, or a clean no-op (nothing to do, or already migrated)
   5  refused (bad version range; or no migration covers the span while the tree
-     still carries schema: brief-v1 files — the migrations were never vendored in)
+     still carries schema: brief-v1 files — the migrations were never vendored in;
+     or a command line deskmigrate cannot parse)
   6  could-not-run (a migration file is unreadable or malformed)`
 
 func main() {
-	os.Exit(deskkit.PerfRun("deskmigrate", nil, os.Args[1:], func([]string) int {
-		deskkit.SetToolClass(deskkit.ClassForTool(false))
-		deskkit.EchoEffectiveConfig(os.Stderr)
-		if !deskkit.CheckVerbActivation(os.Stderr) {
-			return deskkit.ExitUnverifiable
-		}
-		return run(os.Args[1:], os.Stdout, os.Stderr)
+	os.Exit(deskkit.PerfRun("deskmigrate", nil, os.Args[1:], func(a []string) int {
+		return execute(a, os.Stdout, os.Stderr, startup)
 	}))
 }
 
+// startup is the process startup a migration runs first; help, version and a refused command
+// line never reach it. false means the verb is not activated (exit 6).
+func startup(errw io.Writer) bool {
+	deskkit.SetToolClass(deskkit.ClassForTool(false))
+	deskkit.EchoEffectiveConfig(errw)
+	return deskkit.CheckVerbActivation(errw)
+}
+
+// run is one invocation without the process startup — the shape the package's tests drive.
 func run(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("deskmigrate", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	var (
-		from    = fs.String("from", "", "from-version (vX.Y.Z)")
-		to      = fs.String("to", "", "to-version (vX.Y.Z)")
-		root    = fs.String("root", ".", "adopter repo root to migrate")
-		dryRun  = fs.Bool("dry-run", false, "preview only; write nothing")
-		notes   = fs.Bool("notes", false, "also print each migration's human `what changed` body")
-		version = fs.Bool("version", false, "print version and exit")
-	)
-	fs.Usage = func() { fmt.Fprintln(stderr, usage) }
-	if err := fs.Parse(args); err != nil {
-		return deskkit.ExitRefused
-	}
+	return execute(args, stdout, stderr, nil)
+}
 
-	if *version {
-		sha, built := deskkit.Version()
-		fmt.Fprintf(stdout, "deskmigrate sourceSHA=%s builtAt=%s releaseTag=%s\n",
-			sha, built, deskkit.ReleaseTagOrDev())
-		return deskkit.ExitOK
-	}
-	if *from == "" || *to == "" {
-		fmt.Fprintln(stderr, "deskmigrate: --from and --to are required")
-		fmt.Fprintln(stderr, usage)
-		return deskkit.ExitRefused
-	}
+// migrateOptions are the typed values the command tree hands the runner.
+type migrateOptions struct {
+	from, to, root string
+	dryRun, notes  bool
+}
 
+// migrateFn is the typed handler the command tree calls; the contract tests replace it to
+// observe the values that reach it.
+var migrateFn = migrate
+
+// onResolve, when set, sees every invocation's resolved settings.
+var onResolve func(*cli.Values)
+
+// exitErr is a handler's exit code carried as an error, so cli.Run keeps it.
+type exitErr int
+
+func (e exitErr) Error() string { return "exit " + strconv.Itoa(int(e)) }
+func (e exitErr) ExitCode() int { return int(e) }
+
+func codeErr(code int) error {
+	if code == deskkit.ExitOK {
+		return nil
+	}
+	return exitErr(code)
+}
+
+// versionLine is what --version and -version print.
+func versionLine() string {
+	sha, built := deskkit.Version()
+	return fmt.Sprintf("deskmigrate sourceSHA=%s builtAt=%s releaseTag=%s", sha, built, deskkit.ReleaseTagOrDev())
+}
+
+// bindings are every setting deskmigrate declares: flags and defaults only, no environment
+// variable and no configuration file.
+func bindings() []cli.Binding {
+	return []cli.Binding{
+		{Key: "from", Kind: cli.String, Flag: "from", Default: "", Usage: "from-version (vX.Y.Z)"},
+		{Key: "to", Kind: cli.String, Flag: "to", Default: "", Usage: "to-version (vX.Y.Z)"},
+		{Key: "root", Kind: cli.String, Flag: "root", Default: ".", Usage: "adopter repo root to migrate"},
+		{Key: "dry-run", Kind: cli.Bool, Flag: "dry-run", Default: false, Usage: "preview only; write nothing"},
+		{Key: "notes", Kind: cli.Bool, Flag: "notes", Default: false, Usage: "also print each migration's human what-changed body"},
+	}
+}
+
+// newTree builds deskmigrate's command tree on the given streams; pre is as for execute.
+func newTree(stdout, stderr io.Writer, pre func(io.Writer) bool) *cobra.Command {
+	root := cli.NewRoot("deskmigrate", "the version migration runner")
+	root.Long = helpLong
+	set := cli.Declare(root, bindings()...)
+	// deskmigrate takes no positional argument; a stray word is refused before anything runs.
+	root.Args = func(_ *cobra.Command, args []string) error {
+		if len(args) > 0 {
+			return fmt.Errorf("unknown argument %q", args[0])
+		}
+		return nil
+	}
+	root.RunE = func(cmd *cobra.Command, _ []string) error {
+		v, err := set.Resolve(cli.Inputs{})
+		if err != nil {
+			fmt.Fprintf(stderr, "deskmigrate: refused: %v\n", err)
+			return exitErr(deskkit.ExitRefused)
+		}
+		if onResolve != nil {
+			onResolve(v)
+		}
+		o := migrateOptions{from: v.String("from"), to: v.String("to"), root: v.String("root"),
+			dryRun: v.Bool("dry-run"), notes: v.Bool("notes")}
+		// The range is required to execute, never to print help; a missing end is refused
+		// before the startup or the runner, with the usage on stderr, as before.
+		if o.from == "" || o.to == "" {
+			fmt.Fprintln(stderr, "deskmigrate: --from and --to are required")
+			cmd.SetOut(stderr)
+			_ = cmd.Help()
+			return exitErr(deskkit.ExitRefused)
+		}
+		if pre != nil && !pre(stderr) {
+			return exitErr(deskkit.ExitUnverifiable)
+		}
+		return codeErr(migrateFn(o, stdout, stderr))
+	}
+	return root
+}
+
+// execute runs one invocation against a fresh command tree. pre is the process startup (roster
+// class, config echo, activation check); it runs after the command line parses and the range
+// is present, and never for help or version.
+func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) bool) int {
+	build := func() *cobra.Command { return newTree(stdout, stderr, pre) }
+	return cli.Run(build, args, cli.Options{
+		IO:              cli.IO{Out: stdout, Err: stderr},
+		Version:         versionLine(),
+		VersionTemplate: "{{.Version}}\n",
+		// A command line deskmigrate cannot parse is refused (5), as the flag set refused it.
+		UsageExit: deskkit.ExitRefused,
+		// The Go flag package accepted -from, -to, -root, -dry-run, -notes and -version; they
+		// stay accepted.
+		GoFlagCompat: true,
+	})
+}
+
+// migrate is the runner itself: the kill switch first, then select, preview or apply.
+func migrate(o migrateOptions, stdout, stderr io.Writer) int {
 	if err := deskkit.Guard(); err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return deskkit.ExitCodeOf(err)
 	}
 	deskkit.WarnIfUnpinned(stderr)
 
-	migrationsDir := filepath.Join(*root, deskkit.MigrationsDir)
+	migrationsDir := filepath.Join(o.root, deskkit.MigrationsDir)
 	migs, err := deskkit.LoadMigrations(migrationsDir)
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return deskkit.ExitCodeOf(err)
 	}
-	selected, err := deskkit.SelectMigrations(migs, *from, *to)
+	selected, err := deskkit.SelectMigrations(migs, o.from, o.to)
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return deskkit.ExitCodeOf(err)
 	}
 
 	mode := "apply"
-	if *dryRun {
+	if o.dryRun {
 		mode = "dry-run"
 	}
 	// Counts on EVERY run, before any branch: an operator reading the output can
 	// tell "0 selected" (nothing matched the span) from "3 selected, 0 planned"
 	// (matched but idempotently already applied) without re-deriving either.
 	fmt.Fprintf(stdout, "%s: %d migration(s) selected for %s -> %s (migrations dir %s)\n",
-		mode, len(selected), *from, *to, migrationsDir)
+		mode, len(selected), o.from, o.to, migrationsDir)
 
 	if len(selected) == 0 {
 		// A SILENT no-op is the failure this guards. On a tree that still carries
@@ -130,9 +217,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		// success and moves on with an unmigrated tree. An empty migration set on
 		// a tree with brief-v1 content is a determinate precondition failure: the
 		// migration files were never vendored into this tree.
-		v1, err := briefV1Files(*root)
+		v1, err := briefV1Files(o.root)
 		if err != nil {
-			fmt.Fprintf(stderr, "deskmigrate: could-not-check whether %s carries brief-v1 files: %v\n", *root, err)
+			fmt.Fprintf(stderr, "deskmigrate: could-not-check whether %s carries brief-v1 files: %v\n", o.root, err)
 			return deskkit.ExitUnverifiable
 		}
 		if len(v1) > 0 {
@@ -141,21 +228,21 @@ func run(args []string, stdout, stderr io.Writer) int {
 				"deskmigrate: refusing a silent no-op — no migration covers %s -> %s, but %s carries %d file(s) still on `schema: brief-v1` (e.g. %s).\n"+
 					"  %s holds no migration for this span (vendor the release's migrations/ directory into the tree — copy the migration files shipped with the target version under %s — then re-run).\n"+
 					"  Exiting non-zero so this is not read as a completed migration.\n",
-				*from, *to, *root, len(v1), relOrAbs(*root, v1[0]), migrationsDir, migrationsDir)
+				o.from, o.to, o.root, len(v1), relOrAbs(o.root, v1[0]), migrationsDir, migrationsDir)
 			return deskkit.ExitRefused
 		}
-		fmt.Fprintf(stdout, "no migrations for %s -> %s (clean no-op) — 0 planned file action(s)\n", *from, *to)
+		fmt.Fprintf(stdout, "no migrations for %s -> %s (clean no-op) — 0 planned file action(s)\n", o.from, o.to)
 		return deskkit.ExitOK
 	}
 
 	for _, m := range selected {
 		fmt.Fprintf(stdout, "  migration %s (%s -> %s)\n", m.ID, m.From, m.To)
-		if *notes {
+		if o.notes {
 			fmt.Fprintf(stdout, "    what changed:\n%s\n", indent(m.Notes, "      "))
 		}
 	}
 
-	actions, err := deskkit.RunMigrations(*root, selected, *dryRun)
+	actions, err := deskkit.RunMigrations(o.root, selected, o.dryRun)
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return deskkit.ExitCodeOf(err)

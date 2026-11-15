@@ -291,5 +291,33 @@ RISK-VALUE: DERIVED — date.AddDate(0, 0, 1) = 1 day @ statusgen/stalefail.go:1
 
 **VERIFY: PASS** — 5/5 rows pass at 52719b9592b4443a784d246813117bf4023fb410 (statusgen verifyrun witness).
 
+### Re-verification — VERIFY: PASS — 2026-11-02 (merged main 2c6c21336a60)
+
+Batch re-witness by a non-implementer verifier on merged main 2c6c21336a606e64df057294f21177f16db7b9f8, admitted by the dispatcher's pre-work check (attestation line below). Gate: model; all four risk answers no. The table below is the `statusgen verifyrun` write-mode witness (v1.0.69, darwin arm64), run from the admitted home on a clean tree, exactly as the tool printed it. No Verify row is classed check:ci, so the network-off container bracket does not apply and every row ran on the host. Since 52719b9592b4, stalefail.go changed (the stale-FAIL history reads moved to the shared Git graph reader); its test, the three fixture trees and the mutation script are unchanged.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1` | pass exit=0 | sha256:8e84780f9afd | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -c '^--- PASS: TestStaleFailVsMissingCard'` | pass exit=0 | sha256:4355a46b19d3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `ls statusgen/testdata/*stale*fail* statusgen/testdata/*missing*card* >/dev/null 2>&1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -c 'stale FAIL'` | pass exit=0 | sha256:4355a46b19d3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && bash testdata/stalefail-mutation.sh` | pass exit=0 | sha256:b258669554cc | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5276 run=1079082dbfd1b3c616275feb18cecabf4484d1d73d67726f2e73b73020dc8b6e source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/measured-status/brief-04-stale-fail-lint-derivation.md model=claude-opus-5-5 tier=strong
+
+Supplemental, no credit: a hand run of every row under `bash -o pipefail` gave the same exits. Row 1 printed "ok github.com/medici-finance/assay/statusgen 0.474s"; rows 2 and 4 each printed 1; row 5 printed "unclassified waiting-brief route in planted_route_IqCxGx.go:plantedRoute" then "PASS: the planted second route was detected". The tree held only this Evidence edit after every row.
+
+Risk-bearing values. Risk metadata is present and all four answers are no, including irreversible: no. Enumerated over the stale-FAIL route in statusgen/stalefail.go, re-located at 2c6c21336a60:
+- date.AddDate(0, 0, 1) @ statusgen/stalefail.go:174 — a fix commit counts only if it lands on a later UTC day than the Evidence date
+- failHeadingRe = ^#{3,6}[ \t] @ statusgen/stalefail.go:16 — the Evidence run-heading depth
+- status set {in-progress, implemented, verified} @ statusgen/stalefail.go:222
+- ref order {refs/remotes/origin/main, refs/heads/main} @ statusgen/stalefail.go:86
+- is-shallow-repository must equal "false" @ statusgen/stalefail.go:81, otherwise could-not-check
+
+All of these are reversible lint-routing knobs, fixed by an edit and a release.
+
+RISK-VALUE: DERIVED — date.AddDate(0, 0, 1) = 1 day @ statusgen/stalefail.go:174 — Evidence dates are day-granular, so a same-day commit cannot be ordered against them. Counting only commits from the next UTC day or later as stale avoids rounding an unknown order to stale. Its one error mode is an over-call for a same-local-day edit west of UTC, and that routes to a re-verify, never to a sign-off.
+
+**VERIFY: PASS** — 5/5 rows pass at 2c6c21336a606e64df057294f21177f16db7b9f8 (statusgen verifyrun write-mode witness).
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

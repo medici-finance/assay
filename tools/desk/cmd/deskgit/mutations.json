@@ -1,0 +1,29 @@
+{
+  "test": "go test ./cmd/deskgit/ -count=1 -run 'TestFetchPR|TestPRRefspec|TestFetch_PR'",
+  "control": {
+    "name": "CONTROL — drop the digits-only check on --pr (a non-digit value reaches the refspec and the transport)",
+    "file": "cmd/deskgit/deskgit.go",
+    "old": "\t\tif !prNumRe.MatchString(*prNum) {",
+    "new": "\t\tif false {"
+  },
+  "mutations": [
+    {
+      "name": "swap the two forge arms of the --pr refspec (GitHub is asked for refs/merge-requests, GitLab for refs/pull)",
+      "file": "cmd/deskgit/deskgit.go",
+      "old": "\tif gitlab {\n\t\treturn \"refs/merge-requests/\"",
+      "new": "\tif !gitlab {\n\t\treturn \"refs/merge-requests/\""
+    },
+    {
+      "name": "pick the --pr refspec without the shared forge resolution (every forge is asked for refs/pull)",
+      "file": "cmd/deskgit/deskgit.go",
+      "old": "\t\tspec, d := prRefspec(*prNum, gitlab)",
+      "new": "\t\tspec, d := prRefspec(*prNum, false)"
+    },
+    {
+      "name": "build the GitLab arm's audit detail from the GitHub ref name (the ledger names a ref that was never fetched)",
+      "file": "cmd/deskgit/deskgit.go",
+      "old": "\t\t\t\"fetched merge-requests/\" + prNum + \"/head -> pr\" + prNum",
+      "new": "\t\t\t\"fetched pull/\" + prNum + \"/head -> pr\" + prNum"
+    }
+  ]
+}

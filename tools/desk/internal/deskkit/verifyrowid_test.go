@@ -90,3 +90,43 @@ func TestVerifyRowIDWriterBoundsHeldInventory(t *testing.T) {
 		}
 	}
 }
+
+// verifyrun records any `#` cell as a row identity, so a letter label such as R,
+// A, L or S1 reaches the outcome record exactly as the witness names it.
+// regression: #5013
+func TestVerifyRowIDLetterLabels(t *testing.T) {
+	for _, raw := range []string{`"R"`, `"A"`, `"L"`, `"S1"`, `"s1"`, `"V12"`, `"Ab"`} {
+		var id VerifyRowID
+		if err := json.Unmarshal([]byte(raw), &id); err != nil {
+			t.Fatalf("%s: %v", raw, err)
+		}
+		encoded, err := json.Marshal(id)
+		if err != nil || string(encoded) != raw {
+			t.Fatalf("label changed form: %s -> %s (%v)", raw, encoded, err)
+		}
+	}
+	for _, raw := range []string{`"R-1"`, `"R 1"`, `"_R"`, `"R."`, `"6a1"`, `"Ä"`, `"R\n"`, `"(R)"`} {
+		var id VerifyRowID
+		if json.Unmarshal([]byte(raw), &id) == nil {
+			t.Errorf("accepted malformed label %s", raw)
+		}
+	}
+	// The reported inventory: 5 6 7 R A L S1 S2 S3, with 5 and L held.
+	issue := `{"rows":["5","L"],"rows_total":9,"rows_passed":7,"row_results":[` +
+		`{"row":5,"result":"could-not-run"},{"row":6,"result":"pass"},{"row":7,"result":"pass"},` +
+		`{"row":"R","result":"pass"},{"row":"A","result":"pass"},{"row":"L","result":"could-not-run"},` +
+		`{"row":"S1","result":"pass"},{"row":"S2","result":"pass"},{"row":"S3","result":"pass"}]}`
+	if _, err := ParseJoinInput([]byte(issue)); err != nil {
+		t.Fatalf("writer refused the identities verifyrun recorded: %v", err)
+	}
+	for _, raw := range []string{
+		`{"rows":["L"],"rows_total":2}`, // a label is outside the count-only 1..rows_total inventory
+		`{"rows":["L","L"],"rows_total":2,"row_results":[{"row":1,"result":"pass"},{"row":"L","result":"fail"}]}`,
+		`{"rows":["L"],"rows_total":2,"rows_passed":1,"row_results":[{"row":1,"result":"fail"},{"row":"L","result":"pass"}]}`,
+		`{"rows":["l"],"rows_total":2,"row_results":[{"row":1,"result":"pass"},{"row":"L","result":"fail"}]}`,
+	} {
+		if _, err := ParseJoinInput([]byte(raw)); err == nil {
+			t.Errorf("writer accepted invalid labelled inventory: %s", raw)
+		}
+	}
+}

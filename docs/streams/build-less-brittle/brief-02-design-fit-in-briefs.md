@@ -305,6 +305,20 @@ RISK-VALUE: DERIVED — why-add threshold = `delta > 0` @ plugins/assay/skills/a
 
 VERIFY: PASS — all nine Verify rows passed by hand at d6662bbc6 and in the execution witness (9 pass, 0 fail, 0 could-not-run). Rows 4 and 8 are vacuous as presence checks, and their deliverables were confirmed by hand.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `sed -n '/^### 4.1 Context section/,/^### 4.2/p' spec/brief-v1.md \| grep -c -e 'design-fit:' -e 'why-add'` | pass exit=0 | sha256:1121cfccd591 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -c -e '^ *owner:' -e '^ *contract:' -e '^ *retires:' -e '^ *weight:' -e '^ *why-add:' docs/brief-template.md` | pass exit=0 | sha256:f0b5c2c2211c | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `grep -c -e '^ *owner:' -e '^ *contract:' -e '^ *retires:' -e '^ *weight:' -e '^ *why-add:' plugins/assay/skills/author-brief/SKILL.md` | pass exit=0 | sha256:f0b5c2c2211c | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -cE '^\[ \] [0-9]+\. ' plugins/assay/skills/author-brief/SKILL.md` | pass exit=0 | sha256:2e6d31a5983a | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `id=$(grep -oE 'contract: S-[a-z-]+' docs/brief-template.md \| head -1 \| cut -d' ' -f2); test -n "$id" && grep -cE "^[\|] *$id " docs/contracts.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/02$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" && echo NET-OK` | pass exit=0 | sha256:458c4e39effe | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -c 'Is this a design brief raised by an error-class trigger' plugins/assay/skills/author-brief/SKILL.md spec/brief-v1.md \| grep -cE ':[1-9][0-9]*$'` | pass exit=0 | sha256:53c234e5e847 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && go test -run TestSharedValueTriggerIsNarrow -count=1 .` | pass exit=0 | sha256:4fe86a6f9705 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach 274ece128 && statusgen --consumers --root "$d" --brief build-less-brittle/02 --base 274ece128~1; s=$?; rm -rf "$d"; exit $s` | pass exit=0 | sha256:d00e9f62a993 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5233 run=d8e77155f1c1abaff8f38819219d370038e83b62f8e0ba80bc3bac9fccd78acc source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/build-less-brittle/brief-02-design-fit-in-briefs.md model=claude-opus-5-5 tier=strong
+
+
 ## Review
 Gate: model (from frontmatter). The reviewer checks that the skill's offsets removed narrative or
 restatement, never an operative rule sentence.

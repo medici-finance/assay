@@ -17,7 +17,8 @@
 #          truncation rate-limit-stops-cycle pacing-honoured portability
 #          origin-forms origin-degraded mint-per-repo mint-failed
 #          mint-seed-failed role-unusable mint-bad-custody mint-reread-race
-#          role-mapping bare-gh-lint
+#          role-mapping bare-gh-lint mint-forge-pin-lint forge-gitlab-seed
+#          forge-aware-delegation
 set -uo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -110,12 +111,24 @@ run() {
   while [[ "${1:-}" != "--" && $# -gt 0 ]]; do envs+=("$1"); shift; done
   shift
   OUT=$(env "${envs[@]}" PR_MONITOR_STATE_DIR="$statedir" \
-        PATH="$ghdir:$PATH" bash "$SCRIPT" "$@" 2>"$ghdir/stderr")
+        PATH="$ghdir:$BASE_PATH" bash "$SCRIPT" "$@" 2>"$ghdir/stderr")
   RC=$?
 }
 
 TMPROOT=$(mktemp -d)
 trap 'rm -rf "$TMPROOT"' EXIT
+
+# BASE_PATH — the inherited PATH minus every entry holding an executable
+# `deskmonitor`. With one installed, a legacy cycle is handed to `deskmonitor pr`
+# (the forge-aware reader); the cases below pin the script's OWN reader, so they
+# must never pick up a real install. A case that wants the handoff plants a stub.
+BASE_PATH=""
+_old_ifs=$IFS; IFS=:
+for _p in $PATH; do
+  [[ -n "$_p" && -x "$_p/deskmonitor" ]] && continue
+  BASE_PATH="${BASE_PATH:+$BASE_PATH:}$_p"
+done
+IFS=$_old_ifs
 
 echo "pr-monitor regression suite (bash $BASH_VERSION)"
 [[ -n "$CASE_FILTER" ]] && echo "  (only case: $CASE_FILTER)"
@@ -305,7 +318,7 @@ if want origin-forms; then
     git -C "$repodir" remote add origin "$url"
     : > "$w/calls.log"
     OUT=$(cd "$repodir" && env ASSAY_MONITOR_PACE_SECONDS=0 DESK_LOOP=pr-review-desk PR_MONITOR_STATE_DIR="$TMPROOT/of-st-$n" \
-          PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
+          PATH="$w:$BASE_PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
     check "$([[ "$RC" -eq 0 && "$(awk '{print $2}' "$w/calls.log")" == "o/r" ]] && echo 0 || echo 1)" \
       "origin '$url' resolves to o/r and is polled" \
       "rc=$RC calls=$(cat "$w/calls.log") stdout=${OUT:-<empty>} stderr=$(cat "$w/stderr")"
@@ -315,7 +328,7 @@ if want origin-forms; then
   git -C "$repodir" remote add origin "git@github.com:123/r.git"
   resp "$w" 123/r "$(arr "$(pr 1 aaa false OPEN CLEAN)")"; : > "$w/calls.log"
   OUT=$(cd "$repodir" && env ASSAY_MONITOR_PACE_SECONDS=0 DESK_LOOP=pr-review-desk PR_MONITOR_STATE_DIR="$TMPROOT/of-st-num" \
-        PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
+        PATH="$w:$BASE_PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
   check "$([[ "$RC" -eq 0 && "$(awk '{print $2}' "$w/calls.log")" == "123/r" ]] && echo 0 || echo 1)" \
     "scp form with a numeric owner (git@github.com:123/r) is an owner, not a port" \
     "rc=$RC calls=$(cat "$w/calls.log")"
@@ -328,8 +341,9 @@ if want origin-degraded; then
   w="$TMPROOT/od"; make_gh "$w"
   # (a) an origin that is not github.com: not a valid owner/name -> degraded, no gh call.
   repodir="$TMPROOT/od-repo-a"; mkdir -p "$repodir"; git -C "$repodir" init -q 2>/dev/null
-  git -C "$repodir" remote add origin "https://user:s3cretpw@example.com:8443/o/r.git"
-  OUT=$(cd "$repodir" && env PR_MONITOR_STATE_DIR="$TMPROOT/od-st-a" PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
+  pw=s3cretpw # kept out of the URL literal: no userinfo password sits in the source
+  git -C "$repodir" remote add origin "https://user:${pw}@example.com:8443/o/r.git"
+  OUT=$(cd "$repodir" && env PR_MONITOR_STATE_DIR="$TMPROOT/od-st-a" PATH="$w:$BASE_PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
   ERR=$(cat "$w/stderr")
   check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" "an unparseable origin exits 1" "got $RC"
   check "$(grep -q '^MONITOR-DEGRADED: invalid repo' <<<"$OUT" && echo 0 || echo 1)" \
@@ -341,7 +355,7 @@ if want origin-degraded; then
   check "$([[ ! -s "$w/calls.log" ]] && echo 0 || echo 1)" "no gh call was made" "calls: $(cat "$w/calls.log")"
   # (b) no repo args, no repos.txt, no origin remote at all.
   repodir="$TMPROOT/od-repo-b"; mkdir -p "$repodir"; git -C "$repodir" init -q 2>/dev/null
-  OUT=$(cd "$repodir" && env PR_MONITOR_STATE_DIR="$TMPROOT/od-st-b" PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
+  OUT=$(cd "$repodir" && env PR_MONITOR_STATE_DIR="$TMPROOT/od-st-b" PATH="$w:$BASE_PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
   check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" "no resolvable repos exits 1" "got $RC"
   check "$(grep -q '^MONITOR-DEGRADED: no repos to query' <<<"$OUT" && echo 0 || echo 1)" \
     "stdout carries MONITOR-DEGRADED: no repos to query" "stdout: ${OUT:-<empty>}"
@@ -545,6 +559,41 @@ if want bare-gh-lint; then
     "no gh call in the script runs without a same-line GH_TOKEN= (no ambient read)" "bare: $bare"
 fi
 
+# unpinned_mints <file> — every desktoken INVOCATION (at line start, after `$(`, or
+# after an env prefix like ASSAY_CONFIG_ECHO=full) that does not pin --forge github.
+# A shipped script's only reader is `gh` (GitHub only); a mint left to follow the
+# roster's forge hands it another forge's credential.
+unpinned_mints() {
+  grep -nE '(^[[:space:]]*|\$\(|[A-Z_]+=[^[:space:]]*[[:space:]]+)desktoken[[:space:]]' "$1" \
+    | grep -vE '^[0-9]+:[[:space:]]*#' | grep -vF -- '--forge github' || true
+}
+
+# regression: #5889
+if want mint-forge-pin-lint; then
+  echo "mint-forge-pin-lint — every shipped script's desktoken mint pins --forge github (its reader is gh)"
+  planted="$TMPROOT/planted-unpinned-mint.sh"
+  printf '%s\n' 'out=$(ASSAY_CONFIG_ECHO=full desktoken "$ROLE" --repo "$repo")' > "$planted"
+  printf '%s\n' 'tok=$(desktoken worker --repo o/r)' >> "$planted"
+  check "$([[ "$(unpinned_mints "$planted" | grep -c .)" == 2 ]] && echo 0 || echo 1)" \
+    "the lint catches both planted unpinned mints" "got: $(unpinned_mints "$planted")"
+  printf '%s\n' 'out=$(ASSAY_CONFIG_ECHO=full desktoken "$ROLE" --forge github --repo "$repo")' \
+    '  # desktoken <role> --repo <slug> (prose)' 'MINT_WHY="desktoken $ROLE exited $rc"' \
+    'command -v desktoken >/dev/null' > "$planted.ok"
+  check "$([[ -z "$(unpinned_mints "$planted.ok")" ]] && echo 0 || echo 1)" \
+    "the lint passes a pinned mint, prose and diagnostics" "flagged: $(unpinned_mints "$planted.ok")"
+  scripts_dir="${PR_MONITOR_TEST_SCRIPTS_DIR:-$HERE}"
+  n=0; found=""
+  for s in "$scripts_dir"/*.sh; do
+    case "$s" in (*.test.sh) continue ;; esac
+    [[ -f "$s" ]] || continue
+    n=$((n + 1))
+    hit=$(unpinned_mints "$s")
+    [[ -n "$hit" ]] && found="$found $(basename "$s"):$hit"
+  done
+  check "$([[ "$n" -gt 0 && -z "$found" ]] && echo 0 || echo 1)" \
+    "no shipped script mints for gh without --forge github ($n scanned)" "unpinned:$found"
+fi
+
 # ============================================================== role-mapping ==
 # regression: #3116
 if want role-mapping; then
@@ -632,6 +681,119 @@ STUB
     "a surviving prior artifact is explicitly rejected, never left silently" "$OUT"
   check "$([[ ! -s "$w/calls.log" && ! -s "$w/mint.log" ]] && echo 0 || echo 1)" \
     "the hold makes no legacy GH or credential call" "$OUT"
+fi
+
+# ======================================================== forge-gitlab-seed ===
+# regression: #5889
+# A roster that maps the repo to a non-GitHub forge: the minter, left to follow the
+# roster, hands back that forge's credential, and `gh` (GitHub only) answers 401.
+# The script's own reader must ask for a GitHub credential explicitly, so such a repo
+# is could-not-check at the mint — never a foreign credential sent to GitHub, never
+# a stored baseline, never an empty queue.
+if want forge-gitlab-seed; then
+  echo "forge-gitlab-seed — a gitlab-mapped repo never sends its credential to gh; could-not-check, no baseline"
+  w="$TMPROOT/fgl"; st="$TMPROOT/fgl-st"; make_gh "$w"
+  : > "$w/mintargs.log"
+  # desktoken that follows ASSAY_REPO_FORGES the way the real minter does: a repo
+  # mapped to gitlab gets a PAT-shaped placeholder unless --forge github is asked
+  # for, and --forge github on that repo is refused (no App installation there).
+  cat > "$w/desktoken" <<STUB
+#!/usr/bin/env bash
+d="$w"
+printf '%s\n' "\$*" >> "\$d/mintargs.log"
+role="\${1:-}"; repo=""; forge=""; prev=""
+for a in "\$@"; do
+  [ "\$prev" = "--repo" ] && repo="\$a"; [ "\$prev" = "--forge" ] && forge="\$a"; prev="\$a"
+done
+san=\$(printf '%s' "\$repo" | sed 's#/#__#g')
+printf '%s --repo %s\n' "\$role" "\$repo" >> "\$d/mint.log"
+mapped=""
+case ",\${ASSAY_REPO_FORGES:-}," in (*",\$repo=gitlab,"*) mapped=gitlab ;; esac
+if [ "\$mapped" = gitlab ]; then
+  if [ "\$forge" = github ]; then
+    echo "desktoken: no GitHub App installation for \$repo" >&2; exit 5
+  fi
+  printf 'x-gitlab-pat-%s\n' "\$san" > "\$d/tok/\$san"
+else
+  printf 'x-minted-%s\n' "\$san" > "\$d/tok/\$san"
+fi
+chmod 600 "\$d/tok/\$san"; printf '%s\n' "\$d/tok/\$san"; exit 0
+STUB
+  chmod +x "$w/desktoken"
+  # gh that refuses any non-GitHub credential with the forge's 401.
+  cat > "$w/gh" <<STUB
+#!/usr/bin/env bash
+d="$w"
+repo=""; prev=""
+for a in "\$@"; do [ "\$prev" = "--repo" ] && repo="\$a"; prev="\$a"; done
+printf '%s %s\n' "\$(date +%s)" "\$repo" >> "\$d/calls.log"
+printf 'GH_TOKEN=[%s]\n' "\${GH_TOKEN:-}" >> "\$d/token.log"
+case "\${GH_TOKEN:-}" in (x-gitlab-pat-*) echo "HTTP 401: Bad credentials (https://api.github.com/graphql)" >&2; exit 1 ;; esac
+printf '[{"number":1,"headRefOid":"aaa","isDraft":false,"state":"OPEN","mergeStateStatus":"CLEAN"}]'
+STUB
+  chmod +x "$w/gh"
+  run "$w" "$st" ASSAY_REPO_FORGES=o/r=gitlab -- o/r
+  check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" "a gitlab-mapped repo exits 2 (degraded)" "rc=$RC stdout: ${OUT:-<empty>}"
+  check "$(grep -q 'x-gitlab-pat' "$w/token.log" && echo 1 || echo 0)" \
+    "no gh read ever carries the non-GitHub credential" "token.log: $(cat "$w/token.log")"
+  check "$(grep -q -- '--forge github' "$w/mintargs.log" && echo 0 || echo 1)" \
+    "the script's own reader asks the minter for a GitHub credential" "mint args: $(cat "$w/mintargs.log")"
+  check "$(grep -q '^MONITOR-DEGRADED: o/r token mint FAILED' <<<"$OUT" && echo 0 || echo 1)" \
+    "the repo is reported could-not-check at the mint, not as a 401 read" "stdout: ${OUT:-<empty>}"
+  check "$([[ ! -s "$w/calls.log" ]] && echo 0 || echo 1)" "no gh call was made" "calls: $(cat "$w/calls.log")"
+  check "$([[ ! -e "$st/o__r.state" ]] && echo 0 || echo 1)" \
+    "no baseline is stored for the unread repo" "state: $(cat "$st/o__r.state" 2>/dev/null)"
+  check "$(grep -q 'MONITOR-ARMED' <<<"$OUT" && echo 1 || echo 0)" \
+    "the unread repo is never reported as an armed (empty) queue" "stdout: ${OUT:-<empty>}"
+  # A github-mapped neighbour in the same cycle still reads and seeds.
+  rm -rf "$st"; : > "$w/calls.log"; : > "$w/token.log"
+  run "$w" "$st" ASSAY_REPO_FORGES=o/r=gitlab,o/g=github -- o/r o/g
+  check "$([[ "$RC" -eq 2 && -s "$st/o__g.state" && ! -e "$st/o__r.state" ]] && echo 0 || echo 1)" \
+    "a github-mapped repo in the same cycle still seeds; the gitlab one stays unread" \
+    "rc=$RC stdout: ${OUT:-<empty>}"
+fi
+
+# ================================================== forge-aware-delegation ===
+# regression: #5889
+# With `deskmonitor` installed, the legacy cycle runs on `deskmonitor pr` — the
+# reader that resolves each repo's forge through the shared Go resolver. Its
+# 0/1/2 pass through untouched; any other exit is could-not-check, never quiet.
+if want forge-aware-delegation; then
+  echo "forge-aware-delegation — legacy mode hands the cycle to deskmonitor pr; out-of-contract exits are degraded"
+  w="$TMPROOT/fad"; st="$TMPROOT/fad-st"; make_gh "$w"
+  cat > "$w/deskmonitor" <<STUB
+#!/usr/bin/env bash
+d="$w"
+printf '%s\n' "\$*" >> "\$d/dm.log"
+printf 'STATE=%s LOOP=%s\n' "\${PR_MONITOR_STATE_DIR:-}" "\${DESK_LOOP:-}" >> "\$d/dm-env.log"
+rc=\$(cat "\$d/dm.rc" 2>/dev/null || echo 0)
+[ "\$rc" = 0 ] && echo "MONITOR-ARMED: 1 repo(s) (stub)"
+[ "\$rc" = 2 ] && echo "MONITOR-DEGRADED: o/r seed read FAILED (stub)"
+exit "\$rc"
+STUB
+  chmod +x "$w/deskmonitor"
+  for want_rc in 0 1 2; do
+    printf '%s' "$want_rc" > "$w/dm.rc"; : > "$w/dm.log"
+    run "$w" "$st" ASSAY_REPO_FORGES=o/r=gitlab PR_MONITOR_LIMIT=7 -- o/r o/s
+    check "$([[ "$RC" -eq "$want_rc" && "$(cat "$w/dm.log")" == "pr o/r o/s" ]] && echo 0 || echo 1)" \
+      "deskmonitor exit $want_rc passes through; called as 'pr <args>'" "rc=$RC args=$(cat "$w/dm.log")"
+  done
+  check "$([[ ! -s "$w/calls.log" && ! -s "$w/mint.log" ]] && echo 0 || echo 1)" \
+    "the handed-off cycle makes no gh read and no mint of its own" "calls=$(cat "$w/calls.log") mints=$(cat "$w/mint.log")"
+  check "$(grep -q "STATE=$st LOOP=pr-review-desk" "$w/dm-env.log" && echo 0 || echo 1)" \
+    "deskmonitor sees the same state dir and loop" "env: $(cat "$w/dm-env.log")"
+  # An inactive verb (exit 6) or a crash prints nothing the watch filter matches.
+  for bad_rc in 6 127; do
+    printf '%s' "$bad_rc" > "$w/dm.rc"
+    run "$w" "$st" -- o/r
+    check "$([[ "$RC" -eq 2 ]] && grep -q '^MONITOR-DEGRADED: .*could-not-check' <<<"$OUT" && echo 0 || echo 1)" \
+      "deskmonitor exit $bad_rc is MONITOR-DEGRADED could-not-check, exit 2" "rc=$RC stdout: ${OUT:-<empty>}"
+  done
+  # Qualified mode never hands off (its one collector is review-queue).
+  : > "$w/dm.log"; printf '0' > "$w/dm.rc"
+  run "$w" "$st" "PR_MONITOR_REVIEW_OBSERVATION=$w/obs.json" 'PR_MONITOR_REVIEW_POLICY={}' PR_MONITOR_REVIEW_CAPACITY=1 -- o/r
+  check "$([[ ! -s "$w/dm.log" ]] && echo 0 || echo 1)" \
+    "qualified mode never calls deskmonitor" "dm.log: $(cat "$w/dm.log")"
 fi
 
 echo

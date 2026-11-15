@@ -299,6 +299,41 @@ Risk-bearing values. The gate is model; the risk answers are present and all "no
 
 **VERIFY: PASS** — 5/5 rows pass at merged main 47ef38f961aa1006ff296034d118630efdc177cb: rows 1-2 under a closed container admission bracket, rows 3-5 under the host witness; all top-ranked risk values DERIVED.
 
+### Non-implementer verifier batch re-witness: host witness — 2026-11-02 claude-opus-5-5
+
+This block is the execution record for the batch re-witness at pinned merged main 2c6c21336a606e64df057294f21177f16db7b9f8; every earlier block stays as written. All five rows ran on the host in one installed `statusgen verifyrun` (v1.0.69, not built from the tree) from the admitted detached home, after `deskdispatch --check-verifier` admitted this run. Every row is classed check, none check:ci, so no network sandbox or container bracket applies. Since 47ef38f961aa the commits under containers/k8s add the compatibility-cellctl component and compatibility scripts and extend the checker; the five base manifests, release-images.json and the brief's Verify table are unchanged.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `sh containers/k8s/check.sh --base` | pass exit=0 | sha256:d0087bf9e391 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `sh containers/k8s/check.sh --base --self-test` | pass exit=0 | sha256:5d885fb8e488 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `sh containers/scripts/layer-secret-scan.test.sh` | pass exit=0 | sha256:effc577a7503 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief desk-containers/06 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | pass exit=0 | sha256:defcbfa133e8 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `sh containers/k8s/check.sh --source-secrets --self-test` | pass exit=0 | sha256:aaca9b0f951d | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5243 run=64fb789309b8959e95f448ae635d5969db44b790965b13f78e1a1bef9cb3838a source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/desk-containers/brief-06-k8s-manifests.md model=claude-opus-5-5 tier=strong
+
+Row 4 ran with ASSAY_DELIVERY_SHA=099de97604b0075229ff96b697534ccee07f0477 (the merge of PR 3729, the commit that added the containers/k8s package and its checker) and ASSAY_DELIVERY_BASE_SHA=2fe90aa47808766df70f0b75161a0920de50d209 (that merge's first parent, read with git rev-parse), both ancestors of the verified source. Every row ran with KUBECONFIG=/dev/null; the checker's wrapper also sets GOPROXY=off. There was no cluster, Kubernetes context or API contact. PYTHONDONTWRITEBYTECODE=1 and a GOCACHE and TMPDIR outside the home kept the home free of extra files; the only change in it is this Evidence block. Row 3 built and loaded its FROM-scratch fixture images on the local docker engine and pulled nothing. Host: darwin/arm64, statusgen v1.0.69, git 2.56.0, python 3.15.0, go 1.27.2, kustomize v5.8.3, kubeconform v0.8.0, gitleaks 8.30.1. The runner is not the implementer.
+
+Observed output. Key lines from a by-hand run of each row on the host right after the witness, at the same source with the same environment; each by-hand log hashes to the same sha256 prefix as its witness cell. Supplemental, no acceptance credit of their own.
+
+- Row 1: exit 0; "checked-clean: 9 schemas; five distinct interactive role workloads/PVCs".
+- Row 2: exit 0; 71 "rejected:" lines; final "checked-clean: 71 hostile fixtures rejected".
+- Row 3: exit 0; 53 PASS lines, 0 FAIL lines; last "PASS labels: separate file after benign match".
+- Row 4: exit 0; base 2fe90aa47808..099de97604b0 (immutable delivered snapshot); CORROBORATED containers/k8s/, docs/docker.md and docs/streams/desktools-v2/cli-migration.json; "summary: 3 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing". Omitted-consumer review: the delivery's other changed paths are this item's changelog fragment, proposal and sibling briefs, which document the item rather than consume it.
+- Row 5: exit 0; "checked-clean: 43 package sources scanned, including unrendered examples"; "rejected: excluded-example-credential"; "rejected: excluded-example-base64".
+
+Rows: 5 of 5 passed; every row executed; 0 failed; 0 could-not-run (statusgen verifyrun --check: 5 pass, 0 fail, 0 could-not-run/missing of 5). No row carries a risk-bearing, live, mutating or end-to-end tag and the brief's risk answers are all "no", so no row owes a fail-first witness.
+
+Risk-bearing values. The gate is model, the risk answers are present and all "no", and the item is not irreversible, so the trigger does not fire; the enumeration was done anyway over the five base manifests, release-images.json, check.py and the base Dockerfile at 2c6c21336a60. Each manifest value sits at the same line in all five role manifests, cited for verify-desk.yaml: replicas = 1 @ containers/k8s/base/verify-desk.yaml:7; whenDeleted = Retain, whenScaled = Retain @ :11-12; automountServiceAccountToken = false @ :24; runAsUser/runAsGroup/fsGroup = 999 @ :30-32; image digest @ :39; requests cpu 250m / memory 512Mi, limits cpu 2 / memory 4Gi @ :58-62; defaultMode = 0440 @ :73; storage = 20Gi @ :84; RECORD_SHA256 = ff9237178e5bbf9523012a83e2366b99d2ff3cd0092c6116ad4c0dee08afdd64 @ containers/k8s/check.py:91; kubernetes-version 1.34.1 @ containers/k8s/check.py:171. Resources, storage size and schema version are reversible operational knobs and rank last.
+
+- RISK-VALUE: DERIVED — whenDeleted = Retain (and whenScaled = Retain) @ containers/k8s/base/verify-desk.yaml:11-12 (same in all five) — the brief requires independently retained work volumes; Delete would destroy a desk's /work PVC on StatefulSet removal or scale-down, which no redeploy restores.
+- RISK-VALUE: DERIVED — image = verify-desk:v1.0.52@sha256:906d3487ae40858ca527af023b1f7443c6fc52d3c3afa771f9c6ba3c2e15423c @ containers/k8s/base/verify-desk.yaml:39, with RECORD_SHA256 = ff9237178e5bbf9523012a83e2366b99d2ff3cd0092c6116ad4c0dee08afdd64 @ containers/k8s/check.py:91 — each role's right digest is the one the v1.0.52 release build recorded; this pass found all five manifest digests equal to their release-images.json entries, and that file's sha256 equals RECORD_SHA256.
+- RISK-VALUE: DERIVED — runAsUser/runAsGroup/fsGroup = 999 @ containers/k8s/base/verify-desk.yaml:30-32, with groupadd --gid 999 / useradd --uid 999 @ containers/base/Dockerfile:250-251 — 999 is the image's desk account; the Dockerfile fails the build at :252 unless desk resolves to 999:999, and check.py:238 requires 999 for all three fields.
+- RISK-VALUE: DERIVED — defaultMode = 0440 @ containers/k8s/base/verify-desk.yaml:73 — owner and group read only for the UID 999 process with fsGroup 999; the narrowest mode that still lets the desk read its key.
+- RISK-VALUE: DERIVED — replicas = 1 @ containers/k8s/base/verify-desk.yaml:7 — the brief fixes one interactive owner per role with its own RWO work volume; a second replica would be a second, unadmitted owner of the role.
+
+**VERIFY: PASS** — 5/5 rows pass at pinned merged main 2c6c21336a606e64df057294f21177f16db7b9f8, all under one host witness; all top-ranked risk values DERIVED.
+
 ## Review
 
 Gate: model, unchanged risk answers: generic offline templates only, no custody redesign.

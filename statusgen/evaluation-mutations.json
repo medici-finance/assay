@@ -3,8 +3,8 @@
   "control": {
     "name": "CONTROL \u2014 the eligibility adapter swaps an edge's type and reason (a changed mapping must fail CLI/library parity)",
     "file": "eligibility.go",
-    "old": "Ref: e.Ref, Type: e.Type, Reason: e.Reason}",
-    "new": "Ref: e.Ref, Type: e.Reason, Reason: e.Type}"
+    "old": "Ref: e.Ref, Type: e.Type, Reason: e.Reason, Resolved:",
+    "new": "Ref: e.Ref, Type: e.Reason, Reason: e.Type, Resolved:"
   },
   "mutations": [
     {

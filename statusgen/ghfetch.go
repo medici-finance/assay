@@ -53,7 +53,7 @@ const githubAPIBase = "https://api.github.com"
 // which surfaces as a could-not-check, not a clean board).
 func newGHClient(token string) *ghClient {
 	return &ghClient{
-		doer:  &http.Client{Timeout: 30 * time.Second},
+		doer:  ciForgeReadDoer(&http.Client{Timeout: 30 * time.Second}),
 		base:  githubAPIBase,
 		token: token,
 	}

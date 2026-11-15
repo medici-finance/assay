@@ -45,7 +45,21 @@ type fakeRule struct {
 	push, merge int
 	pushUser    int64
 	force       bool
+	// extraPush are push_access_levels entries answered AFTER the first one (the entry built
+	// from push/pushUser), as a forge holding more than one push entry answers them.
+	extraPush []map[string]any
+	// entries, when non-nil, IS the push_access_levels answer, verbatim — deploy-key, group and
+	// unrecognised entries included; push, pushUser and extraPush are then not answered.
+	entries []map[string]any
 }
+
+// fakePushToken is the obviously-fake value of the project access token the fake mints for
+// STATUSGEN_PUSH_TOKEN; fakePushBotID is that token's bot user.
+const (
+	fakePushToken = "example-push-token"
+	fakePushBotID = 3001
+	fakePushTokID = 6001
+)
 
 type fakeForge struct {
 	t   *testing.T
@@ -79,6 +93,32 @@ type fakeForge struct {
 	labels       map[string]bool // gitlab labels present
 	ghLabels     map[string]bool // github labels present
 	gitlab400Dup bool            // answer a gitlab duplicate with 400 instead of 409
+	// labelPostStatus answers every label create on either forge (0 = normal); labelGetStatus
+	// every label list (0 = 200). groupLabels are GitLab labels the project inherits from its
+	// group: listed with include_ancestor_groups=true, and a project create of one is refused
+	// 400 "already exists at group level".
+	labelPostStatus, labelGetStatus int
+	groupLabels                     map[string]bool
+	// dropPushUser keeps a protected-branch POST but drops its per-user push entries, as a
+	// GitLab 19.5.3 instance was seen to do (answered 2xx, entry absent from the read-back).
+	dropPushUser bool
+	// accessTokenStatus is the reply to a project access-token mint (0 = 201); variables are
+	// the project's CI/CD variables by key; variablePostStatus is a variable write's reply
+	// (0 = 201).
+	accessTokenStatus  int
+	accessTokenMints   int
+	variables          map[string]map[string]any
+	variablePostStatus int
+	// addPushOnWrite are push entries the forge holds beyond what a protected-branch POST
+	// carried, so the read-back can disagree with the write.
+	addPushOnWrite []map[string]any
+	// variableReadback, when set, overrides the stored fields on every variable read, so the
+	// flag read-back can disagree with what the write sent.
+	variableReadback map[string]any
+	// accessTokenHangup drops the mint's connection with no reply; accessTokenBody, when set,
+	// is the mint's raw 201 body.
+	accessTokenHangup bool
+	accessTokenBody   string
 
 	reqs []fakeReq
 	// unprotectedObserved counts GET protected_branches/main reads that found no rule.
@@ -87,7 +127,8 @@ type fakeForge struct {
 
 func newFakeForge(t *testing.T) *fakeForge {
 	f := &fakeForge{t: t, plan: "premium", accounts: map[string]int64{}, nextUserID: 1000,
-		members: map[int64]int{}, labels: map[string]bool{}, ghLabels: map[string]bool{}, avatars: map[string]string{}}
+		members: map[int64]int{}, labels: map[string]bool{}, ghLabels: map[string]bool{}, groupLabels: map[string]bool{}, avatars: map[string]string{},
+		variables: map[string]map[string]any{}}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.handle))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -136,7 +177,15 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// GitHub labels endpoint.
+	if strings.HasPrefix(p, "/repos/") && strings.HasSuffix(p, "/labels") && r.Method == "GET" {
+		f.writeLabelList(w, r, f.ghLabels, nil)
+		return
+	}
 	if strings.HasPrefix(p, "/repos/") && strings.HasSuffix(p, "/labels") && r.Method == "POST" {
+		if f.labelPostStatus != 0 {
+			writeJSON(w, f.labelPostStatus, map[string]any{"message": "Resource not accessible by integration"})
+			return
+		}
 		name, _ := body["name"].(string)
 		if f.ghLabels[name] {
 			writeJSON(w, 422, map[string]any{"message": "Validation Failed",
@@ -212,11 +261,21 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 		if f.rule.pushUser != 0 {
 			push["user_id"] = f.rule.pushUser
 		}
+		pushes := []any{push}
+		for _, e := range f.rule.extraPush {
+			pushes = append(pushes, e)
+		}
+		if f.rule.entries != nil {
+			pushes = nil
+			for _, e := range f.rule.entries {
+				pushes = append(pushes, e)
+			}
+		}
 		merge := []any{map[string]any{"access_level": f.rule.merge}}
 		if f.omitMergeLevels {
 			merge = []any{}
 		}
-		writeJSON(w, 200, map[string]any{"name": "main", "push_access_levels": []any{push},
+		writeJSON(w, 200, map[string]any{"name": "main", "push_access_levels": pushes,
 			"merge_access_levels": merge, "allow_force_push": f.rule.force})
 	case r.Method == "PATCH" && api == pid+"/protected_branches/main":
 		if f.rule == nil {
@@ -244,8 +303,66 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 403, map[string]any{"message": "403 Forbidden"})
 			return
 		}
+		if f.dropPushUser && (nr.pushUser != 0 || len(nr.extraPush) > 0) {
+			nr.pushUser, nr.push, nr.extraPush = 0, mergeAccessLevel, nil
+		}
+		nr.extraPush = append(nr.extraPush, f.addPushOnWrite...)
 		f.rule = &nr
 		writeJSON(w, 201, map[string]any{"name": "main"})
+	case r.Method == "POST" && api == pid+"/access_tokens":
+		f.accessTokenMints++
+		if f.accessTokenHangup {
+			if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
+				_ = conn.Close()
+			}
+			return
+		}
+		if f.accessTokenBody != "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(201)
+			_, _ = w.Write([]byte(f.accessTokenBody))
+			return
+		}
+		st := f.accessTokenStatus
+		if st == 0 {
+			st = 201
+		}
+		if st != 201 {
+			writeJSON(w, st, map[string]any{"message": http.StatusText(st)})
+			return
+		}
+		writeJSON(w, 201, map[string]any{"id": fakePushTokID, "user_id": fakePushBotID, "name": body["name"],
+			"scopes": body["scopes"], "access_level": body["access_level"], "expires_at": body["expires_at"],
+			"token": fakePushToken})
+	case r.Method == "GET" && strings.HasPrefix(api, pid+"/variables/"):
+		v, ok := f.variables[strings.TrimPrefix(api, pid+"/variables/")]
+		if !ok {
+			writeJSON(w, 404, map[string]any{"message": "404 Variable Not Found"})
+			return
+		}
+		if f.variableReadback != nil {
+			out := map[string]any{}
+			for k, x := range v {
+				out[k] = x
+			}
+			for k, x := range f.variableReadback {
+				out[k] = x
+			}
+			v = out
+		}
+		writeJSON(w, 200, v)
+	case r.Method == "POST" && api == pid+"/variables":
+		st := f.variablePostStatus
+		if st == 0 {
+			st = 201
+		}
+		if st != 201 {
+			writeJSON(w, st, map[string]any{"message": map[string]any{"value": []string{"is invalid"}}})
+			return
+		}
+		key, _ := body["key"].(string)
+		f.variables[key] = body
+		writeJSON(w, 201, body)
 	case r.Method == "POST" && api == pid+"/approvals":
 		if f.approvalsErr {
 			writeJSON(w, 403, map[string]any{"message": "403 Forbidden"})
@@ -273,8 +390,22 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "GET" && api == pid:
 		writeJSON(w, 200, map[string]any{"id": fakeProjectID, "only_allow_merge_if_pipeline_succeeds": true,
 			"only_allow_merge_if_all_discussions_are_resolved": true})
+	case r.Method == "GET" && strings.HasPrefix(api, "/projects/") && strings.HasSuffix(api, "/labels"):
+		var inherited map[string]bool
+		if r.URL.Query().Get("include_ancestor_groups") == "true" {
+			inherited = f.groupLabels
+		}
+		f.writeLabelList(w, r, f.labels, inherited)
 	case r.Method == "POST" && strings.HasPrefix(api, "/projects/") && strings.HasSuffix(api, "/labels"):
+		if f.labelPostStatus != 0 {
+			writeJSON(w, f.labelPostStatus, map[string]any{"message": "403 Forbidden"})
+			return
+		}
 		name, _ := body["name"].(string)
+		if f.groupLabels[name] {
+			writeJSON(w, 400, map[string]any{"message": map[string]any{"title": []string{"already exists at group level for " + fakeGroupPath}}})
+			return
+		}
 		if f.labels[name] {
 			if f.gitlab400Dup {
 				writeJSON(w, 400, map[string]any{"message": map[string]any{"title": []string{"has already been taken"}}})
@@ -302,11 +433,21 @@ func ruleFromBody(b map[string]any) fakeRule {
 	if v, ok := b["allow_force_push"].(bool); ok {
 		r.force = v
 	}
-	if arr, ok := b["allowed_to_push"].([]any); ok && len(arr) > 0 {
-		if m, ok := arr[0].(map[string]any); ok {
-			if v, ok := m["user_id"].(float64); ok {
-				r.pushUser = int64(v)
+	if arr, ok := b["allowed_to_push"].([]any); ok {
+		for i, e := range arr {
+			m, ok := e.(map[string]any)
+			if !ok {
+				continue
 			}
+			if i == 0 {
+				if v, ok := m["user_id"].(float64); ok {
+					r.pushUser = int64(v)
+				} else if v, ok := m["access_level"].(float64); ok {
+					r.push = int(v)
+				}
+				continue
+			}
+			r.extraPush = append(r.extraPush, m)
 		}
 	}
 	if arr, ok := b["allowed_to_merge"].([]any); ok && len(arr) > 0 {
@@ -428,4 +569,25 @@ func (h *harness) allText(t *testing.T) string {
 		}
 	}
 	return b.String()
+}
+
+// writeLabelList answers a label list page (the fake holds fewer than one page, so page 1 is
+// everything and any later page is empty).
+func (f *fakeForge) writeLabelList(w http.ResponseWriter, r *http.Request, own, inherited map[string]bool) {
+	if f.labelGetStatus != 0 {
+		writeJSON(w, f.labelGetStatus, map[string]any{"message": "boom"})
+		return
+	}
+	var out []map[string]any
+	if r.URL.Query().Get("page") == "1" {
+		for _, m := range []map[string]bool{own, inherited} {
+			for n := range m {
+				out = append(out, map[string]any{"name": n})
+			}
+		}
+	}
+	if out == nil {
+		out = []map[string]any{}
+	}
+	writeJSON(w, 200, out)
 }

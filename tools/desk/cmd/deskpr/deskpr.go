@@ -74,7 +74,9 @@ func (a *auditCtx) log(result, detail string) {
 		h := a.head
 		headp = &h
 	}
-	_ = deskkit.Log(deskkit.Entry{
+	// Every deskpr verb (create/update/edit) is an outward mutating act, so its terminal row
+	// renews a fresh HEARTBEAT lease on success (#6510); dry runs and noops are not ResultOK.
+	_ = deskkit.LogOutwardAct(deskkit.Entry{
 		Tool:       "deskpr",
 		Verb:       a.verb,
 		Result:     result,
@@ -210,6 +212,13 @@ func cmdCreate(args []string) (err error) {
 	if terr != nil {
 		return terr
 	}
+	// #4795: a delivery trailer's brief id leads the PR title unless the title already names
+	// it. Done once the trailer has parsed and resolved, so every later gate (the secret and
+	// self-containment scans, the create itself) reads the title that will actually be used.
+	if pt := prefixTitleWithBrief(*title, body); pt != *title {
+		*title = pt
+		fmt.Fprintf(deskprStderr, "deskpr: PR title prefixed with its brief id: %s\n", pt)
+	}
 	// Decision-gate banner (lifecycle-v1 §4.5): a PR delivering a gate: human brief
 	// carries a fixed banner naming its decision issue and whether it is ruled. Inserted
 	// when missing; it informs and never refuses. Its text is fixed apart from the
@@ -309,9 +318,11 @@ func cmdCreate(args []string) (err error) {
 	if *check {
 		ac.successResult = deskkit.ResultDryRun
 		ac.detail = "check: every local gate passed"
+		fmt.Printf("check: title: %s\n", *title)
 		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
 			"Not checked (needs the forge, not run here): an existing open PR on this branch, " +
-			"the outward-write rate limit, the public-repo authorization gate, and the publish-identity range against the live destination branch.")
+			"the outward-write rate limit, the public-repo authorization gate (--check-remote runs it, read-only), " +
+			"and the publish-identity range against the live destination branch.")
 		return nil
 	}
 
@@ -342,8 +353,8 @@ func cmdCreate(args []string) (err error) {
 	}
 
 	// Public-repo gate: refuse an outward write unless the repo is authorized.
-	// The authorization is repository-scoped (a listed `:public` allowed-repos entry,
-	// or private) — see deskkit.PublicRepoGate. A create no longer needs an issue/PR
+	// The authorization is repository-scoped (a listed `:public` or `:internal`
+	// allowed-repos entry at least as exposed as the live visibility, or private) — see deskkit.PublicRepoGate. A create no longer needs an issue/PR
 	// number: the former per-item `+1` on `trailerIssue` is gone, which is exactly what
 	// makes the FIRST pull request on a listed public repo openable (a brief-carrying
 	// create has no issue number and used to fail closed here). `trailerIssue` is still
@@ -755,7 +766,8 @@ func cmdUpdate(args []string) (err error) {
 	}
 
 	// Public-repo gate: refuse an outward write unless the repo is authorized
-	// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
+	// (private, or a listed allowed-repos entry whose :public or :internal tag is at least
+	// as exposed as the live visibility — see deskkit.PublicRepoGate).
 	owner, name := splitOwnerRepo(facts.repo)
 	// The gate's visibility read goes through the SAME forge backend already resolved above
 	// (forgeForFn's fg) — never a second, hardcoded GitHub-only client (assay#1054): a
@@ -777,9 +789,19 @@ func cmdUpdate(args []string) (err error) {
 		// one); the tracking ref for the PR head branch is still recorded (push.go recordPushed).
 		spec.srcRef, spec.dstBranch = "HEAD", pushDest
 	}
+	var upToDate bool
+	spec.upToDate = &upToDate
 	ac.writeAttempted = true
 	if pushErr := pushFn(spec); pushErr != nil {
 		return pushErr
+	}
+	// The remote already held this head (pushed earlier by another path, so AlreadyDone had no
+	// update row for it): nothing moved, so the row is a noop and renews no lease (#6510).
+	if upToDate {
+		ac.successResult = deskkit.ResultNoop
+		ac.detail = "head already on the remote for " + pr.URL
+		fmt.Printf("noop: %s already on the remote for %s\n", shortSHA(facts.head), pr.URL)
+		return nil
 	}
 	// Post-update mergeable check (#1264): the push moved the head, so GitHub recomputes
 	// mergeability. A push that lands the PR in CONFLICTING gets zero pull_request runs at
@@ -1319,13 +1341,23 @@ func parseRepo(raw string) (string, error) {
 // issue) — and 0 for the exempt scan carrier likewise. The create path uses it only as the
 // self-containment scan's number hint (SelfContainOpts.NumberHint). It is NOT an input to
 // the public-repo write gate: deskkit.PublicRepoGate is repository-scoped (an explicit
-// `:public` allowed-repos entry agreeing with the live visibility) and takes no number.
+// `:public` or `:internal` allowed-repos entry at least as exposed as the live visibility) and
+// takes no number.
+// isScanCarrierBody reports whether body is the machine-written scan carrier: the
+// deskkit.ScanBodyMarker at its head (leading whitespace aside). It is the one predicate for
+// the carve-out, shared by requireTrailer (which skips validation for it), trailerLink in
+// edit.go and briefTitleID (which read no link from it), so the three cannot disagree on
+// which body is exempt.
+func isScanCarrierBody(body []byte) bool {
+	return strings.HasPrefix(strings.TrimLeft(string(body), " \t\r\n"), deskkit.ScanBodyMarker)
+}
+
 func requireTrailer(body []byte, root, dir string) (int, error) {
 	// Head-anchored, not a whole-body substring: the emitter writes ScanBodyMarker as
 	// the FIRST line (deskkit.ScanPRBody), so the exemption matches it only at the body
 	// head. A body that merely quotes the marker somewhere in its prose is NOT exempt —
 	// this keeps the carve-out keyed to genuinely emitter-produced carrier bodies.
-	if strings.HasPrefix(strings.TrimLeft(string(body), " \t\r\n"), deskkit.ScanBodyMarker) {
+	if isScanCarrierBody(body) {
 		return 0, nil
 	}
 	trs, err := deskkit.ParseTrailers(body)
@@ -1359,6 +1391,11 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 	// against the real process cwd would silently miss the fixture.
 	if !filepath.IsAbs(root) {
 		root = filepath.Join(dir, root)
+	}
+	if deskkit.NegotiatedWorkSyntax(trs[0].Value) {
+		// Resolve against the immutable owning source before any legacy reducer.
+		// The operation remains held until its full reader set is qualified.
+		return 0, deskkit.CheckLocalWorkTrailer(body, root)
 	}
 	if trs[0].Kind == deskkit.TrailerAuthors {
 		ids, aerr := deskkit.SplitAuthorsTrailer(trs[0].Value)

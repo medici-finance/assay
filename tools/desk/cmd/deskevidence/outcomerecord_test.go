@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -146,6 +147,59 @@ func TestOutcomeRecordWrite(t *testing.T) {
 		}
 		if f.putCalls != 1 {
 			t.Fatalf("expected exactly 1 write, got %d", f.putCalls)
+		}
+	})
+
+	// Issue #4163: the attempts list lands as validated, byte-for-byte; an invalid one is
+	// exit 5 and nothing is written.
+	attemptsLine := func(attempts string) string {
+		return completeFail(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"blocked","sha":"0000002",`+
+			`"started":"2026-09-07T01:00:00Z","finished":"2026-09-07T01:50:00Z","rows_passed":0,"rows_total":9,"attempts":`+attempts+`}`)
+	}
+	rawAttempts := func(t *testing.T, line []byte) string {
+		t.Helper()
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(line, &m); err != nil {
+			t.Fatalf("record is not a JSON object: %v", err)
+		}
+		return string(m["attempts"])
+	}
+	t.Run("a valid attempts list lands byte-for-byte", func(t *testing.T) {
+		f, errBuf := setupFake(t)
+		line := attemptsLine(`[` +
+			`{"attempt":1,"disposition":"uncredited","reason":"local-build","started":"2026-09-07T01:00:00Z","finished":"2026-09-07T01:10:00Z","rows_run":9},` +
+			`{"attempt":2,"disposition":"discarded","reason":"env-fault","cause_ref":"example-org/tracker#12","started":"2026-09-07T01:15:00Z","finished":"2026-09-07T01:25:00Z","rows_run":5},` +
+			`{"attempt":3,"disposition":"credited","started":"2026-09-07T01:30:00Z","finished":"2026-09-07T01:45:00Z","rows_run":9}]`)
+		recFile := writeRepoFile(t, "record.json", line+"\n")
+
+		code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})
+		if code != deskkit.ExitOK {
+			t.Fatalf("exit = %d, want 0 (stderr %q)", code, errBuf.String())
+		}
+		if len(f.writes) != 1 {
+			t.Fatalf("want exactly one write, got %d", len(f.writes))
+		}
+		want, got := rawAttempts(t, []byte(line)), rawAttempts(t, f.writes[0].Content)
+		if want == "" || got != want {
+			t.Fatalf("attempts did not land byte-for-byte:\nsubmitted %s\nlanded    %s", want, got)
+		}
+	})
+	t.Run("an invalid attempts list exits 5 and writes nothing", func(t *testing.T) {
+		f, errBuf := setupFake(t)
+		line := attemptsLine(`[` +
+			`{"attempt":1,"disposition":"credited","started":"2026-09-07T01:00:00Z","finished":"2026-09-07T01:10:00Z","rows_run":9},` +
+			`{"attempt":2,"disposition":"uncredited","reason":"not-credited","started":"2026-09-07T01:15:00Z","finished":"2026-09-07T01:25:00Z","rows_run":9}]`)
+		recFile := writeRepoFile(t, "record.json", line+"\n")
+
+		code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})
+		if code != deskkit.ExitRefused {
+			t.Fatalf("exit = %d, want %d (stderr %q)", code, deskkit.ExitRefused, errBuf.String())
+		}
+		if f.putCalls != 0 || len(f.writes) != 0 {
+			t.Fatalf("a refused attempts list must write nothing, got %d put(s)", f.putCalls)
+		}
+		if !strings.Contains(errBuf.String(), "attempt 1: rule credited-last") {
+			t.Fatalf("refusal %q does not name the attempt and rule", errBuf.String())
 		}
 	})
 }

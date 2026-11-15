@@ -217,11 +217,17 @@ it.
 | 17 | [Go-only GitLab fleet — prove deskfleet live, then retire the bash fleet scripts and every doc that names them](brief-17-retire-the-bash-gitlab-fleet-scripts.md) | 5 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
-Brief 04 implemented via PR #569 (the staged `ci/staged-workflows/windows-ci-leg.yml`) and
-PR #583 (its promotion into `.github/workflows/`); the `windows-smoke` job runs green at
+Brief 04 implemented via PR #569 (the staged `windows-ci-leg.yml` (staged copy, retired #4106)) and
+PR #583 (its promotion into `.github/workflows/`); the leg's smoke job ran green at
 d684440 on the LF checkout the repo `.gitattributes` provides (#584/#585). The status flip to
 `implemented` was omitted from those PRs and is recorded separately here; verification of the
 `gate: human` Verify rows is a separate step.
+
+**The native-Windows CI is retired (#4106, ruling A).** The Windows leg, its bootstrap
+hash-check smoke and the other native-Windows workflows were removed, so no CI job runs anything
+on native Windows. Native Windows execution — including the bootstrap's runtime refusal of a
+tampered download — is no longer CI-proven. The Verify rows of briefs 03, 04 and 14 say so.
+Release cross-compiles and the Linux-side Windows build checks remain.
 
 ## Critical path
 

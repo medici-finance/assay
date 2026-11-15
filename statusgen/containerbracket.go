@@ -11,7 +11,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -136,6 +138,10 @@ type bracketReceipt struct {
 	RunnerSource string          `json:"runner_source"`
 	RunnerTree   string          `json:"runner_tree"`
 	OnBehalfOf   string          `json:"on_behalf_of"`
+	// ModuleCache is the module cache the open step downloaded for the home
+	// (--module-cache, #4683); nil when the open step downloaded none.
+	ModuleCache *receiptModuleCache `json:"module_cache,omitempty"`
+	Acceptance  *receiptAcceptance  `json:"acceptance,omitempty"`
 }
 
 // receiptRunnerRe is the shape of a runner token executingRunner derives: a
@@ -237,6 +243,13 @@ func readBracketReceipt(path, home, brief string) (bracketReceipt, string, strin
 	if err := json.Unmarshal(raw, &r); err != nil {
 		return r, "", "", fmt.Errorf("unreadable receipt: %w", err)
 	}
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &members); err != nil {
+		return r, "", "", err
+	}
+	if value, present := members["acceptance"]; present && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+		return r, "", "", fmt.Errorf("receipt acceptance must be a plan, not null")
+	}
 	if !sha256DigestRe.MatchString(r.Tree) {
 		return r, "", "", fmt.Errorf("the receipt carries no sha256 tree digest from the open step")
 	}
@@ -244,6 +257,12 @@ func readBracketReceipt(path, home, brief string) (bracketReceipt, string, strin
 		return r, "", "", fmt.Errorf("the receipt carries no RFC 3339 opened time from the open step")
 	}
 	if err := receiptRunnerProblem(r); err != nil {
+		return r, "", "", err
+	}
+	if err := receiptModuleCacheProblem(r.ModuleCache); err != nil {
+		return r, "", "", err
+	}
+	if err := moduleCacheRequirementProblem(home, r.ModuleCache); err != nil {
 		return r, "", "", err
 	}
 	b, err := checkBinding(r.Check)
@@ -283,6 +302,30 @@ func readBracketReceipt(path, home, brief string) (bracketReceipt, string, strin
 		return r, "", "", fmt.Errorf("the receipt admits brief %s, but this run's brief is %s", b.Brief, brief)
 	}
 	return r, line, b.Brief, nil
+}
+
+// bindingOwners is the lower-case forge owners of every repository a check
+// binds: its repo, the source repo of a cross-repository receipt, and each
+// declared sibling. The raw module screen refuses paths under these owners;
+// the host open step can admit the public Assay repository only after fresh
+// identity/visibility proof and exact committed module bindings (moduleEgressProblem).
+func bindingOwners(b attestation.Binding) ([]string, error) {
+	repos := []string{b.Repo, b.SourceRepo}
+	siblings, err := attestation.ParseSiblingSources(b.SiblingSources)
+	if err != nil {
+		return nil, err
+	}
+	for r := range siblings {
+		repos = append(repos, r)
+	}
+	var owners []string
+	for _, r := range repos {
+		if o, _, ok := strings.Cut(r, "/"); ok && o != "" && !slices.Contains(owners, strings.ToLower(o)) {
+			owners = append(owners, strings.ToLower(o))
+		}
+	}
+	slices.Sort(owners)
+	return owners, nil
 }
 
 // checkBinding reads the Binding of a `deskdispatch --check-verifier` receipt.
@@ -349,6 +392,7 @@ func crossRepoBindingProblem(b attestation.Binding, home, brief string) error {
 type containerAdmit struct {
 	attestation, tree string
 	cell              bracketReceipt // Runner, RunnerSource, RunnerTree, OnBehalfOf
+	moduleCache       string         // the receipt's module cache digest, "" with none
 }
 
 // containerAdmission is the container half: the host's receipt replaces
@@ -366,8 +410,15 @@ func containerAdmission(receiptPath, root, brief string) (containerAdmit, error)
 	if tree != r.Tree {
 		return containerAdmit{}, fmt.Errorf("container admission refused; no Verify rows executed: the mounted root %s digests to %s, not the %s the host recorded at the open step. The container is not running the admitted home", root, tree, r.Tree)
 	}
-	cell := bracketReceipt{Check: r.Check, Runner: r.Runner, RunnerSource: r.RunnerSource, RunnerTree: r.RunnerTree, OnBehalfOf: r.OnBehalfOf}
-	return containerAdmit{attestation: line, tree: tree, cell: cell}, nil
+	moduleCache := ""
+	if r.ModuleCache != nil {
+		if err := containerModuleCacheProblem(root, r.ModuleCache); err != nil {
+			return containerAdmit{}, fmt.Errorf("container admission refused; no Verify rows executed: %w", err)
+		}
+		moduleCache = r.ModuleCache.Digest
+	}
+	cell := bracketReceipt{Check: r.Check, Runner: r.Runner, RunnerSource: r.RunnerSource, RunnerTree: r.RunnerTree, OnBehalfOf: r.OnBehalfOf, Acceptance: r.Acceptance}
+	return containerAdmit{attestation: line, tree: tree, cell: cell, moduleCache: moduleCache}, nil
 }
 
 // relWithin returns p's slash path relative to root when p lies inside root,
@@ -484,9 +535,14 @@ func homeTreeDigest(root string) (string, error) {
 
 // containerWitnessLines are the lines a container run writes under its
 // witness table: Tree-Digest between the table and the attestation line (Task
-// 3), the image digest beside it, the attestation last.
-func containerWitnessLines(image, tree, attestation string) string {
-	return treeDigestPrefix + tree + "\n" + containerImagePrefix + image + "\n" + attestation + "\n"
+// 3), the image digest beside it, then the open step's module cache digest
+// when the receipt carries one (#4683), the attestation last.
+func containerWitnessLines(image, tree, moduleCache, attestation string) string {
+	lines := treeDigestPrefix + tree + "\n" + containerImagePrefix + image + "\n"
+	if moduleCache != "" {
+		lines += moduleCachePrefix + moduleCache + "\n"
+	}
+	return lines + attestation + "\n"
 }
 
 // writeContainerWitness writes a container run's witness to its own new file
@@ -511,13 +567,34 @@ func writeContainerWitness(path, home, table string) error {
 // writes the receipt file only when the host derives an executing identity
 // for the home and the host check admits it, as version 1 for this home and
 // brief, or as version 2 with this home as its admitted deliverable home.
-func runOpenBracket(home, brief, out string, stdout, stderr io.Writer, historyOut ...string) int {
+//
+// With moduleCache it also downloads the home's Go module roots into that new
+// directory and records the cache in the receipt (prepareModuleCache); a home
+// that lists module roots (moduleRootsManifest) is refused without one, since
+// its container rows would otherwise resolve from the image's baked cache.
+func runOpenBracket(home, brief, out, moduleCache string, stdout, stderr io.Writer, historyOut ...string) int {
+	history := ""
+	if len(historyOut) > 0 {
+		history = historyOut[0]
+	}
+	return runOpenAcceptance(home, brief, out, moduleCache, history, "", stdout, stderr)
+}
+
+func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record string, stdout, stderr io.Writer) int {
 	refuse := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "statusgen verifyrun --open-bracket: refused, no receipt written: "+format+"\n", a...)
 		return verifyrunExitCouldNot
 	}
 	if rel, ok := relWithin(home, out); ok {
 		return refuse("--out %s sits inside the home (%s); the receipt must be outside it", out, rel)
+	}
+	if _, listed := bakedModuleRoots(filepath.Join(home, filepath.FromSlash(moduleRootsManifest))); listed && moduleCache == "" {
+		return refuse("could-not-check — the home lists Go module roots in %s, so its container rows resolve modules from the tree under verification, never from the image's baked cache: pass --module-cache <new directory outside the home> and mount it as the open step prints", moduleRootsManifest)
+	}
+	if moduleCache != "" {
+		if p := moduleCachePathProblem(home, moduleCache); p != "" {
+			return refuse("%s", p)
+		}
 	}
 	// The Runner cell is derived here, on the host, where the home's git
 	// directory and the roster are readable. The container reads it from the
@@ -562,31 +639,80 @@ func runOpenBracket(home, brief, out string, stdout, stderr io.Writer, historyOu
 			return refuse("%v", err)
 		}
 	}
+	var acceptance *receiptAcceptance
+	if record != "" {
+		var why string
+		acceptance, _, why = hostAcceptance(home, brief, record, check)
+		if why != "" {
+			return refuse("%s", why)
+		}
+		cell.RunnerTree = acceptance.Source
+	}
 	tree, err := homeTreeDigest(home)
 	if err != nil {
 		return refuse("%v", err)
 	}
+	var mc *receiptModuleCache
+	if moduleCache != "" {
+		b, err := checkBinding(check)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		owners, err := bindingOwners(b)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		got, err := prepareModuleCache(home, moduleCache, owners, stdout)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		// The download ran in the home's module roots; the tree the receipt
+		// binds is the one the download left.
+		if after, err := homeTreeDigest(home); err != nil || after != tree {
+			return refuse("could-not-check — the home's tree changed during the module download (%s, then %s)", tree, after)
+		}
+		mc = &got
+	}
 	opened := nowFunc().UTC().Format(time.RFC3339)
-	if len(historyOut) > 0 && historyOut[0] != "" {
+	if historyOut != "" {
 		binding, err := checkBinding(check)
 		if err != nil {
 			return refuse("%v", err)
 		}
-		if canonicalPath(historyOut[0]) == canonicalPath(out) {
+		if canonicalPath(historyOut) == canonicalPath(out) {
 			return refuse("history bundle and admission receipt need different output files")
 		}
-		if err := exportContainerHistory(home, historyOut[0], binding.Source); err != nil {
+		if err := exportContainerHistory(home, historyOut, binding.Source); err != nil {
 			return refuse("%v", err)
 		}
 	}
 	quoted := func(s string) string { b, _ := json.Marshal(s); return string(b) }
 	body := `{"check":` + string(check) + `,"tree":"` + tree + `","opened":"` + opened +
 		`","runner":` + quoted(cell.Runner) + `,"runner_source":` + quoted(cell.RunnerSource) +
-		`,"runner_tree":` + quoted(cell.RunnerTree) + `,"on_behalf_of":` + quoted(cell.OnBehalfOf) + `}` + "\n"
+		`,"runner_tree":` + quoted(cell.RunnerTree) + `,"on_behalf_of":` + quoted(cell.OnBehalfOf)
+	if mc != nil {
+		m, err := json.Marshal(mc)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		body += `,"module_cache":` + string(m)
+	}
+	if acceptance != nil {
+		a, err := json.Marshal(acceptance)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		body += `,"acceptance":` + string(a)
+	}
+	body += `}` + "\n"
 	if err := os.WriteFile(out, []byte(body), 0o644); err != nil {
 		return refuse("%v", err)
 	}
 	fmt.Fprintf(stdout, "opened %s tree=%s runner=%s (%s) receipt=%s\n", opened, tree, cell.Runner, cell.RunnerSource, out)
+	if mc != nil {
+		fmt.Fprintf(stdout, "module-cache %s digest=%s roots=%s\n", moduleCache, mc.Digest, strings.Join(mc.Roots, ","))
+		fmt.Fprintf(stdout, "container flags: %s\n", strings.Join(containerModuleCacheFlags(moduleCache), " "))
+	}
 	return verifyrunExitPass
 }
 
@@ -614,6 +740,7 @@ type containerBlock struct {
 	attestation string
 	brief       string // the attestation's home-relative brief
 	tree        string
+	moduleCache string   // the Module-Cache value, "" when the run recorded none
 	rows        []string // the table rows between its own header and Tree-Digest
 }
 
@@ -636,15 +763,24 @@ func findContainerBlock(text string) (containerBlock, error) {
 		}
 	}
 	n := len(lines)
-	if n < 4 || !strings.HasPrefix(lines[n-3], treeDigestPrefix) || !strings.HasPrefix(lines[n-2], containerImagePrefix) || !strings.HasPrefix(lines[n-1], attestationPrefix) {
+	// The trailer is Tree-Digest, Container-Image, an optional Module-Cache
+	// and the attestation; ti is the Tree-Digest line's index.
+	ti, moduleCache := n-3, ""
+	if n >= 2 && strings.HasPrefix(lines[n-2], moduleCachePrefix) {
+		ti, moduleCache = n-4, strings.TrimPrefix(lines[n-2], moduleCachePrefix)
+		if !sha256DigestRe.MatchString(moduleCache) {
+			return containerBlock{}, fmt.Errorf("malformed %q", lines[n-2])
+		}
+	}
+	if ti < 1 || !strings.HasPrefix(lines[ti], treeDigestPrefix) || !strings.HasPrefix(lines[ti+1], containerImagePrefix) || !strings.HasPrefix(lines[n-1], attestationPrefix) {
 		return containerBlock{}, fmt.Errorf("the witness does not end with the %s, %sand attestation lines a container run records", strings.TrimSpace(treeDigestPrefix), containerImagePrefix)
 	}
-	tree := strings.TrimPrefix(lines[n-3], treeDigestPrefix)
+	tree := strings.TrimPrefix(lines[ti], treeDigestPrefix)
 	if !sha256DigestRe.MatchString(tree) {
-		return containerBlock{}, fmt.Errorf("malformed %q", lines[n-3])
+		return containerBlock{}, fmt.Errorf("malformed %q", lines[ti])
 	}
-	if !sha256DigestRe.MatchString(strings.TrimPrefix(lines[n-2], containerImagePrefix)) {
-		return containerBlock{}, fmt.Errorf("malformed %q", lines[n-2])
+	if !sha256DigestRe.MatchString(strings.TrimPrefix(lines[ti+1], containerImagePrefix)) {
+		return containerBlock{}, fmt.Errorf("malformed %q", lines[ti+1])
 	}
 	att, ok := parseContainerAttestation(lines[n-1])
 	if !ok {
@@ -660,7 +796,7 @@ func findContainerBlock(text string) (containerBlock, error) {
 	}
 	containerRows, ownHeader := 0, false
 	var rows []string
-	for i := n - 4; i >= 0 && strings.HasPrefix(lines[i], "|"); i-- {
+	for i := ti - 1; i >= 0 && strings.HasPrefix(lines[i], "|"); i-- {
 		if isWitnessHeaderLine(lines[i]) {
 			ownHeader = true
 			break
@@ -681,7 +817,7 @@ func findContainerBlock(text string) (containerBlock, error) {
 		// table's Tree-Digest, image and attestation lines.
 		return containerBlock{}, fmt.Errorf("the container rows above the %sline carry no witness table header of their own, so the bracket's span would start at another table", treeDigestPrefix)
 	}
-	return containerBlock{lines: lines, attestation: lines[n-1], brief: att.brief, tree: tree, rows: rows}, nil
+	return containerBlock{lines: lines, attestation: lines[n-1], brief: att.brief, tree: tree, moduleCache: moduleCache, rows: rows}, nil
 }
 
 // containerRowRunnerProblem is the close step's check of the Runner cell of
@@ -700,7 +836,14 @@ func containerRowRunnerProblem(rows []string, want string) string {
 		if cells == nil {
 			return fmt.Sprintf("the container table carries a row that is not a witness row: %q", row)
 		}
-		if cell := strings.TrimSpace(cells[witnessCellRunner]); cell != want {
+		// The row's read-set token is the container's own record of what that
+		// row read (build-less-brittle/15); the host derives no such token, so
+		// the cell compares without it and must match byte for byte otherwise.
+		// Only a token verifyrun writes, at the position it writes it, is
+		// removed (review S21): any other token-shaped text stays in the cell
+		// and refuses the close, so the tree and principal readers, which read
+		// the whole cell, see what this check compared.
+		if cell := stripWriterReadSetToken(strings.TrimSpace(cells[witnessCellRunner])); cell != want {
 			return fmt.Sprintf("row %s's Runner cell %q is not the cell the host derived and recorded at the open step, %q", strings.TrimSpace(cells[0]), cell, want)
 		}
 	}
@@ -718,7 +861,11 @@ func witnessSeparatorLine(l string) bool {
 // exactly the run the witness and the receipt name AND the home's recomputed
 // tree digest equals both the receipt's tree and the witness's Tree-Digest.
 // Any mismatch or refusal writes nothing.
-func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stderr io.Writer) int {
+func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stderr io.Writer, records ...string) int {
+	record := ""
+	if len(records) > 0 {
+		record = records[0]
+	}
 	refuse := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "statusgen verifyrun --close-bracket: refused, nothing appended: "+format+"\n", a...)
 		return verifyrunExitCouldNot
@@ -742,6 +889,9 @@ func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stder
 	if err != nil {
 		return refuse("%v", err)
 	}
+	if why := acceptancePresence(receipt.Acceptance, record, block); why != "" {
+		return refuse("%s", why)
+	}
 	if receiptLine != block.attestation {
 		return refuse("the receipt does not name the run the witness names:\n  witness: %s\n  receipt: %s", block.attestation, receiptLine)
 	}
@@ -756,6 +906,16 @@ func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stder
 	}
 	if tree != block.tree {
 		return refuse("the home's tree digest %s is not the witness's Tree-Digest %s: the witness was not taken on this home", tree, block.tree)
+	}
+	// The module cache the rows resolved from is the open step's: the
+	// witness's Module-Cache line is present exactly when the receipt carries
+	// a module cache, and names its digest.
+	wantCache := ""
+	if receipt.ModuleCache != nil {
+		wantCache = receipt.ModuleCache.Digest
+	}
+	if block.moduleCache != wantCache {
+		return refuse("the witness's %s%q is not the receipt's module cache %q: the rows did not run on the cache the open step downloaded", moduleCachePrefix, block.moduleCache, wantCache)
 	}
 	// The Runner cell is re-derived on the host, from the same sources the
 	// open step read, never taken from the receipt or the witness: a receipt
@@ -806,9 +966,28 @@ func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stder
 		}
 		cellBrief = hostBrief
 	}
+	if receipt.Acceptance != nil {
+		fresh, descriptor, why := hostAcceptance(home, brief, record, receipt.Check)
+		if why != "" {
+			return refuse("%s", why)
+		}
+		if !reflect.DeepEqual(fresh, receipt.Acceptance) {
+			return refuse("acceptance plan differs from the host re-plan (including the byte-exact execution table)")
+		}
+		current, _, err := briefSections(brief)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		if why := acceptanceWitness(fresh, descriptor, block, current); why != "" {
+			return refuse("%s", why)
+		}
+	}
 	host, ok := hostRunnerCell(home, cellBrief)
 	if !ok {
 		return refuse("could-not-attribute — no executing identity is available on the host for %s, so the runner the receipt names cannot be confirmed", home)
+	}
+	if receipt.Acceptance != nil {
+		host.RunnerTree = receipt.Acceptance.Source
 	}
 	if host.Runner != receipt.Runner || host.RunnerSource != receipt.RunnerSource {
 		return refuse("the receipt names runner %s (%s), but the host derives %s (%s): the receipt was not written by this home's open step, or it was altered", receipt.Runner, receipt.RunnerSource, host.Runner, host.RunnerSource)
@@ -1041,6 +1220,12 @@ func spanBindingProblem(span []string, bracket string) string {
 	if image := spanImage(span); !sha256DigestRe.MatchString(image) {
 		return fmt.Sprintf("its own span's %s %s is not a sha256:<64 hex> digest", strings.TrimSpace(containerImagePrefix), image)
 	}
+	switch caches := spanModuleCaches(span); {
+	case len(caches) > 1:
+		return fmt.Sprintf("its own span holds %d %s lines, not at most one", len(caches), strings.TrimSpace(moduleCachePrefix))
+	case len(caches) == 1 && !sha256DigestRe.MatchString(caches[0]):
+		return fmt.Sprintf("its own span's %s %s is not a sha256:<64 hex> digest", strings.TrimSpace(moduleCachePrefix), caches[0])
+	}
 	b := bracketLineRe.FindStringSubmatch(strings.TrimSpace(bracket))
 	if b == nil {
 		return "the bracket line is not the form the close step writes (run= source= tree= witness= opened= closed= before=receipt after=check-verifier)"
@@ -1172,4 +1357,210 @@ func normaliseRunnerCell(row string, col int) string {
 	cell := onBehalfOfStampRe.ReplaceAllString(row[pipes[col]+1:pipes[col+1]], "")
 	cell = strings.TrimSpace(cellWhitespaceRe.ReplaceAllString(cell, " "))
 	return row[:pipes[col]+1] + " " + cell + " " + row[pipes[col+1]:]
+}
+
+// receiptAcceptance transports the host planner's result, never an approval.
+// The host re-derives every field at close; the offline reader checks internal
+// consistency and executes Verify verbatim without consulting Git or the forge.
+type receiptAcceptance struct {
+	DescriptorSHA string            `json:"descriptor_sha256"`
+	Source        string            `json:"source"`
+	RunSet        []string          `json:"run_set"`
+	Changes       string            `json:"changes"`
+	Added         []string          `json:"author_added"`
+	Verify        string            `json:"verify"`
+	VerifySHA     string            `json:"verify_sha256"`
+	Original      string            `json:"original"`
+	Revisions     map[string]string `json:"revisions"`
+}
+
+func acceptanceSHA(raw []byte) string {
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+func hostAcceptance(home, brief, record string, check []byte) (*receiptAcceptance, string, string) {
+	binding, err := checkBinding(check)
+	if err != nil {
+		return nil, "", err.Error()
+	}
+	if binding.Version != 1 {
+		return nil, "", "statusgen verifyrun: --acceptance-record requires host execution and same-repository admission"
+	}
+	if why := verifyrunRootBelowToplevel(home); why != "" {
+		return nil, "", why
+	}
+	verify, evidence, err := briefSections(brief)
+	if err != nil {
+		return nil, "", err.Error()
+	}
+	// Hold the exact descriptor bytes through the approval read: the receipt
+	// must not bind a replacement that the host planner never interpreted.
+	raw, err := os.ReadFile(record)
+	if err != nil {
+		return nil, "", err.Error()
+	}
+	plan, descriptor, _, why := planAcceptanceRecord(brief, verify, evidence, record)
+	if why != "" {
+		return nil, "", why
+	}
+	after, err := os.ReadFile(record)
+	if err != nil || !bytes.Equal(raw, after) {
+		return nil, "", "acceptance descriptor changed during planning"
+	}
+	full, ok := (coverageRepo{root: home}).ResolveCommit("HEAD")
+	if !ok || !isObjectID(full) || strings.Contains(treeSHA(home), "+") {
+		return nil, "", "transition execution requires a clean immutable source"
+	}
+	if full != binding.Source {
+		return nil, "", "acceptance source differs from the host check binding"
+	}
+	a := &receiptAcceptance{DescriptorSHA: acceptanceSHA(raw), Source: full, Verify: plan.Verify,
+		VerifySHA: acceptanceSHA([]byte(plan.Verify)), Changes: plan.Changes, Original: plan.Original, Revisions: plan.Revisions}
+	for _, row := range briefVerifyRows(plan.Verify) {
+		a.RunSet = append(a.RunSet, row.ID)
+	}
+	for _, row := range plan.Added {
+		a.Added = append(a.Added, row.ID)
+	}
+	return a, descriptor, ""
+}
+
+func containerAcceptance(receipt bracketReceipt, record, verify string) (protectedPlan, string, bool, string) {
+	fail := func(why string) (protectedPlan, string, bool, string) {
+		return protectedPlan{}, "", false, "statusgen verifyrun: container acceptance refused; no row ran: " + why
+	}
+	a := receipt.Acceptance
+	if a == nil || record == "" {
+		return fail("receipt acceptance and --acceptance-record must both be present")
+	}
+	binding, err := checkBinding(receipt.Check)
+	if err != nil || binding.Version != 1 {
+		return fail("--acceptance-record requires host execution and same-repository admission")
+	}
+	raw, descriptor, transition, why := readAcceptanceRecord(record)
+	if why != "" {
+		return fail(why)
+	}
+	if acceptanceSHA(raw) != a.DescriptorSHA {
+		return fail("descriptor digest differs from receipt")
+	}
+	if acceptanceSHA([]byte(a.Verify)) != a.VerifySHA {
+		return fail("planned table digest differs from receipt")
+	}
+	if !isObjectID(a.Source) || a.Source != binding.Source || receipt.RunnerTree != a.Source {
+		return fail("planned source differs from the receipt binding or runner")
+	}
+	rows, numbered := numberedVerifyRows(a.Verify)
+	var ids []string
+	seen := map[string]bool{}
+	for i, row := range rows {
+		if !numbered[i] || seen[row.ID] {
+			return fail("planned table has ambiguous row IDs")
+		}
+		seen[row.ID] = true
+		ids = append(ids, row.ID)
+	}
+	if len(ids) == 0 || !slices.Equal(ids, a.RunSet) {
+		return fail("planned table row IDs differ from run set")
+	}
+	var added []string
+	current := map[string]bool{}
+	for _, row := range briefVerifyRows(verify) {
+		if current[row.ID] {
+			return fail("current table has duplicate row IDs")
+		}
+		current[row.ID] = true
+		if !seen[row.ID] {
+			added = append(added, row.ID)
+		}
+	}
+	for _, id := range ids {
+		if !current[id] {
+			return fail("current table lost an original row")
+		}
+	}
+	if !slices.Equal(added, a.Added) {
+		return fail("current author-added rows differ from receipt")
+	}
+	plan := protectedPlan{Verify: a.Verify, Original: a.Original, Revisions: a.Revisions, Changes: a.Changes}
+	for _, id := range added {
+		plan.Added = append(plan.Added, checkFinding{ID: id, State: stateAuthorAdded})
+	}
+	return plan, descriptor, transition, ""
+}
+
+// Only the preamble preceding this block's own table can bind its descriptor.
+// A missing/dropped plan cannot fall back to ordinary bracket closure.
+func acceptancePreamble(block containerBlock) []string {
+	_, header := witnessSpanDigest(block.lines, len(block.lines))
+	var lines []string
+	if header < 0 {
+		return lines
+	}
+	for _, line := range block.lines[:header] {
+		line = strings.TrimSpace(line)
+		for _, prefix := range []string{"Verification-Table:", "Acceptance-Transition:", "Acceptance-Changes:"} {
+			if strings.HasPrefix(line, prefix) {
+				lines = append(lines, line)
+				break
+			}
+		}
+	}
+	return lines
+}
+
+func acceptancePresence(a *receiptAcceptance, record string, block containerBlock) string {
+	if (a != nil) != (record != "") {
+		return "receipt acceptance and --acceptance-record must both be present or both absent"
+	}
+	if a == nil && len(acceptancePreamble(block)) != 0 {
+		return "witness carries acceptance preamble without a host plan"
+	}
+	if a != nil && len(acceptancePreamble(block)) == 0 {
+		return "witness lacks its acceptance preamble"
+	}
+	return ""
+}
+
+func acceptanceWitness(a *receiptAcceptance, descriptor string, block containerBlock, current string) string {
+	want := strings.Split(descriptor, "\n")
+	if a.Changes != "" {
+		want = append([]string{"Acceptance-Changes: " + a.Changes}, want...)
+	}
+	if !slices.Equal(acceptancePreamble(block), want) {
+		return "witness acceptance descriptor or Acceptance-Changes differs from the host plan"
+	}
+	planned := map[string]verifyRow{}
+	for _, row := range briefVerifyRows(a.Verify) {
+		planned[row.ID] = row
+	}
+	for _, row := range briefVerifyRows(current) {
+		if slices.Contains(a.Added, row.ID) {
+			planned[row.ID] = row
+		}
+	}
+	seen := map[string]bool{}
+	for _, raw := range block.rows {
+		if witnessSeparatorLine(raw) {
+			continue
+		}
+		cells := witnessCells(raw)
+		if cells == nil {
+			return "acceptance witness contains a malformed row"
+		}
+		id := strings.TrimSpace(cells[0])
+		if seen[id] {
+			return "acceptance witness repeats a row"
+		}
+		seen[id] = true
+		if row, ok := planned[id]; ok {
+			if normalizeCommandText(witnessCommandOf(raw)) != normalizeCommandText(row.Command) {
+				return "witness row " + id + " command differs from its planned Command"
+			}
+		} else {
+			return "acceptance witness has a row outside the plan"
+		}
+	}
+	return ""
 }

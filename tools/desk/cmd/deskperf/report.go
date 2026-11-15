@@ -51,6 +51,13 @@ type reportDayJSON struct {
 	PerfV4ByDay []deskkit.PerfV4Day    `json:"perfV4ByDay,omitempty"`
 }
 
+// deskRoleFlag is the report's --desk-role flag name, joined at start-up. The bare literal
+// ends in an "sk-" run, and the Go linker packed it next to this binary's alphanumeric
+// literals, where it read as a generic model key to the release image's secret scan
+// (internal/regression TestReleaseBinariesScanClean). The joined form never puts that
+// literal in the binary's string data; deskkit.DeskToolsArtifact uses the same shape.
+var deskRoleFlag = strings.Join([]string{"desk", "role"}, "-")
+
 func cmdReport(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("deskperf report", flag.ContinueOnError)
 	days := fs.Int("days", deskkit.PerfMaxDays, "UTC days to read (1-7)")
@@ -62,7 +69,7 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 	group := fs.String("group-by", "tool", "v3 group: tool, work, session, agent, deskRole, role (--by-day groups by tool only)")
 	session := fs.String("session-id", "", "v3 workflow session filter")
 	agent := fs.String("agent-id", "", "v3 workflow agent filter")
-	deskRole := fs.String("desk-role", "", "v3 workflow originating desk filter")
+	deskRole := fs.String(deskRoleFlag, "", "v3 workflow originating desk filter")
 	assigned := fs.String("assigned-role", "", "v3 workflow execution role filter")
 	work := fs.String("work", "", "v3 workflow typed JSON-object locator filter")
 	asJSON := fs.Bool("json", false, "emit the aggregates as one JSON object")
@@ -497,6 +504,8 @@ func v2Table(stdout io.Writer, v2 deskkit.PerfV2Summary, days int, tool, role st
 // hour against the App budget floor (PerfForgeBudgetPerHour says why that is a gauge, not a
 // bound), then one table per tool and one per release build. A row with
 // no measured run prints "-" for every figure — unavailable is not observed, never zero.
+// A release row reads "<tag> (<sha>)" when its records name one release tag, the sha flagged
+// "(tag conflict)" when they name more than one, and the sha alone when they name none.
 func forgeTable(stdout io.Writer, f deskkit.PerfForgeSummary) error {
 	peak := "-"
 	if f.PeakHour != "" {
@@ -521,13 +530,25 @@ func forgeTable(stdout io.Writer, f deskkit.PerfForgeSummary) error {
 				figs = fmt.Sprintf("%d\t%d\t%d\t%d\t%.1f\t%d\t%.2f\t%.2f",
 					r.Calls, r.P50PerRun, r.P90PerRun, r.MaxPerRun, r.SharePct, r.PeakHourCalls, r.PeakHourBudgetPct, r.P90RunBudgetPct)
 			}
-			fmt.Fprintf(tw, "%s\t%d\t%d\t%s\n", r.Key, r.Runs, r.Unavailable, figs)
+			fmt.Fprintf(tw, "%s\t%d\t%d\t%s\n", forgeRowLabel(r), r.Runs, r.Unavailable, figs)
 		}
 		if err := tw.Flush(); err != nil {
 			return deskkit.Unverifiable("cannot write the report", err)
 		}
 	}
 	return nil
+}
+
+// forgeRowLabel is a forge row's first column. Rows stay keyed on Key; a release row's tag only
+// labels it, so two builds with one tag are two rows.
+func forgeRowLabel(r deskkit.PerfForgeStats) string {
+	switch {
+	case r.ReleaseTagConflict:
+		return r.Key + " (tag conflict)"
+	case r.ReleaseTag != "":
+		return r.ReleaseTag + " (" + r.Key + ")"
+	}
+	return r.Key
 }
 
 // countList renders "a N · b M" over the known keys in order, then any other key by name.

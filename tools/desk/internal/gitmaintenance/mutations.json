@@ -62,12 +62,6 @@
       "new": "func Run(ctx context.Context, repo string, opts Options) (report Report, err error) {\n ctx = context.Background()"
     },
     {
-      "name": "deadline kills parent but leaves descendant writing",
-      "file": "internal/cellprocess/tree_unix.go",
-      "old": "syscall.Kill(-p.Pid, syscall.SIGKILL)",
-      "new": "syscall.Kill(p.Pid, syscall.SIGKILL)"
-    },
-    {
       "name": "effective reference hooks bypass refusal",
       "file": "internal/gitmaintenance/hooks.go",
       "old": "func checkHooks(ctx context.Context, dir, common string, start func(context.Context, string, ...string) *exec.Cmd) error {",

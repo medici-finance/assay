@@ -1,0 +1,18 @@
+# corpus: URLs whose userinfo is a placeholder, a username only, or not userinfo at all
+# expect: clean
+# refs:   #5320
+# shape:  <token>, ${VAR}, $VAR, ***, an elision, the field word, user@host, scp form, host:port/path@x
+# why:    the url-userinfo arm refuses a real password only; documentation and templates name the slot
+A token-authenticated remote looks like https://x-access-token:<token>@github.com/o/r.git,
+and CI expands https://ci:${CI_JOB_PW}@gitlab.example.com/o/r.git or
+https://ci:$CI_JOB_PW@gitlab.example.com/o/r.git at run time.
+
+Redacted in a log: https://oauth2:***@gitlab.example.com/o/r.git (also seen as
+https://x-access-token:…@github.com/o/r).
+
+Usage: scheme://user:password@host/path
+
+Username only: https://x-access-token@github.com/o/r.git, ssh://git@github.com/o/r.git,
+and the scp form git@github.com:example-org/project.git.
+
+A path with an at-sign after a port: https://example.com:8443/team@example/r

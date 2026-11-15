@@ -158,6 +158,11 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	shell := fs.String("shell", "sh", "the shell the first Verify row runs under: sh (POSIX bash, the DEFAULT — portable across Git-bash and `--in-container`), cmd (Windows cmd.exe) or pwsh (PowerShell). A native-Windows command (e.g. `findstr`) MUST declare cmd/pwsh here so the marker is attached at authoring time; the default POSIX row carries no Shell column (issues #1466 / #1424).")
 	offline := fs.Bool("offline", false, "skip the freshness fetch (no stamp is written; use when there is deliberately no network)")
 	dryRun := fs.Bool("dry-run", false, "print every file that would be written and its rendered body, and write NOTHING")
+	schemaSel := fs.String("schema", "", "the brief schema to write: empty keeps the stream's detected legacy schema; `legacy` selects it explicitly; `brief-v4` writes the prefixed id/schema pair only after every required reader is assessed Supported (milestone-support/04)")
+	readerCaps := repeatedFlag{name: "reader-caps"}
+	fs.Var(&readerCaps, "reader-caps", "a required reader's capability advertisement (reader-capabilities-v1 JSON, or a `--version --json` document carrying readerCapabilities); repeatable, one per required consumer; needed by --schema brief-v4")
+	reqMilestones := repeatedFlag{name: "requires-milestone"}
+	fs.Var(&reqMilestones, "requires-milestone", "an exact versioned milestone start requirement <stream>:m-<NN>@<version> (repeatable; needs --schema brief-v4)")
 	fs.SetOutput(stderr)
 	if err := fs.Parse(args); err != nil {
 		return newBriefExitRefuse
@@ -203,8 +208,28 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// detector. A brand-new, brief-less stream has no signal to detect and stays
 	// v1 (today's default) — a schema bump is something a stream's first brief
 	// declares, not something newbrief can guess.
-	schema := newBriefStreamSchema(streamDir)
-	isV2 := schema == briefSchemaV2
+	//
+	// brief-v4 (milestone-support/04) is never detected into: it is written only
+	// on an explicit --schema brief-v4 after reader negotiation; a stream that
+	// already carries brief-v4 siblings makes the author choose explicitly.
+	schema, selMsg := newBriefSelectSchema(newBriefStreamSchema(streamDir), *schemaSel, readerCaps.values, reqMilestones.values)
+	if selMsg != "" {
+		fmt.Fprintf(stderr, "statusgen newbrief: %s\n", selMsg)
+		return newBriefExitRefuse
+	}
+	isV4 := schema == briefSchemaV4
+	isV2 := schema == briefSchemaV2 || isV4
+	var v4 *newBriefV4Plan
+	waveDeps := deps
+	if isV4 {
+		keys, rendered, msg := newBriefV4Deps(deps)
+		if msg != "" {
+			fmt.Fprintf(stderr, "statusgen newbrief: %s\n", msg)
+			return newBriefExitRefuse
+		}
+		waveDeps = depList(keys)
+		v4 = &newBriefV4Plan{depends: rendered}
+	}
 
 	// Risk answers → the four canonical questions. Non-interactive: one flag per
 	// question, and an UNANSWERED question is a refusal. Interactive: prompt each.
@@ -246,7 +271,7 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// Derive the wave from the declared dependencies, and refuse a dependency that
 	// does not exist rather than emit a dangling edge. depPaths carries each dep's
 	// resolved brief file, so the inverse edge is written into the right target.
-	wave, depPaths, code := newBriefDeriveWave(*root, *stream, deps, stderr)
+	wave, depPaths, code := newBriefDeriveWave(*root, *stream, waveDeps, stderr)
 	if code != newBriefExitOK {
 		return code
 	}
@@ -325,13 +350,39 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	} else {
 		briefID = *stream + "/" + num
 	}
+	// The inverse unblocks: entry is the dependency's own same-root spelling:
+	// <stream>:b-<NN> into a brief-v4 dependency, <stream>/<NN> into any other.
+	// A brief-v2 dependency's lint (checkRef) reads <stream>/<NN> only, so
+	// writing the hierarchical v2 id there produced a tree --lint refused
+	// (found and fixed in milestone-support/04).
+	inverseID := func(depSchema string) string { return newBriefV4Inverse(depSchema, *stream, num) }
+	renderDeps := []string(deps)
+	if isV4 {
+		seg := strings.Split(briefID, ":")
+		ms, msg := newBriefV4Milestones(*root, reqMilestones.values, seg[0], seg[1])
+		if msg != "" {
+			fmt.Fprintf(stderr, "statusgen newbrief: %s\n", msg)
+			return newBriefExitRefuse
+		}
+		v4.requiresMilestones = ms
+		v4.typedID = strings.Join(seg[:3], ":") + ":b-" + num
+		uuid, err := newBriefUUID()
+		if err != nil {
+			fmt.Fprintf(stderr, "statusgen newbrief: cannot mint the brief-v4 id: %v\n", err)
+			return newBriefExitWrite
+		}
+		v4.uuid = uuid
+		briefID = v4.typedID
+		renderDeps = v4.depends
+	}
 	body := renderNewBrief(newBriefSpec{
 		id:        briefID,
 		num:       num,
 		schema:    schema,
 		title:     *title,
 		wave:      wave,
-		depends:   []string(deps),
+		depends:   renderDeps,
+		v4:        v4,
 		effort:    *effort,
 		gate:      derivedGate,
 		risk:      risk,
@@ -379,7 +430,7 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "statusgen newbrief: reading dependency %s: %v\n", dp.path, err)
 			return newBriefExitWrite
 		}
-		edited, err := addUnblocksEdge(string(depRaw), briefID)
+		edited, err := addUnblocksEdge(string(depRaw), inverseID(dp.schema))
 		if err != nil {
 			fmt.Fprintf(stderr, "statusgen newbrief: cannot write inverse edge into %s (%s): %v\n", dp.id, dp.path, err)
 			return newBriefExitRefuse
@@ -415,7 +466,7 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "created  %s\n", briefPath)
 	fmt.Fprintf(stdout, "updated  %s (brief %s row)\n", readmePath, num)
 	for _, dp := range depPaths {
-		fmt.Fprintf(stdout, "updated  %s (unblocks: += %s)\n", dp.path, briefID)
+		fmt.Fprintf(stdout, "updated  %s (unblocks: += %s)\n", dp.path, inverseID(dp.schema))
 	}
 	fmt.Fprintf(stdout, "\nbrief %s — gate: %s (derived from risk), wave: %d\n", briefID, derivedGate, wave)
 	if freshness == "" && !*offline {
@@ -525,9 +576,10 @@ func newBriefResolveNumber(streamDir, explicit string, stderr io.Writer) (string
 
 // depResolved is a named dependency resolved to its brief file and wave.
 type depResolved struct {
-	id   string
-	path string
-	wave int
+	id     string
+	path   string
+	wave   int
+	schema string // the dependency's own schema — selects the inverse edge's spelling (milestone-support/04)
 }
 
 // newBriefDeriveWave derives the wave from the declared dependencies and resolves
@@ -577,7 +629,7 @@ func newBriefDeriveWave(root, selfStream string, deps depList, stderr io.Writer)
 		if bf.Wave > maxWave {
 			maxWave = bf.Wave
 		}
-		resolved = append(resolved, depResolved{id: depStream + "/" + depNum, path: path, wave: bf.Wave})
+		resolved = append(resolved, depResolved{id: depStream + "/" + depNum, path: path, wave: bf.Wave, schema: bf.Schema})
 	}
 	return maxWave + 1, resolved, newBriefExitOK
 }
@@ -616,6 +668,7 @@ func newBriefStreamSchema(streamDir string) string {
 	if err != nil {
 		return briefSchemaCurrent
 	}
+	detected := briefSchemaCurrent
 	for _, e := range entries {
 		if e.IsDir() || !newBriefNumRe.MatchString(e.Name()) {
 			continue
@@ -624,13 +677,18 @@ func newBriefStreamSchema(streamDir string) string {
 		if err != nil || !ok {
 			continue
 		}
+		if bf.Schema == briefSchemaV4 {
+			// A brief-v4 sibling is reported as such so newBriefSelectSchema can
+			// refuse an unselected write (milestone-support/04).
+			return briefSchemaV4
+		}
 		if isBriefV2Family(bf.Schema) {
 			// A brief-v3 sibling is a brief-v2 stream too: brief-v3 exists only to
 			// carry a withdrawal, so a NEW brief is still authored as brief-v2.
-			return briefSchemaV2
+			detected = briefSchemaV2
 		}
 	}
-	return briefSchemaCurrent
+	return detected
 }
 
 // newBriefStreamMinWave returns the minimum wave among a stream's existing
@@ -875,7 +933,8 @@ type newBriefSpec struct {
 	stream    string
 	freshness string
 	verifyCmd string
-	shell     string // the resolved shell for the first Verify row: sh (default, no Shell column) / cmd / pwsh (issues #1466 / #1424)
+	shell     string          // the resolved shell for the first Verify row: sh (default, no Shell column) / cmd / pwsh (issues #1466 / #1424)
+	v4        *newBriefV4Plan // non-nil only for a negotiated brief-v4 write (milestone-support/04)
 }
 
 // renderNewBrief emits the brief document: every required key present (empty values
@@ -937,12 +996,15 @@ func renderNewBrief(s newBriefSpec) string {
 	}
 	b.WriteString("issues: []\n")
 	b.WriteString("schema: " + s.schema + "\n")
-	if s.schema == briefSchemaV2 {
+	if s.schema == briefSchemaV2 || s.schema == briefSchemaV4 {
 		// version: the brief's own revision — 1 at authoring (briefv2.go's
 		// parseBriefV2Keys already defaults an ABSENT version: to 1, but this is
 		// written explicitly rather than relying on that default, matching every
 		// hand-authored brief-v2 file in the tree (e.g. forge-neutral/20).
 		b.WriteString("version: 1\n")
+	}
+	if s.v4 != nil {
+		renderBriefV4Keys(&b, s.v4)
 	}
 	b.WriteString("authored: " + newBriefNow().UTC().Format("2006-01-02") + " by statusgen newbrief\n")
 	// sources: non-empty by construction (a stream provenance line), plus the

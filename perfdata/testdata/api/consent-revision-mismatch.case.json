@@ -1,0 +1,22 @@
+{
+  "description": "A batch recorded under another consent revision is rejected whole.",
+  "context": {
+    "authenticatedSource": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "consentRevision": "r1",
+    "allowedProfiles": [
+      "tool"
+    ],
+    "now": "2026-10-02T12:00:00.000Z",
+    "replayHorizonHours": 168,
+    "known": {},
+    "commit": "ok"
+  },
+  "receipt": {
+    "schema": "performance-receipt-v1",
+    "batchDigest": "4a478ba86cc319f8e69118405ff3997c265d78070191ec65bbcde60cd5e4cfae",
+    "committed": false,
+    "status": "rejected",
+    "reason": "consent-revision",
+    "results": []
+  }
+}

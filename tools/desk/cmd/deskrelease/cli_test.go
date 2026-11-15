@@ -118,13 +118,14 @@ func execIn(t *testing.T, bin, dir string, env []string, args ...string) binRun 
 
 // helpForms are every help and version spelling deskrelease answers. The tool never had Go
 // flag-package spellings, so the single-dash long forms do not apply. `cut -h` and `cut --help`
-// are NOT among them: cut's argv belongs to the cut parser, which refuses a help word with 5
-// and audits it, as it did before the migration (see TestCLILegacyForms).
+// are among them: the help word alone after cut is the verb's help, answered before the startup,
+// the kill switch and the cut parser. The verb forms are taken from the tree itself, so a verb
+// added later — one that takes its argv raw included — is held to the same rule.
 func helpForms() [][]string {
-	var forms [][]string
-	for _, f := range clicontract.HelpForms("cut") {
-		if f[0] != "cut" {
-			forms = append(forms, f)
+	forms := clicontract.HelpForms("cut")
+	for _, c := range newTree(io.Discard, io.Discard, nil, nil).Commands() {
+		if c.Name() != "cut" {
+			forms = append(forms, []string{"help", c.Name()}, []string{c.Name(), "-h"}, []string{c.Name(), "--help"})
 		}
 	}
 	forms = append(forms, []string{"-v"}, []string{"version"})
@@ -160,8 +161,9 @@ func (r *recorder) exec(args ...string) (int, string, string) {
 }
 
 // regression: help went to stderr and the roster startup (class, config echo, activation check)
-// ran before even `version` — so help was not a clean, offline, stdout answer. (`cut --help`
-// stays an audited cut refusal; the verb's help is `deskrelease help cut`.)
+// ran before even `version` — so help was not a clean, offline, stdout answer; and `cut -h` and
+// `cut --help` were refused with 5 after the startup and an audit write instead of answered as
+// help.
 func TestCLIHelpOffline(t *testing.T) {
 	bin := toolBinary(t)
 	forms := helpForms()
@@ -331,9 +333,16 @@ func TestCLILegacyForms(t *testing.T) {
 			{[]string{"cut", goodTag, "--repo", "attacker/elsewhere"}, `unrecognised flag "--repo"`},
 			{[]string{"cut", goodTag, "--dry-run", "--dry-run"}, "--dry-run given twice"},
 			{[]string{"cut", "-dry-run", goodTag}, `unrecognised flag "-dry-run"`},
-			// A help word alone after cut is a cut word too: refused and audited, never help.
-			{[]string{"cut", "-h"}, `unrecognised flag "-h"`},
-			{[]string{"cut", "--help"}, `unrecognised flag "--help"`},
+			// Only the help word ALONE after cut is help. With any other word beside it, the line
+			// is a cut line, and the cut parser refuses and audits it.
+			{[]string{"cut", "-h", "extra"}, `unrecognised flag "-h"`},
+			{[]string{"cut", "--help", "x"}, `unrecognised flag "--help"`},
+			{[]string{"cut", "-h", "-h"}, `unrecognised flag "-h"`},
+			{[]string{"cut", "--help", "--dry-run"}, `unrecognised flag "--help"`},
+			{[]string{"cut", "--dry-run", "-h"}, `unrecognised flag "-h"`},
+			{[]string{"cut", "--", "-h"}, `unrecognised flag "--"`},
+			{[]string{"cut", "-help"}, `unrecognised flag "-help"`},
+			{[]string{"cut", "--bogus"}, `unrecognised flag "--bogus"`},
 			// A word before the verb is carried into cut's argv, where the cut parser refuses it.
 			{[]string{"--repo", "attacker/elsewhere", "cut", goodTag}, `unrecognised flag "--repo"`},
 		}
@@ -351,6 +360,29 @@ func TestCLILegacyForms(t *testing.T) {
 			}
 			if n := len(h.auditLines(t)); n != 1 {
 				t.Errorf("%q: %d audit lines, want exactly 1 (every cut refusal is audited)", c.argv, n)
+			}
+		}
+	})
+	// regression: `cut -h` and `cut --help` were refused with 5 after the startup and an audit
+	// write; they are the verb's help, the same text as `help cut`, even with the suite disabled.
+	t.Run("cut-help-alone-is-help", func(t *testing.T) {
+		ref := record(t)
+		_, want, _ := ref.exec("help", "cut")
+		if !strings.Contains(want, "deskrelease cut") {
+			t.Fatalf("help cut printed %q; want the verb's help", want)
+		}
+		for _, disabled := range []string{"", "1"} {
+			for _, args := range [][]string{{"cut", "-h"}, {"cut", "--help"}} {
+				r := record(t)
+				t.Setenv("DESK_TOOLS_DISABLED", disabled)
+				code, out, stderr := r.exec(args...)
+				if code != 0 || out != want || stderr != "" {
+					t.Errorf("%v (disabled=%q): exit %d stdout %q stderr %q; want 0 and the help cut text", args, disabled, code, out, stderr)
+				}
+				if r.calls != 0 || r.pres != 0 || len(r.h.gh.calls()) != 0 || len(r.h.tok.all()) != 0 || len(r.h.auditLines(t)) != 0 {
+					t.Errorf("%v (disabled=%q): cut %d startup %d api %v mint %v audit %d; want nothing",
+						args, disabled, r.calls, r.pres, r.h.gh.calls(), r.h.tok.all(), len(r.h.auditLines(t)))
+				}
 			}
 		}
 	})

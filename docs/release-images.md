@@ -21,12 +21,27 @@ roll remains a separate downstream job under its own existing identity.
    prepared source revision and its archive; preserve any local stamp commits
    in a Git bundle for the final tag.
 2. In the approved release job, verify the build inputs and use those exact
-   Linux statusgen and desk-tools bytes for all images. Build desk-tools first,
+   Linux statusgen and desk-tools bytes for every image that carries them
+   (deskd carries neither: it compiles from source inside its `docker build`,
+   with modules held to `deskd/go.sum`). Build desk-tools first,
    desk-base from that newly built version, and the five desks from that base.
-   Build assay-harness with the same binaries and prepared plugin source, and
+   Build assay-harness with the same binaries and prepared plugin source, then
+   deskd from `images/deskd/Dockerfile` with `deskd/` as its only build context
+   and the source revision as its `REVISION` build argument, and
    verify-runner from the release statusgen plus its digest-pinned Go base and
    the Debian packages (Python libraries and row tools) pinned in
    `images/verify-runner/Dockerfile`.
+   Before every image build, on the publisher and on the native ARM64 runner,
+   the release clears all BuildKit exec cache mounts
+   (`docker builder prune --all --force --filter type=exec.cachemount`), and a
+   failed prune stops the release. It then builds with `--no-cache`. Cache
+   mounts outlive the build that wrote them and are shared by target path
+   across builds on one daemon, and the instruction cache's key for a `RUN`
+   step does not cover its cache mounts' contents. On a non-ephemeral runner,
+   a mount or a cached layer an earlier build left behind (another ref, a dry
+   run) would otherwise feed a published binary. Every build goes through that
+   one path, and the tests refuse a build call that bypasses it or drops
+   `--no-cache`.
    verify-runner is multi-arch: it is built once for `linux/amd64` and once for
    `linux/arm64`, each from the matching `statusgen-linux-<arch>` release
    binary, and each build's OS/architecture is read back before any check.
@@ -46,26 +61,37 @@ roll remains a separate downstream job under its own existing identity.
    this release, the archive checksum, a single Docker save manifest naming
    only the expected tag, and a single config whose digest is the receipt's
    image ID. After the load it re-reads the platform and image ID. Any
-   mismatch stops the release before a registry write. The other eight images
+   mismatch stops the release before a registry write. The other nine images
    stay `linux/amd64`.
-3. Check statusgen's version in all nine images, and in both runner
-   platforms. Execute the release-owned
+3. Check statusgen's version in every image that carries it (all except deskd),
+   and in both runner platforms. deskd has no statusgen: its check reads the
+   image config, requires a numeric non-root user and an
+   `org.opencontainers.image.revision` label equal to the source revision, and
+   runs `/deskd --help` with no pull, network, capabilities or new privileges on a
+   read-only root, which must exit 0 and print its usage. Execute the release-owned
    `images/verify-runner/check.py` inside each built runner platform: import PyYAML and
    jsonschema, parse YAML, validate a Draft 2020-12 schema, and prove that a
    valid instance passes and an invalid one raises a validation error. It also
+   exercises the installed shared source-proof library and witness call site with local
+   synthetic source and sourced Bash process seams. Argument tests substitute a local
+   sentinel for the operational probe body while preserving the real argument parser.
+   The scratch files are read by their
+   installed interpreters, preserving the existing noexec tmpfs fence; this does not
+   establish real namespace confinement. The probe also
    checks the cluster backend's baked entrypoints (`stage-source.sh`,
    `stage-cache.sh`, `witness.sh` in `/usr/local/bin`): `/usr/local/bin` is a
    `root:root` directory that neither its group nor others can write, and each
    script is a `root:root` regular file, executable, with no set-user-id or
    set-group-id bit, that neither its group nor others can write, and,
    executed directly with no argument, prints its usage and exits 2. It runs
-   the row tools `jq`, `shellcheck` and `tmux` from `PATH`, so a release whose
-   runner lacks one stops before any push. The probe
+   the row tools `jq`, `shellcheck`, `tmux` and `yq` from `PATH`, so a release
+   whose runner lacks one stops before any push; `yq --version` must also name
+   mikefarah, since rows reject any other program called `yq`. The probe
    prints Python and distribution versions into the release build log. It uses
    no pulls, network, mounts or credentials; it runs as user 1000:1000 with a
    read-only root, all capabilities dropped, no new privileges, default seccomp
    and bounded memory, CPU, process count and temporary storage. Run the existing layer-secret
-   gate on the shared desk base and all five desks. All checks precede the first
+   gate on the shared desk base, all five desks and deskd. All checks precede the first
    push. A failure stops the same job before any tag or GitHub release write.
 4. Serialize the publication job on the resolved umbrella version before registry
    absence checks, including dispatches with or without a leading `v`.
@@ -96,15 +122,16 @@ future workflow runs; an already-running release keeps its original job graph.
 ## Published reference artifacts
 
 `release-images.json` has schema `release-images-v1`, the umbrella `version`,
-`source_revision`, release `repository`, and exactly nine `images` records:
+`source_revision`, release `repository`, and exactly ten `images` records:
 
 - desk-tools, assay-harness and desk-base;
 - intake-desk, worker-desk, pr-review-desk, verify-desk and the-desk;
+- deskd;
 - verify-runner.
 
 Each record has `name`, `platform` and a complete
 `<repository>:<umbrella-tag>@sha256:<registry-manifest-digest>` reference.
-`platform` is `linux/amd64` for eight images; verify-runner records
+`platform` is `linux/amd64` for nine images; verify-runner records
 `linux/amd64,linux/arm64` and its digest is the image index (manifest list)
 digest, not a per-platform one. One reference then serves both host
 architectures: the engine selects the native platform, and the index bytes the
@@ -112,6 +139,10 @@ digest covers name each per-platform manifest digest, so the pin stays
 immutable for both. Records from releases before the multi-arch runner carry
 `linux/amd64` for verify-runner; the contract still accepts them when a consumer
 validates an older release, while a new release must record both platforms.
+Records from releases before deskd carry the other nine images only. By default
+the contract refuses them; a consumer validating such a pinned record passes
+`names=(NAMES, LEGACY_NAMES)` to `validate()`, which accepts exactly the current
+ten names or exactly the legacy nine.
 `verify-runner-image.txt` contains exactly its matching reference plus a newline.
 Both files are listed in `checksums.txt`. `tools/release/images_contract.py`
 rejects missing/duplicate images, wrong tags, repositories, platforms or source
@@ -145,13 +176,79 @@ release. Local root-owned tool installation remains a separate operator act.
 ## Validation
 
 ```sh
-python3 -B -m unittest discover -s tools/release -p images_test.py -v
+python3 -B -m unittest tools.release.images_test tools.release.ci_step_test -v
 sh containers/scripts/layer-secret-scan.test.sh
 sh containers/scripts/layer-secret-scan.mutate.sh
 ```
 
 The image-producer tests use fake Docker and check real metadata and artifact
-bytes without registry access. The scan suites separately prove real-key and
+bytes without registry access. `ci_step_test` checks, from outside that suite, that
+CI still runs it on the `rest` shard, fails the shard when it fails and stops
+it within 15 minutes. Both read workflow settings through
+`tools/release/workflow_keys.py`, a closed reader that accepts only the forms
+these three workflow files use, each read exactly as written: `key:` and
+`key: value` with a plain key, plain sequence items that start with no
+indicator character (`-` and `?` among them), one-line plain values
+(no `: ` inside, no `:` at the end), one-line double-quoted values with no
+backslash, one-line single-quoted values with no quote inside, one-line flow
+sequences of such items, and a bare `|` block scalar only as a step's `run` or
+as the `path` under a step's `with`. A `uses` value must be an action pinned to
+a full commit SHA. A sequence item is a dash and exactly one space, and lines
+nest the way YAML nests them: one mapping's keys share a column, one
+sequence's dashes share a column two past the key that holds them, and an
+item's keys sit two past its dash, so a step ends where YAML ends it. The
+reader takes the text as stored on disk (`workflow_keys.load`), so a carriage
+return is seen. Every other line (an escape sequence, a doubled quote, a
+`>` or chomped block scalar, a block scalar anywhere else, a flow mapping, an
+anchor, a tag, a quoted or spaced key, a key written twice, any other spacing
+after a dash, a key or dash outside its column, a tab, a carriage
+return or another control, format or separator character) is unread, and
+every unread line is refused, wherever it sits in the file, so keep these
+workflows in that form. Job and step text is cut where
+the reader ends the job or step, and a step name used twice in one job counts
+as no step at all. The publishing jobs (`artifacts`, `runner-arm64`, `release`) and their
+steps must not set `continue-on-error` in any form, except the two optional
+release Go cache steps, and each of those is exempt only while its whole content
+(every key and value, in order) matches its pin and no other step shares its
+name. The publishing jobs must not set step `defaults` (nor may the workflow),
+no step in one may set `shell` or `working-directory`, each job's own
+environment is pinned (only `CGO_ENABLED: "0"` on `artifacts`, none on the
+other two), and each step's `if` must match its pin, so a step with no pinned
+condition may not gain one. The publisher's approval, needs, runner, step order,
+dry-run guards and native arm64 directory, the permissions and environment of
+every job, `persist-credentials: false` on every checkout in the test and
+publishing jobs, and the upload and download settings are read from the
+reader's keys, never from job text, so a line in a comment, a run script or a
+`with` block scalar never counts. Each platform upload in `artifacts`, the
+native image's upload, the report upload and every `actions/download-artifact`
+step in `runner-arm64` and `release` must hold exactly its pinned `with`
+inputs: the build downloads read every `release-build-*` artifact, merged,
+each platform upload is uncompressed, fails when it finds no files and its
+path holds exactly its pinned lines, in order (no `!` exclusion, no added
+pattern, no expression), and the native image's upload path holds exactly the
+archive and its receipt. No other step in any job may have a
+`with` `name` that can start with the `release-build-` prefix: a fixed name
+under it is refused, and so is an expression whose fixed text before it is
+empty or still a start of the prefix. Only `release` may
+grant a write, the workflow default is `contents: read` alone, and no job may
+name its environment with an expression. The test and publishing
+jobs must not run in a `container`, and no job may call another workflow (a
+job-level `uses`). The workflow environment must hold only `GO_VERSION`,
+and the test and CI shard jobs must not set their own. The CI step must hold
+only `name`, `if`, `timeout-minutes` and `run`, and the Go regression test file
+that runs every release suite is pinned whole. The publisher's script checks,
+the two `sha256sum -c` checks of the restore step among them, look for fixed
+lines among the live, non-comment lines of one named step's `run` script, each
+as a whole line, so the same text in another key, another step or beside other
+text on its line (`|| true` after it, say) does not count. Not checked:
+whether the shell executes such a line (a heredoc, a dead branch, or another
+line of the script such as `set +e` can stop it), other files
+in that Go package, earlier steps that write `GITHUB_ENV` or `GITHUB_PATH`, a
+step's own `env` in a publishing job (a shell startup variable set there is not
+refused), the commands and conditions of the test job's suite steps (the legs
+that are not mutation harnesses; the matrix holding them is checked), and a
+transfer made other than through `actions/upload-artifact` or
+`actions/download-artifact`. The scan suites separately prove real-key and
 hidden-layer detection, fail-closed errors and exact-label precision. The
 complete release workflow must still be exercised after maintainer promotion.
 
@@ -173,6 +270,13 @@ cover them; their risk summary (publisher, exact versions and release dates, per
 persistence, transitive packages) is recorded on #4771. The `jq` pin is a
 `bookworm-security` version, which the archive drops once superseded, so that build fails
 closed and needs a reviewed pin update sooner than the others.
+`yq` is not a Debian package: bookworm's `yq` is a different program. The Dockerfile
+fetches mikefarah yq's static release binary over https, checks it against a per-architecture
+sha256 pin (amd64 and arm64) before installing it root-owned at `/usr/local/bin/yq`, and
+fails closed on any other architecture or a mismatch
+([issue 5531](https://github.com/medici-finance/assay/issues/5531)). A version bump
+updates the version and both checksums together, and `verifyrunner_yq_test.go` must list
+the new trio; its risk summary is recorded on #5531.
 Apt resolves transitive dependencies from the base suite during the approved build;
 `/usr/local/share/verify-runner/packages.txt` records every installed Debian package
 and version in the immutable image, including transitive dependencies and Python.
@@ -206,23 +310,101 @@ pair in both Dockerfiles in one change.
 
 ## Runner Go module cache
 
-Rows run with no network, a read-only root and `GOPROXY=off`, so the image bakes
-the Go modules they resolve: its Dockerfile runs `go mod download` for
-`tools/desk` and `statusgen` from the release's own `go.mod` and `go.sum`, and
-records those roots, one per line, in
-`/usr/local/share/verify-runner/go-module-roots.txt`. The cache is pinned by the
-image digest like everything else in the image; nothing is mounted or fetched at
-row time.
+Rows run with no network, a read-only root and `GOPROXY=off`, so the Go modules
+they resolve must already be on disk. Which modules that is comes from the source
+under verification, never from the image: the roots are listed in the tree's own
+`images/verify-runner/go-module-roots.txt` (#4683).
 
-The cache matches the source the release was built from, not a tree verified
-later. When main moves a requirement after a release, a row that builds that
-module in an older image stops on module resolution before its check runs
-(#4683). A container-netns `statusgen verifyrun` reads the roots file, compares
+That list covers the whole tree. Every tracked Go module whose `go.sum` names a
+module is listed, or is named on a `# not provisioned: <root> — <reason>` line.
+`deskd` is the one such module: it requires this repository's own `tools/desk`
+module by version from the public proxy. The cluster stager still refuses that
+owner path, and the host-only public proof does not provision this omitted root;
+rows that build it cannot run offline in this lane. The statusgen test
+`TestModuleRootsCoverTree` fails when a module with requirements is added and not
+listed. Without it, that module's offline rows would stop on module resolution,
+and the pre-row gap check, which reads only the listed roots, could not name the
+cause. `TestRunnerCopiesReplaceTargets` holds the image's Dockerfile to copy the
+`go.mod` of every directory a listed root replaces a module with.
+
+**Admitted runs: a fresh cache per bracket.** When the verified home lists module
+roots, `statusgen verifyrun --open-bracket` requires `--module-cache <dir>`, a new
+empty directory outside the home that is not the host's own module cache. On the
+host, before the container starts, it runs `go mod download` for each listed root
+against that root's committed `go.mod` and `go.sum`, with checksum verification
+on (`GOSUMDB=sum.golang.org`, `GOFLAGS=-mod=readonly`, `GOENV=off`). The download
+environment is built from nothing: a scratch `HOME` and build cache, `PATH`, and
+the pins above; no host Go, git, proxy or credential setting reaches it.
+
+Before the first request it screens every module path a root could send to the
+public proxy (each require not replaced by a directory, each replacement that
+names a version, and each path its `go.sum` lists) with the same approved public
+set as `images/verify-runner/stage-cache.sh` (`APPROVED` and `GHPUB`, held equal
+by a parity test). A path under the verified repository's owner, in any case, a
+path matching the operator's `GOPRIVATE`, `GONOPROXY` or `GONOSUMDB`, or one off
+the approved set is could-not-check, with nothing sent to the proxy, no cache
+directory and no receipt.
+
+The host `--module-cache` lane has one bounded exception for module paths rooted
+at `github.com/medici-finance/assay` (the exact repository, including its nested
+modules). Before any module download it announces and performs an unauthenticated
+GET of `https://api.github.com/repos/medici-finance/assay`. It requires the fixed
+repository and owner IDs, canonical name and URL, `private=false` and
+`visibility=public`; redirects, unavailable or ambiguous metadata refuse. Each
+exception version must have both its module and go.mod checksums committed in the
+source's `go.sum`. The receipt records repository identity, metadata digest and
+the root/module/version/checksums; container admission and close recheck that
+source binding without network. Operator private patterns always win; other owner
+paths retain denial. This exception is not added to the cluster stager, which
+continues to refuse owner paths. It does not add VCS fallback or network to rows.
+
+The proof applies to every `github.com/medici-finance/assay` path whatever the
+verified owner is, so it is also a new requirement for adopters outside that
+owner. Before this exception, such an adopter's Assay requirements passed the
+screen as ordinary `github.com` paths with no extra request. Now its open step
+also makes the unauthenticated GET above, which counts against GitHub's shared
+anonymous rate limit. It refuses with nothing downloaded when that GET returns
+403 (the rate limit included), any other non-200 status or a network failure,
+and when the root's `go.sum` carries only the `/go.mod` checksum for an Assay
+version it requests. A require that a versioned `replace` points at another
+module still binds the Assay version it names, so such a root refuses until
+`go.sum` also carries that version's checksums.
+
+The screen reads a copy of each root's `go.mod` and `go.sum` taken once before
+it starts, and the download is bound to those bytes: a root whose files differ
+from the screened copy just before or just after its download refuses.
+
+It then prints one line naming the proxy, the checksum
+database, the roots and the cache before it downloads anything. The cache path may
+hold no comma, quote, whitespace or control character, since it is written into
+the container's `--mount` option list. It refuses if the download changes either file, records
+the cache's digest and roots in the receipt as `module_cache`, and prints the
+container flags the run needs: `--network none --read-only`, the cache mounted
+read-only at `/go/pkg/mod`, and `GOMODCACHE=/go/pkg/mod`, `GOPROXY=off`,
+`GOTOOLCHAIN=local`, `GOFLAGS=-mod=readonly`. A failed download is could-not-check
+with no receipt. The image's baked cache is never a fall-back.
+
+The container run refuses before any row unless GOMODCACHE is set and outside the
+verified root, `GOPROXY=off` and `GOTOOLCHAIN=local` hold, no checksum-loosening
+setting is present (`GONOSUMDB`, `GOINSECURE`, `GOPRIVATE`, `GONOPROXY`,
+`GOSUMDB=off`; `GONOSUMCHECK` and `GOFLAGS` with `-insecure` are refused too, as
+legacy settings the current Go toolchain does not read), the root and the cache
+are both mounted read-only, and the cache digests to the receipt's. It writes the
+digest as a `Module-Cache: sha256:<64 hex>` line between `Container-Image:` and the
+attestation, inside the bracket's digested span, and the close step refuses a
+witness whose `Module-Cache` is missing or is not the receipt's. On a home that
+lists module roots, both the container run and the close step also refuse a
+receipt that carries no `module_cache`, or one recorded for other roots, so a
+receipt edited after the open step cannot drop the requirement.
+
+**The baked cache.** The image still bakes a cache for unbracketed runs: its
+Dockerfile copies the release's `go-module-roots.txt` to
+`/usr/local/share/verify-runner/go-module-roots.txt` and runs `go mod download` for
+each root it lists, from the release's own `go.mod` and `go.sum`. That cache
+matches the source the release was built from, not a tree verified later. A
+container-netns run also reads the roots file in the image, compares
 each root's `go.mod` in the verified tree with the cache before any row, and
-prints the gap once. A row that exits non-zero naming a missing module is
-recorded could-not-run with `image module cache predates go.sum (<module> <want>
-vs <have>)` rather than as a failure; rows that do not touch a missing module
-keep their own verdict. The remedy is to run in the image of a release whose
-`go.mod` and `go.sum` for those roots match the verified tree, normally the
-first release that contains the verified commit. A requirement bump on main
-that no release contains yet cannot be verified offline until the next release.
+prints the gap once. A row that exits non-zero naming a missing module is recorded
+could-not-run with `image module cache predates go.sum (<module> <want> vs <have>)`
+rather than as a failure; rows that do not touch a missing module keep their own
+verdict.

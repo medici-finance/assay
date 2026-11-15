@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/medici-finance/assay/main/schemas/milestone-v1.json",
+  "title": "Delivery milestone record frontmatter (milestone-v1)",
+  "description": "Shape of one docs/streams/<stream>/milestones/m-<NN>-<slug>.md record's frontmatter, as statusgen's milestone loader enforces it (spec/milestone-v1.md §2-§3). Identity and version come only from milestone and contract-version, never from the filename. Ownership, alias normalization, duplicate versions, coverage and provenance are the loader's cross-record rules, not expressible here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "milestone",
+    "contract-version",
+    "title",
+    "owner",
+    "sources",
+    "contributes",
+    "requires-milestones"
+  ],
+  "properties": {
+    "schema": {
+      "const": "milestone-v1"
+    },
+    "milestone": {
+      "description": "Full colon-only <cell>:<repo>:<stream>:m-<NN>; the earlier draft <cell>:<repo>:<stream>/m-<NN> spelling is a compatibility input. No version selector.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*[:/]m-[0-9]{2,}$"
+    },
+    "contract-version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "title": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "owner": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "\\S"
+      }
+    },
+    "contributes": {
+      "description": "Brief references with an optional exact authored-revision selector; empty only for an existing capability whose criteria all cite evidence.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[^\\s@]+(@[1-9][0-9]*)?$"
+      }
+    },
+    "requires-milestones": {
+      "description": "Exact milestone-version references; empty explicitly means none.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[^\\s@]+@[1-9][0-9]*$"
+      }
+    }
+  }
+}

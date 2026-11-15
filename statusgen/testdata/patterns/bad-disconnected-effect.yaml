@@ -1,0 +1,76 @@
+# Fixture for pattern-signal-input, pattern-signal-admission-open and pattern-remedy-set-open: good-signal-example.yaml with the edge `root-cause -> propose`
+# removed (neither `propose` nor `review` is reachable from the signal input), and `admission`
+# and `refused-paths` both removed from `example-alert`.
+# This MUST make `statusgen patterns --lint` exit 1, naming pattern-signal-input, pattern-signal-admission-open and pattern-remedy-set-open.
+schema: workflow-pattern-v1
+pattern: signal-example
+version: 1
+risk-input: {low: [review], standard: [review], elevated: [review], human: [review]}
+signal-classes:
+  - id: example-alert
+    exit: judge
+    limits: {dedupe: per-culprit, open-ceiling: 3, rate: {count: 2, window: PT1H}, on-exceed: escalate}
+  - id: example-gate-red
+    admission: {triggers: [schedule, push], push-refs: [refs/heads/main]}
+    culprit-record:
+      fields: [check, file, line, problem, class, origin]
+      default-class: judgement
+      withheld: {class: judgement, file: null}
+    mechanical-exit: propose
+    remedies: [gofmt, stray-file-deletion, exact-stale-string-replace]
+    refused-paths: [.github/]
+    judgement-exit: judge
+    limits: {dedupe: per-culprit, open-ceiling: 3, rate: {count: 2, window: PT1H}, on-exceed: escalate}
+nodes:
+  - id: intake
+    kind: check
+    role: worker
+    inputs:
+      - signal: {source: "example-org/example-app#ci-main", liveness-check: "the source reported within the last hour", classes: [example-alert, example-gate-red]}
+    outputs: [signal-record]
+    evidence:
+      - {kind: command, claim: "the signal, its source and every open item it matches are recorded", mandatory: true}
+  - id: contain
+    kind: decision
+    role: human
+    inputs: [{artifact: signal-record}]
+    outputs: [containment-record]
+    containment:
+      - quarantine
+      - rollback
+      - secondary-auth
+      - stop
+      - none-needed
+  - id: root-cause
+    kind: artifact
+    role: worker
+    inputs: [{artifact: containment-record}]
+    outputs: [replay-fixture]
+    evidence:
+      - {kind: command, claim: "the replay fixture reproduces the failure on the pre-fix revision", mandatory: true}
+  - id: propose
+    kind: effect
+    role: worker
+    inputs: [{artifact: replay-fixture}]
+    outputs: [branch, draft-pr]
+    effects: [{kind: push, target: branch}, {kind: pr-open, target: draft-pr}]
+  - id: review
+    kind: check
+    role: reviewer
+    inputs: [{artifact: draft-pr}]
+    outputs: [approval]
+    evidence:
+      - {kind: review, claim: "a non-author reviewer approved the draft PR at its head", mandatory: true}
+  - id: judge
+    kind: decision
+    role: human
+    inputs: [{artifact: containment-record}]
+    outputs: [disposition]
+    options: [open-issue, wait, drop]
+    default: open-issue
+edges:
+  - {from: intake, to: contain}
+  - {from: contain, to: root-cause}
+  - {from: propose, to: review}
+  - {from: contain, to: judge}
+join: review

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/medici-finance/assay/main/schemas/reader-capabilities-v1.json",
+  "title": "Reader capability advertisement or mandatory requirements envelope",
+  "type": "object",
+  "if": {
+    "properties": {
+      "schema": {
+        "const": "reader-capabilities-v1"
+      }
+    },
+    "required": [
+      "schema"
+    ]
+  },
+  "then": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "schema",
+      "provider",
+      "version",
+      "operations"
+    ],
+    "properties": {
+      "schema": {
+        "const": "reader-capabilities-v1"
+      },
+      "provider": {
+        "type": "string",
+        "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+      },
+      "version": {
+        "type": "string",
+        "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+      },
+      "operations": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operation",
+            "schemas",
+            "semantics"
+          ],
+          "properties": {
+            "operation": {
+              "type": "string",
+              "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+            },
+            "schemas": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+              }
+            },
+            "semantics": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "else": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "schema",
+      "required"
+    ],
+    "properties": {
+      "schema": {
+        "const": "reader-requirements-v1"
+      },
+      "required": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operation",
+            "schemas",
+            "semantics"
+          ],
+          "properties": {
+            "operation": {
+              "type": "string",
+              "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+            },
+            "schemas": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+              }
+            },
+            "semantics": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

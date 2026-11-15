@@ -1,0 +1,1128 @@
+{
+  "$comment": "One stored performance-event-v1 line. Structural constraints only: the canonical Go validator in perfdata (DecodeEvent) additionally enforces canonical byte form (json.Marshal field order, no duplicate keys, no trailing data), the 8192-byte line bound, id = source-e<epoch>-s<seq>, cross-field measurement rules (inclusive CPU = own + descendant when all are measured; counts never exceeding their attempts; GraphQL point states accounting for every attempt; bins summing to count), the attempt identity on attempt events and a correction naming an earlier event of the same source. Normative text: spec/performance-event-v1.md.",
+  "$defs": {
+    "attempt": {
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "$ref": "#/$defs/outcome"
+        },
+        "state": {
+          "enum": [
+            "started",
+            "finished",
+            "abandoned"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "type": "object"
+    },
+    "context": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "pattern": "^pa-[a-z2-7]{26}$",
+          "type": "string"
+        },
+        "attempt": {
+          "pattern": "^pa-[a-z2-7]{26}$",
+          "type": "string"
+        },
+        "deskRole": {
+          "enum": [
+            "the-desk",
+            "worker-desk",
+            "pr-review-desk",
+            "verify-desk",
+            "intake-desk",
+            "unavailable"
+          ],
+          "type": "string"
+        },
+        "invocation": {
+          "pattern": "^pa-[a-z2-7]{26}$",
+          "type": "string"
+        },
+        "parentAgent": {
+          "pattern": "^pa-[a-z2-7]{26}$",
+          "type": "string"
+        },
+        "parentInvocation": {
+          "pattern": "^pa-[a-z2-7]{26}$",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "coordinate",
+            "implement",
+            "review",
+            "verify",
+            "triage",
+            "investigate",
+            "other",
+            "unavailable"
+          ],
+          "type": "string"
+        },
+        "session": {
+          "pattern": "^pa-[a-z2-7]{26}$",
+          "type": "string"
+        },
+        "sharedRefresh": {
+          "pattern": "^pa-[a-z2-7]{26}$",
+          "type": "string"
+        },
+        "work": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "brief",
+                  "issue"
+                ],
+                "type": "string"
+              },
+              "primary": {
+                "type": "boolean"
+              },
+              "ref": {
+                "pattern": "^pa-[a-z2-7]{26}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "ref"
+            ],
+            "type": "object"
+          },
+          "maxItems": 8,
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "correction": {
+      "additionalProperties": false,
+      "properties": {
+        "corrects": {
+          "pattern": "^src-[a-z2-7]{26}-e[1-9][0-9]{0,9}-s[1-9][0-9]{0,19}$",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "wrong-value",
+            "wrong-basis",
+            "wrong-attribution",
+            "retracted"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "corrects",
+        "digest",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "distribution": {
+      "additionalProperties": false,
+      "properties": {
+        "bins": {
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 32,
+          "minItems": 32,
+          "type": "array"
+        },
+        "count": {
+          "maximum": 1099511627776,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxMs": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "samples": {
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "sumMs": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": "log2ms-v1"
+        }
+      },
+      "required": [
+        "v",
+        "count",
+        "sumMs",
+        "maxMs",
+        "bins"
+      ],
+      "type": "object"
+    },
+    "handler": {
+      "additionalProperties": false,
+      "properties": {
+        "cache": {
+          "additionalProperties": false,
+          "properties": {
+            "bypass": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "hit": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "miss": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "stale": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "unavailable": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "bypass",
+            "hit",
+            "miss",
+            "stale",
+            "unavailable"
+          ],
+          "type": "object"
+        },
+        "coalescing": {
+          "additionalProperties": false,
+          "properties": {
+            "leader": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "waiter": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "leader",
+            "waiter"
+          ],
+          "type": "object"
+        },
+        "duration": {
+          "$ref": "#/$defs/distribution"
+        },
+        "operation": {
+          "pattern": "^[a-z][a-z0-9-]{0,31}$",
+          "type": "string"
+        },
+        "requests": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "upstream": {
+          "enum": [
+            "observed",
+            "unobserved"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "cache",
+        "coalescing",
+        "duration",
+        "operation",
+        "requests",
+        "upstream"
+      ],
+      "type": "object"
+    },
+    "health": {
+      "additionalProperties": false,
+      "properties": {
+        "flushTimeout": {
+          "maximum": 1099511627776,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "queueFull": {
+          "maximum": 1099511627776,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "refused": {
+          "maximum": 1099511627776,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "writeFailed": {
+          "maximum": 1099511627776,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "writeLatency": {
+          "$ref": "#/$defs/distribution"
+        }
+      },
+      "required": [
+        "flushTimeout",
+        "queueFull",
+        "refused",
+        "writeFailed",
+        "writeLatency"
+      ],
+      "type": "object"
+    },
+    "httpAttempts": {
+      "additionalProperties": false,
+      "properties": {
+        "attempts": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "class": {
+          "enum": [
+            "rest-read",
+            "rest-write",
+            "graphql",
+            "token-mint",
+            "local-service",
+            "other"
+          ],
+          "type": "string"
+        },
+        "duration": {
+          "$ref": "#/$defs/distribution"
+        },
+        "failed": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "forge": {
+          "enum": [
+            "github",
+            "gitlab",
+            "none",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "notModified": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "origin": {
+          "enum": [
+            "direct",
+            "service-passthrough",
+            "refresh",
+            "poll",
+            "repair",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "points": {
+          "$ref": "#/$defs/points"
+        },
+        "retries": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "scope": {
+          "const": "own"
+        }
+      },
+      "required": [
+        "attempts",
+        "class",
+        "duration",
+        "failed",
+        "forge",
+        "notModified",
+        "origin",
+        "retries",
+        "scope"
+      ],
+      "type": "object"
+    },
+    "measurement": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "ms"
+                ]
+              },
+              {
+                "required": [
+                  "method"
+                ]
+              }
+            ]
+          },
+          "properties": {
+            "basis": {
+              "const": "unavailable"
+            }
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "method"
+            ]
+          },
+          "properties": {
+            "basis": {
+              "const": "measured"
+            }
+          },
+          "required": [
+            "ms"
+          ]
+        },
+        {
+          "properties": {
+            "basis": {
+              "enum": [
+                "proxy",
+                "estimated"
+              ]
+            }
+          },
+          "required": [
+            "ms",
+            "method"
+          ]
+        }
+      ],
+      "properties": {
+        "basis": {
+          "enum": [
+            "measured",
+            "proxy",
+            "estimated",
+            "unavailable"
+          ],
+          "type": "string"
+        },
+        "method": {
+          "pattern": "^[a-z][a-z0-9-]{0,31}$",
+          "type": "string"
+        },
+        "ms": {
+          "maximum": 2678400000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "basis"
+      ],
+      "type": "object"
+    },
+    "outcome": {
+      "enum": [
+        "ok",
+        "error",
+        "refused",
+        "cancelled",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "phase": {
+      "additionalProperties": false,
+      "properties": {
+        "cpuOwn": {
+          "$ref": "#/$defs/measurement"
+        },
+        "phase": {
+          "enum": [
+            "boot",
+            "auth",
+            "audit",
+            "collect",
+            "page",
+            "enrich",
+            "classify",
+            "plan",
+            "workspace",
+            "source",
+            "packet",
+            "claim",
+            "recheck",
+            "child"
+          ],
+          "type": "string"
+        },
+        "startedAt": {
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "wall": {
+          "$ref": "#/$defs/measurement"
+        }
+      },
+      "required": [
+        "cpuOwn",
+        "phase",
+        "startedAt",
+        "wall"
+      ],
+      "type": "object"
+    },
+    "points": {
+      "additionalProperties": false,
+      "properties": {
+        "estimateMethod": {
+          "pattern": "^[a-z][a-z0-9-]{0,31}$",
+          "type": "string"
+        },
+        "estimatedSamples": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "estimatedSum": {
+          "maximum": 1099511627776,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failedSamples": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "measuredSamples": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "measuredSum": {
+          "maximum": 1099511627776,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unit": {
+          "enum": [
+            "github-points",
+            "gitlab-complexity"
+          ],
+          "type": "string"
+        },
+        "unknownSamples": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unsupportedSamples": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "estimatedSamples",
+        "failedSamples",
+        "measuredSamples",
+        "unit",
+        "unknownSamples",
+        "unsupportedSamples"
+      ],
+      "type": "object"
+    },
+    "serviceCall": {
+      "additionalProperties": false,
+      "properties": {
+        "duration": {
+          "$ref": "#/$defs/distribution"
+        },
+        "logicalCalls": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "operation": {
+          "pattern": "^[a-z][a-z0-9-]{0,31}$",
+          "type": "string"
+        },
+        "outcomes": {
+          "additionalProperties": false,
+          "properties": {
+            "cancelled": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "denied": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "error": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "ok": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "timeout": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cancelled",
+            "denied",
+            "error",
+            "ok",
+            "timeout"
+          ],
+          "type": "object"
+        },
+        "retries": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "transportAttempts": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "duration",
+        "logicalCalls",
+        "operation",
+        "outcomes",
+        "retries",
+        "transportAttempts"
+      ],
+      "type": "object"
+    },
+    "toolCompletion": {
+      "additionalProperties": false,
+      "properties": {
+        "children": {
+          "additionalProperties": false,
+          "properties": {
+            "started": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "uninstrumented": {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "started",
+            "uninstrumented"
+          ],
+          "type": "object"
+        },
+        "cpu": {
+          "additionalProperties": false,
+          "properties": {
+            "descendant": {
+              "$ref": "#/$defs/measurement"
+            },
+            "inclusive": {
+              "$ref": "#/$defs/measurement"
+            },
+            "own": {
+              "$ref": "#/$defs/measurement"
+            }
+          },
+          "required": [
+            "descendant",
+            "inclusive",
+            "own"
+          ],
+          "type": "object"
+        },
+        "outcome": {
+          "$ref": "#/$defs/outcome"
+        },
+        "startedAt": {
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "tool": {
+          "pattern": "^[a-z][a-z0-9-]{0,31}$",
+          "type": "string"
+        },
+        "verb": {
+          "pattern": "^[a-z][a-z0-9-]{0,31}$",
+          "type": "string"
+        },
+        "wall": {
+          "$ref": "#/$defs/measurement"
+        }
+      },
+      "required": [
+        "children",
+        "cpu",
+        "outcome",
+        "startedAt",
+        "tool",
+        "wall"
+      ],
+      "type": "object"
+    },
+    "usage": {
+      "additionalProperties": false,
+      "properties": {
+        "cacheReadTokens": {
+          "maximum": 1099511627776,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cacheWriteTokens": {
+          "maximum": 1099511627776,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cost": {
+          "additionalProperties": false,
+          "properties": {
+            "basis": {
+              "enum": [
+                "measured",
+                "estimated"
+              ],
+              "type": "string"
+            },
+            "currency": {
+              "pattern": "^[A-Z]{3}$",
+              "type": "string"
+            },
+            "method": {
+              "pattern": "^[a-z][a-z0-9-]{0,31}$",
+              "type": "string"
+            },
+            "microUnits": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "pricingRevision": {
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,31}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "basis",
+            "currency",
+            "microUnits",
+            "pricingRevision"
+          ],
+          "type": "object"
+        },
+        "inputTokens": {
+          "maximum": 1099511627776,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mode": {
+          "enum": [
+            "delta",
+            "cumulative"
+          ],
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "const": "unavailable"
+            },
+            {
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,31}$"
+            }
+          ],
+          "type": "string"
+        },
+        "outputTokens": {
+          "maximum": 1099511627776,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mode",
+        "model"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/medici-finance/assay/schemas/performance-event-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "tool.completion"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/toolCompletion"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "phase"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/phase"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "attempt"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/attempt"
+          },
+          "profile": {
+            "const": "workflow"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "usage"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/usage"
+          },
+          "profile": {
+            "const": "workflow"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "http"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/httpAttempts"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "service.call"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/serviceCall"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "service.handler"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/handler"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "health"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/health"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "correction"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/correction"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "tool"
+          }
+        },
+        "required": [
+          "profile"
+        ]
+      },
+      "then": {
+        "properties": {
+          "ctx": {
+            "propertyNames": {
+              "const": "invocation"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "build": {
+      "additionalProperties": false,
+      "properties": {
+        "arch": {
+          "pattern": "^[a-z0-9]{1,16}$",
+          "type": "string"
+        },
+        "os": {
+          "pattern": "^[a-z0-9]{1,16}$",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,31}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "arch",
+        "os",
+        "version"
+      ],
+      "type": "object"
+    },
+    "ctx": {
+      "$ref": "#/$defs/context"
+    },
+    "epoch": {
+      "maximum": 4294967295,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "id": {
+      "pattern": "^src-[a-z2-7]{26}-e[1-9][0-9]{0,9}-s[1-9][0-9]{0,19}$",
+      "type": "string"
+    },
+    "instrument": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "const": "perfdata"
+        },
+        "version": {
+          "const": "1"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "type": "object"
+    },
+    "kind": {
+      "enum": [
+        "tool.completion",
+        "phase",
+        "attempt",
+        "usage",
+        "http",
+        "service.call",
+        "service.handler",
+        "health",
+        "correction"
+      ],
+      "type": "string"
+    },
+    "occurredAt": {
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+      "type": "string"
+    },
+    "payload": {
+      "type": "object"
+    },
+    "policy": {
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,31}$",
+      "type": "string"
+    },
+    "profile": {
+      "enum": [
+        "tool",
+        "workflow"
+      ],
+      "type": "string"
+    },
+    "recordedAt": {
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+      "type": "string"
+    },
+    "schema": {
+      "const": "performance-event-v1"
+    },
+    "seq": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "source": {
+      "pattern": "^src-[a-z2-7]{26}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "build",
+    "epoch",
+    "id",
+    "instrument",
+    "kind",
+    "occurredAt",
+    "payload",
+    "policy",
+    "profile",
+    "recordedAt",
+    "schema",
+    "seq",
+    "source"
+  ],
+  "title": "performance-event-v1",
+  "type": "object"
+}

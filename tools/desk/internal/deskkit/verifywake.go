@@ -325,6 +325,7 @@ func (r WakeReceipt) EvaluateWake(reader WakeInputs, now time.Time) WakeDecision
 	switch r.WakePredicate {
 	case WakeRelevantInputChanged:
 		var changed, unreadable []string
+		var toolNow string
 		if scope, ok := reader.(receiptScopeReader); ok {
 			if err := scope.CheckReceiptScope(r); err != nil {
 				unreadable = append(unreadable, "declared scope: "+err.Error())
@@ -338,15 +339,22 @@ func (r WakeReceipt) EvaluateWake(reader WakeInputs, now time.Time) WakeDecision
 			}
 			if cur != r.Inputs[in] {
 				changed = append(changed, in)
+				if in == inputKeyTool {
+					toolNow = cur
+				}
 			}
 		}
-		if len(changed) > 0 {
+		toolOnly := toolOnlyChange(changed)
+		if len(changed) > 0 && !toolOnly {
 			return WakeDecision{State: WakeFire, Changed: changed,
 				Reason: base + " — woke: changed input(s): " + strings.Join(changed, ", ")}
 		}
 		if len(unreadable) > 0 {
 			return WakeDecision{State: WakeCouldNotCheck, Unreadable: unreadable,
 				Reason: base + " — could-not-check: unreadable declared input(s): " + strings.Join(unreadable, ", ")}
+		}
+		if toolOnly {
+			return WakeDecision{State: WakeHold, Reason: base + " — " + toolOnlyReason(r.Inputs[inputKeyTool], toolNow)}
 		}
 		return WakeDecision{State: WakeHold, Reason: base + " — all " + strconv.Itoa(len(r.Inputs)) + " declared input(s) unchanged"}
 
@@ -379,6 +387,21 @@ func (r WakeReceipt) EvaluateWake(reader WakeInputs, now time.Time) WakeDecision
 	}
 	// Unreachable: Complete() already rejected an unknown predicate.
 	return WakeDecision{State: WakeUnclassified, Reason: base + " — unknown predicate"}
+}
+
+// toolOnlyChange reports whether the ONLY declared input that changed is the tool version
+// (#2310). changed must hold raw input KEYS, never display labels: a file input whose path is
+// "tool" has the label "tool" and is not the tool input. Both comparators (EvaluateWake and
+// Unchanged) route through it, so a tool-only change holds on every path. A tool release by itself does not move a blocker: the receipt
+// still records the tool truthfully, and a tool change together with any other change still
+// wakes. A verifier who believes a release fixed the blocker uses an explicit recheck, or a
+// referenced-action blocker naming the fixing change.
+func toolOnlyChange(changed []string) bool {
+	return len(changed) == 1 && changed[0] == inputKeyTool
+}
+
+func toolOnlyReason(was, now string) string {
+	return "tool-only change (" + was + " -> " + now + "); blocker unmoved"
 }
 
 func refSuffix(ref string) string {
@@ -455,6 +478,12 @@ const (
 	InputKeyRepoSourcePrefix = "repo-source:"
 	inputKeyTool             = "tool"
 	inputKeyFilePrefix       = "file:"
+	// InputKeyDeclaredPrefix records a ../<sibling>/ declaration that a
+	// single-repository run holds no source commit for (#5097). Its only value
+	// is DeclaredUnbound. No reader resolves it, so a receipt carrying one is
+	// never read as unchanged.
+	InputKeyDeclaredPrefix = "declared:"
+	DeclaredUnbound        = "unbound"
 )
 
 // Revision content-hashes a declared input against the local tree. A "tool" key returns the
@@ -470,6 +499,10 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 			return "", false
 		}
 		return rr.ToolVersion, true
+	case strings.HasPrefix(input, InputKeyDeclaredPrefix):
+		// An unbound sibling declaration (#5097) has no tree this reader may
+		// read: always could-not-check, so it never establishes unchangedness.
+		return "", false
 	case strings.HasPrefix(input, InputKeyRepoSourcePrefix):
 		repo := strings.TrimPrefix(input, InputKeyRepoSourcePrefix)
 		root := RootForRepo(repo)
@@ -597,14 +630,17 @@ var _ WakeInputs = (*RootRevisionReader)(nil)
 type InputsState int
 
 const (
-	InputsUnchanged     InputsState = iota // every declared input read, every revision equal
+	InputsUnchanged     InputsState = iota // every declared input read; all equal, or only the tool differs (#2310)
 	InputsChanged                          // at least one declared input read with a different revision
 	InputsCouldNotCheck                    // no change observed, but some input could not be read
 )
 
 // Unchanged hashes every declared input of r at the current tree and compares it with the
 // revision the receipt recorded. It returns the state and a reason: "unchanged",
-// "changed <path>[, <path>…]" or "could-not-check <why>". An observed change wins over an
+// "unchanged (tool-only change (<was> -> <now>); blocker unmoved)" when the tool version is the
+// only input that differs (#2310), "changed <path>[, <path>…]" or "could-not-check <why>". A
+// label two changed inputs share (a file named "tool" beside the tool input) is shown as its
+// key instead, so the reason never lists one name twice. An observed change wins over an
 // unreadable sibling (a change is enough to wake); otherwise one unreadable input makes the
 // whole read could-not-check, because unchangedness cannot be established on a partial scope.
 // An empty scope, or no tree reader, is could-not-check too.
@@ -615,7 +651,11 @@ func Unchanged(r WakeReceipt, tree WakeInputs) (InputsState, string) {
 	if len(r.Inputs) == 0 {
 		return InputsCouldNotCheck, "could-not-check the receipt declares no inputs"
 	}
-	var changed, unreadable []string
+	// changedKeys carries the raw input keys and decides tool-only; changed carries the
+	// display labels for the reason only. A file named "tool" has the label "tool" but is a
+	// file input, so the decision must never be taken on labels (#2310).
+	var changed, changedKeys, unreadable []string
+	var toolNow string
 	if scope, ok := tree.(receiptScopeReader); ok {
 		if err := scope.CheckReceiptScope(r); err != nil {
 			unreadable = append(unreadable, "declared scope: "+err.Error())
@@ -628,13 +668,22 @@ func Unchanged(r WakeReceipt, tree WakeInputs) (InputsState, string) {
 			unreadable = append(unreadable, inputLabel(in))
 		case !strings.EqualFold(strings.TrimSpace(cur), strings.TrimSpace(r.Inputs[in])):
 			changed = append(changed, inputLabel(in))
+			changedKeys = append(changedKeys, in)
+			if in == inputKeyTool {
+				toolNow = cur
+			}
 		}
 	}
-	if len(changed) > 0 {
-		return InputsChanged, "changed " + strings.Join(changed, ", ")
+	toolOnly := toolOnlyChange(changedKeys)
+	if len(changed) > 0 && !toolOnly {
+		return InputsChanged, "changed " + strings.Join(distinctLabels(changed, changedKeys), ", ")
 	}
 	if len(unreadable) > 0 {
 		return InputsCouldNotCheck, "could-not-check unreadable input(s): " + strings.Join(unreadable, ", ")
+	}
+	if toolOnly {
+		// #2310: a tool-only change is not a change to the blocker's inputs.
+		return InputsUnchanged, "unchanged (" + toolOnlyReason(r.Inputs[inputKeyTool], toolNow) + ")"
 	}
 	return InputsUnchanged, "unchanged"
 }
@@ -642,6 +691,24 @@ func Unchanged(r WakeReceipt, tree WakeInputs) (InputsState, string) {
 // inputLabel is the human-facing name of an input key: the path of a file: key, else the key.
 func inputLabel(in string) string {
 	return strings.TrimPrefix(in, inputKeyFilePrefix)
+}
+
+// distinctLabels returns labels with every label that occurs more than once replaced by its
+// key (labels[i] is the label of keys[i]): a file named "tool" and the tool input both changing
+// read "file:tool, tool", never "tool, tool". It changes the reason text only, never a decision.
+func distinctLabels(labels, keys []string) []string {
+	seen := make(map[string]int, len(labels))
+	for _, l := range labels {
+		seen[l]++
+	}
+	out := make([]string, len(labels))
+	for i, l := range labels {
+		out[i] = l
+		if seen[l] > 1 {
+			out[i] = keys[i]
+		}
+	}
+	return out
 }
 
 // BlockerState is ReadBlocker's three-state verdict on the issue a receipt's blocker_ref names.

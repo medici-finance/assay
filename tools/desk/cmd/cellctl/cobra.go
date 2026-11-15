@@ -118,13 +118,23 @@ func rawVerb(args []string) bool {
 	return false
 }
 
+// endRun is the one reset every in-process entry runs on exit: it releases the admissions the run
+// took, then clears the verb and the verb words, so a later loadCell outside any run (a test, a
+// helper) starts from the state a fresh process has and cannot take a cell's admission lock or
+// leave .reset.lock behind (#6217). The release comes first because it reads the verb.
+func endRun() {
+	releaseMaintenanceAdmissions()
+	maintenanceCommand = ""
+	verbWords = nil
+}
+
 // runTree executes one invocation against a fresh tree and returns its exit code. It is the
 // only place that turns the exit panic into a code.
 func runTree(args []string) int { return runTreeSelected(args, nil) }
 
 func runTreeSelected(args []string, sink func(perfrec.Context)) (code int) {
 	maintenanceCommand = ""
-	defer releaseMaintenanceAdmissions()
+	defer endRun()
 	rawSelector, rawSelected, verbWords, cellsRootSelected = "", false, nil, ""
 	hook := hookVerb(args)
 	defer func() {
@@ -151,10 +161,16 @@ func runTreeSelected(args []string, sink func(perfrec.Context)) (code int) {
 		}
 		die("--cells-root requires an absolute registry path and a command")
 	}
+	// Preparation preserves its former argparse usage exit. Other cellctl verbs
+	// retain their existing usage code.
+	usageExit := 3
+	if i := verbIndex(args); i < len(args) && args[i] == "compat-prepare" {
+		usageExit = 2
+	}
 	// The pre-migration command-line shape, checked before anything parses or echoes.
 	if err := legacyShape(buildRoot(), args); err != nil {
 		fmt.Fprintf(os.Stderr, "cellctl: %v\nRun 'cellctl --help' for usage.\n", err)
-		return 3
+		return usageExit
 	}
 	i := verbIndex(args)
 	if i < len(args) {
@@ -194,7 +210,7 @@ func runTreeSelected(args []string, sink func(perfrec.Context)) (code int) {
 		IO:              cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr},
 		Version:         versionLine(),
 		VersionTemplate: "{{.Version}}\n",
-		UsageExit:       3,
+		UsageExit:       usageExit,
 		// Single-dash long flags are the Go flag package's spelling, which only scratch read.
 		GoFlagCompat: scratchLine(args),
 	})
@@ -453,7 +469,7 @@ func buildRoot() *cobra.Command {
 	declared = nil
 	root := cli.NewRoot("cellctl", "start, stop and scaffold an Assay CELL on one laptop")
 	root.Long = "cellctl starts, stops and scaffolds an Assay CELL on one laptop (the laptop route).\n\n" +
-		"Every command takes the cell as its first argument.\n\n" + helpConcepts
+		"Lifecycle commands take the cell as their first argument; compat-prepare takes --cell.\n\n" + helpConcepts
 	root.Example = "  cellctl ls\n  cellctl new mycell --kind house --repo ~/src/repo --roots 'o/r=/abs/path'\n  cellctl up mycell\n  cellctl --cells-root /abs/registry show mycell"
 	declare(root, cli.Binding{Key: "cells-root", Kind: cli.String, Flag: "cells-root", Persistent: true,
 		Usage: "absolute path of the cell registry to use for this run (overrides CELLS_ROOT)"})
@@ -481,8 +497,8 @@ func buildRoot() *cobra.Command {
 		return cmd.Help()
 	}
 	root.AddCommand(
-		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(),
-		smokeCmd(), statusCmd(), attachCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
+		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(), pauseCmd(), resumeCmd(), drainCmd(),
+		smokeCmd(), statusCmd(), attachCmd(), compatPrepareCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), hotfixCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(), scrubbedRunCmd(),
 	)
 	// The cellopfixture build adds the fixture verb and the stand-ins; the release build adds nothing.
@@ -705,7 +721,8 @@ func upCmd() *cobra.Command {
 			"  up      its cadence lease is held by a live process: reported already-up, never relaunched, its window\n" +
 			"          never touched;\n" +
 			"  stale   a running checkpoint with no live holder (a crashed session): plain up never reconciles it, the\n" +
-			"          role is reported failed and the exact recovery is named (up --plan, then up --apply);\n" +
+			"          role is reported failed naming the verb that clears its class (up --plan, then up --apply, for a\n" +
+			"          dead record; cadence recover --confirm-stopped, then up --role, for any other whose lease is free);\n" +
 			"  absent  launched, in the resolved COCKPIT: a tmux session \"<cell>-cell\" (an existing session gets only\n" +
 			"          the missing windows), a labelled herdr tab per role, or an orca terminal per role.\n" +
 			"A house cell opens no deskd window unless DESKD=1. --cockpit overrides cell.env CELL_COCKPIT for this run.\n" +
@@ -774,11 +791,15 @@ func upCmd() *cobra.Command {
 
 func downCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "down <cell>",
-		Short: "tear a cell's session down",
+		Use:   "down <cell> [role...]",
+		Short: "tear a cell's session down, or stop only the named roles",
 		Long: "Tear the session (and this cell's deskd) down. What `up` opened in a non-tmux cockpit is closed where that\n" +
 			"cockpit offers a verb for it, and named for you to close by hand where it does not. A container or scrubbed\n" +
-			"cell accepts no host cockpit or deskd flags.",
+			"cell accepts no host cockpit or deskd flags.\n\n" +
+			"With role arguments, down stops exactly the named roles (the per-role interim stop). Each must already be\n" +
+			"paused or drained; a role that is not is refused role-busy and down never pauses it. For each it stops the\n" +
+			"cadence, re-measures the idle signal, re-verifies the surface against its receipt and closes that one\n" +
+			"window, tab or terminal, on this terminal's confirm. It never closes the session or a sibling's surface.",
 		Annotations: map[string]string{leadingArgsKey: "1"},
 		Args:        cobra.ArbitraryArgs,
 	}
@@ -795,6 +816,14 @@ func downCmd() *cobra.Command {
 				die("compatibility down refuses host cockpit/deskd flags")
 			}
 			c.kubeDown(cmd, args[1:])
+			return nil
+		}
+		if len(args) > 1 && c.Kind != "container" && c.Kind != "scrubbed" {
+			// down <cell> <role...>: the per-role interim stop, never the session.
+			if cmd.Flags().Changed("keep-deskd") || cmd.Flags().Changed("cockpit") {
+				die("down <cell> <role...> stops only the named roles; it takes no --keep-deskd or --cockpit")
+			}
+			cmdDownRoles(cmd, c, args[1:])
 			return nil
 		}
 		cmdDown(cell, resolve(set, nil), args[1:], given)
@@ -896,7 +925,9 @@ func newCmd() *cobra.Command {
 			"--kind house: a LOCAL cell on the operator's laptop; the desks reuse the operator's config home by symlink,\n" +
 			"no deskd is required, every role still boots in its own LOCKED worktree. --roots '<owner>/<repo>=<abs path>,...'\n" +
 			"[--roles \"<role> ...\"] [--port N] [--forge gitlab [--group G] [--gitlab-api-base URL]] (a gitlab house cell\n" +
-			"links no gh config).\n\n" +
+			"links no gh config). [--labels-token-file FILE]: ensure the forge label set (one raised-by:/to: row per role\n" +
+			"the roster binds) on every --roots repo under that operator credential; without it, or when the forge denies\n" +
+			"it, the step prints NOT ENSURED with the deskfleet labels command that finishes it (exit 1 when FILE was given).\n\n" +
 			"--kind container: --repo <repo-id> with --launcher <absolute-executable> (an operator-owned launcher, no\n" +
 			"credentials copied) or --container-config <absolute JSON file> (the native Go runtime; see docs/cellctl.md).\n\n" +
 			"--kind scrubbed: --repo <checkout> --repo-slug <owner/repo> [--roots '...'] [--roles \"...\"], a host-local\n" +
@@ -921,6 +952,7 @@ func newCmd() *cobra.Command {
 		bStr("gitlab-token-store", "gitlab: role token store directory"),
 		bStr("roots", "the DESK_ROOTS map: '<owner>/<repo>=<abs path>,...'"),
 		bDef("roles", "space-separated roles", rolesDefault),
+		bStr("labels-token-file", "house: FILE holding an operator credential that can write labels; ensures the label set on every --roots repo"),
 	)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if len(args) > 1 {

@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/cellctl ./internal/cellcache ./internal/deskkit ./internal/cellscratch ./internal/cellprocess -run '^TestCellPrepBounded$/(walking_callers|cache_enrollment|history)|^TestCellPrepFences$|^TestCellLaunchTelemetry$|^TestCacheScanAdmission$|^TestMaintenanceScanBound$|^TestCacheEnrollmentTelemetry$|^TestCacheMaintenanceRecovery$' -count=1 -timeout=60s",
+  "test": "go test ./cmd/cellctl ./internal/cellcache ./internal/deskkit ./internal/cellscratch ./internal/cellrunner -run '^TestCellPrepBounded$/(walking_callers|cache_enrollment|history)|^TestCellPrepFences$|^TestCellLaunchTelemetry$|^TestCacheScanAdmission$|^TestMaintenanceScanBound$|^TestCacheEnrollmentTelemetry$|^TestCacheMaintenanceRecovery$' -count=1 -timeout=60s",
   "control": {
     "name": "remove preparation fence",
     "file": "internal/cellscratch/prepare.go",
@@ -35,11 +35,11 @@
       "name": "reclaim unacknowledged tree",
       "file": "internal/cellscratch/store.go",
       "old": "case receiptErr != nil:",
-      "new": "case receiptErr != nil: _ = s.remove(r.ID+\"/work\")"
+      "new": "case receiptErr != nil: _ = s.remove(r.ID+\"/work\", seen)"
     },
     {
       "name": "omit final cache telemetry",
-      "file": "internal/cellprocess/run.go",
+      "file": "internal/cellrunner/launch.go",
       "old": "deskkit.PerfStepEnabled(enabled, \"cellctl\", \"launch-cache-enrollment\", time.Since(began), phaseCode)",
       "new": "deskkit.PerfStepEnabled(false && enabled, \"cellctl\", \"launch-cache-enrollment\", time.Since(began), phaseCode)"
     },

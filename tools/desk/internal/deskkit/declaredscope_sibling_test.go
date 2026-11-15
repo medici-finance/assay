@@ -88,10 +88,18 @@ func TestSiblingEscapeRefused(t *testing.T) {
 		{"./../one/x.go", cross},
 		{"..//one/x.go", cross},
 		{"../one//x.go", cross},
-		{"../one/x.go", same}, // a same-repository run binds no sibling
 	} {
 		if _, err := siblingTestBuild(t, "files:\n- `"+tc.decl+"`", tc.in); ExitCodeOf(err) != ExitRefused {
 			t.Errorf("%q (source %q): got %v; want explicit refusal", tc.decl, tc.in.SourceRepo, err)
+		}
+		// A same-repository run records a well-formed sibling as declared and
+		// unbound (#5097, TestCtxSiblingSingleRepo); every malformed shape
+		// above refuses there too.
+		if tc.decl == "../other/x.go" {
+			continue
+		}
+		if _, err := siblingTestBuild(t, "files:\n- `"+tc.decl+"`", same); ExitCodeOf(err) != ExitRefused {
+			t.Errorf("%q (same repository): got %v; want explicit refusal", tc.decl, err)
 		}
 	}
 }

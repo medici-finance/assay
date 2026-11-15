@@ -300,6 +300,54 @@ Findings routed for filing:
 Gate: human. This is Evidence only: the status stays `implemented`, and a model never sets it to verified.
 
 VERIFY: FAIL — row R: the dependency-edge reciprocity lint does not report a self-referential (or one-sided) depends edge on brief-v2 briefs (--lint exit 0, LINT: PASS on a v2 self-loop fixture; every brief in the tree is v2); rows 5, 6, 7, A, L pass
+### Non-implementer verifier re-verify: 2026-10-30, assay-verifier-app[bot] @ 5fdae0d07b58 (claude-opus-5-5, tier strong). F3 re-check after the critical-stamp authority ruling
+
+Witness from `statusgen verifyrun` (installed statusgen v1.0.67, darwin-arm64; no GH_TOKEN in the run environment; KUBECONFIG=/dev/null). No row is check:ci, so all rows ran on the host:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 5 | `cd statusgen && go test ./ -run TestDriveCriticalTierNeverBuried -v` | could-not-run exit=0 — Expect requires a count ≥ 3 but the output carries no number to read | sha256:1ca8e9a95d9b | 2026-10-30 | assay-verifier-app[bot] @ 5fdae0d07b58 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd statusgen && go test ./ -run TestDriveAntiStarvationFloor -v` | pass exit=0 | sha256:a0ea5343128e | 2026-10-30 | assay-verifier-app[bot] @ 5fdae0d07b58 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go test ./ -run TestDriveOverlapAndCoverage -v` | pass exit=0 | sha256:e4f821da3005 | 2026-10-30 | assay-verifier-app[bot] @ 5fdae0d07b58 (on-behalf-of human:ian) (forge-identity) |
+| R | `cd statusgen && go test ./ -run TestDriveDepEdgeReciprocity -v` | pass exit=0 | sha256:449de70a13e4 | 2026-10-30 | assay-verifier-app[bot] @ 5fdae0d07b58 (on-behalf-of human:ian) (forge-identity) |
+| A | `cd statusgen && go test ./ -run TestDriveAbsentIsInert -v` | pass exit=0 | sha256:0477afd45094 | 2026-10-30 | assay-verifier-app[bot] @ 5fdae0d07b58 (on-behalf-of human:ian) (forge-identity) |
+| L | `cd statusgen && go run . --root .. --lint` | fail exit=1 | sha256:e60a91ded167 | 2026-10-30 | assay-verifier-app[bot] @ 5fdae0d07b58 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5003 run=29bdd09214993c88f0d4a3b7b2f5204555cb19090a5c59236d3c7ba48776ae46 source=5fdae0d07b58aba9042b112258727ac33862bd93 brief=docs/streams/statusgen/brief-05-drives-phase3-floors-critical-tier.md model=claude-opus-5-5 tier=strong
+
+Hand-run rows at the same source (5fdae0d07b58), re-run with `-v` so the subtests can be read:
+
+- **Row 5** (2026-10-30): `cd statusgen && go test ./ -run TestDriveCriticalTierNeverBuried -v`. Expected exit 0 with the critical tier ranked above all scores. Observed exit 0 with all 13 subtests PASS, among them high-unblocks-outranks-surge, stamped-security-authorized-only, stamped-security-authority-from-config, reviewer-finding-arm, reviewer-finding-reaches-board-via-control, no-intensity-passes-the-tier, main-red-fix-outranks-surge, main-red-needs-red-and-linkage (4 cases) and main-red-could-not-check-is-named. The witness records the row as **could-not-run exit=0** because verifyrun reads "blockedCount≥3" in the Expect prose as an output count assertion ("Expect requires a count ≥ 3 but the output carries no number to read"). That number is a property the test checks, not something the output prints. The count the verifier reads comes from the `go test` trailer line, so the result depends on the test cache: an uncached run prints a duration there, and an earlier `--dry-run` at this source recorded `pass` on that duration. This is a check-definition defect, not an implementation failure. The row obligation (exit 0, all subtests pass) was observed by hand, but the witness does not discharge it.
+- **Row 6** (2026-10-30): `cd statusgen && go test ./ -run TestDriveAntiStarvationFloor -v`. Expected exit 0 with the 15/20 slot floor and the 6/8 worker floor. Observed exit 0 with all 10 subtests PASS (worker floor, the 15-of-20 two-pass fill with backfill, effectiveCap = min(driveStreamCap, maxConcurrent), maxConcurrent always wins). The witness agrees: pass.
+- **Row 7** (2026-10-30): `cd statusgen && go test ./ -run TestDriveOverlapAndCoverage -v`. Expected exit 0 with no regression. Observed exit 0 with 4 subtests PASS. The witness agrees: pass.
+- **Row R** (2026-10-30): `cd statusgen && go test ./ -run TestDriveDepEdgeReciprocity -v`. Expected exit 0 with dangling and self-referential edges reported as PROBLEMs. Observed exit 0 with 13 subtests PASS, now including v2-self-depends-is-a-problem, v2-self-unblocks-is-a-problem, v2-one-sided-depends-is-a-notice and v2-reciprocated-edge-passes. The witness agrees: pass. Under the driver ruling, a one-sided edge is reported as a NOTICE, not a PROBLEM.
+- **Row A** (2026-10-30): `cd statusgen && go test ./ -run TestDriveAbsentIsInert -v`. Expected exit 0 with an inert board when no drive is active. Observed exit 0, PASS. The witness agrees: pass.
+- **Row L** (2026-10-30): `cd statusgen && go run . --root .. --lint`. Expected exit 0 with this brief and its README row lint-clean. Observed exit 1, `LINT: FAIL 1 problem(s)`. The only PROBLEM is `desktools-v2/65: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required`, which names another brief (tracked as #4823). No PROBLEM names statusgen/05. It gets NOTICEs only: gotest-run-vacuous on its `go test` rows, gate:human at `implemented` with no decision-issue, and a could-not-check stale FAIL. Held as **could-not-run**. The row's exit-0 obligation cannot be met offline while the whole-tree lint is red on an unrelated brief, and the part this brief owns (no PROBLEM names this brief) was observed clean.
+
+Finding status against the 2026-09-30 re-verify:
+
+- **F1 (brief-v2 reciprocity lint blind): FIXED.** The edge lints now key v2 briefs by `<stream>/<NN>` (statusgen/brieffile.go:2013, `checkRef` self-ref at :2157). Row R's v2 subtests pass. A whole-tree lint emits one-sided NOTICEs on v2 briefs. Supplemental probe (discharges no row): on a throwaway clone at 5fdae0d07b58, adding a self-depends `graph-execution/08` to that v2 brief produced `PROBLEM: … depends "graph-execution/08" is self-referential`. The clone was discarded.
+- **F3 (stamped-security arm granted nothing): DISCHARGED.** I read the deployed roster configuration myself. It now sets `ASSAY_CRITICAL_STAMP_AUTHORITIES=assay-reviewer-app`, per the driver's recorded ruling. The installed statusgen v1.0.67 echoes `assay-config: ASSAY_CRITICAL_STAMP_AUTHORITIES=assay-reviewer-app` from a configured roster with no Problems, so `wireCriticalStampAuthorities` applies it. Supplemental end-to-end probe (discharges no row): on a throwaway clone at 5fdae0d07b58, with the existing push drive active, I ran `--next-up --main-health green`.
+  - Baseline: `graph-execution/08` (score 2000) is non-critical at index 14.
+  - With its README Reviewed cell stamped `critical-security(assay-reviewer-app)`: the row moves to index 11 with criticalArm `security`. That places it in the critical tier, above the non-critical graph-execution/11 (score 2500) and measured-status/06 (2200).
+  - Negative control, stamped `critical-security(someone-else)`: the row stays non-critical at index 14.
+  The arm is live and authority-gated.
+- **F2 (main-red arm has no deployed input): STILL OPEN.** The tree has no CI or desk caller that passes `--main-health`, so the main-red arm cannot fire on a real board. It is unit-covered by row 5 only.
+- **F4: unchanged** from the 2026-09-30 re-verify.
+
+Risk-bearing values, enumerated and ranked:
+
+- highUnblocksThreshold = 3 @ statusgen/drivecritical.go:78
+- driveSlotCap = 15 @ statusgen/drives.go:94
+- ASSAY_CRITICAL_STAMP_AUTHORITIES = assay-reviewer-app @ deployed roster configuration (outside the tree; key at statusgen/rosterconfig.go:391); compiled default criticalStampAuthorities = map[string]bool{} @ statusgen/drivecritical.go:91
+- driveWorkerCap = 6 @ statusgen/drives.go:95
+- weightP0 = 3000, weightP1 = 2000 @ statusgen/nextup.go:14-15; unblocksWeight = 500 @ statusgen/nextup.go:47; driveFocusWeight = 800 @ statusgen/drives.go:51; stalenessCapDays = 30, stalenessPerDay = 10 @ statusgen/nextup.go:17-18; defaultSpanOfControl = 20 @ statusgen/nextup.go:57; perStreamCap = 4 @ statusgen/nextup.go:25
+
+RISK-VALUE: DERIVED — highUnblocksThreshold = 3: 3 × unblocksWeight 500 = 1500, which exceeds the P0−P1 gap of 3000 − 2000 = 1000; 2 × 500 = 1000 does not. 3 is therefore the smallest count whose unblocks bonus alone could invert a priority band, and that is the point at which the tier must take over from score.
+RISK-VALUE: DERIVED — driveSlotCap = 15: the staleness ceiling of 30 × 10 = 300 is below driveFocusWeight 800, so score aging can never lift non-drive work past a focused drive. Reserved slots are therefore required for the floor. 20 − 15 = 5 of defaultSpanOfControl 20 is the reserved non-drive share.
+RISK-VALUE: NAMED, NOT DERIVED — ASSAY_CRITICAL_STAMP_AUTHORITIES = assay-reviewer-app: a human-ratified authority binding. I verified it is wired and gating (see F3), but the choice of authority is a governance decision, not a derived value.
+RISK-VALUE: NAMED, NOT DERIVED — driveWorkerCap = 6: the 6-of-8 worker floor as ratified. No derivation is given in the tree.
+
+**VERIFY: BLOCKED** — 4 of 6 rows discharge on the witness (6, 7, R, A). Row 5 is could-not-run on a check-definition defect: verifyrun reads "blockedCount≥3" in the Expect as an output count, although by hand the row exits 0 with all subtests passing. Row L is could-not-run on an environment/check-definition blocker: the whole-tree lint is red only on desktools-v2/65's acceptance-forge could-not-check (#4823), and this brief is lint-clean. No acceptance obligation was observed failing. F1 is fixed, F3 is discharged, and F2 remains open. Gate: human. This is Evidence only: the status stays `implemented`, and no model flips it.
 
 ## Review
 Gate: human. This phase adds the hard critical tier (a lexicographic order ABOVE every score) and the

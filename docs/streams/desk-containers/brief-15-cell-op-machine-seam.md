@@ -176,5 +176,43 @@ Risk-bearing values (frontmatter risk: all no, irreversible: no; enumerated over
 
 **VERIFY: PASS** — 14/14 rows; row 12a satisfied by the corroboration run against the delivering commit's own diff (the literal form has no branch diff on merged main). Gate stays human: this records Evidence only, with no status change.
 
+### Non-implementer execution witness — 2026-11-01
+
+Ran the whole Verify table through the installed statusgen v1.0.67 `verifyrun --brief` on merged main ab6803d9f65c63121d2272bc140d306220d7ccba, darwin/arm64, go1.27.2, offline. The desk-session markers stayed set in the row environment. The table below is the tool's output, unaltered: 12 pass, 2 fail.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `go -C tools/desk test ./internal/cellop/ -count=1 -v` | pass exit=0 | sha256:450272ef898e | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 2 | `go -C tools/desk test ./internal/cellop/ -run 'TestContractExamplesValidate' -count=1 -v` | pass exit=0 | sha256:6f6a77862146 | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 3 | `go -C tools/desk test ./internal/cellop/ -run 'TestConcurrentApplyRunsOnce' -count=1 -v` | pass exit=0 | sha256:8408af54bd56 | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 4 | `go -C tools/desk test ./internal/cellop/ -run 'TestApplyReverifies' -count=1 -v` | pass exit=0 | sha256:acaea49c47c4 | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 5 | `go -C tools/desk test ./internal/cellop/ -run 'TestPlanExpiryAndForeignCell' -count=1 -v` | pass exit=0 | sha256:8810239fa34b | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 6 | `go -C tools/desk test ./internal/cellop/ -run 'TestMarkerResetBound' -count=1 -v` | pass exit=0 | sha256:72d91eceed17 | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 7 | `go -C tools/desk test ./internal/cellop/ -run 'TestBatchConsumedFirstAndStops' -count=1 -v` | pass exit=0 | sha256:a55dea2cb116 | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 8 | `go -C tools/desk test -tags cellopfixture ./cmd/cellctl/ -run 'TestEveryStateChangingInvocationRequiresTTY' -count=1 -v` | pass exit=0 | sha256:4eea0a2e440d | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 8b | `go -C tools/desk test -tags cellopfixture ./cmd/cellctl/ -run 'TestApplyRefusesDeskSession' -count=1 -v` | pass exit=0 | sha256:4d1f2176ae03 | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 9 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestNoApprovalSurface' -count=1 -v` | pass exit=0 | sha256:497f3ec6ee33 | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 10 | `go -C tools/desk test -tags cellopfixture ./cmd/cellctl/ -run 'TestPlanApplyRoundTrip' -count=1 -v` | pass exit=0 | sha256:3d07dc38b39d | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 11 | `go -C tools/desk run ./cmd/cellctl/ cellop-fixture 2>&1 \| grep -c 'unknown command "cellop-fixture"'` | fail exit=1 | sha256:4355a46b19d3 | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 12 | `statusgen --root . --lint` | fail exit=1 | sha256:3eb7c5a646c0 | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 12a | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-containers/15 --delivery 6cb553e1a1778c9de1ca22370388fd3a05112718 --base 92d3d10f1f3a614755f7acdbc42db05cf79728f9 > "$o" && cat "$o" && grep -Fxq 'summary: 3 corroborated, 0 disproved, 3 unchecked, 0 brief(s) claiming nothing' "$o")` | pass exit=0 | sha256:e684a18755ff | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5163 run=0df0c541b531dda904cba89445431c07d750af6354bee6c270d5fee8016abc86 source=ab6803d9f65c63121d2272bc140d306220d7ccba brief=docs/streams/desk-containers/brief-15-cell-op-machine-seam.md model=claude-opus-5-5 tier=strong
+
+Row 11, primary output: the pipeline printed `1` (the witness hash sha256:4355a46b19d3 is the hash of that one line). `go run` printed `cellctl: unknown command "cellop-fixture" for "cellctl"` and exited 1, and verifyrun runs rows under `bash -o pipefail`, so the pipeline's status is 1 where the harness expects 0. The behaviour the Expect names was observed; the row as written cannot pass this runner.
+
+Row 12, primary output: `PROBLEM: desktools-v2/65: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required` and `LINT: FAIL 1 problem(s)`. That is another brief's protected table, and the row's literal form lacks the flag the repository's own lint workflows pass. No PROBLEM names this brief. Supplemental probe, no acceptance credit: `statusgen --root . --lint --acceptance-forge` with a verifier token, on this tree including this witness, exited 0 with `LINT: PASS`.
+
+Rows 1-10, 12a, read beyond exit status: every `-run` selector matched and ran with zero skips and zero failures in a separate inspection run of the same commands (row 1: 13 top-level tests, including all six named; row 8: seven subtests). Row 12a printed `summary: 3 corroborated, 0 disproved, 3 unchecked, 0 brief(s) claiming nothing`; the three unchecked out-of-scope entries are the reviewer's call.
+
+Supporting, no acceptance credit (the +mutation half of rows 3, 7 and 8): `go -C tools/desk run ./cmd/muhar -spec internal/cellop/mutations.json` in a scratch clone at the same commit, exit 0: `Harness healthy: baseline GREEN, positive control CAUGHT.` and `Totals: 13 caught, 0 NOT CAUGHT, 0 could-not-mutate.` The truth-suite workflow's mutation matrix still does not list this spec.
+
+Risk-bearing values (frontmatter risk: all no, irreversible: no), re-read at this commit over the cellop package; every entry is reversible by an edit and a release:
+- RISK-VALUE: DERIVED — Expiry = 10 * time.Minute @ tools/desk/internal/cellop/plan.go:20 — the brief's fixed 10-minute expiry.
+- RISK-VALUE: DERIVED — ConfirmLen = 8 @ tools/desk/internal/cellop/plan.go:23 — the brief's first 8 hex characters of the digest.
+- RISK-VALUE: DERIVED — exit codes 0 / 5 / 6 / 1 @ tools/desk/internal/cellop/result.go:48, 50, 52, 54 — the brief's exit-code table.
+- RISK-VALUE: DERIVED — file mode 0o600 @ tools/desk/internal/cellop/consume.go:53, 116 (directories 0o700 @ consume.go:45, 113) — the brief's plans stored 0600, with O_EXCL creation as the atomic consume.
+
+**VERIFY: FAIL** — rows 11 and 12 exit 1 against their Expect, as witnessed above; 12 of 14 rows pass. Both traces end in the row definition under the current runner and lint, with no cellop or cellctl behaviour observed wrong. Closure needs a reviewed definition repair of those two rows and a fresh run. Gate stays human: Evidence only, with no status change.
+
 ## Review
 Gate: human (see gate-why). The reviewer answers both core-system questions honestly: the single control between a desk and a state change it starts is NONE beyond the operator's account today (stated in the SPOF line and the spec); rows 3, 4 and 7 prove the lower layers (re-measure and atomic consume) against races, and are not presented as authorization.

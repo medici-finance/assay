@@ -114,7 +114,15 @@ func (s RaisedByState) Answered() bool { return s == RaisedByStamped }
 // second copy the derive-or-diff rule exists to prevent, and it would let a tool stamp a
 // role the deployment does not have.
 func RaisedByRoles() []string {
-	c := EffectiveConfig()
+	return EffectiveConfig().BoundRoles()
+}
+
+// BoundRoles is RaisedByRoles over an explicit Config rather than the process's effective
+// one: the roles c binds, lowercased and sorted, or nil when c is unconfigured. It is the
+// ONE projection of the role vocabulary — RaisedByRoles is this over EffectiveConfig — so a
+// caller that loads a roster other than its own (cellctl reading a cell's roster) derives
+// exactly the vocabulary `deskfile --raised-by` / `--to` resolve against inside that cell.
+func (c Config) BoundRoles() []string {
 	if !c.Configured() {
 		return nil
 	}

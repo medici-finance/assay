@@ -21,7 +21,15 @@ func crossRepoVisibilityRoster(t *testing.T, tracking, source string) {
 	t.Helper()
 	cfgMu.Lock()
 	previous, once := cfgValue, cfgOnce
-	cfgValue = parseConfig(ClassWrite, "offline fixture", parseDotenv(strings.ReplaceAll(raisedByFixtureRoster, "example-desk-app", "example-desk")+"\nASSAY_ALLOWED_REPOS=example-org/one:ci:"+source+",example-org/tracking:ci:"+tracking+"\n"))
+	// "unknown" writes a bare entry with no visibility token, so that side reads
+	// VisibilityUnknown rather than a parse problem.
+	entry := func(slug, vis string) string {
+		if vis == "unknown" {
+			return slug
+		}
+		return slug + ":ci:" + vis
+	}
+	cfgValue = parseConfig(ClassWrite, "offline fixture", parseDotenv(strings.ReplaceAll(raisedByFixtureRoster, "example-desk-app", "example-desk")+"\nASSAY_ALLOWED_REPOS="+entry("example-org/one", source)+","+entry("example-org/tracking", tracking)+"\n"))
 	cfgOnce = true
 	cfgMu.Unlock()
 	t.Cleanup(func() { cfgMu.Lock(); cfgValue, cfgOnce = previous, once; cfgMu.Unlock() })
@@ -460,6 +468,10 @@ func TestVerifierVisibilityRank(t *testing.T) {
 		{"internal", "internal", true},
 		{"internal", "public", true},
 		{"private", "internal", true},
+		// An unstated visibility on either side cannot be ranked and refuses, even
+		// against the least exposed (private) or most exposed (public) other side.
+		{"unknown", "private", false},
+		{"public", "unknown", false},
 	} {
 		t.Run(tc.tracking+"-"+tc.source, func(t *testing.T) {
 			crossRepoVisibilityRoster(t, tc.tracking, tc.source)

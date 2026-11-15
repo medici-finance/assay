@@ -42,7 +42,8 @@ func (r verifyRow) runnerExecuted() bool {
 // located by header NAME (#, class, command), never position — mirroring row-classes.md and
 // the statusgen parser — so inserting a Class column disturbs nothing. A table with no
 // `Class` column is legacy: every row defaults to `check`. Rows whose `#` cell is not an
-// integer are outside verdict-v1; the scheduling reader retains exact suffixed IDs.
+// integer are outside verdict-v1; the scheduling reader retains exact suffixed
+// IDs and letter-led labels (deskkit.ParseVerifyRowID).
 func parseVerifyRows(briefContent string) []verifyRow {
 	// Preserve the exact historical Atoi execution contract, independently of the
 	// stricter canonical identities required before scheduling can reuse observations.
@@ -53,7 +54,8 @@ func parseVerifyRows(briefContent string) []verifyRow {
 // shared half of parseVerifyRows (exact `## Verify` heading, the runner's contract) and the
 // per-row content derivation in briefscan.go, which reads the qualifier-aware extractVerify
 // section — so both read the Command cell by the same header-named rule.
-// ID retains an exact positive number plus optional ASCII letter suffix; Num is
+// ID retains an exact positive number plus optional ASCII letter suffix, or an
+// exact letter-led label (deskkit.ParseVerifyRowID); Num is
 // populated only for the separate integer-only verdict-v1 execution contract.
 func parseVerifyRowsIn(section string) []verifyRow {
 	return parseVerifyRowsMode(section, true)

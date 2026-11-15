@@ -124,6 +124,14 @@ func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) int) i
 }
 
 func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer) int, record func(func() int) int, sinks ...func(perfrec.Context)) int {
+	// Additive offline discovery; bare version output and help stay unchanged.
+	if len(args) == 2 && (args[0] == "--version" || args[0] == "version") && args[1] == "--json" {
+		if err := json.NewEncoder(stdout).Encode(map[string]any{"version": versionLine(), "readerCapabilities": deskkit.ReaderCapabilities(deskkit.EffectiveToolVersion(version), "deskboard")}); err != nil {
+			fmt.Fprintln(stderr, err)
+			return deskkit.ExitUnverifiable
+		}
+		return 0
+	}
 	var sink func(perfrec.Context)
 	if len(sinks) > 0 {
 		sink = sinks[0]

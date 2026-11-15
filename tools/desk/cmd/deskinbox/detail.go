@@ -30,7 +30,9 @@ var fetchDetail = func(repo deskkit.ForgeRepo, number int, observers ...deskkit.
 	if ferr != nil {
 		return issueDetail{Unavailable: true}
 	}
-	iss, ierr := f.GetIssue(fr, number)
+	// The inbox lists open ISSUES, so the detail read names that kind: on GitLab issue #N and
+	// merge request !N coexist and the bare resolver refuses such a number (#6264).
+	iss, ierr := f.GetIssueTyped(fr, number, deskkit.TargetIssue)
 	if ierr != nil {
 		return issueDetail{Unavailable: true}
 	}

@@ -578,6 +578,14 @@ func BuildOutcomeRecord(raw []byte, in OutcomeReceiptInput, tree OutcomeTree) ([
 		}
 		inputs[InputKeyRepoSourcePrefix+repo] = commit
 	}
+	// A single-repository run holds no source commit for any sibling (#5097):
+	// record each sibling declaration as declared and unbound, never as read.
+	// A cross-repository run gets no marker, so its unbound sibling still refuses.
+	if in.SourceRepo == "" && in.Source == "" && len(in.SiblingSources) == 0 {
+		for _, decl := range siblings {
+			inputs[InputKeyDeclaredPrefix+decl] = DeclaredUnbound
+		}
+	}
 	if err := CheckSiblingCoverage(siblings, inputs); err != nil {
 		return nil, err
 	}

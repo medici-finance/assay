@@ -12,7 +12,7 @@ design: DR-forge-library
 issues: [2395]
 schema: brief-v2
 outcome: none
-version: 2
+version: 3
 id: f6e03aed-326e-4cb0-aa40-3194727e140c
 authored: 2026-10-25 by desktools-v2 authoring session
 sources:
@@ -158,7 +158,7 @@ selector is failure. Mutations are planted in the production owner, never a copy
 | 5 | check:ci +flow | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCarriedCustodyRecords$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestCarriedCustodyRecords ' "$out")` | exit 0; named PASS; one subtest per carried record (DR-desktools-v2-03, DR-forge-neutral-34, -14, -17, DR-forge-gitlab-11) runs its existing refusal against the library directly and through the verb |
 | 6 | check +mutation | `sh tools/desk/scripts/forge-ban.sh` | exit 0 on the clean tree, and the output names the combined gh/glab launch count with statusgen included. A planted `exec.Command("gh", …)` in a new statusgen or library file makes the script exit non-zero |
 | 7 | check:ci | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeSurfaceUnchangedByDeskread$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestForgeSurfaceUnchangedByDeskread ' "$out")` | exit 0; named PASS; the frozen `Forge` operation set gains no method |
-| 8 | check +dereference | `(cd forgeread && GOWORK=off go list -deps . \| { grep -x -e net/http -e os/exec \|\| [ $? -eq 1 ]; } \| wc -l)` | output `0`; the forgeread root package still links no transport or process launch after the library composes its adapters |
+| 8 | check +dereference | `(cd forgeread && GOWORK=off go list -deps . \| { grep -x -e net/http -e os/exec \|\| [ $? -eq 1 ]; } \| wc -l)` | output is `0`; the forgeread root package still links no transport or process launch after the library composes its adapters |
 | 9 | check +dereference | `statusgen --root . --consumers --brief desktools-v2/75 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | pre-merge, on the implementation branch: exit 0; the declared routing corroborates the actual diff; out-of-scope judgments remain UNCHECKED and reviewer-owned; a could-not-check is never recorded as a pass |
 
 ## Pre-mortem and detection
@@ -185,3 +185,19 @@ Gate: human. Review answers both: (1) the single control between a leaked or mis
 a private repository is the client's constructor binding — is the forge-side installation scope
 behind it acceptable? (2) do rows 3 and 4 prove the lower layer refuses with the verb layer
 bypassed? Approval grants no new identity, scope or deployment.
+
+## Incremental mirror read consumer — 3 November 2026
+
+The early admitted-reader contribution `assay:assay:forge-neutral:47` adds exactly two
+enumerated read methods, ChangesUpdatedSince and IssuesUpdatedSince, in the existing
+provider adapters and admitted composition. This library migration consumes those methods
+when present, retaining their context, provider/repository identity, completeness and
+read-only/CI write-fence behavior. Reuse the existing adapter implementation; do not grow
+a second mirror source or credential path. This is a consumer inventory obligation, not a
+new start prerequisite for this brief and not a claim that either delivery is accepted.
+
+The native response-allocation bound contribution `assay:assay:forge-neutral:48`, when
+present, remains the one shared mirror-only byte-bound implementation. Relocate and reuse
+its native provider controls rather than adding another wrapper or treating library
+relocation as qualification. Its transport evidence does not satisfy /37's joined durable
+mapper/watermark requirement. This is a consumer obligation, not a new start prerequisite.

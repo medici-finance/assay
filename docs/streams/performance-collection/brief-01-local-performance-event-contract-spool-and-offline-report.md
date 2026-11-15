@@ -3,14 +3,15 @@ brief: assay:assay:performance-collection:01
 title: "Local performance event contract, spool and offline report"
 why: "Operators need useful local measurements before a collector or database exists. A versioned local record and reader establish the consent, identity and coverage seam that later storage and transport can consume without changing old telemetry promises."
 wave: 0
-depends: []
-unblocks: ["performance-collection/02", "performance-collection/03", "performance-collection/05"]
+depends: ["desktools-v2/16"]
+unblocks: ["performance-collection/02", "performance-collection/03", "performance-collection/05", "desktools-v2/17"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Correlated operational measurements and their access/retention boundary require review of the implemented field policy and isolation; tests do not authorize live collection."
 decision-trigger: spec
 issues: []
+decision-issue: 5171
 schema: brief-v2
 version: 5
 id: 1f12e2ac-a0b9-4881-a452-4be522f432ad
@@ -33,30 +34,33 @@ domain: complicated
 outcome: none
 consumers:
   - "perfrec/: out-of-scope (desktools-v2/61 owns the existing local recorder; this brief defines the separate correlated collection contract)"
-  - "perfdata/go.mod: follow-up performance-collection/01"
-  - "perfdata/event.go: follow-up performance-collection/01"
-  - "perfdata/event_test.go: follow-up performance-collection/01"
-  - "perfdata/consent.go: follow-up performance-collection/01"
-  - "perfdata/local/: follow-up performance-collection/01"
-  - "perfdata/report/: follow-up performance-collection/01"
-  - "perfdata/cmd/perfdata/: follow-up performance-collection/01"
-  - "perfdata/testdata/: follow-up performance-collection/01"
-  - "spec/performance-event-v1.md: follow-up performance-collection/01"
-  - "schemas/performance-event-v1.json: follow-up performance-collection/01"
-  - "schemas/performance-batch-v1.json: follow-up performance-collection/01"
-  - "docs/telemetry.md: follow-up performance-collection/01"
-  - "docs/performance-collection.md: follow-up performance-collection/01"
-  - "docs/contracts.md: follow-up performance-collection/01"
-  - "docs/proposals/non-ci-architecture/11-target-architecture.md: follow-up performance-collection/01"
-  - "docs/proposals/non-ci-architecture/14-storage-forge-graph.md: follow-up performance-collection/01"
-  - "docs/proposals/non-ci-architecture/16-delivery-sequence.md: follow-up performance-collection/01"
-  - "docs/streams/continuing-operations/proposed-briefs.md: follow-up performance-collection/01"
+  - "perfdata/go.mod: fixed-here"
+  - "perfdata/event.go: fixed-here"
+  - "perfdata/event_test.go: fixed-here"
+  - "perfdata/consent.go: fixed-here"
+  - "perfdata/local/: fixed-here"
+  - "perfdata/report/: fixed-here"
+  - "perfdata/cmd/perfdata/: fixed-here"
+  - "perfdata/testdata/: fixed-here"
+  - "spec/performance-event-v1.md: fixed-here"
+  - "schemas/performance-event-v1.json: fixed-here"
+  - "schemas/performance-batch-v1.json: fixed-here"
+  - "docs/telemetry.md: fixed-here"
+  - "docs/performance-collection.md: fixed-here"
+  - "docs/contracts.md: fixed-here"
+  - "docs/proposals/non-ci-architecture/11-target-architecture.md: fixed-here"
+  - "docs/proposals/non-ci-architecture/14-storage-forge-graph.md: fixed-here"
+  - "docs/proposals/non-ci-architecture/16-delivery-sequence.md: fixed-here"
+  - "docs/streams/continuing-operations/proposed-briefs.md: fixed-here"
   - "statusgen/telemetry.go: out-of-scope (legacy counts-only endpoint and schema remain unchanged)"
   - "loopadmin/runner/client.go: follow-up performance-collection/02"
   - "perfdata/postgres/: follow-up performance-collection/03"
   - "perfdata/ingest/: follow-up performance-collection/04"
   - "perfdata/upload/: follow-up performance-collection/05"
-  - "perfdata/phasecost_test.go: follow-up performance-collection/01"
+  - "perfdata/phasecost_test.go: fixed-here"
+  - "docs/streams/desktools-v2/cli-migration.json: fixed-here"
+  - "docs/streams/desktools-v2/brief-16-migrate-cellctl-to-cobra-commands-and-viper-configuration.md: fixed-here"
+  - "docs/streams/desktools-v2/brief-17-enforce-complete-cobra-and-viper-adoption-across-the-tool-suite.md: fixed-here"
 ---
 
 # Brief 01 — Local performance event contract, spool and offline report
@@ -172,6 +176,7 @@ below, exercising production code rather than an independently reimplemented che
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/01` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
 | 6 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v -run '^TestReportDistributionRetention$' ./... > "$o" && grep -F -- '--- PASS: TestReportDistributionRetention ' "$o")` | exit 0; named test runs and passes, including the negative cases in Task 8. |
 | 7 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPhaseCostSchema$' ./... > "$o" && grep -F -- '--- PASS: TestPhaseCostSchema ' "$o")` | exit 0; named PASS. A nested/overlapping fixture reconstructs CPU coverage, endpoint attempts and unknown quota without double counting; planted free text, profile escalation or unknown-as-zero is refused. |
+| 8 | check:ci +dereference | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCLIInventory$' ./internal/clicontract > "$o" && grep -F -- '--- PASS: TestCLIInventory ' "$o")` | exit 0; named PASS. The `perfdata` entrypoint has an explicit owned `pending` route with reference and final-gate links and no scanner exception; removing the row or reclassifying it as an exclusion fails the inventory. |
 
 ## Pre-mortem and detection
 
@@ -224,6 +229,17 @@ Extend the existing local/served/replay/report Verify flow for this owner with t
 50-query/three-page fixture, warm hit, passthrough retry, background poll and absent server
 data. Wrongly combining the two sides of one service call or multiplying upstream points
 must fail the independent expected result; existing selectors and all Evidence remain intact.
+
+## CLI routing amendment — 1 November 2026
+
+The `perfdata` command is a new maintained CLI, so the CLI contract
+([section 7](../desktools-v2/cli-contract.md#7-new-tools-and-retiring-tools--2026-10-18))
+routes it through the registry in `docs/streams/desktools-v2/cli-migration.json` as a
+`pending` row owned by this brief, wired after the reference adapter (desktools-v2/16) and
+before the final gate (desktools-v2/17). Verify row 8 holds that route. The parser port to
+the shared Cobra/Viper foundation is owed before the final gate closes; it is not part of
+this brief's acceptance, because adding a third-party dependency to the stdlib-only module
+needs its own dependency review first. Existing Tasks, Verify rows and Evidence are unchanged.
 
 ## Evidence
 

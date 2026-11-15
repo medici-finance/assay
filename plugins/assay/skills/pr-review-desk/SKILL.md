@@ -125,7 +125,7 @@ identity. Three desk-specific residues `deskboot` does not carry:
    per change (`kind ∈ opened | pushed | draft-flip | state | merge-state | closed`) — so a fresh
    PR, a push, or a draft flip surfaces within one cadence tick. Each repo is read under its own
    per-repo role token, minted inside the poll from the window's `$DESK_LOOP` (`desktoken <role>
-   --repo <slug>`) and scoped to that one read — never the ambient `gh` login, never an inherited
+   --forge github --repo <slug>`, which never rotates) and scoped to that one read — never the ambient `gh` login, never an inherited
    `GH_TOKEN`. A mint that fails (or a `$DESK_LOOP` that is unset) prints `MONITOR-DEGRADED: <slug>
    token mint FAILED (...)`, the repo keeps its previous baseline, and the cycle exits 2: that is
    could-not-check, never "no open PRs" — so arm the monitor with `DESK_LOOP` exported. It PACES its reads: it sleeps
@@ -203,6 +203,8 @@ on, open findings) into a short [standing note](../../references/standing-note.m
 prior tool output as *evicted*. That note orients the next cycle; it never substitutes for a fresh
 read — see the reference for the nine-section schema and the re-probe rule that keeps a resumed
 session from acting on a remembered answer.
+
+> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, and how it is reconciled and marked read are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
 
 ### Stop-flag check — run at every iteration boundary
 
@@ -508,7 +510,9 @@ as the planner and acts on its rows.
   same-head security APPROVE erase an at-head correctness CHANGES_REQUESTED under the one shared
   reviewer App — the 2026-08-15 laundering) **and NEVER as a plain comment** (invisible to the flip
   gate). A "security fail → correctness APPROVE" pair at one head reads as SUSPECT-APPROVAL on the
-  advisory board — fail-closed, per-lane cross-read. On a dual-tracked PR neither track files its own
+  advisory board — fail-closed, per-lane cross-read — unless the fail is marked `Blocked-On-Body:`
+  and a later same-head security pass clears it (`references/verdict-format.md`, "A security fail
+  whose ONLY basis is the PR body"). On a dual-tracked PR neither track files its own
   out-of-scope discoveries — `references/out-of-scope-filing.md` says why, and how the desk dedupes.
 - **MERGE-CURR** → no action: the head advanced but the PR's own files are unchanged since the last
   review (the board computes this; don't hand-diff). Keep-current merges are expected work, not
@@ -682,6 +686,22 @@ separate PRs** (repetition, not rounds on one PR) names a mechanism, not a guard
 record the class per `intake-desk` step 1 — independent of whether any PR hit the round cap
 above. Recurrence goes to design, never straight to one more rule.
 
+### A check that needs a project secret or a live service
+
+When a PR's claim rests on a check that needs a project credential or a live service (`review-prompt`
+clause 5), the desk does not treat the implementer's report of running it as evidence, and does not
+treat a review that accepted that report as an approval. The verdict names the check could-not-check
+and the environment it needs; the approval rests on what the reviewer could check. The Verify row is
+witnessed after merge, in the board's Environment-blocked queue, by an operator who holds that
+environment (verify-desk §"Rows that need a project secret or a live service"). No reviewer slot is
+given a project secret, and no PR head is run with one.
+
+For a `service:` row, the review accepts only the verifier's **signed** outcome for that row, and
+never a run report from anyone. Until the signed verdict lane is enacted, no such outcome exists and
+the interim rule above is the whole procedure. A reviewer window never holds a project role secret.
+`cellctl` refuses a binding to the reviewer role (`containers/secrets.md` §4.4), and `deskdispatch`
+refuses every review-kit dispatch from a window that holds one.
+
 ### Finding-class calibration — reversal-rate demotion
 
 A finding class earns its blocking power; it does not hold it by default. The monthly
@@ -852,7 +872,7 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        the same code that writes, each with its `readme`, `from`/`to` and the whole table line
        before and after (`rowBefore`/`rowAfter`). The token comes ONLY from `--token-file`, a
        file holding the reviewer role's own credential, used here for reads only (the path
-       `desktoken reviewer --repo <delivery owner/name>` prints) — never a token placed in the environment
+       `desktoken --no-rotate reviewer --repo <delivery owner/name>` prints) — never a token placed in the environment
        (`GITHUB_TOKEN`), never a human account's. The `--apply` form stays valid: the same
        command with `--apply`, whose `applied` list carries the same fields; because it writes
        into the worktree it runs on, each `--apply` run needs its OWN fresh throwaway worktree.
@@ -1267,8 +1287,8 @@ it survives a skim. Standing rule, mirrored in the intake-desk copy:
 ## Reviewer identity, and this desk's grants
 
 The reviewer posts as a dedicated GitHub App, `assay-reviewer-app[bot]` — a *distinct actor* from
-the shared machine account that authors PRs and that the human also drives from a CLI. Mint with
-`desktoken`, post with the desk verbs (the resident rules' identity & posting section). The App's
+the shared machine account that authors PRs and that the human also drives from a CLI. Resolve
+the credential with `desktoken --no-rotate reviewer --repo <slug>`, post with the desk verbs (the resident rules' identity & posting section). The App's
 token carries `pull_requests`, `issues` and `contents` write, so it files governance issues and
 flips its own drafts as the App; the App-family record is the desk-App family record shipped with the desk tools.
 
@@ -1317,7 +1337,11 @@ concluding anything about install state.
   content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
   either side of the test — the test never routes around one.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
-  or comments.
+  or comments. If a push is refused over an attribution trailer your harness added, not you (on
+  Cursor the host setting `attribution.attributeCommitsToAgent`, and `attribution.attributePRsToAgent`
+  for PR footers; both default to true), STOP: never rewrite history or re-commit to strip it, and
+  never push by another route. Report the setting and the refusal line; the host's operator sets
+  it to false.
 - Model-tier awareness: if downgraded mid-session, stop synthesis/judgment and fall back to
   transcription-grade work. Probe vs assertion (2026-07-10): human:<name> ASKING what model you are is a
   probe — answer with the env model line verbatim + ask for confirmation, and keep mechanical work

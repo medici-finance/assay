@@ -1,0 +1,186 @@
+{
+  "schema": "milestone-mutations-v1",
+  "runner": "python3 statusgen/testdata/milestone-support/05-mutate.py",
+  "cases": [
+    {
+      "name": "blanket-inherited-gate",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "s := BriefStart{Key: b.Key, Root: b.Root, ID: b.ID, Membership: membership[b.Key], OnCycle: onCycle[briefNode(b.Key)]}",
+      "new": "s := BriefStart{Key: b.Key, Root: b.Root, ID: b.ID, Membership: membership[b.Key], OnCycle: onCycle[briefNode(b.Key)]}\n\t\tfor _, m := range membership[b.Key] {\n\t\t\tb.Requires = append(b.Requires, records[m].Requires...)\n\t\t}",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneMixedGraph"
+    },
+    {
+      "name": "uuid-dropped",
+      "target": "statusgen/milestonegraph.go",
+      "old": "ID:       snap.ID,",
+      "new": "ID:       \"\",",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneMixedGraph"
+    },
+    {
+      "name": "prerequisite-deleted",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "n.Prerequisites = append(n.Prerequisites, r.Ref())",
+      "new": "continue",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneMixedGraph"
+    },
+    {
+      "name": "record-prerequisites-dropped",
+      "target": "statusgen/milestonegraph.go",
+      "old": "for _, r := range rec.RequiresMilestones {",
+      "new": "for _, r := range rec.RequiresMilestones[:0] {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneMixedGraph"
+    },
+    {
+      "name": "start-gate-dropped",
+      "target": "statusgen/milestonegraph.go",
+      "old": "for _, m := range requiresOf[row] {",
+      "new": "for _, m := range requiresOf[nil] {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneMixedGraph"
+    },
+    {
+      "name": "blocked-read-as-unknown",
+      "target": "statusgen/evaluation/readiness.go",
+      "old": "if r.Availability == AvailabilityBlocked || g.State == GraphCycle {",
+      "new": "if false {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneMixedGraph"
+    },
+    {
+      "name": "resolved-edge-ignored",
+      "target": "statusgen/evaluation/eligibility.go",
+      "old": "if edge.Resolved != \"\" {",
+      "new": "if false && edge.Resolved != \"\" {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneMixedGraph"
+    },
+    {
+      "name": "unloaded-record-as-none",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "if _, ok := records[ref]; !ok {",
+      "new": "if _, ok := records[ref]; false && !ok {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneMixedGraph"
+    },
+    {
+      "name": "self-cycle-not-refused",
+      "target": "statusgen/milestonegraph.go",
+      "old": "if milestoneCycle(c) {",
+      "new": "if false && milestoneCycle(c) {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneGraphUnknowns"
+    },
+    {
+      "name": "cycle-gate-untyped",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "onCycle[milestoneNode(r.Ref())] && sameCycle",
+      "new": "false && sameCycle",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneGraphUnknowns"
+    },
+    {
+      "name": "milestone-edge-dropped",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "link(milestoneNode(m.Ref()), milestoneNode(r.Ref()))",
+      "new": "_ = r",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneGraphUnknowns"
+    },
+    {
+      "name": "alias-double-counted",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "seen[k] = true",
+      "new": "seen[k+r] = true",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneGraphUnknowns"
+    },
+    {
+      "name": "pinned-revision-fallback",
+      "target": "statusgen/milestonegraph.go",
+      "old": "if !bound.Bound {",
+      "new": "if false && !bound.Bound {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneGraphUnknowns"
+    },
+    {
+      "name": "unknown-as-no-dependency",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "case !obs.Found:",
+      "new": "case !obs.Found:\n\t\t\t\tcontinue",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneGraphUnknowns"
+    },
+    {
+      "name": "withdrawn-satisfies",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "case obs.Brief.Status == \"withdrawn\":",
+      "new": "case obs.Brief.Status == \"withdrawn\":\n\t\t\t\tcontinue",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneGraphUnknowns"
+    },
+    {
+      "name": "key-collision-picks-a-winner",
+      "target": "statusgen/milestonegraph.go",
+      "old": "if why := collision(key); why != \"\" {",
+      "new": "if why := collision(key); false && why != \"\" {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneGraphUnknowns"
+    },
+    {
+      "name": "record-collision-picks-one",
+      "target": "statusgen/milestonegraph.go",
+      "old": "if why := recordCollision(m.Ref()); why != \"\" {",
+      "new": "if why := recordCollision(m.Ref()); false && why != \"\" {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneGraphUnknowns"
+    },
+    {
+      "name": "lattice-requalifies-every-path",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "c := closures[ref]\n\treturn cloneList(c.blockers), cloneList(c.unknowns)",
+      "new": "_ = closures\n\treturn qualify(ref, n.Blockers), qualify(ref, n.Unknowns)",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneLatticeStaysLinear"
+    },
+    {
+      "name": "closure-not-deduplicated",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "blockers: dedupe(append(qualify(ref, own.blockers), inherited.blockers...)),",
+      "new": "blockers: append(qualify(ref, own.blockers), inherited.blockers...),",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneLatticeStaysLinear"
+    },
+    {
+      "name": "gate-detail-uncapped",
+      "target": "statusgen/evaluation/milestonegraph.go",
+      "old": "gate.Blockers, gate.Unknowns = capDetail(gate.Blockers, \"blockers\"), capDetail(gate.Unknowns, \"unknowns\")",
+      "new": "_ = capDetail",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneLatticeStaysLinear"
+    }
+  ]
+}

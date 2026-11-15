@@ -561,7 +561,7 @@ func TestRosterKnownKeySet(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("%s is not in knownRosterKeys() — a roster carrying it refuses the whole configuration", EnvRunCredentials)
+		t.Fatalf("%s is not in knownRosterKeys() — a roster carrying it draws an unknown-key NOTICE and the key is never applied", EnvRunCredentials)
 	}
 	if ext, ok := cfg.Ext["run-credentials"]; ok {
 		t.Fatalf("cfg.Ext[run-credentials] = %+v — ASSAY_RUN_CREDENTIALS is a trust key, never an extension result", ext)

@@ -1,0 +1,4 @@
+schema: graph-repos-v1
+cell: assay
+repos:
+  assay: {cell: assay, repo: medici-finance/assay}

@@ -65,12 +65,12 @@ const (
 // runMigrate is the `statusgen migrate <target> [flags]` entry point.
 func runMigrate(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "statusgen migrate: a migration target is required (only brief-v1-to-v2 is defined)")
+		fmt.Fprintln(stderr, "statusgen migrate: a migration target is required (defined: brief-v1-to-v2, gitlab-anchors)")
 		return migrateExitUsage
 	}
 	target := args[0]
-	if target != "brief-v1-to-v2" {
-		fmt.Fprintf(stderr, "statusgen migrate: unknown migration target %q (only brief-v1-to-v2 is defined)\n", target)
+	if target != "brief-v1-to-v2" && target != "gitlab-anchors" {
+		fmt.Fprintf(stderr, "statusgen migrate: unknown migration target %q (defined: brief-v1-to-v2, gitlab-anchors)\n", target)
 		return migrateExitUsage
 	}
 
@@ -82,6 +82,9 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 		return migrateExitUsage
 	}
 
+	if target == "gitlab-anchors" {
+		return migrateGitlabAnchors(*root, *dryRun, stdout, stderr)
+	}
 	return migrateBriefV1ToV2(*root, *dryRun, stdout, stderr)
 }
 

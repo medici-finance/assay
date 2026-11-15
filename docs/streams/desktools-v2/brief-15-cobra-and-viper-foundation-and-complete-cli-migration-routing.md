@@ -162,5 +162,48 @@ Risk-bearing Verify-row count: 0 (risk answers all "no"; rows check structure), 
 
 Rows 1–5 were witnessed at merged main 5f5072d89b11. Row 6 was witnessed by `statusgen verifyrun --dry-run` at #2147's PR head 13ae74e8e3bd in a clean throwaway clone, because the Verify row has no fixed base and is vacuous at merged main. Its line above is copied from that run.
 
+### Batch re-witness at pinned main 2c6c21336a60 — 2026-11-02 claude-opus-5-5-verifier
+
+Fresh non-implementer run of the whole Verify table at merged main 2c6c21336a606e64df057294f21177f16db7b9f8, in a detached home admitted by deskdispatch --check-verifier (Verification-Attestation run 4f9cb79c7138, record medici-finance/assay#5260). All rows are class check and ran on the host with the installed statusgen v1.0.69; scratch, logs and TMPDIR were outside the home.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test -count=1 -v ./internal/cli` | pass exit=0 | sha256:2ac512664def | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./internal/clicontract -run '^TestCLIInventory$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIInventory " "$f"` | pass exit=0 | sha256:636ac185d658 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./internal/clicontract -run '^TestCLIRoutingMutations$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIRoutingMutations " "$f"` | pass exit=0 | sha256:62c957dfa60e | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5260 run=4f9cb79c713822beeb9c768b9704daae527c91c4fbb81f0810bb54d857d2f318 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/desktools-v2/brief-15-cobra-and-viper-foundation-and-complete-cli-migration-routing.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `statusgen --root . --lint --diff-base refs/remotes/origin/main` | fail exit=1 | sha256:ec0fdb1b13bc | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --root . --consumers` | pass exit=0 | sha256:6cf8ad2d37d0 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5260 run=4f9cb79c713822beeb9c768b9704daae527c91c4fbb81f0810bb54d857d2f318 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/desktools-v2/brief-15-cobra-and-viper-foundation-and-complete-cli-migration-routing.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 5 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:e411f86b9786 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5260 run=4f9cb79c713822beeb9c768b9704daae527c91c4fbb81f0810bb54d857d2f318 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/desktools-v2/brief-15-cobra-and-viper-foundation-and-complete-cli-migration-routing.md model=claude-opus-5-5 tier=strong
+
+The rows ran in three disjoint selections (rows 1–3, rows 4 and 6, row 5); each witness table above is its own verifyrun run at the same pinned source with the same attestation. verifyrun --check summary: 5 pass, 1 fail, 0 could-not-run/missing (of 6 Verify rows); the one fail is row 4, covered by the ruling below.
+
+**Observations (no acceptance credit):**
+
+- Row 4: at merged main the base resolves to HEAD, so lint ran at full strength ("diff-lint could-not-check: base (2c6c21336a60) resolves to HEAD"). An immediate re-read of the same command at the same source ended "LINT: FAIL 2 problem(s)" with exactly two PROBLEM lines, both outside this brief: desk-tools/37 and desktools-v2/65, each "protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required". This brief appears only in NOTICE lines (row 6 consumer-delivery-range, and README/brief-13 ordering-gate prose).
+- Row 6: exit 0, "summary: 0 corroborated, 0 disproved, 6 unchecked". The 6 unchecked entries are this brief's own consumers, unchanged since the merge-base; none is disproved.
+
+**Risk-bearing values** (re-checked at the pinned source; risk answers all "no", not irreversible):
+
+- RISK-VALUE: DERIVED — final_gate = "desktools-v2/17", reference = "desktools-v2/16" @ docs/streams/desktools-v2/cli-migration.json:5-6 — spec section 9 rollout: /16 is the reference adapter every child depends on and /17 is the finish gate; row 3's missing-final-gate-dependency mutation enforces it.
+- RISK-VALUE: DERIVED — MaxSimple = 5 @ tools/desk/internal/clicontract/validate.go:17 — spec section 9 and Task 4: at most five simple binaries per child.
+- RISK-VALUE: DERIVED — ExitUsage = 2 @ tools/desk/internal/cli/cli.go:20 — matches Go's flag package usage-error exit, preserving existing exit semantics.
+- RISK-VALUE: DERIVED — viper.KeyDelimiter("::") @ tools/desk/internal/cli/bind.go:262 with keyRE ^[a-z][a-z0-9-]*$ @ tools/desk/internal/cli/bind.go:87 — no declared key can contain ':', so no key splits into a nested path.
+- Dependency pins cobra v1.10.2 and viper v1.20.1 @ tools/desk/go.mod:19,21 — reversible, ranked last.
+
+Ruling basis (row 4):
+https://github.com/medici-finance/assay/issues/4823#issuecomment-6566786700
+The desk established that at medici-finance/assay 2c6c21336a60 `statusgen --root . --lint --acceptance-forge` gave "LINT: PASS", rc=0 (output sha256 a073bacbbef9ccb2c8acb0fd665c288b0aa4b07fddefb8aa57233bb6c13227d4), while plain lint gave rc=1 with exactly the desk-tools/37 and desktools-v2/65 acceptance-transition PROBLEMs. Row 4's output at the pinned source held only those two PROBLEM lines, and neither names desktools-v2/15.
+
+**VERIFY: PASS** — 6 of 6 rows pass (row 4 passing per the ruling above; all other rows pass as written)
+
 ## Review
 Gate: model. Check full inventory coverage, bounded child scope and unchanged domain ownership.

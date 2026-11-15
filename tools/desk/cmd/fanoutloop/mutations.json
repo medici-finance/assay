@@ -1,41 +1,41 @@
 {
   "test": "go test ./cmd/fanoutloop/ -count=1",
   "control": {
-    "name": "CONTROL / #1674 regression proof — revert readNextUp to the pre-fix behaviour so it always reads the working-tree STATUS.md instead of origin/main; the sibling-staleness phantom returns and TestReadNextUp_ReadsBoardFromOriginMainNotStaleWorkingTree must go red",
+    "name": "CONTROL / #1674 regression proof \u2014 revert readNextUp to the pre-fix behaviour so it always reads the working-tree STATUS.md instead of origin/main; the sibling-staleness phantom returns and TestReadNextUp_ReadsBoardFromOriginMainNotStaleWorkingTree must go red",
     "file": "cmd/fanoutloop/board.go",
     "old": "\traw, fromRef := statusFromOriginMain(root)\n\tif !fromRef {",
     "new": "\traw, fromRef := statusFromOriginMain(root)\n\tif true || !fromRef {"
   },
   "mutations": [
     {
-      "name": "treat an unreadable origin/main ref as an authoritative EMPTY board — drop the honest working-tree fallback so a root that was never fetched (or is not a git repo) silently plans zero rows instead of degrading to the working tree with a could-not-check note (#1674); TestReadNextUp_FallsBackToWorkingTreeWhenNoOriginMain must catch it",
+      "name": "treat an unreadable origin/main ref as an authoritative EMPTY board \u2014 drop the honest working-tree fallback so a root that was never fetched (or is not a git repo) silently plans zero rows instead of degrading to the working tree with a could-not-check note (#1674); TestReadNextUp_FallsBackToWorkingTreeWhenNoOriginMain must catch it",
       "file": "cmd/fanoutloop/board.go",
       "old": "\tout, err := cmd.Output()\n\tif err != nil {\n\t\treturn \"\", false\n\t}",
       "new": "\tout, err := cmd.Output()\n\tif err != nil {\n\t\treturn \"\", true\n\t}"
     },
     {
-      "name": "example-stream/17 repair obligation — DROP the same-actor self-certification guard in RepairObligation.Resolve so the worker that produced a repair could resolve its own obligation at the repaired revision; TestRepairObligationMergeIsNotResolved must go red (a worker cannot independently verify itself)",
+      "name": "example-stream/17 repair obligation \u2014 DROP the same-actor self-certification guard in RepairObligation.Resolve so the worker that produced a repair could resolve its own obligation at the repaired revision; TestRepairObligationMergeIsNotResolved must go red (a worker cannot independently verify itself)",
       "file": "internal/deskkit/repairobligation.go",
       "old": "\tif o.RepairedBy != \"\" && strings.EqualFold(verifier, o.RepairedBy) {",
       "new": "\tif false && o.RepairedBy != \"\" && strings.EqualFold(verifier, o.RepairedBy) {"
     },
     {
-      "name": "example-stream/17 repair obligation — REGRESS the reconcile state-advance rule (> becomes <) so a duplicate/lost-ack append-only log folds to the LEAST-progressed state instead of the furthest; TestRepairObligationRestartAndDuplicate must go red (a claim then a lost-ack re-post would drop back to needs-assignment)",
+      "name": "example-stream/17 repair obligation \u2014 REGRESS the reconcile state-advance rule (> becomes <) so a duplicate/lost-ack append-only log folds to the LEAST-progressed state instead of the furthest; TestRepairObligationRestartAndDuplicate must go red (a claim then a lost-ack re-post would drop back to needs-assignment)",
       "file": "internal/deskkit/repairobligation.go",
       "old": "\tif repairStateRank[b.State] > repairStateRank[out.State] {",
       "new": "\tif repairStateRank[b.State] < repairStateRank[out.State] {"
     },
     {
-      "name": "#1339 — DISABLE the fresh-lane represented reconciliation so an already-represented row falls through to fresh DISPATCH exactly as before the fix: the landed-unreconciled and open-PR-resume routing never fires. TestPlan_MergedRowIsLandedUnreconciledNotDispatched and TestPlan_OpenPRRowRoutedToResume must both go red (the merged row is offered for dispatch and no LANDED-UNRECONCILED heading appears; the open-PR row is offered as fresh instead of resume).",
+      "name": "#1339 \u2014 DISABLE the fresh-lane represented reconciliation so an already-represented row falls through to fresh DISPATCH exactly as before the fix: the landed-unreconciled and open-PR-resume routing never fires. TestPlan_MergedRowIsLandedUnreconciledNotDispatched and TestPlan_OpenPRRowRoutedToResume must both go red (the merged row is offered for dispatch and no LANDED-UNRECONCILED heading appears; the open-PR row is offered as fresh instead of resume).",
       "file": "cmd/fanoutloop/adapter.go",
       "old": "\t\t\tif rp, ok := represented[strings.ToLower(r.Stream+\"/\"+r.Num)]; ok {",
       "new": "\t\t\tif rp, ok := represented[strings.ToLower(r.Stream+\"/\"+r.Num)]; ok && false {"
     },
     {
-      "name": "#1339 authoring exemption — DISABLE it so every PR naming a queued brief represents it first-wins, as before the fix: a MERGED docs-only PR that only AUTHORED the brief makes it read as landed-unreconciled again. TestPlan_AuthoringPRDoesNotLandBrief must go red (the brief is listed under LANDED-UNRECONCILED instead of offered for dispatch).",
+      "name": "#1339 authoring exemption \u2014 DISABLE it so every PR naming a queued brief represents it first-wins, as before the fix: a MERGED docs-only PR that only AUTHORED the brief makes it read as landed-unreconciled again. TestPlan_AuthoringPRDoesNotLandBrief must go red (the brief is listed under LANDED-UNRECONCILED instead of offered for dispatch).",
       "file": "cmd/fanoutloop/represented.go",
-      "old": "\t\tif deskkit.BriefAuthoringOnly(briefID, files) {",
-      "new": "\t\tif false && deskkit.BriefAuthoringOnly(briefID, files) {"
+      "old": "\tif deskkit.BriefAuthoringOnly(briefID, files) {",
+      "new": "\tif false && deskkit.BriefAuthoringOnly(briefID, files) {"
     }
   ]
 }

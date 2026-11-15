@@ -83,12 +83,12 @@ Every file the flow writes lands on a branch and reaches `main` by a draft PR/MR
 | `install-statusgen` | yes | HTTPS fetch + pin-file sha256 (step 2) | identical — the release assets are public; no GitLab account or CLI is involved | `assay-install.sh acquire` (not a forge operation) |
 | `scaffold-streams` | yes | files written by `statusgen init` | identical | `statusgen init` |
 | `scaffold-registers` | yes | files written by `statusgen init` | identical | `statusgen init` |
-| `add-statusgen-ci` | no — delegated | `init` writes the GitHub workflow | `init` writes `.gitlab-ci.yml`; the runner, `STATUSGEN_PUSH_TOKEN` and `STATUSGEN_ROSTER_ENV` are *human* (`docs/adopting-assay-gitlab.md` §2a, §2c, §2e) | `statusgen init` (forge from `origin`, or `--forge`) — never re-authored here |
+| `add-statusgen-ci` | no — delegated | `init` writes the GitHub workflow | `init` writes `.gitlab-ci.yml`; the runner and `STATUSGEN_ROSTER_ENV` are *human* (`docs/adopting-assay-gitlab.md` §2a, §2e); `STATUSGEN_PUSH_TOKEN` is minted by the human-run fleet provisioning with `--project`, or set by hand where the forge cannot mint access tokens (§2c) | `statusgen init` (forge from `origin`, or `--forge`) — never re-authored here |
 | `install-desk-plugin` | yes (harness-specific, not forge-specific) | Claude Code `/plugin`; Cursor: `deskinstall --harness cursor --forge github --repo <path>` places skills + references + `AGENTS.md` bindings; Codex copies the skills | identical, with `--forge gitlab` for Cursor | `deskinstall --harness cursor` (Cursor; `--check` reads it back); none for Claude Code / Codex |
 | `install-main-guard` | the client hook, yes; its server-side counterpart, no | `.githooks/pre-commit` + `core.hooksPath`; server side: a ruleset / branch protection on `main` — *human* | the same hook; server side: a protected branch with a push-access list — *human*, set by `deskfleet provision --project` (or the fallback `tools/create-fleet-gitlab.sh`) | the hook is plain git; `repohardenguard` reads the server-side setting back on either forge (a per-forge checklist) |
 | `first-board` | yes | `statusgen --root <target> --lint` then `statusgen --root <target>` | identical | `statusgen` |
 | `setup-reviewer-app` (the reviewer grant) | no | a separate reviewer GitHub App with the three write duties, the CI reads and `administration: read` — *human* | a separate reviewer service account at the role in `docs/adopting-assay-gitlab.md` §1 — *human*, via `deskfleet provision` (or the fallback `tools/create-fleet-gitlab.sh`) | `deskroster preflight` (run by `deskboot`) reads the grant back — `app-scopes-vs-duties` on GitHub, the token-custody check on GitLab |
-| `create-labels` | no | a one-off — *human/admin*: `deskfleet labels --forge github`, or the repo's label settings; the list is `docs/adopting-assay.md` §3 `create-labels` | `deskfleet labels --forge gitlab` or `deskfleet provision --project` (or the fallback `tools/create-fleet-gitlab.sh`), same names, colours and descriptions — *human* | `deskfleet labels` creates the whole set on either forge, run by a human (`windows-port/08`); whether a desk role runs it on its own is #1559. `deskflip` creates the PR-state pair on first use on either forge; `deskfile` only PROBES `raised-by:*` and files unstamped when one is missing |
+| `create-labels` | no | an *operator* act under the operator's own label-write credential: `deskfleet labels --forge github --roles <roster roles>`, `cellctl new --kind house … --labels-token-file <file>`, or the repo's label settings; the set (`review-request`, `raised-by:<role>` + `to:<role>` per roster role, the PR-state pair) is `docs/adopting-assay.md` §3 `create-labels` | `deskfleet labels --forge gitlab --roles <roster roles>`, `cellctl new --kind house --forge gitlab … --labels-token-file <file>`, or `deskfleet provision --project` (or the fallback `tools/create-fleet-gitlab.sh`), same names, colours and descriptions; an inherited group label counts as present — *operator* | `deskfleet labels --check` (or `cellctl check` on a house cell) reads the set back: each missing label named, an unreadable list could-not-check. A credential that cannot write labels leaves the step NOT ENSURED with the exact `deskfleet labels` command, never silently done. No desk role App gets label-write; whether a desk role may ever create labels on its own stays open (#1559). `deskflip` creates the PR-state pair on first use on either forge; `deskfile` only PROBES `raised-by:*` / `to:*` and files unstamped / unaddressed when one is missing |
 
 `deskfleet`, `tools/create-fleet-gitlab.sh` and the two runbooks live in your `assay` checkout. Nothing in the
 table is performed by `gh` or `glab`.
@@ -196,6 +196,9 @@ the same HTTPS fetch, the same pin-file comparison, **REFUSE on a mismatch or an
 digest**, and only then extract and install the binaries to `PATH`. The only shape difference is
 the artifact is a `.tar.gz` of binaries, not a single file. Config is at the config-home
 (`../../references/desk-shell.md` §Config home) only, never the environment. See `install-desk-tools` in the `adopt` runbook.
+The tarball also carries `deskdecision` and `deskclaim-ref`, the pure-Go ports of the decision-gate
+and dispatch-claim helpers. `deskdispatch` runs them from `PATH`, so a `gate: human` brief dispatches
+without copying `tools/decision-issue.sh` into the repo.
 
 Skippable for the repo, **required for a desk**: `deskboot` refuses (exit 6, step
 `first-sweep-prereqs`) when the nearest `.assay-versions` has no `desk-tools` /
@@ -271,8 +274,9 @@ never got the bypass. With protection off, the regen pushes as the automation ac
 board-writer App is needed. App creation + the ruleset-bypass edit are **human-gated** (see the
 NEVER-autonomous list below). **On GitLab** the same role is a board-writer service account on the
 protected branch's push-access list, and the regen job pushes with the `STATUSGEN_PUSH_TOKEN`
-the scaffolded `.gitlab-ci.yml` names — both human-provisioned (`docs/adopting-assay-gitlab.md`
-§2c).
+the scaffolded `.gitlab-ci.yml` names — both human-provisioned: the human-run fleet provisioning
+mints the token where the forge allows it, else the human sets it by hand
+(`docs/adopting-assay-gitlab.md` §2c).
 
 ### 5. Install the desk plugin + main-guard (scenario-appropriate)
 Apply `install-desk-plugin` and `install-main-guard` per the `adopt` runbook, as the scenario calls
@@ -369,8 +373,10 @@ hands the human the exact values and waits:
 - **GitLab fleet provisioning and renewal.** This covers `deskfleet provision`, the fallback
   `tools/create-fleet-gitlab.sh`, and `tools/renew-fleet-gitlab-tokens.sh`. Each one mints live
   credentials from a group-owner PAT. Hand the human the exact command (with `--dry-run` first),
-  never hold the owner token, and never run any of them yourself. `deskfleet labels` is also the
-  human's to run: it needs a token that can write labels.
+  never hold the owner token, and never run any of them yourself. `deskfleet labels` (and
+  `cellctl new --kind house --labels-token-file`) is also the operator's to run: it needs the
+  operator's own credential that can write labels, never a desk role's App token. Hand the human
+  the command the step printed.
 - **Repo creation** + admin / permission grants.
 - **Merge to main / pushing to the main branch / release tag / the first ready-flip.**
 - **git history rewrite** (for a carve-out).

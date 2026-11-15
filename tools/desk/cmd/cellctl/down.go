@@ -58,9 +58,54 @@ func cmdDown(cell string, v *cli.Values, extra []string, given bool) {
 	if err := c.stopComms(); err != nil {
 		die("down comms: %v", err)
 	}
-	if err := c.stopCadences(); err != nil {
+	unsettled, err := c.downRoles(func() bool { return c.closeCockpits(cockpitFlag) })
+	if err != nil {
 		die("down: %v", err)
 	}
+	// Every surface the cell opened is gone with its session: no receipt may outlive it.
+	c.removeAllSurfaceReceipts()
+	if !keep && c.Deskd == "1" {
+		if exec.Command("pkill", "-f", "deskd --config "+c.CellsCfg).Run() == nil {
+			fmt.Println("[cell] deskd stopped")
+		} else {
+			fmt.Println("[cell] no deskd for this cell running")
+		}
+	}
+	if len(unsettled) > 0 {
+		die("down: %s", strings.Join(unsettled, "; "))
+	}
+}
+
+// downOwnerWait bounds down's wait for the interactive owners its cockpit close signalled.
+var downOwnerWait = cadenceStopWait
+
+// downRoles stops the cell's roles around closeCockpit, which closes the cockpit surfaces and
+// reports whether it closed any. Cadence supervisors are stopped first (their STOP file), so a
+// close never kills a supervisor before it reaps its harness. The interactive owners are named
+// before anything is signalled: the hangup the close delivers is what stops them, and each is
+// then waited for, with one bound for them all, so the next `up` finds its checkpoint finished
+// (#6116). Surfaces left for the operator to close by hand signalled nobody, and nothing is
+// waited for. It returns one line per interactive owner left unsettled.
+func (c *Cell) downRoles(closeCockpit func() bool) ([]string, error) {
+	owners, err := c.interactiveOwners()
+	if err != nil {
+		return nil, err
+	}
+	if err := c.stopCadences(); err != nil {
+		return nil, err
+	}
+	if !closeCockpit() {
+		if len(owners) > 0 {
+			fmt.Println("[cell] no cockpit surface was closed by down; the interactive roles stop when their surfaces are closed by hand")
+		}
+		return nil, nil
+	}
+	return c.settleInteractiveOwners(owners, downOwnerWait), nil
+}
+
+// closeCockpits closes what `up` opened: the tmux session whichever cockpit resolves now, then
+// the resolved cockpit's own surfaces. It reports whether anything was closed.
+func (c *Cell) closeCockpits(cockpitFlag string) bool {
 	want, src := c.cockpitWant(cockpitFlag)
 	res := c.resolveCockpit(want, src)
 	if res.Err == "" {
@@ -72,25 +117,22 @@ func cmdDown(cell string, v *cli.Values, extra []string, given bool) {
 	// The tmux session is torn down whichever cockpit resolves NOW: a cell brought up in tmux and
 	// taken down after another cockpit was installed must still stop, and a kill-session on a
 	// name that does not exist is a no-op, not an error.
+	closed := false
 	if exec.Command("tmux", "has-session", "-t", c.Session).Run() == nil {
 		_ = exec.Command("tmux", "kill-session", "-t", c.Session).Run()
 		fmt.Printf("[cell] %s killed\n", c.Session)
+		closed = true
 	} else {
 		fmt.Printf("[cell] no session %s\n", c.Session)
 	}
 	switch res.Cockpit {
 	case "herdr":
 		c.downHerdr()
+		closed = true
 	case "orca":
-		c.downOrca()
+		closed = c.downOrca() || closed
 	}
-	if !keep && c.Deskd == "1" {
-		if exec.Command("pkill", "-f", "deskd --config "+c.CellsCfg).Run() == nil {
-			fmt.Println("[cell] deskd stopped")
-		} else {
-			fmt.Println("[cell] no deskd for this cell running")
-		}
-	}
+	return closed
 }
 
 // upRoles is the role list `up` opens: ROLES, with the-desk prepended when a hand-edited
@@ -140,7 +182,10 @@ func (c *Cell) downHerdr() {
 	fmt.Printf("[cell] herdr: closed %s workspace\n", c.Name)
 }
 
-func (c *Cell) downOrca() {
+// downOrca closes the cell's orca terminals where the build offers a verb for it, and reports
+// whether it did; otherwise it names them for the operator to close by hand.
+func (c *Cell) downOrca() bool {
+	closed := false
 	roles := c.upRoles(false)
 	dir := orDefault(c.Repo, c.Dir)
 	// `orca terminal close --worktree <selector> --all` stops every terminal orca owns for that
@@ -151,6 +196,7 @@ func (c *Cell) downOrca() {
 	allflag, hasAll := firstFlag(h, "--all")
 	if hasWT && hasAll {
 		if exec.Command("orca", "terminal", "close", wtflag, "path:"+dir, allflag).Run() == nil {
+			closed = true
 			fmt.Printf("[cell] orca: closed every terminal for %s ('orca terminal close %s path:%s %s')\n", dir, wtflag, dir, allflag)
 		} else {
 			fmt.Fprintf(os.Stderr, "[cell] 'orca terminal close %s path:%s %s' failed — close the %s-<role> terminals by hand:\n", wtflag, dir, allflag, c.Name)
@@ -172,6 +218,7 @@ func (c *Cell) downOrca() {
 	} else {
 		fmt.Printf("[cell] scheduled automations are NOT removed by down — cancel the %s-<role> automations in orca\n", c.Name)
 	}
+	return closed
 }
 
 func isSocket(p string) bool {

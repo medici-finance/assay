@@ -1,0 +1,7 @@
+# regression: #4769
+# .RECIPEPREFIX changes which lines make reads as recipe lines, so a second
+# deskd-image recipe led by > overrides the held one unseen.
+want: step-not-fatal
+file: Makefile
+replace: "\n## skillslint: validate"
+with: "\n.RECIPEPREFIX := >\ndeskd-image:\n>@echo \"skipped\"\n.RECIPEPREFIX :=\n\n## skillslint: validate"

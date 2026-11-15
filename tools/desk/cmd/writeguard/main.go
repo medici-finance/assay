@@ -126,6 +126,9 @@ func run(stdin io.Reader) (Verdict, error) {
 			if v, refused := ambientTokenRefusal(classified); refused {
 				return v, nil
 			}
+			if v, refused := ghFilterRefusal(classified); refused {
+				return v, nil
+			}
 		}
 	}
 

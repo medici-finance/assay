@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // monitor_identity_test.go — the poller's explicit read identity (issue 1503).
@@ -20,9 +22,18 @@ import (
 // stubIdentity swaps the role and mint seams for the duration of a test.
 func stubIdentity(t *testing.T, role func(string) (string, string, error), mint func(string, string) (string, string, error)) {
 	t.Helper()
-	oldRole, oldMint := sessionRoleFn, mintTokenFn
+	oldRole, oldMint, oldCred := sessionRoleFn, mintTokenFn, roleCredentialFn
 	sessionRoleFn, mintTokenFn = role, mint
-	t.Cleanup(func() { sessionRoleFn, mintTokenFn = oldRole, oldMint })
+	// The poller-identity probe reads through roleCredentialFn; adapt the stub minter to it as a
+	// GitHub-served credential so these GitHub-shaped fixtures keep driving the probe.
+	roleCredentialFn = func(r string, repo deskkit.ForgeRepo, _ string) (deskkit.RoleCredential, error) {
+		tok, path, err := mint(r, repo.Slug())
+		return deskkit.RoleCredential{
+			Resolution: deskkit.ForgeResolution{Repo: repo, Kind: deskkit.ForgeGitHub},
+			Token:      tok, Path: path,
+		}, err
+	}
+	t.Cleanup(func() { sessionRoleFn, mintTokenFn, roleCredentialFn = oldRole, oldMint, oldCred })
 }
 
 // TestRunMonitor_HandsTheTokenFileByPath — the child gets `--token-file OWNER=PATH` for the owner
@@ -117,7 +128,7 @@ func TestResolveMonitorIdentity_OneMintPerOwnerAndNamedFallbacks(t *testing.T) {
 	if !strings.Contains(id.Fallbacks["example-other"], "no installation") {
 		t.Fatalf("the failed mint is not a named fallback: %v", id.Fallbacks)
 	}
-	if !strings.Contains(id.Fallbacks["example-empty"], "named no token file") {
+	if !strings.Contains(id.Fallbacks["example-empty"], "named no custody file") {
 		t.Fatalf("a mint with no file path is not a named fallback: %v", id.Fallbacks)
 	}
 	for o, why := range id.Fallbacks {

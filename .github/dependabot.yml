@@ -1,0 +1,25 @@
+# Dependency-update alerting for the desk tools' git stack.
+#
+# The desk tools and the lifted gitcore module build go-git in-process.
+# tools/desk/internal/gitexec/ratchet_test.go fails the build if either module pins
+# go-git below v5.19.2, the highest fixed version the Go vulnerability database lists
+# for go-git v5 (GO-2026-6213 and GO-2026-6214). This file raises an update pull
+# request when a newer go-git family release (go-git, go-billy) ships, so the go.mod pin
+# keeps moving up. It does not move the floor constant in that test: a new advisory
+# raises the floor by hand.
+# Scoped to the go-git family on purpose: it is the dependency the floor covers.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directories:
+      - /tools/desk
+      - /gitcore
+    schedule:
+      interval: weekly
+    allow:
+      - dependency-name: "github.com/go-git/*"
+    groups:
+      go-git:
+        patterns:
+          - "github.com/go-git/*"
+    open-pull-requests-limit: 2

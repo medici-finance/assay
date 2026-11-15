@@ -35,7 +35,7 @@ consumers:
 exec-tier: strong
 exec-tier-why: Cross-module capability checks must tell the permitted offline packages apart from indirect credential or write reach.
 domain: complicated
-version: 8
+version: 9
 id: 0a18147e-5225-4ba4-91ab-b3bcd92bc00d
 ---
 
@@ -123,8 +123,8 @@ changes here, and what does not:
   statusgen column of `forge-ban.sh`'s class a line, not the `statusgen sites:` total, which
   also sums classes b to d. The class a sites all retire under forge-neutral/18 and /35, which
   this brief follows; that includes the two `"gh"` lines of the claim-decay `gh auth token`
-  fallback (`statusgen/claimdecay_github.go`), which /18 deletes. So rows 1 to 3 can reach `0`
-  without /77.
+  fallback (`statusgen/claimdecay_github.go`), retired by child forge-neutral/49 and
+  consumed by /18. So rows 1 to 3 can reach `0` without /77.
 - **The rest of the statusgen total is not this brief's.** At `e07782de2` (and unchanged at
   `8169a8281`) `forge-ban.sh` prints `statusgen sites: 38`: class a 30, b 1, c 3, d 4. Class c
   (`autonomy.go:548`, `:557`, `autoflip.go:1470`, the GraphQL blocks of reads /18 moves) is
@@ -186,7 +186,7 @@ Statusgen receives a dedicated bounded CLI migration owner from desktools-v2/15.
 | # | Command | Expect |
 |---|---------|--------|
 | 1 | `test -d statusgen && { grep -rnF --include='*.go' --exclude='*_test.go' '"gh"' statusgen \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: no non-test, non-comment statusgen line carries the double-quoted literal `"gh"`, so `exec.Command` and `exec.CommandContext` launches are both seen. This is the source-text half of the precondition; it cannot see /35's native HTTP client, which row 8 covers. Any non-zero count means this brief is not startable |
-| 2 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && { sh tools/desk/scripts/forge-ban.sh > "$o"; echo "rc=$?"; } && grep -E '^ *class a ' "$o")` | prints `rc=0` and a class a line ending `statusgen=0` on the clean tree: no gh subprocess in statusgen. It reads the class a column only; the `statusgen sites:` total also sums classes b to d, which desktools-v2/77 row 9 takes to `0`. Measured at `e07782de2`: `statusgen=30` |
+| 2 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && sh tools/desk/scripts/forge-ban.sh > "$o" && grep -E '^ *class a .* statusgen=0$' "$o")` | exit 0 — `forge-ban.sh` exits 0 and its class a line ends `statusgen=0` on the clean tree (the command asserts both; it no longer prints the exit and passes regardless): no gh subprocess in statusgen. It reads the class a column only; the `statusgen sites:` total also sums classes b to d, which desktools-v2/77 row 9 takes to `0`. Measured at `e07782de2`: `statusgen=30` |
 | 3 | `sh -c 'f=statusgen/zz_banprobe.go; printf "package main\nimport \"os/exec\"\nvar _ = exec.Command(\"gh\", \"api\")\n" > "$f"; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; rc=$?; rm -f "$f"; echo "rc=$rc"; test "$rc" -ne 0'` | exit 0; prints a non-zero `rc=` — the negative-path row: a re-added `gh` shell-out in statusgen makes the counter FAIL, and the probe file is removed whatever the result |
 | 4 | `cd statusgen && go test -timeout 5m -run TestScanNeverEmptyWithoutForgeBinary -v .` | output contains the literal line `--- PASS: TestScanNeverEmptyWithoutForgeBinary` (assert on that line, not the exit status — a `-run` selector matching nothing exits 0) |
 | 5 | `grep -q 'tools/desk' statusgen/go.mod; test $? -eq 1` | exit 0 (grep found no match — statusgen still imports nothing from desk-tools; the verb boundary held) |

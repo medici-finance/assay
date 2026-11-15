@@ -5,7 +5,7 @@
 // iteration.
 //
 // Identity separation is the POINT of this tool: the worker voice and the reviewer
-// App voice never share a tool. deskreply mints the WORKER App token via desktoken worker;
+// App voice never share a tool. deskreply mints the WORKER App token read in process (deskkit.WriteVerbRoleCredential);
 // it NEVER mints the reviewer App token — it never reads REVIEWER_APP_ID /
 // REVIEWER_INSTALL_ID / any reviewer App key, and never imports deskpost's mint code.
 // The unforgeable review gate depends on the reviewer App's voice being mintable ONLY
@@ -28,8 +28,8 @@ const usage = `deskreply — post a plain reply comment, or upsert a workpad com
 open pull request.
 
 USAGE:
-  deskreply <owner/repo> <pr> --body-file F [--dry-run]
-  deskreply <owner/repo> <pr> --workpad --body-file F [--dry-run]
+  deskreply <owner/repo> <pr> --body-file F [--kind mr] [--dry-run]
+  deskreply <owner/repo> <pr> --workpad --body-file F [--kind mr] [--dry-run]
   deskreply --version
 
 deskreply posts as the worker App (the worker App) — never as the reviewer App. It has
@@ -47,6 +47,14 @@ prints "DRY-RUN: would post on PR #<n>"; with --workpad it prints "WORKPAD: woul
 #<id>" or "WORKPAD: would create". It is a REHEARSAL, not an offline check: it still
 opens a connection to the forge, so a network outage a real reply would hit, this hits
 too — rehearse the shape, not the reachability.
+
+--kind mr (pr is accepted as an alias of mr) forces the object kind for <pr>. It matters
+when GitLab's separate issue/MR sequences both have a match at this number: without it
+the post refuses with could-not-check (exit 6); with it the note goes to the merge
+request's thread only, never the issue's. On GitHub it is accepted and changes nothing.
+--kind issue is refused (exit 5): deskreply only replies on your own PR; comment on an
+issue with deskfile attach --kind issue. Any other value is refused as the sibling verbs
+refuse it.
 
 The body is read from --body-file only (no stdin / inline body), is capped at 16 KiB, and
 is secret-scanned; there is no override flag.

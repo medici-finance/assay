@@ -269,6 +269,41 @@ Notes:
 
 VERIFY: PASS
 
+### Re-witness at 2c6c21336a60 (2026-11-02, batch re-witness)
+
+Non-implementer re-run on merged main 2c6c21336a606e64df057294f21177f16db7b9f8, 2026-11-02, by assay-verifier-app[bot] (claude-opus-5-5, tier strong). This is the one-time batch re-witness at a single main commit (medici-finance/assay#2026). Earlier blocks above were neither copied nor edited. gate: model. All four risk answers are no, and nothing here is irreversible.
+
+Admission: `deskdispatch --check-verifier` exit 0 for run 3920700fc913 (record medici-finance/assay#5246), source 2c6c21336a60, model claude-opus-5-5, tier strong.
+
+Execution witness: closed admission bracket (rule 45). The host is darwin, which has no `unshare --net`, so all four check:ci rows ran inside one `docker run --network none` container (verify-runner v1.0.67, pinned by digest below; OrbStack engine) with `--sandbox=container-netns`. The home was mounted read-only. Steps: open-bracket on the host, the container run, then close-bracket on the host. `--bracket-digest` reports verdict=match. Witness bytes as written:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingContinuityAcrossHeads$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:f914598baceb | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingCannotSelfResolve$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:337d55827411 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingCapSurvivesRestart$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:7665dfd38d04 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingSharedCIBlocker$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:d54e8df573ee | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c
+Container-Image: sha256:f073d208c69e1e2f5ce5b680ad536d7a3cef3c80756823b9643cab4f7d1068aa
+Verification-Attestation: medici-finance/assay#5246 run=3920700fc9132e7284ccad1abba849c50187887144ff6a82f566cd72447b7106 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/desk-supervision/brief-19-review-finding-continuity.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=3920700fc9132e7284ccad1abba849c50187887144ff6a82f566cd72447b7106 source=2c6c21336a606e64df057294f21177f16db7b9f8 tree=sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c witness=sha256:5aa0587af1ea09511809144d641e5ff52e46a61dd3fed25df5939cf175e605b9 opened=2026-11-02T00:31:38Z closed=2026-11-02T00:37:11Z before=receipt after=check-verifier
+
+Supplemental observation, no acceptance credit: the four row commands were run again in the same image with no network and a read-only mount, outside the bracket and with GOFLAGS=-buildvcs=false added, only to see the named test lines that the witness stores as a digest. Each printed its named PASS line ("--- PASS: TestReviewFindingContinuityAcrossHeads", "--- PASS: TestReviewFindingCannotSelfResolve" with its three subtests worker_cannot_self-resolve, wrong-head_evidence_cannot_resolve and legacy_prose_cannot_resolve, "--- PASS: TestReviewFindingCapSurvivesRestart", "--- PASS: TestReviewFindingSharedCIBlocker"), plus "ok github.com/medici-finance/assay/tools/desk/cmd/reviewloop", exit 0 each, on 2026-11-02, runner assay-verifier-app[bot].
+
+Risk-bearing value enumeration (risk metadata is present and all no; done anyway because the change encodes a threshold the canonical skill pins):
+
+- RoundCap = 3 @ tools/desk/internal/deskkit/reviewfinding.go:453. It decides when a finding class is held and routed to the human lane. A wrong value escalates a round early or late. An edit plus a redeploy undoes it.
+- FindingBlockSchema = "review-finding/v1" @ tools/desk/internal/deskkit/reviewfinding.go:41, and findingBlockOpen (the HTML-comment opener carrying the marker assay:review-finding:v1) @ tools/desk/internal/deskkit/reviewfinding.go:48. These are wire-format markers: a wrong value stops records parsing. An edit plus a redeploy undoes it, and records stay on the forge.
+- RecordReview = "review" and RecordReply = "reply" @ tools/desk/internal/deskkit/reviewfinding.go:345-346. These are the record kinds that separate reviewer verdicts from worker replies. A wrong value mis-gates who can resolve a finding. An edit plus a redeploy undoes it.
+
+Nothing here is irreversible. RoundCap ranks first.
+
+RISK-VALUE: DERIVED — RoundCap = 3 @ tools/desk/internal/deskkit/reviewfinding.go:453 — it equals the canonical cap that already existed, "Default cap N = 3 full verdict→fix→re-review rounds on the SAME finding class", in the pr-review-desk skill (plugins/assay/skills/pr-review-desk/SKILL.md:627). The brief says not to change it, and the code comment at reviewfinding.go:449-452 says the same.
+
+Result: 4 of 4 rows pass in the bracketed container witness.
+
+**VERIFY: PASS** — 4/4 rows, container-netns bracket at 2c6c21336a60
+
 ## Review
 
 Gate: model. Review the negative paths, migration compatibility and limits of enforcement. Any newly discovered need to alter authority is separate human-gated scope, not an implicit part of this brief.

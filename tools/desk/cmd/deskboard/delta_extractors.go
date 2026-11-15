@@ -61,18 +61,18 @@ func prsDeltaSet(v any) (deltaSet, bool) {
 		// printing a bare "N actionable" that a desk could read as "and the other
 		// rows are fine" (under-claiming here would be quiet-by-accident).
 		Actionable:      attention,
-		ActionableLabel: "ci-red/conflicting (see `actions` for the ACTION class)",
+		ActionableLabel: "ci-red/conflicting/policy-held (see `actions` for the ACTION class)",
 		RepoSet:         deskkit.AllowedRepos(),
 	}, true
 }
 
 // prNeedsAttention is the subset of "needs the desk now" that the `prs` payload
-// alone can PROVE: a failed check, or a merge state that makes the PR un-mergeable
-// (DIRTY/BLOCKED — the same pair board.go's classifier treats as mergeConflict).
+// alone can PROVE: a failed check, a conflict (DIRTY/CONFLICTING), or a forge
+// policy hold (BLOCKED). A policy hold must not be described as a merge conflict.
 // Deliberately narrow and deliberately labelled: the full classification needs the
 // review + security-verdict reads that only `deskboard actions` performs.
 func prNeedsAttention(r prRow) bool {
-	return r.CIFail > 0 || r.MergeState == "DIRTY" || r.MergeState == "BLOCKED"
+	return r.CIFail > 0 || r.MergeState == "DIRTY" || r.Mergeable == "CONFLICTING" || r.MergeState == "BLOCKED"
 }
 
 // actionsDeltaSet normalizes an actionsReport — the CLASSIFIED board. This is the

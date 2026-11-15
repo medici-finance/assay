@@ -247,6 +247,10 @@ func (p *provisioner) dryRun() {
 	for _, l := range fleetLabels {
 		p.outf("[dry-run] would create project label '%s' (#%s, idempotent)", l.Name, l.Color)
 	}
+	p.outf("[dry-run] would mint project access token %s (scopes=%s, access_level=%d Maintainer, expires in %dd) "+
+		"into the masked, protected CI/CD variable %s unless it already exists — never a role-fleet PAT; "+
+		"where the forge cannot mint one, a recorded failure naming the manual step",
+		pushTokenName, pushTokenScope, pushTokenAccessLevel, p.o.patExpiryDays, pushTokenVariable)
 }
 
 func (p *provisioner) resolveGroup() *stopError {

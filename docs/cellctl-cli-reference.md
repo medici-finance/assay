@@ -2,7 +2,7 @@
 
 <!-- GENERATED from the command tree by TestCLIReferenceDoc; do not edit by hand. -->
 
-Every command takes the cell as its first argument. The shape is
+Lifecycle commands take the cell as their first argument. Local `compat-prepare` takes `--cell`. The shape is
 `cellctl [--cells-root <abs>] <verb> <positionals...> [flags]`: the registry selector is the
 separated `--cells-root <abs>`, and only as the first word. Single-dash spellings of long flags
 (`-apply`) are accepted by `scratch` only. Help (`-h`, `--help`, `help <command>`) and version
@@ -58,6 +58,24 @@ initialize, check, run or recover a cell's interim comms service
   --repo                     string   quarantine issue destination owner/repo
 ```
 
+## `cellctl compat-prepare`
+
+plan or prepare a cold Claude desk volume locally
+
+```
+  --agent                    string   preinstalled executable path
+  --agent-version            string   exact installed Claude package version
+  --cell                     string   approved cell name
+  --instructions             string   approved instructions path; default is the image-baked role skill
+  --model                    string   explicit approved versioned Claude model ID
+  --prepare                           explicitly create cold descriptor/history; default is read-only plan
+  --readback                          read validated unused preparation bindings without changing them
+  --role                     string   desk role
+  --version-manifest         string   installed Claude package manifest path
+  --work                     string   absolute retained work directory
+  --workdir                  string   preinstalled work checkout path
+```
+
 ## `cellctl defaults init|print`
 
 print or create the machine-wide cell defaults file
@@ -90,13 +108,26 @@ stand the cell's persistent deskd
   (no flags)
 ```
 
-## `cellctl down <cell>`
+## `cellctl down <cell> [role...]`
 
-tear a cell's session down
+tear a cell's session down, or stop only the named roles
 
 ```
   --cockpit                  string   cockpit surface (auto|tmux|herdr|orca)
   --keep-deskd                        leave the cell's deskd running
+```
+
+## `cellctl drain <cell> [role...]`
+
+pause, wait for in-flight work to finish, hand off, then stop each targeted role
+
+```
+  --apply                    string   apply a stored plan of this verb on this terminal
+  --handoff-wait             duration how long to wait for each desk's own handoff record
+  --json                              print the cell-op-v1 document and nothing else on stdout
+  --now                               do not wait for idle: plan the stop, listing every abandoned claim (interactive confirm only)
+  --plan                              write a cell-op plan for this transition and change nothing else (works anywhere)
+  --timeout                  duration how long to wait for in-flight work before giving up (the roles stay up)
 ```
 
 ## `cellctl hotfix install|status|clear`
@@ -137,6 +168,7 @@ scaffold a cell
   --gitlab-token-store       string   gitlab: role token store directory
   --group                    string   gitlab: group
   --kind                     string   k8s|house|container|scrubbed
+  --labels-token-file        string   house: FILE holding an operator credential that can write labels; ensures the label set on every --roots repo
   --launcher                 string   absolute operator-owned container launcher
   --orgs                     string   github: comma-separated orgs
   --port                     string   house: deskd port
@@ -144,6 +176,16 @@ scaffold a cell
   --repo-slug                string   scrubbed: <owner>/<repo>
   --roles                    string   space-separated roles
   --roots                    string   the DESK_ROOTS map: '<owner>/<repo>=<abs path>,...'
+```
+
+## `cellctl pause <cell> [role...]`
+
+stop new work in the cell (or the named roles) from each loop's next iteration boundary
+
+```
+  --apply                    string   apply a stored plan of this verb on this terminal
+  --json                              print the cell-op-v1 document and nothing else on stdout
+  --plan                              write a cell-op plan for this transition and change nothing else (works anywhere)
 ```
 
 ## `cellctl providers init`
@@ -160,6 +202,17 @@ stop and reset a cell; hard also refreshes configured repositories
 
 ```
   --hard                              discard messages, all linked worktrees and local branches; refresh every CELL_ROOTS repository
+```
+
+## `cellctl resume <cell>`
+
+lift the stops pause set, and no other
+
+```
+  --apply                    string   apply a stored plan of this verb on this terminal
+  --foreign                  string   lift this one stop flag that pause did not set (plan + interactive confirm)
+  --json                              print the cell-op-v1 document and nothing else on stdout
+  --plan                              write a cell-op plan for this transition and change nothing else (works anywhere)
 ```
 
 ## `cellctl scratch <cell> run|ack|sweep|inventory [flags] [-- command [args]]`

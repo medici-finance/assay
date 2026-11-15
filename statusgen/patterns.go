@@ -82,6 +82,38 @@ const (
 	rulePatternReviewSameRole      = "pattern-review-same-role"
 	rulePatternJoinNotCheck        = "pattern-join-not-check"
 	rulePatternRiskInputMissing    = "pattern-risk-input-missing-verdict"
+
+	// Signal-instantiated patterns (graph-execution/34, spec §4.3).
+	rulePatternSignalInput      = "pattern-signal-input"
+	rulePatternReplayMandatory  = "pattern-replay-not-mandatory"
+	rulePatternAdmissionOpen    = "pattern-signal-admission-open"
+	rulePatternRemedySetOpen    = "pattern-remedy-set-open"
+	rulePatternJudgementDefault = "pattern-judgement-no-default"
+	rulePatternCulpritRecord    = "pattern-culprit-record"
+	rulePatternDecisionOptions  = "pattern-decision-options"
+	rulePatternContainmentSet   = "pattern-containment-set"
+)
+
+// Closed sets of the signal-pattern rules (spec/workflow-pattern-v1.md §4.3).
+// Each is a constant beside the rules that read it, never a pattern-supplied value.
+const (
+	// patternReplayArtifact is the reserved artifact a signal pattern MUST
+	// produce under a mandatory command claim (pattern-replay-not-mandatory).
+	patternReplayArtifact = "replay-fixture"
+	// patternAdmittedPushRef is the only ref a `push` admission may name. It is
+	// fully qualified so a tag named `main` can never satisfy it.
+	patternAdmittedPushRef = "refs/heads/main"
+	// patternGateConfigFloor is the gate-configuration floor every class of a
+	// pattern with an effect-bearing node MUST refuse. It is a subset of gate
+	// configuration: a runtime allow-list may refuse more, never less.
+	patternGateConfigFloor = ".github/"
+)
+
+var (
+	patternAdmissionTriggers = []string{"schedule", "push"}
+	patternRemedySet         = []string{"gofmt", "stray-file-deletion", "exact-stale-string-replace"}
+	patternContainmentSet    = []string{"quarantine", "rollback", "secondary-auth", "stop", "none-needed"}
+	patternCulpritFields     = []string{"check", "file", "line", "problem", "class", "origin"}
 )
 
 // Human-floor artifacts correspond one-to-one to admission's humanFloorOperations:
@@ -291,6 +323,66 @@ type patternNode struct {
 	Effects           []patternEffect
 	Evidence          []patternEvidence // graph-execution/03: the node's full evidence[] list, not just the review bit
 	HasReviewEvidence bool              // true iff any evidence[] entry has kind: review
+
+	// graph-execution/34. Inputs above stays artifact names only, so every
+	// earlier rule and instance.go see what they saw before; the full input
+	// items, signal inputs included, are carried separately here.
+	InputItems     []patternInputItem
+	Options        []string
+	HasOptions     bool
+	Default        string
+	HasDefault     bool
+	Containment    []string
+	HasContainment bool
+}
+
+// patternInputItem is one `nodes[].inputs[]` entry by key presence, so the
+// lint can tell an item naming neither or both of artifact/signal.
+type patternInputItem struct {
+	HasArtifact bool
+	Signal      *patternSignal
+}
+
+// patternSignal is the `signal` shape of an input item (spec §4.3).
+type patternSignal struct {
+	Source        string
+	LivenessCheck string
+	Classes       []string
+}
+
+// patternSignalClass is one top-level `signal-classes[]` entry. Presence flags
+// matter: several rules refuse a missing key, not an empty value.
+type patternSignalClass struct {
+	ID              string
+	Exit            string
+	MechanicalExit  string
+	JudgementExit   string
+	Admission       *patternAdmission
+	Culprit         *patternCulprit
+	Remedies        []string
+	HasRemedies     bool
+	RefusedPaths    []string
+	HasRefusedPaths bool
+}
+
+type patternAdmission struct {
+	Triggers    []string
+	PushRefs    []string
+	HasPushRefs bool
+}
+
+type patternCulprit struct {
+	Fields          []string
+	DefaultClass    string
+	WithheldClass   string
+	WithheldPresent bool
+	FilePresent     bool
+	FileIsNull      bool
+}
+
+type patternEdge struct {
+	From string
+	To   string
 }
 
 type patternEffect struct {
@@ -323,6 +415,10 @@ type patternDoc struct {
 	NodeByID  map[string]patternNode
 	Join      string
 	RiskInput map[string]bool // verdict name -> present (value not needed: presence is the rule)
+
+	// graph-execution/34: the edges and signal classes the signal rules read.
+	Edges         []patternEdge
+	SignalClasses []patternSignalClass
 }
 
 func parsePatternDoc(data map[string]any) (patternDoc, error) {
@@ -360,9 +456,27 @@ func parsePatternDoc(data map[string]any) (patternDoc, error) {
 					if a, ok := im["artifact"].(string); ok && a != "" {
 						n.Inputs = append(n.Inputs, a)
 					}
+					item := patternInputItem{}
+					_, item.HasArtifact = im["artifact"]
+					if rs, present := im["signal"]; present {
+						sig := &patternSignal{}
+						if sm, ok := rs.(map[string]any); ok {
+							sig.Source, _ = sm["source"].(string)
+							sig.LivenessCheck, _ = sm["liveness-check"].(string)
+							sig.Classes = patternStringList(sm["classes"])
+						}
+						item.Signal = sig
+					}
+					n.InputItems = append(n.InputItems, item)
 				}
 			}
 		}
+		_, n.HasOptions = nm["options"]
+		n.Options = patternStringList(nm["options"])
+		_, n.HasDefault = nm["default"]
+		n.Default, _ = nm["default"].(string)
+		_, n.HasContainment = nm["containment"]
+		n.Containment = patternStringList(nm["containment"])
 		if rawOutputs, ok := nm["outputs"].([]any); ok {
 			for _, ro := range rawOutputs {
 				if s, ok := ro.(string); ok {
@@ -404,11 +518,90 @@ func parsePatternDoc(data map[string]any) (patternDoc, error) {
 			doc.NodeByID[n.ID] = n
 		}
 	}
+
+	if rawEdges, ok := data["edges"].([]any); ok {
+		for _, re := range rawEdges {
+			if em, ok := re.(map[string]any); ok {
+				e := patternEdge{}
+				e.From, _ = em["from"].(string)
+				e.To, _ = em["to"].(string)
+				doc.Edges = append(doc.Edges, e)
+			}
+		}
+	}
+	if rawClasses, ok := data["signal-classes"].([]any); ok {
+		for _, rc := range rawClasses {
+			cm, ok := rc.(map[string]any)
+			if !ok {
+				doc.SignalClasses = append(doc.SignalClasses, patternSignalClass{})
+				continue
+			}
+			doc.SignalClasses = append(doc.SignalClasses, parseSignalClass(cm))
+		}
+	}
 	return doc, nil
 }
 
-// checkPatternMustRules runs the five cross-field MUST rules a JSON schema
-// cannot express, over the resolved document. Each returned string names the
+func parseSignalClass(cm map[string]any) patternSignalClass {
+	c := patternSignalClass{}
+	c.ID, _ = cm["id"].(string)
+	c.Exit, _ = cm["exit"].(string)
+	c.MechanicalExit, _ = cm["mechanical-exit"].(string)
+	c.JudgementExit, _ = cm["judgement-exit"].(string)
+	if ra, present := cm["admission"]; present {
+		adm := &patternAdmission{}
+		if am, ok := ra.(map[string]any); ok {
+			adm.Triggers = patternStringList(am["triggers"])
+			_, adm.HasPushRefs = am["push-refs"]
+			adm.PushRefs = patternStringList(am["push-refs"])
+		}
+		c.Admission = adm
+	}
+	if rr, present := cm["culprit-record"]; present {
+		cr := &patternCulprit{}
+		if rm, ok := rr.(map[string]any); ok {
+			cr.Fields = patternStringList(rm["fields"])
+			cr.DefaultClass, _ = rm["default-class"].(string)
+			if rw, present := rm["withheld"]; present {
+				cr.WithheldPresent = true
+				if wm, ok := rw.(map[string]any); ok {
+					cr.WithheldClass, _ = wm["class"].(string)
+					var file any
+					file, cr.FilePresent = wm["file"]
+					cr.FileIsNull = cr.FilePresent && file == nil
+				}
+			}
+		}
+		c.Culprit = cr
+	}
+	_, c.HasRemedies = cm["remedies"]
+	c.Remedies = patternStringList(cm["remedies"])
+	_, c.HasRefusedPaths = cm["refused-paths"]
+	c.RefusedPaths = patternStringList(cm["refused-paths"])
+	return c
+}
+
+// patternStringList returns the string entries of a decoded YAML list, in order;
+// anything else (absent, a scalar, a mapping) yields nil. Non-string entries
+// are kept as their %v text so a membership rule still sees and refuses them.
+func patternStringList(v any) []string {
+	raw, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, e := range raw {
+		if s, ok := e.(string); ok {
+			out = append(out, s)
+		} else {
+			out = append(out, fmt.Sprintf("%v", e))
+		}
+	}
+	return out
+}
+
+// checkPatternMustRules runs the cross-field MUST rules a JSON schema cannot
+// express, over the resolved document. Each returned string names the
 // rule tag so it reads identically whether printed by the CLI or scraped by a
 // test.
 func checkPatternMustRules(path string, pat patternDoc) []string {
@@ -505,7 +698,328 @@ func checkPatternMustRules(path string, pat patternDoc) []string {
 		}
 	}
 
+	out = append(out, checkSignalPatternRules(path, pat)...)
 	return out
+}
+
+// checkSignalPatternRules runs the eight signal-pattern MUST rules
+// (spec/workflow-pattern-v1.md §4.3). Admission and the gate-configuration
+// floor key on the PRESENCE of an effect-bearing node anywhere in the pattern
+// (non-empty effects, any kind, reachable or not), never on a class's exit, a
+// node's kind or a route, so neither depends on a runtime enforcing routes.
+func checkSignalPatternRules(path string, pat patternDoc) []string {
+	var out []string
+	add := func(rule, format string, args ...any) {
+		out = append(out, fmt.Sprintf("%s [%s]: ", path, rule)+fmt.Sprintf(format, args...))
+	}
+
+	incoming := map[string]bool{}
+	for _, e := range pat.Edges {
+		incoming[e.To] = true
+	}
+	var signalNodes []string
+	var signalInputs []*patternSignal
+	for _, n := range pat.Nodes {
+		for _, item := range n.InputItems {
+			hasSignal := item.Signal != nil
+			if item.HasArtifact == hasSignal {
+				add(rulePatternSignalInput, "node %q has an input item naming %s of artifact/signal — it MUST name exactly one",
+					nodeLabelOf(n), map[bool]string{true: "both", false: "neither"}[hasSignal])
+			}
+			if !hasSignal {
+				continue
+			}
+			signalNodes = append(signalNodes, n.ID)
+			signalInputs = append(signalInputs, item.Signal)
+			if incoming[n.ID] {
+				add(rulePatternSignalInput, "node %q carries a signal input but an edge points at it — a signal input MUST sit on an entry node", nodeLabelOf(n))
+			}
+			if strings.TrimSpace(item.Signal.Source) == "" {
+				add(rulePatternSignalInput, "node %q has a signal input with an empty source", nodeLabelOf(n))
+			}
+			if strings.TrimSpace(item.Signal.LivenessCheck) == "" {
+				add(rulePatternSignalInput, "node %q has a signal input with an empty liveness-check — it MUST state how a dead source is detected", nodeLabelOf(n))
+			}
+		}
+	}
+	isSignal := len(signalInputs) > 0
+
+	declared := map[string]int{}
+	for _, c := range pat.SignalClasses {
+		declared[c.ID]++
+	}
+	for _, id := range sortedKeys(declared) {
+		if count := declared[id]; count > 1 {
+			add(rulePatternSignalInput, "signal class %q is declared %d times — each class id MUST be declared once", id, count)
+		}
+	}
+	if isSignal && len(pat.SignalClasses) == 0 {
+		add(rulePatternSignalInput, "the pattern has a signal input but declares no signal-classes")
+	}
+	if len(pat.SignalClasses) > 0 && len(signalInputs) != 1 {
+		add(rulePatternSignalInput, "the pattern declares signal-classes and has %d signal input(s) — it MUST have exactly one", len(signalInputs))
+	}
+	for _, sig := range signalInputs {
+		listed := map[string]int{}
+		for _, name := range sig.Classes {
+			listed[name]++
+		}
+		for _, name := range sortedKeys(listed) {
+			if listed[name] > 1 {
+				add(rulePatternSignalInput, "the signal input lists class %q %d times — each class MUST be listed once", name, listed[name])
+			}
+			if declared[name] == 0 {
+				add(rulePatternSignalInput, "the signal input lists class %q, which no signal-classes entry declares", name)
+			}
+		}
+		for _, c := range pat.SignalClasses {
+			if listed[c.ID] == 0 {
+				add(rulePatternSignalInput, "signal class %q is declared but the signal input does not list it — every declared class MUST be listed", c.ID)
+			}
+		}
+	}
+	if isSignal {
+		reached := reachableFrom(signalNodes, pat.Edges)
+		for _, n := range pat.Nodes {
+			if !reached[n.ID] {
+				add(rulePatternSignalInput, "node %q is not reachable along edges from the signal-input node — a signal pattern MUST have no disconnected node", nodeLabelOf(n))
+			}
+		}
+	}
+
+	// pattern-replay-not-mandatory: a signal pattern produces the reserved
+	// replay artifact, and every producer owes it under a mandatory command claim.
+	if isSignal {
+		producers := 0
+		for _, n := range pat.Nodes {
+			if !containsString(n.Outputs, patternReplayArtifact) {
+				continue
+			}
+			producers++
+			mandatoryCommand := false
+			for _, ev := range n.Evidence {
+				if ev.Kind == "command" && ev.Mandatory {
+					mandatoryCommand = true
+				}
+			}
+			if !mandatoryCommand {
+				add(rulePatternReplayMandatory, "node %q outputs %s but carries no kind: command evidence with mandatory: true", nodeLabelOf(n), patternReplayArtifact)
+			}
+		}
+		if producers == 0 {
+			add(rulePatternReplayMandatory, "the pattern has a signal input but no node outputs the reserved artifact %s", patternReplayArtifact)
+		}
+	}
+
+	effectBearing := ""
+	for _, n := range pat.Nodes {
+		if len(n.Effects) > 0 {
+			effectBearing = nodeLabelOf(n)
+			break
+		}
+	}
+
+	for _, c := range pat.SignalClasses {
+		cl := c.ID
+		if cl == "" {
+			cl = "(unnamed class)"
+		}
+
+		// pattern-signal-input: exits are nodes, the exit shape is one of the two,
+		// and the mechanical exit and culprit record travel together.
+		for _, ref := range [][2]string{{"exit", c.Exit}, {"mechanical-exit", c.MechanicalExit}, {"judgement-exit", c.JudgementExit}} {
+			if ref[1] == "" {
+				continue
+			}
+			if _, ok := pat.NodeByID[ref[1]]; !ok {
+				add(rulePatternSignalInput, "signal class %q names %s %q, which is not a node in this pattern", cl, ref[0], ref[1])
+			}
+		}
+		pair := c.MechanicalExit != "" && c.JudgementExit != ""
+		if (c.Exit != "") == (c.MechanicalExit != "" || c.JudgementExit != "") || (c.Exit == "" && !pair) {
+			add(rulePatternSignalInput, "signal class %q MUST name either exit alone, or both mechanical-exit and judgement-exit", cl)
+		}
+		if (c.MechanicalExit != "") != (c.Culprit != nil) {
+			add(rulePatternSignalInput, "signal class %q: mechanical-exit and culprit-record MUST appear together", cl)
+		}
+		if c.MechanicalExit != "" || c.Culprit != nil {
+			var missingKeys []string
+			if c.JudgementExit == "" {
+				missingKeys = append(missingKeys, "judgement-exit")
+			}
+			if c.Admission == nil {
+				missingKeys = append(missingKeys, "admission")
+			}
+			if !c.HasRemedies {
+				missingKeys = append(missingKeys, "remedies")
+			}
+			if !c.HasRefusedPaths {
+				missingKeys = append(missingKeys, "refused-paths")
+			}
+			if len(missingKeys) > 0 {
+				add(rulePatternSignalInput, "signal class %q carries a mechanical exit or culprit record but omits %s", cl, strings.Join(missingKeys, ", "))
+			}
+		}
+
+		// pattern-signal-admission-open.
+		if c.Admission != nil {
+			for _, t := range c.Admission.Triggers {
+				if !containsString(patternAdmissionTriggers, t) {
+					add(rulePatternAdmissionOpen, "signal class %q admits trigger %q — triggers MUST be a subset of %s", cl, t, strings.Join(patternAdmissionTriggers, ", "))
+				}
+			}
+			if containsString(c.Admission.Triggers, "push") {
+				if !c.Admission.HasPushRefs || len(c.Admission.PushRefs) != 1 || c.Admission.PushRefs[0] != patternAdmittedPushRef {
+					add(rulePatternAdmissionOpen, "signal class %q admits push with push-refs %v — push-refs MUST be exactly [%s]", cl, c.Admission.PushRefs, patternAdmittedPushRef)
+				}
+			}
+		}
+		if effectBearing != "" && c.Admission == nil {
+			add(rulePatternAdmissionOpen, "signal class %q declares no admission, and node %q declares effects — every class MUST declare admission once any node is effect-bearing", cl, effectBearing)
+		}
+
+		// pattern-remedy-set-open.
+		for _, r := range c.Remedies {
+			if !containsString(patternRemedySet, r) {
+				add(rulePatternRemedySetOpen, "signal class %q lists remedy %q — remedies MUST be a subset of %s", cl, r, strings.Join(patternRemedySet, ", "))
+			}
+		}
+		if c.MechanicalExit != "" {
+			if len(c.Remedies) == 0 {
+				add(rulePatternRemedySetOpen, "signal class %q names a mechanical-exit with no remedies — remedies MUST be a non-empty subset of %s", cl, strings.Join(patternRemedySet, ", "))
+			}
+			if mn, ok := pat.NodeByID[c.MechanicalExit]; ok && mn.Kind != "effect" {
+				add(rulePatternRemedySetOpen, "signal class %q: mechanical-exit %q is kind %q — it MUST be kind effect", cl, c.MechanicalExit, mn.Kind)
+			}
+		}
+		if effectBearing != "" && !containsString(c.RefusedPaths, patternGateConfigFloor) {
+			add(rulePatternRemedySetOpen, "signal class %q refused-paths %v omits the gate-configuration floor %s, and node %q declares effects — every class MUST refuse it once any node is effect-bearing",
+				cl, c.RefusedPaths, patternGateConfigFloor, effectBearing)
+		}
+
+		// pattern-judgement-no-default.
+		if c.JudgementExit != "" {
+			if jn, ok := pat.NodeByID[c.JudgementExit]; ok {
+				if jn.Kind != "decision" || jn.Role != "human" {
+					add(rulePatternJudgementDefault, "signal class %q: judgement-exit %q is kind %q role %q — it MUST be a human decision", cl, c.JudgementExit, jn.Kind, jn.Role)
+				}
+				if len(jn.Options) == 0 {
+					add(rulePatternJudgementDefault, "signal class %q: judgement-exit %q declares no options", cl, c.JudgementExit)
+				}
+				if !jn.HasDefault || !containsString(jn.Options, jn.Default) {
+					add(rulePatternJudgementDefault, "signal class %q: judgement-exit %q MUST declare a default that is one of its options", cl, c.JudgementExit)
+				}
+			}
+		}
+
+		// pattern-culprit-record.
+		if cr := c.Culprit; cr != nil {
+			if !sameStringSet(cr.Fields, patternCulpritFields) {
+				add(rulePatternCulpritRecord, "signal class %q: culprit-record fields %v MUST be exactly %s, each once", cl, cr.Fields, strings.Join(patternCulpritFields, ", "))
+			}
+			if cr.DefaultClass != "judgement" {
+				add(rulePatternCulpritRecord, "signal class %q: culprit-record default-class is %q — it MUST be judgement", cl, cr.DefaultClass)
+			}
+			if !cr.WithheldPresent || cr.WithheldClass != "judgement" {
+				add(rulePatternCulpritRecord, "signal class %q: culprit-record withheld.class is %q — it MUST be judgement", cl, cr.WithheldClass)
+			}
+			if !cr.FileIsNull {
+				add(rulePatternCulpritRecord, "signal class %q: culprit-record withheld.file MUST be YAML null", cl)
+			}
+		}
+	}
+
+	containmentNodes := 0
+	for _, n := range pat.Nodes {
+		label := nodeLabelOf(n)
+
+		// pattern-decision-options.
+		if (n.HasOptions || n.HasDefault || n.HasContainment) && n.Kind != "decision" {
+			add(rulePatternDecisionOptions, "node %q is kind %q — options, default and containment MUST appear only on decision nodes", label, n.Kind)
+		}
+		if n.HasDefault && !containsString(n.Options, n.Default) {
+			add(rulePatternDecisionOptions, "node %q default %q is not one of its options %v", label, n.Default, n.Options)
+		}
+		seen := map[string]bool{}
+		for _, o := range n.Options {
+			if seen[o] {
+				add(rulePatternDecisionOptions, "node %q lists option %q more than once", label, o)
+			}
+			seen[o] = true
+		}
+
+		// pattern-containment-set.
+		if !n.HasContainment {
+			continue
+		}
+		containmentNodes++
+		if !sameStringSet(n.Containment, patternContainmentSet) {
+			add(rulePatternContainmentSet, "node %q containment %v MUST be exactly %s, each once", label, n.Containment, strings.Join(patternContainmentSet, ", "))
+		}
+		if n.Kind != "decision" || n.Role != "human" || len(n.Effects) != 0 {
+			add(rulePatternContainmentSet, "node %q carries containment and MUST be an effect-free human decision (kind %q, role %q, %d effect(s))", label, n.Kind, n.Role, len(n.Effects))
+		}
+		if n.HasDefault {
+			add(rulePatternContainmentSet, "node %q carries containment and a default %q — no containment outcome may be pre-selected", label, n.Default)
+		}
+	}
+	if isSignal && containmentNodes != 1 {
+		add(rulePatternContainmentSet, "the pattern has a signal input and %d containment node(s) — it MUST have exactly one", containmentNodes)
+	}
+
+	return out
+}
+
+func nodeLabelOf(n patternNode) string {
+	if n.ID == "" {
+		return "(unnamed node)"
+	}
+	return n.ID
+}
+
+// reachableFrom returns every node id reachable along edges from roots,
+// roots included.
+func reachableFrom(roots []string, edges []patternEdge) map[string]bool {
+	next := map[string][]string{}
+	for _, e := range edges {
+		next[e.From] = append(next[e.From], e.To)
+	}
+	seen := map[string]bool{}
+	queue := append([]string(nil), roots...)
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		queue = append(queue, next[id]...)
+	}
+	return seen
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// sameStringSet reports whether got holds exactly the entries of want, each once.
+func sameStringSet(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, g := range got {
+		if seen[g] || !containsString(want, g) {
+			return false
+		}
+		seen[g] = true
+	}
+	return true
 }
 
 // findProducerOf returns the node (other than selfID) whose outputs include

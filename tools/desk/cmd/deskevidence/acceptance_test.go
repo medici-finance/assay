@@ -25,6 +25,9 @@ func TestAcceptanceChildPermission(t *testing.T) {
 		{"outcome", func(options childOptions) { checkVerifiedClosure(dir, "vf/01", options) }},
 		{"lint", func(options childOptions) { statusgenLintAt(dir, options) }},
 		{"flip", func(options childOptions) { statusgenVerifyFlip(dir, "vf/01", "abc", "verifier", true, options) }},
+		{"verdict", func(options childOptions) {
+			evidenceVerdictCheckAt(dir, "docs/streams/vf/brief-01.md", nil, nil, false, "BLOCKED", options)
+		}},
 	}
 	for _, enabled := range []bool{false, true} {
 		for _, c := range calls {

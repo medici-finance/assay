@@ -145,21 +145,36 @@ func personalDataScan(s string) []piiFinding {
 // the userinfo of a URL (`scheme://user@host/...`). Both are transport syntax that every
 // clone instruction carries, and neither addresses a person.
 func isGitRemoteUserinfo(s string, start, end int) bool {
-	if end+1 < len(s) && s[end] == ':' {
-		c := s[end+1]
-		if c == '/' || c == '~' || c == '_' || c == '.' || c == '-' || isAlnumByte(c) {
-			return true
-		}
-	}
 	tokStart := start
 	for tokStart > 0 && !piiDelimByte(s[tokStart-1]) {
 		tokStart--
 	}
-	return strings.Contains(s[tokStart:start], "://")
+	prefix := s[tokStart:start]
+	scheme := strings.Index(prefix, "://")
+	if scheme < 0 {
+		if end+1 < len(s) && s[end] == ':' {
+			c := s[end+1]
+			return c == '/' || c == '~' || c == '_' || c == '.' || c == '-' || isAlnumByte(c)
+		}
+		return false
+	}
+	// Only the URL authority can contain transport userinfo. A URL elsewhere
+	// in this token must not exempt an address in its path, query or fragment.
+	authorityStart := tokStart + scheme + 3
+	authorityEnd := authorityStart
+	for authorityEnd < len(s) && !piiDelimByte(s[authorityEnd]) && !strings.ContainsRune("/?#", rune(s[authorityEnd])) {
+		authorityEnd++
+	}
+	if start < authorityStart || end > authorityEnd {
+		return false
+	}
+	authority := s[authorityStart:authorityEnd]
+	// Multiple unescaped at-signs are ambiguous, never a userinfo allowance.
+	return strings.Count(authority, "@") == 1 && authorityStart+strings.IndexByte(authority, '@') == start+strings.LastIndexByte(s[start:end], '@')
 }
 
 func piiDelimByte(c byte) bool {
-	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '"' || c == '\'' || c == '(' || c == '<' || c == '`'
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '"' || c == '\'' || c == '(' || c == '<' || c == '`' || c == ',' || c == ';' || c == ')' || c == '>' || c == ']' || c == '}'
 }
 
 func countDigits(s string) int {

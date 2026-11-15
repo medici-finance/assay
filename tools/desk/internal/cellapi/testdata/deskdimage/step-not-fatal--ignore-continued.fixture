@@ -1,0 +1,7 @@
+# regression: #4769
+# A .IGNORE rule continued with a backslash names deskd-build on its second
+# physical line; make joins the two before reading the rule.
+want: step-not-fatal
+file: Makefile
+replace: "\n## deskd-image: LOCAL image build"
+with: "\n.IGNORE: desk-test \\\n  deskd-build\n\n## deskd-image: LOCAL image build"

@@ -468,6 +468,95 @@ Totals: 4 required rows.
 Raw row outputs and plant logs are kept in the verifier's local scratch and not copied here.
 
 **VERIFY: FAIL** — row 1: TestPerfV3LauncherChildFlow still passes when a child inherits its parent's work, the "stale work" plant its Expect names, because the parent fixture carries no work. Rows 2 to 4 pass. Row 2's parser-exemption defect from 2026-10-20 is repaired.
+### Independent verification — 2026-11-01 (dispatched verifier, claude-opus-5-5, tier strong)
+
+Subject: merged main 1bfcf9a4dcb5689ed5c9172e35abf95fc2241a88, in a detached home that stayed clean through every row run and probe. Delivery is the two-parent merge 4b7f4847f7f3 (PR #3582), first parent 9d4ae27f2d0d, which is on the subject's first-parent chain. The Verify section is byte-identical at the original, base, delivery and subject revisions, so no acceptance transition applies. deskpathguard rederive found 4 original rows, 0 author-added, all from base. Every row ID, Command, Expect and class below is the original one. Admission: deskdispatch --check-verifier exited 0 before the first row and again after this block was written into the brief, with the same binding (attestation #5196). No file under perfrec, the deskkit performance-context test, the shared runner, or loopadmin/runner changed between the 2026-10-27 subject 3a140e111928 and this subject.
+
+Verification-Table: delivery=4b7f4847f7f3531185fdfb23fbf978ae9551a242 base=b73d90d774fca8aec8974ef410da63ebcb10eece original=3d737b4871bf604e698c6c96427bb89c5e794db7
+
+Rows 1 to 3 are check:ci. The darwin host cannot run the unshare sandbox, so they ran in the container lane inside one closed admission bracket, with no edit to the home between the steps:
+
+1. On the host, statusgen verifyrun --open-bracket (pinned v1.0.67) recorded the home tree digest at 21:25:42Z.
+2. The rows ran with statusgen verifyrun --sandbox=container-netns --rows 1,2,3 in the pinned runner image ghcr.io/medici-finance/verify-runner (v1.0.67, go1.27.3, linux/amd64; digest on the Container-Image line), from 21:25:46Z to 21:30:47Z. The container settings were:
+   - --network none, --read-only, --cap-drop ALL and no-new-privileges, with the engine's default seccomp profile;
+   - read-only bind mounts for the home at its own path, for the repository's git directory (the home is a linked worktree) and for the admission receipt; writable mounts only for a new Go build cache and a new directory for the witness file;
+   - a tmpfs at /tmp;
+   - GOPROXY=off, GOSUMDB=off, GOFLAGS=-mod=readonly, GOTOOLCHAIN=local and KUBECONFIG=/dev/null.
+   The image's own module cache was enough for both modules offline, so no networked cache fill was used. The step exited 0.
+3. On the host, --close-bracket closed the bracket at 21:31:41Z, and --bracket-digest then reported verdict=match (bracket=L9 header=L1).
+
+The block below is the closed witness file, byte for byte:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3LauncherChildFlow$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3LauncherChildFlow ' "$out")` | pass exit=0 sandbox=container-netns | sha256:41476a8f11df | 2026-11-01 | assay-verifier-app[bot] @ 1bfcf9a4dcb5 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3CLIContextPrecedence$' ./internal/clicontract/ > "$out" && grep -F -- '--- PASS: TestPerfV3CLIContextPrecedence ' "$out")` | pass exit=0 sandbox=container-netns | sha256:1d1e0502cb3b | 2026-11-01 | assay-verifier-app[bot] @ 1bfcf9a4dcb5 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3RunnerIdentityLifecycle$' ./... > "$out" && grep -F -- '--- PASS: TestPerfV3RunnerIdentityLifecycle ' "$out")` | pass exit=0 sandbox=container-netns | sha256:2ba9234aabb0 | 2026-11-01 | assay-verifier-app[bot] @ 1bfcf9a4dcb5 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:93796457ee1c2fb9b349ec6bbef3bfdc96fa55c7877b4c2ac9082ed859095fb0
+Container-Image: sha256:f073d208c69e1e2f5ce5b680ad536d7a3cef3c80756823b9643cab4f7d1068aa
+Verification-Attestation: medici-finance/assay#5196 run=50c1a22b4f529d56fd9e699c3fb434658e591df6e4defdad8616ff508980ccc9 source=1bfcf9a4dcb5689ed5c9172e35abf95fc2241a88 brief=docs/streams/desktools-v2/brief-64-propagate-performance-context-through-desks-agents-and-tool-clis.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=50c1a22b4f529d56fd9e699c3fb434658e591df6e4defdad8616ff508980ccc9 source=1bfcf9a4dcb5689ed5c9172e35abf95fc2241a88 tree=sha256:93796457ee1c2fb9b349ec6bbef3bfdc96fa55c7877b4c2ac9082ed859095fb0 witness=sha256:8a05c0fe65890fba67b1edc6e2659e624266a976444d47ab5d31eb337d0ba647 opened=2026-11-01T21:25:42Z closed=2026-11-01T21:31:41Z before=receipt after=check-verifier
+
+Row 4 is class check (not check:ci). It reads git history and needs no network sandbox, so it ran on the host after the bracket closed, as statusgen verifyrun --rows 4. The table below is that run's witness as printed:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `statusgen --root . --consumers --brief desktools-v2/64` | fail exit=2 | sha256:8902a8736467 | 2026-11-01 | assay-verifier-app[bot] @ 1bfcf9a4dcb5 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5196 run=50c1a22b4f529d56fd9e699c3fb434658e591df6e4defdad8616ff508980ccc9 source=1bfcf9a4dcb5689ed5c9172e35abf95fc2241a88 brief=docs/streams/desktools-v2/brief-64-propagate-performance-context-through-desks-agents-and-tool-clis.md model=claude-opus-5-5 tier=strong
+
+Row 4 output line: statusgen: --consumers: COULD-NOT-CHECK: assay:assay:desktools-v2:64 is not in the diff against 1bfcf9a4dcb5689ed5c9172e35abf95fc2241a88, and the brief's delivery could not be derived: the committed Evidence names more than one delivery; this instrument does not choose between them. No routing claim was corroborated and none was disproved.
+
+The fail-first form (statusgen verifyrun --rows 4 --fail-first --base 9d4ae27f2d0d) gave the same result: red rc=2 at base and fail exit=2 at head, with the same output hash. On 2026-10-27 this row passed at 3a140e111928. Every committed Verification-Table marker in this brief names the same delivery, 4b7f4847f7f3; the 2026-10-21 marker differs only in its original revision. The row is recorded as could-not-check. That is unavailable, not a pass.
+
+A supplemental probe, not credited, passed the delivery explicitly as the error message suggests (statusgen --root . --consumers --brief desktools-v2/64 --delivery 4b7f4847f7f3 --base 9d4ae27f2d0d). It exited 0 with: summary: 13 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing. The two unchecked entries are the same out-of-scope ones as before: graph-execution/19 and /16 with forge-neutral/40, and qualgen/ and the other standalone entrypoints. This is the explicit-delivery form, not the row's Command, so it does not satisfy row 4.
+
+Mutation plants are supplemental and not credited. Each plant was applied to an archive copy of the subject outside the home, and the row command then ran unchanged, offline, with the host toolchain. Unmutated, rows 1 to 3 each exit 0, and every plant compiles.
+
+| Row | Plant | Row exit |
+|---|---|---|
+| 1 | child mints no agent ID and inherits the parent's | 1 |
+| 1 | child inherits the parent's session | 1 |
+| 1 | child's parent invocation set to the parent's own parent | 1 |
+| 1 | child work replaced by the parent's work | 1 |
+| 1 | typed child context not propagated by the shared executor (control) | 1 |
+| 1 | recorder work accumulates across contexts in a package global | 1 |
+| 1 | child context inherits the parent's work beside its own assignment (ChildContext ranges over p.Work plus work) | **0, survives** |
+| 1 | deskkit request context replaced by one process-global context (cross-task global context) | **0 in 5 of 6 runs, survives** |
+| 2 | deskboot parser state exempt to migrated in the CLI migration registry | 1 |
+| 2 | deskclaim exempt to migrated | 1 |
+| 2 | deskclaim-ref exempt to migrated | 1 |
+| 2 | desktoken exempt to migrated | 1 |
+| 2 | an explicitly empty work flag no longer clears inherited work | 1 |
+| 2 | flag work merged with environment work instead of replacing it | 1 |
+| 2 | perf-role flag ignored | 1 |
+| 2 | perf-loop-role also sets DESK_LOOP | 1 |
+| 3 | explicit resume never preserved | 1 |
+| 3 | native mapping retained past seven UTC days (-6 to -7) | 1 |
+| 3 | unknown mapping continuity gap concealed | 1 |
+| 3 | telemetry-off diagnostics context blocks launch | 1 |
+| 3 | replacement launch reuses a mapped agent | 1 |
+
+One further row 3 plant, mutating the request inside the runner, exited 0 but is equivalent: the request is passed by value, so the change cannot be observed. It is not counted. A first version of the row 2 empty-work plant was also equivalent, because the flag parser already returns an empty list for an empty value; it was discarded and replaced by the plant above.
+
+Row 1 still does not discriminate stale inherited work, the plant its Expect names. The row's parent fixture carries no work, so a child that copies the parent's work into its own assignment still passes. Two supplemental probes confirm the gap is in the fixture:
+- with the parent fixture given one work entry, the unmutated subject passes;
+- with that fixture and the same plant, the row fails.
+
+Row 1 also does not reliably discriminate a cross-task global context. With the deskkit context helpers backed by one package global, the row passed in five of six runs and failed once. The result depends on goroutine timing, so it is not a deterministic detector.
+
+RISK-VALUE: DERIVED — native mapping retention cutoff = today.AddDate(0, 0, -6) @ loopadmin/runner/performance.go:54. It keeps mappings dated today-6 through today, which is seven UTC days, as the brief's maximum seven-UTC-day retention requires. The -7 plant is red under row 3.
+RISK-VALUE: DERIVED — handoff directory mode = 0700 @ tools/desk/cmd/deskdispatch/performance_handoff.go:28, with a group/other refusal mask of 0077 @ performance_handoff.go:32, and handoff file mode = 0o600 @ tools/desk/internal/packet/packet.go:747. These give an owner-only directory and file, and refuse any group or other bit, as the brief's 0700/0600 requires. No Verify row plant exercised them in this pass.
+RISK-VALUE: DERIVED — handoff expiry = today.AddDate(0, 0, 7) @ tools/desk/cmd/deskdispatch/performance_handoff.go:49, and prune cutoff = today.AddDate(0, 0, -6) @ performance_handoff.go:56. The handoff is valid through today+6 and pruned once older than today-6, so both are seven UTC days. No Verify row plant exercised them in this pass.
+RISK-VALUE: NAMED, NOT DERIVED — opaque ID size = 16 random bytes @ perfrec/context.go:114. The spec asks for random IDs in the recorder's existing format and states no width. MaxWork = 8 and MaxWorkBytes = 4096 @ perfrec/context.go:76-77 are owned by desktools-v2/63, not this brief.
+
+Totals: 4 required rows.
+- Rows 1 to 3 have a bracket-credited witness, each pass exit=0, sandbox=container-netns.
+- Row 4 has a host witness, fail exit=2, COULD-NOT-CHECK: the instrument could not derive the delivery. It is unavailable, not a pass.
+- Mutation: rows 2 and 3 discriminate every effective plant run. Row 1 discriminates six of eight; the stale inherited work plant survives every run, and the cross-task global context plant survives five of six runs.
+
+Raw row outputs and plant logs are kept in the verifier's local scratch and not copied here.
+
+**VERIFY: FAIL** — row 1: TestPerfV3LauncherChildFlow still passes when a child inherits its parent's work, the "stale work" plant its Expect names, because the parent fixture carries no work; a process-global context plant also survives most runs. Row 4 is could-not-check at this subject: statusgen reports that the committed Evidence names more than one delivery. Rows 2 and 3 pass.
 
 ## Review
 

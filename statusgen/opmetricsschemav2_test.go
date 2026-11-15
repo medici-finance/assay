@@ -11,8 +11,9 @@ import (
 // with no metric change. opmetrics/2 ADDS operator.attention_families and keeps
 // every v1 key; the consumer reads only the additive-tolerant schema/dispatch/token
 // fields, so a v2 file is DayFile-present with schema "opmetrics/2" and the two
-// day-file axes still honestly report "unmeasured" (the producer carries no
-// dispatch-split or token block in either version).
+// day-file axes still honestly report "unmeasured" when the file carries no
+// dispatch-split or token block (a day-file written before the producer added
+// them). A v2 file that DOES carry them is opmetricsroundtrip_test.go.
 func TestOpmetricsSchemaV2Readable(t *testing.T) {
 	write := func(root, date, body string) {
 		dir := filepath.Join(root, "docs", "reports", "daily", date)

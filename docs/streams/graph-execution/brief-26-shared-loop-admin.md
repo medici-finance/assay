@@ -57,15 +57,19 @@ consumers:
 - 'operator lifecycle and cockpit: out-of-scope (adopter qualification)'
 - 'loopadmin/journal PostgreSQL schema and migrations: follow-up graph-execution/26 (this brief; flips to fixed-here when the implementation edits the path)'
 - 'spec/operator-incarnation-v1.md (read before each launch): follow-up graph-execution/16'
-version: 10
+- 'drainloop/ instance-generation work records and role pacing estimate: follow-up graph-execution/26 (desk-instance follow-on from completed graph-execution/16; flips to fixed-here when the implementation edits the path)'
+version: 12
 id: bcbee0b0-8f12-4e7a-b028-0637b2bab0c3
 ---
 
 # Brief 26 — Shared loop-admin launch supervision for desks and workflows
 
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
+
 ## Context
 
-files: `loopadmin/supervisor/` (planned), `loopadmin/process/` (planned), `tools/desk/internal/cellprocess/` (moved into loopadmin/process by this brief), `tools/desk/cmd/cellctl/cadence.go`, `tools/desk/go.mod`, `tools/desk/go.sum`, `tools/desk/internal/forgeban/allowlist.go`, `tools/desk/internal/deskkit/forge_surface_test.go`, `docs/cellctl-cadence.md`, `loopadmin/journal/` (planned), `loopadmin/control/` (planned), `loopadmin/cmd/loop-admin/` (planned), `loopadmin/testdata/supervisor/` (planned), `loopadmin/README.md` (planned), `docs/loop-admin.md` (planned), `.github/workflows/loopadmin.yml` (planned), `changelog/graph-execution-26-loop-admin.md` (planned), `loopadmin/journal/migrations/` (planned), `tools/desk/cmd/cellctl/{up.go,down.go,launch.go,scratch_launch.go,perf.go,telemetry.go,prepare_test.go,launch_perf_test.go}`, `tools/desk/internal/cellscratch/`, `tools/desk/internal/cellcache/`, `tools/desk/internal/deskkit/perf.go`, `perfrec/`, `tools/desk/README.md` — Added by the R2 amendment (2026-10-13): `loopadmin/journal/migrations/` (planned). Additional startup scope: `tools/desk/cmd/cellctl/{up.go,down.go,launch.go,scratch_launch.go,perf.go,telemetry.go,prepare_test.go,launch_perf_test.go}`, `tools/desk/internal/cellscratch/`, `tools/desk/internal/cellcache/`, `tools/desk/internal/deskkit/perf.go`, `perfrec/`, `tools/desk/README.md` (tests named here are planned).
+files: `loopadmin/supervisor/` (planned), `loopadmin/process/` (planned), `tools/desk/internal/cellprocess/` (moved into loopadmin/process by this brief), `tools/desk/cmd/cellctl/cadence.go`, `tools/desk/go.mod`, `tools/desk/go.sum`, `tools/desk/internal/forgeban/allowlist.go`, `tools/desk/internal/deskkit/forge_surface_test.go`, `docs/cellctl-cadence.md`, `loopadmin/journal/` (planned), `loopadmin/control/` (planned), `loopadmin/cmd/loop-admin/` (planned), `loopadmin/testdata/supervisor/` (planned), `loopadmin/README.md` (planned), `docs/loop-admin.md` (planned), `.github/workflows/loopadmin.yml` (planned), `changelog/graph-execution-26-loop-admin.md` (planned), `loopadmin/journal/migrations/` (planned), `tools/desk/cmd/cellctl/{up.go,down.go,launch.go,scratch_launch.go,perf.go,telemetry.go,prepare_test.go,launch_perf_test.go}`, `tools/desk/internal/cellscratch/`, `tools/desk/internal/cellcache/`, `tools/desk/internal/deskkit/perf.go`, `perfrec/`, `tools/desk/README.md`, `drainloop/` (desk-instance follow-on from completed graph-execution/16) — Added by the R2 amendment (2026-10-13): `loopadmin/journal/migrations/` (planned). Additional startup scope: `tools/desk/cmd/cellctl/{up.go,down.go,launch.go,scratch_launch.go,perf.go,telemetry.go,prepare_test.go,launch_perf_test.go}`, `tools/desk/internal/cellscratch/`, `tools/desk/internal/cellcache/`, `tools/desk/internal/deskkit/perf.go`, `perfrec/`, `tools/desk/README.md` (tests named here are planned).
 
 facts: The new loopadmin module is bootstrapped by /20. At main 307fe1699 `tools/desk/internal/cellprocess` already runs one harness invocation and reaps its process group or job, and cellctl's cadence path (`tools/desk/cmd/cellctl/cadence.go`) calls it; the process-launch audit (`TestNoForgeCLIShellout` over the `tools/desk` tree, with the runner's exec site in `tools/desk/internal/forgeban/allowlist.go`) covers it there. `tools/desk/internal/loopengine` owns in-session queue behavior for standing desks; it launches no process. Workflow instance ownership remains outside the supervisor; the shared module has no dependency on the instance store (19). Existing role capabilities and human merge/verification gates remain binding. All named commands/tests below are implementation deliverables, not tests already run.
 
@@ -163,6 +167,10 @@ the brake obligation and is red until the named test exists. Relaxing a brake is
 human decision; this amendment relaxes none. Existing Task/Verify rows and Evidence are
 preserved.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
+
 ## Task
 
 1. Move `tools/desk/internal/cellprocess` into `loopadmin/process` as the module's one process runner, without copying it: keep its process-tree containment and uncertain-cleanup result unchanged, delete the old package, and re-point cellctl's cadence path at the moved package through a `require` plus relative `replace` of the loopadmin module in `tools/desk/go.mod` (the pattern `tools/loopresolve/go.mod` uses for `cellconfig`); cellctl's existing cadence tests stay green unchanged, and the tools/desk release build must resolve the relative `replace`. Extend the process-launch audit so it also scans `loopadmin/` and re-key the runner's exec-site entry to the moved path; the audit must not lose sight of that exec site. Implement one shared process/session supervisor over /20 and that runner. Accept only authenticated caller-scoped, operator-approved launch profiles and validated assignment/reservation references. Support standing-desk and workflow-stage modes with identical adapter and lifecycle semantics. An operator may run separate per-role processes of the same binary; reuse does not imply a privileged all-role daemon.
@@ -171,6 +179,9 @@ preserved.
 4. Keep runtime launch authority separate from operator profile/install/credential administration. A desk client may request an allowed child invocation through a bounded, capability-scoped endpoint, but cannot choose arbitrary argv, escalate role, raise limits or recursively create unconstrained agents. Effect credentials and operator admin are absent; any inference credential stays confined to its approved adapter boundary and is excluded from packets, artifacts and logs. Fail closed: an unrecognised caller, an unreadable or missing profile or role-binding configuration, and an absent or unreadable budget each refuse the launch; none falls back to a default profile, role or limit.
 5. Export sanitized process/session status with mode, caller binding and optional canonical workflow references. Viewer attach/detach never starts a process. The default command uses offline fixtures; live profile activation is separate. Provide backup/restore of the execution journal with referenced artifacts, preserving pause/spend/unknowns; restore is passive. Document state ownership and refusal behavior.
 6. (R2, 2026-10-13) Implement the journal on the cell's PostgreSQL coordination database with loopadmin's own schema and versioned migrations; commit launch intent and journal receipt in one transaction; check the operator incarnation before every launch and receipt delivery and start paused on mismatch. Add a static guard that loopadmin imports no SQLite or other embedded database engine.
+
+- **Instance amendment:** Key standing invocation ownership/journal/profile/preparation and process control by instance plus execution generation, preserving the independent role binding, exact work-ownership owner and best-effort role pacing. Existing Task 3 shared concurrency reservations apply to explicitly classified hard resource/recursive-launch safety budgets, not the approximate role work target; do not implement that target as a central mutex or slot semaphore. Concurrent operations on one instance are idempotent; distinct worker/review instances may overlap. Reject same-instance unknown-stop relaunch; a separately admitted successor may do unrelated work while predecessor reservations remain. Preserve bounded startup and zero-model idle/attach.
+- **Instance follow-on from completed graph-execution/16:** Make the drainloop work/authority records distinguish cell/role/instance/execution generation. Treat the configured role work level across repositories as a best-effort refill target: each desk estimates shared active work, tolerates temporary over/under and periodically corrects it without a capacity mutex, semaphore, serialized count-and-reserve or leased slots. Observe paused/draining busy children when available and expose estimate freshness; missing/stale counter data alone does not block unrelated authorized work. Preserve /16's exact per-item claims, singleton other roles, operator incarnation, effect fencing and all genuine hard safety budgets; /16's delivered Task, Verify and Evidence are not reopened.
 
 ## Deterministic waiting amendment — 2026-10-18
 
@@ -271,6 +282,8 @@ All new rows are implementation deliverables and must demonstrate the named nega
 | 11 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellPrepFences$' ./... > "$o" && grep -F -- '--- PASS: TestCellPrepFences ' "$o")` | exit 0; named PASS. Concurrent starts, stale preparation, changed profiles, missing accounting and interrupted down preserve per-role leases, stop/authority gates and protected hashes. Mutation: accept a stale preparation receipt as a current role lease or reclaim unacknowledged work; test fails. |
 | 12 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellLaunchTelemetry$' ./... > "$o" && grep -F -- '--- PASS: TestCellLaunchTelemetry ' "$o")` | exit 0; named PASS. Config-only opt-in records preparation through confirmed child start; missing/unknown child starts remain incomplete, shared work counted once, no-opt-in writes nothing and slow/failed sink changes no launch result. Mutation: gate parent recording only on ambient environment or omit final enrollment; test fails. |
 | 13 | check:ci +flow +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLoopAdminWaitDoesNotInvokeModel$' ./... > "$o" && grep -F -- '--- PASS: TestLoopAdminWaitDoesNotInvokeModel ' "$o")` | exit 0; named PASS. Production supervisor timers, unchanged observations and repeated receipts do not call adapter Start; one admitted invocation starts once and completion is delivered without a model waiter. Mutation: start a model on each observe timeout; the named test fails. |
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd loopadmin && GOWORK=off go test -count=1 -v ./supervisor/... -run '^TestDeskInstanceOwners$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceOwners ' "$o")` | Named test executes (zero matching tests is not a pass); Distinct mixed-profile peers run, duplicate same-instance starts produce one owner, wrong generation/profile refuses below the caller, and predecessor child usage remains counted during successor start. Mutation: key ownership only by role or treat unknown stop as released makes the test fail. |
+| I2 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd drainloop && GOWORK=off go test -count=1 -v ./... -run '^TestDeskRoleCapacity$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskRoleCapacity ' "$o")` | Named test executes (zero matching tests is not a pass); two workers read active seven at target eight and each launch a different claimed task: actual nine is accepted. Fresh observations/completions stop and later resume refill toward eight; a stale overestimate also corrects. Counter-update failure does not block unrelated authorized work. Mutations: require a centralized capacity lease/mutex, count only per-instance work, never correct stale estimates or make counter maintenance fatal; each fails. Per-item duplicate ownership still refuses independently. |
 
 ## Pre-mortem and dispatch checks
 
@@ -307,3 +320,145 @@ work/judgment. Pod replacement cannot treat an unconfirmed old execution group a
 Carry current perf-v3 context across the transport and retain unknown usage. Existing
 negative-path, independent-control and startup work/count checks apply to this consumer;
 /09 and desk-containers/29 own its adapter and effective-profile qualification.
+
+## Proposed bounded implementation sequence — 2026-11-05
+
+This is a review candidate, not a replacement acceptance contract. The four child
+briefs propose bounded source increments; the original promise, prerequisites,
+Tasks, thirteen Verify rows, risk flags and Evidence above are unchanged. No child
+is delivered by this authoring. Do not dispatch these candidates until decomposition
+review acknowledges the active parent claim and agrees the source/acceptance routing.
+Decomposition review is one named event: a driver comment on
+#5492, under the driver's own login, accepting this split and its routing. Until it
+lands, each child carries a `gates:` edge on #5492 (forge-backed, so held off Next-up),
+so /40 is not dispatched beside this parent for the same process move.
+No dependency on the children is added to this parent until that review. Its current
+consumers continue to require the full shared-supervisor promise.
+
+### Architecture pickup and actual critical-path head
+
+Source and packet agree at `7f61cff94b188d46b4e38e6259798d85bb5d4510`.
+The approved R2 target routes process facts to the cell PostgreSQL database with a
+separate journal schema; /19 owns work/acceptance and is not a Go dependency.
+The current library/engineering policies choose pgx and Goose, with separate exact
+version admission. The current operator-incarnation contract is a protected-source
+interface and passive fence; it does not install an operational source or custody.
+The manual implementation-pickup bootstrap was used; no context-tool receipt is claimed.
+
+I verified the first independently deliverable increment by reading
+the runner in `tools/desk/internal/cellprocess` (its `run.go`, before increment 1 moved it to `loopadmin/process/run.go`): `return withCache(env, func() (int, bool, error) {`.
+That wrapper imports desk-internal `cellcache` and `deskkit`; moving the file alone
+cannot compile in loopadmin and dropping the wrapper loses cache custody and final
+enrollment telemetry. The first source increment therefore extracts the runner and
+its mandatory host-custody seam together, migrates every importer and preserves the
+independent audit/class guards. It can run compiled local fixtures with no journal,
+workflow controller or live profile. Source boundaries, rather than an approval to
+activate a service, are the immediate implementation work.
+
+Merged PR #4157 expressly says it does not claim supervisor/journal delivery. Current
+source contains its bounded preparation and between-pass maintenance; parent rows
+10–12 are carried through relocation, not implemented again. At pickup, process,
+supervisor, journal and control directories under loopadmin remain absent. The full
+remaining body spans process/custody extraction, SQL durability/recovery, lifecycle
+supervision and authenticated transport. Those are separate reviewable increments,
+not one small repair. This is the worker sizing-stop route; it is not a new defect
+fix against #4157 and no strike-two exception is asserted.
+
+Disposition: **adapt the decomposition for review; continue approved offline source
+work after acknowledgment**. The original parent depends on /20,/28,/29,/16; the
+pickup board records verified, verified, verified and implemented respectively.
+Those statuses do not prove new joined-source qualification. No runtime operator
+source, provider profile, live service, database or model is activated by this plan.
+
+### Proposed source waves
+
+| Proposed child | Start needs | Effort | Independently reviewable result | Remaining acceptance |
+|---|---|---|---|---|
+| graph-execution/40 | shipped /20 module | M | Single moved process owner, required custody integration, all current importers and launch/audit guards migrated; current-owner startup repair retained | Parent rows 4,10–12 and preserved containment/cadence/build witnesses |
+| graph-execution/41 | /40 in this conservative serial sequence | L | Separate PostgreSQL process journal, migrations, protected incarnation, shared reservation/brake consumption and passive artifact-aware recovery | Parent rows 6–9 plus passive restore; real owned disposable PostgreSQL |
+| graph-execution/42 | /41 plus existing /16,/28,/29 contracts | M | Shared both-mode lifecycle with deterministic waits, durable identity/reconciliation and per-launch/per-delivery admission | Parent rows 1,2,5,13, no graph-store dependency |
+| graph-execution/43 | /42 | M | Caller-scoped CLI/control boundary and joined CLI→supervisor→journal→fake-adapter qualification | Parent row 3, joined endpoint controls and all thirteen unchanged parent rows on the integrated source |
+
+The source order is /40 → /41 → /42 → /43. /41 has no inherent Go dependency on
+/40; that edge deliberately serializes this boundary work and can be removed after
+review if distinct ownership and qualification are established. It is never an edge
+to /19 or /36's workflow migration ledger. The native brief waves also retain the
+existing upstream depth, so /40 and /41 are waves 1/2 and /42 and /43 are waves 6/7.
+Exact dependency versions and a qualified explicit fixture are prerequisites for SQL
+implementation/evidence. Catalogue preference alone neither admits dependencies nor
+establishes a disposable PostgreSQL service exists.
+
+No milestone YAML is introduced: milestone-v1 and stream-v1 remain draft contracts
+at the pickup source. Existing full-/26 consumers, including /22,/27 and /21, are not
+repointed to an earlier child. The useful early outcome is reusable process containment
+through existing desk launches. Shared execution is accepted only after the joined
+thirteen-row parent run; fake-provider evidence never becomes live-provider evidence.
+
+### Every original obligation has one implementation owner
+
+The child Verify row is an executable acceptance command for that responsibility;
+/43 additionally reruns the complete original table at the joined subject. Mapping
+a delivered current-owner repair records reuse and requalification, not new delivery.
+
+| Original obligation | Sole implementation owner | Child acceptance command row(s) |
+|---|---|---|
+| Task 1: move, never copy, the process runner and preserve process-tree/uncertain cleanup | /40 | 1,5; original containment fixtures retained |
+| Task 1: migrate cadence and every current importer; require/replace and release resolution | /40 | 2–5; GOWORK=off consumer build and packaging qualification |
+| Task 1: extend audit roots and re-key the exact exec site without losing it | /40 | 1; planted unregistered loopadmin exec and missing-root mutations |
+| Task 1: one shared supervisor, both caller modes, no privileged all-role daemon | /42 | 1,3 |
+| Tasks 1,4: authenticated caller/profile/role and validated assignment/reservation boundary | /43 | 1,2; direct lower-boundary bypass |
+| Task 2: durable intent before child; caller/invocation/generation key and one journal transaction | /41 | 1,4 |
+| Task 2: process receipts/lifecycle/cancel/limits/usage/checkpoints; no second work store | /41 | 1–5 |
+| Task 2: stable request reconciliation across caller/journal/provider commits | /42 | 2; joined /43 rerun retains SQL row 6 |
+| Task 3: start/observe/cancel/reconcile and capability-gated idle retention | /42 | 1,2,4 |
+| Task 3: duplicate prevention, unknown launch/stop holds, bounded restart | /42 | 2 |
+| Task 3: current role/profile/generation/budget before every launch and receipt | /42 | 1–3; 7 refuses a stale owner/claim generation at launch and at receipt delivery; joined /43 direct-bypass run |
+| Task 3: shared concurrency and preserved consumed allowance across callers/crash/restore | /41 | 1,4,5; endpoint composition /43 row 1 |
+| Task 4: runtime cannot administer profiles/credentials, arbitrary argv, raised limits or unconstrained children | /43 | 1,2 |
+| Task 4: inference credential confined; no secrets in packets/artifacts/logs | /43 | 2 checks the planted credential canary at the CLI/control surface and in the joined evidence bundle; /42 row 6 checks it in status, receipts, errors and logs; independent security review of credential-free fake composition is an extra check |
+| Task 4: unknown caller, missing/unreadable profile/binding/budget fail closed | /42 | 3; endpoint /43 row 1 preserves lower-boundary refusal |
+| Task 5: sanitized mode/caller/optional workflow state; attach/detach starts nothing | /43 | 1,2; /42 row 6 credential-canary redaction of argv and adapter errors |
+| Task 5: offline default, separate live activation, ownership/refusal documentation | /43 | 2 plus exact-source independent review; activation excluded |
+| Task 5: artifact-aware backup/restore preserves pause/spend/unknowns and is passive | /41 | 2,5 |
+| Task 6/R2: own PostgreSQL schema/versioned migrations, no fallback, journal transaction | /41 | 1,3,4 |
+| Task 6/R2: protected incarnation before each launch/delivery and paused mismatch/missing record | /41 | 2; supervisor enforcement /42 rows 1–3 and 7 (stale generation at launch and receipt delivery) |
+| Task 6/R2: no embedded database or workflow import | /41 | 3; /42 row 1 guards graph-free composition |
+| Accounting amendment: launch counts/recursive creation are fail-closed brakes | /41 | 4; constrained endpoint /43 row 1 |
+| Accounting amendment: re-derived effect-class pacing is best effort and never source-of-truth cache | /41 | 4 |
+| Waiting amendment: deterministic observe/timers/cancel/completion; no progress model/watcher | /42 | 4 |
+| Startup item 1: shared compatible preparation, attach no work, per-role custody/authority retained | /40 | 2,3; consume #4157 |
+| Startup item 2: bounded scratch registration/cache enrollment, current hard pressure/space/leases | /40 | 2,3; consume #4157 |
+| Startup item 3: scans only in maintenance, unlocked inventory, short-lock revalidation, protected data | /40 | 2,3; consume #4157 and current scratch-maintenance owner |
+| Startup item 4: resolved opt-in, phases/confirmed starts, no double-counting or sink/consent change | /40 | 4; consume #4157 |
+| Startup item 5: full offline 1/5-role, 1x/10x-history, concurrent/restart/down/corruption matrix and measurements | /40 | 2–4; joined-source /43 rerun |
+| Interface: identity/subject/capability in; same-bound typed state/evidence/receipt out, unsupported fields/stale generations refused | /43 | 1,2; uses /42 both-mode semantics |
+| Follow-ons: canonical ownership, perf-v3/unknown usage, no separate Kubernetes/controller launch owner | /42 | 1,2,4; real adapters/cutovers remain /22,/27,/21 and existing consumer owners |
+| Human acceptance and independent exact-subject full-/26 Evidence | /43 | 3–15 rerun all parent commands; decision #5492 remains open |
+
+Delivery record, added at the 2026-11-14 merge of main: the /40 runner move landed
+as increment 1 of #5492 in merged PR #5903 (merge aae4fbf71; the move is 957f953b7).
+The old `tools/desk/internal/cellprocess` package is gone and `loopadmin/process`
+holds the runner. In the table above, the three /40 Task 1 rows (move, importer
+migration, audit re-key) and the startup-item rows map to the same /40 owner and
+rows; only their state changed. /40 is recorded as delivered in part, and is not
+retired: its scope and gate are unchanged, and independent verification and the human
+gate still own its acceptance. Its rows were requalified against the delivery: rows 5
+and 8 now name the tests #5903 wrote, row 6 filters the two provenance notes that name
+the former location by exact line, and the work #5903 left undone is named residue
+owned by /40's implementer once #5492 releases the gate: the literal nil-environment
+test (row 9) and row 7's delivery input, since #5903's tree does not contain /40.
+
+### Dispatch and review limits
+
+No open PR among the 47 current open changes listed a /40–43 body reference or
+changed a /40–43 brief file at the pickup check; all file lists were complete.
+Main at the recorded source had none of those paths; /40 has since been delivered by merged PR #5903 (see the delivery record above). These numbers are proposed,
+not an exclusive reservation; recheck main/open changes before each pickup. No
+existing work or review is closed, superseded or certified by this authoring.
+The parent claim is acknowledged here and in the draft handoff; decomposition
+review owns approval of routing before child dispatch.
+
+Child risk flags retain the parent irreversible=yes/human floor. Parent decision
+issue #5492 is reused for the full promise; no approval is invented and this split
+cannot resolve it. Dependency admission, actual operator custody, workflow promotion,
+provider qualification and activation retain their existing owners and stop-points.

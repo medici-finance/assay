@@ -38,6 +38,63 @@ func scanHomeRepo() string { return verifyRepoSlug() }
 // ("placeholders land here"). New files are written to docs/streams/<scanStreamName>/.
 const scanStreamName = "issue-loop"
 
+// scanStreamTemplate is the README a scan lane writes when it opens the scan
+// stream directory. --lint requires a README in every stream directory, so a
+// scan that opened the directory with placeholders alone produced a tree that
+// failed lint on the first scan of any repo without the stream (issue #5895).
+// It is built from the same head and brief-table header as `statusgen init`'s
+// starter stream (init.go), so it is the one generated stream format, with an
+// empty brief table: the stream's work items are its placeholder files.
+const scanStreamTemplate = initStreamHead + `Placeholders for open issues, written by the ` + "`statusgen`" + ` issue scan. Each
+placeholder file stands for one issue, and the issue body is the spec. Retired
+placeholders move to ` + "`done/`" + `. The scanner writes this README only when it is absent
+and never rewrites it, so it may be edited freely.
+
+` + initBriefTableHead
+
+// renderScanStreamREADME returns scanStreamTemplate with the stream identity
+// substituted, through the same token `statusgen init` uses.
+func renderScanStreamREADME() string {
+	return strings.ReplaceAll(scanStreamTemplate, initStreamPlaceholder, scanStreamName)
+}
+
+// scanStreamREADMERel is the scan stream README's root-relative path, for
+// display.
+var scanStreamREADMERel = filepath.ToSlash(filepath.Join("docs", "streams", scanStreamName, "README.md"))
+
+// scanStreamREADMEMissing reports whether root has no scan stream README yet,
+// that is, whether a scan that writes placeholders would also write one.
+func scanStreamREADMEMissing(root string) bool {
+	_, err := os.Stat(filepath.Join(root, filepath.FromSlash(scanStreamREADMERel)))
+	return os.IsNotExist(err)
+}
+
+// openScanStream is the ONE way a scan lane opens docs/streams/<scanStreamName>/
+// before writing placeholders into it (issue #5895). It creates the directory
+// and, when the README is absent, writes renderScanStreamREADME; an existing
+// README is never read or rewritten (O_EXCL), so a stream that already exists
+// behaves exactly as before. created reports whether the README was written.
+// TestScanStreamOneOpener fails any other function that names the scan stream
+// and calls os.MkdirAll.
+func openScanStream(root string) (created bool, err error) {
+	dir := filepath.Join(root, "docs", "streams", scanStreamName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return false, err
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "README.md"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if os.IsExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if _, err := f.WriteString(renderScanStreamREADME()); err != nil {
+		f.Close()
+		return false, err
+	}
+	return true, f.Close()
+}
+
 // scanRepos is the repo set --scan-issues reads OPEN issues from: the FULL
 // owned-repo set the inbound (intake) desk is the front door for, not just the
 // code repos. It is adopter configuration read from the roster (ASSAY_SCAN_REPOS)
@@ -772,6 +829,9 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 				u.Path, u.Repo, u.Issue,
 				u.Newest.Format(time.RFC3339), u.BlockedAt.Format(time.RFC3339))
 		}
+		if len(plans) > 0 && scanStreamREADMEMissing(root) {
+			fmt.Printf("would create %s  (stream README)\n", scanStreamREADMERel)
+		}
 		for _, p := range plans {
 			fmt.Printf("would create %s  (%s#%d, gate:%s)\n", p.Rel, p.Repo, p.Issue, p.Gate)
 		}
@@ -819,10 +879,13 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 		return 0
 	}
 
-	dir := filepath.Join(root, "docs", "streams", scanStreamName)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	readmeCreated, err := openScanStream(root)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen:", err)
 		return 1
+	}
+	if readmeCreated {
+		fmt.Printf("created %s\n", scanStreamREADMERel)
 	}
 	for _, p := range plans {
 		if err := os.WriteFile(p.Path, []byte(p.Content), 0o644); err != nil {

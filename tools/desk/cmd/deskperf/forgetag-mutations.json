@@ -1,0 +1,29 @@
+{
+  "test": "go test ./cmd/deskperf -count=1 -run '^Test(Forge(ReleaseTagLabel|LegacyShaAlone|SameTagTwoShas|TagConflictShaOnly|TagJSONFields|V5CountsAsV2)|CommandsPoolV5)$'",
+  "control": {
+    "name": "release row label drops its tag",
+    "file": "cmd/deskperf/report.go",
+    "old": "return r.ReleaseTag + \" (\" + r.Key + \")\"",
+    "new": "return r.Key"
+  },
+  "mutations": [
+    {
+      "name": "per-command table keeps perf-v5 as its own schema (dropped by the switch)",
+      "file": "internal/deskkit/perfcommands.go",
+      "old": "schema = PerfSchemaV2 // perf-v5 is perf-v2",
+      "new": "schema = r.Schema // perf-v5 is perf-v2"
+    },
+    {
+      "name": "forge header counts a measured perf-v5 record as legacy",
+      "file": "internal/deskkit/perfforge.go",
+      "old": "if IsPerfV2(r) {",
+      "new": "if r.Schema == PerfSchemaV2 {"
+    },
+    {
+      "name": "a tag after the first disagreement re-tags a conflicting row",
+      "file": "internal/deskkit/perfforge.go",
+      "old": "case st.ReleaseTagConflict:\n",
+      "new": ""
+    }
+  ]
+}

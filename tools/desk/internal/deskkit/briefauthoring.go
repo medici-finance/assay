@@ -41,7 +41,15 @@ import (
 // (`<stream>/<NN>`, any form SplitBriefTrailer accepts) rather than delivering it. It returns false
 // for an empty list, an unparseable brief id, any file that is not a stream board README, a brief file
 // or a changelog fragment, and a list that does not add the brief's own file.
-func BriefAuthoringOnly(briefID string, files []ChangedFile) bool {
+func BriefAuthoringOnly(briefID string, files []ChangedFile, catalogs ...WorkCatalog) bool {
+	if len(catalogs) > 0 {
+		work, err := catalogs[0].Select(briefID)
+		if err != nil || work.Validate() != nil || work.Reference.Cell != catalogs[0].Declaring.Cell || work.Reference.Repo != catalogs[0].Declaring.Repo {
+			return false
+		}
+		briefID = work.Reference.Stream + "/" + work.Reference.Number
+	}
+
 	stream, nn, ok := SplitBriefTrailer(briefID)
 	if !ok || len(files) == 0 {
 		return false

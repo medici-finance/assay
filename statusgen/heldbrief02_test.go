@@ -88,7 +88,7 @@ func b02Coded(t *testing.T) string {
 // regression: #4294
 func TestHeldScopeB02Flips(t *testing.T) {
 	ev := b02Evidence(t)
-	if s := heldScanScope(ev); !s.whole || s.from < 0 {
+	if s := heldScanScope(ev, false); !s.whole || s.from < 0 {
 		t.Fatalf("heldScanScope: whole=%v from=%d, want the last entry to supersede every earlier one", s.whole, s.from)
 	}
 	err := closeVerifyHeldRefusal("graph-execution/02", "verified", ev)
@@ -172,7 +172,14 @@ func TestHeldScopeB02Refuses(t *testing.T) {
 		{"indented", b02Edit(t, ev, true, b02Pipe, "  "+b02Pipe), true},
 		{"stray CR splits it", b02Edit(t, ev, true, "4 and 7 (go test", "4 and 7\r|---|---|\r(go test"), true},
 	}
-	runHeldLayerCases(t, cases)
+	runHeldRowCases(t, cases,
+		// The last entry is the real dated 9-of-9 PASS; each change is to an
+		// earlier entry, or (row 10) leaves verifyflip's witness read to refuse.
+		// Only the flip-side read admits these; close-verify and the card
+		// still refuse.
+		"latest drops row 10", "delimiter row under it", "delimiter row after it",
+		"joined to the line above", "joined to the line below", "led by a pipe",
+		"in a blockquote", "in a list item", "indented")
 }
 
 // TestHeldScopePipeProse: the exemption on synthetic Evidence beside the

@@ -1,0 +1,6 @@
+schema: graph-repos-v1
+cell: assay
+self: assay
+repos:
+  assay: {cell: assay, repo: example/assay}
+  other: {cell: assay, repo: example/other}

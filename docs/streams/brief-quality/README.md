@@ -19,7 +19,7 @@ issues: []
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Define the brief assessment and outcome contract](brief-01-design-contract.md) | 0 | M | verified | 2026-10-22 assay-verifier-app[bot] @ 05dc9fbc88f2 (forge-identity) | — |
+| 01 | [Define the brief assessment and outcome contract](brief-01-design-contract.md) | 0 | M | done | 2026-10-22 assay-verifier-app[bot] @ 05dc9fbc88f2 (forge-identity) | 2026-11-02 assay-reviewer-app[bot] (approved PR #1719 @ 6b84aa90e09a47373fcf1e0048d366a3b50c6b44) |
 | 02 | [Ratify acceptance-review and pilot policy](brief-02-policy-rulings.md) | 1 | S | todo | — | — |
 | 03 | [Extend brief parsing, lint and templates with six dimensions](brief-03-assessment-schema.md) | 2 | M | todo | — | — |
 | 04 | [Rewrite authoring and review procedures around assessed contracts](brief-04-desk-procedures.md) | 3 | M | todo | — | — |

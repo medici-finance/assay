@@ -79,8 +79,9 @@ const minShortNameNotice = 4
 // configured, that reported itself unconfigured, and that never ran.
 //
 // KEEP IN SYNC with parseConfig's `known` map in rosterconfig.go: an unrecognised key in the
-// ASSAY_ namespace REFUSES the whole roster, so a house that sets this without the key being
-// recognised would collapse every desk tool's configuration at once.
+// ASSAY_ namespace draws a NOTICE (it no longer refuses, #1261) and is NOT applied, so a house
+// that sets this without the key being recognised would run without the withheld category
+// of the scan, with only that NOTICE (which forces the full config echo) to say so.
 const EnvWithheldIdentifiers = "ASSAY_WITHHELD_IDENTIFIERS"
 
 // SelfContainOpts is what the scan needs to know about the write it is guarding.
@@ -347,7 +348,8 @@ func splitWithheldIdentifiers(raw string) []string {
 // It reads the CONFIGURED visibility, never the live API. That is the same split
 // repovis.go documents in the opposite direction and for the same reason: a gate that has to
 // reach the network fails open when the network is down, and this one runs before any write.
-// PublicRepoGate still does the live visibility read for the `:public` authorization it owns.
+// PublicRepoGate still does the live visibility read for the `:public` / `:internal`
+// authorization it owns.
 func SelfContainApplies(repo string) bool {
 	if !EffectiveConfig().Configured() {
 		return false

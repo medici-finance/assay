@@ -117,7 +117,16 @@ var reviewObligations = []obligation{
 	{12, "**External-prerequisite.**", []string{laneC}},
 	{12, "**Documented body-edit re-verification.**", []string{laneC}},
 	{12, "Know what these do and do not unblock", []string{laneC}},
-	{12, "A security verdict is `pass` or `fail`, never an APPROVE, and claims none of them.", []string{laneS}},
+	{12, "A security verdict is `pass` or `fail`, never an APPROVE, and claims none of those three:", []string{laneS}},
+	{12, "**A security fail whose ONLY basis is the PR body.**", []string{laneS}},
+	// The digest recipe travels with the security-lane marker: the gate compares the
+	// reviewer's digest for exact equality, and the correctness copy is cut from this lane.
+	// regression: #5092
+	{12, "Both digests are SHA-256 of the body with carriage returns removed and trailing newlines " +
+		"trimmed, and the gate compares them for exact equality, so hash the body this way and never as " +
+		"it reads on screen: `printf '%s' \"$(gh api repos/<owner>/<repo>/pulls/<N> --jq .body | tr -d '\\r')\" " +
+		"| shasum -a 256`.", []string{laneS}},
+	{12, "The full rule is in `verdict-format.md`, section \"A security fail whose ONLY basis is the PR body\".", []string{laneS}},
 	{12, "Cite sops material, never quote it.", bothLanes},
 	{12, "Findings first, scope second", bothLanes},
 	{12, "Escalate per the common kit's escalate-durably rule", bothLanes},

@@ -12,6 +12,10 @@ the promise underneath all of it.
 
 ## The promise
 
+This promise covers the `telemetry-v1` payload described in this document. The separate,
+pseudonymous local `performance-event-v1` record class has its own rules. They are summarized in
+[Local performance-event-v1 records](#local-performance-event-v1-records--1-november-2026) below.
+
 - **Off by default.** No flag, no environment variable, no ping. Installing or
   running `statusgen` sends nothing.
 - **Counts only, never content.** A payload is integer tallies keyed by a fixed
@@ -210,6 +214,21 @@ exactly these fields:
 | `phases` | array of `{name, n, ms}` | Timed phases from the tool's own fixed roster (at most 16 names; any other name is `other`): instance count and summed ms per name. Empty when the tool times none. |
 | `phaseOverlap` | bool | A phase started while another was open: the phase ms then overlap and must not be summed against `wallMs`. |
 
+A release build writes `perf-v5` instead: the `perf-v2` record above, every field and meaning
+unchanged, plus the release tag the binary was stamped with. `perf-v2`'s field set is frozen,
+so the tag is a new schema rather than a new `perf-v2` key, and a reader that predates it
+skips a `perf-v5` line as an unknown schema rather than misreading it. A `perf-v5` record
+carries exactly the `perf-v2` fields, with `schema` `perf-v5`, and:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `releaseTag` | string, required | The binary's own release stamp (the desk tools' `deskkit.ReleaseTag`, `statusgen`'s `--version`), only when it has a release tag's shape: `vX.Y.Z`, its hotfix form `vX.Y.Z+hotfix-<12 hex>`, or a historical per-artifact tag such as `statusgen/v0.8.0` (`perfrec.ReleasePattern`). |
+
+A dev or unstamped build, or a stamp of any other shape, writes the unchanged `perf-v2`
+record with no tag: the tag is never derived from `sourceSHA`. Readers treat `perf-v5` as a
+member of the `perf-v2` group (same boundary, same counters, never a separate group), and
+the codec refuses `releaseTag` on any other schema and a `perf-v5` line without a valid one.
+
 The counter roster is closed: `subprocess` and `subprocessMs` (child process attempts through
 the shared runners, and their summed inclusive wall), `http` (HTTP attempts reaching the
 counting transport), `cacheLookup`, `cacheHit`, `cacheMiss`, `cacheRefresh` (a shared cache's
@@ -267,7 +286,8 @@ measured/unavailable counts with totals over measured records only, and per-phas
 distributions. The `perfrec` module's README documents the recorder API for other
 standalone tools.
 
-A forge-calls section follows (JSON `forge`), per tool and per release build (`sourceSHA`):
+A forge-calls section follows (JSON `forge`), per tool and per release build (`sourceSHA`,
+labelled with its release tag as below):
 runs, unavailable runs, total forge calls, calls per run (p50 / p90 / max, nearest rank), each
 row's share of all forge calls, and the rate-limit cost — the busiest UTC clock hour's calls
 and that hour and the p90 run as a percentage of the 5000-requests-per-hour App budget floor. Unlike
@@ -295,6 +315,14 @@ the budget whichever schema recorded it. Its rules:
   control byte into this section. (The older tables on the same report still print the raw
   `tool`.) A negative count reads as unavailable, and sums hold at the int64 maximum instead
   of wrapping.
+- A release row stays keyed on the build stamp and is labelled with the release tag its
+  `perf-v5` records name: `v1.0.82 (1a43034839)` when they name one tag (JSON
+  `releaseTag`), the stamp alone when none of its records names a tag (perf-v1, and perf-v2
+  from a dev or unstamped build), and `1a43034839 (tag conflict)` when they name more than
+  one (JSON `releaseTagConflict`, no `releaseTag`): the report never picks a tag and never
+  derives one from the stamp. A record that names no tag adds no opinion, and two builds
+  stamped with the same tag stay two rows. Both JSON fields are omitted when unset; every
+  other release-row field is unchanged.
 
 Never recorded: argv, flag values, repo, PR or issue numbers, branch, path, title, body,
 error text, session tag, environment values, hostname, user name, or tokens. A test plants a
@@ -309,7 +337,8 @@ with `tool` set to `statusgen`, `verb` the mode that ran (a positional sub-comma
 `verifyrun`, else the first mode flag such as `--lint`, else `regen` for a plain run; a token
 outside that compiled-in roster is `other`), `exit` the process exit code and `result` its
 fixed word. `role` is `none` and `sourceSHA` is the build stamp when it is hex (a release tag
-or `dev` is `unpinned`). Its phases are its pipeline stages, its `http` counter is measured
+or `dev` is `unpinned`). A release build (`--version` prints a release tag) writes that line
+as `perf-v5`, naming the tag in `releaseTag`; a `dev` build writes `perf-v2`. Its phases are its pipeline stages, its `http` counter is measured
 (every direct HTTP attempt at its forge seams, so `0` means none was made), and `subprocess`
 is listed unavailable; see [Two schemas](#two-schemas-perf-v1-and-perf-v2) for the phase
 roster and how to read it. `deskperf report --tool statusgen` reads it like any other tool.
@@ -437,3 +466,31 @@ provider attempts/cost. Optional opaque diagnostic links can use only a separate
 service protocol/transport with workflow consent at both ends; a selected profile alone never
 adds headers or forwards raw work/session/agent locators. Shared refresh cost is counted once,
 missing server measurements remain unknown, and process CPU cannot be duplicated per handler.
+
+## Local performance-event-v1 records — 1 November 2026
+
+`ASSAY_TELEMETRY=1` **together with an explicitly selected profile** (`--profile tool|workflow`
+or `ASSAY_PERFDATA_PROFILE`) now also gates a second record class: pseudonymous local
+`performance-event-v1` records written by `perfdata record` into
+`<state>/performance-events/`. The anonymized, counts-only promise at the top of this document
+applies to `telemetry-v1` only. It does not describe these records.
+
+- **Not anonymous.** A random source identity links every record of one source. Under the
+  workflow profile, work, session and agent locators are replaced by random aliases scoped to a
+  source epoch. The alias map stays local and is never part of a record, preview or batch.
+  Each epoch's map keeps its keyed-digest secret until the store is removed, after that
+  epoch's records are retired, so a reader of the store can test a guessed locator against
+  that epoch's aliases until then.
+- **Still off by default.** `ASSAY_TELEMETRY=1` alone selects no profile and arms nothing, so
+  existing telemetry-v1 or perf-v1 opt-ins do not become consent to this class. With collection
+  off, nothing is created.
+- **Local only.** No sender, listener or database exists. Retention is the selected policy's age
+  cap (initially seven UTC days) and its required byte cap. Every retirement is recorded as
+  unsent loss.
+- **Fields.** Only the closed field set in [the specification](../spec/performance-event-v1.md)
+  is written. Raw argv, paths, titles, bodies, raw errors, credentials and transcripts are never
+  written.
+
+The telemetry-v1 endpoint, its two switches and its schema are unchanged. Build, consent, loss
+envelope and retention details are in [local performance collection](performance-collection.md).
+Human acceptance of the field allowlist, loss envelope and writer overhead is pending.

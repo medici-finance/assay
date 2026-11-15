@@ -253,7 +253,7 @@ func TestFloorRunnerGitIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), shellBudget)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "bash", "check-floor.sh", manifest)
 	cmd.Env = FixtureEnv("KUBECONFIG=/dev/null",
@@ -284,7 +284,7 @@ func TestFloorRunnerCellEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), shellBudget)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "bash", "check-floor.sh", manifest)
 	cmd.Env = FixtureEnv("KUBECONFIG=/dev/null",

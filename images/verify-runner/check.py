@@ -70,14 +70,20 @@ for name in ENTRYPOINTS:
 # to has to be in the image. Each is resolved on PATH and run, so a missing or
 # broken one fails this probe before anything is pushed. jq evaluates an
 # expression and shellcheck lints a clean script from stdin; tmux only reports
-# its version, since starting a server needs more than this fence allows.
+# its version, since starting a server needs more than this fence allows. yq
+# (#5531) converts YAML from stdin to compact JSON, and its version line must
+# name mikefarah: rows reject any other program called yq.
 # name: (probe args, probe stdin, expected stdout or None, version args).
 ROW_TOOLS = {
     'jq': (['-n', '-c', '{"sum": (1 + 1)}'], b'', b'{"sum":2}\n', ['--version']),
     'shellcheck': (['--shell=sh', '-'], b'#!/bin/sh\nprintf \'%s\\n\' "$1"\n', b'',
                    ['--version']),
     'tmux': (['-V'], b'', None, ['-V']),
+    'yq': (['-o=json', '-I=0', '.'], b'nodes: [example]\n', b'{"nodes":["example"]}\n',
+           ['--version']),
 }
+# A version line each tool must carry, where another program can take its name.
+ROW_TOOL_VERSION_MARK = {'yq': b'mikefarah'}
 tools = {}
 for name, (args, stdin, want, version_args) in ROW_TOOLS.items():
     path = shutil.which(name)
@@ -92,6 +98,10 @@ for name, (args, stdin, want, version_args) in ROW_TOOLS.items():
                              capture_output=True, timeout=60)
     if version.returncode != 0:
         raise RuntimeError(f'{name} {" ".join(version_args)} exited {version.returncode}')
+    mark = ROW_TOOL_VERSION_MARK.get(name)
+    if mark is not None and mark not in version.stdout:
+        raise RuntimeError(f'{name} {" ".join(version_args)} printed {version.stdout!r}, '
+                           f'which does not name {mark.decode()}')
     lines = version.stdout.decode(errors='replace').splitlines()
     tools[name] = next((line.strip() for line in lines if any(c.isdigit() for c in line)), '')
 
@@ -100,3 +110,16 @@ print(json.dumps({'python': platform.python_version(),
                   'jsonschema': importlib.metadata.version('jsonschema'),
                   'entrypoints': list(ENTRYPOINTS),
                   'tools': tools}, sort_keys=True))
+
+# Exercise the installed exact-source owner and witness call site with local fixtures.
+import importlib.util
+from pathlib import Path
+proof_dir = Path('/usr/local/lib/verify-runner')
+for path in (proof_dir, proof_dir / 'source_proof.py', proof_dir / 'source_proof_check.py'):
+    st = path.lstat()
+    if st.st_uid or st.st_gid or st.st_mode & 0o022 or path.is_symlink():
+        raise RuntimeError('source proof installation is not root-owned and immutable to rows')
+spec = importlib.util.spec_from_file_location('proof_check', proof_dir / 'source_proof_check.py')
+probe = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(probe)
+print(probe.probe(proof_dir / 'source_proof.py', Path('/usr/local/bin/witness.sh')))

@@ -159,6 +159,28 @@ Substance: the by-hand runs dated 2026-10-19 at source 4b15482af5c6 (each Verify
 
 Verification-Attestation: medici-finance/assay#3654 run=27d6f290fc7b6e7e45052e7352234e6ee4ce2f86230a5d77dabeb5d48c3a3801 source=e460818e309a9c585c3f4ddcbb2146ae6f860248 brief=docs/streams/statusgen/brief-22-product-target-records-and-compatible-requirement-parsing.md model=claude-opus-5-5 tier=strong
 
+### Batch re-witness, closed admission bracket — 2026-11-02, claude-opus-5-5 / assay-verifier-app[bot]
+
+Subject: merged main 2c6c21336a606e64df057294f21177f16db7b9f8, the batch re-witness pin. Verifier is not the implementer. Admission: deskdispatch --check-verifier exited 0 on the host before the bracket, and the close step re-admitted the same run. Runner: the closed admission bracket. statusgen v1.0.69 opened and closed it on the darwin host. In between, the pinned arm64 verify-runner image (digest on the Container-Image line) ran all 3 Verify rows exactly as written, as uid 501:20 under docker --network none with --sandbox=container-netns, GOPROXY=off and GOTOOLCHAIN=local, with the home mounted read-only. No live endpoint was contacted. The table below is the witness file's bytes. statusgen verifyrun --bracket-digest reported verdict=match.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestProductIntentLegacyAndRevisionFlow$" . > "$check_output" && grep -F -- "--- PASS: TestProductIntentLegacyAndRevisionFlow " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:4ad9581a91d6 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestProductIntentApprovalAndUnknown$" ./productintent/ > "$check_output" && grep -F -- "--- PASS: TestProductIntentApprovalAndUnknown " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:09bf6758cd27 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestProductIntentSchemaParity$" ./productintent/ > "$check_output" && grep -F -- "--- PASS: TestProductIntentSchemaParity " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:6cdba5cb7ed0 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c
+Container-Image: sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4
+Verification-Attestation: medici-finance/assay#5283 run=0c95a7257a5332fc80e46a6312edd47b0a998bf2923e6e30d16b7819968159db source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/statusgen/brief-22-product-target-records-and-compatible-requirement-parsing.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=0c95a7257a5332fc80e46a6312edd47b0a998bf2923e6e30d16b7819968159db source=2c6c21336a606e64df057294f21177f16db7b9f8 tree=sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c witness=sha256:97d0b1820fd18bc7d210f91f0feaca594fee83804bd906070e95c3d75581250b opened=2026-11-02T02:04:13Z closed=2026-11-02T02:04:45Z before=receipt after=check-verifier
+
+Risk-bearing values. The risk fields are all present and all `no`, and the item is not irreversible. I re-read the two derived literals at this source. reqRE @ statusgen/productintent/decode.go:17 still equals requirementIDRe @ statusgen/requirements.go:115. The operational-reference kinds journey, operational-workflow and practice are still @ statusgen/productintent/decode.go:219. Schema = "product-intent-v1" is still @ statusgen/productintent/records.go:7. The earlier verdicts stand:
+
+RISK-VALUE: DERIVED — reqRE = `^REQ-[a-z0-9][a-z0-9-]{8,18}[a-z0-9]$` @ statusgen/productintent/decode.go:17 — identical to requirementIDRe @ statusgen/requirements.go:115, so the extension neither widens nor narrows the REQ id space.
+
+RISK-VALUE: DERIVED — operational-reference kinds = "journey", "operational-workflow", "practice" @ statusgen/productintent/decode.go:219 — matches spec registers-v1, which names exactly these three and refuses workflow-pattern.
+
+**VERIFY: PASS** — 3 of 3 Verify rows pass with exit 0 and the named PASS in the closed container-netns bracket at 2c6c21336a60 (bracket-digest verdict=match).
+
 ## Review
 
 Gate: model; all risk answers no because this slice processes synthetic/explicit offline

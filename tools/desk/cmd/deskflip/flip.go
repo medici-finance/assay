@@ -26,6 +26,7 @@ const (
 	condMergeable        = "mergeable"
 	condSecurityVerdict  = "security-verdict"
 	condDeskDecided      = deskkit.DeskDecidedCondition
+	condNotReverted      = "not-reverted"
 	condHeadStable       = "head-stable"
 )
 
@@ -82,6 +83,12 @@ const (
 // PR's own labels/body (already in hand from pr-open-draft) and the reviews already read for
 // reviewer-approved — no new paginated read — so it costs nothing extra ahead of model-floor
 // and security-verdict, the two conditions the cost ordering above exists to protect.
+//
+// not-reverted (medici-finance/assay#6253 review F2) is ADDITIVE too, and sits right before
+// head-stable. It reads the change's comments once, for the post-flip backstop's revert marker
+// at the current head: a head the backstop already returned to draft is never flipped again,
+// or the revert would repeat on every tick. It runs only when there is a ready mutation to
+// guard (a draft PR), and it never ADMITS anything: a match refuses, no match passes.
 var flipConditions = []string{
 	condCallerRole,
 	condAppToken,
@@ -92,6 +99,7 @@ var flipConditions = []string{
 	condDeskDecided,
 	condModelFloor,
 	condSecurityVerdict,
+	condNotReverted,
 	condHeadStable,
 }
 
@@ -122,6 +130,10 @@ type flipOpts struct {
 	root   string
 	quiet  bool
 	dryRun bool
+	// flipped, when non-nil, is set true once the ready mutation itself has succeeded. It is
+	// what lets audit tell a real flip from the success paths that write nothing (a dry run,
+	// an already-ready PR), because only a real flip renews the HEARTBEAT lease (#6510).
+	flipped *bool
 }
 
 func cmdFlip(args []string) error {
@@ -150,7 +162,8 @@ func cmdFlip(args []string) error {
 		return deskkit.Refused("deskflip: unexpected extra arguments after <N>: " + strings.Join(fs.Args(), " "))
 	}
 
-	o := flipOpts{pr: n, repo: *repo, root: *root, quiet: *quiet, dryRun: *dryRun}
+	var flipped bool
+	o := flipOpts{pr: n, repo: *repo, root: *root, quiet: *quiet, dryRun: *dryRun, flipped: &flipped}
 	ferr := flip(o)
 	audit(o, ferr)
 	return ferr
@@ -348,13 +361,14 @@ func flip(o flipOpts) error {
 	switch evalRollup(checks) {
 	case ciFail:
 		return deskkit.Refused(fmt.Sprintf(
-			"condition %s: a check at %s failed — %s. A red rollup outranks any local verification: CI runs "+
-				"the real toolchain and a local trace does not.",
+			"condition %s: the latest run of a check at %s is not green — %s. Each check is judged by its "+
+				"latest run at this head, so an earlier run a later one superseded is not counted here. A red "+
+				"rollup outranks any local verification: CI runs the real toolchain and a local trace does not.",
 			condChecksGreen, short(head), strings.Join(failedChecks(checks), ", ")))
 	case ciPending:
 		return deskkit.Unverifiable(fmt.Sprintf(
-			"condition %s: checks at %s are not positively green (a check has not completed). Not-yet-green "+
-				"is could-not-verify, never green.", condChecksGreen, short(head)), nil)
+			"condition %s: checks at %s are not positively green — %s. Not-yet-green is could-not-verify, "+
+				"never green.", condChecksGreen, short(head), strings.Join(pendingChecks(checks), ", ")), nil)
 	case ciEmpty:
 		// An ABSENT rollup is the config-vs-reality fork. The roster's coarse ci-tag says
 		// whether the repo "runs CI" — but a repo can run CI without REQUIRING any check to
@@ -407,6 +421,11 @@ func flip(o flipOpts) error {
 				condChecksGreen, short(head), repo, len(missing), strings.Join(missing, ", ")), nil)
 		}
 	}
+	// A green reading of the rollup is not yet the forge's: a check suite with no conclusion and
+	// no runs is invisible to the rollup yet holds the merge gate (#6234).
+	if err := checkSuitesHold(o, fg, fr, head); err != nil {
+		return err
+	}
 	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
 
 	// --- desk-decided --------------------------------------------------------------
@@ -444,6 +463,12 @@ func flip(o flipOpts) error {
 		return err
 	}
 	o.say("%s OK: %d changed file(s) read", condSecurityVerdict, len(files))
+
+	if !alreadyReady {
+		if err := checkNotReverted(o, fg, fr, head); err != nil {
+			return err
+		}
+	}
 
 	// --- head-stable (TOCTOU) ----------------------------------------------------
 	// The ready mutation has no compare-and-swap, so the head is re-read HERE, after every
@@ -569,11 +594,46 @@ func flip(o flipOpts) error {
 		}
 		return deskkit.Unverifiable(msg, err)
 	}
+	if o.flipped != nil {
+		*o.flipped = true
+	}
+	// The post-flip backstop (#6242): ready means mergeable per the forge. A revert returns
+	// here, before the queue label moves to the merge queue.
+	if err := readyBackstop(fg, fr, o.pr, pr.change, head); err != nil {
+		return err
+	}
 	if err := ensureLabelSwap(o, fg, fr, pr); err != nil {
 		return err
 	}
 	fmt.Printf("deskflip: FLIPPED %s#%d ready-for-human at %s — the merge is the human's. (%s)\n",
 		repo, o.pr, short(head), obo)
+	return nil
+}
+
+// checkNotReverted refuses a head the post-flip backstop already returned to draft
+// (medici-finance/assay#6253 review F2). The backstop's revert comment carries a hidden marker
+// naming the head (deskkit.ReadyBackstopRevertMarker); a trusted comment carrying it for the
+// CURRENT head means this flip would be reverted again, so the flip stops as could-not-check
+// and names the comment. A new head clears it. An unreadable comment thread is could-not-check
+// too: the condition cannot be shown to hold.
+func checkNotReverted(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head string) error {
+	comments, err := fg.ListCommentsTyped(fr, o.pr, deskkit.TargetChange)
+	if err != nil {
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: PR #%d's comments could not be read, so whether the post-flip check already "+
+				"reverted this head is unknown: %s", condNotReverted, o.pr, firstLine(err.Error())), err)
+	}
+	if c, ok := deskkit.FindReadyBackstopRevert(comments, head); ok {
+		ref := c.URL
+		if ref == "" {
+			ref = fmt.Sprintf("comment %d", c.DatabaseID)
+		}
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: the post-flip check already returned PR #%d to draft at %s (%s): the forge "+
+				"reported it not mergeable right after a flip at this head, so flipping it again would be "+
+				"reverted again. A new head clears this condition.", condNotReverted, o.pr, short(head), ref), nil)
+	}
+	o.say("%s OK: no post-flip revert recorded at %s", condNotReverted, short(head))
 	return nil
 }
 
@@ -792,12 +852,15 @@ func readLabelEvents(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]desk
 //     it were a fresh verdict after a genuine push, nor is it a citing APPROVE for either
 //     exemption below.
 //
-// RULE 2 HAS EXACTLY TWO EXEMPTIONS, and both live in this function rather than in a caller
+// RULE 2 HAS EXACTLY THREE EXEMPTIONS, and all live in this function rather than in a caller
 // so the grant and the refusal cannot drift apart: the CHECK-ONLY CR (see
-// checkOnlyCRCleared) and the DOCUMENTED BODY-EDIT RE-VERIFICATION (see bodyEditCRCleared).
-// A standing CR is routed by what it DECLARES — a `Blocked-On-Body:` line goes to the
-// body-edit decision, anything else to the check-only one, whose undeclared path is rule 2's
-// refusal verbatim. runsAtHead supplies the check-run rollup at head that the check-only
+// checkOnlyCRCleared), the DOCUMENTED BODY-EDIT RE-VERIFICATION (see bodyEditCRCleared), and
+// the MARKED SECURITY FAIL cleared by a later same-head pass (see securityBodyCRCleared,
+// #5092). A standing CR is routed by its LANE first and then by what it DECLARES — a
+// `Security-Review: fail` goes to the security-lane decision whatever else it carries, a
+// `Blocked-On-Body:` line to the body-edit decision, anything else to the check-only one,
+// whose undeclared path is rule 2's refusal verbatim. Each correctness exemption is cleared
+// only by correctness-lane APPROVEs and the security one only by security-lane passes. runsAtHead supplies the check-run rollup at head that the check-only
 // exemption needs; it is a FUNCTION, not a slice, because the read is a forge round-trip that
 // the overwhelmingly common path — no standing CR at all — must not pay for. It is called at
 // most once, only when a standing CR has already DECLARED itself check-only. live is the PR
@@ -806,11 +869,20 @@ func readLabelEvents(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]desk
 func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head string, live liveBodyRead, pr int,
 	runsAtHead func() ([]deskkit.CheckRun, error)) error {
 	// Rule 2 first: a standing block at head is decisive whatever else is present.
-	for _, r := range reviews {
+	for i, r := range reviews {
 		if !deskkit.SameActor(r.User.Login, reviewerLogin) || r.CommitID != head {
 			continue
 		}
 		if r.State == "CHANGES_REQUESTED" {
+			// The security lane's fail is routed BEFORE either correctness exemption: those
+			// are cleared by correctness APPROVEs, and a correctness approval never clears a
+			// security fail (#5092).
+			if deskkit.HasSecurityReviewFail(r.Body) {
+				if err := securityBodyCRCleared(reviewerLogin, r, reviews[i+1:], reviews, head, live); err != nil {
+					return err
+				}
+				continue
+			}
 			if deskkit.BodyEditDeclared(r.Body) {
 				if err := bodyEditCRCleared(reviewerLogin, r, reviews, head, live); err != nil {
 					return err
@@ -1160,6 +1232,77 @@ func bodyEditCRCleared(reviewerLogin string, cr reviewInfo, reviews []reviewInfo
 		dec.Reason+".")
 }
 
+// securityBodyCRCleared decides rule 2's THIRD exemption for a standing CHANGES_REQUESTED at
+// head that carries `Security-Review: fail` (#5092). The decision is
+// deskkit.EvaluateSecurityBodyClearance, shared with deskboard; this function supplies what it
+// cannot get for itself — the reviewer's security-marked reviews after the fail, the live
+// body, and the forge's record of the body's last edit — and holds the lane line:
+//
+//   - an UNMARKED fail refuses with rule 2's refusal verbatim, exactly as before;
+//   - a fail declaring `Blocked-On-Check:` / `External-Prereq-Only:` refuses: those classes
+//     are cleared by correctness APPROVEs, and a correctness approval never clears a security
+//     fail;
+//   - each later review is handed over WITH its review state, so the shared decision admits a
+//     pass only in a state deskkit.SecurityPassStateStands allows (the same two states
+//     `deskpost ready`'s own list holds): a DISMISSED or PENDING pass clears nothing;
+//   - a fail or a pass whose body also carries a correctness verdict line refuses in the
+//     shared decision. Rule 1 drops every security-marked body, so clearing such a CR here
+//     would drop its correctness half unread;
+//   - a marked fail clears only when the shared decision clears it AND the security lane's
+//     standing verdict at head (securityVerdictStanding, the reduction checkSecurityVerdict
+//     reads) is a pass. The head binding comes from rule 2's head filter and the shared
+//     decision, and after a head move from condition security-verdict itself; this second
+//     check is a second layer that errs safe. When the decision clears, the reduction's last
+//     verdict is already that pass, so on unmutated code it does not fire.
+//
+// later is reviews after cr in the forge's ascending order; reviews is the whole list.
+func securityBodyCRCleared(reviewerLogin string, cr reviewInfo, later, reviews []reviewInfo, head string, live liveBodyRead) error {
+	if !deskkit.BodyEditDeclared(cr.Body) {
+		if deskkit.BlockedOnCheckName(cr.Body) != "" || deskkit.ExternalPrereqOnlyDeclared(cr.Body) {
+			return standingCRRefusal(reviewerLogin, head, "The CR is a `Security-Review: fail`; the "+
+				"check-only and external-prerequisite classes are cleared by a correctness APPROVE, which never "+
+				"clears a security fail.")
+		}
+		return standingCRRefusal(reviewerLogin, head, "")
+	}
+	var after []deskkit.SecurityVerdictReview
+	for _, r := range later {
+		if !deskkit.SameActor(r.User.Login, reviewerLogin) || !hasSecurityMarker(r.Body) {
+			continue
+		}
+		after = append(after, deskkit.SecurityVerdictReview{Body: r.Body, CommitID: r.CommitID, State: r.State,
+			SubmittedAt: r.SubmittedAt})
+	}
+	editedAt := ""
+	if live.EditedAt != nil {
+		var err error
+		if editedAt, err = live.EditedAt(); err != nil {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: a standing `Security-Review: fail` at %s declares `Blocked-On-Body:`, but the PR "+
+					"body's last-edited time could not be read (%s) — whether the body was edited after the fail "+
+					"is then could-not-check, and could-not-check never clears a rejection.",
+				condReviewerApproved, short(head), firstLine(err.Error())), err)
+		}
+	}
+	dec := deskkit.EvaluateSecurityBodyClearance(deskkit.SecurityBodyInput{
+		FailBody:        cr.Body,
+		FailSubmittedAt: cr.SubmittedAt,
+		Head:            head,
+		Later:           after,
+		LiveBody:        live.Body,
+		BodyEditedAt:    editedAt,
+	})
+	if !dec.Cleared {
+		return standingCRRefusal(reviewerLogin, head, "The CR is a `Security-Review: fail` declaring "+
+			"`Blocked-On-Body:`, but "+dec.Reason+".")
+	}
+	if securityVerdictStanding(reviews, reviewerLogin, head) != secPass {
+		return standingCRRefusal(reviewerLogin, head, "The CR is a marked `Security-Review: fail` whose "+
+			"clearance holds, but the security lane's standing verdict at head is not a pass.")
+	}
+	return nil
+}
+
 // liveBodyRead is the PR body as read at the reviewer-approved gate, plus a reader for the
 // forge's own record of when that body was last edited. The body-edit exemption needs both:
 // the body to verify the reviewer's re-read digest against, and the edit time to establish
@@ -1198,6 +1341,16 @@ func bodyEditedAtReader(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int) func() (
 // the current head, so a resync that leaves the flagged code unchanged cannot launder it.
 // The second rule is the risk-classed requirement: a PR that IS risk-classed needs an
 // affirmative pass AT THE CURRENT head, and absence is never a pass.
+//
+// ONE VERDICT FOR THE LANE (#5092). A fail and a later pass at the SAME head read here as the
+// pass, and rule 2 of checkReviewerApproved reads the same fail, as a CHANGES_REQUESTED at
+// head, through securityBodyCRCleared. That function clears it only when the shared marked
+// body-only decision holds, which needs a standing pass from the reviewer at head with no fail
+// after it; it also checks securityVerdictStanding — this condition's reduction — as a
+// second layer. So the two conditions cannot read the lane differently in the grant direction: an
+// unmarked same-head fail is refused there, and a marked one clears in both or neither. A
+// clearance binds to its head like any pass: once the head moves, the fail stands again
+// here (#361) and the clearing pass, pinned at the old head, clears nothing.
 //
 // RISK CLASSIFICATION IS UNIONED, AND EVERY TERM ONLY WIDENS (#361 item 3). A PR is
 // risk-classed if its repo visibility risk-classes it (a public repo always does — no diff
@@ -1986,9 +2139,6 @@ const (
 	ciFail
 )
 
-// evalRollup reduces the rollup to one state. NOT-COMPLETED and UNRECOGNISED both fall to
-// pending rather than to green: a conclusion this reader does not know is a conclusion it
-// has not verified, and the only safe reading of an unverified check is "not yet green".
 // conclusionGreen is the ONE accepted set of green check-run conclusions, shared by the
 // checks-green reduction (evalRollup) and by the check-only-CR exemption's test of the run a
 // reviewer cited.
@@ -2016,37 +2166,67 @@ func checkRunGreen(run deskkit.CheckRun) bool {
 		conclusionGreen(run.Conclusion)
 }
 
+// entryVerdict is one rollup entry judged: its state, and the fact the forge reported that
+// decided it, in the words a refusal names it by ("cancelled", "status queued", "state
+// pending", "completed with no conclusion").
+type entryVerdict struct {
+	state  ciState // ciGreen, ciPending or ciFail — never ciEmpty
+	reason string
+}
+
+// judgeEntry is the ONE classifier of a rollup entry. evalRollup folds its verdicts into the
+// rollup's state, and failedChecks/pendingChecks render its reasons into the refusal, so the
+// text of a refusal is always the fact that produced it (#6124: a refusal that read "a check
+// has not completed" over runs that had all completed, naming none of them).
+//
+// It fails CLOSED. A check run's conclusion is green only in deskkit.ConclusionGreen's set;
+// every other conclusion, including one this reader has never seen, is a failure. A status
+// context is green only on SUCCESS, waiting on PENDING/EXPECTED, and failed on anything
+// else. An entry with neither — a run still queued or in progress, or a completed run the
+// forge served no conclusion for — is not green, and its reason says which.
+func judgeEntry(e rollupEntry) entryVerdict {
+	lower := func(v string) string { return strings.ToLower(strings.TrimSpace(v)) }
+	switch {
+	case e.Conclusion != "":
+		if conclusionGreen(e.Conclusion) {
+			return entryVerdict{ciGreen, lower(e.Conclusion)}
+		}
+		return entryVerdict{ciFail, lower(e.Conclusion)}
+	case e.State != "":
+		switch strings.ToUpper(strings.TrimSpace(e.State)) {
+		case "SUCCESS":
+			return entryVerdict{ciGreen, "state " + lower(e.State)}
+		case "PENDING", "EXPECTED":
+			return entryVerdict{ciPending, "state " + lower(e.State)}
+		default:
+			return entryVerdict{ciFail, "state " + lower(e.State)}
+		}
+	case strings.EqualFold(strings.TrimSpace(e.Status), "COMPLETED"):
+		return entryVerdict{ciPending, "completed with no conclusion"}
+	case strings.TrimSpace(e.Status) == "":
+		return entryVerdict{ciPending, "no status reported"}
+	default:
+		return entryVerdict{ciPending, "status " + lower(e.Status)}
+	}
+}
+
+// evalRollup reduces the (already latest-per-name) rollup to one state: any failed entry
+// makes it ciFail, else any not-yet-green entry makes it ciPending, else ciGreen. An empty
+// rollup is ciEmpty, which the caller decides against the base branch's required checks.
 func evalRollup(entries []rollupEntry) ciState {
 	if len(entries) == 0 {
 		return ciEmpty
 	}
-	pending := false
+	state := ciGreen
 	for _, e := range entries {
-		switch {
-		case e.Conclusion != "":
-			if !conclusionGreen(e.Conclusion) {
-				return ciFail
-			}
-		case e.State != "":
-			switch strings.ToUpper(e.State) {
-			case "SUCCESS":
-			case "PENDING", "EXPECTED":
-				pending = true
-			default:
-				return ciFail
-			}
-		default:
-			// A check run that has not completed carries a status and no conclusion.
-			pending = true
-		}
-		if e.Conclusion == "" && e.State == "" && !strings.EqualFold(e.Status, "COMPLETED") {
-			pending = true
+		switch judgeEntry(e).state {
+		case ciFail:
+			return ciFail
+		case ciPending:
+			state = ciPending
 		}
 	}
-	if pending {
-		return ciPending
-	}
-	return ciGreen
+	return state
 }
 
 // missingRequiredChecks returns the branch-protection required contexts that are ABSENT from
@@ -2071,31 +2251,35 @@ func missingRequiredChecks(present []rollupEntry, required []string) []string {
 	return missing
 }
 
+// failedChecks names every entry judgeEntry failed, each with the conclusion or state that
+// failed it: "prompt (cancelled)".
 func failedChecks(entries []rollupEntry) []string {
+	return checksIn(entries, ciFail, "(the rollup reports a failure but names no check)")
+}
+
+// pendingChecks names every entry judgeEntry found not yet green, each with what the forge
+// reported for it: "prompt (status queued)", "leak-sweep (state pending)".
+func pendingChecks(entries []rollupEntry) []string {
+	return checksIn(entries, ciPending, "(the rollup reports a pending check but names none)")
+}
+
+func checksIn(entries []rollupEntry, want ciState, none string) []string {
 	var out []string
 	for _, e := range entries {
-		bad := false
-		if e.Conclusion != "" {
-			switch strings.ToUpper(e.Conclusion) {
-			case "SUCCESS", "NEUTRAL", "SKIPPED":
-			default:
-				bad = true
-			}
-		} else if e.State != "" {
-			switch strings.ToUpper(e.State) {
-			case "SUCCESS", "PENDING", "EXPECTED":
-			default:
-				bad = true
-			}
-		}
-		if bad {
-			out = append(out, e.label())
+		if v := judgeEntry(e); v.state == want {
+			out = append(out, e.label()+" ("+v.reason+")")
 		}
 	}
 	if len(out) == 0 {
-		return []string{"(the rollup reports a failure but names no check)"}
+		return []string{none}
 	}
 	return out
+}
+
+// renewsLease reports whether this invocation's audit row records a ready mutation the forge
+// confirmed: no error, not a dry run, and the mutation itself ran (o.flipped).
+func renewsLease(o flipOpts, err error) bool {
+	return err == nil && !o.dryRun && o.flipped != nil && *o.flipped
 }
 
 func audit(o flipOpts, err error) {
@@ -2113,7 +2297,14 @@ func audit(o flipOpts, err error) {
 		}
 		detail = firstLine(err.Error())
 	}
-	if lerr := deskkit.Log(deskkit.Entry{
+	// A real ready flip is an outward mutating act and renews a fresh HEARTBEAT lease on
+	// success (#6510). A dry run and an already-ready PR are also logged ResultOK here but
+	// made no ready mutation, so they go through plain Log: only a flip that happened renews.
+	logRow := deskkit.Log
+	if renewsLease(o, err) {
+		logRow = deskkit.LogOutwardAct
+	}
+	if lerr := logRow(deskkit.Entry{
 		Tool:   toolName,
 		Verb:   "flip",
 		Result: result,

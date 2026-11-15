@@ -45,8 +45,8 @@ func TestMonitorIdentity_GitLabOwner_NamedFallbackNoMint(t *testing.T) {
 		}
 		return "", `no App ID for App "` + role + `-app"`, errors.New("exit status 6")
 	}))
-	// Production mint binding; only the role is stubbed (no DESK_LOOP in a test process).
-	stubIdentity(t, func(string) (string, string, error) { return "intake-loop", "intake-desk", nil }, mintTokenFn)
+	// Production resolver binding; only the role is stubbed (no DESK_LOOP in a test process).
+	withRoleOnly(t, "intake-loop")
 
 	id := ResolveMonitorIdentity([]string{"example-gh/tracker", "example-gl/pilot"})
 	for _, o := range minted {

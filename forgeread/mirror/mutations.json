@@ -1,0 +1,248 @@
+[
+  {
+    "id": "query-admission",
+    "test": "TestMirrorKernelAdmission",
+    "edits": [
+      {
+        "file": "mirror/query.go",
+        "find": "a.ID() != scope.AdmissionID",
+        "replace": "false"
+      }
+    ]
+  },
+  {
+    "id": "store-admission",
+    "test": "TestMirrorStoreConformance",
+    "edits": [
+      {
+        "file": "mirror/mirrortest/store.go",
+        "find": "a.ID() != scope.AdmissionID",
+        "replace": "false"
+      }
+    ]
+  },
+  {
+    "id": "partial-watermark",
+    "test": "TestMirrorKernelCoverage",
+    "edits": [
+      {
+        "file": "mirror/scan.go",
+        "find": "u.Coverage.State = Partial",
+        "replace": "u.Coverage.State = Partial; u.Coverage.LastComplete = now"
+      }
+    ]
+  },
+  {
+    "id": "partial-absence",
+    "test": "TestMirrorKernelCoverage",
+    "edits": [
+      {
+        "file": "mirror/scan.go",
+        "find": "if !scan.Complete {",
+        "replace": "if !scan.Complete { for _, row := range s.Records { u.NotInInventory = append(u.NotInInventory, row.ID) }"
+      }
+    ]
+  },
+  {
+    "id": "missing-overlap",
+    "test": "TestMirrorKernelScanPlanning",
+    "edits": [
+      {
+        "file": "mirror/planner.go",
+        "find": "c.ObservedUpTo.Add(-p.Overlap)",
+        "replace": "c.ObservedUpTo"
+      }
+    ]
+  },
+  {
+    "id": "absence-closes",
+    "test": "TestMirrorKernelScanPlanning",
+    "edits": [
+      {
+        "file": "mirror/mirrortest/store.go",
+        "find": "rows[i].InInventory = false",
+        "replace": "rows[i].InInventory = false; rows[i].State = \"closed\""
+      }
+    ]
+  },
+  {
+    "id": "inventory-starvation",
+    "test": "TestMirrorKernelScanPlanning",
+    "edits": [
+      {
+        "file": "mirror/planner.go",
+        "find": "now.Sub(c.LastInventory)",
+        "replace": "now.Sub(c.LastComplete)"
+      }
+    ]
+  },
+  {
+    "id": "partial-not-modified",
+    "test": "TestMirrorKernelScanPlanning",
+    "edits": [
+      {
+        "file": "mirror/scan.go",
+        "find": "s.Coverage.State != Complete",
+        "replace": "false"
+      }
+    ]
+  },
+  {
+    "id": "store-watermark",
+    "test": "TestMirrorStoreConformance",
+    "edits": [
+      {
+        "file": "mirror/mirrortest/store.go",
+        "find": "u.Coverage.LastComplete.After(old.Coverage.LastComplete) && (!u.CompleteScan || u.Coverage.State != mirror.Complete)",
+        "replace": "false"
+      },
+      {
+        "file": "mirror/mirrortest/store.go",
+        "find": "u.Coverage.State == mirror.Complete && !u.CompleteScan",
+        "replace": "false"
+      }
+    ]
+  },
+  {
+    "id": "kernel-http-import",
+    "test": "TestMirrorKernelBoundaries",
+    "edits": [
+      {
+        "file": "mirror/query.go",
+        "find": "\"context\"",
+        "replace": "\"context\"\n _ \"net/http\""
+      }
+    ]
+  },
+  {
+    "id": "validator-window",
+    "test": "TestMirrorKernelScanPlanning",
+    "edits": [
+      {
+        "file": "mirror/scan.go",
+        "find": "!p.Since.Equal(s.Coverage.ValidatorSince)",
+        "replace": "false"
+      }
+    ]
+  },
+  {
+    "id": "record-regression",
+    "test": "TestMirrorKernelCoverage",
+    "edits": [
+      {
+        "file": "mirror/scan.go",
+        "find": "ok && ((!old.UpdatedAt.IsZero() && r.UpdatedAt.Before(old.UpdatedAt)) || (!old.ObservedAt.IsZero() && r.ObservedAt.Before(old.ObservedAt)))",
+        "replace": "ok && false && ((!old.UpdatedAt.IsZero() && r.UpdatedAt.Before(old.UpdatedAt)) || (!old.ObservedAt.IsZero() && r.ObservedAt.Before(old.ObservedAt)))"
+      }
+    ]
+  },
+  {
+    "id": "permission-hold-planner",
+    "test": "TestMirrorPermissionHold",
+    "edits": [
+      {
+        "file": "mirror/scan.go",
+        "find": "s.Coverage.Reason == Permission && !scan.Complete",
+        "replace": "false"
+      }
+    ]
+  },
+  {
+    "id": "permission-hold-store",
+    "test": "TestMirrorStoreConformance",
+    "edits": [
+      {
+        "file": "mirror/mirrortest/store.go",
+        "find": "old.Coverage.Reason == mirror.Permission && (!u.CompleteScan || u.Coverage.State != mirror.Complete || !u.FullInventory || !u.Coverage.LastComplete.After(old.Coverage.LastAttempted) || !u.Coverage.LastInventory.After(old.Coverage.LastAttempted))",
+        "replace": "false"
+      }
+    ]
+  },
+  {
+    "id": "partial-complete",
+    "test": "TestMirrorKernelCoverage",
+    "edits": [
+      {
+        "file": "mirror/scan.go",
+        "find": "u.Coverage.State = Partial",
+        "replace": "u.Coverage.State = Complete"
+      }
+    ]
+  },
+  {
+    "id": "hold-recovery-plan-full",
+    "test": "TestMirrorPermissionHold",
+    "edits": [
+      {
+        "file": "mirror/planner.go",
+        "find": "c.Reason == Permission || ",
+        "replace": ""
+      }
+    ]
+  },
+  {
+    "id": "hold-recovery-scan-full",
+    "test": "TestMirrorPermissionHold",
+    "edits": [
+      {
+        "file": "mirror/scan.go",
+        "find": "!p.FullInventory || !now.After(s.Coverage.LastAttempted)",
+        "replace": "!now.After(s.Coverage.LastAttempted)"
+      }
+    ]
+  },
+  {
+    "id": "hold-recovery-scan-fresh",
+    "test": "TestMirrorPermissionHold",
+    "edits": [
+      {
+        "file": "mirror/scan.go",
+        "find": "!p.FullInventory || !now.After(s.Coverage.LastAttempted)",
+        "replace": "!p.FullInventory"
+      }
+    ]
+  },
+  {
+    "id": "hold-recovery-store-inventory",
+    "test": "TestMirrorStoreConformance",
+    "edits": [
+      {
+        "file": "mirror/mirrortest/store.go",
+        "find": " || !u.Coverage.LastInventory.After(old.Coverage.LastAttempted)",
+        "replace": ""
+      }
+    ]
+  },
+  {
+    "id": "hold-recovery-store-state-class",
+    "test": "TestMirrorStoreConformance",
+    "edits": [
+      {
+        "file": "mirror/mirrortest/store.go",
+        "find": "(!u.CompleteScan || u.Coverage.State != mirror.Complete || !u.FullInventory",
+        "replace": "(!u.CompleteScan || !u.FullInventory"
+      },
+      {
+        "file": "mirror/mirrortest/store.go",
+        "find": "u.Coverage.LastComplete.After(old.Coverage.LastComplete) && (!u.CompleteScan || u.Coverage.State != mirror.Complete)",
+        "replace": "u.Coverage.LastComplete.After(old.Coverage.LastComplete) && !u.CompleteScan"
+      }
+    ]
+  },
+  {
+    "id": "hold-recovery-store-full-class",
+    "test": "TestMirrorStoreConformance",
+    "edits": [
+      {
+        "file": "mirror/mirrortest/store.go",
+        "find": " || !u.FullInventory || !u.Coverage.LastComplete",
+        "replace": " || !u.Coverage.LastComplete"
+      },
+      {
+        "file": "mirror/mirrortest/store.go",
+        "find": "u.Coverage.LastInventory.After(old.Coverage.LastInventory) && (!u.CompleteScan || !u.FullInventory)",
+        "replace": "u.Coverage.LastInventory.After(old.Coverage.LastInventory) && !u.CompleteScan"
+      }
+    ]
+  }
+]

@@ -1,0 +1,59 @@
+{
+  "test": "go test -count=1 -timeout 300s -run '^(TestCheckAttempts|TestPerfBriefRef|TestReruns_.*)$' ./internal/deskkit ./cmd/deskperf",
+  "control": {
+    "name": "count line drops the run total",
+    "file": "cmd/deskperf/reruns.go",
+    "old": "return fmt.Sprintf(\"%s: %d verification runs, %d uncredited, %d discarded, %d unrecorded\", r.Brief, r.Runs,",
+    "new": "return fmt.Sprintf(\"%s: %d verification runs, %d uncredited, %d discarded, %d unrecorded\", r.Brief, r.Runs-1,"
+  },
+  "mutations": [
+    {
+      "name": "credited-last rule removed from the writer's validator",
+      "file": "internal/deskkit/verifyattempts.go",
+      "old": "if a.Disposition == AttemptCredited && a.Attempt != last {",
+      "new": "if false && a.Disposition == AttemptCredited && a.Attempt != last {"
+    },
+    {
+      "name": "reader skips the re-validation of stored records",
+      "file": "cmd/deskperf/reruns.go",
+      "old": "_, err := deskkit.CheckAttempts(f)\n\treturn err",
+      "new": "_, _ = deskkit.CheckAttempts, f\n\treturn nil"
+    },
+    {
+      "name": "missing perf history reported as a measured 0",
+      "file": "cmd/deskperf/reruns.go",
+      "old": "a.state, a.why = stateCouldNotCheck, \"no perf rows: \"+emptyHistoryReason(h, days)",
+      "new": "a.state, a.why = stateMeasured, \"\""
+    },
+    {
+      "name": "ambiguous window counted into both sums",
+      "file": "cmd/deskperf/reruns.go",
+      "old": "case len(agents) > 1:",
+      "new": "case len(agents) > 99:"
+    },
+    {
+      "name": "join key is the short <stream>/<NN> id",
+      "file": "cmd/deskperf/reruns.go",
+      "old": "return perfrec.WorkRef{Kind: \"brief\", Repo: repo, Brief: id}, nil",
+      "new": "return perfrec.WorkRef{Kind: \"brief\", Repo: repo, Brief: brief + id[:0]}, nil"
+    },
+    {
+      "name": "row outside every window folded into the last attempt",
+      "file": "cmd/deskperf/reruns.go",
+      "old": "if used[i] || row.at.Before(run.Started) || row.at.After(run.Finished) {",
+      "new": "if used[i] || row.at.Before(run.Started) {"
+    },
+    {
+      "name": "pruned window not detected",
+      "file": "cmd/deskperf/reruns.go",
+      "old": "case run.Started.Before(oldest):",
+      "new": "case false:"
+    },
+    {
+      "name": "own CPU with no CPU-carrying row printed as 0",
+      "file": "cmd/deskperf/reruns.go",
+      "old": "\tif cpuRecords == 0 {\n\t\treturn stateJSON{State: stateCouldNotCheck, Reason: noCPU}\n\t}\n\treturn cpuMs",
+      "new": "\treturn cpuMs"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "description": "An event recorded before now minus the replay horizon is not admitted; the sender treats it as expired loss.",
+  "context": {
+    "authenticatedSource": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "consentRevision": "r1",
+    "allowedProfiles": [
+      "tool"
+    ],
+    "now": "2026-10-02T12:00:00.000Z",
+    "replayHorizonHours": 168,
+    "known": {},
+    "commit": "ok"
+  },
+  "receipt": {
+    "schema": "performance-receipt-v1",
+    "batchDigest": "d50c6757cb709199a21360d562b6883e0d07328c3a4b79696d95f043be241523",
+    "committed": true,
+    "status": "partial",
+    "results": [
+      {
+        "index": 0,
+        "id": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa-e1-s1",
+        "status": "acknowledged",
+        "digest": "617645c982bd3168421139014fe76e3315cf1c7c2b2981588ea2b18636ec3145"
+      },
+      {
+        "index": 1,
+        "id": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa-e1-s3",
+        "status": "outside-horizon",
+        "digest": "5870f45e467b02faa5bcc5320af1599a15ccd3a60500be5327a6dd3608cbcc54"
+      }
+    ]
+  }
+}

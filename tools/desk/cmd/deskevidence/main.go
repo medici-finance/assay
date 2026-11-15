@@ -48,7 +48,9 @@ const usage = `deskevidence — commit Evidence rows as the verifier App (the ve
 USAGE:
   deskevidence <owner/repo> <branch> --evidence-file <repo-path> [--root <dir>]
                [--brief-path <repo-path>] [--append-only] [--allow-shrink]
-               [--row <NN> [--row <NN> ...]] [--acceptance-forge]
+               [--row <NN> [--row <NN> ...]] [--dry-run] [--acceptance-forge]
+  deskevidence <owner/repo> <branch> --outcome-record <local-file> [--outcome-only]
+               [--root <dir>] [--dry-run]
   deskevidence flip --root <worktree> --brief <stream>/<NN> --sha <sha> [--base main] [--dry-run]
   deskevidence --version
 
@@ -175,12 +177,6 @@ func run(args []string) int {
 		return deskkit.ExitCodeOf(err)
 	}
 
-	// Brief-reading version gate (example-stream/06 §6): a stamped deskevidence
-	// below v1.0.0 refuses a brief-v2 tree (exit 6).
-	if code := deskkit.RefuseIfTreeV2BelowV1(deskkit.RootsFromArgs(args), deskkit.EffectiveToolVersion(version), "deskevidence", os.Stderr); code != 0 {
-		return code
-	}
-
 	// Outward verbs present a LOOP IDENTITY. The kill switch's per-loop halt is
 	// `STOP.<loop>`, matched against $DESK_LOOP; with the variable unset nothing matches,
 	// so a stop flag a human is holding never fires and this verb keeps writing while the
@@ -197,6 +193,12 @@ func run(args []string) int {
 	// `flip` (#2074) is a LOCAL commit on a branch — no forge write, so it takes
 	// no audit lock and no write budget; the PR that carries it does.
 	if args[0] == "flip" {
+		// Brief-reading version gate (example-stream/06 §6): a stamped deskevidence
+		// below v1.0.0 refuses a brief-v2 tree (exit 6).
+		if code := deskkit.RefuseIfTreeV2BelowV1(deskkit.RootsFromArgs(args), deskkit.EffectiveToolVersion(version), "deskevidence", os.Stderr); code != 0 {
+			return code
+		}
+
 		err := runFlip(args[1:], options)
 		if err != nil && !deskkit.IsHelpRequest(err) {
 			fmt.Fprintln(stderr, "deskevidence: "+err.Error())

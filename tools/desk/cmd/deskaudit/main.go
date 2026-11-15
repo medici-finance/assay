@@ -20,7 +20,7 @@
 //	deskaudit recover     quarantine bad lines, carry good entries forward
 //	deskaudit tail [N]    print the newest N entries (default 10) across segments
 //	deskaudit --version   print the build stamp
-//	deskaudit -h          this text
+//	deskaudit -h          this text (generated from the command tree, desktools-v2/47)
 //
 // Guard() runs first, as for every desk tool: recovery is refused while the kill switch or a
 // stop flag is armed. Recovery takes the shared audit flock, so it cannot race a live write.
@@ -33,12 +33,16 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/spf13/cobra"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-const usage = `deskaudit — maintenance for the shared audit log (~/.config/assay/audit.jsonl).
+// helpLong is the root help's prose. The verbs are generated from the command tree
+// (desktools-v2/47); this is what the tree cannot say on its own.
+const helpLong = `deskaudit — maintenance for the shared audit log (~/.config/assay/audit.jsonl).
 
-usage:
   deskaudit recover     quarantine any malformed line(s) into audit.jsonl.corrupt-<ts> and
                         carry every good entry forward, preserving the rate-limit counter and
                         the idempotency store (a plain file move resets both)
@@ -48,58 +52,157 @@ usage:
   deskaudit --version   print the build stamp
   deskaudit -h | --help this text
 
-exit: 0 ok · 3 disabled (kill switch/stop flag) · 6 unverifiable`
+exit: 0 ok · 3 disabled (kill switch/stop flag) · 5 refused (bad command line) · 6 unverifiable`
 
 func main() {
-	os.Exit(deskkit.PerfRun("deskaudit", nil, os.Args[1:], func([]string) int { return run(os.Args[1:], os.Stdout, os.Stderr) }))
+	os.Exit(deskkit.PerfRun("deskaudit", nil, os.Args[1:], func(a []string) int { return run(a, os.Stdout, os.Stderr) }))
 }
 
+// run is one invocation: deskaudit has no process startup (it reads no roster), so the command
+// tree is the whole of it.
 func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version" || args[0] == "version") {
-		sha, built := deskkit.Version()
-		fmt.Fprintf(stdout, "deskaudit sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
-		return deskkit.ExitOK
-	}
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintln(stderr, usage)
-		if len(args) == 0 {
-			return deskkit.ExitRefused
-		}
-		return deskkit.ExitOK
-	}
+	return execute(args, stdout, stderr)
+}
 
-	// Mandatory first call, like every desk tool.
-	if err := deskkit.Guard(); err != nil {
+// guardFn, recoverFn and tailFn are what the command tree calls: the kill switch, then the
+// verb's typed handler. The contract tests replace them to count what a command line reaches.
+var (
+	guardFn   = deskkit.Guard
+	recoverFn = recoverAudit
+	tailFn    = runTail
+)
+
+// exitErr is a handler's exit code carried as an error, so cli.Run keeps it.
+type exitErr int
+
+func (e exitErr) Error() string { return "exit " + strconv.Itoa(int(e)) }
+func (e exitErr) ExitCode() int { return int(e) }
+
+func codeErr(code int) error {
+	if code == deskkit.ExitOK {
+		return nil
+	}
+	return exitErr(code)
+}
+
+// versionLine is what --version, -version and the legacy `version` word print.
+func versionLine() string {
+	sha, built := deskkit.Version()
+	return fmt.Sprintf("deskaudit sourceSHA=%s builtAt=%s releaseTag=%s", sha, built, deskkit.ReleaseTagOrDev())
+}
+
+// guard is the mandatory first call of every verb, like every desk tool: recovery and the read
+// are refused while the kill switch or a stop flag is armed.
+func guard(stderr io.Writer) error {
+	if err := guardFn(); err != nil {
 		fmt.Fprintln(stderr, "deskaudit:", err.Error())
+		return exitErr(deskkit.ExitCodeOf(err))
+	}
+	return nil
+}
+
+// tailN parses tail's optional N: absent is the default, otherwise a positive integer up to
+// the cap. It runs at parse time, so a bad N is refused before the kill switch or the read.
+func tailN(args []string) (int, error) {
+	switch len(args) {
+	case 0:
+		return tailDefault, nil
+	case 1:
+		v, err := strconv.Atoi(args[0])
+		if err != nil || v <= 0 {
+			return 0, fmt.Errorf("tail: N must be a positive integer, got %q", args[0])
+		}
+		if v > tailMax {
+			return 0, fmt.Errorf("tail: N is capped at %d (asked for %d)", tailMax, v)
+		}
+		return v, nil
+	default:
+		return 0, fmt.Errorf("tail: takes at most one argument")
+	}
+}
+
+// newTree builds deskaudit's command tree on the given streams. It declares no setting: no
+// flag beyond help and version, no environment variable, no configuration key.
+func newTree(stdout, stderr io.Writer) *cobra.Command {
+	root := cli.NewRoot("deskaudit", "maintenance for the shared audit log")
+	root.Long = helpLong
+	// An unknown verb is refused before anything runs.
+	root.Args = cobra.NoArgs
+	root.RunE = func(cmd *cobra.Command, _ []string) error {
+		// A bare invocation prints the usage to stderr and refuses, as before.
+		cmd.SetOut(stderr)
+		_ = cmd.Help()
+		return exitErr(deskkit.ExitRefused)
+	}
+	root.AddCommand(&cobra.Command{
+		Use:   "recover",
+		Short: "quarantine malformed line(s) and carry every good entry forward",
+		Args: func(_ *cobra.Command, args []string) error {
+			if len(args) != 0 {
+				return fmt.Errorf("recover: takes no arguments")
+			}
+			return nil
+		},
+		RunE: func(*cobra.Command, []string) error {
+			if err := guard(stderr); err != nil {
+				return err
+			}
+			return codeErr(recoverFn(stdout, stderr))
+		},
+	})
+	root.AddCommand(&cobra.Command{
+		Use:   "tail [N]",
+		Short: fmt.Sprintf("print the newest N entries (default %d, max %d) across segments", tailDefault, tailMax),
+		Args: func(_ *cobra.Command, args []string) error {
+			_, err := tailN(args)
+			return err
+		},
+		RunE: func(_ *cobra.Command, args []string) error {
+			n, _ := tailN(args)
+			if err := guard(stderr); err != nil {
+				return err
+			}
+			return codeErr(tailFn(n, stdout, stderr))
+		},
+	})
+	// `deskaudit version` printed the build stamp before the migration; it still does.
+	root.AddCommand(&cobra.Command{Use: "version", Short: "print the version", Hidden: true, Args: cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			fmt.Fprintln(stdout, versionLine())
+			return nil
+		}})
+	return root
+}
+
+// execute runs one invocation against a fresh command tree.
+func execute(args []string, stdout, stderr io.Writer) int {
+	return cli.Run(func() *cobra.Command { return newTree(stdout, stderr) }, args, cli.Options{
+		IO:              cli.IO{Out: stdout, Err: stderr},
+		Version:         versionLine(),
+		VersionTemplate: "{{.Version}}\n",
+		// A command line deskaudit cannot parse (an unknown verb, a bad N) is refused (5).
+		UsageExit: deskkit.ExitRefused,
+		// -version was a legacy spelling and stays accepted.
+		GoFlagCompat: true,
+	})
+}
+
+// recoverAudit is `deskaudit recover`: deskkit.RecoverCorruptAudit, reported.
+func recoverAudit(stdout, stderr io.Writer) int {
+	res, err := deskkit.RecoverCorruptAudit()
+	if err != nil {
+		fmt.Fprintln(stderr, "deskaudit recover:", err.Error())
 		return deskkit.ExitCodeOf(err)
 	}
-
-	switch args[0] {
-	case "recover":
-		if len(args) != 1 {
-			fmt.Fprintf(stderr, "deskaudit recover: takes no arguments\n%s\n", usage)
-			return deskkit.ExitRefused
-		}
-		res, err := deskkit.RecoverCorruptAudit()
-		if err != nil {
-			fmt.Fprintln(stderr, "deskaudit recover:", err.Error())
-			return deskkit.ExitCodeOf(err)
-		}
-		if !res.Rewrote {
-			fmt.Fprintf(stdout, "deskaudit recover: audit log already clean — %d entries, nothing quarantined\n", res.Carried)
-			return deskkit.ExitOK
-		}
-		fmt.Fprintf(stdout,
-			"deskaudit recover: carried %d entries forward, quarantined %d malformed line(s) to %s "+
-				"(rate-limit counter and idempotency store preserved)\n",
-			res.Carried, res.Quarantined, res.QuarantinePath)
+	if !res.Rewrote {
+		fmt.Fprintf(stdout, "deskaudit recover: audit log already clean — %d entries, nothing quarantined\n", res.Carried)
 		return deskkit.ExitOK
-	case "tail":
-		return runTail(args[1:], stdout, stderr)
-	default:
-		fmt.Fprintf(stderr, "deskaudit: unknown verb %q\n%s\n", args[0], usage)
-		return deskkit.ExitRefused
 	}
+	fmt.Fprintf(stdout,
+		"deskaudit recover: carried %d entries forward, quarantined %d malformed line(s) to %s "+
+			"(rate-limit counter and idempotency store preserved)\n",
+		res.Carried, res.Quarantined, res.QuarantinePath)
+	return deskkit.ExitOK
 }
 
 // tailDefault / tailMax bound the read verb. The cap is not a policy about how much history
@@ -117,26 +220,7 @@ const (
 // cannot read exits 6 with the reason; and a line that is not valid JSON is PRINTED, with a
 // note naming the recovery verb — never dropped, because a reader silently skipping the one
 // line that broke every other tool is the opposite of what this verb is for.
-func runTail(args []string, stdout, stderr io.Writer) int {
-	n := tailDefault
-	switch len(args) {
-	case 0:
-	case 1:
-		v, err := strconv.Atoi(args[0])
-		if err != nil || v <= 0 {
-			fmt.Fprintf(stderr, "deskaudit tail: N must be a positive integer, got %q\n", args[0])
-			return deskkit.ExitRefused
-		}
-		if v > tailMax {
-			fmt.Fprintf(stderr, "deskaudit tail: N is capped at %d (asked for %d)\n", tailMax, v)
-			return deskkit.ExitRefused
-		}
-		n = v
-	default:
-		fmt.Fprintf(stderr, "deskaudit tail: takes at most one argument\n%s\n", usage)
-		return deskkit.ExitRefused
-	}
-
+func runTail(n int, stdout, stderr io.Writer) int {
 	lines, present, err := deskkit.TailLines(n)
 	if err != nil {
 		fmt.Fprintln(stderr, "deskaudit tail:", err.Error())

@@ -11,10 +11,11 @@ package main
 // the forge token variables removed (admittedRowEnv), so a row that reached a
 // forge read would otherwise authenticate as whoever is logged in on the
 // runner. One function decides (storedLoginRefusal); every credential site
-// receives its answer: the ruling-read client (rulingForgeClient), the
-// dead-claim decay's token (githubDecayToken) and every forge CLI launch, each
-// of which is wrapped in ghGuard. A refused read with no token variable set is
-// a could-not-check on the site's existing error path, never an anonymous or
+// receives its answer: the ruling-read client (rulingForgeClient) and every
+// forge CLI launch, each of which is wrapped in ghGuard. Claim-decay token
+// lookup never uses a stored login, regardless of this decision. A refused read
+// with no token variable set is a could-not-check on the site's existing error
+// path, never an anonymous or
 // ambient-authenticated read. Where none of storedLoginRefusal's signals holds,
 // nothing changes.
 
@@ -137,8 +138,30 @@ const storedLoginPlaceholder = "stored-login-refused"
 // on the site's existing error path); otherwise it runs with
 // CELLCTL_GH_AMBIENT removed and any unset token family replaced by a
 // placeholder, so the CLI authenticates only with the variable it was given.
-// When it does not refuse, the command is returned unchanged.
-func ghGuard(cmd *exec.Cmd) *exec.Cmd {
+// CI snapshots the effective environment here, its existing single source, so
+// retries use the same credential. Outside CI an allowed command is unchanged
+// unless the caller already resolved a credential for the GitHub.com REST reader.
+func ghGuard(cmd *exec.Cmd, githubToken ...string) *exec.Cmd {
+	if len(githubToken) > 0 && githubToken[0] != "" {
+		// Keep the selected credential on this launch only. Clear alternate
+		// credential sources and pin the same host as the REST reader.
+		var kept []string
+		for _, kv := range cmd.Environ() {
+			key, _, _ := strings.Cut(kv, "=")
+			switch strings.ToUpper(key) {
+			case "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
+				"CELLCTL_GH_AMBIENT", "GH_HOST", "GH_REPO":
+				continue
+			}
+			kept = append(kept, kv)
+		}
+		cmd.Env = append(kept, "GH_TOKEN="+githubToken[0], "GH_HOST=github.com",
+			"GH_ENTERPRISE_TOKEN="+storedLoginPlaceholder)
+		return cmd
+	}
+	if cmd.Env == nil && os.Getenv("GITHUB_ACTIONS") == "true" {
+		cmd.Env = os.Environ()
+	}
 	why := storedLoginRefusal()
 	if why == "" {
 		return cmd

@@ -1,0 +1,113 @@
+import copy
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+from unittest.mock import patch
+from tools.release import qualification as q
+
+class QualificationTest(unittest.TestCase):
+ def env(self):
+  return dict(GITHUB_REPOSITORY='medici-finance/assay',GITHUB_EVENT_NAME='workflow_dispatch',GITHUB_REF='refs/heads/main',
+      RUNNER_OS='Linux',RUNNER_ARCH='X64',QUALIFICATION_CONFIRM='ONE_PRODUCER_ONE_PUBLISHER',
+      GITHUB_SHA='a'*40,QUALIFICATION_SOURCE='a'*40,GITHUB_RUN_ID='123',GITHUB_RUN_ATTEMPT='1',
+      RELEASE_OBJECT_CA_BUNDLE='/etc/release-object-ca/ca.pem')
+ def test_admission_and_independent_refusals(self):
+  with patch.object(q.platform,'system',return_value='Linux'),patch.object(q.platform,'machine',return_value='x86_64'):
+   self.assertEqual(q.admission(self.env())['source'],'a'*40)
+   for key,value in [('GITHUB_EVENT_NAME','pull_request'),('GITHUB_REF','refs/tags/v1.0.0'),('GITHUB_REPOSITORY','other/repo'),('QUALIFICATION_SOURCE','b'*40),('AWS_PROFILE','default'),('RELEASE_OBJECT_CA_BUNDLE','/tmp/unreviewed'),('RUNNER_ARCH','ARM64')]:
+    env=self.env();env[key]=value
+    with self.subTest(key=key),self.assertRaises(ValueError):q.admission(env)
+ def test_partial_rerun_uses_producer_attempt(self):
+  env=self.env();env['GITHUB_RUN_ATTEMPT']='2';env['PRODUCER_ATTEMPT']='1'
+  with patch.object(q.platform,'system',return_value='Linux'),patch.object(q.platform,'machine',return_value='x86_64'):
+   self.assertEqual(q.received_metadata(env)['attempt'],'1')
+   del env['PRODUCER_ATTEMPT']
+   with self.assertRaises(ValueError):q.received_metadata(env)
+ def test_denial_is_not_any_failure(self):
+  class Store:aws=Path('/fake/aws');endpoint='https://fixture.invalid';env={}
+  for code,stderr,ok in [(1,'network timeout',False),(0,'',False),(254,'An error occurred (AccessDenied) when calling operation',True)]:
+   with patch.object(q.subprocess,'run',return_value=subprocess.CompletedProcess([],code,'',stderr)):
+    if ok:self.assertTrue(q.denied(Store(),'s3api','list-buckets'))
+    else:
+     with self.assertRaises(ValueError):q.denied(Store(),'s3api','list-buckets')
+ def test_positive_control_cannot_count_as_refusal(self):
+  with self.assertRaises(ValueError):q.refusal(lambda:None)
+  self.assertTrue(q.refusal(lambda:(_ for _ in ()).throw(ValueError('refused'))))
+ def test_fixture_uses_original_membership_and_real_bytes(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d)/'inputs';meta=q.t.metadata('medici-finance/assay','1','1','a'*40,'a'*40,'v0.0.0')
+   q.make_fixture(root,meta)
+   names=sorted(x.name for x in root.iterdir())
+   self.assertEqual(names,q.t.members(meta))
+   self.assertIn('statusgen-linux-arm64',names)
+   self.assertIn('build-inputs.sha256',names)
+   self.assertGreater((root/'statusgen-linux-amd64').stat().st_size,16<<20)
+   result=q.t.prepare(root,Path(d)/'fixture.tar.gz',meta)
+   self.assertGreater(result['bundle_bytes'],16<<20)
+ def test_workflow_contract(self):
+  raw=Path('.github/workflows/release-object-qualification.yml').read_text()
+  self.assertIn('runs-on: assay-release-object-builder',raw);self.assertIn('runs-on: assay-release-object-publisher',raw)
+  self.assertIn('environment: release-object-store-producer',raw);self.assertIn('environment: release\n',raw)
+  self.assertEqual(raw.count("github.ref == 'refs/heads/main'"),2)
+  self.assertEqual(raw.count('persist-credentials: false'),2)
+  self.assertIn('needs.producer.outputs.bundle_sha256',raw)
+  self.assertIn('PRODUCER_ATTEMPT: ${{ needs.producer.outputs.handoff_attempt }}',raw)
+  for unsafe in ['contents: write','packages: write','pull_request:','--no-verify-ssl','gh release','git push']:
+   self.assertNotIn(unsafe,raw)
+ def test_corrupt_client_archive_stops_before_extraction(self):
+  import sys
+  with tempfile.TemporaryDirectory() as directory:
+   root=Path(directory);bin=root/'bin';bin.mkdir();marker=root/'extracted'
+   curl=bin/'curl';curl.write_text('#!'+sys.executable+'\nfrom pathlib import Path\nimport sys\nPath(sys.argv[-1]).write_bytes(b"corrupt archive")\n');curl.chmod(0o755)
+   unzip=bin/'unzip';unzip.write_text('#!/bin/sh\ntouch "'+str(marker)+'"\nexit 1\n');unzip.chmod(0o755)
+   env=dict(os.environ,RUNNER_TEMP=str(root),PATH=str(bin)+os.pathsep+os.environ['PATH'])
+   result=subprocess.run(['bash','tools/release/install-object-client.sh',str(root/'release-aws')],env=env,capture_output=True)
+   self.assertNotEqual(result.returncode,0);self.assertFalse(marker.exists())
+ def test_workflow_errors_do_not_print_private_arguments(self):
+  import re,sys,textwrap
+  raw=Path('.github/workflows/release-object-qualification.yml').read_text()
+  blocks=re.findall(r"          python3 -B - <<'PY'\n(.*?)          PY",raw,re.S)
+  self.assertEqual(len(blocks),2)
+  for block,fn in zip(blocks,('produce','receive')):
+   code=textwrap.dedent(block).replace('from tools.release.qualification import '+fn,'def '+fn+'(*args): raise RuntimeError("private-endpoint-do-not-print")')
+   result=subprocess.run([sys.executable,'-c',code],env=dict(os.environ,RUNNER_TEMP='/tmp/fixture'),capture_output=True,text=True)
+   self.assertNotEqual(result.returncode,0)
+   self.assertNotIn('private-endpoint-do-not-print',result.stdout+result.stderr)
+   self.assertNotIn('Traceback',result.stderr)
+   self.assertIn('RuntimeError',result.stderr)
+ def test_missing_key_refusal_never_proves_publisher_read_scope(self):
+  # Deliberately overbroad reader: any existing key is readable, but a missing
+  # key without ListBucket returns AccessDenied just like S3. Run receive's
+  # real bundle and receipt path so relabeling cannot merely hide a green claim.
+  import shutil
+  with tempfile.TemporaryDirectory() as directory:
+   root=Path(directory);env=self.env();env.update(RUNNER_TEMP=str(root),PRODUCER_ATTEMPT='1')
+   meta=q.t.metadata('medici-finance/assay','123','1','a'*40,'a'*40,'v0.0.0')
+   with patch.object(q,'FIXTURE_BYTES',4096):q.make_fixture(root/'inputs',meta)
+   prepared=q.t.prepare(root/'inputs',root/'source.tar.gz',meta)
+   env.update(EXPECTED_BUNDLE_SHA256=prepared['bundle_sha256'],EXPECTED_MANIFEST_SHA256=prepared['manifest_sha256'],EXPECTED_BUNDLE_BYTES=str(prepared['bundle_bytes']))
+   class OverbroadStore:
+    aws=Path('/fake/aws');endpoint='https://fixture.invalid';bucket='fixture';env={}
+    def __init__(self,*args):pass
+    def download(self,key,path,size):shutil.copyfile(root/'source.tar.gz',path)
+   def s3(args,**kwargs):
+    if 'get-object' in args and args[args.index('--key')+1]=='qualification-denied/known-existing':
+     return subprocess.CompletedProcess(args,0,'','')
+    return subprocess.CompletedProcess(args,254,'','An error occurred (AccessDenied) when calling operation')
+   with patch.object(q.platform,'system',return_value='Linux'),patch.object(q.platform,'machine',return_value='x86_64'),patch.object(q.t,'Store',OverbroadStore),patch.object(q.subprocess,'run',side_effect=s3),patch.object(q,'tls_controls',return_value={}),patch.object(q,'network_controls',return_value={}):
+    q.receive(env,'/fake/aws',root/'receipt.json')
+    with self.assertRaises(ValueError):q.denied(OverbroadStore(),'s3api','get-object','--key','qualification-denied/known-existing')
+   receipt=json.loads((root/'receipt.json').read_text())
+   self.assertNotIn('outsidePrefixDenied',receipt['checks'])
+   self.assertTrue(receipt['checks']['outsidePrefixMissingKeyReadRefused'])
+   self.assertIs(receipt['publisherPrefixScopeProven'],False)
+
+ def test_success_report_is_not_release_authority(self):
+  meta=q.t.metadata('medici-finance/assay','1','1','a'*40,'a'*40,'v0.0.0')
+  out=q.summary('producer',meta,{})
+  self.assertTrue(out['fixtureOnly']);self.assertFalse(out['releasePerformed'])
+
+if __name__=='__main__':unittest.main()

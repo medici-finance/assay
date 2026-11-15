@@ -1,0 +1,53 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests",
+      "query": "order_by=updated_at\u0026page=1\u0026per_page=100\u0026sort=desc\u0026state=all"
+    }
+  ],
+  "result": {
+    "Incomplete": false,
+    "PageCount": 1,
+    "ResponseBytes": 414,
+    "LimitReason": "",
+    "Provider": "gitlab",
+    "Repository": "medici-finance/assay",
+    "Since": "0001-01-01T00:00:00Z",
+    "ServerSideSince": false,
+    "ObservedUpTo": "2026-09-01T12:00:00Z",
+    "ConditionalSupported": false,
+    "Records": [
+      {
+        "Provider": "gitlab",
+        "Repository": "medici-finance/assay",
+        "Number": 7,
+        "Title": "Draft: add the thing",
+        "Body": "",
+        "BodyKnown": false,
+        "State": "merged",
+        "ClosureReason": "merged",
+        "Author": {
+          "Login": "worker-bot",
+          "ID": 99,
+          "Type": ""
+        },
+        "Labels": [
+          "authorization-needed"
+        ],
+        "CreatedAt": "0001-01-01T00:00:00Z",
+        "UpdatedAt": "2026-09-01T12:00:00Z",
+        "ClosedAt": "0001-01-01T00:00:00Z",
+        "Kind": "merge-request",
+        "HeadSHA": "abc123",
+        "BaseSHA": "",
+        "HeadBranch": "feat/x",
+        "BaseBranch": "main",
+        "SourceRepository": "",
+        "SourceProjectID": 0,
+        "RequestedReviewers": null,
+        "MergedAt": "2026-10-01T12:00:00Z"
+      }
+    ]
+  }
+}

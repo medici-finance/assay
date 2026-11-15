@@ -1,0 +1,7 @@
+# regression: #4769
+# After an assignment make reads a tab-led line as a makefile line, so this
+# GNUMAKEFLAGS setting runs make -i.
+want: step-not-fatal
+file: Makefile
+replace: "\nSHELL       := /bin/sh\n"
+with: "\nSHELL       := /bin/sh\n\tGNUMAKEFLAGS += -i\n"

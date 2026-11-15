@@ -24,9 +24,9 @@
       "pattern": "^[a-z][a-z0-9-]*$"
     },
     "planId": {
-      "description": "A plan id: 24 lowercase hex characters.",
+      "description": "A plan id: two words of 3 to 8 lowercase letters joined by a hyphen, or the 24 lowercase hex characters of a plan stored before two-word ids.",
       "type": "string",
-      "pattern": "^[0-9a-f]{24}$"
+      "pattern": "^(?:[a-z]{3,8}-[a-z]{3,8}|[0-9a-f]{24})$"
     },
     "digest": {
       "description": "A sha256, lowercase hex.",
@@ -55,7 +55,7 @@
         },
         "reason": {
           "description": "Why the outcome is not ok, from a closed vocabulary; null when ok.",
-          "enum": [null, "not-interactive", "desk-session", "plan-not-found", "plan-invalid", "wrong-verb", "foreign-cell", "plan-expired", "already-consumed", "confirm-mismatch", "plan-stale", "unmeasured", "action-failed"]
+          "enum": [null, "not-interactive", "desk-session", "plan-not-found", "plan-invalid", "wrong-verb", "foreign-cell", "plan-expired", "already-consumed", "confirm-mismatch", "plan-stale", "unmeasured", "action-failed", "role-busy", "surface-identity-mismatch", "surface-stale", "per-role-close-unsupported"]
         },
         "detail": { "$ref": "#/$defs/optionalText" },
         "roles": {

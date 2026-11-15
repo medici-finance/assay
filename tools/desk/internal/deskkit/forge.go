@@ -21,9 +21,11 @@ package deskkit
 // changed nothing observable at the wire.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/medici-finance/assay/forgeread/adapters"
 	"strconv"
 	"strings"
 	"time"
@@ -124,6 +126,13 @@ type PullRequest struct {
 	// Consumer: cmd/deskflip's `mergeable` condition (the freeze rule's same-change
 	// requirement — this field lands with the call site that reads it).
 	Mergeable string
+	// MergeStateStatus is the forge's own merge-readiness verdict for the change, upper-cased
+	// (GitHub's mergeStateStatus enum: CLEAN, BLOCKED, DIRTY, BEHIND, UNSTABLE, HAS_HOOKS,
+	// DRAFT, UNKNOWN; read from the REST `mergeable_state`). EMPTY where the backend serves
+	// none (GitLab: no 1:1 mapping, as on ListOpenChanges). Consumer: ReadyBackstop, the
+	// post-flip check in cmd/deskflip and cmd/deskpost ready. omitempty keeps a change read
+	// that carried no state byte-identical in the forge golden corpus.
+	MergeStateStatus string `json:",omitempty"`
 	// Labels are the label NAMES currently on the change. Consumer: cmd/deskflip's
 	// already-flipped no-op path, which must be able to tell "the queue label is already
 	// correct" (write nothing) from "the queue label is stale" (re-gate, then write)
@@ -444,6 +453,26 @@ type ChecksAtHead struct {
 	CheckRuns           []CheckRun
 }
 
+// CheckSuitesAtHead is the check SUITES at a commit, with the forge's asserted total count so
+// a caller can fail CLOSED on a short walk. A suite is the container one integration (an App)
+// opens per commit; its check runs are what ChecksAtHead's rollup lists. The two readings
+// differ on exactly one shape: a suite that is still queued or running with ZERO runs adds
+// nothing to the rollup, yet the forge's merge gate can wait on it (#6234).
+type CheckSuitesAtHead struct {
+	TotalCount int
+	Suites     []CheckSuite
+}
+
+// CheckSuite is one check suite at a commit.
+type CheckSuite struct {
+	ID         string // the forge's suite id; "" when it served none
+	App        string // the integration that owns the suite (GitHub App slug)
+	Status     string // queued | in_progress | completed (and GitHub's requested | waiting | pending)
+	Conclusion string // success | failure | cancelled | stale | ... ; "" while not concluded
+	RunCount   int    // the runs in the suite's latest attempt (latest_check_runs_count)
+	CreatedAt  string // RFC3339, "" when the forge reported none
+}
+
 // DraftChangeInput is the request to open a draft change (draft PR ↔ Draft: MR).
 type DraftChangeInput struct {
 	Title string
@@ -513,6 +542,10 @@ type SearchIssuesInput struct {
 	// DecisionGateBrief optionally narrows marker discovery to one exact brief
 	// spelling. It is an opaque marker token, never provider search syntax.
 	DecisionGateBrief string
+	// DecisionGateLegacy switches marker discovery to the legacy `needs-decision:` marker key
+	// that decision issues filed before the `decision-gate:` marker carry. It is valid only
+	// with DecisionGateMarkers; the walk and its completeness rules are the same.
+	DecisionGateLegacy bool
 	// FilingKey selects the exact filing-identity lookup: OPEN issues of this repo whose body
 	// carries the key's marker, walked to completion or an error (a truncated read is unknown,
 	// never an empty answer). Query and the decision fields must be empty in this mode. The key
@@ -854,7 +887,8 @@ type RollupNode struct {
 // login the trust set expects (a bot carries the "<slug>[bot]" suffix), matching the
 // per-forge rendering GetPullRequest already applies. MergeStateStatus is the forge's own
 // merge-readiness enum verbatim (GitHub's mergeStateStatus: BEHIND/BLOCKED/CLEAN/DIRTY/
-// UNKNOWN/…) — the consumer reads its four-state mergeVerdict off it, and an empty value is
+// UNKNOWN/…). Mergeable independently reports merge conflicts; BLOCKED is a policy hold,
+// not a conflict verdict. An empty merge-readiness value is
 // could-not-check, never mergeable. Consumer: cmd/deskboard's fetchOpenPRs → prBase.
 type OpenChange struct {
 	Number       int
@@ -875,6 +909,7 @@ type OpenChange struct {
 	HeadRef          string
 	BaseRef          string
 	MergeStateStatus string
+	Mergeable        string `json:",omitempty"` // same three-state conflict verdict as PullRequest.Mergeable
 	Rollup           []RollupNode
 	// HeadCommittedAt is the head commit's COMMITTER date (RFC3339), read on the same node
 	// the rollup already comes from — no extra request. It is set only when that commit's oid
@@ -884,18 +919,20 @@ type OpenChange struct {
 	HeadCommittedAt string `json:",omitempty"`
 }
 
-// OpenChanges is the result of the bulk open-change read: the changes plus whether the read
-// came back exactly at the page cap, so the board can state a TRUNCATED population in-band
+// OpenChanges is the result of the bulk open-change read: the changes plus whether the forge
+// holds more than the cap, so the board can state a TRUNCATED population in-band
 // rather than printing a confident count over an unknown remainder (an absence that reads
 // like an answer). Consumer: cmd/deskboard's fetchOpenPRs, which maps TruncatedAtCap onto its
 // Header.PRPopulation.
 type OpenChanges struct {
 	// Changes are the open changes, newest first, up to Cap of them.
 	Changes []OpenChange
-	// TruncatedAtCap is true when the read returned exactly Cap changes — the forge may be
-	// holding more, so every count derived from Changes is a FLOOR, not a total.
+	// TruncatedAtCap is true when the forge may be holding more than Cap changes, so every
+	// count derived from Changes is a FLOOR, not a total. A backend that pages with the
+	// forge's own more-pages signal (GitHub) sets it when the walk stopped at Cap with more
+	// reported; a backend that cannot tell sets it when the read returned exactly Cap.
 	TruncatedAtCap bool
-	// Cap is the page cap the read was bounded to (the `first:`/`per_page` ceiling).
+	// Cap is the ceiling the read was bounded to (the total changes read, across pages).
 	Cap int
 }
 
@@ -913,9 +950,10 @@ type ReviewQueue struct {
 	Visibility string `json:",omitempty"`
 	// Changes are the open changes, newest first, up to Cap of them, each with its reviews.
 	Changes []QueuedChange
-	// TruncatedAtCap is true when the read returned exactly Cap changes (see OpenChanges).
+	// TruncatedAtCap is true when the forge may be holding more than Cap changes (see
+	// OpenChanges).
 	TruncatedAtCap bool
-	// Cap is the page cap the read was bounded to.
+	// Cap is the ceiling the read was bounded to.
 	Cap int
 }
 
@@ -989,6 +1027,13 @@ type ChangeRef struct {
 	Title    string
 	Body     string
 	MergedAt string // RFC3339, "" unless State == MERGED
+	// UpdatedAt is the forge's last-modified time for the change, RFC3339, EMPTY where the forge did
+	// not report one (could-not-check, never "unchanged"). ListChanges walks most-recently-updated
+	// first, so a consumer that must know whether the bounded walk already passed a time window
+	// reads this: a change merged at T has UpdatedAt >= T. Consumer: cmd/deskread's `changes` kind,
+	// for statusgen's brief-flow review (forge-neutral brief 18). omitempty keeps every list that
+	// predates the field byte-identical.
+	UpdatedAt string `json:",omitempty"`
 	// Author is the change's author, Type per Account.Type (empty where unresolved). An author
 	// the forge does not report (a deleted account) keeps ID == 0, which is could-not-check.
 	// Consumer: cmd/deskread's `changes` kind (forge-neutral brief 33), for statusgen's autonomy
@@ -1015,7 +1060,7 @@ type ChangeRef struct {
 }
 
 // ChangeList is the result of a ListChanges read: the changes plus whether the bounded walk was
-// able to reach the end of the population. Incomplete=true means the page-count ceiling
+// able to reach the end of the population. Incomplete=true means the walk's ceiling
 // (PageCap) was hit with the forge still reporting more — so a consumer that reads ABSENCE from
 // this list as evidence (the phantom check reads "no representing PR here" as "safe to
 // dispatch") must treat the absence as could-not-check, never as a confident negative. The
@@ -1025,12 +1070,14 @@ type ChangeRef struct {
 // truncated read is stated as truncated, not handed back as if it were the whole population.
 type ChangeList struct {
 	// Changes are the changes matching the requested states, most-recently-updated first, up to
-	// the page-count ceiling.
+	// the walk's ceiling.
 	Changes []ChangeRef
-	// Incomplete is true when the walk hit PageCap pages with the forge still paginating — the
+	// Incomplete is true when the walk hit its ceiling with the forge still paginating — the
 	// population is larger than what Changes holds.
 	Incomplete bool
-	// PageCap is the page-count ceiling the walk was bounded to.
+	// PageCap is the ceiling the walk was bounded to, in pages of the backend's starting page
+	// size. The GitHub arm bounds its walk by changes (500, 20 pages of 25); a page-size backoff
+	// reads that same window in more, smaller pages.
 	PageCap int
 }
 
@@ -1714,6 +1761,12 @@ func validateGateName(gate string) (string, error) {
 // per-tool inventory. It is FROZEN: an addition requires a consuming tool in the same
 // change.
 type Forge interface {
+	// ChangesUpdatedSince and IssuesUpdatedSince are bounded incremental source
+	// observations consumed by MirrorReadSource. An incomplete list is never an
+	// inventory; review/check coverage remains outside these endpoint reads.
+	ChangesUpdatedSince(context.Context, ForgeRepo, adapters.UpdateQuery) (adapters.ChangeUpdates, error)
+	IssuesUpdatedSince(context.Context, ForgeRepo, adapters.UpdateQuery) (adapters.IssueUpdates, error)
+
 	// --- Reads ---
 
 	// GetPullRequest reads a change's head/state/draft/node-id/changed-file-count/author.
@@ -1772,7 +1825,7 @@ type Forge interface {
 	// and ListOpenChanges serves OPEN only while collapsing state to a board word — so a raw
 	// `gh pr list --state all` was the only alternative, and the closed forge surface
 	// (TestNoForgeCLIShellout) forbids it. The read is bounded: it walks MOST-RECENTLY-UPDATED
-	// first to a hard page-count ceiling and reports ChangeList.Incomplete when the population
+	// first to a hard ceiling and reports ChangeList.Incomplete when the population
 	// exceeds it, so a consumer that reads absence as evidence treats a truncated read as
 	// could-not-check rather than a confident negative. A states-less request (ChangeStates.Any
 	// false) is REFUSED before any request is built — the state set must be STATED, never
@@ -1874,6 +1927,14 @@ type Forge interface {
 	ListChangedFiles(repo ForgeRepo, number int) ([]ChangedFile, error)
 	// ChecksAtHead returns the CI rollups at a commit, each with its asserted total count.
 	ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, error)
+	// CheckSuitesAtHead returns the check suites at a commit (see CheckSuitesAtHead). It
+	// exists because a suite with zero runs is invisible to ChecksAtHead: a queued suite the
+	// forge's merge gate waits on reads, through the rollup alone, as green. A forge with no
+	// suite concept (GitLab — a pipeline's pending jobs already show in the rollup) answers
+	// an empty set, never an error. Consumers: the checks-green conditions of cmd/deskflip and
+	// cmd/deskautolane, and cmd/deskpost ready's precondition (c') through its forge backend
+	// (freeze rule: this read lands with the call sites that consume it).
+	CheckSuitesAtHead(repo ForgeRepo, sha string) (*CheckSuitesAtHead, error)
 	// RequiredStatusChecks returns the status-check CONTEXTS branch protection REQUIRES on
 	// the named branch of repo — the checks whose success the forge itself gates a merge on.
 	// An EMPTY slice means the branch requires no status checks: nothing is configured to
@@ -1887,6 +1948,13 @@ type Forge interface {
 	// Consumer: cmd/deskflip's checks-green condition (freeze rule: this read lands with the
 	// call site that consumes it).
 	RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error)
+	// MergeRequirements reads the change's merge requirements from fields that read the same
+	// for every identity: the conflict verdict, the review decision, and the required checks
+	// with their latest result at the head (see MergeRequirements). A read that fails is an
+	// error, which the caller treats as unmet. Consumer: the post-flip backstop of cmd/deskflip
+	// and `deskpost ready`, on a BLOCKED read (medici-finance/assay#6508; freeze rule: this read
+	// lands with the call sites that consume it).
+	MergeRequirements(repo ForgeRepo, number int) (*MergeRequirements, error)
 	// IssueReactions returns the reactions/awards on an issue or PR (reaction ↔ award
 	// emoji). The public-repo write gate does not read it: that gate is repository-scoped.
 	IssueReactions(repo ForgeRepo, number int) ([]Reaction, error)
@@ -2091,9 +2159,16 @@ type Forge interface {
 	PostCommentTyped(repo ForgeRepo, number int, kind TargetKind, body string) (*CommentRef, error)
 	// PostReview submits a head-pinned review/approval on a change.
 	PostReview(repo ForgeRepo, number int, in ReviewInput) error
-	// MarkReadyForReview flips a draft change to ready (the only transition this seam
-	// exposes — there is no un-ready, merge, or edit).
+	// MarkReadyForReview flips a draft change to ready. With ConvertToDraft below it is one
+	// of the two state transitions this seam exposes — there is no merge or edit.
 	MarkReadyForReview(nodeID string) error
+	// ConvertToDraft returns a ready change to draft. It exists for ONE caller: the post-flip
+	// backstop (ReadyBackstop), which un-readies a change the forge reports as BLOCKED or
+	// DIRTY right after a ready flip, so that ready keeps meaning mergeable per the forge. It
+	// is never exposed as a verb of its own. Ruling:
+	// https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
+	// The nodeID is the same backend-minted opaque id MarkReadyForReview takes.
+	ConvertToDraft(nodeID string) error
 	// ApplyLabels reconciles the labels of ONE issue or change in one operation (see
 	// LabelChange; change.Target says which kind number names, and an unset target is
 	// refused before any request). It is idempotent: applying an already-present label and

@@ -3,7 +3,7 @@
 # witness.sh: the one fixed entrypoint of the witness Job, for its init container `seed` and its
 # container `witness`. Baked into the verify-runner image at /usr/local/bin/witness.sh,
 # root-owned and mode 0755. Neither container sets a command: each one's args are this path and
-# exactly one word.
+# a mode word, plus explicit proof/source/delivery flags for a brief run only.
 #
 #   witness.sh seed              init container: copy the clone from /cache/clone into /work
 #   witness.sh seed-probe        init container of the probe variant: an empty /work
@@ -11,7 +11,9 @@
 #                                brief-<NN>-<slug>.md (exactly one such regular file, else exit 2)
 #   witness.sh probe             the probe measurements
 #
-# With no argument, or any other argument list, it prints its usage on stderr and exits 2
+# A brief run may add --source-proof --sha=<40hex>, with independent optional
+# --delivery-sha=<40hex> and --delivery-base-sha=<40hex>. Seed/probe modes accept no flags.
+# Missing, duplicate, unknown or malformed arguments print usage and exit 2
 # before it reads or writes anything.
 #
 # A run is the container half of statusgen's verification bracket. The host opens the bracket
@@ -34,18 +36,42 @@
 set -u
 
 usage() {
-  printf 'usage: witness.sh seed | seed-probe | probe | <stream>/<NN>\n' >&2
+  printf 'usage: witness.sh seed | seed-probe | probe | <stream>/<NN> [--source-proof --sha=<40hex> [--delivery-sha=<40hex>] [--delivery-base-sha=<40hex>]]\n' >&2
   exit 2
 }
 die() { printf 'witness: %s\n' "$*" >&2; exit 2; }
 
 # The argument list is checked before anything is read or written.
 KEY_RE='^[a-z0-9-]+/[0-9]{2,}$'
-[ $# -eq 1 ] || usage
-case $1 in
-  seed|seed-probe|probe) ;;
-  *) [[ $1 =~ $KEY_RE ]] || usage ;;
+[ $# -ge 1 ] || usage
+KEY=$1
+shift
+SOURCE_PROOF=0
+SOURCE_SHA=
+DELIVERY_SHA=
+DELIVERY_BASE=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --source-proof) [ "$SOURCE_PROOF" = 0 ] || usage; SOURCE_PROOF=1 ;;
+    --sha=*) [ -z "$SOURCE_SHA" ] || usage; SOURCE_SHA=${1#*=}; [[ $SOURCE_SHA =~ ^[0-9a-f]{40}$ ]] || usage ;;
+    --delivery-sha=*) [ -z "$DELIVERY_SHA" ] || usage; DELIVERY_SHA=${1#*=}; [[ $DELIVERY_SHA =~ ^[0-9a-f]{40}$ ]] || usage ;;
+    --delivery-base-sha=*) [ -z "$DELIVERY_BASE" ] || usage; DELIVERY_BASE=${1#*=}; [[ $DELIVERY_BASE =~ ^[0-9a-f]{40}$ ]] || usage ;;
+    *) usage ;;
+  esac
+  shift
+done
+case $KEY in
+  seed|seed-probe|probe) [ "$SOURCE_PROOF$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" = 0 ] || usage ;;
+  *) [[ $KEY =~ $KEY_RE ]] || usage ;;
 esac
+if [ "$SOURCE_PROOF" = 1 ]; then
+  [ -n "$SOURCE_SHA" ] || usage
+else
+  [ -z "$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" ] || usage
+fi
+# Delivery coordinates are exclusively explicit argv, never inherited row context.
+unset ASSAY_DELIVERY_SHA ASSAY_DELIVERY_BASE_SHA
+set -- "$KEY"
 
 # VR_CACHE_DIR, VR_WORK_DIR, VR_ADMISSION_DIR and VR_SCRATCH_DIR are test hooks; the Job's env
 # allowlist never sets them
@@ -210,7 +236,13 @@ case $1 in
     ;;
   *)
     resolve_key "$1"
+    if [ "$SOURCE_PROOF" = 1 ]; then
+      /usr/bin/python3 -I /usr/local/lib/verify-runner/source_proof.py --check-clone "$WORK" "$SOURCE_SHA" \
+        || die "execution source proof failed: no row ran"
+    fi
     admission
+    [ -z "$DELIVERY_SHA" ] || export ASSAY_DELIVERY_SHA="$DELIVERY_SHA"
+    [ -z "$DELIVERY_BASE" ] || export ASSAY_DELIVERY_BASE_SHA="$DELIVERY_BASE"
     netns_run statusgen verifyrun --sandbox container-netns --brief "$BRIEF" --root "$WORK" \
       --admission-receipt "$RECEIPT" --container-image-digest "$DIGEST" --witness "$WITNESS"
     rc=$?

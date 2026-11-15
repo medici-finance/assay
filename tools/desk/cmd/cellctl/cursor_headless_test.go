@@ -92,7 +92,11 @@ func TestCursorHeadlessRouteAppliesAllowedEditsAndKeepsDenials(t *testing.T) {
 	if err = os.WriteFile(path, config, 0600); err != nil {
 		t.Fatal(err)
 	}
-	argv := cursorLaunchArgv("worker-desk", "explicit-model", "session", wt)
+	cell := &Cell{Cadence: resolveDeskCadence("house", "cursor", "30m", "")}
+	argv := cell.cursorLaunchArgv("worker-desk", "explicit-model", wt)
+	if got := argv[len(argv)-1]; got != `Invoke the "assay:worker-desk" skill now.` {
+		t.Fatalf("headless launch got standing instructions: %q", got)
+	}
 	argv[0] = exe
 	args, env, err := prepareTickLaunch("cursor", argv, os.Environ(), time.Minute)
 	if err != nil {

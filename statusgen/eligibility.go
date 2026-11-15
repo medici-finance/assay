@@ -74,7 +74,7 @@ func evaluationStreams(streams []*Stream) []evaluation.Stream {
 func evaluationEdges(edges []GraphEdge) []evaluation.Edge {
 	var out []evaluation.Edge
 	for _, e := range edges {
-		out = append(out, evaluation.Edge{Ref: e.Ref, Type: e.Type, Reason: e.Reason})
+		out = append(out, evaluation.Edge{Ref: e.Ref, Type: e.Type, Reason: e.Reason, Resolved: e.Resolved, Why: e.Why})
 	}
 	return out
 }

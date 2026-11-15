@@ -1,0 +1,168 @@
+{
+  "schema": "cell-checkpoint/v1",
+  "ownership": {
+    "cell_id": "example-cell",
+    "incarnation_id": "incarnation-old",
+    "owner_id": "example-owner",
+    "generation": "generation-7",
+    "backend": "example-backend"
+  },
+  "activation": {
+    "incarnation_id": "incarnation-old",
+    "key_ref": "ref:example-key-old",
+    "stop_receipt": "ref:historical-stop",
+    "paused": true
+  },
+  "budget": {
+    "balances": [
+      {
+        "ref": "ref:rolling",
+        "account": "example-account",
+        "provider": "example-provider",
+        "unit": "reported-input-tokens",
+        "window_start": "2026-10-01T00:00:00Z",
+        "window_end": "2026-10-01T01:00:00Z",
+        "limit": 100,
+        "headroom": 10,
+        "consumed": 17
+      },
+      {
+        "ref": "ref:longer",
+        "account": "example-account",
+        "provider": "example-provider",
+        "unit": "price-proxy-microunits",
+        "window_start": "2026-10-01T00:00:00Z",
+        "window_end": "2026-11-01T00:00:00Z",
+        "limit": 1000,
+        "headroom": 100,
+        "consumed": null
+      }
+    ],
+    "reservations": [
+      {
+        "id": "reservation-1",
+        "work_id": "example-work",
+        "attempt_id": "attempt-3",
+        "request_id": "request-3",
+        "balance_ref": "ref:rolling",
+        "amount": 30,
+        "unknown": true
+      }
+    ],
+    "usage": [
+      {
+        "work_id": "example-work",
+        "attempt_id": "attempt-1",
+        "parent_attempt_id": "",
+        "request_id": "request-1",
+        "phase": "preparation",
+        "outcome": "complete",
+        "account": "example-account",
+        "provider": "example-provider",
+        "model": "example-model",
+        "pricing_ref": "ref:example-pricing",
+        "source_ref": "ref:trust-gated-usage",
+        "started_at": "2026-10-01T00:00:00Z",
+        "finished_at": "2026-10-01T00:01:00Z",
+        "control_boundary": "launch",
+        "input": 17,
+        "cache_write": 0,
+        "cache_read": 2,
+        "output": 3,
+        "uncertainty": "reported"
+      },
+      {
+        "work_id": "example-work",
+        "attempt_id": "attempt-2",
+        "parent_attempt_id": "attempt-1",
+        "request_id": "request-2",
+        "phase": "summary",
+        "outcome": "complete",
+        "account": "example-account",
+        "provider": "example-provider",
+        "model": "example-model",
+        "pricing_ref": "ref:example-pricing",
+        "source_ref": "ref:trust-gated-usage",
+        "started_at": "2026-10-01T00:00:00Z",
+        "finished_at": "2026-10-01T00:01:00Z",
+        "control_boundary": "launch",
+        "input": 17,
+        "cache_write": 0,
+        "cache_read": 2,
+        "output": 3,
+        "uncertainty": "reported"
+      },
+      {
+        "work_id": "example-work",
+        "attempt_id": "attempt-3",
+        "parent_attempt_id": "attempt-1",
+        "request_id": "request-3",
+        "phase": "execution",
+        "outcome": "failed",
+        "account": "example-account",
+        "provider": "example-provider",
+        "model": "example-model",
+        "pricing_ref": "ref:example-pricing",
+        "source_ref": "ref:trust-gated-usage",
+        "started_at": "2026-10-01T00:00:00Z",
+        "finished_at": "2026-10-01T00:01:00Z",
+        "control_boundary": "launch",
+        "input": 17,
+        "cache_write": 0,
+        "cache_read": 2,
+        "output": 3,
+        "uncertainty": "reported"
+      },
+      {
+        "work_id": "example-work",
+        "attempt_id": "attempt-4",
+        "parent_attempt_id": "attempt-1",
+        "request_id": "request-4",
+        "phase": "fallback",
+        "outcome": "complete",
+        "account": "example-account",
+        "provider": "example-provider",
+        "model": "example-model",
+        "pricing_ref": "ref:example-pricing",
+        "source_ref": "ref:trust-gated-usage",
+        "started_at": "2026-10-01T00:00:00Z",
+        "finished_at": "2026-10-01T00:01:00Z",
+        "control_boundary": "launch",
+        "input": 17,
+        "cache_write": 0,
+        "cache_read": 2,
+        "output": 3,
+        "uncertainty": "reported"
+      },
+      {
+        "work_id": "example-work",
+        "attempt_id": "attempt-5",
+        "parent_attempt_id": "attempt-1",
+        "request_id": "request-5",
+        "phase": "verification",
+        "outcome": "unknown",
+        "account": "example-account",
+        "provider": "example-provider",
+        "model": "example-model",
+        "pricing_ref": "ref:example-pricing",
+        "source_ref": "ref:trust-gated-usage",
+        "started_at": "2026-10-01T00:00:00Z",
+        "finished_at": "2026-10-01T00:01:00Z",
+        "control_boundary": "launch",
+        "input": 17,
+        "cache_write": 0,
+        "cache_read": 2,
+        "output": null,
+        "uncertainty": "missing output"
+      }
+    ]
+  },
+  "cancel_requested": true,
+  "stopped": true,
+  "override_refs": [
+    "ref:retained-override"
+  ],
+  "pending_effects": [
+    "ref:unknown-effect"
+  ]
+}

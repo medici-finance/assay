@@ -121,3 +121,71 @@ func TestSiblingSourcesBinding(t *testing.T) {
 		t.Fatalf("round trip lost sibling sources: %v %+v", err, parsed)
 	}
 }
+
+// regression: #6085
+func TestBodyOneNewlineDropped(t *testing.T) {
+	h := strings.Repeat("a", 64)
+	b := Binding{Version: 1, Run: h, Repo: "example-org/tracker", Source: strings.Repeat("b", 40), Brief: "docs/streams/demo/brief-01.md", BriefSHA256: h, PlanSHA256: h, HomeSHA256: h, Model: "fixture", Tier: "strong", Checkout: "autocrlf=false eol=lf"}
+	title, want := Title+h, Body(b)
+	if !strings.HasSuffix(want, "}\n") {
+		t.Fatalf("the rendering no longer ends in one newline; this test's premise moved: %q", want[len(want)-3:])
+	}
+	trimmed := strings.TrimSuffix(want, "\n")
+	for _, c := range []struct {
+		name, body string
+		admit      bool
+	}{
+		{"exact rendering", want, true},
+		{"one trailing newline dropped", trimmed, true},
+		{"two trailing newlines", want + "\n", false},
+		{"newline replaced by CRLF", trimmed + "\r\n", false},
+		{"CR left where the newline was", trimmed + "\r", false},
+		{"newline replaced by a space", trimmed + " ", false},
+		{"trailing space after the newline", want + " ", false},
+		{"one other byte differs", strings.Replace(want, `"fixture"`, `"fixturf"`, 1), false},
+		{"one other byte differs, newline dropped", strings.Replace(trimmed, `"fixture"`, `"fixturf"`, 1), false},
+		{"closing brace dropped too", strings.TrimSuffix(trimmed, "}"), false},
+		{"leading newline added", "\n" + trimmed, false},
+		{"empty body", "", false},
+	} {
+		why := TargetProblem(true, false, true, title, c.body, title, want)
+		if c.admit && why != "" {
+			t.Errorf("%s: refused (%s), want admitted", c.name, why)
+		}
+		if !c.admit && why != "has a body that is not the exact rendering of its binding" {
+			t.Errorf("%s: got %q, want the body refusal", c.name, why)
+		}
+	}
+	// Exactly ONE dropped newline: a rendering that ended in two newlines admits the body
+	// with one of them removed, never the body with both removed.
+	if why := TargetProblem(true, false, true, title, "x\n", title, "x\n\n"); why != "" {
+		t.Errorf("one of two newlines dropped refused: %s", why)
+	}
+	if why := TargetProblem(true, false, true, title, "x", title, "x\n\n"); why == "" {
+		t.Error("two dropped newlines admitted")
+	}
+	// The tolerance runs one way: a body LONGER than the rendering by a newline is refused,
+	// and a rendering with no trailing newline admits only itself.
+	if why := TargetProblem(true, false, true, title, "x\n", title, "x"); why == "" {
+		t.Error("a body with an added newline admitted against a rendering without one")
+	}
+	// The other checks are unchanged and still run first, whatever the body.
+	for _, c := range []struct {
+		name                 string
+		present, isPR, authz bool
+		title, want          string
+	}{
+		{"missing", false, false, true, title, "missing run record"},
+		{"pull request", true, true, true, title, "run record is a pull request"},
+		{"author", true, false, false, title, "run record author is not the dispatcher"},
+		{"title", true, false, true, title + "x", "has title"},
+		{"title one byte short", true, false, true, strings.TrimSuffix(title, "a"), "has title"},
+		{"title with a trailing newline", true, false, true, title + "\n", "has title"},
+	} {
+		for _, body := range []string{want, trimmed} {
+			if why := TargetProblem(c.present, c.isPR, c.authz, c.title, body, title, want); !strings.HasPrefix(why, c.want) {
+				t.Errorf("%s: got %q, want %q", c.name, why, c.want)
+			}
+		}
+	}
+}

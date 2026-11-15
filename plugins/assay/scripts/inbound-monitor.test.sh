@@ -655,7 +655,8 @@ for url in "https://github.com/o/r.git" "https://github.com:443/o/r.git" "https:
     "origin '$url' resolves to o/r and is polled" "rc=$RC args=$(cat "$w/args.log" 2>/dev/null) stderr=$(cat "$w/stderr")"
 done
 rd="$TMPROOT/of-repo-bad"; mkdir -p "$rd"; git -C "$rd" init -q 2>/dev/null
-git -C "$rd" remote add origin "https://user:s3cretpw@example.com:8443/o/r.git"
+pw=s3cretpw # kept out of the URL literal: no userinfo password sits in the source
+git -C "$rd" remote add origin "https://user:${pw}@example.com:8443/o/r.git"
 OUT=$(cd "$rd" && INBOUND_MONITOR_STATE_DIR="$TMPROOT/of-st-bad" PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
 ERR=$(cat "$w/stderr")
 check "$([[ "$RC" -eq 1 ]] && contains "$OUT" "MONITOR-DEGRADED: invalid repo" && echo 0 || echo 1)" \

@@ -356,6 +356,40 @@ Findings (none block): (F1) The witness judges exit status only, because every r
 
 VERIFY: PASS
 
+### Batch re-witness at pinned main 2c6c21336a60 — 2026-11-02 claude-opus-5-5-verifier
+
+Fresh non-implementer verifier, admitted by the dispatcher check (Verification-Attestation below), run on the detached dispatch home at merged main 2c6c21336a606e64df057294f21177f16db7b9f8. Purpose: renew this brief's execution witness at the single batch commit (medici-finance/assay#2026); no earlier block was copied or edited. Offline envelope held (KUBECONFIG=/dev/null). Brief frontmatter: gate model, risk regulatory no, customer no, irreversible no, sensitive-data no; no protected Verification-Table record.
+
+All ten rows ran inside one closed admission bracket: host open-bracket, then the native arm64 verify-runner image (digest below) as uid 501:20 with docker --network none and --sandbox=container-netns, GOPROXY=off and GOTOOLCHAIN=local, then host close-bracket. The home was mounted writable, with its own worktree admin dir, because row 3a edits the Codex manifest in place and restores it with git checkout; the tree digest matched before and after. The container's /tmp was backed by a scratch dir outside the home, so the rows' own output files could be read afterwards. bracket-digest reported verdict=match.
+
+Every row ends in an echo of the exit code, so the Output hash is the proof of the printed code: sha256:9a271f2a916b is "0", 4355a46b19d3 is "1", 53c234e5e847 is "2", 542e6e399ba3 is "true" then "0" (decoded on the host). So rows 1, 3, 4, 7 and 8 printed 0; rows 3a and 7a printed 1; rows 5 and 6 printed 2. Each is the row's Expect. Row output files, read after the run (no acceptance credit of their own): row 1 "ok github.com/medici-finance/assay/tools/harnessgen"; row 3a "harnessgen codex --check: DRIFT — committed manifest ../../plugins/assay/.codex-plugin/plugin.json differs from the metadata source"; row 5 "skill \"probe-skill\" is on disk but appears in neither the packaged roster nor the excluded list"; row 6 names packaged skill "worker-desk" (plus pr-shepherd and the-desk, since the grep drops every line holding the substring). After row 3a the home was clean and row 4 printed 0.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test ./... > /tmp/hp06r1.out 2>&1; echo $?` | pass exit=0 sandbox=container-netns | sha256:9a271f2a916b | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `jq -er '.name and .version and .skills' plugins/assay/.codex-plugin/plugin.json; echo $?` | pass exit=0 sandbox=container-netns | sha256:542e6e399ba3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `test "$(jq -r .version plugins/assay/.claude-plugin/plugin.json)" = "$(jq -r .version plugins/assay/.codex-plugin/plugin.json)"; echo $?` | pass exit=0 sandbox=container-netns | sha256:9a271f2a916b | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3a | `jq '.version="9.9.9"' plugins/assay/.codex-plugin/plugin.json > /tmp/hp06skew.json && cp /tmp/hp06skew.json plugins/assay/.codex-plugin/plugin.json && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..) > /tmp/hp06r3a.out 2>&1; echo $?; git checkout -- plugins/assay/.codex-plugin/plugin.json` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | pass exit=0 sandbox=container-netns | sha256:f556ad938565 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `mkdir -p /tmp/hp06-tree && cp -r plugins/assay /tmp/hp06-tree/ && mkdir /tmp/hp06-tree/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp06-tree/assay/skills/probe-skill/SKILL.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hp06gen . && /tmp/hp06gen codex --check --bundle /tmp/hp06-tree/assay > /tmp/hp06r5.out 2>&1; echo $?; rm -rf /tmp/hp06-tree` | pass exit=0 sandbox=container-netns | sha256:53c234e5e847 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `mkdir -p /tmp/hp06-bind && cp -r plugins/assay /tmp/hp06-bind/ && grep -vF 'worker-desk' plugins/assay/references/codex.md > /tmp/hp06-bind/assay/references/codex.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hp06gen . && /tmp/hp06gen codex --check --bundle /tmp/hp06-bind/assay > /tmp/hp06r6.out 2>&1; echo $?; rm -rf /tmp/hp06-bind` | pass exit=0 sandbox=container-netns | sha256:53c234e5e847 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -qiF 'codex' plugins/assay/skills/adopt/SKILL.md && grep -qF 'AGENTS-assay' plugins/assay/skills/adopt/SKILL.md; echo $?` | pass exit=0 sandbox=container-netns | sha256:9a271f2a916b | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 7a | `grep -qF 'AGENTS-assay-no-such-token' plugins/assay/skills/adopt/SKILL.md; echo $?` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..); echo $?` | pass exit=0 sandbox=container-netns | sha256:3baad508f1f3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c
+Container-Image: sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4
+Verification-Attestation: medici-finance/assay#5273 run=aff3f65bff1fdcd3fa0fcc95090c31d2aaaa0c4b5ff54061c87e042c33208c22 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/harness-portability/brief-06-codex-packaging.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=aff3f65bff1fdcd3fa0fcc95090c31d2aaaa0c4b5ff54061c87e042c33208c22 source=2c6c21336a606e64df057294f21177f16db7b9f8 tree=sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c witness=sha256:92e48873ed3e00fc10372a2600d1b4e4c139b78f13393aa88f06dc913d461e25 opened=2026-11-02T01:52:40Z closed=2026-11-02T01:52:52Z before=receipt after=check-verifier
+
+Risk-bearing values. Risk metadata is present with all four answers no and the brief is gate model, so the fail-safe trigger does not fire; enumerated anyway over the harnessgen codex verb, the generated manifest and the adopt skill at this commit:
+
+RISK-VALUE: DERIVED — exitClean = 0, exitDrift = 1, exitCouldNotCheck = 2 @ tools/harnessgen/main.go:22-24 — the three-state instrument contract that lets CI tell clean, drift and could-not-check apart; observed live here as 0 (rows 4, 8), 1 (row 3a) and 2 (rows 5, 6).
+RISK-VALUE: DERIVED — Skills = "./skills/" @ tools/harnessgen/codex.go:217 — the Context requires the Codex manifest to serve the same skills tree as the Claude plugin; row 4 shows the committed manifest equals the generated one and row 5 shows the tree is closed under the coverage rule.
+RISK-VALUE: DERIVED — version = "1.0.70" @ plugins/assay/.codex-plugin/plugin.json:3 — generated from the Claude manifest (version 1.0.70 at plugins/assay/.claude-plugin/plugin.json:5), never set on its own; rows 3 and 3a.
+RISK-VALUE: NAMED, NOT DERIVED — composition cap 32 KiB @ plugins/assay/skills/adopt/SKILL.md:107 — confirming the Codex default needs upstream sources outside the offline envelope; reversible doc text, ranks last.
+
+**VERIFY: PASS** — 10 of 10 rows pass at 2c6c21336a60, closed container bracket, bracket-digest verdict=match
+
 ## Review
 
 Gate: **model** (from frontmatter). Review focus: the exclusion list — every skill

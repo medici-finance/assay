@@ -207,8 +207,7 @@ components:
           format: date-time
           type: string
         data:
-          format: byte
-          type: string
+          description: arbitrary JSON payload, shaped by the event type
         id:
           type: string
         type:

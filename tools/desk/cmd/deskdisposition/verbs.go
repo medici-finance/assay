@@ -165,7 +165,7 @@ func ensureLabel(repo string, v deskkit.DispositionVerdict) error {
 // ---------------------------------------------------------------- read
 
 // readDispositionViaForge is the data source `read` acts on: the session-role App token,
-// via the resolved deskkit.Forge (GetIssue for labels, ListComments for the marker
+// via the resolved deskkit.Forge (GetIssueTyped, kind change, for labels, ListComments for the marker
 // comment), never `gh`. See forge.go's doc comment for why — `read` is the one verb this
 // tool serves to ANOTHER TOOL'S child process (deskclose superseded's confirm path), and
 // that child does not carry a usable ambient `gh` identity (#984).
@@ -174,7 +174,8 @@ func readDispositionViaForge(repo string, pr int) (deskkit.DispositionRead, erro
 	if ferr != nil {
 		return deskkit.ReadDisposition(nil, nil, ferr), ferr
 	}
-	iss, err := fg.GetIssue(fr, pr)
+	// The disposition record lives on a PR, so the label read names that kind (#6264).
+	iss, err := fg.GetIssueTyped(fr, pr, deskkit.TargetChange)
 	if err != nil {
 		return deskkit.ReadDisposition(nil, nil, err), err
 	}

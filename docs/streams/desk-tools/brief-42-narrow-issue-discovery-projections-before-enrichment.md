@@ -61,6 +61,73 @@ design-fit:
   weight: verbs +0 baseline binaries, flags +1 projection selector at most, refusals +0 authority, rule-text +0 duplicate trust policy
   why-add: reuse existing contracts/runner/typed reads; a complete observation is required before removing the second read, and a new cache would preserve that duplication
 
+## Human decision
+
+Accept or hold the delivered issue discovery projections as this brief's
+implementation. Accepting lets the brief move to `implemented` and go to
+independent verification. The source specification's approval is already
+recorded; this decision covers implementation coverage and authority boundaries
+only.
+
+What is delivered on main (source-qualified, not independently verified):
+
+- `issueboard issues --projection work-ready`, `--projection intake` and
+  `--projection inbox --to ROLE` pick each caller's population from the complete
+  typed open-issue listing before any trust, comment or label-history read. The
+  full board and the older spellings still work unchanged.
+- `deskinbox discovery` gives the human decision inbox script one typed listing
+  per repository instead of four per-label reads, and keeps partial output with
+  exit 2. The script picks its reader before any discovery, and the narrow form
+  is not enforced against older producers by default:
+  - Default `ASSAY_INBOX_READER=auto`: without a desk loop identity it reports
+    could-not-check and reads nothing. With one, it uses the typed listing only
+    when the producer reports `issue-discovery-v1`; an absent or older producer
+    falls back to the four per-label reads.
+  - Explicit `ASSAY_INBOX_READER=typed`: an absent or older producer is refused
+    before any discovery. This is the only mode that refuses.
+  - Explicit `ASSAY_INBOX_READER=legacy`: the four per-label reads. This is the
+    rollback.
+- Selection is one shared pure selection package (`issueflow`). Trust,
+  identity, pagination, escalation, addressed-response and positive-closure
+  reads keep their existing owners. No cache, service, credential owner,
+  release, pin change or activation is added.
+- The worker, intake and inbox instructions check the producer capability
+  (`issue-projection-v1`, `issue-discovery-v1`) before using the narrow forms.
+- Later changes on the same seam: one reader setup per repository per run,
+  positive-state reads batched up to 20 per query, and escalation-comment reads
+  batched up to 5 threads per query. Each batch refuses the whole sweep on a
+  malformed or partial response and never falls back.
+- Local qualification on a synthetic fixture: HTTP attempts per full cycle fall
+  from 55 to 51 at 8 issues and from 172 to 132 at 80 issues. CPU and wall time
+  moved both ways, so only less request work is shown, not faster runs.
+
+Source check at main `2c6c21336`, not Evidence: the projection flow suite and
+the projection fault suite both pass. The consumer-corroboration check reports 5
+consumers corroborated and 1 unchecked (the deskboard out-of-scope entry, which
+is the reviewer's call).
+
+These holds stay in place whichever option is chosen:
+
+- The prerequisite brief desk-tools/38 (desk performance attribution and counter
+  coverage) still needs independent verification before this brief can be
+  `verified` or `done`. Its acceptance transition has its own decision issue.
+- The consumer-corroboration check's command was changed after delivery to pin
+  the delivery and its base. That change counts only through its own
+  human-approved acceptance transition at verification time.
+- Live activation, releases, pin changes, collection consent and executor
+  switches stay separate gates.
+
+The one open obligation is a perf-v4 before/after measurement of the
+reader-reuse change. It cannot run yet: the perf-v4 envelope and producer briefs
+(desktools-v2/67 and /68) are still `todo`, and neither one names these callers.
+
+Options:
+1. **Accept the delivered implementation (recommended)**: the brief moves to `implemented` and verification proceeds under the holds above. The perf-v4 measurement becomes a separate follow-up once desktools-v2/68 ships, not a condition of this brief.
+2. **Hold for the perf-v4 measurement**: the brief stays `in-progress` until desktools-v2/67 and /68 ship and the before/after measurement is recorded here.
+3. **Revise**: name the missing coverage or authority boundary; a follow-up change fixes it before acceptance.
+
+Default if no answer: none — blocks until answered.
+
 ## Read first
 
 - [Approved source](../../desk-workflow-efficiency-spec.md) and [consolidation](../../desk-workflow-efficiency-change-map.md).

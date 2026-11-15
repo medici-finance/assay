@@ -61,7 +61,7 @@ files:
   keeps the verify-or-refuse, and writes the user PATH entry.
 - **edit** `scripts/windows-bootstrap-hashcheck-smoke.ps1` — add the manifest negative-path
   assertions (tampered manifest, absent platform line) alongside the three it already runs.
-- **edit** `.github/workflows/windows-ci-leg.yml` — the `windows-bootstrap-smoke` step no longer
+- **edit** `windows-ci-leg.yml` (live copy, retired #4106) — the `windows-bootstrap-smoke` step no longer
   pre-extracts tag+sha in bash (lines 156-162); it calls the driver, which calls the script that
   resolves them. **NOTE:** an App credential cannot push a workflow file — stage the workflow edit
   in the PR and name it for a maintainer, exactly as `windows-port/04` did.
@@ -169,7 +169,7 @@ check before it ever reaches the download comparison. NONE is not the answer her
    and installs nothing. Keep its existing non-vacuity assertion shape — a check-removed copy must
    still let the bad input through — so a green refusal cannot be vacuous.
 7. **Simplify the CI step to prove the script does the work.** In
-   `.github/workflows/windows-ci-leg.yml`, drop the bash pre-extraction at lines 156-162 and pass
+   `windows-ci-leg.yml` (live copy, retired #4106), drop the bash pre-extraction at lines 156-162 and pass
    only the tag; the step passing is then evidence that the SCRIPT resolved the sha, because
    nothing else did.
 8. **Add the changelog fragment** (`changelog/<branch-slug>.md`), one or more highlight bullets.
@@ -185,13 +185,13 @@ check before it ever reaches the download comparison. NONE is not the answer her
 | 5 | No floating ref is introduced: `grep -niE '(^\|[^a-z])latest([^a-z]\|$)' scripts/bootstrap-windows.ps1 && echo USES-LATEST \|\| echo NO-LATEST` | `NO-LATEST` | `check` |
 | 6 | A user PATH write exists and is segment-guarded: `grep -qF "SetEnvironmentVariable" scripts/bootstrap-windows.ps1 && grep -qiE "'User'\|\"User\"" scripts/bootstrap-windows.ps1; echo $?` | `0` | `check` |
 | 7 | Every resolution failure has its own refusal message (not one catch-all): `grep -coE 'throw \"REFUSED' scripts/bootstrap-windows.ps1` | `>= 5` — one per failure class named in Task 3 plus the download mismatch | `check` |
-| 8 | **Positive path, Windows runtime** — `windows-bootstrap-smoke` on `windows-latest` runs `scripts/windows-bootstrap-hashcheck-smoke.ps1 -Tag <pinned>` with NO `-RealSha256`, and the untampered run installs | a green `windows-bootstrap-smoke` whose log shows the bootstrap printing the sha it resolved from the manifest, matching the manifest's own line; record the run URL | `check:ci` |
+| 8 | **Positive path, Windows runtime — retired (#4106, ruling A); native Windows execution is no longer CI-proven.** The `windows-bootstrap-smoke` job and its smoke script were removed with the rest of the native-Windows CI, so no workflow runs the bootstrap on a Windows runner: `grep -rlE 'windows-(latest\|[0-9]+\|11-arm)\|runs-on:.*windows' .github/workflows/ ci/staged-workflows/; echo "exit=$?"` | `exit=1` — no file listed. The untampered-run install at Windows runtime is could-not-check in CI; rows 1–7 and 15 still check the script's manifest resolution statically. A native run is an operator act on a Windows host, recorded in Evidence when it happens | `check` |
 | 9 | **NEGATIVE PATH — tampered manifest (the security row)** — the driver flips one hex character of the `windows-amd64` digest in a scratch copy of `paired-versions.yaml` and runs the bootstrap against it | the bootstrap REFUSES with a `sha256 mismatch` message, exits non-zero, and `$Dest` contains no `statusgen*.exe` | `check:ci +mutation` |
 | 10 | **NEGATIVE PATH — absent platform line** — the driver removes the `windows-amd64:` line from a scratch copy and runs the bootstrap | the bootstrap REFUSES naming the missing platform, exits non-zero, nothing downloaded, nothing placed | `check:ci +mutation` |
 | 11 | **NON-VACUITY for rows 9-10** — the same two tampered inputs, run against a copy of the bootstrap with the resolution-refusal lines removed, DO proceed | the check-removed copy installs / attempts the download, proving rows 9-10 redden because of the guard and not an unrelated failure | `check:ci +mutation` |
 | 12 | **Fail-first for rows 9-11** — capture the row-9 assertion RED against the pre-change script (which has no manifest resolution to tamper with, so the driver's new assertion cannot pass) or against a mutation of the new script with the refusal stubbed out | the new assertion observed FAILING, pasted under `## Fail-first` in the PR body with the commit/mutation it ran against | `check` |
 | 13 | **`-Sha256` override disagreement refuses** — `pwsh -File scripts/bootstrap-windows.ps1 -Tag <pinned> -Sha256 <64 hex that is not the manifest's>` | non-zero exit, a refusal naming BOTH the supplied and the manifest digest; nothing downloaded | `check:ci` |
-| 14 | **The binary is invocable by name after step 1** — on the Windows runner, after the bootstrap, `statusgen --version` (bare name, PATH-resolved in a fresh shell) | prints the pinned tag; exit 0 | `check:ci +dereference` |
+| 14 | **The binary is invocable by name after step 1** — on a native Windows host, after the bootstrap, `statusgen --version` (bare name, PATH-resolved in a fresh shell). The CI Windows runner that ran this was retired (#4106, ruling A): native Windows execution is no longer CI-proven, so this is an operator run, recorded in Evidence when it happens | prints the pinned tag; exit 0 | `check +dereference` |
 | 15 | **Dereference the pin against the manifest** (catches a wrong-but-well-formed script): `line=$(grep -E '^[[:space:]]*windows-amd64:[[:space:]]+statusgen-windows-amd64\.exe' plugins/assay/paired-versions.yaml \| head -1); echo "$line" \| awk '{print $3, $4}'` then confirm the row-8 log printed the SAME tag and digest | the two agree exactly | `gate:model +dereference` |
 | 16 | Consumers routing corroborated by the diff (run on the implementer's branch): `statusgen --root . --consumers windows-port/06; echo $?` | `0` | `check` |
 | 17 | Board lint stays clean: `statusgen --root . --lint` | `0` PROBLEMs | `check:ci` |

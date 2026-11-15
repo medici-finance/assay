@@ -88,6 +88,20 @@ approval RESTING on a could-not-check is unfounded. An instrument that did not l
 cleared nothing, so say which checks could not run and treat the gap as a finding rather
 than as a silence.
 
+**A check that needs a project secret or a live service is not proven by the implementer's
+report of running it.** When a check needs a credential or a live service (a database, an API,
+a staging deployment, a cluster) that your environment does not hold, a pasted output or a
+"passed locally" from the PR's author is not evidence: the same party wrote the change and the
+report. Record the check could-not-check, name the environment it needs, and let no approval
+rest on it. Never ask for the secret, and never run a PR head with one in its environment. The
+Verify row is witnessed after merge: the verifier records it could-not-check with its exact
+command, which places the brief in the board's Environment-blocked queue, where an operator who
+holds that environment, never the implementer, runs it. For a `service:` row, only the
+verifier's signed outcome for that row is ever evidence, and never a run report. Until the
+signed verdict lane is enacted there is none, and the row stays could-not-check. A Verify row
+whose `Env` cell names anything but `tree` while classed `check:ci` is a finding;
+`statusgen --lint` reddens it.
+
 **Read what an instrument printed, not only its exit code.** Two read-only runs report
 through their output:
 
@@ -307,11 +321,34 @@ still yours to post, as an ordinary clause-13 finding.
   change.
 <!-- lane:correctness:end -->
 <!-- lane:security:begin -->
-- **On the security lane:** the same-head rule above has three declared exemptions — check-only
-  (`Blocked-On-Check:`), external-prerequisite (`External-Prereq-Only:`) and documented body-edit
-  (`Blocked-On-Body:`). Each is claimed on a correctness rejection and cleared by a correctness
-  APPROVE, and their forms are carried on the correctness lane. A security verdict is `pass` or
-  `fail`, never an APPROVE, and claims none of them.
+- **On the security lane:** the same-head rule above has three correctness-lane exemptions —
+  check-only (`Blocked-On-Check:`), external-prerequisite (`External-Prereq-Only:`) and
+  documented body-edit re-verification (`Blocked-On-Body:` on a CR, cleared by a documenting
+  APPROVE). Each is claimed on a correctness rejection and cleared by a correctness APPROVE, and
+  their forms are carried on the correctness lane. A security verdict is `pass` or `fail`, never
+  an APPROVE, and claims none of those three: a correctness APPROVE never clears your fail, and
+  your pass never clears a correctness CR. At `deskflip`, rule 2 refuses a security fail carrying
+  `Blocked-On-Check:` or `External-Prereq-Only:` while it stands as a CHANGES_REQUESTED at the
+  head; `deskpost ready` does not apply that rule. The security lane has one clearance of its
+  own, the next bullet, which reuses the `Blocked-On-Body:` line on a fail.
+- **A security fail whose ONLY basis is the PR body.** It carries its own marker. When the
+  whole fail rests on the PR body and no code at head would change, add
+  `Blocked-On-Body: <finding-id> <64-hex digest of the body as you read it>` to the
+  `Security-Review: fail`. Never mark a fail that rests on any code, config or check. After the
+  body is edited, re-read it via the API and post `Security-Review: pass` at the same head
+  carrying `Body-Reread-Digest: <64-hex digest of the live body>`. Both digests are SHA-256 of
+  the body with carriage returns removed and trailing newlines trimmed, and the gate compares
+  them for exact equality, so hash the body this way and never as it reads on screen:
+  `printf '%s' "$(gh api repos/<owner>/<repo>/pulls/<N> --jq .body | tr -d '\r')" | shasum -a 256`.
+  The full rule is in `verdict-format.md`, section "A security fail whose ONLY basis is the PR
+  body". `deskflip` reads your newest pass at the head after the last fail that is posted as a
+  COMMENTED or APPROVED review; a later pass in another review state does not displace it. It
+  clears the fail when that pass's digest matches the live body and differs from the fail's,
+  the forge records a body edit after the fail, and neither the fail, nor a later fail, nor a
+  pass at the head after the fail carries a correctness `Verdict:` line, read the way
+  `deskpost ready`'s lane classifier reads it. At `deskflip`, an unmarked fail standing as a
+  CHANGES_REQUESTED at the head is cleared only by a new commit; `deskpost ready` does not apply that rule. The gate cannot check
+  that the marker is true; that is your claim.
 <!-- lane:security:end -->
 - Cite sops material, never quote it. When a finding is about an encrypted file, name it by
   `path:line` and describe it in words: the `sops` footer, its `mac` or `lastmodified` field,

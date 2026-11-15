@@ -1,0 +1,30 @@
+{
+  "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .",
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^TestPathHistory' .",
+  "control": {
+    "name": "CONTROL the visitor's stop is ignored",
+    "file": "pathhistory.go",
+    "old": "if !visit(pc) {",
+    "new": "if false && !visit(pc) {"
+  },
+  "mutations": [
+    {
+      "name": "stop never asked before a parent's tree (review S19)",
+      "file": "pathhistory.go",
+      "old": "\t\t\tif stop != nil && stop() {\n\t\t\t\treturn ErrPathHistoryStopped",
+      "new": "\t\t\tif false && stop != nil && stop() {\n\t\t\t\treturn ErrPathHistoryStopped"
+    },
+    {
+      "name": "stop never asked before a commit's own tree (review S19)",
+      "file": "pathhistory.go",
+      "old": "\t\tif stop != nil && stop() {\n\t\t\treturn ErrPathHistoryStopped\n\t\t}\n\t\tif pc.PathID",
+      "new": "\t\tif false && stop != nil && stop() {\n\t\t\treturn ErrPathHistoryStopped\n\t\t}\n\t\tif pc.PathID"
+    },
+    {
+      "name": "a stopped walk reported as complete (review S19)",
+      "file": "pathhistory.go",
+      "old": "\tif errors.Is(err, ErrPathHistoryStopped) {\n\t\treturn ErrPathHistoryStopped",
+      "new": "\tif errors.Is(err, ErrPathHistoryStopped) {\n\t\treturn nil"
+    }
+  ]
+}

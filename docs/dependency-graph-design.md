@@ -244,6 +244,19 @@ work-start-to-first-commit measurement); "eligible_to_start" is a *replayed* ins
 live one — a brief-history append still never writes an "eligible now" record the moment its
 last dependency clears.
 
+### 3.8 Milestone start requirements (milestone-support/05)
+
+A `brief-v4` brief's `requires-milestones` entries are resolved over the combined
+milestone and brief graph (`spec/milestone-v1.md` §"Combined graph implementation") and
+written onto the brief as already-resolved `gates:` holds. The evaluator reads such an
+edge's state as given instead of re-resolving its reference, so Next-up, the drive
+frontier and `--eligibility` all see the same answer. A requirement is `unsatisfied` when
+the milestone has known remaining work or forms a cycle with the brief, and
+`could-not-check` when anything is unknown. It is never `satisfied` here, because
+milestone acceptance is not yet observed. Only the brief that declares a requirement
+is held by it: a milestone's own prerequisites never reach its contributors, and a
+brief's `wave` still derives from `depends` alone.
+
 ## 4. The derived graph
 
 ### 4.1 Source of truth: distributed frontmatter — there is no graph file

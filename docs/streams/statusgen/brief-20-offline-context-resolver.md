@@ -264,6 +264,52 @@ RISK-VALUE: NAMED, NOT DERIVED — DefaultLimits.MaxResults = 2000 @ statusgen/c
 
 **VERIFY: PASS** — 11 of 11 rows pass at 0c3b558efec3 inside a closed offline admission bracket; all ten mutation obligations (rows 1-8, 10 and 11) are killed by eleven mutants.
 
+### Verifier pass — 2026-11-02 at 2c6c21336a60
+
+Batch re-witness of merged main 2c6c21336a606e64df057294f21177f16db7b9f8, run by a fresh non-implementer verifier under the one-time re-witness ruling (https://github.com/medici-finance/assay/issues/2026#issuecomment-6563527111). The earlier blocks above are left as they were. All eleven rows are check:ci and ran inside one closed admission bracket: host open, then a docker container from the pinned verify-runner image with `--network none` and `--sandbox=container-netns`, uid 501, GOPROXY=off and GOTOOLCHAIN=local, with the home mounted read-only, then host close. The bracket digest check reported verdict=match.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextResolverWithheldConsumers$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextResolverWithheldConsumers " "$out")` | pass exit=0 sandbox=container-netns | sha256:576d288aed27 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextRecheckUnrelatedEdit$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextRecheckUnrelatedEdit " "$out")` | pass exit=0 sandbox=container-netns | sha256:95f84a2dba65 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextRecheckNewConsumerOutsideReadSet$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextRecheckNewConsumerOutsideReadSet " "$out")` | pass exit=0 sandbox=container-netns | sha256:fff49ef38745 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextMissingInputScoped$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextMissingInputScoped " "$out")` | pass exit=0 sandbox=container-netns | sha256:1e2ae5e72094 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextAmendmentPreservesDatedSources$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextAmendmentPreservesDatedSources " "$out")` | pass exit=0 sandbox=container-netns | sha256:68a6069caf58 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextActiveWorkerRefusesSilentRebind$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextActiveWorkerRefusesSilentRebind " "$out")` | pass exit=0 sandbox=container-netns | sha256:81bab8ab50bb | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextCompetingProposals$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextCompetingProposals " "$out")` | pass exit=0 sandbox=container-netns | sha256:fa99e48c25c7 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextDeliveredBriefRoutesFollowOn$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextDeliveredBriefRoutesFollowOn " "$out")` | pass exit=0 sandbox=container-netns | sha256:e2a69d835ccf | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextCLIDiscoverRoundTrip$" . > "$out" && grep -F -- "--- PASS: TestContextCLIDiscoverRoundTrip " "$out")` | pass exit=0 sandbox=container-netns | sha256:ee23ff056973 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextArchitectureCoverageNotProductAlignment$" . > "$check_output" && grep -F -- "--- PASS: TestContextArchitectureCoverageNotProductAlignment " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:4b3d32efd657 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPickupContextRecheck$' . > "$out" && grep -q '^--- PASS: TestPickupContextRecheck ' "$out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c
+Container-Image: sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4
+Verification-Attestation: medici-finance/assay#5282 run=8d82f5e5ba6d5b3c277bdfdfaf3bc4f6b03ba599df519aed4bca14ce49271175 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/statusgen/brief-20-offline-context-resolver.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=8d82f5e5ba6d5b3c277bdfdfaf3bc4f6b03ba599df519aed4bca14ce49271175 source=2c6c21336a606e64df057294f21177f16db7b9f8 tree=sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c witness=sha256:cb1d63aaecba93e7a9692d6a1c6cc9155f240fd4d007cc6b690f8eb18f30be03 opened=2026-11-02T02:02:00Z closed=2026-11-02T02:03:00Z before=receipt after=check-verifier
+
+Mutation controls (supplemental, no acceptance credit on their own). The resolver code changed after the 2026-10-25 pass (the statusgen/23 product-binding work touched check, recheck, discover and snapshot handling), so the controls were run again at this commit, on scratch copies of the pinned tree outside the home, offline (GOPROXY=off). The repository's own spec, statusgen/contexthandoff-mutations.json, run with muhar v1.0.69 in two shards, reported the harness healthy in both (baseline green, positive control caught) and 30 of 30 mutants caught, none surviving and none could-not-mutate. Each row-tagged mutant was then planted alone in a fresh copy and that row's exact Verify command was run against it. An unmutated copy passed rows 1 and 11 (exit 0) under the same harness. Every mutant turned its row red (exit 1, no PASS line):
+
+- Row 1, discover from typed edges only (row1-typed-edges-only): exit 1.
+- Row 2, every edit invalidates every conclusion (row2-invalidate-all): exit 1.
+- Row 3, recheck only previously read file hashes (row3-prior-hashes-only): exit 1.
+- Row 4, unavailable source reported as available and empty (row4-unavailable-as-empty): exit 1.
+- Row 5, check only that the patch applies (row5-apply-only): exit 1.
+- Row 6, ignore claims (row6-ignore-claims): exit 1.
+- Row 7, accept any textually clean merge (row7-textual-merge): exit 1.
+- Row 8, patch the delivered brief (row8-patch-delivered): exit 1.
+- Row 10, label the architecture-only receipt as aligned (row10-product-aligned): exit 1.
+- Row 11, ignore a guideline change (row11-ignore-guideline) and ignore a planned replacement (row11-ignore-replacement): exit 1 for each.
+
+Row 9 is +flow only and carries no mutation obligation.
+
+Risk-bearing value. The four risk answers are present and all no, the item is not irreversible, and no changed value is pinned hard by a standing constraint, so the trigger does not fire. Enumeration over the resolver at this commit (the non-test files in statusgen/contexthandoff other than product.go, which belongs to statusgen/23, and statusgen/context.go) found the same literals as the earlier pass and no new numeric ones in the diff since 0c3b558efec3: DefaultLimits = {MaxFiles: 20000, MaxFileBytes: 1 << 20, MaxTotalBytes: 256 << 20, MaxResults: 2000} @ statusgen/contexthandoff/snapshot.go:92; revisionRe = ^[0-9a-f]{7,64}$ @ statusgen/contexthandoff/decode.go:68; BlobRevision = sha1("blob <len>\0" + raw) @ statusgen/contexthandoff/plan.go:315; "product-alignment": "unchecked" @ statusgen/contexthandoff/discover.go:320. The limits are reversible operational caps and rank last.
+
+RISK-VALUE: DERIVED — BlobRevision = sha1("blob <len>\0" + raw) @ statusgen/contexthandoff/plan.go:315 — this is git's blob object id for a SHA-1 repository; recomputed over this brief file at the verified sha it equals the id git reports for it (8663803a22ac), so read-set and patch-base revisions are the ids git itself uses.
+RISK-VALUE: DERIVED — revisionRe = ^[0-9a-f]{7,64}$ @ statusgen/contexthandoff/decode.go:68 — 7 is git's default minimum abbreviated object id and 64 is the hex length of a SHA-256 object id, so the pattern admits every git revision spelling from the shortest abbreviation to a full SHA-256 id and nothing else.
+RISK-VALUE: DERIVED — "product-alignment": "unchecked" @ statusgen/contexthandoff/discover.go:320 — the brief's 13 October amendment requires that no product binding reads as unchecked, never aligned, so unchecked is the only correct value for an architecture-only receipt.
+RISK-VALUE: NAMED, NOT DERIVED — DefaultLimits.MaxResults = 2000 @ statusgen/contexthandoff/snapshot.go:92 — no spec figure exists to derive it from; exceeding it is reported as a truncated query (partial coverage and a hold), never as empty, so a wrong value costs coverage, not correctness.
+
+**VERIFY: PASS** — 11 of 11 rows pass at 2c6c21336a60 inside a closed offline admission bracket; all ten mutation obligations (rows 1-8, 10 and 11) are killed by eleven mutants at this commit.
+
 ## Review
 
 Gate: model (all four risk answers no). The reviewer confirms the expected answers are withheld

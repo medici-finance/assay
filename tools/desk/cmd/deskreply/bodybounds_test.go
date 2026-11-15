@@ -53,7 +53,7 @@ func TestWorkpadUpsertRefusesOversizedBody(t *testing.T) {
 	if len(body) != 65537 {
 		t.Fatalf("test body is %d chars, want 65537", len(body))
 	}
-	err := cmdWorkpadUpsert(&auditCtx{}, nil, deskkit.ForgeRepo{}, work, "example-org/tracker", 7, []byte(body), false)
+	err := cmdWorkpadUpsert(&auditCtx{}, nil, deskkit.ForgeRepo{}, work, "example-org/tracker", 7, "", []byte(body), false)
 	if !refusedCode(err) {
 		t.Fatalf("cmdWorkpadUpsert on a 65,537-char body: err = %v, want a refusal (exit 5)", err)
 	}
@@ -77,7 +77,7 @@ func TestWorkpadUpsertRefusesDuplicateMarker(t *testing.T) {
 		},
 		nil,
 	)
-	err := cmdWorkpadUpsert(&auditCtx{}, nil, deskkit.ForgeRepo{}, work, "example-org/tracker", 7, []byte(twoMarkerBody()), false)
+	err := cmdWorkpadUpsert(&auditCtx{}, nil, deskkit.ForgeRepo{}, work, "example-org/tracker", 7, "", []byte(twoMarkerBody()), false)
 	if !refusedCode(err) {
 		t.Fatalf("cmdWorkpadUpsert on a body with two markers: err = %v, want a refusal (exit 5)", err)
 	}

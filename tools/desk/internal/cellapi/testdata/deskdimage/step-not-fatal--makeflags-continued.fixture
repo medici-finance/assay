@@ -1,0 +1,6 @@
+# regression: #4769
+# MAKEFLAGS gains -i on a continued physical line; make joins the two first.
+want: step-not-fatal
+file: Makefile
+replace: "\nSHELL       := /bin/sh\n"
+with: "\nSHELL       := /bin/sh\nMAKEFLAGS += -k \\\n  -i\n"

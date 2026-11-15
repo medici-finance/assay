@@ -14,40 +14,10 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// shimTemplate is the generated wrapper body. Everything in it is LITERAL shell, evaluated when
-// the generated shim itself runs under the caller's REAL, un-swapped HOME — only the `env HOME=`
-// on the exec lines swaps it for the wrapped verb.
-//
-// assay#1145: `gh`'s ambient credential (keychain on macOS, hosts.yml-adjacent elsewhere) is
-// keyed to the REAL HOME, so a `gh` subprocess a shimmed verb shells out to silently loses auth
-// once HOME is swapped. It is resolved HERE, before the swap.
-//
-// assay#1631: it is NOT handed to the verb as GH_TOKEN. Desk verbs read an inherited GH_TOKEN as
-// the operator's EXPLICIT choice of credential (deskdispatch skipped its role-App mint on it), so
-// exporting the human login there made every self-minting verb act as the human. The token
-// travels as CELLCTL_GH_AMBIENT instead — a name no desk verb reads — and only the cell's `gh`
-// wrapper (ghWrapTemplate, prepended to the verb's PATH) turns it back into GH_TOKEN, for a `gh`
-// child with none of its own. An explicit GH_TOKEN/GH_ENTERPRISE_TOKEN already in the caller's
-// env still passes through untouched and is never looked up against.
-const shimTemplate = `#!/usr/bin/env bash
-# cellctl shim (__CELL__): run this desk verb with the CELL config-home; the session keeps the
-# real HOME. the ambient gh credential is keyed to the real HOME, so it is resolved HERE (before
-# HOME is swapped below) and handed over as CELLCTL_GH_AMBIENT — never as GH_TOKEN, which desk
-# verbs read as an explicit operator override (assay#1631). Only the cell's gh wrapper, first on
-# the verb's PATH, turns it back into GH_TOKEN, for a ` + "`gh`" + ` child with none of its own (assay#1145).
-gh_token="${CELLCTL_GH_AMBIENT:-}"
-if [[ -z "$gh_token" && -z "${GH_TOKEN:-}" && -z "${GH_ENTERPRISE_TOKEN:-}" ]] && command -v gh >/dev/null 2>&1; then
-  gh_token="$(gh auth token 2>/dev/null || true)"
-fi
-if [[ -n "$gh_token" ]]; then
-  # exported, never an env(1) argument: argv is readable by other local users for as long as
-  # env runs, the environment is not.
-  export CELLCTL_GH_AMBIENT="$gh_token"
-  exec env HOME="__CELL_HOME__" PATH="__GH_WRAP__:$PATH" "__BIN__" "$@"
-else
-  exec env HOME="__CELL_HOME__" "__BIN__" "$@"
-fi
-`
+// shimTemplate is the generated wrapper body. The format has ONE owner, deskkit, because the
+// verifier's instrument pin check admits a shim only when it is byte-for-byte this template
+// rendered for the fields it carries (assay#5288); its rationale is documented there.
+const shimTemplate = deskkit.CellctlShimTemplate
 
 // ghWrapTemplate is the cell's `gh` wrapper (assay#1631), written to <cell>/shim-gh/gh and put
 // first on a shimmed verb's PATH only. It removes its own directory from PATH (every occurrence:
@@ -137,6 +107,11 @@ func hotfixShimBody(c *Cell, ghWrapDir string, ch deskkit.HotfixShimChoice) stri
 	return body[:nl+1] + prelude + body[nl+1:]
 }
 
+// shimBody is the ordinary shim for one desk verb, exec'ing bin.
+func shimBody(c *Cell, ghWrapDir, bin string) string {
+	return deskkit.RenderCellctlShim(c.Name, c.Home, ghWrapDir, bin)
+}
+
 // genShims writes one wrapper per installed desk verb into <cell>/shim, the cell's `gh` wrapper
 // into <cell>/shim-gh, plus a symlink per binary in <cell>/bin so the cell's own deskd/deskcli
 // come first on PATH too. Substitution is by plain replacement, never sed: a bin path or CELL
@@ -166,12 +141,7 @@ func (c *Cell) genShims() {
 			if serr != nil || st.IsDir() || st.Mode()&0o111 == 0 {
 				continue
 			}
-			body := strings.NewReplacer(
-				"__CELL__", c.Name,
-				"__CELL_HOME__", c.Home,
-				"__GH_WRAP__", ghWrapDir,
-				"__BIN__", p,
-			).Replace(shimTemplate)
+			body := shimBody(c, ghWrapDir, p)
 			if ch := c.hotfixShimChoice(en.Name(), bin, os.Stderr); ch.Hotfix {
 				body = hotfixShimBody(c, ghWrapDir, ch)
 			}

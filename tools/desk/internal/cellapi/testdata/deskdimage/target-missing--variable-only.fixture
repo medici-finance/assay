@@ -1,0 +1,8 @@
+# regression: #4769
+# Both held rules folded into one rule whose target is a variable naming
+# neither: make has no deskd-build or deskd-image rule, builds nothing and
+# exits 0. A target the checker cannot resolve must not stand in for them.
+want: target-missing
+file: Makefile
+replace: "deskd-build:\n\t@cd deskd && GOWORK=off go build -trimpath -o dist/deskd ./cmd/deskd\n\t@echo \"deskd-build: built deskd/dist/deskd\"\n\n## deskd-image: LOCAL image build of deskd (context deskd/), then the layer-secret\n## scan. Never pushes, logs in or exports to a registry.\ndeskd-image:\n"
+with: "ZZX := deskd-off\n$(ZZX):\n\t@cd deskd && GOWORK=off go build -trimpath -o dist/deskd ./cmd/deskd\n\t@echo \"deskd-build: built deskd/dist/deskd\"\n"

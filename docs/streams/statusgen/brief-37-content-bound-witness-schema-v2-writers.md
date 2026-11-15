@@ -4,7 +4,11 @@ title: "Content-bound witness schema v2: the writers and the desk readers"
 why: "Once the reader exists, the two writers must produce v2 witnesses and verify-outcome records, and every tools/desk reader must judge them through statusgen's seam instead of commit reachability. This ends new squash-orphaned records (medici-finance/assay#3658) without changing a single v1 record."
 wave: 2
 depends: ["statusgen/36"]
-unblocks: ["statusgen/38"]
+feathers:
+  - ref: "statusgen/40"
+    type: ordering-gate
+    reason: "The I-2 slice re-routes the protected transition audit, whose chain and combined-correction limits statusgen/40 defines. Landing statusgen/40 first avoids building I-2 on the one-link, one-column limits it replaces. This is a feather (a notice), not a hold: the rest of this brief does not need it."
+unblocks: ["statusgen/38", "desk-tools/46", "statusgen/29", "statusgen/31"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}
@@ -12,11 +16,13 @@ issues: [2026, 3105, 3658]
 regression-of: "medici-finance/assay#2304"
 schema: brief-v2
 outcome: none
-version: 1
+version: 3
 authored: "2026-10-20 by the-desk (design brief for the witness-staleness class)"
 gate-why: "It changes what evidence the verifier writes and how the desk loops read it. A writer that records the wrong scope or runs a row with network access while claiming none would feed stale passes to the reader."
 decision-trigger: start
 sources:
+  - "docs/proposals/fixed-delivery-verification/README.md — fixed-delivery completion amendment, 2026-10-27; planning only"
+  - "freshness-checked 2026-10-27 @ 9a58a792c; existing PR 4579 and source/caller work map"
   - "medici-finance/assay#3658 — squash-orphaned verify-outcome record shas; content binding chosen over required merge commits"
   - "medici-finance/assay#2026 — the witness-staleness class"
   - "docs/streams/statusgen/brief-36-content-bound-witness-schema-v2-reader.md — the schema, record layout, seams and judgment this brief writes to"
@@ -24,10 +30,35 @@ sources:
   - "tools/desk/internal/deskkit/forge.go — the forge-neutral `Forge` interface (GitHub and GitLab adapters)"
   - "statusgen/verifyincontainer.go — the digest-pinned harness container runner"
   - "freshness-checked 2026-10-20 @ 75cc11f1423301ea8ba0b111d48c8d5b8a303537 (origin/main)"
+  - "statusgen/40 (2026-11-10, #6064) — chained acceptance transitions and combined Command-and-Expect corrections; version 3 replaces 'command-only amendment limits' with the limits statusgen/40 defines"
 exec-tier: strong
 exec-tier-why: "Two writers in two Go modules, a hermetic runner mode, a forge read on two adapters and a version-skew proof across releases must agree with one reader."
 domain: complicated
 consumers:
+  - "tools/desk/internal/deskkit/declaredscope_test.go: follow-up statusgen/37 (fixed-delivery planning amendment; implementation owed)"
+  - "tools/desk/internal/deskkit/declaredscope.go: follow-up statusgen/37 (fixed-delivery planning amendment; implementation owed)"
+  - ".github/workflows/verify-gate-close.yml: follow-up statusgen/37 (fixed-delivery planning amendment; implementation owed)"
+  - "ci/staged-workflows/verify-gate-close.yml: follow-up statusgen/37 (fixed-delivery planning amendment; implementation owed)"
+  - ".github/workflows/assay-statusgen.yml: follow-up statusgen/37 (fixed-delivery planning amendment; implementation owed)"
+  - "ci/staged-workflows/assay-statusgen.yml: follow-up statusgen/37 (fixed-delivery planning amendment; implementation owed)"
+  - "ci/staged-workflows/declared-changes.json: follow-up statusgen/37 (fixed-delivery planning amendment; implementation owed)"
+  - "ci/staged-workflows/README.md: follow-up statusgen/37 (fixed-delivery planning amendment; implementation owed)"
+  - "ci/staged-workflows/delivery-binding.yml: follow-up statusgen/37 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/deliverybinding_test.go: follow-up statusgen/37 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/deliverybinding.go: follow-up statusgen/37 (fixed-delivery planning amendment; implementation owed)"
+  - "docs/consumer-delivery-checks.md: follow-up statusgen/37 (fixed-delivery planning amendment, I-2 re-homed from delivered statusgen/36; implementation owed)"
+  - "docs/protected-paths.md: follow-up statusgen/37 (fixed-delivery planning amendment, I-2 re-homed from delivered statusgen/36; implementation owed)"
+  - "spec/lifecycle-v1.md: follow-up statusgen/37 (fixed-delivery planning amendment, I-2 re-homed from delivered statusgen/36; implementation owed)"
+  - "statusgen/deliveryfiles.go: follow-up statusgen/37 (fixed-delivery planning amendment, I-2 re-homed from delivered statusgen/36; implementation owed)"
+  - "statusgen/autoflip.go: follow-up statusgen/37 (fixed-delivery planning amendment, I-2 re-homed from delivered statusgen/36; implementation owed)"
+  - "statusgen/lifecycle.go: follow-up statusgen/37 (fixed-delivery planning amendment, I-2 re-homed from delivered statusgen/36; implementation owed)"
+  - "statusgen/verifyflip.go: follow-up statusgen/37 (fixed-delivery planning amendment, I-2 re-homed from delivered statusgen/36; implementation owed)"
+  - "statusgen/verifyclosure.go: follow-up statusgen/37 (fixed-delivery planning amendment, I-2 re-homed from delivered statusgen/36; implementation owed)"
+  - "statusgen/acceptancetransition.go: follow-up statusgen/37 (fixed-delivery planning amendment, I-2 re-homed from delivered statusgen/36; implementation owed)"
+  - "statusgen/protectedclosure.go: follow-up statusgen/37 (fixed-delivery planning amendment, I-2 re-homed from delivered statusgen/36; implementation owed)"
+  - "statusgen/verifyrows.go: follow-up statusgen/37 (fixed-delivery planning amendment, I-2 re-homed from delivered statusgen/36; implementation owed)"
+  - "statusgen/consumerderived_test.go: follow-up statusgen/37 (fixed-delivery planning amendment, I-2 re-homed from delivered statusgen/36; implementation owed)"
+  - "statusgen/consumerdelivery.go: follow-up statusgen/37 (fixed-delivery planning amendment, I-2 re-homed from delivered statusgen/36; implementation owed)"
   - "statusgen/verifyrun.go and statusgen/verifyincontainer.go (v2 writer, hermetic container mode, `--cr` and `--bind-cr`): follow-up statusgen/37"
   - "tools/desk/cmd/deskevidence/ (outcomerecord.go, outcome.go, outcomejoin.go, landed.go, origin.go, plainread.go, verifiedgate.go, decisiongate.go, principalstamp.go, receiptvalidate.go, deskevidence.go): follow-up statusgen/37"
   - "tools/desk/internal/deskkit/ (verifyoutcomes.go, verifyoutcomejoin.go, verifywake.go, repairobligation.go, principal.go, forge.go and its GitHub and GitLab adapters): follow-up statusgen/37"
@@ -66,10 +97,34 @@ files:
 - `docs/evidence-bundle.md`
 - docs/witness-readers.md (planned, statusgen/36)
 - changelog/statusgen-witness-v2-writers.md (planned)
+- `statusgen/deliverybinding.go` (planned)
+- `statusgen/deliverybinding_test.go` (planned)
+- `ci/staged-workflows/delivery-binding.yml` (planned)
+- `ci/staged-workflows/README.md`
+- `ci/staged-workflows/declared-changes.json`
+- `ci/staged-workflows/assay-statusgen.yml`
+- `.github/workflows/assay-statusgen.yml` (maintainer promotion only)
+- `ci/staged-workflows/verify-gate-close.yml`
+- `.github/workflows/verify-gate-close.yml` (maintainer promotion only)
+- `tools/desk/internal/deskkit/declaredscope.go`
+- `tools/desk/internal/deskkit/declaredscope_test.go`
+- `statusgen/consumerdelivery.go`
+- `statusgen/consumerderived_test.go`
+- `statusgen/verifyrows.go`
+- `statusgen/protectedclosure.go`
+- `statusgen/acceptancetransition.go`
+- `statusgen/verifyclosure.go`
+- `statusgen/verifyflip.go`
+- `statusgen/lifecycle.go`
+- `statusgen/autoflip.go`
+- `statusgen/deliveryfiles.go`
+- `spec/lifecycle-v1.md`
+- `docs/protected-paths.md`
+- `docs/consumer-delivery-checks.md`
 
 facts (source and date in frontmatter):
 - verifyrun writes the witness row as `| id | command | result | sha256:<output> | date | <runner> @ <commit-short>[+dirty|+unknown] (on-behalf-of) (source) |` from `treeSHA`; the identity before `@` is what the attribution reads use. The container runner (`--in-container`) is digest-pinned but passes a credential env-file and does not set `--network none`, so today no run is provably network-free.
-- deskevidence writes verify-outcome records under `docs/streams/verify-outcomes/<stream>/` with `wake_schema: verify-wake-v1`, a top-level `sha`, an `inputs` map (SHA-256 of the brief file, the tool tag) and `prs: [{merge_sha, number, repo}]`. deskkit's readers join records by `sha`; #3658 counts 95 of 379 such shas unreachable from main.
+- deskevidence writes verify-outcome records under `docs/streams/verify-outcomes/` in per-stream subdirectories with `wake_schema: verify-wake-v1`, a top-level `sha`, an `inputs` map (SHA-256 of the brief file, the tool tag) and `prs: [{merge_sha, number, repo}]`. deskkit's readers join records by `sha`; #3658 counts 95 of 379 such shas unreachable from main.
 - `deskkit.Forge.GetPullRequest` returns head, state and mergeability for GitHub and GitLab, but no landed (merge or squash) commit.
 - tools/desk is a separate Go module and cannot import statusgen's `package main`. statusgen/36 adds the seams: `statusgen witnessdigest --json` and the versioned `witness` field on `statusgen --coverage --json`.
 - Desk tools and statusgen ship together in one release, so a version skew means an older release reading a newer record.
@@ -110,6 +165,8 @@ Read statusgen/36 in full, then `runVerifyrun`, `treeSHA` and the cell writer in
 - Fixture repositories and fake forges only; no network in tests.
 - Never rewrite a verify-outcome record, witness record or Evidence row that is on the default branch. The only rewrite allowed is `--bind-cr` replacing a `pending` record and its cell on an unmerged Evidence branch. v1 records are read exactly as today.
 - No tools/desk package computes a digest or parses a Runner cell; it calls the statusgen seams.
+- statusgen/36's v1 guard binds the I-2 work in the amendment below: schema v1 is never loosened, every existing witness is judged exactly as today, and a change that releases any v1 witness that main refuses is a defect.
+- FDV-SUBJECT remains pending. This planning amendment grants no exception to the preceding v1 guard. Only after that decision is ruled under its own unique reply token on the existing decision surface may the named acceptance caller's H-to-D cutover proceed under an explicitly authorized contract amendment. That later amendment must reconcile the applicable Ground rules, Review, pre-mortem and Verify obligations before the affected implementation; it preserves v1 comparison for the same explicit revision. No cutover is described as approved by this PR.
 - If anything is unclear or contradicts repo state, report NEEDS_CONTEXT. Do not guess.
 
 ## Interface contract
@@ -129,6 +186,94 @@ Read statusgen/36 in full, then `runVerifyrun`, `treeSHA` and the cell writer in
 - **Desk readers.** verifyloop, fanoutloop, deskevidence and deskkit judge records and witnesses through `statusgen --coverage --json` and match records by `(cr, record-id)`. A missing or unknown `witness_schema_version` or record schema is a named could-not-check, never a pass.
 
 ## Task
+
+### Fixed-delivery completion amendment — 2026-10-27
+
+This is a planning amendment under [fixed-delivery
+verification](../../proposals/fixed-delivery-verification/README.md), not runtime implementation or
+activation. Preserve the original Verify table and Evidence. The changed fixed-subject,
+historical-subject and row-reuse policy waits for the precise existing authority decisions; an old
+decision token grants none of these changes. Existing approved work retains its original contract.
+At pickup, pin this brief/version, the controlling contracts, actual producer/consumer versions and
+open PRs; adapt or hold only the affected slice. No new evaluator, record store, desk, tracer or
+qualification stage is authorized.
+
+**Owner: binding production and fixed-source execution/recording (I-1 and I-3).** Consume the
+admitted-subject contract of the I-2 slice below; do not duplicate its evaluation. Reuse the existing delivering-PR
+resolver and the binding design's protected annotated-ref store. Implement the already-designed
+writer in the existing statusgen command owner and prepare its staged CI/configuration
+documentation. No separate binding service or permission grant is part of this brief.
+
+- Freeze prospective D only after the reviewed delivery lands, with exact parent, brief/acceptance
+  version and attribution grounds. Walk past authoring, Evidence-only, partial or wrongly linked
+  candidates using the shared resolver. For a real repair use an explicitly attributed successor
+  delivery/version; never move the original immutable binding or call repaired code the old D.
+  Missing writer/custody/correction policy is an affected hold on issues 4380/4381, not a guessed
+  convention. - Own the historical binding-production path as well: replay eligible first-parent
+  delivery boundaries chronologically, corroborate original reviewed provenance and account for
+  partial/multi-PR delivery. Neither today's newest match nor the oldest mere mention suffices.
+  Missing past reviewed provenance or multiple plausible subjects requires the existing independent
+  review/decision route. /38 consumes this path; it must not invent another binder. - Execute
+  approved A against isolated D using the existing runner, then record real W and admitted
+  conditions at E through the existing Evidence/outcome writers. Current tools may control
+  execution; never overlay current product/test source onto D. Support approved criteria amendments
+  newer than D without falsely naming the amendment as execution source, and retain
+  execution/admission provenance after approval. - Finish authoritative invocation consistency in
+  the existing CI/staged owners, including verifier identity binding and canonical brief/root
+  resolution (issues 4596/4246). Coordinate the existing PR 4371 rather than duplicate its
+  correction. Source staging does not activate workflows or change writer permissions. Preserve all
+  unrelated staged differences and existing offline contracts. - Finish declared-scope/outcome
+  compatibility in the existing deskkit grammar (3697/3708/4199), without treating implementation
+  `files:` as a complete test-input manifest. Make the existing outcome-record dry run validate/plan
+  without a write (4554). /31 owns uncertain metadata disposition; /47 consumes the resulting
+  truthful/idempotent writer behavior. - Extend existing writer/runner and cross-module fixtures:
+  independently bind D, execute at D, record at later E, advance H, and read the same acceptance
+  through the I-2 evaluator below. A forged source, unauthorized writer, contradictory marker, partial delivery, lost
+  approval or dry run attempting an effect must fail before effects. Record no historical witness
+  invented from counts. Complete the existing v2 writer duties below; this amendment adds no witness
+  schema beyond that already planned.
+
+**Owner: binding admission and the common acceptance evaluator (I-2), re-homed from statusgen/36.**
+statusgen/36's reader was delivered by PR 4409 (merged 2026-10-28) under its original contract, so
+this slice is owed here and /36 is not reopened. Extend the existing `statusgen/evaluation` owner
+that /36 delivered and its statusgen adapters; do not add a second evaluator. In delivery
+acceptance, the existing explicit revision R means independently admitted delivery D; approved
+original/amended criteria A, actual execution W, recording E and current main H remain distinct.
+Health callers retain H. Do not reinterpret the v2 record's delivering change request as D: that
+request can deliver the Evidence record rather than the product.
+
+- Admit the binding produced above using the existing delivery resolver, protected-table
+  coordinates, git graph and approved custody contract. Missing, ambiguous, conflicting, untrusted
+  or locally forged bindings hold; no convenient W or newest follow-up may be selected as D. Return
+  typed inputs through the existing coverage seam, not another verdict owner. - Own consumer
+  checker/range-lint integration for the previously designed symbolic binding. Keep the exact
+  first-parent range, declared-route evaluation, nonzero corroboration and unchecked judgments. A
+  bare historical row changes effective subject and needs the approved compatibility policy; an
+  empty-diff exit zero cannot become delivery coverage. - Route coverage, auto-flip, reconciliation,
+  protected closure/transition audit and all witness-reading callers through admitted D/A and the
+  same observation selection. Within one D/A/condition context the last applicable result wins,
+  including FAIL or could-not-run; later H health observations cannot replace D proof. Do not search
+  backward for a convenient pass. - Own the canonical lifecycle and protected-acceptance policy
+  update: compare witness applicability to D, and after an approved command amendment retain
+  unchanged applicable rows while requiring fresh proof for affected rows. Explicitly replace the
+  old full-table/descendant-source requirement only when authorized. Keep the shared resolver's
+  amendment limits as statusgen/40 defines them (chained links, each approved, and the
+  per-row column rules), exact approval, independent actor/admission and human gates. - Extend the existing
+  reader/caller fixture suites with a wrong delivery, forged binding, changed parent, changed A,
+  same-context later failure, unrelated H/E advance and agreement among real callers. Test
+  unchanged v1 behavior for the SAME explicit revision; do not confuse a later authorized subject
+  cutover with weakening its comparison algorithm.
+- Acceptance route, without editing the Verify table: add the I-2 mutants to Task item 6's planned
+  `statusgen/witnesswriter-mutations.json` (accept a wrong delivery as D, admit a forged or locally
+  created binding, ignore a changed parent, ignore a changed A, let an earlier pass win over a
+  same-context later failure or could-not-run, let an unrelated H or E advance replace D proof,
+  route one real caller around admitted D/A, and judge a v1 claim differently for the same explicit
+  revision), each caught by a named test in the statusgen module. Verify row 11 runs `muhar` over
+  that manifest: its baseline run executes those named tests on pristine source, and every mutant
+  must be caught, so this brief cannot reach `verified` with I-2 absent. Row 15's consumers check
+  corroborates the I-2 paths in `consumers:`.
+
+### Existing task obligations
 
 1. Implement the v2 writer (identity in cell and record, outcome fields, acceptance digests, `dirty_paths`, before-and-after input digests), the forge-verified `--cr` and `--bind-cr`, and `--hermetic` in statusgen, using only the library from statusgen/36 and the deskkit `Forge` adapters through a statusgen-side interface that tests replace with a fake forge.
 2. Add `LandedCommit` to `PullRequest` and fill it in the GitHub and GitLab adapters.

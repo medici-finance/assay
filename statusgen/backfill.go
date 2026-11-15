@@ -293,6 +293,10 @@ func runBackfill(args []string, stdout, stderr *os.File) int {
 		}
 	}
 	buf.Write(rawExisting)
+	if err := refuseHumanActBytes(buf.Bytes()); err != nil { // backfill-sink-write
+		fmt.Fprintf(stderr, "backfill: %v\n", err)
+		return backfillFailed
+	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		fmt.Fprintf(stderr, "backfill: %v\n", err)

@@ -265,7 +265,7 @@ func TestCachePackagesIsolate(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Non-vacuous: the packages the defect was found in are cache-linking test packages.
-	for _, want := range []string{"cmd/cellctl", "cmd/deskdispatch", "cmd/deskwt", "internal/cellprocess"} {
+	for _, want := range []string{"cmd/cellctl", "cmd/deskdispatch", "cmd/deskwt", "internal/cellrunner"} {
 		found := false
 		for _, e := range examined {
 			found = found || e == want

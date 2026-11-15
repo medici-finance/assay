@@ -182,5 +182,22 @@ RISK-VALUE: N/A — enumeration over the delivered diff (the design record, its 
 
 **VERIFY: PASS** — 7 of 7 rows pass.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -q -x -F '## Instance census' docs/streams/build-less-brittle/design-delivery-binding.md && grep -q -x -F '## Alternatives' docs/streams/build-less-brittle/design-delivery-binding.md && grep -q -x -F '## Recommended design' docs/streams/build-less-brittle/design-delivery-binding.md && grep -q -x -F '## Independent layers' docs/streams/build-less-brittle/design-delivery-binding.md && grep -q -x -F '## Decisions owed' docs/streams/build-less-brittle/design-delivery-binding.md && grep -q -x -F '## Implementation briefs' docs/streams/build-less-brittle/design-delivery-binding.md` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -c -E '^[0-9a-f]{40}$' docs/streams/build-less-brittle/design-delivery-binding.md` | pass exit=0 | sha256:68ca3fba3b7e | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `test "$(grep -E '^[0-9a-f]{40}$' docs/streams/build-less-brittle/design-delivery-binding.md \| git cat-file --batch-check \| grep -c ' commit ')" = "$(grep -c -E '^[0-9a-f]{40}$' docs/streams/build-less-brittle/design-delivery-binding.md)"` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test . -run 'TestDerivedDeliveryPinsRecordedDeliveryParent$' -count=1 -v \| grep -c -E '^--- PASS: TestDerivedDeliveryPinsRecordedDeliveryParent \('` | pass exit=0 | sha256:4355a46b19d3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && go test . -run 'TestDerivedDeliveryCouldNotCheck$' -count=1 -v \| grep -c -E '^--- PASS: TestDerivedDeliveryCouldNotCheck \('` | pass exit=0 | sha256:4355a46b19d3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --root . --lint` | fail exit=1 | sha256:408fc09fa58b | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `test "$(grep -c -F 'needs-decision' docs/streams/build-less-brittle/design-delivery-binding.md)" -ge 1 && ! grep -F 'needs-decision' docs/streams/build-less-brittle/design-delivery-binding.md \| grep -q -v -e 'https://github\.com/medici-finance/assay/issues/[0-9]' -e 'medici-finance/assay#[0-9]'` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5240 run=8aada0f5ff764796159d525d83fc77c5762b857e315b42977bbf6490d106a432 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/build-less-brittle/brief-14-bind-consumer-acceptance-obligations-to-immutable-delivery-provenance-before-post-merge-dispatch.md model=claude-opus-5-5 tier=strong
+
+Ruling basis (row 6):
+https://github.com/medici-finance/assay/issues/4823#issuecomment-6566786700
+At medici-finance/assay 2c6c21336a60 the desk ran statusgen --root . --lint --acceptance-forge as the verifier App in a clean detached tree and got LINT: PASS, rc=0 (output sha256 a073bacbbef9ccb2c8acb0fd665c288b0aa4b07fddefb8aa57233bb6c13227d4), while plain statusgen --root . --lint gave rc=1 with exactly two PROBLEMs, the acceptance-transition could-not-check lines for desk-tools/37 and desktools-v2/65. Row 6's output at this pin held only those two PROBLEM lines (desk-tools/37 and desktools-v2/65, each "protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"), and no PROBLEM line named build-less-brittle/14.
+
+**VERIFY: PASS** — 7 of 7 rows pass (row 6 passing per the ruling above; all other rows pass as written)
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table. The reviewer answers both design-fit questions in the verdict: (1) what single control stands between a wrong delivery identity and a false pass, and is that acceptable; (2) does any Verify row in a downstream brief prove a lower layer catches a wrong identity with the upper layer bypassed.

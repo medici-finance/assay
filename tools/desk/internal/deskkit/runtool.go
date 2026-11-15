@@ -224,16 +224,44 @@ func (r ToolRun) SaidAll() string {
 // Said is the FIRST line of SaidAll — the one-line form a single-line refusal message ends
 // on. The rest of the message is never lost: it is carried on the DeskError's Stderr field
 // and printed in full under DESK_TRACE.
+//
+// git is the exception: its message is EVERY line of SaidAll, joined onto one line with
+// " | ". git prints progress on stderr ahead of its diagnosis — `Preparing worktree
+// (checking out '<branch>')`, `branch '<b>' set up to track '<u>'.`, `Cloning into '<dir>'...`
+// — so its first line is often not the reason it failed. Cut to that line, a failed
+// `git worktree add` reached the operator as "git said: Preparing worktree (…)", without the
+// `fatal:` line that names the cause (#6115). A desk tool's own first line is still its
+// message (ToolMessage strips the preamble ahead of it), so other children keep the short form.
 func (r ToolRun) Said() string {
 	msg := r.SaidAll()
-	if i := strings.IndexByte(msg, '\n'); i >= 0 {
-		return strings.TrimSpace(msg[:i])
+	if !strings.Contains(msg, "\n") {
+		return msg
 	}
-	return msg
+	if isGitTool(r.Name) {
+		lines := strings.Split(msg, "\n")
+		kept := lines[:0]
+		for _, l := range lines {
+			if t := strings.TrimSpace(l); t != "" {
+				kept = append(kept, t)
+			}
+		}
+		return strings.Join(kept, " | ")
+	}
+	return strings.TrimSpace(msg[:strings.IndexByte(msg, '\n')])
+}
+
+// isGitTool reports whether a ToolCall name is git, by bare name or by path, with or
+// without the Windows .exe suffix.
+func isGitTool(name string) bool {
+	base := name
+	if i := strings.LastIndexAny(base, `/\`); i >= 0 {
+		base = base[i+1:]
+	}
+	return strings.TrimSuffix(strings.ToLower(base), ".exe") == "git"
 }
 
 // Fail builds the DeskError for a failed run: the caller's context sentence, then the
-// child's own first line, in the fixed shape
+// child's own first line (for git, every line — see Said), in the fixed shape
 //
 //	<context> — <tool> said: <first stderr line>
 //

@@ -39,6 +39,11 @@ type GraphEdge struct {
 	Ref    string
 	Type   string
 	Reason string
+	// Resolved/Why carry a state already derived by the combined milestone
+	// graph (milestonegraph.go) for a requires-milestones start gate; empty for
+	// every authored gates:/feathers: edge, which the evaluator resolves itself.
+	Resolved EligibilityState
+	Why      string
 }
 
 // VerifyRowMeta is the OPTIONAL per-Verify-row identity record carried in a

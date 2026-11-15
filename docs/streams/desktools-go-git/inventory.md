@@ -364,3 +364,44 @@ reported separately so future main growth cannot invalidate this brief's pinned
 delivery proof. No live ratchet, counter, CI assertion, lifecycle cell or security-posture gate
 is changed. The historical Verify FAIL is preserved;
 an independent verifier and the human gate still owe their own acts.
+
+## Brief 08 — the counter becomes a ratchet; pinned at 205
+
+`sh tools/desk/scripts/count-git-exec.sh` now FAILS (exit 1) when the count grows above
+the pin in `tools/desk/scripts/git-exec-pin.txt`, and fails closed (exit 2) on a missing
+or garbled pin. The pin is **205** (51 direct + 154 seam), measured on main
+`c2ac8845a9ea`.
+
+Main read **206** (52 direct) under the previous script. The one-site difference is a
+counter defect, not a migration: grep prints paths relative to `tools/desk`, so the
+unanchored `/internal/gitexec/` exclusion never matched and the audited home's own
+spawn was counted. Both exclusions are now anchored (`^internal/gitexec/`). The audited
+home and the deskmerge trial-merge fence it holds are exempt, as before; no nested
+package of the same name is.
+
+**Re-measuring the pin.** `tools/desk/internal/gitexec/ratchet_test.go` runs in the
+required build-test job. It checks the tree against the pin, then resolves the merge
+base of `HEAD` and `refs/remotes/origin/main`, extracts that commit's `cmd` and
+`internal` Go files, counts them with the head's script (`--count`) and fails if the
+head count is higher. To re-measure by hand on any revision:
+
+```sh
+cd tools/desk && sh scripts/count-git-exec.sh --count
+```
+
+When a change removes sites, the script prints a NOTE asking for the pin to be lowered
+to the new count in the same change. Raising the pin does not admit a site: the base
+re-measure still fails on growth.
+
+**Families still open** after briefs 03-07:
+
+- **21 `worktree`** — gap, unchanged: go-git has no linked-worktree support. deskwt,
+  deskmerge's scratch worktrees, deskdispatch, cellctl's worktree listing and
+  verifyloop still spawn git for it. Named in [FOLLOWON.md](FOLLOWON.md) part 1.
+- **22 `merge`** — the exception, unchanged: deskmerge's three-way trial merge, fenced
+  behind `internal/gitexec`'s audited allowlist (brief 07), and the only exemption the
+  ratchet carries.
+- The other 23 families are migrated for the frozen inventory's seam sites. Most of the
+  205 remaining sites are desk tools and features written after the freeze, which no
+  migration brief owned; [FOLLOWON.md](FOLLOWON.md) part 2 lists them by tool, and part
+  3 lists the counted lines that launch no git process.

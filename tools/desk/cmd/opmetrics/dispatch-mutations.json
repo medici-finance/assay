@@ -1,0 +1,179 @@
+{
+  "test": "go test ./cmd/opmetrics -count=1 -timeout=120s",
+  "control": {
+    "name": "rename the rung-3 key the ladder reads",
+    "file": "cmd/opmetrics/emit.go",
+    "old": "`json:\"loop_initiated\"`",
+    "new": "`json:\"loop_started\"`"
+  },
+  "mutations": [
+    {
+      "name": "rename the rung-4 key the ladder reads (planted second instance)",
+      "file": "cmd/opmetrics/emit.go",
+      "old": "`json:\"noop_dispatches\"`",
+      "new": "`json:\"noop_runs\"`"
+    },
+    {
+      "name": "fold unattributed dispatches into loop",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "s.tally.Unattributed++",
+      "new": "s.tally.Loop++"
+    },
+    {
+      "name": "drop the origin-unrecorded refusal",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if d.Total > 0 && d.Loop+d.Operator == 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "dispatch block reports counts when transcripts are blind",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if blind != ReasonNone {\n\t\treturn DispatchBlock",
+      "new": "if false {\n\t\treturn DispatchBlock"
+    },
+    {
+      "name": "token block reports counts when transcripts are blind",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if blind != ReasonNone {\n\t\t// Blind means every count is null",
+      "new": "if false {\n\t\t// Blind means every count is null"
+    },
+    {
+      "name": "subagent file keyed on the parent session id",
+      "file": "cmd/opmetrics/transcripts.go",
+      "old": "fsr.SessionKey = r.SessionID + \"#agent-\" + r.AgentID",
+      "new": "fsr.SessionKey = r.SessionID"
+    },
+    {
+      "name": "subagent file contributes a session span",
+      "file": "cmd/opmetrics/transcripts.go",
+      "old": "!span.First.IsZero() && !fsr.AgentFile",
+      "new": "!span.First.IsZero()"
+    },
+    {
+      "name": "streamed copies of one message counted twice",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "} else if n > acc.usage[m.ID] {\n\t\t\tacc.usage[m.ID] = n",
+      "new": "} else {\n\t\t\tacc.usage[m.ID] += n"
+    },
+    {
+      "name": "origin on a meta prompt record ignored",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "case r.TurnOrigin != \"\" || kind != \"\":",
+      "new": "case (r.IsMeta == nil || !*r.IsMeta) && (r.TurnOrigin != \"\" || kind != \"\"):"
+    },
+    {
+      "name": "a tool result resets the turn origin",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "\t\tif p.Type == \"tool_result\" {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true",
+      "new": "\t\tif p.Type == \"tool_result\" && false {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true"
+    },
+    {
+      "name": "sidechain records counted as main-session dispatches",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if sidechain {\n\t\tif r.AgentID",
+      "new": "if sidechain && false {\n\t\tif r.AgentID"
+    },
+    {
+      "name": "a run that started the day before counted",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if !s.onDay(acc.first) {",
+      "new": "if false {"
+    },
+    {
+      "name": "a dispatch on another day counted",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if !s.onDay(ts) {\n\t\t\treturn\n\t\t}",
+      "new": "if false {\n\t\t\treturn\n\t\t}"
+    },
+    {
+      "name": "a reportless run not counted unread",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "if !r.HasReport {",
+      "new": "if false {"
+    },
+    {
+      "name": "the handback report ignored",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "report := acc.handback",
+      "new": "report := \"\""
+    },
+    {
+      "name": "the older Task tool name not a dispatch",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "name == \"Agent\" || name == \"Task\"",
+      "new": "name == \"Agent\""
+    },
+    {
+      "name": "merged count dropped from the token block",
+      "file": "cmd/opmetrics/main.go",
+      "old": "mergedPRs = iptr(lr.MergedOnDate)",
+      "new": "mergedPRs = nil"
+    },
+    {
+      "name": "no-op phrase matched anywhere, not at the opening",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "regexp.MustCompile(`(?i)^` +",
+      "new": "regexp.MustCompile(`(?i)` +"
+    },
+    {
+      "name": "no-op opening subject dropped",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "`(?:(?:this|the) (?:dispatch|task|run|work|change|fix|item|issue|request)(?: (?:is|was))? )?` +",
+      "new": "`` +"
+    },
+    {
+      "name": "a leading heading line not skipped",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "l == \"\" || reportHeadingLine.MatchString(l) ||",
+      "new": "l == \"\" ||"
+    },
+    {
+      "name": "a leading label line not skipped",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "|| reportLabelLine.MatchString(l) ||",
+      "new": "||"
+    },
+    {
+      "name": "a leading rule line not skipped",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "|| reportRuleLine.MatchString(l) {",
+      "new": "{"
+    },
+    {
+      "name": "a label on the opening line not stripped",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "l = reportLeadLabel.ReplaceAllString(l, \"\")",
+      "new": "_ = reportLeadLabel"
+    },
+    {
+      "name": "list and emphasis markers on the opening line not stripped",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "return strings.TrimLeft(l, \"*_>-+` \\t\")",
+      "new": "return l"
+    },
+    {
+      "name": "a label line may end a sentence",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "reportLabelLine   = regexp.MustCompile(`^(?:\\*\\*|__|\\*|_)[^*_.;!?\\n]{1,40}",
+      "new": "reportLabelLine   = regexp.MustCompile(`^(?:\\*\\*|__|\\*|_)[^*_\\n]{1,40}"
+    },
+    {
+      "name": "a lead label may end a sentence",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "reportLeadLabel = regexp.MustCompile(`^(?:\\*\\*|__)[^*_.;!?\\n]{1,40}",
+      "new": "reportLeadLabel = regexp.MustCompile(`^(?:\\*\\*|__)[^*_\\n]{1,40}"
+    },
+    {
+      "name": "an origin-less meta record resets the turn origin",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "case r.IsMeta == nil || !*r.IsMeta:",
+      "new": "default:"
+    },
+    {
+      "name": "a blind spend block keeps the gh merged count",
+      "file": "cmd/opmetrics/dispatch.go",
+      "old": "b := TokenEfficiencyBlock{NoopClassifier: NoopClassifierVersion}",
+      "new": "b := TokenEfficiencyBlock{NoopClassifier: NoopClassifierVersion, MergedPRs: merged}"
+    }
+  ]
+}

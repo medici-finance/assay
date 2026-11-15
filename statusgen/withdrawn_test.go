@@ -312,12 +312,12 @@ func TestUnknownBriefSchemaRefusedLoudly(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	p := writeTemp(t, dir, "brief-01-x.md", schemaFM("brief-v4", "01", 0, "", ""))
+	p := writeTemp(t, dir, "brief-01-x.md", schemaFM("brief-v5", "01", 0, "", ""))
 	bf, ok, err := parseBriefFile(p)
 	if bf != nil || ok || err == nil {
 		t.Fatalf("an unknown brief schema must be refused, not exempted; got (%v,%v,%v)", bf, ok, err)
 	}
-	for _, want := range []string{"needs schema brief-v4", "brief-v1, brief-v2, brief-v3", "§Schema versions", "pins statusgen v9.9.9"} {
+	for _, want := range []string{"needs schema brief-v5", "brief-v1, brief-v2, brief-v3, brief-v4", "§Schema versions", "pins statusgen v9.9.9"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal missing %q: %v", want, err)
 		}

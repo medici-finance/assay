@@ -379,6 +379,81 @@ enumeration over the delivery commits 92315c7fa and 85fe81678 found these values
 
 **VERIFY: PASS** — 9 of 9 rows pass (rows 1–6 bracketed container witness, rows 7–9 host witness); gate model; no generated board, runtime deployment or broader #2703 cohort is certified.
 
+Batch re-witness (medici-finance/assay#2026), 2026-11-02, on merged main source
+2c6c21336a606e64df057294f21177f16db7b9f8 (non-implementer verifier, claude-opus-5-5,
+strong tier, attestation run f8e20ec9687a). Every acceptance row below is a statusgen
+verifyrun witness; no Runner cell is hand-written, and supplemental observations are
+recorded in prose with no acceptance credit.
+
+Rows 1–6 (check:ci) ran inside the admission bracket in a network-off container on the
+release-pinned verify-runner v1.0.69 image (linux/amd64, default seccomp profile; digest
+matches the release's verify-runner-image.txt, whose checksum matches checksums.txt).
+Rows 7–9 need Git history and ran on the host through a separate, disjoint row selection.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortSource$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortSource' "$o")` | pass exit=0 sandbox=container-netns | sha256:442c42b9dce1 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortFlow$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortFlow' "$o")` | pass exit=0 sandbox=container-netns | sha256:947eae0d3e46 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortPlant$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortPlant' "$o")` | pass exit=0 sandbox=container-netns | sha256:e34c3841b4a8 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortFloors$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortFloors' "$o")` | pass exit=0 sandbox=container-netns | sha256:f9b3b19e3ba2 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortFull$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortFull' "$o")` | pass exit=0 sandbox=container-netns | sha256:ae22cc45ea1b | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `(cd statusgen && for t in TestRolloutSourceAdmission TestCISliceSourceAdmission TestOwedTaskSourceAdmission TestEvidenceAdmission TestAdmissionCacheAndDelivery TestPartialBackfillSkips TestPartialRegenDriftAgrees TestApplyReconcileWrites; do o=$(mktemp); go test . -run "^$t" -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- "--- PASS: $t" "$o"; r=$?; if test "$r" -ne 0; then exit "$r"; fi; done)` | pass exit=0 sandbox=container-netns | sha256:ae961f6d7d75 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c
+Container-Image: sha256:1fa7c335e14f97410f83f6097187c9b4eac1863c016f6b59a1c87fd311a0d653
+Verification-Attestation: medici-finance/assay#5242 run=f8e20ec9687ac6bddf16d8639b3dd3848f64c4c6d91e07323ec71edc6cd50b2f source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/derived-board/brief-11-preserve-incomplete-delivery-in-the-audited-board-cohort.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=f8e20ec9687ac6bddf16d8639b3dd3848f64c4c6d91e07323ec71edc6cd50b2f source=2c6c21336a606e64df057294f21177f16db7b9f8 tree=sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c witness=sha256:96e96c5b67c6ff3e5a3e8fa1bb2aa8f5d1e28a895625704d99f70ca337d6de10 opened=2026-11-02T00:22:21Z closed=2026-11-02T00:26:59Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 7 | `o=$(mktemp); git diff --name-only 44829891e8f74b1520b64f4180910d96e17be96a^1 44829891e8f74b1520b64f4180910d96e17be96a > "$o" && python3 -c 'import pathlib,sys; actual=set(pathlib.Path(sys.argv[1]).read_text().splitlines()); expected={"changelog/statusgen-26-v3.md","docs/streams/statusgen/README.md","docs/telemetry.md","statusgen/brieffile.go","statusgen/dispatchqueue.go","statusgen/forgeread.go","statusgen/load.go","statusgen/main.go","statusgen/parse.go","statusgen/perfrecord.go","statusgen/perfrecord_test.go"}; assert actual==expected, actual; print("PR 3759: exact eleven delivery paths confirmed")' "$o"` | pass exit=0 | sha256:ea0361a76ccf | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --consumers --brief derived-board/11 --delivery "$DELIVERY" --base 5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7` | pass exit=0 | sha256:cad87f2a1f9c | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --lint` | fail exit=1 | sha256:f4ed1f307883 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5242 run=f8e20ec9687ac6bddf16d8639b3dd3848f64c4c6d91e07323ec71edc6cd50b2f source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/derived-board/brief-11-preserve-incomplete-delivery-in-the-audited-board-cohort.md model=claude-opus-5-5 tier=strong
+
+Key output lines. Row 7 printed `PR 3759: exact eleven delivery paths confirmed`. Row 8 ran
+with DELIVERY set to the recorded delivery commit 92315c7fa0f0b1e9a5e66a3c6dfdabc8a1d0cde7
+and printed `summary: 4 corroborated, 0 disproved, 13 unchecked, 0 brief(s) claiming nothing`;
+the 13 unchecked entries remain review judgments, not passes. The bracket digest for the
+container block reports verdict=match with one Tree-Digest, Container-Image and attestation
+line. `statusgen verifyrun --check` reports 8 pass, 1 fail, 0 could-not-run of 9 rows.
+
+Row 9 exited 1 with `LINT: FAIL 2 problem(s)`. Both problems belong to other briefs and
+neither is about this brief or its delivery:
+`PROBLEM: desk-tools/37: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required`
+and the same line for desktools-v2/65. Each is the offline lint declining to read a human
+acceptance transition on the forge; the admitted row command does not pass
+--acceptance-forge, and this run did not change the command to make the row pass. No
+PROBLEM names derived-board/11, so the brief's own obligation (no new PROBLEM) was not
+observed to fail; the whole-repository LINT PASS could not be established on this host at
+this commit. The same two problems appear in at least one other run of this batch at the
+same pinned commit.
+
+Supplemental observations at the pinned commit (no acceptance credit): statusgen/26 still
+carries the single assay#3759 partial delivery entry; its version has since moved to 4, and
+its remaining work (TestInvocationSnapshotReuseParity, now in statusgen/perfsnapshot_test.go)
+was delivered later by a separate change, which does not alter this brief's #3759 partial
+disposition.
+
+Discarded attempts: none. Each witness ran once. Before the bracket opened, one probe read
+the runner image's Go and statusgen versions and module cache without mounting the home.
+After the host witness, rows 7, 8 and 9 were re-run by hand in the home only to read their
+output lines; they matched their witnesses and carry no credit.
+
+Risk-bearing values. The fail-safe trigger does not fire: the risk metadata is present with
+every field no, the brief is not irreversible, and no risk-classed path changed. The
+enumeration over the delivery commits 92315c7fa and 85fe81678 found these values:
+
+- RISK-VALUE: DERIVED — covers = partial @ docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md:16 — PR 3759's eleven files, confirmed by row 7, deliver only sub-split (a); at delivery the parity test and workloads were absent, so partial is the true scope of that PR and full would be a false completion.
+- RISK-VALUE: DERIVED — version = 3 at delivery (now 4 @ the same brief, line 14, after later maintenance) — one increment from 2 for the added delivery metadata, as the brief-v2 metadata contract requires.
+- Test-only bounds (members want 10 @ statusgen/boardcohort_test.go:136, collection cutoff 3803 @ line 371, applied want 9 @ line 442) match the ten-row fixed cohort, the recorded collection and its nine full members; they are reversible test constants and rank last.
+
+Ruling basis (row 9):
+https://github.com/medici-finance/assay/issues/4823#issuecomment-6566786700
+The desk ran `statusgen --root . --lint --acceptance-forge` once in a clean detached tree of medici-finance/assay at the pinned commit 2c6c21336a60, as the verifier App, and it gave `LINT: PASS`, rc=0 (output sha256 a073bacbbef9ccb2c8acb0fd665c288b0aa4b07fddefb8aa57233bb6c13227d4).
+Row 9's output, read from a hand re-run of the same command in this home just after its witness (the witness keeps only an output digest), held only the two PROBLEM lines named above, for desk-tools/37 and desktools-v2/65, and no PROBLEM named this brief.
+
+**VERIFY: PASS** — 9 of 9 rows pass (row 9 passing per the ruling above; all other rows pass as written)
+
 ## Review
 
 Gate model: all four risks are no for a reversible public source declaration and hermetic controls; no live operation, sensitive data, regulatory or irreversible change is authorized. Human merge remains required. Strong execution follows the cross-artifact flow and recurring class. The fixed cohort and per-member semantic dispositions require full independent review. This is the required bounded design amendment, not an implementation retry or a class-stop waiver.

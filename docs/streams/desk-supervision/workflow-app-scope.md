@@ -2,9 +2,10 @@
 
 Status: the scope as ruled for desk-supervision/10, not yet confirmed against the live
 installation (that is brief 10's Verify rows 5 and 6, which are still owed). Design record:
-[`DR-workflow-app-landing`](../decisions/DR-workflow-app-landing.md), still `proposed` until the
-ruling is recorded in it. Ruling: #1245, option 2 in brief 10 (provision, then confirm; the
-ratified relay letters it "option A"), with a human merging the workflow-only PR.
+[`DR-workflow-app-landing`](../decisions/DR-workflow-app-landing.md), accepted 2026-11-02 (its
+`ruling:` is on #1245). Brief 10's ruling: #1245, option 2 in brief 10 (provision, then confirm;
+the ratified relay letters it "option A"), with a human merging the workflow-only PR for the
+first cutover.
 
 The **workflow App** is the one identity in the fleet that may write `.github/workflows/**`. It is
 a **capability that stands beside the desk-role Apps**, not one of the desk roles and not a tier:

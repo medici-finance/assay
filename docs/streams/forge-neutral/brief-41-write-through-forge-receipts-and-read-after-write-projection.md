@@ -2,7 +2,7 @@
 brief: assay:assay:forge-neutral:41
 title: "Write-through forge receipts and read-after-write projection"
 why: "Waiting for a webhook after our own forge write makes follow-on reads stale; retrying after a lost reply can duplicate issues or comments. Projecting confirmed write receipts into the same mirror gives immediate visibility while preserving unknown outcomes for reconciliation."
-wave: 8
+wave: 10
 depends: ["forge-neutral/37", "forge-neutral/40", "graph-execution/04", "graph-execution/19"]
 unblocks: ["forge-neutral/45"]
 effort: L
@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 4
+version: 5
 id: 1fc36b0b-e3d0-4497-8863-0a039180a0f3
 authored: 2026-10-14 by forge-service authoring
 sources:

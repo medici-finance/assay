@@ -421,6 +421,47 @@ The substance is the existing by-hand Evidence recorded 2026-10-19 at merged mai
 
 Verification-Attestation: medici-finance/assay#3621 run=a95a904817dda97bf3571c8504cdb7e8c01b4e2c70786f78f4dd53438340b027 source=b73d90d774fca8aec8974ef410da63ebcb10eece brief=docs/streams/desk-tools/brief-15-deskdispatch-dryrun-worktree.md model=claude-opus-5-5 tier=strong
 
+### Non-implementer verifier re-witness: 2026-11-02 (UTC), assay-verifier-app[bot] (claude-opus-5-5 verifier, verify-desk dispatch), merged main cff4646b548853c3dcbf45de1585f7ade809d300
+
+This batch re-witness ran the whole Verify table fresh at merged main cff4646b548853c3dcbf45de1585f7ade809d300, admitted by the dispatcher attestation medici-finance/assay#5290 (the admission check exited 0 before the bracket opened and again at its close). Rows 1-6 ran in the closed admission bracket directly below: `statusgen verifyrun --sandbox=container-netns --rows 1,2,3,4,5,6` inside a docker container started with `--network none` on the OrbStack engine, image ghcr.io/medici-finance/verify-runner v1.0.66 pinned by digest sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4 (native arm64, statusgen v1.0.66, go1.27.3), run as uid 501 with the home and its git common dir mounted read-only. `statusgen verifyrun --bracket-digest` reports verdict=match for it. Row 7 ran host-only with `statusgen verifyrun --rows 7`, as the desk decided; the darwin host has no `unshare --net`, so its witness (the second table) records could-not-run.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDryRunWorktreeRendersVerifiedPath$' -count=1` | pass exit=0 sandbox=container-netns | sha256:2cf40815593e | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDryRunWorktreeRefusesUnverifiablePaths$' -count=1` | pass exit=0 sandbox=container-netns | sha256:1a021af87a91 | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestWorktreeFlagRefusedOnRealDispatch$' -count=1` | pass exit=0 sandbox=container-netns | sha256:3833c45643d6 | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/deskdispatch/ -count=1` | pass exit=0 sandbox=container-netns | sha256:56000167365a | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `gofmt -l tools/desk/cmd/deskdispatch > /tmp/dd-fmt.out; test ! -s /tmp/dd-fmt.out` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:340768b94898abce62e0ac274ef39e960096d43b512a4da6e19265bb6f04fa96
+Container-Image: sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4
+Verification-Attestation: medici-finance/assay#5290 run=60a9dec154595dec935bdd10b8ec4c96d966c3b6f304d15b38fdd66bd2868df8 source=cff4646b548853c3dcbf45de1585f7ade809d300 brief=docs/streams/desk-tools/brief-15-deskdispatch-dryrun-worktree.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=60a9dec154595dec935bdd10b8ec4c96d966c3b6f304d15b38fdd66bd2868df8 source=cff4646b548853c3dcbf45de1585f7ade809d300 tree=sha256:340768b94898abce62e0ac274ef39e960096d43b512a4da6e19265bb6f04fa96 witness=sha256:dcd6bd73e545fabee34998eeb7d6845496ec1fc19dbedb647006343523a5e5f4 opened=2026-11-02T02:48:02Z closed=2026-11-02T02:49:31Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 7 | `cd statusgen && go run . --root .. --lint; echo $?` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ cff4646b5488 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5290 run=60a9dec154595dec935bdd10b8ec4c96d966c3b6f304d15b38fdd66bd2868df8 source=cff4646b548853c3dcbf45de1585f7ade809d300 brief=docs/streams/desk-tools/brief-15-deskdispatch-dryrun-worktree.md model=claude-opus-5-5 tier=strong
+
+Row 7 lint output, captured by hand (supplemental, no acceptance credit). The lint part of row 7, `cd statusgen && go run . --root .. --lint`, was run once more on the darwin host at the same source, with its output kept in verifier scratch. The lint's own exit code was 1 (`go run` reported `exit status 1`). Its failure lines, verbatim:
+
+```
+PROBLEM: desk-tools/37: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required
+PROBLEM: desktools-v2/65: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required
+LINT: FAIL 2 problem(s)
+```
+
+The rest of the output was 2072 NOTICE lines, four informational "could-not-check stale FAIL" lines about other briefs (desk-containers/10, desk-supervision/04, harness-portability/07, statusgen/05), configuration echo lines and two statusgen summary lines. None of them is a PROBLEM. desk-tools/15 appears only inside five NOTICE ordering-gate lines that list ranges of other briefs' prose. At the time of this run, the home carried only the row-7 witness table above as an uncommitted change.
+
+Ruling basis (row 7):
+
+https://github.com/medici-finance/assay/issues/4823#issuecomment-6566786700
+
+For medici-finance/assay, the desk established that at 2c6c21336a60 `statusgen --root . --lint --acceptance-forge` gave LINT: PASS, rc=0 (output sha256 a073bacbbef9ccb2c8acb0fd665c288b0aa4b07fddefb8aa57233bb6c13227d4), while plain `statusgen --root . --lint` gave rc=1 with exactly two PROBLEMs, for desk-tools/37 and desktools-v2/65; the change from 2c6c21336a60 to cff4646b5488 touches only Evidence rows under docs/streams and STATUS.md. Row 7's lint output at cff4646b5488 held only those two PROBLEM lines, and neither names desk-tools/15.
+
+**VERIFY: PASS** — 7 of 7 rows pass (row 7 passing per the ruling above; all other rows pass as written)
+
+
 
 ## Review
 

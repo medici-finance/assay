@@ -7,6 +7,12 @@
 //	deskfleet provision --avatars-only --avatars-dir <dir> --prefix <name> [--out-dir <dir>] [--dry-run]
 //	deskfleet labels    --forge gitlab --project <path> --token-file <file> [--dry-run]
 //	deskfleet labels    --forge github --repo <owner/name> --token-file <file> [--dry-run]
+//	deskfleet push-token rotate --project <path-or-id> --rotator-token-file <file> --token-name <name> [--days N] [--min-days N] [--create] [--dry-run]
+//	deskfleet push-token check  --project <path-or-id> --reader-token-file <file> --token-name <name> [--min-days N]
+//
+// `push-token` (pushrotate.go) rotates the board-push credential STATUSGEN_PUSH_TOKEN in this
+// one process — the new value is never printed, put in argv, the environment or a file — and
+// proves the new token live; `check` is its read-only monitor under a reader credential.
 //
 // `provision` creates the seven per-role service accounts (tables.go carries the script's
 // role table unchanged), their group memberships and — for an account created by THIS run —
@@ -43,7 +49,7 @@
 // and --version answer before any environment, file or network read.
 //
 // Exit: 0 ok · 1 a step failed (the output names each) · 2 usage · 5 refused (a precondition,
-// or a token file that is definitely not owner-only).
+// or a token file that is definitely not owner-only) · 6 could-not-check (push-token only).
 package main
 
 import (
@@ -89,11 +95,14 @@ const (
 	exitFailed  = 1
 	exitUsage   = 2
 	exitRefused = deskkit.ExitRefused
+	// exitUnverifiable: a step that could not be verified (push-token: a read that failed, or a
+	// containment revoke whose effect could not be confirmed).
+	exitUnverifiable = deskkit.ExitUnverifiable
 )
 
 func main() {
 	selected := perfrec.ResolveContext(perfrec.ContextInput{})
-	os.Exit(deskkit.PerfRunMeasured("deskfleet", []string{"provision", "labels"}, os.Args[1:], func(a []string, measurement *perfrec.Session) (int, perfrec.Context) {
+	os.Exit(deskkit.PerfRunMeasured("deskfleet", []string{"provision", "labels", "push-token"}, os.Args[1:], func(a []string, measurement *perfrec.Session) (int, perfrec.Context) {
 		sink := func(c perfrec.Context) {
 			selected = c
 			if measurement != nil {

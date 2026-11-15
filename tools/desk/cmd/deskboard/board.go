@@ -71,11 +71,11 @@ const securityFailMarker = "Security-Review: fail"
 // between what the desk can see and what it may annotate.
 const verifyGateLabel = deskkit.VerifyGateLabel
 
-// prListLimit caps the open-PR read (the GraphQL `pullRequests(first: …)` page) explicitly.
-// A >prListLimit-PR board would truncate and the desk would sweep an incomplete queue with no
-// signal (#80, same silent-truncation class as #79). When a repo returns exactly this
-// many open PRs, fetchOpenPRs logs a possible-truncation WARN so widening is never left
-// to guesswork. It is also the ceiling of a single GraphQL page (`first:` maxes at 100).
+// prListLimit caps the open-PR read explicitly. A >prListLimit-PR board would truncate and the
+// desk would sweep an incomplete queue with no signal (#80, same silent-truncation class as
+// #79). The read is a cursor walk of small pages up to this ceiling (#3096); when the forge
+// still reports more open PRs at the ceiling, fetchOpenPRs logs a truncation WARN so widening
+// is never left to guesswork. It must match the deskkit open-change read's own ceiling.
 const prListLimit = 100
 
 // ---------------------------------------------------------------------------
@@ -165,6 +165,7 @@ type prBase struct {
 	HeadRefName       string  `json:"headRefName"`
 	BaseRefName       string  `json:"baseRefName"` // branch filters in the zero-CI probe (#1652) match against this
 	MergeStateStatus  string  `json:"mergeStateStatus"`
+	Mergeable         string  `json:"mergeable,omitempty"`
 	StatusCheckRollup []check `json:"statusCheckRollup"`
 }
 
@@ -193,8 +194,9 @@ type review struct {
 // ever returns a silent empty result on error.
 // ---------------------------------------------------------------------------
 
-// fetchOpenPRs returns a repo's open PRs and whether that population may be TRUNCATED —
-// the read came back exactly at the cap, so the forge may be holding more.
+// fetchOpenPRs returns a repo's open PRs and whether that population is TRUNCATED — the read
+// stopped at the cap while the forge reports more (a backend that cannot tell reports a read
+// that came back exactly at the cap).
 //
 // #400 T2: truncation used to be a stderr WARNING and nothing else. Every count the board
 // prints rides on this population (mergeNowCount, unreviewedCount, the row set itself), and
@@ -251,6 +253,7 @@ func prBaseFromChange(c deskkit.OpenChange) prBase {
 		HeadRefName:       c.HeadRef,
 		BaseRefName:       c.BaseRef,
 		MergeStateStatus:  c.MergeStateStatus,
+		Mergeable:         c.Mergeable,
 	}
 	pb.Author.Login = c.Author.Login
 	for _, l := range c.Labels {
@@ -764,20 +767,24 @@ type reviewState struct {
 	// surfaces the row as EXTERNAL-PREREQ-REVIEW and leaves the authoritative grant to the
 	// ready gate (deskpost/ready.go), so the two surfaces agree on what the row IS.
 	externalPrereqDeclared bool
-	// bodyEditReverified is true when a row reduceReviews marked suspectNoOp was LIFTED by
+	// bodyEditReverified is true when a row reduceReviews marked blocking was LIFTED by
 	// applyBodyEditReverification: every standing CR at head declared the documented body-edit
 	// re-verification class and a later correctness APPROVE documents and verifies it against
 	// the live PR body (deskkit.EvaluateBodyEditReverification — the SAME decision deskflip's
-	// reviewer-approved gate runs). The row then reads approved at head and flows through the
-	// ordinary CI / mergeability / security arms; this flag only annotates its note.
+	// reviewer-approved gate runs), or, for a `Security-Review: fail`, the security lane's
+	// marked clearance holds (deskkit.EvaluateSecurityBodyClearance, #5092). The row then
+	// reads approved at head and flows through the ordinary CI / mergeability / security
+	// arms; this flag only annotates its note.
 	bodyEditReverified bool
 }
 
 // applyBodyEditReverification applies the ruled documented body-edit re-verification class
-// to a reduction that suppressed a same-head APPROVE (suspectNoOp). It is a no-op on every
-// other shape, and on a declared external-prerequisite row (that class has its own surface).
+// to a reduction that reads BLOCKING at head — most often one that suppressed a same-head
+// APPROVE (suspectNoOp). It is a no-op on every other shape, and on a declared
+// external-prerequisite row (that class has its own surface).
 //
-// It mirrors deskflip's gate exactly rather than approximating it: EVERY reviewer CR at head
+// It mirrors deskflip's gate rather than approximating it, with the one difference stated
+// below for the security lane: EVERY reviewer CR at head
 // must be cleared by the shared decision (one undeclared or failing CR keeps the row
 // suppressed), the candidate APPROVEs are the reviewer's, at head, correctness lane only,
 // the digest is checked against the body THIS sweep read, and "edited after the CR" is
@@ -785,20 +792,52 @@ type reviewState struct {
 // edited — keeps the row suppressed). When it lifts, the effective
 // verdict becomes the governing same-head APPROVE — the ruling's "the same-head APPROVE
 // stands" — and CI green stays the board's own CI verdict, never the citation's.
+//
+// A `Security-Review: fail` CR at head is routed to the SECURITY lane's decision instead
+// (deskkit.EvaluateSecurityBodyClearance, the one deskflip's securityBodyCRCleared runs,
+// #5092): it is cleared only by the reviewer's later security-marked reviews, never by a
+// correctness APPROVE, and a correctness CR is never cleared by a security pass. Because a
+// marked security fail can be the LAST decisive review at head — APPROVE, then the fail, then
+// the COMMENTED pass, which reduceReviews never sees as decisive — the lift does not require
+// suspectNoOp; it requires instead, as rule 1 of the gate does, that the reviewer's last
+// correctness-lane APPROVED/CHANGES_REQUESTED is an APPROVED at head.
+//
+// DIFFERENCE FROM THE GATE, security lane. deskflip's securityBodyCRCleared also requires the
+// security-verdict reduction (securityVerdictStanding) to read a pass at head; the board has
+// no such check. The two agree on outcome, because when the shared decision clears, no fail
+// follows the clearing pass, so that reduction reads a pass at head. But it leaves the reviewer filter
+// on the `after` list below as the board's ONLY actor control: the shared decision takes no
+// actor, so another account's pass must never reach it (pinned by TestSecBodyBoardStaysBlocked,
+// "pass from another account"). Each review reaches the decision with its review state, so
+// the board admits a pass only in the states deskkit.SecurityPassStateStands admits, the same
+// two `deskpost ready`'s own list holds. A fail or pass whose body also carries a correctness
+// verdict line refuses in the shared decision, so such a row stays blocking.
 func applyBodyEditReverification(st reviewState, reviews []review, head, liveBody, bodyEditedAt string) reviewState {
-	if !st.atHead || !st.blocking || !st.suspectNoOp || st.externalPrereqDeclared {
+	if !st.atHead || !st.blocking || st.externalPrereqDeclared {
 		return st
 	}
-	var crs []review
+	var crs []int
 	var approves []deskkit.BodyEditApprove
 	var lastApprove string
-	for _, r := range reviews {
-		if !isReviewerBot(r.User.Login) || !sameHead(r.CommitID, head) {
+	lastCorrectness := ""
+	for i, r := range reviews {
+		if !isReviewerBot(r.User.Login) {
+			continue
+		}
+		correctnessDecisive := classifySecurityBody(r.Body) == secNone &&
+			(r.State == "APPROVED" || r.State == "CHANGES_REQUESTED")
+		if correctnessDecisive {
+			lastCorrectness = ""
+			if sameHead(r.CommitID, head) {
+				lastCorrectness = r.State
+			}
+		}
+		if !sameHead(r.CommitID, head) {
 			continue
 		}
 		switch r.State {
 		case "CHANGES_REQUESTED":
-			crs = append(crs, r)
+			crs = append(crs, i)
 		case "APPROVED":
 			if classifySecurityBody(r.Body) != secNone {
 				continue
@@ -807,14 +846,30 @@ func applyBodyEditReverification(st reviewState, reviews []review, head, liveBod
 			lastApprove = r.SubmittedAt
 		}
 	}
-	if len(crs) == 0 || len(approves) == 0 {
+	if len(crs) == 0 || lastCorrectness != "APPROVED" {
 		return st
 	}
-	for _, cr := range crs {
-		dec := deskkit.EvaluateBodyEditReverification(deskkit.BodyEditInput{
-			CRBody: cr.Body, CRSubmittedAt: cr.SubmittedAt, Head: head, Approves: approves, LiveBody: liveBody,
-			BodyEditedAt: bodyEditedAt,
-		})
+	for _, i := range crs {
+		cr := reviews[i]
+		var dec deskkit.BodyEditDecision
+		if hasSecurityFailLine(cr.Body) {
+			var after []deskkit.SecurityVerdictReview
+			for _, r := range reviews[i+1:] {
+				if isReviewerBot(r.User.Login) && classifySecurityBody(r.Body) != secNone {
+					after = append(after, deskkit.SecurityVerdictReview{Body: r.Body, CommitID: r.CommitID, State: r.State,
+						SubmittedAt: r.SubmittedAt})
+				}
+			}
+			dec = deskkit.EvaluateSecurityBodyClearance(deskkit.SecurityBodyInput{
+				FailBody: cr.Body, FailSubmittedAt: cr.SubmittedAt, Head: head, Later: after, LiveBody: liveBody,
+				BodyEditedAt: bodyEditedAt,
+			})
+		} else {
+			dec = deskkit.EvaluateBodyEditReverification(deskkit.BodyEditInput{
+				CRBody: cr.Body, CRSubmittedAt: cr.SubmittedAt, Head: head, Approves: approves, LiveBody: liveBody,
+				BodyEditedAt: bodyEditedAt,
+			})
+		}
 		if !dec.Cleared {
 			return st
 		}
@@ -986,10 +1041,10 @@ const (
 )
 
 // ---------------------------------------------------------------------------
-// mergeStateStatus, read as four states (#400 R3, #54)
+// mergeStateStatus: conflict, policy hold, current, behind, or unknown (#6262)
 // ---------------------------------------------------------------------------
 
-// mergeVerdict is the four-state read of GitHub's `mergeStateStatus`. The board used a
+// mergeVerdict distinguishes GitHub's readiness states. The board historically used a
 // two-state test — `DIRTY || BLOCKED` is a conflict, EVERYTHING ELSE is mergeable — which
 // made `UNKNOWN` (GitHub has not finished computing mergeability) and `""` (the field
 // could not be resolved at all) both classify as mergeable, and an approved+green PR in
@@ -1010,10 +1065,11 @@ const (
 type mergeVerdict = reviewflow.MergeVerdict
 
 const (
-	mergeVerdictOK      = reviewflow.MergeVerdictOK
-	mergeVerdictBlocked = reviewflow.MergeVerdictBlocked
-	mergeVerdictUnknown = reviewflow.MergeVerdictUnknown
-	mergeVerdictBehind  = reviewflow.MergeVerdictBehind
+	mergeVerdictOK            = reviewflow.MergeVerdictOK
+	mergeVerdictBlocked       = reviewflow.MergeVerdictBlocked
+	mergeVerdictUnknown       = reviewflow.MergeVerdictUnknown
+	mergeVerdictBehind        = reviewflow.MergeVerdictBehind
+	mergeVerdictPolicyBlocked = reviewflow.MergeVerdictPolicyBlocked
 )
 
 var readMergeState = reviewflow.ReadMergeState
@@ -1023,7 +1079,7 @@ var readMergeState = reviewflow.ReadMergeState
 // the reviewed sha (RE-REVIEW), false = benign keep-current merge (MERGE-CURR).
 // ciGreen: true when CI is confirmed green (pass>0, no pending/fail) or
 // vacuously green for CI-less repos.
-// mergeConflict: true when MergeStateStatus is DIRTY or BLOCKED —
+// mergeConflict: true when MergeStateStatus is DIRTY or mergeable is CONFLICTING —
 // an un-mergeable PR must never classify MERGE-NOW regardless of approval+CI state.
 // zeroCI (#1652): the probed state of a 0/0/0 rollup — zeroCINoChecks /
 // zeroCINeverRan / zeroCIUnverified, or "" when the rollup counted at least one
@@ -1043,10 +1099,12 @@ type classifyInput struct {
 	// riskReason names WHY the row is risk-classed (which union term fired), so the
 	// SECURITY-REVIEW-REQUIRED row says why rather than always blaming a security path —
 	// e.g. "trailer absent on App-authored PR" (#587).
-	riskReason    string
-	securityPass  bool
-	ciGreen       bool
-	mergeConflict bool
+	riskReason         string
+	securityPass       bool
+	ciGreen            bool
+	mergeConflict      bool
+	mergePolicyBlocked bool
+	mergeableRaw       string
 	// mergeStateUnknown (#400 R3): the mergeStateStatus could not be read (UNKNOWN,
 	// absent, or a value this code does not recognise). Distinct from mergeConflict —
 	// that is a measured "no", this is "we did not measure". It blocks MERGE-NOW.
@@ -1135,7 +1193,7 @@ func classificationFacts(p prBase, rs reviewState, ciRequired bool, zeroCI strin
 	for _, c := range deskkit.LatestRunPerName(p.StatusCheckRollup, check.groupKey, check.recencyKey) {
 		checks = append(checks, reviewflow.CheckFact{Status: c.Status, Conclusion: c.Conclusion, State: c.State})
 	}
-	return reviewflow.ClassificationFacts{Change: reviewflow.ChangeFact{Title: p.Title, Body: p.Body, MergeStateStatus: p.MergeStateStatus, IsDraft: p.IsDraft, Labels: p.labelNames(), Checks: checks}, Reviews: reviewflow.ReviewState{
+	return reviewflow.ClassificationFacts{Change: reviewflow.ChangeFact{Title: p.Title, Body: p.Body, MergeStateStatus: p.MergeStateStatus, Mergeable: p.Mergeable, IsDraft: p.IsDraft, Labels: p.labelNames(), Checks: checks}, Reviews: reviewflow.ReviewState{
 		BodyEditReverified:     rs.bodyEditReverified,
 		Ever:                   rs.ever,
 		AtHead:                 rs.atHead,
@@ -1167,6 +1225,8 @@ func buildClassifyInput(p prBase, rs reviewState, ciRequired bool, zeroCI string
 		securityPass:            in.SecurityPass,
 		ciGreen:                 in.CiGreen,
 		mergeConflict:           in.MergeConflict,
+		mergePolicyBlocked:      in.MergePolicyBlocked,
+		mergeableRaw:            in.MergeableRaw,
 		mergeStateUnknown:       in.MergeStateUnknown,
 		mergeBehind:             in.MergeBehind,
 		mergeStateRaw:           in.MergeStateRaw,
@@ -1282,6 +1342,7 @@ type prRow struct {
 	Draft      bool   `json:"draft"`
 	HeadSHA    string `json:"headSHA"`
 	MergeState string `json:"mergeState"`
+	Mergeable  string `json:"mergeable,omitempty"`
 	CIPass     int    `json:"ciPass"`
 	CIPending  int    `json:"ciPending"`
 	CIFail     int    `json:"ciFail"`
@@ -1404,7 +1465,7 @@ func sweepPRsRepo(repo string, now time.Time) (prsPartial, error) {
 		pass, pending, fail, unknown := ciState(p)
 		row := prRow{
 			Repo: repo, Number: p.Number, Title: p.Title, Draft: p.IsDraft,
-			HeadSHA: p.HeadRefOid, MergeState: p.MergeStateStatus,
+			HeadSHA: p.HeadRefOid, MergeState: p.MergeStateStatus, Mergeable: p.Mergeable,
 			CIPass: pass, CIPending: pending, CIFail: fail, CIUnknown: unknown,
 			OpenAge: openAgeOf(p, now),
 		}
@@ -3072,6 +3133,8 @@ func (in classifyInput) flow() reviewflow.ClassifyInput {
 		SecurityPass:            in.securityPass,
 		CiGreen:                 in.ciGreen,
 		MergeConflict:           in.mergeConflict,
+		MergePolicyBlocked:      in.mergePolicyBlocked,
+		MergeableRaw:            in.mergeableRaw,
 		MergeStateUnknown:       in.mergeStateUnknown,
 		MergeBehind:             in.mergeBehind,
 		MergeStateRaw:           in.mergeStateRaw,

@@ -161,8 +161,8 @@
     {
       "name": "producer-covered-rows-example",
       "file": "cmd/verifyloop/dispatch.go",
-      "old": "`{\"rows\":[2],\"rows_total\":3,\"rows_passed\":2,",
-      "new": "`{\"rows\":[1,2,\"6a\"],\"rows_total\":3,\"rows_passed\":2,"
+      "old": "`{\"rows\":[2],\"rows_total\":4,\"rows_passed\":3,",
+      "new": "`{\"rows\":[1,2,\"6a\",\"R\"],\"rows_total\":4,\"rows_passed\":3,"
     },
     {
       "name": "writer-count-bound-off-by-one",

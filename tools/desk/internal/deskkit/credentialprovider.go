@@ -163,10 +163,12 @@ func CredentialResult(err error) string {
 	if err == nil {
 		return ResultOK
 	}
-	switch ExitCodeOf(CredentialError(err)) {
-	case ExitDisabled:
+	// Is* predicates, not a switch on the code (#6201; TestNoConstSwitchOnExitCodes).
+	ce := CredentialError(err)
+	switch {
+	case IsDisabled(ce):
 		return ResultDisabled
-	case ExitRefused:
+	case IsRefused(ce):
 		return ResultRefused
 	default:
 		return ResultUnverifiable

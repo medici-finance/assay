@@ -21,7 +21,7 @@ func referenceMarkdown() string {
 	var b strings.Builder
 	b.WriteString("# `cellctl` command reference\n\n")
 	b.WriteString("<!-- GENERATED from the command tree by TestCLIReferenceDoc; do not edit by hand. -->\n\n")
-	b.WriteString("Every command takes the cell as its first argument. The shape is\n")
+	b.WriteString("Lifecycle commands take the cell as their first argument. Local `compat-prepare` takes `--cell`. The shape is\n")
 	b.WriteString("`cellctl [--cells-root <abs>] <verb> <positionals...> [flags]`: the registry selector is the\n")
 	b.WriteString("separated `--cells-root <abs>`, and only as the first word. Single-dash spellings of long flags\n")
 	b.WriteString("(`-apply`) are accepted by `scratch` only. Help (`-h`, `--help`, `help <command>`) and version\n")

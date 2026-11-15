@@ -27,8 +27,10 @@ var (
 	// token-authenticated git remote carries (`https://x-access-token:<token>@github.com/…`,
 	// `https://oauth2:<pat>@gitlab.com/…`). The password half is what is redacted; the
 	// username half is kept because it is the part that identifies the transport
-	// ("x-access-token" is diagnostic, the token is not).
-	reURLUserinfo = regexp.MustCompile(`://([^:/@\s]+):([^@\s]+)@`)
+	// ("x-access-token" is diagnostic, the token is not). The username may be empty: a
+	// password-only userinfo (`redis://:<password>@host`, the Redis and AMQP form) carries
+	// the same credential.
+	reURLUserinfo = regexp.MustCompile(`://([^:/@\s]*):([^@\s]+)@`)
 
 	// reAuthHeader matches an `Authorization: token …` / `Authorization: Bearer …` header in
 	// any of the spellings a client or a curl trace emits. The scheme word survives; the

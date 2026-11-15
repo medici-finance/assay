@@ -17,11 +17,11 @@ import (
 )
 
 // decisionhelper_test.go — the decision helper (tools/decision-issue.sh) resolves from the same
-// root as the claim tool's script: --claim-root when given, else --root. The claim tool tries its
-// PATH port first and that file second; the decision helper has no PATH port, so the file is its
-// only location, and a target repo that does not carry the script and was dispatched with
-// no --claim-root must still REFUSE a human-gated item — never skip the gate — and the refusal
-// must name every location tried plus the --claim-root way out. The field failure: a
+// root as the claim tool's script: --claim-root when given, else --root. Both helpers try their
+// PATH port first and that file second (the decision helper's port, deskdecision, since issue
+// 6131 — decisionport_test.go). A dispatch where NEITHER the port nor the file is available must
+// still REFUSE a human-gated item — never skip the gate — and the refusal must name every
+// location tried plus the --claim-root way out. The field failure: a
 // human-gated dispatch from a repo without the script claimed fine through the PATH claim
 // binary, then stopped at decision-gate naming only "<root>", with nothing pointing at the flag
 // that resolves it.
@@ -58,10 +58,10 @@ func TestDecisionHelperAbsentRefuses(t *testing.T) {
 	}
 	msg := err.Error()
 	for _, want := range []string{
-		filepath.Join(root, filepath.FromSlash(decisionScriptRel)), // place 1: the file under --root, absolute
-		"no --claim-root was given",                                // which flag chose that root
-		"PATH",                                                     // place 2: PATH, and that it holds no port
-		"point --claim-root at the checkout that does",             // the way out
+		filepath.Join(root, filepath.FromSlash(decisionScriptRel)),   // place 1: the file under --root, absolute
+		"no --claim-root was given",                                  // which flag chose that root
+		"the pure-Go " + goDecisionBinary + " binary is not on PATH", // place 2: PATH, and that the port is not on it
+		"point --claim-root at the checkout that does",               // the way out
 	} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("the refusal does not name %q:\n%s", want, msg)
@@ -268,7 +268,8 @@ func TestHelperPathPortsAreLookedUp(t *testing.T) {
 			}
 			plantOnly(t, root, others...)
 			s.replies = append(happyReplies(filepath.Join(t.TempDir(), "worker-home")),
-				reply{match: "decision-issue.sh ensure", stdout: "created: decision issue #4"})
+				reply{match: "decision-issue.sh ensure", stdout: "created: decision issue #4"},
+				reply{match: goDecisionBinary + " ensure", stdout: "created: decision issue #4"})
 			old := lookPath
 			t.Cleanup(func() { lookPath = old })
 			args := append([]string{"item-1", "--root", root, "--repo", allowedRepo}, helperRequiredArgs[h.rel]...)

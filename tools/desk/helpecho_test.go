@@ -4,8 +4,10 @@ package desk_test
 // roster value, but only on a verb that OPTS IN, by calling deskkit.EchoConfigHelpNotice under the
 // same predicate its own dispatch answers with its usage screen before doing any work. Every other
 // verb keeps the full echo whatever its argv looks like, because some verbs do real work under a
-// help-shaped argv: writeguard never reads argv, deskversion runs its marker read, untrustcorpus
-// loads its corpus. Hiding the echo there would hide it from a run that acts.
+// help-shaped argv: writeguard never reads argv, untrustcorpus loads its corpus. Hiding the echo
+// there would hide it from a run that acts. (deskversion left this set when its command tree took
+// over parsing, desktools-v2/47: its help now answers before the echo or any read, which its own
+// TestCLIHelpOffline proves.)
 
 import (
 	"bytes"
@@ -25,7 +27,7 @@ import (
 var helpOptIn = []string{"deskpost", "deskpr", "deskreply"}
 
 // helpWorkers are verbs that do work under a help-shaped argv; they must keep the full echo.
-var helpWorkers = []string{"deskversion", "untrustcorpus", "writeguard"}
+var helpWorkers = []string{"untrustcorpus", "writeguard"}
 
 // helpEchoRoster is synthetic; every value is distinctive, so one substring hit is a leak.
 const helpEchoRoster = `ASSAY_BLESS_LOGIN=qzverbbless:9301

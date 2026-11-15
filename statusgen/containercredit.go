@@ -195,14 +195,27 @@ func (cc *creditContext) recordSetup() creditVerdict {
 		return creditCouldNot("record: the dispatcher %s is bound on forge %q; this check reads GitHub records only", desk, ident.ForgeRaw)
 	}
 	cc.desk = desk
-	origin, err := historyGit(cc.dir, "remote", "get-url", "origin").Output()
-	if err != nil || remoteHost(string(origin)) != "github.com" {
-		return creditCouldNot("record: the brief's repository needs a github.com origin to name the repository its record must be in")
-	}
-	if cc.repo = originOwnerRepo(strings.TrimSpace(string(origin))); cc.repo == "" {
-		return creditCouldNot("record: cannot read owner/name from the origin remote")
+	var err error
+	cc.repo, err = attestationTrackingRepo(cc.dir)
+	if err != nil {
+		return creditCouldNot("record: %v", err)
 	}
 	return creditOK()
+}
+
+// attestationTrackingRepo shares the protected native origin query between
+// attestation admission and reconciliation. It reads only local configuration;
+// it supplies repository identity, not record admission or execution credit.
+func attestationTrackingRepo(dir string) (string, error) {
+	origin, err := historyGit(dir, "remote", "get-url", "origin").Output()
+	if err != nil || remoteHost(string(origin)) != "github.com" {
+		return "", fmt.Errorf("the brief's repository needs a github.com origin to name the repository its record must be in")
+	}
+	repo := originOwnerRepo(strings.TrimSpace(string(origin)))
+	if repo == "" {
+		return "", fmt.Errorf("cannot read owner/name from the origin remote")
+	}
+	return repo, nil
 }
 
 // credit judges one bracket. Conditions run cheapest first and stop at the

@@ -1,2 +1,0 @@
-### Fixed
-- The GitLab `.gitlab-ci.yml` that `statusgen init` scaffolds no longer claims its jobs stay green when `STATUSGEN_ROSTER_ENV` is unset. Its NOTICE and the GitLab adopter guide now say what each job does: `statusgen --lint` refuses the missing roster file (exit 5, so the merge-request job fails), while the default-branch regen still writes the board with every roster-backed check could-not-check. A test runs the step and the built binary to hold the wording to both outcomes (#4978).

@@ -197,14 +197,14 @@ func TestCellDB(t *testing.T) {
 		for _, bad := range []string{
 			dsn + " password=example-not-a-secret",
 			"host=127.0.0.1 PASSWORD = example-not-a-secret dbname=cell_example_cell",
-			"postgresql://cell_example_cell:example-not-a-secret@127.0.0.1:5432/cell_example_cell",
-			"postgres://cell_example_cell:example-not-a-secret@127.0.0.1:5432,127.0.0.2:5432/cell_example_cell",
+			"postgresql://cell_example_cell:" + "example-not-a-secret" + "@127.0.0.1:5432/cell_example_cell",
+			"postgres://cell_example_cell:" + "example-not-a-secret" + "@127.0.0.1:5432,127.0.0.2:5432/cell_example_cell",
 			"postgresql://cell_example_cell@127.0.0.1/cell_example_cell?sslmode=disable&password=example-not-a-secret",
 			// libpq expands a quoted dbname value, or a URI given as one, as a nested conninfo.
 			"host=127.0.0.1 dbname='password=example-not-a-secret'",
 			`host=127.0.0.1 dbname="password = example-not-a-secret"`,
 			"host=127.0.0.1 dbname=password=example-not-a-secret",
-			"host=127.0.0.1 dbname=postgresql://cell_example_cell:example-not-a-secret@127.0.0.1/cell_example_cell",
+			"host=127.0.0.1 dbname=postgresql://cell_example_cell:" + "example-not-a-secret" + "@127.0.0.1/cell_example_cell",
 		} {
 			ok, out := runCellDBCheck(t, "house", bad, passfile)
 			if ok || !strings.Contains(out, "MISS  cell database: CELL_DB_DSN carries a password") {

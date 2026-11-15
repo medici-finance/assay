@@ -247,7 +247,7 @@ func TestGitHubDecayTarget(t *testing.T) {
 }
 
 // TestDecayTokenStaysOnItsHost: the github.com credential (GH_TOKEN,
-// GITHUB_TOKEN, gh's github.com login) is never sent to a host the endpoint was
+// GITHUB_TOKEN) is never sent to a host the endpoint was
 // merely GUESSED from — an origin on any host with a "github" label, a lookalike
 // included. That host gets only an enterprise credential, and the enterprise
 // credential never goes to github.com. An endpoint the operator set explicitly
@@ -323,34 +323,108 @@ func TestDecayTokenStaysOnItsHost(t *testing.T) {
 		}
 	})
 
-	t.Run("gh-is-asked-for-the-guessed-host", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("the gh stand-in is a POSIX shell script")
-		}
+	t.Run("stored-login-is-not-a-credential-source", func(t *testing.T) {
 		offlineGitHubEnv(t, "com-token")
 		t.Setenv("GH_ENTERPRISE_TOKEN", "")
 		t.Setenv("GITHUB_ENTERPRISE_TOKEN", "")
 		setOrigin(t, lookalike)
-		dir := t.TempDir()
-		argLog := filepath.Join(dir, "gh-args")
-		// The stand-in answers only a host-scoped ask, the way gh does for a
-		// host it holds a login for; a bare `gh auth token` gets nothing.
-		script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"" + argLog + "\"\n" +
-			"[ \"$*\" = \"auth token --hostname github.lookalike.example\" ] && echo host-token\nexit 0\n"
-		if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		t.Setenv("PATH", dir)
+		log := decayLoginSentinel(t)
 		calls := fakeGraphQL(t, func(int, map[string]any) (int, string) { return 200, branchPage(false, "", nil) })
-		if _, err := githubBranchPRPages("/repo"); err != nil {
-			t.Fatalf("read with gh's host-scoped login: %v", err)
+		if _, err := githubBranchPRPages("/repo"); err == nil {
+			t.Fatal("a stored CLI login must not supply a claim-decay credential")
 		}
-		args, _ := os.ReadFile(argLog)
-		if got := strings.TrimSpace(string(args)); got != "auth token --hostname github.lookalike.example" {
-			t.Fatalf("gh must be asked for the guessed host's login only; asked %q", got)
+		if len(*calls) != 0 {
+			t.Fatalf("missing enterprise token made %d provider requests", len(*calls))
 		}
-		if len(*calls) != 1 || (*calls)[0].Auth != "Bearer host-token" || sawToken(*calls, "com-token") {
-			t.Fatalf("want one request carrying gh's host-scoped token; got %+v", *calls)
+		if b, err := os.ReadFile(log); !os.IsNotExist(err) {
+			t.Fatalf("stored-login sentinel was invoked: %q (read error %v)", b, err)
 		}
 	})
+
+	for _, tc := range []struct {
+		name, origin, dotcom, dotcomAlt, enterprise, enterpriseAlt, want string
+	}{
+		{"public-precedence", "https://github.com/acme/widgets.git", "public-first", "public-second", "enterprise-first", "enterprise-second", "public-first"},
+		{"public-alternative", "https://github.com/acme/widgets.git", "", "public-second", "enterprise-first", "enterprise-second", "public-second"},
+		{"enterprise-precedence", lookalike, "public-first", "public-second", "enterprise-first", "enterprise-second", "enterprise-first"},
+		{"enterprise-alternative", lookalike, "public-first", "public-second", "", "enterprise-second", "enterprise-second"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			offlineGitHubEnv(t, tc.dotcom)
+			t.Setenv("GITHUB_TOKEN", tc.dotcomAlt)
+			t.Setenv("GH_ENTERPRISE_TOKEN", tc.enterprise)
+			t.Setenv("GITHUB_ENTERPRISE_TOKEN", tc.enterpriseAlt)
+			setOrigin(t, tc.origin)
+			calls := fakeGraphQL(t, func(int, map[string]any) (int, string) { return 200, branchPage(false, "", nil) })
+			if _, err := githubBranchPRPages("/repo"); err != nil {
+				t.Fatalf("explicit credential read: %v", err)
+			}
+			if len(*calls) != 1 || (*calls)[0].Auth != "Bearer "+tc.want {
+				t.Fatalf("explicit credential precedence/host mismatch: %+v", *calls)
+			}
+		})
+	}
+}
+
+func decayLoginSentinel(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the gh sentinel is a POSIX shell script")
+	}
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls")
+	t.Setenv("DECAY_GH_SENTINEL_LOG", log)
+	script := "#!/bin/sh\nprintf '%s\\n' called >> \"$DECAY_GH_SENTINEL_LOG\"\nprintf '%s\\n' synthetic-stored-login\n"
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	return log
+}
+
+// regression: forge-neutral/49
+func TestDecayNoStoredLogin(t *testing.T) {
+	for _, endpoint := range []struct{ name, origin, override, credential string }{
+		{"public", "https://github.com/acme/widgets.git", "", "GH_TOKEN"},
+		{"derived-enterprise", "https://github.lookalike.example/acme/widgets.git", "", "GH_ENTERPRISE_TOKEN"},
+		{"operator-endpoint", "https://github.com/acme/widgets.git", "https://ghe.example/api/graphql", "GH_TOKEN"},
+	} {
+		for _, admitted := range []bool{false, true} {
+			mode := "ordinary"
+			if admitted {
+				mode = "admitted"
+			}
+			t.Run(endpoint.name+"/"+mode, func(t *testing.T) {
+				offlineGitHubEnv(t, "")
+				t.Setenv("GH_ENTERPRISE_TOKEN", "")
+				t.Setenv("GITHUB_ENTERPRISE_TOKEN", "")
+				t.Setenv("GITHUB_GRAPHQL_URL", endpoint.override)
+				t.Setenv("DESK_LOOP", "")
+				prev := verifyrunAdmission.Load()
+				verifyrunAdmission.Store(verifyrunOutside)
+				if admitted {
+					verifyrunAdmission.Store(verifyrunAdmitted)
+				}
+				t.Cleanup(func() { verifyrunAdmission.Store(prev) })
+				remoteOriginURL = func(string) (string, error) { return endpoint.origin, nil }
+				log := decayLoginSentinel(t)
+				calls := fakeGraphQL(t, func(int, map[string]any) (int, string) {
+					return 200, branchPage(false, "", map[string]string{"fix/alpha-01-dead": "CLOSED"})
+				})
+				branches := []string{"fix/alpha-01-dead", "fix/alpha-02-live"}
+				var got []string
+				var reason string
+				_ = captureStderr(t, func() { got, reason = decayDeadClaims("/repo", branches) })
+				if !reflect.DeepEqual(got, branches) || !strings.Contains(reason, endpoint.credential) {
+					t.Fatalf("missing explicit token must keep prior claims and report unavailable; got %v, reason %q", got, reason)
+				}
+				if len(*calls) != 0 {
+					t.Fatalf("missing explicit token sent %d provider requests", len(*calls))
+				}
+				if b, err := os.ReadFile(log); !os.IsNotExist(err) {
+					t.Fatalf("stored-login sentinel was invoked: %q (read error %v)", b, err)
+				}
+			})
+		}
+	}
 }

@@ -118,7 +118,7 @@ func TestQueuePartialAndDepth(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		size int
-	}{{"denied", 2}, {"partial", 2}, {"missing-head", 2}, {"normal", 100}, {"untrusted", 2}, {"moved-head", 2}} {
+	}{{"denied", 2}, {"partial", 2}, {"missing-head", 2}, {"normal", 101}, {"untrusted", 2}, {"moved-head", 2}} {
 		t.Run(fmt.Sprint(tc), func(t *testing.T) {
 			r := collectQueue(t, tc.name, tc.size)
 			if r.Exit != 6 || len(r.Snapshot) != 0 {

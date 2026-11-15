@@ -4,6 +4,7 @@ date: "2026-09-16"
 title: "Land a workflow change as a single workflow-only PR the workflow App writes, instead of a human hand-copying a staged file into .github/workflows/"
 consequence: major
 decided-by: "human:<name>"
+ruling: "https://github.com/medici-finance/assay/issues/1245#issuecomment-6584441481"
 alternatives:
   - "Grant every desk App `workflows: write` directly — ruled out: an identity that can rewrite `.github/workflows/*` is a supply-chain surface, and there are several desk Apps (one per role). Spreading that grant across all of them multiplies the attack surface by the number of roles and makes the one power that can rewrite CI un-auditable — you can no longer point at a single actor and say `only this identity ever touches CI`. Least privilege wants that power concentrated in ONE narrowly-scoped identity, not diffused across the fleet. The concentration is the control; diffusing it destroys the control."
   - "Status quo — keep hand-landing: an author who lacks `workflows: write` stages a post-change copy of the workflow under a staging directory (`ci/staged-workflows/`, `tools/ci-load/activation/`), and a human copies it into `.github/workflows/` in a separate maintainer-credentialled commit — ruled out: the staged copy and the live file drift the moment either moves. A staged copy authored against one base goes stale when the live file changes underneath it (landing it verbatim silently REVERTS intervening fixes — #1187), and the copy step blocks a brief's `implemented -> verified` transition indefinitely when no human performs it (#1175 sat 9+ days BLOCKED-ON-HUMAN; #1185 is `help wanted - human workflows-copy still not landed`). The workaround's whole cost IS the drift and the stall."
@@ -18,11 +19,38 @@ accepted:
   - "Open sub-decision, NOT settled by this record: whether the workflow App also MERGES the workflow-only PR (landing it under `pull_requests: write`) or whether merge stays a human act as it is for every other PR. Both are compatible with the record; the merge-authority choice is deferred to the wiring brief's human gate. Choosing identity-merges is WIDER than today's status quo (today's promote route needs a maintainer credential — `ci/staged-workflows/README.md:1-8,16-19`): it is admissible only once the branch-protection placement above (bypass-list absence) is verified AND paired with a rule that any diff touching the guard's own CI job still requires a human merge, so the one identity able to rewrite the guard can never also be the one that waives review of that rewrite."
 ---
 
-**Status:** proposed
+**Status:** accepted — ruled 2026-11-02 on decision #1245 (the `ruling:` link above).
 
-**This record is NOT approved.** No design-approval ruling has been recorded. It is proposed
-for the driver (`human:<name>`) to weigh; when a ruling is made, the decision-issue reference
-and the outcome are recorded here, and `decided-by` above is confirmed.
+## Ruling
+
+The driver ruled on this record on 2026-11-02, in an unedited comment on
+[decision #1245](https://github.com/medici-finance/assay/issues/1245), the decision issue of
+this record's first citing brief (desk-supervision/10):
+
+> Ruling: DR-workflow-app-landing is accepted as proposed. Merging the workflow-only PR stays a
+> human act for the first cutover.
+
+That comment is this record's `ruling:`
+([link](https://github.com/medici-finance/assay/issues/1245#issuecomment-6584441481)). It names
+the record, so `decided-by` above stays the public-repository placeholder and is confirmed
+through that link (`spec/registers-v1.md` §7.5). No bot relay or PR approval stands in for it.
+
+**What the ruling settles.** The record is accepted as proposed: exactly one dedicated
+workflow App holds `workflows: write`, no desk App is granted it, and every `accepted:` entry
+above holds as written. The Note below on the sixth entry also stays in force: neither a
+`workflow_dispatch` nor a desk run is human-initiated by itself.
+
+**Its scope on merge authority.** For the first cutover, merging the workflow-only PR stays a
+human act, and the App does not merge. This matches the earlier
+[ratification of 2026-10-05](https://github.com/medici-finance/assay/issues/1245#issuecomment-5985886801)
+("Ratified: A — add pull_requests:write to the workflow App (relay above).") and the
+[relay it adopts](https://github.com/medici-finance/assay/issues/1245#issuecomment-5985758145).
+Beyond the first cutover, the merge-authority sub-decision in the last `accepted:` entry
+stays open. The decision issue's recommendation revisits it once the path is proven, and
+identity-merges stays admissible only under that entry's conditions.
+
+**Not settled here.** Custody of the workflow App's private key is not decided by this ruling.
+It stays with desk-supervision/11's gate.
 
 **How an unruled record is distinguishable from a ruled one, mechanically, not just by this
 sentence:** the design-approval gate (`lifecycle-v1.md` §4.4) only fires on the `todo →
@@ -99,8 +127,9 @@ once the path is proven.
 
 ## Note — neither `workflow_dispatch` nor a desk run is by itself human-initiated
 
-This note records a review finding against the sixth `accepted:` entry. It changes neither that
-entry nor this record's status, which stays `proposed` until a ruling is recorded above.
+This note records a review finding against the sixth `accepted:` entry. It does not change that
+entry. The 2026-11-02 ruling accepted the record as proposed, and this note was part of what it
+accepted, so the finding below still holds.
 
 That entry counts "an operator/desk run or an explicit `workflow_dispatch`" as a human-initiated
 invocation. Neither leg holds on its own. Any identity holding `actions: write` can fire
