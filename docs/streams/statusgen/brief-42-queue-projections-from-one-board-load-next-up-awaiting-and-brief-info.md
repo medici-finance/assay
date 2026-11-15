@@ -4,7 +4,7 @@ title: 'Queue projections from one board load: next-up, awaiting and brief info'
 why: "The dispatch queue, the verification queue and the per-brief lookup are three separate command modes. Each loads the tree on its own, each accepts one root, and each can only be reached by running the binary, so a desk tool that needs two queues over four roots starts eight processes and loads every tree twice. This brief makes the three answers library calls over one already-loaded board view, with the existing flags kept as adapters whose output does not change by a byte."
 wave: 3
 depends: ["statusgen/39"]
-unblocks: ["statusgen/43"]
+unblocks: ["statusgen/43", "cell-api/10"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
