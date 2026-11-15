@@ -110,3 +110,23 @@ func TestV2ConsumerActorRequired(t *testing.T) {
 		t.Fatal("canonical content provenance bypassed Evidence actor authority")
 	}
 }
+
+// regression: #5684
+func TestV2ConsumerVersionSource(t *testing.T) {
+	f := v2ConsumerFixture(t, nil)
+	consumerRewriteBrief(t, f, "schema: brief-v1", "schema: brief-v2\nversion: 2")
+	gv2GitAs(t, f.Root, fixtureVerifierName, fixtureVerifierEmail, "add", "-A")
+	gv2GitAs(t, f.Root, fixtureVerifierName, fixtureVerifierEmail, "commit", "-q", "-m", "fixture: later brief version")
+	data, streams, err := loadReconcileFoldData(f.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data[0].ident.Version != 2 {
+		t.Fatal("current brief version did not advance")
+	}
+	tree := treeFoldInputs(f.Root, streams, data)
+	w := tree.witnesses[gv2BriefID]
+	if !w.Passed || !w.Released || w.Version != 1 {
+		t.Fatalf("fold did not retain version at verified record landing: %+v", w)
+	}
+}
