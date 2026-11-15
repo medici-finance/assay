@@ -20,6 +20,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -58,7 +59,7 @@ var verifyFlipFn = statusgenVerifyFlip
 // checkVerifiedFn is the verified-closure check (seam: tests stub it).
 var checkVerifiedFn = checkVerifiedClosure
 
-func runFlip(args []string) error {
+func runFlip(args []string, options childOptions) error {
 	fs := flag.NewFlagSet("flip", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	root := fs.String("root", "", "")
@@ -112,8 +113,13 @@ func runFlip(args []string) error {
 		return err
 	}
 
+	options, err = prepareFlipApproval(abs, options)
+	if err != nil {
+		return err
+	}
+
 	// Plan: every refusal statusgen owns, nothing written.
-	rel, stamp, err := verifyFlipFn(abs, *brief, *sha, name, true)
+	rel, stamp, err := verifyFlipFn(abs, *brief, *sha, name, true, options)
 	if err != nil {
 		return err
 	}
@@ -131,20 +137,20 @@ func runFlip(args []string) error {
 	restore := func() { _ = os.WriteFile(readme, orig, 0o644) }
 
 	// The PROBLEM baseline, read on the tree as it stands.
-	before, err := statusgenLintFn(abs)
+	before, err := statusgenLintFn(abs, options)
 	if err != nil {
 		return err
 	}
 
 	// The write: statusgen's own refusals run again on the live tree.
-	if _, stamp2, err := verifyFlipFn(abs, *brief, *sha, name, false); err != nil {
+	if _, stamp2, err := verifyFlipFn(abs, *brief, *sha, name, false, options); err != nil {
 		restore()
 		return err
 	} else if stamp2 != stamp {
 		restore()
 		return deskkit.Unverifiable("flip: statusgen derived two different stamps for one tree", nil)
 	}
-	if _, err := checkVerifiedFn(abs, *brief); err != nil {
+	if _, err := checkVerifiedFn(abs, *brief, options); err != nil {
 		restore()
 		return err
 	}
@@ -197,7 +203,7 @@ func runFlip(args []string) error {
 		}
 		return err
 	}
-	after, err := statusgenLintFn(abs)
+	after, err := statusgenLintFn(abs, options)
 	if err != nil {
 		if uerr := uncommit(); uerr != nil {
 			return uerr
@@ -225,15 +231,15 @@ func runFlip(args []string) error {
 
 // statusgenVerifyFlip shells `statusgen verifyflip`: exit 1 is a refusal, any
 // other failure is could-not-check.
-func statusgenVerifyFlip(root, brief, sha, runner string, dryRun bool) (rel, stamp string, err error) {
+func statusgenVerifyFlip(root, brief, sha, runner string, dryRun bool, options childOptions) (rel, stamp string, err error) {
 	if _, lerr := exec.LookPath("statusgen"); lerr != nil {
 		return "", "", deskkit.Unverifiable("flip: statusgen is not on PATH", lerr)
 	}
-	args := []string{"verifyflip", "--root", root, "--brief", brief, "--sha", sha, "--runner", runner}
+	args := []string{"--brief", brief, "--sha", sha, "--runner", runner}
 	if dryRun {
 		args = append(args, "--dry-run")
 	}
-	cmd := exec.Command("statusgen", acceptanceArgs(args...)...)
+	cmd := statusgenAudit(context.Background(), auditFlip, root, options, args...)
 	cmd.Dir = os.TempDir()
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb

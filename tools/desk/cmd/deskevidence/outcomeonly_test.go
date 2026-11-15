@@ -133,7 +133,7 @@ func TestOutcomeOnlyShapeRefused(t *testing.T) {
 			f, errBuf := setupFake(t)
 			root, bound := ooBoard(t, "verified")
 			asked := 0
-			evidenceVerdictCheckFn = func(string, string, []byte, []byte, bool, string) (closureVerdict, string, error) {
+			evidenceVerdictCheckFn = func(string, string, []byte, []byte, bool, string, childOptions) (closureVerdict, string, error) {
 				asked++
 				return closureNotAccepted, "", nil
 			}

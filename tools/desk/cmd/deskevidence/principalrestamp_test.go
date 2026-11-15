@@ -240,7 +240,7 @@ func parityLint(t *testing.T, evidence string) []string {
 			t.Fatal(err)
 		}
 	}
-	problems, err := statusgenLintAt(root)
+	problems, err := statusgenLintAt(root, childOptions{})
 	if err != nil {
 		t.Fatalf("statusgen --lint: %v", err)
 	}
@@ -266,7 +266,10 @@ func TestDryRunRestampsPlantedPrincipal(t *testing.T) {
 	root := rootWithFile(t, stampBrief, restampHead+planted)
 	var linted []byte
 	old := lintDiffFn
-	lintDiffFn = func(_, _ string, content []byte) ([]string, error) { linted = content; return nil, nil }
+	lintDiffFn = func(_, _ string, content []byte, options childOptions) ([]string, error) {
+		linted = content
+		return nil, nil
+	}
 	t.Cleanup(func() { lintDiffFn = old })
 	if code := run([]string{stampPublicRepo, "main", "--evidence-file", stampBrief, "--root", root, "--dry-run"}); code != deskkit.ExitOK {
 		t.Fatalf("dry-run exit = %d, want 0", code)

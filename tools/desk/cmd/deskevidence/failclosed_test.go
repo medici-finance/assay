@@ -72,7 +72,7 @@ func TestMintFailureAbortsBeforeForge(t *testing.T) {
 
 	mintErr := deskkit.Unverifiable(
 		"desktoken verifier --repo example-org/tracker: mint refused", errors.New("mint boom"))
-	mintTokenFn = func(string) error { return mintErr }
+	mintTokenFn = func(string) (deskkit.RoleCredential, error) { return deskkit.RoleCredential{}, mintErr }
 
 	evidencePath := "docs/streams/x/brief.md"
 	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | ... | row |\n")
