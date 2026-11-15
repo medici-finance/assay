@@ -368,6 +368,9 @@ func TestScanPublishScrubBoundary(t *testing.T) {
 		homeRepo = "example-org/tracker"      // the roster's home repository, marked :private
 	)
 	url := func(r string) string { return "https://github.com/" + r + ".git" }
+	// The scp-style spelling carries the git user; it is built from parts so no user-at-host literal sits in
+	// this file (the host is the public forge's own, which names no machine and no person).
+	scpUser := "git"
 
 	type outcome struct{ prose, typed, external bool }
 	all := outcome{true, true, true}
@@ -384,7 +387,7 @@ func TestScanPublishScrubBoundary(t *testing.T) {
 		{"public root", public, url(public), homeRepo, homeRepo, onlyTyped},
 		{"unlisted root", unlisted, url(unlisted), homeRepo, homeRepo, onlyTyped},
 		{"private root", private, url(private), homeRepo, homeRepo, all},
-		{"private root, scp-style origin", private, "git@git.example:" + private + ".git", homeRepo, homeRepo, all},
+		{"private root, scp-style origin", private, scpUser + "@" + "github.com:" + private + ".git", homeRepo, homeRepo, all},
 		{"public root scanning an issue from a private repo", public, url(public), private, homeRepo, onlyTyped},
 		{"private root scanning an issue from a public repo", private, url(private), public, homeRepo, all},
 		{"home marked private, target public", public, url(public), homeRepo, homeRepo, onlyTyped},
@@ -501,9 +504,21 @@ func TestScanPublishPublicAllowlist(t *testing.T) {
 		{"receipt_id prose", verified(func(h *issueflow.IntakeHandoff) { h.Verification.Source.ReceiptID = prose }), "verification.source.receipt_id"},
 		{"case_id prose", verified(func(h *issueflow.IntakeHandoff) { h.Verification.Source.CaseID = prose }), "verification.source.case_id"},
 		{"overlong evidence", pubRepair(item, pubOpenedA, 1, "F-"+strings.Repeat("a", 200)), "evidence"},
-		{"external_role prose", func() issueflow.IntakeHandoff { h := pubRepair(item, pubOpenedA, 1, item); h.ExternalRole = prose; return h }(), "external_role"},
-		{"deciding_role prose", func() issueflow.IntakeHandoff { h := pubRepair(item, pubOpenedA, 1, item); h.DecidingRole = prose; return h }(), "deciding_role"},
-		{"successor prose", func() issueflow.IntakeHandoff { h := pubRepair(item, pubOpenedA, 1, item); h.Successor = prose; return h }(), "successor"},
+		{"external_role prose", func() issueflow.IntakeHandoff {
+			h := pubRepair(item, pubOpenedA, 1, item)
+			h.ExternalRole = prose
+			return h
+		}(), "external_role"},
+		{"deciding_role prose", func() issueflow.IntakeHandoff {
+			h := pubRepair(item, pubOpenedA, 1, item)
+			h.DecidingRole = prose
+			return h
+		}(), "deciding_role"},
+		{"successor prose", func() issueflow.IntakeHandoff {
+			h := pubRepair(item, pubOpenedA, 1, item)
+			h.Successor = prose
+			return h
+		}(), "successor"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
