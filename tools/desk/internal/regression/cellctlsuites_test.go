@@ -60,6 +60,7 @@ var cellctlSuiteRunners = map[string][]string{
 	"down.test.sh":               {"tools/desk/cmd/cellctl:TestDownShellSuite"},
 	"gen-shims-gh-token.test.sh": {"tools/desk/internal/regression:TestReg1145ShimCredential"},
 	"harness.test.sh":            {"tools/desk/internal/regression:TestReg6175HarnessSuite", "tools/desk/cmd/cellctl:TestHarnessShellSuite"},
+	"parity.test.sh":             {"tools/desk/cmd/cellctl:TestShellOracleParity"},
 	"provider.test.sh":           {"tools/desk/internal/regression:TestReg6175ProviderSuite"},
 	"role-context.test.sh":       {"tools/desk/cmd/cellctl:TestRoleContextShellSuite"},
 	"scrubbed-cell.test.sh":      {"tools/desk/cmd/cellctl:TestScrubbedCellShellSuite"},
@@ -67,12 +68,12 @@ var cellctlSuiteRunners = map[string][]string{
 
 // unrunCellctlSuites is every suite no `go test` runs yet. It only shrinks: a suite leaves it in
 // the PR that gives it a runner, and a new suite gets a runner instead of an entry. The
-// fourteen below, and the red rows a first run of them showed, are tracked in #6185.
+// thirteen below, and the red rows a first run of them showed, are tracked in #6185.
 var unrunCellctlSuites = map[string]bool{
 	"cell-set.test.sh": true, "cockpit.test.sh": true, "container-cell.test.sh": true,
 	"desk-worktree-merge.test.sh": true, "gitlab-fetch-cred.test.sh": true,
 	"herdr-orca-launch.test.sh": true, "house-cell.test.sh": true, "model-namespace.test.sh": true,
-	"model-override.test.sh": true, "model-pin.test.sh": true, "parity.test.sh": true,
+	"model-override.test.sh": true, "model-pin.test.sh": true,
 	"postgres-verify.test.sh": true, "root-drift.test.sh": true, "version-stamp.test.sh": true,
 }
 
