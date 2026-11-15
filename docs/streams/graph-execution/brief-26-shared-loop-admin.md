@@ -333,7 +333,7 @@ interface and passive fence; it does not install an operational source or custod
 The manual implementation-pickup bootstrap was used; no context-tool receipt is claimed.
 
 I verified the first independently deliverable increment by reading
-`tools/desk/internal/cellprocess/run.go`: `return withCache(env, func() (int, bool, error) {`.
+the runner in `tools/desk/internal/cellprocess` (its `run.go`, before increment 1 moved it to `loopadmin/process/run.go`): `return withCache(env, func() (int, bool, error) {`.
 That wrapper imports desk-internal `cellcache` and `deskkit`; moving the file alone
 cannot compile in loopadmin and dropping the wrapper loses cache custody and final
 enrollment telemetry. The first source increment therefore extracts the runner and
