@@ -5,7 +5,9 @@ is unavailable is superseded by statusgen/40's source implementation; source
 publication does not confer independent verification. The [current correction
 and remaining consumer hold](correction.md) describes the version-3 draft,
 its immutable performance harness and the exact later approval sequence.
-The proposals below supply no acceptance authority.
+The [draft historical consumer correction design](historical-consumer-proof.md)
+sets out the bounded human choice and both caller proof obligations. None of
+these proposals supplies acceptance authority.
 
 Issue #5684. This is a held proposal for a later version 3 of the statusgen/36
 brief: Command-only corrections to Verify rows 12 and 23. It does not edit the

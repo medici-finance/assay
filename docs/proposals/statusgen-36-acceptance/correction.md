@@ -23,8 +23,9 @@ acceptance is separate: statusgen/40's retained Evidence reports an admitted
 environment failure. Source presence does not declare that brief verified.
 
 Disposition: adapt the definitions within the original obligations; retain the
-consumer-proof hold. Producer implementation, shared consumer routing semantics,
-forge authority and security controls are unchanged.
+consumer-proof hold. The current adapter also gains the existing bounded Git
+reader owner described below. The historical producer snapshot, shared consumer
+routing semantics, forge authority and security controls are unchanged.
 
 ## Required pre-v2 release selection
 
@@ -98,8 +99,50 @@ on an actual v2 claim held at `witness=[w2]`. The fixed release fails the same
 candidate qualification. These are functional refusals, not missing-file or
 missing-test failures. The head's first full-corpus run hit its 180-second
 execution limit; that is an incomplete measurement, never a performance pass.
-The final bounded result and hashes belong in the implementation PR's current
-workpad. These reproductions supply no independent verification Evidence.
+The exact-head v1.0.64 comparison at `399f67a7ea4e` reached its 900-second
+bound with five successful baseline samples and only one candidate sample; the
+next timed child was killed. It is incomplete (Command exit 3), with no candidate
+median or budget PASS. The result and hashes remain in the implementation PR's
+current workpad. These reproductions supply no independent verification Evidence.
+
+The proposed Command's outer test timeout is 1,800 seconds, an execution-capacity
+bound rather than a performance criterion. The five v1.0.64 samples above total
+665.363731 seconds; ten samples at an allowed 1.00–1.10 ratio need roughly
+1,331–1,397 seconds before fixture/setup margin. The former 900-second harness
+bound could reject an otherwise acceptable run on this profile. The original
+five successful samples per binary, full corpus and 1.10 ratio remain unchanged;
+all old timeouts remain incomplete results. No full local rerun is credited by
+this capacity correction. Any separate native qualified-profile ceiling still
+applies and must never be bypassed.
+
+## Coverage reader ownership
+
+The coverage CLI and direct coverage consumers bypass `run()`, the existing Git
+reader owner. Each typed question therefore reopened and qualified the same Git
+repository. `evaluateCoverageObserved` now opens the existing reader only when
+no caller owns one, defers its close on every return, and otherwise reuses the
+caller's reader. All three product callers (coverage CLI, autoflip and reconcile
+fold) pass this common boundary. Cross-repository sources retain separate
+root-keyed repositories. No cache survives a standalone evaluation, and no
+per-operation authority or history-metadata check is removed.
+
+The valid-v2 lifecycle regression fails on the previous source because its Git
+reads have no owner. It passes with the correction and checks repeated-call
+separation, caller-owner retention and cleanup. A second test reuses a reader,
+confirms a valid release, corrupts shallow metadata and requires a held result,
+then restores the metadata and requires release again. Another root with the
+same brief IDs opens a separate repository. Native Git parity, cross-source
+coverage and the existing invocation-count bound also pass. These are worker
+checks; independent review and verification remain separate.
+
+A paired diagnostic on the same frozen dirty corpus completed successfully with
+byte-identical output: scoped 187.790895 seconds, previous binary 200.094440
+seconds. Each issued 2,623 native Git commands; their summed native-process times
+were 48.971494 and 56.715594 seconds. The remainder includes process launch/wait
+and Go work and is not isolated by that trace. The serial single-run comparison
+under changing host load establishes output parity, not a causal speedup or the
+five-sample 1.10 budget. That budget still requires an exact-head run on an
+isolated runner; the diagnostic does not credit a performance PASS.
 
 ## Row 23: expose the immutable delivery's real result
 
@@ -126,6 +169,16 @@ cannot support final acceptance while the report remains red.
 
 The disproved declaration names `statusgen/autoflip.go` and
 `statusgen/reconcilefold.go` as `fixed-here`. Neither changes in the delivery.
+The delivered declaration is line 36 of brief blob
+`051ddc7b265a8d29681c8552b9721019b8a2afcd`. Base and delivery contain the same
+caller blobs: `5b7e7576d8f1ebfa0adf62465eb4ece8d7438fb3` for autoflip (call at
+line 1094) and `580cf396ff70323b26071d02aada41bf5bf01ca5` for reconcile fold
+(call at line 138). The fixed-here rule is `statusgen/consumers.go:34` at both
+the delivery and this correction's parent; the delivered disproved branch is
+line 802. The current report resolves the first path of the combined prose
+entry; independent blob comparison above establishes that both callers are
+unchanged. Neither call-site presence receives behavioral acceptance credit.
+
 Both already call `evaluateCoverage` at that snapshot; the delivery changes its
 adapter in `statusgen/coverage.go` and its shared library. That demonstrates an
 indirect behavioral dependency, not the changed-path evidence promised by
@@ -142,10 +195,20 @@ delivery and parent, identify the exact incorrect declaration, prove the existin
 callers reach the changed owner and observe its v2 result, and retain every
 unchecked review obligation. Negative controls must include an unchanged caller
 still reaching the old evaluator, an absent caller and a wrong producer delivery.
-Each must fail; path presence or prose alone is insufficient. A later source
+The proof must exercise the original producer's `autoFlipModel` coverage gate
+and `treeFoldInputs`/`foldVerified`, observing both actual v2 release and
+changed-input refusal. It needs an external immutable harness, so an absent new
+test cannot create a historical failure. Controls must also cover the second
+caller still using the old evaluator, a wrong base, altered approval/declaration
+and stale or foreign proof. Each must fail; path presence or prose alone is insufficient. A later source
 change cannot provide historical proof. The checker continues reporting this
 contradiction until such a disposition has authority. This draft adds no generic
 indirect-call exception.
+
+The bounded design choice, exact source tuple, both caller proof obligations and
+negative controls are specified in the draft [historical correction
+specification](historical-consumer-proof.md). It grants no checker activation or
+acceptance authority; the driver must rule on that design separately.
 
 ## Exact approval order
 
