@@ -111,8 +111,8 @@ func TestPushAdvancesFixtureRemote(t *testing.T) {
 	// origin + the current-branch refspec, and NOTHING else. The helper's path is ephemeral, so
 	// it is matched by shape and checked to be gone after the call.
 	call := gitCallWith(*calls, "push")
-	if len(call) != 10 {
-		t.Fatalf("push argv = %q, want exactly 10 tokens", call)
+	if len(call) != 11 {
+		t.Fatalf("push argv = %q, want exactly 11 tokens", call)
 	}
 	helperSpec, ok := strings.CutPrefix(call[4], "credential.https://github.com.helper=!'")
 	if !ok || !strings.HasSuffix(helperSpec, "/credential-helper.sh'") {
@@ -122,7 +122,7 @@ func TestPushAdvancesFixtureRemote(t *testing.T) {
 		t.Fatalf("ephemeral helper %s still exists after the push (stat err %v)", helperSpec, err)
 	}
 	argv := strings.Join(append(append([]string{}, call[:4]...), call[5:]...), " ")
-	want := "git -c credential.helper= -c push --receive-pack=git-receive-pack --no-recurse-submodules origin refs/heads/feature-1:refs/heads/feature-1"
+	want := "git -c credential.helper= -c push --porcelain --receive-pack=git-receive-pack --no-recurse-submodules origin refs/heads/feature-1:refs/heads/feature-1"
 	if argv != want {
 		t.Fatalf("push argv (helper path elided) = %q\n want %q", argv, want)
 	}

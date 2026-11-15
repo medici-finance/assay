@@ -550,11 +550,17 @@ after the ready flip:
   ready          reads the forge's merge state (GitHub's mergeStateStatus) with the PR's
                  draft flag, re-reading an UNKNOWN or DRAFT state, or a PR that still reads
                  as a draft, for up to 30s: ready means mergeable per the forge. GitHub
-                 reports a draft as BLOCKED, so a draft read is never a revert. BLOCKED or
-                 DIRTY on a PR that is NOT a draft returns it to draft with one comment
-                 naming the state and the head, and exits 5 (exit 6, nothing retried, if
-                 the return to draft fails). CLEAN, HAS_HOOKS, UNSTABLE and BEHIND leave
-                 it ready. Anything else at 30s, a draft included, leaves it ready with a
+                 reports a draft as BLOCKED, so a draft read is never a revert. DIRTY on a
+                 PR that is NOT a draft returns it to draft with one comment naming the
+                 state and the head, and exits 5 (exit 6, nothing retried, if the return
+                 to draft fails). BLOCKED is computed for the reader, so on a BLOCKED read
+                 it reads the requirements every reader sees alike (no merge conflict,
+                 the review decision, every required check at the head): any one unmet,
+                 a read that fails, or a base-branch rule the read sees but does not
+                 evaluate (conversation resolution, signed commits, a merge queue ...)
+                 reverts the same way and the comment names it; all met, with no such
+                 rule, leaves it ready with a could-not-check comment and notice.
+                 CLEAN, HAS_HOOKS, UNSTABLE and BEHIND leave it ready. Anything else at 30s, a draft included, leaves it ready with a
                  could-not-check comment and notice. This is
                  the only un-ready and never a verb of its own (ruling:
                  https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155).
