@@ -1,7 +1,7 @@
 # Statusgen/36 correction and remaining hold
 
 Issue #5684. The version-3 draft changes only the Command cells of Verify rows
-12 and 23. Every original row, Expect, class and historical Evidence entry
+5, 6, 12 and 23. Every original row, Expect, class and historical Evidence entry
 survives. The row-12 worktree/sample path separation and row-15 fixture-scoped
 lint correction from #5689 are retained; row 12 is amended again here. Row 14's
 Command remains unchanged. This amendment
@@ -26,6 +26,36 @@ Disposition: adapt the definitions within the original obligations; retain the
 consumer-proof hold. Producer implementation, shared consumer routing semantics,
 forge authority and security controls are unchanged.
 
+## Required pre-v2 release selection
+
+The unchanged original Expect requires re-pinning the authoring reference to the
+latest release that does not contain this brief's delivery. Retaining v1.0.52
+left that original obligation unfulfilled. The selection was made before timing
+or comparing the candidate against the new reference.
+
+On 2026-11-15, the complete remote bare `vX.Y.Z` tag list contained 108 releases;
+all 108 local refs and tag objects matched it. The highest uncontaminated version
+is **v1.0.64**. Its annotated tag object is
+`638c088ceb1ddee30f69855d6a7e45ec7a9ab2b0`, peeling to
+`0f2b208cebc30af31269e7482b8b9159b602867d`. That commit is an ancestor of delivery
+base `c288fd881e7fe5532614ad25a4610be7c6acf8a3` and does not contain delivery
+`3b2235af1af6dd42118cbf975eb4ac2b8e8ab409`. Every one of the 20 higher versions
+contains that delivery. No version was chosen for its timing result.
+
+The Commands verify both the annotated object and peeled commit before building
+from the full immutable commit. Rows 5 and 6 are consumers of the same reference
+and contain the same original re-pin obligation, so their Commands are corrected
+too. Their Expect, class, shell and order remain unchanged. The existing CI
+v1.0.52 compatibility anchor remains separately intact; this acceptance amendment
+does not change its independently established contract.
+
+The built v1.0.64 binary reads the nonempty v2 fixture but refuses its real v2
+claim at `witness=[w2]` when passed as the candidate to the frozen harness. This
+functional negative control ran before the new corpus comparison. The earlier
+v1.0.52 measurements and its independent refusal control remain historical
+observations; none is relabelled as a v1.0.64 result. The five-sample full-corpus
+v1.0.64 comparison is still owed, with the unchanged 1.10 limit.
+
 ## Row 12: qualify the binary being timed
 
 The old command is green on the original delivery base. Timing coverage over a
@@ -34,7 +64,7 @@ present. Comparing the base to itself remains green; prefixing row 11 instead
 borrows another test's absence. Neither is used here.
 
 The command builds the candidate from the tree under test and the reference
-from the same v1.0.52 release. The harness runs from immutable helper commit
+from v1.0.64, the latest uncontaminated release required by the original Expect (selection proof below). The harness runs from immutable helper commit
 `b12abbe425d9c031e9094bddbe7ab20d4abb75e3`, with explicit binary paths and the
 absolute corpus root. The identical harness therefore tests head and historical
 base; a missing newly added test cannot manufacture the base failure.
@@ -134,7 +164,7 @@ clone. This is a requirement on the driver's merge act, not merge authority for
 the worker. After review and human merge, verify-desk identifies the actual immutable
 first-parent amendment and drafts link 2 for the driver. Its predecessor is
 `37872cfb9961db6ad8825d0b628e6a2793fb3d21`; changed rows in table order are
-`12:Command,23:Command`. The driver posts the exact unedited v2 payload on the
+`5:Command,6:Command,12:Command,23:Command`. The driver posts the exact unedited v2 payload on the
 marked #5684 issue per `docs/protected-paths.md`. The branch head is not a
 substitute for that landed amendment. No approval is requested for an unknown
 future SHA, and the old approval gains no authority over new cells.
