@@ -9,7 +9,9 @@ import (
 
 // ffCrossRepo builds a deliverable repository: older and base before the
 // attested source, a later commit after it, and a sibling tree outside its
-// history. It is the checkout a cross-repository run's Base cell names.
+// history. origin/main is at base, the pre-merge shape, so base is the
+// deliverable merge-base of the source and origin/main. It is the checkout a
+// cross-repository run's Base cell names.
 func ffCrossRepo(t *testing.T) (root, older, base, source, later, stray string) {
 	t.Helper()
 	root = t.TempDir()
@@ -26,6 +28,7 @@ func ffCrossRepo(t *testing.T) (root, older, base, source, later, stray string) 
 	later = commit("later\n", "a commit after the source")
 	tree := gitOutT(t, root, "rev-parse", "HEAD^{tree}")
 	stray = gitOutT(t, root, "commit-tree", tree, "-m", "a sibling tree outside this history")
+	gitRun(t, root, "update-ref", "refs/remotes/origin/main", base)
 	return root, older, base, source, later, stray
 }
 
@@ -69,11 +72,12 @@ func ffCrossEvidence(base, source string, att func(string) string) string {
 // regression: #5549
 // TestFFCrossRepoBase: a cross-repository run's fail-first base is a commit of
 // the DELIVERABLE repository, so the closure gate resolves it in the
-// deliverable checkout the operator configured for source-repo=, against the
-// attested source. The source itself and its ancestors close; a later commit,
-// a sibling tree and an unknown object each stay a PROBLEM. Before #5549 the
-// gate looked the base up in the tracking clone, which never holds it, and
-// refused every valid cross-repository closure.
+// deliverable checkout the operator configured for source-repo=. Under ruling
+// A on #5544 it must BE the deliverable merge-base of the attested source and
+// origin/main: only that commit closes; an older ancestor, the source itself, a
+// later commit, a sibling tree and an unknown object each stay a PROBLEM.
+// Before #5549 the gate looked the base up in the tracking clone, which never
+// holds it, and refused every valid cross-repository closure.
 func TestFFCrossRepoBase(t *testing.T) {
 	withBase(t, true)
 	deliverable, older, base, source, later, stray := ffCrossRepo(t)
@@ -83,15 +87,18 @@ func TestFFCrossRepoBase(t *testing.T) {
 		name, base  string
 		wantProblem bool
 	}{
-		{"the base the run chose", base, false},
-		{"an older ancestor of the source", older, false},
-		{"the attested source itself", source, false},
+		{"the deliverable merge-base", base, false},
+		{"an older ancestor of the merge-base", older, true},
+		{"the attested source itself", source, true},
 		{"a commit after the source", later, true},
 		{"sibling tree outside this history", stray, true},
 		{"object the deliverable lacks", strings.Repeat("d", 40), true},
 	} {
 		problems, _ := failFirstGateChecks(tracking, ffStream(t, tracking, ffCrossEvidence(c.base, source, nil)))
-		got := containsSub(problems, "attested deliverable source")
+		got := containsSub(problems, "is not the deliverable merge-base")
+		if c.name == "object the deliverable lacks" {
+			got = containsSub(problems, "names no commit in the configured deliverable checkout")
+		}
 		if got != c.wantProblem {
 			t.Errorf("%s: base PROBLEM=%v, want %v; problems=%v", c.name, got, c.wantProblem, problems)
 		}
@@ -137,16 +144,16 @@ func TestFFCrossRepoFailsClosed(t *testing.T) {
 // regression: #5549
 // TestFFCrossRepoSelected: the selected-closure caller (verifyclosure and
 // `brief --check-verified`, the check a deskevidence landing runs) reaches
-// the same cross-repository arm as lint: a base that is an ancestor of the
-// attested source authorizes the outcome, a later commit does not.
+// the same cross-repository arm as lint: the deliverable merge-base
+// authorizes the outcome; an older ancestor and a later commit do not.
 func TestFFCrossRepoSelected(t *testing.T) {
-	deliverable, _, base, source, later, _ := ffCrossRepo(t)
+	deliverable, older, base, source, later, _ := ffCrossRepo(t)
 	t.Setenv("DESK_ROOTS", "example-org/two="+deliverable)
 	tracking := ffCrossTracking(t)
 	for _, c := range []struct {
 		name, base string
 		wantErr    bool
-	}{{"ancestor of the source", base, false}, {"commit after the source", later, true}} {
+	}{{"the deliverable merge-base", base, false}, {"older ancestor", older, true}, {"commit after the source", later, true}} {
 		ffStream(t, tracking, ffCrossEvidence(c.base, source, nil))
 		path := filepath.Join(tracking, "docs", "streams", "ff", "brief-01-ff.md")
 		verify, evidence, err := briefSections(path)
@@ -158,8 +165,8 @@ func TestFFCrossRepoSelected(t *testing.T) {
 		if (err != nil) != c.wantErr {
 			t.Errorf("%s: err=%v, want error=%v", c.name, err, c.wantErr)
 		}
-		if c.wantErr && (err == nil || !strings.Contains(err.Error(), "attested deliverable source")) {
-			t.Errorf("%s: want the cross-repository ancestry refusal, got %v", c.name, err)
+		if c.wantErr && (err == nil || !strings.Contains(err.Error(), "is not the deliverable merge-base")) {
+			t.Errorf("%s: want the cross-repository merge-base refusal, got %v", c.name, err)
 		}
 	}
 }
@@ -259,5 +266,34 @@ func TestFFCrossAnchorUnreadablePass(t *testing.T) {
 	}
 	if containsSub(problems, "not the merge-base or an ancestor") {
 		t.Errorf("fell back to the tracking-clone rule; problems=%v", problems)
+	}
+}
+
+// regression: #5544
+// TestFFCrossRepoNoMergeBase: ruling A on #5544 fails closed when the
+// deliverable merge-base cannot be resolved. With origin/main absent from the
+// configured checkout, or a checkout that does not hold the attested source,
+// even the right base stays a PROBLEM on every risk-bearing row, and nothing
+// falls back to "an ancestor of the source" or to the tracking-clone rule.
+func TestFFCrossRepoNoMergeBase(t *testing.T) {
+	withBase(t, true)
+	deliverable, _, base, source, _, _ := ffCrossRepo(t)
+	noMain, _, _, _, _, _ := ffCrossRepo(t)
+	gitRun(t, noMain, "update-ref", "-d", "refs/remotes/origin/main")
+	gitRun(t, deliverable, "push", "-q", noMain, "HEAD:refs/heads/held")
+	other, _, _, _, _, _ := ffCrossRepo(t)
+	tracking := ffCrossTracking(t)
+	for _, c := range []struct{ name, root, want string }{
+		{"origin/main absent", noMain, "origin/main does not resolve"},
+		{"checkout lacks the source", other, "cannot answer it"},
+	} {
+		t.Setenv("DESK_ROOTS", "example-org/two="+c.root)
+		problems, _ := failFirstGateChecks(tracking, ffStream(t, tracking, ffCrossEvidence(base, source, nil)))
+		if !containsSub(problems, "the deliverable merge-base cannot be resolved") || !containsSub(problems, c.want) {
+			t.Errorf("%s: want the unresolved merge-base PROBLEM naming %q; problems=%v", c.name, c.want, problems)
+		}
+		if containsSub(problems, "not the merge-base or an ancestor") {
+			t.Errorf("%s: fell back to the tracking-clone rule; problems=%v", c.name, problems)
+		}
 	}
 }
