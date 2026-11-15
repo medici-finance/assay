@@ -71,14 +71,19 @@ func ffTable(base1, base2 string) string {
 // the duration of a test.
 func withAncestry(t *testing.T, fn func(root, base, of string) (bool, string)) {
 	t.Helper()
-	prev, prevMB := commitIsAncestor, failFirstMergeBase
+	prev, prevMB, prevExact := commitIsAncestor, failFirstMergeBase, commitIsMergeBase
 	commitIsAncestor = fn
+	// A witness with no delivering commit is held to the merge-base exactly;
+	// the stand-in answers that question the same way.
+	commitIsMergeBase = fn
 	failFirstMergeBase = func(string) string { return strings.Repeat("a", 40) }
 	// The brief-held rule is exercised by TestFailFirstBaseMustHoldBrief and
 	// TestFailFirstBriefHeldRealGit; here every tree holds the brief.
 	prevHeld := pathHeldAt
 	pathHeldAt = func(_, _, _ string) bool { return true }
-	t.Cleanup(func() { commitIsAncestor, failFirstMergeBase, pathHeldAt = prev, prevMB, prevHeld })
+	t.Cleanup(func() {
+		commitIsAncestor, failFirstMergeBase, pathHeldAt, commitIsMergeBase = prev, prevMB, prevHeld, prevExact
+	})
 }
 
 // TestFailFirstNonDiscriminating — Verify row 1. A risk-bearing row green at
@@ -182,11 +187,12 @@ func ffRepo(t *testing.T) (root, older, base, branch, head, stray string) {
 	return root, older, base, branch, head, stray
 }
 
-// TestFailFirstBaseAncestry — Verify row 2. A fail-first witness is accepted
-// only when its base is the merge-base of HEAD and the default branch or an
-// ancestor of it. HEAD's own commit, a commit of the branch, a sibling tree and
-// an object this clone does not have are each a PROBLEM "base is not the
-// merge-base" — never a pass.
+// TestFailFirstBaseAncestry — Verify row 2. A fail-first witness that records
+// no delivering commit is accepted only when its base is the merge-base of HEAD
+// and the default branch itself (#2721 option 2: an older ancestor is accepted
+// only as the parent of a recorded delivering commit). HEAD's own commit, a
+// commit of the branch, an older ancestor, a sibling tree and an object this
+// clone does not have are each a PROBLEM — never a pass.
 func TestFailFirstBaseAncestry(t *testing.T) {
 	withBase(t, true)
 	root, older, base, branch, head, stray := ffRepo(t)
@@ -197,7 +203,7 @@ func TestFailFirstBaseAncestry(t *testing.T) {
 		wantProblem bool
 	}{
 		{"the merge-base itself", base[:12], false},
-		{"an ancestor of the merge-base (post-merge verify: the delivering change's parent)", older[:12], false},
+		{"an older ancestor with no delivering commit recorded", older[:12], true},
 		{"HEAD's own commit", head[:12], true},
 		{"a commit of the branch", branch[:12], true},
 		{"sibling tree outside this history", stray[:12], true},
@@ -205,7 +211,7 @@ func TestFailFirstBaseAncestry(t *testing.T) {
 	} {
 		evidence := ffTable(failFirstCell(c.base, baseRed, 1, head[:12]), skip)
 		problems, _ := failFirstGateChecks(root, ffStream(t, root, evidence))
-		got := containsSub(problems, "not the merge-base or an ancestor of it")
+		got := containsSub(problems, "neither the merge-base nor the parent of a delivering commit")
 		if got != c.wantProblem {
 			t.Errorf("%s: base %s — base PROBLEM=%v, want %v; problems=%v", c.name, c.base, got, c.wantProblem, problems)
 		}
@@ -214,7 +220,8 @@ func TestFailFirstBaseAncestry(t *testing.T) {
 
 // TestFailFirstBaseFlagRefusesNonAncestor — the runner refuses at the source
 // what the gate would refuse later: --base HEAD records a red that proves
-// nothing about the change.
+// nothing about the change, and without --delivering-commit an older ancestor
+// is refused too (#2721).
 // regression: #4360
 func TestFailFirstBaseFlagRefusesNonAncestor(t *testing.T) {
 	root, older, base, branch, head, _ := ffRepo(t)
@@ -223,8 +230,8 @@ func TestFailFirstBaseFlagRefusesNonAncestor(t *testing.T) {
 	for _, c := range []struct {
 		name, rev string
 		ok        bool
-	}{{"merge-base", base, true}, {"ancestor of the merge-base", older, true}, {"branch commit", branch, false}, {"HEAD", head, false}} {
-		_, err := failFirstBaseRev(root, c.rev, briefPath)
+	}{{"merge-base", base, true}, {"ancestor of the merge-base, no delivering commit", older, false}, {"branch commit", branch, false}, {"HEAD", head, false}} {
+		_, _, err := failFirstBaseRev(root, c.rev, "", briefPath)
 		if (err == nil) != c.ok {
 			t.Errorf("--base %s: err=%v, want ok=%v", c.name, err, c.ok)
 		}
@@ -420,39 +427,50 @@ func withBriefHeld(t *testing.T, held ...string) {
 	t.Cleanup(func() { pathHeldAt = prev })
 }
 
-// TestFailFirstBaseMustHoldBrief — F3 (a). The ancestry rule alone accepts any
-// ancestor of the merge-base, the repository's root commit included, where every
-// row reds because the files are missing, not because of any change. A base that
-// does not hold the brief file while the merge-base does is refused by the gate
-// and by the runner; a brief born on the branch (the merge-base lacks it too)
-// accepts only the merge-base itself.
+// TestFailFirstBaseMustHoldBrief — F3 (a). A base that holds no brief, such as
+// the repository's root commit, reds every row because the files are missing,
+// not because of any change. With a delivering commit recorded (its parent is
+// the base) the brief must be held by the base or by the delivering commit
+// itself (#2721, F8: a brief its own delivering change added stays closable
+// after merge); held by neither is refused by the gate and by the runner.
+// Without one only the merge-base itself is accepted, held or not.
 func TestFailFirstBaseMustHoldBrief(t *testing.T) {
 	withBase(t, true)
 	root, older, base, _, head, _ := ffRepo(t)
 	skip := failFirstCell("", baseNotSelected, -1, head[:12])
 	briefPath := filepath.Join(root, "docs", "streams", "ff", "brief-01-ff.md")
 
+	// ffRepo's base commit is older's only child: naming it as the delivering
+	// commit makes older the base.
 	for _, c := range []struct {
-		name        string
-		held        []string
-		baseRev     string
-		wantProblem bool
+		name             string
+		held             []string
+		baseRev, deliver string
+		want             string // a PROBLEM substring, "" for accepted
 	}{
-		{"older ancestor predates the brief", []string{base}, older, true},
-		{"older ancestor holds the brief", []string{base, older}, older, false},
-		{"the merge-base holds the brief", []string{base}, base, false},
-		{"brief born on the branch: an older ancestor is refused", nil, older, true},
-		{"brief born on the branch: the merge-base itself is the one base accepted", nil, base, false},
+		{"delivering commit and its parent both lack the brief", []string{head}, older, base, "neither the base nor the delivering commit"},
+		{"the parent of the delivering commit holds the brief", []string{base, older}, older, base, ""},
+		{"the delivering commit added the brief (F8)", []string{base}, older, base, ""},
+		{"an older ancestor with no delivering commit", []string{base, older}, older, "", "is not the merge-base of HEAD and origin/main"},
+		{"the merge-base holds the brief", []string{base}, base, "", ""},
+		{"brief born on the branch: the merge-base itself is the one base accepted", nil, base, "", ""},
 	} {
 		withBriefHeld(t, c.held...)
-		evidence := ffTable(failFirstCell(c.baseRev[:12], baseRed, 1, head[:12]), skip)
-		problems, _ := failFirstGateChecks(root, ffStream(t, root, evidence))
-		if got := containsSub(problems, "predates the brief") || containsSub(problems, "cannot be shown to hold the brief"); got != c.wantProblem {
-			t.Errorf("gate, %s: PROBLEM=%v, want %v; problems=%v", c.name, got, c.wantProblem, problems)
+		cell := failFirstCell(c.baseRev[:12], baseRed, 1, head[:12])
+		if c.deliver != "" {
+			cell += " · delivering=" + c.deliver[:12]
 		}
-		_, err := failFirstBaseRev(root, c.baseRev, briefPath)
-		if (err != nil) != c.wantProblem {
-			t.Errorf("runner --base, %s: err=%v, want refusal=%v", c.name, err, c.wantProblem)
+		problems, _ := failFirstGateChecks(root, ffStream(t, root, ffTable(cell, skip)))
+		if c.want == "" && len(problems) != 0 || c.want != "" && !containsSub(problems, c.want) {
+			t.Errorf("gate, %s: want %q; problems=%v", c.name, c.want, problems)
+		}
+		rev := c.baseRev
+		if c.deliver != "" {
+			rev = ""
+		}
+		_, _, err := failFirstBaseRev(root, rev, c.deliver, briefPath)
+		if (err != nil) != (c.want != "") || err != nil && !strings.Contains(err.Error(), c.want) {
+			t.Errorf("runner, %s: err=%v, want %q", c.name, err, c.want)
 		}
 	}
 }
@@ -520,11 +538,11 @@ func TestFailFirstBriefHeldRealGit(t *testing.T) {
 		}
 		prev := failFirstMergeBase
 		failFirstMergeBase = func(string) string { return mergeBase }
-		_, err := failFirstBaseRev(root, rootCommit, briefPath)
+		_, _, err := failFirstBaseRev(root, rootCommit, "", briefPath)
 		if (err == nil) != c.wantRootBase {
 			t.Errorf("%s: runner --base <root commit>: err=%v, want accepted=%v", c.name, err, c.wantRootBase)
 		}
-		if _, err := failFirstBaseRev(root, mergeBase, briefPath); err != nil {
+		if _, _, err := failFirstBaseRev(root, mergeBase, "", briefPath); err != nil {
 			t.Errorf("%s: runner --base <merge-base> must be accepted; got %v", c.name, err)
 		}
 		failFirstMergeBase = prev
@@ -545,7 +563,8 @@ func TestFailFirstBriefHeldRealGit(t *testing.T) {
 
 // TestVerifyrunFailFirstRefusesAncestorBaseOfBranchBornBrief — the runner
 // wiring, end to end through `verifyrun --fail-first --base`: a brief created on
-// the branch refuses the root commit as the base before any row runs, and the
+// the branch refuses the root commit as the base before any row runs (an older
+// base with no delivering commit is refused outright, #2721), and the
 // merge-base itself is not refused.
 func TestVerifyrunFailFirstRefusesAncestorBaseOfBranchBornBrief(t *testing.T) {
 	root := t.TempDir()
@@ -567,7 +586,7 @@ func TestVerifyrunFailFirstRefusesAncestorBaseOfBranchBornBrief(t *testing.T) {
 	t.Cleanup(func() { failFirstMergeBase = prev })
 
 	res, stderr := captureVerifyrun(t, []string{"--fail-first", "--dry-run", "--root", root, "--base", rootCommit, "--brief", brief})
-	if res.code != verifyrunExitCouldNot || !strings.Contains(stderr, "cannot be shown to hold the brief") {
+	if res.code != verifyrunExitCouldNot || !strings.Contains(stderr, "is not the merge-base of HEAD and origin/main") {
 		t.Errorf("--base <root commit> for a brief born on the branch must be refused; code=%d stderr=%s", res.code, stderr)
 	}
 	_, stderr = captureVerifyrun(t, []string{"--fail-first", "--dry-run", "--root", root, "--base", mergeBase, "--brief", brief})

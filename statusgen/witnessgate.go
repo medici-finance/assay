@@ -317,11 +317,7 @@ func failFirstClosureChecks(root, id, status string, art briefArtifacts, plan pr
 			if !mergeBaseDone {
 				mergeBase, mergeBaseDone = failFirstMergeBase(root), true
 			}
-			if ok, why := commitIsAncestor(root, ff.Base, mergeBase); !ok {
-				fact.AncestryProblem = why
-			} else {
-				fact.HeldProblem = briefHeldAtBase(root, art.Path, ff.Base, mergeBase)
-			}
+			fact.AncestryProblem, fact.HeldProblem = failFirstBaseProblem(root, art.Path, ff.Base, ff.Delivering, mergeBase, ff.Head)
 		}
 		problem := evaluation.FailFirstProblem(fact)
 		switch {
@@ -337,11 +333,11 @@ func failFirstClosureChecks(root, id, status string, art briefArtifacts, plan pr
 				continue
 			}
 			if why := fact.AncestryProblem; problem == "ancestry" {
-				problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its fail-first base is not the merge-base or an ancestor of it (base %s: %s), so its %s is not about the tree without this change. Re-run `statusgen verifyrun --fail-first` (default base, or --base <an ancestor of the merge-base>)", id, status, r.ID, ff.Base, why, ff.State))
+				problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its fail-first base is neither the merge-base nor the parent of a delivering commit on the default branch's history (base %s: %s), so its %s is not about the tree without this change. Re-run `statusgen verifyrun --fail-first` (default base before merge; after merge, --delivering-commit <the commit that delivered the change>)", id, status, r.ID, ff.Base, why, ff.State))
 				continue
 			}
 			if why := fact.HeldProblem; problem == "held" {
-				problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its fail-first base %s is not about this change (%s). Re-run `statusgen verifyrun --fail-first --base <a later ancestor of the merge-base>`", id, status, r.ID, ff.Base, why))
+				problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its fail-first base %s is not about this change (%s). Re-run `statusgen verifyrun --fail-first` (default base before merge; after merge, --delivering-commit <the commit that delivered the change>)", id, status, r.ID, ff.Base, why))
 				continue
 			}
 			if problem == "green" {

@@ -18,7 +18,7 @@
     ".cursor/rules/assay.mdc": "4672416edf3900eedab43c193457779671180a18ffa7deca9652f70666896b2d",
     ".cursor/skills/adopt/SKILL.md": "e438b5a1993ca87f9e90167e01b7beda8ea772d2378bf7baeb88f0dc3bba9c5c",
     ".cursor/skills/ask-decision/SKILL.md": "dd56d7f814c1833eb8a8913ff218709574641a01aa83d76dbcaaaec412783db9",
-    ".cursor/skills/author-brief/SKILL.md": "963cb1825d63f0b152f2133e1834578d688d72396e68abfd51543221615e1679",
+    ".cursor/skills/author-brief/SKILL.md": "25fd0643c7ece7a772f466a0866b46d50e0c9029d65893e41c9aecd425de29b9",
     ".cursor/skills/author-spec/SKILL.md": "6a22dd23cd115c1bf60edaeedb37a1a55c2f15ac8c8b1eb505e4fa5f7572c545",
     ".cursor/skills/author-spec/references/quality-requirements.md": "b89b1d814fa8737f73273c964cf94a772321e4006161a8e0422f54c1acb2901b",
     ".cursor/skills/author-spec/references/review-prompts.md": "3b75799a47769ad8d469880aaf97b5b69c9e3bfc0ce400e36052b598873a06a6",
@@ -43,7 +43,7 @@
     ".cursor/skills/trace-path-to-live/SKILL.md": "3f53cf3cb564fb8631e42f14a82cd31b4f5fe7ac8cae9f0044c20b4f01193c66",
     ".cursor/skills/trace-path-to-live/references/report.md": "91fad1473fb5876ca40aff859be4376c147a5952797c062ea1487a4fabacfdf1",
     ".cursor/skills/upgrade-assay/SKILL.md": "629fb0269d7344583a8fca08d801b32a3d8f3dbb28db7fa5af9be732928df775",
-    ".cursor/skills/verify-desk/SKILL.md": "16c1d9c9fba26d4028ec67f016f5b014081ae25fe37e0369625425957ed37d7c",
+    ".cursor/skills/verify-desk/SKILL.md": "d33076831376ea462dd8b01334008ceadb5bec13e1faf7d9bc743555e31a34a0",
     ".cursor/skills/worker-desk/SKILL.md": "e0a455ff55052327fc06986bc7722857b5f08a3a005d423fed119c824f8c146f",
     ".cursor/skills/worker-desk/references/dispatch-runbook.md": "61f6196d7830a57b9ef84c2cf4b2d4862a62207625893fc74e91f0e878b8672b"
   },
