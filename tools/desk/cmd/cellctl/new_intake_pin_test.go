@@ -228,4 +228,53 @@ func TestSetShadowedPinNotice(t *testing.T) {
 			t.Errorf("a pin the cell reads: code=%d stderr=%q; want success and no notice", code, errOut)
 		}
 	})
+
+	// regression: F-intake-pin
+	t.Run("model policy", func(t *testing.T) {
+		_, cellDir := scaffoldHouse(t, "")
+		policy := writeMutatedPolicy(t, nil)
+		appendCellEnv(t, cellDir, "CELL_MODEL_POLICY="+policy)
+		code, out, errOut := setNotice(t, "h", "DESK_MODEL_intake_desk=sonnet")
+		if code != 0 || !strings.Contains(out, "[set] DESK_MODEL_intake_desk:") {
+			t.Fatalf("code=%d stdout=%q stderr=%q; want a normal write", code, out, errOut)
+		}
+		// The notice must name the policy file, not the provider-defaults wording.
+		for _, want := range []string{"DESK_MODEL_intake_desk", "NOT read", "CELL_MODEL_POLICY", policy} {
+			if !strings.Contains(errOut, want) {
+				t.Errorf("the notice lacks %q:\n%s", want, errOut)
+			}
+		}
+		if strings.Contains(errOut, "provider defaults") {
+			t.Errorf("a policy cell was pointed at the provider defaults:\n%s", errOut)
+		}
+	})
+
+	t.Run("policy cannot be resolved", func(t *testing.T) {
+		_, cellDir := scaffoldHouse(t, "")
+		missing := filepath.Join(t.TempDir(), "no-such-policy.json")
+		appendCellEnv(t, cellDir, "CELL_MODEL_POLICY="+missing)
+		code, out, errOut := setNotice(t, "h", "DESK_MODEL_intake_desk=sonnet")
+		if code != 0 || !strings.Contains(out, "[set] DESK_MODEL_intake_desk:") {
+			t.Fatalf("code=%d stdout=%q stderr=%q; want the write and exit 0 to stand", code, out, errOut)
+		}
+		for _, want := range []string{"could not check", "DESK_MODEL_intake_desk"} {
+			if !strings.Contains(errOut, want) {
+				t.Errorf("the notice lacks %q:\n%s", want, errOut)
+			}
+		}
+		if strings.Contains(errOut, "NOT read") {
+			t.Errorf("an unresolvable policy was reported as a confirmed shadow:\n%s", errOut)
+		}
+	})
+}
+
+// appendCellEnv adds one raw line to the cell's cell.env, for a setting the test needs in place
+// before the call under test, so that call is the only `set`.
+func appendCellEnv(t *testing.T, cellDir, line string) {
+	t.Helper()
+	f, err := os.OpenFile(filepath.Join(cellDir, "cell.env"), os.O_APPEND|os.O_WRONLY, 0o600)
+	must(t, err)
+	_, err = f.WriteString(line + "\n")
+	must(t, err)
+	must(t, f.Close())
 }

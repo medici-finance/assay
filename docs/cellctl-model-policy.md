@@ -64,12 +64,19 @@ overwrites an existing file. The seed gives `intake-desk` tier `strong` under ev
 `pr-review-desk` and `verify-desk`; `worker-desk` and the other desks stay as they were. The intake
 skill reserves its judgment work for a strong tier, and a session on a lower one does mechanical
 work only. New cells also scaffold `DESK_MODEL_intake_desk=opus`, which is what decides on a
-container or scrubbed cell, because those never take provider defaults. On a house or k8s cell the
-provider defaults (or a `CELL_MODEL_POLICY`) decide instead and the `DESK_MODEL_*` pins are not read.
+container or scrubbed cell, because those never take provider defaults. A house or k8s cell reads
+the pins only while it resolves through neither a `CELL_MODEL_POLICY` nor provider defaults, which is
+the case when no shared `CELLS_ROOT/providers.json` exists and no `CELL_PROVIDER_DEFAULTS` or
+`CELL_PROVIDER_OVERRIDES` is set; a freshly scaffolded house cell is in that state until
+`cellctl providers init` runs. Once a shared provider-defaults file exists, or a policy is set, that
+file decides instead and the `DESK_MODEL_*` pins are not read.
 
 Existing installations are not rewritten. To move one: set `intake-desk` to tier `strong` in the
 shared provider-defaults file (every cell); put only that key in the cell's own `providers.json`, or
-the file `CELL_PROVIDER_OVERRIDES` names, which is merged over the shared file (one cell); or, on a
+the file `CELL_PROVIDER_OVERRIDES` names, which is merged over the shared file (one cell; the shared
+file must already exist, because with it absent and a per-cell file present `cellctl desk`, `up` and
+`check` refuse with `cannot read provider defaults`, so run `cellctl providers init` first, which
+moves every house or k8s cell without a policy from its pins to the provider defaults); or, on a
 cell that resolves through neither, run `cellctl set <cell> DESK_MODEL_intake_desk=opus`. A cell
 carrying `CELL_MODEL_POLICY` takes its whole policy from that file, so edit the file. A window pins
 the policy it launched under and refuses once it changes, so changing a provider-defaults file a

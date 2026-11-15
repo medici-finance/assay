@@ -1202,7 +1202,8 @@ and the first wins outright:
 | Cell kind | What decides the model | Where the intake change lives |
 |---|---|---|
 | house or k8s cell with `CELL_MODEL_POLICY` | that policy file, whole | nothing here rewrites a policy file; edit it |
-| house or k8s cell with no policy | the provider defaults: `CELLS_ROOT/providers.json`, with the cell's own `providers.json` (or the file `CELL_PROVIDER_OVERRIDES` names) merged over it key by key; the `DESK_MODEL_*` pins are not read | the seed `providers.json`, which `cellctl providers init` copies once |
+| house or k8s cell with no policy, and a shared `CELLS_ROOT/providers.json` | the provider defaults: that file, with the cell's own `providers.json` (or the file `CELL_PROVIDER_OVERRIDES` names) merged over it key by key; the `DESK_MODEL_*` pins are not read | the seed `providers.json`, which `cellctl providers init` copies once |
+| house or k8s cell with no policy, no shared `providers.json`, and no `CELL_PROVIDER_DEFAULTS` or `CELL_PROVIDER_OVERRIDES` | the pins in `cell.env`, read as on a container cell. A freshly scaffolded house cell is in this state until someone runs `cellctl providers init` | the scaffolded `DESK_MODEL_intake_desk` line |
 | container or scrubbed cell | the pins in `cell.env` (container and scrubbed cells never take provider defaults) | the scaffolded `DESK_MODEL_intake_desk` line |
 
 **Moving an existing installation.** No existing `cell.env` and no existing provider-defaults file is
@@ -1212,9 +1213,13 @@ by reach:
 - **Every cell:** set `intake-desk` to tier `strong` in the shared `CELLS_ROOT/providers.json`.
 - **One cell:** put only that key in the cell's own `providers.json`, for example
   `{"providers":{"anthropic":{"desks":{"intake-desk":{"tier":"strong"}}}}}`. It is merged over the
-  shared file.
-- **A cell that resolves through neither a policy nor provider defaults:**
-  `cellctl set <cell> DESK_MODEL_intake_desk=opus`.
+  shared file, **so the shared `CELLS_ROOT/providers.json` must already exist.** With the shared file
+  absent and a per-cell file (or a `CELL_PROVIDER_*` setting) present, `cellctl desk`, `up` and `check`
+  refuse with `cannot read provider defaults`, and the cell cannot launch. Run `cellctl providers init`
+  first if the shared file is missing, knowing that creating it moves every house or k8s cell without
+  a policy from reading its pins to reading the provider defaults.
+- **A cell that resolves through neither a policy nor provider defaults** (a house or k8s cell with no
+  shared `providers.json`, and a container or scrubbed cell): `cellctl set <cell> DESK_MODEL_intake_desk=opus`.
 
 A running window pins the SHA-256 of the policy it launched under and refuses once that file changes,
 so **changing a provider-defaults file a running cell reads requires restarting that cell's windows.**
