@@ -43,7 +43,9 @@ func TestContainerHistoryFailFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := append(fx.runArgs(), "--fail-first", "--base", base)
+	// Post-merge shape: origin/main already holds the delivery, so the base is
+	// named as the delivering commit's parent (#2721).
+	args := append(fx.runArgs(), "--fail-first", "--base", base, "--delivering-commit", head)
 	res, stderr = captureVerifyrun(t, args)
 	if res.code != verifyrunExitCouldNot || !strings.Contains(stderr, "names no commit") {
 		t.Fatalf("without history, want original refusal: %d %s", res.code, stderr)
@@ -53,7 +55,7 @@ func TestContainerHistoryFailFirst(t *testing.T) {
 		t.Fatalf("with history: %d %s", res.code, stderr)
 	}
 	witness := getFile(t, fx.witness)
-	if !strings.Contains(witness, "pass exit=0 sandbox=container-netns") || !strings.Contains(witness, "base="+base[:treeSHALen]+" red rc=1") {
+	if !strings.Contains(witness, "pass exit=0 sandbox=container-netns") || !strings.Contains(witness, "base="+base[:treeSHALen]+" red rc=1") || !strings.Contains(witness, "· delivering="+head[:treeSHALen]) {
 		t.Fatalf("missing real head pass / baseline red: %s", witness)
 	}
 	after, err := homeTreeDigest(fx.home)
@@ -119,10 +121,10 @@ func TestHistoryBaselineGuards(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	if _, err := failFirstBaseRev(history, beforeBrief, brief); err == nil {
+	if _, _, err := failFirstBaseRev(history, beforeBrief, "", brief); err == nil {
 		t.Fatal("history transport bypassed the brief-at-base guard")
 	}
-	if _, err := failFirstBaseRev(history, strings.Repeat("e", 40), brief); err == nil {
+	if _, _, err := failFirstBaseRev(history, strings.Repeat("e", 40), "", brief); err == nil {
 		t.Fatal("history transport invented a missing baseline")
 	}
 	if _, err := os.Stat(filepath.Join(history, ".git", "config")); err != nil {
