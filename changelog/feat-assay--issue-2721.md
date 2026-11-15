@@ -1,0 +1,2 @@
+### Changed
+- `statusgen verifyrun --fail-first` takes `--delivering-commit <rev>` for a post-merge verify: the commit must be HEAD or an ancestor of HEAD, the base run is its first parent, and the Base cell records `· delivering=<sha>`. Without a delivering commit, the base must be the merge-base itself; an older ancestor is no longer accepted. The `fail-first-closure` lint applies the same rule, and a brief added by its own delivering change stays closable.

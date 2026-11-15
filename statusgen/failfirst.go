@@ -8,8 +8,9 @@ package main
 // witness row records both in a trailing Base cell —
 //
 //	base=<sha12> red rc=1 · head=<sha12>
+//	base=<sha12> red rc=1 · head=<sha12> · delivering=<sha12>
 //
-// — and a row that is green at base and passes at head is non-discriminating:
+// — the second form when the verifier named the delivering commit — and a row that is green at base and passes at head is non-discriminating:
 // it would have passed without the change it is meant to prove.
 //
 // SINGLE POINT OF FAILURE, and the layers behind it. The red at base means
@@ -18,27 +19,29 @@ package main
 // reds (or greens) for reasons that have nothing to do with the change. So the
 // witness records the base SHA it ran against, and the closure gate
 // (failFirstGateChecks) accepts a fail-first witness only when
-//   - its base is the merge-base of HEAD and the default branch, or an ancestor
-//     of that merge-base (so HEAD's own commit and any branch commit are
-//     refused, and a post-merge verifier can pass --base <the delivering
-//     change's parent>);
-//   - that base holds the brief file at its current path whenever the
-//     merge-base does (briefHeldAtBase), so a base older than the brief, such
-//     as the repository's root commit, where every row reds for reasons that
-//     have nothing to do with any change, is refused; when the merge-base does
-//     NOT hold the brief at that path (created or renamed on the branch, or the
-//     path does not resolve) only the merge-base itself is accepted; and
+//   - with no delivering commit recorded, its base is EXACTLY the merge-base of
+//     HEAD and the default branch (so HEAD's own commit, any branch commit and
+//     any older ancestor are refused);
+//   - with a delivering commit recorded (verifyrun --delivering-commit, the
+//     post-merge case where the merge-base already holds the change), that
+//     commit is HEAD or an ancestor of HEAD, the base is exactly its first
+//     parent, and the base is the merge-base or an ancestor of it
+//     (medici-finance/assay#2721, option 2);
+//   - the brief file is held at its current path by the base, or by the
+//     delivering commit when one is recorded (a brief the delivering change
+//     itself added), so a base older than the brief, such as the repository's
+//     root commit, where every row reds for reasons that have nothing to do
+//     with any change, is refused; and
 //   - it is the LATEST witness for the row and was run for the row's CURRENT
 //     command (the sibling check checkWitnesses applies the same two rules).
 //
 // THE LIMIT, stated here and wherever the guarantee is claimed (the doc's
-// Fail-first section, the verify-desk step, the PR body): the gate proves only
-// that the base is the merge-base or older and that the brief already existed
-// there. It does NOT prove the base is the tree without THIS change. Which
-// ancestor counts as "without this change" (in a post-merge verify, the parent
-// of the delivering merge) is the verifier's attestation, and the Base cell is
-// self-attested Evidence text like every witness cell. The binding is a design
-// decision tracked on the issue the PR links, not something the lint decides.
+// Fail-first section, the verify-desk step, the PR body): the gate binds the
+// base to the delivering commit the witness records, in code. It does NOT
+// prove that the recorded commit is the one that delivered THIS change: which
+// commit on HEAD's history is "the delivering commit" is the verifier's
+// attestation, read from the forge, and the Base cell is self-attested
+// Evidence text like every witness cell.
 //
 // The ancestry question lives in failfirst_ancestry.go, the one file in this
 // package that asks git for commit ancestry; it is NOT a witness-applicability
@@ -80,12 +83,17 @@ type failFirst struct {
 	State        string // red | green | unproven | not-selected
 	Head         string // the head tree token the same witness row ran on
 	Exit         int    // base exit code, -1 when nothing ran
+	Delivering   string // short delivering commit SHA, "" when none was recorded
 	OutputDigest string // full sha256 of opt-in retained primary output
 	LogName      string // generated filename within the caller's base-log directory
 }
 
 // failFirstCellRe reads a Base cell back.
 var failFirstCellRe = regexp.MustCompile(`\bbase=([0-9a-f]{7,40}|-)\s+(red|green|unproven|not-selected)\b(?:\s+rc=(-|\d+))?(?:\s*·\s*head=([^\s|]+))?`)
+
+// deliveringCellRe reads the delivering commit a Base cell records after its
+// head token.
+var deliveringCellRe = regexp.MustCompile(`·\s*delivering=([0-9a-f]{7,40})(?:\s|$)`)
 
 var baseOutputCellRe = regexp.MustCompile(`\soutput=(sha256:[0-9a-f]{64}) log=(row-[0-9]{6}\.log)$`)
 
@@ -125,6 +133,13 @@ func failFirstOf(text string) (failFirst, bool) {
 			return failFirst{}, false
 		}
 		f.OutputDigest, f.LogName = metadata[1], metadata[2]
+	}
+	if strings.Contains(cells[witnessCellBase], "delivering=") {
+		d := deliveringCellRe.FindStringSubmatch(cells[witnessCellBase])
+		if d == nil || (f.State != baseRed && f.State != baseGreen) || strings.Count(cells[witnessCellBase], "delivering=") != 1 {
+			return failFirst{}, false
+		}
+		f.Delivering = d[1]
 	}
 	return f, true
 }
@@ -231,37 +246,122 @@ func truncateRunes(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-// failFirstBaseRev resolves the base the fail-first run checks out: the
-// operator's --base revision (the merge-base of HEAD and origin/main, or an
-// ancestor of it: in a post-merge verify the merge-base already holds the
-// change, so the verifier passes the delivering change's parent), or by
-// default the exact merge-base of HEAD and origin/main.
-func failFirstBaseRev(root, rev, briefPath string) (string, error) {
+// failFirstBaseRev resolves the base the fail-first run checks out, and the
+// full delivering commit the witness records ("" when none).
+//   - --delivering-commit <rev> (after the change has merged, when the
+//     merge-base already holds it): the commit must be HEAD or an ancestor of
+//     HEAD and the base is its first parent; a --base beside it must name that
+//     same parent (medici-finance/assay#2721, option 2).
+//   - --base <rev> alone: it must be the merge-base of HEAD and origin/main
+//     itself.
+//   - neither: the exact merge-base of HEAD and origin/main.
+//
+// The runner refuses here what the closure gate would refuse later
+// (failFirstBaseProblem). With the merge-base unresolvable the gate runs
+// degraded and says so, so only the delivering commit's own binding is checked.
+func failFirstBaseRev(root, rev, delivering, briefPath string) (base, deliveringFull string, err error) {
+	for _, op := range []struct{ flag, v string }{{"--base", rev}, {"--delivering-commit", delivering}} {
+		if strings.HasPrefix(op.v, "-") {
+			return "", "", fmt.Errorf("%s %q is not a revision", op.flag, op.v)
+		}
+	}
+	full := ""
 	if rev != "" {
-		if strings.HasPrefix(rev, "-") {
-			return "", fmt.Errorf("--base %q is not a revision", rev)
-		}
-		full, err := resolveCommit(root, rev)
+		full, err = resolveCommit(root, rev)
 		if err != nil || !isObjectID(full) {
-			return "", fmt.Errorf("--base %q names no commit in this clone", rev)
+			return "", "", fmt.Errorf("--base %q names no commit in this clone", rev)
 		}
-		// Refuse here what the closure gate would refuse later: a base that is
-		// neither the merge-base nor an ancestor of it was never "without this
-		// change". Unresolvable merge-base: the gate runs degraded and says so.
-		if mb := failFirstMergeBase(root); mb != "" {
-			if ok, why := commitIsAncestor(root, full, mb); !ok {
-				return "", fmt.Errorf("--base %q is refused: %s", rev, why)
-			}
-			if why := briefHeldAtBase(root, briefPath, full, mb); why != "" {
-				return "", fmt.Errorf("--base %q is refused: %s", rev, why)
-			}
+	}
+	if delivering != "" {
+		d, err := resolveCommit(root, delivering)
+		if err != nil || !isObjectID(d) {
+			return "", "", fmt.Errorf("--delivering-commit %q names no commit in this clone", delivering)
 		}
-		return full, nil
+		d, parent, why := deliveringParent(root, d)
+		if why != "" {
+			return "", "", fmt.Errorf("--delivering-commit %q is refused: %s", delivering, why)
+		}
+		if full != "" && full != parent {
+			return "", "", fmt.Errorf("--base %q is refused: it is not the parent of the delivering commit %s (its first parent is %s); omit --base, which then defaults to that parent", rev, ffShort(d), ffShort(parent))
+		}
+		full, deliveringFull = parent, d
 	}
-	if b := mergeBaseExact(root, remoteMainRef); b != "" {
-		return b, nil
+	if full == "" {
+		if b := mergeBaseExact(root, remoteMainRef); b != "" {
+			return b, "", nil
+		}
+		return "", "", errors.New("the merge-base of HEAD and origin/main cannot be resolved (fetch origin/main, or pass --delivering-commit <the commit that delivered the change>)")
 	}
-	return "", errors.New("the merge-base of HEAD and origin/main cannot be resolved (fetch origin/main, or pass --base <rev>)")
+	if mb := failFirstMergeBase(root); mb != "" {
+		ancestry, held := failFirstBaseProblem(root, briefPath, full, deliveringFull, mb)
+		flag, v := "--base", rev
+		if deliveringFull != "" {
+			flag, v = "--delivering-commit", delivering
+		}
+		if why := ancestry + held; why != "" {
+			return "", "", fmt.Errorf("%s %q is refused: %s", flag, v, why)
+		}
+	}
+	return full, deliveringFull, nil
+}
+
+// ffShort is the witness-length prefix of a commit id.
+func ffShort(s string) string {
+	if len(s) > treeSHALen {
+		return s[:treeSHALen]
+	}
+	return s
+}
+
+// failFirstBaseProblem is the one base binding the runner and the closure gate
+// share (medici-finance/assay#2721, option 2). It returns the ancestry problem
+// and the brief-held problem, each "" when that half holds:
+//   - with no delivering commit, the base must be the merge-base itself
+//     (commitIsMergeBase); the brief-held rule then holds trivially, and is
+//     still asked so a stand-in merge-base cannot skip it;
+//   - with one, the delivering commit must be HEAD or an ancestor of HEAD, the
+//     base must be exactly its first parent, and the base must be the
+//     merge-base or an ancestor of it; the brief must be held by the base or by
+//     the delivering commit (a brief its own delivering change added stays
+//     closable after merge).
+func failFirstBaseProblem(root, briefPath, base, delivering, mergeBase string) (ancestry, held string) {
+	if delivering == "" {
+		if ok, why := commitIsMergeBase(root, base, mergeBase); !ok {
+			return why, ""
+		}
+		return "", briefHeldAtBase(root, briefPath, base, mergeBase)
+	}
+	d, parent, why := deliveringParent(root, delivering)
+	if why != "" {
+		return "the delivering commit " + delivering + " is refused: " + why, ""
+	}
+	if b, why := witnessCommit(root, base); why != "" || b != parent {
+		if why == "" {
+			why = "its first parent is " + ffShort(parent)
+		}
+		return "it is not the parent of the delivering commit " + ffShort(d) + " (" + why + ")", ""
+	}
+	if ok, why := commitIsAncestor(root, base, mergeBase); !ok {
+		return why, ""
+	}
+	return "", briefHeldForDelivery(root, briefPath, parent, d)
+}
+
+// briefHeldForDelivery is the brief-held rule for a witness that records its
+// delivering commit: the base (its parent) or the delivering commit itself must
+// hold the brief file at its current path. A brief the delivering change added
+// is held by the delivering commit; a commit from before the brief existed
+// holds it at neither, so the root commit still cannot stand in. It fails
+// closed when the brief path does not resolve.
+func briefHeldForDelivery(root, briefPath, base, delivering string) string {
+	rel, resolved := briefRelPath(root, briefPath)
+	if !resolved {
+		return "the brief path does not resolve under this clone, so neither the base nor the delivering commit can be shown to hold it"
+	}
+	if pathHeldAt(root, base, rel) || pathHeldAt(root, delivering, rel) {
+		return ""
+	}
+	return "neither the base nor the delivering commit " + ffShort(delivering) + " holds " + rel + ", so the Verify rows did not exist on either tree and a red there is not about this change (name the commit that delivered the change, after the brief existed)"
 }
 
 // pathHeldAt reports whether rev's tree holds the file rel (a slash path from
@@ -298,9 +398,9 @@ func canonicalPath(p string) string {
 //     probe failed): no ancestor can be shown to hold the brief, so the only
 //     base accepted is the merge-base itself. The check fails closed.
 //
-// This NARROWS the gap and does not close it: which ancestor between the
-// brief's creation and the merge-base is "without the delivering change" stays
-// the verifier's attestation (medici-finance/assay#2721 owns binding it).
+// With no delivering commit recorded the base must also be the merge-base
+// itself (failFirstBaseProblem), so this rule is defence in depth there; a
+// witness that records one is held by briefHeldForDelivery instead.
 func briefHeldAtBase(root, briefPath, base, mergeBase string) string {
 	if mergeBase == "" {
 		return ""
@@ -310,7 +410,7 @@ func briefHeldAtBase(root, briefPath, base, mergeBase string) string {
 		if pathHeldAt(root, base, rel) {
 			return ""
 		}
-		return "the base predates the brief: it does not hold " + rel + ", which the merge-base does, so the Verify rows did not exist on that tree and a red there is not about this change (pass a later ancestor of the merge-base)"
+		return "the base predates the brief: it does not hold " + rel + ", which the merge-base does, so the Verify rows did not exist on that tree and a red there is not about this change (use the default base, or --delivering-commit <the commit that delivered the change>)"
 	}
 	if sameCommit(root, base, mergeBase) {
 		return ""
@@ -430,7 +530,7 @@ func foldFailFirst(ws []witness, ff map[string]failFirst, risky map[string]bool,
 		}
 		switch {
 		case f.State == baseGreen && w.State == statePass:
-			fmt.Fprintf(stdout, "row %s: non-discriminating — green at base %s and pass at head; it passes with or without the change (if the change is already merged, pass --base <the parent of the delivering merge>)\n", w.ID, f.Base)
+			fmt.Fprintf(stdout, "row %s: non-discriminating — green at base %s and pass at head; it passes with or without the change (if the change is already merged, pass --delivering-commit <the commit that delivered it>)\n", w.ID, f.Base)
 			if risky[w.ID] && worst == verifyrunExitPass {
 				worst = verifyrunExitFail
 			}

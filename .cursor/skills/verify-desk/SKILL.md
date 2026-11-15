@@ -533,32 +533,31 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   gains a `Base` column (`base=<sha> red|green|unproven · head=<sha>`) as its LAST column. A row
   green at base and at head is **non-discriminating**: it passes with or without the change, so
   it proves nothing about it.
-  **Name the base.** The default base is the merge-base of HEAD and `origin/main`. In this
-  desk's flow the change is already merged, so the default base already CONTAINS the change and
-  every row would be green. Pass `--base <the parent of the delivering merge>`. Resolve it from
-  the forge, not from memory: `gh pr view <N> --json mergeCommit --jq .mergeCommit.oid` names the
-  delivering commit on main, and `<that oid>^` is the parent, which is the commit before it on
-  main for a squash merge and the first parent for a merge commit. Pass
-  `--base "<oid>^"` after resolving it to an object id with `git rev-parse`.
-  **What the check does not prove.** The runner and the lint accept only the merge-base or an
-  ancestor of it that already holds the brief file at its current path; a base on the branch, HEAD
-  itself, an object this clone does not hold, or a base older than the brief (the root commit, say)
-  is refused. A brief created or renamed on the branch has no such ancestor, so only the merge-base
-  itself is accepted for it. The
-  lint does NOT check WHICH ancestor you chose: any ancestor from the brief's creation up to the
-  merge-base passes. That the base is the tree without this change is your attestation, and the
-  Base cell is self-attested Evidence text like every witness cell. So take the parent of the
-  delivering merge, never a convenient old commit, and if you cannot resolve the delivering
-  change, record the row `unproven` rather than guess. Only the LATEST witness for a row counts,
-  and it must be for the row's current command: a later plain run, or an edited command, drops
-  the fail-first record.
+  **Name the delivering commit.** The default base is the merge-base of HEAD and `origin/main`.
+  In this desk's flow the change is already merged, so the default base already CONTAINS the
+  change and every row would be green. Pass `--delivering-commit <oid>`, where `<oid>` is the
+  commit that delivered the change on main. Resolve it from the forge, not from memory:
+  `gh pr view <N> --json mergeCommit --jq .mergeCommit.oid` names it, for a merge commit or a squash
+  merge. The runner checks that it is HEAD or an ancestor of HEAD and has a parent, runs the base
+  at its first parent, and records `· delivering=<sha>` in the Base cell. A `--base` passed beside
+  it must name that same parent.
+  **What the check does not prove.** With no delivering commit, the runner and the lint accept only
+  the merge-base itself; an older ancestor, a base on the branch, HEAD and an object this clone does
+  not hold are refused. With one, the base must be exactly the delivering commit's first parent, and
+  the base or the delivering commit must hold the brief file at its current path, so a brief the
+  delivering change added stays closable while a commit from before the brief is refused. The lint
+  does NOT check that the delivering commit you named is the one that delivered THIS change: that
+  is your attestation, and the Base cell is self-attested Evidence text like every witness cell.
+  So take the pull request's own merge or squash commit, never a convenient one, and if you cannot
+  resolve the delivering change, record the row `unproven` rather than guess. Only the LATEST
+  witness for a row counts, and it must be for the row's current command: a later plain run, or an
+  edited command, drops the fail-first record.
   Exit 1 means at least one risk-bearing row is non-discriminating. That is a VERIFY: FAIL on the
   row, not on the code: route it back to the implementer to strengthen the row
   (`docs/verify-row-strength.md`). Never land a closure on it. Exit 2 means a row could not run at
   base, which is could-not-check, not a pass. The lint refuses a new closure whose risk-bearing row
-  has no current fail-first witness, is non-discriminating, or names a base that is not the
-  merge-base or an ancestor of it that already holds the brief at its current path (for a brief
-  created or renamed on the branch, only the merge-base itself).
+  has no current fail-first witness, is non-discriminating, or names a base that is neither the
+  merge-base nor the parent of a recorded delivering commit on HEAD's history.
   **Side effects run twice.** A live, mutating or end-to-end row is executed once more at base,
   so read each such row for side effects before running fail-first; a row that cannot safely run
   twice is recorded `unproven` with its reason, never skipped silently.

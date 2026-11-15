@@ -114,14 +114,12 @@ is present but yields no path, the result is **COULD-NOT-CHECK**, never a findin
 `statusgen verifyrun --brief <path> --fail-first` runs each risk-bearing row twice. The first run
 is on the base, checked out into a temporary worktree, with the same sandbox and `--ci` mode as the
 head run. The second is the ordinary run at head. The default base is the merge-base of HEAD and
-`origin/main`. `--base <rev>` may name that merge-base or an ancestor of it that already holds the
-brief file, and nothing else: a branch commit, HEAD, an unknown object or a base older than the
-brief is refused. When the merge-base does not hold the brief at its current path (the brief was
-created, renamed or moved on the branch, or its path does not resolve under the root), no ancestor
-can be shown to hold it, so only the merge-base itself is accepted and the check fails closed. The witness table gains a `Base` column,
-appended to the right of `Runner` (readers of Date and Runner skip it):
+`origin/main`. Without `--delivering-commit`, `--base <rev>` may name that merge-base and nothing
+else: a branch commit, HEAD, an older ancestor and an unknown object are all refused. The witness
+table gains a `Base` column, appended to the right of `Runner` (readers of Date and Runner skip it):
 
     base=<sha> red rc=1 · head=<sha>
+    base=<sha> red rc=1 · head=<sha> · delivering=<sha>
 
 The base states are:
 
@@ -133,7 +131,13 @@ The base states are:
 
 **After the change has merged**, the merge-base of HEAD and `origin/main` is HEAD itself or a
 commit that already contains the change, so every row is green. The verifier passes
-`--base <the parent of the delivering merge>`. Only the latest witness of a row counts, and it
+`--delivering-commit <the commit that delivered the change>`: the merge commit, or the squash
+commit, on main. It must be HEAD or an ancestor of HEAD, and it must have a parent. Its first
+parent is the base, and the Base cell records it as `· delivering=<sha>`. A `--base` given beside
+it must name that same parent. Read the delivering commit from the forge, not from memory. The
+brief file must be held at its current path by the base or by the delivering commit, so a brief
+the delivering change itself added stays closable, while a commit from before the brief existed
+(the root commit, where every row reds because the files are missing) is refused. Only the latest witness of a row counts, and it
 must carry the row's current command; a later plain run or an edited command drops the record.
 One parser (`briefVerifyRows`) enumerates the rows for the gate, the risk selection and the
 runner, and Verify-shaped text it cannot place on a closure is a PROBLEM (see "Verify text the
@@ -143,12 +147,13 @@ end-to-end row runs a second time at base, so check it is safe to run twice.
 The lint gate on a closure **this branch makes** treats each risk-bearing row as follows. A row is
 a **PROBLEM** when it has no fail-first witness, its witness is `unproven`, its witness is
 non-discriminating, its witness is for an earlier command or has been superseded by a later plain
-run, or its witness names a base that is not the merge-base or an ancestor of it, or names a base
-that predates the brief (the merge-base holds the brief file at its current path and the base
-does not), or, when the merge-base does not hold the brief at its current path (created or renamed
-on the branch), names any base other than the merge-base itself. The last cases cover a red run on some other tree, on the branch itself, or on a
-tree from before the brief existed (the root commit, where every row reds because the files are
-missing), which proves nothing about this change. A non-risk-bearing row
+run, or its witness names a base that is not bound to the change. With no delivering commit
+recorded, the base must be the merge-base itself. With one recorded, the delivering commit must be
+HEAD or an ancestor of HEAD, the base must be exactly its first parent, the base must be the
+merge-base or an ancestor of it, and the base or the delivering commit must hold the brief file at
+its current path. These cases cover a red run on some other tree, on the branch itself, on an
+older tree that no recorded delivering commit names, or on a tree from before the brief existed,
+which proves nothing about this change. A non-risk-bearing row
 that is non-discriminating is reported as a NOTICE and never blocks. `verifyrun --fail-first`
 exits 1 when a risk-bearing row is non-discriminating and 2 when one could not run at base.
 
@@ -179,15 +184,15 @@ independent primary-output inspection remains required.
 
 ### What the base check does not prove
 
-The gate proves that the base is the merge-base, or an older commit that held the brief file at
-its current path. A brief created or renamed on the branch has no older ancestor that holds it at
-that path, so for such a brief only the merge-base itself passes (rename history is not followed;
-pass the default base). It does not prove that the base is the tree without THIS change. Any ancestor from the brief's
-creation up to the merge-base passes, so which one counts as "without this change" (in a
-post-merge verify, the parent of the delivering merge) is the verifier's attestation, and the
-Base cell is self-attested Evidence text, like every witness cell. Binding the base to the
-delivering change in code is a design decision tracked on the issue linked from the pull request
-that introduced the gate, not something the lint decides today.
+The gate binds the base to the delivering commit the witness records, in code: that commit is on
+HEAD's history and the base is its parent. It does not prove that the recorded commit is the one
+that delivered THIS change. Which commit on HEAD's history delivered the change is read from the
+forge (the pull request's merge or squash commit) and recorded by the verifier, and the Base cell is
+self-attested Evidence text, like every witness cell. The delivering commit is now named in the
+witness, so a reviewer can check it against the pull request. When only the delivering commit holds
+the brief, the base is the tree from before the brief existed; this is accepted because the
+delivering change added the brief itself, and naming a commit that added only the brief is that
+same attestation.
 
 ### Verify text the runner cannot place
 
