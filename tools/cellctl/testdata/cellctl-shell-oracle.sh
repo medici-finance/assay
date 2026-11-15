@@ -3378,10 +3378,12 @@ CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
+# The intake role's judgment work needs a strong tier; removing this line returns the role to DESK_MODEL_DEFAULT.
+DESK_MODEL_intake_desk=opus
 # The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
 # overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
 CELL_HARNESS=claude
-# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
+# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the
 # DESK_MODEL_* lines above are Claude-only and are never read on --harness codex. Absent here,
 # a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
 # CODEX_MODEL_default=gpt-5.6-terra
@@ -3436,10 +3438,12 @@ CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
+# The intake role's judgment work needs a strong tier; removing this line returns the role to DESK_MODEL_DEFAULT.
+DESK_MODEL_intake_desk=opus
 # The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
 # overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
 CELL_HARNESS=claude
-# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
+# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the
 # DESK_MODEL_* lines above are Claude-only and are never read on --harness codex. Absent here,
 # a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
 # CODEX_MODEL_default=gpt-5.6-terra
@@ -3492,7 +3496,7 @@ new_container(){
     printf '# Container cell registration; the launcher owns runtime custody.\n'
     printf 'CELL=%q\nCELL_KIND=container\nCELL_REPO=%q\n' "$cell" "$repo"
     printf 'CELL_CONTAINER_LAUNCHER=%q\nROLES=%q\nCELL_ROOTS=%q\n' "$launcher" "$roles" "$roots"
-    printf 'CELL_HARNESS=claude\nDESK_MODEL_DEFAULT=sonnet\nDESK_MODEL_the_desk=fable\nDESKD=0\n'
+    printf 'CELL_HARNESS=claude\nDESK_MODEL_DEFAULT=sonnet\nDESK_MODEL_the_desk=fable\nDESK_MODEL_intake_desk=opus\nDESKD=0\n'
   } > "$d/cell.env"
   chmod 600 "$d/cell.env"
   echo "[new] registered $d (container) — cellctl check $cell, then cellctl up $cell"
@@ -3535,10 +3539,12 @@ CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
+# The intake role's judgment work needs a strong tier; removing this line returns the role to DESK_MODEL_DEFAULT.
+DESK_MODEL_intake_desk=opus
 # The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
 # overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
 CELL_HARNESS=claude
-# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
+# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the
 # DESK_MODEL_* lines above are Claude-only and are never read on --harness codex. Absent here,
 # a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
 # CODEX_MODEL_default=gpt-5.6-terra
@@ -3616,6 +3622,8 @@ CELL_HARNESS=claude
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
+# The intake role's judgment work needs a strong tier; removing this line returns the role to DESK_MODEL_DEFAULT.
+DESK_MODEL_intake_desk=opus
 # Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — absent
 # here, a role falls back to the tier map (docs/cellctl.md's Pinned models section):
 # CODEX_MODEL_default=gpt-5.6-terra
