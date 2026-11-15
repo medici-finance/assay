@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -547,7 +548,7 @@ func statusgenDecisionGateAt(root, base string) ([]string, error) {
 	if _, err := exec.LookPath("statusgen"); err != nil {
 		return nil, deskkit.Unverifiable("statusgen is not on PATH — cannot run the decision-gate check (lifecycle-v1 §4.5) on this landing", err)
 	}
-	cmd := exec.Command("statusgen", "--root", root, "--decision-gate", "--decision-gate-base", base)
+	cmd := statusgenAudit(context.Background(), auditDecision, root, "--decision-gate-base", base)
 	cmd.Dir = os.TempDir()
 	out, cerr := cmd.CombinedOutput()
 	return parseDecisionGateRun(root, string(out), cerr)

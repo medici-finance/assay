@@ -36,6 +36,7 @@ func outcomeDirLines(t *testing.T, prompt string) []string {
 // landing command; an allocation that resolves inside the home or the root (directly or
 // through a symlink alias) is refused, never moved elsewhere; the cache form is owner-only
 // and week-pruned; and no other kit's prompt carries the line.
+// regression: #4823
 func TestVerifierOutcomePath(t *testing.T) {
 	t.Run("verifier prompt names one absolute outside path and the landing command", func(t *testing.T) {
 		home, root, cache := t.TempDir(), t.TempDir(), t.TempDir()
@@ -60,7 +61,7 @@ func TestVerifierOutcomePath(t *testing.T) {
 		if !filepath.IsAbs(got[0]) || vpWithin(home, got[0]) || vpWithin(root, got[0]) {
 			t.Errorf("outcome directory %q is not an absolute path outside home %s and root %s", got[0], home, root)
 		}
-		cmd := "deskevidence example/repo main --outcome-record " + filepath.Join(dir, "<file>.json") + " --root " + home
+		cmd := "deskevidence example/repo main --outcome-record " + filepath.Join(dir, "<file>.json") + " --root " + home + " --acceptance-forge"
 		if strings.Count(prompt, cmd) != 1 {
 			t.Errorf("prompt lacks the exact landing command %q:\n%s", cmd, prompt)
 		}

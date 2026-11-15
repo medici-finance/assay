@@ -201,6 +201,9 @@ func writeOutcomeRecordLine(b *strings.Builder, plan dispatchPlan, repo, home st
 		"Outcome directory (dispatcher-named, absolute, outside the home): `%s`. Write the outcome record there "+
 		"and nowhere else: never write the record inside the home `%s` (an untracked file there refuses the "+
 		"admission check). The directory is per claim, so a re-dispatch of the same claim reuses it and an "+
-		"earlier run's record may already be there: write a new file and land only your own. Land it with exactly:\n\n```\ndeskevidence %s main --outcome-record %s --root %s\n```\n\n",
+		"earlier run's record may already be there: write a new file and land only your own. Land it on the host with exactly:\n\n```\ndeskevidence %s main --outcome-record %s --root %s --acceptance-forge\n```\n\n"+
+		"The explicit --acceptance-forge permits fresh read-only approval corroboration for the landed closure tree, "+
+		"including protected transitions on other briefs. It supplies no approval and does not repair unknown repository authority. "+
+		"Retain every refusal; do not retry with stripped Git configuration, another origin or a stored human login.\n\n",
 		plan.outcomePath, home, repo, filepath.Join(plan.outcomePath, "<file>.json"), home)
 }

@@ -33,6 +33,7 @@ package main
 // read here.
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path"
@@ -69,7 +70,7 @@ func evidenceVerdictCheckAt(root, briefPath string, before, after []byte, hasBef
 	if aerr != nil {
 		return closureCouldNotErr, "", deskkit.Unverifiable("cannot resolve an absolute path for the landing root "+root, aerr)
 	}
-	args := []string{"evidenceverdict", "--root", absRoot, "--brief-path", briefPath}
+	args := []string{"--brief-path", briefPath}
 	if verdict != "" {
 		args = append(args, "--verdict", verdict)
 	} else {
@@ -91,7 +92,7 @@ func evidenceVerdictCheckAt(root, briefPath string, before, after []byte, hasBef
 			args = append(args, "--before", beforePath)
 		}
 	}
-	cmd := exec.Command("statusgen", acceptanceArgs(args...)...)
+	cmd := statusgenAudit(context.Background(), auditVerdict, absRoot, args...)
 	cmd.Dir = os.TempDir()
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout

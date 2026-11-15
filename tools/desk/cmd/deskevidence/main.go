@@ -50,14 +50,21 @@ USAGE:
                [--brief-path <repo-path>] [--append-only] [--allow-shrink]
                [--row <NN> [--row <NN> ...]] [--dry-run] [--acceptance-forge]
   deskevidence <owner/repo> <branch> --outcome-record <local-file> [--outcome-only]
-               [--root <dir>] [--dry-run]
-  deskevidence flip --root <worktree> --brief <stream>/<NN> --sha <sha> [--base main] [--dry-run]
+               [--root <dir>] [--dry-run] [--acceptance-forge]
+  deskevidence flip --root <worktree> --brief <stream>/<NN> --sha <sha> [--base main] [--dry-run] [--acceptance-forge]
   deskevidence --version
 
 --acceptance-forge explicitly permits fresh read-only corroboration of protected
 acceptance transitions by every child statusgen audit, lint and flip. It supplies no
 approval verdict. Without it amended acceptance remains held; ordinary records
 retain their existing behavior. Each approval target is printed before contact.
+The closure lint covers the whole landed tree, including other briefs' transitions.
+Unknown repository authority and unavailable or refuted approvals still refuse;
+this flag neither isolates Git configuration nor falls back to a human login.
+Approval audits receive only this invocation's minted verifier credential; other
+audits receive a noncredential refusal marker, closing stored-login fallback.
+Local flip corroboration requires an existing
+verifier session and a proven, authorized repository origin; it never changes roles.
 
 Commits the content of the local file at --evidence-file (a repo-relative path)
 to the same path on <branch> through a conditional forge write, using the verifier
@@ -130,16 +137,12 @@ func main() {
 
 var acceptanceForge bool
 
-func acceptanceArgs(args ...string) []string {
-	if acceptanceForge {
-		return append(args, "--acceptance-forge")
-	}
-	return args
-}
-
 func run(args []string) int {
 	old := acceptanceForge
 	defer func() { acceptanceForge = old }()
+	oldToken := ghToken
+	ghToken = ""
+	defer func() { ghToken = oldToken }()
 	acceptanceForge = false
 	filtered := make([]string, 0, len(args))
 	for _, a := range args {
