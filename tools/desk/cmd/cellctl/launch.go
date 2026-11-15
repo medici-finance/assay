@@ -236,7 +236,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	fmt.Printf("[launch] %s/%s kind=%s model=%s effort=%s provider=%s harness=%s session=%s config=%s cwd=%s desk_roots=%s (desk verbs → HOME=%s)\n",
 		c.Name, role, c.Kind, modelDisp, effortDisp, orDefault(providerDisp, "anthropic"), harness, session, cfg, wt, orDefault(deskRoots, "unset"), c.Home)
 
-	env := c.muharBudgetEnv(c.telemetryEnv(c.cacheEnv(os.Environ())))
+	// A host window binds no role secret (rolesecret.go): a path variable the launching shell
+	// carried is removed, so no host window looks like, or is, a holding window.
+	env := unsetRoleSecretEnv(c.muharBudgetEnv(c.telemetryEnv(c.cacheEnv(os.Environ()))))
 	if len(performance) > 0 {
 		child := deskkit.PerfAgentContext(performance[0], perfDeskFunction(role), nil, nil)
 		env = deskkit.PerfContextEnv(env, child, false)
