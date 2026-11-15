@@ -421,7 +421,7 @@
     "s086": {
       "operation": "exec.Command(d.bin, argv...)",
       "why": "Opaque command, shell, forge/container or Verify executor. This conservative source bucket can launch Git but is not a repository-read API. Preserve its existing executable, process, cancellation and consent contract; no runtime Git frequency is inferred.",
-      "owner": "statusgen/forgeread.go — method.readItem caller maintainer"
+      "owner": "statusgen/forgeread.go — method.readVerb caller maintainer"
     },
     "s087": {
       "operation": "exec.Command(\"git\", \"-C\", root, \"merge-base\", a, b)",
@@ -1555,7 +1555,7 @@
       "reason": "s085"
     },
     {
-      "key": "forgeread.go::method.readItem::dynamic#1",
+      "key": "forgeread.go::method.readVerb::dynamic#1",
       "expression": "exec.Command(d.bin, argv...)",
       "disposition": "retained",
       "reason": "s086"

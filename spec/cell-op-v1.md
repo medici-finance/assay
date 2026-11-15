@@ -78,7 +78,7 @@ A successful apply:
       "detail": "worker-desk drained after its pass ended"
     }
   ],
-  "plan_id": "4f1c2a9e7b3d5c8e0a6f2b1d",
+  "plan_id": "amber-falcon",
   "next": []
 }
 ```
@@ -125,7 +125,7 @@ A read verb with unmeasured fields, still `ok`:
 | Member | Rule |
 |---|---|
 | `schema`, `kind` | Exactly `cell-op-v1` and `cell-op-plan`. |
-| `id` | 24 lowercase hex characters, random. |
+| `id` | Two words, each 3 to 8 lowercase letters, joined by a hyphen (`amber-falcon`), drawn at random from fixed word lists compiled into the tool. Unique in the cell's plan store: an id that a stored plan or a consumed marker already holds is drawn again. A plan stored before two-word ids carries 24 lowercase hex characters and still applies. The id names the plan; it is not a credential, and the typed `confirm_code` is still required. |
 | `verb` | The verb that made the plan. A plan applies only through the same verb. |
 | `cells` | Every cell the plan affects, sorted, without repeats, at least one. |
 | `actions` | The actions in the order apply runs them. Each has an `id` unique in the plan, a `cell` from `cells`, a `summary`, and `preconditions`: the evidence it depends on, each a `key` and the `value` measured when the plan was made. Empty for a batch. |
@@ -145,7 +145,7 @@ A plan carries no numbers and only fixed ASCII member names, so any RFC 8785 imp
 {
   "schema": "cell-op-v1",
   "kind": "cell-op-plan",
-  "id": "4f1c2a9e7b3d5c8e0a6f2b1d",
+  "id": "amber-falcon",
   "verb": "drain",
   "cells": [
     "example"
@@ -170,8 +170,8 @@ A plan carries no numbers and only fixed ASCII member names, so any RFC 8785 imp
   "children": [],
   "created": "2026-10-14T12:00:00Z",
   "expires": "2026-10-14T12:10:00Z",
-  "digest": "416ea0afb22adde60e51ccbc92d93a1d6ce2dc9087de681158c5936a9654f981",
-  "confirm_code": "416ea0af"
+  "digest": "a6343e121573fbea0b925c9e296a0de5d685d600b870a0dc88235e6d1684fa13",
+  "confirm_code": "a6343e12"
 }
 ```
 
@@ -191,7 +191,7 @@ A stopped sequence leaves the batch consumed. Its result is `partial` if any act
 {
   "schema": "cell-op-v1",
   "kind": "cell-op-plan",
-  "id": "7e6d5c4b3a2f1e0d9c8b7a6f",
+  "id": "calm-heron",
   "verb": "restart",
   "cells": [
     "example"
@@ -199,18 +199,18 @@ A stopped sequence leaves the batch consumed. Its result is `partial` if any act
   "actions": [],
   "children": [
     {
-      "id": "9a0b1c2d3e4f5a6b7c8d9e0f",
-      "digest": "67c8ea19ce3028ae239c44c614187639ca21faf87fa7d933ec0400be25b05016"
+      "id": "brisk-otter",
+      "digest": "6f1f7269f904c7952a6e5c355144fc800c0def49ecb4fd461e2811eaaa2b92d3"
     },
     {
-      "id": "1b2c3d4e5f6a7b8c9d0e1f2a",
-      "digest": "685f693f275d923d6ebfc6df6f18d6b158bf4646f436a76d71d5e10189080457"
+      "id": "steady-wren",
+      "digest": "41933593c54bd797301158e84c52268d01d0e9b789cd2c982ebf1f8021b6425f"
     }
   ],
   "created": "2026-10-14T12:00:00Z",
   "expires": "2026-10-14T12:10:00Z",
-  "digest": "90c4cf89cde72b8cb1837436af8cfedf754c7e079be6c7f2dc5a615fa8d1d04c",
-  "confirm_code": "90c4cf89"
+  "digest": "6418a0ec15eb153eb63d4790d82ee6772568d9319ed640cf325590fa9cc1a074",
+  "confirm_code": "6418a0ec"
 }
 ```
 
@@ -220,7 +220,7 @@ The two children it names:
 {
   "schema": "cell-op-v1",
   "kind": "cell-op-plan",
-  "id": "9a0b1c2d3e4f5a6b7c8d9e0f",
+  "id": "brisk-otter",
   "verb": "drain",
   "cells": [
     "example"
@@ -241,8 +241,8 @@ The two children it names:
   "children": [],
   "created": "2026-10-14T12:00:00Z",
   "expires": "2026-10-14T12:10:00Z",
-  "digest": "67c8ea19ce3028ae239c44c614187639ca21faf87fa7d933ec0400be25b05016",
-  "confirm_code": "67c8ea19"
+  "digest": "6f1f7269f904c7952a6e5c355144fc800c0def49ecb4fd461e2811eaaa2b92d3",
+  "confirm_code": "6f1f7269"
 }
 ```
 
@@ -250,7 +250,7 @@ The two children it names:
 {
   "schema": "cell-op-v1",
   "kind": "cell-op-plan",
-  "id": "1b2c3d4e5f6a7b8c9d0e1f2a",
+  "id": "steady-wren",
   "verb": "up",
   "cells": [
     "example"
@@ -271,8 +271,8 @@ The two children it names:
   "children": [],
   "created": "2026-10-14T12:00:00Z",
   "expires": "2026-10-14T12:10:00Z",
-  "digest": "685f693f275d923d6ebfc6df6f18d6b158bf4646f436a76d71d5e10189080457",
-  "confirm_code": "685f693f"
+  "digest": "41933593c54bd797301158e84c52268d01d0e9b789cd2c982ebf1f8021b6425f",
+  "confirm_code": "41933593"
 }
 ```
 

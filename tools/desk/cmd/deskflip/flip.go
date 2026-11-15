@@ -26,6 +26,7 @@ const (
 	condMergeable        = "mergeable"
 	condSecurityVerdict  = "security-verdict"
 	condDeskDecided      = deskkit.DeskDecidedCondition
+	condNotReverted      = "not-reverted"
 	condHeadStable       = "head-stable"
 )
 
@@ -82,6 +83,12 @@ const (
 // PR's own labels/body (already in hand from pr-open-draft) and the reviews already read for
 // reviewer-approved — no new paginated read — so it costs nothing extra ahead of model-floor
 // and security-verdict, the two conditions the cost ordering above exists to protect.
+//
+// not-reverted (medici-finance/assay#6253 review F2) is ADDITIVE too, and sits right before
+// head-stable. It reads the change's comments once, for the post-flip backstop's revert marker
+// at the current head: a head the backstop already returned to draft is never flipped again,
+// or the revert would repeat on every tick. It runs only when there is a ready mutation to
+// guard (a draft PR), and it never ADMITS anything: a match refuses, no match passes.
 var flipConditions = []string{
 	condCallerRole,
 	condAppToken,
@@ -92,6 +99,7 @@ var flipConditions = []string{
 	condDeskDecided,
 	condModelFloor,
 	condSecurityVerdict,
+	condNotReverted,
 	condHeadStable,
 }
 
@@ -451,6 +459,12 @@ func flip(o flipOpts) error {
 	}
 	o.say("%s OK: %d changed file(s) read", condSecurityVerdict, len(files))
 
+	if !alreadyReady {
+		if err := checkNotReverted(o, fg, fr, head); err != nil {
+			return err
+		}
+	}
+
 	// --- head-stable (TOCTOU) ----------------------------------------------------
 	// The ready mutation has no compare-and-swap, so the head is re-read HERE, after every
 	// condition above and immediately before the mutation. A head that moved means each
@@ -575,11 +589,43 @@ func flip(o flipOpts) error {
 		}
 		return deskkit.Unverifiable(msg, err)
 	}
+	// The post-flip backstop (#6242): ready means mergeable per the forge. A revert returns
+	// here, before the queue label moves to the merge queue.
+	if err := readyBackstop(fg, fr, o.pr, pr.change, head); err != nil {
+		return err
+	}
 	if err := ensureLabelSwap(o, fg, fr, pr); err != nil {
 		return err
 	}
 	fmt.Printf("deskflip: FLIPPED %s#%d ready-for-human at %s — the merge is the human's. (%s)\n",
 		repo, o.pr, short(head), obo)
+	return nil
+}
+
+// checkNotReverted refuses a head the post-flip backstop already returned to draft
+// (medici-finance/assay#6253 review F2). The backstop's revert comment carries a hidden marker
+// naming the head (deskkit.ReadyBackstopRevertMarker); a trusted comment carrying it for the
+// CURRENT head means this flip would be reverted again, so the flip stops as could-not-check
+// and names the comment. A new head clears it. An unreadable comment thread is could-not-check
+// too: the condition cannot be shown to hold.
+func checkNotReverted(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head string) error {
+	comments, err := fg.ListCommentsTyped(fr, o.pr, deskkit.TargetChange)
+	if err != nil {
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: PR #%d's comments could not be read, so whether the post-flip check already "+
+				"reverted this head is unknown: %s", condNotReverted, o.pr, firstLine(err.Error())), err)
+	}
+	if c, ok := deskkit.FindReadyBackstopRevert(comments, head); ok {
+		ref := c.URL
+		if ref == "" {
+			ref = fmt.Sprintf("comment %d", c.DatabaseID)
+		}
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: the post-flip check already returned PR #%d to draft at %s (%s): the forge "+
+				"reported it not mergeable right after a flip at this head, so flipping it again would be "+
+				"reverted again. A new head clears this condition.", condNotReverted, o.pr, short(head), ref), nil)
+	}
+	o.say("%s OK: no post-flip revert recorded at %s", condNotReverted, short(head))
 	return nil
 }
 

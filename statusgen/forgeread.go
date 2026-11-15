@@ -238,6 +238,12 @@ type deskreadItemEnvelope struct {
 			CreatedAt   string `json:"createdAt"`
 			Body        string `json:"body"`
 		} `json:"comments"`
+		// Reviews is the `reviews` kind. A pointer: an item with no review list at all is not an
+		// answer, while an empty list is ("nobody has reviewed").
+		Reviews *[]struct {
+			AuthorLogin string `json:"authorLogin"`
+			State       string `json:"state"`
+		} `json:"reviews"`
 		// LabelEvents is the `label-events` kind. Complete is a pointer on purpose: an item that
 		// carries no completeness field at all is not a history this build can trust, and
 		// decoding it as false-or-true would be a guess either way.
@@ -265,11 +271,26 @@ type deskreadItemEnvelope struct {
 // zero-value answer: the callers (the trust gate, the un-block lane) already degrade an error to
 // a could-not-check NOTICE, and a zero value would read as "not blessed" / "nobody answered".
 func (d deskreadReader) readItem(kind, repo string, number int) (*deskreadItemEnvelope, int, error) {
-	target := fmt.Sprintf("%s#%d", repo, number)
-	argv := perfChildArgs(d.bin, []string{kind, "--issue", target}) // probe outside the phase
+	return d.readItemAt("--issue", kind, repo, number)
+}
+
+// readVerb is the ONE place the per-item and merged-list reads start the read verb: a fixed name
+// from the struct field, argv only, no shell. Keeping the launch in a single function keeps it
+// one site in the launch inventory and one exemption in the row-environment guard, whichever
+// kind a caller reads. (IssueList and OpenIssues keep their own launches.)
+func (d deskreadReader) readVerb(args []string) ([]byte, error) {
+	argv := perfChildArgs(d.bin, args) // probe outside the phase
 	leave := perfEnter("deskread")
 	out, err := exec.Command(d.bin, argv...).Output()
 	leave()
+	return out, err
+}
+
+// readItemAt is readItem for a stated address flag: `--issue` for the per-issue kinds, `--change`
+// for the per-change ones (the verb refuses the wrong one before any forge call).
+func (d deskreadReader) readItemAt(addrFlag, kind, repo string, number int) (*deskreadItemEnvelope, int, error) {
+	target := fmt.Sprintf("%s#%d", repo, number)
+	out, err := d.readVerb([]string{kind, addrFlag, target})
 	var env deskreadItemEnvelope
 	jerr := json.Unmarshal(out, &env)
 	if jerr == nil && env.Schema != deskreadSchema {
@@ -282,7 +303,7 @@ func (d deskreadReader) readItem(kind, repo string, number int) (*deskreadItemEn
 		// one issue was unreadable, with the reason in `partial`).
 		for _, p := range env.Partial {
 			if p.Repo == repo && p.Number == number {
-				return nil, 0, fmt.Errorf("%s %s --issue %s: could-not-check: %s", d.bin, kind, target, p.Reason)
+				return nil, 0, fmt.Errorf("%s %s %s %s: could-not-check: %s", d.bin, kind, addrFlag, target, p.Reason)
 			}
 		}
 		for i, it := range env.Items {
@@ -296,13 +317,13 @@ func (d deskreadReader) readItem(kind, repo string, number int) (*deskreadItemEn
 		if ee, ok := err.(*exec.ExitError); ok {
 			detail = firstLine(string(ee.Stderr))
 		}
-		return nil, 0, fmt.Errorf("%s %s --issue %s: could-not-check: %v %s", d.bin, kind, target, err, strings.TrimSpace(detail))
+		return nil, 0, fmt.Errorf("%s %s %s %s: could-not-check: %v %s", d.bin, kind, addrFlag, target, err, strings.TrimSpace(detail))
 	}
 	if jerr != nil {
 		return nil, 0, fmt.Errorf("parsing the %s %s envelope for %s: %w", d.bin, kind, target, jerr)
 	}
-	return nil, 0, fmt.Errorf("%s %s --issue %s: could-not-check: the envelope returned no result and no reason for this issue",
-		d.bin, kind, target)
+	return nil, 0, fmt.Errorf("%s %s %s %s: could-not-check: the envelope returned no result and no reason for this item",
+		d.bin, kind, addrFlag, target)
 }
 
 // issueTrustRead is one issue's trust-gate content, as the native forge served it: the body's
@@ -373,6 +394,146 @@ func (d deskreadReader) IssueComments(repo string, number int) ([]issueComment, 
 		})
 	}
 	return out, nil
+}
+
+// ChangeReviews is the `reviews` kind: deskkit.Forge.ReviewsAtHead on one change, every
+// submission oldest first — the un-laundered array a rework count needs, not the one-row-per-author
+// latest view. An error (the verb would not run, the change is in `partial`, the envelope carries
+// no review list) is could-not-check, never an empty list: an empty list is the answer "nobody
+// has reviewed", and a caller that read it from a failure would score the change as never reworked.
+func (d deskreadReader) ChangeReviews(repo string, number int) ([]ghReview, error) {
+	env, i, err := d.readItemAt("--change", "reviews", repo, number)
+	if err != nil {
+		return nil, err
+	}
+	rs := env.Items[i].Reviews
+	if rs == nil {
+		return nil, fmt.Errorf("%s reviews --change %s#%d: could-not-check: the item carries no review list", d.bin, repo, number)
+	}
+	out := make([]ghReview, 0, len(*rs))
+	for _, r := range *rs {
+		out = append(out, ghReview{Author: ghAuthor{Login: r.AuthorLogin}, State: r.State})
+	}
+	return out, nil
+}
+
+// --- the bounded merged-change list (--review-rework, --first-pass-yield, --assayscore) ------
+
+// mergedChange is one merged change in the fields the brief-flow metrics consume.
+type mergedChange struct {
+	Number   int
+	Body     string
+	BaseRef  string
+	MergedAt string
+	// UpdatedAt is the forge's last-modified time, "" when it did not report one.
+	UpdatedAt string
+}
+
+// deskreadChangesEnvelope mirrors the verb's `changes` contract (`deskread changes --repo
+// owner/name --state merged`). As with the issue list, the fields a missing value would turn
+// into a guess are pointers.
+type deskreadChangesEnvelope struct {
+	Schema int    `json:"schema"`
+	Kind   string `json:"kind"`
+	Repos  []struct {
+		Repo    string `json:"repo"`
+		Changes *[]struct {
+			Number   int    `json:"number"`
+			State    string `json:"state"`
+			Body     string `json:"body"`
+			BaseRef  string `json:"baseRef"`
+			MergedAt  string `json:"mergedAt"`
+			UpdatedAt string `json:"updatedAt"`
+		} `json:"changes"`
+		Incomplete *bool `json:"incomplete"`
+		PageCap    int   `json:"pageCap"`
+	} `json:"repos"`
+	Partial []struct {
+		Repo   string `json:"repo"`
+		Reason string `json:"reason"`
+	} `json:"partial"`
+}
+
+// MergedChanges is the `changes --state merged` kind for ONE repo: every merged change the verb's
+// bounded, most-recently-updated-first walk reached, covering AT LEAST every change merged at or
+// after since. It is a deskreadReader method only, like IssueList: its callers are report modes,
+// not --forge-gated checks.
+//
+// Every way the list went unread is an ERROR, never a short or empty list, and the page bound is
+// the one the `gh api pulls?per_page=100` read this replaces could not see: it read one page of
+// 100 and said nothing, so a busier window read as a complete one. The verb's walk is bounded by
+// pages, not by the window, so `incomplete` alone says nothing about the window: a change merged
+// at or after since has updatedAt >= mergedAt >= since, and the walk is most-recently-updated
+// first, so once a listed row's updatedAt is before since no unlisted row can be in the window.
+// Only an incomplete walk that has NOT reached that point is an error; a row with no updatedAt
+// makes that proof impossible, so it is an error too. A merged change the forge reports without a
+// base branch or a merge time is an error as well, not a skipped row: the caller filters on both,
+// and a row it cannot place is a row it cannot honestly drop.
+func (d deskreadReader) MergedChanges(repo string, since time.Time) ([]mergedChange, error) {
+	what := fmt.Sprintf("%s changes --repo %s --state merged", d.bin, repo)
+	out, err := d.readVerb([]string{"changes", "--repo", repo, "--state", "merged"})
+	var env deskreadChangesEnvelope
+	jerr := json.Unmarshal(out, &env)
+	if jerr == nil && env.Schema != deskreadSchema {
+		return nil, fmt.Errorf("%s answered envelope schema %d, this build understands %d — "+
+			"upgrade statusgen rather than reading a contract it was not built against",
+			d.bin, env.Schema, deskreadSchema)
+	}
+	if jerr == nil && env.Kind != "changes" {
+		return nil, fmt.Errorf("%s: could-not-check: the envelope is kind %q, not \"changes\"", what, env.Kind)
+	}
+	if jerr == nil {
+		// A parsed envelope is authoritative even on a non-zero exit (the verb exits 6 when its
+		// one repo was unreadable, with the reason in `partial`).
+		for _, p := range env.Partial {
+			if p.Repo == repo {
+				return nil, fmt.Errorf("%s: could-not-check: %s", what, p.Reason)
+			}
+		}
+		for _, r := range env.Repos {
+			if r.Repo != repo {
+				continue
+			}
+			switch {
+			case r.Changes == nil:
+				return nil, fmt.Errorf("%s: could-not-check: the entry carries no change list", what)
+			case r.Incomplete == nil:
+				return nil, fmt.Errorf("%s: could-not-check: the entry carries no completeness field", what)
+			}
+			merged := make([]mergedChange, 0, len(*r.Changes))
+			walkedPast := false // some listed row was last updated before since
+			for _, c := range *r.Changes {
+				if c.MergedAt == "" || c.BaseRef == "" {
+					return nil, fmt.Errorf("%s: could-not-check: change #%d is listed merged with no merge time or base branch", what, c.Number)
+				}
+				if *r.Incomplete {
+					ut, uerr := time.Parse(time.RFC3339, c.UpdatedAt)
+					if uerr != nil {
+						return nil, fmt.Errorf("%s: could-not-check: the list stopped at its %d-page bound and change #%d carries no readable updatedAt (%q), so the window cannot be shown covered", what, r.PageCap, c.Number, c.UpdatedAt)
+					}
+					if ut.Before(since) {
+						walkedPast = true
+					}
+				}
+				merged = append(merged, mergedChange{Number: c.Number, Body: c.Body, BaseRef: c.BaseRef, MergedAt: c.MergedAt, UpdatedAt: c.UpdatedAt})
+			}
+			if *r.Incomplete && !walkedPast {
+				return nil, fmt.Errorf("%s: could-not-check: the list stopped at its %d-page bound with the forge still paginating before it reached changes last updated before %s, so the window is not provably covered", what, r.PageCap, since.Format(time.RFC3339))
+			}
+			return merged, nil
+		}
+	}
+	if err != nil {
+		detail := ""
+		if ee, ok := err.(*exec.ExitError); ok {
+			detail = firstLine(string(ee.Stderr))
+		}
+		return nil, fmt.Errorf("%s: could-not-check: %v %s", what, err, strings.TrimSpace(detail))
+	}
+	if jerr != nil {
+		return nil, fmt.Errorf("parsing the %s envelope: %w", what, jerr)
+	}
+	return nil, fmt.Errorf("%s: could-not-check: the envelope returned no result and no reason for this repo", what)
 }
 
 // --- the bounded issue list (--decision-latency, --assayscore, --issues) ----------------------

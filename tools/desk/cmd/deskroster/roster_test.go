@@ -462,3 +462,41 @@ func TestUnknownSubcommand(t *testing.T) {
 		t.Fatalf("unknown subcommand rc = %d, want 5", rc)
 	}
 }
+
+// regression: #6147
+// TestSessionFlagBeatsEnv: an explicit --session wins over an inherited $DESK_SESSION and
+// $CLAUDE_SESSION_ID. Before the fix, `drop --session b` under DESK_SESSION=a dropped a's
+// entry and never touched b.
+func TestSessionFlagBeatsEnv(t *testing.T) {
+	home := rosterSetup(t)
+	t.Setenv("DESK_SESSION", "a")
+	t.Setenv("CLAUDE_SESSION_ID", "c")
+	for _, s := range []string{"a", "b", "c"} {
+		writeTestBeacon(t, home, Beacon{
+			Session:  s,
+			OpenWork: []WorkEntry{{Repo: "tracker", PR: 1, What: "x"}, {Repo: "tracker", PR: 2, What: "y"}},
+		})
+	}
+
+	if rc := run([]string{"drop", "--repo", "tracker", "--pr", "1", "--session", "b"}); rc != deskkit.ExitOK {
+		t.Fatalf("drop rc = %d, want 0", rc)
+	}
+	if b := readTestBeacon(t, home, "b"); b == nil || len(b.OpenWork) != 1 || b.OpenWork[0].PR != 2 {
+		t.Fatalf("drop --session b must drop b's PR 1, got %+v", b)
+	}
+	for _, s := range []string{"a", "c"} {
+		if b := readTestBeacon(t, home, s); b == nil || len(b.OpenWork) != 2 {
+			t.Fatalf("drop --session b must not touch %s, got %+v", s, b)
+		}
+	}
+
+	if rc := run([]string{"set", "--repo", "tracker", "--pr", "3", "--what", "z", "--session", "b"}); rc != deskkit.ExitOK {
+		t.Fatalf("set rc = %d, want 0", rc)
+	}
+	if b := readTestBeacon(t, home, "b"); b == nil || len(b.OpenWork) != 2 {
+		t.Fatalf("set --session b must add to b, got %+v", b)
+	}
+	if b := readTestBeacon(t, home, "a"); b == nil || len(b.OpenWork) != 2 {
+		t.Fatalf("set --session b must not touch a, got %+v", b)
+	}
+}

@@ -64,6 +64,9 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 		// Added under the freeze rule with the checks-green conditions of cmd/deskflip and
 		// cmd/deskautolane merge, and cmd/deskpost ready's precondition (c'), as its consumers (#6234).
 		"CheckSuitesAtHead",
+		// Op 68, the post-flip backstop's un-ready, admitted for that one use by the ruling
+		// https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
+		"ConvertToDraft",
 	}
 	sort.Strings(want)
 
