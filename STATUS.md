@@ -14,7 +14,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [agent-execution](docs/streams/agent-execution/README.md) | P2 | active | 0/10 | 2026-11-11 |  |
 | [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/10 | 2026-11-10 |  |
 | [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 6/15 | 2026-11-11 |  |
-| [cell-api](docs/streams/cell-api/README.md) | P2 | active | 0/9 | 2026-11-12 |  |
+| [cell-api](docs/streams/cell-api/README.md) | P2 | active | 0/10 | 2026-11-15 |  |
 | [cellctl-windows](docs/streams/cellctl-windows/README.md) | P1 | active | 0/8 | 2026-11-06 |  |
 | [comms-core](docs/streams/comms-core/README.md) | P1 | active | 1/4 | 2026-11-15 |  |
 | [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-11-11 |  |
@@ -25,7 +25,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/62 | 2026-11-15 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-11-06 |  |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 4/65 | 2026-11-15 | 15 withdrawn |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-11-13 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-11-15 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 6/55 | 2026-11-13 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 3/40 | 2026-11-15 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-11-13 |  |
@@ -35,7 +35,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [milestone-support](docs/streams/milestone-support/README.md) | P2 | active | 1/14 | 2026-11-13 |  |
 | [performance-collection](docs/streams/performance-collection/README.md) | P2 | active | 0/9 | 2026-11-02 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-11-02 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/40 | 2026-11-15 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/44 | 2026-11-15 |  |
 | [verification-handoff](docs/streams/verification-handoff/README.md) | P2 | active | 0/6 | 2026-11-10 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 9/18 | 2026-11-14 |  |
 
@@ -140,19 +140,19 @@ _Held by per-stream caps: 17 brief(s) across 2 stream(s) — top: desktools-v2. 
 | milestone-support | 08 — Normalize PR trailers and claims through the shared resolver [exec:strong] | 3 | 4000 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3500 |
 | milestone-support | 07 — Evaluate milestone readiness through the canonical eligibility API [exec:strong] | 5 | 3500 |
+| statusgen | 44 — Hydration budget: profile a real tree and remove the dominant cost [exec:strong] | 1 | 3500 |
 | statusgen | 28 — Separate frozen historical notices from actionable lint findings [exec:strong] | 1 | 3000 |
 | build-less-brittle | 15 — Witness inputs are recorded, not parsed [exec:strong] | 0 | 3000 + 1500 (drive:build-less-brittle) |
 | desktools-v2 | 30 — Port the GitLab fleet provisioner to a Go command [exec:strong] | 3 | 2000 + 1500 (drive:desktools-v2) |
 | measured-status | 06 — model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login [exec:strong] | 1 | 2200 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | intake-class-routing | 02 — The scan publishes recorded handoffs and land stops a judged exit without one [exec:strong] | 0 | 2000 |
-| intake-class-routing | 04 — Work the owed batch by class [exec:strong] | 0 | 2000 |
 
 ## Drive: `build-less-brittle`
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 1a354d082 2026-11-15T18:07:48Z_
+_last regen: 3e5709d5e 2026-11-15T18:37:34Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 1a354d082 2026-11-15T18:07:48Z_
+_last regen: 3e5709d5e 2026-11-15T18:37:34Z_
 
 **Progress:** 36/98 brief items done.
 
@@ -237,13 +237,13 @@ _last regen: 1a354d082 2026-11-15T18:07:48Z_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (10 for the desk · 50 for the driver · 50 for workers · 38 for an operator · 46 runner-pending — of 197 total; 3 could-not-check)
+## Awaiting verification / review (9 for the desk · 51 for the driver · 50 for workers · 38 for an operator · 46 runner-pending — of 197 total; 3 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
-### Awaiting human gate (50)
+### Awaiting human gate (51)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -282,6 +282,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 10 [exec:strong] | implemented | 1500 | 1 | 1h | driver | close the sign-off card | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | 1h | driver | human action, cite medici-finance/assay#1794 | — | — |
 | desk-containers | 30 [exec:strong] | implemented | 1000 | 0 | 1h | driver | human action, cite medici-finance/assay#5794 | — | — |
+| desk-containers | 34 [exec:strong] | implemented | 1000 | 0 | <1h | driver | human action, cite medici-finance/assay#6301 | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | 1h | driver | human action, cite medici-finance/assay#1185 | — | — |
 | desk-supervision | 20 [exec:strong] | implemented | 1000 | 0 | 1h | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3765 | — | — |
 | desk-supervision | 21 [exec:strong] | implemented | 1000 | 0 | 1h | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3764 | — | — |
@@ -447,7 +448,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | quality | 19 [exec:strong] | verified | 1000 | 0 | 1h | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 3add8a9ae315 (claude-opus-5-5) | — |
 | statusgen | 21 [exec:strong] | verified | 1000 | 0 | 1h | CI auto-flip | none; stuck after one main run → file | 2026-11-11 assay-verifier-app[bot] @ b856f281f758 (claude-opus-5-5) | — |
 
-### Desk-actionable (10)
+### Desk-actionable (9)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -458,7 +459,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | 1h | verify-desk | dispatch one judge | — | — |
 | forge-neutral | 17 [exec:strong] | implemented | 2000 | 0 | 1h | verify-desk | triage, then re-bucket | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2000 | 2 | 1h | verify-desk | triage, then re-bucket | — | — |
-| desk-containers | 34 [exec:strong] | implemented | 1000 | 0 | <1h | verify-desk | triage, then re-bucket | — | — |
 | desktools-v2 | 71 [exec:strong] | implemented | 1000 | 0 | 1h | verify-desk | dispatch one judge | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | 1h | verify-desk | triage, then re-bucket | — | — |
 
@@ -564,7 +564,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 14 Bind consumer acceptance obligations to immutable delivery provenance before post-merge dispatch — verified (wave 0)
 - 15 Witness inputs are recorded, not parsed — todo (wave 0)
 
-### cell-api (9 open)
+### cell-api (10 open)
 
 - 01 Publish the deskd contract and source handoff inventory — todo (wave 8)
 - 02 Compose the public deskd service and read model — todo (wave 9)
@@ -575,6 +575,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 07 Qualify handover rollback and last-consumer retirement — todo (wave 16)
 - 08 Build the deskd binary and image from public source through the Makefile — verified (wave 0)
 - 09 Publish the deskd image through the assay release — implemented (wave 1)
+- 10 Serve deskd roadmap and portfolio reads from the board library — todo (wave 4)
 
 ### cellctl-windows (8 open)
 
@@ -1049,7 +1050,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 04 Decision-dependency note — the credential/identity rulings that gate the credential-contract work — todo (wave 0)
 - 05 Reference cross-operator / independent-approver check — the residual after require_last_push_approval, as a required status check — todo (wave 2)
 
-### statusgen (29 open)
+### statusgen (33 open)
 
 - 05 Drives phase 3 — anti-starvation floors + the hard critical tier (≤15/20 slots via a 2-pass fill, ≤6/8 workers, effectiveCap; a lexicographic never-buried tier fed by a stamped security label + a dependency-edge reciprocity lint so blockedCount is not gameable) — implemented (wave 1)
 - 06 Findings register becomes a corroborated state machine — bounded shelving (parked) + transition guard on resolved/affects/parked — implemented (wave 1)
@@ -1078,8 +1079,12 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 36 Content-bound witness schema v2: the reader and the one digest owner — implemented (wave 1)
 - 37 Content-bound witness schema v2: the writers and the desk readers — todo (wave 2)
 - 38 One-time v1-to-v2 witness backfill where the witnessed content is still fetchable — todo (wave 3)
-- 39 Multi-root objective reader: prerequisite graph, critical path and ranked moves — todo (wave 1)
+- 39 Board reader library: importable multi-root loader and the whole-board view — todo (wave 2)
 - 40 Chain approved acceptance transitions, and let one approval correct a row's Command and Expect — implemented (wave 1)
+- 41 Objective projection over the board view: critical path and ranked moves — todo (wave 3)
+- 42 Queue projections from one board load: next-up, awaiting and brief info — todo (wave 3)
+- 43 Desk read-side consumers call the board library in-process — todo (wave 4)
+- 44 Hydration budget: profile a real tree and remove the dominant cost — todo (wave 1)
 
 ### verification-handoff (6 open)
 
@@ -1313,4 +1318,4 @@ _Terminal: retired by a later decision or merged into a successor. Not counted i
 
 ## Totals
 
-**37** streams (**27** active, **0** paused, **10** parked) · **118/603** briefs done · **15** withdrawn · completed initiatives: see `docs/archive/`
+**37** streams (**27** active, **0** paused, **10** parked) · **118/608** briefs done · **15** withdrawn · completed initiatives: see `docs/archive/`

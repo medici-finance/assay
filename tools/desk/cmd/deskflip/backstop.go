@@ -18,8 +18,9 @@ var (
 )
 
 // readyBackstop runs deskkit.ReadyBackstop right after a successful ready mutation: ready
-// means mergeable per the forge. A BLOCKED or DIRTY merge state returns the change to draft
-// and comes back as the Refused error the verb exits with; a failed revert comes back as
+// means mergeable per the forge. A DIRTY merge state, or a BLOCKED one with a merge requirement
+// unmet or unreadable (medici-finance/assay#6508), returns the change to draft and comes back
+// as the Refused error the verb exits with; a failed revert comes back as
 // Unverifiable; a verdict that could not be read leaves the change ready and prints the
 // could-not-verify notice. Ruling:
 // https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
@@ -42,7 +43,9 @@ func readyBackstop(fg deskkit.Forge, fr deskkit.ForgeRepo, number int, change *d
 			_, err := fg.PostCommentTyped(fr, number, deskkit.TargetChange, body)
 			return err
 		},
-		Deadline: backstopDeadline, Interval: backstopInterval, Sleep: backstopSleep, Now: backstopNow,
+		// A BLOCKED read is judged by the requirements every reader sees alike (#6508).
+		Requirements: func() (*deskkit.MergeRequirements, error) { return fg.MergeRequirements(fr, number) },
+		Deadline:     backstopDeadline, Interval: backstopInterval, Sleep: backstopSleep, Now: backstopNow,
 	}.Run()
 	if out.Notice != "" {
 		fmt.Fprintf(os.Stderr, "deskflip: %s\n", out.Notice)
