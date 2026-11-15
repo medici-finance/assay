@@ -18,9 +18,10 @@ accepted:
   - "Windows containment is cross-compiled and vetted here. Native Windows runtime qualification is owed separately and reported as unavailable, never as passed."
 ---
 
-**PROPOSED — no ruling is recorded.** `decided-by:` is a placeholder until a human rules on
-this record on the brief's decision issue. Until then this record is not an approved
-design, and the brief that cites it (graph-execution/40, `design: DR-process-extract`)
+**Status:** draft — the pull request that adds this record does not mark it approved, and no
+ruling is recorded. Approving a design record on a `gate: human` brief is the driver's act; a
+model or a worker cannot set it. `decided-by:` is a placeholder until a human rules on this
+record on the brief's decision issue. Until then this record is not an approved design, and the brief that cites it (graph-execution/40, `design: DR-process-extract`)
 may not be accepted on its account (the design-approval gate, `spec/lifecycle-v1.md`
 §4.4). The ruling comment must name `DR-process-extract`. The record then gets a
 `ruling:` link to that comment, which `statusgen --corroborate` resolves
