@@ -72,8 +72,12 @@ and the original consumer acceptance obligation open; a later implementation
 cannot make those original paths changed. This entails no checker changes.
 Neither option accepts exit 1, relaxes the 1.10 performance limit or retires tests.
 
-A design approval permits a later implementation brief and review, not automatic
-activation, acceptance-table approval, merge, a consumer proof PASS or lifecycle
+A design approval scopes continuation of the existing `statusgen/36` repair
+under issue #5684, subject to ordinary native worker admission and review. It
+authorizes no unnamed future brief. If the work is routed to a new brief instead,
+that brief must meet its own admission and human-binding requirements; this
+36-only ruling cannot be advertised as that authority. It grants no automatic
+activation, acceptance-table approval, merge, consumer proof PASS or lifecycle
 advancement. The driver decides; worker/reviewer comments cannot provide it.
 
 ## Proposed decision record and one ruling
@@ -106,15 +110,18 @@ record-landing change may transcribe it under this stable ID, with the public
 human placeholder and the actual ruling URL, following
 `spec/registers-v1.md` sections 7.2–7.5 and `spec/lifecycle-v1.md` section 4.4.
 
-For that one comment to corroborate later, the existing issue #5684 must first
-carry the additive body marker below, installed through its authorized issue
-owner without removing the issue's original body or acceptance marker:
+For that one comment to corroborate later, a distinct genuine design-decision
+issue must be created through native filing with the marker below in its body
+from the outset. Link it from #5684 and bind this exact spec revision there. The
+original bug body and acceptance marker stay intact; a comment alone cannot
+substitute for the required decision-issue body marker:
 
 ```html
 <!-- decision-gate: DR-statusgen36-historical-consumer-correction -->
 ```
 
-The worker packet must verify that marker before presenting the one human act.
+The worker packet must read back that marked design issue before presenting the
+one human act on it. The future DR record's ruling URL names that same issue.
 The comment must name this DR ID, `statusgen/36` and the exact reviewed spec
 commit/path/digest together. It approves or declines this bounded design only;
 it supplies no implementation activation, consumer proof PASS or future Verify
@@ -254,8 +261,9 @@ claim may silently disappear from output.
 ## Delivery and remaining work
 
 This draft is reviewable design intent only. After a mapped-human design ruling,
-a later brief must define and review the canonical descriptor/payload grammar,
-implement it in the existing consumer owner, add the actual original-source
+the continuing #5684 repair must define and review the canonical descriptor/payload
+grammar in its implementation handoff before code, implement it in the existing
+consumer owner, add the actual original-source
 proof harness, run all positive and negative controls, and obtain independent
 correctness/security review. The exact correction artifact and independent verifier proof must be present
 before verify-desk derives the corrected Command and the driver approves its
