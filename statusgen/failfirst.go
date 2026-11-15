@@ -257,8 +257,9 @@ func truncateRunes(s string, n int) string {
 //   - neither: the exact merge-base of HEAD and origin/main.
 //
 // The runner refuses here what the closure gate would refuse later
-// (failFirstBaseProblem). With the merge-base unresolvable the gate runs
-// degraded and says so, so only the delivering commit's own binding is checked.
+// (failFirstBaseProblem). An unresolvable merge-base fails closed on every arm,
+// a recorded delivering commit included, because the gate refuses that witness
+// too (ruling A, medici-finance/assay#5544).
 func failFirstBaseRev(root, rev, delivering, briefPath string) (base, deliveringFull string, err error) {
 	for _, op := range []struct{ flag, v string }{{"--base", rev}, {"--delivering-commit", delivering}} {
 		if strings.HasPrefix(op.v, "-") {
@@ -292,15 +293,17 @@ func failFirstBaseRev(root, rev, delivering, briefPath string) (base, delivering
 		}
 		return "", "", errors.New("the merge-base of HEAD and origin/main cannot be resolved (fetch origin/main, or pass --delivering-commit <the commit that delivered the change>)")
 	}
-	if mb := failFirstMergeBase(root); mb != "" {
-		ancestry, held := failFirstBaseProblem(root, briefPath, full, deliveringFull, mb)
-		flag, v := "--base", rev
-		if deliveringFull != "" {
-			flag, v = "--delivering-commit", delivering
-		}
-		if why := ancestry + held; why != "" {
-			return "", "", fmt.Errorf("%s %q is refused: %s", flag, v, why)
-		}
+	flag, v := "--base", rev
+	if deliveringFull != "" {
+		flag, v = "--delivering-commit", delivering
+	}
+	mb := failFirstMergeBase(root)
+	if mb == "" {
+		return "", "", fmt.Errorf("%s %q is refused: the merge-base of HEAD and origin/main cannot be resolved, so the base cannot be bound to it (fetch origin/main and re-run)", flag, v)
+	}
+	ancestry, held := failFirstBaseProblem(root, briefPath, full, deliveringFull, mb)
+	if why := ancestry + held; why != "" {
+		return "", "", fmt.Errorf("%s %q is refused: %s", flag, v, why)
 	}
 	return full, deliveringFull, nil
 }

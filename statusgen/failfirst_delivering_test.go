@@ -196,3 +196,27 @@ func TestFailFirstDeliveringCellGrammar(t *testing.T) {
 		}
 	}
 }
+
+// TestFailFirstDeliveringNoMergeBase — ruling A (medici-finance/assay#5544):
+// with origin/main unresolvable the runner fails closed on every arm, a
+// recorded --delivering-commit included, and the shared binding refuses it
+// for the closure gate too. Before this, the delivering arm checked only that
+// the commit was on HEAD's history and had a parent.
+// regression: #2721
+func TestFailFirstDeliveringNoMergeBase(t *testing.T) {
+	root, _, prep, deliv, _, _, briefPath := ffDeliveredRepo(t, false)
+	gitRun(t, root, "update-ref", "-d", remoteMainRef)
+	for _, c := range []struct{ name, base, delivering string }{
+		{"delivering", "", deliv},
+		{"delivering+base", prep, deliv},
+		{"base", prep, ""},
+	} {
+		base, d, err := failFirstBaseRev(root, c.base, c.delivering, briefPath)
+		if err == nil || !strings.Contains(err.Error(), "merge-base") {
+			t.Errorf("%s: unresolvable merge-base accepted: base=%q delivering=%q err=%v", c.name, base, d, err)
+		}
+	}
+	if ancestry, held := failFirstBaseProblem(root, briefPath, prep, deliv, ""); ancestry == "" && held == "" {
+		t.Error("gate binding accepted a delivering witness with no merge-base")
+	}
+}
