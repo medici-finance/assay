@@ -38,7 +38,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The binary under test. $CELLCTL lets the SAME suite run against either implementation
 # (the bash oracle, the default, or the Go port) — desk-containers/10.
 CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
-T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-provider.XXXXXX")" && pwd -P)"
+# Fail closed before the EXIT trap: on bash 3.2 `cd ""` succeeds, so a failed mktemp
+# must never leave T at the caller's directory for the trap to delete (#6161).
+made="$(mktemp -d "${TMPDIR:-/tmp}/cellctl-provider.XXXXXX")" || exit 1
+[ -n "$made" ] && [ -d "$made" ] || exit 1
+T="$(cd "$made" && pwd -P)" || exit 1
+[ -n "$T" ] || exit 1
 trap 'suite_status=$?; if declare -F private_deskwt_finish >/dev/null; then private_deskwt_finish || suite_status=1; fi; rm -rf "$T"; exit "$suite_status"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
@@ -47,6 +52,11 @@ unset CELL CELL_KIND CELL_FORGE CELL_REPO CELL_ROOTS CELL_COCKPIT CELLS_CONFIG R
       DESKD_ADDR DESKD_INDEX DESK_MODEL_DEFAULT DESK_MODEL_the_desk TMUX_SESSION CELL_ATTENDED \
       CELL_PROVIDER CELL_PROVIDER_ZAI_BASE_URL CELL_PROVIDER_ZAI_TOKEN_ENV ZAI_API_KEY \
       MODEL_OVERRIDE DESK_MODEL_OVERRIDE
+# A host running claude against a provider carries these in its own shell; the "no provider" rows
+# assert they are NOT exported, so an inherited value must never reach the fixture launch.
+unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_MODEL \
+      ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL \
+      CELL_TIER_MODEL_TOP CELL_TIER_MODEL_MID CELL_TIER_MODEL_FAST
 
 # ---------------------------------------------------------------- fixtures
 export HOME="$T/home"; mkdir -p "$HOME/.config/gh"

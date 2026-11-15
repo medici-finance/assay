@@ -1,0 +1,31 @@
+decision-issue: dry-run: would file on o/r as:
+--- title ---
+Decision: sample/08 — Synth body
+--- body ---
+<!-- decision-gate: sample/08 -->
+
+A human decision is needed on work item `sample/08` — **Synth body**. Everything needed to
+decide is in this issue.
+
+How to reply: comment from your own account with the board id of this item and the chosen option,
+as `sample/08: <option>` (for example `sample/08: 1`); the comment is the decision
+record. Name the board id in your own words — a bare option number or a one-word "approved"
+is not accepted as a ruling when the item later moves on the board. Then close the issue.
+
+## Context
+
+Confirm the cost of the change.
+
+It is cheaper.
+
+Risk answers: none. Effort: M.
+
+## Options
+
+1. **Approve as briefed** — the work proceeds and lands exactly as described above; your approval is the human gate it is waiting on.
+2. **Approve with changes** — state the changes as a comment on this issue; the work is re-dispatched with them folded in before it lands.
+3. **Hold / reject** — state why as a comment; the item is parked and cannot advance past its human gate.
+
+Default if no answer: none — the gate blocks until answered.
+--- end ---
+decision-issue: dry-run: no existing decision issue for sample/08 on o/r — a real run would create one

@@ -167,7 +167,7 @@ launch from, first confirm that none of the variables above is set for anything 
 `env | cut -d= -f1 | grep -E '_(APP|APP_ID|PEM|TOKEN|INSTALL_ID(_[A-Z0-9_]+)?)$'` (names only, so
 no token is printed; it also matches `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and the
 per-owner install ids) lists no variable that belongs to another cell or App.
-Then run `desktoken <role> --repo <owner>/<repo>` with only `HOME` set to the cell's `home`
+Then run `desktoken --no-rotate <role> --repo <owner>/<repo>` with only `HOME` set to the cell's `home`
 directory, leaving the rest of that shell's environment as it is. Do not set or clear any of these
 variables for the proof alone: a proof run in an environment the desks never get passes even when
 the launch reads another cell's credentials. A successful `desktoken` run shows that a key was
@@ -380,7 +380,8 @@ cellctl new house --kind house \
   --repo /path/to/checkout \
   --roots 'example-org/example-repo=/path/to/checkout,example-org/other=/path/to/other' \
   [--roles "the-desk worker-desk"] [--port 8787] \
-  [--forge gitlab [--group example-group] [--gitlab-api-base URL]]
+  [--forge gitlab [--group example-group] [--gitlab-api-base URL]] \
+  [--labels-token-file /path/to/operator-label-credential]
 cellctl check house
 cellctl desk house worker-desk          # one window
 cellctl up house                        # every role, in the resolved cockpit (see *Cockpits*)
@@ -402,6 +403,21 @@ only a `DESKD=1` house cell needs it) and `GITLAB_TOKEN_STORE` when `--gitlab-to
 given; it links `.gitconfig` but **never** `.config/gh`, which is GitHub custody. Any other
 `--forge` value is refused before anything is created.
 
+**The forge label set.** After the scaffold, `new --kind house` ensures the desk tools' label
+set on every `--roots` repo: `review-request`, one `raised-by:<role>` and one `to:<role>` row per
+role the roster binds (the roster's `ASSAY_TRUSTED_BOT_SLUGS` `role=` names, the same list
+`deskfile --raised-by` / `--to` accept), and `authorization-needed` / `approval-needed`. Creating
+labels is an **operator act** under the operator's own credential: `--labels-token-file FILE`
+names a file (owner-only, the same custody check as `deskfleet labels --token-file`) holding a
+credential that can write labels. cellctl never mints one and never uses a desk role's App token.
+The ensure is idempotent: a label already present is a no-op, and on GitLab a label the project
+inherits from its group counts as present. Every repo prints one line: `ensured N on <repo>`, or
+`NOT ENSURED on <repo> — <why>; finish with: deskfleet labels …` naming the exact command. With no
+`--labels-token-file`, or a roster that binds no role yet, every repo is `NOT ENSURED` and `new`
+still exits 0 (the step is deferred, and `check` keeps reporting it). A credential that was given
+and could not write a label (denied, or any create failing) leaves the step unfinished and `new`
+exits 1.
+
 `check` on a house cell proves what a hand boot gets wrong rather than what a k8s cell needs: the
 checkout is a git checkout; the roster **parses** under the cell home (`deskroster repos --scope
 scan` exits 0 through the cell's `HOME`), not merely exists; every entry of `CELL_ROOTS` is well-
@@ -409,6 +425,14 @@ formed, exists and carries `docs/streams/`; the desk verbs a role needs are inst
 desk-tools bindir; `claude` is on `PATH` and the `assay@assay` plugin is enabled for the checkout.
 The gh config link is a row on a github house cell (a `MISS` when absent) and `n/a` on a gitlab
 one, worded as on a k8s gitlab cell.
+One **labels** row per `CELL_ROOTS` repo reads that repo's labels with the credential in
+`cell.env`'s `CELL_LABELS_TOKEN_FILE` (on GitLab including labels inherited from ancestor
+groups): `ok` when the whole roster-derived set is present, `MISS` naming each missing label and
+the `deskfleet labels` command that creates them. When the set cannot be derived (the roster binds
+no role) or read (`CELL_LABELS_TOKEN_FILE` unset, a credential file that fails custody, a failed
+or truncated read) the row is `?  could-not-check`, never `ok`. A could-not-check row leaves the
+exit code alone, but a run with one ends `every checked precondition met; N could-not-check
+row(s)`, never `all preconditions met`.
 `deskd` is reported `n/a` unless `cell.env` sets `DESKD=1`, in which case the cell is checked, stood
 and torn down exactly as a k8s cell's is.
 
@@ -420,6 +444,40 @@ re-booted by hand across days and the roster beacon should tell one boot from th
 worktree, the shims, the pinned model and the `/assay:<role>` first prompt are the same code path.
 
 ---
+
+## Host mutation work budget
+
+`MUHAR_LEASE_DIR` and `MUHAR_TOTAL_SLOTS` opt muhar runs into one host-wide
+worker budget. Configure both explicitly in each participating cell's
+`cell.env` (or through `cellctl set`); existing cells receive no new default.
+All roles and independent cells sharing the host budget must name the same
+existing absolute lease directory and positive total. Cellctl forwards the
+effective configured inputs: launching-process environment, then machine
+`defaults.env`, then `cell.env`, with later layers overriding earlier ones.
+This applies to scrubbed launches too; the values are not restricted to the
+cell.env layer. Explicitly empty values retain their presence so muhar can
+refuse an invalid pair. Cellctl creates no directory, total or lock manager.
+The directory and slot files are trusted operator inputs; use a private
+directory that untrusted local users cannot modify. Current slot opens follow
+symlinks and do not check directory ownership/mode or enforce a maximum total.
+
+The same composition supplies host Claude/Cursor windows, Codex command
+subprocesses, scrubbed allowlists and dry-run environment lines. A partial,
+empty, invalid or inaccessible pair is refused by muhar before any work.
+A pool exceeding the total is clamped with a stderr diagnostic; baseline,
+control, selector and worker builds still run, and the complete mutation list
+keeps its original order. Stderr reports waiting and `queue-wait` separately
+from build/test timing. Both inputs unset retain current worker scheduling.
+
+Stop the affected muhar run before repairing permissions or configuration.
+Normal completion and catchable SIGINT/SIGTERM release locks after child
+cleanup; never unlink live slot files to recover capacity. SIGKILL/OOM closes
+parent lock descriptors while suite process groups can remain alive and
+leaseless, temporarily exceeding the budget. Inspect and stop or wait for
+orphan suites before replacement work. Windows retains top-process-only
+cleanup. Containers require an explicitly shared lock filesystem with
+compatible locking semantics; without that, host-wide coverage is
+could-not-check. See [muhar's lease and recovery contract](../tools/desk/cmd/muhar/README.md#sharing-a-host-budget).
 
 ## Scrubbed cells — `--kind scrubbed`
 
@@ -459,11 +517,14 @@ links. It refuses an existing cell of the same name, exactly like every other ki
 
 ### The composed environment
 
-The launch is `env -i` plus an explicit allowlist — the parent shell contributes nothing by
-default. This is the exact list `cellctl` exports (`scrubbedEnvKeys` in
-`tools/desk/cmd/cellctl/env.go` is the single source this table, the `[plan]` lines below, and the
-live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares the same set, and
-`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it). The cell database pointer and GitLab endpoint rows are
+The launch is `env -i` plus explicitly composed keys. `scrubbedEnvKeys` in
+`tools/desk/cmd/cellctl/env.go` supplies the core list; the shared managed-cache
+and mutation-budget helpers append their named effective configuration. Thus
+an explicitly set parent/defaults budget can cross this boundary even when
+cell.env does not name it; arbitrary parent keys do not pass through. The
+`[plan]` and live launch use the same composition. The shell oracle's
+`SCRUBBED_ENV_KEYS` declares its core set, and
+`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it). The mutation-budget, cell database pointer and GitLab endpoint rows are
 Go-only additions,
 present only when the cell declares them; parity fixtures do not configure them.
 
@@ -491,6 +552,8 @@ present only when the cell declares them; parity fixtures do not configure them.
 | LANG | passed through from the parent |
 | ASSAY_CELL_DB_DSN | `CELL_DB_DSN`, when `cell.env` carries one |
 | PGPASSFILE | `CELL_DB_PASSFILE`, when `cell.env` carries `CELL_DB_DSN` |
+| MUHAR_LEASE_DIR | Explicit configured shared absolute lease directory; absent when unset |
+| MUHAR_TOTAL_SLOTS | Explicit configured positive host total; absent when unset |
 | GITLAB_API_BASE | GitLab cells only: nonempty `cell.env` `GITLAB_API_BASE`, else its nonempty `FORGE_API_BASE`; inherited values and compiled defaults are excluded |
 
 A configured cell-owned provider adds its endpoint, token and model aliases to the final
@@ -647,6 +710,26 @@ and `check`, naming the key and never its value: that profile composes no databa
 claim that cells are separated from each other (see [`docs/postgres.md`](postgres.md) §Isolation
 boundary).
 
+**Role secrets rows** — only when `cell.env` sets `CELL_ROLE_SECRETS` or
+`CELL_ROLE_SECRET_SURFACE` (with neither set, no row is printed). This release binds role secrets
+on a **native container surface only**: `CELL_KIND=container` with `CELL_CONTAINER_CONFIG` and
+`CELL_ROLE_SECRET_SURFACE=container`. Every other surface is a `MISS` and `desk` refuses to
+launch: any host kind (the one-OS-user desktop cell included), a Kubernetes compatibility cell, a
+container cell on an external `CELL_CONTAINER_LAUNCHER`, and `CELL_ROLE_SECRET_SURFACE=host`,
+whose per-role identity launch is a follow-up. On a container surface, each bound file is a `MISS`
+unless it exists, is a regular file (a symlink is refused, wherever it points), is mode `0600` or
+stricter, is owned by the identity `cellctl` runs as, carries no access-control list, sits in a
+directory that identity owns, nobody else can write and that carries no list, and lies inside no
+git checkout or worktree. The surface itself is a `MISS` while any other cell under the cells root
+runs host windows (they run as the file's owner and could open it by its path), runs on an external
+launcher, mounts a bound file, binds the same file, or shares a writable volume with this cell's
+containers; an unreadable cell is counted, never skipped. The rows print paths and role
+bindings, never a value: `cellctl` never opens a secret file. `desk`, `up` and the container's
+own run re-verify every file at each launch, so a removed or re-moded file refuses the next one;
+each launch appends a receipt (launch time, cell, role, project, service, path, file modification
+time — never a value or a hash of one) to `<cell>/state/role-secrets.receipts`. See
+[`containers/secrets.md`](../containers/secrets.md) §Project role secrets.
+
 Run it after `new`, and again after any key or token rotation.
 
 ---
@@ -776,7 +859,7 @@ lease (`run/cadence/<role>/owner.lock`):
 | Disposition | Meaning | What `up` does |
 |---|---|---|
 | up | the lease is held by a live process | row `already-up`; never relaunched, its window never touched |
-| stale | a running checkpoint with no live holder | row `failed`, naming `up --plan`; plain `up` never reconciles it |
+| stale | a running checkpoint with no live holder | row `failed`, naming the verb that clears its class (below); plain `up` never reconciles it |
 | absent | no lease holder, no checkpoint | its window is opened |
 
 Windows are opened **one at a time**: role N+1 opens only after role N has taken its lease and
@@ -799,7 +882,32 @@ terminal and changes nothing else; with nothing stale it writes no plan). `cellc
 re-measures each role, clears the stale state and then launches the targets, reporting the cleared
 roles as `reconciled+up`. A role that came alive between plan and apply is refused `plan-stale`
 (exit 5), naming the role, and nothing is launched. Stale comms state is refused the same way,
-with the reconcile inventory and a pointer to `up --plan`.
+with the reconcile inventory and a pointer to the verb that clears it.
+
+**Plan ids.** Every `--plan` names its plan with two lowercase words and a hyphen, such as
+`amber-falcon`, and ends with the line `apply on a terminal: cellctl up <cell> --apply
+amber-falcon`. The words come from fixed lists built into `cellctl`. An id is never reused within
+a cell, including the ids of plans already applied. A plan stored with an older 24-character hex
+id still applies by that id. The id only finds the plan: apply still shows it and asks for the
+typed confirm code.
+
+`--plan` clears only a role whose checkpoint names a supervisor that has exited (the *dead* class).
+The stale row names the verb that accepts the role's own class:
+
+- **dead**: `cellctl up <cell> --plan`, then `--apply <plan-id>`.
+- **alive or could-not-check** (a role-marked process is still running, no owner record survived
+  with a start time, or the checkpoint is unreadable or names another cell or role): once the
+  prior harness and all its children have stopped (the row lists any role-marked pids still
+  running), `cellctl cadence <cell> recover <role> --confirm-stopped`, then `cellctl up <cell>
+  --role <role>`. Stale comms state names `cellctl comms <cell> recover --confirm-stopped`.
+- **lease could not be probed**: neither verb can clear it, since both take the lease. Once the
+  prior harness and all its children have stopped, repair the lease file by hand, check the role
+  with `cellctl cadence <cell> status <role>`, then run `cellctl up <cell> --role <role>`. This row
+  lists no pids: a role whose lease could not be probed is never treated as free, so its marked
+  processes are not inventoried. An empty list here does not mean nothing is still running.
+
+When `--plan` finds stale state but nothing it can plan, it still returns could-not-check (exit
+code unchanged) and prints one line per role naming that role's recovery.
 
 `--model <m>` applies the per-run override (see *Pinned models* below) to **every** role window this
 run opens, the-desk included — there is no per-role `--model-<role>` form, since that case is
@@ -811,8 +919,10 @@ role window the same way, for the same reason — see *Providers* below.
 `cellctl up <cell> --dry-run` (or `DRY_RUN=1 cellctl up <cell>`) prints the resolved cockpit and
 each role's disposition (an absent role shows the command its window would run) and launches
 nothing. On a house cell, stale comms checkpoints and orphaned processes carrying the cell's
-marker are inventoried by pid and start time; `up` refuses them with the whole inventory and the
-exact recovery commands (`up --plan`, then `up --apply`). A dry run prints the inventory and plan
+marker are inventoried by pid and start time; `up` refuses them with the whole inventory and a
+pointer to the verb that clears them: `up --plan`, then `up --apply`, for a dead record or orphans
+alone, otherwise `cellctl comms <cell> recover --confirm-stopped` (see the stale-row recovery list
+above). A dry run prints the inventory and plan
 and changes nothing. `cellctl desk <cell> <role>` runs the same preflight for its one role. See
 [Reconcile preflight](cellctl-cadence.md#reconcile-preflight). `--harness <h>` overrides `CELL_HARNESS` for **every** role window this run opens (the-desk
 included — there is no per-role `--harness-<role>` form) by threading `--harness <h>` onto each
@@ -840,12 +950,20 @@ Kills the session and this cell's `deskd` — matched on its own `--config` path
 torn down whichever cockpit resolves, and what a non-tmux cockpit opened is closed where that
 cockpit offers a verb for it and **named for you to close by hand where it does not**.
 
+`down` then `up` is a round trip: no `up --plan` or `cadence recover` is needed in between. A
+cadence role's supervisor is stopped first, by a stop request the role's next launch clears (a stop
+an operator wrote stays). Each interactive role is waited for after the close, with one 20-second
+bound, and its checkpoint is left finished; when that cannot be proved, `down` exits 1 and names
+`cellctl up <cell> --plan`. [Host desk cadence](cellctl-cadence.md#stop-and-recovery) has the evidence
+rule.
+
 `cellctl down <cell> <role>` closes **one** role. It applies only to a role that is already paused
 or drained: a role that is not is refused `role-busy` before any plan is shown, and `down` never
 pauses it for you, so declining the confirm leaves the cell exactly as it was. Run
 `cellctl pause <cell> <role>` (or `drain`) first. It stops that role's cadence alone, re-measures the role idle, re-verifies the role's
 surface identity against the live cockpit, and issues exactly one single-surface close
-(`tmux kill-window -t <id>`, `herdr tab close <tab>`, `orca terminal close --terminal <h>`). It never
+(`tmux kill-window -t <id>`, `herdr tab close <tab>`, `orca terminal close --terminal <h>`), then waits
+for an interactive role's owner as the cell-wide `down` does. It never
 closes a session, a workspace, a sibling's window or another cell's. A role with no surface receipt,
 or a cockpit build without the close verb, is refused `per-role-close-unsupported`, and only the
 cell-wide `down` can close it.
@@ -1081,19 +1199,67 @@ cell saying so, which is the kind of drift a cell exists to keep out.
 ```
 DESK_MODEL_DEFAULT=sonnet     # every role that has no override
 DESK_MODEL_the_desk=fable     # per-role override: the role name with `-` replaced by `_`
+DESK_MODEL_intake_desk=opus   # the intake role's judgment work needs a strong tier
 ```
 
 An override is `DESK_MODEL_<role>` with hyphens replaced by underscores — `DESK_MODEL_the_desk`,
 `DESK_MODEL_pr_review_desk`, `DESK_MODEL_verify_desk`, and so on. Values are whatever
 `claude --model` accepts: an alias (`fable`, `opus`, `sonnet`, `haiku`) or a full model id, including
 a long-context variant. `DESK_MODEL_DEFAULT` itself falls back to `sonnet` if `cell.env` omits it, and
-`cellctl new` scaffolds both lines above so a fresh cell is pinned from the start.
+`cellctl new` scaffolds all three lines above so a fresh cell is pinned from the start.
 
 **Why the defaults are shaped that way.** The four loop roles are mechanical dispatchers: they read a
 board, claim an item, open a worktree, and hand the actual judgment to the agent they dispatch. The
 coordinator window is where judgment happens in the loop itself. So the loops get the cheaper model
 and `the-desk` gets the top tier available — and the loops' pin can be moved per cell, which is the
 point of putting it in `cell.env` rather than in the launcher's source.
+
+**The intake role is the exception among the loops.** Its skill reserves its judgment work (triage,
+decision authoring, scoping, recording a handoff for every issue it judges) for a strong model tier,
+and a session on a lower tier is told to do mechanical work only. A cell whose intake role started on
+`sonnet` therefore judged nothing until an operator noticed. New cells scaffold
+`DESK_MODEL_intake_desk=opus` (`opus` is the strong-tier alias), and the seeded provider defaults give
+`intake-desk` tier `strong` under every provider. The cost is a stronger model for that one role;
+removing the line returns the role to `DESK_MODEL_DEFAULT`. Which tier alias means which model is owned
+by the alias table in `policy.go`, not by this section.
+
+**Which of the two settings applies depends on the cell kind.** Two mechanisms decide a role's model
+and the first wins outright:
+
+| Cell kind | What decides the model | Where the intake change lives |
+|---|---|---|
+| house or k8s cell with `CELL_MODEL_POLICY` | that policy file, whole | nothing here rewrites a policy file; edit it |
+| house or k8s cell with no policy, and a shared `CELLS_ROOT/providers.json` | the provider defaults: that file, with the cell's own `providers.json` (or the file `CELL_PROVIDER_OVERRIDES` names) merged over it key by key; the `DESK_MODEL_*` pins are not read | the seed `providers.json`, which `cellctl providers init` copies once |
+| house or k8s cell with no policy, no shared `providers.json`, and no `CELL_PROVIDER_DEFAULTS` or `CELL_PROVIDER_OVERRIDES` | the pins in `cell.env`, read as on a container cell. A freshly scaffolded house cell is in this state until someone runs `cellctl providers init` | the scaffolded `DESK_MODEL_intake_desk` line |
+| container or scrubbed cell | the pins in `cell.env` (container and scrubbed cells never take provider defaults) | the scaffolded `DESK_MODEL_intake_desk` line |
+
+**Moving an existing installation.** No existing `cell.env` and no existing provider-defaults file is
+rewritten by an upgrade, and `cellctl providers init` never overwrites a file that exists. Three ways,
+by reach:
+
+- **Every cell:** set `intake-desk` to tier `strong` in the shared `CELLS_ROOT/providers.json`.
+- **One cell:** put only that key in the cell's own `providers.json`, for example
+  `{"providers":{"anthropic":{"desks":{"intake-desk":{"tier":"strong"}}}}}`. It is merged over the
+  shared file, **so the shared `CELLS_ROOT/providers.json` must already exist.** With the shared file
+  absent and a per-cell file (or a `CELL_PROVIDER_*` setting) present, `cellctl desk`, `up` and `check`
+  refuse with `cannot read provider defaults`, and the cell cannot launch. Run `cellctl providers init`
+  first if the shared file is missing, knowing that creating it moves every house or k8s cell without
+  a policy from reading its pins to reading the provider defaults.
+- **A cell that resolves through neither a policy nor provider defaults** (a house or k8s cell with no
+  shared `providers.json`, and a container or scrubbed cell): `cellctl set <cell> DESK_MODEL_intake_desk=opus`.
+
+A running window pins the SHA-256 of the policy it launched under and refuses once that file changes,
+so **changing a provider-defaults file a running cell reads requires restarting that cell's windows.**
+
+**A pin the cell does not read says so.** `cellctl set <cell> KEY=VALUE` (and the role sugar) writes a
+model pin as before, with the same exit code, and then prints one notice on stderr when the cell's
+current resolution will not read it: the cell resolves through a model policy or provider defaults
+(the notice names the key and the file or files that decide, the shared provider-defaults file and the
+per-cell override path), or the key belongs to a pin namespace the cell's harness does not read (it
+names the namespace the harness reads; the role-sugar call that names `--harness` chose its
+namespace on purpose and gets no namespace notice). A pin written ahead of removing a provider-defaults file is
+legitimate, so the write is not refused; `cellctl desk --set` refuses in the same situation because it
+cannot persist what it was asked to.
 
 **The coordinator's pin cannot be moved down to Opus.** `opus` is no longer the top tier, and the
 coordinator role is defined to run on whichever model is. `cellctl desk <cell> the-desk` (including
@@ -1568,6 +1734,7 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `CELL_KIND` | `k8s` (default — a cell scaffolded before kinds existed carries none), `house` (the operator's own desks; see *House cells*), `container` (see *Container cells*), or `scrubbed` (a composed environment; see *Scrubbed cells*) |
 | `CELL_ROOTS` | the stream-root map, `<owner>/<repo>=<abs path>,...`, exported to every role window as `DESK_ROOTS`; **required** on a house cell, optional on k8s/scrubbed (unset = the verbs' compiled placeholder topology, and `desk` says so) |
 | `CELL_REPO_SLUG` | **scrubbed only** — `<owner>/<repo>`; the ONE repo this cell is scoped to (checked against the roster's `ASSAY_ALLOWED_REPOS`) |
+| `CELL_LABELS_TOKEN_FILE` | **house** — a file (owner-only) holding an operator credential that can read labels; `check` reads each `CELL_ROOTS` repo's forge label set with it. Unset: the labels rows are could-not-check. Never a desk role's App token |
 | `CELL_PATH` | **scrubbed only** — overrides the trailing system part of the composed `PATH` (never the shim prefix or the resolved harness dir) |
 | `CELL_COCKPIT` | the surface `up` opens the role windows in: `auto` (default — herdr if on PATH, else orca if on PATH and its desktop app answers, else tmux), `tmux`, `herdr` or `orca`; `--cockpit` overrides it per run (see *Cockpits*) |
 | `DESKD` | **house** — `1` to require and stand a `deskd` as a k8s cell does (default `0`: no deskd, and `check` reports it `n/a`) |
@@ -1599,6 +1766,8 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `TMUX_SESSION` | override the tmux session name (default `<cell>-cell`) |
 | `CELL_DB_DSN` | the cell's own PostgreSQL database, as a libpq connection string with **no password** (for example `host=127.0.0.1 port=5432 dbname=cell_example_cell user=cell_example_cell sslmode=disable`); when set, every role window gets it as `ASSAY_CELL_DB_DSN`; unset, the cell has no database and nothing is composed (see [`docs/postgres.md`](postgres.md)) |
 | `CELL_DB_PASSFILE` | the absolute path of that database's pgpass file (mode `0600` or `0400`, outside the repository); exported as `PGPASSFILE` when `CELL_DB_DSN` is set, so libpq reads the password itself and it is never an environment value or an argv element |
+| `CELL_ROLE_SECRETS` | role-secret bindings for a native container cell, comma-separated `<owner>/<repo>:<role>:<service>=<absolute path>` entries: the project must be the container cell's repository, the role `worker-desk` or `verify-desk` (any other role refuses every launch), the service a `service:<name>` name. Each file is mounted read-only at `/run/secrets/role-<service>` into that role's container only, and `ASSAY_ROLE_SECRET_<SERVICE>_FILE` (`.` and `-` spelled `_`) names the path; no value is ever read, printed or exported. Read from `cell.env` only: a value from the shell or `defaults.env` is refused. See *Role secrets* below |
+| `CELL_ROLE_SECRET_SURFACE` | the read-isolation surface the cell declares for its role secrets; only `container` is accepted this release. Unset, `host` (per-role OS identity launch is not built yet) or anything else binds no role secret: `check` reports a MISS and `desk` refuses |
 
 ### Machine-wide defaults — `defaults.env`
 
@@ -1744,11 +1913,12 @@ processes are not configuration.
 | Refused in `defaults.env` | Why |
 |---|---|
 | `CELL`, `CELL_KIND`, `ROLES` | what one cell is: its name, its kind (each kind has its own preconditions) and its role windows |
-| `CELL_REPO`, `CELL_REPO_SLUG`, `CELL_ROOTS`, `CELLS_CONFIG`, `CELL_COMMS_CONFIG` | what one cell is scoped to: its checkout, its one repository, its stream-root map, its `cells.yaml` slice, a comms manifest that names its single cell |
+| `CELL_REPO`, `CELL_REPO_SLUG`, `CELL_ROOTS`, `CELLS_CONFIG`, `CELL_COMMS_CONFIG`, `CELL_LABELS_TOKEN_FILE` | what one cell is scoped to: its checkout, its one repository, its stream-root map, its `cells.yaml` slice, a comms manifest that names its single cell, the operator credential file its repos' labels are read with |
 | `DESKD`, `DESKD_ADDR`, `DESKD_INDEX`, `TMUX_SESSION` | what one running cell holds: whether it stands a `deskd`, the address that `deskd` binds, its index, the session `down` stops |
 | `CELL_GO_CACHE_ROOT` | a managed cache root is marked for exactly one cell, and a second cell is refused it |
 | `CELL_CONTAINER_CONFIG`, `CELL_CONTAINER_LAUNCHER` | bind one cell to its container definition or launcher |
 | `CELL_DB_DSN`, `CELL_DB_PASSFILE` | one cell's database and its credential file: each cell has its own role and database ([docs/postgres.md](postgres.md)) |
+| `CELL_ROLE_SECRETS`, `CELL_ROLE_SECRET_SURFACE` | one cell's project-secret bindings and the read-isolation surface that keeps them from its non-holding windows; read from the cell's own `cell.env` only ([`containers/secrets.md`](../containers/secrets.md)) |
 | `CELL_KUBERNETES_CONFIG` | binds one cell to its explicit Kubernetes compatibility profile and approved target |
 | `CELL_FORGE`, `GITHUB_HOST`, `FORGE_API_BASE`, `GITLAB_API_BASE`, `GITLAB_GROUP`, `GITLAB_TOKEN_STORE`, `DESKD_GITLAB_TOKEN_FILE`, `DESKD_APP_PEM`, `DESKD_APP_ID_VAR`, `ORGS` | one cell's forge binding: which forge its credentials are minted for, held in and sent to |
 | `CELLS_ROOT`, `XDG_DATA_HOME` | locate this file: the cells root, and the data directory its default is under, are resolved before the file is read |
@@ -2062,6 +2232,14 @@ cockpit {tmux, herdr, orca} × verbs {check, desk, up, down, set, ls, smoke, sta
 per kind × forge {github, gitlab}. `new` has no dry run, so parity there is a byte-diff of the
 whole tree each implementation scaffolds — paths, mode bits and file contents. `PARITY_ONLY=<substring>`
 narrows a run to one cell or one verb.
+
+The oracle follows the current dry-run and custody contracts: host `down` plans
+without tearing down, Codex re-entry commands carry the cell root, and scrubbed
+Herdr displays a privately owned tmux session while scrubbed Orca is refused.
+Its standing Codex prompt is a literal fixture beside the shell script, never
+read from the production composer. The baseline matrix has no stored width
+overrides or existing house cadence checkpoints; the oracle refuses those
+configured cases rather than guessing their state. Go behavior tests cover them.
 
 **The machine-wide defaults file is outside the matrix too.** `$CELLS_ROOT/defaults.env` exists
 only in the Go program — the oracle neither reads nor writes it. A cells root without the file

@@ -31,7 +31,12 @@ CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" =
 is_shell_impl(){ head -c2 "$CELLCTL" 2>/dev/null | grep -q '#!'; }
 # Resolved with pwd -P: a TMPDIR with a trailing slash or a symlinked temp root would otherwise
 # make the paths cellctl prints (it normalises) differ from the ones the test compares against.
-T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-house.XXXXXX")" && pwd -P)"
+# Fail closed before the EXIT trap: on bash 3.2 `cd ""` succeeds, so a failed mktemp
+# must never leave T at the caller's directory for the trap to delete (#6161).
+made="$(mktemp -d "${TMPDIR:-/tmp}/cellctl-house.XXXXXX")" || exit 1
+[ -n "$made" ] && [ -d "$made" ] || exit 1
+T="$(cd "$made" && pwd -P)" || exit 1
+[ -n "$T" ] || exit 1
 trap 'suite_status=$?; if declare -F private_deskwt_finish >/dev/null; then private_deskwt_finish || suite_status=1; fi; rm -rf "$T"; exit "$suite_status"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
@@ -121,7 +126,17 @@ assert "new refuses a --roots path that does not exist" '! "$CELLCTL" new bad-pa
 echo "[check]"
 out="$("$CELLCTL" check example-cell 2>&1)"; rc=$?
 assert "check exits 0 on the house cell" '[[ $rc -eq 0 ]]'
-assert "check reports all preconditions met" 'grep -q "all preconditions met" <<<"$out"'
+# The Go port also reports the house cell's forge label set (#6127). This fixture gives the cell
+# no labels credential, so each labels row is could-not-check: the run keeps exit 0 but closes
+# "every checked precondition met; N could-not-check row(s)", never "all preconditions met"
+# (docs/cellctl-cli-compat.md, "The house cell's forge label set"). Every other row must still be
+# clean, so a could-not-check row that is NOT a labels row fails here as before.
+if is_shell_impl; then
+  assert "check reports all preconditions met" 'grep -q "all preconditions met" <<<"$out"'
+else
+  assert "check reports every checked precondition met, its only could-not-check rows the labels rows" \
+    'grep -q "every checked precondition met; [0-9]* could-not-check row" <<<"$out" && grep -q "could-not-check: labels" <<<"$out" && ! grep "could-not-check:" <<<"$out" | grep -qv "could-not-check: labels"'
+fi
 # The roster read happens UNDER THE CELL HOME — but HOW it happens is implementation-specific,
 # and this case observes the mechanism, so it applies only to the shell oracle. The oracle shells
 # out to `deskroster` (the stub records $HOME, which is what is checked here); the Go port asks

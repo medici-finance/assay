@@ -407,9 +407,11 @@ func (c *Cell) stopCadences() error {
 const cadenceStopWait = 20 * time.Second
 
 // stopRoleCadence is the per-role part of stopCadences: an idle lease is checked for an
-// unfinished pass; a busy cadence-mode lease gets the role's STOP file and up to wait for the
-// supervisor to let go; a busy interactive-mode lease is left to the caller (its harness holds the
-// lease until it exits). The per-role `down <cell> <role...>` calls it for one role alone.
+// unfinished pass; a busy cadence-mode lease gets the role's STOP file (downStopReason, which the
+// role's next launch removes) and up to wait for the supervisor to let go; a busy interactive-mode
+// lease is left to the caller (its harness holds the lease until the cockpit's close stops it;
+// cell-wide `down` then waits for it). The per-role `down <cell> <role...>` calls it for one role
+// alone.
 func (c *Cell) stopRoleCadence(role string, wait time.Duration) error {
 	dir := c.cadenceDir(role)
 	_, err := cellcadence.Read(dir)
@@ -441,7 +443,7 @@ func (c *Cell) stopRoleCadence(role string, wait time.Duration) error {
 	if mode == "interactive" {
 		return nil
 	}
-	if err := os.WriteFile(filepath.Join(dir, "STOP"), []byte("cellctl down\n"), 0600); err != nil {
+	if err := writeDownStop(dir); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(wait)

@@ -336,6 +336,25 @@ func TestCrossRepoDeliveryJoin(t *testing.T) {
 	}
 }
 
+// A delivery PR whose merge commit IS the admitted source is contained in it without a
+// compare; any other source (another commit, or an abbreviation) still needs one.
+// regression: #6270
+func TestDeliveryJoinSameCommit(t *testing.T) {
+	facts := joinFacts{Entries: []joinEntry{{Repo: jOtherRepo, MergeSHA: jMerge}}}
+	receipt := deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{Version: 2, SourceRepo: jOtherRepo, Source: jMerge}}
+	f := &fakeForge{compareErr: fmt.Errorf("unavailable")}
+	if err := checkAdmittedDeliveryPRs(f, receipt, facts); err != nil || len(f.cmpCalls) != 0 {
+		t.Fatalf("got %v after compares %v; want the merge commit admitted without a compare", err, f.cmpCalls)
+	}
+	for _, source := range []string{jSHA, jMerge[:7], strings.ToUpper(jMerge)} {
+		receipt.Binding.Source = source
+		f := &fakeForge{compareErr: fmt.Errorf("unavailable")}
+		if err := checkAdmittedDeliveryPRs(f, receipt, facts); err == nil || !deskkit.IsUnverifiable(err) || len(f.cmpCalls) != 1 {
+			t.Fatalf("source %s: got %v after compares %v; want could-not-check from the compare", source, err, f.cmpCalls)
+		}
+	}
+}
+
 // A bound sibling's delivery PR answers to that sibling's own source, never
 // to the primary source commit.
 // regression: #4876

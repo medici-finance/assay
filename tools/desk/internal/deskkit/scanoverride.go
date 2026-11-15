@@ -35,12 +35,39 @@ import (
 // THE REFUSAL MUST ADVERTISE IT. A path nobody knows about is a path nobody uses; a
 // worker did not route around the scan out of malice, but because the refusal said
 // "no override flag by design". OverrideHint is appended to the scan refusals so the
-// message itself carries the way out.
+// message itself carries the way out — in the form the caller that hit it accepts
+// (OverrideForm, #6059).
 
 // ScanOverrideFlag is the flag name every refusal verb uses for the logged override. One
 // name across the whole tool family: a worker that learns it on deskpr can use it on
 // deskreply without re-reading a manual.
 const ScanOverrideFlag = "force-scan-override"
+
+// OverrideForm is the spelling a caller takes the audited override in, and so the spelling
+// every refusal that caller prints names. There are two, because `git push` takes no flag of
+// ours: the --force-scan-override flag every flag-taking verb registers, and the
+// EnvPushGuardScanOverride variable the deskpushguard pre-push hook reads. A refusal that
+// named the flag on a push sent its reader to a second failure (#6059).
+//
+// The zero value is the flag, the form of every verb but the hook. The hook's form is set by
+// SetPushGuardOutboundContext, the one place that variable is read, so the form travels with
+// the reason and no caller has to remember to pick it.
+type OverrideForm int
+
+const (
+	// OverrideByFlag is --force-scan-override REASON (deskpr, deskreply, deskfile, …).
+	OverrideByFlag OverrideForm = iota
+	// OverrideByEnv is DESKPUSHGUARD_SCAN_OVERRIDE=REASON in the pre-push hook's environment.
+	OverrideByEnv
+)
+
+// Name is the form's own spelling, as a refusal prints it.
+func (f OverrideForm) Name() string {
+	if f == OverrideByEnv {
+		return EnvPushGuardScanOverride
+	}
+	return "--" + ScanOverrideFlag
+}
 
 // ScanOverrideVerb is the audit `verb` of the override row. It is deliberately DISTINCT
 // from the verb of the write it accompanies, so `grep scan_override` over the audit log
@@ -74,24 +101,31 @@ type ScanOverride struct {
 	// Refusal is the refusal message being overridden, recorded so the row says what was
 	// waved through and not merely that something was.
 	Refusal string
+	// Form is how the caller takes the override; the zero value is the flag.
+	Form OverrideForm
 }
 
-// ValidateScanOverride checks the operator-supplied half of an override BEFORE any work is
-// done, so a malformed one refuses at the same exit code as everything else rather than
-// halfway through a push.
+// ValidateScanOverride checks the operator-supplied half of a --force-scan-override BEFORE
+// any work is done, so a malformed one refuses at the same exit code as everything else
+// rather than halfway through a push.
 func ValidateScanOverride(reason string) error {
+	return validateScanOverrideAs(OverrideByFlag, reason)
+}
+
+// validateScanOverrideAs is ValidateScanOverride with the refusal naming form's spelling.
+func validateScanOverrideAs(form OverrideForm, reason string) error {
 	r := strings.TrimSpace(reason)
 	if r == "" {
-		return Refused("refused: --" + ScanOverrideFlag + " requires a reason argument")
+		return Refused("refused: " + form.Name() + " requires a reason argument")
 	}
 	if len(r) < minOverrideReason {
 		return Refused(fmt.Sprintf(
-			"refused: --%s reason is %d characters; at least %d are required — the audit row "+
+			"refused: %s reason is %d characters; at least %d are required — the audit row "+
 				"has to say WHY the scan was wrong, in words a reviewer can act on",
-			ScanOverrideFlag, len(r), minOverrideReason))
+			form.Name(), len(r), minOverrideReason))
 	}
 	if StripControl(r) != r {
-		return Refused("refused: --" + ScanOverrideFlag + " reason contains control characters")
+		return Refused("refused: " + form.Name() + " reason contains control characters")
 	}
 	return nil
 }
@@ -108,7 +142,7 @@ func ValidateScanOverride(reason string) error {
 // land is an unlogged bypass, which is the thing this exists to prevent — so the error is
 // returned and the caller refuses rather than proceeding quietly.
 func LogScanOverride(o ScanOverride) error {
-	if err := ValidateScanOverride(o.Reason); err != nil {
+	if err := validateScanOverrideAs(o.Form, o.Reason); err != nil {
 		return err
 	}
 	detail := fmt.Sprintf("scan override on %q by %s: %s | refusal: %s",
@@ -271,7 +305,7 @@ func HandleScanRefusal(o ScanOverride, scanErr error) error {
 	}
 	if strings.Contains(scanErr.Error(), impersonationMarker) {
 		if reason != "" {
-			return Refused("refused: --" + ScanOverrideFlag + " does not apply to the " +
+			return Refused("refused: " + o.Form.Name() + " does not apply to the " +
 				"impersonation guard — that refusal is about WHOSE VOICE the text is in, " +
 				"not about a credential shape, and rewording it is always available. " +
 				"Original refusal: " + scanErr.Error())
@@ -283,14 +317,14 @@ func HandleScanRefusal(o ScanOverride, scanErr error) error {
 		// runs on a public or unknown-visibility target, and a written reason does not publish
 		// a withheld identifier — rewording does, or a human changing the configured set.
 		if reason != "" {
-			return Refused("refused: --" + ScanOverrideFlag + " does not apply to " +
+			return Refused("refused: " + o.Form.Name() + " does not apply to " +
 				RuleWithheldIdentifier + " — " + nonOverridableWhy(RuleWithheldIdentifier) +
 				" Original refusal: " + scanErr.Error())
 		}
 		return scanErr
 	}
 	if reason == "" {
-		if strings.Contains(scanErr.Error(), OverrideHint()) {
+		if hasOverrideHint(scanErr.Error()) {
 			return scanErr // already annotated (an OutboundCheck refusal carries the hint)
 		}
 		// Re-wrap with the override hint but PRESERVE any ScanFinding, so a --explain caller
@@ -298,18 +332,30 @@ func HandleScanRefusal(o ScanOverride, scanErr error) error {
 		// unchanged bar the appended hint).
 		var f *ScanFinding
 		errors.As(scanErr, &f)
-		return RefusedFinding(scanErr.Error()+OverrideHint(), f)
+		return RefusedFinding(scanErr.Error()+OverrideHint(o.Form), f)
 	}
 	o.Refusal = scanErr.Error()
 	return LogScanOverride(o)
 }
 
 // OverrideHint is the sentence the scan refusals append so the refusal itself advertises
-// the audited way through. It is a single leading space plus one sentence, so callers can
-// concatenate it onto an existing message without reformatting.
-func OverrideHint() string {
+// the audited way through, in form — the spelling the caller that hit the refusal accepts.
+// It is a single leading space plus one sentence, so callers can concatenate it onto an
+// existing message without reformatting. Only an overridable refusal carries it.
+func OverrideHint(form OverrideForm) string {
+	if form == OverrideByEnv {
+		return " If this is a false positive, re-run the push with " + EnvPushGuardScanOverride +
+			"=\"<why>\" in its environment — the push proceeds and an audit row records the tool, " +
+			"the surface digest, your reason and your identity. Exit 5 without that variable " +
+			"remains a STOP: never route around it by skipping the hook."
+	}
 	return " If this is a false positive, re-run with --" + ScanOverrideFlag +
 		" \"<why>\" — the write proceeds and an audit row records the tool, the surface " +
 		"digest, your reason and your identity. Exit 5 without that flag remains a STOP: " +
 		"never route around it with raw git/gh."
+}
+
+// hasOverrideHint reports whether msg already carries the hint, in either form.
+func hasOverrideHint(msg string) bool {
+	return strings.Contains(msg, OverrideHint(OverrideByFlag)) || strings.Contains(msg, OverrideHint(OverrideByEnv))
 }

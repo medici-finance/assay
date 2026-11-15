@@ -171,10 +171,14 @@ type lifecycleProbes struct {
 	claims      func() ([]roleClaim, error)
 	cadence     func(role string) (cadenceReading, error)
 	stopCadence func(role string) error
-	procs       procTable
-	cockpit     surfaceCockpit
-	now         func() time.Time
-	sleep       func(time.Duration)
+	// interactiveOwner and settle are the cell-wide down's wait for an interactive owner the
+	// close signals (#6116); nil skips the wait.
+	interactiveOwner func(role string) (interactiveOwner, bool, error)
+	settle           func(o interactiveOwner, deadline time.Time) error
+	procs            procTable
+	cockpit          surfaceCockpit
+	now              func() time.Time
+	sleep            func(time.Duration)
 }
 
 // cadenceReading is what the role's cadence directory says.
@@ -206,13 +210,15 @@ func (c *Cell) lifecycle() *interimLifecycle {
 
 func (c *Cell) liveLifecycleProbes() lifecycleProbes {
 	return lifecycleProbes{
-		claims:      c.liveClaims,
-		cadence:     c.liveCadence,
-		stopCadence: func(role string) error { return c.stopRoleCadence(role, cadenceStopWait) },
-		procs:       psTable{},
-		cockpit:     liveCockpit{},
-		now:         time.Now,
-		sleep:       time.Sleep,
+		claims:           c.liveClaims,
+		cadence:          c.liveCadence,
+		stopCadence:      func(role string) error { return c.stopRoleCadence(role, cadenceStopWait) },
+		interactiveOwner: c.interactiveOwner,
+		settle:           c.settleInteractiveOwner,
+		procs:            psTable{},
+		cockpit:          liveCockpit{},
+		now:              time.Now,
+		sleep:            time.Sleep,
 	}
 }
 
@@ -559,6 +565,17 @@ func (l *interimLifecycle) Stop(role string, confirmed, force bool) (string, err
 	if err := l.verifySurface(l.c, *rec, false); err != nil {
 		return "", err
 	}
+	// The interactive owner the close will signal is named before anything is stopped.
+	var owner *interactiveOwner
+	if cr.Mode == "interactive" && l.probes.interactiveOwner != nil && l.probes.settle != nil {
+		o, ok, err := l.probes.interactiveOwner(role)
+		if err != nil {
+			return "", refuseWith(cellop.ReasonUnmeasured, "%s: %v", role, err)
+		}
+		if ok {
+			owner = &o
+		}
+	}
 	// 1. that role's cadence alone.
 	if err := l.probes.stopCadence(role); err != nil {
 		if errors.Is(err, cellcadence.ErrUnfinished) {
@@ -585,6 +602,13 @@ func (l *interimLifecycle) Stop(role string, confirmed, force bool) (string, err
 	// 5. the receipt.
 	if err := removeSurfaceReceipt(l.c.cadenceDir(role)); err != nil {
 		return "", fmt.Errorf("%s: closed, but removing its receipt: %w", role, err)
+	}
+	// 6. the interactive owner the close signalled, so the role's next launch finds its
+	// checkpoint finished.
+	if owner != nil {
+		if err := l.probes.settle(*owner, time.Now().Add(downOwnerWait)); err != nil {
+			return "", fmt.Errorf("closed %s %s %s, but %w", rec.Cockpit, surfaceKind(rec.Cockpit), rec.Surface, err)
+		}
 	}
 	return fmt.Sprintf("%s: closed %s %s %s", role, rec.Cockpit, surfaceKind(rec.Cockpit), rec.Surface), nil
 }

@@ -99,8 +99,8 @@ func cmdTriage(args []string, out io.Writer) error {
 		"the EXISTING item recording where residual or decided work lives "+
 			"(N | #N | !N | owner/repo#N | owner/repo!N | web URL); verified present, never an authority")
 	decision := fs.String("decision", "",
-		dispositionHumanDecided+" only: permalink to the human's ruling comment ON this issue "+
-			"(https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<id>) — fetched and its author verified")
+		dispositionHumanDecided+" only: permalink to the human's ruling comment ON this issue, on the forge, "+
+			"host and project serving it ("+deskkit.CommentPermalinkForms()+") — fetched and its author verified")
 	n, err := parseItemVerb(fs, args, &c)
 	if err != nil {
 		return err
@@ -351,25 +351,23 @@ func notPlannedAuthority(r triageReq) (string, error) {
 // verifyHumanAuthor, exactly as every ruled artifact is. The permalink must be ON the issue
 // being closed — a ruling from elsewhere cannot be reused here.
 func humanDecidedAuthority(r triageReq) (string, ghComment, error) {
-	m := commentURLRe.FindStringSubmatch(strings.TrimSpace(r.decision))
-	if m == nil {
+	decision := strings.TrimSpace(r.decision)
+	link, perr := deskkit.ParseCommentPermalink(decision)
+	if perr != nil {
 		return "", ghComment{}, deskkit.Refused(
-			"refused: --decision must be a GitHub comment permalink " +
-				"(https://github.com/<owner>/<repo>/issues|pull/<N>#issuecomment-<id>) naming the human's " +
-				"ruling comment on this issue — a link to a thread is not an authorization.")
+			"refused: --decision must be a comment permalink (" + deskkit.CommentPermalinkForms() + ") naming " +
+				"the human's ruling comment on this issue — a link to a thread is not an authorization. " +
+				"Reading the link: " + strings.TrimPrefix(perr.Error(), "refused: "))
 	}
-	owner, repo, itemStr := m[1], m[2], m[4]
-	if !strings.EqualFold(owner+"/"+repo, r.repo) || itemStr != fmt.Sprint(r.number) {
-		return "", ghComment{}, deskkit.Refused(fmt.Sprintf(
-			"refused: --decision names a comment on %s#%s, but the close targets %s#%d — the recorded human "+
-				"decision must be ON the issue being closed, never a ruling from elsewhere reused here.",
-			deskkit.StripControl(owner+"/"+repo), deskkit.StripControl(itemStr), r.repo, r.number))
+	if err := decisionOnThisIssue(link, r); err != nil {
+		return "", ghComment{}, err
 	}
 	// TargetIssue, never the untyped fetch: the decision comment lives on an ISSUE, whose
 	// thread the untyped ListComments cannot read (it uses the change/pullRequest selection on
 	// both backends), so an untyped fetch would return could-not-check at every real issue and
-	// the lane could never execute.
-	c, err := fetchCommentTyped(strings.TrimSpace(r.decision), deskkit.TargetIssue)
+	// the lane could never execute. fetchCommentAt refuses a link whose forge or host is not
+	// the one serving the repository before it reads anything.
+	c, err := fetchCommentAt(link, decision, deskkit.TargetIssue)
 	if err != nil {
 		return "", ghComment{}, err
 	}
@@ -378,6 +376,27 @@ func humanDecidedAuthority(r triageReq) (string, ghComment, error) {
 	}
 	return fmt.Sprintf("recorded human decision %s (by %s, verified blessing authority)",
 		deskkit.StripControl(c.HTMLURL), deskkit.StripControl(c.User.Login)), c, nil
+}
+
+// decisionOnThisIssue refuses a decision link that names any object other than the issue being
+// closed: another project, another number, or (GitLab, which numbers merge requests apart from
+// issues) the merge request carrying that number. The forge and host are matched against the
+// serving forge by fetchCommentAt.
+func decisionOnThisIssue(link deskkit.CommentLink, r triageReq) error {
+	sameRepo := strings.EqualFold(link.Item.Repo, r.repo)
+	sameItem := link.Item.Number == r.number &&
+		(link.Forge != deskkit.ForgeGitLab || link.Item.Kind == deskkit.TargetIssue)
+	if sameRepo && sameItem {
+		return nil
+	}
+	sigil := "#"
+	if link.Forge == deskkit.ForgeGitLab && link.Item.Kind == deskkit.TargetChange {
+		sigil = "!"
+	}
+	return deskkit.Refused(fmt.Sprintf(
+		"refused: --decision names a comment on %s%s%d, but the close targets %s#%d — the recorded human "+
+			"decision must be ON the issue being closed, never a ruling from elsewhere reused here.",
+		deskkit.StripControl(link.Item.Repo), sigil, link.Item.Number, r.repo, r.number))
 }
 
 // requireTrackerExists confirms a --tracker names a REAL item (a fetch), so the close records

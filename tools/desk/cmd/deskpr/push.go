@@ -47,6 +47,10 @@ type pushSpec struct {
 	setUpstream   bool
 	checkedSource string        // update carries the immutable hash its identity gate checked
 	proof         *publishProof // present when create has checked the live destination
+	// upToDate, when set, is made true by a push that moved no remote ref (the remote already
+	// held the commit). update reads it so a push that changed nothing is a noop, not progress
+	// that renews the HEARTBEAT lease (#6510).
+	upToDate *bool
 }
 
 // pushFn is the push seam. Production binds pushBranch; a test that needs to observe or fail
@@ -106,13 +110,17 @@ func pushBranch(s pushSpec) error {
 	// checkout would report success having pushed nothing. A hash source is pushed as
 	// exactly that commit, fast-forward-checked against the remote's current value — and it
 	// is the same sha the pre-push hook was just shown.
-	if perr := repo.Push(gitcore.PushOpts{
+	updated, perr := repo.PushUpdated(gitcore.PushOpts{
 		URL:               endpoint.URL,
 		RefSpecs:          []string{hash.String() + ":" + dstRef},
 		Auth:              endpoint.Auth,
 		RequireRemoteRefs: required,
-	}); perr != nil {
+	})
+	if perr != nil {
 		return deskkit.Unverifiable("git push failed", perr)
+	}
+	if !updated && s.upToDate != nil {
+		*s.upToDate = true
 	}
 	recordPushed(repo, s, dstRef, hash.String())
 	return nil

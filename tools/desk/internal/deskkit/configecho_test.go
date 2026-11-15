@@ -344,8 +344,9 @@ func TestEchoFullOnProblems(t *testing.T) {
 	quietEchoEnv(t)
 	// A refused roster in a WRITABLE config home: the state file could record a digest, so
 	// only the problem rule keeps the second run full.
+	// (An unknown ASSAY_ key no longer refuses, #1261; an unsupported schema version still does.)
 	vals := goldenRoster()
-	vals["ASSAY_EXAMPLE_UNKNOWN"] = "x"
+	vals[EnvRosterSchema] = "999"
 	withRoster(t, vals)
 	for i := 0; i < 2; i++ {
 		out := echoOnce(t)

@@ -64,6 +64,14 @@ admitting a profile. Kubernetes Secret files otherwise default to root ownership
 0400 alone would be unreadable to this non-root process. The mount remains
 read-only, and only `app.pem` is projected.
 
+Each role container carries exactly three inline env entries: `ASSAY_DESK`, the
+canonical `ASSAY_APP_PEM_FILE` path, and `GODEBUG=multipathtcp=0`. The last one
+turns off the MPTCP listeners Go has opened by default since 1.24, as a stopgap
+for CVE-2026-98432 (a Linux kernel use-after-free in that path). It is fragile:
+it covers only Go programs that read it, and a later override undoes it. Patched
+node kernels are the real fix. The checker rejects a role container that drops it
+or turns MPTCP back on.
+
 `secrets.example.yaml` contains empty named skeletons for all ten Secrets, with
 required keys listed only in comments; it is excluded from the build. These
 skeletons are not deployable. Do not apply or populate that tracked file. Provision real Secrets

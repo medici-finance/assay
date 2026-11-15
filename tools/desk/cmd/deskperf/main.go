@@ -52,7 +52,9 @@ usage:
       groups, never summed: the perf-v2 group adds its boundary and CPU coverage,
       the measured-CPU distribution, per-counter measured/unavailable coverage and
       per-phase distributions. A forge-calls section follows, per tool and per
-      release build (sourceSHA): runs, unavailable runs, total forge calls, calls
+      release build (sourceSHA; labelled "<tag> (<sha>)" when that build's records
+      name one release tag, "<sha> (tag conflict)" when they name more than one,
+      the sha alone when they name none): runs, unavailable runs, total forge calls, calls
       per run p50 / p90 / max, share of all forge calls, the busiest UTC hour's
       calls and that hour and the p90 run as a share of the 5000/hour App budget
       floor (pooled over every tool and installation: a gauge, not a bound).

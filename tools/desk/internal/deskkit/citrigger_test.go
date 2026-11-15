@@ -278,8 +278,10 @@ func ciAssertPublicLayoutRow(t *testing.T, test string) {
 					t.Error(fault)
 				}
 			}
-			if _, ignored := ciOnEventKey(t, content, e.workflow, event, "paths-ignore"); ignored {
-				t.Fatal(test + ": dependency reads must not be hidden by an unqualified paths-ignore filter")
+			if ignored, ok := ciOnEventKey(t, content, e.workflow, event, "paths-ignore"); ok {
+				for _, fault := range ciReadCoverage(t, root, ciPathsIgnoreGlobs(ignored), e.reads) {
+					t.Error(test + ": dependency read hidden by on." + event + ".paths-ignore: " + fault)
+				}
 			}
 		}
 		return
@@ -325,8 +327,10 @@ func TestGitcoreConsumerCI(t *testing.T) {
 					t.Error(fault)
 				}
 			}
-			if _, ignored := ciOnEventKey(t, content, e.workflow, event, "paths-ignore"); ignored {
-				t.Fatal("runner dependency reads must not be hidden by an unqualified paths-ignore filter")
+			if ignored, ok := ciOnEventKey(t, content, e.workflow, event, "paths-ignore"); ok {
+				for _, fault := range ciReadCoverage(t, root, ciPathsIgnoreGlobs(ignored), e.reads) {
+					t.Error(e.test + ": runner dependency read hidden by on." + event + ".paths-ignore: " + fault)
+				}
 			}
 		}
 		delete(want, e.test)
@@ -630,6 +634,8 @@ func ciCrossModuleRegistry() []ciEntry {
 		},
 		{test: "tools/desk/cmd/deskdispatch/verifierattestation_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"statusgen/verifyrun.go", "statusgen/verifieradmission.go"}, runInvokes: deskShardInvokes, why: "the verifier dispatch fixture builds the actual statusgen executor and proves that two Verify rows require the shared pre-work admission"},
 		{test: "tools/desk/cmd/deskdispatch/verifiercrossrepo_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"statusgen/verifyrun.go", "statusgen/verifieradmission.go"}, runInvokes: deskShardInvokes, why: "the cross-repository dispatch fixture builds the actual statusgen executor and checks isolated tracking Evidence and deliverable row execution"},
+		{test: "tools/desk/cmd/deskdispatch/pickup_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"statusgen/testdata/contexthandoff/journeys/base", "statusgen/contexthandoff"}, runInvokes: deskShardInvokes, why: "the context pickup admission rechecks statusgen's shipped journey snapshot through the statusgen/contexthandoff resolver before the claim (statusgen/21)"},
+		{test: "statusgen/skillhandoff_test.go", module: "statusgen", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob, reads: []string{"plugins/assay/skills/author-spec/SKILL.md", "plugins/assay/skills/author-brief/SKILL.md", "plugins/assay/skills/worker-desk/SKILL.md", "plugins/assay/references/implementation-pickup.md", "CHANGELOG.md", "schemas"}, runInvokes: []string{"cd statusgen && go test ./..."}, why: "the skill handoff citations resolve against the shipped context verbs, schemas and releases, so a skill or changelog edit must meet them (statusgen/21)"},
 		{test: "tools/desk/cmd/deskevidence/landed_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"statusgen/briefinfo.go", "statusgen/evidenceactor.go", "statusgen/attribution.go", "statusgen/verifyclosure.go"}, runInvokes: deskShardInvokes, why: "the landed outcome regression builds actual statusgen and checks attribution and closure against genuine committed verifier history"},
 		{test: "tools/desk/cmd/deskevidence/outcome_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"statusgen/briefinfo.go", "statusgen/evidenceactor.go", "statusgen/attribution.go", "statusgen/verifyclosure.go"}, runInvokes: deskShardInvokes, why: "the outcome command regression builds actual statusgen and checks attribution and closure against genuine committed verifier history"},
 		{
@@ -2922,11 +2928,13 @@ func TestRegressionCIEntrypoints(t *testing.T) {
 			ciAssertEventReachesJob(t, string(raw), e.workflow, e.module, event, job, e.runInvokes, e.test, e.why)
 			globs, filtered := ciOnEventKey(t, string(raw), e.workflow, event, "paths")
 			if !filtered {
-				if _, ignored := ciOnEventKey(t, string(raw), e.workflow, event, "paths-ignore"); ignored {
-					t.Fatalf("floor workflow %s has paths-ignore; enumerate its coverage before trusting it", e.workflow)
-				}
 				globs = []string{"**"}
-			} // ci.yml deliberately runs on every change; reachability above still checks the event and job
+				// A paths-ignore filter is trusted only through its enumerated
+				// coverage: every read must survive the ignore list.
+				if ignored, ok := ciOnEventKey(t, string(raw), e.workflow, event, "paths-ignore"); ok {
+					globs = ciPathsIgnoreGlobs(ignored)
+				}
+			} // ci.yml runs on every change but its push leg's board-regen-output ignore; reachability above still checks the event and job
 			for _, fault := range ciReadCoverage(t, "../../../..", globs, e.reads) {
 				t.Errorf("%s %s: %s", e.workflow, event, fault)
 			}

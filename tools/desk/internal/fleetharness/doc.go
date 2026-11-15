@@ -14,8 +14,9 @@
 // and a workflow, and that relationship is invisible from inside either one.
 //
 // So this harness builds the real binaries and runs them as processes against real git
-// repositories. Nothing is stubbed that the mandated workflow would not stub: `gh` and
-// `desktoken` are PATH shims, exactly as a cold worker shell resolves them.
+// repositories. Nothing is stubbed that the mandated workflow would not stub: `gh` is a PATH
+// shim, and the write verbs' role credential — which they read in-process — comes from the
+// App config and cached installation credential planted in the harness's environment.
 //
 // The 2026-08-13 dispatch cycle is what makes this urgent rather than tidy: `deskreply`
 // returned rc=6 on the mandated detached worktree for **5 of 5** workers, every one fell

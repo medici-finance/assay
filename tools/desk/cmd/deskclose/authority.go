@@ -121,16 +121,6 @@ type ghComment struct {
 	CreatedAt string
 }
 
-// fetchCommentTyped fetches the comment a permalink names, on the STATED kind's thread — the
-// only way to reach an ISSUE's own thread: the untyped ListComments reads a CHANGE's thread on
-// both backends (GitHub's pullRequest selection, forge_github.go; the same reason
-// superseded.go's readThread uses the typed read), so a comment on an issue is unreachable
-// through it and comes back as could-not-check every time. The human-decided triage lane fetches
-// a human ruling comment on an ISSUE and states TargetIssue so the real comment resolves.
-func fetchCommentTyped(url string, kind deskkit.TargetKind) (ghComment, error) {
-	return fetchCommentKinded(url, kind)
-}
-
 // fetchComment retrieves the comment a permalink names, deriving which kind of object it
 // addresses from the permalink itself — deskclose has no kind-less read left to fall back to.
 //
@@ -173,20 +163,34 @@ func fetchCommentKinded(url string, kind deskkit.TargetKind) (ghComment, error) 
 				"(want https://github.com/<owner>/<repo>/issues|pull/<N>#issuecomment-<id>). " +
 				"A link to a thread is not an authorization: a thread is written by whoever shows up.")
 	}
-	owner, repo, itemStr, cidStr := m[1], m[2], m[4], m[5]
-	itemN, ierr := strconv.Atoi(itemStr)
-	if ierr != nil || itemN <= 0 {
-		return ghComment{}, deskkit.Refused("refused: " + deskkit.StripControl(url) + " names an invalid item number")
+	link, perr := deskkit.ParseCommentPermalink(url)
+	if perr != nil {
+		return ghComment{}, perr
 	}
-	cid, cerr := strconv.ParseInt(cidStr, 10, 64)
-	if cerr != nil || cid <= 0 {
-		return ghComment{}, deskkit.Refused("refused: " + deskkit.StripControl(url) + " names an invalid comment id")
-	}
-	fg, fr, ferr := forgeForFn(owner + "/" + repo)
+	return fetchCommentAt(link, url, kind)
+}
+
+// forgeKindFn names the forge serving a repository: the same resolver forgeFor's ForgeFor
+// consults, read without custody. Package var so a test's stub forge can answer it.
+var forgeKindFn = func(fr deskkit.ForgeRepo) (deskkit.ForgeKind, error) {
+	res, err := deskkit.ForgeKindFor(fr)
+	return res.Kind, err
+}
+
+// fetchCommentAt fetches the comment a parsed link names and returns it as the forge reports
+// it. Before any read, the link must name the forge and host that actually serve its
+// repository: a link's text is a claim, and a github.com link to a repository a GitLab backend
+// serves would otherwise be answered by whatever note on that backend carries the same id.
+// Every refusal here is before the fetch; a failed fetch is could-not-check, never the link.
+func fetchCommentAt(link deskkit.CommentLink, url string, kind deskkit.TargetKind) (ghComment, error) {
+	fg, fr, ferr := forgeForFn(link.Item.Repo)
 	if ferr != nil {
 		return ghComment{}, ferr
 	}
-	comments, err := fg.ListCommentsTyped(fr, itemN, kind)
+	if err := linkMatchesForge(link, url, fg, fr); err != nil {
+		return ghComment{}, err
+	}
+	comments, err := fg.ListCommentsTyped(fr, link.Item.Number, kind)
 	if err != nil {
 		return ghComment{}, deskkit.Unverifiable(
 			"could-not-check: the authorizing comment at "+deskkit.StripControl(url)+
@@ -194,7 +198,7 @@ func fetchCommentKinded(url string, kind deskkit.TargetKind) (ghComment, error) 
 				"authorization; zero items were closed", err)
 	}
 	for _, c := range comments {
-		if c.DatabaseID == cid {
+		if c.DatabaseID == link.CommentID {
 			out := ghComment{ID: c.DatabaseID, HTMLURL: c.URL, Body: c.Body, CreatedAt: c.CreatedAt}
 			out.User.Login = c.Author.Login
 			out.User.ID = c.Author.ID
@@ -204,10 +208,36 @@ func fetchCommentKinded(url string, kind deskkit.TargetKind) (ghComment, error) 
 			return out, nil
 		}
 	}
-	return ghComment{}, deskkit.Refused(
-		"refused: the authorization permalink names comment " + deskkit.StripControl(cidStr) +
-			" on " + deskkit.StripControl(owner+"/"+repo+"#"+itemStr) +
-			", but no such comment is on that item — the link and the artifact disagree, or the comment was deleted")
+	sigil := "#"
+	if link.Forge == deskkit.ForgeGitLab && link.Item.Kind == deskkit.TargetChange {
+		sigil = "!"
+	}
+	return ghComment{}, deskkit.Refused(fmt.Sprintf(
+		"refused: the authorization permalink names comment %d on %s%s%d, but no such comment is on that item — "+
+			"the link and the artifact disagree, or the comment was deleted",
+		link.CommentID, deskkit.StripControl(link.Item.Repo), sigil, link.Item.Number))
+}
+
+// linkMatchesForge refuses a link whose forge or host is not the one serving its repository.
+// A forge that cannot be named is could-not-check, never a pass.
+func linkMatchesForge(link deskkit.CommentLink, url string, fg deskkit.Forge, fr deskkit.ForgeRepo) error {
+	served, err := forgeKindFn(fr)
+	if err != nil {
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: which forge serves %s could not be resolved, so the comment link %s cannot be "+
+				"matched to it — deskclose refuses", fr.Slug(), deskkit.StripControl(url)), err)
+	}
+	if served != link.Forge {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: %s is a %s comment link, but %s is served by %s — a link to another forge names "+
+				"another object, whatever its numbers", deskkit.StripControl(url), link.Forge, fr.Slug(), served))
+	}
+	if host := fg.PushTransportHint(fr).RemoteHost; !strings.EqualFold(link.Host, host) {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: %s names host %s, but %s is served from %s — a link to another host names another "+
+				"object, whatever its numbers", deskkit.StripControl(url), link.Host, fr.Slug(), host))
+	}
+	return nil
 }
 
 // verifyHumanAuthor is the load-bearing identity check, and it is deliberately made of

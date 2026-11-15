@@ -25,6 +25,30 @@ import (
 // Boundary, its counters carry explicit coverage, and it never carries the legacy counters.
 const SchemaV2 = "perf-v2"
 
+// SchemaV5 is a perf-v2 record from a release build: the perf-v2 field set, boundary and
+// meanings unchanged, plus one required releaseTag naming the tag the writing binary was
+// stamped with. perf-v2's field set is frozen, so the tag is a new schema rather than a new
+// perf-v2 key; a reader that knows only perf-v2 skips a perf-v5 line as an unknown schema.
+const SchemaV5 = "perf-v5"
+
+// ReleasePattern is the only shape a perf-v5 releaseTag may take: an umbrella release tag
+// (v1.0.82), its hotfix form (v1.0.82+hotfix-<12 hex>), or a historical per-artifact tag
+// (statusgen/v0.8.0). "dev", a sha, an empty stamp and any free text do not match, so a
+// build without a real release stamp keeps writing perf-v2.
+var ReleasePattern = regexp.MustCompile(`^(?:[a-z][a-z0-9-]{0,31}/)?v[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}(?:\+hotfix-[0-9a-f]{12})?$`)
+
+// WithRelease returns a perf-v2 record as perf-v5 carrying tag when tag is a release tag
+// (ReleasePattern). Anything else — a dev or unstamped build, a non-perf-v2 record, an
+// already-tagged one — comes back unchanged: the tag is the binary's own stamp, never a
+// guess from its commit.
+func WithRelease(r Record, tag string) Record {
+	if r.Schema != SchemaV2 || !ReleasePattern.MatchString(tag) {
+		return r
+	}
+	r.Schema, r.ReleaseTag = SchemaV5, tag
+	return r
+}
+
 // The boundaries a perf-v2 wall/CPU delta can start at.
 const (
 	// BoundaryProcess is this package's initialisation: the first Go code of any binary that
@@ -150,6 +174,12 @@ type v2Record struct {
 	Install      string            `json:"install"`
 }
 
+// v5Record is the perf-v5 wire shape: the perf-v2 shape plus the required releaseTag.
+type v5Record struct {
+	v2Record
+	ReleaseTag string `json:"releaseTag"`
+}
+
 func (r Record) hasV2Fields() bool {
 	return r.Boundary != "" || r.CPU != "" || r.Phases != nil || r.PhaseOverlap || r.Counters != nil || r.Unavailable != nil
 }
@@ -162,6 +192,9 @@ func (r Record) hasLegacyCounters() bool {
 // fields, an unknown schema, or an invalid perf-v2 coverage is refused, never written.
 func (r Record) MarshalJSON() ([]byte, error) {
 	if r.Schema != SchemaV4 && r.V4 != nil {
+		return nil, ErrSchemaReuse
+	}
+	if r.Schema != SchemaV5 && r.ReleaseTag != "" {
 		return nil, ErrSchemaReuse
 	}
 	switch r.Schema {
@@ -203,10 +236,24 @@ func (r Record) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 		return json.Marshal(w)
+	case SchemaV5:
+		if r.hasLegacyCounters() || r.V3 != nil {
+			return nil, ErrSchemaReuse
+		}
+		w := intervalWire(r)
+		if err := validV2(w); err != nil {
+			return nil, err
+		}
+		if !ReleasePattern.MatchString(r.ReleaseTag) {
+			return nil, errBadReleaseTag
+		}
+		return json.Marshal(v5Record{w, r.ReleaseTag})
 	default:
 		return nil, fmt.Errorf("perfrec: unknown schema %q", r.Schema)
 	}
 }
+
+var errBadReleaseTag = errors.New("perfrec: perf-v5 releaseTag is not a release tag")
 
 // intervalWire is the single reference mapping for interval validation and the
 // historical v2 encoder. New formats validate it directly, without serializing
@@ -292,14 +339,36 @@ func (r *Record) UnmarshalJSON(b []byte) error {
 		if err := validV2(w); err != nil {
 			return err
 		}
-		*r = Record{Schema: w.Schema, TS: w.TS, Tool: w.Tool, Verb: w.Verb, Role: w.Role, WallMs: w.WallMs,
-			CPUMs: w.CPUMs, Exit: w.Exit, Result: w.Result, SourceSHA: w.SourceSHA, Install: w.Install,
-			Boundary: w.Boundary, CPU: w.CPU, Phases: w.Phases, PhaseOverlap: w.PhaseOverlap,
-			Counters: w.Counters, Unavailable: w.Unavailable}
+		*r = fromV2Wire(w)
+		return nil
+	case SchemaV5:
+		var w v5Record
+		if err := dec.Decode(&w); err != nil {
+			return err
+		}
+		if w.Phases == nil || w.Counters == nil || w.Unavailable == nil {
+			return ErrSchemaReuse
+		}
+		if err := validV2(w.v2Record); err != nil {
+			return err
+		}
+		if !ReleasePattern.MatchString(w.ReleaseTag) {
+			return errBadReleaseTag
+		}
+		*r = fromV2Wire(w.v2Record)
+		r.ReleaseTag = w.ReleaseTag
 		return nil
 	default:
 		return fmt.Errorf("perfrec: unknown schema %q", head.Schema.value)
 	}
+}
+
+// fromV2Wire is the Record a validated perf-v2 (or perf-v5) wire shape decodes to.
+func fromV2Wire(w v2Record) Record {
+	return Record{Schema: w.Schema, TS: w.TS, Tool: w.Tool, Verb: w.Verb, Role: w.Role, WallMs: w.WallMs,
+		CPUMs: w.CPUMs, Exit: w.Exit, Result: w.Result, SourceSHA: w.SourceSHA, Install: w.Install,
+		Boundary: w.Boundary, CPU: w.CPU, Phases: w.Phases, PhaseOverlap: w.PhaseOverlap,
+		Counters: w.Counters, Unavailable: w.Unavailable}
 }
 
 type schemaDiscriminator struct {

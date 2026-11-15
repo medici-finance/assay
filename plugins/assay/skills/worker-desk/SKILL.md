@@ -514,6 +514,17 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
              [--model SLUG] [--brief PATH] [--gate-human] [--pr N] [--dry-run]
 ```
 
+- **Context pickup receipt** (statusgen/21; deskdispatch from the first release whose
+  `CHANGELOG.md` names `--context-snapshot`). When the brief was authored against a context
+  receipt, pass `--context-snapshot DIR --context-receipt FILE` with an implementer kit. Before the claim, deskdispatch runs the shipped `statusgen context recheck`
+  semantics over them: a current receipt, an unrelated edit or a product change to assess is
+  admitted and carried into the prompt's `## Context pickup receipt` section; a conflict to
+  reconcile, an unavailable input or partial coverage is HELD (exit 5, `dispatch HELD on context
+  pickup`, nothing claimed): a delay, not a verdict. A receipt schema this build does not
+  validate is refused, never admitted unchecked. Without the flags, or on an older install, the
+  kit's Architecture pickup is the **manual bootstrap** of the
+  [implementation pickup procedure](../../references/implementation-pickup.md), the one
+  procedure the author skills also follow.
 - **The item key passes through UNCHANGED** — `<repo>--<stream>--<NN>`, or `<repo>--issue-<NN>` for
   issue-shaped work. A key a dispatcher reshaped would not collide with the one another desk holds,
   and a claim that does not collide is not a claim.
@@ -632,6 +643,20 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Serialize out-of-repo items** — no worktree isolation, no branch-as-claim: at most ONE in
   flight across all streams, the declaration is the claim, so check in-flight PRs for overlaps first.
 - **Placeholders are dispatchable** (ruling 2, 2026-08-24); `fanoutloop plan` includes them.
+- **A window holding a project role secret dispatches only work proven trusted.** A native container
+  cell can export a project role secret into a worker window as a path variable,
+  `ASSAY_ROLE_SECRET_<SERVICE>_FILE` (`containers/secrets.md` §4.4). Every agent dispatched from that
+  window inherits the variable, so `deskdispatch` refuses, before the claim, the following:
+  - any brief-keyed or review-kit item;
+  - an issue or change whose author is not trusted and that carries no current blessing;
+  - a `--pr` item whose head commits are not all on the base repository, with a linked author and
+    committer that are both roster logins (commit attribution, not proof of who pushed).
+
+  Unreadable forge data counts as untrusted. Treat that refusal like any guard refusal: it is a
+  STOP for the item in that window. Never route around it by unsetting the variable: the
+  file stays mounted, and an existing `/run/secrets/role-*` file makes the window a holding one
+  anyway. `deskdispatch` also strips every such variable from the tool processes it
+  starts.
 
 ## Cockpit-aware worktree creation — additive, chosen by `ASSAY_COCKPIT` or detected on PATH, never required
 
@@ -707,7 +732,7 @@ item, and the cockpit is only a nicer way to reach it.
 `gate: human` / `irreversible: yes` items DISPATCH NORMALLY (2026-07-10): the gate binds APPROVAL —
 review, merge, verify sign-off — not implementation, and every human control point sits downstream.
 But **a human gate with no filed issue is an empty decision surface** (human:<name> 2026-08-23), so pass
-`--gate-human` (or a `--brief` whose metadata gates), which runs `decision-issue ensure … --at start` between claim and launch — idempotent by its hidden marker, swept `--state all`, landing a
+`--gate-human` (or a `--brief` whose metadata gates; with no `--brief`, a brief-shaped item key's own brief gates the same way, and a key whose brief does not resolve is refused pre-claim), which runs `decision-issue ensure … --at start` between claim and launch — idempotent by its hidden marker, swept `--state all`, landing a
 `needs-decision` issue that enters the weekly digest. Three non-filing outcomes: `deferred:
 decision-trigger=spec` — the decision is only well-formed at the pickup design step, so the prompt
 instructs the executor to author the brief's `## Human decision` section in its PR and report
@@ -943,7 +968,11 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   is a floor, not the reversibility test above: an item that test calls one-way is filed
   `caught-by: nothing`, and so stays on the driver's queue, whatever the keywords say.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
-  or comments.
+  or comments. If a push is refused over an attribution trailer your harness added, not you (on
+  Cursor the host setting `attribution.attributeCommitsToAgent`, and `attribution.attributePRsToAgent`
+  for PR footers; both default to true), STOP: never rewrite history or re-commit to strip it, and
+  never push by another route. Report the setting and the refusal line; the host's operator sets
+  it to false.
 
 ## Cross-desk hand-offs — the lane verbs
 
@@ -1041,10 +1070,18 @@ worker-desk's own.
   bindings), the desk falls back to the event-driven + fixed-cadence board sweep at the same 30-minute
   cadence and **states the gap in-session**; a durable wake is a convenience, never one of the three
   never-degrade guarantees.
-- **A tick keeps the dead-man lease fresh.** The desk tools refuse to run when the `HEARTBEAT`
-  file in the config home (desk-shell.md §Config home: `~/.config/assay`) has not been touched
-  inside its staleness window, so the standing loop is the thing that keeps it current: touch
-  it on every tick, including a quiet one.
+- **A tick never renews the dead-man lease; only progress does.** When the `HEARTBEAT` file in the
+  config home (desk-shell.md §Config home: `~/.config/assay`) exists and was last touched outside
+  its staleness window, the desk tools refuse to run: that is STOP-ALL by construction. A FRESH
+  lease is renewed by the desk tools themselves, and only when a verb completes an outward act the
+  forge confirmed (a push, a PR, a review or comment, an issue, an Evidence landing, a ready flip);
+  the act's audit row records it (desk-shell.md §HEARTBEAT lease). A tick, a read, a mint or a
+  failed act renews nothing, so a loop that only polls still lapses. A LAPSED lease is revived only
+  by a human: the driver, or a cron the driver owns, touches the file. No agent or loop touches,
+  creates or deletes it by hand, on any tick. A `heartbeat stale (age …)` refusal is the lease
+  firing. Quote it verbatim
+  in the hand-off note, print ONE loud line naming it, and stand down. Never ask the driver how
+  to proceed.
 - **A tick reads the armed per-run stops and stops each run's worker.** Every tick, read the armed
   per-run stops (`desksupervise status --stops`) and, for each one, `capability:stop-worker` the matching
   dispatched worker — the cooperative `STOP.run.<key>` flag already refuses that run's next desk verb,

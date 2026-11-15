@@ -256,9 +256,14 @@ as idle, and confirm `plan`'s arming-coverage line before trusting a quiet pass.
 every lane step without running it; `--offline --inbound <file>` opens no network read at all.
 A pass report line `WARNING: … cleanup: could not remove worktree <path>` means the carrier PR WAS
 published and its exit recorded (the leak check stays clean); only the scan worktree was retained,
-detached so the next pass can still coalesce onto the carrier. Inspect it, clear what blocked the
-removal, then remove it through the project's sanctioned worktree tooling — never with `--force`,
-and never by deleting the directory.
+detached so the next pass can still coalesce onto the carrier. Scan worktrees are cut under the
+sanctioned worktree prefix (`--worktree-base` overrides it), so that tooling can reach them. Inspect it,
+clear what blocked the removal, then remove it through the project's sanctioned worktree tooling —
+never with `--force`, and never by deleting the directory. A coalesce that finds the carrier branch
+still checked out in a retained scan worktree carries on IN it when that worktree is clean and at the
+carrier's remote tip; a dirty or diverged one refuses the pass (exit 5) and is left exactly as it is.
+A reused worktree is removed at the end of that pass like any scan worktree, and that removal also
+deletes its gitignored files: copy anything you need out of a retained scan worktree before the next pass.
 
 **Exit records.** Every exit `run` lands is also appended as a `decided_by: mechanical` record to
 `<state dir>/intake-exits.jsonl` (`--dry-run` writes none). A JUDGMENT item is parked, never
@@ -277,39 +282,18 @@ a different `--opened` to get past it; file an issue against the desk tooling na
 the message. A drain pass that exits 5 or 6 naming intake-exit records has still landed and audited
 every exit — only the named records are missing; file the same issue.
 
-**Accountable handoff (version-negotiated).** A mechanical exit, scan PR, label,
-routing comment or closed issue is not accepted successor work. With readers
-supporting `intake-handoff-v1`, record the source event, deciding role, evidence
-and disposition using `scanloop land ... --handoff <json-file> --handoff-reader
-intake-handoff-v1`; retain the original exit and append a new judgment revision.
-Publish the companion beside the existing placeholder/register record with its
-`handoff:` pointer and `handoff-opened:` source time through the normal reviewed
-change. The local history alone is not an assignment authority. The register's
-`statusgen --intake-handoffs` view reports the same meaning without changing
-`--intake-exits`.
-
-Scoping queues a linked author-spec/author-brief task for a strong author. A
-sufficiently scoped repair may use the existing issue; delivered source goes to
-installation/qualification. An external prerequisite names the role, exact action
-and wake condition. Reuse existing owner work, including when a source issue is
-closed as a duplicate. Read back the successor through its owner before treating
-the handoff as discharged; a stopped scan carrier leaves successor-owed work.
-Legacy or unreadable companions remain classification-needed. Do not promote
-raw placeholders or open a new issue merely to acknowledge an observation.
-The drain replays durable observations after restart and still applies current
-trust; use the displayed judgment to reconcile existing work, not to repeat it.
-Replay of an issue stops only when its latest event has a recorded companion
-assessed `observed` or `external-wait`, or an exit you recorded by judgment as
-`rejected-watching` with that event's `--opened`. A mechanical exit never stops it. Read the result back in
-the next pass report: an issue still owed prints an `intake:` line under
-`EMITTED` with its assessment, and a settled one no longer queues.
-`statusgen --intake-handoffs` reads only the committed intake register, never an
-issue's local companion, so it cannot confirm an issue. A newer source event on
-the issue presents it again. A `RETIRED` line records a terminal
-`gone` or `quarantined` disposition for one event. A `DEFERRED` line names
-retained events held past this pass's replay bound. Neither line is an empty queue.
-Before committing a companion to a public repository, scrub its free-text
-`evidence`, `required_action` and `wake_condition` fields; they publish as written.
+**Accountable handoff (version-negotiated).** Every issue you route by judgment needs a
+recorded and published `intake-handoff-v1` companion before it is routed. A mechanical exit,
+scan PR, label, routing comment or closed issue is not accepted successor work. The step comes
+after the judgment and its comment or label, and before the item is treated as routed: pick the
+row of the judgment table, record it with `scanloop land ... --handoff <json-file>
+--handoff-reader intake-handoff-v1`, publish the companion with its `handoff:` pointer and
+`handoff-opened:` time, and read the result back. The table, one example per row, the exact
+publication step, the read-back and the failure handling are in
+[`../../references/intake-handoff.md`](../../references/intake-handoff.md). The local history
+alone is not an assignment authority. Do not promote raw placeholders or open a new issue merely
+to acknowledge an observation. Before committing a companion to a public repository, scrub its free-text `evidence`,
+`required_action` and `wake_condition` fields; they publish as written.
 
 **Standing-doctrine pointer.** A successor scan-transcription lane (ruling R-7) would have an
 `issues`-event workflow commit the placeholder delta for trusted-author issues. Until R-7 signs and
@@ -344,7 +328,8 @@ correctness). A **mutating** response does not converge harmlessly: hence §Clos
 1. **CREATE-PLACEHOLDER triage.** `scanloop` writes the placeholder; your job here is **triage
    only**. An issue that fails the routing test (thin / ambiguous) is NOT left for a worker — label
    it `question` with what is missing, or scope it; a worker-legible issue rides Next-up. **Do not
-   fan out workers, take a dispatch claim, or author implementation or close PRs from this window.**
+   fan out workers, take a dispatch claim, or author implementation or close PRs from this window.** The item is not routed until its handoff is recorded and published (see the
+   accountable handoff step above).
    **Class decision** (same judgement as the triple). Is the symptom an instance of an open
    `error-class` issue intake opened (title `class: <mechanism>`)? **Yes** → `deskfile attach`
    (outside the new-issue budget) one instance block: `kind` (`confirmed-defect` / `false-positive` /
@@ -483,51 +468,10 @@ issue; if it needs judgment first, it's intake.* Intake routes INTO the issue la
 (`disposition: issue`), never the reverse — the two lanes are sequential stages of one funnel
 (ideas → work), not duplicates.
 
-**Split-layout repos (issue-loop/15, opt-in per repo):** once a repo has migrated
-`docs/streams/intake/` into the five disposition subdirs (`new/`, `decision-needed/`, `watching/`,
-`completed/`, `rejected/` — `ls intake/new/` IS the triage board), a triage verb below is **one
-commit that does both**: the frontmatter `disposition:` update AND a `git mv` into the matching
-subdir. Never one without the other — a mismatch is what `--lint` catches. New entries file under
-`intake/new/`; flat-layout repos (an append-only `INTAKE.md` too) parse unchanged.
-
-**Stamp the triage in the same commit.** Alongside `disposition:`, set `triaged:` (the date, or
-RFC3339), `triaged-by:` (the running loop's canonical name, or `driver` when a human triages by
-hand — never a person's login; anything outside that closed set is a `--lint` PROBLEM) and
-`triager-tier:` (`any` or `strong`). `statusgen --intake-exits --json` exports only stamped entries;
-an older entry without a stamp is counted, never backfilled.
-
-1. **Untriaged-age alarm** (issue-loop/07) → the intake-debt line NOTICEs entries past **3 days** in
-   `disposition: new`. Draining that list is this desk's standing job — an untriaged front door is
-   exactly the invisibility this loop exists to kill. **Work oldest-first.**
-2. **The four triage exits** (issue-loop/08 — every entry leaves `new` as exactly ONE; a reason is
-   never optional):
-   - **`scoped → <stream>`** — becomes a brief. **Tier gate: triage only QUEUES authoring.** Brief
-     authoring is design-tier work (author-brief model-tier gate); a cheap-tier triage session
-     **never authors inline** — it marks the entry and the strong-tier author picks it up. If *this*
-     window is strong-tier, author NOW — a brief is a draft PR, the yes-case of the reversibility test;
-     notify ("proceeded, filed as `<repo>#<N>`"). Otherwise queue.
-     - **Opening a NEW stream (not just a brief in an existing one):** scaffold a stream ONLY from a
-       scoping doc whose header is `**Status:** approved` (spec/lifecycle-v1.md §8.1) — never from a
-       raw idea, an issue thread, or a `draft`. The stream README carries a `spec:` pointing at that
-       doc; the `stream-source` lint decides — you carry the pointer, not the judgement.
-     - **At the active-stream cap** (`ASSAY_STREAM_CAP`, the `stream-cap` lint): there are **no net new
-       active streams past the cap**. Scaffold the new stream `status: parked` (its briefs are kept but
-       it is out of dispatch), and name in the PR body which active stream the desk proposes to park or
-       archive to make room. A human decides the swap; the parked stream re-activates by a README flip.
-   - **`scoped → issue #NN`** — operational / bug-shaped work → file a GitHub issue (label `bug`
-     when bug-shaped, per the project's own convention); record the issue number. It then enters the
-     issue lane above. Before cross-boundary filing or attaching a comment, apply R7 to
-     internal locators in the title, body and evidence; use opaque role+number refs.
-   - **`decision-needed`** — a call that is human:<name>'s BECAUSE it is one-way. A reversible fork
-     instead exits `scoped` on its best-guess default, with the `needs-decision` issue linked as a
-     NOTIFICATION. Requires filing (or already having) a
-     `needs-decision` issue per brief-06's template, recorded in the entry's `decision-issue: <NN>`
-     field. The intake view renders these at the top as "waiting on a human" — a **pointer** into the
-     issue lane's decision queue, never a second queue.
-   - **`rejected — <why>`** / **`watching`** — an explicit reason is required. A withdrawn entry is
-     tombstoned in-place (`disposition: rejected`), never deleted (deleting trips `--lint`).
-3. **Brainstorming ends in an INTAKE entry, never an ad-hoc docs/ dir.** If human:<name>
-   brainstorms in this window, the exit is a `disposition: new` intake file for the next triage pass.
+The rest of the lane — split-layout repos, the triage stamp, the four triage exits (each leaves
+`new` as exactly ONE, with a reason; a cheap-tier session only QUEUES brief authoring) and where
+brainstorming ends — is in [`../../references/intake-lane-triage.md`](../../references/intake-lane-triage.md).
+Read it before triaging an entry; every rule in it binds as if stated here.
 
 ## Shared desk rules
 
@@ -566,7 +510,8 @@ Stated once for every desk; this skill adds only what is its own above.
   don't cite it; cannot reach the remote and cannot cross-check → **could-not-check**, never a
   claim badged as re-verified.
 - **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskreply`,
-  `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script; a `gh`
+  `deskpr`), resolving the credential with `desktoken --no-rotate <role> --repo <slug>` (rotation
+  is an explicit act, never a side effect) — never a hand-rolled mint script; a `gh`
   call no verb covers runs as the role App per desk-shell.md §Forge CLI as the role. For comments,
   use `deskfile attach` on issues or `deskreply` on this desk's own PRs; `deskpost comment`
   is reserved for `pr-review-desk`. A shared

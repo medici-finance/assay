@@ -97,6 +97,11 @@ var envKeys = buildEnvKeys()
 
 func buildEnvKeys() []envKey {
 	keys := []envKey{
+		// Explicit host-budget inputs, reviewed through the existing registry.
+		{key: "MUHAR_LEASE_DIR", class: envMachine, group: envGroupHarness,
+			desc: "Explicit shared host mutation slot directory; requires MUHAR_TOTAL_SLOTS. Unset by default."},
+		{key: "MUHAR_TOTAL_SLOTS", class: envMachine, group: envGroupHarness,
+			desc: "Explicit positive host mutation worker total; requires MUHAR_LEASE_DIR. Unset by default."},
 		// ── settable machine-wide ────────────────────────────────────────────────────────────
 		{key: "CELL_GO_CACHE", class: envMachine, group: envGroupCache, def: "off",
 			desc: "Managed per-cell Go build cache: on or off (macOS and Linux only)."},
@@ -208,6 +213,8 @@ func buildEnvKeys() []envKey {
 			why: "is the one checkout a cell's role worktrees are created from"},
 		envKey{key: "CELL_REPO_SLUG", class: envCell, desc: "Scrubbed cells: the one repository the cell is scoped to.",
 			why: "is the one repository a scrubbed cell is scoped to"},
+		envKey{key: "CELL_LABELS_TOKEN_FILE", class: envCell, desc: "House cells: a FILE holding an operator credential that can read labels; `check` reads the cell's forge label set with it (unset: the labels rows are could-not-check).",
+			why: "is one operator credential file for one cell's repos"},
 		envKey{key: "CELL_ROOTS", class: envCell, desc: "The cell's stream-root map, exported to its role windows.",
 			why: "is one cell's stream-root map, the scope its desks read"},
 		envKey{key: "CELLS_CONFIG", class: envCell, desc: "The cell's cells.yaml slice (default: cells-<cell>.yaml in the cell's directory).",
@@ -255,6 +262,10 @@ func buildEnvKeys() []envKey {
 			why: "is one cell's own database and role"},
 		envKey{key: "CELL_DB_PASSFILE", class: envCell, desc: "The absolute path of the cell database's pgpass file (mode 0600 or 0400); exported as PGPASSFILE when CELL_DB_DSN is set.",
 			why: "is one cell's database credential file"},
+		envKey{key: "CELL_ROLE_SECRETS", class: envCell, desc: "Role-secret bindings, <owner>/<repo>:<role>:<service>=<abs path>,...: an owner-only file mounted read-only into the worker-desk or verify-desk container only, its PATH exported as ASSAY_ROLE_SECRET_<SERVICE>_FILE (unset: none). Read from cell.env only; container surface only.",
+			why: "binds one cell's project secrets to its own roles"},
+		envKey{key: "CELL_ROLE_SECRET_SURFACE", class: envCell, desc: "The read-isolation surface that keeps role secrets from non-holding windows; only container is accepted (host is not built yet). Unset: no role secret binds.",
+			why: "declares one cell's read-isolation surface for its role secrets"},
 
 		// ── not a lever: switches for one run ────────────────────────────────────────────────
 		envKey{key: "CELLS_ROOT", class: envNotLever, from: envFromRun,

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/medici-finance/assay/statusgen/evaluation"
 )
@@ -37,9 +38,6 @@ func coverageCrossSource(root, path, evidence string, obs *evaluation.BriefObser
 			return hold(fmt.Errorf("source witness records uncommitted or unknown source bytes"))
 		}
 	}
-	if err := crossCoverageSpan(evidence, pass.Run, obs.VerifyRows); err != nil {
-		return hold(err)
-	}
 	if _, err := briefVersionForPass(path, evidence, pass); err != nil {
 		return hold(err)
 	}
@@ -51,6 +49,14 @@ func coverageCrossSource(root, path, evidence string, obs *evaluation.BriefObser
 		if ok && parsed.version == 2 {
 			binding = parsed
 		}
+	}
+	// Host rows can read the admitted tracking tree as well as the source.
+	// Establish that second input before allowing them beside a sealed span.
+	trackingCheck := sync.OnceValue(func() error {
+		return crossTrackingUnchanged(root, binding.trackingSource)
+	})
+	if err := crossCoverageSpan(evidence, pass.Run, obs.VerifyRows, trackingCheck); err != nil {
+		return hold(err)
 	}
 	source := effectiveSiblingRootOverrides(siblingRootFlagValues)[binding.sourceRepo]
 	if source == "" {
@@ -105,10 +111,10 @@ func (r crossCoverageRepo) DeclaredFilesAt(_ string, briefRel string) ([]string,
 	return r.tracking.DeclaredFilesAt(r.trackingSource, briefRel)
 }
 
-// crossCoverageSpan establishes the existing source-only container scope for
-// every latest row. Host or mixed-root runs need the separate tracking-tree
-// binding and cannot acquire that scope from a neighboring bracket.
-func crossCoverageSpan(evidence, run string, rows []evaluation.VerifyRow) error {
+// crossCoverageSpan requires a closed source bracket and a latest witness in
+// this run for every row. Host rows additionally require unchanged tracking
+// inputs; they never inherit source-only scope from the neighboring bracket.
+func crossCoverageSpan(evidence, run string, rows []evaluation.VerifyRow, trackingCheck func() error) error {
 	checks := bracketChecks(run)
 	if len(checks) == 0 {
 		return fmt.Errorf("source-only coverage requires a closed container bracket")
@@ -124,9 +130,71 @@ func crossCoverageSpan(evidence, run string, rows []evaluation.VerifyRow) error 
 	all, selected := parseEvidenceRows(evidence), parseEvidenceRows(run)
 	for _, row := range rows {
 		got := lastCoverageExecution(selected[row.ID])
-		if got == "" || got != lastCoverageExecution(all[row.ID]) || witnessSandboxOf(got) != sandboxContainerNetns {
-			return fmt.Errorf("Verify row %s has no latest source-only container witness in the selected run", row.ID)
+		if got == "" || got != lastCoverageExecution(all[row.ID]) {
+			return fmt.Errorf("Verify row %s has no latest execution witness in the selected run", row.ID)
 		}
+		if witnessSandboxOf(got) != sandboxContainerNetns {
+			execClass, _ := splitRowClassCell(row.ClassCell)
+			class, _ := resolveRowClass(execClass)
+			if class == classCheckCI {
+				return fmt.Errorf("Verify row %s requires a sealed container witness", row.ID)
+			}
+			if trackingCheck == nil {
+				return fmt.Errorf("Verify row %s has no tracking binding for its host witness", row.ID)
+			}
+			if err := trackingCheck(); err != nil {
+				return fmt.Errorf("Verify row %s needs unchanged tracking inputs for its host witness: %w", row.ID, err)
+			}
+		}
+	}
+	return nil
+}
+
+// crossTrackingUnchanged permits only the bookkeeping edits already recognized
+// by the delivery classifier. A changed policy, definition or other input stays
+// held, including changes under docs/streams. The admitted commit and current
+// tracking tree are separate from the deliverable's object store.
+func crossTrackingUnchanged(root, admitted string) error {
+	repo := newCoverageRepo(root)
+	current, ok := repo.ResolveCommit("HEAD")
+	if !ok || repo.MergeBase(admitted, current) != evaluation.HistoryRelated {
+		return fmt.Errorf("cannot establish tracking history from %s", admitted)
+	}
+	files, ok := repo.DiffNames(admitted, current)
+	if !ok {
+		return fmt.Errorf("cannot compare the admitted tracking tree")
+	}
+	if len(files) == 0 {
+		return nil
+	}
+	read := gitCoreForCommits(root, admitted, current)
+	if read.err != nil {
+		return fmt.Errorf("cannot read tracking objects: %w", read.err)
+	}
+	if read.native != "" {
+		return fmt.Errorf("tracking objects need an unsupported read profile: %s", read.native)
+	}
+	shape := prShape{Files: files, Patches: map[string]string{}, Heads: map[string]string{}}
+	for _, file := range files {
+		if !isStreamBriefPath(file) && !isStreamReadmePath(file) {
+			continue
+		}
+		patch, err := read.repo.FileDiff(admitted, current, file)
+		if err != nil {
+			return fmt.Errorf("cannot read tracking patch for %s", file)
+		}
+		head, err := read.repo.FileAt(current, file)
+		if err != nil {
+			return fmt.Errorf("cannot read current tracking path %s", file)
+		}
+		// The shared classifier consumes hunk lines, as supplied by a forge.
+		if start := strings.Index(patch, "@@ "); start >= 0 {
+			shape.Patches[file] = patch[start:]
+		}
+		shape.Heads[file] = head
+	}
+	if only, why := evidenceOnlyReason(shape); !only {
+		return fmt.Errorf("tracking inputs changed since admission: %s", why)
 	}
 	return nil
 }

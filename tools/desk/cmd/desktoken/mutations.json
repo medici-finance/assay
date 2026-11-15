@@ -34,8 +34,8 @@
     {
       "name": "print the rotated token beside the path on the success route (the leak assertion must fire, with --forge still wired)",
       "file": "cmd/desktoken/gitlab.go",
-      "old": "\tfmt.Println(cred.Path)\n\treturn nil",
-      "new": "\tfmt.Println(cred.Path, cred.Secret.Reveal())\n\treturn nil"
+      "old": "\tfmt.Println(cred.Path)\n\tfmt.Fprintln(os.Stderr, gitlabCustodyNotice(rotate))\n\treturn nil",
+      "new": "\tfmt.Println(cred.Path, cred.Secret.Reveal())\n\tfmt.Fprintln(os.Stderr, gitlabCustodyNotice(rotate))\n\treturn nil"
     },
     {
       "name": "rename the rotated token over the custody PATH instead of the link's resolved target (a symlinked custody layout is replaced by a regular file and the provisioned file is stranded holding the invalidated token)",
@@ -270,6 +270,12 @@
       "file": "cmd/desktoken/desktoken.go",
       "old": "\t_, fi, err := deskkit.LstatCustody(tokenPath, deskkit.CustodyNoLinks)",
       "new": "\tfi, err := os.Stat(tokenPath)"
+    },
+    {
+      "name": "drop the GitLab custody notice (a caller is no longer told the printed path is the only copy, so it may delete it as scratch and lock the role out)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tfmt.Fprintln(os.Stderr, gitlabCustodyNotice(rotate))",
+      "new": "\t_ = gitlabCustodyNotice"
     }
   ]
 }

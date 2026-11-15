@@ -255,7 +255,12 @@ reliably caught an inverted or false desk claim.
   `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v -args -rev=<sha>`
   — plus `git diff --shortstat <merge-base>...HEAD` (none: `could-not-check (no weight counter)`).
   A positive ratcheted delta carries `why-add:`. Material claim: a wrong line is a review finding.
-- No attribution or generated-by lines in commits, PR bodies, issues, or comments.
+- No attribution or generated-by lines in commits, PR bodies, issues, or comments. If a push is
+  refused over an attribution trailer your harness added, not you (on Cursor the host setting
+  `attribution.attributeCommitsToAgent`, and `attribution.attributePRsToAgent` for PR footers;
+  both default to true), STOP: never rewrite history or re-commit to strip it, and never push by
+  another route. Report `BLOCKED: harness attribution — <setting> is on on this host; it must be
+  false` with the refusal line, and leave the branch as it is. The host's operator changes it.
 - Push and open the PR through the desk write verbs, not raw `git push`/`gh`:
   `deskpr create` / `deskpr update` for the branch and its draft PR, `deskpr edit
   --body-file F [--title T]` to correct that PR's own body or title (never raw
