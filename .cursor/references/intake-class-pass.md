@@ -52,12 +52,25 @@ What the match is decides what happens next:
   its `issues:`. Intake does not edit another brief. The group is finished; steps 2 to 4 do
   not run for it. A production-down or security member is the exception: it is not recorded
   `duplicate`, because a `duplicate` is never scheduled as a repair and the class decision
-  keeps such a symptom `todo`. Release it as its own direct repair (step 4) and still ask the
-  owner's author to add it.
-- **An open `error-class` issue owns the mechanism.** The group is not finished. Attach one
-  instance block per member with `deskfile attach`, as the class decision defines the block,
-  then go to step 2 and count the class again with the new blocks included. Recording a
-  member `duplicate` to a class issue instead would leave the class count where it was.
+  keeps such a symptom `todo`. Release it as its own direct repair (step 4). Ask the owner's
+  author only to reference it, never to list it in `issues:`, because delivering the owner
+  would then close it while its own repair is still open.
+- **An open `error-class` issue owns the mechanism.** The class issue wins over a brief that
+  also matches, because it holds the count. The group is not finished. Attach one instance
+  block per member with `deskfile attach`, as the class decision defines the block. Recording
+  a member `duplicate` to a class issue before attaching would leave the class count where it
+  was. What happens next depends on the class issue's state:
+  - **Not yet `design-owed`.** Go to step 2 and count the class again with the new blocks
+    included.
+  - **Already `design-owed`.** The class already has its deliverable authored or on its way,
+    so the group parks and steps 2 and 3 do not run for it. This is the class decision's
+    handling of a later symptom of a `design-owed` class: the symptom is parked on the class
+    and the design deliverable's `Closes` closes it. Record each member that is not a
+    production-down or security symptom `duplicate` to that deliverable: the class brief
+    (`stream/NN`) when one exists, otherwise the class issue itself (`owner/repo#N`, which
+    the writer accepts while it is open and admitted). Release a production-down or security
+    member as its own direct repair (step 4). Never author a second class brief or a second
+    investigation for a class that has one.
 
 ## Step 2: apply the trigger
 
@@ -82,20 +95,29 @@ Three parts of it change what this step does:
   this pass. Its members stay parked on the class issue as the class decision says, and each
   is recorded `external-prerequisite` with the driver as the external role, the ruling as
   the action and the ruling's arrival as the wake condition. Authoring waits for the ruling.
-- **A `brittle` first is an investigation.** When the trigger is met by the first instance in
-  a module carrying a `brittle` mark, the deliverable is the investigation per
-  build-less-brittle/09, not a design brief. Author that in place of the class brief; its
-  members are recorded as for a class brief, below.
+- **A `brittle` first is an investigation, and intake authors nothing.** When the trigger is
+  met by the first instance in a module carrying a `brittle` mark, the deliverable is the
+  investigation per build-less-brittle/09. That brief has a dispatched strong-tier session
+  produce it under `docs/investigations/`; the intake session does not write it, and does not
+  author a class brief in its place. Open the class issue if none exists (with one instance
+  block per member), label it `design-owed`, and unpark its placeholder with the deliverable
+  line `the investigation per build-less-brittle/09`, as the class decision defines.
+  Queueing that placeholder is how the investigation is dispatched. An investigation file is
+  not a successor the writer accepts, so record each member that is not a production-down or
+  security symptom `duplicate` to the class issue (`owner/repo#N`). The rest of this step
+  does not run for it.
 - **Production-down and security members are not folded into the brief.** Each is released
-  as its own direct repair (step 4) and stays dispatchable. The brief lists it in `issues:`
-  for completeness; it is not recorded `duplicate`, and it is not parked.
+  as its own direct repair (step 4) and stays dispatchable. The brief does not list it in
+  `issues:`, because delivering the brief would close it while its own repair is still open;
+  the brief names it in its body as related work. It is not recorded `duplicate`, and it is
+  not parked.
 
 Otherwise author one class brief with `author-brief`, in the **same
 reviewed change** as the members' judgments. The brief states:
 
 - the mechanism, in one line;
 - the owning module;
-- every member, in `issues:`;
+- every member except a production-down or security symptom, in `issues:`;
 - every site the mechanism can recur at, not only the reported ones;
 - the existing or planned work it was matched against in step 1, and the result;
 - what it retires;
@@ -324,6 +346,60 @@ expect: external-wait external
   "required_action": "Rule on the parked class issue: proceed to a design brief or decline.",
   "wake_condition": "The driver's ruling is recorded on the class issue.",
   "evidence": "example-org/example#142"
+}
+```
+
+### Group F: a class that already has its deliverable
+
+The open class issue `example-org/example#150` is already `design-owed`, and its class brief
+`example-class/02` was authored by an earlier pass. Issue 151 reports the same mechanism in
+a later batch. Step 1 matches the class issue and attaches one block. Because the class is
+already `design-owed`, the group parks: steps 2 and 3 do not run, and no second class brief
+is authored. The member is `duplicate` to the existing brief.
+
+outcome: owned
+
+expect: observed duplicate
+
+```json
+{
+  "schema": "intake-handoff-v1",
+  "item": "example-org/example#151",
+  "opened": "2026-01-09T08:00:00Z",
+  "revision": 1,
+  "deciding_role": "intake-desk",
+  "disposition": "duplicate",
+  "route": "duplicate",
+  "successor": "example-class/02",
+  "evidence": "example-org/example#151"
+}
+```
+
+### Group G: a `brittle` first
+
+Issue 161 is the first confirmed instance of a mechanism in a module carrying a `brittle`
+mark. The trigger is met at the first instance, and the deliverable is the investigation
+per build-less-brittle/09. Intake authors neither the investigation nor a class brief. It
+opens the class issue `example-org/example#160` with one block, labels it `design-owed` and
+unparks its placeholder with the investigation deliverable line, so a dispatched session
+produces the investigation. The investigation file is not a successor the writer accepts, so
+the member is `duplicate` to the class issue.
+
+outcome: investigation
+
+expect: observed duplicate
+
+```json
+{
+  "schema": "intake-handoff-v1",
+  "item": "example-org/example#161",
+  "opened": "2026-01-09T09:00:00Z",
+  "revision": 1,
+  "deciding_role": "intake-desk",
+  "disposition": "duplicate",
+  "route": "duplicate",
+  "successor": "example-org/example#160",
+  "evidence": "example-org/example#161"
 }
 ```
 

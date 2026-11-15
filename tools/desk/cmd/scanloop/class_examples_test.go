@@ -28,7 +28,7 @@ const (
 )
 
 var (
-	classPassOutcomes = []string{"matched", "class", "below", "parked", "quarantined"}
+	classPassOutcomes = []string{"matched", "class", "below", "parked", "owned", "investigation", "quarantined"}
 	classPassOutLine  = regexp.MustCompile(`^outcome: (\S+)$`)
 	classPassExpect   = regexp.MustCompile(`^expect: (none|[a-z-]+ [a-z]+( direct)?)$`)
 )
@@ -36,11 +36,13 @@ var (
 // classPassAllowed is what each group may hold: the expect lines its outcome
 // can legitimately produce, and the disposition of the record behind them.
 var classPassAllowed = map[string]struct{ expect, disposition string }{
-	"matched":     {"observed duplicate", "duplicate"},
-	"class":       {"observed duplicate", "duplicate"},
-	"below":       {"observed repair direct", "repair"},
-	"parked":      {"external-wait external", "external-prerequisite"},
-	"quarantined": {"none", ""},
+	"matched":       {"observed duplicate", "duplicate"},
+	"class":         {"observed duplicate", "duplicate"},
+	"below":         {"observed repair direct", "repair"},
+	"parked":        {"external-wait external", "external-prerequisite"},
+	"owned":         {"observed duplicate", "duplicate"},
+	"investigation": {"observed duplicate", "duplicate"},
+	"quarantined":   {"none", ""},
 }
 
 func classPassProblems(doc string) []string {
@@ -186,6 +188,8 @@ func TestClassPassFlagsPlant(t *testing.T) {
 		{"direct flag dropped", "expect: observed repair direct", "expect: observed repair", classPassAssessMsg},
 		{"group relabelled", "outcome: below", "outcome: matched", classPassNoneMsg},
 		{"parked group relabelled", "outcome: parked", "outcome: matched", classPassNoneMsg},
+		{"owned group relabelled", "outcome: owned", "outcome: matched", classPassNoneMsg},
+		{"investigation group relabelled", "outcome: investigation", "outcome: matched", classPassNoneMsg},
 		{"quarantined expectation", "\nexpect: none\n", "\nexpect: observed repair direct\n", classPassQuarMsg},
 		{"duplicate successor not a reference", `"successor": "example-stream/07"`, `"successor": "see the old brief"`, classPassDupMsg},
 	}
