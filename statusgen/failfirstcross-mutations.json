@@ -42,6 +42,18 @@
       "file": "witnessgate.go",
       "old": "\tif mbWhy != \"\" {\n\t\treturn nil, \"could not check: the deliverable merge-base cannot be resolved: \" + mbWhy, crossRepoRemedy",
       "new": "\tif mbWhy != \"\" {\n\t\treturn nil, \"\", \"\""
+    },
+    {
+      "name": "cross anchor: a deliverable merge-base equal to the attested source (post-merge) is accepted (TestFFCrossRepoPostMerge)",
+      "file": "witnessgate.go",
+      "old": "\tif mergeBase == b.source {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "deliverable root: case-variant entries naming different paths are picked by map order (TestFFCrossRootCaseVariants)",
+      "file": "witnessgate.go",
+      "old": "\tcase 1:\n\t\treturn path, \"\"\n\t}",
+      "new": "\tdefault:\n\t\treturn path, \"\"\n\t}"
     }
   ]
 }

@@ -198,16 +198,23 @@ checkout the operator configured for the attestation's `source-repo=` (`DESK_ROO
 `--sibling-root <owner>/<repo>=<path>`), never in a path the tree supplies.
 
 The base must equal the deliverable merge-base exactly: the one merge-base of the attested
-`source=` commit and `origin/main` in that checkout. This is the same rule `verifyrun` applies to a
-cross-repository base. An ancestor of the merge-base is refused, because it may predate the
-change. The source itself and any later commit are refused, because they may carry part of it.
-There is no ancestor fallback.
+`source=` commit and `origin/main` in that checkout. An ancestor of the merge-base is refused,
+because it may predate the change. Any later commit is refused, because it may carry part of it.
+There is no ancestor fallback. When that merge-base is the source itself, because `origin/main`
+already holds the change, every base is refused, the source included: the only base the rule
+could accept is the changed tree, where a green says nothing and a red (for example from an
+ignored file only one clone holds) would be false credit. This matches what `verifyrun` does for a
+cross-repository run whose deliverable merge-base is HEAD: it refuses the run, and no `--base`
+clears it.
 
 The rule fails closed. Each of these is a PROBLEM on every risk-bearing row:
 
 - the deliverable repository has no configured checkout;
+- the repository has more than one configured checkout under names that differ only in letter
+  case;
 - the checkout has no `origin/main`, does not hold the source, or the source and `origin/main` have
   more than one best merge-base;
+- the merge-base is the source itself (`origin/main` already holds the change);
 - the base is not a commit the checkout holds, or is not the merge-base;
 - the Evidence holds a cross-repository attestation that the selected PASS run does not bind
   literally;
@@ -216,7 +223,10 @@ The rule fails closed. Each of these is a PROBLEM on every risk-bearing row:
   brief-version read applies).
 
 A refusal of the attestation itself asks for a run that records a binding attestation; a checkout
-or `--base` change cannot clear it. Same-repository runs keep the merge-base rule above unchanged.
+or `--base` change cannot clear it. The post-merge refusal gives the hint `verifyrun` gives for the
+same case: no `--base` can fix it; run from a deliverable clone whose HEAD is the delivering change
+and whose `origin/main` does not yet hold it. Same-repository runs keep the merge-base rule above
+unchanged.
 
 What this rule does not cover:
 
@@ -225,11 +235,11 @@ What this rule does not cover:
   checked against the receipt's `BriefSHA256` on `verifyrun`'s container lane and on the desk
   tools' verifier and landing paths, not here.
 - **The merge-base is read at check time.** The checker's `origin/main` may have moved since the
-  run. Once the delivering change is merged, the merge-base of the source and `origin/main` is the
-  source itself. A base recorded before the merge then no longer matches and is refused. A run
-  after the merge gets the source as its base, where a row cannot show a red. Both outcomes refuse;
-  neither credits a red wrongly. A discriminating cross-repository closure after the merge needs
-  the base bound to the delivering change, which is a separate open change.
+  run. Once the checkout's `origin/main` holds the source, the merge-base is the source itself, and
+  the gate refuses every risk-bearing row whatever base it records: a base recorded before the
+  merge, and the source itself, alike. No cross-repository closure is credited after the merge. A
+  discriminating cross-repository closure after the merge needs the base bound to the delivering
+  change, which is a separate open change.
 
 ### Verify text the runner cannot place
 

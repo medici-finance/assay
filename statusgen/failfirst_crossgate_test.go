@@ -75,7 +75,9 @@ func ffCrossEvidence(base, source string, att func(string) string) string {
 // deliverable checkout the operator configured for source-repo=. Under ruling
 // A on #5544 it must BE the deliverable merge-base of the attested source and
 // origin/main: only that commit closes; an older ancestor, the source itself, a
-// later commit, a sibling tree and an unknown object each stay a PROBLEM.
+// later commit, a sibling tree and an unknown object each stay a PROBLEM. This
+// is the pre-merge shape; TestFFCrossRepoPostMerge covers origin/main at or
+// past the source, where the merge-base is the source itself.
 // Before #5549 the gate looked the base up in the tracking clone, which never
 // holds it, and refused every valid cross-repository closure.
 func TestFFCrossRepoBase(t *testing.T) {
@@ -301,5 +303,68 @@ func TestFFCrossRepoNoMergeBase(t *testing.T) {
 		if containsSub(problems, "not the merge-base or an ancestor") {
 			t.Errorf("%s: fell back to the tracking-clone rule; problems=%v", c.name, problems)
 		}
+	}
+}
+
+// regression: #5553
+// TestFFCrossRepoPostMerge: once the deliverable checkout's origin/main holds
+// the attested source (at it, or past it), the deliverable merge-base is the
+// source itself, and the only base the exact rule could accept is the changed
+// tree, where a red is false credit. The gate refuses that case on every
+// risk-bearing row, on both callers, whatever base the cell records: the
+// source itself and the pre-merge merge-base alike. verifyrun's
+// cross-repository resolver refuses the same case (merge-base == HEAD), and
+// the PROBLEM gives its hint, with no --base suggestion.
+func TestFFCrossRepoPostMerge(t *testing.T) {
+	withBase(t, true)
+	deliverable, _, base, source, later, _ := ffCrossRepo(t)
+	t.Setenv("DESK_ROOTS", "example-org/two="+deliverable)
+	tracking := ffCrossTracking(t)
+	path := filepath.Join(tracking, "docs", "streams", "ff", "brief-01-ff.md")
+	for _, mainAt := range []struct{ name, rev string }{{"origin/main at the source", source}, {"origin/main past the source", later}} {
+		gitRun(t, deliverable, "update-ref", "refs/remotes/origin/main", mainAt.rev)
+		for _, b := range []struct{ name, rev string }{{"red at the source", source}, {"red at the pre-merge merge-base", base}} {
+			name := mainAt.name + ", " + b.name
+			problems, _ := failFirstGateChecks(tracking, ffStream(t, tracking, ffCrossEvidence(b.rev, source, nil)))
+			if !containsSub(problems, "is the source itself") || !containsSub(problems, crossRepoPostMergeRemedy) {
+				t.Errorf("%s: want the post-merge PROBLEM with the runner's hint; problems=%v", name, problems)
+			}
+			if containsSub(problems, crossRepoRemedy) || containsSub(problems, "not the merge-base or an ancestor") {
+				t.Errorf("%s: want only the post-merge remedy, no fallback; problems=%v", name, problems)
+			}
+			verify, evidence, err := briefSections(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = checkSelectedClosure(tracking, "ff/01", "verified", "2026-10-08 human:fixture",
+				briefArtifacts{Verify: verify, Evidence: evidence, Path: path})
+			if err == nil || !strings.Contains(err.Error(), "is the source itself") {
+				t.Errorf("%s: selected closure: want the post-merge refusal, got %v", name, err)
+			}
+		}
+	}
+}
+
+// regression: #5553
+// TestFFCrossRootCaseVariants: the deliverable checkout is looked up without
+// regard to letter case over keys that are not normalized. Two case-variant
+// entries naming different paths are refused rather than picked by map
+// order; two that name the same path are one checkout and close.
+func TestFFCrossRootCaseVariants(t *testing.T) {
+	withBase(t, true)
+	deliverable, _, base, source, _, _ := ffCrossRepo(t)
+	other := t.TempDir()
+	tracking := ffCrossTracking(t)
+	ev := ffCrossEvidence(base, source, nil)
+	t.Setenv("DESK_ROOTS", "example-org/two="+deliverable+",Example-Org/two="+other)
+	for i := 0; i < 8; i++ { // map order varies run to run
+		problems, _ := failFirstGateChecks(tracking, ffStream(t, tracking, ev))
+		if !containsSub(problems, "2 configured checkouts") {
+			t.Fatalf("two case-variant checkouts: want the ambiguity PROBLEM; problems=%v", problems)
+		}
+	}
+	t.Setenv("DESK_ROOTS", "example-org/two="+deliverable+",Example-Org/two="+deliverable)
+	if problems, _ := failFirstGateChecks(tracking, ffStream(t, tracking, ev)); len(problems) != 0 {
+		t.Errorf("one checkout under two spellings: want a clean closure, got %v", problems)
 	}
 }
