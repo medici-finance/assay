@@ -267,6 +267,9 @@ func TestFFCrossAnchorUnreadablePass(t *testing.T) {
 	if containsSub(problems, "not the merge-base or an ancestor") {
 		t.Errorf("fell back to the tracking-clone rule; problems=%v", problems)
 	}
+	if !containsSub(problems, crossRepoBindingRemedy) || containsSub(problems, crossRepoRemedy) {
+		t.Errorf("want the binding remedy, not the checkout remedy; problems=%v", problems)
+	}
 }
 
 // regression: #5544
@@ -277,11 +280,14 @@ func TestFFCrossAnchorUnreadablePass(t *testing.T) {
 // falls back to "an ancestor of the source" or to the tracking-clone rule.
 func TestFFCrossRepoNoMergeBase(t *testing.T) {
 	withBase(t, true)
-	deliverable, _, base, source, _, _ := ffCrossRepo(t)
-	noMain, _, _, _, _, _ := ffCrossRepo(t)
+	noMain, _, base, source, _, _ := ffCrossRepo(t)
 	gitRun(t, noMain, "update-ref", "-d", "refs/remotes/origin/main")
-	gitRun(t, deliverable, "push", "-q", noMain, "HEAD:refs/heads/held")
-	other, _, _, _, _, _ := ffCrossRepo(t)
+	other := t.TempDir() // a different history: it never holds the source
+	gitRun(t, other, "init", "-q")
+	writeTemp(t, other, "unrelated.txt", "unrelated\n")
+	gitRun(t, other, "add", "-A")
+	gitRun(t, other, "commit", "-q", "-m", "unrelated")
+	gitRun(t, other, "update-ref", "refs/remotes/origin/main", "HEAD")
 	tracking := ffCrossTracking(t)
 	for _, c := range []struct{ name, root, want string }{
 		{"origin/main absent", noMain, "origin/main does not resolve"},
