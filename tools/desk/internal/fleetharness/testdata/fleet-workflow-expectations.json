@@ -43,8 +43,8 @@
     "stage": "reached-remote",
     "note": "The audited bypass end to end: the same refused body, plus --force-scan-override with a stated reason, proceeds past the scan AND lands exactly one scan_override audit row carrying the tool, the surface digest, the reason and the identity. The scenario asserts BOTH halves — an override that proceeds without logging is the unlogged bypass this scenario exists to replace, not a fix for it."
   },
-  "deskpr-create/desktoken-absent-from-path": {
+  "deskpr-create/no-role-credential": {
     "stage": "unverifiable",
-    "note": "The cold-shell case: desktoken not resolvable on PATH, exit 6. It shares its exit code with the detached-HEAD refusal above, which is why the two rc=6 causes must be kept distinguishable ('distinguish the two rc=6 causes so the telemetry is readable'). The harness cannot fix the conflation, but keeping them as separate named scenarios makes it visible in the record."
+    "note": "The cold-shell case: no resolvable role credential (no App config, no cached installation credential), exit 6. The write verbs read the role credential in-process now, so this is no longer a PATH question. It shares its exit code with the detached-HEAD refusal above, which is why the two rc=6 causes must be kept distinguishable ('distinguish the two rc=6 causes so the telemetry is readable'). The harness cannot fix the conflation, but keeping them as separate named scenarios makes it visible in the record."
   }
 }

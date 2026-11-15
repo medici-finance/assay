@@ -425,15 +425,6 @@
       "problemContains": "may not itself contain '*'"
     },
     {
-      "why": "a typo'd key in the ASSAY_ namespace. The surface it meant to configure stays EMPTY while the configuration would otherwise report itself correct",
-      "roster": {
-        "ASSAY_BLESS_LOGIN": "ada:1001",
-        "ASSAY_TRUSTED_LOGINS": "ada:1001",
-        "ASSAY_ALOWED_REPOS": "example-org/tracked:ci:private"
-      },
-      "problemContains": "unknown key in the ASSAY_ namespace"
-    },
-    {
       "why": "the blessing authority carrying no numeric id — mandatory on this surface alone",
       "roster": {
         "ASSAY_BLESS_LOGIN": "ada",
@@ -514,6 +505,19 @@
         "ASSAY_ASSERTED_HUMANS": "ops-bot:5005"
       },
       "problemContains": "is asserted but no"
+    }
+  ],
+  "_unknownKeyRostersComment": "A key in the ASSAY_ namespace this version does not recognise. The two readers DIVERGE here on purpose, and this section names the divergence instead of hiding it: the desk-tools reader records a NOTICE naming the key and loads the rest of the roster (#1261); statusgen's reader still refuses the whole roster. The surface the key meant to configure stays unset in both, so it fails closed either way.",
+  "unknownKeyRosters": [
+    {
+      "why": "a typo'd key in the ASSAY_ namespace. The surface it meant to configure stays EMPTY while the rest of the roster is correct",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada:1001",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001",
+        "ASSAY_ALOWED_REPOS": "example-org/tracked:ci:private"
+      },
+      "deskkitNoticeContains": "ASSAY_ALOWED_REPOS: unknown key in the ASSAY_ namespace",
+      "statusgenProblemContains": "unknown key in the ASSAY_ namespace"
     }
   ]
 }

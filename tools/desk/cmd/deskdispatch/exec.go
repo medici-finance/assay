@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"strings"
 
@@ -91,11 +92,17 @@ func runCmd(dir, name string, args ...string) runResult {
 //     refresh is not a child: CheckoutGitRead binds its role credential and
 //     gitcore carries it in memory through the in-process transport.
 //
+// NO CHILD GETS A ROLE-SECRET PATH (issue #6065). Whatever row a child sits in, every
+// ASSAY_ROLE_SECRET_* variable is removed from its environment (roleSecretChildEnv): no claim tool, decision tool, git probe, deskwt or deskroster call needs to know
+// where a project secret is, so none is told. The dispatched agent itself is not a child of
+// this verb; a holding window's agent is governed by the admission in rolesecret.go.
+//
 // The before_run lifecycle hook is not a runCmd child: deskkit.RunHook starts operator-authored
 // config with every credential-shaped variable SCRUBBED from its environment by design, so it
 // never receives the dispatcher's token. A new child that writes to the forge joins the first
 // two rows, never the third.
 func runCmdEnv(dir string, env []string, name string, args ...string) runResult {
+	env = roleSecretChildEnv(env)
 	call := deskkit.ToolCall{Name: name, Args: args, Dir: dir, Env: env, Start: execCommand}
 	// The capture, the exit-status recovery and the preamble strip are the shared runner's
 	// (deskkit/runtool.go). The recording seam stays LOCAL — ToolCall.Start is execCommand —
@@ -103,6 +110,21 @@ func runCmdEnv(dir string, env []string, name string, args ...string) runResult 
 	// constructed argv.
 	r := deskkit.Run(call)
 	return runResult{stdout: r.Stdout, stderr: r.Stderr, err: r.Err, run: r}
+}
+
+// roleSecretChildEnv is a child's environment with every role-secret variable removed. An
+// explicit environment is stripped. An inherited one (nil) stays inherited when this process
+// carries no such variable, and otherwise becomes this process's environment, stripped, so a
+// child of a holding window never inherits the path.
+func roleSecretChildEnv(env []string) []string {
+	if env != nil {
+		return deskkit.StripRoleSecretEnv(env)
+	}
+	full := os.Environ()
+	if stripped := deskkit.StripRoleSecretEnv(full); len(stripped) != len(full) {
+		return stripped
+	}
+	return nil
 }
 
 // exitCodeOf recovers a child process's exit status. It delegates to deskkit.ExitStatusOf,
