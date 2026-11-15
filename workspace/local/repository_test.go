@@ -363,6 +363,17 @@ func TestCellRepositoryIsolation(t *testing.T) {
 		{"a second remote differing from origin only in case", func(ctx context.Context, r workspace.RepoRef, d string) error {
 			return gitConfig(ctx, cloneFrom{repo: src}, r, d, "remote.ORIGIN.url", host)
 		}, workspace.ReasonForeignState, "store.config"},
+		// regression: F-store-remote-destinations-unbound
+		{"a remote definition file naming the host checkout", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			if err := (cloneFrom{repo: src}).Clone(ctx, r, d); err != nil {
+				return err
+			}
+			dir := filepath.Join(d, ".git", "remotes")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(dir, "legacy"), []byte("URL: "+host+"\n"), 0o644)
+		}, workspace.ReasonForeignState, "store.config"},
 		{"commondir pointer into the host's common directory", func(ctx context.Context, r workspace.RepoRef, d string) error {
 			if err := (cloneFrom{repo: src}).Clone(ctx, r, d); err != nil {
 				return err
@@ -444,14 +455,15 @@ func TestCellRepositoryIsolation(t *testing.T) {
 // regression: F-store-remote-destinations-unbound
 func TestStoreOriginNames(t *testing.T) {
 	repo := workspace.RepoRef{Forge: "forge.example", Repository: "acme/tools"}
-	// The ssh user is joined at compile time so no fixture carries the user-at-host shape.
+	// The ssh user and the scp-style path are joined at compile time so no fixture carries the
+	// user-at-host or host-colon-path shape.
 	const sshUser = "git" + "@"
 	for raw, want := range map[string]bool{
 		"https://forge.example/acme/tools.git":               true,
 		"https://forge.example:443/Acme/Tools":               true,
 		"ssh://" + sshUser + "forge.example/acme/tools.git":  true,
 		"ssh://" + sshUser + "forge.example:2222/acme/tools": true,
-		sshUser + "forge.example:Acme/tools":                 true,
+		sshUser + "forge.example:" + "Acme/tools" + ".git":   true,
 		"forge.example:acme/tools":                           true,
 		"/srv/legacy/tools":                                  false,
 		"../legacy/tools.git":                                false,

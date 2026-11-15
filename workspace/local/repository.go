@@ -244,6 +244,15 @@ func (s Stores) verify(ctx context.Context, dir string, req workspace.StoreReque
 	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return "", unknown("store.worktrees", err)
 	}
+	// The older remote-definition files name push destinations outside config; a fresh clone
+	// writes neither directory with anything in it.
+	for _, name := range []string{"branches", "remotes"} {
+		if ents, err := os.ReadDir(filepath.Join(own, name)); err == nil && len(ents) > 0 {
+			return "", refusal(workspace.ReasonForeignState, "store.config", "the store carries a remote definition file it did not make")
+		} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return "", unknown("store.config", err)
+		}
+	}
 	if err := checkHooks(filepath.Join(own, "hooks")); err != nil {
 		return "", err
 	}

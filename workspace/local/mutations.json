@@ -120,6 +120,18 @@
       "file": "local/repository.go",
       "old": "\t\tif bound == \"\" {",
       "new": "\t\tif false && bound == \"\" {"
+    },
+    {
+      "name": "a store carrying a legacy remote definition file (branches/ or remotes/) is accepted",
+      "file": "local/repository.go",
+      "old": "err == nil && len(ents) > 0 {\n\t\t\treturn \"\", refusal(workspace.ReasonForeignState, \"store.config\", \"the store carries a remote definition",
+      "new": "err == nil && len(ents) > 1<<20 {\n\t\t\treturn \"\", refusal(workspace.ReasonForeignState, \"store.config\", \"the store carries a remote definition"
+    },
+    {
+      "name": "an scp-style origin keeps its .git suffix and is refused (the suffix is trimmed only for a URL with a scheme)",
+      "file": "local/repository.go",
+      "old": "\tpath = strings.TrimSuffix(strings.Trim(path, \"/\"), \".git\")\n",
+      "new": "\tpath = strings.Trim(path, \"/\")\n\tif strings.Contains(raw, \"://\") {\n\t\tpath = strings.TrimSuffix(path, \".git\")\n\t}\n"
     }
   ]
 }
