@@ -439,11 +439,20 @@ func noDeskdDiff(cell string) deliberateDiff {
 
 const whyLabels = "#6127: a house cell's install ensures the forge label set and check reports it; with no roster role bound in the fixture world, new prints NOT ENSURED with its finish command and check adds one could-not-check row"
 
-// labelsNotEnsured is the line `new --kind house` adds after the scaffold line on the fixture
-// world, whose cell roster binds no role yet.
+// labelExpectation is shared by the frozen shell oracle and pre-migration Go
+// transcript adapters. It is expected output, independent of the implementation.
+func labelExpectation(name, repo string) string {
+	b, err := os.ReadFile(filepath.Join("../../../cellctl/testdata/parity", name+".txt"))
+	if err != nil {
+		panic(err)
+	}
+	return strings.ReplaceAll(string(b), "<repo>", repo)
+}
+
+// labelsNotEnsured is the line `new --kind house` adds after the scaffold line on
+// the fixture world, whose cell roster binds no role yet.
 func labelsNotEnsured(repo string) string {
-	return "[new] labels: NOT ENSURED on " + repo + " — the cell's roster binds no role yet, so the to:<role> / raised-by:<role> rows cannot be derived (write the roster first); " +
-		"finish with: deskfleet labels --forge github --repo " + repo + " --roles <the roster's role= names, comma-separated> --token-file <FILE holding an operator credential that can write labels>\n"
+	return labelExpectation("labels-new", repo)
 }
 
 func labelsNewDiff(cell string) deliberateDiff {
@@ -454,7 +463,7 @@ func labelsNewDiff(cell string) deliberateDiff {
 
 func labelsCheckDiff() deliberateDiff {
 	row := "  MISS  root example-org/example-repo carries docs/streams/\n"
-	cnc := "  ?     could-not-check: labels: the cell's roster binds no role, so the to:<role> / raised-by:<role> set cannot be derived (fix the roster row above)\n"
+	cnc := labelExpectation("labels-check", "")
 	return deliberateDiff{code: 1, stdoutReplace: func() []string { return []string{row, row + cnc} },
 		stderrReplace: []string{"", ""}, why: whyLabels}
 }

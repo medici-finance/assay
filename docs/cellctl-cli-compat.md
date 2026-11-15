@@ -297,3 +297,26 @@ that has roots and a roster but no `CELL_LABELS_TOKEN_FILE`. Against the shell o
 run keeps exit 0 and closes `[check] every checked precondition met; N could-not-check row(s) (?)
 — not clean until each is checked`. The case accepts that line only when every could-not-check
 row is a labels row.
+
+The shell matrix (`tools/cellctl/tests/parity.test.sh`) uses the same no-role label
+expectations as the pre-migration Go transcript test, under
+`tools/cellctl/testdata/parity/`. Its adapter adds these exact expected lines to
+only the frozen oracle's house fixture output; it leaves Go output untouched.
+On a clean house fixture it also expects the one-unknown-row summary above.
+Neither label errors nor arbitrary diagnostics are filtered. Exit codes, plans,
+scaffold bytes and every other output byte retain the existing comparison.
+The Go test runs the full 200-cell matrix and plants unexpected label text,
+changed label states, a false clean summary, an unrelated diagnostic, a changed
+exit code and changed plan bytes; each must produce a named divergence.
+
+## A pin outside the active harness namespace
+
+The intake-pin delivery (source `48f213f2e`) adds a post-write notice when
+a model pin belongs to another harness. The shell matrix's `set` writes
+`DESK_MODEL_DEFAULT=haiku` on every kind. Its twelve Codex cells therefore add
+exactly the notice in `testdata/parity/set-codex.txt` after the value-change line:
+the pin was written but Codex reads its own namespace. The expected-output
+adapter adds that line only to the oracle's Codex `set` fixture. The write,
+backup, exit code and all other bytes are unchanged; an additional unknown
+notice still fails parity. This is the second instance of the declared Go
+extension class covered by the matrix test.
