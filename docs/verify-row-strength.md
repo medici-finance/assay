@@ -195,19 +195,41 @@ When the latest PASS run binds a literal cross-repository (version 2) attestatio
 names a commit of the DELIVERABLE repository, which the tracking clone never holds. The closure
 gate (lint, `brief --check-verified` and `verifyclosure`) then resolves the base in the deliverable
 checkout the operator configured for the attestation's `source-repo=` (`DESK_ROOTS`, or
-`--sibling-root <owner>/<repo>=<path>`), never in a path the tree supplies. The base must be the
-attested `source=` commit or an ancestor of it. The rule that the base must hold the brief is not
-applied, since no deliverable commit holds the tracking brief. The closure gate never reads the
-verifier receipt: the brief's bytes are checked against the receipt's `BriefSHA256` on
-`verifyrun`'s container lane and on the desk tools' verifier and landing paths, not here. It fails
-closed. A PROBLEM is reported when the deliverable repository has no
-configured checkout, when that checkout lacks the base or the source, when the base is a later
-commit or one outside the source's history, when the Evidence holds a cross-repository
-attestation that the selected PASS run does not bind literally, and when the bound attestation is
-not for this brief: its `repo=` is not the brief's own repository or its `brief=` is not the
-brief's repository-relative path (the same identity checks the brief-version read applies). A
-refusal of the attestation itself asks for a run that records a binding attestation; a checkout
+`--sibling-root <owner>/<repo>=<path>`), never in a path the tree supplies.
+
+The base must equal the deliverable merge-base exactly: the one merge-base of the attested
+`source=` commit and `origin/main` in that checkout. This is the same rule `verifyrun` applies to a
+cross-repository base. An ancestor of the merge-base is refused, because it may predate the
+change. The source itself and any later commit are refused, because they may carry part of it.
+There is no ancestor fallback.
+
+The rule fails closed. Each of these is a PROBLEM on every risk-bearing row:
+
+- the deliverable repository has no configured checkout;
+- the checkout has no `origin/main`, does not hold the source, or the source and `origin/main` have
+  more than one best merge-base;
+- the base is not a commit the checkout holds, or is not the merge-base;
+- the Evidence holds a cross-repository attestation that the selected PASS run does not bind
+  literally;
+- the bound attestation is not for this brief: its `repo=` is not the brief's own repository, or
+  its `brief=` is not the brief's repository-relative path (the same identity checks the
+  brief-version read applies).
+
+A refusal of the attestation itself asks for a run that records a binding attestation; a checkout
 or `--base` change cannot clear it. Same-repository runs keep the merge-base rule above unchanged.
+
+What this rule does not cover:
+
+- **The brief-held rule is not applied.** No deliverable commit holds the tracking brief. The
+  closure gate never reads the verifier receipt or compares a brief digest. The brief's bytes are
+  checked against the receipt's `BriefSHA256` on `verifyrun`'s container lane and on the desk
+  tools' verifier and landing paths, not here.
+- **The merge-base is read at check time.** The checker's `origin/main` may have moved since the
+  run. Once the delivering change is merged, the merge-base of the source and `origin/main` is the
+  source itself. A base recorded before the merge then no longer matches and is refused. A run
+  after the merge gets the source as its base, where a row cannot show a red. Both outcomes refuse;
+  neither credits a red wrongly. A discriminating cross-repository closure after the merge needs
+  the base bound to the delivering change, which is a separate open change.
 
 ### Verify text the runner cannot place
 

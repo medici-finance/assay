@@ -30,6 +30,18 @@
       "file": "witnessgate.go",
       "old": "\t\tif unboundCrossAttestation(evidence) {\n\t\t\treturn nil, \"its Evidence records a cross-repository attestation",
       "new": "\t\tif false {\n\t\t\treturn nil, \"its Evidence records a cross-repository attestation"
+    },
+    {
+      "name": "cross base: an ancestor of the deliverable merge-base is accepted (TestFFCrossRepoBase, TestFFCrossRepoSelected)",
+      "file": "witnessgate.go",
+      "old": "\tif full != cross.mergeBase {",
+      "new": "\tif full != cross.mergeBase && !isObjectID(full) {"
+    },
+    {
+      "name": "cross anchor: an unresolvable deliverable merge-base falls back to the tracking-clone rule (TestFFCrossRepoNoMergeBase)",
+      "file": "witnessgate.go",
+      "old": "\tif mbWhy != \"\" {\n\t\treturn nil, \"could not check: the deliverable merge-base cannot be resolved: \" + mbWhy, crossRepoRemedy",
+      "new": "\tif mbWhy != \"\" {\n\t\treturn nil, \"\", \"\""
     }
   ]
 }
