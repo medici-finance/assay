@@ -1054,10 +1054,18 @@ so a bad pin never takes down more than one role. `--all-at-once` drains every t
    only those. A pause it did not create is kept on every path: one the operator set before the
    cycle, or set on a different flag while the cycle waited. A pause asked for on the very flag the
    cycle holds is not recorded as a second claimant: `pause` reports "already paused", and the cycle
-   lifts that flag at its next step. A role under a pause the cycle did not create is not restarted,
+   lifts that flag at its next step. A role under a stop the cycle did not create is not restarted,
    because the cadence guard stops its supervisor before the first heartbeat is written: the cycle
-   still syncs and checks it, leaves it down with the pause kept, ends partial, and `Next` names
-   `cellctl resume <cell>` and `cellctl up <cell> --role <role>`. Under `--all-at-once`, a role the drain had already
+   still syncs and checks it, leaves it down with the stop kept, ends partial, and `Next` names the
+   verb that clears the stop it found, then `cellctl up <cell> --role <role>`. An operator's cadence
+   `STOP` is cleared by `cellctl cadence <cell> resume <role>`. A pause in the pause record is cleared
+   by `cellctl resume <cell>`, which lifts every pause recorded in the cell, not only this role's. Any
+   other stop flag is lifted only by name, with `cellctl resume <cell> --foreign <flag>`. The role's
+   own cadence `STOP` that the drain's `down` wrote (body `cellctl down`) is not such a stop: the
+   launch removes it, so the role is restarted. A stop recorded with the cycle's own id that is still
+   there is reported as a lift the cycle could not make, not as an operator's pause. Under
+   `--all-at-once`, a role the cycle ends before reaching is reported down, and `Next` names
+   `cellctl up <cell> --role <role>` for it. Under `--all-at-once`, a role the drain had already
    stopped before the timeout is reported down, its stop is lifted, and `Next` names
    `cellctl up <cell> --role <role>` to bring it back. With `--force-after-timeout` it plans the stop the way
    `drain --now` does, listing each held claim as abandoned, and applies it only on the confirm. A
@@ -1073,7 +1081,8 @@ so a bad pin never takes down more than one role. `--all-at-once` drains every t
      remedy: re-point the marketplace to the pin, then uninstall → install. The cycle never uninstalls.
      "Checked" on this path means the record's version equals the pin; unlike the cursor path it does
      not verify the bundle's content or its marketplace source. The `settings.json` restore keeps the
-     file's own mode.
+     file's own mode, even when the update replaced the file with the same bytes. A mode that cannot
+     be read before the update is could-not-check.
    - **cursor:** the cell's own desk-tools `deskinstall` (under `DESK_TOOLS_BIN`, never the first
      one on `PATH`), run as `deskinstall --harness cursor --forge <CELL_FORGE> --release v<pin> --check`,
      placing on drift and checking again.

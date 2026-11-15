@@ -208,7 +208,17 @@ func (l *interimLifecycle) cycle(o cycleOpts, ops cycleOps) cellop.Result {
 			}
 			return finish(res.Outcome, reason, detail, next...)
 		}
-		for _, role := range live {
+		// notReached reports the roles of live after i down: under --all-at-once the drain stopped
+		// every one of them, so a role the cycle ends before is down too, with `up` in Next.
+		notReached := func(i int) []string {
+			var next []string
+			for _, rest := range live[i+1:] {
+				rows = append(rows, cycleRole{role: rest, state: stateStopped, drained: drained, note: "left down: the cycle ended before reaching it; not restarted"})
+				next = append(next, "cellctl up "+cell+" --role "+rest)
+			}
+			return next
+		}
+		for i, role := range live {
 			cr := cycleRole{role: role, state: stateStopped, drained: drained}
 			s := ops.sync(role)
 			cr.sync = &s
@@ -223,21 +233,20 @@ func (l *interimLifecycle) cycle(o cycleOpts, ops cycleOps) cellop.Result {
 				cr.note = "left down: the placement check failed"
 				rows = append(rows, cr)
 				return finish(cellop.Partial, cellop.ReasonActionFailed, fmt.Sprintf("%s: the %s placement check failed, so the role is left down: %s", role, s.Harness, s.Detail),
-					append([]string{"cellctl up " + cell + " --role " + role}, cycleRemaining(cell, groups[gi+1:])...)...)
+					cycleNext([]string{"cellctl up " + cell + " --role " + role}, notReached(i), cycleRemaining(cell, groups[gi+1:]))...)
 			}
-			// A role under a pause the cycle did not create cannot confirm a heartbeat: the cadence
+			// A role under a stop the cycle did not create cannot confirm a heartbeat: the cadence
 			// guard stops its supervisor before the first one is written. It is left down, with the
-			// pause kept, and Next says how to bring it back.
-			if p, perr := l.Paused(role); perr != nil || p {
-				why := "paused by an operator stop the cycle did not create"
-				if perr != nil {
-					why = "whether it is paused could not be read: " + perr.Error()
+			// stop kept, and Next names the verb that clears the stop found (cycleBlockingStop).
+			if flag, why, fix, berr := l.cycleBlockingStop(role, owner); berr != nil || flag != "" {
+				if berr != nil {
+					why, fix = "whether it is paused could not be read: "+berr.Error(), "cellctl status "+cell
 				}
 				r.Actions = append(r.Actions, actionResult(cell, "restart:"+role, cellop.ActionNotRun, "not restarted: "+why))
 				cr.note = "left down: " + why + "; no heartbeat can be confirmed while it is paused"
 				rows = append(rows, cr)
 				return finish(cellop.Partial, cellop.ReasonActionFailed, fmt.Sprintf("%s: not restarted, %s", role, why),
-					append([]string{"cellctl resume " + cell, "cellctl up " + cell + " --role " + role}, cycleRemaining(cell, groups[gi+1:])...)...)
+					cycleNext([]string{fix, "cellctl up " + cell + " --role " + role}, notReached(i), cycleRemaining(cell, groups[gi+1:]))...)
 			}
 			since := l.now()
 			if err := ops.restart(role); err != nil {
@@ -245,7 +254,7 @@ func (l *interimLifecycle) cycle(o cycleOpts, ops cycleOps) cellop.Result {
 				cr.note = "left down: the restart failed"
 				rows = append(rows, cr)
 				return finish(cellop.Partial, cellop.ReasonActionFailed, fmt.Sprintf("%s: the restart failed: %v", role, err),
-					append([]string{"cellctl up " + cell + " --role " + role}, cycleRemaining(cell, groups[gi+1:])...)...)
+					cycleNext([]string{"cellctl up " + cell + " --role " + role}, notReached(i), cycleRemaining(cell, groups[gi+1:]))...)
 			}
 			cr.state, _ = lifecycleStep(stateStopped, evStart)
 			r.Actions = append(r.Actions, actionResult(cell, "restart:"+role, cellop.ActionOK, "reopened as up does"))
@@ -255,7 +264,7 @@ func (l *interimLifecycle) cycle(o cycleOpts, ops cycleOps) cellop.Result {
 				cr.note = "no fresh heartbeat"
 				rows = append(rows, cr)
 				return finish(cellop.Partial, cellop.ReasonActionFailed, fmt.Sprintf("%s: %v", role, err),
-					append([]string{"cellctl status " + cell}, cycleRemaining(cell, groups[gi+1:])...)...)
+					cycleNext([]string{"cellctl status " + cell}, notReached(i), cycleRemaining(cell, groups[gi+1:]))...)
 			}
 			cr.heartbeat = hb
 			r.Actions = append(r.Actions, actionResult(cell, "heartbeat:"+role, cellop.ActionOK, "fresh: "+cellop.Stamp(hb)))
@@ -266,6 +275,64 @@ func (l *interimLifecycle) cycle(o cycleOpts, ops cycleOps) cellop.Result {
 		return finish(cellop.CouldNotCheck, cellop.ReasonUnmeasured, "every role was cycled, but a harness placement could not be checked against the pin")
 	}
 	return finish(cellop.OK, "", "")
+}
+
+// cycleNext joins the Next lines of an early return, in order.
+func cycleNext(parts ...[]string) []string {
+	var next []string
+	for _, p := range parts {
+		next = append(next, p...)
+	}
+	return next
+}
+
+// cycleBlockingStop finds the first stop flag the cadence guard would read for role
+// (cadenceStopPaths), and says what set it and the verb that clears it. The role's own
+// cadence-directory STOP whose body is downStopReason is skipped: the drain's `down` wrote it,
+// and the launch removes it under the role lease (clearDownStop) before the supervisor reads its
+// guard, by the one reading both use (readDownStop). Any other cadence STOP is an operator's,
+// cleared by `cadence resume`. A config-home flag the pause record holds is cleared by `resume`,
+// which lifts every pause recorded in the cell; one recorded with this cycle's own id is a stop
+// the cycle failed to lift. Any other flag is lifted only by name (`resume --foreign`). An empty
+// flag means no stop is found; err means one could not be read.
+func (l *interimLifecycle) cycleBlockingStop(role, owner string) (flag, why, fix string, err error) {
+	cell := l.c.Name
+	own := filepath.Join(l.c.cadenceDir(role), "STOP")
+	for _, p := range l.c.cadenceStopPaths(role) {
+		if p == own {
+			_, down, derr := readDownStop(p)
+			if derr != nil {
+				return p, "", "", fmt.Errorf("cannot check stop flag %s: %w", p, derr)
+			}
+			if down {
+				continue
+			}
+		}
+		if _, serr := os.Lstat(p); errors.Is(serr, os.ErrNotExist) {
+			continue
+		} else if serr != nil {
+			return p, "", "", fmt.Errorf("cannot check stop flag %s: %w", p, serr)
+		}
+		if p == own {
+			return p, "stopped by an operator's cadence STOP the cycle did not create", "cellctl cadence " + cell + " resume " + role, nil
+		}
+		rec, rerr := l.readPauseRecord()
+		if rerr != nil {
+			return p, "", "", rerr
+		}
+		for _, f := range rec.Flags {
+			if f.Path != p {
+				continue
+			}
+			if owner != "" && f.By == owner {
+				return p, "paused by the cycle's own stop, which it could not lift (cellctl resume lifts every pause recorded in the cell)", "cellctl resume " + cell, nil
+			}
+			return p, "paused by an operator stop the cycle did not create (cellctl resume lifts every pause recorded in the cell, not only this one)", "cellctl resume " + cell, nil
+		}
+		name := filepath.Base(p)
+		return p, "paused by " + name + ", a stop pause did not set", "cellctl resume " + cell + " --foreign " + name, nil
+	}
+	return "", "", "", nil
 }
 
 // cycleRemaining names the cycle of the roles not reached.
@@ -602,8 +669,9 @@ func cleanPath(p string) string {
 }
 
 // claudeSync brings the role worktree's project record to the pin with the plugin CLI's own
-// update (restoring the settings bytes it rewrites) and reads it back. It never uninstalls: a
-// record still behind the pin fails the check and names the remedy.
+// update (restoring the settings bytes it rewrites, and their mode) and reads it back. It never
+// uninstalls: a record that still differs from the pin, behind it or ahead, fails the check and
+// names the remedy.
 func claudeSync(wt string, cli pluginCLI) syncReport {
 	s := syncReport{Harness: "claude"}
 	pin, err := marketplacePin(wt)
@@ -633,17 +701,22 @@ func claudeSync(wt string, cli pluginCLI) syncReport {
 		s.Outcome, s.Detail = syncCouldNotCheck, "the project settings could not be read: "+err.Error()
 		return s
 	}
-	mode := os.FileMode(0o644)
-	if fi, serr := os.Stat(settings); serr == nil {
-		mode = fi.Mode().Perm()
+	fi, err := os.Stat(settings)
+	if err != nil {
+		s.Outcome, s.Detail = syncCouldNotCheck, "the project settings mode could not be read: "+err.Error()
+		return s
 	}
+	mode := fi.Mode().Perm()
 	uerr := cli.update()
 	if after, rerr := os.ReadFile(settings); rerr != nil || !bytes.Equal(after, before) {
-		// The update may have replaced the file, so the original mode is set again after the write.
 		if werr := os.WriteFile(settings, before, mode); werr != nil {
 			s.Outcome, s.Detail = syncFailed, "the project settings could not be restored after the update: "+werr.Error()
 			return s
 		}
+	}
+	// The update may have replaced the file, with the same bytes or not, so the original mode is
+	// set again whether or not the bytes needed restoring.
+	if now, serr := os.Stat(settings); serr != nil || now.Mode().Perm() != mode {
 		if cerr := os.Chmod(settings, mode); cerr != nil {
 			s.Outcome, s.Detail = syncFailed, "the project settings mode could not be restored after the update: "+cerr.Error()
 			return s

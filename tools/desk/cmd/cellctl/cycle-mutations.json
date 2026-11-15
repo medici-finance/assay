@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/cellctl -count=1 -timeout 300s -run '^(TestCycleWaitsForClaim|TestCycleTimeoutLeavesRunning|TestCycleForceAfterTimeout|TestCycleSyncFailLeavesDown|TestCycleUncheckedNotOK|TestCycleNeedsFreshBeat|TestCycleSkipsDownRole|TestCycleAllAtOnce|TestCycleAllAtOnceTimeoutStopped|TestCycleTimeoutKeepsOperatorPause|TestCycleKeepsPauseSetDuringDrain|TestCyclePausedRoleStaysDown|TestCycleDeclinedConfirmLifts|TestCycleForcePartialConfirm|TestCycleFutureBeatNotFresh|TestMarketplacePinStrict|TestClaudeSyncToPin|TestClaudeSyncStaysStale|TestClaudeSyncRestoresMode|TestClaudeSyncAheadOfPin|TestCursorSyncChecks)$'",
+  "test": "go test ./cmd/cellctl -count=1 -timeout 300s -run '^(TestCycleWaitsForClaim|TestCycleTimeoutLeavesRunning|TestCycleForceAfterTimeout|TestCycleSyncFailLeavesDown|TestCycleUncheckedNotOK|TestCycleNeedsFreshBeat|TestCycleSkipsDownRole|TestCycleAllAtOnce|TestCycleAllAtOnceTimeoutStopped|TestCycleTimeoutKeepsOperatorPause|TestCycleKeepsPauseSetDuringDrain|TestCyclePausedRoleStaysDown|TestCycleDeclinedConfirmLifts|TestCycleForcePartialConfirm|TestCycleFutureBeatNotFresh|TestMarketplacePinStrict|TestClaudeSyncToPin|TestClaudeSyncStaysStale|TestClaudeSyncRestoresMode|TestClaudeSyncAheadOfPin|TestCursorSyncChecks|TestCycleDownStopNotPause|TestCycleCadenceStopVerb|TestCycleOwnStopUnlifted|TestCycleAllAtOnceNotReached|TestClaudeSyncModeSameBytes)$'",
   "control": {
     "name": "invert the restart-count assertion",
     "file": "cmd/cellctl/cycle_test.go",
@@ -148,8 +148,8 @@
     {
       "name": "cycle-success-keeps-operator-pause: a paused role is restarted",
       "file": "cmd/cellctl/cycle.go",
-      "old": "if p, perr := l.Paused(role); perr != nil || p {",
-      "new": "if p, perr := l.Paused(role); false && (perr != nil || p) {"
+      "old": "if flag, why, fix, berr := l.cycleBlockingStop(role, owner); berr != nil || flag != \"\" {",
+      "new": "if flag, why, fix, berr := l.cycleBlockingStop(role, owner); false && (berr != nil || flag != \"\") {"
     },
     {
       "name": "cycle-heartbeat-upper-bound: a future-dated checkpoint reads fresh",
@@ -168,6 +168,36 @@
       "file": "cmd/cellctl/cycle.go",
       "old": "differs from the pin %s",
       "new": "is behind the pin %s"
+    },
+    {
+      "name": "cycle-down-stop-not-pause: the drain's own down STOP reads as a pause",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\t\t\tif down {\n\t\t\t\tcontinue\n\t\t\t}",
+      "new": "\t\t\tif false && down {\n\t\t\t\tcontinue\n\t\t\t}"
+    },
+    {
+      "name": "cycle-cadence-stop-verb: an operator cadence STOP names resume",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\"cellctl cadence \" + cell + \" resume \" + role, nil",
+      "new": "\"cellctl resume \" + cell, nil"
+    },
+    {
+      "name": "cycle-own-stop-unlifted: the cycle's own stop reads as an operator's",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "\t\t\tif owner != \"\" && f.By == owner {",
+      "new": "\t\t\tif false && owner != \"\" && f.By == owner {"
+    },
+    {
+      "name": "cycle-all-at-once-not-reached: a role not reached has no row",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "for _, rest := range live[i+1:] {",
+      "new": "for _, rest := range live[len(live):] {"
+    },
+    {
+      "name": "cycle-settings-mode-same-bytes: the mode is restored only when the bytes differ",
+      "file": "cmd/cellctl/cycle.go",
+      "old": "if now, serr := os.Stat(settings); serr != nil || now.Mode().Perm() != mode {",
+      "new": "if now, serr := os.Stat(settings); false && (serr != nil || now.Mode().Perm() != mode) {"
     }
   ]
 }

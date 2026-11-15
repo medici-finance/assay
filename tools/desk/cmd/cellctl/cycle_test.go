@@ -607,3 +607,126 @@ func TestClaudeSyncAheadOfPin(t *testing.T) {
 		t.Fatalf("a record ahead of the pin: %+v", s)
 	}
 }
+
+// The drain's own `down` writes the role's cadence STOP with downStopReason, and the launch
+// removes it under the role lease. It is not an operator's pause: the role is restarted.
+// regression: cycle-down-stop-not-pause
+func TestCycleDownStopNotPause(t *testing.T) {
+	w := newLCWorld(t)
+	w.cadenceRole("worker-desk", "tmux")
+	w.onStop = func(role string) {
+		dir := w.c.cadenceDir(role)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeDownStop(dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f := newCycleFakes(w)
+	r := w.lc.cycle(cycleOptsFor("worker-desk"), f.ops())
+	if r.Outcome != cellop.OK || len(f.restarts) != 1 {
+		t.Fatalf("the drain's own down STOP read as a pause: outcome %s restarts %v: %v", r.Outcome, f.restarts, deref(r.Detail))
+	}
+}
+
+// An operator's cadence STOP is not one `resume` lifts: Next names `cadence resume`.
+// regression: cycle-cadence-stop-verb
+func TestCycleCadenceStopVerb(t *testing.T) {
+	w := newLCWorld(t)
+	w.cadenceRole("worker-desk", "tmux")
+	w.onStop = func(role string) {
+		dir := w.c.cadenceDir(role)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "STOP"), []byte("operator requested stop\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f := newCycleFakes(w)
+	r := w.lc.cycle(cycleOptsFor("worker-desk"), f.ops())
+	if r.Outcome != cellop.Partial || len(f.restarts) != 0 {
+		t.Fatalf("an operator cadence STOP was restarted past: outcome %s restarts %v", r.Outcome, f.restarts)
+	}
+	if want := "cellctl cadence " + w.c.Name + " resume worker-desk"; !valueIn(want, r.Next) {
+		t.Errorf("Next lacks %q: %v", want, r.Next)
+	}
+	if valueIn("cellctl resume "+w.c.Name, r.Next) {
+		t.Errorf("Next names resume, which does not clear a cadence STOP: %v", r.Next)
+	}
+}
+
+// A stop recorded with the cycle's own id is a lift that failed, not an operator's pause.
+// regression: cycle-own-stop-unlifted
+func TestCycleOwnStopUnlifted(t *testing.T) {
+	w := newLCWorld(t)
+	w.cadenceRole("worker-desk", "tmux")
+	if _, err := w.lc.pauseAs([]string{"worker-desk"}, "cycle-test"); err != nil {
+		t.Fatal(err)
+	}
+	flag, why, fix, err := w.lc.cycleBlockingStop("worker-desk", "cycle-test")
+	if err != nil || flag == "" {
+		t.Fatalf("no stop found: %q %v", flag, err)
+	}
+	if !strings.Contains(why, "could not lift") || strings.Contains(why, "operator") || fix != "cellctl resume "+w.c.Name {
+		t.Errorf("the cycle's own unlifted stop reads %q, fix %q", why, fix)
+	}
+	if _, why, _, _ := w.lc.cycleBlockingStop("worker-desk", "cycle-other"); !strings.Contains(why, "every pause recorded") {
+		t.Errorf("the resume hint does not say it lifts every recorded pause: %q", why)
+	}
+}
+
+// Under --all-at-once the drain stopped every role, so a role the cycle ends before reaching is
+// down: it has a row, and Next brings it back.
+// regression: cycle-all-at-once-not-reached
+func TestCycleAllAtOnceNotReached(t *testing.T) {
+	w := newLCWorld(t)
+	w.cadenceRole("worker-desk", "tmux")
+	w.cadenceRole("pr-review-desk", "tmux")
+	w.receipt("pr-review-desk", "tmux", "@9")
+	w.procs.kids[92] = []int{harnessPID}
+	f := newCycleFakes(w)
+	f.sync["worker-desk"] = syncReport{Harness: "claude", Pin: "1.0.45", Old: "1.0.30", New: "1.0.30", Outcome: syncFailed, Detail: "record 1.0.30, pin 1.0.45"}
+	o := cycleOptsFor("worker-desk", "pr-review-desk")
+	o.AllAtOnce = true
+	r := w.lc.cycle(o, f.ops())
+	if r.Outcome != cellop.Partial || len(f.restarts) != 0 || len(w.stops) != 2 {
+		t.Fatalf("outcome %s restarts %v stops %v", r.Outcome, f.restarts, w.stops)
+	}
+	if line := reportLine(t, r, "pr-review-desk"); !strings.Contains(line, "left down") {
+		t.Errorf("the role not reached reads %q", line)
+	}
+	if !valueIn("cellctl up "+w.c.Name+" --role pr-review-desk", r.Next) {
+		t.Errorf("Next does not bring the role not reached back: %v", r.Next)
+	}
+}
+
+// An update that replaces the settings file with the same bytes and a new mode is still restored
+// to the original mode.
+// regression: cycle-settings-mode-same-bytes
+func TestClaudeSyncModeSameBytes(t *testing.T) {
+	wt := pinnedWorktree(t, "v1.0.45")
+	settings := filepath.Join(wt, ".claude", "settings.json")
+	if err := os.Chmod(settings, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(settings)
+	rec := "1.0.30"
+	cli := pluginCLI{
+		list: func() ([]byte, error) { return pluginList(wt, rec), nil },
+		update: func() error {
+			rec = "1.0.45"
+			if err := os.Remove(settings); err != nil {
+				return err
+			}
+			return os.WriteFile(settings, before, 0o644)
+		},
+	}
+	if s := claudeSync(wt, cli); s.Outcome != syncOK {
+		t.Fatalf("sync %+v", s)
+	}
+	if fi, err := os.Stat(settings); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("the settings mode after a same-bytes replace is %v (%v), want 0600", fi.Mode().Perm(), err)
+	}
+}
