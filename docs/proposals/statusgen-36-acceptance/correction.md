@@ -33,7 +33,7 @@ borrows another test's absence. Neither is used here.
 
 The command builds the candidate from the tree under test and the reference
 from the same v1.0.52 release. The harness runs from immutable helper commit
-`f74ef3bc2c2c95cfafc0952a36854067beb2e426`, with explicit binary paths and the
+`4ed7735471fd5cd98d50414da451bec810008f06`, with explicit binary paths and the
 absolute corpus root. The identical harness therefore tests head and historical
 base; a missing newly added test cannot manufacture the base failure.
 
@@ -48,7 +48,7 @@ Fixture timings are separate. The original complete-corpus budget still runs
 in plain `--coverage` mode: five successful samples per binary, both medians
 printed and new median at most 1.10 times the fixed reference median. No fixture
 replaces that corpus, no failed process becomes a timing sample and no threshold
-is relaxed. Per-process and test deadlines bound stalled measurements. The
+is relaxed. The overall test deadline also bounds each child measurement. The
 `witnessperf` build tag separates this acceptance measurement from ordinary
 unit-suite runs; the Verify command explicitly selects it, and missing binary
 or corpus inputs fail.
