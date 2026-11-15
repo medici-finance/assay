@@ -1,1 +1,0 @@
-- Support ordered human-approved acceptance transitions and explicitly approved Command+Expect corrections while preserving legacy one-link rules.
