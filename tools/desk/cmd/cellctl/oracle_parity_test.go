@@ -57,7 +57,7 @@ func TestShellOracleParity(t *testing.T) {
 		{"exit-status", "house/claude/tmux/check", `cat`},
 		{"unknown-set-notice", "k8s/codex/tmux/set", `cat; printf '[set] notice: unexpected extension\n'`},
 		{"second-site", "container/claude/tmux/status", `cat; printf '  ?     could-not-check: labels: unexpected second site\n'`},
-		{"plan-bytes", "scrubbed/claude/tmux/desk", `sed 's/KUBECONFIG=\/dev\/null/KUBECONFIG=wrong/'`},
+		{"plan-bytes", "scrubbed/claude/tmux/desk", `awk '$0 == "[plan] env KUBECONFIG=/dev/null" { $0 = "[plan] env KUBECONFIG=wrong" } { print }'`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			impl := filepath.Join(t.TempDir(), "cellctl-mutant")
