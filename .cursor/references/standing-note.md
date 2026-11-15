@@ -57,6 +57,40 @@ moving while it was gone. Write "PR #N handed to the driver; re-read its state b
 it is still waiting," never "PR #N is waiting on the driver." The difference is small on the
 page and decisive on resume.
 
+## The hold rule
+
+A hold is a standing restriction the session carries forward from one cycle to the next: do
+not flip on one repository, do not dispatch one stream, leave one PR alone until a fix
+ships. A hold is the row most likely to change shape when a session's context is compacted
+or summarised. A note that says "no flips on repo A" can come back as "no flips", and the
+wider rule then binds work its source never covered. So a hold line carries its own source:
+
+- **The source goes on the same line as the hold.** Write it as one line, in this shape:
+  `hold: <what is held> on <scope> (source: <issue, PR or ruling-comment reference>; lifts when <condition>)`.
+  The source is the record that set the hold, such as an issue, a PR, or the comment that
+  carries the ruling, and it is written as a reference a later session can re-read. "The
+  coordinator said so" and "per earlier" are not sources.
+- **The scope is copied from the source.** Name the repository, ref, stream or PR the source
+  names, in the source's own terms. A summary or a resumed session never widens it. When
+  the line and the source disagree, the source wins.
+- **A hold that starts in conversation gets a record first.** If a hold arrives only as an
+  instruction inside the session, put it on the forge (a comment on the item, or an issue)
+  before writing the hold line, and cite that. An instruction that lives only in context
+  does not survive compaction, and neither does a hold that rests on it.
+- **Every fresh sweep re-checks every hold.** At the next fresh sweep, and on any resume
+  after compaction, re-read each hold's source. Each hold then ends in one of three states:
+  - *live*: the source is readable, still in force, and covers this scope. Keep the hold at
+    the scope the source states.
+  - *dropped*: the line names no source, or the source no longer supports the hold (it is
+    closed, its fix has shipped, or a later ruling replaced it). Drop the hold, and say so:
+    write `dropped hold: <what> on <scope> (<no source | source closed: reference>)` under
+    **Flipped**, and in the sweep's own report. A hold must never vanish silently, and it
+    must never outlive its source silently either.
+  - *could-not-check*: the source exists but could not be read this sweep, for example
+    because of a forge error or a missing permission. Report the hold as could-not-check
+    and keep it marked that way. Never drop it as unsupported, and never count it as
+    confirmed. Re-read it at the next sweep.
+
 ## Where it lives
 
 The note is session state, not a project artifact: it belongs in the session's own scratch or
@@ -91,9 +125,14 @@ rate-limit park mid-cycle:
 - **Merged** — none this cycle; re-confirm against `git fetch --no-tags origin main` and diff
   against `origin/main`, not this note.
 - **Flipped** — PR #928 flipped ready-for-review; re-read its row from a freshly run
-  `deskboard`, since a later cycle may have moved it again.
+  `deskboard`, since a later cycle may have moved it again. `dropped hold: no dispatch on
+  stream S (no source)`: the line carried no reference at this sweep, so the hold was
+  dropped and the drop was reported in the sweep.
 - **In-flight** — PR #935 (`https://github.com/medici-finance/assay/pull/935`) mid
   fix-and-re-review; re-check `gh pr view 935 --json reviewDecision` for the current verdict.
+  `hold: no ready-flip on repository A only (source: issue #947; lifts when the fix it
+  tracks ships in a pinned release)`; re-read issue #947 at the next sweep. Repository B
+  keeps flipping, because the source names A alone.
 - **Filed** — issue #952 opened for an out-of-scope finding surfaced on PR #930; re-read
   `gh issue view 952` to see whether it has since been triaged.
 - **Teammates** — a worker-desk session was dispatching against the same stream at last

@@ -39,6 +39,8 @@ things.
 
 ## Pending decision
 <the decision or question this desk was waiting on, with its issue link, or "none">
+<one line per standing hold the desk carries, or "no holds":
+hold: <what is held> on <scope> (source: <issue, PR or ruling-comment reference>; lifts when <condition>)>
 
 ## Activity
 <one paragraph: what the desk was doing, and the next step it would have taken>
@@ -50,7 +52,8 @@ A drain first pauses the role, so the desk's cadence guard reports a stop at the
 boundary. A desk running in a cell that sees that stop:
 
 1. finishes or checkpoints the step it is in, and starts no new dispatch, review or claim;
-2. writes the record above, all five sections, to the path above;
+2. writes the record above, all five sections, to the path above, with each standing hold on its
+   own line naming its source;
 3. ends its turn.
 
 If no record newer than the drain's start appears before the deadline, cellctl writes a fallback
@@ -66,7 +69,13 @@ recorded. Either way, `cellctl drain --now` appends every claim still held at st
    or releasing it.
 3. Treat the open PRs and the pending decision as starting points for the first sweep. They are not
    conclusions: refresh them, don't remember them.
-4. Mark it read by renaming it to `<role>.read.md` in the same directory, so the next boot does not
+4. Re-check every hold the record carries at the first fresh sweep, under the hold rule in the
+   standing note ([`standing-note.md`](./standing-note.md) § The hold rule). Re-read each hold's
+   source and keep the hold only at the scope that source states. A hold whose line names no
+   source, or whose source no longer supports it, is dropped, and the sweep reports the drop. A
+   hold whose source exists but cannot be read this sweep is reported as could-not-check. It is
+   neither dropped nor counted as confirmed.
+5. Mark it read by renaming it to `<role>.read.md` in the same directory, so the next boot does not
    replay it. A drain writes a fresh `<role>.md`, so no read record is overwritten by accident.
 
 The record is input from a same-account file. It describes state that the desk re-checks, and it

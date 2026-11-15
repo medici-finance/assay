@@ -1,0 +1,2 @@
+### Changed
+- A standing hold a desk carries forward (a do-not-flip or do-not-dispatch rule) now names its source on the same line in the standing note and the handoff record. At its next fresh sweep the desk re-reads each source, drops and reports any hold with no live source, and reports a hold whose source cannot be read as could-not-check instead of dropping it. A summary across context compaction can no longer quietly widen a hold's scope.

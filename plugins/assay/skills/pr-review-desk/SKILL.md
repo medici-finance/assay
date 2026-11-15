@@ -202,9 +202,12 @@ desk-specific half: at cycle end, compress what matters (which PRs are mid-revie
 on, open findings) into a short [standing note](../../references/standing-note.md) and treat all
 prior tool output as *evicted*. That note orients the next cycle; it never substitutes for a fresh
 read — see the reference for the nine-section schema and the re-probe rule that keeps a resumed
-session from acting on a remembered answer.
+session from acting on a remembered answer. A hold this desk carries, such as no ready-flip on one
+repository until a fix ships, names its source on the same line, at the scope that source states.
+At the next fresh sweep the desk re-reads that source and drops, and reports dropping, any hold
+with no live source (the reference's hold rule). A summary of the note never widens a hold.
 
-> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, and how it is reconciled and marked read are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
+> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, how it is reconciled and marked read, and how each hold it carries is re-checked against its source are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
 
 ### Stop-flag check — run at every iteration boundary
 

@@ -272,9 +272,9 @@ not own.
 
 > **Every `gh` call carries this role's `GH_TOKEN`, reads included.** When no desk verb covers a forge call, run it only through the recipe in [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role), never a hand-typed shortcut. That recipe takes the role from `$DESK_LOOP`, mints it with `desktoken`, scopes the token to that one command without exporting it, and stops before `gh` unless the mint exited 0 and the token file holds a non-whitespace token. A bare `gh` call runs as the host's stored login, which is usually a human's, so a desk never runs one, not even for a read.
 
-> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
+> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache, every carried hold naming its source on the same line, and a hold with no live source dropped and reported at the next fresh sweep — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
-> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, and how it is reconciled and marked read are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
+> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, how it is reconciled and marked read, and how each hold it carries is re-checked against its source are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
 
 > Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
