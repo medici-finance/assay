@@ -559,7 +559,7 @@ func eject(o *opts, fg laneForge, fr deskkit.ForgeRepo, f *facts, reasons []stri
 		}
 	}
 	if !marked {
-		if _, perr := fg.PostComment(fr, o.pr, deskkit.AutoLaneEjectComment(reasons, f.head)); perr != nil {
+		if _, perr := fg.PostCommentTyped(fr, o.pr, deskkit.TargetChange, deskkit.AutoLaneEjectComment(reasons, f.head)); perr != nil {
 			logEject(o, deskkit.ResultUnverifiable, names)
 			return deskkit.Unverifiable("could-not-check: the ejection comment could not be posted (the "+
 				"ejection is latched regardless)", perr)
