@@ -644,6 +644,20 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Serialize out-of-repo items** — no worktree isolation, no branch-as-claim: at most ONE in
   flight across all streams, the declaration is the claim, so check in-flight PRs for overlaps first.
 - **Placeholders are dispatchable** (ruling 2, 2026-08-24); `fanoutloop plan` includes them.
+- **A window holding a project role secret dispatches only work proven trusted.** A native container
+  cell can export a project role secret into a worker window as a path variable,
+  `ASSAY_ROLE_SECRET_<SERVICE>_FILE` (`containers/secrets.md` §4.4). Every agent dispatched from that
+  window inherits the variable, so `deskdispatch` refuses, before the claim, the following:
+  - any brief-keyed or review-kit item;
+  - an issue or change whose author is not trusted and that carries no current blessing;
+  - a `--pr` item whose head commits are not all on the base repository, with a linked author and
+    committer that are both roster logins (commit attribution, not proof of who pushed).
+
+  Unreadable forge data counts as untrusted. Treat that refusal like any guard refusal: it is a
+  STOP for the item in that window. Never route around it by unsetting the variable: the
+  file stays mounted, and an existing `/run/secrets/role-*` file makes the window a holding one
+  anyway. `deskdispatch` also strips every such variable from the tool processes it
+  starts.
 
 ## Cockpit-aware worktree creation — additive, chosen by `ASSAY_COCKPIT` or detected on PATH, never required
 
