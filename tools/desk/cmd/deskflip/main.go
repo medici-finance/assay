@@ -171,9 +171,11 @@ that still shows the PR as a draft is never a revert.
   BLOCKED           (and NOT a draft) GitHub computes BLOCKED for the reader, so it then
                     reads the requirements every reader sees alike: no merge conflict
                     (mergeable), the review decision, and every required check at the
-                    head. Any one unmet, or a read that fails, reverts exactly as DIRTY
-                    does, the comment naming each unmet requirement. All met: the PR
-                    stays ready with a could-not-check comment and notice.
+                    head. Any one unmet, a read that fails, or a base-branch rule the
+                    read sees but does not evaluate (conversation resolution, signed
+                    commits, a merge queue ...) reverts exactly as DIRTY does, the comment
+                    naming each one. All met, with no such rule: the PR stays ready with
+                    a could-not-check comment and notice.
   CLEAN, HAS_HOOKS, UNSTABLE, BEHIND
                     (and NOT a draft) the PR stays ready.
   anything else     still unsettled at 30s (UNKNOWN, or still a draft), or unreadable: the

@@ -556,8 +556,10 @@ after the ready flip:
                  to draft fails). BLOCKED is computed for the reader, so on a BLOCKED read
                  it reads the requirements every reader sees alike (no merge conflict,
                  the review decision, every required check at the head): any one unmet,
-                 or a read that fails, reverts the same way and the comment names it;
-                 all met leaves it ready with a could-not-check comment and notice.
+                 a read that fails, or a base-branch rule the read sees but does not
+                 evaluate (conversation resolution, signed commits, a merge queue ...)
+                 reverts the same way and the comment names it; all met, with no such
+                 rule, leaves it ready with a could-not-check comment and notice.
                  CLEAN, HAS_HOOKS, UNSTABLE and BEHIND leave it ready. Anything else at 30s, a draft included, leaves it ready with a
                  could-not-check comment and notice. This is
                  the only un-ready and never a verb of its own (ruling:

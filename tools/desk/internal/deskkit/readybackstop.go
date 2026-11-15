@@ -33,9 +33,10 @@ import (
 //     BLOCKED read alone proves nothing; the backstop reads the merge requirements that say the
 //     same thing to every reader (MergeRequirements: no merge conflict, the review decision, the
 //     required checks at the head). Any requirement unmet reverts, exactly as DIRTY does, and so
-//     does a requirement read that fails: it never fails open. Only when every requirement is
-//     met does the change stay ready, with one could-not-check comment, since a rule the read
-//     does not cover may still hold the merge.
+//     does a requirement read that fails, or a base-branch rule the read sees but does not
+//     evaluate (MergeRequirements.Unevaluated): it never fails open. Only when every requirement
+//     is met and no such rule is seen does the change stay ready, with one could-not-check
+//     comment, since a rule the read cannot see may still hold the merge.
 //   - CLEAN, HAS_HOOKS, UNSTABLE, BEHIND: the change stays ready (ReadyBackstopPasses).
 //     UNSTABLE (a non-required check is failing) and BEHIND (the base moved on) are still
 //     mergeable or merely need updating.
