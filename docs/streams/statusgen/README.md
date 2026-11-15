@@ -153,13 +153,15 @@ to its own briefs:
 | statusgen/41 | [Objective projection over the board view: critical path and ranked moves](brief-41-objective-projection-over-the-board-view-critical-path-and-ranked-moves.md) | 3 |
 | statusgen/42 | [Queue projections from one board load: next-up, awaiting and brief info](brief-42-queue-projections-from-one-board-load-next-up-awaiting-and-brief-info.md) | 3 |
 | statusgen/43 | [Desk read-side consumers call the board library in-process](brief-43-desk-read-side-consumers-call-the-board-library-in-process.md) | 4 |
+| cell-api/10 | [Serve deskd roadmap and portfolio reads from the board library](../cell-api/brief-10-serve-deskd-roadmap-and-portfolio-reads-from-the-board-library.md) | 4 |
 
 Boundaries. Existing flags, exit codes and wire shapes stay; the library is an added seam and
 the command output remains the supported one for shell and non-Go readers. The library reads a
-working tree only: parsers that edit text in place or read a git revision stay with the
+tree handed to it as a filesystem: parsers that edit text in place stay with the
 brief-document unit of the
-[shared-policy consolidation plan](../../shared-policy-consolidation-plan.md). The service read
-model stays with cell-api/02, which may link this library; no brief here edits the deskd module.
+[shared-policy consolidation plan](../../shared-policy-consolidation-plan.md). Linking the
+library into the service is cell-api/10, which is human-gated; the public service composition
+stays with cell-api/02 and is not edited here.
 statusgen/25 and milestone-support/11 keep their own records and are not changed. An Authors PR
 delivers planning only; it does not satisfy these briefs.
 
