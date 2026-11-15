@@ -1054,6 +1054,15 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", toolName, store.Notice)
 	}
 
+	// A contradictory local branch must be refused before any forge read.
+	if verifierKit(o.kit) || reviewKit(o.kit) {
+		if strings.TrimSpace(o.branch) != "" {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --branch is not accepted with --kit %s — its worktree is cut DETACHED "+
+					"off origin/main and never touches a feature branch.", stepWorktreeCreate, o.kit))
+		}
+	}
+
 	// A REVIEW dispatch's prompt is forge-shaped: the reviewer fetches the change's HEAD from
 	// the forge-specific server-side ref namespace (GitHub refs/pull/<N>/head ↔ GitLab
 	// refs/merge-requests/<iid>/head). Resolve WHICH forge serves the target repo now, pre-claim,
@@ -1074,11 +1083,6 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// Read-only kits allocate detached. A reviewer checks out the PR head
 	// afterward; no disposable feature branch or upstream is needed.
 	if verifierKit(o.kit) || reviewKit(o.kit) {
-		if strings.TrimSpace(o.branch) != "" {
-			return plan, deskkit.Refused(fmt.Sprintf(
-				"step %s: --branch is not accepted with --kit %s — its worktree is cut DETACHED "+
-					"off origin/main and never touches a feature branch.", stepWorktreeCreate, o.kit))
-		}
 		plan.detached = true
 	} else {
 		plan.branch = o.branch
