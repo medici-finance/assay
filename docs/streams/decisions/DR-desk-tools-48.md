@@ -4,6 +4,7 @@ date: "2026-11-15"
 title: "Approve the desk-tools/48 landing-capacity read model: one meter plan shared by the landing gates and a read-only capacity read, with widen advice bounded by that reading; no limit, cap, authorization or width changes"
 consequence: major
 decided-by: "human:ian"
+ruling: "https://github.com/medici-finance/assay/issues/5837#issuecomment-6900775559"
 alternatives:
   - "Option 2 on the decision issue, request corrections and keep the change pending. Not chosen: the driver answered option 1. No rationale was recorded, and none is supplied here."
   - "Option 3 on the decision issue, hold the change. Not chosen: the driver answered option 1. No rationale was recorded, and none is supplied here."
