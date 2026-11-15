@@ -68,7 +68,6 @@ parked on its own terms. A recorded dependency or passed unit test cannot lift t
 | 07 | [Qualify handover rollback and last-consumer retirement](brief-07-qualify-handover-rollback-and-last-consumer-retirement.md) | 16 | M | todo | — | — |
 | 08 | [Build the deskd binary and image from public source through the Makefile](brief-08-build-the-deskd-binary-and-image-from-public-source-through-the-makefile.md) | 0 | M | verified | 2026-11-06 assay-verifier-app[bot] @ 7ded00183785 (forge-identity) | — |
 | 09 | [Publish the deskd image through the assay release](brief-09-publish-the-deskd-image-through-the-assay-release.md) | 1 | M | implemented | — | — |
-| 10 | [Serve deskd roadmap and portfolio reads from the board library](brief-10-serve-deskd-roadmap-and-portfolio-reads-from-the-board-library.md) | 4 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Bounded refactor map
@@ -158,11 +157,6 @@ The generator-derived wave values include external prerequisites. Within this se
   04 is the bounded client migration, including the later thin cockpit connection.
 - 07 joins the Kubernetes cell qualification, forge-service qualification and R8
   migration tooling before any legacy last-consumer retirement.
-- 10 (added 14 November 2026) links the existing service's roadmap and portfolio reads to the
-  board library. Its prerequisites are outside this set (the library and its queue
-  projections on the statusgen board) and it changes no other brief here. Its own head is
-  module resolution from the service's build, which its first task step settles before
-  anything else is written. It is human-gated, read-only, and is not a deployment step.
 
 **Actual runtime head:** admitted R1 contracts → existing R2/R3 and R4 qualification →
 R5/R6 → 03 → 05 → 06 → 07. Local 01 is the smallest interface step after admission;
