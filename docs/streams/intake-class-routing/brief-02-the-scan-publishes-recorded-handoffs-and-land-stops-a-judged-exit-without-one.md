@@ -20,6 +20,7 @@ gate-why: >-
   refusal ruled as D2 in the scoping document.
 decision-trigger: start
 decision-issue: 6364
+design: DR-handoff-publish
 issues: []
 outcome: none
 schema: brief-v2
