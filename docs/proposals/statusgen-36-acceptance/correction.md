@@ -33,7 +33,7 @@ borrows another test's absence. Neither is used here.
 
 The command builds the candidate from the tree under test and the reference
 from the same v1.0.52 release. The harness runs from immutable helper commit
-`4ed7735471fd5cd98d50414da451bec810008f06`, with explicit binary paths and the
+`b12abbe425d9c031e9094bddbe7ab20d4abb75e3`, with explicit binary paths and the
 absolute corpus root. The identical harness therefore tests head and historical
 base; a missing newly added test cannot manufacture the base failure.
 
@@ -51,7 +51,12 @@ replaces that corpus, no failed process becomes a timing sample and no threshold
 is relaxed. The overall test deadline also bounds each child measurement. The
 `witnessperf` build tag separates this acceptance measurement from ordinary
 unit-suite runs; the Verify command explicitly selects it, and missing binary
-or corpus inputs fail.
+or corpus inputs fail. The harness captures the invocation environment before
+TestMain installs fixture authority and uses that snapshot for corpus children;
+only the isolated v2 fixture uses fixture authority. A real-child boundary test
+checks both arms. Removing the explicit corpus environment is caught by a
+planted mutation: the child prints the fixture marker instead of the invocation
+marker.
 
 The actual delivery-base binary from
 `c288fd881e7fe5532614ad25a4610be7c6acf8a3`, passed to this same harness, fails
