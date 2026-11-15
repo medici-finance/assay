@@ -101,6 +101,10 @@ func deskDir() (string, error) {
 // treated as stale → Unverifiable (exit 6).
 type auditLock struct{ l *deskkit.AuditLock }
 
+// lockWait is how long acquireAuditLock waits for a contended lock before refusing. A package
+// var only so a test can shorten it; production is 60s and has no flag or env override.
+var lockWait = deskkit.AuditLockWait
+
 func acquireAuditLock() (*auditLock, error) {
 	dir, err := deskDir()
 	if err != nil {
@@ -108,7 +112,7 @@ func acquireAuditLock() (*auditLock, error) {
 	}
 	// The one choke point for the audit lock: it records the holder's pid and start beside the lock,
 	// and a lock still busy after the wait names the lock file, that holder and the clearing action.
-	l, err := deskkit.AcquireAuditLock(dir, deskkit.AuditLockWait)
+	l, err := deskkit.AcquireAuditLock(dir, lockWait)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +219,9 @@ func attemptOutward(args []string, opts postOpts, repo string, pr int, plan func
 	// START is the same mischarge ready.go's CI-read failures made, one layer up.
 	lock, err := acquireAuditLock()
 	if err != nil {
-		return finishAudit(args, writeResult{verb: toolName, repo: repo, pr: pr, result: deskkit.ResultUnwritten, detail: err.Error(), err: err}), err
+		// A lock-wait refusal is contention, not a loop: it is audited ResultContended so the
+		// circuit breaker does not count it (#6227). Any other lock failure stays unwritten.
+		return finishAudit(args, writeResult{verb: toolName, repo: repo, pr: pr, result: deskkit.LockStepResult(err, deskkit.ResultUnwritten), detail: err.Error(), err: err}), err
 	}
 	defer lock.release()
 

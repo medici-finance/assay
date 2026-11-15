@@ -697,6 +697,12 @@ witnessed after merge, in the board's Environment-blocked queue, by an operator 
 environment (verify-desk §"Rows that need a project secret or a live service"). No reviewer slot is
 given a project secret, and no PR head is run with one.
 
+For a `service:` row, the review accepts only the verifier's **signed** outcome for that row, and
+never a run report from anyone. Until the signed verdict lane is enacted, no such outcome exists and
+the interim rule above is the whole procedure. A reviewer window never holds a project role secret.
+`cellctl` refuses a binding to the reviewer role (`containers/secrets.md` §4.4), and `deskdispatch`
+refuses every review-kit dispatch from a window that holds one.
+
 ### Finding-class calibration — reversal-rate demotion
 
 A finding class earns its blocking power; it does not hold it by default. The monthly

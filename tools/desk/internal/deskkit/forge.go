@@ -1060,7 +1060,7 @@ type ChangeRef struct {
 }
 
 // ChangeList is the result of a ListChanges read: the changes plus whether the bounded walk was
-// able to reach the end of the population. Incomplete=true means the page-count ceiling
+// able to reach the end of the population. Incomplete=true means the walk's ceiling
 // (PageCap) was hit with the forge still reporting more — so a consumer that reads ABSENCE from
 // this list as evidence (the phantom check reads "no representing PR here" as "safe to
 // dispatch") must treat the absence as could-not-check, never as a confident negative. The
@@ -1070,12 +1070,14 @@ type ChangeRef struct {
 // truncated read is stated as truncated, not handed back as if it were the whole population.
 type ChangeList struct {
 	// Changes are the changes matching the requested states, most-recently-updated first, up to
-	// the page-count ceiling.
+	// the walk's ceiling.
 	Changes []ChangeRef
-	// Incomplete is true when the walk hit PageCap pages with the forge still paginating — the
+	// Incomplete is true when the walk hit its ceiling with the forge still paginating — the
 	// population is larger than what Changes holds.
 	Incomplete bool
-	// PageCap is the page-count ceiling the walk was bounded to.
+	// PageCap is the ceiling the walk was bounded to, in pages of the backend's starting page
+	// size. The GitHub arm bounds its walk by changes (500, 20 pages of 25); a page-size backoff
+	// reads that same window in more, smaller pages.
 	PageCap int
 }
 
@@ -1823,7 +1825,7 @@ type Forge interface {
 	// and ListOpenChanges serves OPEN only while collapsing state to a board word — so a raw
 	// `gh pr list --state all` was the only alternative, and the closed forge surface
 	// (TestNoForgeCLIShellout) forbids it. The read is bounded: it walks MOST-RECENTLY-UPDATED
-	// first to a hard page-count ceiling and reports ChangeList.Incomplete when the population
+	// first to a hard ceiling and reports ChangeList.Incomplete when the population
 	// exceeds it, so a consumer that reads absence as evidence treats a truncated read as
 	// could-not-check rather than a confident negative. A states-less request (ChangeStates.Any
 	// false) is REFUSED before any request is built — the state set must be STATED, never

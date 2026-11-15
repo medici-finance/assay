@@ -133,6 +133,8 @@ func TestServiceWriteRoutesInAllowList(t *testing.T) {
 // (the authorization contract). The walk of the mux deskd actually serves is
 // TestServedRouteWalk in served_test.go.
 func TestRouteWalkAllUnderMiddleware(t *testing.T) {
+	t.Run("served-mux-walk", TestServedRouteWalk)
+	t.Run("served-mux-only", TestServedMuxIsTheOnlyMux)
 	rs := stubs()
 	if err := identity.ValidateRoutes(identityRoutes(rs)); err != nil {
 		t.Fatalf("the mounted route table does not validate — a data or write route is missing its gate: %v", err)
