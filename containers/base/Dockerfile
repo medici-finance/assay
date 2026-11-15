@@ -77,8 +77,8 @@ FROM ${DESK_TOOLS_IMAGE} AS desktools
 # tools/desk/internal/deskkit/gitfloor_test.go, and set the same two ARGs in
 # images/verify-runner/Dockerfile (a test requires the two pairs to match).
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS gitbuild
-ARG GIT_VERSION=2.56.0
-ARG GIT_TARBALL_SHA256=26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
+ARG GIT_VERSION=2.56.1
+ARG GIT_TARBALL_SHA256=f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \
     apt-get update; \
@@ -127,9 +127,9 @@ ARG TARGETARCH=amd64
 #   NODE_VERSION — Node LTS; the runtime the interactive agent CLI installs onto.
 #                 Checksums: https://nodejs.org/dist/v<version>/SHASUMS256.txt
 #                 (signed by the Node release keys: SHASUMS256.txt.asc)
-ARG GO_VERSION=1.27.3
-ARG GO_SHA256_AMD64=65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40
-ARG GO_SHA256_ARM64=a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49
+ARG GO_VERSION=1.27.4
+ARG GO_SHA256_AMD64=7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840
+ARG GO_SHA256_ARM64=3392582988a273a87ab5043ee1b2c9c17a2c3c00580bf9326c47a2e0aaaeac92
 ARG GH_VERSION=2.63.2
 ARG GH_SHA256_AMD64=912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00
 ARG GH_SHA256_ARM64=0f31e2a8549c64b5c1679f0b99ce5e0dac7c91da9e86f6246adb8805b0f0b4bb
@@ -303,6 +303,7 @@ RUN set -eux; \
 # providing (git-remote-http carries the libcurl link). /usr/local must be
 # root-owned throughout, since git now lives there.
 RUN set -eux; \
+    test "$(/usr/local/bin/git version)" = "git version 2.56.1"; \
     test -x /usr/local/bin/git; \
     test -x /usr/local/libexec/git-core/git-remote-http; \
     if ldd /usr/local/bin/git /usr/local/libexec/git-core/git-remote-http | grep 'not found'; then \

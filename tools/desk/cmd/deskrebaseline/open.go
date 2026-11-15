@@ -19,17 +19,6 @@ import (
 // DESK_LOOP=verify-desk), running every gate (secret scan, self-containment, budget,
 // push-transport, App attribution) the fleet's writes run through. A human merges it.
 
-// idiomReplacement maps a retired tool idiom to its recorded replacement (facts.go decides
-// WHEN a row is safe:idiom; this supplies the new form for the re-baseline edit). The one
-// recorded ruling the brief names is the `--consumers` form.
-//
-// SCAFFOLDING: reachable only once gatherRowFacts sets RetiredIdiom, which it does not yet —
-// safe:idiom is not produced by the shipped verb (see the SafeIdiom const). Kept for the
-// tracked follow-up that wires the idiom facts.
-var idiomReplacement = map[string]string{
-	"--consumers": "--consumer",
-}
-
 // rebaselineBranch is the deterministic one-row branch name for row K of a brief file.
 func rebaselineBranch(briefPath string, row int) string {
 	stream, nn := streamNNFromPath(briefPath)
@@ -55,15 +44,14 @@ func streamNNFromPath(briefPath string) (stream, nn string) {
 }
 
 // computeNewRow produces the re-baselined Command and Expect cells for a safe verdict. For a
-// rename it substitutes the moved path; for a retired idiom it substitutes the recorded new
-// form; for a count it re-measures the command's trailing integer. It returns changed=false
-// when it cannot compute a concrete edit, so the caller refuses rather than committing a
-// no-op re-baseline.
+// rename it substitutes the moved path; for a retired idiom it substitutes the listed
+// replacement; for a count it re-measures the command's output. It returns changed=false when
+// it cannot compute a concrete edit, so the caller refuses rather than committing a no-op
+// re-baseline.
 //
-// Only the SafeRename arm is reachable in the shipped verb today: gatherRowFacts produces no
-// safe:count or safe:idiom verdict (see classify.go's SafeCount/SafeIdiom consts), so the
-// SafeCount and SafeIdiom arms below are scaffolding for the tracked follow-up that wires
-// those facts. They are kept and correct so that follow-up need only supply the facts.
+// Each arm writes the edit its proof covered (#5529): the idiom arm rewrites through the same
+// rewriteIdiom the re-run proved, and the count arm writes only a fresh measurement that
+// equals the count gatherRowFacts proved, so a count that moved again since is refused.
 func computeNewRow(root string, row verifyRow, f RowFacts, cls Classification) (newCommand, newExpect string, changed bool) {
 	newCommand, newExpect = row.Command, row.Expect
 	switch cls.Verdict {
@@ -74,44 +62,26 @@ func computeNewRow(root string, row verifyRow, f RowFacts, cls Classification) (
 		newCommand, newExpect = renamed(newCommand, f), renamed(newExpect, f)
 		return newCommand, newExpect, newCommand != row.Command || newExpect != row.Expect
 	case SafeIdiom:
-		repl, ok := idiomReplacement[f.RetiredIdiom]
+		e, ok := retiredIdiomFor(f.RetiredIdiom)
 		if !ok {
 			return "", "", false
 		}
-		newCommand = strings.ReplaceAll(newCommand, f.RetiredIdiom, repl)
-		return newCommand, newExpect, newCommand != row.Command
+		newCommand, ok = rewriteIdiom(newCommand, e)
+		return newCommand, newExpect, ok
 	case SafeCount:
-		n, ok := measureTrailingInt(root, row.Command)
-		if !ok {
+		if f.CountNow <= 0 {
 			return "", "", false
 		}
-		re := regexp.MustCompile(`\d+`)
-		if re.MatchString(newExpect) {
-			newExpect = re.ReplaceAllString(newExpect, n)
-			return newCommand, newExpect, newExpect != row.Expect
+		ran, rc, out := runCommand(root, row.Command)
+		now, ok := countDrift(rc, out, row)
+		if !ran || !ok || now != f.CountNow {
+			return "", "", false
 		}
-		return "", "", false
+		newExpect = recount(newExpect, now)
+		return newCommand, newExpect, newExpect != row.Expect
 	default:
 		return "", "", false
 	}
-}
-
-// measureTrailingInt runs command and returns the last integer token of its stdout — the
-// current value of a count Expect. It is used only after facts.go has already proven the
-// count drift is pure-additions (safe:count).
-func measureTrailingInt(root, command string) (string, bool) {
-	cmd := exec.Command("sh", "-c", command)
-	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "KUBECONFIG=/dev/null") // offline envelope (C3); see runCommand
-	out, err := cmd.Output()
-	if err != nil {
-		return "", false
-	}
-	nums := regexp.MustCompile(`\d+`).FindAllString(string(out), -1)
-	if len(nums) == 0 {
-		return "", false
-	}
-	return nums[len(nums)-1], true
 }
 
 // applyRebaseline rewrites row K's line in content's `## Verify` table, substituting the new
@@ -332,11 +302,11 @@ func writePRBody(stream, nn string, row int, cls Classification, f RowFacts, old
 	if f.PathRef != "" && f.RenameHop != "" {
 		fmt.Fprintf(&b, "- Pinned path `%s` moved by a single rename hop to `%s` (git rename detection).\n", f.PathRef, f.RenameHop)
 	}
-	if f.RetiredIdiom != "" {
-		fmt.Fprintf(&b, "- Row pins tool idiom `%s`, retired by a recorded ruling.\n", f.RetiredIdiom)
+	if cls.Verdict == SafeIdiom {
+		fmt.Fprintf(&b, "- Row pins tool idiom `%s`, retired by ruling %s; the rewritten row passes its Expect.\n", f.RetiredIdiom, f.IdiomRuling)
 	}
 	if cls.Verdict == SafeCount {
-		fmt.Fprintf(&b, "- Count Expect drifted upward; target files changed only by additions since the Evidence date.\n")
+		fmt.Fprintf(&b, "- Count Expect grew to %d; %s.\n", f.CountNow, f.CountEvidence)
 	}
 	fmt.Fprintf(&b, "\nThe verb classified this row against a narrow safe set and refuses anything it cannot prove intact; a reviewer and a human still gate this PR.\n\n")
 	fmt.Fprintf(&b, "Brief: %s/%s\n", stream, nn)

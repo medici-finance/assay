@@ -258,8 +258,8 @@ func TestVerifyRunnerImageRunsGitFloor(t *testing.T) {
 		t.Fatalf("images/verify-runner/Dockerfile: %s", p)
 	}
 
-	shaArg := "ARG GIT_TARBALL_SHA256=" + knownGitTarballs["2.56.0"] + "\n"
-	verArg := "ARG GIT_VERSION=2.56.0\n"
+	shaArg := "ARG GIT_TARBALL_SHA256=" + knownGitTarballs["2.56.1"] + "\n"
+	verArg := "ARG GIT_VERSION=2.56.1\n"
 	shaLine := `    echo "${GIT_TARBALL_SHA256}  /tmp/git.txz" | sha256sum -c -; \` + "\n"
 	tarLine := "    tar -C /tmp -xJf /tmp/git.txz; \\\n"
 	curlLine := "    curl -fsSL --proto '=https' --proto-redir '=https' \\\n"
@@ -376,8 +376,8 @@ func TestVerifyRunnerImageRunsGitFloor(t *testing.T) {
 	// The pin is the base image's: a base that moves to another git, with the
 	// runner left behind, must go red here rather than leave two pins to drift.
 	t.Run("runner pin drifts from base", func(t *testing.T) {
-		baseShaArg := "ARG GIT_TARBALL_SHA256=" + knownGitTarballs["2.56.0"] + "\n"
-		baseVerArg := "ARG GIT_VERSION=2.56.0\n"
+		baseShaArg := "ARG GIT_TARBALL_SHA256=" + knownGitTarballs["2.56.1"] + "\n"
+		baseVerArg := "ARG GIT_VERSION=2.56.1\n"
 		if strings.Count(base, baseShaArg) != 1 || strings.Count(base, baseVerArg) != 1 {
 			t.Fatalf("the base-drift mutants need the base git ARGs exactly once in containers/base/Dockerfile")
 		}

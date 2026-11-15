@@ -193,6 +193,10 @@ type fakeGH struct {
 	// convertFail makes the convertPullRequestToDraft mutation answer 500; converts counts it.
 	convertFail bool
 	converts    int
+	// mergeReqJSON is the raw answer to the merge-requirement read `ready`'s backstop makes on
+	// a BLOCKED read (#6508); "" answers 502. mergeReqReads counts the reads.
+	mergeReqJSON  string
+	mergeReqReads int
 
 	// Label + surface-config fixtures for the mechanical verdict-time labeler.
 	// prLabels is the current label set on the PR (mutated by add/remove routes, as GitHub
@@ -682,6 +686,18 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 		// its PR and ISSUE forms. Branch on the request body — only the mutation counts as
 		// a flip, and the two trust queries return different response shapes.
 		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), "requiredStatusCheckContexts") {
+			f.mu.Lock()
+			f.mergeReqReads++
+			raw := f.mergeReqJSON
+			f.mu.Unlock()
+			if raw == "" {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			_, _ = w.Write([]byte(raw))
+			return
+		}
 		if strings.Contains(string(body), "convertPullRequestToDraft") {
 			f.mu.Lock()
 			f.converts++

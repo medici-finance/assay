@@ -1170,9 +1170,21 @@ func (c *ghClient) markReadyForReview(nodeID string) error {
 	return nil
 }
 
+// mergeRequirements sends deskkit.MergeRequirementsRequest, the same GraphQL read the typed
+// GitHub backend sends, so the two cannot diverge. Its one caller is `ready`'s post-flip
+// backstop, on a BLOCKED read (#6508).
+func (c *ghClient) mergeRequirements(pr int) (*deskkit.MergeRequirements, error) {
+	var raw json.RawMessage
+	if err := c.doJSON(http.MethodPost, "/graphql", deskkit.MergeRequirementsRequest(c.owner, c.repo, pr), &raw); err != nil {
+		return nil, err
+	}
+	return deskkit.DecodeMergeRequirements(raw)
+}
+
 // convertToDraft returns a ready PR to draft via the GraphQL mutation. Its ONE caller is
-// `ready`'s post-flip backstop (#6242), after the forge reports the just-flipped PR BLOCKED
-// or DIRTY; it is never a verb of its own. Ruling:
+// `ready`'s post-flip backstop (#6242), after the forge reports the just-flipped PR DIRTY,
+// or BLOCKED with a merge requirement unmet or unreadable (#6508); it is never a verb of its
+// own. Ruling:
 // https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
 func (c *ghClient) convertToDraft(nodeID string) error {
 	q := `mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id}){pullRequest{isDraft}}}`

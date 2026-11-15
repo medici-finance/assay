@@ -137,6 +137,11 @@ func (f *ciRecordingForge) CheckSuitesAtHead(repo ForgeRepo, sha string) (*Check
 	return nil, nil
 }
 
+func (f *ciRecordingForge) MergeRequirements(repo ForgeRepo, number int) (*MergeRequirements, error) {
+	f.rec("MergeRequirements")
+	return nil, nil
+}
+
 func (f *ciRecordingForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error) {
 	f.rec("RequiredStatusChecks")
 	return nil, nil

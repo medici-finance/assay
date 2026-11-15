@@ -887,7 +887,8 @@ type RollupNode struct {
 // login the trust set expects (a bot carries the "<slug>[bot]" suffix), matching the
 // per-forge rendering GetPullRequest already applies. MergeStateStatus is the forge's own
 // merge-readiness enum verbatim (GitHub's mergeStateStatus: BEHIND/BLOCKED/CLEAN/DIRTY/
-// UNKNOWN/…) — the consumer reads its four-state mergeVerdict off it, and an empty value is
+// UNKNOWN/…). Mergeable independently reports merge conflicts; BLOCKED is a policy hold,
+// not a conflict verdict. An empty merge-readiness value is
 // could-not-check, never mergeable. Consumer: cmd/deskboard's fetchOpenPRs → prBase.
 type OpenChange struct {
 	Number       int
@@ -908,6 +909,7 @@ type OpenChange struct {
 	HeadRef          string
 	BaseRef          string
 	MergeStateStatus string
+	Mergeable        string `json:",omitempty"` // same three-state conflict verdict as PullRequest.Mergeable
 	Rollup           []RollupNode
 	// HeadCommittedAt is the head commit's COMMITTER date (RFC3339), read on the same node
 	// the rollup already comes from — no extra request. It is set only when that commit's oid
@@ -1058,7 +1060,7 @@ type ChangeRef struct {
 }
 
 // ChangeList is the result of a ListChanges read: the changes plus whether the bounded walk was
-// able to reach the end of the population. Incomplete=true means the page-count ceiling
+// able to reach the end of the population. Incomplete=true means the walk's ceiling
 // (PageCap) was hit with the forge still reporting more — so a consumer that reads ABSENCE from
 // this list as evidence (the phantom check reads "no representing PR here" as "safe to
 // dispatch") must treat the absence as could-not-check, never as a confident negative. The
@@ -1068,12 +1070,14 @@ type ChangeRef struct {
 // truncated read is stated as truncated, not handed back as if it were the whole population.
 type ChangeList struct {
 	// Changes are the changes matching the requested states, most-recently-updated first, up to
-	// the page-count ceiling.
+	// the walk's ceiling.
 	Changes []ChangeRef
-	// Incomplete is true when the walk hit PageCap pages with the forge still paginating — the
+	// Incomplete is true when the walk hit its ceiling with the forge still paginating — the
 	// population is larger than what Changes holds.
 	Incomplete bool
-	// PageCap is the page-count ceiling the walk was bounded to.
+	// PageCap is the ceiling the walk was bounded to, in pages of the backend's starting page
+	// size. The GitHub arm bounds its walk by changes (500, 20 pages of 25); a page-size backoff
+	// reads that same window in more, smaller pages.
 	PageCap int
 }
 
@@ -1821,7 +1825,7 @@ type Forge interface {
 	// and ListOpenChanges serves OPEN only while collapsing state to a board word — so a raw
 	// `gh pr list --state all` was the only alternative, and the closed forge surface
 	// (TestNoForgeCLIShellout) forbids it. The read is bounded: it walks MOST-RECENTLY-UPDATED
-	// first to a hard page-count ceiling and reports ChangeList.Incomplete when the population
+	// first to a hard ceiling and reports ChangeList.Incomplete when the population
 	// exceeds it, so a consumer that reads absence as evidence treats a truncated read as
 	// could-not-check rather than a confident negative. A states-less request (ChangeStates.Any
 	// false) is REFUSED before any request is built — the state set must be STATED, never
@@ -1944,6 +1948,13 @@ type Forge interface {
 	// Consumer: cmd/deskflip's checks-green condition (freeze rule: this read lands with the
 	// call site that consumes it).
 	RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error)
+	// MergeRequirements reads the change's merge requirements from fields that read the same
+	// for every identity: the conflict verdict, the review decision, and the required checks
+	// with their latest result at the head (see MergeRequirements). A read that fails is an
+	// error, which the caller treats as unmet. Consumer: the post-flip backstop of cmd/deskflip
+	// and `deskpost ready`, on a BLOCKED read (medici-finance/assay#6508; freeze rule: this read
+	// lands with the call sites that consume it).
+	MergeRequirements(repo ForgeRepo, number int) (*MergeRequirements, error)
 	// IssueReactions returns the reactions/awards on an issue or PR (reaction ↔ award
 	// emoji). The public-repo write gate does not read it: that gate is repository-scoped.
 	IssueReactions(repo ForgeRepo, number int) ([]Reaction, error)

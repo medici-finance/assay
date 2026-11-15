@@ -1126,8 +1126,21 @@ staging deployment) — its `Env` cell names `service:<name>`, or its command pl
 NOT the Phase-0 class above. That class covers a credential **only the implementer can hold**. A
 project secret is held by the project, so a non-implementer can hold it, and the implementer's own
 report of the run (a pasted output, a "passed locally", a record in the PR body) is never this row's
-Evidence. Until a channel exists that brings project secrets to dispatched verifier windows (the
-`desk-containers/34` brief, `gate: human`), this desk:
+Evidence.
+
+A channel that brings a project secret to a verifier window now exists on one surface only. A native
+container cell can bind a project role secret into worker and verifier containers as a read-only file
+named by `ASSAY_ROLE_SECRET_<SERVICE>_FILE` (`containers/secrets.md` §4.4). It changes who can hold the
+environment, not the rule below. Until the signed verdict lane is enacted, a `service:` row still goes
+through the Environment-blocked queue. A verifier window that holds the path for the row's service is
+one place the queue's operator can run the row: the operator is the queue's human owner, never this
+desk and never a dispatched agent, so a run inside a holding window by an agent is a run report, not
+Evidence. The operator runs the row verbatim, on merged main, never on a PR head. Only the row's
+command reads the file, and its value never reaches Evidence, a comment or a log. A window holding
+such a path cannot hand the row to a dispatched child: `deskdispatch` refuses there every
+dispatch it cannot show to be trusted from forge data, and in this release that includes every
+brief-keyed and verifier-kit dispatch. On every surface, holding window or not, this desk follows the
+steps below:
 
 1. **Records the row could-not-check with the EXACT command** and the environment it needs, never a
    bare "needs creds". That places the brief in the board's **Environment-blocked** queue

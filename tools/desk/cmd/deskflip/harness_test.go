@@ -181,6 +181,9 @@ type stub struct {
 	commentErr    bool // the comment-thread read answers 500
 	// convertFail makes the convertPullRequestToDraft mutation answer 500.
 	convertFail bool
+	// mergeReqJSON is the raw answer to the merge-requirement read the backstop makes on a
+	// BLOCKED read (#6508); "" answers 502.
+	mergeReqJSON string
 	// comments records every comment body the verb posted on the change.
 	comments []string
 }
@@ -298,6 +301,14 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 			}
 			enc(map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
 				"comments": map[string]any{"pageInfo": map[string]any{"hasNextPage": false}, "nodes": nodes}}}}})
+
+		case r.Method == http.MethodPost && path == "/graphql" &&
+			strings.Contains(rec.Body, "requiredStatusCheckContexts"):
+			if s.mergeReqJSON == "" {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			_, _ = w.Write([]byte(s.mergeReqJSON))
 
 		case r.Method == http.MethodPost && path == "/graphql" &&
 			strings.Contains(rec.Body, "convertPullRequestToDraft"):

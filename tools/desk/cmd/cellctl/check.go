@@ -109,6 +109,8 @@ func cmdCheck(cell, cfgArg string) {
 		}
 		// The same for CELL_DB_DSN: a container cell cannot reach the cell database yet.
 		c.checkCellDB(k)
+		// Role secrets (CELL_ROLE_SECRETS): no rows unless the cell sets the keys.
+		c.checkRoleSecrets(k)
 		c.containerRun("check")
 		if !k.ok {
 			exitWith(1)
@@ -251,6 +253,8 @@ func cmdCheck(cell, cfgArg string) {
 
 	// The cell database pointer (CELL_DB_DSN / CELL_DB_PASSFILE). No rows unless it is set.
 	c.checkCellDB(k)
+	// Role secrets: a host kind binds none, so a cell that sets the keys gets a MISS.
+	c.checkRoleSecrets(k)
 
 	harnessCheck := *c
 	if policy != nil {

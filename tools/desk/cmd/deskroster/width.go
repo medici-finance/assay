@@ -149,7 +149,7 @@ func cmdWidth(args []string) error {
 		"— a floor of slots held for resume/rework items so fresh dispatch cannot crowd them out even under a "+
 		"full pool; never idles a slot when no reserved-class item is waiting; refused when the sum would "+
 		"consume the whole width")
-	session := fs.String("session", "", "Session name for --reserve's attribution (env: $DESK_SESSION or $CLAUDE_SESSION_ID)")
+	session := fs.String("session", "", "Session name for --reserve's attribution; wins over $DESK_SESSION and $CLAUDE_SESSION_ID")
 	// `width --help` prints the flag surface (including --reserve) and exits 0, discoverable
 	// from the subcommand itself rather than only the top-level usage — the same shape
 	// `fanoutloop plan --help` uses. Checked BEFORE Parse: flag.ErrHelp from Parse itself would

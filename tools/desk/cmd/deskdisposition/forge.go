@@ -16,7 +16,7 @@ package main
 // THE FIX mirrors deskclose/deskfile's own forge wiring exactly: `read` mints the
 // SESSION-ROLE App installation token (DESK_LOOP-selected, worker by default — read has
 // no lane-role concept the way deskclose's superseded lane does, so it defaults the way
-// deskfile's every-verb does) via `desktoken` and reaches the forge through the resolved
+// deskfile's every-verb does) read in process (deskkit.WriteVerbRoleCredential, #5457) and reaches the forge through the resolved
 // deskkit.Forge under that App's custody, via REST (go-gh's client), never `gh`. There is
 // no ambient fallback here either: an empty token is a hard refusal at the custody step,
 // same as every other migrated verb. `set` is UNCHANGED — it still shells to `gh` under the
@@ -31,7 +31,6 @@ package main
 // minted token it moves no token-custody question. See verbs.go's sweepOpenChanges.
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -68,13 +67,14 @@ func githubCustodyMint(role string, repo deskkit.ForgeRepo) (token, baseURL stri
 }
 
 // mintTokenFn mints the session-role token for a repo and sets ghToken. Package var so a test can
-// inject a token without shelling desktoken; production binds it to mintSessionToken.
+// inject a token without a real credential read; production binds it to mintSessionToken.
 var mintTokenFn = mintSessionToken
 
 // mintSessionToken resolves the App role this session acts under (DESK_LOOP via
-// deskkit.SessionTokenRole, worker by default), calls `desktoken <role> --repo <slug>`, and sets
-// the returned token as ghToken. --repo is not optional: an App installed on more than one
-// account mints for the wrong installation when it is omitted.
+// deskkit.SessionTokenRole, worker by default), reads that role's credential READ-ONLY through
+// deskkit.WriteVerbRoleCredential (never the desktoken binary, so never its rotation path —
+// #5457), and sets it as ghToken. The repo is not optional: an App installed on more than one
+// account resolves the wrong installation when the owner is omitted.
 func mintSessionToken(repoSlug string) error {
 	role := "worker"
 	if r, _, rerr := deskkit.SessionTokenRole(toolName); rerr == nil {
@@ -83,23 +83,11 @@ func mintSessionToken(repoSlug string) error {
 		fmt.Fprintf(os.Stderr, "deskdisposition: no App role resolved for this session — defaulting to the worker App token (%v)\n", rerr)
 	}
 	mintedRole = role
-	cmd := execCommand("desktoken", role, "--repo", repoSlug)
-	var out, errb bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errb
-	if err := cmd.Run(); err != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("desktoken %s --repo %s: %v (%s)",
-			role, repoSlug, err, strings.TrimSpace(errb.String())), err)
+	cred, err := deskkit.WriteVerbRoleCredential(toolName, role, repoSlug)
+	if err != nil {
+		return err
 	}
-	tokenPath := strings.TrimSpace(out.String())
-	b, rerr := os.ReadFile(tokenPath)
-	if rerr != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("read %s token from %s", role, tokenPath), rerr)
-	}
-	ghToken = strings.TrimSpace(string(b))
-	if ghToken == "" {
-		return deskkit.Unverifiable(fmt.Sprintf("%s token at %s is empty", role, tokenPath), nil)
-	}
+	ghToken = cred.Token
 	return nil
 }
 

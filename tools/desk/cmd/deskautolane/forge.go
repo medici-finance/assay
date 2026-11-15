@@ -42,7 +42,9 @@ type laneForge interface {
 	// The two WRITES this verb owns: the admission/ejection label swap and the one marked
 	// ejection comment. Both are gated on the enactment gate (see enactment).
 	ApplyLabels(repo deskkit.ForgeRepo, number int, change deskkit.LabelChange) (*deskkit.LabelOutcome, error)
-	PostComment(repo deskkit.ForgeRepo, number int, body string) (*deskkit.CommentRef, error)
+	// The comment names its target kind: it lands on a PR, and on GitLab issue #N and merge
+	// request !N coexist, so the bare-number write refuses such a number (#6264).
+	PostCommentTyped(repo deskkit.ForgeRepo, number int, kind deskkit.TargetKind, body string) (*deskkit.CommentRef, error)
 }
 
 var _ laneForge = deskkit.Forge(nil)
