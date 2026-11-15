@@ -265,8 +265,11 @@ removes; and a Verify row that fails on a planted second instance. These are exi
 
 **4.5 Failure and partial success.** A refused or unreadable handoff write leaves the item
 owed and is reported as could-not-check, never as an empty queue. A judgment recorded but not
-published leaves the placeholder `classification-needed`; the next pass shows it still owed. A
-class brief authored without its members' judgments is incomplete, and the members stay owed.
+published leaves the placeholder `classification-needed` and out of dispatch, but the next pass
+does not show it as owed: the local history already counts it as settled and the scan does not
+read the published pointer, so nothing reports it until the read-back is made. Publish it, and
+read it back, in the same session that recorded it. A class brief authored without its members'
+judgments is incomplete, and the members stay owed.
 An intake session below strong tier records `repair`, `duplicate` and external judgments only
 and queues the rest; the writer already refuses a `needs-scoping` judgment from such a session.
 

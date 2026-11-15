@@ -459,6 +459,14 @@ func labelsCheckDiff() deliberateDiff {
 		stderrReplace: []string{"", ""}, why: whyLabels}
 }
 
+const whyIntakePin = "a freshly scaffolded cell pins the intake role to a strong tier (DESK_MODEL_intake_desk=opus), so show reports that one role line from the new pin instead of the default"
+
+func intakePinShowDiff() deliberateDiff {
+	return deliberateDiff{code: 0, stdoutReplace: func() []string {
+		return []string{"[show] model intake-desk=sonnet (cell.env DESK_MODEL_DEFAULT)\n", "[show] model intake-desk=opus (cell.env DESK_MODEL_intake_desk)\n"}
+	}, stderrReplace: []string{"", ""}, why: whyIntakePin}
+}
+
 func unknownCmd(name string) string {
 	return shapeErr("unknown command \"" + name + "\" for \"cellctl\"")
 }
@@ -475,6 +483,11 @@ var deliberateDiffs = map[string]deliberateDiff{
 	"new-trailing-value/3": labelsNewDiff("f3"),
 	"new-trailing-value/4": labelsNewDiff("f4"),
 	"new-trailing-value/5": labelsNewDiff("f5"),
+
+	// A new house cell pins the intake role to a strong tier, so `show` on a
+	// freshly scaffolded cell reports it. Every other byte and all stderr still must match.
+	"new-house/1":          intakePinShowDiff(),
+	"new-trailing-value/2": intakePinShowDiff(),
 
 	"check/2": {code: 1, stdoutReplace: func() []string {
 		return []string{"cockpit: herdr (auto: on PATH)", "cockpit: tmux (scrubbed auto: private socket)"}

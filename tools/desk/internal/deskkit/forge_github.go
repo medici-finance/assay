@@ -1597,6 +1597,17 @@ func (g *GitHubForge) CheckSuitesAtHead(repo ForgeRepo, sha string) (*CheckSuite
 	return out, nil
 }
 
+// MergeRequirements reads MergeRequirementsRequest in one GraphQL call (#6508). Every field it
+// reads (mergeable, reviewDecision, the rollup with isRequired, and the base branch's
+// protection and rules) says the same thing to every reader, unlike mergeStateStatus.
+func (g *GitHubForge) MergeRequirements(repo ForgeRepo, number int) (*MergeRequirements, error) {
+	var raw json.RawMessage
+	if err := g.doJSON(http.MethodPost, "/graphql", MergeRequirementsRequest(repo.Owner, repo.Name, number), &raw); err != nil {
+		return nil, err
+	}
+	return DecodeMergeRequirements(raw)
+}
+
 // RequiredStatusChecks reads the branch's required status-check contexts. GitHub can require a
 // check from TWO places, and no single endpoint shows both:
 //

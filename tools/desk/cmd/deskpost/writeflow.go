@@ -272,7 +272,9 @@ func finishAudit(args []string, wr writeResult) int {
 		Result:     wr.result,
 		Detail:     wr.detail,
 	}
-	if err := deskkit.Log(e); err != nil {
+	// finishAudit is the terminal row of every mutating deskpost verb (review/comment/ready):
+	// a ResultOK row is a write the forge confirmed and renews a fresh HEARTBEAT lease (#6510).
+	if err := deskkit.LogOutwardAct(e); err != nil {
 		fmt.Fprintf(stderr, "deskpost: WARNING: could not write audit line: %v\n", err)
 	}
 

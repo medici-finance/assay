@@ -14,7 +14,8 @@ import (
 // precondition in-tool immediately before acting — it never trusts the
 // caller's claim of state. It has NO other power: no merge, no close, and no un-ready
 // except the post-flip backstop's (below), which returns the PR to draft only when the forge
-// reports it BLOCKED or DIRTY right after the flip — ready means mergeable per the forge.
+// reports it DIRTY right after the flip, or BLOCKED with a merge requirement unmet or
+// unreadable (#6508: BLOCKED alone is viewer-relative) — ready means mergeable per the forge.
 // The un-ready is never a verb of its own. Ruling:
 // https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
 // The flip is not an approval and not a merge; the merge stays the owner's.
