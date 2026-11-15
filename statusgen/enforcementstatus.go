@@ -141,7 +141,7 @@ var lintRuleRegistry = []LintRule{
 	// Fail-first closure gate (failfirst.go, witnessgate.go, verify-integrity/03):
 	// fatal only for a closure the branch makes (verified/done, and not so at the
 	// merge-base); a missing origin/main degrades it to a NOTICE.
-	{"fail-first-closure", "a risk-bearing Verify row of a closure this branch makes (verified/done, and not so at the merge-base) has no current fail-first witness, is unproven or non-discriminating, was run for an earlier command, or names a base that is neither the merge-base nor the first parent of a recorded delivering commit on HEAD's history (with one recorded, the base or the delivering commit must hold the brief at its current path) (docs/verify-row-strength.md)", StatusFatal},
+	{"fail-first-closure", "a risk-bearing Verify row of a closure this branch makes (verified/done, and not so at the merge-base) has no current fail-first witness, is unproven or non-discriminating, was run for an earlier command, or names a base that is neither the merge-base nor the first parent of a recorded delivering commit on the default branch's history (with one recorded, the base or the delivering commit must hold the brief at its current path) (docs/verify-row-strength.md)", StatusFatal},
 	{"verify-unplaced-rows", "a closure this branch makes whose `## Verify` section holds text `statusgen verifyrun` cannot place and that looks like Verify rows: a numbered row that lost its table header (a prose paragraph split the table), a table headed `Expect` with no `Command` column, or a row too short to reach `Command`. A `Failure mode | Caught by` map, a mutation map or a legend is not Verify-shaped and is not reported", StatusFatal},
 
 	// consumers: routed-consumer lint (consumers.go). One class is fatal.

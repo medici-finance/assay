@@ -4,13 +4,15 @@ package main
 // own file so the #2026 ancestry guard's allow-list entry (see
 // TestNoAncestryWitnessJudge) covers exactly this one question and nothing else
 // a later change adds to failfirst.go: is the base a row was shown red on the
-// merge-base, and does a recorded delivering commit lie on HEAD's history with
-// the base as its parent (#2721).
+// merge-base, and does a recorded delivering commit lie on HEAD's history and on
+// the default branch's with the base as its parent (#2721).
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"regexp"
+	"strings"
 )
 
 // hexSHARe is an abbreviated-or-full commit id as a witness records it.
@@ -144,7 +146,11 @@ var deliveringParent = func(root, delivering string) (full, parent, why string) 
 		return "", "", "it cannot be read through the library read path"
 	}
 	if read.native != "" {
-		return "", "", "it cannot be read through the library read path (" + read.native + ")"
+		why := "it cannot be read through the library read path (" + read.native + ")"
+		if vars := nativeGitEnvSet(); len(vars) > 0 {
+			why += ": " + strings.Join(vars, ", ") + " is set in the environment, which selects a native Git profile the library does not qualify; unset it (with any GIT_CONFIG_KEY_<n>/GIT_CONFIG_VALUE_<n> it carries) and re-run"
+		}
+		return "", "", why
 	}
 	headHash, err := read.repo.Resolve("HEAD")
 	head := headHash.String()
@@ -173,4 +179,20 @@ var deliveringParent = func(root, delivering string) (full, parent, why string) 
 // for git.
 var failFirstMergeBase = func(root string) string {
 	return mergeBaseExact(root, remoteMainRef)
+}
+
+// nativeGitEnv is every environment variable that sends a library read to the
+// native profile (gitCoreFor, referenceGitCore, historyRepoEnv), so a refusal
+// can name the one that is set.
+var nativeGitEnv = append([]string{"GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_SHALLOW_FILE", "GIT_REPLACE_REF_BASE", "GIT_GRAFT_FILE"}, historyRepoEnv...)
+
+// nativeGitEnvSet lists the nativeGitEnv variables present, empty included.
+func nativeGitEnvSet() []string {
+	var out []string
+	for _, k := range nativeGitEnv {
+		if _, ok := os.LookupEnv(k); ok {
+			out = append(out, k)
+		}
+	}
+	return out
 }

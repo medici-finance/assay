@@ -24,9 +24,11 @@ package main
 //     any older ancestor are refused);
 //   - with a delivering commit recorded (verifyrun --delivering-commit, the
 //     post-merge case where the merge-base already holds the change), that
-//     commit is HEAD or an ancestor of HEAD, the base is exactly its first
-//     parent, and the base is the merge-base or an ancestor of it
-//     (medici-finance/assay#2721, option 2);
+//     commit is HEAD or an ancestor of HEAD and is the merge-base or an
+//     ancestor of it (on the default branch's history, not only HEAD's), and
+//     the base is exactly its first parent (medici-finance/assay#2721, option 2);
+//   - on every arm, the base is not the head the row ran on (after a merge the
+//     merge-base is HEAD, and a red there is not a red without the change);
 //   - the brief file is held at its current path by the base, or by the
 //     delivering commit when one is recorded (a brief the delivering change
 //     itself added), so a base older than the brief, such as the repository's
@@ -41,7 +43,17 @@ package main
 // prove that the recorded commit is the one that delivered THIS change: which
 // commit on HEAD's history is "the delivering commit" is the verifier's
 // attestation, read from the forge, and the Base cell is self-attested
-// Evidence text like every witness cell.
+// Evidence text like every witness cell. Two consequences, both accepted under
+// the #2721 option-2 ruling and stated in the doc:
+//   - an Evidence branch cut from main after the merge has a merge-base that
+//     already holds the change but is not HEAD, so a witness recording that
+//     base with no delivering commit passes; the verify-desk procedure, not the
+//     code, requires --delivering-commit after a merge;
+//   - when only the delivering commit holds the brief (a brief its own change
+//     added), the base is the tree from before the brief existed, a base main's
+//     brief-held rule refuses; naming the commit that added only the brief puts
+//     the same pre-brief base on record as `delivering=`, for a reviewer to
+//     check against the PR.
 //
 // The ancestry question lives in failfirst_ancestry.go, the one file in this
 // package that asks git for commit ancestry; it is NOT a witness-applicability
@@ -287,21 +299,31 @@ func failFirstBaseRev(root, rev, delivering, briefPath string) (base, delivering
 		}
 		full, deliveringFull = parent, d
 	}
-	if full == "" {
-		if b := mergeBaseExact(root, remoteMainRef); b != "" {
-			return b, "", nil
-		}
-		return "", "", errors.New("the merge-base of HEAD and origin/main cannot be resolved (fetch origin/main, or pass --delivering-commit <the commit that delivered the change>)")
-	}
-	flag, v := "--base", rev
-	if deliveringFull != "" {
-		flag, v = "--delivering-commit", delivering
-	}
 	mb := failFirstMergeBase(root)
+	if full == "" {
+		if mb == "" {
+			return "", "", errors.New("the merge-base of HEAD and origin/main cannot be resolved (fetch origin/main, or pass --delivering-commit <the commit that delivered the change>)")
+		}
+		full = mb
+	}
+	flag, v := "the default base (the merge-base of HEAD and origin/main)", ffShort(full)
+	switch {
+	case deliveringFull != "":
+		flag, v = "--delivering-commit", delivering
+	case rev != "":
+		flag, v = "--base", rev
+	}
 	if mb == "" {
 		return "", "", fmt.Errorf("%s %q is refused: the merge-base of HEAD and origin/main cannot be resolved, so the base cannot be bound to it (fetch origin/main and re-run)", flag, v)
 	}
-	ancestry, held := failFirstBaseProblem(root, briefPath, full, deliveringFull, mb)
+	// HEAD is read here so the default arm and --base HEAD are held to the same
+	// base-is-not-HEAD rule the gate applies to the witness's head token. An
+	// unresolvable HEAD fails closed.
+	head, herr := resolveCommit(root, "HEAD")
+	if herr != nil || !isObjectID(head) {
+		return "", "", fmt.Errorf("%s %q is refused: HEAD could not be resolved, so the base cannot be shown to differ from it", flag, v)
+	}
+	ancestry, held := failFirstBaseProblem(root, briefPath, full, deliveringFull, mb, head)
 	if why := ancestry + held; why != "" {
 		return "", "", fmt.Errorf("%s %q is refused: %s", flag, v, why)
 	}
@@ -317,17 +339,35 @@ func ffShort(s string) string {
 }
 
 // failFirstBaseProblem is the one base binding the runner and the closure gate
-// share (medici-finance/assay#2721, option 2). It returns the ancestry problem
-// and the brief-held problem, each "" when that half holds:
+// share (medici-finance/assay#2721, option 2; ruling A,
+// medici-finance/assay#5544). head is the head the base run is compared with:
+// the runner passes HEAD's full id, the gate the witness's recorded head
+// token. It returns the ancestry problem and the brief-held problem, each ""
+// when that half holds:
+//   - a base that is the head itself is refused on every arm: a red there is
+//     not a red without the change (after a merge the merge-base IS HEAD, so
+//     the default base and --base HEAD both land here; name the delivering
+//     commit instead);
 //   - with no delivering commit, the base must be the merge-base itself
 //     (commitIsMergeBase); the brief-held rule then holds trivially, and is
 //     still asked so a stand-in merge-base cannot skip it;
 //   - with one, the delivering commit must be HEAD or an ancestor of HEAD, the
-//     base must be exactly its first parent, and the base must be the
-//     merge-base or an ancestor of it; the brief must be held by the base or by
-//     the delivering commit (a brief its own delivering change added stays
+//     base must be exactly its first parent, and the delivering commit must be
+//     the merge-base or an ancestor of it, so it is on the default branch's
+//     history and not merely on HEAD's (a commit merged into an Evidence branch
+//     with `-s ours` is refused); the brief must be held by the base or by the
+//     delivering commit (a brief its own delivering change added stays
 //     closable after merge).
-func failFirstBaseProblem(root, briefPath, base, delivering, mergeBase string) (ancestry, held string) {
+//
+// What the code does not prove: an Evidence branch cut from main after the
+// merge has a merge-base that already holds the change but is not HEAD, so a
+// witness recording that base with no delivering commit is accepted. Which
+// commit delivered the change is the verifier's attestation; the verify-desk
+// procedure requires --delivering-commit after a merge.
+func failFirstBaseProblem(root, briefPath, base, delivering, mergeBase, head string) (ancestry, held string) {
+	if sameCommitID(base, head) {
+		return "the base is the head the row ran on (" + ffShort(base) + "), so a red there is not a red without the change; after a merge the merge-base is HEAD itself, so pass --delivering-commit <the commit that delivered the change>", ""
+	}
 	if delivering == "" {
 		if ok, why := commitIsMergeBase(root, base, mergeBase); !ok {
 			return why, ""
@@ -344,10 +384,26 @@ func failFirstBaseProblem(root, briefPath, base, delivering, mergeBase string) (
 		}
 		return "it is not the parent of the delivering commit " + ffShort(d) + " (" + why + ")", ""
 	}
-	if ok, why := commitIsAncestor(root, base, mergeBase); !ok {
-		return why, ""
+	if ok, why := commitIsAncestor(root, d, mergeBase); !ok {
+		return "the delivering commit " + ffShort(d) + " is refused: " + why + "; a delivering commit must be on the default branch's history, not only on HEAD's", ""
 	}
 	return "", briefHeldForDelivery(root, briefPath, parent, d)
+}
+
+// sameCommitID reports whether two commit ids (full or abbreviated, as a
+// witness records them; a head token's +dirty/+unknown suffix ignored) name
+// the same commit: both hex, at least 7 digits, one a prefix of the other.
+func sameCommitID(a, b string) bool {
+	if i := strings.IndexByte(b, '+'); i >= 0 {
+		b = b[:i]
+	}
+	if !hexSHARe.MatchString(a) && !isObjectID(a) || !hexSHARe.MatchString(b) && !isObjectID(b) {
+		return false
+	}
+	if len(a) > len(b) {
+		a, b = b, a
+	}
+	return strings.HasPrefix(b, a)
 }
 
 // briefHeldForDelivery is the brief-held rule for a witness that records its

@@ -298,7 +298,7 @@ func failFirstClosureChecks(root, id, status string, art briefArtifacts, plan pr
 			if !mergeBaseDone {
 				mergeBase, mergeBaseDone = failFirstMergeBase(root), true
 			}
-			fact.AncestryProblem, fact.HeldProblem = failFirstBaseProblem(root, art.Path, ff.Base, ff.Delivering, mergeBase)
+			fact.AncestryProblem, fact.HeldProblem = failFirstBaseProblem(root, art.Path, ff.Base, ff.Delivering, mergeBase, ff.Head)
 		}
 		problem := evaluation.FailFirstProblem(fact)
 		switch {
@@ -310,7 +310,7 @@ func failFirstClosureChecks(root, id, status string, art briefArtifacts, plan pr
 			problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s could not run at base %s, so it was never shown to fail. Make the row runnable on the base tree, or re-author it, and re-run `statusgen verifyrun --fail-first`", id, status, r.ID, ff.Base))
 		default:
 			if why := fact.AncestryProblem; problem == "ancestry" {
-				problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its fail-first base is neither the merge-base nor the parent of a delivering commit on HEAD's history (base %s: %s), so its %s is not about the tree without this change. Re-run `statusgen verifyrun --fail-first` (default base before merge; after merge, --delivering-commit <the commit that delivered the change>)", id, status, r.ID, ff.Base, why, ff.State))
+				problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its fail-first base is neither the merge-base nor the parent of a delivering commit on the default branch's history (base %s: %s), so its %s is not about the tree without this change. Re-run `statusgen verifyrun --fail-first` (default base before merge; after merge, --delivering-commit <the commit that delivered the change>)", id, status, r.ID, ff.Base, why, ff.State))
 				continue
 			}
 			if why := fact.HeldProblem; problem == "held" {

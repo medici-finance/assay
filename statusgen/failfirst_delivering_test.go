@@ -1,10 +1,25 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// ffHermeticGitEnv unsets, for the test, every variable that sends a library
+// read to the native profile (nativeGitEnv), so the delivering tests do not
+// depend on the shell they run in (a GIT_CONFIG_COUNT set by a CI runner or a
+// harness made the delivering arm refuse). Not for parallel tests.
+func ffHermeticGitEnv(t *testing.T) {
+	t.Helper()
+	for _, k := range nativeGitEnv {
+		if v, ok := os.LookupEnv(k); ok {
+			os.Unsetenv(k)
+			t.Cleanup(func() { os.Setenv(k, v) })
+		}
+	}
+}
 
 // ffDeliveredVerify is the risk-bearing row the delivered fixtures run: it
 // passes only once the delivering commit has flipped flag.txt to "new".
@@ -28,6 +43,7 @@ func ffDeliveredRepo(t *testing.T, briefInDelivery bool) (root, rootC, prep, del
 		gitRun(t, root, "commit", "-q", "-m", msg)
 		return gitOutT(t, root, "rev-parse", "HEAD")
 	}
+	ffHermeticGitEnv(t)
 	writeTemp(t, root, "flag.txt", "old\n")
 	rootC = commit("root")
 	writeTemp(t, root, "other.txt", "x\n")
@@ -84,7 +100,7 @@ func TestFailFirstDeliveringBindsBase(t *testing.T) {
 		name, base, deliver, want string // want: a PROBLEM substring, "" for accepted
 	}{
 		{"the delivering commit's parent", prep, deliv, ""},
-		{"the merge-base itself, no delivering commit", head, "", ""},
+		{"the merge-base, which after the merge is HEAD (F4)", head, "", "the base is the head the row ran on"},
 		{"an older ancestor, no delivering commit (option 3)", prep, "", "an older base is accepted only as the parent of a recorded --delivering-commit"},
 		{"a base that is not the delivering commit's parent", rootC, deliv, "is not the parent of the delivering commit"},
 		{"a delivering commit off HEAD's history", prep, side, "is not HEAD or an ancestor of HEAD"},
@@ -216,7 +232,75 @@ func TestFailFirstDeliveringNoMergeBase(t *testing.T) {
 			t.Errorf("%s: unresolvable merge-base accepted: base=%q delivering=%q err=%v", c.name, base, d, err)
 		}
 	}
-	if ancestry, held := failFirstBaseProblem(root, briefPath, prep, deliv, ""); ancestry == "" && held == "" {
+	if ancestry, held := failFirstBaseProblem(root, briefPath, prep, deliv, "", gitOutT(t, root, "rev-parse", "HEAD")); ancestry == "" && held == "" {
 		t.Error("gate binding accepted a delivering witness with no merge-base")
+	}
+}
+
+// TestFailFirstDeliveringOffMain — review SEC-1. A commit X off main (its parent
+// the root commit, adding the brief) merged into an Evidence branch with
+// `-s ours` is on HEAD's history but not on the default branch's. Named as the
+// delivering commit it made the base the root commit, accepted by both
+// surfaces. The delivering commit must be the merge-base or an ancestor of it.
+// regression: #2721
+func TestFailFirstDeliveringOffMain(t *testing.T) {
+	withBase(t, true)
+	root, rootC, _, _, head, _, briefPath := ffDeliveredRepo(t, false)
+	gitRun(t, root, "checkout", "-q", "--detach", rootC)
+	mustMkdirAll(t, filepath.Dir(briefPath))
+	writeTemp(t, filepath.Dir(briefPath), filepath.Base(briefPath), ffBriefRaw("yes", ffDeliveredVerify, ""))
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "off main")
+	x := gitOutT(t, root, "rev-parse", "HEAD")
+	gitRun(t, root, "checkout", "-q", "-b", "evidence", head)
+	gitRun(t, root, "merge", "-q", "-s", "ours", "--no-edit", x)
+	ev := gitOutT(t, root, "rev-parse", "HEAD")
+	const want = "must be on the default branch's history"
+	if problems := ffDeliveredGate(t, root, ffDeliveredCell(rootC, x, ev)); !containsSub(problems, want) {
+		t.Errorf("gate: a delivering commit off the default branch must be refused; problems=%v", problems)
+	}
+	if base, _, err := failFirstBaseRev(root, "", x, briefPath); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("runner: a delivering commit off the default branch must be refused; base=%s err=%v", base, err)
+	}
+}
+
+// TestFailFirstBaseIsHeadAfterMerge — review F4. After the merge, with no
+// delivering commit, the merge-base is HEAD: the default base and --base HEAD
+// both ran the row on HEAD itself, and the gate accepted a witness whose base
+// is its own head. Before the merge (origin/main behind HEAD) the default base
+// is still accepted.
+// regression: #2721
+func TestFailFirstBaseIsHeadAfterMerge(t *testing.T) {
+	withBase(t, true)
+	root, _, _, deliv, head, _, briefPath := ffDeliveredRepo(t, false)
+	const want = "the base is the head the row ran on"
+	for _, rev := range []string{"", "HEAD", head} {
+		if base, _, err := failFirstBaseRev(root, rev, "", briefPath); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("runner, --base %q after the merge: base=%s err=%v, want %q", rev, base, err, want)
+		}
+	}
+	if problems := ffDeliveredGate(t, root, ffDeliveredCell(head, "", head)); !containsSub(problems, want) {
+		t.Errorf("gate: a base equal to its own head must be refused; problems=%v", problems)
+	}
+	// Positive control: before the merge the merge-base is behind HEAD.
+	gitRun(t, root, "update-ref", remoteMainRef, deliv)
+	if base, _, err := failFirstBaseRev(root, "", "", briefPath); err != nil || base != deliv {
+		t.Errorf("runner, before the merge: base=%s err=%v, want %s", base, err, deliv)
+	}
+	if problems := ffDeliveredGate(t, root, ffDeliveredCell(deliv, "", head)); len(problems) != 0 {
+		t.Errorf("gate, before the merge: problems=%v", problems)
+	}
+}
+
+// TestFailFirstDeliveringNamesEnv — review F5. A variable that selects the
+// native Git profile makes the delivering arm refuse; the refusal names the
+// variable and the remedy.
+// regression: #2721
+func TestFailFirstDeliveringNamesEnv(t *testing.T) {
+	root, _, _, deliv, _, _, briefPath := ffDeliveredRepo(t, false)
+	t.Setenv("GIT_CONFIG_COUNT", "0")
+	_, _, err := failFirstBaseRev(root, "", deliv, briefPath)
+	if err == nil || !strings.Contains(err.Error(), "GIT_CONFIG_COUNT is set") || !strings.Contains(err.Error(), "unset it") {
+		t.Errorf("want a refusal naming GIT_CONFIG_COUNT and the remedy; err=%v", err)
 	}
 }
