@@ -76,6 +76,52 @@ A design approval permits a later implementation brief and review, not automatic
 activation, acceptance-table approval, merge, a consumer proof PASS or lifecycle
 advancement. The driver decides; worker/reviewer comments cannot provide it.
 
+## Proposed decision record and one ruling
+
+Stable proposed ID: `DR-statusgen36-historical-consumer-correction`, applying to
+this correction of `statusgen/36`. The pending record below remains inside this
+draft. It is not installed in `docs/streams/decisions/` and is not an approved
+design. Preserve original approved `DR-statusgen-36` and the original brief's
+`design:`/ruling unchanged. A draft cannot veto that approved work.
+
+```yaml
+id: DR-statusgen36-historical-consumer-correction
+date: "2026-11-15" # proposal date; a landed record transcribes the ruling date
+title: "Prove both original consumers through an authenticated historical correction"
+consequence: critical
+decided-by: "human:<name>" # pending public placeholder, not a ruling
+alternatives:
+  - "Decline retrospective correction and retain the unresolved original consumer obligation; this remains the alternative offered to the driver."
+  - "Reinterpret unchanged fixed-here paths as corroborated; rejected by the proposal because it drops the changed-path contract and both behavioral obligations."
+accepted:
+  - "Keep the false original claim visible; only an exact newly approved Command and independent original-source proofs may supersede its unresolved result."
+  - "Reuse the existing exact protected acceptance approval and its opt-in semantics; no duplicate future human correction-artifact comment."
+  - "Add bounded descriptor/proof validation in the existing consumer owner, with no activation before design ruling, implementation, review and ordinary acceptance approval."
+```
+
+`consequence: critical` is the proposal's classification: a wrong correction
+could accept historical consumer adoption that never occurred. No approver or
+ruling URL is invented. After the single source-bound human ruling, the normal
+record-landing change may transcribe it under this stable ID, with the public
+human placeholder and the actual ruling URL, following
+`spec/registers-v1.md` sections 7.2–7.5 and `spec/lifecycle-v1.md` section 4.4.
+
+For that one comment to corroborate later, the existing issue #5684 must first
+carry the additive body marker below, installed through its authorized issue
+owner without removing the issue's original body or acceptance marker:
+
+```html
+<!-- decision-gate: DR-statusgen36-historical-consumer-correction -->
+```
+
+The worker packet must verify that marker before presenting the one human act.
+The comment must name this DR ID, `statusgen/36` and the exact reviewed spec
+commit/path/digest together. It approves or declines this bounded design only;
+it supplies no implementation activation, consumer proof PASS or future Verify
+approval. No second generic design comment should be requested later merely to
+add a missing DR ID or brief binding. Record landing must not claim the pending
+block above is already approved or replace the original approved design.
+
 ## Proposed bounded input and authority
 
 The future checker must require an explicit immutable correction descriptor
