@@ -37,8 +37,11 @@ def need(condition, message):
 
 
 def bytecode_state():
+    # Every import root the checker loads from: this package (fixtures) and
+    # tools/release (the image-record contract).
     return {path: (path.stat().st_mtime_ns, path.read_bytes())
-            for path in HERE.rglob('*.pyc')}
+            for base in (HERE, ROOT / 'tools/release')
+            for path in base.rglob('*.pyc')}
 
 
 def run(args, data=None, cwd=ROOT):
