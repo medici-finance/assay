@@ -136,7 +136,7 @@
     {
       "name": "version read failure is a could-not-check (reconcilefold.go:187)",
       "file": "reconcilefold.go",
-      "old": "return WitnessInfo{}, false, fmt.Sprintf(\"could-not-check the brief version for run source %s: %v\", p.SHA, verr)",
+      "old": "\t\t// Diagnostic only: briefVersionForPass owns the coordinate read.\n\t\tsourceDescription := p.SHA\n\t\tif p.RecordRun != \"\" {\n\t\t\tsourceDescription = p.RecordRun\n\t\t}\n\t\treturn WitnessInfo{}, false, fmt.Sprintf(\"could-not-check the brief version for run source %s: %v\", sourceDescription, verr)",
       "new": "return WitnessInfo{}, false, \"\""
     },
     {
