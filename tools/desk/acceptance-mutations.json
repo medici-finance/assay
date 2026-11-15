@@ -24,6 +24,12 @@
       "file": "cmd/deskevidence/writeflow.go",
       "old": "&auditCtx{verb: \"commit\", options: options}",
       "new": "&auditCtx{verb: \"commit\"}"
+    },
+    {
+      "name": "verdict gate drops invocation permission",
+      "file": "cmd/deskevidence/verdictgate.go",
+      "old": "exec.Command(\"statusgen\", options.args(args...)...)",
+      "new": "exec.Command(\"statusgen\", childOptions{}.args(args...)...)"
     }
   ]
 }

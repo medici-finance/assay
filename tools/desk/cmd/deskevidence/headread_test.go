@@ -26,7 +26,7 @@ func TestBoardHeadWithoutProcess(t *testing.T) {
 
 // regression: #5023
 func TestHeadReadProfiles(t *testing.T) {
-	for _, profile := range []string{"normal", "nested", "shallow", "replacement", "environment", "blob", "missing"} {
+	for _, profile := range []string{"normal", "nested", "worktree", "shallow", "replacement", "environment", "editor", "author", "blob", "missing"} {
 		t.Run(profile, func(t *testing.T) {
 			root := gitRoot(t, "", "")
 			realGit, err := exec.LookPath("git")
@@ -43,6 +43,13 @@ func TestHeadReadProfiles(t *testing.T) {
 				if err := os.Mkdir(root, 0o700); err != nil {
 					t.Fatal(err)
 				}
+			case "worktree":
+				linked := filepath.Join(t.TempDir(), "linked")
+				cmd := exec.Command(realGit, "-C", root, "worktree", "add", "-q", "-b", "linked", linked)
+				if out, err := cmd.CombinedOutput(); err != nil {
+					t.Fatalf("worktree fixture: %v %s", err, out)
+				}
+				root = linked
 			case "shallow":
 				native = true
 				if err := os.WriteFile(filepath.Join(root, ".git", "shallow"), nil, 0o600); err != nil {
@@ -57,6 +64,12 @@ func TestHeadReadProfiles(t *testing.T) {
 			case "environment":
 				native = true
 				t.Setenv("GIT_CONFIG_COUNT", "0")
+			case "editor":
+				// A variable that cannot change which commit HEAD names stays on
+				// the library path (an agent harness commonly exports this one).
+				t.Setenv("GIT_EDITOR", "true")
+			case "author":
+				t.Setenv("GIT_AUTHOR_NAME", "fixture")
 			case "blob":
 				native = true
 				cmd := exec.Command(realGit, "-C", root, "hash-object", "-w", "--stdin")

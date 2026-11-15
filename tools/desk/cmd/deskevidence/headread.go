@@ -15,12 +15,9 @@ import (
 // capability probes select the original native operation before any object read;
 // an unreadable repository or object is never retried through a second reader.
 func landingHead(root string) (string, error) {
-	for _, entry := range os.Environ() {
-		key, _, _ := strings.Cut(entry, "=")
-		// rev-parse neither invokes a pager nor initializes a repository, so
-		// these settings cannot change this read's discovery/object/output.
-		presentationOnly := strings.EqualFold(key, "GIT_PAGER") || strings.EqualFold(key, "GIT_TEMPLATE_DIR")
-		if strings.HasPrefix(strings.ToUpper(key), "GIT_") && !presentationOnly {
+	for _, key := range headReadEnv {
+		// Presence, even an empty value, is native Git's own selection.
+		if _, present := os.LookupEnv(key); present {
 			return nativeLandingHead(root)
 		}
 	}
@@ -88,6 +85,36 @@ func landingHead(root string) (string, error) {
 		return "", err
 	}
 	return head, nil
+}
+
+// headReadEnv names the Git environment variables native `rev-parse HEAD`
+// honors and the library reader does not: repository and object location,
+// discovery bounds, injected or relocated configuration, and history rewriting.
+// Any one present selects the native read. Everything else, such as GIT_EDITOR,
+// GIT_AUTHOR_NAME, GIT_PAGER or GIT_TRACE, cannot change which commit this read
+// returns, so it stays on the library path. The same explicit-list approach is
+// statusgen's (gitCoreFor, historyRepoEnv).
+var headReadEnv = []string{
+	"GIT_DIR",
+	"GIT_WORK_TREE",
+	"GIT_COMMON_DIR",
+	"GIT_INDEX_FILE",
+	"GIT_OBJECT_DIRECTORY",
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+	"GIT_QUARANTINE_PATH",
+	"GIT_NAMESPACE",
+	"GIT_CEILING_DIRECTORIES",
+	"GIT_DISCOVERY_ACROSS_FILESYSTEM",
+	"GIT_CONFIG",
+	"GIT_CONFIG_COUNT",
+	"GIT_CONFIG_PARAMETERS",
+	"GIT_CONFIG_GLOBAL",
+	"GIT_CONFIG_SYSTEM",
+	"GIT_CONFIG_NOSYSTEM",
+	"GIT_SHALLOW_FILE",
+	"GIT_GRAFT_FILE",
+	"GIT_REPLACE_REF_BASE",
+	"GIT_NO_REPLACE_OBJECTS",
 }
 
 func nativeLandingHead(root string) (string, error) {

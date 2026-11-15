@@ -34,8 +34,26 @@
     {
       "name": "ignore repository-affecting environment",
       "file": "cmd/deskevidence/headread.go",
-      "old": "if strings.HasPrefix(strings.ToUpper(key), \"GIT_\") && !presentationOnly {",
-      "new": "if false && strings.HasPrefix(strings.ToUpper(key), \"GIT_\") && !presentationOnly {"
+      "old": "for _, key := range headReadEnv {",
+      "new": "for _, key := range headReadEnv[:0] {"
+    },
+    {
+      "name": "drop injected configuration from the native list",
+      "file": "cmd/deskevidence/headread.go",
+      "old": "\t\"GIT_CONFIG_COUNT\",\n",
+      "new": ""
+    },
+    {
+      "name": "route an unrelated editor variable to native Git",
+      "file": "cmd/deskevidence/headread.go",
+      "old": "\t\"GIT_DIR\",\n",
+      "new": "\t\"GIT_DIR\",\n\t\"GIT_EDITOR\",\n"
+    },
+    {
+      "name": "route an unrelated identity variable to native Git",
+      "file": "cmd/deskevidence/headread.go",
+      "old": "\t\"GIT_DIR\",\n",
+      "new": "\t\"GIT_DIR\",\n\t\"GIT_AUTHOR_NAME\",\n"
     },
     {
       "name": "skip native noncommit object profile",
