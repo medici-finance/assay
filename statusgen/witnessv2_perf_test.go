@@ -83,11 +83,11 @@ func TestWitnessPerfMedian(t *testing.T) {
 	// v2 output, so an empty/held fast path cannot contribute an accepted sample.
 	run := func(bin, tree string) (time.Duration, string) {
 		t.Helper()
-		deadline := time.Now().Add(2 * time.Minute)
-		if end, ok := t.Deadline(); ok && end.Add(-time.Second).Before(deadline) {
-			deadline = end.Add(-time.Second)
+		deadline, ok := t.Deadline()
+		if !ok {
+			t.Fatal("performance measurement requires a bounded test timeout")
 		}
-		ctx, cancel := context.WithDeadline(context.Background(), deadline)
+		ctx, cancel := context.WithDeadline(context.Background(), deadline.Add(-time.Second))
 		defer cancel()
 		cmd := exec.CommandContext(ctx, bin, "--root", tree, "--coverage")
 		start := time.Now()
