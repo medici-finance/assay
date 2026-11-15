@@ -3396,9 +3396,10 @@ writeguard's shared-checkout claim. A desk window, a dispatched worker, or a scr
 runs **must never export it**.
 
 It is declared in `deskkit` (`EnvAllowCluster`) for one reason: it sits in the `ASSAY_` namespace,
-and an unrecognised `ASSAY_` key in `roster.env` refuses the WHOLE configuration. An operator who
+and an unrecognised `ASSAY_` key in `roster.env` draws an `assay-config: NOTICE` line (the desk tools no
+longer refuse the whole configuration over one; `statusgen` still does). An operator who
 recorded the opt-in in the shared roster file — a natural mistake, since every other `ASSAY_` knob
-lives there — would otherwise take every desk tool's trust roster down at once. **Recognised is
+lives there — would otherwise get that NOTICE on every run. **Recognised is
 not applied:** putting it in `roster.env` still does not grant the opt-in.
 
 ### The kill switch: this guard does not participate, and why
