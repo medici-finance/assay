@@ -94,27 +94,46 @@ The descriptor must bind, without wildcards or version ranges:
 - both caller paths/blobs and the changed adapter/library blobs above;
 - immutable correction commit/path/blob, exact design-spec revision, immutable
   external harness and fixture digests, and both independent proof results;
-- a marked issue in the same repository, an exact human approval-comment URL,
-  and an exact independent verifier attestation-comment URL.
+- the brief's existing marked acceptance issue and an exact independent verifier
+  attestation-comment URL. Human instance authority comes from the existing
+  protected transition, as specified below; the descriptor contains no second
+  human approval field.
 
-Approval and verifier payloads must each bind the complete canonical descriptor
-digest. The final wire grammar and canonical bytes must be specified and reviewed
+The verifier payload must bind the complete canonical descriptor digest. The
+human instance approval binds it through the exact approved row-23 Command: that
+Command must be one direct invocation in a documented canonical argument grammar,
+with the full correction commit, path and SHA-256 as literal arguments. No shell
+substitutions, comments, alternate invocations or prose-only mention can supply
+that binding. The checker must compare its requested tuple to that exact approved
+argument vector, rather than grep arbitrary shell text. The final wire grammar and canonical bytes must be specified and reviewed
 in the implementation brief before code, following existing strict canonical
 record handling. Reject duplicate keys, missing fields, extraneous scope and
 ambiguous combined sites. Do not add a loose prose approval or a generic path
 exception. The correction descriptor is new authority-bearing input and must
 receive independent security review.
 
-Authority corroboration must fetch the exact issue/comments through the native
-forge owner each run. Require same repository/marked issue; exact unedited
-payload; mapped-human approver; a separately mapped trusted verifier App; and
-retained immutable source objects. Worker authorship, reviewer prose, edited or
-missing comments, a foreign issue, an unreadable mapping, an unmerged or changed
-proof subject, or a digest mismatch cannot clear the original failure. No cached
-positive authority may cross runs, identities, sources or repositories. The human
-approval names the eventual exact correction artifact, never an unknown future
-SHA; it is distinct from today's design ruling and the protected Verify link-2
-approval. Existing approvals gain no broader meaning.
+Authority corroboration reuses the existing protected acceptance planner and
+its ordered transition chain. It must freshly authenticate the exact mapped-human
+approval for the amendment whose row-23 Command first names this descriptor and
+digest. The original producer/base/declaration and all previous links remain
+bound. The pending version-3 amendment can use link 2 if it includes the final
+immutable descriptor; if version 3 lands without that input, a later Command
+amendment needs the ordinary next link. No old approval can authorize an input
+it never named. The descriptor must not hash a future approval URL or its own
+amendment commit: its instance authority is resolved from that existing chain,
+avoiding a circular immutable-coordinate dependency.
+
+The same native forge seam must fetch the exact marked issue and comments each
+run, require unedited matching payloads and mapped-human authority under the
+existing chain rules, and authenticate the separate trusted verifier App's
+attestation for the descriptor digest. A worker cannot attest its own proof.
+An edited/missing comment, foreign issue, unreadable mapping, unmerged or changed
+proof subject, missing source object or digest mismatch cannot clear the original
+failure. No cached positive authority may cross runs, identities, sources or
+repositories. There is no separate correction-artifact human comment: the one
+new exact protected Command approval supplies instance authority after design
+approval, implementation, review and human merge. Today's design ruling grants
+none of that future acceptance credit.
 
 ## Both behavioral obligations
 
@@ -177,10 +196,11 @@ This draft is reviewable design intent only. After a mapped-human design ruling,
 a later brief must define and review the canonical descriptor/payload grammar,
 implement it in the existing consumer owner, add the actual original-source
 proof harness, run all positive and negative controls, and obtain independent
-correctness/security review. The exact correction artifact and fresh verifier
-proof then need the separately bound human approval above. Finally verify-desk
-must derive any required Command amendment from a real successful report and
-follow the protected acceptance chain for its exact landed subject. The current
+correctness/security review. The exact correction artifact and independent verifier proof must be present
+before verify-desk derives the corrected Command and the driver approves its
+exact landed subject through the existing protected acceptance chain. A dry-run
+may explain whether all non-approval conditions are satisfied, but cannot clear
+the original disproved result or manufacture acceptance before that approval. The current
 row 23 remains red throughout preparation. No spec status is advanced here.
 
 There are no measured complexity/churn metrics for this proposed authority path;
