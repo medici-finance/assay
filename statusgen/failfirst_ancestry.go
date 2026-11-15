@@ -130,13 +130,24 @@ var commitIsMergeBase = func(root, base, of string) (bool, string) {
 // commit of another branch or a sibling tree cannot be named, and it must have
 // a parent: the repository's root commit delivers no change a base could be
 // without. It returns the full delivering id, its first parent and "", or why
-// it is refused. A package var so tests can stand in for git.
+// it is refused. HEAD and the parent are read through the library only; a
+// repository profile the library does not qualify is refused, never read
+// natively, so this check adds no native Git launch (git-launches.json). A
+// package var so tests can stand in for git.
 var deliveringParent = func(root, delivering string) (full, parent, why string) {
 	full, why = witnessCommit(root, delivering)
 	if why != "" {
 		return "", "", why
 	}
-	head, err := gitOut(root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+	read := ordinaryCommitRead(root, full)
+	if read.err != nil {
+		return "", "", "it cannot be read through the library read path"
+	}
+	if read.native != "" {
+		return "", "", "it cannot be read through the library read path (" + read.native + ")"
+	}
+	headHash, err := read.repo.Resolve("HEAD")
+	head := headHash.String()
 	if err != nil || !isObjectID(head) {
 		return "", "", "HEAD could not be resolved"
 	}
@@ -147,11 +158,14 @@ var deliveringParent = func(root, delivering string) (full, parent, why string) 
 	if !ok {
 		return "", "", "it is not HEAD or an ancestor of HEAD (a commit of another branch, or a sibling tree)"
 	}
-	parent, err = gitOut(root, "rev-parse", "--verify", "--quiet", full+"^1^{commit}")
-	if err != nil || !isObjectID(parent) {
+	parents, err := read.repo.ParentHashes(full)
+	if err != nil {
+		return "", "", "its parents could not be read"
+	}
+	if len(parents) == 0 || !isObjectID(parents[0]) {
 		return "", "", "it has no parent (the repository's root commit), so no base is the tree without it"
 	}
-	return full, parent, ""
+	return full, parents[0], ""
 }
 
 // failFirstMergeBase is the merge-base of HEAD and the default branch as an
