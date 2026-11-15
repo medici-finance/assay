@@ -1938,7 +1938,8 @@ The clone itself goes through an injected transport, which is the role's existin
 credential path. cellctl picks no new credential and stores none: an origin URL that carries a
 credential is refused. So is a store whose only remote is not `origin`, whose origin is not the
 requested repository on its forge (a local path, a file URL and another owner or host are all
-refused), or whose branches track anything but `origin`. Before the mapping is written, every
+refused), whose branches track anything but `origin`, or whose Git directory carries an older
+remote-definition file it did not make. Before the mapping is written, every
 store the call made is read again.
 
 Proposed configuration, for the activation decision only. None of these keys is read today:

@@ -374,6 +374,17 @@ func TestCellRepositoryIsolation(t *testing.T) {
 			}
 			return os.WriteFile(filepath.Join(dir, "legacy"), []byte("URL: "+host+"\n"), 0o644)
 		}, workspace.ReasonForeignState, "store.config"},
+		// regression: F-store-remote-destinations-unbound (the other legacy directory)
+		{"a branch definition file naming the host checkout", func(ctx context.Context, r workspace.RepoRef, d string) error {
+			if err := (cloneFrom{repo: src}).Clone(ctx, r, d); err != nil {
+				return err
+			}
+			dir := filepath.Join(d, ".git", "branches")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(dir, "legacy"), []byte(host+"\n"), 0o644)
+		}, workspace.ReasonForeignState, "store.config"},
 		{"commondir pointer into the host's common directory", func(ctx context.Context, r workspace.RepoRef, d string) error {
 			if err := (cloneFrom{repo: src}).Clone(ctx, r, d); err != nil {
 				return err

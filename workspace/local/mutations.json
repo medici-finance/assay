@@ -132,6 +132,12 @@
       "file": "local/repository.go",
       "old": "\tpath = strings.TrimSuffix(strings.Trim(path, \"/\"), \".git\")\n",
       "new": "\tpath = strings.Trim(path, \"/\")\n\tif strings.Contains(raw, \"://\") {\n\t\tpath = strings.TrimSuffix(path, \".git\")\n\t}\n"
+    },
+    {
+      "name": "the branches/ directory is dropped from the legacy remote-definition check, so a branch definition file naming another repository is accepted",
+      "file": "local/repository.go",
+      "old": "[]string{\"branches\", \"remotes\"}",
+      "new": "[]string{\"remotes\"}"
     }
   ]
 }
