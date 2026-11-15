@@ -55,9 +55,17 @@ USAGE:
   deskevidence --version
 
 --acceptance-forge explicitly permits fresh read-only corroboration of protected
-acceptance transitions by every child statusgen audit, lint and flip. It supplies no
+acceptance transitions and recorded human rulings by child statusgen audits. It supplies no
 approval verdict. Without it amended acceptance remains held; ordinary records
 retain their existing behavior. Each approval target is printed before contact.
+The closure lint covers the whole landed tree, including other briefs' transitions.
+Unknown repository authority and unavailable or refuted approvals still refuse;
+this flag neither isolates Git configuration nor falls back to a human login.
+Opted-in audits receive only this invocation's minted GitHub verifier credential. Without
+opt-in, audits receive a noncredential refusal marker, closing stored-login fallback;
+a decision gate requiring a recorded human ruling remains held because it cannot authenticate.
+Local flip corroboration requires an existing
+verifier session and a proven, authorized repository origin; it never changes roles.
 
 Commits the content of the local file at --evidence-file (a repo-relative path)
 to the same path on <branch> through a conditional forge write, using the verifier
@@ -128,9 +136,12 @@ func main() {
 	}))
 }
 
-// childOptions carries only this invocation's explicit read-only permission.
+// childOptions carries this invocation's explicit permission and admitted role custody.
 // It is a value, never package state shared by concurrent calls.
-type childOptions struct{ acceptanceForge bool }
+type childOptions struct {
+	acceptanceForge bool
+	credential      deskkit.RoleCredential
+}
 
 func (o childOptions) args(args ...string) []string {
 	result := append([]string(nil), args...)

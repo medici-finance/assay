@@ -24,7 +24,7 @@ func TestDeskCapsPreflight(t *testing.T) {
 			f := setupStamp(t, true)
 			mintCalls := 0
 			oldMint := mintTokenFn
-			mintTokenFn = func(repo string) error { mintCalls++; return oldMint(repo) }
+			mintTokenFn = func(repo string) (deskkit.RoleCredential, error) { mintCalls++; return oldMint(repo) }
 			root := rootWithFile(t, stampBrief, tc.content)
 			before := len(auditEntries(t))
 			if code := run([]string{stampPublicRepo, "main", "--evidence-file", stampBrief, "--root", root}); code != tc.want {

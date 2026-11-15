@@ -28,7 +28,11 @@ func TestOutcomeRecordOutsideRoot(t *testing.T) {
 		t.Helper()
 		f, errBuf := setupFake(t)
 		p := &probe{}
-		mintTokenFn = func(string) error { p.mints++; ghToken = fakeVerifierToken; return nil }
+		mintTokenFn = func(string) (deskkit.RoleCredential, error) {
+			p.mints++
+			ghToken = fakeVerifierToken
+			return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
+		}
 		oldForge := forgeForFn
 		forgeForFn = func(owner, name string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 			p.forges++

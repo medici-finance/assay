@@ -130,9 +130,11 @@ func admitVerifierEvidence(root, repo, target string, fg deskkit.Forge, ac *audi
 // the landing takes as input to its write: the local evidence file, the branch content, the
 // merge and the gates over them all follow admission.
 func admitLanding(root, repoSlug, owner, name, target, branch string, ac *auditCtx) (deskkit.Forge, deskkit.ForgeRepo, deskkit.VerifierReceipt, error) {
-	if merr := mintTokenFn(repoSlug); merr != nil {
+	credential, merr := mintTokenFn(repoSlug)
+	if merr != nil {
 		return nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr
 	}
+	ac.options.credential = credential
 	fg, fr, ferr := forgeForFn(owner, name)
 	if ferr != nil {
 		return nil, fr, deskkit.VerifierReceipt{}, ferr
@@ -737,7 +739,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		}
 		boardEdits = edits
 	}
-	gateRefused, gerr := decisionGateDiffFn(landedRoot, targetRepoPath, remoteContent, remoteExists, commitContent, boardEdits)
+	gateRefused, gerr := decisionGateDiffFn(landedRoot, targetRepoPath, remoteContent, remoteExists, commitContent, boardEdits, ac.options)
 	if gerr != nil {
 		return gerr
 	}
