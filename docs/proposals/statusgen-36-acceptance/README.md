@@ -1,4 +1,11 @@
-# Proposed statusgen/36 acceptance correction (held)
+# Historical statusgen/36 acceptance proposal
+
+This is the retained 2026-11-09 proposal. Its claim that successor-chain support
+is unavailable is superseded by statusgen/40's source implementation; source
+publication does not confer independent verification. The [current correction
+and remaining consumer hold](correction.md) describes the version-3 draft,
+its immutable performance harness and the exact later approval sequence.
+The proposals below supply no acceptance authority.
 
 Issue #5684. This is a held proposal for a later version 3 of the statusgen/36
 brief: Command-only corrections to Verify rows 12 and 23. It does not edit the
