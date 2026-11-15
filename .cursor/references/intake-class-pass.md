@@ -15,8 +15,10 @@ shipped (`spec/intake-handoff-v1.md`). It adds no verb, flag, label or record fi
 
 Run it before judging the owed batch item by item, on a **strong-tier session**.
 
-A session below strong tier does not group. It records only direct repairs, duplicates of
-existing work it can cite, and external waits, and leaves every other item owed. Authoring a
+A session below strong tier does not group. An economy-tier session does mechanical work
+only, as the intake skill's tier rule says. A judging session that is below strong tier
+records only direct repairs, duplicates of existing work it can cite, and external waits,
+and leaves every other item owed. Authoring a
 class brief is strong-tier work (`author-brief` rule 9(d)), and the writer refuses a
 `needs-scoping` judgment from a session below strong tier.
 
@@ -42,25 +44,53 @@ For each group, look for work that already owns the mechanism, in this order:
    [`implementation-pickup.md`](implementation-pickup.md) describes
    (`statusgen context`); otherwise its manual bootstrap.
 
-A match means **each member is recorded `duplicate` to that owner**, with the owner's brief
-or issue reference as the successor. The owner's author is then asked, on the owner's own
-tracker item, to add the member numbers to its `issues:`. Intake does not edit another
-brief. The group is finished; steps 2 to 4 do not run for it.
+What the match is decides what happens next:
+
+- **A brief, a stream or an approved spec owns the mechanism.** Each member is recorded
+  `duplicate` to that owner, with the owner's brief or issue reference as the successor. The
+  owner's author is then asked, on the owner's own tracker item, to add the member numbers to
+  its `issues:`. Intake does not edit another brief. The group is finished; steps 2 to 4 do
+  not run for it. A production-down or security member is the exception: it is not recorded
+  `duplicate`, because a `duplicate` is never scheduled as a repair and the class decision
+  keeps such a symptom `todo`. Release it as its own direct repair (step 4) and still ask the
+  owner's author to add it.
+- **An open `error-class` issue owns the mechanism.** The group is not finished. Attach one
+  instance block per member with `deskfile attach`, as the class decision defines the block,
+  then go to step 2 and count the class again with the new blocks included. Recording a
+  member `duplicate` to a class issue instead would leave the class count where it was.
 
 ## Step 2: apply the trigger
 
-With no owner, count the group exactly as the class decision counts it. Only
-`confirmed-defect` and `false-positive` instances count, one per `incident-group`. The
-class is `design-owed` at 3 counted instances, at the class's second merged fix, or at the
+With no owner, or with an open class issue as the owner, count exactly as the class decision
+counts it. For a class issue, the count is its existing counted instances plus this group's
+new blocks. Only `confirmed-defect` and `false-positive` instances count, one per
+`incident-group`. The class is `design-owed` at 3 counted instances, at the class's second merged fix, or at the
 first instance in a module carrying a `brittle` mark. Nothing here lowers or amends that
-trigger.
+trigger. A group below it goes to step 4; a group at it goes to step 3.
 
 **A backlog group that meets the threshold is `design-owed` on this pass.** The backlog
 already holds the instances; there is no later arrival to wait for.
 
 ## Step 3: author the class brief
 
-When the trigger is met, author one class brief with `author-brief`, in the **same
+When the trigger is met, the class decision's handling at the trigger applies unchanged.
+Three parts of it change what this step does:
+
+- **A risk-bearing surface waits for the driver.** A class on a `worker-desk` rule-4
+  risk-bearing surface (public-repo copy, security, production deploy, irreversible actions)
+  stays parked under `needs-decision` until the driver rules. No class brief is authored on
+  this pass. Its members stay parked on the class issue as the class decision says, and each
+  is recorded `external-prerequisite` with the driver as the external role, the ruling as
+  the action and the ruling's arrival as the wake condition. Authoring waits for the ruling.
+- **A `brittle` first is an investigation.** When the trigger is met by the first instance in
+  a module carrying a `brittle` mark, the deliverable is the investigation per
+  build-less-brittle/09, not a design brief. Author that in place of the class brief; its
+  members are recorded as for a class brief, below.
+- **Production-down and security members are not folded into the brief.** Each is released
+  as its own direct repair (step 4) and stays dispatchable. The brief lists it in `issues:`
+  for completeness; it is not recorded `duplicate`, and it is not parked.
+
+Otherwise author one class brief with `author-brief`, in the **same
 reviewed change** as the members' judgments. The brief states:
 
 - the mechanism, in one line;
@@ -72,15 +102,21 @@ reviewed change** as the members' judgments. The brief states:
 - a class-guard Verify row that fails on a planted second instance.
 
 These are the existing `author-brief` rules (9(d), 14) and `design-fit`. The class brief is
-a draft pull request like any brief. Record each member as `duplicate` to the brief. The
-writer checks that the successor brief exists in the working tree, so the brief is
+a draft pull request like any brief. When no class issue exists yet, open it in the same
+change as the class decision defines it (title `class: <mechanism>`, label `error-class`),
+with one instance block per member, so later arrivals of the mechanism match on it and the
+brief reuses the class record. Label the class issue `design-owed` and unpark it as the class
+decision defines. Record each member that is not a production-down or security symptom as
+`duplicate` to the brief. The writer checks that the successor brief exists in the working tree, so the brief is
 committed before the companions are recorded.
 
 ## Step 4: release the rest
 
 A group below the trigger is not a class brief. Open or update the class issue with one
-instance block per member, as the class decision defines the block, and record each member
-as its own direct `repair`: route `repair`, successor the issue itself.
+instance block per member, as the class decision defines the block (an existing class issue
+already received its blocks in step 1), and record each member as its own direct `repair`:
+route `repair`, successor the issue itself. A production-down or security member from step 1
+or step 3 is released the same way.
 
 ## What grouping never does
 
@@ -99,8 +135,8 @@ as the intake skill's "Accountable handoff" passage describes.
 
 ## Examples
 
-One worked batch from a placeholder repository, `example-org/example`, covering all four
-outcomes. Every value is a placeholder. A test (`TestClassPassExamples`) reads each
+One worked batch from a placeholder repository, `example-org/example`, covering every
+outcome. Every value is a placeholder. A test (`TestClassPassExamples`) reads each
 `outcome:` line, each `expect: <state> <route>` line (a trailing ` direct` marks a direct
 repair) and the record after it, decodes the record, assesses it as the shipped code does,
 and fails when the result differs. `expect: none` means the item has no record.
@@ -242,6 +278,52 @@ expect: observed repair direct
   "route": "repair",
   "successor": "example-org/example#122",
   "evidence": "example-org/example#122"
+}
+```
+
+### Group E: a class issue on a risk-bearing surface
+
+An open, parked class issue already counts one instance. Issues 141 and 142 report the same
+mechanism on a risk-bearing surface. Step 1 matches the class issue and attaches one block
+per member, so the count reaches 3 and the trigger is met. Because the surface is
+risk-bearing, the class issue stays parked under `needs-decision` and no class brief is
+authored on this pass. Each member waits on the driver's ruling.
+
+outcome: parked
+
+expect: external-wait external
+
+```json
+{
+  "schema": "intake-handoff-v1",
+  "item": "example-org/example#141",
+  "opened": "2026-01-08T08:00:00Z",
+  "revision": 1,
+  "deciding_role": "intake-desk",
+  "disposition": "external-prerequisite",
+  "route": "external",
+  "external_role": "human",
+  "required_action": "Rule on the parked class issue: proceed to a design brief or decline.",
+  "wake_condition": "The driver's ruling is recorded on the class issue.",
+  "evidence": "example-org/example#141"
+}
+```
+
+expect: external-wait external
+
+```json
+{
+  "schema": "intake-handoff-v1",
+  "item": "example-org/example#142",
+  "opened": "2026-01-08T08:30:00Z",
+  "revision": 1,
+  "deciding_role": "intake-desk",
+  "disposition": "external-prerequisite",
+  "route": "external",
+  "external_role": "human",
+  "required_action": "Rule on the parked class issue: proceed to a design brief or decline.",
+  "wake_condition": "The driver's ruling is recorded on the class issue.",
+  "evidence": "example-org/example#142"
 }
 ```
 
