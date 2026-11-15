@@ -20,6 +20,7 @@ package deskkit
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -34,6 +35,22 @@ import (
 // too; either way the check validates the reason and writes the audit row itself, and a
 // withheld-identifier or ruling-claim finding stays refused.
 const EnvPushGuardScanOverride = "DESKPUSHGUARD_SCAN_OVERRIDE"
+
+// SetPushGuardOutboundContext is the ONE read of EnvPushGuardScanOverride. It validates a
+// supplied reason, refusing in the variable's own spelling, then records the process's
+// OutboundContext with OverrideByEnv, so every refusal the hook prints names the form a push
+// takes the override in — never the flag `git push` does not accept (#6059). A malformed
+// reason returns its refusal and records no context.
+func SetPushGuardOutboundContext(tool, verb string) (reason string, err error) {
+	reason = strings.TrimSpace(os.Getenv(EnvPushGuardScanOverride))
+	if reason != "" {
+		if err := validateScanOverrideAs(OverrideByEnv, reason); err != nil {
+			return reason, err
+		}
+	}
+	SetOutboundContext(OutboundContext{Tool: tool, Verb: verb, OverrideReason: reason, OverrideForm: OverrideByEnv})
+	return reason, nil
+}
 
 // OutboundPush names one push to check.
 type OutboundPush struct {

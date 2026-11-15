@@ -22,8 +22,42 @@ Specs and briefs identify the selected target/transition, semantic contracts and
 applicable project engineering guidelines by canonical pointer. Include their
 pickup/resume assessment in the implementation handoff; record revisions, coverage
 and continue/adapt/hold rather than assume the authoring snapshot is still current.
-Use the explicit manual bootstrap until the shared operation is shipped and supported.
+Use the shipped context operation where the installed version supports it (see the
+supported version below); otherwise use the explicit manual bootstrap.
 Do not rewrite completed Evidence or let a draft proposal veto approved work.
+
+## Hand changed planned work over as a context receipt
+
+When a spec changes planned work (a contract, owner, transition or approved target that
+existing briefs consume), hand it to `author-brief` as a record, not prose alone:
+
+1. Write the target record (declaring brief, target state and revision, approval and
+   contract changes) into the context snapshot the project assembles, then run
+   `statusgen context discover --snapshot DIR --json > receipt.json`.
+2. The receipt is a `context-handoff-v1` record (`context-handoff-v2` when an impact is
+   withdrawn, `context-handoff-v3` when the snapshot carries product targets). Record each
+   actionable impact's disposition and each amendment obligation in it. An impact left
+   `unresolved` is an open question for the brief author, never a silent pass.
+3. Keep product and architecture bindings separate. A brief's `outcome` and
+   `outcome-revision` bind it to a product target revision, and the receipt keeps the
+   revision the work was first selected against when a brief rebinds. Never drop or rewrite
+   that revision to make an assessment read aligned. A receipt without a product section
+   covers architecture only and says product alignment is unchecked.
+4. Exit 3 is a hold: coverage is partial. Name the could-not-check sources in the handoff;
+   never report the receipt complete.
+
+**Supported version.** `statusgen context discover`, `statusgen context recheck` and
+`statusgen context check`, with the `context-handoff-v1` and `context-handoff-v2` receipts and
+the `amendment-manifest-v1` file, ship in Assay v1.0.55 and later. The product-binding
+extension, `context-handoff-v3`, ships in v1.0.63 and later. `statusgen context --help`
+lists the verbs an install has.
+
+**Manual bootstrap.** When the installed statusgen lacks the verb, or lacks the
+product-binding extension while briefs bind `outcome-revision`, follow the
+[implementation pickup procedure](../../references/implementation-pickup.md) by hand: record
+the impacted briefs, their revisions, coverage and each amendment obligation in the handoff,
+and say that it is a manual bootstrap. Never invent a receipt or a schema version the
+install does not ship.
 
 ## Start from the controlling source
 
@@ -113,7 +147,10 @@ where relevant, not required headings or a section-count gate.
 - **Proof and decisions.** Map conditions to independently verifiable acceptance examples, including a relevant
   failure or boundary case, and the evidence that could falsify the design. State what can
   be checked now versus after implementation. Separate facts from hypotheses; do not claim
-  a metric or retrospective comparison proves causation. Name remaining decisions and
+  a metric or retrospective comparison proves causation. For each check that needs a
+  database or another service, name the NON-PRODUCTION instance it runs against and what
+  reaching it requires (network, a credential); briefs carry that name into the Verify
+  table's `Env` column as `service:<name>`, and such a check is never hermetic CI. Name remaining decisions and
   their authorized owner, with options and a recommendation. Continue independent work
   while a decision is pending; do not silently choose on that owner's behalf.
 

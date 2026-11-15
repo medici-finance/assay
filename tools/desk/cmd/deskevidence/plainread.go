@@ -15,9 +15,10 @@ import (
 // a file over its size limit with an empty body, which reads as an empty file).
 //
 // untypedOK admits a read the forge did not type (Kind ""). Only the outcome-record
-// lane passes it: the GitLab backend types no file read, and on GitLab that lane lands
-// today, while the main landing there already stops as could-not-check at the branch
-// board. The GitHub backend types every read whose response names a type and a path.
+// lane passes it. Both backends type every read whose response identifies the entry:
+// GitHub from a response naming a type and a path, GitLab from a response naming the
+// path and its blob id (#6163). A read neither can type still refuses here unless the
+// caller passes untypedOK.
 func plainFileRead(fc *deskkit.FileContent, fr deskkit.ForgeRepo, file, ref, use string, untypedOK bool) error {
 	if fc == nil {
 		return deskkit.Unverifiable(fmt.Sprintf("the forge returned no content for %s at %s on %s, so %s cannot be judged", file, ref, fr.Slug(), use), nil)

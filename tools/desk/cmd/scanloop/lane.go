@@ -57,9 +57,12 @@ type LaneRequest struct {
 	Base     string // the ref the worktree is cut from (a fetched REMOTE head, never a local branch)
 	DiffBase string // the ref the derived counts are diffed against
 	Open     *OpenScanPR
-	Policy   CoalescePolicy
-	Now      time.Time
-	DryRun   bool
+	// Carried maps each scan-directory path another open scan carrier already carries to that
+	// carrier's number. The lane puts those paths back before committing (carriers.go).
+	Carried map[string]int
+	Policy  CoalescePolicy
+	Now     time.Time
+	DryRun  bool
 }
 
 // LaneOutcome is what a lane hands back to Land.
@@ -68,6 +71,9 @@ type LaneOutcome struct {
 	Exit     Exit
 	Artifact string
 	Decision CoalesceDecision
+	// Worktree is the scan worktree the lane actually ran in: the request's, or — on a coalesce —
+	// a retained scan worktree it reused (retainedCarrierWorktree). Cleanup keys on this one.
+	Worktree string
 	// Steps is the exact command sequence the lane ran, or — under --dry-run — would run. It is
 	// the audit surface: a lane that reports an outcome without the steps that produced it is a
 	// claim, not evidence.
@@ -78,6 +84,9 @@ type LaneOutcome struct {
 	// an item that did leave. They are never swallowed either: each is a "# WARNING:" step in the
 	// dispatch block and a line of its own in the pass report.
 	Warnings []string
+	// metaDir is the private directory the lane created for the derived title and body files, or
+	// "" when it created none. Execute removes it whatever happened.
+	metaDir string
 }
 
 // warn records a post-write failure on both surfaces — the step sequence and the warnings list.
@@ -177,16 +186,13 @@ func (l scanCarrierPRLane) Name() LaneName { return LaneScanCarrierPR }
 // a failed carry must not leave them behind either.
 func (l scanCarrierPRLane) Execute(req LaneRequest) (LaneOutcome, error) {
 	out, err := l.carry(req)
-	// The cleanup is keyed to the worktree path, so it runs only for a path the isolation guard
-	// accepts: an empty or relative one would resolve against whatever directory this runs in.
-	if !req.DryRun && assertIsolatedScanRoot(req.Root, req.Worktree) == nil {
-		titleFile, bodyFile := scanMetaFiles(req.Worktree)
-		for _, p := range []string{titleFile, bodyFile} {
-			if rmErr := os.Remove(p); rmErr != nil && !os.IsNotExist(rmErr) {
-				// A leftover metadata file sits BESIDE the worktree and blocks nothing, so it is
-				// reported, never allowed to turn a landed carry into a dispatch error.
-				out.warn("could not remove the scan metadata file " + p + ": " + rmErr.Error())
-			}
+	// The cleanup is keyed to the private directory the carry itself created, never to a path
+	// derived from the worktree name: it removes only what this pass made.
+	if out.metaDir != "" {
+		if rmErr := os.RemoveAll(out.metaDir); rmErr != nil {
+			// A leftover private metadata directory blocks nothing, so it is reported, never
+			// allowed to turn a landed carry into a dispatch error.
+			out.warn("could not remove the scan metadata directory " + out.metaDir + ": " + rmErr.Error())
 		}
 	}
 	return out, err
@@ -198,6 +204,7 @@ func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 	if err := assertIsolatedScanRoot(req.Root, req.Worktree); err != nil {
 		return out, err
 	}
+	out.Worktree = req.Worktree
 	repo := strings.TrimSpace(req.Item.Payload["repo"])
 	if repo == "" {
 		return out, deskkit.Refused("scan-carrier lane: the item carries no target repo")
@@ -255,7 +262,27 @@ func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 		cutFrom = "origin/" + req.Open.Branch
 		branchFlag = "-B"
 	}
-	if err := step(req.Root, "git", "worktree", "add", req.Worktree, branchFlag, req.Branch, cutFrom); err != nil {
+	// A coalesce re-cuts the OPEN carrier branch, and an earlier pass that failed after its commit
+	// may have retained its scan worktree with that branch still checked out; `worktree add` would
+	// then die on "already used by worktree" on every pass in the window. A retained scan worktree
+	// that is clean and sits exactly at the remote carrier tip is the state `-B` would have
+	// produced, so the pass carries on IN it. Anything else refuses and is left untouched. A reused
+	// worktree is removed at the end of the pass like a fresh one, and `git worktree remove` takes
+	// its gitignored files with it (the clean check sees untracked files, not ignored ones); the
+	// skill's recovery step tells the operator to copy out anything kept there first.
+	reused := ""
+	if decision.Act() == CoalesceInto {
+		held, err := retainedCarrierWorktree(capture, req)
+		if err != nil {
+			return out, err
+		}
+		reused = held
+	}
+	if reused != "" {
+		req.Worktree = reused
+		out.Worktree = reused
+		out.Steps = append(out.Steps, "# reuse: "+req.Branch+" is checked out, clean, at the remote carrier tip in the retained scan worktree "+reused)
+	} else if err := step(req.Root, "git", "worktree", "add", req.Worktree, branchFlag, req.Branch, cutFrom); err != nil {
 		return out, err
 	}
 	if decision.Act() == CoalesceInto {
@@ -268,6 +295,65 @@ func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 	//    checkout on its own account — this lane's guard is the earlier, cheaper one.
 	if err := step(req.Worktree, "statusgen", "--root", ".", "--scan-issues"); err != nil {
 		return out, err
+	}
+
+	// 2b. put back what another open scan carrier already carries, so this carrier is its own
+	//     delta and merges in any order (carriers.go). Untracked files are cleaned, tracked ones
+	//     restored to the base this worktree was cut from — both inside the isolated worktree only.
+	if len(req.Carried) > 0 {
+		st, err := capture(req.Worktree, "git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", deskkit.ScanDir)
+		if err != nil {
+			return out, err
+		}
+		changed := parseStatusZ(st)
+		var restore, clean []string
+		by := map[int]bool{}
+		first := 0
+		for _, c := range changed {
+			n, ok := req.Carried[c.path]
+			if !ok {
+				continue
+			}
+			by[n] = true
+			if first == 0 || n < first {
+				first = n
+			}
+			if c.untracked {
+				clean = append(clean, c.path)
+			} else {
+				restore = append(restore, c.path)
+			}
+		}
+		if len(restore) > 0 {
+			if err := step(req.Worktree, "git", append([]string{"--literal-pathspecs", "checkout", "-q", "HEAD", "--"}, restore...)...); err != nil {
+				return out, err
+			}
+		}
+		if len(clean) > 0 {
+			if err := step(req.Worktree, "git", append([]string{"--literal-pathspecs", "clean", "-f", "-q", "--"}, clean...)...); err != nil {
+				return out, err
+			}
+		}
+		excluded := len(restore) + len(clean)
+		note := fmt.Sprintf("# exclude: %d path(s) already carried by open scan carrier(s) %s left out of this carrier",
+			excluded, carriersNamed(by))
+		if req.DryRun {
+			note = fmt.Sprintf("# exclude: any of %d path(s) carried by other open scan carrier(s) are left out of this carrier",
+				len(req.Carried))
+		}
+		out.Steps = append(out.Steps, note)
+		if !req.DryRun && len(changed) > 0 && excluded == len(changed) {
+			// Everything the scan wrote is already on an open carrier: nothing of this pass's own
+			// to commit, so no commit and no PR. The item's placeholder is on that carrier.
+			out.Artifact = fmt.Sprintf("%s#%d", repo, first)
+			if err := step(req.Root, "git", "worktree", "remove", req.Worktree); err != nil {
+				out.warn("cleanup: could not remove worktree " + req.Worktree + ": " + err.Error() +
+					" — worktree retained for diagnosis; nothing was committed or published")
+				releaseRetainedBranch(&out, step, req)
+			}
+			out.Steps = append(out.Steps, "# coalesce: "+string(decision)+" — "+why)
+			return out, nil
+		}
 	}
 
 	// 3. commit the delta, path-scoped: the run is not done until it is committed.
@@ -283,7 +369,17 @@ func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 	// The title and body are DERIVED from the branch's own diff on EVERY push, never hand-written
 	// and never carried over from the previous push: the counts describe a diff that grows with
 	// each coalesced commit.
-	titleFile, bodyFile := scanMetaFiles(req.Worktree)
+	metaDir := dryRunMetaDir
+	if !req.DryRun {
+		d, err := newScanMetaDir()
+		if err != nil {
+			return out, deskkit.Unverifiable("scan-carrier lane: cannot create a private directory for the derived "+
+				"title and body files", err)
+		}
+		metaDir = d
+		out.metaDir = d
+	}
+	titleFile, bodyFile := scanMetaFiles(metaDir)
 	var title string
 	regenerate := func() error {
 		t, err := capture(req.Worktree, "deskscanbody", "emit", "--base", diffBase, "--format", "title")
@@ -495,29 +591,42 @@ func renderStep(dir, name string, args []string) string {
 	return "(" + dir + ") " + name + " " + strings.Join(args, " ")
 }
 
-// scanTitleSuffix / scanBodySuffix name the derived title and body files. They sit BESIDE the per-run
-// isolated worktree (its path plus the suffix), never inside it and never at a fixed shared path:
+// The derived title and body files live in a PRIVATE directory the carry creates for itself
+// (newScanMetaDir), never inside the worktree and never beside it:
 //
-//   - a fixed path under the system temp directory is shared machine-wide, so two parallel scans
-//     clobber each other's PR body; a path keyed to a worktree that exists only for this run cannot
-//     collide;
 //   - a file the lane writes INSIDE the worktree is untracked there, and `git worktree remove`
 //     refuses a worktree holding untracked files — every carry then ended in a dispatch error with
-//     the worktree left behind. The worktree holds only what the scan derives and commits.
+//     the worktree left behind. The worktree holds only what the scan derives and commits;
+//   - a file BESIDE the worktree sits in the worktree's parent, which is the shared, world-writable
+//     tmp base under the sanctioned prefix. Its name is predictable from the worktree's, so another
+//     local account could plant a symlink or a file of its own there before the lane writes, and
+//     redirect the write or swap the title and body between the write and the reads that check and
+//     publish them (#6282 review). A fresh 0700 directory from os.MkdirTemp has an unpredictable
+//     name that only this user can enter, so nobody else can place anything at the paths inside it;
+//   - a fixed shared path would let two parallel scans clobber each other; a per-carry directory
+//     cannot collide.
 const (
-	scanTitleSuffix = ".scan-title"
-	scanBodySuffix  = ".scan-body"
+	scanTitleName = "title"
+	scanBodyName  = "body"
+	// scanMetaDirPattern is the os.MkdirTemp pattern of the private metadata directory.
+	scanMetaDirPattern = "scanloop-meta-"
+	// dryRunMetaDir stands in for the private directory on the dry-run path, which creates none.
+	dryRunMetaDir = "<private scan metadata dir>"
 	// derivedTitlePlaceholder stands in for the real title on the dry-run path, where no derivation
 	// verb actually ran. It is deliberately not a plausible title: a dry-run step an operator could
 	// mistake for the real one is worse than an obviously synthetic one.
 	derivedTitlePlaceholder = "<derived from the branch diff at run time>"
 )
 
-// scanMetaFiles returns the title and body file paths for a scan worktree: siblings of it, never
-// inside it.
-func scanMetaFiles(worktree string) (title, body string) {
-	wt := filepath.Clean(worktree)
-	return wt + scanTitleSuffix, wt + scanBodySuffix
+// newScanMetaDir creates the carry's private metadata directory: a fresh, randomly named
+// directory under the user's temp directory, created exclusively with mode 0700.
+func newScanMetaDir() (string, error) {
+	return os.MkdirTemp("", scanMetaDirPattern)
+}
+
+// scanMetaFiles returns the title and body file paths inside the carry's private metadata dir.
+func scanMetaFiles(dir string) (title, body string) {
+	return filepath.Join(dir, scanTitleName), filepath.Join(dir, scanBodyName)
 }
 
 func writeTextFile(path, content string) error {

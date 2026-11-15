@@ -569,7 +569,7 @@ func validateFilingKeySearch(in SearchIssuesInput) error {
 	if !filingKeyRe.MatchString(in.FilingKey) {
 		return Refused("filing-key lookup needs a well-formed key")
 	}
-	if strings.TrimSpace(in.Query) != "" || in.DecisionGateMarkers || in.DecisionGateBrief != "" {
+	if strings.TrimSpace(in.Query) != "" || in.DecisionGateMarkers || in.DecisionGateBrief != "" || in.DecisionGateLegacy {
 		return Refused("filing-key lookup does not combine with free text or decision-marker discovery")
 	}
 	return nil

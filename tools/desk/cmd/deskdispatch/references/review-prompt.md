@@ -88,6 +88,17 @@ approval RESTING on a could-not-check is unfounded. An instrument that did not l
 cleared nothing, so say which checks could not run and treat the gap as a finding rather
 than as a silence.
 
+**A check that needs a project secret or a live service is not proven by the implementer's
+report of running it.** When a check needs a credential or a live service (a database, an API,
+a staging deployment, a cluster) that your environment does not hold, a pasted output or a
+"passed locally" from the PR's author is not evidence: the same party wrote the change and the
+report. Record the check could-not-check, name the environment it needs, and let no approval
+rest on it. Never ask for the secret, and never run a PR head with one in its environment. The
+Verify row is witnessed after merge: the verifier records it could-not-check with its exact
+command, which places the brief in the board's Environment-blocked queue, where an operator who
+holds that environment, never the implementer, runs it. A Verify row whose `Env` cell names
+anything but `tree` while classed `check:ci` is a finding; `statusgen --lint` reddens it.
+
 **Read what an instrument printed, not only its exit code.** Two read-only runs report
 through their output:
 

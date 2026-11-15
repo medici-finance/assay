@@ -238,6 +238,10 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 58 | [Benchmark compile-once mutation execution](brief-58-benchmark-compile-once-mutation-execution.md) | 1 | M | todo | — | — |
 | 59 | [Remove incidental prune mutation fixture work](brief-59-remove-incidental-prune-mutation-fixture-work.md) | 1 | M | implemented | — | — |
 | 60 | [Operate is human, and the gate ladder — what an agent fleet owns, what a human owns, and the written condition under which a human gate may ever widen (every threshold recorded as not set)](brief-60-operate-is-human-and-the-gate-ladder.md) | 1 | S | todo | — | — |
+| 61 | [Declare the secret scan's benign shapes in one registry, each entry bounded by a refusal it must keep](brief-61-benign-shape-registry.md) | 1 | L | todo | — | — |
+| 62 | [Name the file, line and side of a branch-diff secret-scan refusal, not its line in the stripped diff](brief-62-diff-finding-file-line.md) | 1 | M | todo | — | — |
+| 63 | [Admit the open false-positive shapes as registry entries, each with the refusals that bound it, and cap word-shaped admission](brief-63-registry-acceptance-shapes.md) | 2 | L | todo | — | — |
+| 64 | [Decide which lines of a branch diff the secret scan reads, and pin the answer](brief-64-diff-scan-scope.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -261,9 +265,19 @@ includes a human-applied workflow commit; a local pass does not satisfy deployed
 These new briefs carry the scope left by closed-unmerged PR #2535 and the selections merged
 in PR #2620. They do not mark desk-tools/32 implemented or resurrect its closed branch.
 
+The secret-scan class work runs **desk-tools/61 → desk-tools/63**, with **desk-tools/62 →
+desk-tools/63** and **desk-tools/62 → desk-tools/64** beside it. 63's entries need 61's registry
+and 62's diff line index; 64's narrowed scope is a side filter over that same index. 61 and 64
+are each `gate: human` with a decision at creation. 62 is `gate: human` at start, because it
+extends the diff reader the outbound push check uses. All four decisions were ruled on #4284 on
+10 November 2026. 61's admission ruling and 63's entry ruling are recorded in DR-scan-admission,
+62's in DR-scan-diff-reader, and 64's in DR-secret-scan-scope. Each brief cites its record with
+`design:`, so the head of this chain is now 61's and 62's code. 63 waits on both, and 64 on 62.
+See "Secret-scan class — 10 November 2026" below.
+
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/35 (depends on desk-tools/34), desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
@@ -277,6 +291,8 @@ in PR #2620. They do not mark desk-tools/32 implemented or resurrect its closed 
   than made to wait on anything), and desk-tools/27 (no typed prerequisite — every deliverable
   and every Verify row in 27 is implementable and provable with the shell's own timer, which is
   how its baselines were taken). Legacy briefs 23–27 are dispatchable now; brief 35 waits for 34.
+  desk-tools/63 (depends on desk-tools/61 and desk-tools/62) and desk-tools/64 (depends on
+  desk-tools/62) are the secret-scan class's second wave.
   <!-- graph: not-a-gate -->
 
 ## Design notes
@@ -491,3 +507,32 @@ authoring integration belong to amended statusgen/29 and existing PR 4139. Revie
 context readiness; Verify accepts the admitted delivery; existing CI owns main health.
 Human/risk, custody and activation limits remain. No actual implementation or dispatch
 occurs here, and original Verify tables and Evidence remain unchanged.
+
+## Secret-scan class — 10 November 2026
+
+Seeded by the error-class issue #4284: the shared secret scan clears benign shapes by enumerated
+exception. The high-entropy loop refuses every run of 32 or more base64-alphabet characters, then
+admits a run when one of 14 hand-ordered predicates, 3 whole-artifact grammars or 7 closed word
+lists recognises it. The record holds ten widenings since August (#750, #883, #966, #1161, #1643,
+#2036, #4077 among them), and three narrowings that had to follow (one after #1643 admitted eight
+synthetic credentials at its head). Eight false-positive issues are still open: #929, #1642,
+#2321, #3196, #4723, #5257, #5825 and #5974. A second mechanism sits beside the first: the
+whole-artifact grammars (go.sum, SRI, sops) only work on a whole document, and a diff fragment is
+never one, which is #5257. The literal credential arms (#5332, #5348, #5320 are recent ones) are
+not exemptions and stay outside every change below.
+
+| Brief | What it does | Gate |
+|---|---|---|
+| [61](brief-61-benign-shape-registry.md) | Moves every existing admission, unchanged, into one declared registry, where each entry names its bounding refusals. A recorded-verdict golden, run on the old and new trees, proves nothing changed. | human, at creation; ruled option 1: https://github.com/medici-finance/assay/issues/4284#issuecomment-6774184501 |
+| [62](brief-62-diff-finding-file-line.md) | Reports a branch-diff refusal as file, line and side, not its line in the stripped diff (#3196 part 2; the deskevidence precedent is #3283, closed by #3300). No verdict changes. | human, at start; ruled option 1: https://github.com/medici-finance/assay/issues/4284#issuecomment-6774271356 |
+| [63](brief-63-registry-acceptance-shapes.md) | Adds the open shapes as entries, each with paired refusals: go build-info hashes (#4723), platform-suffixed digest assignments (#2321), sops armor anchored to its file (#5257), Kubernetes qualified keys and `+`-joined identifiers (#1642, #2009). It adds an entropy cap to word-shaped admission (#4097) and keeps labelled 32-hex digests refused per the ruling on #3280 (#3196 part 1, guidance on #5156). The ruling adopts no vendor-example allowlist (#929 part 2). | human, at start; ruled option 1: https://github.com/medici-finance/assay/issues/4284#issuecomment-6774321215 |
+| [64](brief-64-diff-scan-scope.md) | Pins which diff lines the scan reads (#929 part 1, #1642): added and removed lines, with unchanged context skipped only when the diff's base is proven to be on the remote, and scanned in full otherwise. | human, at creation; ruled option 2: https://github.com/medici-finance/assay/issues/4284#issuecomment-6774347835 |
+
+Builds on, without duplicating: desk-tools/14 (corpus and `--explain`), desktools-v2/10 (one
+outbound check that moves existing scans and drops none), desktools-v2/14 (the regression
+floor), and build-less-brittle/07 and /10 (one implementation per meaning; the scan's ceiling
+stays 1). #6062 (closing #6060) documented the remote check's full-diff breadth, which 64's ruling keeps.
+#6063 (closing #6059) fixed the override form the refusal names. The worker change for the
+`KEY=<value>` shape (#1642's latest occurrence, #5825, #5974) is not duplicated: it becomes one
+registry entry. The sibling class fix for a different scanner (#5142, draft #3350) is cited and
+not folded in.

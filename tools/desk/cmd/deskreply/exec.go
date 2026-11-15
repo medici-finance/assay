@@ -172,8 +172,16 @@ func git(dir string, args ...string) (string, error) {
 // the caller's own already-verified repo (deskreply only ever calls this with the repo it
 // just confirmed via preflight() matches this worktree's origin) makes resolution
 // deterministic regardless of which worktree/remote deskreply happens to run in.
+//
+// deskreply posts as the worker App from whichever window calls it (an intake or verify
+// window replying on its own PR, too), so under another loop it passes desktoken's audited
+// --cross-role override (#6069) rather than being refused. The reason names this verb.
 func mintWorkerToken(repo string) error {
-	out, err := runCmd("", "desktoken", "worker", "--repo", repo)
+	args := []string{"worker", "--repo", repo}
+	if reason := deskkit.CrossRoleReason("deskreply", "worker"); reason != "" {
+		args = append(args, "--cross-role", reason)
+	}
+	out, err := runCmd("", "desktoken", args...)
 	if err != nil {
 		return fmt.Errorf("desktoken worker --repo %s: %w", repo, err)
 	}

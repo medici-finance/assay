@@ -59,7 +59,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("deskack", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder)) // craft our own messages
 	repo := fs.String("repo", "", "repo the message concerns (short name or owner/repo); its roster alias renders as <repo-short>")
-	session := fs.String("session", "", "session name (env: $DESK_SESSION or $CLAUDE_SESSION_ID)")
+	session := fs.String("session", "", "session name; wins over $DESK_SESSION and $CLAUDE_SESSION_ID")
 	if perr := fs.Parse(args); perr != nil {
 		fmt.Fprintln(stderr, "usage: bad flags: "+perr.Error()+"; correct the flags and re-run deskack")
 		return exitUsage
@@ -129,18 +129,13 @@ func ackLine(role, repoShort, restatement string) string {
 	return "ack " + role + "@" + repoShort + ": " + restatement
 }
 
-// resolveSession mirrors deskroster's own order — $DESK_SESSION → $CLAUDE_SESSION_ID →
-// --session — so a receipt lands on the SAME beacon file deskroster keeps this session's
-// open work in. An unresolvable session is unverifiable (exit 6), never a guessed key.
+// resolveSession uses deskroster's own resolver, deskkit.ResolveSessionName — --session →
+// $DESK_SESSION → $CLAUDE_SESSION_ID — so a receipt lands on the SAME beacon file
+// deskroster keeps this session's open work in. An unresolvable session is unverifiable
+// (exit 6), never a guessed key.
 func resolveSession(sessionFlag string) (string, error) {
-	if s := strings.TrimSpace(os.Getenv("DESK_SESSION")); s != "" {
+	if s := deskkit.ResolveSessionName(sessionFlag); s != "" {
 		return s, nil
-	}
-	if s := strings.TrimSpace(os.Getenv("CLAUDE_SESSION_ID")); s != "" {
-		return s, nil
-	}
-	if strings.TrimSpace(sessionFlag) != "" {
-		return strings.TrimSpace(sessionFlag), nil
 	}
 	return "", deskkit.Unverifiable(
 		"cannot resolve session identity for the receipt beacon: set $DESK_SESSION, "+

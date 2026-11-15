@@ -54,7 +54,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 18 | [`--scan-issues`: print a notice when an open issue derives `gate: human` and its placeholder reads `gate: model` (detect only, no write)](brief-18-gate-mismatch-notice.md) | 2 | S | implemented | — | — |
 | 19 | [Context handoff contracts and synthetic fixtures](brief-19-context-handoff-contracts.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | 20 | [Offline future-state resolver with receipt and amendment validation](brief-20-offline-context-resolver.md) | 2 | L | verified | 2026-10-25 assay-verifier-app[bot] @ 0c3b558efec3 (forge-identity) | — |
-| 21 | [Author skills consume the shared context handoff](brief-21-author-skill-handoff.md) | 4 | L | todo | — | — |
+| 21 | [Author skills consume the shared context handoff](brief-21-author-skill-handoff.md) | 4 | L | verified | 2026-11-11 assay-verifier-app[bot] @ b856f281f758 (claude-opus-5-5) | — |
 | 22 | [Product target records and compatible requirement parsing](brief-22-product-target-records-and-compatible-requirement-parsing.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | 23 | [Product target binding and context drift assessment](brief-23-product-target-binding-and-context-drift-assessment.md) | 3 | M | verified | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
 | 24 | [Portfolio allocation and capacity accounting](brief-24-portfolio-allocation-and-capacity-accounting.md) | 2 | M | verified | 2026-10-29 assay-verifier-app[bot] @ 4264d1027198 (forge-identity) | — |
@@ -73,6 +73,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 37 | [Content-bound witness schema v2: the writers and the desk readers](brief-37-content-bound-witness-schema-v2-writers.md) | 2 | L | todo | — | — |
 | 38 | [One-time v1-to-v2 witness backfill where the witnessed content is still fetchable](brief-38-one-time-v1-to-v2-witness-backfill.md) | 3 | M | todo | — | — |
 | 39 | [Multi-root objective reader: prerequisite graph, critical path and ranked moves](brief-39-multi-root-objective-reader.md) | 1 | L | todo | — | — |
+| 40 | [Chain approved acceptance transitions, and let one approval correct a row's Command and Expect](brief-40-chain-approved-acceptance-transitions.md) | 1 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -104,13 +105,19 @@ leads 37 and 37 leads 38 (medici-finance/assay#2026, medici-finance/assay#3658).
 statusgen/39 (multi-root objective reader) has no in-repo `depends:`; its one prerequisite is
 the v1 objective skill of #4107, carried as a `feathers:` ordering edge (a notice, never a
 hold) because only the final skill-swap step needs it.
+statusgen/40 (chained acceptance transitions and combined Command-and-Expect corrections,
+medici-finance/assay#6064) has no in-repo `depends:`; its head is the human decision it
+carries (rule 48). It unblocks the acceptance of desk-containers/17 and the held statusgen/36
+correction, and it is step 1 of that held proposal. It reaches statusgen/37 only as a
+`feathers:` ordering edge (a notice, never a hold), because only /37's I-2 slice re-routes
+the transition audit whose limits /40 defines.
 Every other brief is independent and self-contained.
 
 ## Dependency waves
 - **Wave 1** — statusgen/01, statusgen/02, statusgen/04, statusgen/05, statusgen/06,
   statusgen/07, statusgen/09, statusgen/10, statusgen/11, statusgen/12, statusgen/13,
-  statusgen/14, statusgen/15, statusgen/19, statusgen/22, statusgen/36, statusgen/39 (all
-  independent; parallelizable).
+  statusgen/14, statusgen/15, statusgen/19, statusgen/22, statusgen/36, statusgen/39,
+  statusgen/40 (all independent; parallelizable).
 - **Wave 2** — statusgen/03 (depends on statusgen/02), statusgen/08 (depends on statusgen/07),
   statusgen/18 (depends on statusgen/17), statusgen/20 (depends on statusgen/19),
   statusgen/24 (depends on statusgen/22; cross-stream: continuing-operations/01 is also wave 2),
@@ -339,6 +346,7 @@ statusgen/37 -> statusgen/31 -> statusgen/35
 statusgen/37 -> desk-tools/46 -> /47 -> handoff/02 -> /04 -> /05 -> /06
 desk-tools/46 -> handoff/05 -> statusgen/35
 statusgen/27..32 + /38 + desk-tools/47 + handoff/05 -> statusgen/35
+statusgen/40 ..> statusgen/37   (ordering feather on /37's I-2 slice; a notice, not a hold)
 ```
 
 The typed frontmatter is authoritative for exact edges; the sketch shows shared owners,

@@ -130,8 +130,7 @@ commands and results before producing the closure record.
 
 When the delivery added supplemental rows but changed no original row, the
 independent verifier records that run with a protected record: a file holding
-only the `Verification-Table:` line above, passed as `--acceptance-record` (host
-execution and same-repository admission only; no `--acceptance-forge`, since it
+only the `Verification-Table:` line above, passed as `--acceptance-record` (same-repository host execution or the closed bracket below; no `--acceptance-forge`, since it
 reads no approval):
 
 ```sh
@@ -188,11 +187,11 @@ that comment removal is idempotent grants an exemption or older-row credit.
 ### Explicit human-approved acceptance transitions
 
 The immutable-delivery rule above remains the default. A versioned brief may opt
-into one later, separately landed command or Expect correction. This is a new human act,
+into later, separately landed command or Expect corrections. This is a new human act,
 not an authority inferred from merging a source edit, incrementing `version:`, a
 label, a local record, an APPROVED review, or a bot relaying a person's words.
 
-The transition supports a command-only or an Expect-only correction to an existing
+The legacy one-line transition supports a command-only or an Expect-only correction to an existing
 original row. A command correction retains its exact Expect, class, shell, order and
 obligations. It must occupy one unambiguous code span with byte-identical surrounding
 context, and its delivered row must still match the complete original definition.
@@ -318,8 +317,90 @@ or fail lint. Verify the upgraded workflow can corroborate the exact ruling befo
 committing a final transition verdict. This source change does not activate any
 repository's workflows or provide any actual amendment approval.
 
-Transition execution inside `--in-container` or with cross-repository admission is
-unsupported and refuses. The fenced runner gains no network access. Chained
-transitions, row retirement, class changes, combined command-and-Expect changes in
-one row, and table-layout migrations also remain unsupported. Human closure gates, independent review and release/pin
+A protected or transition record may run inside a closed **container-netns transition bracket**
+opened and closed with the same `--acceptance-record` descriptor. The dispatch host
+performs the protected plan and clean-source checks at open, re-reads transition approval
+with `--acceptance-forge`, and binds the exact planned table, row IDs, source and changes
+in the receipt. Inside it the container executes the receipt's planned table, not the
+current table; it reads no Git history or forge and refuses `--acceptance-forge`.
+Close re-plans with a fresh approval read and compares the complete receipt plan,
+byte-exact table and witness descriptor, changes and commands before appending anything.
+`deskdispatch --check-verifier` runs only on the dispatch host. A different-runtime
+runner still refuses `environment changed since admission: runtime`; the runtime
+recheck is unchanged and the container is never re-admitted. Protected container
+execution requires explicit `--root` and refuses `--fail-first`: the receipt binds
+the head plan, not baseline history. Keep baseline qualification on the host. Credit is unchanged:
+`credit=credited` only, never a matching bracket digest alone.
+
+Execution with `--acceptance-record` and `--in-container`, `--check` or cross-repository
+admission remains unsupported and refuses. The fenced runner gains no network access.
+Row retirement, class and shell changes, row add/delete/renumber, supplemental amendment
+or promotion, and table-layout migrations remain unsupported. Human closure gates, independent review and release/pin
 requirements remain separate; this mechanism performs none of those actions.
+
+#### Ordered approval chains
+
+A descriptor may instead follow its one `Verification-Table:` line with contiguous
+chain markers in order, starting at 1. It cannot mix chain and legacy markers,
+repeat an approval URL, or include another line:
+
+```text
+Acceptance-Transition: link=1 amendment=<sha1> approval=<url1>
+Acceptance-Transition: link=2 amendment=<sha2> approval=<url2>
+```
+
+Each link has its own unedited mapped-human approval on the same repository's
+marked issue. Its exact payload is (CRLF may be normalized to LF). Leading or
+trailing whitespace, including a final newline after the rows value, is refused:
+
+
+```text
+Approve acceptance-transition v2
+repo=<owner/repo>
+brief=<brief path>
+delivery=<sha>
+base=<sha>
+original=<sha>
+link=<k>
+predecessor=<previous amendment; delivery for link 1>
+amendment=<sha>
+rows=<id>:<Command|Expect|Command+Expect>,...
+```
+
+Rows appear in table order with their exact changed-column token. Every changed
+Command must be named. An unnamed Expect drift retains the prior effective Expect.
+Each link is applied to the preceding effective rows, so a previously corrected row
+may be corrected again. A `Command+Expect` approval may replace the whole Command
+cell, including prose and multiple spans; row ID, order, class, shell and obligations
+remain fixed. Command-only corrections retain the one-span/context rule. Link 1
+alone may reuse a v1 approval under the unchanged v1 rules, without combined cells.
+Legacy one-line descriptors retain their original rules and refusal verdicts.
+
+Every first-parent Verify or version change from delivery through HEAD must be
+exactly one ordered amendment. Each parent table and unique two-parent merge base
+must match the preceding table; the version increases by one at each amendment.
+Evidence preservation, including only the existing empty-placeholder exception,
+stays unchanged. Immutable history and row-shape checks precede approval reads.
+Retention of an unnamed Expect depends on the actual prior approvals: if a later
+Command correction uses a parent row carrying that unapproved Expect, it refuses
+with "a changed command must still carry its complete prior definition", after
+reading earlier approvals. Explicitly approving the earlier Expect allows the later
+Command-only correction against that effective prior row. A later combined approval
+does not repair the missing prior definition.
+
+Refusals name the link; a missing amendment names `link <k> missing at <12-hex>`.
+A fetch failure is could-not-check and grants no credit. A directly observed HTTP
+404 or 410 refuses as "human approval could not be corroborated" through the shared
+ruling reader; neither result grants acceptance credit.
+There is no chain-length cap and no approval cache. The complete first-parent walk
+reads each commit's table and version, so its cost grows with history since delivery.
+It deliberately retains the complete walk rather than applying path-history
+simplification that could omit an acceptance edit.
+
+The same protected planner produces one effective table, per-row last approved
+amendment revisions, and one net `Acceptance-Changes:` receipt. Its tokens are
+`ID=Command`, `ID=Expect`, and `ID=Command+Expect`. Every original row needs a fresh
+witness at or after the final amendment. This shape is also the integration contract
+for the closed container-netns transition bracket; the host owns all approval reads.
+Verify-desk drafts each link's payload for the driver, never posts an approval, and
+performs independent verification only after the implementation ships and is pinned.

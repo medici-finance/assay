@@ -156,9 +156,11 @@ func runHarness(harness, forge, repo, bundle string, check bool, stdout, stderr 
 			for _, f := range findings {
 				fmt.Fprintf(stderr, "  %s\n", f)
 			}
+			cursorbundle.CheckAttribution().Write(stdout, stderr)
 			return exitHarnessDrift
 		}
 		fmt.Fprintln(stdout, "deskinstall --harness cursor --check: clean")
+		cursorbundle.CheckAttribution().Write(stdout, stderr)
 		return exitHarnessClean
 	}
 
@@ -166,6 +168,9 @@ func runHarness(harness, forge, repo, bundle string, check bool, stdout, stderr 
 		fmt.Fprintf(stderr, "deskinstall --harness cursor: REFUSED — %v\n", err)
 		return deskkit.ExitRefused
 	}
+	// The host's Cursor CLI attribution setting is reported, never edited: the global CLI
+	// config is the user's file, not one this placement owns. It never changes the exit code.
+	cursorbundle.CheckAttribution().Write(stdout, stderr)
 	return deskkit.ExitOK
 }
 
@@ -242,6 +247,7 @@ func runVersionedHarness(harness, forge, repo, bundle, release, releases, home, 
 		}
 		fmt.Fprintln(stdout, "DRY-RUN Cursor placement (writing nothing under --repo)")
 		plan.Report(stdout)
+		cursorbundle.CheckAttribution().Write(stdout, stderr)
 		return deskkit.ExitOK
 	}
 	return runHarness(harness, forge, repo, bundle, check, stdout, stderr)

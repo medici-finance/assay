@@ -169,12 +169,16 @@ nothing measured.
      can weigh ("the two out-of-scope exclusions are judgements — reviewer confirms the
      frozen tree really has no live reader"). It does not get restated as fact in the
      frontmatter, where it would read as settled.
-   - **After the merge, the claims need the diff that made them.** `--brief` lifts the diff
-     SCOPING, not the need for a diff: run on merged main it exits **2 (COULD-NOT-CHECK)**,
-     because HEAD equals the base and nothing there is evidence either way. To re-run the
-     claims, give it the branch: `git checkout M^2 && statusgen --consumers --brief <id>
-     --base $(git merge-base M^1 M^2)` for the PR's merge commit `M`. Exit 2 is deliberate —
-     "could not check" must never render as "checked clean".
+   - **After the merge, the same row re-runs against the delivery.** On merged main HEAD
+     equals the base, so the branch diff is no evidence either way. The bare row then pins
+     itself to the brief's delivery and its first parent, read locally: the committed
+     Evidence's `Verification-Table:` marker when there is one, otherwise the one first-parent
+     commit whose message, or a commit it merged, carries `Brief: <stream>/<NN>`. The commit
+     that delivers the brief must therefore carry that trailer, and it must be the only one
+     (see [consumer delivery checks](consumer-delivery-checks.md)). When neither source names
+     exactly one delivery it exits **2 (COULD-NOT-CHECK)**; pass `--delivery <full-sha>
+     --base <its first parent>` explicitly. Exit 2 is deliberate — "could not check" must
+     never render as "checked clean".
 
    What the gate does **not** establish: that the list is COMPLETE. It judges the entries
    that were written; a consumer left off the list is invisible to it, and the run says so on
@@ -898,6 +902,19 @@ passing run — which is why they are lint rules and not review vigilance.
       (the `Verification-Table:` line alone) needs no `--acceptance-forge`;
       it refuses an original row whose delivered definition differs from
       its original one, and witnesses supplemental rows `author-added`.
+      A protected or transition record may instead run inside a closed
+      **container-netns transition bracket**, opened and closed on the dispatch
+      host with the same `--acceptance-record` descriptor. The host plans and
+      re-plans through the shared evaluator, re-reading transition approvals
+      with `--acceptance-forge`. Inside it the container executes the receipt's
+      planned table, not the current table; the container refuses forge reads.
+      Close compares the exact table, descriptor, source, changes and witness
+      commands. `deskdispatch --check-verifier` runs only on the dispatch host:
+      a different runtime still refuses `environment changed since admission:
+      runtime`; never re-admit inside the runner. `--in-container`, `--check`
+      and cross-repository admission with the record stay refused. Protected
+      container execution needs explicit `--root` and refuses `--fail-first`,
+      whose baseline history is outside this plan. Credit is unchanged (`credit=credited` only); a digest match alone grants none.
     - `check` — deterministic but ENV-BOUND (a live PEM, a real queue, a tool on
       PATH). A runner executes it; CI skips an explicitly-classed one (its verdict
       rests on the verifier's authorship+signature, not on a CI re-run).
@@ -947,6 +964,34 @@ passing run — which is why they are lint rules and not review vigilance.
     via its table cell in the first draft. Do not leave `findstr` with cmd quoting and
     backslash paths on implicit `sh`. Changing a command or its shell requires a reviewed
     Verify-table change, never an Evidence-only edit by the verifier.
+
+    A Verify table MAY ALSO declare WHERE each row runs, in an optional `Env`
+    column (issue #6065) — `| # | Class | Env | Command | Expect |`. The class says
+    who executes a row; the environment says what that executor needs, so a
+    non-implementer knows where to witness it. A closed grammar, lower-cased:
+    - `tree` — the checkout alone, network-off: what CI re-executes.
+    - `host` or `host:<name>` — the witness's own machine (installed tools, local
+      config).
+    - `service:<name>` — a NAMED NON-PRODUCTION service instance: a database, an
+      API, a staging deployment. `<name>` is the identifier the brief's
+      `## Context` (or its spec) describes. A production instance is never a
+      Verify environment.
+    - `cluster:<name>` — a live cluster, run by the pod runner (`check:cluster`).
+
+    `<name>` is lower-case letters, digits, `.`, `_` and `-`. In a table that
+    carries the column, `statusgen --lint` hard-errors (PROBLEM) on an Env cell
+    outside the grammar; on a `check:ci` row naming anything but `tree` (CI reaches
+    no host, service or cluster, so the row can only fail or be faked there); on a
+    row naming a non-tree environment in a table with no `Class` column (an
+    unclassed row is legacy `check`, which the scheduled main re-run still
+    executes); and on an explicitly classed `check` or `check:cluster` row with an
+    empty Env (an env-bound row must say where it is witnessed). Gate rows are
+    judged, not executed: their Env cell is informational. A table without the
+    column lints exactly as before; add it whenever a row needs anything beyond
+    the checkout. A row that needs a project secret or a live service is witnessed
+    by someone other than the implementer, in the environment it names; the
+    implementer's own report of its run is not that witness (see the verify-desk
+    and pr-review-desk skills).
 
     *(Numbering note: the authoring repo's copy of this file allocated this rule and
     the typed-edge rule in the Dependencies section the same number in parallel —

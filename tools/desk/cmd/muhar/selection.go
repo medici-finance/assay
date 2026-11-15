@@ -99,6 +99,8 @@ type selectSpec struct {
 
 // Selection is what the selector decided for one mutation.
 type Selection struct {
+	Description string
+
 	// Skip: no selected test executes the mutated function; the verdict is NOT
 	// CAUGHT without a suite run. Never Caught — skipping cannot produce red.
 	Skip bool
@@ -418,8 +420,7 @@ func (cs *coverSelector) Prepare(root string) error {
 	if err != nil {
 		return err
 	}
-	selectTemps.add(tmp)
-	defer func() { selectTemps.remove(tmp) }()
+	defer func() { _ = os.RemoveAll(tmp) }()
 	buildFlags, runFlags := cs.coverFlags()
 
 	listFilter := cs.cmd.run
@@ -664,24 +665,6 @@ func (cs *coverSelector) coverFlags() (build, run []string) {
 	return build, append(run, "-test.timeout="+timeout)
 }
 
-// selectTemps tracks coverage-pass directories. Prepare's deferred removal
-// also runs when a catchable interruption unwinds the command.
-var selectTemps = &tempSet{dirs: map[string]bool{}}
-
-type tempSet struct {
-	mu   sync.Mutex
-	dirs map[string]bool
-}
-
-func (t *tempSet) add(d string) { t.mu.Lock(); t.dirs[d] = true; t.mu.Unlock() }
-
-func (t *tempSet) remove(d string) {
-	t.mu.Lock()
-	delete(t.dirs, d)
-	t.mu.Unlock()
-	_ = os.RemoveAll(d)
-}
-
 // resolveAlways maps the spec's always-run names to tests. A name the suite
 // does not list is an error: a misspelt always-run entry would otherwise add
 // nothing, silently.
@@ -864,11 +847,11 @@ func (cs *coverSelector) For(m Mutation, orig []byte) Selection {
 		m.Name, d.picked, len(cs.tests), d.covering, d.picked-d.covering)
 	args := d.args
 	if cs.timedTest != nil {
-		return Selection{TestWithTimeout: func(root string, timeout time.Duration) CommandResult {
+		return Selection{Description: "go " + strings.Join(args, " "), TestWithTimeout: func(root string, timeout time.Duration) CommandResult {
 			return cs.timedTest(root, withTimeout(args, timeout), timeout)
 		}}
 	}
-	return Selection{Test: func(root string) bool { return cs.goTest(root, args) }}
+	return Selection{Description: "go " + strings.Join(args, " "), Test: func(root string) bool { return cs.goTest(root, args) }}
 }
 
 func withTimeout(args []string, timeout time.Duration) []string {

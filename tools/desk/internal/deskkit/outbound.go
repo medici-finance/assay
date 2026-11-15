@@ -129,6 +129,9 @@ type OutboundContext struct {
 	Tool           string
 	Verb           string
 	OverrideReason string
+	// OverrideForm is how this process takes the override, so a refusal names that
+	// spelling; the zero value is the flag. Only SetPushGuardOutboundContext sets the env form.
+	OverrideForm OverrideForm
 }
 
 var (
@@ -278,14 +281,14 @@ func outboundCompiledCheck(wp *OutboundWrite) error {
 		if !r.overridable() {
 			msg := outboundRefusal(w, r)
 			if ctx.OverrideReason != "" {
-				msg += " --" + ScanOverrideFlag + " does not apply to " + r.rule + ": " +
+				msg += " " + ctx.OverrideForm.Name() + " does not apply to " + r.rule + ": " +
 					nonOverridableWhy(r.rule)
 			}
 			return RefusedFinding(msg, r.finding)
 		}
 	}
 	if ctx.OverrideReason == "" {
-		return RefusedFinding(outboundRefusal(w, refusals[0])+OverrideHint(), refusals[0].finding)
+		return RefusedFinding(outboundRefusal(w, refusals[0])+OverrideHint(ctx.OverrideForm), refusals[0].finding)
 	}
 	for _, r := range refusals {
 		if err := logOutboundOverride(w, r, ctx.OverrideReason); err != nil {

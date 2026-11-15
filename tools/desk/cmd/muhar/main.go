@@ -2,7 +2,7 @@
 //
 // Usage:
 //
-//	muhar -spec mutations.json [-j N] [-shard i/n] [-select]
+//	muhar -spec mutations.json [-j N] [-shard i/n] [-select] [-state PATH]
 //
 // -j is how many mutations to have in flight at once. The default, 1, runs the
 // sweep sequentially in place — the historical behaviour. -j 0 sizes the pool to
@@ -46,7 +46,7 @@
 //
 //	{
 //	  "root": "/abs/path/to/checkout",   // optional; relative file paths resolve here
-//	  "test": "go test ./...",           // suite command; NON-ZERO exit == mutation caught
+//	  "test": "go test ./...",           // suite command; ordinary NON-ZERO exit == mutation caught
 //	  "control": {                        // a mutation the suite MUST catch
 //	    "name": "value-conservation invariant",
 //	    "file": "config/Example/Core.json",
@@ -236,6 +236,7 @@ type options struct {
 	jobs      int
 	shard     string
 	useSelect bool
+	state     string
 }
 
 // sweepFn is the typed handler the command tree calls; the contract tests replace it to
@@ -262,6 +263,7 @@ func versionLine() string {
 // configuration file; the separate host budget reads two explicit environment inputs.
 func bindings() []cli.Binding {
 	return []cli.Binding{
+		{Key: "state", Kind: cli.String, Flag: "state", Usage: "caller-owned resumable JSONL state path"},
 		{Key: "spec", Kind: cli.String, Flag: "spec",
 			Usage: "`path` to the mutation spec JSON (required)"},
 		{Key: "j", Kind: cli.Int, Flag: "j", Short: "j", Default: 1,
@@ -294,7 +296,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			if onResolve != nil {
 				onResolve(v)
 			}
-			o := options{spec: v.String("spec"), jobs: v.Int("j"), shard: v.String("shard"), useSelect: v.Bool("select")}
+			o := options{spec: v.String("spec"), jobs: v.Int("j"), shard: v.String("shard"), useSelect: v.Bool("select"), state: v.String("state")}
 			if code := sweepFn(o, stdout, stderr); code != 0 {
 				return exitErr(code)
 			}
@@ -329,8 +331,11 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 		case <-done:
 		}
 	}()
+	// The registry closes before the context is canceled, so either one marks
+	// the run interrupted before a killed command's failure can return.
+	interrupted := func() bool { return ctx.Err() != nil || liveGroups.stopped() }
 	defer func() {
-		if ctx.Err() != nil {
+		if interrupted() {
 			code = 130
 		}
 	}()
@@ -348,6 +353,28 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 	if code != 0 {
 		return code
 	}
+	var state *runState
+	if o.state != "" {
+		state, err = openRunState(o.state)
+		if err != nil {
+			fmt.Fprintln(stderr, "muhar: state:", err)
+			return 1
+		}
+		defer state.close()
+		identity, err := stateIdentity(s, o)
+		if err != nil {
+			fmt.Fprintln(stderr, "muhar: state identity:", err)
+			return 1
+		}
+		if err := state.bind(identity); err != nil {
+			fmt.Fprintln(stderr, "muhar: state:", err)
+			return 1
+		}
+	}
+	indices := make([]int, len(s.Mutations))
+	for i := range indices {
+		indices[i] = i
+	}
 	// Sharding narrows the mutation list — and ONLY the mutation list. The
 	// baseline and the positive control are untouched, so every shard still
 	// proves the instrument before reporting a single verdict. Echo the
@@ -361,6 +388,12 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 		}
 		total := len(s.Mutations)
 		s.Mutations = shardSelect(s.Mutations, i, n)
+		indices = nil
+		for idx := 0; idx < total; idx++ {
+			if idx%n == i {
+				indices = append(indices, idx)
+			}
+		}
 		fmt.Fprintf(stderr, "muhar: shard %d/%d — running %d of %d mutations (indices ≡ %d mod %d); the other shards own the rest\n",
 			i, n, len(s.Mutations), total, i, n)
 	}
@@ -378,7 +411,8 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 	// compile-time constant, not a knob). One throwaway cache for the WHOLE
 	// run — mutants of one package share most build artifacts, so per-run
 	// keeps the intra-run speedup — removed when the run ends, whatever the
-	// exit path: interruption kills child groups and unwinds normal cleanup.
+	// exit path, including interruption: child processes are killed first, then
+	// the sweep unwinds source/workspace and cache cleanup before returning 130.
 	gocache, err := os.MkdirTemp("", "assay-mutant-gocache-*")
 	if err != nil {
 		fmt.Fprintf(stderr, "muhar: create per-run GOCACHE: %v\n", err)
@@ -392,12 +426,15 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 
 	runEnv := envWithGOCACHE(os.Environ(), gocache)
 	h := &Harness{
-		Root:      s.Root,
-		Budget:    budget,
-		Control:   s.Control,
-		Mutations: s.Mutations,
-		Jobs:      n,
-		Timeout:   s.Timeout,
+		Root:        s.Root,
+		Budget:      budget,
+		State:       state,
+		Indices:     indices,
+		Interrupted: interrupted,
+		Control:     s.Control,
+		Mutations:   s.Mutations,
+		Jobs:        n,
+		Timeout:     s.Timeout,
 		RunTest: func(root string, timeout time.Duration) CommandResult {
 			return runShell(root, s.Test, runEnv, timeout)
 		},
@@ -485,7 +522,7 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 	}
 
 	rep := h.Run()
-	if ctx.Err() != nil {
+	if interrupted() {
 		return 130
 	}
 	fmt.Fprint(stdout, rep.Summary())

@@ -520,3 +520,13 @@ func (s *stubRemote) FileIssue(fr deskkit.ForgeRepo, in deskkit.IssueInput) (*de
 	s.filed = append(s.filed, in.Title)
 	return &deskkit.IssueRef{Number: 900 + len(s.filed)}, nil
 }
+
+// PushTransportHint reports the host the stub's backend serves, the way both real backends
+// do: GitHub's is fixed, GitLab's is the configured instance's.
+func (s *stubRemote) PushTransportHint(deskkit.ForgeRepo) deskkit.PushTransport {
+	h := s.host
+	if h == "" {
+		h = "github.com"
+	}
+	return deskkit.PushTransport{RemoteHost: h}
+}

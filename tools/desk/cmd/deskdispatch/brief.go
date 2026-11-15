@@ -11,7 +11,8 @@ package main
 // by `--brief` alone (its `irreversible:` answer `no`) printed "decision-gate SKIPPED: item
 // is not human-gated" and dispatched a worker with NO decision issue filed: the exact EMPTY
 // decision surface the gate exists to prevent. This reads the one frontmatter field that
-// settles it.
+// settles it. The same defect had a second door: a brief-shaped ITEM KEY dispatched with no
+// --brief named a brief nobody read (#6173). briefkey.go resolves that brief, and this reads it.
 //
 // WHY A REGEX EXTRACTOR, NOT A YAML DEP. It mirrors verifyloop/fanoutloop's parseFrontmatter:
 // a deliberately small line/regex extractor so the desk module stays self-contained

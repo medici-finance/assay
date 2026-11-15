@@ -270,10 +270,13 @@ func attestationRecord(f Forge, repo ForgeRepo, n int, title, body string, autho
 // attestationTarget checks a typed observation without silently fetching a different one.
 func attestationTarget(issue *Issue, title, body string, authority func(string) bool, what string) error {
 	if issue == nil {
-		return Refused(what + " target is not the exact dispatcher-authored run record")
+		return Refused(what + " target is not the exact dispatcher-authored run record: " +
+			attestation.TargetProblem(false, false, false, "", "", title, body))
 	}
+	// The refusal names TargetProblem's own reason after the generic line (#6085). The reason
+	// never quotes the body read back, so nothing a body could carry is printed.
 	if why := attestation.TargetProblem(true, issue.IsPullRequest, authority(issue.Author.Login), issue.Title, issue.Body, title, body); why != "" {
-		return Refused(what + " target is not the exact dispatcher-authored run record")
+		return Refused(what + " target is not the exact dispatcher-authored run record: " + why)
 	}
 	return nil
 }

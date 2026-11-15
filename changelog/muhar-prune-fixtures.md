@@ -1,1 +1,0 @@
-- Move prune mutation walk-count coverage into a small real-Git fixture, exclude only the two expensive performance fixtures from mutation runs, and check interval lock release with one immediate tick.

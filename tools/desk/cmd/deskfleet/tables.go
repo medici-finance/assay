@@ -7,11 +7,11 @@ package main
 // A scope widened in translation is a privilege escalation nobody asked for, so the table is
 // data, never computed, and a test pins it field for field against an independent copy.
 //
-// fleetLabels is the ONE label table both forge backends are driven from (labels.go). It is
-// the script's LABEL_TABLE and, identically, the GitHub create-labels primitive's nine
-// `gh label create` lines: `review-request`, the six `raised-by:<role>` provenance stamps, and
-// the `authorization-needed` / `approval-needed` PR-state pair. Colors are stored bare (six hex
-// digits); a backend that needs a leading `#` adds it, so the table stays forge-agnostic.
+// The label set is NOT carried here: it is internal/forgelabels' one canonical table, whose
+// role rows (`raised-by:<role>`, `to:<role>`) are derived from a role list — the roster's
+// bound roles where a caller has one, forgelabels.DocumentedRoles() otherwise.
+
+import "github.com/medici-finance/assay/tools/desk/internal/forgelabels"
 
 type fleetRole struct {
 	Role        string
@@ -30,23 +30,12 @@ var fleetRoles = []fleetRole{
 	{"board-writer", "developer", 30, []string{"api", "write_repository"}},
 }
 
-type fleetLabel struct {
-	Name        string
-	Color       string // six hex digits, no leading '#'
-	Description string
-}
+// fleetLabel is the shared table's row type.
+type fleetLabel = forgelabels.Label
 
-var fleetLabels = []fleetLabel{
-	{"review-request", "d4c5f9", "dispatch token: a review session picks this up, runs the skill, posts the verdict"},
-	{"raised-by:desk", "BFDADC", "filed by the process desk (the-desk)"},
-	{"raised-by:worker", "BFDADC", "filed by a worker (worker-desk)"},
-	{"raised-by:reviewer", "BFDADC", "filed by the reviewer desk (pr-review-desk)"},
-	{"raised-by:verifier", "BFDADC", "filed by the verify desk (verify-desk)"},
-	{"raised-by:issue-loop", "BFDADC", "filed by the intake/issue loop (intake-desk)"},
-	{"raised-by:intake-loop", "BFDADC", "filed by the intake loop (roster-bound; no skill stamps it yet)"},
-	{"authorization-needed", "FBCA04", "review lane has not approved at head — waiting on a reviewer verdict / open findings"},
-	{"approval-needed", "5319E7", "review lane fully approved; flipped ready — waiting on the human's merge approval"},
-}
+// fleetLabels is the documented-role label set: what `provision --project` creates (a fleet
+// provisioned before its roster exists) and what `labels` creates without --roles.
+var fleetLabels = forgelabels.Canonical(forgelabels.DocumentedRoles())
 
 // Project-settings constants, carried from the script with its reasons.
 const (

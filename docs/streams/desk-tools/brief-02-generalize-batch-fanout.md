@@ -87,7 +87,7 @@ facts:
 | 2 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/... -run 'Pool' -count=1 -v 2>&1 \| grep -cE -e 'refill' -e 'resume-priority'` | ≥2 (standing-pool + orphan-priority both exercised) |
 | 3 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/... -run 'Serial' -count=1` | exit 0 (out-of-repo second-in-flight refused) |
 | 4 | `git diff --stat origin/main -- tools/desk/internal/loopengine/ \| tail -1` | empty (contract untouched — the validation claim) |
-| 5 | PR body contains the staged batch-fanout skill diff + cutover stop-point | present |
+| 5 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/... -run 'DispatchPrompt_CarriesSkill' -count=1` | exit 0 (the dispatch template carries the batch worker essentials and the gate:human cutover stop-point; the staged batch-fanout skill repoint diff is the human cutover's input, read at the gate, not by this row) |
 | 6 | `cd statusgen && go run . --root .. --lint; echo $?` | 0 |
 
 ## Evidence

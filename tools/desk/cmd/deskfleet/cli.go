@@ -25,7 +25,8 @@ Verbs:
              account created by this run) one PAT each, written owner-only to
              gitlab-<role>.token in --out-dir; with --project it also configures the
              project. --avatars-only sets the avatars of existing accounts.
-  labels     creates the nine fleet labels on one GitHub repo or GitLab project.
+  labels     creates the fleet labels on one GitHub repo or GitLab project (--check: reports
+             the missing ones, writes nothing).
   push-token rotates the board-push credential STATUSGEN_PUSH_TOKEN in one process
              (rotate) and checks it read-only (check); the new value is never printed:
                deskfleet push-token rotate --project <path-or-id> --rotator-token-file <file> --token-name <name>
@@ -77,18 +78,28 @@ whose outcome it could not check, and revokes nothing.
 
 Exit: 0 ok · 1 a step failed · 2 usage · 5 refused.`
 
-const labelsLong = `labels creates the nine fleet labels (review-request, six raised-by:<role>, and the
-authorization-needed / approval-needed pair) on one GitHub repo or GitLab project. An
-existing label is a no-op.
+const labelsLong = `labels creates the fleet labels (review-request, one raised-by:<role> and one
+to:<role> per desk role, and the authorization-needed / approval-needed pair) on one GitHub
+repo or GitLab project. An existing label is a no-op; on GitLab a label inherited from an
+ancestor group counts as existing. A single-colon name is a plain label, never a scoped one.
 
-  deskfleet labels --forge gitlab --project <path-or-id> --token-file <file> [--dry-run]
-  deskfleet labels --forge github --repo <owner/name>    --token-file <file> [--dry-run]
+  deskfleet labels --forge gitlab --project <path-or-id> --token-file <file> [--roles a,b] [--dry-run | --check]
+  deskfleet labels --forge github --repo <owner/name>    --token-file <file> [--roles a,b] [--dry-run | --check]
+
+--roles names the desk roles the role rows are built for: the roster's role= names, the
+vocabulary deskfile --raised-by / --to resolve against. Without it the documented roles
+(desk, worker, reviewer, verifier, issue-loop, intake-loop) are used, with a NOTICE.
+
+--check reads the target's labels (inherited group labels included) and names each label of
+the set that is missing; it creates nothing. A read that fails is could-not-check (exit 6),
+never "all present".
 
 The credential is read from --token-file only, which must pass the owner-only custody
 check; a link at that path is followed. --forge gitlab also requires GITLAB_API_BASE for a
 real run. --dry-run enumerates the labels and makes ZERO network calls.
 
-Exit: 0 ok · 1 a step failed · 2 usage · 5 refused.`
+Exit: 0 ok · 1 a step failed / a label is missing (--check) · 2 usage · 5 refused ·
+6 could-not-check (--check).`
 
 // provisionFn and labelsFn are the typed handlers the command tree calls; the contract tests
 // replace them to observe the options that reach each.
@@ -164,6 +175,8 @@ func labelsBindings() []cli.Binding {
 		{Key: "project", Kind: cli.String, Flag: "project", Usage: "GitLab project path or id (--forge gitlab)"},
 		{Key: "token-file", Kind: cli.String, Flag: "token-file", Usage: "FILE holding a credential allowed to create labels"},
 		{Key: "dry-run", Kind: cli.Bool, Flag: "dry-run", Usage: "enumerate the labels; make zero network calls"},
+		{Key: "roles", Kind: cli.String, Flag: "roles", Usage: "comma-separated desk roles to build the raised-by:/to: rows for (default: the documented six)"},
+		{Key: "check", Kind: cli.Bool, Flag: "check", Usage: "read-only: name each missing label; create nothing"},
 		apiBaseBinding(),
 	}
 }
@@ -222,7 +235,7 @@ func newFleetCLI(e *env) *cobra.Command {
 
 	labels := &cobra.Command{
 		Use:   "labels --forge github|gitlab (--repo <owner/name> | --project <path-or-id>) --token-file <file> [flags]",
-		Short: "create the nine fleet labels on one GitHub repo or GitLab project",
+		Short: "create (or --check) the fleet labels on one GitHub repo or GitLab project",
 		Long:  labelsLong,
 		Args:  noPositional,
 	}
@@ -277,6 +290,7 @@ func labelsOptsFrom(v *cli.Values) labelsOpts {
 	return labelsOpts{
 		forge: v.String("forge"), repo: v.String("repo"), project: v.String("project"),
 		tokenFile: v.String("token-file"), dryRun: v.Bool("dry-run"),
+		check: v.Bool("check"), rolesRaw: v.String("roles"),
 		apiBase: v.String("gitlab-api-base"),
 	}
 }

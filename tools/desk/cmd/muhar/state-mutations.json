@@ -1,0 +1,149 @@
+{
+  "test": "go test ./cmd/muhar -run '^TestState' -count=1 -timeout=90s",
+  "control": {
+    "name": "state header schema invalid",
+    "file": "cmd/muhar/state.go",
+    "old": "Schema: stateSchema, Identity: identity",
+    "new": "Schema: 0, Identity: identity"
+  },
+  "mutations": [
+    {
+      "name": "completed record executed twice",
+      "file": "cmd/muhar/state.go",
+      "old": "if r, ok := h.State.records[index]; ok {",
+      "new": "if r, ok := h.State.records[index]; ok && false {"
+    },
+    {
+      "name": "different input identity accepted",
+      "file": "cmd/muhar/state.go",
+      "old": "r.Identity != identity",
+      "new": "false"
+    },
+    {
+      "name": "error observation reused",
+      "file": "cmd/muhar/state.go",
+      "old": "if complete && r.definitive() {",
+      "new": "if complete || r.definitive() {"
+    },
+    {
+      "name": "resumed verdict changed",
+      "file": "cmd/muhar/state.go",
+      "old": "result := NotCaught",
+      "new": "result := Caught"
+    },
+    {
+      "name": "external compiler input omitted",
+      "file": "cmd/muhar/state.go",
+      "old": "if path != statePath {",
+      "new": "if path != statePath && within(root, path) {"
+    },
+    {
+      "name": "restore error becomes definitive",
+      "file": "cmd/muhar/harness.go",
+      "old": "if err := os.WriteFile(path, orig, info.Mode().Perm()); err != nil {",
+      "new": "if err := os.WriteFile(path, orig, info.Mode().Perm()); err != nil && false {"
+    },
+    {
+      "name": "volatile Go environment bound",
+      "file": "cmd/muhar/state.go",
+      "old": "\"GOTELEMETRYDIR\", \"GOGCCFLAGS\"",
+      "new": "\"GOTELEMETRYDIR\""
+    },
+    {
+      "name": "external package source omitted",
+      "file": "cmd/muhar/state.go",
+      "old": "files[resolve(p.Dir, name)] = true",
+      "new": "if within(root, p.Dir) { files[resolve(p.Dir, name)] = true }"
+    },
+    {
+      "name": "inherited external flags unbound",
+      "file": "cmd/muhar/state.go",
+      "old": "if resolvedFlags := settings[\"GOFLAGS\"]; strings.TrimSpace(resolvedFlags) != \"\" {",
+      "new": "if resolvedFlags := settings[\"GOFLAGS\"]; false {"
+    },
+    {
+      "name": "identity interruption misreported",
+      "file": "cmd/muhar/main.go",
+      "old": "if interrupted() {\n\t\t\tcode = 130\n\t\t}",
+      "new": "if false { code = 130 }"
+    },
+    {
+      "name": "externally killed suite cached",
+      "file": "cmd/muhar/runner.go",
+      "old": "if resourceSignal(cmd.ProcessState) {",
+      "new": "if false {"
+    },
+    {
+      "name": "changed classifier reused",
+      "file": "cmd/muhar/state.go",
+      "old": "values = append(values, runnerID)",
+      "new": "_ = runnerID"
+    },
+    {
+      "name": "non-Go command rejected",
+      "file": "cmd/muhar/state.go",
+      "old": "goCommandWord.MatchString(strings.NewReplacer(`\\`, \"\", \"'\", \"\", `\"`, \"\").Replace(command))",
+      "new": "strings.Contains(command, \"go \")"
+    },
+    {
+      "name": "schema fallback misreported",
+      "file": "cmd/muhar/harness.go",
+      "old": "h.observation.Selection = \"schemata fallback -> full command\"",
+      "new": "h.observation.Selection = \"schemata: full command\""
+    },
+    {
+      "name": "selection time counted as test",
+      "file": "cmd/muhar/harness.go",
+      "old": "sel := h.Selector.For(m, orig)",
+      "new": "sel := h.Selector.For(m, orig); if h.observation != nil { h.observation.Test += time.Hour }"
+    },
+    {
+      "name": "shell Go form accepted",
+      "file": "cmd/muhar/state.go",
+      "old": "(^|[[:space:];|&(){}!$<>\\x60])",
+      "new": "(^|[[:space:];|&])"
+    },
+    {
+      "name": "opened descriptor type ignored",
+      "file": "cmd/muhar/state.go",
+      "old": "if !info.Mode().IsRegular() {\n\t\treturn fmt.Errorf(\"opened state descriptor is not a regular file\")",
+      "new": "if false {\n\t\treturn fmt.Errorf(\"opened state descriptor is not a regular file\")"
+    },
+    {
+      "name": "opened descriptor error ignored",
+      "file": "cmd/muhar/state.go",
+      "old": "return fmt.Errorf(\"stat opened state file: %w\", err)",
+      "new": "return nil"
+    },
+    {
+      "name": "shared writable state accepted",
+      "file": "cmd/muhar/state.go",
+      "old": "if runtime.GOOS != \"windows\" && info.Mode().Perm()&0o022 != 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "fault signal becomes infra error",
+      "file": "cmd/muhar/process_unix.go",
+      "old": "return status.Signaled() && terminationSignals[status.Signal()]",
+      "new": "return status.Signaled()"
+    },
+    {
+      "name": "escaped Go command missed",
+      "file": "cmd/muhar/state.go",
+      "old": "strings.NewReplacer(`\\`, \"\", \"'\", \"\", `\"`, \"\").Replace(command)",
+      "new": "strings.NewReplacer(\"'\", \"\", `\"`, \"\").Replace(command)"
+    },
+    {
+      "name": "termination signal dropped",
+      "file": "cmd/muhar/process_unix.go",
+      "old": "syscall.SIGXFSZ: true,",
+      "new": "syscall.SIGXFSZ: false,"
+    },
+    {
+      "name": "quote-split Go command missed",
+      "file": "cmd/muhar/state.go",
+      "old": "strings.NewReplacer(`\\`, \"\", \"'\", \"\", `\"`, \"\").Replace(command)",
+      "new": "strings.ReplaceAll(command, `\\`, \"\")"
+    }
+  ]
+}
