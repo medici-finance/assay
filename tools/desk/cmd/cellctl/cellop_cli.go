@@ -192,17 +192,14 @@ type cellopVerb struct {
 	After func(c *Cell, r *cellop.Result)
 }
 
-// cellopNewPlan makes and stores a plan for c. It changes nothing but the plan store.
+// cellopNewPlan makes and stores a plan for c, under a two-word id no plan in c's store has used.
+// It changes nothing but the plan store.
 func cellopNewPlan(c *Cell, verb string, actions []cellop.Action) cellop.Plan {
-	id, err := cellop.NewID()
+	now := time.Now()
+	p, err := cellop.StoreFor(c.Dir).SaveNew(func(id string) (cellop.Plan, error) {
+		return cellop.NewPlan(id, verb, []string{c.Name}, actions, nil, now)
+	})
 	if err != nil {
-		die("%s: %v", verb, err)
-	}
-	p, err := cellop.NewPlan(id, verb, []string{c.Name}, actions, nil, time.Now())
-	if err != nil {
-		die("%s: %v", verb, err)
-	}
-	if _, err := cellop.StoreFor(c.Dir).Save(p); err != nil {
 		die("%s: storing the plan: %v", verb, err)
 	}
 	return p
@@ -229,6 +226,14 @@ func cellopPlan(cmd *cobra.Command, c *Cell, verb string, actions []cellop.Actio
 // annotated state-changing (the gate already ran for it), then hands the stored plan to
 // cellop.Session.Apply on this terminal and exits with the result's code.
 func cellopApply(cmd *cobra.Command, c *Cell, v cellopVerb, id string) {
+	r := cellopApplyResult(cmd, c, v, id)
+	emitResult(cmd, r)
+	exitWith(r.ExitCode())
+}
+
+// cellopApplyResult is cellopApply without the print and the exit: the one apply session, with
+// every gate cellopApply holds, returning the result to a verb that goes on past the apply.
+func cellopApplyResult(cmd *cobra.Command, c *Cell, v cellopVerb, id string) cellop.Result {
 	cellopFixtureTrace(cmd)
 	if !stateChangingInvocation(cmd) {
 		die("%s: an apply was reached from an invocation not annotated %s", cmd.Name(), stateChanging)
@@ -250,6 +255,5 @@ func cellopApply(cmd *cobra.Command, c *Cell, v cellopVerb, id string) {
 	if v.After != nil {
 		v.After(c, &r)
 	}
-	emitResult(cmd, r)
-	exitWith(r.ExitCode())
+	return r
 }

@@ -80,8 +80,8 @@ func acceptanceCIProblems(wf workflow) ([]string, int) {
 // regression: #4596
 func TestAcceptanceCI(t *testing.T) {
 	for path, want := range map[string]int{
-		"../.github/workflows/assay-statusgen.yml":        7,
-		"../ci/staged-workflows/assay-statusgen.yml":      7,
+		"../.github/workflows/assay-statusgen.yml":        10,
+		"../ci/staged-workflows/assay-statusgen.yml":      10,
 		"../tools/ci-load/activation/assay-statusgen.yml": 5,
 		"../.github/workflows/verify-gate-close.yml":      2,
 		"../ci/staged-workflows/verify-gate-close.yml":    2,

@@ -118,13 +118,23 @@ func rawVerb(args []string) bool {
 	return false
 }
 
+// endRun is the one reset every in-process entry runs on exit: it releases the admissions the run
+// took, then clears the verb and the verb words, so a later loadCell outside any run (a test, a
+// helper) starts from the state a fresh process has and cannot take a cell's admission lock or
+// leave .reset.lock behind (#6217). The release comes first because it reads the verb.
+func endRun() {
+	releaseMaintenanceAdmissions()
+	maintenanceCommand = ""
+	verbWords = nil
+}
+
 // runTree executes one invocation against a fresh tree and returns its exit code. It is the
 // only place that turns the exit panic into a code.
 func runTree(args []string) int { return runTreeSelected(args, nil) }
 
 func runTreeSelected(args []string, sink func(perfrec.Context)) (code int) {
 	maintenanceCommand = ""
-	defer releaseMaintenanceAdmissions()
+	defer endRun()
 	rawSelector, rawSelected, verbWords, cellsRootSelected = "", false, nil, ""
 	hook := hookVerb(args)
 	defer func() {
@@ -487,7 +497,7 @@ func buildRoot() *cobra.Command {
 		return cmd.Help()
 	}
 	root.AddCommand(
-		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(), pauseCmd(), resumeCmd(), drainCmd(),
+		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(), pauseCmd(), resumeCmd(), drainCmd(), cycleCmd(),
 		smokeCmd(), statusCmd(), attachCmd(), compatPrepareCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), hotfixCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(), scrubbedRunCmd(),
 	)
