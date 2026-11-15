@@ -1163,6 +1163,13 @@ func glCases() []glCase {
 			run:   func(f *GitLabForge) (any, error) { return f.CheckSuitesAtHead(glRepo, "abc123") },
 		},
 		{
+			// #6508: GitLab serves no viewer-relative BLOCKED, so the requirement read is an
+			// Unverifiable error and issues no request — the empty request trace pins that.
+			name: "merge_requirements_unverifiable", method: "MergeRequirements",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.MergeRequirements(glRepo, 7) },
+		},
+		{
 			// issue #1411 — the merge_request_event shape #1125 / PR #1134 missed: the commit
 			// document carries NO `last_pipeline`, yet a GREEN pipeline exists at the head SHA
 			// and is reachable through the SAME by-SHA read ListOpenChanges already uses

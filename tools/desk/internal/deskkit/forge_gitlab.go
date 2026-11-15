@@ -2049,6 +2049,14 @@ func gitlabAllowedFailure(conclusion string, allowFailure bool) string {
 	}
 }
 
+// MergeRequirements is could-not-check on GitLab: the post-flip backstop reads it only after a
+// BLOCKED merge state, which GitLab never serves (PullRequest.MergeStateStatus stays empty), so
+// no consumer reaches it. An error, never a guess, keeps that true if one ever does. No request
+// is issued.
+func (g *GitLabForge) MergeRequirements(repo ForgeRepo, number int) (*MergeRequirements, error) {
+	return nil, Unverifiable("the GitLab backend serves no viewer-independent merge-requirement read", nil)
+}
+
 // RequiredStatusChecks answers, for GitLab, whether a merge on the branch is gated on a
 // status check — the forge-neutral question deskflip's checks-green condition asks.
 //

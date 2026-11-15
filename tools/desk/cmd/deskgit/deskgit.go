@@ -326,14 +326,21 @@ type auditCtx struct {
 }
 
 func (a *auditCtx) log(result, detail string) {
-	_ = deskkit.Log(deskkit.Entry{
+	e := deskkit.Entry{
 		Tool:       "deskgit",
 		Verb:       a.verb,
 		Result:     result,
 		Detail:     detail,
 		Repo:       a.repo,
 		ArgsDigest: deskkit.ArgsDigest(os.Args[1:]),
-	})
+	}
+	// Only `push` is an outward mutating act; a successful push renews a fresh HEARTBEAT
+	// lease (#6510). fetch and heads are reads and never renew.
+	if a.verb == "push" {
+		_ = deskkit.LogOutwardAct(e)
+		return
+	}
+	_ = deskkit.Log(e)
 }
 
 func (a *auditCtx) finalize(err error) {
@@ -606,7 +613,7 @@ func cmdFetch(args []string) (err error) {
 // reaches git — exactly as cmdFetch's does. The argv is, invariantly:
 //
 //	git -c credential.helper= -c credential.https://github.com.helper=!'<ephemeral helper>' \
-//	    push --receive-pack=git-receive-pack --no-recurse-submodules origin \
+//	    push --porcelain --receive-pack=git-receive-pack --no-recurse-submodules origin \
 //	    refs/heads/<B>:refs/heads/<B>
 //
 // where <B> is the current branch (`symbolic-ref --short HEAD`), validated by the same rule
@@ -620,7 +627,9 @@ func cmdFetch(args []string) (err error) {
 // `--no-recurse-submodules` pins submodule recursion off:
 // push.recurseSubmodules / submodule.recurse in any config scope would otherwise push each
 // submodule to that submodule's OWN remote — a host no origin destination gate has seen
-// (sec-1587-S1, round 3).
+// (sec-1587-S1, round 3). `--porcelain` makes git report each ref's outcome on stdout, so a
+// push that moved no ref ("=", up to date) is recorded as a noop and renews no HEARTBEAT
+// lease (#6510); it changes no transport behaviour.
 //
 // Unlike fetch, push is an OUTWARD WRITE: it takes the outward-write budget
 // (deskkit.AllowWrite) and its audit line records role/repo/branch — never the token. The
@@ -734,7 +743,7 @@ func cmdPush(args []string) (err error) {
 	defer cleanup()
 
 	pushArgs := append(append([]string{}, argvPrefix...),
-		"push", "--receive-pack=git-receive-pack", "--no-recurse-submodules", "origin",
+		"push", "--porcelain", "--receive-pack=git-receive-pack", "--no-recurse-submodules", "origin",
 		"refs/heads/"+branch+":refs/heads/"+branch)
 	out, perr := runGitWithEnv(dir, env, pushArgs...)
 	if perr != nil {
@@ -744,10 +753,34 @@ func cmdPush(args []string) (err error) {
 	// path's contents. redactURL strips any userinfo from the echoed URL.
 	ac.detail = "pushed " + branch + " -> origin/" + branch + " as " + *asRole +
 		" [origin " + redactURL(originURL) + "]"
+	if !pushMovedRef(out) {
+		// git exits 0 on "Everything up-to-date": nothing changed on the forge, so the row is
+		// a noop, never progress that renews the HEARTBEAT lease (#6510).
+		ac.successResult = deskkit.ResultNoop
+		ac.detail = "up to date: " + branch + " already at origin/" + branch + " as " + *asRole +
+			" [origin " + redactURL(originURL) + "]"
+	}
 	if out != "" {
 		fmt.Fprintln(os.Stderr, out)
 	}
 	return nil
+}
+
+// pushMovedRef reports whether `git push --porcelain` output names at least one ref the
+// remote updated: a fast-forward (" "), forced ("+"), new ("*") or deleted ("-") status
+// line. An up-to-date ("=") line, a rejected ("!") one, or output with no status line at
+// all is not a confirmed move, so it fails toward noop and never renews the lease.
+func pushMovedRef(out string) bool {
+	for _, line := range strings.Split(out, "\n") {
+		if len(line) < 2 || line[1] != '\t' {
+			continue
+		}
+		switch line[0] {
+		case ' ', '+', '*', '-':
+			return true
+		}
+	}
+	return false
 }
 
 // bestEffortOriginRepo resolves the effective origin slug for AUDIT LABELLING ONLY

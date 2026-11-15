@@ -26,7 +26,8 @@ package main
 // which topology.yaml names as "the identity whose Evidence commits count as
 // PROVEN attribution". Nothing is hardcoded here and no new roster key is added —
 // a second key would have to be recognised by BOTH readers of one roster.env, and
-// an unknown ASSAY_ key collapses the other reader's whole configuration.
+// an unknown ASSAY_ key draws a NOTICE from the desk-tools reader (#1261) and still
+// refuses statusgen's whole configuration.
 //
 // ── WHICH SIGNAL IS TRUSTED, AND WHY (this is the load-bearing decision) ───────
 //

@@ -268,6 +268,15 @@ cockpit has always launched private tmux. With cell-owned provider/Herdr support
 all other stdout and all stderr remain byte-identical in the fixture. The frozen
 pre-migration transcript remains unchanged.
 
+## The intake role's scaffolded pin
+
+A freshly scaffolded cell pins the intake role to a strong tier: `cellctl new` writes
+`DESK_MODEL_intake_desk=opus` after the coordinator pin (see *Pinned models* in [cellctl](cellctl.md)).
+`new-house/1` and `new-trailing-value/2` run `show` on such a cell, and differ in exactly one stdout
+line: `[show] model intake-desk=sonnet (cell.env DESK_MODEL_DEFAULT)` is now `[show] model
+intake-desk=opus (cell.env DESK_MODEL_intake_desk)`. They keep exit 0, and every other byte and all
+stderr still must match.
+
 ## The house cell's forge label set
 
 Issue #6127 makes `new --kind house` ensure the desk tools' forge label set on every `--roots`
