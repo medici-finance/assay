@@ -58,7 +58,11 @@ func briefVersionForPass(path, evidence string, p flipPass) (int, error) {
 		if unboundCrossAttestation(evidence) {
 			return 0, fmt.Errorf("a cross-repository attestation in Evidence is not bound by literal selected-run metadata")
 		}
-		version, err := briefVersionAt(path, p.SHA)
+		versionSource := p.SHA
+		if p.RecordLanding != "" {
+			versionSource = p.RecordLanding
+		}
+		version, err := briefVersionAt(path, versionSource)
 		if err != nil {
 			// The source revision is read in this repository. A run made in
 			// another repository has no such commit here; say what would let

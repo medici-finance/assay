@@ -285,12 +285,21 @@ const (
 
 // Claim is one mandatory claim's resolution.
 type Claim struct {
-	Claim    string `json:"claim"`
-	Kind     string `json:"kind"` // command | review | witness | observe
-	Result   string `json:"result"`
-	Revision string `json:"revision,omitempty"`
-	Released bool   `json:"released"`
-	Reason   string `json:"reason,omitempty"`
+	Claim    string             `json:"claim"`
+	Kind     string             `json:"kind"` // command | review | witness | observe
+	Result   string             `json:"result"`
+	Revision string             `json:"revision,omitempty"`
+	Released bool               `json:"released"`
+	Reason   string             `json:"reason,omitempty"`
+	Witness  *WitnessProvenance `json:"-"`
+}
+
+// WitnessProvenance identifies the record landing already validated by a
+// released v2 judgment. Landing is never informational.commit or an execution
+// revision. Consumers must still check Evidence authorship and their own gates.
+// It is an in-process observation, not part of the coverage JSON wire contract.
+type WitnessProvenance struct {
+	Brief, Row, RecordID, Runner, Date, CR, Landing string
 }
 
 // Coverage is one brief's full coverage verdict.
@@ -341,7 +350,24 @@ const RuleJoinMissingFlow = "coverage-join-missing-integration-check"
 // for) anchor the offline git-history reads classifyRevision and
 // verifyRowAtRevision use; either may be empty (a bare testdata copy), which
 // those functions treat as "nothing to corroborate", never a match.
-func resolveVerifyClaim(x *evalCtx, scope witnessScope, r VerifyRow, witnesses []Witness, targetRevision, acceptanceRevision string) (result, reason, revision string) {
+func resolveVerifyClaim(x *evalCtx, scope witnessScope, r VerifyRow, witnesses []Witness, targetRevision, acceptanceRevision string) (result, reason, revision string, provenance *WitnessProvenance) {
+	if len(witnesses) == 0 {
+		return ResultMissing, "no execution witness in Evidence — run `statusgen verifyrun --brief <path>`", "", nil
+	}
+	latest := witnesses[len(witnesses)-1]
+	switch cell := witnessSchemaOf(latest); cell.Schema {
+	case WitnessSchemaV2:
+		return x.judgeWitnessV2(scope, r, latest, cell, targetRevision, acceptanceRevision)
+	case WitnessSchemaUnknown:
+		return ResultCouldNotCheck, gapf(GapSchemaUnknown, "the Runner cell's marker %s names no witness schema this reader knows", cell.Marker), "", nil
+	}
+	result, reason, revision = resolveVerifyClaimV1(x, scope, r, witnesses, targetRevision, acceptanceRevision)
+	return result, reason, revision, nil
+}
+
+// resolveVerifyClaimV1 retains the legacy command, revision, read-set and
+// dependency judgments. A v2 or unknown cell never reaches it.
+func resolveVerifyClaimV1(x *evalCtx, scope witnessScope, r VerifyRow, witnesses []Witness, targetRevision, acceptanceRevision string) (result, reason, revision string) {
 	if len(witnesses) == 0 {
 		return ResultMissing, "no execution witness in Evidence — run `statusgen verifyrun --brief <path>`", ""
 	}
@@ -351,15 +377,6 @@ func resolveVerifyClaim(x *evalCtx, scope witnessScope, r VerifyRow, witnesses [
 	// is not evidence for this claim any more.
 	latest := witnesses[len(witnesses)-1] // last witness for the row wins, same as checkWitnesses
 
-	// Witness schema dispatch (statusgen/36): a v2 cell is judged by content
-	// digests and an unknown schema is a named gap; neither reaches any v1
-	// check below. A v1 cell continues exactly as before.
-	switch cell := witnessSchemaOf(latest); cell.Schema {
-	case WitnessSchemaV2:
-		return x.judgeWitnessV2(scope, r, latest, cell, targetRevision, acceptanceRevision)
-	case WitnessSchemaUnknown:
-		return ResultCouldNotCheck, gapf(GapSchemaUnknown, "the Runner cell's marker %s names no witness schema this reader knows", cell.Marker), ""
-	}
 	if NormalizeCommandText(latest.Command) != NormalizeCommandText(r.Command) {
 		return ResultError, "the witness records a different command than the Verify row now carries — its acceptance definition changed after it was run, so the recorded result proves nothing about the row as it stands today", ""
 	}
