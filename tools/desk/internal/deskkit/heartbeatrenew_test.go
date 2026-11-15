@@ -140,6 +140,52 @@ func TestReadOrMintNoRenew(t *testing.T) {
 	if after := leaseMtime(t, path); !after.Equal(before) {
 		t.Fatalf("a read/mint renewed the lease: mtime %v -> %v", before, after)
 	}
+	// Positive control: the same fixture DOES see a touch, so the no-move result above is
+	// a real observation, not a lease this test could never have watched move.
+	if err := LogOutwardAct(actRow(ResultOK)); err != nil {
+		t.Fatalf("LogOutwardAct: %v", err)
+	}
+	if after := leaseMtime(t, path); !after.After(before) {
+		t.Fatalf("positive control: an ok act left the lease at %v", after)
+	}
+}
+
+// Liveness never renews (#6510): only the outward-act verbs reach LogOutwardAct. A read,
+// mint, boot, tick, sweep or claim tool that starts calling it reddens here, so adding a
+// caller is a reviewed change to this list, never a silent one.
+// regression: #6510
+func TestOnlyActVerbsRenew(t *testing.T) {
+	allowed := map[string]bool{"deskevidence": true, "deskfile": true, "deskflip": true,
+		"deskgit": true, "deskpost": true, "deskpr": true, "deskreply": true}
+	cmdDir := filepath.Join("..", "..", "cmd")
+	got := map[string]bool{}
+	err := filepath.WalkDir(cmdDir, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return err
+		}
+		b, rerr := os.ReadFile(p)
+		if rerr != nil {
+			return rerr
+		}
+		if strings.Contains(string(b), "deskkit.LogOutwardAct") {
+			rel, _ := filepath.Rel(cmdDir, p)
+			got[strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]] = true
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", cmdDir, err)
+	}
+	for v := range got {
+		if !allowed[v] {
+			t.Errorf("cmd/%s calls LogOutwardAct but is not an outward-act verb: a read or liveness path would renew the lease", v)
+		}
+	}
+	for v := range allowed {
+		if !got[v] {
+			t.Errorf("cmd/%s no longer calls LogOutwardAct: its successful acts stopped renewing the lease", v)
+		}
+	}
 }
 
 // regression: #6510
@@ -184,7 +230,10 @@ func TestStaleAfterGuardNoTouch(t *testing.T) {
 func TestLeaseFreshMatchesGuard(t *testing.T) {
 	// The renewal side's freshness test agrees with the guard's own reading of the same file
 	// on both sides of the 24h line: a lease heartbeatState calls stale is never fresh here.
+	// The +/-5s probes sit close enough to the line that a renewal predicate drifted even 30s
+	// from the guard's (age > HeartbeatStaleDuration+30s) disagrees at 24h+5s.
 	for _, age := range []time.Duration{time.Minute, HeartbeatStaleDuration - time.Minute,
+		HeartbeatStaleDuration - 5*time.Second, HeartbeatStaleDuration + 5*time.Second,
 		HeartbeatStaleDuration + time.Minute, 48 * time.Hour} {
 		dir := setup(t)
 		path, _ := backdatedLease(t, dir, age)

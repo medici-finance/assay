@@ -789,9 +789,19 @@ func cmdUpdate(args []string) (err error) {
 		// one); the tracking ref for the PR head branch is still recorded (push.go recordPushed).
 		spec.srcRef, spec.dstBranch = "HEAD", pushDest
 	}
+	var upToDate bool
+	spec.upToDate = &upToDate
 	ac.writeAttempted = true
 	if pushErr := pushFn(spec); pushErr != nil {
 		return pushErr
+	}
+	// The remote already held this head (pushed earlier by another path, so AlreadyDone had no
+	// update row for it): nothing moved, so the row is a noop and renews no lease (#6510).
+	if upToDate {
+		ac.successResult = deskkit.ResultNoop
+		ac.detail = "head already on the remote for " + pr.URL
+		fmt.Printf("noop: %s already on the remote for %s\n", shortSHA(facts.head), pr.URL)
+		return nil
 	}
 	// Post-update mergeable check (#1264): the push moved the head, so GitHub recomputes
 	// mergeability. A push that lands the PR in CONFLICTING gets zero pull_request runs at
