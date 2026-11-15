@@ -462,10 +462,12 @@ func labelsNewDiff(cell string) deliberateDiff {
 }
 
 func labelsCheckDiff() deliberateDiff {
-	row := "  MISS  root example-org/example-repo carries docs/streams/\n"
-	cnc := labelExpectation("labels-check", "")
-	return deliberateDiff{code: 1, stdoutReplace: func() []string { return []string{row, row + cnc} },
-		stderrReplace: []string{"", ""}, why: whyLabels}
+	return deliberateDiff{code: 1, stdoutReplace: func() []string {
+		// The map is initialized in every helper subprocess too, from arbitrary cwd.
+		// Read shared fixture bytes only when the transcript comparison needs them.
+		row := "  MISS  root example-org/example-repo carries docs/streams/\n"
+		return []string{row, row + labelExpectation("labels-check", "")}
+	}, stderrReplace: []string{"", ""}, why: whyLabels}
 }
 
 const whyIntakePin = "a freshly scaffolded cell pins the intake role to a strong tier (DESK_MODEL_intake_desk=opus), so show reports that one role line from the new pin instead of the default"

@@ -79,3 +79,21 @@ func TestShellOracleParity(t *testing.T) {
 		})
 	}
 }
+
+// Shared expectations belong to transcript comparisons, not package startup:
+// helper subprocesses re-execute this binary from arbitrary fixture directories.
+// regression: #6455
+func TestParityFixtureInit(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binary, "-test.run=^$")
+	cmd.Dir = t.TempDir()
+	cmd.Env = []string{"HOME=" + t.TempDir(), "PATH=" + os.Getenv("PATH"), "KUBECONFIG=/dev/null"}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("test-binary startup outside its package: %v\n%s", err, out)
+	}
+}
