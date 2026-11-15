@@ -161,6 +161,10 @@ there is no poll at all, so there is nothing to copy.
                            missing verb is unverifiable, never an empty queue. --monitor <path.sh>
                            or ASSAY_INBOUND_MONITOR arms the bash oracle inbound-monitor.sh instead
                            (parity mode), through a bash resolved from PATH.
+  the replay bound         INTAKE_REPLAY_CAP, when a positive integer, sets how many RETAINED events per
+                           repo one pass presents; otherwise INBOUND_MONITOR_BURST_CAP, then 25. A
+                           value above the burst bound enlarges the judged batch per pass without
+                           changing what the poller admits for a fresh delta.
 
 Stop flags are honoured on every cycle boundary, precedence DISABLED > STOP > STOP.` + LoopName + `.
 
