@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -46,6 +47,89 @@ func yamlDocs(raw []byte) ([]map[string]any, error) {
 	}
 }
 
+// yamlNodes is yamlDocs for streams whose documents may be lists (a JSON6902
+// operation list), and keeps nothing but the decoded value.
+func yamlNodes(raw []byte) ([]any, error) {
+	dec := yaml.NewDecoder(bytes.NewReader(raw))
+	var out []any
+	for {
+		var doc any
+		if err := dec.Decode(&doc); err != nil {
+			if errors.Is(err, io.EOF) {
+				return out, nil
+			}
+			return out, err
+		}
+		if doc != nil {
+			out = append(out, doc)
+		}
+	}
+}
+
+// patchProblems sweeps one decoded kustomize patch document: a JSON6902
+// operation list (a top-level list) or a strategic-merge patch (a map).
+func patchProblems(node any, where string) []string {
+	ops, isOps := node.([]any)
+	if !isOps {
+		return patchMptcpProblems(node, where)
+	}
+	var out []string
+	for i, item := range ops {
+		out = append(out, jsonPatchOpProblems(item, where+" op "+strconv.Itoa(i+1))...)
+	}
+	return out
+}
+
+// podSpecSegments are the path segments that reach a pod spec or its
+// containers, for every workload kind (StatefulSet and Deployment: template;
+// CronJob: jobTemplate; Pod: containers directly under /spec).
+var podSpecSegments = map[string]bool{"template": true, "jobTemplate": true, "containers": true, "initContainers": true, "env": true}
+
+// reachesPodSpec reports whether a JSON6902 pointer is, is inside, or is an
+// ancestor of a pod spec or its env: such an op can drop or flip the base entry.
+func reachesPodSpec(ptr string) bool {
+	if ptr == "" || ptr == "/" || ptr == "/spec" {
+		// The whole document, or the whole of a Pod's spec.
+		return true
+	}
+	for _, seg := range strings.Split(ptr, "/") {
+		if podSpecSegments[seg] {
+			return true
+		}
+	}
+	return false
+}
+
+// jsonPatchOpProblems lists what one JSON6902 operation does to the pod spec.
+// The only op allowed to reach it appends or inserts one env entry (add at
+// .../env/- or .../env/<n>), and that entry may carry only the literal setting.
+// Any other op that reaches a pod spec, as path or from, could remove or
+// replace the base entry unseen.
+func jsonPatchOpProblems(item any, where string) []string {
+	op, _ := item.(map[string]any)
+	kind, _ := op["op"].(string)
+	path, pathOK := op["path"].(string)
+	if kind == "" || !pathOK {
+		return []string{where + ": an operation without a string op and path cannot be read"}
+	}
+	from, _ := op["from"].(string)
+	if kind == "test" || (!reachesPodSpec(path) && (from == "" || !reachesPodSpec(from))) {
+		return nil
+	}
+	segs := strings.Split(path, "/")
+	last := segs[len(segs)-1]
+	_, atoiErr := strconv.Atoi(last)
+	insertsEnvEntry := kind == "add" && from == "" && len(segs) >= 2 && segs[len(segs)-2] == "env" && (last == "-" || atoiErr == nil)
+	if !insertsEnvEntry {
+		return []string{where + ": " + kind + " " + path + " can drop or reshape the base GODEBUG entry unseen"}
+	}
+	entry, isMap := op["value"].(map[string]any)
+	if !isMap {
+		return []string{where + ": an env entry added by a patch must be a map"}
+	}
+	return patchMptcpProblems(entry, where)
+}
+
 // composeMptcpProblems lists the services of one Compose document that do not
 // leave MPTCP off, in either the map or the KEY=value list form of `environment`,
 // and counts the services it read.
@@ -71,8 +155,13 @@ func composeMptcpProblems(doc map[string]any) (problems []string, services int) 
 			}
 		case []any:
 			for _, e := range env {
-				if s, _ := e.(string); strings.HasPrefix(s, "GODEBUG=") {
+				s, _ := e.(string)
+				switch {
+				case strings.HasPrefix(s, "GODEBUG="):
 					values = append(values, strings.TrimPrefix(s, "GODEBUG="))
+				case s == "GODEBUG":
+					// Compose reads a bare name from the host environment.
+					values = append(values, "\x00from the host environment")
 				}
 			}
 		}
@@ -83,10 +172,11 @@ func composeMptcpProblems(doc map[string]any) (problems []string, services int) 
 	return problems, services
 }
 
-// patchMptcpProblems lists what a kustomize patch does to GODEBUG. A patch may
-// leave the base entry alone; it may not carry one that is anything but the
+// patchMptcpProblems lists what a strategic-merge patch does to GODEBUG. A patch
+// may leave the base entry alone; it may not carry one that is anything but the
 // literal setting, and it may not carry a strategic-merge directive ($patch,
-// $retainKeys, ...) that could delete or replace the base entry unseen.
+// $retainKeys, ...) or a null (which clears the field it names) that could
+// delete or replace the base entry unseen.
 func patchMptcpProblems(node any, where string) []string {
 	var out []string
 	switch v := node.(type) {
@@ -100,6 +190,10 @@ func patchMptcpProblems(node any, where string) []string {
 			if strings.HasPrefix(k, "$") {
 				out = append(out, where+": patch directive "+k+" can drop the base GODEBUG entry unseen")
 			}
+			if v[k] == nil {
+				// A null clears the field it names in the target.
+				out = append(out, where+": null "+k+" can drop base fields, GODEBUG among them, unseen")
+			}
 			out = append(out, patchMptcpProblems(v[k], where)...)
 		}
 		if v["name"] == "GODEBUG" {
@@ -109,6 +203,9 @@ func patchMptcpProblems(node any, where string) []string {
 		}
 	case []any:
 		for _, item := range v {
+			if item == nil {
+				out = append(out, where+": a null list item can drop base entries unseen")
+			}
 			out = append(out, patchMptcpProblems(item, where)...)
 		}
 	}
@@ -128,6 +225,7 @@ func TestMptcpOffOnEveryComposeSvc(t *testing.T) {
 		{"list form twice", svc + "    environment: [\"GODEBUG=multipathtcp=0\", \"GODEBUG=multipathtcp=1\"]\n", true},
 		{"space after comma", svc + "    environment:\n      GODEBUG: \"multipathtcp=1, multipathtcp=0\"\n", true},
 		{"trailing space", svc + "    environment:\n      GODEBUG: \"multipathtcp=0 \"\n", true},
+		{"bare name after the setting", svc + "    environment: [\"GODEBUG=multipathtcp=0\", \"GODEBUG\"]\n", true},
 		{"not a string", svc + "    environment:\n      GODEBUG: 0\n", true},
 		{"own environment replaces the shared one", "x-c: &c\n  environment:\n    GODEBUG: multipathtcp=0\nservices:\n  a:\n    <<: *c\n    environment:\n      OTHER: x\n", true},
 		{"map form", svc + "    environment:\n      GODEBUG: multipathtcp=0\n", false},
@@ -199,12 +297,34 @@ func TestMptcpPatchesKeepBaseEntry(t *testing.T) {
 		{"delete directive", `{"env":[{"name":"GODEBUG","$patch":"delete"}]}`, true},
 		{"replace directive", `{"containers":[{"name":"c","$patch":"replace"}]}`, true},
 		{"retainKeys", `{"env":[{"$retainKeys":["name"],"name":"X"}]}`, true},
+		{"null env", `{"spec":{"template":{"spec":{"containers":[{"name":"the-desk","env":null}]}}}}`, true},
+		{"null containers", `{"spec":{"template":{"spec":{"containers":null}}}}`, true},
+		{"null value", `{"env":[{"name":"GODEBUG","value":null}]}`, true},
+		{"null list item", `{"env":[null]}`, true},
+		{"json6902 storage class", `[{"op":"add","path":"/spec/volumeClaimTemplates/0/spec/storageClassName","value":"x"}]`, false},
+		{"json6902 add env entry", `[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"X","value":"1"}}]`, false},
+		{"json6902 add literal setting", `[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"GODEBUG","value":"multipathtcp=0"}}]`, false},
+		{"json6902 add other setting", `[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"GODEBUG","value":"multipathtcp=1"}}]`, true},
+		{"json6902 remove env entry", `[{"op":"remove","path":"/spec/template/spec/containers/0/env/2"}]`, true},
+		{"json6902 replace env entry", `[{"op":"replace","path":"/spec/template/spec/containers/0/env/2/value","value":"multipathtcp=1"}]`, true},
+		{"json6902 add replaces env list", `[{"op":"add","path":"/spec/template/spec/containers/0/env","value":[]}]`, true},
+		{"json6902 add replaces pod spec", `[{"op":"add","path":"/spec/template/spec","value":{}}]`, true},
+		{"json6902 remove containers", `[{"op":"remove","path":"/spec/template/spec/containers"}]`, true},
+		{"json6902 add container", `[{"op":"add","path":"/spec/template/spec/containers/-","value":{"name":"x"}}]`, true},
+		{"json6902 remove template", `[{"op":"remove","path":"/spec/template"}]`, true},
+		{"json6902 remove spec", `[{"op":"remove","path":"/spec"}]`, true},
+		{"json6902 copy from env", `[{"op":"copy","from":"/spec/template/spec/containers/0/env","path":"/metadata/annotations"}]`, true},
+		{"json6902 move from env", `[{"op":"move","from":"/spec/template/spec/containers/0/env/0","path":"/metadata/x"}]`, true},
+		{"json6902 cronjob env", `[{"op":"remove","path":"/spec/jobTemplate/spec/template/spec/containers/0/env/0"}]`, true},
+		{"json6902 pod containers", `[{"op":"remove","path":"/spec/containers/0/env"}]`, true},
+		{"json6902 add null env entry", `[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":null}]`, true},
+		{"json6902 unreadable op", `[{"path":"/spec/template"}]`, true},
 	} {
-		docs, err := yamlDocs([]byte(c.text))
+		docs, err := yamlNodes([]byte(c.text))
 		if err != nil || len(docs) != 1 {
 			t.Fatalf("control %q does not parse: %v", c.name, err)
 		}
-		if got := patchMptcpProblems(docs[0], c.name); (len(got) > 0) != c.bad {
+		if got := patchProblems(docs[0], c.name); (len(got) > 0) != c.bad {
 			t.Errorf("control %q: problems=%v, want defect=%v", c.name, got, c.bad)
 		}
 	}
@@ -226,16 +346,92 @@ func TestMptcpPatchesKeepBaseEntry(t *testing.T) {
 			t.Errorf("%s: patch listed by a kustomization is unreadable: %v", rel, err)
 			continue
 		}
-		docs, err := yamlDocs(raw)
+		docs, err := yamlNodes(raw)
 		if err != nil {
 			t.Errorf("%s: does not decode: %v", rel, err)
 			continue
 		}
 		for _, doc := range docs {
-			for _, p := range patchMptcpProblems(doc, rel) {
+			for _, p := range patchProblems(doc, rel) {
 				t.Error(p)
 			}
 		}
 	}
 	t.Logf("%d kustomize patches swept", len(paths))
+}
+
+// regression: #6213
+func TestMptcpInlineKustomizePatches(t *testing.T) {
+	const head = "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\n"
+	for _, c := range []struct {
+		name, text string
+		files      []string
+		bad        bool
+	}{
+		{"storage class op", head + "patches:\n  - target: {kind: StatefulSet}\n    patch: |-\n      - op: add\n        path: /spec/volumeClaimTemplates/0/spec/storageClassName\n        value: x\n", nil, false},
+		{"inline null env", head + "patches:\n  - patch: |-\n      {\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"the-desk\",\"env\":null}]}}}}\n", nil, true},
+		{"inline op removes env", head + "patches:\n  - target: {kind: StatefulSet}\n    patch: |-\n      - op: remove\n        path: /spec/template/spec/containers/0/env/2\n", nil, true},
+		{"inline op flips setting", head + "patches:\n  - patch: |-\n      - op: replace\n        path: /spec/template/spec/containers/0/env/2/value\n        value: multipathtcp=1\n", nil, true},
+		{"json6902 inline", head + "patchesJson6902:\n  - target: {kind: StatefulSet, name: x}\n    patch: |-\n      - op: remove\n        path: /spec/template/spec/containers/0/env\n", nil, true},
+		{"json6902 file", head + "patchesJson6902:\n  - target: {kind: StatefulSet, name: x}\n    path: ops.yaml\n", []string{"k/ops.yaml"}, false},
+		{"patch file", head + "patches:\n  - path: p.yaml\n", []string{"k/p.yaml"}, false},
+	} {
+		files, err := kustomizePatchFiles("k", []byte(c.text))
+		if err != nil || strings.Join(files, ",") != strings.Join(c.files, ",") {
+			t.Errorf("control %q: files=%v err=%v, want %v", c.name, files, err, c.files)
+		}
+		bodies, err := kustomizeInlinePatches([]byte(c.text))
+		if err != nil {
+			t.Fatalf("control %q does not parse: %v", c.name, err)
+		}
+		var got []string
+		for _, b := range bodies {
+			docs, err := yamlNodes([]byte(b))
+			if err != nil {
+				got = append(got, c.name+": inline patch does not decode")
+			}
+			for _, d := range docs {
+				got = append(got, patchProblems(d, c.name)...)
+			}
+		}
+		if (len(got) > 0) != c.bad {
+			t.Errorf("control %q: problems=%v, want defect=%v", c.name, got, c.bad)
+		}
+	}
+
+	skipIfFixtureAbsent(t, fixtureRepoRoot+"/containers/k8s", "the desk manifests ship only in a full checkout")
+	_, _, _, roots, _ := repoSweepInputs(t, fixtureRepoRoot)
+	const example = "containers/k8s/overlays/compatibility-example"
+	bodies, seenExample := 0, false
+	for _, dir := range roots {
+		for _, name := range []string{"kustomization.yaml", "kustomization.yml", "Kustomization"} {
+			raw, err := os.ReadFile(filepath.Join(fixtureRepoRoot, dir, name))
+			if err != nil {
+				continue
+			}
+			inline, err := kustomizeInlinePatches(raw)
+			if err != nil {
+				t.Errorf("%s/%s: does not decode: %v", dir, name, err)
+				continue
+			}
+			for i, b := range inline {
+				bodies++
+				seenExample = seenExample || dir == example
+				where := dir + "/" + name + " inline patch " + strconv.Itoa(i+1)
+				docs, err := yamlNodes([]byte(b))
+				if err != nil {
+					t.Errorf("%s: does not decode: %v", where, err)
+				}
+				for _, doc := range docs {
+					for _, p := range patchProblems(doc, where) {
+						t.Error(p)
+					}
+				}
+			}
+		}
+	}
+	if !seenExample {
+		t.Fatalf("the sweep did not reach the inline patch in %s (%d inline patches read)", example, bodies)
+	}
+	t.Logf("%d inline kustomize patches swept", bodies)
 }

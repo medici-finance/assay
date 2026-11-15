@@ -159,16 +159,25 @@ func sweepMarkdown(raw []byte, where string) (mptcpSweep, error) {
 	return s, nil
 }
 
-// kustomizePatchFiles lists the files a kustomization applies as patches. A
-// patch carries only what it changes, so it is proven through the rendered
-// output, not on its own.
+// kustomizePatchSpec is the part of a kustomization that applies patches.
+type kustomizePatchSpec struct {
+	Patches []struct {
+		Path  string `yaml:"path"`
+		Patch string `yaml:"patch"`
+	} `yaml:"patches"`
+	PatchesStrategicMerge []string `yaml:"patchesStrategicMerge"`
+	PatchesJSON6902       []struct {
+		Path  string `yaml:"path"`
+		Patch string `yaml:"patch"`
+	} `yaml:"patchesJson6902"`
+}
+
+// kustomizePatchFiles lists the files a kustomization applies as patches
+// (patches[].path, patchesStrategicMerge and patchesJson6902[].path). A patch
+// carries only what it changes, so it is swept on its own, not proven through
+// the rendered output, which needs a kustomize binary.
 func kustomizePatchFiles(dir string, raw []byte) ([]string, error) {
-	var k struct {
-		Patches []struct {
-			Path string `yaml:"path"`
-		} `yaml:"patches"`
-		PatchesStrategicMerge []string `yaml:"patchesStrategicMerge"`
-	}
+	var k kustomizePatchSpec
 	if err := yaml.Unmarshal(raw, &k); err != nil {
 		return nil, err
 	}
@@ -180,6 +189,34 @@ func kustomizePatchFiles(dir string, raw []byte) ([]string, error) {
 	}
 	for _, p := range k.PatchesStrategicMerge {
 		out = append(out, filepath.Clean(filepath.Join(dir, p)))
+	}
+	for _, p := range k.PatchesJSON6902 {
+		if p.Path != "" {
+			out = append(out, filepath.Clean(filepath.Join(dir, p.Path)))
+		}
+	}
+	return out, nil
+}
+
+// kustomizeInlinePatches returns the patch bodies a kustomization carries
+// inline (patches[].patch and patchesJson6902[].patch), the other half of the
+// patches kustomizePatchFiles lists. Each body is a strategic-merge document
+// or a JSON6902 operation list.
+func kustomizeInlinePatches(raw []byte) ([]string, error) {
+	var k kustomizePatchSpec
+	if err := yaml.Unmarshal(raw, &k); err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, p := range k.Patches {
+		if p.Patch != "" {
+			out = append(out, p.Patch)
+		}
+	}
+	for _, p := range k.PatchesJSON6902 {
+		if p.Patch != "" {
+			out = append(out, p.Patch)
+		}
 	}
 	return out, nil
 }
