@@ -19,6 +19,17 @@ import (
 // Compose services (they hold no pod spec) and kustomize patches (they carry
 // only what they change, and the rendered check needs a kustomize binary this
 // test cannot assume). The value rule is the runtime's, godebugDisablesMPTCP.
+//
+// Declared residual, not swept by the tests that run in the ordinary CI job (each
+// is reachable only through a reviewed commit to this repository; the rendered
+// subtest of TestMPTCPOffInEveryWorkload sees the first group, not the wrapper,
+// and only where a kustomize binary is on PATH, which that job does not install):
+//   - kustomize transformers, generators and replacements, which can rewrite or
+//     drop an env entry without a patch;
+//   - a patch that sets command or args on a container to a wrapper that resets
+//     GODEBUG for the process it starts;
+//   - Compose files reached through include:, services in a *.compose.yaml file,
+//     and a service command or entrypoint that wraps the process.
 
 var composeFile = regexp.MustCompile(`(^|/)(docker-)?compose[^/]*\.ya?ml$`)
 
@@ -176,7 +187,12 @@ func composeMptcpProblems(doc map[string]any) (problems []string, services int) 
 // may leave the base entry alone; it may not carry one that is anything but the
 // literal setting, and it may not carry a strategic-merge directive ($patch,
 // $retainKeys, ...) or a null (which clears the field it names) that could
-// delete or replace the base entry unseen.
+// delete or replace the base entry unseen. Every entry of a containers or
+// initContainers list must carry the literal entry itself: the list merges by
+// name, so an entry whose name is not in the base is a container the patch
+// adds, and it would have none (the merged one is harmless: same name, same
+// value). The sweep cannot tell the two apart without rendering, so it asks
+// for the entry on both.
 func patchMptcpProblems(node any, where string) []string {
 	var out []string
 	switch v := node.(type) {
@@ -195,6 +211,9 @@ func patchMptcpProblems(node any, where string) []string {
 				out = append(out, where+": null "+k+" can drop base fields, GODEBUG among them, unseen")
 			}
 			out = append(out, patchMptcpProblems(v[k], where)...)
+			if k == "containers" || k == "initContainers" {
+				out = append(out, containerListProblems(k, v[k], where)...)
+			}
 		}
 		if v["name"] == "GODEBUG" {
 			if s, ok := v["value"].(string); !ok || s != mptcpOff || len(v) != 2 {
@@ -207,6 +226,28 @@ func patchMptcpProblems(node any, where string) []string {
 				out = append(out, where+": a null list item can drop base entries unseen")
 			}
 			out = append(out, patchMptcpProblems(item, where)...)
+		}
+	}
+	return out
+}
+
+// containerListProblems lists the entries of a patch's containers or
+// initContainers list that carry no GODEBUG env entry. Whether
+// that entry is the literal setting is patchMptcpProblems' own check.
+func containerListProblems(key string, list any, where string) []string {
+	items, _ := list.([]any)
+	var out []string
+	for i, item := range items {
+		c, _ := item.(map[string]any)
+		env, _ := c["env"].([]any)
+		n := 0
+		for _, e := range env {
+			if m, ok := e.(map[string]any); ok && m["name"] == "GODEBUG" {
+				n++
+			}
+		}
+		if n == 0 {
+			out = append(out, where+": "+key+" entry "+strconv.Itoa(i+1)+" must carry a GODEBUG="+mptcpOff+" env entry: a container the patch adds would have none")
 		}
 	}
 	return out
@@ -289,7 +330,13 @@ func TestMptcpPatchesKeepBaseEntry(t *testing.T) {
 		name, text string
 		bad        bool
 	}{
-		{"patch without GODEBUG", `{"spec":{"containers":[{"name":"c","env":[{"name":"X","value":"1"}]}]}}`, false},
+		{"patch without containers", `{"spec":{"replicas":0}}`, false},
+		{"container with the setting", `{"spec":{"containers":[{"name":"c","env":[{"name":"X","value":"1"},{"name":"GODEBUG","value":"multipathtcp=0"}]}]}}`, false},
+		{"initContainer with the setting", `{"spec":{"initContainers":[{"name":"i","env":[{"name":"GODEBUG","value":"multipathtcp=0"}]}]}}`, false},
+		{"container without GODEBUG", `{"spec":{"containers":[{"name":"c","env":[{"name":"X","value":"1"}]}]}}`, true},
+		{"added container without env", `{"spec":{"template":{"spec":{"containers":[{"name":"sidecar","image":"i"}]}}}}`, true},
+		{"added initContainer without GODEBUG", `{"spec":{"template":{"spec":{"initContainers":[{"name":"init","image":"i","env":[{"name":"X","value":"1"}]}]}}}}`, true},
+		{"second container without GODEBUG", `{"spec":{"containers":[{"name":"a","env":[{"name":"GODEBUG","value":"multipathtcp=0"}]},{"name":"b"}]}}`, true},
 		{"literal setting", `{"env":[{"name":"GODEBUG","value":"multipathtcp=0"}]}`, false},
 		{"enabled", `{"env":[{"name":"GODEBUG","value":"multipathtcp=1"}]}`, true},
 		{"merged setting", `{"env":[{"name":"GODEBUG","value":"http2debug=1,multipathtcp=0"}]}`, true},
@@ -307,6 +354,9 @@ func TestMptcpPatchesKeepBaseEntry(t *testing.T) {
 		{"json6902 add other setting", `[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"GODEBUG","value":"multipathtcp=1"}}]`, true},
 		{"json6902 remove env entry", `[{"op":"remove","path":"/spec/template/spec/containers/0/env/2"}]`, true},
 		{"json6902 replace env entry", `[{"op":"replace","path":"/spec/template/spec/containers/0/env/2/value","value":"multipathtcp=1"}]`, true},
+		// The only op that may touch an env entry is an add; a replace of a whole
+		// entry with a harmless one drops the base GODEBUG entry (the `kind == "add"` condition).
+		{"json6902 replace whole env entry", `[{"op":"replace","path":"/spec/template/spec/containers/0/env/2","value":{"name":"X","value":"1"}}]`, true},
 		{"json6902 add replaces env list", `[{"op":"add","path":"/spec/template/spec/containers/0/env","value":[]}]`, true},
 		{"json6902 add replaces pod spec", `[{"op":"add","path":"/spec/template/spec","value":{}}]`, true},
 		{"json6902 remove containers", `[{"op":"remove","path":"/spec/template/spec/containers"}]`, true},
@@ -373,6 +423,7 @@ func TestMptcpInlineKustomizePatches(t *testing.T) {
 		{"inline op removes env", head + "patches:\n  - target: {kind: StatefulSet}\n    patch: |-\n      - op: remove\n        path: /spec/template/spec/containers/0/env/2\n", nil, true},
 		{"inline op flips setting", head + "patches:\n  - patch: |-\n      - op: replace\n        path: /spec/template/spec/containers/0/env/2/value\n        value: multipathtcp=1\n", nil, true},
 		{"json6902 inline", head + "patchesJson6902:\n  - target: {kind: StatefulSet, name: x}\n    patch: |-\n      - op: remove\n        path: /spec/template/spec/containers/0/env\n", nil, true},
+		{"inline adds a container", head + "patches:\n  - patch: |-\n      {\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"sidecar\",\"image\":\"i\"}]}}}}\n", nil, true},
 		{"json6902 file", head + "patchesJson6902:\n  - target: {kind: StatefulSet, name: x}\n    path: ops.yaml\n", []string{"k/ops.yaml"}, false},
 		{"patch file", head + "patches:\n  - path: p.yaml\n", []string{"k/p.yaml"}, false},
 	} {
