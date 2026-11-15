@@ -81,9 +81,16 @@ advancement. The driver decides; worker/reviewer comments cannot provide it.
 The future checker must require an explicit immutable correction descriptor
 selected by full commit and repository-relative path, alongside the original
 `--delivery`, `--base` and `--brief`. It must not discover an override from a
-mutable working tree or ambient configuration. Reuse the existing explicit
-`--forge` opt-in and native forge seam for authority reads; without that opt-in,
-a requested correction is could-not-check and cannot clear a disproved result.
+mutable working tree or ambient configuration. Human approval corroboration
+must use the existing protected acceptance owner
+and its exact `--acceptance-forge` opt-in and permission semantics. Generic
+`--forge` does not grant approval authority. Any separate verifier-attestation
+read must also require the existing explicit `--forge` opt-in, through its native
+forge seam and ordinary permission envelope. If either required opt-in/read is
+unavailable, the correction is could-not-check and cannot clear a disproved
+result. A descriptor alone grants neither authority nor permission to contact
+the forge.
+
 Ordinary consumers runs and all unrelated declarations retain current behavior.
 No code or proof command is executed by the checker.
 
@@ -92,12 +99,17 @@ The descriptor must bind, without wildcards or version ranges:
 - repository identity, brief ID, full producer and first-parent IDs, delivered
   brief path/blob, and exact raw declaration bytes plus their SHA-256;
 - both caller paths/blobs and the changed adapter/library blobs above;
-- immutable correction commit/path/blob, exact design-spec revision, immutable
-  external harness and fixture digests, and both independent proof results;
-- the brief's existing marked acceptance issue and an exact independent verifier
-  attestation-comment URL. Human instance authority comes from the existing
-  protected transition, as specified below; the descriptor contains no second
-  human approval field.
+- exact design-spec revision, immutable external harness and fixture digests,
+  and both independent proof results;
+- the brief's existing marked acceptance issue, the only issue on which the
+  independent verifier attestation may be read. The attestation must uniquely
+  match the canonical descriptor digest and trusted verifier role; report its
+  exact URL. It is not a future URL embedded inside the descriptor it attests.
+
+The full correction commit/path/blob and digest bind the descriptor externally
+through the approved Command. Human instance authority comes from the existing
+protected transition below; the descriptor contains no self-hash, future
+attestation URL or second human approval field.
 
 The verifier payload must bind the complete canonical descriptor digest. The
 human instance approval binds it through the exact approved row-23 Command: that
@@ -105,7 +117,8 @@ Command must be one direct invocation in a documented canonical argument grammar
 with the full correction commit, path and SHA-256 as literal arguments. No shell
 substitutions, comments, alternate invocations or prose-only mention can supply
 that binding. The checker must compare its requested tuple to that exact approved
-argument vector, rather than grep arbitrary shell text. The final wire grammar and canonical bytes must be specified and reviewed
+argument vector, rather than grep arbitrary shell text. The final wire grammar
+and canonical bytes must be specified and reviewed
 in the implementation brief before code, following existing strict canonical
 record handling. Reject duplicate keys, missing fields, extraneous scope and
 ambiguous combined sites. Do not add a loose prose approval or a generic path
@@ -116,8 +129,10 @@ Authority corroboration reuses the existing protected acceptance planner and
 its ordered transition chain. It must freshly authenticate the exact mapped-human
 approval for the amendment whose row-23 Command first names this descriptor and
 digest. The original producer/base/declaration and all previous links remain
-bound. The pending version-3 amendment can use link 2 if it includes the final
-immutable descriptor; if version 3 lands without that input, a later Command
+bound. Keep pending version 3 unmerged until the proof/descriptor Command is
+complete
+where feasible, so it can share the ordinary link-2 act. The pending version-3
+amendment can use link 2 if it includes the final immutable descriptor; if version 3 lands without that input, a later Command
 amendment needs the ordinary next link. No old approval can authorize an input
 it never named. The descriptor must not hash a future approval URL or its own
 amendment commit: its instance authority is resolved from that existing chain,
