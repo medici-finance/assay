@@ -38,7 +38,7 @@ consumers:
 
 ## Context
 
-files: `deskd/internal/boardread/` (planned: `source.go`, `read.go`, `map.go` and tests), `deskd/internal/serve/v1.go`, `deskd/internal/serve/server.go`, `deskd/internal/mcp/query.go`, `deskd/internal/contract/openapi.yaml`, `deskd/internal/contract/client.go`, `deskd/cockpit/src/client/v1.d.ts`, `deskd/web/panes.go`, `deskd/web/templates/roadmap.html`, `deskd/internal/chat/binding.go`, `deskd/cmd/deskd/main.go`, `deskd/go.mod`, `deskd/go.sum`, `deskd/README.md`, `deskd/testdata/boardread/` (planned: two fixture trees), `changelog/deskd-board-reads.md` (planned).
+files: `deskd/internal/boardread/` (planned: `source.go`, `read.go`, `map.go` and tests), `deskd/internal/serve/v1.go`, `deskd/internal/serve/server.go`, `deskd/internal/mcp/query.go`, `deskd/internal/mcp/authz_test.go`, `deskd/internal/contract/openapi.yaml`, `deskd/internal/contract/client.go`, `deskd/cockpit/src/client/v1.d.ts`, `deskd/web/panes.go`, `deskd/web/templates/roadmap.html`, `deskd/internal/chat/binding.go`, `deskd/cmd/deskd/main.go`, `deskd/go.mod`, `deskd/go.sum`, `deskd/README.md`, `deskd/testdata/boardread/` (planned: two fixture trees), `changelog/deskd-board-reads.md` (planned).
 
 facts (876ca4bca, 14 November 2026):
 - `desk__roadmap` and `desk__portfolio` are registered with `Scope: ScopeNone` and the handler
@@ -49,10 +49,15 @@ facts (876ca4bca, 14 November 2026):
   `RoadmapPayload` (`deskd/internal/serve/server.go:313`).
 - No whole-board `--json` mode exists in statusgen. statusgen/39 adds the library call that
   returns it, and statusgen/42 adds the Next-up and awaiting projections.
-- `ScopeNone` is valid only on a tool that reads no cell data; `TestEveryDataToolIsCellScoped`
-  asserts that (`deskd/internal/mcp/authz.go:20-31`). A tool that returns rows must be
-  `ScopeCell`: the call names a configured cell, the caller is a loop of that cell, and any
-  repository it names belongs to that cell.
+- `ScopeNone` is meant only for a tool that reads no cell data (`deskd/internal/mcp/authz.go:20-31`).
+  A tool that returns rows must be `ScopeCell`: the call names a configured cell, the caller is
+  a loop of that cell, and any repository it names belongs to that cell.
+- The existing test does not enforce that for these two tools. `TestEveryDataToolIsCellScoped`
+  (`deskd/internal/mcp/authz_test.go:153-172`) holds an `unscoped` allow-list that names
+  `desk__roadmap` and `desk__portfolio` (line 155) and errors only when a `ScopeNone` tool is
+  missing from that list or mutates. Its one refusal assertion is on a planted probe tool. It
+  passes today, and it would still pass if both tools returned rows while left at `ScopeNone`.
+- `deskd/web/panes.go:363` labels a tile "desk__portfolio (delegated)".
 - That scope is an agent-tool dispatch check only. The HTTP routes (`deskd/internal/serve/v1.go:86-87`),
   the un-versioned roadmap route (`deskd/internal/serve/server.go:56`) and the roadmap page
   (`deskd/web/web.go:133`, `deskd/web/panes.go:75-88`) take no cell argument and do not pass
@@ -71,7 +76,10 @@ facts (876ca4bca, 14 November 2026):
   `:666`). Nothing reads `streams_root` at run time, and the service holds no checkout: its data
   comes from polling the forge into a SQLite index.
 - The service module requires only `tools/desk`, at a published pseudo-version, with no
-  `replace` (`deskd/go.mod`). `make deskd-image` builds with `deskd/` as the only build context
+  `replace` (`deskd/go.mod`). That pinned revision of `tools/desk` required no other module of
+  this repository. The current `tools/desk` manifest requires statusgen at the placeholder
+  version with a relative `replace` (`tools/desk/go.mod:18`, `:129`), so moving the existing pin
+  forward meets the same resolution problem as requiring statusgen directly. `make deskd-image` builds with `deskd/` as the only build context
   and `GOWORK=off` (`images/deskd/Dockerfile`, `deskd/README.md`), so a relative `replace` to a
   sibling module cannot resolve inside the image build.
 - The statusgen module requires five sibling modules at a placeholder pseudo-version that no
@@ -186,6 +194,8 @@ task step succeeds, and 2 when it does not.
 1. **Prove the module route.** In `deskd/`, with `GOWORK=off` and no `replace`, add a
    requirement on the statusgen module, and on each sibling module the board packages import,
    at exact commit pseudo-versions, and build a throwaway program that calls the board loader.
+   Account for the edge that already exists: either leave the `tools/desk` pin where it is, or
+   show that the same route resolves it at a newer revision whose manifest requires statusgen.
    The criterion is `go build` and `go mod verify` both succeeding from `deskd/` alone. Record
    the result on the brief's decision issue. If it fails, STOP: report the exact resolution
    error and wait for the human decision.
@@ -200,17 +210,27 @@ task step succeeds, and 2 when it does not.
 4. **Mapping.** Map a view to the two responses, taking the caller's allowed repository set as
    an argument and dropping every other row first.
    - Roadmap: per stream, its status and priority, counts of briefs by lifecycle state, the count
-     held or blocked, and the Next-up rows from statusgen/42. The claims state is reported as
-     not known, because the service does not read branches.
+     held or blocked, and the Next-up rows from statusgen/42.
    - Portfolio: per repository, the same counts summed, the count of awaiting rows whose class is
-     a human action, and each stream's declared model routing. Last-record age is reported as
+     a human action, and each stream's declared model routing (the view's `tiering` field,
+     which statusgen/39 carries; absent stays absent). Last-record age is reported as
      could-not-check: the view does not carry it.
+   - Facts the projections ask for. The service answers each one explicitly, so a missing fact
+     never reads as "nothing outstanding". Drive manifests and verify-outcome records are files
+     in the tree and are read through the same confined filesystem. Claims, last touch and
+     delivery history need git or the forge, which the service does not read here: each is
+     answered could-not-check. The Next-up rows are then marked an unfiltered superset with
+     the claims state not known, and an awaiting row whose class depends on a missing fact is
+     marked not valid, never dropped. The response's assessment lists the facts it lacked.
 5. **Serve.** `GET /v1/roadmap`, `GET /v1/portfolio`, the un-versioned roadmap handler, the
    roadmap page and the two agent tools return the mapped rows with an assessment that names the
    directory and the load time. Each surface derives the allowed repository set itself and hands
    it to the mapping:
    - The two agent tools change to cell scope. Their allowed set is the repositories of the cell
-     the scope admitted. Update their descriptions.
+     the scope admitted. Update their descriptions. Remove both names from the `unscoped`
+     allow-list in `deskd/internal/mcp/authz_test.go` (line 155), so the existing test fails if
+     either tool is ever returned to `ScopeNone`, and add the refusal test of Verify row 3.
+   - Update the tile labels in `deskd/web/panes.go` that call these reads "(delegated)".
    - Each HTTP and page handler builds its allowed set from the viewer's per-repository
      authorizer, asking it about every repository of every configured cell, the same check
      `cellAuthorized` makes. With no authorizer wired, the set is every configured repository,
@@ -248,16 +268,16 @@ the exact PASS line, so a selector that matches nothing fails the row.
 | # | Class | Env | Command | Expect |
 |---|-------|-----|---------|--------|
 | 1 | check:ci | tree | `(cd deskd && GOWORK=off go build ./... && GOWORK=off go mod verify)` | exit 0; output contains "all modules verified". The service module builds from its own directory with the board library required and no `replace` |
-| 2 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadRows$" ./internal/boardread/ > "$check_output" && grep -F -- "--- PASS: TestBoardReadRows " "$check_output")` | exit 0; PASS line printed. Over two fixture trees the roadmap rows carry each stream's counts by lifecycle state and its Next-up rows, the portfolio rows carry the summed counts and the human-action count, and last-record age is could-not-check |
-| 3 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestEveryDataToolIsCellScoped$" ./internal/mcp/ > "$check_output" && grep -F -- "--- PASS: TestEveryDataToolIsCellScoped " "$check_output")` | exit 0; PASS line printed. The two tools now return rows and are cell-scoped; a call naming a cell the caller is not a loop of is refused before the handler runs |
+| 2 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadRows$" ./internal/boardread/ > "$check_output" && grep -F -- "--- PASS: TestBoardReadRows " "$check_output")` | exit 0; PASS line printed. Over two fixture trees the roadmap rows carry each stream's counts by lifecycle state and its Next-up rows, the portfolio rows carry the summed counts, the human-action count and each fixture stream's `tiering` value, last-record age is could-not-check, and with claims, last touch and delivery history unavailable the Next-up rows are marked an unfiltered superset, an affected awaiting row is marked not valid and kept, and the assessment lists the three missing facts |
+| 3 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardToolsRefuseForeign$" ./internal/mcp/ > "$check_output" && grep -F -- "--- PASS: TestBoardToolsRefuseForeign " "$check_output")` | exit 0; PASS line printed. The planned test dispatches `desk__roadmap` and then `desk__portfolio` with a cell the caller is not a loop of and requires a forbidden error from each with its handler never run; it also requires that neither name is in the `unscoped` allow-list of `TestEveryDataToolIsCellScoped`. If either tool is left at `ScopeNone`, the dispatch reaches the handler and the test fails |
 | 4 | check:ci +mutation | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadFiltersFirst$" ./internal/boardread/ > "$check_output" && grep -F -- "--- PASS: TestBoardReadFiltersFirst " "$check_output")` | exit 0; PASS line printed. With the handler's scope check bypassed in the test, the mapping given cell A's repository set returns no row, count or stream name from cell B's tree; with the filter removed by the test hook the same assertion fails |
-| 5 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadUnknown$" ./internal/boardread/ ./internal/serve/ > "$check_output" && grep -F -- "--- PASS: TestBoardReadUnknown " "$check_output")` | exit 0; PASS line printed. A cell with no configured directory, an unreadable directory and a partial view each answer could-not-check with a reason and never an empty list; a symbolic link inside a configured tree that points outside it is refused and the bytes behind it never appear in a row; a request between poll cycles does not trigger a load |
+| 5 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadUnknown$" ./internal/boardread/ ./internal/serve/ > "$check_output" && test "$(grep -c -F -- "--- PASS: TestBoardReadUnknown " "$check_output")" -eq 2)` | exit 0; the PASS line is printed once for each of the two packages, so a test present in only one fails the row. A cell with no configured directory, an unreadable directory and a partial view each answer could-not-check with a reason and never an empty list; a symbolic link inside a configured tree that points outside it is refused and the bytes behind it never appear in a row; a request between poll cycles does not trigger a load |
 | 6 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadImports$" ./internal/boardread/ > "$check_output" && grep -F -- "--- PASS: TestBoardReadImports " "$check_output")` | exit 0; PASS line printed. The package imports the board library and the service's domain package and no other service package, launches no process and opens no network connection |
 | 7 | check:ci +neighbour | tree | `(cd deskd && GOWORK=off go test -count=1 ./...)` | exit 0; every existing service test passes, including the authority test that keeps the human-answer and adopt tools absent, the route allow-list test and the generated-schema drift test |
 | 8 | check +flow +dereference | host | `(cd deskd && GOWORK=off go build -o "${TMPDIR:-/tmp}/deskd-10" ./cmd/deskd) && (cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && DESKD_BIN="${TMPDIR:-/tmp}/deskd-10" DESKD_ROOT="$(cd .. && pwd)" GOWORK=off go test -count=1 -v -run "^TestRoadmapFlowRealTree$" ./cmd/deskd/ > "$check_output" && grep -F -- "--- PASS: TestRoadmapFlowRealTree " "$check_output")` | exit 0; PASS line printed (a skipped test prints no PASS line and fails the row). The built service, started on loopback with this repository as the one configured root, answers the roadmap route with a row for the `cell-api` stream whose brief counts equal the counts in that stream's own README table (flow row: flag, source, loader, mapping, route) |
 | 9 | check | host | `make deskd-image` | exit 0, or exit 2 with a line starting "deskd-image: could-not-check" where no container runtime is reachable. Under option 1 of the human decision the image builds from the service directory alone |
 | 10 | gate:model +dereference | tree | `grep -n -F -e "--roots" deskd/README.md && grep -n -F -e "roadmap" deskd/internal/contract/openapi.yaml` | exit 0; the reviewer then reads the matched sections: the README states the directory source, that a working tree is not the remote, and what stays could-not-check; the schema describes typed rows and no longer says "until wired" |
-| 11 | check | tree | `(cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg-ca10" .) && "${TMPDIR:-/tmp}/sg-ca10" --root . --lint` | exit 0; output contains "LINT: PASS" |
+| 11 | check | tree | `(cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg-ca10" .) && "${TMPDIR:-/tmp}/sg-ca10" --root . --lint` | exit 0; output contains "LINT: PASS". If the run reports a problem on a brief this delivery did not touch, the row is could-not-check for that reason, never passed: record the problem lines and re-run where the tree lints clean, as the repository's own lint check does |
 | 12 | check +flow | tree | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && "${TMPDIR:-/tmp}/sg-ca10" --root . --consumers --brief cell-api/10 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0, post-merge: `ASSAY_DELIVERY_SHA` is the merged delivery commit and `ASSAY_DELIVERY_BASE_SHA` its first parent. The report corroborates each `consumers:` line above with no unchecked obligation; record its exact counts |
 | 13 | check:ci +mutation | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadSurfacesDeny$" ./internal/serve/ ./web/ > "$check_output" && test "$(grep -c -F -- "--- PASS: TestBoardReadSurfacesDeny " "$check_output")" -eq 2)` | exit 0; the PASS line is printed once for each of the two packages. With trees configured for cells A and B and an authorizer wired that denies cell B's repository, `GET /v1/roadmap`, `GET /v1/portfolio`, the un-versioned roadmap route and the roadmap page each return cell A's rows and no row, count, stream name or error text from cell B's tree; a handler variant that hands the mapping every configured repository fails the same assertion |
 | 14 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestChatBindingNoBoardReads$" ./internal/chat/ > "$check_output" && grep -F -- "--- PASS: TestChatBindingNoBoardReads " "$check_output")` | exit 0; PASS line printed. Neither `desk__roadmap` nor `desk__portfolio` is in the question-answering feature's allow-list, both are in its forbidden list, and a registry that advertises them cannot be bound |

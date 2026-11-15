@@ -139,7 +139,8 @@ design-fit:
    file, schema, wave, effort, status, verified, reviewed, gate, the four risk answers,
    exec tier, value, blocked marker, blocked-until, implementer, verify lane, in-repair marker,
    depends, unblocks, gates, feathers, issues, the Verify row identifiers, and whether Evidence is
-   empty. A stream carries its name, repo, root, status, priority, track, spec and issues. The
+   empty. A stream carries its name, repo, root, status, priority, track, spec, issues and its
+   `tiering` guidance (absent stays absent, distinct from present and empty). The
    view also carries findings, intake entries and placeholder rows with their flat frontmatter
    (repo, status, blocked, id, date, title, disposition). Every section carries an availability
    state from the `statusgen/streamview` vocabulary.
@@ -158,7 +159,10 @@ design-fit:
    Remove the old bodies. The lint half of `checkBriefFiles` stays where it is.
 5. **Multi-root stitch.** One node set across every root. Resolve cross-root `depends:`,
    `gates:` and `feathers:` edges through `docs/streams/graph-repos.yaml` and the root map; when
-   the map has no entry, fall back to the sibling-by-basename rule. A target that still cannot be
+   the map has no entry, fall back to the sibling-by-basename rule. That fallback is a directory
+   operation (`eligibility.go:98-110` stats the parent directory), so it applies only to a root
+   built from a directory path; for a root handed in as any other filesystem, a sibling that is
+   not in the root map is could-not-check. A target that still cannot be
    resolved (an unpublished alias, an absent checkout, an `#<issue>` reference) becomes a node
    with `status: "could-not-check"` and its reason, never a dropped edge. Each root is read
    exactly once per load, and a sibling is taken from the roots already loaded.
@@ -195,7 +199,7 @@ Output (`board-view-v1`, abridged and wrapped here for reading; the command prin
 ```json
 {"schema":"board-view-v1",
  "roots":[{"repo":"…","path":"…","readable":true}],
- "streams":[{"id":"<alias>:<stream>","repo":"…","root":"…","status":"…","priority":"…","availability":"available"}],
+ "streams":[{"id":"<alias>:<stream>","repo":"…","root":"…","status":"…","priority":"…","tiering":"…","availability":"available"}],
  "briefs":[{"id":"<alias>:<stream>/<NN>","num":"…","title":"…","file":"…","status":"…","verified":"…","reviewed":"…",
             "wave":0,"effort":"…","gate":"…","risk":{},"exec_tier":"…","verify_rows":["1","2"],"evidence_empty":true}],
  "edges":[{"from":"…","to":"…","kind":"depends|gates|feathers","type":"…","state":"satisfied|unsatisfied|could-not-check"}],
@@ -213,7 +217,7 @@ the exact PASS line, so a selector that matches nothing fails the row.
 | 1 | check:ci | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardLoadParity$" . > "$check_output" && grep -F -- "--- PASS: TestBoardLoadParity " "$check_output")` | exit 0; PASS line printed. On the fixture roots the `statusgen board` output equals the library's encoded view byte for byte, and the streams the command package's `loadHydratedStreams` returns equal the view's rows field for field |
 | 2 | check:ci | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardStitchRoots$" ./board/... > "$check_output" && grep -F -- "--- PASS: TestBoardStitchRoots " "$check_output")` | exit 0; PASS line printed. Two fixture roots: a cross-root `depends:`, a cross-root `gates:` and a cross-root `feathers:` edge each appear with canonical identifiers, and every brief of both roots is present |
 | 3 | check:ci | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardCouldNotCheck$" . > "$check_output" && grep -F -- "--- PASS: TestBoardCouldNotCheck " "$check_output")` | exit 0; PASS line printed. An `#<issue>` edge, an unpublished alias and an unreadable second root each produce a could-not-check node or an unreadable root entry with a reason, and the command exits 3; an unreadable home root exits 2 |
-| 4 | check:ci | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardRowFields$" ./board/... > "$check_output" && grep -F -- "--- PASS: TestBoardRowFields " "$check_output")` | exit 0; PASS line printed. A fixture brief's row carries every field Task step 2 lists, including its Verify row identifiers and its Evidence-empty flag, each equal to the value in the fixture file |
+| 4 | check:ci | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardRowFields$" ./board/... > "$check_output" && grep -F -- "--- PASS: TestBoardRowFields " "$check_output")` | exit 0; PASS line printed. A fixture brief's row carries every field Task step 2 lists, including its Verify row identifiers and its Evidence-empty flag, each equal to the value in the fixture file; a fixture stream's row carries its `tiering` value, and a stream with no `tiering` key has the field absent; a root handed in as an in-memory filesystem with a sibling missing from the root map yields a could-not-check node, not a directory lookup |
 | 5 | check:ci +mutation | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardPurity$" . > "$check_output" && grep -F -- "--- PASS: TestBoardPurity " "$check_output")` | exit 0; PASS line printed. A structural check over `statusgen/board` and `statusgen/board/tree` finds no package-level mutable variable, no environment read, no process launch and no exit call; the pure core imports no filesystem package; and the command package holds no second body of the moved functions |
 | 6 | check:ci +mutation | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardPurityFlagsPlant$" . > "$check_output" && grep -F -- "--- PASS: TestBoardPurityFlagsPlant " "$check_output")` | exit 0; PASS line printed. Run over `testdata/board-plant/` (a package with one planted package-level variable written by a load), the same structural check reports that variable |
 | 7 | check:ci | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -race -count=1 -v -run "^TestBoardReentrant$" ./board/... > "$check_output" && grep -F -- "--- PASS: TestBoardReentrant " "$check_output")` | exit 0; PASS line printed. Two loads of different roots run at once under the race detector and each equals its serial result; a second load after a brief file is edited reports the edited value; a two-root load opens each README once |
@@ -223,7 +227,7 @@ the exact PASS line, so a selector that matches nothing fails the row.
 | 11 | check +flow +dereference | `(cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg-39" .) && { "${TMPDIR:-/tmp}/sg-39" board --root . > "${TMPDIR:-/tmp}/board-39.json"; rc=$?; } ; test "$rc" -ne 2 && test "$rc" -ne 1 && grep -qF '"schema":"board-view-v1"' "${TMPDIR:-/tmp}/board-39.json" && grep -F -o '"id":"assay:statusgen/39"' "${TMPDIR:-/tmp}/board-39.json"` | exit 0; the command runs on this repository's own tree and exits 0, or 3 (partial) when the tree holds an edge to a forge-only or unpublished target the offline reader cannot resolve; the document carries the schema tag and this brief's own row (flow row; dereferences this brief's own file). Record the exit code and the count of could-not-check nodes |
 | 12 | check +flow | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && ASSAY_HYDRATE_TREE="$(cd .. && pwd)" GOWORK=off go test -count=1 -v -run "^TestBoardLoadBudget$" . > "$check_output" && grep -F -- "--- PASS: TestBoardLoadBudget " "$check_output")` | exit 0; PASS line printed (a skipped test prints no PASS line and fails the row). A library load of this repository's tree stays within the budget statusgen/44 set |
 | 13 | gate:model +dereference | `grep -n -F -e "statusgen board" statusgen/README.md && grep -n -F "board-view-v1" docs/contracts.md && grep -n -F "statusgen/board" docs/library-first.md && test -f schemas/board-view-v1.json` | exit 0; the reviewer then reads the matched sections: the README documents the library call, the command, its roots, output and exit codes; `docs/contracts.md` names statusgen as owner of `board-view-v1`; the schema and the README agree on every top-level key |
-| 14 | check | `"${TMPDIR:-/tmp}/sg-39" --root . --lint` | exit 0; output contains "LINT: PASS" (the binary built in row 11) |
+| 14 | check | `"${TMPDIR:-/tmp}/sg-39" --root . --lint` | exit 0; output contains "LINT: PASS" (the binary built in row 11). If the run reports a problem on a brief this delivery did not touch, the row is could-not-check for that reason, never passed: record the problem lines and re-run where the tree lints clean |
 | 15 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && "${TMPDIR:-/tmp}/sg-39" --root . --consumers --brief statusgen/39 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0, post-merge: `ASSAY_DELIVERY_SHA` is the merged delivery commit and `ASSAY_DELIVERY_BASE_SHA` its first parent. The report corroborates each `consumers:` line above with no unchecked obligation; record its exact counts |
 
 | Failure mode of the work | Caught by |
