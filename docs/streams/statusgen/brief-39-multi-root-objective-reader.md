@@ -4,7 +4,7 @@ title: 'Board reader library: importable multi-root loader and the whole-board v
 why: "Other tools can only reach statusgen's parsed board by running the binary once per root and decoding its output, or by re-implementing its parsers; both exist today, and both are slow or drift. The loader lives in the command's own package, reads process-wide state and cannot be called twice safely, so no service or desk tool can link it. This brief moves the loader into an importable, re-entrant library and adds one whole-board view across every configured root, so a caller makes one function call and gets every stream, every brief row and every edge, with unreadable parts named instead of dropped."
 wave: 2
 depends: ["statusgen/44"]
-unblocks: ["statusgen/41", "statusgen/42", "statusgen/43"]
+unblocks: ["statusgen/41", "statusgen/42", "statusgen/43", "cell-api/10"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -31,7 +31,7 @@ consumers:
   - "statusgen --next-up, --gate-scores, --eligibility, --graph, --launch and brief --json wire shapes: out-of-scope (unchanged here; Verify row 9 holds them byte-identical, and their library projections are statusgen/42)"
   - "objective closure, critical path and ranked moves, and the trace-path-to-live skill: follow-up statusgen/41"
   - "tools/desk read-side callers (deskboard, verifyloop, issueboard): follow-up statusgen/43"
-  - "deskd roadmap and portfolio reads (deskd/internal/mcp/query.go, deskd/internal/serve/v1.go): out-of-scope (the service read model is owned by cell-api/02; the deskd module requires only tools/desk today, so linking this library adds a module edge that brief decides. This brief ships the call and the fields those reads name)"
+  - "deskd roadmap and portfolio reads (deskd/internal/mcp/query.go, deskd/internal/serve/v1.go): follow-up cell-api/10 (this brief ships the call, the filesystem-root form and the fields those reads name; that brief links them into the service)"
   - "statusgen/25 portfolio projections and milestone-support/11 stream views: out-of-scope (each composes its own records and neither is edited here; both may read the board view once it ships)"
   - "parsers that edit text in place or read a git revision instead of a working tree (tools/desk/internal/deskkit/briefstable.go, tools/desk/cmd/deskevidence, tools/desk/cmd/deskpathguard, tools/desk/cmd/deskpushguard, tools/desk/internal/loopengine/reconcile.go, qualgen/regressionlink.go): out-of-scope (they need a shared parser function on bytes, which is the brief-document unit of the shared-policy consolidation plan, not a loaded view)"
 ---
@@ -80,8 +80,11 @@ facts (876ca4bca, 14 November 2026):
 layering: a pure core `statusgen/board` holds the view types, canonical identifiers, the
 multi-root stitch and edge states, under the same no-file, no-process, no-environment,
 no-global-state rule as `statusgen/evaluation`. An explicitly effectful `statusgen/board/tree`
-reads roots from the filesystem and nothing else: no git, no forge, no network. The command
-package keeps adapters and type aliases. Facts that need git or a forge (last touch, claims,
+reads roots through the standard `fs.FS` interface and nothing else: no git, no forge, no
+network. A checkout is one such filesystem; a caller with no checkout can hand in another. The
+two board packages import nothing outside the statusgen module except the one sibling the model
+already imports (`deskcore/issueflow`, `model.go:4`), so a module that links them resolves as
+little as possible. The command package keeps adapters and type aliases. Facts that need git or a forge (last touch, claims,
 delivery history) are not in the view; they stay behind the command package's adapters and are
 statusgen/42's concern. Task steps 2 to 4 build this; Verify rows 1, 5 and 6 check it.
 
@@ -141,8 +144,9 @@ design-fit:
    (repo, status, blocked, id, date, title, disposition). Every section carries an availability
    state from the `statusgen/streamview` vocabulary.
 3. **Effectful loader, `statusgen/board/tree`.** Provide `Load(ctx, roots, options)` returning a
-   view. A loader value owns every memo; memos are bounded and are not shared between loader
-   values. No package-level mutable state, no environment read (roots and options are
+   view. A root is a repository identity plus an `fs.FS`; a helper builds one from a directory
+   path. A loader value owns every memo; memos are bounded and are not shared between loader
+   values. The two board packages import no sibling module other than `deskcore`. No package-level mutable state, no environment read (roots and options are
    arguments; parsing `DESK_ROOTS` stays in the command package), no write to standard output or
    error, no process exit. Two loads may run at once, and a second load after a file changes
    sees the change.
@@ -211,7 +215,7 @@ the exact PASS line, so a selector that matches nothing fails the row.
 | 5 | check:ci +mutation | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardPurity$" . > "$check_output" && grep -F -- "--- PASS: TestBoardPurity " "$check_output")` | exit 0; PASS line printed. A structural check over `statusgen/board` and `statusgen/board/tree` finds no package-level mutable variable, no environment read, no process launch and no exit call; the pure core imports no filesystem package; and the command package holds no second body of the moved functions |
 | 6 | check:ci +mutation | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardPurityFlagsPlant$" . > "$check_output" && grep -F -- "--- PASS: TestBoardPurityFlagsPlant " "$check_output")` | exit 0; PASS line printed. Run over `testdata/board-plant/` (a package with one planted package-level variable written by a load), the same structural check reports that variable |
 | 7 | check:ci | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -race -count=1 -v -run "^TestBoardReentrant$" ./board/... > "$check_output" && grep -F -- "--- PASS: TestBoardReentrant " "$check_output")` | exit 0; PASS line printed. Two loads of different roots run at once under the race detector and each equals its serial result; a second load after a brief file is edited reports the edited value; a two-root load opens each README once |
-| 8 | check:ci | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardExternalConsumer$" . > "$check_output" && grep -F -- "--- PASS: TestBoardExternalConsumer " "$check_output")` | exit 0; PASS line printed. A module outside this repository's module graph imports `statusgen/board/tree` through a local proxy, builds and loads a fixture root, as the evaluator's external-consumer test does |
+| 8 | check:ci | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardExternalConsumer$" . > "$check_output" && grep -F -- "--- PASS: TestBoardExternalConsumer " "$check_output")` | exit 0; PASS line printed. A module outside this repository's module graph imports `statusgen/board/tree` through a local proxy, builds, and loads a fixture root handed in as an in-memory `fs.FS` with no directory behind it, as the evaluator's external-consumer test does; the test also asserts the two board packages import no sibling module other than `deskcore` |
 | 9 | check:ci +neighbour | `(cd statusgen && GOWORK=off go test -count=1 ./...)` | exit 0; every existing statusgen test still passes, including `TestFlowQueue`, `TestEvaluationLibraryCLIParity`, `TestGraphJSONLDeterministic`, `TestDispatchView*`, `TestBriefInfo*`, `TestLaunch*` and `TestMultiRoot*`, so `--gate-scores`, `--eligibility`, `--graph`, `--next-up`, `brief --json` and `--launch` output is unchanged |
 | 10 | check:ci | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardSchemaGolden$" . > "$check_output" && grep -F -- "--- PASS: TestBoardSchemaGolden " "$check_output")` | exit 0; PASS line printed. The command output on the two-root fixture validates against `schemas/board-view-v1.json`, equals the checked-in golden, and is byte-identical across two runs |
 | 11 | check +flow +dereference | `(cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg-39" .) && { "${TMPDIR:-/tmp}/sg-39" board --root . > "${TMPDIR:-/tmp}/board-39.json"; rc=$?; } ; test "$rc" -ne 2 && test "$rc" -ne 1 && grep -qF '"schema":"board-view-v1"' "${TMPDIR:-/tmp}/board-39.json" && grep -F -o '"id":"assay:statusgen/39"' "${TMPDIR:-/tmp}/board-39.json"` | exit 0; the command runs on this repository's own tree and exits 0, or 3 (partial) when the tree holds an edge to a forge-only or unpublished target the offline reader cannot resolve; the document carries the schema tag and this brief's own row (flow row; dereferences this brief's own file). Record the exit code and the count of could-not-check nodes |
