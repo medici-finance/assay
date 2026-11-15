@@ -178,8 +178,8 @@
     {
       "name": "a +dirty/+unknown witness keeps the narrowed scope (no landing check stands behind the uncommitted edits it read)",
       "file": "evaluation/coverage.go",
-      "old": "\t\tif scope.derived() {\n\t\t\tscope.inputs = nil",
-      "new": "\t\tif false && scope.derived() {\n\t\t\tscope.inputs = nil"
+      "old": "\t\tif scope.derived() || scope.reads != nil {\n\t\t\tscope.reads = nil\n\t\t\tscope.inputs = nil",
+      "new": "\t\tif false && (scope.derived() || scope.reads != nil) {\n\t\t\tscope.reads = nil\n\t\t\tscope.inputs = nil"
     },
     {
       "name": "S1 round 2: the presence check kept but the root-prefix handling dropped (a row run below the toplevel is judged by a shadowing toplevel file of the same name, and a change to the file it read releases)",

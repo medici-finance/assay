@@ -46,10 +46,15 @@ delegated whole to `statusgen init`, which writes the GitHub workflow or `.gitla
 target's `origin` — never re-author it. The three that need a forge act are expressed per forge,
 never via a forge CLI:
 
-- **`create-labels`** — GitHub: a one-off human/admin act at the repo's label settings (the list
-  is the guide's CORE §3 `create-labels`); GitLab: created by the human-run
-  `tools/create-fleet-gitlab.sh`. `deskflip` creates the PR-state pair on first use on either
-  forge; no desk verb provisions the whole set yet (#1559).
+- **`create-labels`** — an operator act under the operator's own label-write credential, on
+  either forge: `deskfleet labels --roles <the roster's role= names>` (the set is the guide's
+  CORE §3 `create-labels`: `review-request`, a `raised-by:<role>` and a `to:<role>` per roster
+  role, the PR-state pair), or `cellctl new --kind house … --labels-token-file <file>`, which
+  ensures it on every `--roots` repo. `--check` / `cellctl check` reads it back. On GitLab,
+  provisioning (`tools/create-fleet-gitlab.sh`) also creates it for the six documented roles; a
+  roster role beyond those gets its rows from `deskfleet labels --roles` or `cellctl new`.
+  `deskflip` creates the PR-state pair on first use on either forge. No desk role App gets
+  label-write. Whether a desk role may create labels on its own stays open (#1559).
 - **The reviewer grant (`setup-reviewer-app`)** — GitHub: a reviewer GitHub App; GitLab: a reviewer
   service account (`tools/create-fleet-gitlab.sh`). Both human; `deskroster preflight` reads the
   grant back.

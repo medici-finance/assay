@@ -146,6 +146,7 @@ func TestContainerDriverStateAfterPrompt(t *testing.T) {
 	if err := r.Attach(ctx, id, drv, terminal.Size{Cols: 80, Rows: 24}); err != nil {
 		t.Fatalf("Attach: %v", err)
 	}
+	defer r.Detach(id)
 
 	waitForState(t, r, id, terminal.StateIdle, 10*time.Second)
 
@@ -154,7 +155,11 @@ func TestContainerDriverStateAfterPrompt(t *testing.T) {
 	}
 	waitForState(t, r, id, terminal.StateIdle, 5*time.Second)
 
-	if err := r.Write(id, []byte("printf '\\033]0;desk: working\\007'; sleep 3; printf '\\033]0;desk: idle\\007'\n")); err != nil {
+	// The completion text is assembled by the shell, so its echoed command
+	// cannot satisfy the observation. Keep the original five-second interval:
+	// a passing three-second substitute does not prove Verify row 4.
+	started := time.Now()
+	if err := r.Write(id, []byte("printf '\\033]0;desk: working\\007'; sleep 5; printf 'cockpit-sleep-%s\\n' complete; printf '\\033]0;desk: idle\\007'\n")); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 
@@ -168,14 +173,29 @@ func TestContainerDriverStateAfterPrompt(t *testing.T) {
 	// instant, two disagreeing signals by the shipped design (state.go's
 	// disagreement rule) — a real, correct property of the terminal core, not
 	// something this row is testing.
-	deadline := time.Now().Add(8 * time.Second)
+	deadline := started.Add(12 * time.Second)
 	for {
 		h, ok := r.Resolve(id)
 		if !ok {
 			t.Fatalf("desk %q did not resolve", id)
 		}
+		// Read the stream after the state: the completion line precedes the
+		// idle OSC title, so an idle observation must have its completion
+		// bytes available. This ordering avoids a false early-idle failure
+		// when completion arrives between two independent registry reads.
+		output, err := r.Since(id, 0)
+		if err != nil {
+			t.Fatalf("Since: %v", err)
+		}
+		completed := bytes.Contains(output, []byte("cockpit-sleep-complete\r\n"))
+		if completed && time.Since(started) < 5*time.Second {
+			t.Fatalf("sleep completed after %s, want at least 5s", time.Since(started))
+		}
 		if h.State == string(terminal.StateWaiting) {
-			t.Fatalf("state=waiting while a plain sleep runs — no ask was made")
+			t.Fatalf("state=waiting during the five-second sleep observation — no ask was made")
+		}
+		if !completed && h.State != string(terminal.StateBusy) {
+			t.Fatalf("state=%q before the five-second sleep completed, want busy", h.State)
 		}
 		if h.State == string(terminal.StateIdle) {
 			return

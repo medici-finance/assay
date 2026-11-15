@@ -84,6 +84,9 @@ func SummarisePerfCommands(recs []PerfRecord, permission perfrec.Profile, filter
 			return
 		}
 		schema, boundary := r.Schema, r.Boundary
+		if IsPerfV2(r) {
+			schema = PerfSchemaV2 // perf-v5 is perf-v2 with a release tag: one group, never two
+		}
 		switch schema {
 		case PerfSchema:
 			boundary = "legacy-wrapper"

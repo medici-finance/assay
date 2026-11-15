@@ -331,7 +331,8 @@ func TestFailFirstGateSeesEveryRunnerRow(t *testing.T) {
 func TestFailFirstReadersSkipTheBaseColumn(t *testing.T) {
 	red := failFirstCell("bbbbbbbbbbbb", baseRed, 1, "aaaaaaaaaaaa")
 	for _, tbl := range []string{ffTable(red, red), ffTable("", "")} {
-		d, r := evidenceVerifierInfo(tbl)
+		// The close stamp reads the latest strict PASS run only (#5229).
+		d, r := evidenceVerifierInfo(tbl + "\n**VERIFY: PASS**\n")
 		if d != "2026-10-08" || !strings.HasPrefix(r, "human:fixture") || strings.Contains(r, "base=") {
 			t.Errorf("evidenceVerifierInfo = (%q, %q), want (2026-10-08, human:fixture...) from:\n%s", d, r, tbl)
 		}

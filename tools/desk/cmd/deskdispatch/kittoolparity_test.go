@@ -31,6 +31,11 @@ func credFor(role string) string {
 	return `--token-file "$(desktoken --no-rotate ` + role + ` --repo ` + allowedRepo + `)"`
 }
 
+// credForLoop is credFor with the override a reader on another loop needs ("" for none).
+func credForLoop(role, override string) string {
+	return `--token-file "$(desktoken --no-rotate ` + role + ` --repo ` + allowedRepo + override + `)"`
+}
+
 // lineWith returns the first line of s containing sub, "" when none does.
 func lineWith(s, sub string) string {
 	for _, l := range strings.Split(s, "\n") {
@@ -45,10 +50,15 @@ func lineWith(s, sub string) string {
 // the agent's own role.
 // regression: #2493
 func TestAgentReleaseLineHasCred(t *testing.T) {
-	for _, tc := range []struct{ kit, item, role string }{
-		{"worker", "example-stream--07", "worker"},
-		{"review", "assay--pr-547", "reviewer"},
-		{"verifier", "example-stream--07", "verifier"},
+	// The fixture dispatches from the-desk. A worker exports worker-desk, which takes worker. A
+	// review or verifier agent inherits the-desk, which acts as desk, so its release mint carries
+	// the audited cross-role override (#6069).
+	for _, tc := range []struct{ kit, item, role, override string }{
+		{"worker", "example-stream--07", "worker", ""},
+		{"review", "assay--pr-547", "reviewer",
+			` --cross-role "a deskdispatch claim command posts as the reviewer App by design; loop the-desk acts as desk"`},
+		{"verifier", "example-stream--07", "verifier",
+			` --cross-role "a deskdispatch claim command posts as the verifier App by design; loop the-desk acts as desk"`},
 	} {
 		t.Run(tc.kit, func(t *testing.T) {
 			s := &stub{}
@@ -81,9 +91,10 @@ func TestAgentReleaseLineHasCred(t *testing.T) {
 			if line == "" {
 				t.Fatalf("no %s release line in the %s prompt", goClaimBinary, tc.kit)
 			}
-			if !strings.Contains(line, credFor(tc.role)) {
+			want := credForLoop(tc.role, tc.override)
+			if !strings.Contains(line, want) {
 				t.Errorf("the %s release line fails as printed — no credential:\n%s\nwant it to carry %s",
-					tc.kit, line, credFor(tc.role))
+					tc.kit, line, want)
 			}
 		})
 	}

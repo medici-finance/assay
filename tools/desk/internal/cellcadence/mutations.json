@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/cellctl ./internal/cellcadence ./internal/cellprocess -run 'TestCadence|TestCrash|TestMissingSummary|TestUncertain' -count=1 -timeout=30s",
+  "test": "go test ./cmd/cellctl ./internal/cellcadence ./internal/cellrunner -run 'TestCadence|TestCrash|TestMissingSummary|TestUncertain' -count=1 -timeout=30s",
   "control": {
     "name": "omit tick environment contract",
     "file": "cmd/cellctl/launch_tick.go",

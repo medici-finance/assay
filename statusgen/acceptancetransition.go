@@ -41,8 +41,183 @@ func transitionWitnessTree(dir, tree, runSHA string) string {
 	return runSHA
 }
 
+type transitionLink struct {
+	number                           int
+	amendment, approval, predecessor string
+	preflight                        bool
+}
+
+// transitionLinks validates the entire chain grammar before history or authority
+// reads. The legacy form continues through the unchanged single-link grammar.
+func transitionLinks(run string) ([]transitionLink, string) {
+	markers := protectedMarkersNamed(normalizedProtectedEvidence(run), "Acceptance-Transition:")
+	chain := false
+	for _, m := range markers {
+		fields := strings.Fields(m.text)
+		chain = chain || (len(fields) > 1 && strings.HasPrefix(fields[1], "link"))
+	}
+	if !chain {
+		return nil, ""
+	}
+	links := make([]transitionLink, 0, len(markers))
+	seen := map[string]bool{}
+	for i, m := range markers {
+		k := i + 1
+		fail := func(s string) ([]transitionLink, string) {
+			return nil, fmt.Sprintf("acceptance transition: link %d: %s", k, s)
+		}
+		f := strings.Fields(m.text)
+		if !m.literal || len(f) != 4 || f[1] != fmt.Sprintf("link=%d", k) || !strings.HasPrefix(f[2], "amendment=") || !strings.HasPrefix(f[3], "approval=") {
+			return fail("expected contiguous literal chain markers in link order")
+		}
+		a, u := strings.TrimPrefix(f[2], "amendment="), strings.TrimPrefix(f[3], "approval=")
+		if !isObjectID(a) {
+			return fail("a separate immutable amendment is required")
+		}
+		parsed, ok := parseRulingURL(u)
+		if !ok {
+			return fail("a valid approval URL is required")
+		}
+		key := fmt.Sprintf("%s/%d", strings.ToLower(parsed.Repo), parsed.CommentID)
+		if seen[key] {
+			return fail("an approval URL cannot serve two links")
+		}
+		seen[key] = true
+		links = append(links, transitionLink{number: k, amendment: a, approval: u})
+	}
+	return links, ""
+}
+
+// transitionFirstParents owns the ordered history read shared by chain
+// enumeration and per-link ancestry membership. Membership does not depend on
+// output order; both forms use the same first-parent range and error behavior.
+func transitionFirstParents(dir, predecessor string) ([]byte, error) {
+	return historyGit(dir, "rev-list", "--first-parent", "--reverse", "HEAD", "^"+predecessor).Output()
+}
+
+// transitionBriefBytes owns the raw version-source read for both record forms.
+// Parsing and refusal wording remain with the existing callers.
+func transitionBriefBytes(dir, file, rev string) ([]byte, error) {
+	return historyGit(dir, "show", "--end-of-options", rev+":./"+file).Output()
+}
+
 func acceptanceTransition(path, verify, full, run, delivery, base, original, baseline, delivered string, audit bool, read func(string) (string, error)) (string, map[string]string, string) {
-	fail := func(s string) (string, map[string]string, string) { return "", nil, "acceptance transition: " + s }
+	links, why := transitionLinks(run)
+	if why != "" {
+		return "", nil, why
+	}
+	if len(links) == 0 {
+		return acceptanceStep(path, verify, full, run, delivery, base, original, baseline, delivered, audit, read, nil)
+	}
+	fail := func(k int, s string) (string, map[string]string, string) {
+		return "", nil, fmt.Sprintf("acceptance transition: link %d: %s", k, s)
+	}
+	dir, file := filepath.Dir(path), filepath.Base(path)
+	version := func(rev string) (int, error) {
+		raw, e := transitionBriefBytes(dir, file, rev)
+		if e != nil {
+			return 0, e
+		}
+		bf, ok, e := parseBriefFileBytes(path, raw)
+		if e != nil || !ok || bf.Version < 1 {
+			return 0, fmt.Errorf("transition requires a versioned brief-v2 definition")
+		}
+		return bf.Version, nil
+	}
+	// Account for every Verify OR version change, including a reverted edit.
+	history, e := transitionFirstParents(dir, delivery)
+	if e != nil {
+		return fail(1, "cannot read amendment ancestry")
+	}
+	previous, previousTable := delivery, delivered
+	previousVersion, e := version(delivery)
+	if e != nil {
+		return fail(1, e.Error())
+	}
+	position := 0
+	for _, rev := range strings.Fields(string(history)) {
+		table, e := read(rev)
+		if e != nil {
+			return fail(position+1, "cannot read acceptance history")
+		}
+		v, e := version(rev)
+		if e != nil {
+			return fail(position+1, e.Error())
+		}
+		if strings.TrimSpace(table) != strings.TrimSpace(previousTable) || v != previousVersion {
+			if position >= len(links) || links[position].amendment != rev {
+				return fail(position+1, fmt.Sprintf("link %d missing at %.12s", position+1, rev))
+			}
+			links[position].predecessor = previous
+			previous = rev
+			position++
+		}
+		previousTable, previousVersion = table, v
+	}
+	if position != len(links) {
+		return fail(position+1, "amendment is not an ordered first-parent acceptance change")
+	}
+	final := links[len(links)-1].amendment
+	finalTable, e := read(final)
+	if e != nil || strings.TrimSpace(verify) != strings.TrimSpace(finalTable) {
+		return fail(len(links), "current Verify differs from the approved amendment")
+	}
+	current, ok, e := parseBriefFile(path)
+	if e != nil || !ok || current.Version != previousVersion {
+		return fail(len(links), "current acceptance version differs from amendment")
+	}
+	// Validate all immutable structure before the first forge read. The preflight
+	// projects every candidate; actual approval selection is reapplied below from
+	// the original obligations, so omitted Expect drift never gains authority.
+	for _, preflight := range []bool{true, false} {
+		effective, prior := baseline, delivered
+		revisions := map[string]string{}
+		for i, link := range links {
+			link.preflight = preflight
+			amended, e := read(link.amendment)
+			if e != nil {
+				return fail(i+1, "cannot read amendment")
+			}
+			marker := fmt.Sprintf("Acceptance-Transition: amendment=%s approval=%s", link.amendment, link.approval)
+			stepLines := strings.Split(run, "\n")
+			var stepRun []string
+			inserted := false
+			for _, line := range stepLines {
+				if strings.HasPrefix(line, "Acceptance-Transition:") {
+					if !inserted {
+						stepRun = append(stepRun, marker)
+						inserted = true
+					}
+					continue
+				}
+				stepRun = append(stepRun, line)
+			}
+			next, revs, why := acceptanceStep(path, amended, full, strings.Join(stepRun, "\n"), delivery, base, original, effective, prior, audit && i == len(links)-1, read, &link)
+			if why != "" {
+				return "", nil, why
+			}
+			effective, prior = next, amended
+			for id, rev := range revs {
+				revisions[id] = rev
+			}
+		}
+		if !preflight {
+			return effective, revisions, ""
+		}
+	}
+	panic("unreachable transition planning phase")
+}
+
+// acceptanceStep is the shared per-link policy for both record forms. A nil
+// chain retains legacy verdicts; chain preflight has no authority-read effects.
+func acceptanceStep(path, verify, full, run, delivery, base, original, baseline, delivered string, audit bool, read func(string) (string, error), chain *transitionLink) (string, map[string]string, string) {
+	fail := func(s string) (string, map[string]string, string) {
+		prefix := "acceptance transition: "
+		if chain != nil {
+			prefix += fmt.Sprintf("link %d: ", chain.number)
+		}
+		return "", nil, prefix + s
+	}
 	markers := protectedMarkersNamed(normalizedProtectedEvidence(run), "Acceptance-Transition:")
 	if len(markers) != 1 || !markers[0].literal {
 		return fail("one literal live Acceptance-Transition marker is required")
@@ -58,7 +233,11 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		return fail("a separate immutable amendment is required")
 	}
 	dir, file := filepath.Dir(path), filepath.Base(path)
-	ancestors, e := historyGit(dir, "rev-list", "--first-parent", "HEAD", "^"+delivery).Output()
+	predecessor := delivery
+	if chain != nil {
+		predecessor = chain.predecessor
+	}
+	ancestors, e := transitionFirstParents(dir, predecessor)
 	if e != nil {
 		return fail("cannot read amendment ancestry")
 	}
@@ -83,13 +262,16 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 			return fail("amendment has no unique merge base")
 		}
 		divergence, err := read(bases[0])
-		if err != nil || !reflect.DeepEqual(briefVerifyRows(divergence), briefVerifyRows(before)) {
+		if err != nil || !reflect.DeepEqual(briefVerifyRows(divergence), briefVerifyRows(before)) || (chain != nil && strings.TrimSpace(divergence) != strings.TrimSpace(before)) {
 			return fail("amendment divergence differs from pre-merge main acceptance")
 		}
 	}
 	amended, e := read(amendment)
 	if e != nil || strings.TrimSpace(amended) != strings.TrimSpace(verify) {
 		return fail("current Verify differs from the approved amendment")
+	}
+	if chain != nil && transitionLayout(delivered) != transitionLayout(amended) {
+		return fail("table-layout changes are unsupported")
 	}
 	oldRows, newRows := briefVerifyRows(delivered), briefVerifyRows(amended)
 	if len(oldRows) != len(newRows) {
@@ -122,6 +304,19 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		if !owed {
 			return fail("supplemental rows cannot be amended or promoted")
 		}
+		if chain != nil && source.CommandCell != next.CommandCell && source.Expect != next.Expect {
+			comparable := next
+			comparable.Command, comparable.CommandCell, comparable.ProseLed = source.Command, source.CommandCell, source.ProseLed
+			comparable.Expect, comparable.RiskText = source.Expect, source.RiskText
+			if !reflect.DeepEqual(source, comparable) {
+				return fail("combined changes must retain row identity, class, shell and obligations")
+			}
+			if !reflect.DeepEqual(source, old) {
+				return fail("a changed command must still carry its complete prior definition")
+			}
+			candidates[old.ID], columns[old.ID], required[old.ID] = next, "Command+Expect", true
+			continue
+		}
 		oldContext, oldOK := transitionContext(old)
 		nextContext, nextOK := transitionContext(next)
 		if !oldOK || !nextOK || oldContext != nextContext {
@@ -145,7 +340,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	// Bind the existing brief-v2 acceptance version, not an invented counter.
 	versions := map[string]int{}
 	for _, rev := range []string{pp[0], amendment} {
-		raw, err := historyGit(dir, "show", "--end-of-options", rev+":./"+file).Output()
+		raw, err := transitionBriefBytes(dir, file, rev)
 		if err != nil {
 			return fail("cannot read acceptance version")
 		}
@@ -159,7 +354,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		return fail("amendment must increment the acceptance version exactly once")
 	}
 	current, ok, err := parseBriefFile(path)
-	if err != nil || !ok || current.Version != versions[amendment] {
+	if chain == nil && (err != nil || !ok || current.Version != versions[amendment]) {
 		return fail("current acceptance version differs from amendment")
 	}
 	historical, e := flipEvidenceAt(dir, pp[0], file)
@@ -203,84 +398,137 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		}
 	}
 
-	// The ruling's body itself binds every immutable coordinate and changed row.
-	// A bot relay or a general APPROVED review cannot satisfy this exact act.
-	rootRaw, e := provenanceRepoTop(dir)
-	if e != nil {
-		return fail("cannot resolve repository")
-	}
-	// Git returns an absolute worktree root, while callers may supply a
-	// relative brief path (notably --root .). Compare physical absolute paths
-	// on both sides so aliases cannot change the ruling's repository coordinate.
-	root, e := filepath.EvalSymlinks(strings.TrimSpace(string(rootRaw)))
-	if e != nil {
-		return fail("cannot resolve canonical repository path")
-	}
-	absolutePath, e := filepath.Abs(path)
-	if e != nil {
-		return fail("cannot resolve absolute brief path")
-	}
-	canonicalPath, e := filepath.EvalSymlinks(absolutePath)
-	if e != nil {
-		return fail("cannot resolve canonical brief path")
-	}
-	rel, e := filepath.Rel(root, canonicalPath)
-	if e != nil || !filepath.IsLocal(rel) {
-		return fail("cannot resolve brief path")
-	}
-	rel = filepath.ToSlash(rel)
-	// Command-priority config could replace even a snapshot's explicit reset.
-	// It is outside the snapshot profile and cannot supply approval authority.
-	if gitcore.OriginConfigInjected() {
-		return fail("could-not-check repository authority: injected Git configuration is unsupported")
-	}
-	// The owner's error names a fixed unavailability class, never a URL,
-	// credential or path, so it is reported verbatim.
-	origin, err := gitcore.OriginAuthority(root)
-	if err != nil {
-		return fail("could-not-check repository authority: " + err.Error())
-	}
-	if remoteHost(origin) != "github.com" {
-		return fail("could-not-check repository authority: approval requires a github.com origin")
-	}
-	repo := originOwnerRepo(strings.TrimSpace(origin))
-	if repo == "" {
-		return fail("cannot bind approval to the repository origin")
-	}
-	payloadPrefix := fmt.Sprintf("Approve acceptance-transition v1\nrepo=%s\nbrief=%s\ndelivery=%s\nbase=%s\noriginal=%s\namendment=%s\nrows=", repo, rel, delivery, base, original, amendment)
-	if !transitionForge {
-		return fail("could-not-check human authority: --acceptance-forge is required")
-	}
-	fmt.Fprintln(os.Stderr, "acceptance transition: reading approval", approval)
-	client := transitionClient
-	if client == nil {
-		client = rulingForgeClient
-	}
-	rec := decisionRecordStamp{ID: "acceptance-transition", Ruling: approval}
-	out := resolveRulingOn(client(), repo, rec, scanEffectiveConfig().HumanLogins, rulingIssueBinding{what: "acceptance transition for " + rel, rules: func(iss rulingIssue, _ rulingLink) bool {
-		return strings.Contains(iss.Body, "<!-- acceptance-transition: "+rel+" -->")
-	}})
-	if !out.Present || out.Reason != rulingOK {
-		return fail("human approval could not be corroborated: " + out.Detail)
-	}
-	approvalBody := strings.TrimSpace(strings.ReplaceAll(out.Body, "\r\n", "\n"))
-	rawIDs, matched := strings.CutPrefix(approvalBody, payloadPrefix)
 	selected := map[string]bool{}
-	for _, id := range strings.Split(rawIDs, ",") {
-		if _, ok := candidates[id]; !ok || selected[id] {
-			return fail("human approval does not name the exact transition payload")
+	rawIDs, matched, typed := "", true, false
+	if chain != nil && chain.preflight {
+		for _, row := range oldRows {
+			if _, ok := candidates[row.ID]; ok {
+				selected[row.ID] = true
+				if rawIDs != "" {
+					rawIDs += ","
+				}
+				rawIDs += row.ID
+			}
 		}
-		selected[id] = true
+	} else {
+		// The ruling's body itself binds every immutable coordinate and changed row.
+		// A bot relay or a general APPROVED review cannot satisfy this exact act.
+		rootRaw, e := provenanceRepoTop(dir)
+		if e != nil {
+			return fail("cannot resolve repository")
+		}
+		// Git returns an absolute worktree root, while callers may supply a
+		// relative brief path (notably --root .). Compare physical absolute paths
+		// on both sides so aliases cannot change the ruling's repository coordinate.
+		root, e := filepath.EvalSymlinks(strings.TrimSpace(string(rootRaw)))
+		if e != nil {
+			return fail("cannot resolve canonical repository path")
+		}
+		absolutePath, e := filepath.Abs(path)
+		if e != nil {
+			return fail("cannot resolve absolute brief path")
+		}
+		canonicalPath, e := filepath.EvalSymlinks(absolutePath)
+		if e != nil {
+			return fail("cannot resolve canonical brief path")
+		}
+		rel, e := filepath.Rel(root, canonicalPath)
+		if e != nil || !filepath.IsLocal(rel) {
+			return fail("cannot resolve brief path")
+		}
+		rel = filepath.ToSlash(rel)
+		// Command-priority config could replace even a snapshot's explicit reset.
+		// It is outside the snapshot profile and cannot supply approval authority.
+		if gitcore.OriginConfigInjected() {
+			return fail("could-not-check repository authority: injected Git configuration is unsupported")
+		}
+		// The owner's error names a fixed unavailability class, never a URL,
+		// credential or path, so it is reported verbatim.
+		origin, err := gitcore.OriginAuthority(root)
+		if err != nil {
+			return fail("could-not-check repository authority: " + err.Error())
+		}
+		if remoteHost(origin) != "github.com" {
+			return fail("could-not-check repository authority: approval requires a github.com origin")
+		}
+		repo := originOwnerRepo(strings.TrimSpace(origin))
+		if repo == "" {
+			return fail("cannot bind approval to the repository origin")
+		}
+		payloadPrefix := fmt.Sprintf("Approve acceptance-transition v1\nrepo=%s\nbrief=%s\ndelivery=%s\nbase=%s\noriginal=%s\namendment=%s\nrows=", repo, rel, delivery, base, original, amendment)
+		if !transitionForge {
+			return fail("could-not-check human authority: --acceptance-forge is required")
+		}
+		fmt.Fprintln(os.Stderr, "acceptance transition: reading approval", approval)
+		client := transitionClient
+		if client == nil {
+			client = rulingForgeClient
+		}
+		rec := decisionRecordStamp{ID: "acceptance-transition", Ruling: approval}
+		out := resolveRulingOn(client(), repo, rec, scanEffectiveConfig().HumanLogins, rulingIssueBinding{what: "acceptance transition for " + rel, rules: func(iss rulingIssue, _ rulingLink) bool {
+			return strings.Contains(iss.Body, "<!-- acceptance-transition: "+rel+" -->")
+		}})
+		if !out.Present || out.Reason != rulingOK {
+			if chain != nil && out.Reason == rulingUnresolvable {
+				return fail("could-not-check human authority: " + out.Detail)
+			}
+			return fail("human approval could not be corroborated: " + out.Detail)
+		}
+		approvalBody := strings.TrimSpace(strings.ReplaceAll(out.Body, "\r\n", "\n"))
+		if chain != nil {
+			v1 := strings.HasPrefix(approvalBody, "Approve acceptance-transition v1\n")
+			if v1 {
+				if chain.number != 1 {
+					return fail("only link 1 may cite a v1 approval")
+				}
+				for _, column := range columns {
+					if column == "Command+Expect" {
+						return fail("v1 approval cannot authorize combined columns")
+					}
+				}
+			} else {
+				approvalBody = strings.ReplaceAll(out.Body, "\r\n", "\n")
+				payloadPrefix = fmt.Sprintf("Approve acceptance-transition v2\nrepo=%s\nbrief=%s\ndelivery=%s\nbase=%s\noriginal=%s\nlink=%d\npredecessor=%s\namendment=%s\nrows=", repo, rel, delivery, base, original, chain.number, chain.predecessor, amendment)
+				typed = true
+			}
+		}
+		rawIDs, matched = strings.CutPrefix(approvalBody, payloadPrefix)
+		items := strings.Split(rawIDs, ",")
+		if chain != nil && rawIDs == "" {
+			items = nil
+		}
+		for _, item := range items {
+			id := item
+			if typed {
+				var column string
+				id, column, _ = strings.Cut(item, ":")
+				if column != columns[id] {
+					return fail("human approval does not name the exact transition payload")
+				}
+			}
+			if _, ok := candidates[id]; !ok || selected[id] {
+				return fail("human approval does not name the exact transition payload")
+			}
+			selected[id] = true
+		}
+
 	}
 	changes := map[string]verifyRow{}
 	var ids []string
 	for _, old := range oldRows {
 		if required[old.ID] && !selected[old.ID] {
+			if chain != nil {
+				return fail("human approval omits a changed original command: row " + old.ID)
+			}
 			return fail("human approval omits a changed original command")
 		}
 		if selected[old.ID] {
 			changes[old.ID] = candidates[old.ID]
-			ids = append(ids, old.ID)
+			id := old.ID
+			if typed {
+				id += ":" + columns[old.ID]
+			}
+			ids = append(ids, id)
 		}
 	}
 	if !matched || len(ids) == 0 || strings.Join(ids, ",") != rawIDs {
@@ -317,12 +565,15 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		if commandCol < 0 || commandCol >= len(cells) {
 			return fail("cannot locate the original command cell")
 		}
-		if columns[cells[0]] == "Expect" {
+		if columns[cells[0]] == "Expect" || columns[cells[0]] == "Command+Expect" {
 			if expectCol < 0 || expectCol >= len(cells) || cells[expectCol] != originals[cells[0]].Expect {
 				return fail("cannot locate the original Expect cell")
 			}
 			cells[expectCol] = changed.Expect
-		} else {
+		}
+		if columns[cells[0]] == "Command+Expect" {
+			cells[commandCol] = changed.CommandCell
+		} else if columns[cells[0]] == "Command" {
 			originalCell := originals[cells[0]].CommandCell
 			if cells[commandCol] != originalCell {
 				return fail("original command cell does not match its parsed definition")
@@ -413,4 +664,18 @@ func transitionDeliveredEvidencePreserved(historical, delivered string) bool {
 		}
 	}
 	return false
+}
+
+// transitionLayout binds the explicit table header, including column order.
+func transitionLayout(table string) string {
+	for _, line := range strings.Split(table, "\n") {
+		cells := splitRowEscaped(strings.TrimSpace(line))
+		if len(cells) > 0 && strings.TrimSpace(cells[0]) == "#" {
+			for i := range cells {
+				cells[i] = strings.TrimSpace(cells[i])
+			}
+			return strings.Join(cells, "|")
+		}
+	}
+	return ""
 }

@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -200,7 +201,7 @@ func foldServer(t *testing.T, pulls []map[string]any, issuePage func(page int) [
 func foldFlipSeam(t *testing.T, src modelFlipSource) {
 	t.Helper()
 	prev := reconcileFlipSource
-	reconcileFlipSource = func(forgeKind) modelFlipSource { return src }
+	reconcileFlipSource = func(forgeKind, string) modelFlipSource { return src }
 	t.Cleanup(func() { reconcileFlipSource = prev })
 }
 
@@ -328,6 +329,63 @@ func wantCell(t *testing.T, cells map[string]BriefCell, id, want, why string) Br
 // TestFoldWiresAllInputs is the class-closing test for #1787: a full online
 // reconcile derives done (both gates), blocked, and the red-witness fallback —
 // none reachable while a fold map is left nil by the production constructor.
+// regression: #4546
+func TestReconcileTokenFileReachesNestedReads(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX-only: the stub gh is a shell script")
+	}
+	dir := t.TempDir()
+	tokenFile := filepath.Join(dir, "token")
+	if err := os.WriteFile(tokenFile, []byte("fixture-selected-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stub := `#!/bin/sh
+[ "$GH_TOKEN" = fixture-selected-token ] && [ "$GH_HOST" = github.com ] || exit 4
+case "$*" in
+  *'/pulls/11/files?'*)
+    printf '%s\n' '["docs/streams/fx/brief-01-example.md","","@@ -1 +1 @@\n-# Old title\n+# New title"]' ;;
+  *'/pulls/11')
+    printf '%s\n' '{"changed_files":1,"head":{"sha":"fixture-head"},"base":{"ref":"main","repo":{"default_branch":"main"}}}' ;;
+  *'/contents/docs/streams/fx/brief-01-example.md?ref=fixture-head')
+    printf '%s\n' '# New title' ;;
+  'pr view 11 --repo github.com/o/r '*)
+    printf '%s\n' '{"headRefOid":"fixture-head","state":"MERGED","mergedAt":"2026-10-01T00:00:00Z"}' ;;
+  *'/pulls/11/reviews')
+    printf '%s\n' '[]' ;;
+  *)
+    exit 5 ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(stub), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("GH_HOST", "wrong.example.invalid")
+	t.Setenv("GITHUB_TOKEN", "fixture-rest-fallback")
+	t.Setenv("GH_REPO", "wrong.example.invalid/o/r")
+	for _, ambient := range []string{"", "fixture-ambient-token"} {
+		t.Run("ambient="+ambient, func(t *testing.T) {
+			t.Setenv("GH_TOKEN", ambient)
+			token, err := resolveGitHubToken(tokenFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := newAuthoringClassifier(newGHClient(token), "o/r", nil)
+			a.cache[11] = filesResult{files: []prFile{{Filename: "docs/streams/fx/brief-01-example.md", Status: "modified"}}}
+			if excluded, err := a.notImplementation(11, "fx/01"); err != nil || excluded {
+				t.Fatalf("classifying the brief edit: excluded=%v, err=%v", excluded, err)
+			}
+			state, err := reconcileFlipSource(modelReviewer().Forge, token).ReviewState("o/r", 11)
+			if err != nil || !state.Merged || state.HeadSHA != "fixture-head" {
+				t.Fatalf("reading approval state: state=%+v, err=%v", state, err)
+			}
+			if got := os.Getenv("GH_TOKEN"); got != ambient {
+				t.Fatal("the selected token escaped the child command environment")
+			}
+		})
+	}
+}
+
 func TestFoldWiresAllInputs(t *testing.T) {
 	root := foldStdTree(t)
 	foldServer(t, foldStdPulls(), foldIssues(

@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/cellscratch ./cmd/cellctl ./internal/cellprocess -run 'TestScratch|TestObserved|TestCacheObserved' -count=1 -timeout=30s",
+  "test": "go test ./internal/cellscratch ./cmd/cellctl ./internal/cellrunner -run 'TestScratch|TestObserved|TestCacheObserved' -count=1 -timeout=30s",
   "control": {
     "name": "skip successful disposal",
     "file": "internal/cellscratch/store.go",
@@ -104,12 +104,6 @@
       "new": "p.MaxBytes = cellscratch.DefaultPolicy().MaxBytes"
     },
     {
-      "name": "skip enrollment failure",
-      "file": "internal/cellprocess/run.go",
-      "old": "startErr = started(cmd.Process.Pid)",
-      "new": "_ = started(cmd.Process.Pid)"
-    },
-    {
       "name": "replace terminal descriptors with pipes",
       "file": "cmd/cellctl/scratch_launch.go",
       "old": "if term.IsTerminal(int(file.Fd())) {",
@@ -126,12 +120,6 @@
       "file": "internal/cellscratch/path.go",
       "old": "if err = singleInputLink(file); err != nil {",
       "new": "if err = singleInputLink(file); false {"
-    },
-    {
-      "name": "plant observed custody bypass",
-      "file": "internal/cellprocess/run.go",
-      "old": "return Run(observeLaunch(ctx, started), argv, env, dir, stdout, stderr)",
-      "new": "return runObserved(ctx, argv, env, dir, stdout, stderr, newProcessTree, started)"
     },
     {
       "name": "bypass source root admission",

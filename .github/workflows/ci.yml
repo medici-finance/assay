@@ -15,8 +15,25 @@ on:
   # push is limited to main: a PR branch is already built by its pull_request
   # run, so a push trigger on every branch built each PR head twice. main keeps
   # its push run (the post-merge build of record).
+  #
+  # The push leg skips ONE commit shape: a push whose only changed file is
+  # STATUS.md, the board regen's `chore(status): regenerate
+  # [skip-status-regen]` commit (212 of the 247 board-writer and Actions-bot
+  # commits on main from 2026-10-26 to 2026-11-09). No job here builds
+  # STATUS.md and no CI-registry row (citrigger_test.go) reads it; statusgen
+  # wrote it only after its own checks passed on that tree. paths-ignore skips
+  # only when EVERY changed file matches, so a commit touching anything else —
+  # a stream README (auto-flip), docs/streams/.history.jsonl (a docs/streams
+  # read the registry rows still cover), changelog/ or CHANGELOG.md (a release
+  # roll, which also stamps the plugin manifest) — still runs in full. The
+  # pull_request leg has NO filter: build-test and changelog are required
+  # checks on pull requests and must always report.
+  # TestCIPushSkipsOnlyStatusMD (tools/desk/internal/deskkit) pins both legs,
+  # and the registry coverage guards check every read against the ignore list.
   push:
     branches: [main]
+    paths-ignore:
+      - STATUS.md
   pull_request:
 
 permissions:
@@ -31,7 +48,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  GO_VERSION: "1.27.3"
+  GO_VERSION: "1.27.4"
 
 jobs:
   # Decides whether this run needs the skippable jobs below. The ONE case it
@@ -123,7 +140,7 @@ jobs:
           # The compiled surface: the tools/desk module (its go.mod/go.sum
           # included), the sibling modules it pulls in through replace directives
           # in tools/desk/go.mod, any go.work, and this workflow.
-          scope_re='^(tools/desk|comms|forgeread|perfrec|gitquiet|gitcore|deskcore)/|(^|/)go\.work(\.sum)?$|^\.github/workflows/ci\.yml$'
+          scope_re='^(tools/desk|comms|forgeread|perfrec|gitquiet|gitcore|deskcore|loopadmin|statusgen|workflow)/|(^|/)go\.work(\.sum)?$|^\.github/workflows/ci\.yml$'
           if [ "$EVENT" != "pull_request" ]; then
             echo "event '$EVENT': always compile"
           elif ! files="$(git diff --no-renames --name-only HEAD^1 HEAD)"; then
@@ -345,8 +362,8 @@ jobs:
           persist-credentials: false
       - name: Install the declared Go toolchain
         env:
-          GO_VERSION: "1.27.3"
-          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
+          GO_VERSION: "1.27.4"
+          GO_SHA256: "7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
@@ -554,7 +571,7 @@ jobs:
       - name: Install Go
         env:
           # Keep this download pin in sync with GO_VERSION, as in release.yml.
-          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
+          GO_SHA256: "7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"

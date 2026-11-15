@@ -307,7 +307,7 @@ var mergeStateFixtures = map[string]mergeVerdict{
 	// it never verified against the base a merge would actually use.
 	"BEHIND":  mergeVerdictBehind,
 	"DIRTY":   mergeVerdictBlocked,
-	"BLOCKED": mergeVerdictBlocked,
+	"BLOCKED": mergeVerdictPolicyBlocked,
 	// The three that carry NO verdict: still computing, absent from the payload, and a
 	// value GitHub may add to the enum later. All three are could-not-check.
 	"UNKNOWN":        mergeVerdictUnknown,
@@ -332,13 +332,13 @@ func TestReadMergeState_UnknownStatesAreNotMergeable(t *testing.T) {
 			}
 		}
 	}
-	// The positive control: the declaration must actually exercise all three verdicts,
+	// The positive control: the declaration must actually exercise every declared verdict,
 	// or "every value matched" would be satisfiable by a table of one.
 	seen := map[mergeVerdict]int{}
 	for _, v := range mergeStateFixtures {
 		seen[v]++
 	}
-	for _, v := range []mergeVerdict{mergeVerdictOK, mergeVerdictBlocked, mergeVerdictUnknown, mergeVerdictBehind} {
+	for _, v := range []mergeVerdict{mergeVerdictOK, mergeVerdictBlocked, mergeVerdictUnknown, mergeVerdictBehind, mergeVerdictPolicyBlocked} {
 		if seen[v] == 0 {
 			t.Errorf("no fixture declares verdict %d — the table would assert nothing about it", v)
 		}
@@ -445,6 +445,9 @@ func expectedAction(rf rollupFixture, mv mergeVerdict, rs reviewState,
 		}
 		if humanGate {
 			return actHumanGate
+		}
+		if mv == mergeVerdictPolicyBlocked {
+			return actMergeStateUnknown // inventory payloads omit the independent mergeable field
 		}
 		if unknownMerge {
 			if draft {
@@ -769,7 +772,8 @@ func TestClassify_ActionInventory(t *testing.T) {
 											// `in.mergeBehind`.
 											if in.mergeConflict != (wantVerdict == mergeVerdictBlocked) ||
 												in.mergeStateUnknown != (wantVerdict == mergeVerdictUnknown) ||
-												in.mergeBehind != (wantVerdict == mergeVerdictBehind) {
+												in.mergeBehind != (wantVerdict == mergeVerdictBehind) ||
+												in.mergePolicyBlocked != (wantVerdict == mergeVerdictPolicyBlocked) {
 												t.Fatalf("%s: buildClassifyInput read mergeConflict=%v unknown=%v behind=%v, but %q is "+
 													"declared verdict %d", desc, in.mergeConflict, in.mergeStateUnknown, in.mergeBehind, ms, wantVerdict)
 											}

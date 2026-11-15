@@ -360,7 +360,12 @@ Delete this example. A real entry records the checklist walked (with numbers) an
 the one process change (or "none"), with links.
 `
 
-const initExampleStream = `---
+// initStreamHead and initBriefTableHead are the stream-README shape every
+// generated stream starts from: the frontmatter and title, then the brief table
+// header. The starter stream below and the scan stream (scanStreamTemplate in
+// scanissues.go, issue #5895) are both built from them, so a generated stream
+// README has one format however it was opened.
+const initStreamHead = `---
 stream: {{stream}}
 status: active
 priority: P2
@@ -369,14 +374,18 @@ track: platform
 
 # {{stream}}
 
-A starter stream so the board renders and lint passes. Replace it with your own work,
-then delete this directory.
+`
 
-## Briefs
+const initBriefTableHead = `## Briefs
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Your first brief](./brief-01-first-brief.md) | 0 | S | todo | — | — |
+`
+
+const initExampleStream = initStreamHead + `A starter stream so the board renders and lint passes. Replace it with your own work,
+then delete this directory.
+
+` + initBriefTableHead + `| 01 | [Your first brief](./brief-01-first-brief.md) | 0 | S | todo | — | — |
 
 ## Critical path
 Brief 01 is standalone.

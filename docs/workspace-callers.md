@@ -129,6 +129,8 @@ A missing census or missing source tree is a skipped (could-not-check) run, neve
 | `tools/desk/cmd/deskwt/deskwt.go` | `strandedAfterDeregister` | prune | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |
 | `tools/desk/cmd/deskwt/prune.go` | `bookkeepingPrune` | prune | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |
 | `tools/desk/cmd/deskwt/prune.go` | `pruneSweep` | prompt | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |
+| `tools/desk/cmd/deskwt/roleinit.go` | `recoverOwnStaleRegistration` | prompt | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |
+| `tools/desk/cmd/deskwt/roleinit.go` | `recoverOwnStaleRegistration` | remove | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |
 | `tools/desk/cmd/deskwt/roleinit.go` | `runRoleInit` | create | managed | WS-03 | the Git effect moves into the allocator's effect adapter; deskwt keeps only a facade that calls it |
 | `tools/desk/cmd/deskwt/roleinit.go` | `runRoleInit` | prompt | managed | WS-03 | the Git effect moves into the allocator's effect adapter; deskwt keeps only a facade that calls it |
 | `tools/desk/cmd/deskwt/stalereg.go` | `clearStaleRegistrations` | prompt | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |

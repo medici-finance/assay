@@ -1745,11 +1745,11 @@ func grepNegations(toks []shellTok) []bool {
 // by header NAME, never position, so adding Class between # and Command does not
 // disturb any existing caller.
 func verifyRowTable(section string, fn func(verifyRowCells)) {
-	cmdIdx, expIdx, numIdx, classIdx, shellIdx := -1, -1, -1, -1, -1
+	cmdIdx, expIdx, numIdx, classIdx, shellIdx, envIdx := -1, -1, -1, -1, -1, -1
 	for _, raw := range strings.Split(section, "\n") {
 		line := strings.TrimSpace(raw)
 		if !strings.HasPrefix(line, "|") {
-			cmdIdx, expIdx, numIdx, classIdx, shellIdx = -1, -1, -1, -1, -1 // left the table
+			cmdIdx, expIdx, numIdx, classIdx, shellIdx, envIdx = -1, -1, -1, -1, -1, -1 // left the table
 			continue
 		}
 		if separatorRowRe.MatchString(strings.Trim(line, "|")) {
@@ -1769,6 +1769,8 @@ func verifyRowTable(section string, fn func(verifyRowCells)) {
 					classIdx = j
 				case "shell":
 					shellIdx = j
+				case "env":
+					envIdx = j
 				}
 			}
 			continue // the header row is not a data row
@@ -1796,7 +1798,13 @@ func verifyRowTable(section string, fn func(verifyRowCells)) {
 		if shellIdx >= 0 && shellIdx < len(cells) {
 			shell = strings.TrimSpace(cells[shellIdx])
 		}
-		fn(verifyRowCells{Num: num, Class: class, Command: cells[cmdIdx], Expect: expect, Classed: classIdx >= 0, Shell: shell})
+		// The `Env` column is OPTIONAL too (issue #6065): where the row runs.
+		// Only the environment lint reads it, and only when the table has it.
+		env := ""
+		if envIdx >= 0 && envIdx < len(cells) {
+			env = strings.TrimSpace(cells[envIdx])
+		}
+		fn(verifyRowCells{Num: num, Class: class, Command: cells[cmdIdx], Expect: expect, Classed: classIdx >= 0, Shell: shell, Env: env, EnvCol: envIdx >= 0})
 	}
 }
 

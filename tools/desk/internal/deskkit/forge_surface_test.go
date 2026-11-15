@@ -1,10 +1,12 @@
 package deskkit
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -36,6 +38,39 @@ import (
 const deskTreeRoot = "../.."
 const liftedGitTreeRoot = "../../../../gitcore"
 
+// loopAdminTreeRoot is the loopadmin module, home of the one process runner
+// (loopadmin/process, moved from internal/cellprocess, #5492).
+const loopAdminTreeRoot = "../../../../loopadmin"
+
+// auditRoot is one tree the process-launch audit scans; Prefix is prepended to
+// each finding's File so register keys name the tree they come from.
+type auditRoot struct{ Dir, Prefix, What string }
+
+// processLaunchAuditRoots is every tree the process-launch audit scans. Dropping
+// a root makes its registered exec sites stale and its new ones invisible.
+var processLaunchAuditRoots = []auditRoot{
+	{deskTreeRoot, "", "the desk tree"},
+	{liftedGitTreeRoot, "gitcore/", "lifted Git source"},
+	{loopAdminTreeRoot, "loopadmin/", "the loopadmin module"},
+}
+
+// scanAudit scans every root and returns the prefixed findings. A root that
+// cannot be scanned is could-not-check, never a clean tree.
+func scanAudit(roots []auditRoot) ([]forgeban.Finding, error) {
+	var findings []forgeban.Finding
+	for _, root := range roots {
+		found, err := forgeban.Scan(root.Dir)
+		if err != nil {
+			return nil, fmt.Errorf("the ban could not scan %s: %w — this is could-not-check, NOT a clean tree", root.What, err)
+		}
+		for _, finding := range found {
+			finding.File = root.Prefix + finding.File
+			findings = append(findings, finding)
+		}
+	}
+	return findings, nil
+}
+
 // TestNoForgeCLIShellout is the CI-gating half of the closed surface: no shipped source under
 // tools/desk invokes `gh`, `glab`, or any other forge CLI.
 //
@@ -45,17 +80,9 @@ const liftedGitTreeRoot = "../../../../gitcore"
 // MIGRATED one cannot be quietly left listed. What it buys is that this gate reports the
 // truth about the tree today instead of being switched off until the day the tree is perfect.
 func TestNoForgeCLIShellout(t *testing.T) {
-	findings, err := forgeban.Scan(deskTreeRoot)
+	findings, err := scanAudit(processLaunchAuditRoots)
 	if err != nil {
-		t.Fatalf("the ban could not scan the desk tree: %v — this is could-not-check, NOT a clean tree", err)
-	}
-	lifted, err := forgeban.Scan(liftedGitTreeRoot)
-	if err != nil {
-		t.Fatalf("the ban could not scan lifted Git source: %v — could-not-check, NOT clean", err)
-	}
-	for _, finding := range lifted {
-		finding.File = "gitcore/" + finding.File
-		findings = append(findings, finding)
+		t.Fatal(err)
 	}
 	if len(findings) == 0 {
 		t.Fatal("the ban's scan produced no findings at all, not even the known unresolved exec sites — " +
@@ -68,6 +95,74 @@ func TestNoForgeCLIShellout(t *testing.T) {
 	t.Logf("forge-CLI ban: %d shipped call site(s) still invoke a forge CLI, across %d registered declarations "+
 		"each carrying an exit condition (ratchet ceiling %d); %d exec site(s) carry a non-constant argv[0] and "+
 		"are registered as could-not-check", rep.Allowed, forgeban.Ceiling(), forgeban.Ceiling(), rep.Unresolved)
+}
+
+// movedRunnerKey is the register key of the one process runner's exec site.
+const movedRunnerKey = "loopadmin/process/run.go::runObserved::<unresolved>"
+
+// regression: #5492 — moving the process runner out of tools/desk
+// must not take its exec site out of the process-launch audit's sight.
+func TestProcessLaunchAuditCoversLoopAdmin(t *testing.T) {
+	covered := false
+	for _, root := range processLaunchAuditRoots {
+		covered = covered || (root.Dir == loopAdminTreeRoot && root.Prefix == "loopadmin/")
+	}
+	if !covered {
+		t.Fatalf("the process-launch audit does not scan %s", loopAdminTreeRoot)
+	}
+
+	// The moved runner's exec site is found, and found registered.
+	findings, err := scanAudit(processLaunchAuditRoots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, f := range findings {
+		found = found || f.Key() == movedRunnerKey
+	}
+	if !found {
+		t.Fatalf("the audit did not find the moved runner's exec site %s", movedRunnerKey)
+	}
+	rep := forgeban.Check(findings)
+	for _, f := range rep.UnregisteredUnresolved {
+		if strings.HasPrefix(f.File, "loopadmin/") {
+			t.Fatalf("loopadmin exec site %s is not registered", f.Key())
+		}
+	}
+	for _, key := range append(append([]string{}, rep.StaleUnresolved...), rep.StaleAllowed...) {
+		if key == movedRunnerKey {
+			t.Fatalf("the moved runner's register entry %s is stale: the audit lost sight of it", key)
+		}
+	}
+
+	// An unregistered exec site planted in a loopadmin fixture is reported.
+	planted := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(planted, "process"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	src := "package process\n\nimport \"os/exec\"\n\nfunc plantedLaunch(name string) error { return exec.Command(name).Run() }\n"
+	if err := os.WriteFile(filepath.Join(planted, "process", "planted.go"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var withPlant []auditRoot
+	for _, root := range processLaunchAuditRoots {
+		withPlant = append(withPlant, root)
+		if root.Dir == loopAdminTreeRoot {
+			withPlant = append(withPlant, auditRoot{planted, root.Prefix, "a planted loopadmin fixture"})
+		}
+	}
+	findings, err = scanAudit(withPlant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep = forgeban.Check(findings)
+	caught := false
+	for _, f := range rep.UnregisteredUnresolved {
+		caught = caught || f.File == "loopadmin/process/planted.go"
+	}
+	if !caught || rep.OK() {
+		t.Fatalf("the audit did not fail on an unregistered exec site planted under loopadmin/: %+v", rep.UnregisteredUnresolved)
+	}
 }
 
 // --- No passthrough ----------------------------------------------------------------------

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
 )
@@ -22,4 +23,29 @@ func killProcessGroup(cmd *exec.Cmd) error {
 		return nil
 	}
 	return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+}
+
+// terminationSignals are the signals a host, scheduler, terminal or resource
+// limit sends to stop a process. Fault signals (SIGABRT, SIGSEGV, ...) are not
+// listed: a mutant that crashes the suite is an ordinary failure.
+var terminationSignals = map[syscall.Signal]bool{
+	syscall.SIGKILL: true,
+	syscall.SIGTERM: true,
+	syscall.SIGINT:  true,
+	syscall.SIGHUP:  true,
+	syscall.SIGXCPU: true,
+	syscall.SIGXFSZ: true,
+}
+
+// Only directly observed termination/resource signals are non-definitive.
+// A wrapper that converts a child's death to a regular exit hides that signal.
+func resourceSignal(state *os.ProcessState) bool {
+	if state == nil {
+		return false
+	}
+	status, ok := state.Sys().(syscall.WaitStatus)
+	if !ok {
+		return false
+	}
+	return status.Signaled() && terminationSignals[status.Signal()]
 }

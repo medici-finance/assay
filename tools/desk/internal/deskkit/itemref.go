@@ -81,8 +81,55 @@ var itemRefShortRe = regexp.MustCompile(`^(?:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+))?
 
 // itemRefURLRe matches a forge web URL for one numbered object: everything between the host
 // and the kind segment is the project path, and the kind segment names the kind. GitLab
-// spells a project-scoped path with a `/-/` separator; GitHub does not.
-var itemRefURLRe = regexp.MustCompile(`^https?://[^/]+/(.+?)/(?:-/)?(issues|pull|pulls|merge_requests)/([0-9]+)/?$`)
+// spells a project-scoped path with a `/-/` separator; GitHub does not. The groups are
+// (scheme, host, project path, `-/` separator, kind segment, number); parseItemURL is the
+// only reader of them.
+var itemRefURLRe = regexp.MustCompile(`^(https?)://([^/]+)/(.+?)/(-/)?(issues|pull|pulls|merge_requests)/([0-9]+)/?$`)
+
+// itemURL is one web URL read by itemRefURLRe: the parsed reference plus the URL facts a
+// caller that has to tell the forges apart needs (the comment-permalink parser).
+type itemURL struct {
+	scheme  string
+	host    string
+	dashSep bool   // the path carried GitLab's `/-/` separator
+	segment string // the kind segment as written: issues, pull, pulls or merge_requests
+	ref     ItemRef
+}
+
+// parseItemURL reads s as an item web URL. ok is false when s is not URL-shaped at all (the
+// caller then tries the short forms); a URL-shaped s that does not reduce to one repository
+// coordinate is an error, never a guess.
+func parseItemURL(s string) (itemURL, bool, error) {
+	m := itemRefURLRe.FindStringSubmatch(s)
+	if m == nil {
+		return itemURL{}, false, nil
+	}
+	n, err := parseItemRefNumber(s, m[6])
+	if err != nil {
+		return itemURL{}, true, err
+	}
+	kind := TargetChange
+	if m[5] == "issues" {
+		kind = TargetIssue
+	}
+	// The project path between the host and the kind segment must reduce to the
+	// `owner/name` coordinate a ForgeRepo carries. A GitLab project nested more than one
+	// group deep does not, and picking two of its segments would address a DIFFERENT
+	// project that may well exist — so it is a refusal naming the shortfall rather than a
+	// silent re-target.
+	segs := strings.Split(strings.Trim(m[3], "/"), "/")
+	if len(segs) != 2 {
+		return itemURL{}, true, Refused(fmt.Sprintf(
+			"refused: cannot read an owner/repo coordinate out of %s — its project path is %q, which is "+
+				"not the two segments a repository coordinate carries. Address it as owner/repo%s%d, or as "+
+				"a bare %s%d against the repository the verb was given.",
+			StripControl(s), StripControl(m[3]), sigilFor(kind), n, sigilFor(kind), n))
+	}
+	return itemURL{
+		scheme: m[1], host: m[2], dashSep: m[4] != "", segment: m[5],
+		ref: ItemRef{Repo: segs[0] + "/" + segs[1], Number: n, Kind: kind},
+	}, true, nil
+}
 
 // ParseItemRef parses one item reference. It is the single home of the grammar this file's
 // header documents; no desk verb re-implements it.
@@ -96,31 +143,11 @@ func ParseItemRef(s string) (ItemRef, error) {
 		return ItemRef{}, Refused("refused: an empty item reference names nothing — " + TypedRefForms())
 	}
 
-	if m := itemRefURLRe.FindStringSubmatch(trimmed); m != nil {
-		n, err := parseItemRefNumber(trimmed, m[3])
+	if u, ok, err := parseItemURL(trimmed); ok {
 		if err != nil {
 			return ItemRef{}, err
 		}
-		kind := TargetChange
-		if m[2] == "issues" {
-			kind = TargetIssue
-		}
-		// The project path between the host and the kind segment must reduce to the
-		// `owner/name` coordinate a ForgeRepo carries. A GitLab project nested more than one
-		// group deep does not, and picking two of its segments would address a DIFFERENT
-		// project that may well exist — so it is a refusal naming the shortfall rather than a
-		// silent re-target.
-		segs := strings.Split(strings.Trim(m[1], "/"), "/")
-		switch len(segs) {
-		case 2:
-			return ItemRef{Repo: segs[0] + "/" + segs[1], Number: n, Kind: kind}, nil
-		default:
-			return ItemRef{}, Refused(fmt.Sprintf(
-				"refused: cannot read an owner/repo coordinate out of %s — its project path is %q, which is "+
-					"not the two segments a repository coordinate carries. Address it as owner/repo%s%d, or as "+
-					"a bare %s%d against the repository the verb was given.",
-				StripControl(trimmed), StripControl(m[1]), sigilFor(kind), n, sigilFor(kind), n))
-		}
+		return u.ref, nil
 	}
 
 	m := itemRefShortRe.FindStringSubmatch(trimmed)

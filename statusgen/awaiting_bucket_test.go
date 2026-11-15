@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // verifySection builds a Verify section from "class|command|expect" triples.
@@ -358,4 +360,39 @@ func TestBucketAwaitingArms(t *testing.T) {
 			t.Error("a FAIL already recorded must not re-queue for the runner")
 		}
 	})
+}
+
+// regression: #2026
+// TestAwaitReadSetTokenSettles — a read-set token in a passing row's Runner
+// cell never unsettles it: `(reads could-not-check: …)` says the run's reads
+// were not recorded, not that the row did not run. A gate:model row that
+// passed buckets the same with no token, a digest token or a could-not-check
+// token; a row whose own result is could-not-check still does not settle.
+func TestAwaitReadSetTokenSettles(t *testing.T) {
+	rows := awaitRowsOf(bucketVerifySection("check:ci|`go test ./...`|exit 0"))
+	brief := awaitBrief{Status: "implemented", Gate: "model"}
+	row := func(output, runner string) string {
+		return evidenceHeader + "| 1 | `go test ./...` | 0 | " + output + " | 2026-10-01 | " + runner + " |\n\n**VERIFY: PASS** — 2026-10-01\n"
+	}
+	base := row("ok", "verifier-model @ 0123456789ab")
+	want, _, _ := bucketAwaiting(brief, rows, awaitEvidence{Text: base}, awaitOutcomes{})
+	if n := len(unrunAwaitRows(rows.Rows, base)); n != 0 {
+		t.Fatalf("control: the passing row is unsettled (%d unrun rows)", n)
+	}
+	for name, tok := range map[string]string{
+		"digest token":          evaluation.ReadSetCellToken(strings.Repeat("ab", 32), ""),
+		"could-not-check token": evaluation.ReadSetCellToken("", "recorder is Linux-only (plan9)"),
+	} {
+		ev := row("ok", "verifier-model @ 0123456789ab "+tok)
+		if n := len(unrunAwaitRows(rows.Rows, ev)); n != 0 {
+			t.Errorf("%s: the passing row reads unsettled (%d unrun rows)", name, n)
+		}
+		if got, _, _ := bucketAwaiting(brief, rows, awaitEvidence{Text: ev}, awaitOutcomes{}); got != want {
+			t.Errorf("%s: bucket %v, want %v (the bucket without a token)", name, got, want)
+		}
+	}
+	held := row("could-not-check: no network", "verifier-model @ 0123456789ab "+evaluation.ReadSetCellToken(strings.Repeat("ab", 32), ""))
+	if n := len(unrunAwaitRows(rows.Rows, held)); n != 1 {
+		t.Errorf("a could-not-check result settled the row (%d unrun rows, want 1)", n)
+	}
 }

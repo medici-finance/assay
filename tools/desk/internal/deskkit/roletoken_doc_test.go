@@ -162,11 +162,12 @@ func TestDeskShellRecipeRefusesBlankToken(t *testing.T) {
 				}
 				tok := filepath.Join(dir, "token")
 				ghLog := filepath.Join(dir, "gh.log")
+				dtLog := filepath.Join(dir, "desktoken.log")
 				if err := os.WriteFile(tok, []byte(c.content), 0o600); err != nil {
 					t.Fatal(err)
 				}
 				stubs := map[string]string{
-					"desktoken": "#!/bin/sh\nprintf '%s\\n' '" + tok + "'\n",
+					"desktoken": "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + dtLog + "'\nprintf '%s\\n' '" + tok + "'\n",
 					"gh":        "#!/bin/sh\nprintf 'GH_TOKEN=[%s]\\n' \"$GH_TOKEN\" >> '" + ghLog + "'\n",
 				}
 				for name, src := range stubs {
@@ -198,6 +199,11 @@ func TestDeskShellRecipeRefusesBlankToken(t *testing.T) {
 				}
 				if runErr != nil || string(logged) != "GH_TOKEN=[stub-role-token]\n" {
 					t.Fatalf("gh did not run with the token: err=%v log=%q output=%s", runErr, logged, out)
+				}
+				// #6068: the recipe only needs the credential's location, so it must ask for the
+				// read-only form. Without --no-rotate a GitLab-resolved repo rotates on every call.
+				if argv, _ := os.ReadFile(dtLog); !strings.HasPrefix(string(argv), "--no-rotate worker --repo ") {
+					t.Errorf("recipe called desktoken as %q; want the read-only form `desktoken --no-rotate <role> --repo <slug>`", argv)
 				}
 			})
 		}

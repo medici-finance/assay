@@ -10,6 +10,10 @@ credentialed canonical endpoint used by its in-process push. It checks only
 lookup is never the evidence for that tip. A confirmed absent branch means the
 whole base-to-HEAD range is new and must pass the identity check.
 
+The confirmed tip narrows the identity check only. The secret scan and the outbound
+check still judge the whole base-to-HEAD diff, commits already on the destination
+included, in create, `--check`, `--check-remote` and the pre-push hook.
+
 For an existing branch, an unreadable or unfetched head, a divergent history, or
 an invalid branch response refuses. The proof binds the destination URL, branch,
 and source commit. Create first requires the named push source to match the

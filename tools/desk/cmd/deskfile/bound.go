@@ -42,6 +42,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/deskcore/config"
+	"github.com/medici-finance/assay/statusgen/workref"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"gopkg.in/yaml.v3"
 )
@@ -282,7 +283,7 @@ type boundBinding struct {
 // --brief was not given) is that PR's brief. Refusals are exit 5; anything that could not be
 // read is exit 6 and is never treated as bound.
 func verifyBinding(pr prRef, briefArg string) (boundBinding, error) {
-	fg, fr, _, ferr := forgeForFn(pr.Repo, false)
+	fg, fr, _, ferr := forgeForFn(pr.Repo)
 	if ferr != nil {
 		return boundBinding{}, ferr
 	}
@@ -311,6 +312,19 @@ func verifyBinding(pr prRef, briefArg string) (boundBinding, error) {
 		return boundBinding{pr: pr, brief: briefNone}, nil
 	}
 
+	if deskkit.NegotiatedWorkSyntax(briefArg) {
+		// This forge-bound writer has not yet acquired the complete operation
+		// capability observation. Do not erase a refused selector/root via the
+		// historical unqualified filing-key path; its deduplication owner stays separate.
+		if _, err := workref.Parse(briefArg, workref.TypedBrief); err != nil {
+			return boundBinding{}, deskkit.Refused("refused: work reference: " + err.Error())
+		}
+		peers, complete := deskkit.LocalWorkPeers()
+		if err := deskkit.CheckWorkOperation("filing", peers, complete); err != nil {
+			return boundBinding{}, err
+		}
+		return boundBinding{}, deskkit.Unverifiable("selected forge subject observation unavailable", nil)
+	}
 	stream, nn, ok := deskkit.SplitBriefTrailer(briefArg)
 	if !ok || strings.ContainsAny(briefArg, " \t\n") {
 		return boundBinding{}, deskkit.Refused(fmt.Sprintf(
@@ -341,7 +355,7 @@ func verifyBinding(pr prRef, briefArg string) (boundBinding, error) {
 			return boundBinding{}, deskkit.Refused("refused: tracking repository " + trackRepo + " is not in the desk-tools repo set")
 		}
 		var terr2 error
-		tfg, tfr, _, terr2 = forgeForFn(trackRepo, false)
+		tfg, tfr, _, terr2 = forgeForFn(trackRepo)
 		if terr2 != nil {
 			return boundBinding{}, terr2
 		}
@@ -571,7 +585,7 @@ func backLink(b boundBinding, issueURL string) error {
 	ac.target = &n
 	var err error
 	defer func() { ac.finalize(err) }()
-	fg, fr, _, ferr := forgeForFn(b.pr.Repo, false)
+	fg, fr, _, ferr := forgeForFn(b.pr.Repo)
 	if ferr != nil {
 		err = ferr
 		return err

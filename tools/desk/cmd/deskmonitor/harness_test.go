@@ -336,6 +336,24 @@ chmod 600 "$d/oracle-token"
 printf '%s\n' "$d/oracle-token"
 `
 
+// oraclePATH is the PATH a bash oracle runs under: the stub dir first, then the inherited PATH
+// minus every entry holding an executable `deskmonitor`. With one installed, pr-monitor.sh hands a
+// legacy cycle to `deskmonitor pr` — the verb under test would then be compared with itself (and
+// an installed release, not this tree), so the oracle must never see it.
+func oraclePATH(binDir string) string {
+	keep := []string{binDir}
+	for _, p := range filepath.SplitList(os.Getenv("PATH")) {
+		if p == "" {
+			continue
+		}
+		if fi, err := os.Stat(filepath.Join(p, "deskmonitor")); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+			continue
+		}
+		keep = append(keep, p)
+	}
+	return strings.Join(keep, string(os.PathListSeparator))
+}
+
 func newGHStub(t *testing.T) *ghStub {
 	t.Helper()
 	g := &ghStub{binDir: t.TempDir(), cycleDir: t.TempDir()}

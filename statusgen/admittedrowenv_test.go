@@ -142,10 +142,11 @@ var rowLaunchShells = []string{"sh", "bash", "pwsh", "powershell", "cmd"}
 // implicitEnvAllowed names every function that may start a shell or a program
 // it does not name literally without setting the process environment, so the
 // process inherits the caller's: the statusgen self re-runs of the lint and
-// diff-lint audits, the forge reader binary, the merge check (which runs the
+// diff-lint audits, the forge reader binary (readVerb, the one launch behind the per-item and
+// merged-list reads; IssueList and OpenIssues keep their own), the merge check (which runs the
 // operator's own command line, not a Verify row) and the probes that run only
 // `exit 0` or `true` to learn what the host supports.
-var implicitEnvAllowed = []string{"productionDiffLintRunner", "productionLintRunner", "OpenIssues", "readItem", "IssueList", "execOverTree", "probeShell", "networkOffWrapper", "netnsFacility"}
+var implicitEnvAllowed = []string{"productionDiffLintRunner", "productionLintRunner", "OpenIssues", "readVerb", "IssueList", "execOverTree", "probeShell", "networkOffWrapper", "netnsFacility"}
 
 // environCallers returns "file: func" for every os.Environ call outside the
 // allowed functions in the given sources, and for every function outside
