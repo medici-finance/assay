@@ -15,6 +15,65 @@ import (
 // cross-repository line anywhere, a run with no literal binding refuses
 // rather than taking the source-revision read.
 func briefVersionForPass(path, evidence string, p flipPass) (int, error) {
+	binding, err := selectedRunCrossBinding(evidence, p)
+	if err != nil {
+		return 0, err
+	}
+	if binding == nil {
+		version, err := briefVersionAt(path, p.SHA)
+		if err != nil {
+			// The source revision is read in this repository. A run made in
+			// another repository has no such commit here; say what would let
+			// it be read rather than leave a bare git failure.
+			return 0, fmt.Errorf("%w; a run made in another repository is read only at the tracking-source= its selected run's literal Verification-Attestation line names, and this run binds none", err)
+		}
+		return version, nil
+	}
+	if err := crossBindingBriefIdentity(path, binding); err != nil {
+		return 0, err
+	}
+	version, err := briefVersionAt(path, binding.trackingSource)
+	if err != nil {
+		return 0, fmt.Errorf("tracking-source %s: %w", binding.trackingSource, err)
+	}
+	return version, nil
+}
+
+// crossBindingBriefIdentity holds a version-2 binding to the brief at path:
+// the attestation's repo= must be the brief's own repository and its brief=
+// the brief's repository-relative path. The brief-version read
+// (briefVersionForPass) and the fail-first closure gate (failFirstCrossAnchor)
+// share it, so a binding one of them refuses the other never accepts.
+func crossBindingBriefIdentity(path string, binding *containerAttestation) error {
+	dir := filepath.Dir(path)
+	repo, err := attestationTrackingRepo(dir)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(repo, binding.repo) {
+		return fmt.Errorf("attestation tracking repository %s is not the brief's repository", binding.repo)
+	}
+	prefix, ok := (coverageRepo{root: dir}).RootPrefix()
+	if !ok {
+		return fmt.Errorf("cannot resolve the tracking brief's repository-relative path")
+	}
+	rel := prefix + filepath.Base(path)
+	if binding.brief != rel {
+		return fmt.Errorf("attestation names brief %s, not %s", binding.brief, rel)
+	}
+	return nil
+}
+
+// selectedRunCrossBinding is the ONE reader of a selected PASS run's
+// cross-repository binding: the literal version-2 Verification-Attestation line
+// in p.Run, held to full identifiers and to the run's own source. It returns
+// nil and no error for a same-repository run. evidence is the brief's whole raw
+// Evidence section: once it records a cross-repository line anywhere, a run
+// with no literal binding is an error rather than a same-repository run. Its
+// callers are the brief-version read (briefVersionForPass) and the fail-first
+// closure gate (failFirstCrossAnchor), so the two never disagree about which
+// run is cross-repository.
+func selectedRunCrossBinding(evidence string, p flipPass) (*containerAttestation, error) {
 	var binding *containerAttestation
 	legacy := false
 	// p.Run is the selected, already comment-normalized run. Reuse the literal
@@ -34,63 +93,36 @@ func briefVersionForPass(path, evidence string, p flipPass) (int, error) {
 			continue
 		}
 		if !m.literal {
-			return 0, fmt.Errorf("cross-repository attestation must be literal run metadata")
+			return nil, fmt.Errorf("cross-repository attestation must be literal run metadata")
 		}
 		if !ok || a.version != 2 {
-			return 0, fmt.Errorf("malformed cross-repository run attestation%s", missingCrossFields(m.text))
+			return nil, fmt.Errorf("malformed cross-repository run attestation%s", missingCrossFields(m.text))
 		}
 		if !hex64Re.MatchString(a.run) || !hex40Re.MatchString(a.source) || !hex40Re.MatchString(a.trackingSource) {
-			return 0, fmt.Errorf("cross-repository attestation needs full run, source and tracking-source identifiers")
+			return nil, fmt.Errorf("cross-repository attestation needs full run, source and tracking-source identifiers")
 		}
 		if !flipSHAAgree(p.SHA, a.source) {
-			return 0, fmt.Errorf("attested source %s does not bind the run's source %s", a.source, p.SHA)
+			return nil, fmt.Errorf("attested source %s does not bind the run's source %s", a.source, p.SHA)
 		}
 		// The whole parsed line is compared, run=, model= and tier= included:
 		// two brackets from separate invocations in one run refuse even when
 		// they bind one tracking-source. That fails closed by intent.
 		if binding != nil && *binding != a {
-			return 0, fmt.Errorf("conflicting cross-repository attestations in the selected run")
+			return nil, fmt.Errorf("conflicting cross-repository attestations in the selected run")
 		}
 		candidate := a
 		binding = &candidate
 	}
 	if binding == nil {
 		if unboundCrossAttestation(evidence) {
-			return 0, fmt.Errorf("a cross-repository attestation in Evidence is not bound by literal selected-run metadata")
+			return nil, fmt.Errorf("a cross-repository attestation in Evidence is not bound by literal selected-run metadata")
 		}
-		version, err := briefVersionAt(path, p.SHA)
-		if err != nil {
-			// The source revision is read in this repository. A run made in
-			// another repository has no such commit here; say what would let
-			// it be read rather than leave a bare git failure.
-			return 0, fmt.Errorf("%w; a run made in another repository is read only at the tracking-source= its selected run's literal Verification-Attestation line names, and this run binds none", err)
-		}
-		return version, nil
+		return nil, nil
 	}
 	if legacy {
-		return 0, fmt.Errorf("selected run mixes same-repository and cross-repository attestations")
+		return nil, fmt.Errorf("selected run mixes same-repository and cross-repository attestations")
 	}
-	dir := filepath.Dir(path)
-	repo, err := attestationTrackingRepo(dir)
-	if err != nil {
-		return 0, err
-	}
-	if !strings.EqualFold(repo, binding.repo) {
-		return 0, fmt.Errorf("attestation tracking repository %s is not the brief's repository", binding.repo)
-	}
-	prefix, ok := (coverageRepo{root: dir}).RootPrefix()
-	if !ok {
-		return 0, fmt.Errorf("cannot resolve the tracking brief's repository-relative path")
-	}
-	rel := prefix + filepath.Base(path)
-	if binding.brief != rel {
-		return 0, fmt.Errorf("attestation names brief %s, not %s", binding.brief, rel)
-	}
-	version, err := briefVersionAt(path, binding.trackingSource)
-	if err != nil {
-		return 0, fmt.Errorf("tracking-source %s: %w", binding.trackingSource, err)
-	}
-	return version, nil
+	return binding, nil
 }
 
 // missingCrossFields names the cross-repository fields a malformed attestation
