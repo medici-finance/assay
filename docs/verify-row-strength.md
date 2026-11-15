@@ -121,11 +121,15 @@ created, renamed or moved on the branch, or its path does not resolve under the 
 can be shown to hold it, so only the merge-base itself is accepted and the check fails closed.
 A cross-repository run, admitted on a version 2 receipt, is the one exception. Its rows run in
 the deliverable repository and its brief lives in the tracking repository, so no deliverable
-commit holds the brief. For that run `--base` names a deliverable commit (the deliverable
-merge-base or an ancestor of it), the brief-held check is skipped, and the brief's bytes are bound
-by the receipt instead. The exception follows from the receipt and never from where the brief
-file sits: an unadmitted run with a brief outside the root still fails closed. This covers the
-`verifyrun` check only. The closure gate still resolves the base in the tracking clone.
+commit holds the brief. For that run the brief-held check cannot apply, so a tighter rule
+replaces it: the base must be the deliverable merge-base of HEAD and origin/main exactly. An
+ancestor of it is refused, because it may predate the change; a later commit is refused, because
+it carries part of the change. When that merge-base cannot be resolved the run is refused, with or
+without `--base`. The exception follows from the receipt and never from where the brief file
+sits: an unadmitted run with a brief outside the root still fails closed. In a post-merge
+deliverable clone the merge-base is HEAD itself, so the base rows run on the changed tree and
+cannot show a red; a discriminating run needs a clone whose HEAD is the delivering change and
+whose origin/main does not yet hold it.
 The witness table gains a `Base` column, appended to the right of `Runner` (readers of Date and
 Runner skip it):
 

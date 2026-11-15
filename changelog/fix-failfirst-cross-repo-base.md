@@ -1,2 +1,2 @@
 ### Fixed
-- `statusgen verifyrun --fail-first` now accepts a deliverable-repository `--base` on a cross-repository (version 2 receipt) run on both lanes. On the host lane the brief-held check is skipped and the ancestry check still applies. In the container lane `--history-pack` imports history for a brief that the receipt binds outside the home.
+- `statusgen verifyrun --fail-first` now runs a cross-repository (version 2 receipt) fail-first on both lanes. The base must be the deliverable merge-base exactly, in place of the brief-held check; any other base is refused, and so is a run whose deliverable merge-base cannot be resolved. In the container lane `--history-pack` imports history for a brief that the receipt binds outside the home.

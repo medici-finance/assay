@@ -55,8 +55,10 @@ host Git directory or forge access is required in the container.
 A same-repository receipt needs a home-relative brief, which the brief-at-base
 check maps into the imported repository. A cross-repository (version 2)
 receipt's brief lives in the tracking checkout outside the home. Its bytes are
-bound by the receipt, so it is not mapped, and only the ancestry check applies
-to the deliverable base. A version 2 import refuses a brief inside the home.
+bound by the receipt, so it is not mapped. Its base must be the deliverable
+merge-base exactly, and the imported history anchors origin/main to the
+admitted source, so in the container that merge-base is the source itself and
+any other base is refused. A version 2 import refuses a brief inside the home.
 `--history-pack` is refused outside a
 container-netns fail-first execution. Missing, incomplete, corrupt or
 wrong-source history refuses before any Verify row runs; it never produces a

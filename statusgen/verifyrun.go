@@ -2227,8 +2227,9 @@ Flags:
                     HEAD and origin/main); it may name that merge-base or an
                     ancestor of it. After the change has merged, pass the
                     parent of the delivering merge. On a cross-repository
-                    (version 2 receipt) run the base is a deliverable commit; the
-                    brief-held check is skipped, as the receipt binds the brief
+                    (version 2 receipt) run the base must be the deliverable
+                    merge-base exactly, and the run is refused when it cannot
+                    be resolved
   --env-file <path> role env-file forwarded to the container as --env-file (the
                     PATH only; its contents are never read or logged). Defaults to
                     the ASSAY_VERIFY_ENV_FILE environment variable. Omit for offline.

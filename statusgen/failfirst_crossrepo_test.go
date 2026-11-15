@@ -15,57 +15,72 @@ import (
 
 const crossFFBody = "# Fixture\n\n## Verify\n\n| # | Command | Expect | Class |\n|---|---|---|---|\n| 1 | `test -f delivered.txt` | risk-bearing exit 0 | check:ci |\n\n## Evidence\n\n## Review\n"
 
-// crossFFFixture is a cross-repository fixture whose deliverable home has a
-// base commit without delivered.txt and a head commit that adds it, with
-// origin/main at head (the post-merge verify shape). It returns the fixture,
-// the tracking root, the base and the head.
-func crossFFFixture(t *testing.T) (containerFixture, string, string, string) {
+// crossFFFixture is a cross-repository fixture whose deliverable home has an
+// older commit, a base commit without delivered.txt, and a head commit that
+// adds it, with origin/main at base: the delivering change is on the branch,
+// so the deliverable merge-base of HEAD and origin/main is base. It returns
+// the fixture, the tracking root, the older commit, the base and the head.
+func crossFFFixture(t *testing.T) (containerFixture, string, string, string, string) {
 	t.Helper()
 	fx, tracking := newCrossRepoFixture(t)
 	putFile(t, fx.brief, crossFFBody)
+	older := gitOutT(t, fx.home, "rev-parse", "HEAD")
+	putFile(t, filepath.Join(fx.home, "pre.txt"), "pre\n")
+	runGit(t, fx.home, "add", "pre.txt")
+	runGit(t, fx.home, "commit", "-m", "pre-delivery")
 	base := gitOutT(t, fx.home, "rev-parse", "HEAD")
 	putFile(t, filepath.Join(fx.home, "delivered.txt"), "delivered\n")
 	runGit(t, fx.home, "add", "delivered.txt")
 	runGit(t, fx.home, "commit", "-m", "delivery")
 	head := gitOutT(t, fx.home, "rev-parse", "HEAD")
-	runGit(t, fx.home, "update-ref", remoteMainRef, head)
-	return fx, tracking, base, head
+	runGit(t, fx.home, "update-ref", remoteMainRef, base)
+	return fx, tracking, older, base, head
 }
 
 // regression: #5544
-// TestCrossFFBaseRev: the cross-repository base check keeps the ancestry rule
-// (a branch commit and an unknown commit are refused) but not the brief-held
-// rule, which no deliverable commit can meet. The same-repository check still
-// refuses the same base for the same outside brief, so the brief-held rule is
-// skipped only where the caller chose the cross-repository form.
+// TestCrossFFBaseRev: a cross-repository base must be the deliverable
+// merge-base exactly (ruling A on #5544). An older ancestor, a later
+// (delivering) commit and an unknown commit are refused, and an unresolvable
+// merge-base refuses with or without --base. The same-repository check still
+// applies its own brief-held rule to an outside brief (an ancestor of the
+// merge-base is refused there for that reason), so the cross-repository rule
+// applies only where the caller chose the cross-repository form.
 func TestCrossFFBaseRev(t *testing.T) {
-	fx, _, base, head := crossFFFixture(t)
+	fx, _, older, base, head := crossFFFixture(t)
 	if got, err := failFirstCrossRepoBaseRev(fx.home, base); err != nil || got != base {
-		t.Fatalf("cross-repository base refused: %q %v", got, err)
+		t.Fatalf("cross-repository merge-base refused: %q %v", got, err)
 	}
-	if _, err := failFirstBaseRev(fx.home, base, fx.brief); err == nil || !strings.Contains(err.Error(), "cannot be shown to hold the brief") {
+	if got, err := failFirstCrossRepoBaseRev(fx.home, ""); err != nil || got != base {
+		t.Fatalf("default cross-repository base: %q %v", got, err)
+	}
+	if _, err := failFirstBaseRev(fx.home, older, fx.brief); err == nil || !strings.Contains(err.Error(), "cannot be shown to hold the brief") {
 		t.Fatalf("same-repository check accepted a base for an outside brief: %v", err)
 	}
-	putFile(t, filepath.Join(fx.home, "branch.txt"), "branch\n")
-	runGit(t, fx.home, "add", "branch.txt")
-	runGit(t, fx.home, "commit", "-m", "branch work")
-	branch := gitOutT(t, fx.home, "rev-parse", "HEAD")
-	if _, err := failFirstCrossRepoBaseRev(fx.home, branch); err == nil {
-		t.Fatal("cross-repository check accepted a branch commit as base")
+	for name, rev := range map[string]string{"older ancestor": older, "delivering commit": head} {
+		if _, err := failFirstCrossRepoBaseRev(fx.home, rev); err == nil || !strings.Contains(err.Error(), "merge-base "+base+" exactly") {
+			t.Fatalf("cross-repository check accepted the %s as base: %v", name, err)
+		}
 	}
 	if _, err := failFirstCrossRepoBaseRev(fx.home, strings.Repeat("c", 40)); err == nil || !strings.Contains(err.Error(), "names no commit") {
 		t.Fatalf("cross-repository check accepted an unknown commit: %v", err)
 	}
-	if got, err := failFirstCrossRepoBaseRev(fx.home, ""); err != nil || got != head {
-		t.Fatalf("default cross-repository base: %q %v", got, err)
+	if _, err := failFirstCrossRepoBaseRev(fx.home, "-x"); err == nil {
+		t.Fatal("cross-repository check accepted an option as base")
+	}
+	runGit(t, fx.home, "update-ref", "-d", remoteMainRef)
+	for _, rev := range []string{"", base} {
+		if _, err := failFirstCrossRepoBaseRev(fx.home, rev); err == nil || !strings.Contains(err.Error(), "cannot be resolved") {
+			t.Fatalf("cross-repository check with no merge-base accepted --base %q: %v", rev, err)
+		}
 	}
 }
 
 // regression: #5544
-// TestCrossFFHostLane: an admitted version 2 run on the host takes a
-// deliverable base and records a red there and a pass at head.
+// TestCrossFFHostLane: an admitted version 2 run on the host takes the
+// deliverable merge-base as its base and records a red there and a pass at
+// head.
 func TestCrossFFHostLane(t *testing.T) {
-	fx, tracking, base, head := crossFFFixture(t)
+	fx, tracking, _, base, head := crossFFFixture(t)
 	t.Setenv("DESK_LOOP", "verify-desk")
 	// No check:ci class: the host lane runs the row without a network sandbox.
 	putFile(t, fx.brief, "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `test -f delivered.txt` | risk-bearing exit 0 |\n\n## Evidence\n\n## Review\n")
@@ -83,10 +98,12 @@ func TestCrossFFHostLane(t *testing.T) {
 
 // regression: #5544
 // TestCrossFFContainer: the container lane imports history for a brief bound
-// by a version 2 receipt, runs the base rows at the deliverable base, and the
-// host closes the bracket.
+// by a version 2 receipt (pre-fix: refused as not home-relative). The imported
+// history anchors origin/main to the admitted source, so the deliverable
+// merge-base there is the source itself, and the exact rule refuses any other
+// base, including the commit before the delivery.
 func TestCrossFFContainer(t *testing.T) {
-	fx, tracking, base, head := crossFFFixture(t)
+	fx, tracking, _, base, head := crossFFFixture(t)
 	t.Setenv("DESK_LOOP", "")
 	clock := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
 	savedNow := nowFunc
@@ -104,24 +121,14 @@ func TestCrossFFContainer(t *testing.T) {
 	if err := os.Rename(filepath.Join(fx.home, ".git"), gitdir); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		_ = os.Remove(filepath.Join(fx.home, ".git"))
+		_ = os.Rename(gitdir, filepath.Join(fx.home, ".git"))
+	})
 	putFile(t, filepath.Join(fx.home, ".git"), "gitdir: /unmounted-host/git/worktrees/verifier\n")
 	res, stderr = captureVerifyrun(t, append(fx.runArgs(), "--fail-first", "--base", base, "--history-pack", bundle))
-	if res.code != 0 {
-		t.Fatalf("container cross-repository fail-first: %d %s", res.code, stderr)
-	}
-	if w := getFile(t, fx.witness); !strings.Contains(w, "base="+base[:treeSHALen]+" red rc=1") || !strings.Contains(w, "pass exit=0 sandbox=container-netns") {
-		t.Fatalf("missing head pass / baseline red: %s", w)
-	}
-	if err := os.Remove(filepath.Join(fx.home, ".git")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(gitdir, filepath.Join(fx.home, ".git")); err != nil {
-		t.Fatal(err)
-	}
-	clock = clock.Add(time.Second)
-	res, stderr = captureVerifyrun(t, []string{"--close-bracket", "--root", fx.home, "--brief", fx.brief, "--admission-receipt", fx.receipt, "--witness", fx.witness})
-	if res.code != 0 {
-		t.Fatalf("close: %d %s", res.code, stderr)
+	if res.code == 0 || strings.Contains(stderr, "home-relative") || !strings.Contains(stderr, "merge-base "+head+" exactly") {
+		t.Fatalf("container cross-repository base other than the merge-base: %d %s", res.code, stderr)
 	}
 }
 
@@ -130,7 +137,7 @@ func TestCrossFFContainer(t *testing.T) {
 // inside the deliverable home, and the same-repository import refuses one
 // outside it; neither form stands in for the other.
 func TestCrossHistoryRefusesInner(t *testing.T) {
-	fx, _, _, head := crossFFFixture(t)
+	fx, _, _, _, head := crossFFFixture(t)
 	bundle := filepath.Join(t.TempDir(), "history.pack")
 	if err := exportContainerHistory(fx.home, bundle, head); err != nil {
 		t.Fatal(err)

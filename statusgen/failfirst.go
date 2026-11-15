@@ -32,9 +32,10 @@ package main
 //     command (the sibling check checkWitnesses applies the same two rules).
 //
 // verifyrun's own --base check mirrors the first two rules. A cross-repository
-// run (version 2 receipt) applies only the first: its base is a deliverable
-// commit, which never holds the tracking brief; the receipt binds the brief
-// bytes instead (failFirstCrossRepoBaseRev).
+// run (version 2 receipt) replaces both with one tighter rule: its base is a
+// deliverable commit, which never holds the tracking brief, so the base must
+// equal the deliverable merge-base exactly, and the run is refused when that
+// merge-base cannot be resolved (failFirstCrossRepoBaseRev).
 //
 // THE LIMIT, stated here and wherever the guarantee is claimed (the doc's
 // Fail-first section, the verify-desk step, the PR body): the gate proves only
@@ -242,24 +243,6 @@ func truncateRunes(s string, n int) string {
 // change, so the verifier passes the delivering change's parent), or by
 // default the exact merge-base of HEAD and origin/main.
 func failFirstBaseRev(root, rev, briefPath string) (string, error) {
-	return failFirstBase(root, rev, func(full, mb string) string {
-		return briefHeldAtBase(root, briefPath, full, mb)
-	})
-}
-
-// failFirstCrossRepoBaseRev resolves the base for a cross-repository (version
-// 2 receipt) run, where root is the deliverable repository and the brief lives
-// in the tracking repository. A deliverable commit never holds the tracking
-// brief, so briefHeldAtBase cannot apply; the brief bytes the base rows run
-// from are the tracking tree the receipt binds (BriefSHA256). The ancestry
-// check still applies: the base must be the deliverable merge-base or an
-// ancestor of it. Callers pick this only on an admitted version 2 receipt,
-// never because of where the brief file sits.
-func failFirstCrossRepoBaseRev(root, rev string) (string, error) {
-	return failFirstBase(root, rev, nil)
-}
-
-func failFirstBase(root, rev string, held func(full, mb string) string) (string, error) {
 	if rev != "" {
 		if strings.HasPrefix(rev, "-") {
 			return "", fmt.Errorf("--base %q is not a revision", rev)
@@ -275,10 +258,8 @@ func failFirstBase(root, rev string, held func(full, mb string) string) (string,
 			if ok, why := commitIsAncestor(root, full, mb); !ok {
 				return "", fmt.Errorf("--base %q is refused: %s", rev, why)
 			}
-			if held != nil {
-				if why := held(full, mb); why != "" {
-					return "", fmt.Errorf("--base %q is refused: %s", rev, why)
-				}
+			if why := briefHeldAtBase(root, briefPath, full, mb); why != "" {
+				return "", fmt.Errorf("--base %q is refused: %s", rev, why)
 			}
 		}
 		return full, nil
@@ -287,6 +268,38 @@ func failFirstBase(root, rev string, held func(full, mb string) string) (string,
 		return b, nil
 	}
 	return "", errors.New("the merge-base of HEAD and origin/main cannot be resolved (fetch origin/main, or pass --base <rev>)")
+}
+
+// failFirstCrossRepoBaseRev resolves the base for a cross-repository (version
+// 2 receipt) run, where root is the deliverable repository and the brief lives
+// in the tracking repository. A deliverable commit never holds the tracking
+// brief, so briefHeldAtBase, the same-repository lower bound, cannot apply.
+// In its place the base is bound EXACTLY (driver ruling A on #5544): it must
+// be the deliverable merge-base of HEAD and origin/main and nothing else. An
+// ancestor of it would predate the change (back to the root commit, where
+// every row reds for unrelated reasons); a later commit would carry part of
+// it. When that merge-base cannot be resolved the run is refused, with or
+// without --base: there is no degraded arm. Callers pick this only on an
+// admitted version 2 receipt, never because of where the brief file sits.
+func failFirstCrossRepoBaseRev(root, rev string) (string, error) {
+	if strings.HasPrefix(rev, "-") {
+		return "", fmt.Errorf("--base %q is not a revision", rev)
+	}
+	mb := failFirstMergeBase(root)
+	if mb == "" {
+		return "", errors.New("a cross-repository base must be the deliverable merge-base of HEAD and origin/main exactly, and that merge-base cannot be resolved in the deliverable clone (fetch origin/main there); refusing rather than accept an unbounded base")
+	}
+	if rev == "" {
+		return mb, nil
+	}
+	full, err := resolveCommit(root, rev)
+	if err != nil || !isObjectID(full) {
+		return "", fmt.Errorf("--base %q names no commit in this clone", rev)
+	}
+	if full != mb {
+		return "", fmt.Errorf("--base %q is refused: a cross-repository base must be the deliverable merge-base %s exactly (an ancestor of it predates the change; a later commit carries part of it)", rev, mb)
+	}
+	return full, nil
 }
 
 // pathHeldAt reports whether rev's tree holds the file rel (a slash path from
