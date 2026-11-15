@@ -162,10 +162,13 @@ marks the duplicate, and an independent pass closes it.
 ## Partial results
 
 A class brief without its members' judgments is incomplete, and the members stay owed. A
-judgment written but not published leaves the placeholder classification-needed, and the
-next pass shows it still owed. A refused or unreadable write is could-not-check, never an
-empty queue. Record the member judgments with `scanloop land --handoff`, and publish them
-as the intake skill's "Accountable handoff" passage describes.
+judgment written but not published leaves the placeholder classification-needed and out of
+dispatch, and the next pass does not show it as owed: the local history already counts it as
+settled, so nothing reports it. A refused or unreadable write is could-not-check, never an
+empty queue. Record the member judgments with `scanloop land --handoff`, then publish them
+and read them back in the same session, as the intake skill's "Accountable handoff" passage
+and `intake-handoff.md` sections 6 and 7 describe. A class pass records many judgments at
+once, so read back every member, not only the first.
 
 ## Examples
 
