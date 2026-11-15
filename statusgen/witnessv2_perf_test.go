@@ -14,6 +14,42 @@ import (
 	"time"
 )
 
+// TestMain installs fixture authority for unit tests. Preserve the row's real
+// invocation environment before that happens; changing HOME/roster can change
+// the corpus's coverage judgments and therefore the work being measured.
+var witnessPerfInvocationEnv = os.Environ()
+
+func witnessPerfCommand(ctx context.Context, bin, root string, invocation bool) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, bin, "--root", root, "--coverage")
+	if invocation {
+		cmd.Env = append([]string(nil), witnessPerfInvocationEnv...)
+	}
+	return cmd
+}
+
+// The real child must receive the invocation snapshot for corpus measurement,
+// while a fixture child must retain TestMain's isolated authority. Removing the
+// explicit child environment makes the first case fail on the planted value.
+func TestWitnessPerfEnv(t *testing.T) {
+	saved := witnessPerfInvocationEnv
+	witnessPerfInvocationEnv = append(append([]string(nil), saved...), "SG_PERF_ENV_PROBE=invocation")
+	t.Cleanup(func() { witnessPerfInvocationEnv = saved })
+	t.Setenv("SG_PERF_ENV_PROBE", "fixture")
+	reader := filepath.Join(t.TempDir(), "reader")
+	if err := os.WriteFile(reader, []byte("#!/bin/sh\nprintf '%s' \"$SG_PERF_ENV_PROBE\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		invocation bool
+		want       string
+	}{{true, "invocation"}, {false, "fixture"}} {
+		out, err := witnessPerfCommand(context.Background(), reader, ".", tc.invocation).Output()
+		if err != nil || string(out) != tc.want {
+			t.Fatalf("invocation=%v: output=%q err=%v, want %q", tc.invocation, out, err, tc.want)
+		}
+	}
+}
+
 // TestWitnessPerfMedian qualifies the binary being timed, rather than using
 // the presence of a test in its source as evidence of v2 support. SG_NEW_BIN
 // lets an immutable copy of this harness exercise a historical candidate too.
@@ -81,7 +117,7 @@ func TestWitnessPerfMedian(t *testing.T) {
 
 	// Time the same plain-output mode as the original row. Check every timed
 	// v2 output, so an empty/held fast path cannot contribute an accepted sample.
-	run := func(bin, tree string) (time.Duration, string) {
+	run := func(bin, tree string, invocationEnv bool) (time.Duration, string) {
 		t.Helper()
 		deadline, ok := t.Deadline()
 		if !ok {
@@ -89,7 +125,7 @@ func TestWitnessPerfMedian(t *testing.T) {
 		}
 		ctx, cancel := context.WithDeadline(context.Background(), deadline.Add(-time.Second))
 		defer cancel()
-		cmd := exec.CommandContext(ctx, bin, "--root", tree, "--coverage")
+		cmd := witnessPerfCommand(ctx, bin, tree, invocationEnv)
 		start := time.Now()
 		out, err := cmd.Output()
 		elapsed := time.Since(start)
@@ -100,7 +136,7 @@ func TestWitnessPerfMedian(t *testing.T) {
 	}
 	var v2, before, after []time.Duration
 	for i := 0; i < 5; i++ {
-		d, out := run(candidate, f.Root)
+		d, out := run(candidate, f.Root, false)
 		if out != fmt.Sprintf("%s released %d", gv2BriefID, newCount) {
 			t.Fatalf("timed v2 sample %d did not release every claim: %s", i+1, out)
 		}
@@ -112,7 +148,7 @@ func TestWitnessPerfMedian(t *testing.T) {
 		dst  *[]time.Duration
 	}{{"base", old, &before}, {"new", candidate, &after}} {
 		for i := 0; i < 5; i++ {
-			d, _ := run(pair.bin, root)
+			d, _ := run(pair.bin, root, true)
 			*pair.dst = append(*pair.dst, d)
 			t.Logf("corpus %s sample=%d elapsed=%s", pair.name, i+1, d)
 		}
