@@ -44,16 +44,28 @@ The container imports objects into a new private repository outside the home,
 validates their connectivity and requires the receipt's full source commit and
 all reachable objects, including blobs, to be present. Its baseline ancestry
 anchor is that source, never a caller-supplied branch ref. For post-merge
-verification this matches the host's merge-base anchor. For a branch-head home,
-the container's early check accepts ancestors of the source, including commits
-after the branch diverged; the closure/landing gate still checks the witness
-against the real default-branch merge-base. The brief-at-base check still runs.
+verification this matches the host's merge-base anchor. For a branch-head home
+on a same-repository receipt, the container's early check accepts ancestors of
+the source (subject to the brief-at-base check), including commits after the
+branch diverged; the closure/landing gate still checks the witness
+against the real default-branch merge-base. The brief-at-base check still runs for a
+same-repository receipt.
 Baseline worktrees use only this private metadata and are removed after
 the run; head commands still execute on the original admitted mount. No writable
 host Git directory or forge access is required in the container.
 
-This option currently requires a home-relative brief. Cross-repository briefs
-remain on their existing path. `--history-pack` is refused outside a
+A same-repository receipt needs a home-relative brief, which the brief-at-base
+check maps into the imported repository. A cross-repository (version 2)
+receipt's brief lives in the tracking checkout outside the home. Its bytes are
+bound by the receipt, so it is not mapped. Its base must be the deliverable
+merge-base exactly; no ancestor is accepted. The imported history anchors
+origin/main to the admitted source, so in the container that merge-base is the
+source itself, which is HEAD, and a version 2 fail-first run is refused (exit 2)
+before any row runs, with or without `--base`: the base rows would run on the
+changed tree. A discriminating cross-repository run is a host run in a
+deliverable clone whose origin/main does not yet hold the change. A version 2
+import refuses a brief inside the home.
+`--history-pack` is refused outside a
 container-netns fail-first execution. Missing, incomplete, corrupt or
 wrong-source history refuses before any Verify row runs; it never produces a
 synthetic baseline failure or verification credit. `--in-container` and the

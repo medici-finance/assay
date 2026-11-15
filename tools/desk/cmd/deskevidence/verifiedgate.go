@@ -24,6 +24,7 @@ package main
 // could-not-check, which refuses the landing (Unverifiable), never a silent pass.
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -112,7 +113,7 @@ func verifiedClosureCheckAt(root, briefKey string, options childOptions) (closur
 	if aerr != nil {
 		return closureCouldNotErr, "", deskkit.Unverifiable("cannot resolve an absolute path for the landing root "+root, aerr)
 	}
-	cmd := exec.Command("statusgen", options.args("verifyclosure", "--root", absRoot, "--brief", briefKey)...)
+	cmd := statusgenAudit(context.Background(), auditClosure, absRoot, options, "--brief", briefKey)
 	cmd.Dir = os.TempDir()
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout

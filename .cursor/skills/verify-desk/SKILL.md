@@ -741,7 +741,8 @@ admission; with `--root`, `deskevidence` refuses a relative or in-home `--outcom
 `attempts`: one entry per run of the Verify table in the dispatch, as the verifier reported them (window,
 `rows_run`, disposition and reason; a discarded run keeps its entry). `deskperf reruns` counts them. On PASS write the same row's shape with `"outcome":"verified"` only AFTER
 the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
-landed on the target branch and `statusgen --lint` accepts that same tree. Before writing,
+landed on the target branch and `statusgen --lint --acceptance-forge` accepts that same tree
+on the host. Before writing,
 refresh only the brief in the verifier home from the target branch
 (`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`).
 Use the full `git -C <home> rev-parse FETCH_HEAD` as the record's Evidence commit SHA.
@@ -809,6 +810,23 @@ where admission is checked. The admitted forms are:
 - Evidence rows: `--brief-path <brief> --evidence-file <absolute fragment path>`, with the fragment written to the desk's own scratch OUTSIDE the home (a fragment inside the home is an untracked file and refuses admission).
 - Stream-index flip: edit the home's tracked `README.md` row, then `--evidence-file docs/streams/<stream>/README.md --row <NN>`.
 - Outcome record: `--outcome-record <absolute file outside the home>`.
+For GitHub, all three forms and `deskevidence flip` pass `--acceptance-forge` explicitly
+on the host. The full landed closure lint may need fresh corroboration of an approved
+transition on another brief; the emitted outcome command carries that permission too.
+It supplies no approval or acceptance credit and does not alter authored Verify commands
+or network-off execution. Unknown repository authority, an unavailable approval read and
+a refuted approval still hold or refuse the landing. Keep the diagnostic and route the
+missing capability; never retry by stripping Git configuration, changing the origin or
+borrowing a stored human login. Diagnose the run environment separately from the missing
+opt-in, because the flag cannot resolve an authority-bearing Git include.
+Opted-in approval audits and recorded human rulings use the landing invocation's own
+minted GitHub verifier credential; missing, foreign or unknown forge custody is withheld
+before the child starts. Without opt-in, audits receive only a noncredential refusal marker
+that closes stored-login fallback; a decision gate requiring a recorded ruling remains held
+because it cannot authenticate. Local flip corroboration
+requires the existing verifier session's own authority and a proven authorized origin,
+and never changes a worker's role.
+Other forges retain the ordinary landing path; unsupported GitHub approval reads remain held.
 Release the home only after the last landing for its run.
 
 **Leave Runner cells unannotated; `deskevidence` owns the on-behalf-of principal.** Never type an

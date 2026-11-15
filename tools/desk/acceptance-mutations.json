@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskevidence -run '^(TestAcceptanceChildPermission|TestAcceptanceIsolation)$' -count=1 -timeout 60s",
+  "test": "go test ./cmd/deskevidence -run '^(TestAcceptanceChildPermission|TestAcceptanceIsolation|TestApprovalChildCustody|TestAuditParallelCustody)$' -count=1 -timeout 60s",
   "control": {
     "name": "explicit approval-read permission not forwarded",
     "file": "cmd/deskevidence/main.go",
@@ -28,8 +28,20 @@
     {
       "name": "verdict gate drops invocation permission",
       "file": "cmd/deskevidence/verdictgate.go",
-      "old": "exec.Command(\"statusgen\", options.args(args...)...)",
-      "new": "exec.Command(\"statusgen\", childOptions{}.args(args...)...)"
+      "old": "statusgenAudit(context.Background(), auditVerdict, absRoot, options, args...)",
+      "new": "statusgenAudit(context.Background(), auditVerdict, absRoot, childOptions{}, args...)"
+    },
+    {
+      "name": "withhold explicit recorded-ruling credential from the decision audit",
+      "file": "cmd/deskevidence/statusgen.go",
+      "old": "\tpermitted := options.acceptanceForge",
+      "new": "\tpermitted := options.acceptanceForge && kind != auditDecision"
+    },
+    {
+      "name": "audit child borrows legacy forge-hook credential instead of invocation custody",
+      "file": "cmd/deskevidence/statusgen.go",
+      "old": "\"GH_TOKEN=\"+options.credential.Token",
+      "new": "\"GH_TOKEN=\"+ghToken"
     }
   ]
 }

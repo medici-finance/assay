@@ -813,12 +813,9 @@ type dispatchPlan struct {
 	// from — fields on the plan so a test can fix both.
 	now     func() time.Time
 	entropy io.Reader
-	// forgeKind is the resolved forge serving the target repo, set ONLY for a review
-	// dispatch — the one kind whose prompt is forge-shaped (the head-fetch refspec: GitHub
-	// refs/pull/<N>/head vs GitLab refs/merge-requests/<iid>/head, #773). A worker dispatch
-	// emits no forge-shaped ref, so this stays empty for one and the worker path is
-	// unchanged. Resolved pre-claim so a repo whose forge cannot be determined refuses the
-	// review dispatch before any durable state exists.
+	// forgeKind is resolved pre-claim for review and verifier prompts: reviews
+	// name forge-specific head refs, while verifier outcome recipes opt in to
+	// GitHub-only approval reads. Worker prompts keep their existing path.
 	forgeKind deskkit.ForgeKind
 	// claimStore is where the dispatch claim is kept, as deskkit.ResolveClaimStore decided it
 	// from the roster — never a flag. Resolved pre-claim, so a store that
@@ -1057,15 +1054,25 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", toolName, store.Notice)
 	}
 
+	// A contradictory local branch must be refused before any forge read.
+	if verifierKit(o.kit) || reviewKit(o.kit) {
+		if strings.TrimSpace(o.branch) != "" {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --branch is not accepted with --kit %s — its worktree is cut DETACHED "+
+					"off origin/main and never touches a feature branch.", stepWorktreeCreate, o.kit))
+		}
+	}
+
 	// A REVIEW dispatch's prompt is forge-shaped: the reviewer fetches the change's HEAD from
 	// the forge-specific server-side ref namespace (GitHub refs/pull/<N>/head ↔ GitLab
 	// refs/merge-requests/<iid>/head). Resolve WHICH forge serves the target repo now, pre-claim,
 	// so a GitHub-shaped fetch is never emitted into a GitLab reviewer's prompt (#773) and so a
 	// repo whose forge cannot be determined refuses HERE, before any durable state exists, rather
 	// than handing a reviewer a coordinate it cannot check out. A worker dispatch emits no
-	// forge-shaped ref, so this is skipped for one and the worker path stays byte-for-byte
-	// unchanged — including its executed-process count.
-	if reviewKit(o.kit) {
+	// forge-shaped ref, so its path stays byte-for-byte unchanged. A verifier
+	// also resolves here so only GitHub outcome recipes request GitHub approval
+	// reads; other forges retain their ordinary landing path.
+	if reviewKit(o.kit) || verifierKit(o.kit) {
 		kind, ferr := o.resolveTargetForgeKind(repo)
 		if ferr != nil {
 			return plan, ferr
@@ -1076,11 +1083,6 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// Read-only kits allocate detached. A reviewer checks out the PR head
 	// afterward; no disposable feature branch or upstream is needed.
 	if verifierKit(o.kit) || reviewKit(o.kit) {
-		if strings.TrimSpace(o.branch) != "" {
-			return plan, deskkit.Refused(fmt.Sprintf(
-				"step %s: --branch is not accepted with --kit %s — its worktree is cut DETACHED "+
-					"off origin/main and never touches a feature branch.", stepWorktreeCreate, o.kit))
-		}
 		plan.detached = true
 	} else {
 		plan.branch = o.branch
@@ -1589,7 +1591,7 @@ type claimAuth struct {
 // guessing.
 func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, isScript bool) (claimAuth, error) {
 	role := stampRoleForKit(o.kit)
-	// forgeKind is pre-resolved by planClaim for a review dispatch (its prompt is forge-shaped);
+	// forgeKind is pre-resolved by planClaim for review and verifier dispatches;
 	// a worker dispatch leaves it empty, so resolve it HERE, at execution time — after every
 	// caller-flag precondition has passed, so a flag-mistake refusal never pays for this git
 	// read (the "nothing durable before the flags are good" contract the zero-process tests pin).

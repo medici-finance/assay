@@ -31,11 +31,24 @@ package main
 //     merge-base is HEAD, and a red there is not a red without the change);
 //   - the brief file is held at its current path by the base, or by the
 //     delivering commit when one is recorded (a brief the delivering change
-//     itself added), so a base older than the brief, such as the repository's
-//     root commit, where every row reds for reasons that have nothing to do
-//     with any change, is refused; and
+//     itself added), so a base where NEITHER holds it is refused. With no
+//     delivering commit that refuses a base older than the brief, such as the
+//     repository's root commit, where every row reds for reasons that have
+//     nothing to do with any change. With one, a pre-brief base (the root
+//     commit included) is accepted when the delivering commit holds the brief
+//     and its first parent does not: the widening THE LIMIT below states; and
 //   - it is the LATEST witness for the row and was run for the row's CURRENT
 //     command (the sibling check checkWitnesses applies the same two rules).
+//
+// verifyrun's own --base check mirrors the first two rules. A cross-repository
+// run (version 2 receipt) replaces both with one tighter rule: its base is a
+// deliverable commit, which never holds the tracking brief, so the base must
+// equal the deliverable merge-base exactly, and the run is refused when that
+// merge-base cannot be resolved or is HEAD itself (failFirstCrossRepoBaseRev).
+// Neither resolver accepts a --base it cannot check: with no merge-base both
+// refuse. Neither accepts HEAD for a brief that no tracked tree holds: the
+// same-repository resolver refuses a HEAD base when the brief does not resolve
+// under the root (baseHeadOutsideBrief).
 //
 // THE LIMIT, stated here and wherever the guarantee is claimed (the doc's
 // Fail-first section, the verify-desk step, the PR body): the gate binds the
@@ -259,7 +272,8 @@ func truncateRunes(s string, n int) string {
 }
 
 // failFirstBaseRev resolves the base the fail-first run checks out, and the
-// full delivering commit the witness records ("" when none).
+// full delivering commit the witness records ("" when none), for a
+// same-repository run (a cross-repository run uses failFirstCrossRepoBaseRev).
 //   - --delivering-commit <rev> (after the change has merged, when the
 //     merge-base already holds it): the commit must be HEAD or an ancestor of
 //     HEAD and the base is its first parent; a --base beside it must name that
@@ -271,7 +285,9 @@ func truncateRunes(s string, n int) string {
 // The runner refuses here what the closure gate would refuse later
 // (failFirstBaseProblem). An unresolvable merge-base fails closed on every arm,
 // a recorded delivering commit included, because the gate refuses that witness
-// too (ruling A, medici-finance/assay#5544).
+// too (ruling A, medici-finance/assay#5544). Every arm also passes
+// baseHeadOutsideBrief: a HEAD base for a brief that does not resolve under the
+// root is refused with its own reason, before the shared binding runs.
 func failFirstBaseRev(root, rev, delivering, briefPath string) (base, deliveringFull string, err error) {
 	for _, op := range []struct{ flag, v string }{{"--base", rev}, {"--delivering-commit", delivering}} {
 		if strings.HasPrefix(op.v, "-") {
@@ -323,11 +339,39 @@ func failFirstBaseRev(root, rev, delivering, briefPath string) (base, delivering
 	if herr != nil || !isObjectID(head) {
 		return "", "", fmt.Errorf("%s %q is refused: HEAD could not be resolved, so the base cannot be shown to differ from it", flag, v)
 	}
+	// A HEAD base for a brief outside the root keeps its own reason (no --base
+	// can fix it), so it is asked before the shared binding, which refuses the
+	// same base for being the head.
+	if why := baseHeadOutsideBrief(root, briefPath, full); why != "" {
+		return "", "", fmt.Errorf("%s %q is refused: %s", flag, v, why)
+	}
 	ancestry, held := failFirstBaseProblem(root, briefPath, full, deliveringFull, mb, head)
 	if why := ancestry + held; why != "" {
 		return "", "", fmt.Errorf("%s %q is refused: %s", flag, v, why)
 	}
 	return full, deliveringFull, nil
+}
+
+// baseHeadOutsideBrief returns the reason a same-repository base is refused
+// because it is HEAD while the brief does not resolve under root, and "" when
+// that rule does not apply. With the brief outside the clone no tracked file
+// ties the base to the brief, and at HEAD the base rows run on the changed
+// tree: a green says nothing and a red (a git-ignored file only this checkout
+// holds is absent from the base worktree) would be false credit. This is the
+// same-repository arm of ruling A on #5544, which the cross-repository
+// resolver applies as its "HEAD itself" refusal. An unresolvable HEAD refuses.
+func baseHeadOutsideBrief(root, briefPath, base string) string {
+	if _, resolved := briefRelPath(root, briefPath); resolved {
+		return ""
+	}
+	head, err := resolveCommit(root, "HEAD")
+	if err != nil || !isObjectID(head) {
+		return "the brief does not resolve under this clone and HEAD cannot be resolved, so the base cannot be shown to differ from it"
+	}
+	if base != head {
+		return ""
+	}
+	return "the base is HEAD itself (" + head + ") and the brief does not resolve under this clone: the base rows would run on the changed tree and cannot show it failing, and no other base is accepted for a brief outside the root, so no --base can fix this; run from a clone whose origin/main does not yet hold the change, or on a cross-repository admission"
 }
 
 // ffShort is the witness-length prefix of a commit id.
@@ -409,9 +453,10 @@ func sameCommitID(a, b string) bool {
 // briefHeldForDelivery is the brief-held rule for a witness that records its
 // delivering commit: the base (its parent) or the delivering commit itself must
 // hold the brief file at its current path. A brief the delivering change added
-// is held by the delivering commit; a commit from before the brief existed
-// holds it at neither, so the root commit still cannot stand in. It fails
-// closed when the brief path does not resolve.
+// is held by the delivering commit, so its base, the tree from before the
+// brief existed (the root commit included), is accepted: the disclosed F8
+// widening. A delivering commit from before the brief existed holds it at
+// neither and is refused. It fails closed when the brief path does not resolve.
 func briefHeldForDelivery(root, briefPath, base, delivering string) string {
 	rel, resolved := briefRelPath(root, briefPath)
 	if !resolved {
@@ -421,6 +466,50 @@ func briefHeldForDelivery(root, briefPath, base, delivering string) string {
 		return ""
 	}
 	return "neither the base nor the delivering commit " + ffShort(delivering) + " holds " + rel + ", so the Verify rows did not exist on either tree and a red there is not about this change (name the commit that delivered the change, after the brief existed)"
+}
+
+// failFirstCrossRepoBaseRev resolves the base for a cross-repository (version
+// 2 receipt) run, where root is the deliverable repository and the brief lives
+// in the tracking repository. A deliverable commit never holds the tracking
+// brief, so briefHeldAtBase, the same-repository lower bound, cannot apply.
+// In its place the base is bound EXACTLY (driver ruling A on #5544): it must
+// be the deliverable merge-base of HEAD and origin/main and nothing else. An
+// ancestor of it would predate the change (back to the root commit, where
+// every row reds for unrelated reasons); a later commit would carry part of
+// it. When that merge-base cannot be resolved the run is refused, with or
+// without --base: there is no degraded arm. When it is HEAD itself (a
+// post-merge clone, or the container, whose imported history anchors
+// origin/main to the admitted source) the run is refused too: the base rows
+// would run on the changed tree, so a green there says nothing and a red
+// (an ignored file only the home holds) would be false credit. Every refusal
+// comes before any row runs. Callers pick this only on an admitted version 2
+// receipt, never because of where the brief file sits.
+func failFirstCrossRepoBaseRev(root, rev string) (string, error) {
+	if strings.HasPrefix(rev, "-") {
+		return "", fmt.Errorf("--base %q is not a revision", rev)
+	}
+	mb := failFirstMergeBase(root)
+	if mb == "" {
+		return "", errors.New("a cross-repository base must be the deliverable merge-base of HEAD and origin/main exactly, and that merge-base cannot be resolved in the deliverable clone (fetch origin/main there); refusing rather than accept an unbounded base")
+	}
+	head, err := resolveCommit(root, "HEAD")
+	if err != nil || !isObjectID(head) {
+		return "", errors.New("a cross-repository base must be the deliverable merge-base of HEAD and origin/main exactly, and HEAD cannot be resolved in the deliverable clone; refusing")
+	}
+	if mb == head {
+		return "", fmt.Errorf("the deliverable merge-base of HEAD and origin/main is HEAD itself (%s): origin/main already holds this change, so the base rows would run on the changed tree and cannot show it failing. A cross-repository run accepts no other base, so no --base can fix this; run from a deliverable clone whose HEAD is the delivering change and whose origin/main does not yet hold it (binding the base to the delivering change is #2721)", head)
+	}
+	if rev == "" {
+		return mb, nil
+	}
+	full, err := resolveCommit(root, rev)
+	if err != nil || !isObjectID(full) {
+		return "", fmt.Errorf("--base %q names no commit in this clone", rev)
+	}
+	if full != mb {
+		return "", fmt.Errorf("--base %q is refused: a cross-repository base must be the deliverable merge-base %s exactly (an ancestor of it predates the change; a later commit carries part of it)", rev, mb)
+	}
+	return full, nil
 }
 
 // pathHeldAt reports whether rev's tree holds the file rel (a slash path from
@@ -581,7 +670,15 @@ func runFailFirstBase(plan shellPlan, sandbox, root, base string, rows []verifyR
 // fail-first outcome into the exit code: a risk-bearing row that is green at
 // base and passes at head is non-discriminating (exit 1, the row is a defect);
 // one that could not run at base is unproven (exit 2, nobody has the answer).
-func foldFailFirst(ws []witness, ff map[string]failFirst, risky map[string]bool, worst int, stdout *os.File) int {
+//
+// crossRepo picks the hint: a same-repository run can name the delivering
+// commit after a merge, a cross-repository one accepts only the deliverable
+// merge-base.
+func foldFailFirst(ws []witness, ff map[string]failFirst, risky map[string]bool, worst int, crossRepo bool, stdout *os.File) int {
+	hint := "if the change is already merged, pass --delivering-commit <the commit that delivered it>"
+	if crossRepo {
+		hint = "a cross-repository run accepts only the deliverable merge-base as its base, so strengthen the row until it fails there"
+	}
 	for _, w := range ws {
 		f, ok := ff[w.ID]
 		if !ok || f.State == baseNotSelected || w.State == stateSkipped {
@@ -589,7 +686,7 @@ func foldFailFirst(ws []witness, ff map[string]failFirst, risky map[string]bool,
 		}
 		switch {
 		case f.State == baseGreen && w.State == statePass:
-			fmt.Fprintf(stdout, "row %s: non-discriminating — green at base %s and pass at head; it passes with or without the change (if the change is already merged, pass --delivering-commit <the commit that delivered it>)\n", w.ID, f.Base)
+			fmt.Fprintf(stdout, "row %s: non-discriminating — green at base %s and pass at head; it passes with or without the change (%s)\n", w.ID, f.Base, hint)
 			if risky[w.ID] && worst == verifyrunExitPass {
 				worst = verifyrunExitFail
 			}
