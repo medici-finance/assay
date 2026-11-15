@@ -804,7 +804,7 @@ where admission is checked. The admitted forms are:
 - Evidence rows: `--brief-path <brief> --evidence-file <absolute fragment path>`, with the fragment written to the desk's own scratch OUTSIDE the home (a fragment inside the home is an untracked file and refuses admission).
 - Stream-index flip: edit the home's tracked `README.md` row, then `--evidence-file docs/streams/<stream>/README.md --row <NN>`.
 - Outcome record: `--outcome-record <absolute file outside the home>`.
-For all three forms, and for `deskevidence flip`, pass `--acceptance-forge` explicitly
+For GitHub, all three forms and `deskevidence flip` pass `--acceptance-forge` explicitly
 on the host. The full landed closure lint may need fresh corroboration of an approved
 transition on another brief; the emitted outcome command carries that permission too.
 It supplies no approval or acceptance credit and does not alter authored Verify commands
@@ -819,6 +819,7 @@ other audits receive only a noncredential refusal marker that closes stored-logi
 fallback, including a decision gate that needs to read a human ruling. Local flip corroboration
 requires the existing verifier session's own authority and a proven authorized origin,
 and never changes a worker's role.
+Other forges retain the ordinary landing path; unsupported GitHub approval reads remain held.
 Release the home only after the last landing for its run.
 
 **Leave Runner cells unannotated; `deskevidence` owns the on-behalf-of principal.** Never type an

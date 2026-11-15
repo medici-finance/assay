@@ -274,8 +274,8 @@
     {
       "name": "decision-gate judged against some other revision than the synthetic base built from the content the write replaces (the uncommitted write is no longer exactly what is judged)",
       "file": "cmd/deskevidence/decisiongate.go",
-      "old": "\"--decision-gate\", \"--decision-gate-base\", base)",
-      "new": "\"--decision-gate\", \"--decision-gate-base\", \"HEAD~0x\")"
+      "old": "auditDecision, root, \"--decision-gate-base\", base)",
+      "new": "auditDecision, root, \"--decision-gate-base\", \"HEAD~0x\")"
     },
     {
       "name": "decision-gate judged against the worktree's own HEAD, not the content the write replaces (a landing committed locally in place cancels itself and the unruled move lands)",

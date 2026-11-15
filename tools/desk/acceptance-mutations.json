@@ -2,9 +2,9 @@
   "test": "go test ./cmd/deskevidence -run '^TestAcceptanceChildPermission$' -count=1 -timeout 60s",
   "control": {
     "name": "explicit approval-read permission not forwarded",
-    "file": "cmd/deskevidence/main.go",
-    "old": "if acceptanceForge {",
-    "new": "if false && acceptanceForge {"
+    "file": "cmd/deskevidence/statusgen.go",
+    "old": "\t\targv = append(argv, \"--acceptance-forge\")",
+    "new": "\t\t// mutation: explicit approval-read permission is not forwarded"
   },
   "mutations": []
 }

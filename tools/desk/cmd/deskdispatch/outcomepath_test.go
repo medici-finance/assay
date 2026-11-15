@@ -44,7 +44,7 @@ func TestVerifierOutcomePath(t *testing.T) {
 		packetCacheDir = func() (string, error) { return cache, nil }
 		t.Cleanup(func() { packetCacheDir = old })
 		o := dispatchOpts{kit: "verifier", item: "example-stream/07", root: root, brief: filepath.Join(root, vpBriefRel)}
-		plan := dispatchPlan{repo: "example/repo", claimKey: "repo--example-stream--07"}
+		plan := dispatchPlan{repo: "example/repo", claimKey: "repo--example-stream--07", forgeKind: deskkit.ForgeGitHub}
 		dir, err := allocateOutcomeDir(o, plan, home)
 		if err != nil {
 			t.Fatalf("allocateOutcomeDir: %v", err)

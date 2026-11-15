@@ -218,6 +218,14 @@ var dispatchRequirements = []dispatchRequirement{
 			"the change failure; it is not something the verifier is asked to remember",
 	},
 	{
+		ID:      "host-closure-approval-custody",
+		Anchors: []string{"corroborate closure authority on the host", "grants no approval"},
+		How:     carriedInPrompt,
+		Probes: []string{"Closure authority:", "--acceptance-forge", "minted GitHub verifier credential",
+			"unknown repository authority stays held", "never clear Git configuration"},
+		Note: "the existing closure-audit adapter binds explicit permission and same-role custody; the prompt carries the host-side landing requirement",
+	},
+	{
 		// Kit § "What a verifier may and may not flip", clause 1.
 		ID:      "land-evidence-as-produced-never-a-wave",
 		Anchors: []string{"land evidence as it is produced", "phantom verification debt"},
@@ -354,6 +362,7 @@ func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 		fmt.Fprintf(&b, "Prior receipt PASS observations (do NOT re-run or relabel as fresh Evidence, and never infer a whole-brief PASS): %s\n\n", rows)
 	}
 	b.WriteString("Evidence submission: keep separate Date (YYYY-MM-DD) and Runner cells on every execution observation in PASS, FAIL and BLOCKED submissions, including unrun rows and supplemental host observations with no acceptance credit. For unrun rows attribute observation of the blocker, not execution. A dated heading or commit author is insufficient. Recover missing attribution from retained run records or rerun; never guess it or invent execution witnesses. Preserve admitted witness bytes; deskevidence owns the on-behalf-of stamp. Run deskevidence --dry-run before publication and repair any refusal without a lifecycle flip.\n")
+	b.WriteString("Closure authority: for GitHub landings, pass --acceptance-forge explicitly to deskevidence and deskevidence flip on the host, including when the full closure lint reads another brief's transition. It permits fresh approval reads with the invocation's minted GitHub verifier credential; it grants no approval, row credit or lifecycle advancement. Other audits receive only a noncredential refusal marker, closing stored-login fallback. Keep the actual caller role and authored network-off Verify commands unchanged; unknown repository authority stays held and refuted approvals still refuse. Retain diagnostics and never clear Git configuration, substitute an origin or borrow a stored human login to make authority pass. Local approval flips require the existing verifier session's own authority and a proven authorized origin. Other forges retain the ordinary landing path; unsupported GitHub approval reads remain held.\n")
 	b.WriteString("Outcome-record producer contract: rows names only exact identities still held by this receipt; never list every covered row in rows. When rows is non-empty, row_results is required for ALL original Verify IDs and their observed results. This includes non-contiguous numeric, suffixed and label inventories. When rows is empty or omitted, row_results remains optional. A verified record omits rows. Derive these fields only from this run's real witnessed Evidence, never from this illustrative example. For existing draft records using covered rows, follow the producer migration at https://github.com/medici-finance/assay/blob/main/docs/verify-outcome-rows.md#producer-migration-covered-rows-are-not-held-rows; preserve historical records and report missing row evidence rather than guessing.\n")
 	b.WriteString("Outcome row metadata example: " + wakeOutcomeRowsExample + "\n")
 	b.WriteString("Gapped row metadata example: " + wakeOutcomeGappedRowsExample + "\n")
