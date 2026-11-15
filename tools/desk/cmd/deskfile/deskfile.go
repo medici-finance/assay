@@ -731,7 +731,9 @@ func (a *auditCtx) log(result, detail string) {
 		Title:      a.title,
 		ArgsDigest: deskkit.ArgsDigest(os.Args[1:]),
 	}
-	_ = deskkit.Log(e)
+	// new/attach are outward issue writes: success renews a fresh HEARTBEAT lease (#6510).
+	// `check` is readOnly and logs ResultDryRun on every path, so it never renews.
+	_ = deskkit.LogOutwardAct(e)
 }
 
 // finalize maps the terminal error (or success) to exactly one audit result.

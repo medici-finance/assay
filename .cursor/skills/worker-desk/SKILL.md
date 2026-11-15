@@ -1071,12 +1071,16 @@ worker-desk's own.
   bindings), the desk falls back to the event-driven + fixed-cadence board sweep at the same 30-minute
   cadence and **states the gap in-session**; a durable wake is a convenience, never one of the three
   never-degrade guarantees.
-- **A tick never renews the dead-man lease.** When the `HEARTBEAT` file in the config home
-  (desk-shell.md §Config home: `~/.config/assay`) exists and was last touched outside its
-  staleness window, the desk tools refuse to run: that is STOP-ALL by construction. Renewal is a
-  HUMAN act. The driver, or a cron the driver owns, touches the file. No agent or loop touches,
-  renews or deletes it, on any tick, because a loop that keeps its own lease fresh defeats the
-  dead-man semantics. A `heartbeat stale (age …)` refusal is the lease firing. Quote it verbatim
+- **A tick never renews the dead-man lease; only progress does.** When the `HEARTBEAT` file in the
+  config home (desk-shell.md §Config home: `~/.config/assay`) exists and was last touched outside
+  its staleness window, the desk tools refuse to run: that is STOP-ALL by construction. A FRESH
+  lease is renewed by the desk tools themselves, and only when a verb completes an outward act the
+  forge confirmed (a push, a PR, a review or comment, an issue, an Evidence landing, a ready flip);
+  the act's audit row records it (desk-shell.md §HEARTBEAT lease). A tick, a read, a mint or a
+  failed act renews nothing, so a loop that only polls still lapses. A LAPSED lease is revived only
+  by a human: the driver, or a cron the driver owns, touches the file. No agent or loop touches,
+  creates or deletes it by hand, on any tick. A `heartbeat stale (age …)` refusal is the lease
+  firing. Quote it verbatim
   in the hand-off note, print ONE loud line naming it, and stand down. Never ask the driver how
   to proceed.
 - **A tick reads the armed per-run stops and stops each run's worker.** Every tick, read the armed
