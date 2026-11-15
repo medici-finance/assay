@@ -153,7 +153,10 @@ func TestEvidenceSnapshotLostAcknowledgementDoesNotReplay(t *testing.T) {
 }
 
 func TestEvidenceSnapshotRefusesIncompleteOrUntrustedInputs(t *testing.T) {
-	for _, fault := range []string{"edited-attestation", "foreign-stamp", "missing-edit-history", "missing-comments", "incomplete-comments", "missing-label-history", "missing-file-lookup", "truncated-blob", "unknown-visibility", "unauthorized-public"} {
+	// A truncated Blob.text over a real blob is recovered by the blob read, and
+	// an unprovable blob read refuses: TestEvidenceSnapshotReadsUnprovenTextByBlobID
+	// and TestEvidenceSnapshotRefusesUnprovableBlobRead.
+	for _, fault := range []string{"edited-attestation", "foreign-stamp", "missing-edit-history", "missing-comments", "incomplete-comments", "missing-label-history", "missing-file-lookup", "unknown-visibility", "unauthorized-public"} {
 		t.Run(fault, func(t *testing.T) {
 			lf := newLandingFixture(t)
 			lf.api.snapshotChange = func(repo map[string]any) {
@@ -175,8 +178,6 @@ func TestEvidenceSnapshotRefusesIncompleteOrUntrustedInputs(t *testing.T) {
 					delete(issue, "timelineItems")
 				case "missing-file-lookup":
 					delete(repo["ref"].(map[string]any)["target"].(map[string]any), "file")
-				case "truncated-blob":
-					repo["ref"].(map[string]any)["target"].(map[string]any)["file"].(map[string]any)["object"].(map[string]any)["text"] = "truncated"
 				case "unknown-visibility":
 					delete(repo, "visibility")
 				case "unauthorized-public":
@@ -274,8 +275,10 @@ func TestEvidenceSnapshotCreateUsesBranchPrecondition(t *testing.T) {
 // Each destination fault keeps the published bytes otherwise valid, so only the
 // named guard stands between it and a write, and the refusal must come from the
 // snapshot reader rather than a later gate. A symlink's blob is its target path;
-// a binary or size-mismatched blob is converted text; a same-length edit keeps
-// every size check green and only the Git blob hash can tell.
+// a binary blob is converted text. A byte size the text does not match sends
+// the snapshot to the blob read, whose real size contradicts it. A same-length
+// edit served for both the text and the blob bytes keeps every size check
+// green and only the Git blob hash can tell.
 func TestEvidenceSnapshotRefusesNonRegularOrUnboundDestination(t *testing.T) {
 	const link = "../elsewhere/brief-01-example.md"
 	tampered := strings.Replace(fixturePlan, "Pending.", "Pendinf.", 1)
@@ -285,6 +288,18 @@ func TestEvidenceSnapshotRefusesNonRegularOrUnboundDestination(t *testing.T) {
 	for _, fault := range []string{"symlink", "symlink-plan-bytes", "executable", "binary", "byte-size", "same-length-tamper"} {
 		t.Run(fault, func(t *testing.T) {
 			lf := newLandingFixture(t)
+			wantCalls := 1
+			if fault == "byte-size" || fault == "same-length-tamper" {
+				// The text cannot prove itself, so the snapshot reads the blob by id.
+				wantCalls = 2
+			}
+			if fault == "same-length-tamper" {
+				lf.api.blobChange = func(oid string, body map[string]any) map[string]any {
+					tamperedBlob := ghBlob(tampered)
+					tamperedBlob["sha"] = oid // the real blob's id over altered bytes
+					return tamperedBlob
+				}
+			}
 			lf.api.snapshotChange = func(repo map[string]any) {
 				f := repo["ref"].(map[string]any)["target"].(map[string]any)["file"].(map[string]any)
 				b := f["object"].(map[string]any)
@@ -307,8 +322,11 @@ func TestEvidenceSnapshotRefusesNonRegularOrUnboundDestination(t *testing.T) {
 			fragment := filepath.Join(t.TempDir(), "evidence.md")
 			writeFixtureFile(t, fragment, "| 1 | `true` | 0 | ok | 2026-10-06 | verifier |\n")
 			code, calls := lf.land(t, "--root", lf.home, "--brief-path", fixtureBrief, "--evidence-file", fragment)
-			if code == 0 || len(calls) != 1 || len(lf.api.puts) != 0 || lf.api.files[fixtureBrief] != fixturePlan {
+			if code == 0 || len(calls) != wantCalls || len(lf.api.puts) != 0 || lf.api.files[fixtureBrief] != fixturePlan {
 				t.Fatalf("destination fault %s reached the write: code=%d calls=%+v err=%s", fault, code, calls, lf.errBuf)
+			}
+			if wantCalls == 2 && calls[1].Operation != "blob-read" {
+				t.Fatalf("fault %s did not read the blob by id: %+v", fault, calls)
 			}
 			want := "destination is not a complete regular text blob"
 			if fault == "same-length-tamper" {
@@ -316,6 +334,110 @@ func TestEvidenceSnapshotRefusesNonRegularOrUnboundDestination(t *testing.T) {
 			}
 			if !strings.Contains(lf.errBuf.String(), want) {
 				t.Fatalf("fault %s refused by the wrong guard; want %q: %s", fault, want, lf.errBuf)
+			}
+		})
+	}
+}
+
+// regression: #5543 — Blob.text that cannot prove itself against the blob id
+// (truncated, rewritten in transit at the same length, or omitted) is not the
+// destination's bytes. The snapshot reads the blob by id and the landing
+// writes over the real bytes, exactly as a landing whose text proved itself.
+func TestEvidenceSnapshotReadsUnprovenTextByBlobID(t *testing.T) {
+	fragment := filepath.Join(t.TempDir(), "evidence.md")
+	writeFixtureFile(t, fragment, "| 1 | `true` | 0 | ok | 2026-10-06 | verifier |\n")
+	args := []string{"--brief-path", fixtureBrief, "--evidence-file", fragment}
+
+	base := newLandingFixture(t)
+	if code, _ := base.land(t, append([]string{"--root", base.home}, args...)...); code != 0 || len(base.api.puts) != 1 {
+		t.Fatalf("baseline landing failed: code=%d err=%s", code, base.errBuf)
+	}
+	want := base.api.puts[0].Content
+
+	tampered := strings.Replace(fixturePlan, "Pending.", "Pendinf.", 1)
+	for name, text := range map[string]any{"truncated-text": "truncated", "same-length-rewritten-text": tampered, "text-omitted": nil} {
+		t.Run(name, func(t *testing.T) {
+			lf := newLandingFixture(t)
+			lf.api.snapshotChange = func(repo map[string]any) {
+				repo["ref"].(map[string]any)["target"].(map[string]any)["file"].(map[string]any)["object"].(map[string]any)["text"] = text
+			}
+			code, calls := lf.land(t, append([]string{"--root", lf.home}, args...)...)
+			if code != 0 {
+				t.Fatalf("a destination provable by its blob id was refused: %s", lf.errBuf)
+			}
+			ops := make([]string, len(calls))
+			for i, c := range calls {
+				ops[i] = c.Operation
+			}
+			if strings.Join(ops, ",") != "snapshot,blob-read,commit,receipt" {
+				t.Fatalf("want snapshot, blob read, conditional commit and receipt check, got %+v", calls)
+			}
+			assertOneMintedIdentity(t, calls)
+			if len(lf.api.puts) != 1 || lf.api.puts[0].Content != want {
+				t.Fatalf("landing did not write over the blob's real bytes: %+v", lf.api.puts)
+			}
+		})
+	}
+}
+
+// Every guard on the blob read refuses before a write: the answer must be
+// base64, name the same blob, carry the snapshot's byte size, decode to
+// exactly that many bytes of UTF-8 text, and hash to the id. Each fault keeps
+// the rest of the answer valid, so only the named guard stands in its way.
+func TestEvidenceSnapshotRefusesUnprovableBlobRead(t *testing.T) {
+	const notBlob = "destination is not a complete regular text blob"
+	tampered := strings.Replace(fixturePlan, "Pending.", "Pendinf.", 1)
+	notUTF8 := fixturePlan[:len(fixturePlan)-1] + "\xff"
+	edit := func(f func(body map[string]any)) func(string, map[string]any) map[string]any {
+		return func(_ string, body map[string]any) map[string]any {
+			f(body)
+			return body
+		}
+	}
+	cases := []struct {
+		name  string
+		file  func(b map[string]any) // edits the snapshot's Blob; text is forced unprovable
+		blob  func(string, map[string]any) map[string]any
+		want  string
+		calls int
+	}{
+		{name: "tampered-bytes", want: "destination bytes do not match the returned Git blob", calls: 2,
+			blob: edit(func(body map[string]any) { body["content"] = ghBlob(tampered)["content"] })},
+		{name: "not-base64", want: notBlob, calls: 2, blob: edit(func(body map[string]any) { body["encoding"] = "utf-8" })},
+		{name: "other-blob", want: notBlob, calls: 2, blob: edit(func(body map[string]any) { body["sha"] = strings.Repeat("b", 40) })},
+		{name: "size-missing", want: notBlob, calls: 2, blob: edit(func(body map[string]any) { delete(body, "size") })},
+		{name: "size-contradicts", want: notBlob, calls: 2, blob: edit(func(body map[string]any) { body["size"] = len(fixturePlan) + 1 })},
+		{name: "short-content", want: notBlob, calls: 2,
+			blob: edit(func(body map[string]any) { body["content"] = ghBlob(fixturePlan[:len(fixturePlan)-1])["content"] })},
+		{name: "not-utf8", want: notBlob, calls: 2,
+			file: func(b map[string]any) { b["oid"], b["byteSize"] = blobID(notUTF8), len(notUTF8) },
+			blob: func(string, map[string]any) map[string]any { return ghBlob(notUTF8) }},
+		{name: "unreadable", want: "destination blob unreadable", calls: 2, blob: func(string, map[string]any) map[string]any { return nil }},
+		{name: "oid-not-hex", want: notBlob, calls: 1, file: func(b map[string]any) { b["oid"] = strings.Repeat("g", 40) }},
+		{name: "oid-wrong-length", want: notBlob, calls: 1, file: func(b map[string]any) { b["oid"] = blobID(fixturePlan)[:38] }}, // even-length hex: only the length guard can stop it
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			lf := newLandingFixture(t)
+			lf.api.snapshotChange = func(repo map[string]any) {
+				b := repo["ref"].(map[string]any)["target"].(map[string]any)["file"].(map[string]any)["object"].(map[string]any)
+				b["text"] = "truncated" // the text never proves itself, so every case reaches the blob read
+				if tc.file != nil {
+					tc.file(b)
+				}
+			}
+			lf.api.blobChange = tc.blob
+			fragment := filepath.Join(t.TempDir(), "evidence.md")
+			writeFixtureFile(t, fragment, "| 1 | `true` | 0 | ok | 2026-10-06 | verifier |\n")
+			code, calls := lf.land(t, "--root", lf.home, "--brief-path", fixtureBrief, "--evidence-file", fragment)
+			if code == 0 || len(calls) != tc.calls || len(lf.api.puts) != 0 || lf.api.files[fixtureBrief] != fixturePlan {
+				t.Fatalf("unprovable blob read %s reached the write: code=%d calls=%+v err=%s", tc.name, code, calls, lf.errBuf)
+			}
+			if !strings.Contains(lf.errBuf.String(), tc.want) {
+				t.Fatalf("blob read %s refused by the wrong guard; want %q: %s", tc.name, tc.want, lf.errBuf)
+			}
+			if strings.Contains(lf.errBuf.String(), "Not Found") {
+				t.Fatalf("forge response message disclosed: %s", lf.errBuf)
 			}
 		})
 	}

@@ -164,3 +164,102 @@ func TestSnapshotMissingFile(t *testing.T) {
 		})
 	}
 }
+
+// ghB64Wrapped is base64 as the git blobs API serves it: wrapped at 60
+// columns with a trailing newline.
+func ghB64Wrapped(s string) string {
+	enc := ghB64(s)
+	var b strings.Builder
+	for len(enc) > 60 {
+		b.WriteString(enc[:60] + "\n")
+		enc = enc[60:]
+	}
+	b.WriteString(enc + "\n")
+	return b.String()
+}
+
+// regression: #5543 — Blob.text is not the blob's bytes: the go-gh transport
+// rewrites a literal backslash-u-0003 in any JSON answer into caret notation.
+// When text does not prove itself against the blob id, the snapshot reads the
+// bytes by that id, and still refuses bytes that cannot be proven.
+func TestSnapshotBlobTextRewritten(t *testing.T) {
+	plain := "| cmd | `curl -d '{\"input\":\"touch x\"}'` |\n"
+	real := "| cmd | `curl -d '{\"input\":\"\\u0003touch x\"}'` |\n"
+	sameLen := strings.Replace(real, "\\u0003", "^C^C^C", 1) // a rendering the length check alone cannot tell apart
+	oid := blobID(real, false)
+	if !strings.Contains(strings.TrimSuffix(ghB64Wrapped(real), "\n"), "\n") {
+		t.Fatal("the served blob must be long enough to wrap, as GitHub serves it")
+	}
+	type blobResp struct {
+		status int
+		body   map[string]any
+	}
+	okBlob := func() *blobResp {
+		return &blobResp{200, map[string]any{"sha": oid, "size": len(real), "encoding": "base64", "content": ghB64Wrapped(real)}}
+	}
+	cases := []struct {
+		name  string
+		body  string // the blob's bytes; "" means real
+		text  any
+		blob  *blobResp // nil: the blob endpoint must not be called
+		want  bool
+		calls int32
+	}{
+		{name: "text proves itself", body: plain, text: plain, want: true, calls: 1},
+		{name: "transport rewrites escape", text: real, blob: okBlob(), want: true, calls: 2},
+		{name: "rewritten same length", text: sameLen, blob: okBlob(), want: true, calls: 2},
+		{name: "text omitted", text: nil, blob: okBlob(), want: true, calls: 2},
+		{name: "blob bytes mismatch", text: real, calls: 2, blob: &blobResp{200, map[string]any{"sha": oid, "size": len(sameLen), "encoding": "base64", "content": ghB64Wrapped(sameLen)}}},
+		{name: "blob wrong size", text: real, calls: 2, blob: &blobResp{200, map[string]any{"sha": oid, "size": len(real) + 1, "encoding": "base64", "content": ghB64Wrapped(real)}}},
+		{name: "blob wrong sha", text: real, calls: 2, blob: &blobResp{200, map[string]any{"sha": strings.Repeat("b", 40), "size": len(real), "encoding": "base64", "content": ghB64Wrapped(real)}}},
+		{name: "blob not base64", text: real, calls: 2, blob: &blobResp{200, map[string]any{"sha": oid, "size": len(real), "encoding": "utf-8", "content": real}}},
+		{name: "blob unreadable", text: real, calls: 2, blob: &blobResp{404, map[string]any{"message": "untrusted-message-marker"}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body, id := real, oid
+			if tc.body != "" {
+				body, id = tc.body, blobID(tc.body, false)
+			}
+			repo := snapshotFixture()
+			repo["ref"].(map[string]any)["target"].(map[string]any)["file"] = map[string]any{
+				"mode": 0100644, "object": map[string]any{"__typename": "Blob", "oid": id, "text": tc.text, "byteSize": len(body), "isBinary": false},
+			}
+			var calls atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case r.Method == http.MethodPost && r.URL.Path == "/graphql":
+					_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"repository": repo}})
+				case r.Method == http.MethodGet && r.URL.Path == "/repos/example-org/project/git/blobs/"+oid && tc.blob != nil:
+					w.WriteHeader(tc.blob.status)
+					_ = json.NewEncoder(w).Encode(tc.blob.body)
+				default:
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+					w.WriteHeader(http.StatusTeapot)
+				}
+			}))
+			defer srv.Close()
+			g := &GitHubForge{Token: "stub", BaseURL: srv.URL, Client: srv.Client()}
+			s, err := g.evidenceSnapshot(ForgeRepo{Owner: "example-org", Name: "project"}, 77, "docs/streams/example/brief.md", "evidence")
+			if tc.want {
+				if err != nil || s == nil || s.file == nil {
+					t.Fatalf("provable blob refused: %v", err)
+				}
+				if string(s.file.Content) != body || s.file.SHA != id || s.file.Kind != FileKindRegular {
+					t.Fatalf("destination is not the blob's own bytes: %q", s.file.Content)
+				}
+			} else if err == nil || !IsUnverifiable(err) || IsForgeNotFound(err) {
+				// A 404 on an oid the snapshot just named is never a real absence.
+				t.Fatalf("unprovable blob accepted or not refused as unverifiable: %+v, %v", s, err)
+			}
+			if err != nil && strings.Contains(err.Error(), "untrusted-message-marker") {
+				t.Errorf("forge response message disclosed: %v", err)
+			}
+			if calls.Load() != tc.calls {
+				t.Fatalf("requests = %d, want %d", calls.Load(), tc.calls)
+			}
+		})
+	}
+}

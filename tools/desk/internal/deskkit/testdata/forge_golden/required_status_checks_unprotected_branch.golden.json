@@ -3,6 +3,11 @@
     {
       "method": "GET",
       "path": "/repos/medici-finance/assay/branches/main/protection/required_status_checks"
+    },
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/rules/branches/main",
+      "query": "per_page=100\u0026page=1"
     }
   ],
   "result": null

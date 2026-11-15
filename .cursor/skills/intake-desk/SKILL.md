@@ -257,9 +257,14 @@ as idle, and confirm `plan`'s arming-coverage line before trusting a quiet pass.
 every lane step without running it; `--offline --inbound <file>` opens no network read at all.
 A pass report line `WARNING: … cleanup: could not remove worktree <path>` means the carrier PR WAS
 published and its exit recorded (the leak check stays clean); only the scan worktree was retained,
-detached so the next pass can still coalesce onto the carrier. Inspect it, clear what blocked the
-removal, then remove it through the project's sanctioned worktree tooling — never with `--force`,
-and never by deleting the directory.
+detached so the next pass can still coalesce onto the carrier. Scan worktrees are cut under the
+sanctioned worktree prefix (`--worktree-base` overrides it), so that tooling can reach them. Inspect it,
+clear what blocked the removal, then remove it through the project's sanctioned worktree tooling —
+never with `--force`, and never by deleting the directory. A coalesce that finds the carrier branch
+still checked out in a retained scan worktree carries on IN it when that worktree is clean and at the
+carrier's remote tip; a dirty or diverged one refuses the pass (exit 5) and is left exactly as it is.
+A reused worktree is removed at the end of that pass like any scan worktree, and that removal also
+deletes its gitignored files: copy anything you need out of a retained scan worktree before the next pass.
 
 **Exit records.** Every exit `run` lands is also appended as a `decided_by: mechanical` record to
 `<state dir>/intake-exits.jsonl` (`--dry-run` writes none). A JUDGMENT item is parked, never
@@ -286,10 +291,9 @@ row of the judgment table, record it with `scanloop land ... --handoff <json-fil
 --handoff-reader intake-handoff-v1`, publish the companion with its `handoff:` pointer and
 `handoff-opened:` time, and read the result back. The table, one example per row, the exact
 publication step, the read-back and the failure handling are in
-[`../../references/intake-handoff.md`](../../references/intake-handoff.md).
-The local history alone is not an assignment authority.
-Do not promote raw placeholders or open a new issue merely to acknowledge an observation.
-Before committing a companion to a public repository, scrub its free-text `evidence`,
+[`../../references/intake-handoff.md`](../../references/intake-handoff.md). The local history
+alone is not an assignment authority. Do not promote raw placeholders or open a new issue merely
+to acknowledge an observation. Before committing a companion to a public repository, scrub its free-text `evidence`,
 `required_action` and `wake_condition` fields; they publish as written.
 
 **Standing-doctrine pointer.** A successor scan-transcription lane (ruling R-7) would have an

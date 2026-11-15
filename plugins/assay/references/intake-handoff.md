@@ -222,6 +222,8 @@ scanloop land --item example-org/example#12 --opened 2026-11-01T09:30:00Z --kind
   call that names a different exit for an event that already left keeps the first exit and says
   the new one was not recorded.
 - `--tier strong` only from a session on a strong tier. Never claim a tier the session is not on.
+- A brief successor (`<stream>/<NN>`) is looked up from the working directory, so run the command
+  from the root that holds that stream; an issue successor is read through the forge.
 - The file after `--handoff` is the file you publish in section 5.
 
 The write is idempotent for an exact retry. If the exit write succeeded and the companion write
@@ -238,8 +240,9 @@ placeholder, so publication is a separate step.
    `<repository name>-issue-<N>` for any other, so the companion for `issue-12.md` is
    `issue-12.handoff.json`.
 2. In the placeholder's frontmatter set `handoff:` to that bare file name and `handoff-opened:`
-   to the event time, quoted, exactly as `opened` reads in the record. Unquoted, the time is read
-   as a date rather than text, the pointer is ignored and the issue stays held.
+   to the event time, quoted, exactly as `opened` reads in the record, which is the UTC form `land`
+   stores. Unquoted, the time is read as a date rather than text, the pointer is ignored and the
+   issue is `classification-needed`.
 3. Commit both in the same reviewed intake change as the placeholder, through the normal
    reviewed change. Never leave either one only in a working tree.
 
@@ -250,22 +253,28 @@ visibility the session cannot read is treated as public. The handoff spec
 
 ## 6. Read it back
 
-- The next pass report. An issue still owed prints an `intake:` line under `EMITTED` with its
-  assessment, and a settled one no longer queues. If the line is still there, the judgment is
-  not discharged.
+- The next pass report does NOT confirm publication. Recording a judgment settles it in the
+  local history, so an `observed` or `external-wait` item stops printing its `intake:` line under
+  `EMITTED` as soon as `scanloop land` succeeds, whether or not the companion and the pointer were
+  ever committed. No scanloop output reads the published side, so a quiet pass is not evidence of
+  publication: check the publication in this same session, with the dispatch read below and by
+  confirming that the companion file and the pointer edit are in the committed change.
 - The dispatch queue, for a direct repair only. Read it uncapped, in the root that holds the
-  placeholder:
+  placeholder, keyed on the item's own row id, `issue-loop/` followed by the placeholder stem from
+  section 5 step 1 (`issue-12`, or `<repository name>-issue-12`):
 
   ```
-  statusgen --root . --next-up --span 100000 | grep -c '"stream": *"issue-loop"'
+  statusgen --root . --next-up --span 100000 | grep -c '"issue-loop/issue-12"'
   ```
 
-  It prints 1 or more once a direct repair is recorded and published. The default dispatch view
-  is capped at 20 rows and 4 per stream, so it can omit an eligible placeholder; the filter keys
-  on the `issue-loop` stream because a placeholder's id has two shapes. A 0 means one of: the
-  judgment is not a direct repair, the pointer or time is wrong, or something held the row. The
-  same output reports `heldByStreamCap` and `heldByDriveWorkerCap` (absent means 0), which count
-  held rows for the whole root: both at 0 rules a hold out, and either above 0 leaves the read
+  The output is one line of JSON, so the count is 1 when that row is listed and 0 when it is not;
+  the quote after the stem keeps `issue-12` from matching `issue-123`. A 1 means the direct repair
+  is recorded and published. A 0 means one of: the judgment is not a direct repair, the companion
+  or pointer is missing or wrong (an unquoted `handoff-opened:` is read as a date, the pointer is
+  ignored and the issue is `classification-needed`), or something held the row. The default
+  dispatch view is capped at 20 rows and 4 per stream, which is why the read is uncapped. The same
+  output reports `heldByStreamCap` and `heldByDriveWorkerCap` (absent means 0), which count held
+  rows for the whole root: both at 0 rules a hold out, and either above 0 leaves a 0 read
   could-not-check, never a pass.
 - The successor. Read it back through its owner before treating the handoff as discharged; a
   stopped scan carrier leaves successor-owed work.
@@ -281,8 +290,10 @@ Legacy or unreadable companions remain classification-needed.
   never as an empty queue. Do not edit `intake-handoffs-v1.jsonl` or `intake-exits.jsonl` by
   hand, and never invent a new source event or a different `--opened` to get past a conflict;
   file an issue against the tooling naming the item and the message.
-- A judgment recorded but not published leaves the placeholder `classification-needed`. The next
-  pass shows the item still owed; publish it then.
+- A judgment recorded but not published leaves the placeholder `classification-needed` and out of
+  dispatch. The next pass does not show it as owed, because the local history already counts it as
+  settled; nothing reports it until the read in section 6 is made. Publish it in the same session
+  that recorded it.
 - A class brief authored without its members' judgments is incomplete, and the members stay
   owed.
 - A session below strong tier records `repair`, `duplicate` and external judgments only, and

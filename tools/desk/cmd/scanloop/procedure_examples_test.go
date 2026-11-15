@@ -131,4 +131,22 @@ func TestHandoffExamplesFlagPlant(t *testing.T) {
 	if len(problems) != 3 {
 		t.Fatalf("plant produced %d problems, want 3 (mislabel, unknown field, unsettled direct repair): %v", len(problems), problems)
 	}
+	// Each planted defect must be the one reported, at its own line: a swap
+	// (one defect missed, another reported twice) keeps the count at 3.
+	for line, want := range map[int]string{
+		8:  "labelled \"observed duplicate\"",
+		31: "does not decode",
+		50: "assesses as \"observed repair\"",
+	} {
+		prefix := fmt.Sprintf("line %d: ", line)
+		found := 0
+		for _, p := range problems {
+			if strings.HasPrefix(p, prefix) && strings.Contains(p, want) {
+				found++
+			}
+		}
+		if found != 1 {
+			t.Errorf("planted defect at line %d (%s) reported %d times, want once: %v", line, want, found, problems)
+		}
+	}
 }

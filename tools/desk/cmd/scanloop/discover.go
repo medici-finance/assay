@@ -46,6 +46,22 @@ var listOpenChangesFn = func(repo string) (*deskkit.OpenChanges, error) {
 // discoverOpenScanPR finds the open scan PR by this session's App on the scan target, or nil when
 // there is none. An error means the answer could not be established.
 func discoverOpenScanPR(target string, now time.Time, window time.Duration) (*OpenScanPR, error) {
+	r, err := readScanChanges(target)
+	if err != nil {
+		return nil, err
+	}
+	return selectOpenScanPR(r.oc, r.login, now, window)
+}
+
+// scanRead is ONE read of the scan target's open changes, with the App login they are filtered by.
+// The coalesce decision and the carrier exclusion both derive from it, so a pass reads the list once.
+type scanRead struct {
+	oc    *deskkit.OpenChanges
+	login string
+}
+
+// readScanChanges establishes this session's App and reads the scan target's open changes.
+func readScanChanges(target string) (*scanRead, error) {
 	role, _, rerr := sessionRoleFn("scanloop")
 	if rerr != nil {
 		return nil, deskkit.Unverifiable("scanloop: cannot establish which App's open scan PR to look for on "+
@@ -64,7 +80,7 @@ func discoverOpenScanPR(target string, now time.Time, window time.Duration) (*Op
 			" — whether one is already open is could-not-check, and a fresh PR cut on that reading "+
 			"would duplicate it", err)
 	}
-	return selectOpenScanPR(oc, login, now, window)
+	return &scanRead{oc: oc, login: login}, nil
 }
 
 // selectOpenScanPR picks the open scan PR this batch is decided against: the youngest DRAFT scan PR
@@ -131,14 +147,14 @@ func oldestCreated(changes []deskkit.OpenChange) (time.Time, bool) {
 
 // onePerPass wraps a reader so the forge is read at most ONCE per pass, on first use: a pass with
 // no scan dispatch reads nothing, and a pass with one never re-reads mid-dispatch.
-func onePerPass(read func() (*OpenScanPR, error)) func() (*OpenScanPR, error) {
+func onePerPass[T any](read func() (T, error)) func() (T, error) {
 	var (
 		once sync.Once
-		pr   *OpenScanPR
+		v    T
 		err  error
 	)
-	return func() (*OpenScanPR, error) {
-		once.Do(func() { pr, err = read() })
-		return pr, err
+	return func() (T, error) {
+		once.Do(func() { v, err = read() })
+		return v, err
 	}
 }

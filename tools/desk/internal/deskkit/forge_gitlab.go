@@ -1065,6 +1065,7 @@ func (g *GitLabForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 				MergedAt: gitlabTime(mr.MergedAt),
 				BaseRef:  mr.TargetBranch,
 			}
+			ref.UpdatedAt = gitlabTime(mr.UpdatedAt)
 			if mr.Author != nil {
 				ref.Author = types.resolve(gitlabAccount(mr.Author.ID, mr.Author.Username))
 			}
@@ -2740,34 +2741,61 @@ func (g *GitLabForge) ChangeDiff(repo ForgeRepo, number int) (string, error) {
 // successful push (issue #1415). GitLab's post-push branch visibility is not always
 // instantaneous on self-managed/CE setups: the ref is written and readable through Git and
 // the branches API, yet the merge-request create can briefly still not see it and reject
-// with a 400. Three attempts two seconds apart cover that convergence window without
-// turning into an unbounded loop. These bound ONLY that condition; see the guard in the
-// loop below — no other 400 is ever retried.
+// with a 400. The retry backs off exponentially from gitlabCreateMRRetryDelay (2s, 4s, 8s,
+// 16s), so the whole window is gitlabCreateMRMaxWait — 30s, tens of seconds, well under a
+// scan pass — and never an unbounded loop. Issue #6281 widened the window from 4s: a
+// reporter's create still saw the branch absent after the push yet succeeded about a minute
+// later. These bound ONLY that condition; see the guard in the loop below — no other 400 is
+// ever retried.
 const (
-	gitlabCreateMRAttempts   = 3
+	gitlabCreateMRAttempts   = 5
 	gitlabCreateMRRetryDelay = 2 * time.Second
+	gitlabCreateMRMaxWait    = 30 * time.Second
 )
+
+// gitlabCreateMRBackoff is the wait before create attempt `attempt`+1, after `attempt`
+// attempts have failed with the transient condition: gitlabCreateMRRetryDelay doubled per
+// failed attempt. Summed over attempts 1..gitlabCreateMRAttempts-1 it is
+// gitlabCreateMRMaxWait (TestGLCreateMRKeyedGivesUp pins both).
+func gitlabCreateMRBackoff(attempt int) time.Duration {
+	return gitlabCreateMRRetryDelay << (attempt - 1)
+}
+
+// reGitLabKeyedMissingSource matches the client library's rendering of GitLab's
+// FIELD-KEYED validation body for this condition, `{"message":{"source_branch":["does not
+// exist"]}}`, which renders as `{message: {source_branch: [does not exist]}}` (issue #6281).
+// The `[^\]]*` keeps the match inside the source_branch key's own message list, so a
+// "does not exist" that belongs to another key (target_branch) never satisfies it.
+var reGitLabKeyedMissingSource = regexp.MustCompile(`\{source_branch: \[[^\]]*does not exist`)
 
 // gitlabIsTransientMissingSourceBranch reports whether err is GitLab's transient
 // "source branch does not exist" refusal on the create-MR endpoint immediately after a
 // push (issue #1415) — the ONE 400 CreateDraftChange retries.
 //
 // It is deliberately NARROW. It matches only a 400 (never a 401/403/404/409/5xx) whose
-// preserved forge body (ForgeAPIError.Body, populated by mapErr since #1415) names BOTH
-// "source branch" and "does not exist". GitLab spells this rejection
-// `{"message":["Source branch \"<name>\" does not exist"]}`, which the client library
-// renders into that body. A genuine validation 400 (a duplicate MR, a bad target, a
-// malformed field) carries a DIFFERENT message and is therefore never matched — so this
-// can never widen into a retry-on-any-400, which would mask exactly the diagnostic the
-// #1415 body-preservation fix exists to surface. The body is required: a 400 that carried
-// no body (empty ForgeAPIError.Body) is not this condition and is not retried.
+// preserved forge body (ForgeAPIError.Body, populated by mapErr since #1415) says the SOURCE
+// branch does not exist, in either of GitLab's two spellings:
+//   - the sentence form `{"message":["Source branch \"<name>\" does not exist"]}` — the body
+//     names BOTH "source branch" and "does not exist";
+//   - the field-keyed validation form `{"message":{"source_branch":["does not exist"]}}`
+//     (issue #6281) — "does not exist" inside the source_branch key's own list. Matching only
+//     the sentence form left the retry dead for this shape, the one a reporter's GitLab sent.
+//
+// A genuine validation 400 (a duplicate MR, a missing TARGET branch, a malformed field)
+// carries a DIFFERENT message and is therefore never matched — so this can never widen into
+// a retry-on-any-400, which would mask exactly the diagnostic the #1415 body-preservation
+// fix exists to surface. The body is required: a 400 that carried no body (empty
+// ForgeAPIError.Body) is not this condition and is not retried.
 func gitlabIsTransientMissingSourceBranch(err error) bool {
 	var ae *ForgeAPIError
 	if !errors.As(err, &ae) || ae.Status != http.StatusBadRequest || ae.Body == "" {
 		return false
 	}
 	b := strings.ToLower(ae.Body)
-	return strings.Contains(b, "source branch") && strings.Contains(b, "does not exist")
+	if strings.Contains(b, "source branch") && strings.Contains(b, "does not exist") {
+		return true
+	}
+	return reGitLabKeyedMissingSource.MatchString(b)
 }
 
 // CreateDraftChange opens a merge request as a DRAFT.
@@ -2785,6 +2813,12 @@ func gitlabIsTransientMissingSourceBranch(err error) bool {
 // 400, is surfaced on the first response with GitLab's own body preserved (#1415) — never
 // retried. Exhausting the bounded attempts on the transient condition is itself a
 // could-not-check (clause C4), reported as one; it is never rounded up to a pass.
+//
+// Every caller reaches this through CreateHeldDraftChange right after creating the source
+// branch itself (deskpr's push, deskevidence's side-branch WriteFile), so "just pushed"
+// holds for each one. Before every retry the backend reads the open merge requests on the
+// source branch (a read, never a write): if one is open, or the read fails, it does NOT
+// retry, so a second create can never open a duplicate merge request (issue #6281).
 func (g *GitLabForge) CreateDraftChange(repo ForgeRepo, in DraftChangeInput) (*PullRef, error) {
 	cl, err := g.client()
 	if err != nil {
@@ -2810,7 +2844,21 @@ func (g *GitLabForge) CreateDraftChange(repo ForgeRepo, in DraftChangeInput) (*P
 		}
 		mapped := g.mapErr(http.MethodPost, path, cerr)
 		if gitlabIsTransientMissingSourceBranch(mapped) && attempt < gitlabCreateMRAttempts {
-			g.gitlabSleep(gitlabCreateMRRetryDelay)
+			g.gitlabSleep(gitlabCreateMRBackoff(attempt))
+			// Duplicate guard: a create retried while a merge request is already open on
+			// this source branch could open a second one. Read first; retry only on a clean
+			// "none open". A failed read is not a clean "none" — stop, never retry blind.
+			existing, lerr := g.OpenChangeForBranch(repo, in.Head)
+			if lerr != nil {
+				return nil, Unverifiable(fmt.Sprintf(
+					"could-not-check: POST %s — not retried: could not confirm that no merge request is open on "+
+						"source branch %q (%v)", path, StripControl(in.Head), lerr), mapped)
+			}
+			if existing != nil {
+				return nil, Unverifiable(fmt.Sprintf(
+					"could-not-check: POST %s — not retried: merge request !%d is already open on source branch %q; this call did not open it and holds no merge-hold on it",
+					path, existing.Number, StripControl(in.Head)), mapped)
+			}
 			continue
 		}
 		if gitlabIsTransientMissingSourceBranch(mapped) {
@@ -2818,9 +2866,9 @@ func (g *GitLabForge) CreateDraftChange(repo ForgeRepo, in DraftChangeInput) (*P
 			// pushed. That is could-not-check (the push landed, the create could not be
 			// confirmed), never a pass — surfaced as one, naming the exhausted window.
 			return nil, Unverifiable(fmt.Sprintf(
-				"could-not-check: POST %s — GitLab still reported source branch %q absent after %d attempts %s apart "+
+				"could-not-check: POST %s — GitLab still reported source branch %q absent after %d attempts over %s "+
 					"following a successful push (post-push branch visibility did not converge)",
-				path, StripControl(in.Head), gitlabCreateMRAttempts, gitlabCreateMRRetryDelay), mapped)
+				path, StripControl(in.Head), gitlabCreateMRAttempts, gitlabCreateMRMaxWait), mapped)
 		}
 		return nil, mapped
 	}
@@ -3370,6 +3418,43 @@ func (g *GitLabForge) MarkReadyForReview(nodeID string) error {
 	if updated.Draft {
 		return Unverifiable(fmt.Sprintf(
 			"could-not-check: merge request !%d in %s is still marked draft after clearing its title marker",
+			iid, repo.Slug()), nil)
+	}
+	return nil
+}
+
+// ConvertToDraft puts the `Draft:` prefix back on a merge request's title, GitLab's only
+// draft transition and the inverse of MarkReadyForReview. Its one caller is the post-flip
+// backstop (ReadyBackstop); see the interface doc for the ruling that admits it.
+//
+// Like MarkReadyForReview it reads the CURRENT title first, so a stale copy never reverts an
+// edit made in between, and it is idempotent: an MR that is already a draft returns success
+// without a write.
+func (g *GitLabForge) ConvertToDraft(nodeID string) error {
+	repo, iid, err := parseGitLabNodeID(nodeID)
+	if err != nil {
+		return err
+	}
+	cl, cerr := g.client()
+	if cerr != nil {
+		return cerr
+	}
+	path := fmt.Sprintf("/projects/%s/merge_requests/%d", g.projectPath(repo), iid)
+	mr, _, gerr := cl.MergeRequests.GetMergeRequest(repo.Slug(), int64(iid), nil)
+	if gerr != nil {
+		return g.mapErr(http.MethodGet, path, gerr)
+	}
+	if mr.Draft {
+		return nil
+	}
+	updated, _, uerr := cl.MergeRequests.UpdateMergeRequest(repo.Slug(), int64(iid),
+		&gitlab.UpdateMergeRequestOptions{Title: gitlab.Ptr("Draft: " + mr.Title)})
+	if uerr != nil {
+		return g.mapErr(http.MethodPut, path, uerr)
+	}
+	if !updated.Draft {
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: merge request !%d in %s is still not a draft after adding its title marker",
 			iid, repo.Slug()), nil)
 	}
 	return nil
