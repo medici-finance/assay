@@ -2035,7 +2035,7 @@ if args[:2] == ['image', 'inspect']:
     # regression: #5091
     def test_harness_environment(self):
         problem = 'the workflow environment must hold only GO_VERSION'
-        top = '  GO_VERSION: "1.27.3"\n\njobs:\n'
+        top = '  GO_VERSION: "1.27.4"\n\njobs:\n'
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
             text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(text.count(top), 1, 'control target is not unique')

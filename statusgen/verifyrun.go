@@ -2065,7 +2065,8 @@ Flags:
                     delivered; every delivered row the original table lacks
                     (derived from git at the coordinates, never from the file)
                     is witnessed author-added with no acceptance credit. That
-                    line plus an Acceptance-Transition line is a transition,
+                    line plus one legacy or an ordered chain of Acceptance-Transition
+                    lines is a transition,
                     which needs --acceptance-forge on the host and executes the
                     canonical original-plus-approved obligation plan. Open and
                     close use the same record; the container executes the receipt's
@@ -2111,7 +2112,8 @@ Flags:
   --history-pack <file>  with container-netns --fail-first, import that pack
                     into private scratch for baseline checkouts. Its source must
                     equal the admitted source. Head rows still run on --root.
-                    See docs/container-baseline-history.md.
+                    A version 2 (cross-repository) receipt's brief stays in the
+                    tracking tree it binds. See docs/container-baseline-history.md.
   --admission-receipt <file>  the --open-bracket receipt, read-only and outside the
                     home. The container run refuses before any row unless its
                     --root digests to the receipt's tree, the receipt admits
@@ -2224,7 +2226,12 @@ Flags:
   --base <rev>      the base for --fail-first (default: the exact merge-base of
                     HEAD and origin/main); it may name that merge-base or an
                     ancestor of it. After the change has merged, pass the
-                    parent of the delivering merge
+                    parent of the delivering merge. On a cross-repository
+                    (version 2 receipt) run the base must be the deliverable
+                    merge-base exactly, and the run is refused before any row
+                    when it cannot be resolved or is HEAD itself (post-merge,
+                    and always in the container). With no resolvable
+                    merge-base any --base is refused
   --env-file <path> role env-file forwarded to the container as --env-file (the
                     PATH only; its contents are never read or logged). Defaults to
                     the ASSAY_VERIFY_ENV_FILE environment variable. Omit for offline.
@@ -2662,7 +2669,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	var protectedExecution protectedPlan
 	// transitionDescriptor is the --acceptance-record text: a protected record
 	// (one Verification-Table line, #4499) or an acceptance transition (that
-	// line plus one Acceptance-Transition line). transitionRun is the latter.
+	// line plus one legacy or an ordered chain of Acceptance-Transition lines).
+	// transitionRun is the latter.
 	var transitionDescriptor string
 	var transitionRun bool
 	if netnsContainer && (container.cell.Acceptance != nil || *transitionRecord != "") {
@@ -2738,23 +2746,49 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// checkout, so the head run below is the ordinary run, unchanged.
 	var ff map[string]failFirst
 	var riskyIDs map[string]bool
+	ffCrossRepo := false
 	if *failFirstMode {
 		baseRoot, baseBrief := root, path
-		if *historyPack != "" {
+		// A cross-repository run is one ADMITTED on a version 2 receipt (the
+		// host lane's admitted deliverable home, or the container receipt's
+		// binding), never inferred from where the brief file sits: its base is a
+		// deliverable commit and the receipt binds the tracking brief's bytes.
+		crossRepo := admittedHome != ""
+		bindingVersion, bindingSource := 0, ""
+		if netnsContainer {
+			// Every container run was admitted on a receipt above, so an
+			// unreadable binding refuses here rather than fall back to a
+			// resolver the receipt never chose.
 			binding, err := checkBinding(container.cell.Check)
 			if err != nil {
-				fmt.Fprintln(stderr, "statusgen verifyrun: --history-pack:", err)
+				fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first: the admission receipt's binding cannot be read:", err)
 				return verifyrunExitCouldNot
 			}
+			bindingVersion, bindingSource = binding.Version, binding.Source
+			crossRepo = crossRepo || bindingVersion == 2
+		}
+		if *historyPack != "" {
+			var err error
 			var cleanup func()
-			baseRoot, baseBrief, cleanup, err = importContainerHistory(root, path, *historyPack, binding.Source)
+			if bindingVersion == 2 {
+				baseRoot, cleanup, err = importCrossRepoHistory(root, path, *historyPack, bindingSource)
+			} else {
+				baseRoot, baseBrief, cleanup, err = importContainerHistory(root, path, *historyPack, bindingSource)
+			}
 			if err != nil {
 				fmt.Fprintln(stderr, "statusgen verifyrun: --history-pack:", err)
 				return verifyrunExitCouldNot
 			}
 			defer cleanup()
 		}
-		base, berr := failFirstBaseRev(baseRoot, *baseRev, baseBrief)
+		ffCrossRepo = crossRepo
+		var base string
+		var berr error
+		if crossRepo {
+			base, berr = failFirstCrossRepoBaseRev(baseRoot, *baseRev)
+		} else {
+			base, berr = failFirstBaseRev(baseRoot, *baseRev, baseBrief)
+		}
 		if berr != nil {
 			fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first:", berr)
 			return verifyrunExitCouldNot
@@ -2913,7 +2947,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return verifyrunExitCouldNot
 	}
 	if ff != nil {
-		worst = foldFailFirst(ws, ff, riskyIDs, worst, stdout)
+		worst = foldFailFirst(ws, ff, riskyIDs, worst, ffCrossRepo, stdout)
 	}
 	fmt.Fprintln(stdout)
 	fmt.Fprintln(stdout, table)

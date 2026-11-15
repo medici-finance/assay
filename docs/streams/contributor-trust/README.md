@@ -168,9 +168,9 @@ Critical path: `02 → 03 → 05`.
   security control or its assertion, that is a stop and a human ruling, never a resolution.
 - **No brief in this stream builds, tests or checks out an untrusted head**, including in a
   fixture. Metadata reads only.
-- Every risk-gated brief cites a design-decision record under `docs/streams/decisions/`. All
-  five are **PROPOSED**: they capture the design as authored so the design-approval gate has
-  something to dereference, and each carries a placeholder approver until a human rules on the
-  brief's decision issue.
+- Every risk-gated brief cites a design-decision record under `docs/streams/decisions/`. They
+  capture the design as authored so the design-approval gate has something to dereference.
+  Four are **PROPOSED** and carry a placeholder approver until a human rules on the brief's
+  decision issue; `DR-trust-tiers-ledger` has been ruled and names its approver.
 - Public-tree self-containment: briefs here name no private repository, machine path or
   session.

@@ -215,6 +215,22 @@ credited.
 
 ## 6. What a verifier may and may not flip
 
+- **Corroborate closure authority on the host.** For GitHub landings, pass `--acceptance-forge` explicitly to
+  `deskevidence` for Evidence, row-flip and outcome landings and to `deskevidence flip`.
+  A verified outcome lints the entire landed tree, so a protected transition on another
+  brief also needs this permission. The flag permits fresh read-only approval reads;
+  it grants no approval, row credit or lifecycle advancement. Keep authored Verify commands
+  and network-off execution unchanged. An unavailable repository origin or approval read
+  still holds the landing, and a refuted approval still refuses it. Retain the diagnostic
+  and route the missing capability; never clear Git configuration, substitute an origin
+  or borrow a stored human login to make authority pass.
+  The landing tool binds its own minted GitHub verifier credential to opted-in host audits,
+  including recorded human rulings. Missing or foreign custody holds before launch. Without
+  opt-in, audits receive a noncredential refusal marker that closes stored-login fallback;
+  a decision gate requiring a recorded ruling remains held because it cannot authenticate.
+  Local flip corroboration requires the current
+  verifier session's own authority and a proven authorized origin, and never changes roles.
+  Other forges retain the ordinary landing path; unsupported GitHub approval reads remain held.
 - Record Evidence and the verdict. Land Evidence as it is produced — a PASS in hand and not
   landed within one cycle is a defect: the board then shows phantom verification debt,
   other sessions re-report the item as stuck, and the lead-time number inflates by pure

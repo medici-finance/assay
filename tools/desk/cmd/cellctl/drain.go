@@ -107,6 +107,10 @@ type drainOpts struct {
 	Roles       []string
 	Timeout     time.Duration
 	HandoffWait time.Duration
+	// Owner, when set, stamps the drain's own pause flags with that invocation id and leaves
+	// lifting them to the caller, which lifts only its own (a cycle). Empty: drain lifts the stops
+	// of the roles it stopped itself, as `cellctl drain` does.
+	Owner string
 }
 
 // drainReport is a drain's outcome before any operator confirm: the result so far, and the
@@ -132,7 +136,7 @@ func (l *interimLifecycle) drain(o drainOpts) drainReport {
 	for _, role := range targets {
 		state[role], _ = lifecycleStep(stateRunning, evDrain)
 	}
-	if _, err := l.Pause(o.Roles); err != nil {
+	if _, err := l.pauseAs(o.Roles, o.Owner); err != nil {
 		finishErr(&r, err, l.now())
 		rep.Result = r
 		return rep
@@ -208,7 +212,7 @@ func (l *interimLifecycle) drain(o drainOpts) drainReport {
 		rep.Result = r
 		return rep
 	}
-	if len(rep.Confirm) == 0 {
+	if len(rep.Confirm) == 0 && o.Owner == "" {
 		l.liftAfterStop(stoppedRoles(&r))
 	}
 	r.Finish(cellop.OK, "", "", l.now())
@@ -245,9 +249,10 @@ func stopAction(cell, role string, rd idleReading) cellop.Action {
 
 // drainNowPlan is `drain --now`'s plan: every claim still held becomes an abandon action, an
 // unknown outcome to reconcile, ahead of the stop of its role.
-func (l *interimLifecycle) drainNowPlan(roles []string, since time.Time, handoffWait time.Duration) ([]cellop.Action, error) {
+// owner stamps any pause flag the plan creates, as drainOpts.Owner does ("" for `drain --now`).
+func (l *interimLifecycle) drainNowPlan(roles []string, since time.Time, handoffWait time.Duration, owner string) ([]cellop.Action, error) {
 	cell := l.c.Name
-	if _, err := l.Pause(roles); err != nil {
+	if _, err := l.pauseAs(roles, owner); err != nil {
 		return nil, err
 	}
 	claims, err := l.probes.claims()
@@ -700,7 +705,7 @@ func drainCmd() *cobra.Command {
 			return nil
 		}
 		if v.Bool("now") {
-			actions, err := lc.drainNowPlan(roles, time.Now(), handoffWait)
+			actions, err := lc.drainNowPlan(roles, time.Now(), handoffWait, "")
 			if err != nil {
 				r := cellop.NewResult("drain", c.Name, time.Now())
 				finishErr(&r, err, time.Now())

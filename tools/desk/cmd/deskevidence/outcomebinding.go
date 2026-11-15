@@ -223,6 +223,11 @@ func checkAdmittedDeliveryPRs(fg deskkit.Forge, receipt deskkit.VerifierReceipt,
 		if source == "" {
 			continue
 		}
+		// A merge commit that IS the admitted source is contained in it: the compare
+		// would say "identical". Full ids only (sameCommit), never a prefix.
+		if sameCommit(entry.MergeSHA, source) {
+			continue
+		}
 		repo, _ := entryForgeRepo(entry.Repo)
 		compared, err := fg.CompareRefs(repo, entry.MergeSHA, source)
 		if err != nil {

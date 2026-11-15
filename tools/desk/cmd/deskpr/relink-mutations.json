@@ -160,8 +160,8 @@
     {
       "name": "the audit comment is not posted",
       "file": "cmd/deskpr/edit.go",
-      "old": "\tif rl != nil {\n\t\tif _, aErr := fg.PostComment(",
-      "new": "\tif false {\n\t\tif _, aErr := fg.PostComment("
+      "old": "\tif rl != nil {\n\t\t// Typed (#6264): the record lands on a PR; a bare number is ambiguous on GitLab.\n\t\tif _, aErr := fg.PostCommentTyped(",
+      "new": "\tif false {\n\t\t// Typed (#6264): the record lands on a PR; a bare number is ambiguous on GitLab.\n\t\tif _, aErr := fg.PostCommentTyped("
     },
     {
       "name": "a failed audit comment does not stop the edit",

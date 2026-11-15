@@ -397,7 +397,10 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	t.Cleanup(func() { forgeForFn = oldForge })
 
 	oldMint := mintTokenFn
-	mintTokenFn = func(string) error { ghToken = "test-verifier-token"; return nil }
+	mintTokenFn = func(string) (deskkit.RoleCredential, error) {
+		ghToken = "test-verifier-token"
+		return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
+	}
 	t.Cleanup(func() { mintTokenFn = oldMint; ghToken = "" })
 
 	// verify-reset/03: the receipt derivation reads git history at the record's sha, which
@@ -425,10 +428,12 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	// calling cmdEvidence. Tests specifically exercising the check override this seam
 	// themselves (see the lint-diff tests below).
 	oldLintDiff := lintDiffFn
-	lintDiffFn = func(string, string, []byte) ([]string, error) { return nil, nil }
+	lintDiffFn = func(string, string, []byte, childOptions) ([]string, error) { return nil, nil }
 	t.Cleanup(func() { lintDiffFn = oldLintDiff })
 	oldDecisionGate := decisionGateDiffFn
-	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit) ([]string, error) { return nil, nil }
+	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit, childOptions) ([]string, error) {
+		return nil, nil
+	}
 	t.Cleanup(func() { decisionGateDiffFn = oldDecisionGate })
 	oldBranchBoard := decisionGateBranchBoardFn
 	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) { return nil, nil }
@@ -439,7 +444,7 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	}
 	t.Cleanup(func() { landedClosureFn = oldLanded })
 	oldOutcome := outcomeGuardFn
-	outcomeGuardFn = func(string, string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error {
+	outcomeGuardFn = func(string, string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string, childOptions) error {
 		return nil
 	}
 	t.Cleanup(func() { outcomeGuardFn = oldOutcome })
@@ -448,13 +453,13 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	// in the general suite never shells a real statusgen. Tests exercising the gate override
 	// this seam themselves (see verifiedgate_test.go).
 	oldClosure := verifiedClosureCheckFn
-	verifiedClosureCheckFn = func(string, string) (closureVerdict, string, error) { return closureAccepted, "", nil }
+	verifiedClosureCheckFn = func(string, string, childOptions) (closureVerdict, string, error) { return closureAccepted, "", nil }
 	t.Cleanup(func() { verifiedClosureCheckFn = oldClosure })
 
 	// The non-decisive verdict gate (#5759) defaults to "landable" for the same reason;
 	// verdictgate_test.go restores the real statusgen-backed check.
 	oldVerdict := evidenceVerdictCheckFn
-	evidenceVerdictCheckFn = func(string, string, []byte, []byte, bool, string) (closureVerdict, string, error) {
+	evidenceVerdictCheckFn = func(string, string, []byte, []byte, bool, string, childOptions) (closureVerdict, string, error) {
 		return closureAccepted, "", nil
 	}
 	t.Cleanup(func() { evidenceVerdictCheckFn = oldVerdict })
@@ -1512,7 +1517,7 @@ func TestLintDiffIntroducedProblemRefused(t *testing.T) {
 	f, _ := setupFake(t)
 	const problemLine = "PROBLEM: docs/streams/x/brief.md: backticked path \"../sibling/x\" does not exist — " +
 		"for a sibling-repo file, prefix it ../<repo>/../sibling/x"
-	lintDiffFn = func(root, target string, content []byte) ([]string, error) {
+	lintDiffFn = func(root, target string, content []byte, options childOptions) ([]string, error) {
 		return []string{problemLine}, nil
 	}
 	evidencePath := "docs/streams/x/brief.md"
@@ -1544,7 +1549,7 @@ func TestLintDiffCleanCommits(t *testing.T) {
 	var gotContent []byte
 	evidencePath := "docs/streams/x/brief.md"
 	root := rootWithFile(t, evidencePath, "content\n")
-	lintDiffFn = func(r, target string, content []byte) ([]string, error) {
+	lintDiffFn = func(r, target string, content []byte, options childOptions) ([]string, error) {
 		gotRoot, gotTarget, gotContent = r, target, content
 		return nil, nil
 	}
@@ -1573,7 +1578,7 @@ func TestLintDiffCleanCommits(t *testing.T) {
 // to a pass and never treated as the specific "introduced a PROBLEM" refusal (exit 5).
 func TestLintDiffCouldNotCheckIsUnverifiable(t *testing.T) {
 	f, _ := setupFake(t)
-	lintDiffFn = func(string, string, []byte) ([]string, error) {
+	lintDiffFn = func(string, string, []byte, childOptions) ([]string, error) {
 		return nil, deskkit.Unverifiable("statusgen is not on PATH", nil)
 	}
 	evidencePath := "docs/streams/x/brief.md"
@@ -1594,7 +1599,7 @@ func TestLintDiffCouldNotCheckIsUnverifiable(t *testing.T) {
 func TestLintDiffSkippedForNoop(t *testing.T) {
 	f, _ := setupFake(t)
 	called := false
-	lintDiffFn = func(string, string, []byte) ([]string, error) {
+	lintDiffFn = func(string, string, []byte, childOptions) ([]string, error) {
 		called = true
 		return nil, nil
 	}
@@ -1656,7 +1661,7 @@ func TestDryRunRefusesOnMintFailure(t *testing.T) {
 		errors.New("mint boom"))
 
 	oldMint := mintTokenFn
-	mintTokenFn = func(string) error { return mintErr }
+	mintTokenFn = func(string) (deskkit.RoleCredential, error) { return deskkit.RoleCredential{}, mintErr }
 	t.Cleanup(func() { mintTokenFn = oldMint })
 
 	evidencePath := "docs/streams/x/brief.md"

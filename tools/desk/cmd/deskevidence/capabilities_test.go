@@ -24,7 +24,7 @@ func TestDeskCapsPreflight(t *testing.T) {
 			f := setupStamp(t, true)
 			mintCalls := 0
 			oldMint := mintTokenFn
-			mintTokenFn = func(repo string) error { mintCalls++; return oldMint(repo) }
+			mintTokenFn = func(repo string) (deskkit.RoleCredential, error) { mintCalls++; return oldMint(repo) }
 			root := rootWithFile(t, stampBrief, tc.content)
 			before := len(auditEntries(t))
 			if code := run([]string{stampPublicRepo, "main", "--evidence-file", stampBrief, "--root", root}); code != tc.want {
@@ -183,7 +183,7 @@ func TestDeskCapsPreflight(t *testing.T) {
 		raw := strings.Replace(good, "---\n", "---\nreader-requirements: {schema: reader-requirements-v1, required: [{operation: syntax, schemas: [], semantics: []}]}\n", 1)
 		root := rootWithFile(t, stampBrief, raw)
 		changed := false
-		lintDiffFn = func(_, _ string, content []byte) ([]string, error) {
+		lintDiffFn = func(_, _ string, content []byte, _ childOptions) ([]string, error) {
 			pos := bytes.Index(content, []byte("operation: syntax"))
 			if pos >= 0 {
 				copy(content[pos:], []byte("operation: future"))

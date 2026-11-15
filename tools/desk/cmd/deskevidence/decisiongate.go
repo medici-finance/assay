@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -63,7 +64,7 @@ var decisionGateReplacedBaseFn = replacedBaseCommit
 // board is the target branch's version of every board file it changed since the home's
 // commit (decisionGateBranchBoard): applied to the base and to the worktree of both
 // runs, so the judge reads the board the write lands on, not the home's older one.
-func decisionGateDiffAt(root, targetRepoPath string, replaced []byte, replacedExists bool, newContent []byte, board []boardEdit) (introduced []string, err error) {
+func decisionGateDiffAt(root, targetRepoPath string, replaced []byte, replacedExists bool, newContent []byte, board []boardEdit, options childOptions) (introduced []string, err error) {
 	base, err := decisionGateReplacedBaseFn(root, targetRepoPath, replaced, replacedExists, board)
 	if err != nil {
 		return nil, err
@@ -108,14 +109,14 @@ func decisionGateDiffAt(root, targetRepoPath string, replaced []byte, replacedEx
 	} else if rmerr := os.Remove(abs); rmerr != nil && !os.IsNotExist(rmerr) {
 		return nil, deskkit.Unverifiable("cannot clear "+abs+" to stage the decision-gate check", rmerr)
 	}
-	before, err := statusgenDecisionGateFn(root, base)
+	before, err := statusgenDecisionGateFn(root, base, options)
 	if err != nil {
 		return nil, err
 	}
 	if werr := os.WriteFile(abs, newContent, 0o644); werr != nil {
 		return nil, deskkit.Unverifiable("cannot stage the decision-gate check at "+abs, werr)
 	}
-	after, aerr := statusgenDecisionGateFn(root, base)
+	after, aerr := statusgenDecisionGateFn(root, base, options)
 	if aerr != nil {
 		return nil, aerr
 	}
@@ -161,7 +162,7 @@ func replacedBaseCommit(root, targetRepoPath string, replaced []byte, replacedEx
 		out, cerr := cmd.Output()
 		return strings.TrimSpace(string(out)), cerr
 	}
-	head, err := git(nil, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+	head, err := landingHead(root)
 	if err != nil || head == "" {
 		return fail("HEAD does not resolve", err)
 	}
@@ -245,6 +246,13 @@ var (
 	decisionGateRegisterRe = regexp.MustCompile(`^docs/(streams|archive)/(findings|intake|verify-outcomes)/`)
 )
 
+// sameCommit reports whether a and b are one commit by exact equality of two full,
+// lowercase object ids. A prefix never matches: an abbreviated id could name another
+// commit, so anything but two full ids is left to the forge's compare.
+func sameCommit(a, b string) bool {
+	return deskkit.IsFullSHA(a) && deskkit.IsFullSHA(b) && a == b
+}
+
 // decisionGateBranchBoard returns the board files the target branch holds differently
 // from the landing home, so the judge can read the board the write lands on.
 //
@@ -263,10 +271,7 @@ var (
 // shown complete (or a forge that serves no compare), or a changed board file that
 // cannot be read at the branch tip is could-not-check, never a pass.
 func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branch, targetRepoPath string) ([]boardEdit, error) {
-	cmd := exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
-	cmd.Dir = os.TempDir()
-	out, err := cmd.Output()
-	head := strings.TrimSpace(string(out))
+	head, err := landingHead(root)
 	if err != nil || head == "" {
 		return nil, deskkit.Unverifiable("cannot resolve the landing home's HEAD in "+root+" to compare it with "+branch+" (decision-gate hold, lifecycle-v1 §4.5)", err)
 	}
@@ -279,6 +284,14 @@ func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branc
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot resolve the tip of %s on %s, so the board the write lands on cannot be judged (decision-gate hold, lifecycle-v1 §4.5)", branch, fr.Slug()), err)
 	}
 	tip := tipCommit.SHA
+	// A home whose HEAD is the tip itself judged the board the write lands on: there is no
+	// difference to read, which is what an "identical" compare with no changed files says,
+	// so no compare is asked for (a forge that serves none, GitLab, lands here). The test is
+	// equality of two FULL object ids, never a prefix: an abbreviated or otherwise
+	// non-canonical id on either side still goes to the compare.
+	if sameCommit(head, tip) {
+		return nil, nil
+	}
 	cmp, err := fg.CompareRefs(fr, head, tip)
 	if err != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot compare the landing home's HEAD %s with %s (%s) on %s, so the board the write lands on cannot be shown to match the one judged (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug()), err)
@@ -528,11 +541,11 @@ const decisionGateWholeChange = "(board)" + decisionGateRefusedMark
 //   - exit 1 with ≥1 REFUSED line → those lines.
 //   - anything else (exit 1 with no REFUSED line, exit 2, an unknown flag from a
 //     statusgen that predates the hold) → could-not-check.
-func statusgenDecisionGateAt(root, base string) ([]string, error) {
+func statusgenDecisionGateAt(root, base string, options childOptions) ([]string, error) {
 	if _, err := exec.LookPath("statusgen"); err != nil {
 		return nil, deskkit.Unverifiable("statusgen is not on PATH — cannot run the decision-gate check (lifecycle-v1 §4.5) on this landing", err)
 	}
-	cmd := exec.Command("statusgen", "--root", root, "--decision-gate", "--decision-gate-base", base)
+	cmd := statusgenAudit(context.Background(), auditDecision, root, options, "--decision-gate-base", base)
 	cmd.Dir = os.TempDir()
 	out, cerr := cmd.CombinedOutput()
 	return parseDecisionGateRun(root, string(out), cerr)

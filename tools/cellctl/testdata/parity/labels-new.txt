@@ -1,0 +1,1 @@
+[new] labels: NOT ENSURED on <repo> — the cell's roster binds no role yet, so the to:<role> / raised-by:<role> rows cannot be derived (write the roster first); finish with: deskfleet labels --forge github --repo <repo> --roles <the roster's role= names, comma-separated> --token-file <FILE holding an operator credential that can write labels>

@@ -36,7 +36,7 @@
 // no usable ambient `gh` identity — shelling to `gh` there produced a bare `HTTP 401:
 // Requires authentication` that read as a target disagreement rather than an identity
 // gap. `read` mints its OWN session-role App installation token (DESK_LOOP-selected,
-// worker by default) via desktoken and reaches the forge through the resolved
+// worker by default) read in process (deskkit.WriteVerbRoleCredential, #5457) and reaches the forge through the resolved
 // deskkit.Forge under that App's custody, via REST — never `gh`, and with no ambient
 // fallback (see forge.go).
 //

@@ -140,7 +140,9 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 		return sha
 	}
 	oldMint := mintTokenFn
-	mintTokenFn = func(string) error { return nil }
+	mintTokenFn = func(string) (deskkit.RoleCredential, error) {
+		return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
+	}
 	t.Cleanup(func() { mintTokenFn = oldMint })
 	oldBudget := evidenceWriteBudget
 	budgetCalls := 0
@@ -156,13 +158,15 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 	// hold; the hold has its own suites (decisiongate_test.go), so the fake
 	// forge here does not serve the compare/tip reads it needs.
 	oldDecisionGate := decisionGateDiffFn
-	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit) ([]string, error) { return nil, nil }
+	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit, childOptions) ([]string, error) {
+		return nil, nil
+	}
 	t.Cleanup(func() { decisionGateDiffFn = oldDecisionGate })
 	oldBranchBoard := decisionGateBranchBoardFn
 	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) { return nil, nil }
 	t.Cleanup(func() { decisionGateBranchBoardFn = oldBranchBoard })
 	oldLint := lintDiffFn
-	lintDiffFn = func(root, path string, content []byte) ([]string, error) {
+	lintDiffFn = func(root, path string, content []byte, options childOptions) ([]string, error) {
 		if root != br {
 			t.Fatalf("lint read source instead of tracking: %s", root)
 		}
@@ -171,7 +175,7 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 	t.Cleanup(func() { lintDiffFn = oldLint })
 	// Nor the non-decisive verdict gate (verdictgate_test.go owns it).
 	oldVerdict := evidenceVerdictCheckFn
-	evidenceVerdictCheckFn = func(string, string, []byte, []byte, bool, string) (closureVerdict, string, error) {
+	evidenceVerdictCheckFn = func(string, string, []byte, []byte, bool, string, childOptions) (closureVerdict, string, error) {
 		return closureAccepted, "", nil
 	}
 	t.Cleanup(func() { evidenceVerdictCheckFn = oldVerdict })
@@ -333,6 +337,25 @@ func TestCrossRepoDeliveryJoin(t *testing.T) {
 	f = &fakeForge{}
 	if err := checkAdmittedDeliveryPRs(f, receipt, facts); err != nil || len(f.joinReads) != 0 {
 		t.Fatal("same-repo join changed")
+	}
+}
+
+// A delivery PR whose merge commit IS the admitted source is contained in it without a
+// compare; any other source (another commit, or an abbreviation) still needs one.
+// regression: #6270
+func TestDeliveryJoinSameCommit(t *testing.T) {
+	facts := joinFacts{Entries: []joinEntry{{Repo: jOtherRepo, MergeSHA: jMerge}}}
+	receipt := deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{Version: 2, SourceRepo: jOtherRepo, Source: jMerge}}
+	f := &fakeForge{compareErr: fmt.Errorf("unavailable")}
+	if err := checkAdmittedDeliveryPRs(f, receipt, facts); err != nil || len(f.cmpCalls) != 0 {
+		t.Fatalf("got %v after compares %v; want the merge commit admitted without a compare", err, f.cmpCalls)
+	}
+	for _, source := range []string{jSHA, jMerge[:7], strings.ToUpper(jMerge)} {
+		receipt.Binding.Source = source
+		f := &fakeForge{compareErr: fmt.Errorf("unavailable")}
+		if err := checkAdmittedDeliveryPRs(f, receipt, facts); err == nil || !deskkit.IsUnverifiable(err) || len(f.cmpCalls) != 1 {
+			t.Fatalf("source %s: got %v after compares %v; want could-not-check from the compare", source, err, f.cmpCalls)
+		}
 	}
 }
 

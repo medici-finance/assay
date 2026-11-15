@@ -112,7 +112,7 @@ func admitVerifierEvidence(root, repo, target string, fg deskkit.Forge, ac *audi
 // admitLanding is the one place a landing obtains its credential, its forge and its
 // admission, in the only order that works:
 //
-//  1. mint the verifier App installation token (mintTokenFn → `desktoken verifier`). The
+//  1. mint the verifier App installation token (mintTokenFn → deskkit.WriteVerbRoleCredential, #5457). The
 //     JWT→installation-token exchange lives in the identity layer, not in this package;
 //  2. resolve the forge that serves the repo under that token. The custody step refuses when
 //     no token has been minted and never falls back to an ambient identity;
@@ -130,9 +130,11 @@ func admitVerifierEvidence(root, repo, target string, fg deskkit.Forge, ac *audi
 // the landing takes as input to its write: the local evidence file, the branch content, the
 // merge and the gates over them all follow admission.
 func admitLanding(root, repoSlug, owner, name, target, branch string, ac *auditCtx) (deskkit.Forge, deskkit.ForgeRepo, deskkit.VerifierReceipt, error) {
-	if merr := mintTokenFn(repoSlug); merr != nil {
+	credential, merr := mintTokenFn(repoSlug)
+	if merr != nil {
 		return nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr
 	}
+	ac.options.credential = credential
 	fg, fr, ferr := forgeForFn(owner, name)
 	if ferr != nil {
 		return nil, fr, deskkit.VerifierReceipt{}, ferr
@@ -693,7 +695,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	if landedHead != "" {
 		closureRef = landedHead
 	}
-	if err := outcomeGuardFn(lintRoot, landedRoot, targetRepoPath, remoteContent, commitContent, fg, fr, closureRef); err != nil {
+	if err := outcomeGuardFn(lintRoot, landedRoot, targetRepoPath, remoteContent, commitContent, fg, fr, closureRef, ac.options); err != nil {
 		return err
 	}
 	// Non-decisive verdict gate (#5759): a BLOCKED or could-not-check re-run of a
@@ -711,10 +713,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		}
 		boardEdits, boardRead = edits, true
 	}
-	if err := gateNonDecisiveVerdict(targetRepoPath, landedRoot, boardEdits, remoteContent, commitContent, remoteExists); err != nil {
+	if err := gateNonDecisiveVerdict(targetRepoPath, landedRoot, boardEdits, remoteContent, commitContent, remoteExists, ac.options); err != nil {
 		return err
 	}
-	introduced, lerr := lintDiffFn(landedRoot, targetRepoPath, commitContent)
+	introduced, lerr := lintDiffFn(landedRoot, targetRepoPath, commitContent, ac.options)
 	if lerr != nil {
 		return lerr
 	}
@@ -737,7 +739,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		}
 		boardEdits = edits
 	}
-	gateRefused, gerr := decisionGateDiffFn(landedRoot, targetRepoPath, remoteContent, remoteExists, commitContent, boardEdits)
+	gateRefused, gerr := decisionGateDiffFn(landedRoot, targetRepoPath, remoteContent, remoteExists, commitContent, boardEdits, ac.options)
 	if gerr != nil {
 		return gerr
 	}
@@ -755,7 +757,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// verified outcome the tree does not back; review then refuses that mismatch, so this refuses
 	// it at the source instead. Runs on the SAME lintRoot the PROBLEM-diff guard just used, and
 	// like it before the dry-run stop and the write budget. `verify-fail` rows are never gated.
-	if verr := gateVerifiedSidecarLanding(targetRepoPath, landedRoot, remoteContent, commitContent, remoteExists); verr != nil {
+	if verr := gateVerifiedSidecarLanding(targetRepoPath, landedRoot, remoteContent, commitContent, remoteExists, ac.options); verr != nil {
 		return verr
 	}
 
@@ -1065,6 +1067,7 @@ func addedLines(older, newer []byte) []byte {
 // auditCtx accumulates fields for the ONE audit line per invocation.
 // finalize is deferred so exactly one line is written.
 type auditCtx struct {
+	options       childOptions
 	attestation   string
 	verb          string
 	repo          string
@@ -1078,7 +1081,9 @@ func (a *auditCtx) log(result, detail string) {
 	if a.attestation != "" {
 		detail += " " + a.attestation
 	}
-	if err := deskkit.Log(deskkit.Entry{
+	// An Evidence landing is an outward forge write: success renews a fresh HEARTBEAT lease
+	// (#6510). The dry-run paths set ResultNoop, so a rehearsal never renews.
+	if err := deskkit.LogOutwardAct(deskkit.Entry{
 		Tool:       toolName,
 		Verb:       a.verb,
 		ArgsDigest: deskkit.ArgsDigest(os.Args[1:]),
@@ -1109,7 +1114,8 @@ func (a *auditCtx) finalize(err error) {
 	case deskkit.ExitRefused:
 		result = deskkit.ResultRefused
 	default:
-		result = deskkit.ResultUnverifiable
+		// A lock-wait refusal is contention, not a write that may have landed (#6227).
+		result = deskkit.LockStepResult(err, deskkit.ResultUnverifiable)
 	}
 	// On the failure paths the durable record must still say WHAT happened, not only why
 	// the invocation was refused. cmdEvidence sets a.detail exactly once on an erroring

@@ -159,7 +159,11 @@ func validateReceiptBlockerRef(fg deskkit.Forge, defaultOwner, defaultName, raw 
 		_, lerr = fg.RunStatus(repo, deskkit.RunRef{ID: runID})
 	case "change":
 		_, lerr = fg.GetIssueTyped(repo, number, deskkit.TargetChange)
-	default: // "numbered" (ambiguous on GitHub) and "issue" both read via GetIssue
+	case "issue":
+		// An /issues/ URL states its kind; on GitLab issue #N and merge request !N coexist and
+		// the bare resolver refuses such a number, so the read is typed (#6264).
+		_, lerr = fg.GetIssueTyped(repo, number, deskkit.TargetIssue)
+	default: // "numbered" (#N names no kind) reads via the bare resolver, which may refuse
 		_, lerr = fg.GetIssue(repo, number)
 	}
 	if lerr == nil {

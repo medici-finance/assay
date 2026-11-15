@@ -283,7 +283,7 @@ type boundBinding struct {
 // --brief was not given) is that PR's brief. Refusals are exit 5; anything that could not be
 // read is exit 6 and is never treated as bound.
 func verifyBinding(pr prRef, briefArg string) (boundBinding, error) {
-	fg, fr, _, ferr := forgeForFn(pr.Repo, false)
+	fg, fr, _, ferr := forgeForFn(pr.Repo)
 	if ferr != nil {
 		return boundBinding{}, ferr
 	}
@@ -355,7 +355,7 @@ func verifyBinding(pr prRef, briefArg string) (boundBinding, error) {
 			return boundBinding{}, deskkit.Refused("refused: tracking repository " + trackRepo + " is not in the desk-tools repo set")
 		}
 		var terr2 error
-		tfg, tfr, _, terr2 = forgeForFn(trackRepo, false)
+		tfg, tfr, _, terr2 = forgeForFn(trackRepo)
 		if terr2 != nil {
 			return boundBinding{}, terr2
 		}
@@ -585,7 +585,7 @@ func backLink(b boundBinding, issueURL string) error {
 	ac.target = &n
 	var err error
 	defer func() { ac.finalize(err) }()
-	fg, fr, _, ferr := forgeForFn(b.pr.Repo, false)
+	fg, fr, _, ferr := forgeForFn(b.pr.Repo)
 	if ferr != nil {
 		err = ferr
 		return err

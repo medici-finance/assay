@@ -8,7 +8,7 @@ import (
 )
 
 // forge_test.go — a minimal deskkit.Forge double for the two READ verbs: `read`'s two calls
-// (GetIssue, ListComments) and `sweep`'s one (ListOpenChanges). Embedding deskkit.Forge
+// (GetIssueTyped of the PR, ListComments) and `sweep`'s one (ListOpenChanges). Embedding deskkit.Forge
 // (nil) means any OTHER method panics if it is ever reached — which is the point: the read
 // verbs must never touch anything but these three, and never shell out to `gh` at all
 // (#984, #1123).
@@ -27,7 +27,10 @@ type stubForge struct {
 	listCalls   int
 }
 
-func (s *stubForge) GetIssue(fr deskkit.ForgeRepo, n int) (*deskkit.Issue, error) {
+func (s *stubForge) GetIssueTyped(fr deskkit.ForgeRepo, n int, kind deskkit.TargetKind) (*deskkit.Issue, error) {
+	if kind != deskkit.TargetChange {
+		return nil, deskkit.Unverifiable("the disposition read names a PR, never another kind", nil) // #6264
+	}
 	if s.failIssue != nil {
 		return nil, s.failIssue
 	}
