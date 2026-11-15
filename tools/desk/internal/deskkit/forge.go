@@ -1946,6 +1946,13 @@ type Forge interface {
 	// Consumer: cmd/deskflip's checks-green condition (freeze rule: this read lands with the
 	// call site that consumes it).
 	RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error)
+	// MergeRequirements reads the change's merge requirements from fields that read the same
+	// for every identity: the conflict verdict, the review decision, and the required checks
+	// with their latest result at the head (see MergeRequirements). A read that fails is an
+	// error, which the caller treats as unmet. Consumer: the post-flip backstop of cmd/deskflip
+	// and `deskpost ready`, on a BLOCKED read (medici-finance/assay#6508; freeze rule: this read
+	// lands with the call sites that consume it).
+	MergeRequirements(repo ForgeRepo, number int) (*MergeRequirements, error)
 	// IssueReactions returns the reactions/awards on an issue or PR (reaction ↔ award
 	// emoji). The public-repo write gate does not read it: that gate is repository-scoped.
 	IssueReactions(repo ForgeRepo, number int) ([]Reaction, error)

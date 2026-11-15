@@ -18,12 +18,22 @@ type backstopRig struct {
 	converts int
 	comments []string
 	now      time.Time
+	// req and reqErr answer the Requirements read; noReq leaves the closure nil.
+	req      *MergeRequirements
+	reqErr   error
+	noReq    bool
+	reqReads int
 }
 
 func (r *backstopRig) run() BackstopOutcome {
 	r.now = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	var reqs func() (*MergeRequirements, error)
+	if !r.noReq {
+		reqs = func() (*MergeRequirements, error) { r.reqReads++; return r.req, r.reqErr }
+	}
 	return ReadyBackstop{
-		Repo: "o/r", Number: 7, HeadSHA: "abc123",
+		Requirements: reqs,
+		Repo:         "o/r", Number: 7, HeadSHA: "abc123",
 		ReadState: func() (string, bool, error) {
 			i := min(r.reads, len(r.states)-1)
 			draft := false
@@ -173,28 +183,109 @@ func TestBackstopRevertMarker(t *testing.T) {
 	}
 }
 
-// GitHub computes BLOCKED for the identity that reads it: a role App that may not merge reads
-// BLOCKED on a change the maintainer's merge box calls ready to merge. A non-draft BLOCKED is
-// therefore could-not-check, never a revert, and never a silent pass (#6508).
+// metRequirements is a read showing every requirement met at the rig's head.
+func metRequirements() *MergeRequirements {
+	return &MergeRequirements{HeadSHA: "abc123", Mergeable: "MERGEABLE", ReviewDecision: "APPROVED", Complete: true,
+		Required: []RequiredContext{{Name: "build-test", State: "SUCCESS"}}}
+}
+
+// A non-draft BLOCKED is judged by the requirements every reader sees alike. Each unmet one
+// reverts, exactly as DIRTY does, and the comment names it (#6508 option 2).
 //
 // regression: #6508
-func TestBackstopBlockedUnchecked(t *testing.T) {
-	r := &backstopRig{states: []string{"blocked"}}
-	out := r.run()
-	if out.Verdict != BackstopUnchecked || out.Err != nil || r.converts != 0 || r.reads != 1 {
-		t.Fatalf("%+v converts=%d reads=%d, want could-not-check after ONE read, no revert", out, r.converts, r.reads)
+func TestBackstopBlockedReqUnmet(t *testing.T) {
+	cases := map[string]struct {
+		edit func(*MergeRequirements)
+		want string
+	}{
+		"conflicting":     {func(m *MergeRequirements) { m.Mergeable = "CONFLICTING" }, "merge conflict"},
+		"mergeable unset": {func(m *MergeRequirements) { m.Mergeable = "UNKNOWN" }, "has not computed"},
+		"no approval":     {func(m *MergeRequirements) { m.ReviewDecision = "REVIEW_REQUIRED" }, "REVIEW_REQUIRED"},
+		"changes asked":   {func(m *MergeRequirements) { m.ReviewDecision = "CHANGES_REQUESTED" }, "CHANGES_REQUESTED"},
+		"check failed":    {func(m *MergeRequirements) { m.Required[0].State = "FAILURE" }, "build-test is FAILURE"},
+		"check pending":   {func(m *MergeRequirements) { m.Required[0].State = "IN_PROGRESS" }, "build-test is IN_PROGRESS"},
+		"check absent":    {func(m *MergeRequirements) { m.Required[0].State = "ABSENT" }, "build-test has not reported"},
+		"rollup partial":  {func(m *MergeRequirements) { m.Complete = false }, "may be missing"},
+		"other head":      {func(m *MergeRequirements) { m.HeadSHA = "fff999" }, "fff999"},
 	}
-	if len(r.comments) != 1 || !strings.Contains(r.comments[0], "BLOCKED") ||
-		!strings.Contains(r.comments[0], "reading identity") || HasReadyBackstopRevert(r.comments[0], "abc123") {
-		t.Errorf("comments = %q, want ONE could-not-check comment naming BLOCKED as viewer-relative, no revert marker", r.comments)
-	}
-	if !strings.Contains(out.Notice, "could-not-verify") {
-		t.Errorf("notice = %q, want could-not-verify", out.Notice)
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := metRequirements()
+			c.edit(m)
+			r := &backstopRig{states: []string{"blocked"}, req: m}
+			out := r.run()
+			if out.Verdict != BackstopReverted || !IsRefused(out.Err) || r.converts != 1 || r.reqReads != 1 {
+				t.Fatalf("%+v converts=%d reqReads=%d, want reverted/Refused after ONE requirement read", out, r.converts, r.reqReads)
+			}
+			if len(r.comments) != 1 || !strings.Contains(r.comments[0], "BLOCKED") ||
+				!strings.Contains(r.comments[0], readyBackstopUnmetLead) || !strings.Contains(r.comments[0], c.want) ||
+				!HasReadyBackstopRevert(r.comments[0], "abc123") {
+				t.Errorf("comments = %q, want ONE revert naming BLOCKED and %q", r.comments, c.want)
+			}
+			if !strings.Contains(out.Err.Error(), c.want) {
+				t.Errorf("err = %v, want it to name %q", out.Err, c.want)
+			}
+		})
 	}
 }
 
-// A revert comment an earlier release posted on a BLOCKED read records a viewer-relative
-// state, so it never holds its head out of ready; a DIRTY one, or one naming no state, does.
+// A requirement read that fails, or a backend that serves none, reverts: never fails open.
+//
+// regression: #6508
+func TestBackstopBlockedReqUnread(t *testing.T) {
+	for name, r := range map[string]*backstopRig{
+		"read error":              {states: []string{"blocked"}, reqErr: errors.New("graphql 502")},
+		"nil read":                {states: []string{"blocked"}},
+		"no requirements closure": {states: []string{"blocked"}, noReq: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			out := r.run()
+			if out.Verdict != BackstopReverted || r.converts != 1 {
+				t.Fatalf("%+v converts=%d, want reverted: an unreadable requirement is unmet", out, r.converts)
+			}
+			if len(r.comments) != 1 || !strings.Contains(r.comments[0], "could not be read") {
+				t.Errorf("comments = %q, want ONE revert saying the requirements could not be read", r.comments)
+			}
+		})
+	}
+}
+
+// With every requirement met, a non-draft BLOCKED is the viewer-relative case: the change
+// stays ready with one could-not-check comment, never a revert marker (#6508).
+//
+// regression: #6508
+func TestBackstopBlockedAllMet(t *testing.T) {
+	for _, m := range []*MergeRequirements{metRequirements(),
+		{HeadSHA: "abc123", Mergeable: "MERGEABLE", Complete: true}} {
+		r := &backstopRig{states: []string{"blocked"}, req: m}
+		out := r.run()
+		if out.Verdict != BackstopUnchecked || out.Err != nil || r.converts != 0 || r.reads != 1 || r.reqReads != 1 {
+			t.Fatalf("%+v converts=%d reads=%d, want could-not-check, no revert", out, r.converts, r.reads)
+		}
+		if len(r.comments) != 1 || !strings.Contains(r.comments[0], "BLOCKED") ||
+			!strings.Contains(r.comments[0], "reading identity") || HasReadyBackstopRevert(r.comments[0], "abc123") {
+			t.Errorf("comments = %q, want ONE could-not-check comment, no revert marker", r.comments)
+		}
+		if !strings.Contains(out.Notice, "could-not-verify") {
+			t.Errorf("notice = %q, want could-not-verify", out.Notice)
+		}
+	}
+}
+
+// The requirement read serves BLOCKED alone: a DIRTY, CLEAN or draft read never makes it.
+func TestBackstopReqReadOnBlocked(t *testing.T) {
+	for _, r := range []*backstopRig{{states: []string{"dirty"}}, {states: []string{"clean"}},
+		{states: []string{"blocked"}, drafts: []bool{true}}} {
+		r.run()
+		if r.reqReads != 0 {
+			t.Errorf("states=%v drafts=%v: requirements read %d time(s), want 0", r.states, r.drafts, r.reqReads)
+		}
+	}
+}
+
+// A revert comment an earlier release posted on a BLOCKED read alone records a viewer-relative
+// state, so it never holds its head out of ready (the next flip judges the requirements); a
+// BLOCKED revert naming an unmet requirement, a DIRTY one, or one naming no state does.
 //
 // regression: #6508
 func TestRevertMarkerBlockedLapses(t *testing.T) {
@@ -211,6 +302,11 @@ func TestRevertMarkerBlockedLapses(t *testing.T) {
 	}
 	if _, ok := FindReadyBackstopRevert([]Comment{legacy("BLOCKED"), legacy("DIRTY")}, "abc123"); !ok {
 		t.Error("a DIRTY revert did not hold the head")
+	}
+	named := Comment{Body: readyBackstopRevertBody("BLOCKED", "abc123", []string{"the review decision is REVIEW_REQUIRED"})}
+	named.Author.Login = bot
+	if _, ok := FindReadyBackstopRevert([]Comment{named}, "abc123"); !ok {
+		t.Error("a BLOCKED revert naming an unmet requirement did not hold the head")
 	}
 	bare := Comment{Body: ReadyBackstopRevertMarker("abc123")}
 	bare.Author.Login = bot

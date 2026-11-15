@@ -2,11 +2,13 @@ package main
 
 // The post-flip backstop (medici-finance/assay#6242): right after the ready mutation the verb
 // reads the forge's merge state and, when the forge reports DIRTY, returns the change to draft
-// with one comment and a non-zero exit. A non-draft BLOCKED is could-not-check (#6508): GitHub
-// computes it for the reading identity. Ruling:
+// with one comment and a non-zero exit. GitHub computes BLOCKED for the reading identity, so a
+// non-draft BLOCKED is judged by the merge requirements every reader sees alike: any unmet or
+// unreadable one reverts, and all met stays ready as could-not-check (#6508 option 2). Ruling:
 // https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -72,16 +74,99 @@ func assertReverted(t *testing.T, s *stub, rc int, out, state string) {
 	}
 }
 
-// GitHub computes BLOCKED for the reading identity, and a role App that may not merge reads
-// BLOCKED on a change its maintainer can merge. A non-draft BLOCKED read leaves the change
-// ready with one could-not-check comment and no revert marker (#6508).
+// mergeReqJSON answers the merge-requirement read at head: each check is {name, result}, every
+// one required by a ruleset, and a result of "" means no run of it reported.
+func mergeReqJSON(t *testing.T, head, mergeable, review string, checks ...[2]string) string {
+	t.Helper()
+	req, runs := []any{}, []any{}
+	for _, c := range checks {
+		req = append(req, map[string]any{"context": c[0]})
+		if c[1] != "" {
+			runs = append(runs, map[string]any{"__typename": "CheckRun", "name": c[0], "status": "COMPLETED",
+				"conclusion": c[1], "startedAt": "2026-01-01T00:00:00Z", "isRequired": true})
+		}
+	}
+	var rd any
+	if review != "" {
+		rd = review
+	}
+	b, err := json.Marshal(map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
+		"mergeable": mergeable, "reviewDecision": rd, "headRefOid": head,
+		"baseRef": map[string]any{"branchProtectionRule": nil, "rules": map[string]any{"totalCount": 1, "nodes": []any{
+			map[string]any{"type": "REQUIRED_STATUS_CHECKS", "parameters": map[string]any{"requiredStatusChecks": req}}}}},
+		"commits": map[string]any{"nodes": []any{map[string]any{"commit": map[string]any{"oid": head,
+			"statusCheckRollup": map[string]any{"contexts": map[string]any{"totalCount": len(runs), "nodes": runs}}}}}},
+	}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// assertBlockedReverted is a BLOCKED revert: the DIRTY outcome, with the comment naming want.
+func assertBlockedReverted(t *testing.T, s *stub, rc int, out, want string) {
+	t.Helper()
+	assertReverted(t, s, rc, out, "BLOCKED")
+	if len(s.comments) == 1 && (!strings.Contains(s.comments[0], "Requirement not met: ") ||
+		!strings.Contains(s.comments[0], want)) {
+		t.Errorf("comment = %q, want it to name the unmet requirement %q", s.comments[0], want)
+	}
+}
+
+// A non-draft BLOCKED read with a requirement unmet still reverts (#6242): here the review the
+// base branch requires is missing. GitHub computes BLOCKED for the reading identity, so the
+// backstop judges it by the requirements every reader sees alike (#6508 option 2).
+//
+// regression: #6242
+func TestBackstopBlockedReverts(t *testing.T) {
+	s := newStub()
+	s.mergeReqJSON = mergeReqJSON(t, headSHA, "MERGEABLE", "REVIEW_REQUIRED", [2]string{"build-test", "SUCCESS"})
+	rc, out := flipWith(t, s, "blocked")
+	assertBlockedReverted(t, s, rc, out, "REVIEW_REQUIRED")
+}
+
+// regression: #6508
+func TestBackstopBlockedCheckUnmet(t *testing.T) {
+	for want, check := range map[string][2]string{
+		"build-test is FAILURE":       {"build-test", "FAILURE"},
+		"build-test has not reported": {"build-test", ""},
+	} {
+		t.Run(want, func(t *testing.T) {
+			s := newStub()
+			s.mergeReqJSON = mergeReqJSON(t, headSHA, "MERGEABLE", "APPROVED", check)
+			rc, out := flipWith(t, s, "blocked")
+			assertBlockedReverted(t, s, rc, out, want)
+		})
+	}
+}
+
+// regression: #6508
+func TestBackstopBlockedConflict(t *testing.T) {
+	s := newStub()
+	s.mergeReqJSON = mergeReqJSON(t, headSHA, "CONFLICTING", "APPROVED", [2]string{"build-test", "SUCCESS"})
+	rc, out := flipWith(t, s, "blocked")
+	assertBlockedReverted(t, s, rc, out, "merge conflict")
+}
+
+// An unreadable requirement reverts: the check never fails open (#6508).
 //
 // regression: #6508
-func TestBackstopBlockedStaysReady(t *testing.T) {
+func TestBackstopBlockedReqUnread(t *testing.T) {
+	s := newStub() // mergeReqJSON unset: the read answers 502
+	rc, out := flipWith(t, s, "blocked")
+	assertBlockedReverted(t, s, rc, out, "could not be read")
+}
+
+// Every requirement met: the BLOCKED read is the viewer-relative case. The change stays ready
+// with one could-not-check comment and no revert marker (#6508).
+//
+// regression: #6508
+func TestBackstopBlockedAllMet(t *testing.T) {
 	s := newStub()
+	s.mergeReqJSON = mergeReqJSON(t, headSHA, "MERGEABLE", "APPROVED", [2]string{"build-test", "SUCCESS"})
 	rc, out := flipWith(t, s, "blocked")
 	if rc != deskkit.ExitOK || s.converts() != 0 {
-		t.Fatalf("rc=%d converts=%d, want 0/0: a viewer-relative BLOCKED is not a revert\n%s", rc, s.converts(), out)
+		t.Fatalf("rc=%d converts=%d, want 0/0: every requirement is met\n%s", rc, s.converts(), out)
 	}
 	if len(s.comments) != 1 || !strings.Contains(s.comments[0], "Could not check") ||
 		strings.Contains(s.comments[0], revertMarker(headSHA)) {
@@ -254,8 +339,9 @@ func TestReflipNewHeadFlips(t *testing.T) {
 	}
 }
 
-// A revert an earlier release posted on a BLOCKED read named a viewer-relative state: it does
-// not hold the head, so the flip proceeds (#6508). The DIRTY twin still refuses.
+// A revert an earlier release posted on a BLOCKED read alone named a viewer-relative state: it
+// does not hold the head, so the flip proceeds and its backstop judges the requirements
+// (#6508). The DIRTY twin, and a BLOCKED revert naming an unmet requirement, still refuse.
 //
 // regression: #6508
 func TestReflipBlockedRevertLapses(t *testing.T) {
@@ -269,11 +355,17 @@ func TestReflipBlockedRevertLapses(t *testing.T) {
 	if rc != deskkit.ExitOK || !s.flipped() {
 		t.Fatalf("rc=%d flipped=%v, want a flip: a BLOCKED revert does not hold the head\n%s", rc, s.flipped(), out)
 	}
-	d := newStub()
-	d.priorComments = [][2]string{{reviewerBot(t), legacy("DIRTY")}}
-	if rc, out := flipWith(t, d, "clean"); rc != deskkit.ExitUnverifiable || d.flipped() {
-		t.Fatalf("rc=%d flipped=%v, want %d and no flip: a DIRTY revert holds the head\n%s",
-			rc, d.flipped(), deskkit.ExitUnverifiable, out)
+	for name, body := range map[string]string{
+		"dirty": legacy("DIRTY"),
+		"blocked naming a requirement": strings.Replace(legacy("BLOCKED"), "\n\n",
+			"\n\nRequirement not met: the review decision is REVIEW_REQUIRED.\n\n", 1),
+	} {
+		d := newStub()
+		d.priorComments = [][2]string{{reviewerBot(t), body}}
+		if rc, out := flipWith(t, d, "clean"); rc != deskkit.ExitUnverifiable || d.flipped() {
+			t.Fatalf("%s: rc=%d flipped=%v, want %d and no flip: the revert holds the head\n%s",
+				name, rc, d.flipped(), deskkit.ExitUnverifiable, out)
+		}
 	}
 }
 

@@ -70,6 +70,9 @@ type postBackend interface {
 	// reports it DIRTY and explains why in one comment. Neither is a verb.
 	convertToDraft(nodeID string) error
 	postComment(pr int, body string) error
+	// mergeRequirements serves the same backstop: on a BLOCKED read it reads the requirements
+	// every reader sees alike (deskkit.MergeRequirements, #6508). A failed read reverts.
+	mergeRequirements(pr int) (*deskkit.MergeRequirements, error)
 	// readMergeHold / setMergeHold: the forge-gitlab merge-hold brief. GitHub's ghClient path
 	// is the typed not-applicable, unconditionally — its server-side twin is branch
 	// protection. postVerdictReview's correctness lane reads and writes the hold AFTER the
@@ -337,6 +340,10 @@ func (b *forgeBackend) postReview(pr int, head, event, body string) (string, err
 
 func (b *forgeBackend) markReadyForReview(nodeID string) error {
 	return b.fg.MarkReadyForReview(nodeID)
+}
+
+func (b *forgeBackend) mergeRequirements(pr int) (*deskkit.MergeRequirements, error) {
+	return b.fg.MergeRequirements(b.repo, pr)
 }
 
 func (b *forgeBackend) convertToDraft(nodeID string) error {

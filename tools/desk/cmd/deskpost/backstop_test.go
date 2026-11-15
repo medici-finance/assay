@@ -2,11 +2,14 @@ package main
 
 // `deskpost ready`'s post-flip backstop (medici-finance/assay#6242): right after the flip it
 // reads the forge's merge state and, when the forge reports DIRTY, returns the PR to draft with
-// one comment and a non-zero exit. A non-draft BLOCKED is could-not-check (#6508). Ruling:
+// one comment and a non-zero exit. GitHub computes BLOCKED for the reading identity, so a
+// non-draft BLOCKED is judged by the merge requirements every reader sees alike: any unmet or
+// unreadable one reverts, and all met stays ready as could-not-check (#6508 option 2). Ruling:
 // https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -68,15 +71,105 @@ func assertReadyReverted(t *testing.T, f *fakeGH, code int, errBuf *bytes.Buffer
 	}
 }
 
-// A non-draft BLOCKED read is viewer-relative on GitHub: the PR stays ready with one
-// could-not-check comment, never a revert (#6508).
+// mergeReqJSON answers the merge-requirement read at head: each check is {name, result}, every
+// one required by a ruleset, and a result of "" means no run of it reported.
+func mergeReqJSON(t *testing.T, head, mergeable, review string, checks ...[2]string) string {
+	t.Helper()
+	req, runs := []any{}, []any{}
+	for _, c := range checks {
+		req = append(req, map[string]any{"context": c[0]})
+		if c[1] != "" {
+			runs = append(runs, map[string]any{"__typename": "CheckRun", "name": c[0], "status": "COMPLETED",
+				"conclusion": c[1], "startedAt": "2026-01-01T00:00:00Z", "isRequired": true})
+		}
+	}
+	var rd any
+	if review != "" {
+		rd = review
+	}
+	b, err := json.Marshal(map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
+		"mergeable": mergeable, "reviewDecision": rd, "headRefOid": head,
+		"baseRef": map[string]any{"branchProtectionRule": nil, "rules": map[string]any{"totalCount": 1, "nodes": []any{
+			map[string]any{"type": "REQUIRED_STATUS_CHECKS", "parameters": map[string]any{"requiredStatusChecks": req}}}}},
+		"commits": map[string]any{"nodes": []any{map[string]any{"commit": map[string]any{"oid": head,
+			"statusCheckRollup": map[string]any{"contexts": map[string]any{"totalCount": len(runs), "nodes": runs}}}}}},
+	}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// readyBlocked runs a green `ready` whose post-flip read is a non-draft BLOCKED and whose
+// merge-requirement read answers reqJSON ("" answers 502).
+func readyBlocked(t *testing.T, reqJSON string) (*fakeGH, int, *bytes.Buffer) {
+	t.Helper()
+	fakeBackstopClock(t)
+	f, errBuf := setupFake(t)
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+	f.status = greenStatus()
+	f.mergeStates = []string{"blocked"}
+	f.mergeReqJSON = reqJSON
+	return f, run(readyArgs(exampleRepo)), errBuf
+}
+
+func assertReadyBlockedReverted(t *testing.T, f *fakeGH, code int, errBuf *bytes.Buffer, want string) {
+	t.Helper()
+	assertReadyReverted(t, f, code, errBuf, "BLOCKED")
+	if cs := bodies(f); len(cs) == 1 && (!strings.Contains(cs[0], "Requirement not met: ") || !strings.Contains(cs[0], want)) {
+		t.Errorf("comment = %q, want it to name the unmet requirement %q", cs[0], want)
+	}
+	if f.mergeReqReads != 1 {
+		t.Errorf("merge requirements read %d time(s), want 1", f.mergeReqReads)
+	}
+}
+
+// A non-draft BLOCKED read with a requirement unmet still reverts (#6242): here the review the
+// base branch requires is missing. GitHub computes BLOCKED for the reading identity, so
+// `ready` judges it by the requirements every reader sees alike (#6508 option 2).
+//
+// regression: #6242
+func TestReadyBackstopBlocked(t *testing.T) {
+	f, code, errBuf := readyBlocked(t, mergeReqJSON(t, testHead, "MERGEABLE", "REVIEW_REQUIRED", [2]string{"build-test", "SUCCESS"}))
+	assertReadyBlockedReverted(t, f, code, errBuf, "REVIEW_REQUIRED")
+}
+
+// regression: #6508
+func TestReadyBlockedCheckUnmet(t *testing.T) {
+	for want, check := range map[string][2]string{
+		"build-test is FAILURE":       {"build-test", "FAILURE"},
+		"build-test has not reported": {"build-test", ""},
+	} {
+		t.Run(want, func(t *testing.T) {
+			f, code, errBuf := readyBlocked(t, mergeReqJSON(t, testHead, "MERGEABLE", "APPROVED", check))
+			assertReadyBlockedReverted(t, f, code, errBuf, want)
+		})
+	}
+}
+
+// regression: #6508
+func TestReadyBlockedConflict(t *testing.T) {
+	f, code, errBuf := readyBlocked(t, mergeReqJSON(t, testHead, "CONFLICTING", "APPROVED", [2]string{"build-test", "SUCCESS"}))
+	assertReadyBlockedReverted(t, f, code, errBuf, "merge conflict")
+}
+
+// An unreadable requirement reverts: `ready` never fails open (#6508).
 //
 // regression: #6508
-func TestReadyBackstopBlockedStays(t *testing.T) {
-	f, code, errBuf := readyWith(t, false, "blocked")
-	if code != 0 || f.converts != 0 || f.mergeReads != 1 {
-		t.Fatalf("exit=%d converts=%d reads=%d, want 0/0/1: a viewer-relative BLOCKED is not a revert\n%s",
-			code, f.converts, f.mergeReads, errBuf)
+func TestReadyBlockedReqUnread(t *testing.T) {
+	f, code, errBuf := readyBlocked(t, "")
+	assertReadyBlockedReverted(t, f, code, errBuf, "could not be read")
+}
+
+// Every requirement met: the BLOCKED read is the viewer-relative case. The PR stays ready with
+// one could-not-check comment (#6508).
+//
+// regression: #6508
+func TestReadyBlockedAllMet(t *testing.T) {
+	f, code, errBuf := readyBlocked(t, mergeReqJSON(t, testHead, "MERGEABLE", "APPROVED", [2]string{"build-test", "SUCCESS"}))
+	if code != 0 || f.converts != 0 || f.mergeReads != 1 || f.mergeReqReads != 1 {
+		t.Fatalf("exit=%d converts=%d reads=%d reqReads=%d, want 0/0/1/1: every requirement is met\n%s",
+			code, f.converts, f.mergeReads, f.mergeReqReads, errBuf)
 	}
 	cs := bodies(f)
 	if len(cs) != 1 || !strings.Contains(cs[0], "Could not check") || !strings.Contains(cs[0], "BLOCKED") {

@@ -1,0 +1,39 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/graphql",
+      "body": {
+        "query": "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){mergeable reviewDecision headRefOid baseRef{branchProtectionRule{requiredStatusCheckContexts} rules(first:100){totalCount nodes{type parameters{... on RequiredStatusChecksParameters{requiredStatusChecks{context}}}}}} commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){totalCount nodes{__typename ... on CheckRun{name status conclusion startedAt isRequired(pullRequestNumber:$number)} ... on StatusContext{context state createdAt isRequired(pullRequestNumber:$number)}}}}}}}}}}",
+        "variables": {
+          "name": "assay",
+          "number": 7,
+          "owner": "medici-finance"
+        }
+      }
+    }
+  ],
+  "result": {
+    "HeadSHA": "abc123",
+    "Mergeable": "MERGEABLE",
+    "ReviewDecision": "REVIEW_REQUIRED",
+    "Required": [
+      {
+        "Name": "build-test",
+        "State": "ABSENT",
+        "StartedAt": ""
+      },
+      {
+        "Name": "changelog",
+        "State": "SUCCESS",
+        "StartedAt": "2026-11-11T20:05:00Z"
+      },
+      {
+        "Name": "leak-sweep",
+        "State": "IN_PROGRESS",
+        "StartedAt": "2026-11-11T20:01:00Z"
+      }
+    ],
+    "Complete": true
+  }
+}
