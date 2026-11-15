@@ -118,8 +118,29 @@ head run. The second is the ordinary run at head. The default base is the merge-
 brief file, and nothing else: a branch commit, HEAD, an unknown object or a base older than the
 brief is refused. When the merge-base does not hold the brief at its current path (the brief was
 created, renamed or moved on the branch, or its path does not resolve under the root), no ancestor
-can be shown to hold it, so only the merge-base itself is accepted and the check fails closed. The witness table gains a `Base` column,
-appended to the right of `Runner` (readers of Date and Runner skip it):
+can be shown to hold it, so only the merge-base itself is accepted and the check fails closed.
+When the merge-base cannot be resolved (no `origin/main` in the clone), `--base` cannot be checked
+against it, so it is refused; fetch `origin/main` first.
+A cross-repository run, admitted on a version 2 receipt, is the one exception. Its rows run in
+the deliverable repository and its brief lives in the tracking repository, so no deliverable
+commit holds the brief. For that run the brief-held check cannot apply, so a tighter rule
+replaces it: the base must be the deliverable merge-base of HEAD and origin/main exactly. An
+ancestor of it is refused, because it may predate the change; a later commit is refused, because
+it carries part of the change. When that merge-base cannot be resolved the run is refused, with or
+without `--base`. When that merge-base is HEAD itself (a post-merge deliverable clone, or the
+container lane, whose imported history anchors origin/main to the admitted source), the run is
+refused too, with or without `--base`: the base rows would run on the changed tree, where a green
+says nothing and a red (for example from an ignored file only the home holds) would be false
+credit. Every one of these refusals is exit 2 and comes before any row runs. A discriminating
+cross-repository run needs a deliverable clone whose HEAD is the delivering change and whose
+origin/main does not yet hold it. The exception follows from the receipt and never from where the
+brief file sits: an unadmitted run with a brief outside the root takes the same-repository check.
+There the brief path does not resolve under the root, so only the merge-base itself is accepted;
+when that merge-base is HEAD itself the base is refused too (exit 2, before any row runs, with or
+without `--base`, for the same reason as above); and any `--base` is refused when the merge-base
+cannot be resolved.
+The witness table gains a `Base` column, appended to the right of `Runner` (readers of Date and
+Runner skip it):
 
     base=<sha> red rc=1 · head=<sha>
 
@@ -131,7 +152,7 @@ The base states are:
 - **`unproven`**: the row could not run at base.
 - **`not-selected`**: the row is not risk-bearing, or `--ci` skips it, and it was not run at base.
 
-**After the change has merged**, the merge-base of HEAD and `origin/main` is HEAD itself or a
+For a same-repository run, **after the change has merged**, the merge-base of HEAD and `origin/main` is HEAD itself or a
 commit that already contains the change, so every row is green. The verifier passes
 `--base <the parent of the delivering merge>`. Only the latest witness of a row counts, and it
 must carry the row's current command; a later plain run or an edited command drops the record.
@@ -140,7 +161,7 @@ runner, and Verify-shaped text it cannot place on a closure is a PROBLEM (see "V
 runner cannot place" below). A live, mutating or
 end-to-end row runs a second time at base, so check it is safe to run twice.
 
-The lint gate on a closure **this branch makes** treats each risk-bearing row as follows. A row is
+For a same-repository run, the lint gate on a closure **this branch makes** treats each risk-bearing row as follows. A row is
 a **PROBLEM** when it has no fail-first witness, its witness is `unproven`, its witness is
 non-discriminating, its witness is for an earlier command or has been superseded by a later plain
 run, or its witness names a base that is not the merge-base or an ancestor of it, or names a base
