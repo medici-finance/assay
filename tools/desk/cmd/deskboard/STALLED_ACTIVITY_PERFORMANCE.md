@@ -8,7 +8,7 @@ Baseline source: `0665bfb771788b07473c281b8875fc1806dab36d`.
 Issueboard already has bounded positive-closure and required escalation-comment
 batching, and Full/work-ready/intake/inbox projections. The current full-board
 regressions prove 41 required comment queries become 9 with identical output.
-These preserve the work in #4360, #4622 and desk-tools/42's acceptance (#5179).
+These preserve the work in #4360, #4622 and the accepted reader-reuse work (#5179).
 The separate perf-v4 measurement remains #5278. Its remaining per-issue REST
 label-history reads are required inputs; #4622 explicitly excludes replacing them
 with a GraphQL timeline whose deleted-label and completeness semantics have not
@@ -32,8 +32,7 @@ Head attribution, behind-main comparison, enumeration, scope, caps and concurren
 limits remain. Results belong to one repository and one invocation.
 
 This is a bounded adapter improvement along the shared-observation direction in
-`docs/desk-workflow-efficiency-spec.md`. The standing selection work remains with
-graph-execution/27; forge-neutral/37–43 retains mirror/source serving ownership.
+`docs/desk-workflow-efficiency-spec.md`. Standing-selection and mirror/source-serving work keep their existing ownership.
 There is no persistent cache, new service, caller cutover, release or repin.
 
 ## Matched complete-command fixture
