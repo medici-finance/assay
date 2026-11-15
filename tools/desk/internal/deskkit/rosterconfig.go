@@ -456,7 +456,8 @@ const (
 	// different vendor from the worker role, and the roster records it). No desk
 	// tool ENFORCES the policy today — this brief documents the setting only — so
 	// it is RECOGNISED, not applied, on both readers: a roster.env carrying it must
-	// not collapse the configuration. KEEP IN SYNC with
+	// neither collapse statusgen's configuration nor draw an unknown-key NOTICE from
+	// the desk tools on every run. KEEP IN SYNC with
 	// statusgen/rosterconfig.go's scanEnvVerifierVendor and the coupling vector.
 	EnvVerifierVendor = "ASSAY_VERIFIER_VENDOR"
 

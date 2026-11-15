@@ -91,12 +91,14 @@ func loadCouplingVectors(t *testing.T) couplingVectors {
 // to the DECLARED schema in the shared vector file, in BOTH directions. It is the
 // twin of statusgen's test of the same name; the two run over the SAME file.
 //
-// WHAT IT PREVENTS. The desk tools and statusgen read the SAME roster.env and both
-// REFUSE the whole configuration on an ASSAY_ key they do not recognise. That is
-// the right failure for a typo and the wrong one for a sibling's key: a key one
-// binary knows and the other does not turns a roster that is valid and REQUIRED
-// for one tool into a total refusal for the other, and no roster edit satisfies
-// both. It is not hypothetical — ASSAY_REPO_FORGES is the only way deskpost /
+// WHAT IT PREVENTS. The desk tools and statusgen read the SAME roster.env. On an
+// ASSAY_ key it does not recognise, statusgen REFUSES the whole configuration and the
+// desk tools print a NOTICE and do not apply the key (#1261). That is the right
+// failure for a typo and the wrong one for a sibling's key: a key the desk tools know
+// and statusgen does not turns a roster that is valid and REQUIRED for one tool into a
+// total refusal for the other, and no roster edit satisfies both; the reverse (a
+// statusgen key the desk tools do not know) draws a NOTICE on every desk-tool run. It
+// is not hypothetical — ASSAY_REPO_FORGES is the only way deskpost /
 // deskpr / deskfile resolve a repo to a forge, and while statusgen did not
 // recognise it, a roster carrying it took the whole --scan-issues intake lane down.
 //
