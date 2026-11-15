@@ -44,10 +44,9 @@ collection, and the conditional HTTP cache remain in the measured sweep.
 This extends #4885's bounded read reuse. It implements a local part of the ranked
 zero-CI reduction in `docs/desk-workflow-efficiency-spec.md`, using the existing
 semantic and typed provider owners. It serves both actions and the shared
-review-queue collector (desk-tools/39–40), without changing its observation schema
-or activating a new planner consumer. The shared ingestion and exact-source
-cache work in forge-neutral/37–43 and the standing selection work in
-graph-execution/27 keep their existing scope and approval obligations. Pagination
+review-queue collector, without changing its observation schema or activating a
+new planner consumer. Shared ingestion, source-cache, and standing-selection work
+keep their existing scope and approval obligations. Pagination
 and retry work (#3096, #4160, #4287, #6041) is separate.
 
 ## Validation

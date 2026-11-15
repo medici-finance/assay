@@ -142,8 +142,8 @@
     {
       "name": "#2028 class — reintroduce the #177 HUMAN-OWNED shape: a trusted human's admitted PR gets no ACTION row",
       "file": "cmd/deskboard/board.go",
-      "old": "\t\t}\n\t}\n\n\t// degradeReasons collects",
-      "new": "\t\t}\n\t}\n\tif deskkit.TrustedHumanAuthor(p.Author.Login) {\n\t\treturn prOutcome{id: id}, nil\n\t}\n\n\t// degradeReasons collects"
+      "old": "\t\t}\n\t}\n\n\t// Share a complete file observation",
+      "new": "\t\t}\n\t}\n\tif deskkit.TrustedHumanAuthor(p.Author.Login) {\n\t\treturn prOutcome{id: id}, nil\n\t}\n\n\t// Share a complete file observation"
     },
     {
       "name": "#2028 TrustedAuthor — the EMPTY login is trusted",
