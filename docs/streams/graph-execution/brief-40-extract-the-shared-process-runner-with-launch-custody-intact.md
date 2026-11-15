@@ -11,6 +11,7 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 gate-why: "Relocates the audited process-launch site and its cache-custody guards. Human acceptance confirms every caller still crosses the same custody and process-containment boundary."
 decision-trigger: spec
+design: DR-process-extract
 issues: [5492]
 gates: [{"on": "#5492", "type": "human-gate", "reason": "Decomposition review: dispatch waits for a driver comment on #5492, posted under the driver's own login (never a role App), that accepts this proposed split and its source/acceptance routing. Only a follow-up PR citing that comment removes this edge."}]
 schema: brief-v2
@@ -73,6 +74,21 @@ design-fit:
 - why-add: Moving the existing process owner first makes shared execution reusable while preserving cache custody, bounded preparation and the audit that sees every launch.
 
 single-point-of-failure: the shared execution boundary; independent cache-custody and audit/source guards must remain effective when an upper caller is bypassed.
+
+## Human decision
+
+The question is whether to accept the delivered design that moves the desk's single process runner into the shared loop-admin module. An earlier merged change made the move. This change adds what was left: a test pinning that a launch with a nil environment starts the child with an empty environment, and a trim of the consumer list to the one path this change edits.
+
+Under the design there is one runner. Every launch passes through a mandatory custody port that the desk supplies. A runner built without a custodian refuses to launch, and so does a custodian that admits a launch without a way to finish it. Cache storage policy, credentials and telemetry stay with their existing desk owners. The process-launch audit now covers the new module, and the old runner package is deleted rather than kept as a second copy. Two limits remain open: the import guard checks the desk module only, and native Windows runtime containment has not been qualified.
+
+A human has to decide because this design moves the audited process-launch site and its cache-custody guards. If the boundary is wrong, a caller can start a process outside cache custody or outside the audit, and a passing test run would not show it.
+
+Options:
+1. **Accept the design as delivered.** The design record is approved as written. Independent verification then runs this item's checks on merged main, and final acceptance stays a separate human step.
+2. **Accept with changes.** Name the boundary change you want, for example a different custody port shape or an extra guard. A follow-up change is opened for it, and verification waits until it lands.
+3. **Hold.** The item stays at its current status, the design record stays unapproved, and verification does not start.
+
+Default if no answer: none. This blocks until answered.
 
 ## Read first
 
