@@ -101,6 +101,10 @@ type DeskError struct {
 	// cure (#3096). Set only by forge_github.go's transientRead; read only by ghReadClass. Not
 	// rendered by Error().
 	transientRead bool
+
+	// lockContended marks the refusal for an audit-lock wait that ran out. Set only by
+	// AuditLockContended; read only by IsAuditLockContended. Not rendered by Error().
+	lockContended bool
 }
 
 func (e *DeskError) Error() string {

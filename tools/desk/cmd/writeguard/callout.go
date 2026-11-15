@@ -43,11 +43,13 @@ package main
 //
 // RESIDUAL, recorded rather than taken silently: the callout path is one field of a
 // roster Config, and a roster that fails validation collapses to unconfigured as a
-// whole (deskkit/rosterconfig.go's fail-closed rule) — so a typo in an UNRELATED
+// whole (deskkit/rosterconfig.go's fail-closed rule) — so a bad VALUE in an UNRELATED
 // roster key leaves this guard running compiled-indicators-only while the operator
-// believes a callout is in force. That is the shipped behaviour, not a silent
-// weakening of a compiled check, and the collapse is announced loudly in the P3 echo
-// this guard now emits on every run. Making it BLOCK instead would mean one bad
+// believes a callout is in force. (A misspelt key NAME no longer collapses the roster,
+// #1261: it draws a NOTICE and is not applied, so a misspelt callout key leaves this
+// guard compiled-indicators-only the same way.) That is the shipped behaviour, not a
+// silent weakening of a compiled check, and either case is announced loudly in the P3
+// echo this guard now emits on every run. Making it BLOCK instead would mean one bad
 // character in roster.env refusing every file write on the machine.
 
 import (
