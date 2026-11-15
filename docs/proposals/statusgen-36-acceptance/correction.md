@@ -80,7 +80,9 @@ Fixture timings are separate. The original complete-corpus budget still runs
 in plain `--coverage` mode: five successful samples per binary, both medians
 printed and new median at most 1.10 times the fixed reference median. No fixture
 replaces that corpus, no failed process becomes a timing sample and no threshold
-is relaxed. The overall test deadline also bounds each child measurement. The
+is relaxed. The overall test deadline also bounds each child measurement. The Command maps
+the immutable helper's timed-child failure diagnostic back to the original exit 3;
+budget and non-vacuity failures still fail normally. The
 `witnessperf` build tag separates this acceptance measurement from ordinary
 unit-suite runs; the Verify command explicitly selects it, and missing binary
 or corpus inputs fail. The harness captures the invocation environment before
