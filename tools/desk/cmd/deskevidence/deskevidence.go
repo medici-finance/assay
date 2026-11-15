@@ -1078,7 +1078,9 @@ func (a *auditCtx) log(result, detail string) {
 	if a.attestation != "" {
 		detail += " " + a.attestation
 	}
-	if err := deskkit.Log(deskkit.Entry{
+	// An Evidence landing is an outward forge write: success renews a fresh HEARTBEAT lease
+	// (#6510). The dry-run paths set ResultNoop, so a rehearsal never renews.
+	if err := deskkit.LogOutwardAct(deskkit.Entry{
 		Tool:       toolName,
 		Verb:       a.verb,
 		ArgsDigest: deskkit.ArgsDigest(os.Args[1:]),

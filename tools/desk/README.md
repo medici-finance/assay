@@ -757,9 +757,20 @@ At runtime the tools read/write, under `~/.config/assay/`:
   any desk can already write.
 - `HEARTBEAT` — dead-man lease (brief 08, optional). If the file EXISTS and its
   mtime is older than 24h, it is treated as STOP-ALL. Absent file = feature off
-  (no behaviour change until Ada opts in by touching it once). **Renewal is a HUMAN
-  act** — Ada or an Ada-owned cron touches it; no agent/loop may touch or delete
-  HEARTBEAT (that would defeat the dead-man semantics).
+  (no behaviour change until Ada opts in by touching it once). **A progressing cell
+  renews a fresh lease; only a lapsed lease needs a human** (#6510). When a desk verb
+  completes an outward mutating act the forge confirmed — a branch push (`deskgit push`),
+  a PR create/edit (`deskpr`), a review, comment or ready flip (`deskpost`, `deskreply`,
+  `deskflip`), an issue file or attach (`deskfile`), an Evidence landing (`deskevidence`) —
+  deskkit touches HEARTBEAT in the same call that writes that act's audit row, and the row
+  ends ` | heartbeat=renewed`. It re-reads the lease's age first and touches it only while
+  it is still fresh: a lease that is already stale (or went stale after the guard check)
+  is left stale and the row ends ` | heartbeat=stale-not-renewed`. Liveness never renews:
+  reads, mints, boots, ticks, quiet sweeps, claim progress, dry runs and refused or failed
+  acts leave the lease alone, so a loop that only polls still lapses. A desk never creates
+  HEARTBEAT (absent stays feature-off) and never deletes it. Reviving a lapsed lease is a
+  HUMAN act — Ada or an Ada-owned cron touches it. The guard is unchanged: a stale lease
+  refuses every verb, including the act that would have renewed it.
 - Loop-name registry (canonical names for `DESK_LOOP` and `STOP.<name>`):
   `pr-review-desk`, `verify-desk`, `worker-desk`, `the-desk`. Ad-hoc `/loop`
   or Monitor sessions pick a name at arm time and state it in their description.

@@ -74,7 +74,9 @@ func (a *auditCtx) log(result, detail string) {
 		h := a.head
 		headp = &h
 	}
-	_ = deskkit.Log(deskkit.Entry{
+	// Every deskpr verb (create/update/edit) is an outward mutating act, so its terminal row
+	// renews a fresh HEARTBEAT lease on success (#6510); dry runs and noops are not ResultOK.
+	_ = deskkit.LogOutwardAct(deskkit.Entry{
 		Tool:       "deskpr",
 		Verb:       a.verb,
 		Result:     result,

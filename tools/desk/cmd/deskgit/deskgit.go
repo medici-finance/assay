@@ -326,14 +326,21 @@ type auditCtx struct {
 }
 
 func (a *auditCtx) log(result, detail string) {
-	_ = deskkit.Log(deskkit.Entry{
+	e := deskkit.Entry{
 		Tool:       "deskgit",
 		Verb:       a.verb,
 		Result:     result,
 		Detail:     detail,
 		Repo:       a.repo,
 		ArgsDigest: deskkit.ArgsDigest(os.Args[1:]),
-	})
+	}
+	// Only `push` is an outward mutating act; a successful push renews a fresh HEARTBEAT
+	// lease (#6510). fetch and heads are reads and never renew.
+	if a.verb == "push" {
+		_ = deskkit.LogOutwardAct(e)
+		return
+	}
+	_ = deskkit.Log(e)
 }
 
 func (a *auditCtx) finalize(err error) {

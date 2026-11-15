@@ -6,7 +6,7 @@
     ".cursor/references/codex.md": "1b53dee41663e068838624783661337e393efe34656e514eddecf678b8325895",
     ".cursor/references/cursor.md": "5523c839cf7625f70953c6dcb5b3d17e5ff2f4ee0aa1c58b71e38ce1820acda0",
     ".cursor/references/desk-common.md": "047e5f6e1871b06ebc58a6a14973df2b786f2cff460cccbd79e0f75973e6bca6",
-    ".cursor/references/desk-shell.md": "037645be56ab25a6a715dc57afec57c7e03f3e1cd9ec085844e98998fad0d043",
+    ".cursor/references/desk-shell.md": "2eff2e1a25485a0dc17c8afb323cc130c1e4ee7e4a53bb902ab2aec338a9c1b0",
     ".cursor/references/handoff-note.md": "1a6c882f1b991da63928801d020c5a115acf309e37c4b70340d1f25600e50773",
     ".cursor/references/implementation-pickup.md": "8c546416be12ba00bd24b0bc6bac074e1e4e1c8d37afb9a408f4e4703611caad",
     ".cursor/references/intake-handoff.md": "f7f41d83e06eb4cea9ca855cd513244b4279eeffd89a4994e0e200e5b9385542",
@@ -42,7 +42,7 @@
     ".cursor/skills/trace-path-to-live/references/report.md": "91fad1473fb5876ca40aff859be4376c147a5952797c062ea1487a4fabacfdf1",
     ".cursor/skills/upgrade-assay/SKILL.md": "629fb0269d7344583a8fca08d801b32a3d8f3dbb28db7fa5af9be732928df775",
     ".cursor/skills/verify-desk/SKILL.md": "a86f25e7946fee961158111859b9d2850b28e9c641d120e3746257ef34033e84",
-    ".cursor/skills/worker-desk/SKILL.md": "770c383d0bbc0325ab8a3e2193ca58632c72064197bfd89caad659849bfe5d49",
+    ".cursor/skills/worker-desk/SKILL.md": "e3a1943521ad9d69d5763bf44c1a56a12525aa1448331044e72f67bae01b84d9",
     ".cursor/skills/worker-desk/references/dispatch-runbook.md": "61f6196d7830a57b9ef84c2cf4b2d4862a62207625893fc74e91f0e878b8672b"
   },
   "bindingsSha256": "b620b8c33275d916fddd27bbfa16cca265356260e1fd604a84b2f2172e1e6970"
