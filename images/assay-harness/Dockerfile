@@ -36,7 +36,7 @@
 # pinned by DIGEST (a tag is mutable at a registry). assay's sibling
 # `images/ci-tools/Dockerfile` pins by tag, not digest, so these are STANDALONE
 # digest pins with no sibling to keep them in lockstep; bump them deliberately
-# (they are the linux/amd64 golang:1.27.3-bookworm and debian:bookworm-slim
+# (they are the linux/amd64 golang:1.27.4-bookworm and debian:bookworm-slim
 # artifacts as of this image's addition). See the PR body's base-digest note.
 #
 # TARGET PLATFORM is linux/amd64 (the ARC runner convention).
@@ -47,7 +47,7 @@
 # --platform=$BUILDPLATFORM keeps the Go toolchain on the builder's arch and
 # cross-compiles to linux/amd64 rather than running under qemu emulation.
 ARG BINARY_STAGE=gobuild
-FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS gobuild
+FROM --platform=$BUILDPLATFORM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS gobuild
 
 # GOWORK=off is load-bearing: the repo root carries no go.work, and statusgen/
 # and tools/desk are self-contained modules (only external dep is

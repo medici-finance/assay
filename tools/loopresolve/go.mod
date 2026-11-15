@@ -2,6 +2,8 @@ module github.com/medici-finance/assay/tools/loopresolve
 
 go 1.27.0
 
+toolchain go1.27.4
+
 require github.com/medici-finance/assay/cellconfig v0.0.0-00010101000000-000000000000
 
 require gopkg.in/yaml.v3 v3.0.1 // indirect

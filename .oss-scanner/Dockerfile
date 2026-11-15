@@ -24,7 +24,7 @@
 
 # Git release archive verified against the upstream maintainer signature.
 # Keep the version and checksum together when upgrading.
-FROM golang:1.27.3-bookworm AS gitbuild
+FROM golang:1.27.4-bookworm AS gitbuild
 USER root
 ARG GIT_VERSION=2.56.1
 ARG GIT_TARBALL_SHA256=f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f
@@ -43,7 +43,7 @@ RUN set -eux; \
     make $opts DESTDIR=/out install; \
     test "$(/out/usr/bin/git version)" = "git version ${GIT_VERSION}"
 
-FROM golang:1.27.3-bookworm
+FROM golang:1.27.4-bookworm
 
 ENV CGO_ENABLED=0
 
