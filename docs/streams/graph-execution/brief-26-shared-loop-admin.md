@@ -332,6 +332,9 @@ Decomposition review is one named event: a driver comment on
 #5492, under the driver's own login, accepting this split and its routing. Until it
 lands, each child carries a `gates:` edge on #5492 (forge-backed, so held off Next-up),
 so /40 is not dispatched beside this parent for the same process move.
+The driver posted that comment on 2026-11-15
+(https://github.com/medici-finance/assay/issues/5492#issuecomment-6902528386); the four
+child edges are removed by the follow-up PR that cites it.
 No dependency on the children is added to this parent until that review. Its current
 consumers continue to require the full shared-supervisor promise.
 
