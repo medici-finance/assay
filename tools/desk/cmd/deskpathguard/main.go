@@ -36,7 +36,7 @@ import (
 const usage = `deskpathguard — protected-verifier-paths check (verify-integrity/01).
 
 USAGE:
-  deskpathguard check <owner/repo> <number> [--dry-run]
+  deskpathguard check <owner/repo> <number> [--kind mr] [--dry-run]
   deskpathguard rederive --root <path> --brief <path-to-brief.md> [--main <ref>]
   deskpathguard --version
 
@@ -47,6 +47,11 @@ check      Reads the PR's changed files, author identity and labels. A worker (o
            the status transition reads. Exempt: the desk/verifier identity, a PR carrying
            a regen: label, or a diff touching only brief/fixture paths. A diff that could
            not be read is could-not-check (exit 6) — NEVER clean.
+           --kind mr (pr is an alias of mr) forces the object kind for <number> when
+           GitLab's separate issue/MR sequences both have a match at it: without it the
+           read refuses could-not-check (exit 6); with it only the merge request is read
+           and evaluated, never the issue. On GitHub it is accepted and changes nothing.
+           --kind issue is refused (exit 5): an issue has no diff to check.
 
 rederive   verify-desk's pre-change re-read: reports every Verify-table row present at
            HEAD but absent (by its "#" cell) at the merge-base with origin/main as

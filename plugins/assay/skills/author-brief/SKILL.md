@@ -49,8 +49,45 @@ Specs and briefs identify the selected target/transition, semantic contracts and
 applicable project engineering guidelines by canonical pointer. Include their
 pickup/resume assessment in the implementation handoff; record revisions, coverage
 and continue/adapt/hold rather than assume the authoring snapshot is still current.
-Use the explicit manual bootstrap until the shared operation is shipped and supported.
+Use the shipped context operation where the installed version supports it (see the
+supported version below); otherwise use the explicit manual bootstrap.
 Do not rewrite completed Evidence or let a draft proposal veto approved work.
+
+## Consume the context handoff before opening the PR
+
+When the spec hands over a context receipt, the brief PR answers it:
+
+1. Recheck the receipt against the current snapshot with
+   `statusgen context recheck --snapshot DIR receipt.json`. Reconcile (exit 1) or resolve the
+   hold (exit 3) before authoring on it.
+2. For each impact you dispose `amend`, write the candidate brief patch, a single-file
+   unified diff against the brief's current revision, and record the obligation in the
+   receipt's `amendments` with that patch's base revision and digest. Bind every obligation
+   in an `amendment-manifest-v1` file: owning brief, action, delivery paths, test commands,
+   active-work treatment, and the patch or follow-up brief it binds to.
+3. Run `statusgen context check --snapshot DIR receipt.json manifest.json PATCH...` and open
+   the PR only on exit 0. An `amend` obligation without a patch is a failure, not a note:
+   the receipt's own validation refuses it. Fix a refusal (exit 1) or a hold (exit 3); never
+   waive it in the PR body.
+4. The existing rules still apply: author `consumers:`, `depends:` / `unblocks:` and the
+   Verify table as below. A patch never edits populated Evidence or a dated source account,
+   and a delivered brief takes a linked follow-on instead of a patch.
+5. Keep product and architecture bindings separate: carry each brief's `outcome` and
+   `outcome-revision` unchanged unless the spec moves them, and never drop the revision the
+   work was first selected against.
+
+**Supported version.** `statusgen context discover`, `statusgen context recheck` and
+`statusgen context check`, with the `context-handoff-v1` and `context-handoff-v2` receipts and
+the `amendment-manifest-v1` file, ship in Assay v1.0.55 and later. The product-binding
+extension, `context-handoff-v3`, ships in v1.0.63 and later. `statusgen context --help`
+lists the verbs an install has.
+
+**Manual bootstrap.** When the installed statusgen lacks the verb, or lacks the
+product-binding extension while briefs bind `outcome-revision`, follow the
+[implementation pickup procedure](../../references/implementation-pickup.md) by hand: record
+the impacted briefs, their revisions, coverage and each amendment obligation in the handoff,
+and say that it is a manual bootstrap. Never invent a receipt or a schema version the
+install does not ship.
 
 ## Map work to delivery milestones
 
@@ -84,8 +121,18 @@ upstream bug — tracked elsewhere — was fixed; that bug was the true head and
 Before you finalize the order: for each "smallest unblocking move," **verify it actually works** —
 check the code/config/bug tracker, don't assume. If a proposed first step depends on something
 unproven, that something is the real head. Say so explicitly.
-State the head and how you established it in one passage: what you read to confirm it, or that it
-is unproven and is the head for that reason.
+The requester's stated edges are a claim to check, never the evidence for the head, and the check
+is done now, while you author — never left to brief 01's Task. Do it against what you can read in
+this session: the code, config or tracker when you have them, and always the requester's own words
+and the material you were handed. Test each stated edge there: does the step it puts first rest on
+anything that text does not establish? A run without repo access still has that text, so "I could
+not read the repo" names what you did not look at; it is never the check.
+State the head in one passage, in your own prose, that names it, quotes the line the check rests
+on with where it came from, and says what that line showed, in one of two forms:
+"I verified <X> is the real head by reading <source>: '<line>'; it showed <what>", or
+"<source> says '<line>', which does not establish <what>. <X> is unproven, so it is the real
+head: brief 01 settles it". "That makes 01 the head", "established from the stated edges", and an
+"unproven" with no line read and quoted state no check.
 
 ## Carry quality obligations into execution
 
@@ -315,6 +362,14 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
    when authoring it. Never emit `findstr /c:"…"` with backslash paths under implicit `sh`:
    bash reinterprets those arguments. Shell selection belongs in the reviewed Verify table;
    an Evidence-only edit must not change the command or its shell to make a failing row pass.
+   **Say where each row runs.** When a row needs anything beyond the checkout, add an `Env`
+   column (`| # | Class | Env | Command | Expect |`): `tree`, `host[:<name>]`,
+   `service:<name>` for a named NON-PRODUCTION instance (a database, an API, a staging
+   deployment, described in `## Context`), or `cluster:<name>`. A row whose Env is not `tree`
+   is never `check:ci`, since no CI job reaches it; class it `check`. A row needing a project
+   secret or a live service is witnessed by a non-implementer where that environment exists,
+   never by the implementer's own report. The grammar and its `statusgen --lint` rules are
+   rule 45 in the brief-rules reference.
 4. **`gate: human` is mandatory when any risk answer is `yes`.** Record all four risk answers
    (regulatory, customer, irreversible, sensitive-data), not just the resulting gate — the answers are
    what a reviewer audits, the gate is just their conclusion. **A risk-gated brief (`gate: human` OR
@@ -393,6 +448,14 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
      Run your project's consumers check — the diff-aware `statusgen --consumers` gate — over the
      branch before pushing an authoring change, so the deferred routing is confirmed locally rather
      than by a red check in CI.
+   - **The consumers Verify row works after the merge too**: the bare
+     `statusgen --consumers --brief <stream>/<NN>` row re-runs on merged main with no hand-pinned
+     commits. It pins itself to the delivery and that commit's first parent, read locally: the
+     committed Evidence's `Verification-Table:` marker if there is one, otherwise the one
+     first-parent commit whose message (or a commit it merged) carries `Brief: <stream>/<NN>`. So
+     the implementation PR's commits carry that trailer, and a later PR for the same brief should
+     not repeat it: zero or several candidates is exit 2 (COULD-NOT-CHECK), and the remedy is an
+     explicit `--delivery <full-sha> --base <its first parent>`.
    - **Flow Verify row**: a shared-value brief's Verify table must carry at least one row exercising
      the cross-component flow end-to-end (e.g. *frontend submits form → API persists → dashboard row
      appears*), not just the changed site. Site-green does not imply flow-green. This one stays a
@@ -418,8 +481,11 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
    fixed.** Read the target site on fresh `origin/main` (`git fetch origin && git log
    origin/main --oneline -- <path>` + read the code) and record the check in the brief's
    `sources:` as `freshness-checked <YYYY-MM-DD> @ <short-sha>`. If the deliverable is already
-   satisfied, the brief is NOT authored — resolve or re-scope the finding/issue instead. The
-   check is light; the waste it prevents (re-writing a fix that already landed, claiming a vuln
+   satisfied, the brief is NOT authored — resolve or re-scope the finding/issue instead. That
+   is the only reason to withhold it: a read stated to you as done counts as done (stamp its
+   sha), and a result you cannot fully see is no reason to hold — author the brief, with a first
+   Task step that re-checks. The output is the brief or a "do not author — already fixed"
+   determination, never a held draft or "not authored yet". The check is light; the waste it prevents (re-writing a fix that already landed, claiming a vuln
    closed that was never open) is heavy.
 9. **exec-tier: complexity signals a minimum execution-model tier.** `exec-tier` is DERIVED,
    not chosen (mirror of the gate/risk rule). The author answers four complexity questions;
@@ -773,7 +839,10 @@ could-not-check runs serial.
 
 ## Phase README structure
 
-`docs/<phase>/README.md` ties the briefs together:
+`docs/<phase>/README.md` ties the briefs together. It carries each numbered item below that
+applies under its own `##` heading (`## Briefs`, `## Critical path`, `## Dependency waves`, …).
+The `## Dependency waves` section is never folded into the `## Critical path` section, even
+though both show the critical path:
 
 1. **Briefs table — generated, not hand-written, once `statusgen` is wired up.**
    The table lives between
@@ -843,6 +912,13 @@ layer; the floor does not wait on one.)
    cycles and qualify paths with unknown root/evidence coverage. Verify the head per the
    judgment-call section above; a wave summary alone is not readiness.
 4. **Write the README first** (table + path + waves), then the briefs. Cross-link both directions.
+   Minimal skeleton, one `##` heading per section:
+
+   ```markdown
+   ## Briefs
+   ## Critical path
+   ## Dependency waves
+   ```
 5. **Convert relative dates to absolute** (e.g. "by next week" → the actual date) — these docs
    outlive the conversation.
 6. **Author the facts and the edges, not the cell.** Status is DERIVED, not chosen: write `why:`,

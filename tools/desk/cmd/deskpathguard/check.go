@@ -36,12 +36,15 @@ type checkRequest struct {
 	repo   string
 	number int
 	dryRun bool
+	// kind is "" (untyped GetIssue, unchanged) or deskkit.TargetChange (--kind mr, #5032).
+	kind deskkit.TargetKind
 }
 
 func parseCheckArgs(args []string) (checkRequest, error) {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	dryRun := fs.Bool("dry-run", false, "resolve the verdict and print it, but never write the label")
+	kindFlag := fs.String("kind", "", "force the object kind for <number>: mr (pr is accepted as an alias of mr) — matters when GitLab's separate issue/MR sequences both have a match at this number; default resolves automatically. issue is refused: an issue has no diff to check")
 	var pos []string
 	for {
 		if err := fs.Parse(args); err != nil {
@@ -69,6 +72,17 @@ func parseCheckArgs(args []string) (checkRequest, error) {
 		return checkRequest{}, deskkit.Refused(fmt.Sprintf("check: number %q is not a positive integer", deskkit.StripControl(pos[1])))
 	}
 	req.number = n
+	if *kindFlag != "" {
+		kind, kerr := deskkit.ParseTargetKind(*kindFlag)
+		if kerr != nil {
+			return checkRequest{}, kerr
+		}
+		if kind == deskkit.TargetIssue {
+			return checkRequest{}, deskkit.Refused("refused: --kind issue: an issue has no diff — " +
+				"check evaluates a pull/merge request's protected-path touch (use --kind mr)")
+		}
+		req.kind = kind
+	}
 	return req, nil
 }
 
@@ -79,6 +93,18 @@ func requireRepo(repo string) error {
 		return deskkit.Refused(fmt.Sprintf("repo %q is outside the desk-tools repo set", deskkit.StripControl(repo)))
 	}
 	return nil
+}
+
+// readCheckTarget is check's one author/labels read. Untyped it is GetIssue — which on a
+// GitLab number carrying both an issue and a merge request refuses could-not-check — and
+// with --kind mr it is GetIssueTyped(TargetChange), which reads the merge request only and
+// never the issue at that number. Every other read and the label write already address the
+// change.
+func readCheckTarget(fg deskkit.Forge, fr deskkit.ForgeRepo, req checkRequest) (*deskkit.Issue, error) {
+	if req.kind == "" {
+		return fg.GetIssue(fr, req.number)
+	}
+	return fg.GetIssueTyped(fr, req.number, req.kind)
 }
 
 func cmdCheck(args []string, out io.Writer) error {
@@ -101,7 +127,7 @@ func cmdCheck(args []string, out io.Writer) error {
 		return ferr
 	}
 
-	iss, ierr := fg.GetIssue(fr, req.number)
+	iss, ierr := readCheckTarget(fg, fr, req)
 	if ierr != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: cannot read %s#%d before evaluating its protected-path touch", req.repo, req.number), ierr)

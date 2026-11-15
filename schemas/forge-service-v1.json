@@ -1,0 +1,3486 @@
+{
+  "$comment": "Canonical JSON encoding profile. Raw encoded UTF-8 message size, byte-based field caps, duplicate members, request equality, minimum-token relation, domain conclusions and current authorization require the production codec and owners; JSON Schema alone is insufficient. Retry/cache fields are advisory, currently authorized original observations only; elapsed-time arithmetic, producer provenance and current access cannot be established by schema alone.",
+  "$defs": {
+    "EmptyRepository": {
+      "additionalProperties": false,
+      "properties": {
+        "Host": {
+          "const": ""
+        },
+        "Path": {
+          "const": ""
+        },
+        "Provider": {
+          "const": ""
+        }
+      },
+      "required": [
+        "Provider",
+        "Host",
+        "Path"
+      ],
+      "type": "object"
+    },
+    "forgeread_Class": {
+      "type": "string"
+    },
+    "forgeread_Issue": {
+      "additionalProperties": false,
+      "properties": {
+        "authorId": {
+          "type": "integer"
+        },
+        "authorLogin": {
+          "type": "string"
+        },
+        "authorType": {
+          "type": "string"
+        },
+        "closedAt": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "labels": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 256,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "number": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "state": {
+          "const": "open",
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "number",
+        "state"
+      ],
+      "type": "object"
+    },
+    "forgeread_IssuesEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "issues",
+          "type": "string"
+        },
+        "partial": {
+          "items": {
+            "$ref": "#/$defs/forgeread_Unavailable"
+          },
+          "maxItems": 0,
+          "type": "array"
+        },
+        "repos": {
+          "items": {
+            "$ref": "#/$defs/forgeread_RepoIssues"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "type": "array"
+        },
+        "schema": {
+          "const": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema",
+        "kind",
+        "repos",
+        "partial"
+      ],
+      "type": "object"
+    },
+    "forgeread_RepoIssues": {
+      "additionalProperties": false,
+      "properties": {
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/forgeread_Issue"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "repo": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "issues"
+      ],
+      "type": "object"
+    },
+    "forgeread_Unavailable": {
+      "additionalProperties": false,
+      "properties": {
+        "class": {
+          "$ref": "#/$defs/forgeread_Class"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "mirror_Actor": {
+      "additionalProperties": false,
+      "properties": {
+        "ID": {
+          "type": "string"
+        },
+        "Login": {
+          "type": "string"
+        },
+        "Type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ID",
+        "Login",
+        "Type"
+      ],
+      "type": "object"
+    },
+    "mirror_Coverage": {
+      "additionalProperties": false,
+      "properties": {
+        "LastAttempted": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "LastComplete": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "LastInventory": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "ObservedUpTo": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "Reason": {
+          "$ref": "#/$defs/mirror_Reason"
+        },
+        "RetainedFrom": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "Revision": {
+          "type": "string"
+        },
+        "State": {
+          "$ref": "#/$defs/mirror_CoverageState"
+        },
+        "Validator": {
+          "type": "string"
+        },
+        "ValidatorFullInventory": {
+          "type": "boolean"
+        },
+        "ValidatorSince": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "Validator",
+        "ValidatorSince",
+        "ValidatorFullInventory",
+        "State",
+        "Reason",
+        "LastAttempted",
+        "LastComplete",
+        "LastInventory",
+        "ObservedUpTo",
+        "RetainedFrom",
+        "Revision"
+      ],
+      "type": "object"
+    },
+    "mirror_CoverageState": {
+      "enum": [
+        "never-read",
+        "complete",
+        "partial",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "mirror_GitHubReview": {
+      "additionalProperties": false,
+      "properties": {
+        "Author": {
+          "$ref": "#/$defs/mirror_Actor"
+        },
+        "Commit": {
+          "type": "string"
+        },
+        "ID": {
+          "type": "string"
+        },
+        "State": {
+          "type": "string"
+        },
+        "SubmittedAt": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ID",
+        "Author",
+        "State",
+        "Commit",
+        "SubmittedAt"
+      ],
+      "type": "object"
+    },
+    "mirror_GitLabApproval": {
+      "additionalProperties": false,
+      "properties": {
+        "Approved": {
+          "type": "boolean"
+        },
+        "ObservedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "User": {
+          "$ref": "#/$defs/mirror_Actor"
+        }
+      },
+      "required": [
+        "User",
+        "Approved",
+        "ObservedAt"
+      ],
+      "type": "object"
+    },
+    "mirror_Observation": {
+      "additionalProperties": false,
+      "properties": {
+        "Author": {
+          "$ref": "#/$defs/mirror_Actor"
+        },
+        "Body": {
+          "maxLength": 262144,
+          "type": "string"
+        },
+        "BodyKnown": {
+          "type": "boolean"
+        },
+        "ClosureReason": {
+          "type": "string"
+        },
+        "HeadRevision": {
+          "type": "string"
+        },
+        "ID": {
+          "$ref": "#/$defs/mirror_RecordID"
+        },
+        "InInventory": {
+          "type": "boolean"
+        },
+        "Labels": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 256,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ObservedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "RequestedReviewers": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/mirror_Actor"
+              },
+              "maxItems": 256,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "Reviews": {
+          "$ref": "#/$defs/mirror_ReviewObservations"
+        },
+        "State": {
+          "type": "string"
+        },
+        "Title": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "UpdatedAt": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ID",
+        "State",
+        "ClosureReason",
+        "HeadRevision",
+        "Title",
+        "Body",
+        "BodyKnown",
+        "Labels",
+        "Author",
+        "RequestedReviewers",
+        "UpdatedAt",
+        "ObservedAt",
+        "Reviews",
+        "InInventory"
+      ],
+      "type": "object"
+    },
+    "mirror_Provider": {
+      "enum": [
+        "github",
+        "gitlab"
+      ],
+      "type": "string"
+    },
+    "mirror_Reason": {
+      "enum": [
+        "",
+        "permission",
+        "transport",
+        "rate-limited",
+        "truncated",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "mirror_RecordID": {
+      "additionalProperties": false,
+      "properties": {
+        "Kind": {
+          "enum": [
+            "issue",
+            "pull-request",
+            "merge-request"
+          ],
+          "type": "string"
+        },
+        "Number": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "Repository": {
+          "$ref": "#/$defs/mirror_RepositoryID"
+        }
+      },
+      "required": [
+        "Repository",
+        "Kind",
+        "Number"
+      ],
+      "type": "object"
+    },
+    "mirror_RecordKind": {
+      "enum": [
+        "issue",
+        "change"
+      ],
+      "type": "string"
+    },
+    "mirror_RepositoryID": {
+      "additionalProperties": false,
+      "properties": {
+        "Host": {
+          "maxLength": 253,
+          "minLength": 1,
+          "pattern": "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$",
+          "type": "string"
+        },
+        "Path": {
+          "maxLength": 512,
+          "minLength": 3,
+          "type": "string"
+        },
+        "Provider": {
+          "$ref": "#/$defs/mirror_Provider"
+        }
+      },
+      "required": [
+        "Provider",
+        "Host",
+        "Path"
+      ],
+      "type": "object"
+    },
+    "mirror_ReviewObservations": {
+      "additionalProperties": false,
+      "properties": {
+        "GitHub": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/mirror_GitHubReview"
+              },
+              "maxItems": 256,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "GitLab": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/mirror_GitLabApproval"
+              },
+              "maxItems": 256,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "State": {
+          "$ref": "#/$defs/mirror_CoverageState"
+        }
+      },
+      "required": [
+        "State",
+        "GitHub",
+        "GitLab"
+      ],
+      "type": "object"
+    },
+    "mirror_Scope": {
+      "additionalProperties": false,
+      "properties": {
+        "AdmissionID": {
+          "type": "string"
+        },
+        "Kind": {
+          "$ref": "#/$defs/mirror_RecordKind"
+        },
+        "Repository": {
+          "$ref": "#/$defs/mirror_RepositoryID"
+        }
+      },
+      "required": [
+        "Repository",
+        "Kind",
+        "AdmissionID"
+      ],
+      "type": "object"
+    },
+    "mirror_Snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "Coverage": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/mirror_Coverage"
+            },
+            {
+              "properties": {
+                "State": {
+                  "const": "complete"
+                }
+              }
+            }
+          ]
+        },
+        "Records": {
+          "items": {
+            "$ref": "#/$defs/mirror_Observation"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "Scope": {
+          "$ref": "#/$defs/mirror_Scope"
+        },
+        "Version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "Scope",
+        "Coverage",
+        "Records",
+        "Version"
+      ],
+      "type": "object"
+    },
+    "service_CachedObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "ageMs": {
+          "anyOf": [
+            {
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coverage": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/mirror_Coverage"
+            },
+            {
+              "properties": {
+                "Reason": {
+                  "not": {
+                    "const": "permission"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "evaluatedAt": {
+          "format": "date-time",
+          "not": {
+            "const": "0001-01-01T00:00:00Z"
+          },
+          "type": "string"
+        }
+      },
+      "required": [
+        "coverage",
+        "evaluatedAt",
+        "ageMs"
+      ],
+      "type": "object"
+    },
+    "service_DiagnosticLink": {
+      "additionalProperties": false,
+      "properties": {
+        "link": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "type": "string"
+        },
+        "parent": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "parent",
+        "link"
+      ],
+      "type": "object"
+    },
+    "service_DiffEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "type": "string"
+        },
+        "before": {
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "added",
+            "modified",
+            "deleted",
+            "renamed"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "status",
+        "before",
+        "after"
+      ],
+      "type": "object"
+    },
+    "service_EffectRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "maxLength": 262144,
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/$defs/service_OperationID"
+        },
+        "number": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "title": {
+          "maxLength": 4096,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "number",
+        "title",
+        "body"
+      ],
+      "type": "object"
+    },
+    "service_EffectResult": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/service_OperationID"
+        },
+        "object": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_ObjectRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "$ref": "#/$defs/service_ProviderOutcome"
+        },
+        "projection": {
+          "$ref": "#/$defs/service_ProjectionState"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_Provenance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "outcome",
+        "projection",
+        "object",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "service_IssueProjectionEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "admitted": {
+          "items": {
+            "$ref": "#/$defs/service_ReviewRepository"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "collection": {
+          "$ref": "#/$defs/service_ReviewCollection"
+        },
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/service_ReviewPopulation"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "projection": {
+          "enum": [
+            "full",
+            "work-ready",
+            "intake",
+            "inbox"
+          ],
+          "type": "string"
+        },
+        "quarantined": {
+          "items": {
+            "$ref": "#/$defs/service_QuarantinedIssue"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "requested": {
+          "items": {
+            "$ref": "#/$defs/service_ReviewRepository"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/service_IssueRow"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "schema": {
+          "const": "issue-projection-v1",
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "projection",
+        "to",
+        "requested",
+        "admitted",
+        "collection",
+        "inputs",
+        "rows",
+        "quarantined"
+      ],
+      "type": "object"
+    },
+    "service_IssueRow": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "ESCALATE",
+            "ADDRESSED",
+            "CREATE-PLACEHOLDER",
+            "RETIRE",
+            "AWAIT",
+            "NONE"
+          ],
+          "type": "string"
+        },
+        "addrRole": {
+          "type": "string"
+        },
+        "ageDays": {
+          "type": "integer"
+        },
+        "escalationUnverifiable": {
+          "type": "boolean"
+        },
+        "historyHold": {
+          "type": "string"
+        },
+        "historyUnverifiable": {
+          "type": "boolean"
+        },
+        "number": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "repository": {
+          "$ref": "#/$defs/service_ReviewRepository"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "number",
+        "title",
+        "action",
+        "ageDays",
+        "addrRole",
+        "escalationUnverifiable",
+        "historyHold",
+        "historyUnverifiable"
+      ],
+      "type": "object"
+    },
+    "service_Measurement": {
+      "additionalProperties": false,
+      "properties": {
+        "boundary": {
+          "const": "server-handler",
+          "type": "string"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unit": {
+          "const": "handler",
+          "type": "string"
+        }
+      },
+      "required": [
+        "boundary",
+        "unit",
+        "count"
+      ],
+      "type": "object"
+    },
+    "service_Metadata": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "const": "permission"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "state": {
+                "const": "permission"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "cached": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_CachedObservation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "complete": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "executor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/mirror_Actor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "observation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_Token"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/mirror_Reason"
+        },
+        "retryAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "not": {
+                "const": "0001-01-01T00:00:00Z"
+              },
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_Provenance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/service_State"
+        }
+      },
+      "required": [
+        "state",
+        "reason",
+        "complete",
+        "freshness",
+        "source",
+        "observation",
+        "executor",
+        "retryAt",
+        "cached"
+      ],
+      "type": "object"
+    },
+    "service_MirrorRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/mirror_RecordKind"
+        },
+        "maxAgeMs": {
+          "maximum": 86400000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_Token"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "maxAgeMs",
+        "minimum"
+      ],
+      "type": "object"
+    },
+    "service_ObjectRef": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "issue",
+            "change-comment"
+          ],
+          "type": "string"
+        },
+        "number": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "providerId": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "repository": {
+          "$ref": "#/$defs/mirror_RepositoryID"
+        }
+      },
+      "required": [
+        "repository",
+        "kind",
+        "providerId",
+        "number",
+        "parent"
+      ],
+      "type": "object"
+    },
+    "service_Operation": {
+      "enum": [
+        "mirror-query",
+        "file-at",
+        "diff",
+        "merge-base",
+        "create-issue",
+        "create-change-comment",
+        "lookup-operation",
+        "read-observation",
+        "review-observation",
+        "issue-projection"
+      ],
+      "type": "string"
+    },
+    "service_OperationID": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "type": "string"
+        },
+        "payloadDigest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "payloadDigest"
+      ],
+      "type": "object"
+    },
+    "service_ProjectionState": {
+      "enum": [
+        "current",
+        "pending",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "service_Provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "observedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "revision": {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        "source": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "version",
+        "revision",
+        "observedAt"
+      ],
+      "type": "object"
+    },
+    "service_ProviderOutcome": {
+      "enum": [
+        "succeeded",
+        "failed",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "service_QuarantinedIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "author": {
+          "type": "string"
+        },
+        "number": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "repository": {
+          "$ref": "#/$defs/service_ReviewRepository"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "number",
+        "title",
+        "author"
+      ],
+      "type": "object"
+    },
+    "service_Request": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "mirror-query"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "effect": {
+                "type": "null"
+              },
+              "lookup": {
+                "type": "null"
+              },
+              "minimum": {
+                "type": "null"
+              },
+              "mirror": {
+                "$ref": "#/$defs/service_MirrorRequest"
+              },
+              "repository": {
+                "$ref": "#/$defs/mirror_RepositoryID"
+              },
+              "source": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "mirror",
+              "repository"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "file-at"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "effect": {
+                "type": "null"
+              },
+              "lookup": {
+                "type": "null"
+              },
+              "minimum": {
+                "type": "null"
+              },
+              "mirror": {
+                "type": "null"
+              },
+              "repository": {
+                "$ref": "#/$defs/mirror_RepositoryID"
+              },
+              "source": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/service_SourceRequest"
+                  },
+                  {
+                    "properties": {
+                      "other": {
+                        "const": ""
+                      },
+                      "path": {
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "path"
+                    ]
+                  }
+                ]
+              }
+            },
+            "required": [
+              "source",
+              "repository"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "diff"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "effect": {
+                "type": "null"
+              },
+              "lookup": {
+                "type": "null"
+              },
+              "minimum": {
+                "type": "null"
+              },
+              "mirror": {
+                "type": "null"
+              },
+              "repository": {
+                "$ref": "#/$defs/mirror_RepositoryID"
+              },
+              "source": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/service_SourceRequest"
+                  },
+                  {
+                    "properties": {
+                      "other": {
+                        "minLength": 40
+                      },
+                      "path": {
+                        "const": ""
+                      }
+                    },
+                    "required": [
+                      "other"
+                    ]
+                  }
+                ]
+              }
+            },
+            "required": [
+              "source",
+              "repository"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "merge-base"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "effect": {
+                "type": "null"
+              },
+              "lookup": {
+                "type": "null"
+              },
+              "minimum": {
+                "type": "null"
+              },
+              "mirror": {
+                "type": "null"
+              },
+              "repository": {
+                "$ref": "#/$defs/mirror_RepositoryID"
+              },
+              "source": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/service_SourceRequest"
+                  },
+                  {
+                    "properties": {
+                      "other": {
+                        "minLength": 40
+                      },
+                      "path": {
+                        "const": ""
+                      }
+                    },
+                    "required": [
+                      "other"
+                    ]
+                  }
+                ]
+              }
+            },
+            "required": [
+              "source",
+              "repository"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "create-issue"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "effect": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/service_EffectRequest"
+                  },
+                  {
+                    "properties": {
+                      "number": {
+                        "const": 0
+                      },
+                      "title": {
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "title"
+                    ]
+                  }
+                ]
+              },
+              "lookup": {
+                "type": "null"
+              },
+              "minimum": {
+                "type": "null"
+              },
+              "mirror": {
+                "type": "null"
+              },
+              "repository": {
+                "$ref": "#/$defs/mirror_RepositoryID"
+              },
+              "source": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "effect",
+              "repository"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "create-change-comment"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "effect": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/service_EffectRequest"
+                  },
+                  {
+                    "properties": {
+                      "body": {
+                        "minLength": 1
+                      },
+                      "number": {
+                        "minimum": 1
+                      },
+                      "title": {
+                        "const": ""
+                      }
+                    },
+                    "required": [
+                      "number",
+                      "body"
+                    ]
+                  }
+                ]
+              },
+              "lookup": {
+                "type": "null"
+              },
+              "minimum": {
+                "type": "null"
+              },
+              "mirror": {
+                "type": "null"
+              },
+              "repository": {
+                "$ref": "#/$defs/mirror_RepositoryID"
+              },
+              "source": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "effect",
+              "repository"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "lookup-operation"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "effect": {
+                "type": "null"
+              },
+              "lookup": {
+                "$ref": "#/$defs/service_OperationID"
+              },
+              "minimum": {
+                "type": "null"
+              },
+              "mirror": {
+                "type": "null"
+              },
+              "repository": {
+                "$ref": "#/$defs/mirror_RepositoryID"
+              },
+              "source": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "lookup",
+              "repository"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "read-observation"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "effect": {
+                "type": "null"
+              },
+              "lookup": {
+                "type": "null"
+              },
+              "minimum": {
+                "$ref": "#/$defs/service_Token"
+              },
+              "mirror": {
+                "type": "null"
+              },
+              "repository": {
+                "$ref": "#/$defs/mirror_RepositoryID"
+              },
+              "source": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "minimum",
+              "repository"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "review-observation"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "effect": {
+                "type": "null"
+              },
+              "lookup": {
+                "type": "null"
+              },
+              "minimum": {
+                "type": "null"
+              },
+              "mirror": {
+                "type": "null"
+              },
+              "repository": {
+                "$ref": "#/$defs/EmptyRepository"
+              },
+              "source": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "issue-projection"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "effect": {
+                "type": "null"
+              },
+              "lookup": {
+                "type": "null"
+              },
+              "minimum": {
+                "type": "null"
+              },
+              "mirror": {
+                "type": "null"
+              },
+              "repository": {
+                "$ref": "#/$defs/EmptyRepository"
+              },
+              "source": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "diagnostic": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_DiagnosticLink"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "effect": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_EffectRequest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "lookup": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_OperationID"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_Token"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mirror": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_MirrorRequest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation": {
+          "$ref": "#/$defs/service_Operation"
+        },
+        "repository": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/mirror_RepositoryID"
+            },
+            {
+              "$ref": "#/$defs/EmptyRepository"
+            }
+          ]
+        },
+        "schema": {
+          "const": "forge-service-v1",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/service_Scope"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_SourceRequest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "id",
+        "scope",
+        "repository",
+        "operation",
+        "mirror",
+        "source",
+        "effect",
+        "lookup",
+        "minimum",
+        "diagnostic"
+      ],
+      "type": "object"
+    },
+    "service_Response": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "permission",
+                      "unavailable"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "conflict": {
+                "const": false
+              },
+              "diagnostic": {
+                "type": "null"
+              },
+              "effect": {
+                "type": "null"
+              },
+              "issues": {
+                "type": "null"
+              },
+              "measurements": {
+                "anyOf": [
+                  {
+                    "maxItems": 0,
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "metadata": {
+                "properties": {
+                  "executor": {
+                    "type": "null"
+                  },
+                  "observation": {
+                    "type": "null"
+                  }
+                }
+              },
+              "mirror": {
+                "type": "null"
+              },
+              "projection": {
+                "type": "null"
+              },
+              "review": {
+                "type": "null"
+              },
+              "source": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "const": "permission"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "cached": {
+                    "type": "null"
+                  },
+                  "complete": {
+                    "type": "null"
+                  },
+                  "freshness": {
+                    "const": "unknown"
+                  },
+                  "reason": {
+                    "const": "permission"
+                  },
+                  "retryAt": {
+                    "type": "null"
+                  },
+                  "source": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "const": "unavailable"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "transport",
+                      "rate-limited",
+                      "truncated",
+                      "unknown"
+                    ]
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "const": "older"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "conflict": {
+                "const": false
+              },
+              "effect": {
+                "type": "null"
+              },
+              "issues": {
+                "type": "null"
+              },
+              "metadata": {
+                "properties": {
+                  "complete": {
+                    "const": false
+                  },
+                  "freshness": {
+                    "enum": [
+                      "fresh",
+                      "stale"
+                    ]
+                  }
+                },
+                "required": [
+                  "complete"
+                ]
+              },
+              "mirror": {
+                "type": "null"
+              },
+              "projection": {
+                "type": "null"
+              },
+              "review": {
+                "type": "null"
+              },
+              "source": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "complete": {
+                    "const": true
+                  },
+                  "freshness": {
+                    "const": "fresh"
+                  },
+                  "reason": {
+                    "const": ""
+                  },
+                  "source": {
+                    "$ref": "#/$defs/service_Provenance"
+                  }
+                },
+                "required": [
+                  "complete",
+                  "source"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "const": "projection-pending"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "effect": {
+                "$ref": "#/$defs/service_EffectResult"
+              },
+              "metadata": {
+                "properties": {
+                  "complete": {
+                    "const": false
+                  },
+                  "freshness": {
+                    "const": "unknown"
+                  },
+                  "reason": {
+                    "const": ""
+                  }
+                },
+                "required": [
+                  "complete"
+                ]
+              }
+            },
+            "required": [
+              "effect"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "conflict": {
+                "const": true
+              }
+            },
+            "required": [
+              "conflict"
+            ]
+          },
+          "then": {
+            "properties": {
+              "effect": {
+                "type": "null"
+              },
+              "issues": {
+                "type": "null"
+              },
+              "mirror": {
+                "type": "null"
+              },
+              "operation": {
+                "enum": [
+                  "create-issue",
+                  "create-change-comment",
+                  "lookup-operation"
+                ]
+              },
+              "projection": {
+                "type": "null"
+              },
+              "review": {
+                "type": "null"
+              },
+              "source": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "older",
+                      "newer"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "observation": {
+                    "$ref": "#/$defs/service_Token"
+                  }
+                },
+                "required": [
+                  "observation"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "conflict": {
+                  "const": true
+                }
+              },
+              "required": [
+                "conflict"
+              ]
+            },
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer",
+                      "projection-pending"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "mirror-query"
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "properties": {
+                  "effect": {
+                    "type": "null"
+                  },
+                  "issues": {
+                    "type": "null"
+                  },
+                  "mirror": {
+                    "$ref": "#/$defs/mirror_Snapshot"
+                  },
+                  "projection": {
+                    "type": "null"
+                  },
+                  "review": {
+                    "type": "null"
+                  },
+                  "source": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "mirror"
+                ]
+              },
+              {
+                "properties": {
+                  "effect": {
+                    "type": "null"
+                  },
+                  "issues": {
+                    "$ref": "#/$defs/forgeread_IssuesEnvelope"
+                  },
+                  "mirror": {
+                    "type": "null"
+                  },
+                  "projection": {
+                    "type": "null"
+                  },
+                  "review": {
+                    "type": "null"
+                  },
+                  "source": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "issues"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "conflict": {
+                  "const": true
+                }
+              },
+              "required": [
+                "conflict"
+              ]
+            },
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer",
+                      "projection-pending"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "file-at"
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "properties": {
+                  "effect": {
+                    "type": "null"
+                  },
+                  "issues": {
+                    "type": "null"
+                  },
+                  "mirror": {
+                    "type": "null"
+                  },
+                  "projection": {
+                    "type": "null"
+                  },
+                  "review": {
+                    "type": "null"
+                  },
+                  "source": {
+                    "$ref": "#/$defs/service_SourceResult"
+                  }
+                },
+                "required": [
+                  "source"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "conflict": {
+                  "const": true
+                }
+              },
+              "required": [
+                "conflict"
+              ]
+            },
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer",
+                      "projection-pending"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "diff"
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "properties": {
+                  "effect": {
+                    "type": "null"
+                  },
+                  "issues": {
+                    "type": "null"
+                  },
+                  "mirror": {
+                    "type": "null"
+                  },
+                  "projection": {
+                    "type": "null"
+                  },
+                  "review": {
+                    "type": "null"
+                  },
+                  "source": {
+                    "$ref": "#/$defs/service_SourceResult"
+                  }
+                },
+                "required": [
+                  "source"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "conflict": {
+                  "const": true
+                }
+              },
+              "required": [
+                "conflict"
+              ]
+            },
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer",
+                      "projection-pending"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "merge-base"
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "properties": {
+                  "effect": {
+                    "type": "null"
+                  },
+                  "issues": {
+                    "type": "null"
+                  },
+                  "mirror": {
+                    "type": "null"
+                  },
+                  "projection": {
+                    "type": "null"
+                  },
+                  "review": {
+                    "type": "null"
+                  },
+                  "source": {
+                    "$ref": "#/$defs/service_SourceResult"
+                  }
+                },
+                "required": [
+                  "source"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "conflict": {
+                  "const": true
+                }
+              },
+              "required": [
+                "conflict"
+              ]
+            },
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer",
+                      "projection-pending"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "create-issue"
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "properties": {
+                  "effect": {
+                    "$ref": "#/$defs/service_EffectResult"
+                  },
+                  "issues": {
+                    "type": "null"
+                  },
+                  "mirror": {
+                    "type": "null"
+                  },
+                  "projection": {
+                    "type": "null"
+                  },
+                  "review": {
+                    "type": "null"
+                  },
+                  "source": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "effect"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "conflict": {
+                  "const": true
+                }
+              },
+              "required": [
+                "conflict"
+              ]
+            },
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer",
+                      "projection-pending"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "create-change-comment"
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "properties": {
+                  "effect": {
+                    "$ref": "#/$defs/service_EffectResult"
+                  },
+                  "issues": {
+                    "type": "null"
+                  },
+                  "mirror": {
+                    "type": "null"
+                  },
+                  "projection": {
+                    "type": "null"
+                  },
+                  "review": {
+                    "type": "null"
+                  },
+                  "source": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "effect"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "conflict": {
+                  "const": true
+                }
+              },
+              "required": [
+                "conflict"
+              ]
+            },
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer",
+                      "projection-pending"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "lookup-operation"
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "properties": {
+                  "effect": {
+                    "$ref": "#/$defs/service_EffectResult"
+                  },
+                  "issues": {
+                    "type": "null"
+                  },
+                  "mirror": {
+                    "type": "null"
+                  },
+                  "projection": {
+                    "type": "null"
+                  },
+                  "review": {
+                    "type": "null"
+                  },
+                  "source": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "effect"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "conflict": {
+                  "const": true
+                }
+              },
+              "required": [
+                "conflict"
+              ]
+            },
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer",
+                      "projection-pending"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "read-observation"
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "properties": {
+                  "effect": {
+                    "type": "null"
+                  },
+                  "issues": {
+                    "type": "null"
+                  },
+                  "mirror": {
+                    "type": "null"
+                  },
+                  "projection": {
+                    "type": "null"
+                  },
+                  "review": {
+                    "type": "null"
+                  },
+                  "source": {
+                    "type": "null"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "conflict": {
+                  "const": true
+                }
+              },
+              "required": [
+                "conflict"
+              ]
+            },
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer",
+                      "projection-pending"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "review-observation"
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "properties": {
+                  "effect": {
+                    "type": "null"
+                  },
+                  "issues": {
+                    "type": "null"
+                  },
+                  "mirror": {
+                    "type": "null"
+                  },
+                  "projection": {
+                    "type": "null"
+                  },
+                  "review": {
+                    "$ref": "review-observation-v1.json"
+                  },
+                  "source": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "review"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "conflict": {
+                  "const": true
+                }
+              },
+              "required": [
+                "conflict"
+              ]
+            },
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer",
+                      "projection-pending"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "issue-projection"
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "properties": {
+                  "effect": {
+                    "type": "null"
+                  },
+                  "issues": {
+                    "type": "null"
+                  },
+                  "mirror": {
+                    "type": "null"
+                  },
+                  "projection": {
+                    "$ref": "#/$defs/service_IssueProjectionEnvelope"
+                  },
+                  "review": {
+                    "type": "null"
+                  },
+                  "source": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "projection"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "file-at"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/service_SourceResult"
+                  },
+                  {
+                    "properties": {
+                      "base": {
+                        "const": ""
+                      },
+                      "content": {
+                        "contentEncoding": "base64",
+                        "maxLength": 349528,
+                        "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+                        "type": "string"
+                      },
+                      "entries": {
+                        "type": "null"
+                      },
+                      "other": {
+                        "const": ""
+                      },
+                      "path": {
+                        "minLength": 1
+                      },
+                      "revision": {
+                        "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                      }
+                    },
+                    "required": [
+                      "revision",
+                      "path",
+                      "content"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "diff"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/service_SourceResult"
+                  },
+                  {
+                    "properties": {
+                      "base": {
+                        "const": ""
+                      },
+                      "content": {
+                        "contentEncoding": "base64",
+                        "maxLength": 349528,
+                        "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+                        "type": "string"
+                      },
+                      "entries": {
+                        "items": {
+                          "$ref": "#/$defs/service_DiffEntry"
+                        },
+                        "maxItems": 256,
+                        "type": "array"
+                      },
+                      "other": {
+                        "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                      },
+                      "path": {
+                        "const": ""
+                      },
+                      "revision": {
+                        "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                      }
+                    },
+                    "required": [
+                      "revision",
+                      "content",
+                      "entries",
+                      "other"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "merge-base"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/service_SourceResult"
+                  },
+                  {
+                    "properties": {
+                      "base": {
+                        "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                      },
+                      "content": {
+                        "type": "null"
+                      },
+                      "entries": {
+                        "type": "null"
+                      },
+                      "other": {
+                        "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                      },
+                      "path": {
+                        "const": ""
+                      },
+                      "revision": {
+                        "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                      }
+                    },
+                    "required": [
+                      "revision",
+                      "base",
+                      "other"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "read-observation"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "observation": {
+                    "$ref": "#/$defs/service_Token"
+                  }
+                },
+                "required": [
+                  "observation"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "cached": {
+                    "type": "null"
+                  },
+                  "state": {
+                    "const": "older"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "freshness": {
+                    "const": "stale"
+                  },
+                  "source": {
+                    "$ref": "#/$defs/service_Provenance"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "cached": {
+                    "type": "null"
+                  },
+                  "state": {
+                    "const": "unavailable"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "complete": {
+                    "type": "null"
+                  },
+                  "freshness": {
+                    "const": "unknown"
+                  },
+                  "source": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "cached": {
+                    "type": "object"
+                  },
+                  "state": {
+                    "const": "unavailable"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "complete": {
+                    "const": false
+                  },
+                  "freshness": {
+                    "enum": [
+                      "fresh",
+                      "stale"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "cached": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "older",
+                      "unavailable"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "const": "mirror-query"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "retryAt": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "older",
+                      "unavailable"
+                    ]
+                  }
+                }
+              },
+              "operation": {
+                "enum": [
+                  "mirror-query",
+                  "file-at",
+                  "diff",
+                  "merge-base",
+                  "lookup-operation",
+                  "read-observation",
+                  "review-observation",
+                  "issue-projection"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "confirmed",
+                      "newer",
+                      "projection-pending"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "cached": {
+                    "type": "null"
+                  },
+                  "retryAt": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "conflict": {
+          "type": "boolean"
+        },
+        "diagnostic": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_DiagnosticLink"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "effect": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_EffectResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "issues": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/forgeread_IssuesEnvelope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "measurements": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/service_Measurement"
+              },
+              "maxItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "$ref": "#/$defs/service_Metadata"
+        },
+        "mirror": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/mirror_Snapshot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation": {
+          "$ref": "#/$defs/service_Operation"
+        },
+        "projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_IssueProjectionEnvelope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "repository": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/mirror_RepositoryID"
+            },
+            {
+              "$ref": "#/$defs/EmptyRepository"
+            }
+          ]
+        },
+        "review": {
+          "anyOf": [
+            {
+              "$ref": "review-observation-v1.json"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "schema": {
+          "const": "forge-service-v1",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/service_Scope"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/service_SourceResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "id",
+        "scope",
+        "repository",
+        "operation",
+        "metadata",
+        "mirror",
+        "issues",
+        "source",
+        "effect",
+        "review",
+        "projection",
+        "conflict",
+        "measurements",
+        "diagnostic"
+      ],
+      "type": "object"
+    },
+    "service_ReviewCollection": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "start": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "type": "object"
+    },
+    "service_ReviewPopulation": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "input": {
+          "$ref": "#/$defs/service_ReviewProvenance"
+        },
+        "repository": {
+          "$ref": "#/$defs/service_ReviewRepository"
+        }
+      },
+      "required": [
+        "repository",
+        "input",
+        "count"
+      ],
+      "type": "object"
+    },
+    "service_ReviewProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "const": true,
+          "type": "boolean"
+        },
+        "freshness": {
+          "const": "fresh",
+          "type": "string"
+        },
+        "observedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "version",
+        "revision",
+        "observedAt",
+        "freshness",
+        "complete"
+      ],
+      "type": "object"
+    },
+    "service_ReviewRepository": {
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "gitlab"
+          ],
+          "type": "string"
+        },
+        "repository": {
+          "minLength": 3,
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "host",
+        "repository"
+      ],
+      "type": "object"
+    },
+    "service_Scope": {
+      "additionalProperties": false,
+      "properties": {
+        "accessEpoch": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "admissionId": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "callerId": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "repositories": {
+          "items": {
+            "$ref": "#/$defs/mirror_RepositoryID"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "representedActor": {
+          "maxLength": 256,
+          "type": "string"
+        }
+      },
+      "required": [
+        "repositories",
+        "admissionId",
+        "accessEpoch",
+        "callerId",
+        "representedActor"
+      ],
+      "type": "object"
+    },
+    "service_SourceRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "other": {
+          "pattern": "^(?:|[0-9a-f]{40}|[0-9a-f]{64})$",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "revision": {
+          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "other",
+        "path"
+      ],
+      "type": "object"
+    },
+    "service_SourceResult": {
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "contentEncoding": "base64",
+              "maxLength": 349528,
+              "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "entries": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/service_DiffEntry"
+              },
+              "maxItems": 256,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "other": {
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "other",
+        "path",
+        "content",
+        "entries",
+        "base"
+      ],
+      "type": "object"
+    },
+    "service_State": {
+      "enum": [
+        "older",
+        "confirmed",
+        "newer",
+        "projection-pending",
+        "unavailable",
+        "permission"
+      ],
+      "type": "string"
+    },
+    "service_Token": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/mirror_RecordKind"
+        },
+        "repository": {
+          "$ref": "#/$defs/mirror_RepositoryID"
+        },
+        "scope": {
+          "$ref": "#/$defs/service_Scope"
+        },
+        "value": {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "repository",
+        "kind",
+        "value"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/medici-finance/assay/schemas/forge-service-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Closed canonical forge-service-v1 Request/Response shapes. The review payload references review-observation-v1 unchanged. Existing legacy root readers retain their own contracts; this schema does not reinterpret them as service envelopes.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/service_Request"
+    },
+    {
+      "$ref": "#/$defs/service_Response"
+    }
+  ],
+  "title": "Bounded forge service v1 wire envelopes"
+}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -43,9 +42,7 @@ func TestOnceModeNeverAttaches(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "spawned")
 	cfg := writeAttachFixture(t, dir, marker)
-	bin := buildDeskd(t)
-	cmd := exec.Command(bin, "--config", cfg, "--index", filepath.Join(dir, "idx.db"), "--once")
-	cmd.Dir = repoRoot(t)
+	cmd := deskdCmd(t, "--config", cfg, "--once")
 	cmd.Env = append(os.Environ(), "DESKD_GITHUB_TOKEN=x", "DESKD_API_UNREACHABLE=1", "KUBECONFIG=/dev/null")
 	out, _ := runWithTimeout(t, cmd, 60*time.Second)
 
@@ -71,10 +68,8 @@ func TestConfiguredModeAttachesInTheBinary(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "spawned")
 	cfg := writeAttachFixture(t, dir, marker)
-	bin := buildDeskd(t)
 	var buf syncBuffer
-	cmd := exec.Command(bin, "--config", cfg, "--index", filepath.Join(dir, "idx.db"), "--addr", "127.0.0.1:0")
-	cmd.Dir = repoRoot(t)
+	cmd := deskdCmd(t, "--config", cfg, "--addr", "127.0.0.1:0")
 	cmd.Env = append(os.Environ(), "DESKD_GITHUB_TOKEN=x", "DESKD_API_UNREACHABLE=1", "KUBECONFIG=/dev/null")
 	cmd.Stdout, cmd.Stderr = &buf, &buf
 	if err := cmd.Start(); err != nil {

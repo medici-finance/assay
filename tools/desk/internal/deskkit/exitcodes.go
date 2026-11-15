@@ -95,6 +95,16 @@ type DeskError struct {
 	// walk is a different could-not-check from an unreadable repository. Empty otherwise;
 	// read it with ReadClassOf.
 	ReadClass string
+
+	// transientRead marks a read refusal over a degraded ANSWER (an empty body, a body cut off
+	// mid-transfer, a body that does not parse) — the shapes a smaller page of the same read can
+	// cure (#3096). Set only by forge_github.go's transientRead; read only by ghReadClass. Not
+	// rendered by Error().
+	transientRead bool
+
+	// lockContended marks the refusal for an audit-lock wait that ran out. Set only by
+	// AuditLockContended; read only by IsAuditLockContended. Not rendered by Error().
+	lockContended bool
 }
 
 func (e *DeskError) Error() string {

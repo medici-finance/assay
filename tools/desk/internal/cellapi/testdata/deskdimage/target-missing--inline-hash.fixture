@@ -1,0 +1,7 @@
+# regression: #4769
+# A # inside an expansion before the ; is not a comment, so the text after
+# the ; is a second deskd-image recipe.
+want: target-missing
+file: Makefile
+replace: "\n## skillslint: validate"
+with: "\ndeskd-image: $(if x#,) ; @echo \"skipped\"\n\n## skillslint: validate"

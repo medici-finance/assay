@@ -234,6 +234,22 @@ restate it.
   through the `run` guard, which only prints while `DRY_RUN=1`. So pasting the block only
   reports what it would do, and the driver acts by typing `driver_act_<id> live`. Nothing the
   function sets outlives the call.
+- **In a live walk, one live line per step instead.** When the desk is in the session with
+  the driver, has just read the state the act depends on, and the driver runs each command
+  as its own `! <cmd>` (a fresh shell every time), the desk hands each step over as ONE live
+  line. The line pins the driver's token inline, the way the Reply shape's ruling command
+  does. It has no function, no dry-run switch and no comment lines: a function defined in
+  one `!` shell is gone in the next, and the desk's own fresh read replaces the dry run. The
+  line relies on the command's own refusals and never adds a force flag. After each line the
+  desk reads the result back before handing over the next. **Only a `gh` step qualifies.** A
+  `!` line runs in the session's own shell, not the driver's terminal, and the inline pin
+  covers `gh` alone. Any other step (a `git push`, or a tool with its own credential helper)
+  would authenticate as whatever the session's checkout holds, which is not the driver. An
+  act that needs a `# fill:` secret never becomes a live line either, because anything typed
+  into a `!` line, and anything it prints, enters the session. Those acts keep the
+  dry-run block, run in the driver's own terminal. Everything posted for later or cold
+  reading (a filed issue, a `BLOCKED-ON-HUMAN` report, a verify-gate card, a rendered page)
+  also keeps the dry-run block above, because no fresh read precedes its paste.
 - **A browser-click step** is exactly one URL line plus the field values to set, in a fenced
   `url` block — one per page. Never "go to the settings and find…".
 - **`# fill:` markers** for a value only the human can supply (a one-time code, a choice made
@@ -391,6 +407,12 @@ proceed as if they had. **This binds a ONE-WAY gate** — a fork whose wrong gue
 or reaches outside the gate the driver still holds. A REVERSIBLE fork is different: the desk has
 ALREADY proceeded on its default behind a draft PR (the reversibility test), so the ask here is not a
 pre-empt but a merge-or-decline, and the item does not park on this skill.
+
+**A bare option letter answers only the question asked in the turn it follows.** If the desk's
+last message showed more than one item with options (a remaining-queue listing, a recap, a
+ruling relay followed by "next up"), a bare reply such as `A` is ambiguous. Ask which item it
+answers before recording anything, and never bind it to the next item on the list. A reply that
+names the item (`4928-A`, `<item>: A`) is unambiguous.
 
 ## Recording a ruling — always a relay, never the driver's voice
 

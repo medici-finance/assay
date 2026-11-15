@@ -1,5 +1,8 @@
 # Interactive Kubernetes desks and an in-cluster operator
 
+> **Proposed delta, 25 October 2026:** [desk instances and rolling replacement](30-desk-instances-and-rolling-replacement.md) amends worker/review singleton assumptions below. Historical approval and deployment claims are unchanged; the delta requires its own review.
+
+
 **Status:** draft — implementation direction requested 20 October 2026; authoring amendment,
 not evidence of deployment or approval of a particular custody profile. The requester
 explicitly permits `cellctl` inside Kubernetes and removes native Windows from the
@@ -219,3 +222,8 @@ implementation admission update above), which takes effect on the maintainer's m
 [PR #4349](https://github.com/medici-finance/assay/pull/4349). Neither that admission nor
 this requested amendment claims any production profile qualified; profile qualification
 and deployment keep their own gates.
+
+
+## Desk instances amendment — requested 25 October 2026
+
+The new amendment replaces this document's one-workload/owner-per-role assumption for managed worker/review roles with one workload/workspace/current owner per instance/generation. Coordinator/intake/verify remain singleton. Cell/role/instance metadata and current Pod UID bind attach/control. /28 renders declared instance workloads through existing operator provisioning; arbitrary Pod creation stays unavailable to desks. Compatibility manifests and historical five-role Evidence remain unchanged. Two workers/three reviewers, paused peers and overlapping replacement are added to /09 and /29 qualification; reconnect still starts zero work. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.

@@ -104,6 +104,22 @@ def cases(clean):
         for kind in ['digest', 'swapped', 'tag']:
             fixtures['image-provenance-' + role + '-' + kind] = (
                 lambda ds, f=unrecorded, kind=kind: f(ds, kind=kind))
+    # regression: #6213 (CVE-2026-98432) — every role container must carry
+    # GODEBUG=multipathtcp=0. Plant the omission and the re-enabled value at
+    # every role, not only the first workload.
+    for workload in (d for d in clean if d['kind'] == 'StatefulSet'):
+        role = workload['metadata']['name']
+        def godebug(ds, role=role, value=None):
+            target = next(d for d in ds if d['kind'] == 'StatefulSet'
+                          and d['metadata']['name'] == role)
+            box = target['spec']['template']['spec']['containers'][0]
+            env = [e for e in box.get('env', []) if e.get('name') != 'GODEBUG']
+            if value is not None:
+                env.append({'name': 'GODEBUG', 'value': value})
+            box['env'] = env
+        fixtures['mptcp-missing-' + role] = godebug
+        fixtures['mptcp-enabled-' + role] = (
+            lambda ds, f=godebug: f(ds, value='multipathtcp=1'))
     for name, change in fixtures.items():
         mutant = copy.deepcopy(clean)
         change(mutant)

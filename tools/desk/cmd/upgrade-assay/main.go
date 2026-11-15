@@ -408,10 +408,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 			if from != target {
 				fmt.Fprintf(stdout, "umbrella marker differs: %s, selected %s\n", from, target)
 			}
+			// The host's Cursor CLI attribution is reported, never edited, and never changes
+			// the --check verdict, which is about the placement and the marker alone.
 			if len(findings) > 0 || from != target {
+				cursorbundle.CheckAttribution().Write(stdout, stderr)
 				return 1
 			}
 			fmt.Fprintf(stdout, "Cursor placement and umbrella marker match %s (integrity verified; provenance not asserted)\n", target)
+			cursorbundle.CheckAttribution().Write(stdout, stderr)
 			return exitOK
 		}
 		cursorPlan, err = cursorbundle.Prepare(opts)
@@ -420,6 +424,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return exitArtifactsGone
 		}
 		fmt.Fprintf(stdout, "Cursor bundle %s: published SHA-256, internal version and closed manifest verified (integrity, not provenance)\n", target)
+		cursorbundle.CheckAttribution().Write(stdout, stderr)
 	}
 
 	// Direction: forward (from < target) runs migrations; a move to an OLDER umbrella

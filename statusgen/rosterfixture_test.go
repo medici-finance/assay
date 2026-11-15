@@ -131,6 +131,17 @@ func TestMain(m *testing.M) {
 	if err := os.Unsetenv("DESK_ROOTS"); err != nil {
 		panic("cannot clear DESK_ROOTS for the test binary: " + err.Error())
 	}
+	// No test inherits the runner's pull_request event either. --lint reads
+	// the event payload for the pull request's Brief: trailers
+	// (decisiongatedelivery.go), so on a pull_request run every lint fixture
+	// would be judged as delivered by the PR that ran the suite. A test that
+	// needs an event sets it itself with t.Setenv;
+	// TestDecisionGateDeliveryEventCleared pins these lines.
+	for _, k := range []string{"GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH"} {
+		if err := os.Unsetenv(k); err != nil {
+			panic("cannot clear " + k + " for the test binary: " + err.Error())
+		}
+	}
 	if err := pinFixtureGoCaches(); err != nil {
 		panic(err)
 	}

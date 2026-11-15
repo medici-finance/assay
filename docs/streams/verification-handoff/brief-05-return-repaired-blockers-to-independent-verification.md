@@ -2,9 +2,9 @@
 brief: assay:assay:verification-handoff:05
 title: "Return repaired blockers to independent verification"
 why: "A repair merge or issue closure can make a retry worthwhile, but neither proves the original brief now works. The original verifier must recover the correct subject and evidence without losing repair ownership history."
-wave: 4
-depends: ["verification-handoff/04"]
-unblocks: ["verification-handoff/06"]
+wave: 7
+depends: ["verification-handoff/04", "desk-tools/46"]
+unblocks: ["verification-handoff/06", "statusgen/35"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
@@ -12,13 +12,15 @@ gate-why: "Changes the verification wake and repair reconciliation boundary used
 decision-trigger: start
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: d5c6a0bd-ced8-496d-b74b-3f1ba3df4d43
 authored: "2026-10-23 by assay-worker-app[bot]"
 exec-tier: strong
 exec-tier-why: "Cross-module shared policy, partial writes and independent actor/source binding require coordinated design and negative controls."
 domain: complicated
 sources:
+  - "docs/proposals/fixed-delivery-verification/README.md — fixed-delivery completion amendment, 2026-10-27; planning only"
+  - "freshness-checked 2026-10-27 @ 9a58a792c; existing PR 4579 and source/caller work map"
   - "docs/streams/verification-handoff/README.md — controlling implementation scope"
   - "spec/intake-exit-v1.md; docs/streams/desk-supervision/repair-obligation-v1.md; docs/verify-wake.md"
   - "freshness-checked 2026-10-23 @ fbe0331e2fc9f5c822c4edeafb8a18865c916828"
@@ -87,6 +89,34 @@ Default if no answer: none — blocks until answered.
 - New shared parsing/policy must be direct library calls, never a new helper executable. Preserve existing online read/custody boundaries.
 
 ## Task
+
+### Fixed-delivery completion amendment — 2026-10-27
+
+This is a planning amendment under [fixed-delivery
+verification](../../proposals/fixed-delivery-verification/README.md), not runtime implementation or
+activation. Preserve the original Verify table and Evidence. The changed fixed-subject,
+historical-subject and row-reuse policy waits for the precise existing authority decisions; an old
+decision token grants none of these changes. Existing approved work retains its original contract.
+At pickup, pin this brief/version, the controlling contracts, actual producer/consumer versions and
+open PRs; adapt or hold only the affected slice. No new evaluator, record store, desk, tracer or
+qualification stage is authorized.
+
+**Owner: exact-subject return after repair.** Consume desk-tools/46's admitted run/subject identity
+as well as /04 linkage. A bookkeeping or prerequisite repair resumes the original D/A where still
+applicable; a code or acceptance repair requires independently attributed successor D/A. Preserve
+the original failed delivery and backlink; do not move its immutable binding or relabel an old
+observation.
+
+- Wake only the original affected obligation under the existing receipt/wake owner. Repair merge or
+  issue closure grants neither independent acceptance nor authority for a changed original row. Keep
+  unaffected applicable results; require new proof where source, criteria or conditions changed. -
+  Extend the existing wake/recheck fixtures with metadata-only historical repair, true product
+  repair at a successor delivery, repaired explicit range needing exact authority,
+  duplicate/out-of-order events and a wrong-source recheck. Only admissible independent proof plus
+  remaining original human gates resolves the matching handoff. /35 records unresolved historical
+  dispositions instead of silently closing them.
+
+### Existing task obligations
 
 1. Consume /02 and /04 linkage through the existing receipt validator, wake classifier and repair-obligation state. Repair merge, external prerequisite completion and valid input change may wake the correct original brief/held rows, never mark it verified. Reuse the current independent-verifier and exact-repaired-revision resolution guard; preserve open-blocker holds, unreadable refs as could-not-check and explicit reasoned recheck behavior.
 2. Route one current recheck request to the existing verification owner/Evidence PR with immutable original acceptance and repair revisions. Reconcile duplicate merge events and restarts without multiple verifier lanes. If that owner/home is gone, transfer through fresh sanctioned dispatch/admission and retain the old blocked evidence, rather than relying on a stale local pointer or modifying original commands.

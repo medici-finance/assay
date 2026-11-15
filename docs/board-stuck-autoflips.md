@@ -93,6 +93,30 @@ hiding a stuck row behind a green run. Other exit codes:
 
 `--check` does not imply `--dry-run`. Add `--dry-run` to report without writing.
 
-The statusgen workflow does not pass `--check` yet, and it reports any non-zero
-exit from the flip step as a misconfiguration. Until it passes `--check` and
-tells exit 2 from exit 1, the roll-up table is where a stuck row shows.
+The statusgen workflow's `model-autoflip` job passes `--check` and tells exit 2
+from exit 1. Exit 1 fails the job as a misconfiguration. Exit 2 writes a
+`::warning::` annotation and a job-summary line with the flipped, REFUSED and
+COULD-NOT-CHECK counts, and the job stays green: while the underlying refusals
+are the norm, a red job on every push to main would be noise. Set the
+repository variable `ASSAY_AUTOFLIP_STUCK_FAILS` to `true` to make exit 2 fail
+the job instead. Flips that did happen are committed before the exit is decided.
+The roll-up table still lists every stuck row.
+
+## Cross-repository execution evidence
+
+For a selected PASS run carrying a literal version-2 verification attestation,
+coverage requires every latest Verify row to be in a matching closed source-only
+container bracket. Mixed host rows, rows carried from earlier runs, and rows
+outside that bracket remain held. Eligible coverage uses the configured checkout
+for its `source-repo` and that checkout's
+remote-tracking integration tip. The accepted Verify definition stays at the
+attested `tracking-source` in the tracking repository. Configure the source via
+`DESK_ROOTS` or `--sibling-root` and refresh its integration ref before evaluation.
+Missing checkout, wrong repository identity, incomplete or conflicting metadata,
+and dirty source evidence keep the brief held. Existing provenance and admission
+checks still decide whether evidence can be credited.
+
+This path supports the existing execution-witness table form. A legacy run with
+no cross-repository binding cannot borrow a repository from its command text.
+Cross-repository witness-v2 artifact records need a separate storage binding and
+remain could-not-check on this path.

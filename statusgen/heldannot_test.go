@@ -47,17 +47,17 @@ func TestHeldScopeAnnotatedKey(t *testing.T) {
 	rowHdr := "| Row | Command | Exit | Result |\n|---|---|---|---|\n"
 	planted := "### Run 1\n\n" + rowHdr + "| 2 (verify 2) | `x` | — | HELD — runner offline |\n\n" +
 		"### Run 2\n\n" + rowHdr + "| 2 | `x` | 0 | ok |\n\n**VERIFY: PASS**\n"
-	runHeldLayerCases(t, []heldScanCase{
+	runHeldRowCases(t, []heldScanCase{
 		{"annotated held row re-ran bare", annHeld("3 (Verify 3, negative)") + annLater, false},
 		{"annotation with no number", annHeld("3 (negative)") + annLater, false},
 		{"bold annotated key", annHeld("**3 (Verify 3, negative)**") + annLater, false},
 		{"planted second instance, Row header", planted, false},
 		{"row by row only (an earlier row cannot be aligned)", annHeldMisaligned + annLater, false},
 	})
-	if s := heldScanScope(annHeld("3 (Verify 3, negative)") + annLater); !s.whole {
+	if s := heldScanScope(annHeld("3 (Verify 3, negative)")+annLater, false); !s.whole {
 		t.Errorf("annotated key: whole=%v, want the last entry to cover every earlier row", s.whole)
 	}
-	if s := heldScanScope(annHeldMisaligned + annLater); s.whole || s.from < 0 {
+	if s := heldScanScope(annHeldMisaligned+annLater, false); s.whole || s.from < 0 {
 		t.Errorf("misaligned earlier row: whole=%v from=%d, want row-by-row supersession only", s.whole, s.from)
 	}
 }
@@ -77,7 +77,7 @@ func TestHeldScopeAnnotatedKeyRefuses(t *testing.T) {
 	rowHdr = strings.Replace(rowHdr, "\n\n**VERIFY", "\n"+annRow("3 (Verify 3)", "—", "HELD — no runner online")+"\n**VERIFY", 1)
 	lastSub := annHeld("3 (Verify 3, negative)") + annEntry("Verification — 2026-10-20", "**VERIFY: PASS**",
 		annRow("1", "0", "ok"), annRow("2", "0", "ok"), annRow("3 (Verify 3, positive)", "0", "ok"))
-	runHeldLayerCases(t, []heldScanCase{
+	runHeldRowCases(t, []heldScanCase{
 		{"annotation names another row", annHeld("3 (Verify 4)") + annLater, true},
 		{"annotation names a date", annHeld("3 (2026-10-07)") + annLater, true},
 		{"two numbers, one other", annHeld("3 (Verify 3, row 4)") + annLater, true},
@@ -98,6 +98,10 @@ func TestHeldScopeAnnotatedKeyRefuses(t *testing.T) {
 		{"exact #4294 id, later bare row held", annHeld("3 (Verify 3, negative)") + strings.Replace(annLater, "| 0 | PASS |", "| — | HELD — no runner online |", 1), true},
 		{"exact #4294 id, row by row only, later not clean", annHeldMisaligned + strings.Replace(annLater, "| 0 | PASS |", "| 0 | same as Run 1 |", 1), true},
 	})
+	// No case here is one 3c admits: their runner cells do not read
+	// <login> @ <sha>, so verifyflip selects no latest run from them and 3c,
+	// which reads only the run verifyflip credits (heldWitnessInLatest), stays
+	// off.
 }
 
 // annObs is a single strict-PASS entry whose row 3 has the given Exit and
@@ -168,14 +172,18 @@ func TestHeldScopeObservedOutputRefuses(t *testing.T) {
 		{"note column", note, true},
 		{"misaligned row", misaligned, true},
 		{"live held row", annObs("—", "HELD — no runner online"), true},
-		{"prose line, not a cell", annObs("0", "ok") + "PASS: a could-not-check mission section\n", true},
+		// A marker, not lower-case prose: ruling A on #4721 does not read
+		// lower-case free prose at all (heldprose_test.go).
+		{"prose line, not a cell", annObs("0", "ok") + "PASS: a COULD-NOT-CHECK mission section\n", true},
 	})
 }
 
 // TestHeldScopeZeroRatio: a summary that counts every row passed and zero
 // could-not-check ("Rows: 2 of 2 required rows passed; 0 could-not-check.")
 // is a count, not a disposition; a ratio that did not pass every row, or a
-// zero count that gives a hold reason, still refuses.
+// zero count that gives a hold reason, still refuses. The refusing lines
+// carry a marker (COULD-NOT-CHECK): ruling A on #4721 does not read the
+// lower-case word in free prose, so only a marker exercises the count rule.
 // regression: #4294
 func TestHeldScopeZeroRatio(t *testing.T) {
 	ev := func(line string) string { return annObs("0", "ok") + line + "\n" }
@@ -183,11 +191,11 @@ func TestHeldScopeZeroRatio(t *testing.T) {
 		{"the comment's line", ev("Rows: 2 of 2 required rows passed; 0 could-not-check."), false},
 		{"on the verdict line", ev("**VERIFY: PASS** — 7 of 7 rows passed, 0 HELD"), false},
 		{"checks ran", ev("3 of 3 checks ran; 0 could-not-check"), false},
-		{"ratio short", ev("Rows: 1 of 2 required rows passed; 0 could-not-check."), true},
-		{"zero ratio", ev("Rows: 0 of 0 rows passed; 0 could-not-check."), true},
-		{"reason after", ev("Rows: 2 of 2 rows passed; 0 could-not-check pending runner"), true},
-		{"two qualifiers", ev("Rows: 2 of 2 required verify rows passed; 0 could-not-check."), true},
-		{"not a count noun", ev("Rows: 2 of 2 required exits passed; 0 could-not-check."), true},
+		{"ratio short", ev("Rows: 1 of 2 required rows passed; 0 COULD-NOT-CHECK."), true},
+		{"zero ratio", ev("Rows: 0 of 0 rows passed; 0 COULD-NOT-CHECK."), true},
+		{"reason after", ev("Rows: 2 of 2 rows passed; 0 COULD-NOT-CHECK pending runner"), true},
+		{"two qualifiers", ev("Rows: 2 of 2 required verify rows passed; 0 COULD-NOT-CHECK."), true},
+		{"not a count noun", ev("Rows: 2 of 2 required exits passed; 0 COULD-NOT-CHECK."), true},
 	})
 }
 
@@ -200,7 +208,7 @@ func TestHeldScopeCoverKeyDirection(t *testing.T) {
 		return annEntry("Verification — 2026-10-20", "**VERIFY: PASS**",
 			annRow("1", "0", "ok"), annRow("2", "0", "ok"), annRow(key, "0", "PASS"))
 	}
-	runHeldLayerCases(t, []heldScanCase{
+	runHeldRowCases(t, []heldScanCase{
 		{"later key annotated with a word", annHeld("3") + lastKeyed("3 (negative)"), true},
 		{"later key annotated with several words", annHeld("3") + lastKeyed("3 (positive not run)"), true},
 		{"later key annotated with a hold word", annHeld("3") + lastKeyed("3 (HELD)"), true},
@@ -215,6 +223,8 @@ func TestHeldScopeCoverKeyDirection(t *testing.T) {
 		{"same annotated key, later row not clean", annHeld("3 (negative)") + strings.Replace(lastKeyed("3 (negative)"),
 			"| 0 | PASS |", "| 0 | PASS (no re-run) |", 1), true},
 	})
+	// 3c admits none of these: their runner cells do not read <login> @ <sha>,
+	// so verifyflip selects no latest run (heldWitnessInLatest).
 }
 
 // TestHeldScopeObservedOutputSubject: the words of the Result cell before

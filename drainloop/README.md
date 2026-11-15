@@ -230,3 +230,77 @@ Verify obligations remain pending for implementation and independent verificatio
 The checkpoint decoder also refuses null at every nonnullable position, repeated
 keys and case-variant keys. These shapes cannot clear a persisted hold or zero
 a reservation. Explicit null nullable counts remain unknown.
+
+
+## Store-neutral Cell admission (GE/16)
+
+`CellAuthority` joins existing ownership to cumulative budgets and effect intents.
+`CellStore.Transaction` owns an isolated-copy, expected-version durable commit;
+reservations and intent publish together or neither does. A missing/unqualified
+store refuses instead of substituting an in-memory or embedded backend. The
+`RequiredDurability` method is an adapter obligation, not proof of durability.
+GE/19 owns the actual PostgreSQL implementation and rollback qualification.
+
+Use `CellJournal` as the existing `Config.Journal` with `RequireHandoff`. Its
+trusted request mapper binds the original work, attempt/request, stable operation,
+quota reservations, runner boundary and pacing scope to `CellAdmissionDigest`.
+The capability checker must authenticate and authorize that exact digest, caller,
+expiry and required policy balances; a string reference or hash grants nothing.
+A launch-only runner needs a qualified request upper bound. Ordinary scheduling
+attribution remains best effort; this journal deliberately supplies no audit sink
+for those events. Effects still reconcile authoritative receipts before applying.
+
+The provider calls `CheckEffect` **inside its own atomic apply/dedupe boundary**,
+independently of scheduling. It re-reads protected current incarnation, current
+ownership, authenticated capability, intent and held reservations. Calling a
+check and then making an unrestricted write is not a fence. Providers lacking
+independent fencing/dedupe or proven invalidation of old credentials stay held;
+there is no exactly-once guarantee or installed production effect adapter.
+
+`Settle` resolves typed trust-gated authoritative usage through `CellUsageAuthority`.
+Unknown charges retain the entire reservation; reported zero remains zero.
+Failed/preparation/summary/fallback/verification usage stays charged to original
+work, with separate provider/account/unit/window balances. Reconciliation retains
+prior unknown observations, names their exact source predecessor and records each
+settlement idempotently. No pricing conversion, secret or raw provider payload is
+accepted by the library. `Transfer` durably pauses before operator rotation and
+holds on pending effects, unknown reservations, missing group-stop/credential
+cutover, unrotated identity/key or mismatched protected current state. Stop,
+cancellation, overrides, usage and balances survive transfer; no reset is implicit.
+
+Effect pacing re-derives from the shared retained seed and intents/receipts on
+every admission; cached rows may never supply allowance and need no update.
+The reset epoch is independently read from protected state outside the runtime
+store; absent/second reset or incomplete history is exhausted/unavailable.
+There is no separate pacing-slot reservation, lock spanning provider work or
+second count service. The existing safety transaction remains responsible for
+brakes and intent. Read-class adapters retain their shared count; no numeric read
+bound is claimed. No live cap, headroom, rate, reset or policy is selected here.
+
+The tests use a **test-only** filesystem transaction fixture (sync file, rename,
+sync directory) and fake independently invoked provider. Multiple actual child
+processes share its state and a distinct reset anchor across restarts/cache loss.
+This qualifies that fixture on the local test filesystem, not a shipped backend,
+PostgreSQL, signatures, Kubernetes custody or live credential revocation. The
+library installs no adapters and activates no consumer. All human activation and
+independent verification gates remain. Existing preparation documentation above
+records the earlier snapshot; this section describes the added opt-in seam.
+
+
+The Cell/group ownership generation and each work-item claim generation remain
+distinct. `CellState.Claims` is the existing claim authority's current per-item
+record, not a second lease: `CellJournal.Generation(item)` reads that claim, and
+both admission and the independent effect check require its exact original work,
+attempt, Cell owner and claim generation. A current Cell tuple cannot revive a
+released or transferred item claim; reevaluation identity remains separate.
+
+
+Crash-before-apply/proven-failure recovery uses `ResolvePending`, never a free
+retry. A qualified resolution port independently fences the old writer and proves
+absence plus known usage. Settlement and retirement commit together; a fresh
+attempt/request may then resume in the same claim generation while failed spend
+stays on original work. Unknowns hold. Requests bind one signed phase, and window
+checks require an explicit authority clock rather than intent provenance time.
+See the [checkpoint contract](../spec/cell-checkpoint-v1.md#store-neutral-transaction-and-accounting-seam)
+for the full resolution, phase, clock and conservative pacing contract. No
+resolution adapter or runtime clock is installed.

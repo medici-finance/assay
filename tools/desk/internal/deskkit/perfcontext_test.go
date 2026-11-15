@@ -24,15 +24,27 @@ func TestPerfV3LauncherChildFlow(t *testing.T) {
 	if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, out)
 	}
+	// The parent carries its own earlier assignment. A child launched for a new
+	// item must report only that item: the parent's work is stale for it.
+	stale := perfrec.WorkRef{Kind: "brief", Repo: "example/project", Brief: "example:project:work:3", Primary: true}
+	staleJSON, _ := json.Marshal([]perfrec.WorkRef{stale})
 	parent := perfrec.ResolveContext(perfrec.ContextInput{LookupEnv: func(k string) (string, bool) {
-		v, ok := map[string]string{"ASSAY_TELEMETRY": "1", "ASSAY_PERF_PROFILE": "workflow", "ASSAY_PERF_SESSION_ID": strings.Repeat("a", 32), "ASSAY_PERF_AGENT_ID": strings.Repeat("b", 32), "DESK_LOOP": "worker-desk"}[k]
+		v, ok := map[string]string{"ASSAY_TELEMETRY": "1", "ASSAY_PERF_PROFILE": "workflow", "ASSAY_PERF_SESSION_ID": strings.Repeat("a", 32), "ASSAY_PERF_AGENT_ID": strings.Repeat("b", 32), "ASSAY_PERF_WORK": string(staleJSON), "DESK_LOOP": "worker-desk"}[k]
 		return v, ok
 	}})
+	if pw := parent.Data().Work; len(pw) != 1 || pw[0] != stale {
+		t.Fatal("parent fixture does not carry its own work")
+	}
 	home := t.TempDir()
 	env := []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "USERPROFILE=" + home, "KUBECONFIG=/dev/null", "ASSAY_TELEMETRY=1", "DESK_LOOP=pr-review-desk"}
 	brief := perfrec.WorkRef{Kind: "brief", Repo: "example/project", Brief: "example:project:work:1", Primary: true}
 	issue := perfrec.WorkRef{Kind: "issue", Forge: "github", Instance: "github.com", Repo: "example/project", Issue: 2, Primary: true}
 	contexts := []perfrec.Context{PerfAgentContext(parent, "implement", []perfrec.WorkRef{brief}, nil), PerfAgentContext(parent, "review", []perfrec.WorkRef{issue}, nil)}
+	for i, want := range []perfrec.WorkRef{brief, issue} {
+		if w := contexts[i].Data().Work; len(w) != 1 || w[0] != want {
+			t.Fatal("child context kept the parent's stale work")
+		}
+	}
 	// The existing native fixture observes role after its own launch composition.
 	// Also exercise the shared executor directly: diagnostic desk attribution must
 	// preserve the caller-selected operational loop before a child handler starts.
@@ -50,16 +62,28 @@ func TestPerfV3LauncherChildFlow(t *testing.T) {
 		t.Fatal("shared executor changed operational desk authority")
 	}
 
+	// Both request contexts exist before either launch runs, as they do when one
+	// desk prepares two concurrent launches. Context carried in shared global
+	// state then reaches both children as the last one written, every run.
+	reqs := make([]context.Context, len(contexts))
+	for i, c := range contexts {
+		reqs[i] = WithPerfContext(context.Background(), c)
+	}
+	for i, c := range contexts {
+		if got, ok := PerfContext(reqs[i]); !ok || got.Data().AgentID != c.Data().AgentID {
+			t.Fatal("request context replaced by another launch's context")
+		}
+	}
 	var wg sync.WaitGroup
 	results := make([]ToolRun, 2)
-	for i, c := range contexts {
+	for i := range contexts {
 		wg.Add(1)
-		go func(i int, c perfrec.Context) {
+		go func(i int) {
 			defer wg.Done()
 			// The explicit flag preserves originating attribution while the operational
 			// child loop remains independently selected by its launcher.
-			results[i] = Run(ToolCall{Name: bin, Args: []string{"list", "--perf-loop-role=worker-desk"}, Env: env, Dir: home, Context: WithPerfContext(context.Background(), c)})
-		}(i, c)
+			results[i] = Run(ToolCall{Name: bin, Args: []string{"list", "--perf-loop-role=worker-desk"}, Env: env, Dir: home, Context: reqs[i]})
+		}(i)
 	}
 	wg.Wait()
 	for _, r := range results {
@@ -92,7 +116,7 @@ func TestPerfV3LauncherChildFlow(t *testing.T) {
 			if d.AgentID == cd.AgentID {
 				found = true
 				seen[d.Role] = true
-				if d.InvocationID == c.InvocationID() || d.ParentInvocationID != c.InvocationID() || len(d.Work) != 1 || d.Work[0] != cd.Work[0] {
+				if d.InvocationID == c.InvocationID() || d.ParentInvocationID != c.InvocationID() || len(d.Work) != 1 || d.Work[0] != cd.Work[0] || d.Work[0] == stale {
 					t.Fatal("parent invocation or work crossed launch")
 				}
 			}

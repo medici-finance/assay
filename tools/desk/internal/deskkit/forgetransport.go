@@ -56,9 +56,15 @@ func (c countedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return c.next.RoundTrip(req)
 }
 
-type countingTransport struct{ next http.RoundTripper }
+type countingTransport struct {
+	next   http.RoundTripper
+	mirror *mirrorAttemptState
+}
 
 func (c countingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if c.mirror != nil {
+		return c.mirror.roundTrip(c.next, req)
+	}
 	perfCountForgeCall()
 	return observeRoundTrip(c.next, req)
 }

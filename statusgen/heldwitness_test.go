@@ -140,7 +140,7 @@ func TestHeldScopeWitnessLive(t *testing.T) {
 	blank := func(trailer string) string {
 		return witEntry("Run 1", witTable(4, sandboxUnshare, cnr, trailer), witBullet, "VERIFY: BLOCKED")
 	}
-	runHeldLayerCases(t, []heldScanCase{
+	runHeldRowCases(t, []heldScanCase{
 		// The latest entry itself is the hold.
 		{"latest entry BLOCKED", witLatest(witPass) + witOldHeading, true},
 		{"latest PASS with a held bullet", witEntry("Run 2", witTable(4, "", witPass, witAttest), witBullet, "**VERIFY: PASS**"), true},
@@ -170,7 +170,16 @@ func TestHeldScopeWitnessLive(t *testing.T) {
 		{"trailer under a hand table", witEntry("Run 1", "| # | Command | Exit | Result |\n|---|---|---|---|\n"+
 			"| 1 | `tool check 1` | 0 | ok |\n"+witAttest+"\n", witBullet, "VERIFY: BLOCKED") + witLatest(witPass), true},
 		{"fence straight after the trailer", blank(witAttest+"\n```\nlog\n```") + witLatest(witPass), true},
-	})
+	},
+		// The hold is only under an earlier witness, and the latest entry is a
+		// clean dated witness PASS. 3c admits only when every witness the flip
+		// credits lies in that entry (heldWitnessInLatest), so a latest run
+		// that skipped row 3 is refused by verifyflip's witness read
+		// (TestVerifyflipLatestRunSkippedRow; with an earlier entry at the
+		// same date and sha, TestVerifyflipSameRunBlockedRefuses). Only the
+		// flip-side read admits these; close-verify and the card still refuse.
+		"(b) latest skipped row 3", "prose straight after the trailer", "prose straight after the table",
+		"trailer with a note appended", "trailer under a hand table", "fence straight after the trailer")
 }
 
 // witnessRow3 is row 3 of a host witness of clean rows, as witTable renders it.
@@ -199,7 +208,7 @@ func TestHeldScopeWitnessAnchors(t *testing.T) {
 	sandbox := func(tok string) string {
 		return witOldRow + witEntry("Run 2", witTable(4, tok, witPass, witAttest), "", "**VERIFY: PASS**")
 	}
-	runHeldLayerCases(t, []heldScanCase{
+	runHeldRowCases(t, []heldScanCase{
 		// Each trailer line is anchored at its end, not only the attestation.
 		{"Tree-Digest with a note appended", under(block[0]+note) + witLatest(witPass), true},
 		{"Container-Image with a note", under(block[1]+note) + witLatest(witPass), true},
@@ -216,7 +225,10 @@ func TestHeldScopeWitnessAnchors(t *testing.T) {
 		// A trailer line in the latest entry is read for holds like any line.
 		{"hold word in a latest trailer", witOldRow + witEntry("Run 2", witTable(4, sandboxContainerNetns, witPass,
 			strings.Replace(witContainer, "model=fixture-model", "model=HELD", 1)), "", "**VERIFY: PASS**"), true},
-	})
+	},
+		// The anchor is loosened in an earlier entry under a clean latest PASS.
+		"Tree-Digest with a note appended", "Container-Image with a note", "Admission-Bracket with a note",
+		"header with a trailing space", "header with a leading space")
 }
 
 // witTableFF renders a fail-first verifyrun witness table for rows 1..n
@@ -295,7 +307,15 @@ func witAttestV2(t *testing.T) string {
 func TestHeldScopeWitnessForms(t *testing.T) {
 	cnr := witRow3(stateCouldNotRun, -1, witCNR)
 	v2 := witAttestV2(t)
-	runHeldLayerCases(t, []heldScanCase{
+	base3 := failFirstCell("", baseUnproven, -1, "0123456789ab")
+	logged := func(state string, exit int) string {
+		cell := failFirstCell("abc1234", state, exit, "0123456789ab") +
+			" output=sha256:" + strings.Repeat("a", 64) + " log=row-000001.log"
+		return strings.Replace(witTableFF(4, sandboxUnshare, witPass, witAttest), base3+" |", cell+" |", 1)
+	}
+	runHeldRowCases(t, []heldScanCase{
+		{"retained red Base covers earlier BLOCKED", witOldRow + witEntry("Run 2", logged(baseRed, 1), "", "**VERIFY: PASS**"), false},
+		{"retained green Base covers earlier BLOCKED", witOldRow + witEntry("Run 2", logged(baseGreen, 0), "", "**VERIFY: PASS**"), false},
 		// The fail-first header passes its trailer over as witnessHeader does.
 		{"fail-first witness, earlier",
 			witEntry("Run 1", witTableFF(4, sandboxUnshare, cnr, witAttest), witBullet, "VERIFY: BLOCKED") + witLatest(witPass), false},
@@ -331,8 +351,15 @@ func TestHeldScopeWitnessForms(t *testing.T) {
 func TestHeldScopeWitnessExact(t *testing.T) {
 	ff := witTableFF(4, sandboxUnshare, witPass, witAttest)
 	base3 := failFirstCell("", baseUnproven, -1, "0123456789ab")
+	suffix := " output=sha256:" + strings.Repeat("a", 64) + " log=row-000001.log"
+	withBase := func(cell string) string { return strings.Replace(ff, base3+" |", cell+" |", 1) }
 	latest := func(table string) string { return witOldRow + witEntry("Run 2", table, "", "**VERIFY: PASS**") }
 	runHeldLayerCases(t, []heldScanCase{
+		{"unproven Base with output metadata", latest(withBase(base3 + suffix)), true},
+		{"not-selected Base with output metadata", latest(withBase(failFirstCell("", baseNotSelected, -1, "0123456789ab") + suffix)), true},
+		{"retained Base followed by note", latest(withBase(failFirstCell("abc1234", baseRed, 1, "0123456789ab") + suffix + " see log")), true},
+		{"retained Base with bad digest", latest(withBase(failFirstCell("abc1234", baseRed, 1, "0123456789ab") + strings.Replace(suffix, strings.Repeat("a", 64), "short", 1))), true},
+		{"retained Base with traversal", latest(withBase(failFirstCell("abc1234", baseRed, 1, "0123456789ab") + strings.Replace(suffix, "row-000001.log", "../outside", 1))), true},
 		{"digest in emphasis", latest(strings.ReplaceAll(witTable(4, "", witPass, witAttest),
 			"sha256:0123456789ab", "**sha256:0123456789ab**")), true},
 		{"digest in upper case", latest(strings.ReplaceAll(witTable(4, "", witPass, witAttest),

@@ -17,11 +17,14 @@ exec-tier-why: "Cross-component protocol, recovery and authority boundaries requ
 domain: "complicated"
 outcome: "none"
 consumers: ["loopadmin/supervisor: follow-up agent-execution/05 (this brief; flips to fixed-here when the implementation edits the path)", "tools/desk/internal/cellop: follow-up agent-execution/05 (this brief; flips to fixed-here when the implementation edits the path)", "tools/desk/cmd/cellctl: follow-up agent-execution/05 (this brief; flips to fixed-here when the implementation edits the path)", "R7 Cell API and cockpit: out-of-scope (consume this snapshot under their existing ingress and mounted-route qualification; no alternate endpoint here)"]
-version: 1
+version: 3
 id: "a4787a6a-d6e4-452b-ae9f-b275a91a97d4"
 ---
 
 # Brief 05 — Expose preparation, execution, recovery and acceptance separately
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -48,12 +51,18 @@ Contract-consumption: agent-execution/01 supplies the qualified execution-profil
 - Preserve existing work identity, coordination/effect owners, historical Evidence and independent acceptance. Stop at implemented; a non-implementer owns verification.
 - Refresh source, claims and active PRs at pickup. Missing prerequisites or contradictory contracts require a recorded hold, not a replacement implementation.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
+
 ## Task
 
 1. Publish one schema-backed sanitized snapshot from the existing supervisor with separate preparation, process, preservation/recovery, effect reconciliation and acceptance dimensions. Each has its authoritative source, subject, timestamp/coverage and unknown/unsupported representation. Reuse existing state vocabularies; no new durable lifecycle writer.
 2. Join acceptance only through the existing caller-owned observation port. A desk-only installation without workflow still reports execution and explicitly unavailable work acceptance. Missing or denied observations cannot become success, idle or zero. Preserve model/backend/receipt identity without secrets, raw transcripts or unrestricted local paths.
 3. Consume that snapshot in the existing cellop/cellctl machine and human status surfaces, with useful next-required-action text. An alive container plus failed child shows both facts; publication with pending independent review shows pending acceptance. Opening status/attaching a client creates zero launches and changes no pause or ownership. R7 receives a documented contract, not a second ingress implementation.
 4. Test the complete supervisor snapshot to machine status and human rendering flow, including old-reader compatibility, stale/missing coverage, cross-cell filtering and secret exclusion. Wire each module test to its actual path triggers; retain named mutation controls and changelog.
+
+- **Instance amendment:** Extend sanitized lifecycle snapshots with cell/role/instance/generation, desired/observed state, predecessor/successor, estimated role occupancy/target, freshness and optional instance refill target. Preserve paused/draining/unknown members in aggregates; full names are display locators. Keep independent preparation/process/effect/acceptance dimensions and per-invocation attribution.
 
 ## Interface contract
 
@@ -69,6 +78,7 @@ These named tests, fixtures and mutations are deliverables of this brief; they h
 | 2 | check:ci +flow +mutation | `(cd tools/desk && execution_out=$(mktemp) && trap 'rm -f "$execution_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestExecutionLifecycleReadOnlyAndScope$" ./... > "$execution_out" && grep -q -- "--- PASS: TestExecutionLifecycleReadOnlyAndScope " "$execution_out")` | exit 0; named PASS; status/reattach creates no launch, preserves pauses and refuses cross-cell or secret-bearing output; mutation: start a missing session while serving status — the named test must fail |
 | 3 | check:ci +flow +mutation | `(cd tools/desk && execution_out=$(mktemp) && trap 'rm -f "$execution_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestExecutionLifecycleUnknownAndCompatibility$" ./... > "$execution_out" && grep -q -- "--- PASS: TestExecutionLifecycleUnknownAndCompatibility " "$execution_out")` | exit 0; named PASS; old or incomplete snapshots stay explicitly unknown/unsupported rather than idle or accepted; mutation: default unavailable acceptance to success — the named test must fail |
 | 4 | check:ci | `statusgen --consumers --brief agent-execution/05 --base $(git merge-base origin/main HEAD)` | exit 0; declared implementation sites and follow-up references corroborate; out-of-scope judgments remain UNCHECKED and reviewer-owned; completeness is not proved |
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd tools/desk && GOWORK=off go test -count=1 -v ./cmd/cellctl/... -run '^TestDeskInstanceProjection$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceProjection ' "$o")` | Named test executes (zero matching tests is not a pass); Supervisor-to-machine/human status shows two workers/three reviewers and a draining predecessor without hiding a paused peer or unknown occupancy. Mutation: group members into one role row or turn unknown into zero makes the test fail. |
 
 ## Pre-mortem and dispatch checks
 

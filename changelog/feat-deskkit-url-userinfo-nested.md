@@ -1,2 +1,0 @@
-### Changed
-- The `url-userinfo` rule of the shared secret scan (`secret.url-userinfo` on the outbound check) now also evaluates a `scheme://user:<password>@host` URL that sits inside the path, query or fragment of a longer URL, such as `https://host:8443/cb?return=scheme://user:<password>@host`. The same exemptions apply to it: placeholders such as `<token>`, `${VAR}` and `***`, username-only forms and URLs without an `@` stay allowed. The search runs in a single pass, so long runs of repeated `://` fragments do not slow the scan.

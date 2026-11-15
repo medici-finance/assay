@@ -1,0 +1,33 @@
+{
+  "schema": "forge-service-v1",
+  "id": "request-1",
+  "scope": {
+    "repositories": [
+      {
+        "Provider": "github",
+        "Host": "github.example",
+        "Path": "example/project"
+      }
+    ],
+    "admissionId": "fixture-admission",
+    "accessEpoch": "epoch-1",
+    "callerId": "fixture-reader",
+    "representedActor": ""
+  },
+  "repository": {
+    "Provider": "github",
+    "Host": "github.example",
+    "Path": "example/project"
+  },
+  "operation": "file-at",
+  "mirror": null,
+  "source": {
+    "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "other": "",
+    "path": "readme.txt"
+  },
+  "effect": null,
+  "lookup": null,
+  "minimum": null,
+  "diagnostic": null
+}

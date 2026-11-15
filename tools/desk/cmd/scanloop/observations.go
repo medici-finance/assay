@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -54,15 +55,23 @@ func observationKey(item string, opened time.Time) string {
 }
 
 // replayCap bounds how many RETAINED (replayed) events per repo one pass presents.
-// It reuses the poller's own per-repo burst knob, so retention cannot route around
-// the bound the poller already applies to a fresh delta. The rest stay retained and
-// are named as deferred and presented oldest first once an earlier retained event
-// is discharged (settled judgment, accountable rejection) or retired. An event that
-// stays owed or unreadable keeps its slot, which is why the deferral is named on
-// every pass rather than silent.
+// By default it reuses the poller's own per-repo burst knob, so retention cannot
+// route around the bound the poller already applies to a fresh delta. The rest stay
+// retained and are named as deferred and presented oldest first once an earlier
+// retained event is discharged (settled judgment, accountable rejection) or
+// retired. An event that stays owed or unreadable keeps its slot, which is why the
+// deferral is named on every pass rather than silent.
+//
+// INTAKE_REPLAY_CAP is an operator's explicit choice to present a larger (or
+// smaller) retained batch per pass, for a backlog that is already retained. It is
+// read first; a positive integer wins. Unset, empty, zero, negative or unparseable
+// falls through unchanged to INBOUND_MONITOR_BURST_CAP, then 25. The poller never
+// reads it, so what the poller admits for a fresh delta does not move.
 func replayCap() int {
-	if v, err := strconv.Atoi(strings.TrimSpace(os.Getenv("INBOUND_MONITOR_BURST_CAP"))); err == nil && v > 0 {
-		return v
+	for _, name := range []string{"INTAKE_REPLAY_CAP", "INBOUND_MONITOR_BURST_CAP"} {
+		if v, err := strconv.Atoi(strings.TrimSpace(os.Getenv(name))); err == nil && v > 0 {
+			return v
+		}
 	}
 	return 25
 }
@@ -260,7 +269,7 @@ func retainingMonitor(dir string, scope []string, poll func() (*MonitorReport, e
 			exits, err = readExitRecords(filepath.Join(state, intakeExitsFile))
 			return err
 		}); err != nil {
-			return nil, deskkit.Unverifiable("cannot read accountable intake dispositions", err)
+			return nil, newAuditReadError(err)
 		}
 
 		before, err := baselineObservations(dir, scope)
@@ -382,3 +391,25 @@ func retainingMonitor(dir string, scope []string, poll func() (*MonitorReport, e
 		return report, nil
 	}
 }
+
+// AuditReadError is a pass that could not read the accountable intake dispositions (the exit
+// records and hand-off records under the desk audit lock). It is exit 6 like every could-not-check,
+// but it is NOT a blind poll: the inbound poll was never attempted, and the cause is the audit
+// store (a busy lock, an unreadable record), not the inbound surface. Its text leads with
+// "AUDIT-READ FAILURE" so a scheduled tick can report it as that and not as a blind pass.
+type AuditReadError struct{ Cause error }
+
+func newAuditReadError(cause error) *AuditReadError {
+	var de *deskkit.DeskError
+	if !errors.As(cause, &de) {
+		cause = deskkit.Unverifiable("audit store unreadable", cause)
+	}
+	return &AuditReadError{Cause: cause}
+}
+
+func (e *AuditReadError) Error() string {
+	return "scanloop run: AUDIT-READ FAILURE (not a blind poll — the inbound poll was not attempted): " +
+		"cannot read accountable intake dispositions: " + e.Cause.Error()
+}
+
+func (e *AuditReadError) Unwrap() error { return e.Cause }

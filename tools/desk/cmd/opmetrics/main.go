@@ -471,14 +471,19 @@ func Build(in Inputs, stderr io.Writer) Report {
 
 	// ---- gh-derived: intervention rate + decision latency ----
 	var interventionRate *float64
+	var mergedPRs *int
+	ghReason := ReasonNone
 	if in.GHJSON == "" {
+		ghReason = ReasonGHNotSupplied
 		rep.Intervention = InterventionBlock{Status: StatusCouldNotCheck, Reason: ReasonGHNotSupplied, OperatorMessages: operatorTotal}
 		rep.DecisionLatency = LatencyBlock{Status: StatusCouldNotCheck, Reason: ReasonGHNotSupplied}
 	} else if lr, err := ReadGH(in.GHJSON, in.Day); err != nil {
 		fmt.Fprintln(stderr, "could-not-check gh blocks: "+err.Error())
+		ghReason = ReasonGHUnreadable
 		rep.Intervention = InterventionBlock{Status: StatusCouldNotCheck, Reason: ReasonGHUnreadable, OperatorMessages: operatorTotal}
 		rep.DecisionLatency = LatencyBlock{Status: StatusCouldNotCheck, Reason: ReasonGHUnreadable}
 	} else {
+		mergedPRs = iptr(lr.MergedOnDate)
 		ib := InterventionBlock{OperatorMessages: operatorTotal, MergedPRs: iptr(lr.MergedOnDate)}
 		switch {
 		case operatorTotal == nil:
@@ -513,6 +518,16 @@ func Build(in Inputs, stderr io.Writer) Report {
 		}
 		rep.DecisionLatency = lb
 	}
+
+	// ---- dispatch split + subagent spend (the autonomy ladder's rungs 3–4) ----
+	// Same transcript pass as the operator block, so the same blindness: when the
+	// operator block could not read transcripts, neither block reports a zero.
+	blind := ReasonNone
+	if rep.Operator.Status != StatusOK {
+		blind = rep.Operator.Reason
+	}
+	rep.Dispatch = buildDispatchBlock(tr, blind)
+	rep.TokenEfficiency = buildTokenBlock(tr, blind, mergedPRs, ghReason)
 
 	// ---- session hygiene: beacons + claims ----
 	hb := rep.SessionHygiene

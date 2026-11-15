@@ -5,7 +5,7 @@ package main
 // evaluation.BuildMilestoneGraph; this file only maps what the scan already
 // observed — stream rows, brief-v4 start requirements, the record loader's
 // milestone plans and each root's selected source snapshot — onto its explicit
-// input values, and writes the typed result back as eligibility gates.
+// input values. EvaluateReadiness supplies the typed eligibility gates.
 //
 // It replaces the blanket hold brief-v4 used to place on every
 // requires-milestones entry (a could-not-check gate whatever the graph said).
@@ -202,7 +202,7 @@ func briefGraphKey(ctx *workref.Context, stream, num string) string {
 }
 
 // applyMilestoneStartGates builds the combined graph after the scan and writes
-// each brief-v4 start requirement onto its row as a resolved eligibility gate.
+// each brief-v4 start requirement onto its row via EvaluateReadiness.
 // A cycle through a milestone is a PROBLEM: a brief requiring its own
 // containing milestone, directly or across roots, is refused.
 func applyMilestoneStartGates(add, notice func(string, ...any), streams []*Stream, pending []milestoneStartPending, snaps map[string]briefSnapshot, regFor func(string) *graphRepos) {
@@ -216,6 +216,36 @@ func applyMilestoneStartGates(add, notice func(string, ...any), streams []*Strea
 			add("milestone graph: dependency cycle %s — a brief cannot require a milestone its own work completes; refused", strings.Join(c, " -> "))
 		}
 	}
+	observations := &evaluation.MilestoneInput{Graph: g}
+	for _, p := range pending {
+		if why := heldWhy[p.row]; why != "" {
+			observations.Unknowns = append(observations.Unknowns, why)
+		}
+	}
+	for _, s := range streams {
+		if s.Milestones != nil {
+			for _, u := range s.Milestones.Unknowns {
+				observations.Unknowns = append(observations.Unknowns, s.Name+": "+u.Reason)
+			}
+		}
+	}
+	applyMilestoneReadiness(notice, streams, pending, keyOf, heldWhy, observations)
+
+}
+
+// applyMilestoneReadiness maps explicit graph/receipt observations through the
+// canonical owner. Production supplies no selector/subjects/acceptance yet.
+func applyMilestoneReadiness(notice func(string, ...any), streams []*Stream, pending []milestoneStartPending, keyOf map[*Brief]string, heldWhy map[*Brief]string, milestones *evaluation.MilestoneInput) {
+	es := evaluationStreams(streams)
+	for i, s := range streams {
+		for j := range s.Briefs {
+			es[i].Briefs[j].Key = keyOf[&s.Briefs[j]]
+		}
+	}
+	result := evaluation.EvaluateReadiness(evaluation.EligibilityInput{Streams: es, Milestones: milestones})
+	for _, s := range streams {
+		s.MilestoneReadiness = &result
+	}
 	for _, p := range pending {
 		row := p.row
 		gates := append([]GraphEdge(nil), row.Gates...)
@@ -228,19 +258,13 @@ func applyMilestoneStartGates(add, notice func(string, ...any), streams []*Strea
 				gates = append(gates, GraphEdge{Ref: m, Type: "behavioural-gate", Reason: "requires-milestones", Resolved: StateCouldNotCheck, Why: why})
 				notice("%s: requires-milestones %s — held could-not-check: %s", p.path, m, why)
 			}
-			row.Gates = gates
-			continue
-		}
-		for _, gate := range g.Briefs[key].Gates {
-			state, why := StateCouldNotCheck, strings.Join(gate.Unknowns, "; ")
-			if gate.State == evaluation.GraphBlocked || gate.State == evaluation.GraphCycle {
-				state, why = StateUnsatisfied, strings.Join(gate.Blockers, "; ")
-				if len(gate.Unknowns) > 0 {
-					why += "; also unknown: " + strings.Join(gate.Unknowns, "; ")
+		} else {
+			for _, gate := range result.StartGates[key] {
+				gates = append(gates, GraphEdge{Ref: gate.Ref, Type: gate.Type, Reason: gate.Reason, Resolved: gate.State, Why: gate.Why})
+				if gate.State != StateSatisfied {
+					notice("%s: requires-milestones %s — held %s (%s): %s", p.path, gate.Ref, gate.State, strings.TrimPrefix(gate.Reason, "requires-milestones: "), gate.Why)
 				}
 			}
-			gates = append(gates, GraphEdge{Ref: gate.Spelling, Type: "behavioural-gate", Reason: "requires-milestones: milestone " + string(gate.State), Resolved: state, Why: why})
-			notice("%s: requires-milestones %s — held %s (milestone %s): %s", p.path, gate.Spelling, state, gate.State, why)
 		}
 		row.Gates = gates
 	}

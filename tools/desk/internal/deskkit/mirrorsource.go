@@ -108,17 +108,17 @@ func (s *MirrorReadSource) Read(ctx context.Context, kind MirrorRecordKind, q ad
 // These methods delegate to the existing admitted Access; the adapters own the
 // fixed request shape, pagination and reduction for both providers.
 func (g *GitHubForge) ChangesUpdatedSince(ctx context.Context, repo ForgeRepo, q adapters.UpdateQuery) (adapters.ChangeUpdates, error) {
-	return ghupdates.New(WithForgeReadContext(g, ctx).(*GitHubForge).sharedAccess(), nil).ChangesUpdatedSince(ctx, repo.Slug(), q)
+	return ghupdates.New(g.mirrorAccess(ctx), nil).ChangesUpdatedSince(ctx, repo.Slug(), q)
 }
 
 func (g *GitHubForge) IssuesUpdatedSince(ctx context.Context, repo ForgeRepo, q adapters.UpdateQuery) (adapters.IssueUpdates, error) {
-	return ghupdates.New(WithForgeReadContext(g, ctx).(*GitHubForge).sharedAccess(), nil).IssuesUpdatedSince(ctx, repo.Slug(), q)
+	return ghupdates.New(g.mirrorAccess(ctx), nil).IssuesUpdatedSince(ctx, repo.Slug(), q)
 }
 
 func (g *GitLabForge) ChangesUpdatedSince(ctx context.Context, repo ForgeRepo, q adapters.UpdateQuery) (adapters.ChangeUpdates, error) {
-	return glupdates.New(WithForgeReadContext(g, ctx).(*GitLabForge).sharedAccess(), nil).ChangesUpdatedSince(ctx, repo.Slug(), q)
+	return glupdates.New(g.mirrorAccess(ctx), nil).ChangesUpdatedSince(ctx, repo.Slug(), q)
 }
 
 func (g *GitLabForge) IssuesUpdatedSince(ctx context.Context, repo ForgeRepo, q adapters.UpdateQuery) (adapters.IssueUpdates, error) {
-	return glupdates.New(WithForgeReadContext(g, ctx).(*GitLabForge).sharedAccess(), nil).IssuesUpdatedSince(ctx, repo.Slug(), q)
+	return glupdates.New(g.mirrorAccess(ctx), nil).IssuesUpdatedSince(ctx, repo.Slug(), q)
 }

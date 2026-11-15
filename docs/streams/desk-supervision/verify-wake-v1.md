@@ -91,6 +91,22 @@ keys, and a reader older than the slash form reports could-not-check on a
 `scope:<decl>/` key, never unchanged. Custom readers must opt into the optional scope-completeness interface to
 provide this authoring-aware check; opaque reader semantics otherwise stay intact.
 
+**A tool-only change holds (2026-11-04, #2310).** The `tool` key stays a recorded input: the
+receipt says truthfully which tool version ran. But when the tool version is the **only**
+declared input whose revision differs, the receipt **holds**, with a reason naming the change
+(`tool-only change (<was> -> <now>); blocker unmoved`), and the planner goes on to read the
+blocker as for an unchanged receipt. A tool release by itself does not move a blocker: across
+four releases every tool-only wake re-surfaced an unmoved blocker and no re-run changed a
+verdict, so the wake cost one fleet-wide re-dispatch per release and nothing else. A tool
+change together with any other changed input still fires, and the changed list names every
+key, `tool` included. An unreadable input still makes the read could-not-check. A verifier who
+believes a release fixed the blocker uses `explicit-recheck-with-reason`, or a
+`referenced-action-completed` blocker that names the fixing change. Nobody re-declares a
+receipt's tool version to force a hold. Verify rows that passed under the earlier tool
+version are carried forward as passed after a tool-only change; they are not re-run under the
+new tool. The test is on the input **key**: a declared file whose path is `tool` (key
+`file:tool`) is a file input, and its change wakes.
+
 ### Blocker kinds (closed set) → next actor
 
 `implementation` → worker · `check-definition` → brief-author · `human-action` → human ·
@@ -169,7 +185,7 @@ could-not-check until an authorized online reader supplies it).
 | State | When | Scheduling effect |
 |---|---|---|
 | **hold** | a complete receipt whose wake condition is not met | a VISIBLE `wait` row naming the blocker + next actor; excluded from costly dispatch |
-| **fire** | the wake condition was met (input/tool/Verify-def changed, action completed, deadline reached, explicit recheck) | dispatch the affected work |
+| **fire** | the wake condition was met (input/Verify-def changed, possibly with the tool too; action completed, deadline reached, explicit recheck) | dispatch the affected work |
 | **could-not-check** | a declared input could not be read | surfaced as could-not-check — never rounded up to unchanged, never an empty queue or a pass |
 | **unclassified** | a legacy or incomplete receipt (missing schema/id, unknown vocabulary, or an empty input scope for `relevant-input-changed`) | eligible for exactly one ordinary classification pass; never a fabricated hold |
 

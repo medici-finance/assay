@@ -1,0 +1,7 @@
+# regression: #4769
+# A # inside an expansion in a rule target is not a comment: make expands
+# the target and reads a second deskd-image rule.
+want: target-missing
+file: Makefile
+replace: "\n## skillslint: validate"
+with: "\n$(if x#,deskd-image):\n\t@echo \"skipped\"\n\n## skillslint: validate"

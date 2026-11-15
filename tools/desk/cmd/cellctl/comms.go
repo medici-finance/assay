@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
-	"github.com/medici-finance/assay/tools/desk/internal/cellprocess"
+	"github.com/medici-finance/assay/tools/desk/internal/cellrunner"
 	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/runnertable"
@@ -246,7 +246,7 @@ func cmdComms(cell string, args []string) {
 			die("comms endpoint already exists; inspect the prior gateway before restarting")
 		}
 	}
-	ctx, stop := cellprocess.NotifyContext(context.Background())
+	ctx, stop := cellrunner.NotifyContext(context.Background())
 	defer stop()
 	fmt.Printf("[comms] cell=%s mode=interim endpoint=%s; starting gateway and mailbox drain\n", c.Name, cfg.Socket)
 	err = lease.RunInteractive(ctx, c.Name, "comms", func(ctx context.Context) cellcadence.Result {
@@ -296,7 +296,7 @@ func runCommsPair(ctx context.Context, commands [][]string, env []string) cellca
 	results := make(chan cellcadence.Result, len(commands))
 	for _, command := range commands {
 		go func(argv []string) {
-			code, uncertain, err := cellprocess.Run(ctx, argv, env, "", os.Stdout, os.Stderr)
+			code, uncertain, err := cellrunner.Run(ctx, argv, env, "", os.Stdout, os.Stderr)
 			results <- cellcadence.Result{ExitCode: code, Uncertain: uncertain, Err: err}
 		}(command)
 	}

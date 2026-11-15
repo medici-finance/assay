@@ -25,7 +25,9 @@ package deskkit
 //
 // The fix for a refused brief is to rewrite its Context `files:` block in
 // the grammar BriefDeclaredFiles reads; the parser is deliberately not
-// loosened to accept prose.
+// loosened to accept prose. The one wrap it reads is a bullet's description
+// continued onto deeper-indented lines, which parses as the joined bullet
+// would (TestScopeWrappedEqualsJoined); any other wrapped prose is refused.
 
 import (
 	"bufio"

@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/medici-finance/assay/tools/desk/internal/cellprocess"
+	"github.com/medici-finance/assay/tools/desk/internal/cellrunner"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-var indexProcess = cellprocess.Run
+var indexProcess = cellrunner.Run
 
 // RunIndexes is the legacy index-only maintenance operation. Its caller holds
 // the shared main-then-temprefs locks and owns attempt cadence. The factory is

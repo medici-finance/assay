@@ -27,7 +27,9 @@
 #                       that reads it, so the value never enters a URL or argv.
 #                       That push also resets every http extraheader key by
 #                       name (#5004), so a header left by the runner's checkout
-#                       cannot outrank the helper; no config file is edited.
+#                       cannot outrank the helper, and a url.*.insteadOf
+#                       rewrite that would put a URL credential on the push
+#                       URL is undone for that push; no config file is edited.
 #   PUSHCRED_LOG        where the masked output of the last push lands
 #                       (default: a mktemp file; a path that does not exist yet
 #                       is created mode 0600).
@@ -127,6 +129,20 @@ pushcred_push() {
     # config is read after every file. Names only are listed, never a value.
     # No config file is edited in any scope, so later git in the same job (the
     # regen's `ls-remote origin`) still authenticates the way the runner set up.
+    # The destination (first operand of the push) is read first; see below.
+    _pc_dest=
+    _pc_skip=0
+    for _pc_a in "$@"; do
+      if [ "$_pc_skip" = 1 ]; then _pc_skip=0; continue; fi
+      if [ "$_pc_skip" = repo ]; then _pc_dest=$_pc_a; break; fi
+      case $_pc_a in
+        --repo=*) _pc_dest=${_pc_a#--repo=}; break ;;
+        --repo) _pc_skip=repo ;;
+        --receive-pack | --exec | -o | --push-option) _pc_skip=1 ;;
+        -*) ;;
+        *) _pc_dest=$_pc_a; break ;;
+      esac
+    done
     set -- push "$@"
     _pc_n=0
     _pc_names=$(git config --name-only --get-regexp '^http\.(.+\.)?extraheader$' 2>/dev/null) || {
@@ -146,6 +162,67 @@ $_pc_names
 EOF
     if [ "$_pc_n" -gt 0 ]; then
       echo "pushcred: reset $_pc_n http extraheader key(s) for this push, so the board credential is the one git sends." >&2
+    fi
+    # A url.<base>.insteadOf rewrite outranks the helper too (#5004). A
+    # runner's checkout can map its instance host to a base that carries the
+    # job token as URL userinfo, and git uses URL userinfo without asking any
+    # helper, so the push would again go out as the job token. git is asked,
+    # offline, where the destination resolves to. When that URL carries
+    # userinfo, a pushInsteadOf for this one push sends it to the same URL
+    # without the userinfo, so the helper answers; git applies pushInsteadOf
+    # to a push URL in place of insteadOf. A rewrite with no credential in it
+    # is left alone. The pin is applied only when the resolved URL keeps the
+    # destination's scheme and host (port included, compared exactly): a
+    # rewrite that points at a different host is never pinned, because the
+    # pin would hand the board credential to that host. That push goes out
+    # as the rewrite says and fails closed, with a NOTICE. xtrace is paused
+    # while the resolved URL is held, and neither it nor the rewrite's key
+    # (whose name holds the credential) is printed. A destination given as a
+    # remote name cannot be pinned this way, so a credential in its push URL
+    # is a NOTICE.
+    _pc_xt=
+    case $- in *x*) _pc_xt=1 ; set +x ;; esac
+    _pc_pin=
+    _pc_cred=0
+    _pc_xhost=0
+    case $_pc_dest in
+      *://*) _pc_rw=$(git ls-remote --get-url "$_pc_dest" 2>/dev/null) || _pc_rw= ;;
+      *) _pc_rw=$(git remote get-url --push "${_pc_dest:-origin}" 2>/dev/null) || _pc_rw= ;;
+    esac
+    case $_pc_rw in
+      *://*)
+        _pc_rest=${_pc_rw#*://}
+        _pc_auth=${_pc_rest%%/*}
+        case $_pc_auth in
+          *@*)
+            _pc_cred=1
+            case $_pc_dest in
+              *://*)
+                _pc_dhost=${_pc_dest#*://}
+                _pc_dhost=${_pc_dhost%%/*}
+                if [ "${_pc_rw%%://*}://${_pc_auth##*@}" = "${_pc_dest%%://*}://${_pc_dhost##*@}" ]; then
+                  _pc_pin="url.${_pc_rw%%://*}://${_pc_auth##*@}${_pc_rest#"$_pc_auth"}.pushInsteadOf=$_pc_dest"
+                else
+                  _pc_xhost=1
+                fi
+                _pc_dhost=
+                ;;
+            esac
+            ;;
+        esac
+        ;;
+    esac
+    _pc_rw=
+    _pc_rest=
+    _pc_auth=
+    if [ -n "$_pc_xt" ]; then set -x; fi
+    if [ -n "$_pc_pin" ]; then
+      set -- -c "$_pc_pin" "$@"
+      echo "pushcred: the push URL resolves through a url.*.insteadOf rewrite that carries a URL credential; pushing to the same URL without it, so the board credential is the one git sends." >&2
+    elif [ "$_pc_xhost" = 1 ]; then
+      echo "NOTICE: pushcred: the push URL resolves through a url.*.insteadOf rewrite that carries a URL credential and points at a different scheme or host than the destination; not pinning it, so the board credential is not sent there and the push goes out as the rewrite says." >&2
+    elif [ "$_pc_cred" = 1 ]; then
+      echo "NOTICE: pushcred: the push URL of remote ${_pc_dest:-origin} carries a URL credential, which git sends instead of the board credential; pass the destination as a URL." >&2
     fi
     # The helper text carries the variable's NAME; the helper's own shell reads
     # the value at run time, so it is in no URL, no argv and no config dump.

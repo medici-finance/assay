@@ -37,6 +37,9 @@ func (c *Cell) kubeProfileE() (*kc.Profile, string, error) {
 	if c.Env.Get("CELL_DB_PASSFILE") != "" {
 		return nil, "", errors.New("CELL_DB_PASSFILE is a host-cell database key and a Kubernetes compatibility cell cannot honour it; unset it")
 	}
+	if c.roleSecretsConfigured() {
+		return nil, "", errors.New("CELL_ROLE_SECRETS binds only on a verified native container surface; a Kubernetes compatibility cell binds no role secret; unset it")
+	}
 	for _, role := range c.Roles {
 		if _, ok := p.Roles[role]; !ok {
 			return nil, "", errors.New("unconfigured compatibility role")

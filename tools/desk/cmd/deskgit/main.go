@@ -72,7 +72,7 @@ const usage = `deskgit — the desk's narrow git verb: refresh refs from origin,
 
 USAGE:
   deskgit fetch [--prune]         # refs/remotes/origin/* only (--prune drops stale ones, never a symbolic ref; no tags fetched)
-  deskgit fetch --pr <N>          # pull/<N>/head -> local branch pr<N> (N digits only)
+  deskgit fetch --pr <N>          # pull/<N>/head (GitLab: merge-requests/<N>/head) -> local branch pr<N> (N digits only)
   deskgit fetch --branch <B>      # origin's <B> -> local branch <B> (not main/master in any case)
   deskgit fetch --as <role>       # any fetch mode above, authenticated from <role>'s token file
   deskgit push --as <role>        # push the CURRENT branch to origin, authenticated (not main/master)

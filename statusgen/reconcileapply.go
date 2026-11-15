@@ -401,7 +401,7 @@ func rewriteStatusCell(content, num, newStatus string) (edit statusCellEdit, cha
 		}
 		cur := cells[statusIdx]
 		curTrim := strings.ToLower(strings.TrimSpace(cur))
-		if curTrim != "todo" && curTrim != "in-progress" {
+		if !reconcileMovesFrom(curTrim) {
 			return statusCellEdit{from: curTrim}, false // narrow transition only — every other state is immutable here
 		}
 		leading, trailing := cellPadding(cur)

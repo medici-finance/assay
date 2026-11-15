@@ -150,7 +150,26 @@ func cmdGitLabRotate(role string, ac *auditCtx, rotate bool, clients ...*http.Cl
 	if err != nil {
 		return ac.providerFailed(err)
 	}
-	// Success: print the PATH only.
+	// Success: print the PATH only, then say on stderr what that path IS (#6068). On GitLab
+	// the printed file is not a cache: a rotation invalidated the previous value and the
+	// successor exists nowhere else, so a caller that deletes it as scratch locks the role out.
 	fmt.Println(cred.Path)
+	fmt.Fprintln(os.Stderr, gitlabCustodyNotice(rotate))
 	return nil
+}
+
+// gitlabCustodyNoticeText is the stderr line every successful GitLab call prints after the
+// path. The GitHub arm prints tokenPathNotice instead and never this: a GitHub token file is a
+// re-mintable cache, a GitLab one is the role's only copy.
+const gitlabCustodyNoticeText = "desktoken: NOTICE — stdout above is this role's GitLab CUSTODY FILE: it holds the " +
+	"ONLY copy of the credential. Never delete, move or overwrite it, and never treat it as a " +
+	"temporary file. Read-only callers use `desktoken --no-rotate <role> --repo <slug>`; " +
+	"recovery from a lost file: docs/adopting-assay-gitlab.md §5."
+
+// gitlabCustodyNotice prefixes the notice with what this call did, so a rotation is never silent.
+func gitlabCustodyNotice(rotated bool) string {
+	if rotated {
+		return "desktoken: rotated — the previous value is now invalid.\n" + gitlabCustodyNoticeText
+	}
+	return gitlabCustodyNoticeText
 }

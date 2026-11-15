@@ -10,7 +10,7 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: yes}
 issues: []
 schema: brief-v2
-version: 4
+version: 6
 authored: 2026-10-20 by Assay architecture authoring session
 sources:
   - https://github.com/medici-finance/assay/issues/3669
@@ -34,6 +34,9 @@ outcome: none
 ---
 
 # Brief 29 — Kubernetes desk cell, efficiency and recovery qualification
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -89,6 +92,10 @@ Implementation and ordinary checks are offline. The real-profile row is gate:hum
 requires explicit operator authorization and an identified disposable cluster owned by
 that run; no ambient context is used. Never probe production or trigger workflows.
 Independent verification owns Evidence; no process exit or script success flips work done.
+
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
 
 ## Task
 
@@ -147,6 +154,8 @@ Independent verification owns Evidence; no process exit or script success flips 
    capabilities and limits. Generic code, tests, profiles and runbooks live in Assay; source
    deployments retain private values and historical evidence only.
 
+- **Instance amendment:** Extend independent journey qualification to two heterogeneous workers and three reviewers, approximate role work pacing across two repositories, paused-peer preservation, divide-not-duplicate reviews and overlapping replacement with busy child/unknown-effect controls. Preserve all effective credential/RBAC/network, operator restart, rollback, attribution and zero-idle-launch checks. Production adapter fixture proof and separately authorized witnessed cluster proof remain distinct.
+
 ## Verify
 
 The real-profile row is deliberately a separate gate. An offline-only result is useful but
@@ -167,6 +176,7 @@ coverage. These inputs are future implementation-verification evidence, not clai
 | 3 | check +flow +mutation | `sh containers/k8s/qualify.sh --offline --suite efficiency` | exit 0; matched role fixtures preserve policy/coverage, zero idle/reconnect model calls and bounded work; duplicate usage, recursive finish scan or required-read removal fails |
 | 4 | gate:human +flow +mutation +dereference | `sh containers/k8s/qualify.sh --kubeconfig "$ASSAY_DISPOSABLE_KUBECONFIG" --context "$ASSAY_DISPOSABLE_CONTEXT" --allow-cluster-queries --suite real-profile` | exit 0 only with explicit authorization, kubeconfig/context, receipt-bound API/TLS identity and complete independent evidence; real terminal, transcript/API/node/downstream log custody (including denied readers and planted shared-log leakage), hostile containment, reschedule, partition, CNPG restore and fenced rollback satisfy operator-declared objectives. Missing target/evidence holds; no production or default context contact |
 | 5 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief desk-containers/29 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required consumers stay held and omitted consumers remain a review obligation |
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDeskInstancesJourney$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstancesJourney ' "$o")` | Named test executes (zero matching tests is not a pass); Production-path disposable fixture traverses desired population → supervisor → fake Kubernetes → claims/capacity → instance/API status and replacement. Mutation: duplicate one review assignment, permanently omit observed draining work from the estimate or resume a paused peer makes the journey fail. Actual activation additionally requires the existing independent effective-profile proof. |
 
 ## Pre-mortem
 

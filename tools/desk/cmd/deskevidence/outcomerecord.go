@@ -64,7 +64,15 @@ var nowFn = time.Now
 // absolute one pathWithin places inside it (symlink aliases included) is refused here, before
 // the file is read or the forge is touched. The dispatcher names the directory to use in the
 // verifier prompt. Without --root the path is read as given, unchanged.
-func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string, ac *auditCtx) error {
+//
+// outcomeOnly (--outcome-only, #5759) lands a record that names no Evidence, accepted only for
+// a non-decisive re-run of a verified or done brief whose Evidence append is refused
+// (outcomeonly.go).
+//
+// dryRun (--dry-run, #4554) runs every gate below exactly as a real landing does, then prints
+// the commits-API plan and stops before the write budget is spent and before any write. It is a
+// required parameter so this route cannot be reached without the dry-run decision.
+func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string, outcomeOnly, dryRun bool, ac *auditCtx) error {
 	if root != "" && (!filepath.IsAbs(localFile) || pathWithin(root, localFile)) {
 		return deskkit.Refused("refused: with --root, --outcome-record must be an absolute file OUTSIDE --root " +
 			"(the verifier home; a record inside it refuses admission) — write it to the dispatcher-named " +
@@ -277,7 +285,9 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if landedHead != "" {
 		closureRef = landedHead
 	}
-	if err := outcomeEvidenceBindingFn(evidenceRoot, fg, fr, closureRef, receipt, outcome.SHA); err != nil {
+	// The Evidence binding, or under --outcome-only the check that this run's Evidence
+	// append is exactly the one the verdict gate refuses (outcomeonly.go, #5759).
+	if err := gateOutcomeEvidence(outcomeOnly, evidenceRoot, landedRoot, targetRepoPath, fg, fr, closureRef, receipt, outcome, commitContent); err != nil {
 		return err
 	}
 	if err := outcomeObservationBindingFn(evidenceRoot, fg, fr, closureRef, receipt, outcome); err != nil {
@@ -337,13 +347,33 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		}
 	}
 
-	if werr := evidenceWriteBudget(toolName, repoSlug, 0); werr != nil {
-		return werr
-	}
-
+	// --dry-run stops HERE (#4554): after every gate that can refuse this record — mint,
+	// admission, the record-shape and redaction checks, the immutability read, the Evidence
+	// binding or --outcome-only check, the observation binding, the outbound scan, the
+	// public-repo gate, the closure and lint-diff guards and receipt validation — and before the
+	// write budget and the write. The on-behalf-of principal is resolved here too, so a record a
+	// real run would refuse for a missing principal refuses its dry-run as well. It is resolved
+	// ONCE, here, and the write path below reuses it.
 	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("", repoSlug)
 	if oerr != nil {
 		return oerr
+	}
+	if dryRun {
+		mode := "outcome record"
+		if outcomeOnly {
+			mode = "outcome-only record"
+		}
+		ac.successResult = deskkit.ResultNoop
+		ac.detail = fmt.Sprintf("dry-run: would create %s on %s via conditional forge write for %s (%s, sha256 %s)",
+			targetRepoPath, branch, repoSlug, mode, bodyDig)
+		fmt.Fprintf(stdout, "dry-run plan: conditional forge write to %s — create %s on branch %s (%s for %s), "+
+			"authenticated as the verifier App (%s); sha256 %s; no local `git commit` in this plan\n",
+			repoSlug, targetRepoPath, branch, mode, wr.Brief, deskkit.RoleAppLoginOrEmpty("verifier"), bodyDig)
+		return nil
+	}
+
+	if werr := evidenceWriteBudget(toolName, repoSlug, 0); werr != nil {
+		return werr
 	}
 
 	writeInput := deskkit.WriteFileInput{

@@ -1,0 +1,29 @@
+{
+  "test": "go test ./cmd/deskreply/... -count=1",
+  "control": {
+    "name": "CONTROL — disarm the own-origin guard (a reply may land on a repo that is not this worktree's origin)",
+    "file": "cmd/deskreply/deskreply.go",
+    "old": "\tif facts.repo != repo {",
+    "new": "\tif false && facts.repo != repo {"
+  },
+  "mutations": [
+    {
+      "name": "--kind mr posts on the ISSUE at the same number (the flag selects the wrong object)",
+      "file": "cmd/deskreply/exec.go",
+      "old": "\treturn fg.PostCommentTyped(fr, pr, kind, body)",
+      "new": "\treturn fg.PostCommentTyped(fr, pr, deskkit.TargetIssue, body)"
+    },
+    {
+      "name": "--kind is ignored and the untyped post runs (a colliding number still refuses with the flag)",
+      "file": "cmd/deskreply/exec.go",
+      "old": "\tif kind == \"\" {\n\t\treturn fg.PostComment(fr, pr, body)",
+      "new": "\tif true || kind == \"\" {\n\t\treturn fg.PostComment(fr, pr, body)"
+    },
+    {
+      "name": "--kind issue is no longer refused (a note lands on an object the own-PR check never read)",
+      "file": "cmd/deskreply/exec.go",
+      "old": "\tif kind == deskkit.TargetIssue {",
+      "new": "\tif false && kind == deskkit.TargetIssue {"
+    }
+  ]
+}

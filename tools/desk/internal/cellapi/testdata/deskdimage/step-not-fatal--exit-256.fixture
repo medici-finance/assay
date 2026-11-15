@@ -1,0 +1,7 @@
+# regression: #4769
+# The shell reduces an exit status modulo 256, so exit 256 before the build
+# ends the line with status 0: neither the build nor the scan runs.
+want: step-not-fatal
+file: Makefile
+replace: "\tdocker build -f images/deskd/Dockerfile --build-arg"
+with: "\texit 256; \\\n\tdocker build -f images/deskd/Dockerfile --build-arg"

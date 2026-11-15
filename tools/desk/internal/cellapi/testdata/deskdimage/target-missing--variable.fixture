@@ -1,0 +1,7 @@
+# regression: #4769
+# A second rule whose target is named through a variable overrides the held
+# recipe; the checker cannot resolve the name, so it counts the rule.
+want: target-missing
+file: Makefile
+replace: "\n## skillslint: validate"
+with: "\nZZT := deskd-image\n$(ZZT):\n\t@echo \"skipped\"\n\n## skillslint: validate"

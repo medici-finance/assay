@@ -22,6 +22,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -438,6 +439,10 @@ func (g *gen) schemaRef(t reflect.Type) map[string]any {
 	return g.schemaFor(t)
 }
 
+// rawMessageType is json.RawMessage as reflect sees it on the running
+// toolchain: json.RawMessage itself before Go 1.27, jsontext.Value after.
+var rawMessageType = reflect.TypeOf(json.RawMessage(nil))
+
 func (g *gen) schemaFor(t reflect.Type) map[string]any {
 	if t.Kind() == reflect.Ptr {
 		s := g.schemaFor(t.Elem())
@@ -447,7 +452,11 @@ func (g *gen) schemaFor(t reflect.Type) map[string]any {
 	if t == reflect.TypeOf(time.Time{}) {
 		return map[string]any{"type": "string", "format": "date-time"}
 	}
-	if t.PkgPath() == "encoding/json" && t.Name() == "RawMessage" {
+	// Match json.RawMessage by type IDENTITY, never by its package path and
+	// name: from Go 1.27 json.RawMessage is an alias of jsontext.Value, so
+	// reflect reports PkgPath "encoding/json/jsontext" and Name "Value" and a
+	// name match silently stops firing.
+	if t == rawMessageType {
 		return map[string]any{"description": "arbitrary JSON payload, shaped by the event type"}
 	}
 	switch t.Kind() {

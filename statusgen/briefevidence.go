@@ -35,7 +35,7 @@ func (a *authoringClassifier) notImplementation(number int, briefID string) (boo
 	if only, _ = evidenceOnlyReason(shape); !only {
 		r, ok := a.shapes[number]
 		if !ok {
-			r.shape, r.err = reconcileFlipSource(modelReviewer().Forge).PRShape(a.repo, number)
+			r.shape, r.err = reconcileFlipSource(modelReviewer().Forge, a.client.token).PRShape(a.repo, number)
 			a.shapes[number] = r
 		}
 		if r.err != nil {

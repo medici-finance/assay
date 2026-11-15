@@ -24,6 +24,8 @@ gate-why: >-
   security-posture change a model must not self-certify. A human confirms the new path
   preserves the roster/allowed-repo gate and the token-containment guarantee before the
   old fences are removed.
+decision-issue: 2371
+ruling: "https://github.com/medici-finance/assay/issues/2371#issuecomment-6454737633"
 why: >-
   Fetch is where the git-binary threat model concentrated: config-named programs, env
   injection, upload-pack override, remote helpers, insteadOf, PATH trust. gitcore.Fetch

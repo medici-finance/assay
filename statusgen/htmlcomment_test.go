@@ -69,8 +69,14 @@ func TestLaterWitnessAfterOpener(t *testing.T) {
 			if !evidenceHasIndependentRow(evidence) {
 				t.Error("evidenceHasIndependentRow did not see the independent row after a stray opener")
 			}
-			if d, r := evidenceVerifierInfo(evidence); d != "2026-09-22" || r != "sample-verifier" {
-				t.Errorf("evidenceVerifierInfo after a stray opener = (%q, %q)", d, r)
+			// The stamp's row reader reads past the opener; the stamp reader
+			// itself, like the closure verbs, refuses a record carrying an
+			// unterminated opener (latestPassSpan, #5229) rather than stamp it.
+			if rows, _ := flipDateRunnerRows(strings.Split(evidence, "\n")); len(rows) != 1 || rows[0] != [2]string{"2026-09-22", "sample-verifier"} {
+				t.Errorf("flipDateRunnerRows after a stray opener = %v", rows)
+			}
+			if d, r := evidenceVerifierInfo(evidence + "\n**VERIFY: PASS**\n"); d != "" || r != "" {
+				t.Errorf("evidenceVerifierInfo stamped (%q, %q) from a record with an unterminated opener", d, r)
 			}
 			unrun := tc.opener + "| # | Command | Result |\n|---|---|---|\n| 1 | `true` | UNRUN — no runner |\n"
 			if got := unrunRowsText(unrun); !strings.Contains(got, "UNRUN — no runner") {

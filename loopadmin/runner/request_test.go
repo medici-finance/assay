@@ -560,8 +560,11 @@ func TestSchemaRefusesBlankTool(t *testing.T) {
 }
 
 // TestNoGraphDependency retains graph/store isolation while admitting only the
-// existing credential-free local perfrec module, whose implementation is stdlib-only.
+// existing credential-free local perfrec module, whose implementation is stdlib-only,
+// and the two pinned golang.org/x modules the moved process runner (loopadmin/process)
+// needs for process-group, job-object and terminal handling.
 // regression: desktools-v2/64
+// regression: graph-execution/26
 func TestNoGraphDependency(t *testing.T) {
 	if err := runnerModules(".."); err != nil {
 		t.Fatal(err)
@@ -572,13 +575,16 @@ func TestNoGraphDependency(t *testing.T) {
 	// Plant a second module through the SAME go-list boundary. No download or
 	// dependency installation occurs: both synthetic requirements have local homes.
 	root := t.TempDir()
-	for _, name := range []string{"perfrec", "forbidden", "runner"} {
+	for _, name := range []string{"perfrec", "forbidden", "runner", "xsys"} {
 		if err := os.Mkdir(filepath.Join(root, name), 0700); err != nil {
 			t.Fatal(err)
 		}
 		module := "github.com/medici-finance/assay/perfrec"
-		if name == "forbidden" {
+		switch name {
+		case "forbidden":
 			module = "example.test/forbidden"
+		case "xsys":
+			module = "golang.org/x/sys"
 		}
 		if err := os.WriteFile(filepath.Join(root, name, "go.mod"), []byte("module "+module+"\n\ngo 1.27.0\n"), 0600); err != nil {
 			t.Fatal(err)
@@ -593,6 +599,15 @@ func TestNoGraphDependency(t *testing.T) {
 	if err := runnerModules(site); err != nil {
 		t.Fatalf("positive control: %v", err)
 	}
+	// An admitted golang.org/x module is admitted only at its pinned, unreplaced
+	// version: a locally replaced copy is refused.
+	swapped := body + "\nrequire golang.org/x/sys v0.0.0\nreplace golang.org/x/sys => ../xsys\n"
+	if err := os.WriteFile(mod, []byte(swapped), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runnerModules(site); err == nil {
+		t.Fatal("replaced golang.org/x/sys passed isolation check")
+	}
 	body += "\nrequire example.test/forbidden v0.0.0\nreplace example.test/forbidden => ../forbidden\n"
 	if err := os.WriteFile(mod, []byte(body), 0600); err != nil {
 		t.Fatal(err)
@@ -600,6 +615,13 @@ func TestNoGraphDependency(t *testing.T) {
 	if err := runnerModules(site); err == nil {
 		t.Fatal("planted second dependency passed isolation check")
 	}
+}
+
+// admittedXModules are the only third-party modules in the loopadmin closure:
+// the exact versions tools/desk already pins, never replaced.
+var admittedXModules = map[string]string{
+	"golang.org/x/sys":  "v0.49.0",
+	"golang.org/x/term": "v0.47.0",
 }
 
 func runnerModules(dir string) error {
@@ -615,6 +637,7 @@ func runnerModules(dir string) error {
 	for {
 		var module struct {
 			Path    string
+			Version string
 			Main    bool
 			Replace *struct{ Path, Version string }
 		}
@@ -633,12 +656,18 @@ func runnerModules(dir string) error {
 				return fmt.Errorf("perfrec must use the exact admitted local edge")
 			}
 		default:
-			return fmt.Errorf("runner module closure includes an unadmitted dependency")
+			want, ok := admittedXModules[module.Path]
+			if !ok {
+				return fmt.Errorf("runner module closure includes an unadmitted dependency")
+			}
+			if module.Replace != nil || module.Version != want {
+				return fmt.Errorf("%s must be the pinned, unreplaced %s", module.Path, want)
+			}
 		}
 		seen[module.Path] = true
 	}
-	if len(seen) != 2 {
-		return fmt.Errorf("runner module closure must contain only runner and local perfrec")
+	if !seen["github.com/medici-finance/assay/loopadmin"] || !seen["github.com/medici-finance/assay/perfrec"] {
+		return fmt.Errorf("runner module closure must contain the runner and local perfrec")
 	}
 	return nil
 }

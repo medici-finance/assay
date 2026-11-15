@@ -1,0 +1,88 @@
+{
+  "schema": "opmetrics/2",
+  "date": "2026-07-22",
+  "generatedAt": "2026-07-22T15:00:00Z",
+  "classifierVersion": "opmetrics-relay/2",
+  "relay_ratio": 0,
+  "operator": {
+    "status": "ok",
+    "messages_total": 3,
+    "messages_classified": 3,
+    "relay_messages": 0,
+    "substantive_messages": 3,
+    "empty_messages": 0,
+    "relay_ratio": 0,
+    "relay_families": {
+      "sync": 0,
+      "state_echo": 0,
+      "poke": 0,
+      "lookup": 0,
+      "duplicate": 0
+    },
+    "attention_families": {
+      "route": 0,
+      "status": 0,
+      "toil": 0,
+      "correction": 0,
+      "decision": 0,
+      "idea": 0,
+      "ack": 0,
+      "other": 3
+    },
+    "transcript_files": 5,
+    "unparseable_lines": 0
+  },
+  "intervention": {
+    "status": "ok",
+    "operator_messages": 3,
+    "merged_prs": 5,
+    "messages_per_merged_pr": 0.6
+  },
+  "decision_latency": {
+    "status": "ok",
+    "samples": 5,
+    "p50_minutes": 120,
+    "p90_minutes": 1440,
+    "basis": {
+      "ready_flip": 2,
+      "decision_request": 1,
+      "created_at": 2
+    }
+  },
+  "session_hygiene": {
+    "status": "ok",
+    "sessions_observed": 1,
+    "sessions_over_24h": 0,
+    "roster_beacons": 5,
+    "zombie_agents": 2,
+    "claims_filed": 2,
+    "claims_open": 3,
+    "sessions_active": 2,
+    "unparseable_files": 2
+  },
+  "correction_recurrence": {
+    "status": "ok",
+    "corrective_messages": 0,
+    "recurrence_candidates": 0
+  },
+  "dispatch": {
+    "status": "ok",
+    "total_dispatches": 9,
+    "loop_initiated": 4,
+    "operator_initiated": 2,
+    "unattributed": 3
+  },
+  "token_efficiency": {
+    "status": "ok",
+    "subagent_tokens": 3255,
+    "merged_prs": 5,
+    "noop_dispatches": 2,
+    "total_dispatches": 4,
+    "reports_unread": 1,
+    "noop_classifier": "opmetrics-noop/1"
+  },
+  "unmeasured": [
+    "prompt-blockage",
+    "operator-think-time"
+  ]
+}

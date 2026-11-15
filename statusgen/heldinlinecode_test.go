@@ -37,6 +37,16 @@ type heldScanCase struct {
 
 func runHeldScanCases(t *testing.T, cases []heldScanCase) {
 	t.Helper()
+	runHeldScanCasesFlip(t, cases, nil)
+}
+
+// runHeldScanCasesFlip is runHeldScanCases with flipAdmits naming the cases
+// only the flip-side read (flipHeldRefusal, rule 3c) admits. Every case is
+// checked at all three reads: the card and close-verify reads must decide as
+// written whatever flipAdmits says, and the flip read must agree with them
+// except on a named case, where it admits.
+func runHeldScanCasesFlip(t *testing.T, cases []heldScanCase, flipAdmits map[string]bool) {
+	t.Helper()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			held, why := verifyPassHeldContradiction(tc.evidence)
@@ -48,6 +58,10 @@ func runHeldScanCases(t *testing.T, cases []heldScanCase) {
 			err := closeVerifyHeldRefusal("ic/01", "verified", tc.evidence)
 			if (err != nil) != tc.wantHeld {
 				t.Errorf("closeVerifyHeldRefusal err=%v, want refusal=%v", err, tc.wantHeld)
+			}
+			wantFlip := tc.wantHeld && !flipAdmits[tc.name]
+			if err := flipHeldRefusal("ic/01", "verified", tc.evidence); (err != nil) != wantFlip {
+				t.Errorf("flipHeldRefusal err=%v, want refusal=%v", err, wantFlip)
 			}
 		})
 	}

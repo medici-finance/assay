@@ -154,7 +154,7 @@ func humanStampProblems(root string, streams []*Stream) (problems, notices []str
 // undetected the first time). An explicit backslash-to-slash replacement
 // normalizes deterministically regardless of which OS is running the
 // binary, so TestRelPath_HandlesBothSeparatorStyles proves the fix on every
-// CI leg, not only windows-smoke.
+// CI leg; no native-Windows leg runs since #4106, so it is the only proof.
 func relPath(dir string) string {
 	dir = strings.ReplaceAll(dir, `\`, "/")
 	// The dir is typically an absolute path like /repo/docs/streams/name.

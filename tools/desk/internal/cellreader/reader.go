@@ -17,7 +17,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/medici-finance/assay/tools/desk/internal/cellprocess"
+	"github.com/medici-finance/assay/tools/desk/internal/cellrunner"
 )
 
 type Options struct{ Binary, SHA256, Model, Effort, Home, Workspace string }
@@ -154,7 +154,7 @@ func startNative(ctx context.Context, o Options) (*nativeRPC, func(), error) {
 		defer close(finished)
 		defer stdin.Close()
 		defer outputWrite.Close()
-		_, _, _ = cellprocess.RunInteractive(child, args, env, o.Workspace, stdin, outputWrite, io.Discard)
+		_, _, _ = cellrunner.RunInteractive(child, args, env, o.Workspace, stdin, outputWrite, io.Discard)
 	}()
 	go rpc.read(child, outputRead)
 	cleanup := func() { cancel(); writer.Close(); outputRead.Close(); <-finished; <-rpc.done }

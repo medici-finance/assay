@@ -4,24 +4,24 @@
   "seam_ceiling": 108,
   "reasons": {
     "s001": {
-      "operation": "historyGit(dir, \"rev-list\", \"--first-parent\", \"HEAD\", \"^\"+delivery)",
+      "operation": "historyGit(dir, \"rev-list\", \"--first-parent\", \"--reverse\", \"HEAD\", \"^\"+predecessor)",
       "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
-      "owner": "statusgen/acceptancetransition.go — acceptanceTransition caller maintainer"
+      "owner": "statusgen/acceptancetransition.go — transitionFirstParents caller maintainer"
     },
     "s002": {
       "operation": "provenanceParents(dir, amendment)",
       "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
-      "owner": "statusgen/acceptancetransition.go — acceptanceTransition caller maintainer"
+      "owner": "statusgen/acceptancetransition.go — acceptanceStep caller maintainer"
     },
     "s003": {
       "operation": "historyGit(dir, \"show\", \"--end-of-options\", rev+\":./\"+file)",
       "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
-      "owner": "statusgen/acceptancetransition.go — acceptanceTransition caller maintainer"
+      "owner": "statusgen/acceptancetransition.go — transitionBriefBytes caller maintainer"
     },
     "s004": {
       "operation": "provenanceRepoTop(dir)",
       "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
-      "owner": "statusgen/acceptancetransition.go — acceptanceTransition caller maintainer"
+      "owner": "statusgen/acceptancetransition.go — acceptanceStep caller maintainer"
     },
     "s006": {
       "operation": "historyGit(dir, \"rev-parse\", \"--verify\", \"--quiet\", tree+\"^{commit}\")",
@@ -174,9 +174,9 @@
       "owner": "statusgen/containercredit.go — method.provenanceSetup caller maintainer"
     },
     "s036": {
-      "operation": "historyGit(cc.dir, \"remote\", \"get-url\", \"origin\")",
+      "operation": "historyGit(dir, \"remote\", \"get-url\", \"origin\")",
       "why": "Native configuration query retains include/scope/environment and URL rewrite behavior. The existing canonical parser/local RemoteURL accessor does not by itself establish the effective native query contract; no additional configuration resolver or authority widening is added.",
-      "owner": "statusgen/containercredit.go — method.recordSetup caller maintainer"
+      "owner": "statusgen/containercredit.go — shared attestationTrackingRepo caller maintainer"
     },
     "s037": {
       "operation": "exec.Command(\"git\", \"-C\", root, \"show\", ref+\":\"+filepath.ToSlash(path))",
@@ -421,7 +421,7 @@
     "s086": {
       "operation": "exec.Command(d.bin, argv...)",
       "why": "Opaque command, shell, forge/container or Verify executor. This conservative source bucket can launch Git but is not a repository-read API. Preserve its existing executable, process, cancellation and consent contract; no runtime Git frequency is inferred.",
-      "owner": "statusgen/forgeread.go — method.readItem caller maintainer"
+      "owner": "statusgen/forgeread.go — method.readVerb caller maintainer"
     },
     "s087": {
       "operation": "exec.Command(\"git\", \"-C\", root, \"merge-base\", a, b)",
@@ -1021,28 +1021,28 @@
   },
   "sites": [
     {
-      "key": "acceptancetransition.go::acceptanceTransition::seam#1",
-      "expression": "historyGit(dir, \"rev-list\", \"--first-parent\", \"HEAD\", \"^\"+delivery)",
-      "disposition": "retained",
-      "reason": "s001"
-    },
-    {
-      "key": "acceptancetransition.go::acceptanceTransition::seam#2",
+      "key": "acceptancetransition.go::acceptanceStep::seam#1",
       "expression": "provenanceParents(dir, amendment)",
       "disposition": "moved",
       "reason": "s002"
     },
     {
-      "key": "acceptancetransition.go::acceptanceTransition::seam#3",
+      "key": "acceptancetransition.go::acceptanceStep::seam#2",
+      "expression": "provenanceRepoTop(dir)",
+      "disposition": "moved",
+      "reason": "s004"
+    },
+    {
+      "key": "acceptancetransition.go::transitionBriefBytes::seam#1",
       "expression": "historyGit(dir, \"show\", \"--end-of-options\", rev+\":./\"+file)",
       "disposition": "retained",
       "reason": "s003"
     },
     {
-      "key": "acceptancetransition.go::acceptanceTransition::seam#4",
-      "expression": "provenanceRepoTop(dir)",
-      "disposition": "moved",
-      "reason": "s004"
+      "key": "acceptancetransition.go::transitionFirstParents::seam#1",
+      "expression": "historyGit(dir, \"rev-list\", \"--first-parent\", \"--reverse\", \"HEAD\", \"^\"+predecessor)",
+      "disposition": "retained",
+      "reason": "s001"
     },
     {
       "key": "acceptancetransition.go::transitionWitnessTree::seam#1",
@@ -1201,6 +1201,12 @@
       "reason": "s031"
     },
     {
+      "key": "containercredit.go::attestationTrackingRepo::seam#1",
+      "expression": "historyGit(dir, \"remote\", \"get-url\", \"origin\")",
+      "disposition": "retained",
+      "reason": "s036"
+    },
+    {
       "key": "containercredit.go::method.placeWitness::seam#1",
       "expression": "provenanceRepoTop(cc.dir)",
       "disposition": "moved",
@@ -1223,12 +1229,6 @@
       "expression": "historyGit(cc.dir, \"cat-file\", \"-e\", \"HEAD:\"+cc.rel)",
       "disposition": "retained",
       "reason": "s035"
-    },
-    {
-      "key": "containercredit.go::method.recordSetup::seam#1",
-      "expression": "historyGit(cc.dir, \"remote\", \"get-url\", \"origin\")",
-      "disposition": "retained",
-      "reason": "s036"
     },
     {
       "key": "corroborate.go::briefRowsAtRef::direct#1",
@@ -1555,7 +1555,7 @@
       "reason": "s085"
     },
     {
-      "key": "forgeread.go::method.readItem::dynamic#1",
+      "key": "forgeread.go::method.readVerb::dynamic#1",
       "expression": "exec.Command(d.bin, argv...)",
       "disposition": "retained",
       "reason": "s086"

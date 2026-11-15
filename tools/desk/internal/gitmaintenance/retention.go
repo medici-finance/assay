@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/cellprocess"
+	"github.com/medici-finance/assay/tools/desk/internal/cellrunner"
 )
 
 // This read-only operation reports ordinary Git's effective recovery settings,
@@ -22,7 +22,7 @@ func effectiveReflogRecovery(ctx context.Context, repo string) (map[string]strin
 		"config", "--null", "--get-regexp", `^gc(\..*)?\.reflogexpire(unreachable)?$`}
 	env := append(refCASEnv(os.Environ()), "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
 	var stdout, stderr boundedBuffer
-	code, uncertain, err := cellprocess.Run(ctx, argv, env, repo, &stdout, &stderr)
+	code, uncertain, err := cellrunner.Run(ctx, argv, env, repo, &stdout, &stderr)
 	if uncertain {
 		err = errors.Join(err, errCleanupUnknown)
 	}

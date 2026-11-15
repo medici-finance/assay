@@ -1,0 +1,1 @@
+decision-issue: deferred: assay:ex:sample:07 decision-trigger=spec — the '## Human decision' section is only a placeholder, not yet authored; the executor authors it at the pickup design/plan step and commits it into the brief, then re-run with --at spec

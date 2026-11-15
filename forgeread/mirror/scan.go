@@ -9,7 +9,7 @@ func PlanScan(s Snapshot, p ScanPlan, scan ScanResult, now time.Time) (ScanUpdat
 	if err := validateSnapshot(s, now); err != nil {
 		return ScanUpdate{}, err
 	}
-	if p.Scope != s.Scope || p.ExpectedVersion != s.Version {
+	if p.Scope != s.Scope || p.ExpectedVersion != s.Version || !p.PriorObservedUpTo.Equal(s.Coverage.ObservedUpTo) {
 		return ScanUpdate{}, ErrConflict
 	}
 	if (p.FullInventory && !p.Since.IsZero()) || p.Since.After(now) {
