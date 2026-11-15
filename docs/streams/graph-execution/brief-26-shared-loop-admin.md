@@ -440,16 +440,19 @@ as increment 1 of #5492 in merged PR #5903 (merge aae4fbf71; the move is 957f953
 The old `tools/desk/internal/cellprocess` package is gone and `loopadmin/process`
 holds the runner. In the table above, the three /40 Task 1 rows (move, importer
 migration, audit re-key) and the startup-item rows map to the same /40 owner and
-rows; only their state changed. /40 is recorded as delivered but is not retired: its
-scope, rows and gate are unchanged, and independent verification and the human gate
-still own its acceptance. /40 row 6 was amended to exclude the two provenance notes
-that name the former location.
+rows; only their state changed. /40 is recorded as delivered in part, and is not
+retired: its scope and gate are unchanged, and independent verification and the human
+gate still own its acceptance. Its rows were requalified against the delivery: rows 5
+and 8 now name the tests #5903 wrote, row 6 filters the two provenance notes that name
+the former location by exact line, and the work #5903 left undone is named residue
+owned by /40's implementer once #5492 releases the gate: the literal nil-environment
+test (row 9) and row 7's delivery input, since #5903's tree does not contain /40.
 
 ### Dispatch and review limits
 
 No open PR among the 47 current open changes listed a /40–43 body reference or
 changed a /40–43 brief file at the pickup check; all file lists were complete.
-Main at the recorded source had none of those paths; /40 has since been delivered by merged PR #5903 (see below). These numbers are proposed,
+Main at the recorded source had none of those paths; /40 has since been delivered by merged PR #5903 (see the delivery record above). These numbers are proposed,
 not an exclusive reservation; recheck main/open changes before each pickup. No
 existing work or review is closed, superseded or certified by this authoring.
 The parent claim is acknowledged here and in the draft handoff; decomposition
