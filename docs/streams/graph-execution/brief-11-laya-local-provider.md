@@ -52,6 +52,8 @@ single-point-of-failure: the new contract or policy alone cannot establish safe 
 
 Decision-trigger: spec. At implementation pickup, prepare concrete policy choices and negative-path evidence, then file a self-contained decision issue. No response permits no activation; schema/test work may proceed within the declared scope.
 
+Blocked (2026-11-14): the preparation scope delivered in #1993 passes all four Verify rows on main, and the ruling on #1992 (option A, 2026-10-25) keeps the provider disabled until a reviewed local read-only artifact bundle and a network-denying sandbox exist (CPU only, no CUDA or MPS fallback). `providers/laya/artifacts.example.json` deliberately holds `OWNER_MUST_SELECT_EXACT_REVISION`. No further implementation is dispatchable until then; this row returns to `todo` once the owner selects that artifact revision and the sandbox exists.
+
 ## Read first
 
 - [Admission and assurance amendment](admission-assurance-spec.md).
