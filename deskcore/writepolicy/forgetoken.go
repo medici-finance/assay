@@ -129,8 +129,8 @@ var (
 )
 
 // forgeListedReads reports whether every command in s is one listed read:
-// `git status`, a forgeGhReads pair, a forgeFilters filter, or the role mint,
-// spelled literally. It decides only for the `status` and `gh` pair, and anything
+// `git status` or `git -C <literal dir> status`, `unset` of variable names, a
+// forgeGhReads pair, a forgeFilters filter, or the role mint, spelled literally. It decides only for the `status` and `gh` pair, and anything
 // else refuses, as that pair did before #5046: a computed word, an alias, another
 // program, a wrapper, a redirection. Quotes play no part in the split, so they cannot
 // hide a command: a shell ends a command only at a byte split on here, so every command
@@ -172,9 +172,34 @@ func forgeListedReads(s string) bool {
 		f := strings.FieldsFunc(c, func(r rune) bool { return r == ' ' || r == '\t' })
 		switch {
 		case len(f) >= 2 && f[0] == "git" && f[1] == "status":
+		case len(f) >= 4 && f[0] == "git" && f[1] == "-C" && forgeGitDir(f[2]) && f[3] == "status":
+		case len(f) >= 2 && f[0] == "unset" && forgeVarNames(f[1:]):
 		case len(f) >= 3 && f[0] == "gh" && forgeGhReads[f[1]+" "+f[2]] && forgeGhArgs(f[3:]):
 		case len(f) >= 1 && forgeFilterArgs(f[0], f[1:]):
 		default:
+			return false
+		}
+	}
+	return true
+}
+
+// forgeVarName: a shell variable name, the only operand `unset` may take here.
+var forgeVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// forgeGitDir reports whether w, the one operand of `git -C`, is a literal path:
+// a forgeGhWord as the shell reads it, not starting `-`. No `$`, `~`, glob or `=`
+// reaches here, so git receives the word checked.
+func forgeGitDir(w string) bool {
+	d := forgeUnquote(w)
+	return forgeGhWord.MatchString(d) && d[0] != '-'
+}
+
+// forgeVarNames reports whether every word is a variable name, written without
+// quotes: `unset` of names only removes them, and no flag (`-f`, `-v`), array
+// element or computed name clears.
+func forgeVarNames(words []string) bool {
+	for _, w := range words {
+		if !forgeVarName.MatchString(w) {
 			return false
 		}
 	}

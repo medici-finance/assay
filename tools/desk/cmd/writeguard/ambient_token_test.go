@@ -829,3 +829,30 @@ func TestHookStatusReads(t *testing.T) {
 		requireAmbientRefusal(t, v, err, cmd)
 	}
 }
+
+// regression: #5046
+func TestHookStatusGitDirUnset(t *testing.T) {
+	// Through run(): `git -C <dir> status` and `unset` of names clear beside a
+	// listed read; a computed dir, another git option or an unset flag refuses.
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "verify-desk", "fixture-session")
+	for _, cmd := range []string{
+		"unset GH_TOKEN GITHUB_TOKEN; git -C /x/y status --porcelain --ignored",
+		"git -C /x/y status --porcelain --ignored && gh pr view 1 --json state",
+		"unset GH_TOKEN GITHUB_TOKEN && gh run view 1 --json status",
+	} {
+		ambientAllowed(t, wt, cmd)
+	}
+	for _, cmd := range []string{
+		"git -C $H status --porcelain --ignored; gh pr view 1",
+		"git -C a -c core.pager=x status; gh pr view 1",
+		"unset -f x; gh pr view 1 --json status",
+		`unset "$v"; gh pr view 1 --json status`,
+		"unset GH_TOKEN; gh auth status",
+		"git -C a status; gh auth token",
+	} {
+		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+		requireAmbientRefusal(t, v, err, cmd)
+	}
+}
