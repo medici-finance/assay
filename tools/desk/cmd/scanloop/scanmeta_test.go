@@ -176,3 +176,71 @@ func TestScanMeta_RemovedOnFailure(t *testing.T) {
 		t.Fatalf("a failed carry left %q inside the worktree", left)
 	}
 }
+
+// regression: #6282
+//
+// TestScanMetaRefusesSymlink — the title and body files must not sit at a name another local
+// account can predict in the shared tmp base. Before a carry, a symlink to a victim file is planted
+// at the old body path beside the worktree and a file of someone else's at the old title path. The
+// carry must write neither through the symlink nor over the planted file; it writes only inside a
+// private 0700 directory of its own, away from the worktree's parent, and removes that directory.
+func TestScanMetaRefusesSymlink(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		open *OpenScanPR
+	}{
+		{"fresh", nil},
+		{"coalesce", openPR(3 * time.Minute)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := laneReq(t, scanItem("medici-finance/assay", string(LaneScanCarrierPR)), tc.open)
+			req.DryRun = false
+			if tc.open != nil {
+				req.Branch = tc.open.Branch
+			}
+			victim := filepath.Join(t.TempDir(), "victim")
+			if err := os.WriteFile(victim, []byte("victim\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			wt := filepath.Clean(req.Worktree)
+			if err := os.Symlink(victim, wt+".scan-body"); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(wt+".scan-title", []byte("planted\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var dirs []string
+			write := func(path, content string) error {
+				dir := filepath.Dir(path)
+				if dir == filepath.Dir(wt) {
+					t.Errorf("the lane wrote %s in the worktree's parent, the shared tmp base", path)
+				}
+				fi, err := os.Lstat(dir)
+				if err != nil || !fi.IsDir() || fi.Mode().Perm() != 0o700 {
+					t.Errorf("the lane wrote %s in %s, which is not a private 0700 directory (%v)", path, dir, err)
+				}
+				dirs = append(dirs, dir)
+				return writeTextFile(path, content)
+			}
+			g := &worktreeGit{}
+			out, err := (scanCarrierPRLane{exec: g.exec, write: write}).Execute(req)
+			if err != nil {
+				t.Fatalf("the scan carry failed: %v\n%s", err, strings.Join(out.Steps, "\n"))
+			}
+			if b, _ := os.ReadFile(victim); string(b) != "victim\n" {
+				t.Fatalf("the carry wrote through the planted symlink: the victim file now reads %q", b)
+			}
+			if b, _ := os.ReadFile(wt + ".scan-title"); string(b) != "planted\n" {
+				t.Fatalf("the carry overwrote the planted file: it now reads %q", b)
+			}
+			if len(dirs) == 0 {
+				t.Fatal("the lane wrote no files — this test would be vacuous")
+			}
+			for _, d := range dirs {
+				if _, serr := os.Stat(d); !os.IsNotExist(serr) {
+					t.Fatalf("the private metadata directory %s was left behind (stat: %v)", d, serr)
+				}
+			}
+		})
+	}
+}
