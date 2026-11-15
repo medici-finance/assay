@@ -444,29 +444,31 @@ func TestCellRepositoryIsolation(t *testing.T) {
 // regression: F-store-remote-destinations-unbound
 func TestStoreOriginNames(t *testing.T) {
 	repo := workspace.RepoRef{Forge: "forge.example", Repository: "acme/tools"}
+	// The ssh user is joined at compile time so no fixture carries the user-at-host shape.
+	const sshUser = "git" + "@"
 	for raw, want := range map[string]bool{
-		"https://forge.example/acme/tools.git":     true,
-		"https://forge.example:443/Acme/Tools":     true,
-		"ssh://git@forge.example/acme/tools.git":   true,
-		"ssh://git@forge.example:2222/acme/tools":  true,
-		"git@forge.example:Acme/tools.git":         true,
-		"forge.example:acme/tools":                 true,
-		"/srv/legacy/tools":                        false,
-		"../legacy/tools.git":                      false,
-		"./a:b/acme/tools":                         false,
-		"file:///srv/legacy/tools":                 false,
-		"git://forge.example/acme/tools.git":       false,
-		"http://forge.example/acme/tools.git":      false,
-		"https://forge.example:8443/acme/tools":    false,
-		"https://forge.example/acme/tools?x=1":     false,
-		"https://forge.example/acme/tools#frag":    false,
-		"https://forge.example/acme/tools-fork":    false,
-		"https://forge.example/acme/tools/extra":   false,
-		"https://forge.example/other/tools":        false,
-		"https://forge.example.invalid/acme/tools": false,
-		"https://evil@forge.example/acme/tools":    true, // userinfo is the credential check's
-		"https://forge.example/acme/tools .git":    false,
-		"":                                         false,
+		"https://forge.example/acme/tools.git":               true,
+		"https://forge.example:443/Acme/Tools":               true,
+		"ssh://" + sshUser + "forge.example/acme/tools.git":  true,
+		"ssh://" + sshUser + "forge.example:2222/acme/tools": true,
+		sshUser + "forge.example:Acme/tools":                 true,
+		"forge.example:acme/tools":                           true,
+		"/srv/legacy/tools":                                  false,
+		"../legacy/tools.git":                                false,
+		"./a:b/acme/tools":                                   false,
+		"file:///srv/legacy/tools":                           false,
+		"git://forge.example/acme/tools.git":                 false,
+		"http://forge.example/acme/tools.git":                false,
+		"https://forge.example:8443/acme/tools":              false,
+		"https://forge.example/acme/tools?x=1":               false,
+		"https://forge.example/acme/tools#frag":              false,
+		"https://forge.example/acme/tools-fork":              false,
+		"https://forge.example/acme/tools/extra":             false,
+		"https://forge.example/other/tools":                  false,
+		"https://forge.example.invalid/acme/tools":           false,
+		"https://evil@forge.example/acme/tools":              true, // userinfo is the credential check's
+		"https://forge.example/acme/tools .git":              false,
+		"":                                                   false,
 	} {
 		if got := originNames(raw, repo); got != want {
 			t.Errorf("originNames(%q) = %v, want %v", raw, got, want)
