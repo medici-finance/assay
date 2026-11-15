@@ -195,7 +195,7 @@ func foldVerified(d reconcileFoldData, coverage map[string]Coverage) (w WitnessI
 	}
 	run := p.Runner + " @ " + p.SHA
 	if p.RecordLanding != "" {
-		run = p.Runner + " @ [w2] landing:" + p.RecordLanding
+		run = p.RecordRun
 	}
 	return WitnessInfo{
 		Passed:   true,

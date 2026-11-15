@@ -302,6 +302,12 @@ type WitnessProvenance struct {
 	Brief, Row, RecordID, Runner, Date, CR, Landing string
 }
 
+// RunDescription renders a verified landing as a diagnostic. It is not an
+// execution SHA, a write stamp or an additional source of witness authority.
+func (w WitnessProvenance) RunDescription() string {
+	return w.Runner + " @ [w2] landing:" + w.Landing
+}
+
 // Coverage is one brief's full coverage verdict.
 type Coverage struct {
 	BriefID  string  `json:"brief"`

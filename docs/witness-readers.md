@@ -47,7 +47,7 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `statusgen/unrun.go` | reads informational fields only | reads the Result, Command or state cells of a witness row through witnessCells, never the revision or marker |
 | `statusgen/verifiedrunneragree.go` | reads informational fields only | identity token and Result cell for attribution and the verifier floor; takes the whole token, never splits on the marker |
 | `statusgen/verifyclosure.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record |
-| `statusgen/verifyflip.go` | judges through the library | latestCoveragePass binds a read-only v2 run to the exact released canonical record set; flipLatestPass and the lower Verified-cell writer retain their legacy execution-SHA/stamp requirement and refuse v2 until statusgen/37 |
+| `statusgen/verifyflip.go` | judges through the library | latestCoveragePass delegates to the shared flipReadRun owner; the library renders the read-only canonical landing diagnostic; flipLatestPass and the lower Verified-cell writer retain their legacy execution-SHA/stamp requirement and refuse v2 until statusgen/37 |
 | `statusgen/verifyissues.go` | reads informational fields only | reads the Result, Command or state cells of a witness row through witnessCells, never the revision or marker |
 | `statusgen/verifyoutcomes.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record |
 | `statusgen/verifyrun.go` | migrates in statusgen/37 | writes the v1 Runner cell and Evidence row; the v2 writer is statusgen/37 (reader side only here: witnessCells and witnessTreeOf hand the cell to the library) |
