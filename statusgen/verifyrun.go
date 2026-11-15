@@ -2228,8 +2228,10 @@ Flags:
                     ancestor of it. After the change has merged, pass the
                     parent of the delivering merge. On a cross-repository
                     (version 2 receipt) run the base must be the deliverable
-                    merge-base exactly, and the run is refused when it cannot
-                    be resolved
+                    merge-base exactly, and the run is refused before any row
+                    when it cannot be resolved or is HEAD itself (post-merge,
+                    and always in the container). With no resolvable
+                    merge-base any --base is refused
   --env-file <path> role env-file forwarded to the container as --env-file (the
                     PATH only; its contents are never read or logged). Defaults to
                     the ASSAY_VERIFY_ENV_FILE environment variable. Omit for offline.
@@ -2744,6 +2746,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// checkout, so the head run below is the ordinary run, unchanged.
 	var ff map[string]failFirst
 	var riskyIDs map[string]bool
+	ffCrossRepo := false
 	if *failFirstMode {
 		baseRoot, baseBrief := root, path
 		// A cross-repository run is one ADMITTED on a version 2 receipt (the
@@ -2751,29 +2754,34 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		// binding), never inferred from where the brief file sits: its base is a
 		// deliverable commit and the receipt binds the tracking brief's bytes.
 		crossRepo := admittedHome != ""
-		if *historyPack != "" {
+		bindingVersion, bindingSource := 0, ""
+		if netnsContainer {
+			// Every container run was admitted on a receipt above, so an
+			// unreadable binding refuses here rather than fall back to a
+			// resolver the receipt never chose.
 			binding, err := checkBinding(container.cell.Check)
 			if err != nil {
-				fmt.Fprintln(stderr, "statusgen verifyrun: --history-pack:", err)
+				fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first: the admission receipt's binding cannot be read:", err)
 				return verifyrunExitCouldNot
 			}
+			bindingVersion, bindingSource = binding.Version, binding.Source
+			crossRepo = crossRepo || bindingVersion == 2
+		}
+		if *historyPack != "" {
+			var err error
 			var cleanup func()
-			if binding.Version == 2 {
-				crossRepo = true
-				baseRoot, cleanup, err = importCrossRepoHistory(root, path, *historyPack, binding.Source)
+			if bindingVersion == 2 {
+				baseRoot, cleanup, err = importCrossRepoHistory(root, path, *historyPack, bindingSource)
 			} else {
-				baseRoot, baseBrief, cleanup, err = importContainerHistory(root, path, *historyPack, binding.Source)
+				baseRoot, baseBrief, cleanup, err = importContainerHistory(root, path, *historyPack, bindingSource)
 			}
 			if err != nil {
 				fmt.Fprintln(stderr, "statusgen verifyrun: --history-pack:", err)
 				return verifyrunExitCouldNot
 			}
 			defer cleanup()
-		} else if netnsContainer {
-			if binding, err := checkBinding(container.cell.Check); err == nil && binding.Version == 2 {
-				crossRepo = true
-			}
 		}
+		ffCrossRepo = crossRepo
 		var base string
 		var berr error
 		if crossRepo {
@@ -2939,7 +2947,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return verifyrunExitCouldNot
 	}
 	if ff != nil {
-		worst = foldFailFirst(ws, ff, riskyIDs, worst, stdout)
+		worst = foldFailFirst(ws, ff, riskyIDs, worst, ffCrossRepo, stdout)
 	}
 	fmt.Fprintln(stdout)
 	fmt.Fprintln(stdout, table)

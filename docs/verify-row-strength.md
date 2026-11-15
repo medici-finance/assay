@@ -119,17 +119,24 @@ brief file, and nothing else: a branch commit, HEAD, an unknown object or a base
 brief is refused. When the merge-base does not hold the brief at its current path (the brief was
 created, renamed or moved on the branch, or its path does not resolve under the root), no ancestor
 can be shown to hold it, so only the merge-base itself is accepted and the check fails closed.
+When the merge-base cannot be resolved (no `origin/main` in the clone), `--base` cannot be checked
+against it, so it is refused; fetch `origin/main` first.
 A cross-repository run, admitted on a version 2 receipt, is the one exception. Its rows run in
 the deliverable repository and its brief lives in the tracking repository, so no deliverable
 commit holds the brief. For that run the brief-held check cannot apply, so a tighter rule
 replaces it: the base must be the deliverable merge-base of HEAD and origin/main exactly. An
 ancestor of it is refused, because it may predate the change; a later commit is refused, because
 it carries part of the change. When that merge-base cannot be resolved the run is refused, with or
-without `--base`. The exception follows from the receipt and never from where the brief file
-sits: an unadmitted run with a brief outside the root still fails closed. In a post-merge
-deliverable clone the merge-base is HEAD itself, so the base rows run on the changed tree and
-cannot show a red; a discriminating run needs a clone whose HEAD is the delivering change and
-whose origin/main does not yet hold it.
+without `--base`. When that merge-base is HEAD itself (a post-merge deliverable clone, or the
+container lane, whose imported history anchors origin/main to the admitted source), the run is
+refused too, with or without `--base`: the base rows would run on the changed tree, where a green
+says nothing and a red (for example from an ignored file only the home holds) would be false
+credit. Every one of these refusals is exit 2 and comes before any row runs. A discriminating
+cross-repository run needs a deliverable clone whose HEAD is the delivering change and whose
+origin/main does not yet hold it. The exception follows from the receipt and never from where the
+brief file sits: an unadmitted run with a brief outside the root takes the same-repository check,
+which refuses every base it cannot show holds the brief, and refuses any `--base` when the
+merge-base cannot be resolved.
 The witness table gains a `Base` column, appended to the right of `Runner` (readers of Date and
 Runner skip it):
 
