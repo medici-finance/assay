@@ -62,15 +62,26 @@ What the match is decides what happens next:
   was. What happens next depends on the class issue's state:
   - **Not yet `design-owed`.** Go to step 2 and count the class again with the new blocks
     included.
-  - **Already `design-owed`.** The class already has its deliverable authored or on its way,
-    so the group parks and steps 2 and 3 do not run for it. This is the class decision's
-    handling of a later symptom of a `design-owed` class: the symptom is parked on the class
-    and the design deliverable's `Closes` closes it. Record each member that is not a
-    production-down or security symptom `duplicate` to that deliverable: the class brief
-    (`stream/NN`) when one exists, otherwise the class issue itself (`owner/repo#N`, which
-    the writer accepts while it is open and admitted). Release a production-down or security
-    member as its own direct repair (step 4). Never author a second class brief or a second
-    investigation for a class that has one.
+  - **Already `design-owed`, and not parked under `needs-decision`.** The class already has
+    its deliverable authored or queued, so the group parks and steps 2 and 3 do not run for
+    it. This is the class decision's handling of a later symptom of a `design-owed` class:
+    the symptom is parked on the class and the design deliverable's `Closes` closes it.
+    Record each member that is not a production-down or security symptom `duplicate` to that
+    deliverable: the class brief (`stream/NN`) when one exists on the main branch, because the
+    writer resolves a brief only from the working tree, otherwise the class issue itself
+    (`owner/repo#N`, which the writer accepts while it is open and admitted). Release a
+    production-down or security member as its own direct repair (step 4). Never author a
+    second class brief or a second investigation for a class that has one.
+  - **Already `design-owed`, but still parked under `needs-decision`.** This is a
+    `worker-desk` rule-4 risk-bearing class that is waiting for the driver (step 3, first
+    bullet). Nothing is authored or queued, and the ruling may be a decline, which sets the
+    class's symptoms `todo`. A `duplicate` here would discharge the member with no wake
+    condition, so a decline would strand it. Attach the blocks, run neither step 2 nor
+    step 3, and record each member that is not a production-down or security symptom
+    `external-prerequisite` exactly as step 3's first bullet does for the members that
+    found the class waiting: the driver as the external role, the ruling as the action and
+    its arrival as the wake condition. Release a production-down or security member as its
+    own direct repair (step 4).
 
 ## Step 2: apply the trigger
 
@@ -95,6 +106,8 @@ Three parts of it change what this step does:
   this pass. Its members stay parked on the class issue as the class decision says, and each
   is recorded `external-prerequisite` with the driver as the external role, the ruling as
   the action and the ruling's arrival as the wake condition. Authoring waits for the ruling.
+  A member that arrives in a later batch, while the class is still waiting, is recorded the
+  same way (step 1, the second `design-owed` case).
 - **A `brittle` first is an investigation, and intake authors nothing.** When the trigger is
   met by the first instance in a module carrying a `brittle` mark, the deliverable is the
   investigation per build-less-brittle/09. That brief has a dispatched strong-tier session
@@ -400,6 +413,35 @@ expect: observed duplicate
   "route": "duplicate",
   "successor": "example-org/example#160",
   "evidence": "example-org/example#161"
+}
+```
+
+### Group H: a later member of a class still waiting for the driver
+
+The class issue from Group E is `design-owed` and still parked
+under `needs-decision`: the driver has not ruled. Issue 171 reports the same mechanism in a
+later batch. Step 1 matches the class issue and attaches one block. No deliverable is
+authored or queued, and a decline would set the symptoms `todo`, so the member is not
+`duplicate`. It is `external-prerequisite`, waking on the driver's ruling like the members
+in Group E.
+
+outcome: waiting
+
+expect: external-wait external
+
+```json
+{
+  "schema": "intake-handoff-v1",
+  "item": "example-org/example#171",
+  "opened": "2026-01-10T08:00:00Z",
+  "revision": 1,
+  "deciding_role": "intake-desk",
+  "disposition": "external-prerequisite",
+  "route": "external",
+  "external_role": "human",
+  "required_action": "Rule on the parked class issue: proceed to a design brief or decline.",
+  "wake_condition": "The driver's ruling is recorded on the class issue.",
+  "evidence": "example-org/example#171"
 }
 ```
 

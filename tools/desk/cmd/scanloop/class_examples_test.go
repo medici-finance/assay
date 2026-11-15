@@ -28,7 +28,7 @@ const (
 )
 
 var (
-	classPassOutcomes = []string{"matched", "class", "below", "parked", "owned", "investigation", "quarantined"}
+	classPassOutcomes = []string{"matched", "class", "below", "parked", "owned", "investigation", "waiting", "quarantined"}
 	classPassOutLine  = regexp.MustCompile(`^outcome: (\S+)$`)
 	classPassExpect   = regexp.MustCompile(`^expect: (none|[a-z-]+ [a-z]+( direct)?)$`)
 )
@@ -42,6 +42,7 @@ var classPassAllowed = map[string]struct{ expect, disposition string }{
 	"parked":        {"external-wait external", "external-prerequisite"},
 	"owned":         {"observed duplicate", "duplicate"},
 	"investigation": {"observed duplicate", "duplicate"},
+	"waiting":       {"external-wait external", "external-prerequisite"},
 	"quarantined":   {"none", ""},
 }
 
@@ -190,6 +191,8 @@ func TestClassPassFlagsPlant(t *testing.T) {
 		{"parked group relabelled", "outcome: parked", "outcome: matched", classPassNoneMsg},
 		{"owned group relabelled", "outcome: owned", "outcome: matched", classPassNoneMsg},
 		{"investigation group relabelled", "outcome: investigation", "outcome: matched", classPassNoneMsg},
+		{"waiting group relabelled", "outcome: waiting", "outcome: matched", classPassNoneMsg},
+		{"waiting member recorded duplicate", "outcome: waiting", "outcome: owned", "outcome owned expects"},
 		{"quarantined expectation", "\nexpect: none\n", "\nexpect: observed repair direct\n", classPassQuarMsg},
 		{"duplicate successor not a reference", `"successor": "example-stream/07"`, `"successor": "see the old brief"`, classPassDupMsg},
 	}
