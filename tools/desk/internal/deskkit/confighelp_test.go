@@ -72,7 +72,7 @@ func TestEchoForHelpRefusedKeysOnly(t *testing.T) {
 	// A REFUSED roster is never quieter than it was: the help screen still says so, by count.
 	t.Setenv(EnvConfigEcho, "full")
 	vals := helpRoster()
-	vals["ASSAY_QZ_HELP_KNOB"] = "qzknobvalue"
+	vals[EnvRosterSchema] = "999" // a known-key value refusal (an unknown ASSAY_ key is a NOTICE, #1261)
 	withRoster(t, vals)
 	if len(EffectiveConfig().Problems) == 0 {
 		t.Fatal("fixture must carry a refused key")

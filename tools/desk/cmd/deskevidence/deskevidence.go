@@ -1109,7 +1109,8 @@ func (a *auditCtx) finalize(err error) {
 	case deskkit.ExitRefused:
 		result = deskkit.ResultRefused
 	default:
-		result = deskkit.ResultUnverifiable
+		// A lock-wait refusal is contention, not a write that may have landed (#6227).
+		result = deskkit.LockStepResult(err, deskkit.ResultUnverifiable)
 	}
 	// On the failure paths the durable record must still say WHAT happened, not only why
 	// the invocation was refused. cmdEvidence sets a.detail exactly once on an erroring

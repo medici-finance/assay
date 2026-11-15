@@ -100,6 +100,13 @@ reviewable artifact, not a run.
   the live workflow commits nothing, but the refusal reaches its generic first-attempt branch.
   That branch leaves the card closed and comments a reason that does not name the decision
   issue or the remedy.
+- `assay-statusgen.yml` — status-historian part: the `regen` job runs `statusgen --record`
+  after each STATUS.md write (the first run and every push retry), and its commit step adds
+  `docs/streams/.history.jsonl` beside `STATUS.md` in the same `[skip-status-regen]` commit.
+  The `push:` paths gain `!docs/streams/.history.jsonl` after `docs/**`, so that commit still
+  cannot retrigger the workflow (loop guard 1). The same text is in the live file and this copy;
+  `TestBoardRegenRecordsHistory` (with its negative control) in `statusgen` pins both. The
+  `tools/ci-load/activation/` copy predates it and is not updated (stale, #1187).
 - `loopadmin.yml` — the loopadmin module's test job (graph-execution/20): `gofmt`, `go vet`,
   `go test` and the mutation gate (`go run ./mutate`) from `loopadmin/`, on path triggers for the
   module, `spec/loop-admin-runner-v1.md` and `schemas/loop-admin-runner-v1.json`. **Staged, not
@@ -148,6 +155,14 @@ reviewable artifact, not a run.
   and this copy's line is now byte-identical to it; the rest of the staged copy (#2910) stays
   pending. `TestBoardRegenFullHistory` in `statusgen` pins the line on the live file, this copy
   and the `tools/ci-load/activation/` copy.
+- `assay-statusgen.yml` — auto-flip `--check` part: the `model-autoflip` step runs
+  `statusgen --auto-flip-model --check`, keeps its stdout, and tells exit 2 (a candidate left
+  unflipped: a `::warning::` and a job-summary count line, green unless the repository variable
+  `ASSAY_AUTOFLIP_STUCK_FAILS` is `true`) from exit 1 (a misconfiguration, red). The same text
+  is in the live file's step and in this copy, so promoting either leaves the other current;
+  `TestModelAutoflipStepPassesCheck` and `TestModelAutoflipExitPolicyRuns` in `statusgen` pin
+  and execute it on both. The `tools/ci-load/activation/` copy predates it and is not updated
+  (that copy is stale, #1187).
 - `gremlins-daily.yml` — the daily Gremlins mutation sweep (#2647) over the desk tools'
   muhar-spec packages (`tools/gremlins/run.sh`). **Discovery, never a gate**: surviving
   mutants go to the job summary and the uploaded JSON artifact as leads, and survivors in
@@ -162,6 +177,12 @@ reviewable artifact, not a run.
   git commit -m "ci: activate gremlins-daily.yml"
   git push
   ```
+- `assay-statusgen.yml` — sign-off digest part: the hourly `reconcile` job gains a read-only
+  step, before its compute step, that runs `statusgen --signoff-digest` on the fresh clone of
+  main and writes the digest to the tick's job summary. It holds no token, posts no issue or
+  comment, and a could-not-check digest warns without failing the tick. The same step is in the
+  live file and this copy; `TestReconcileSignoffDigestStep` and
+  `TestReconcileSignoffDigestStepRuns` in `statusgen` pin and execute it on both.
 - `winparity.yml` — the Windows-build ↔ Makefile target-parity gate (#665). Runs
   `cd tools/winparity && go run . --root ../..` on the self-hosted `medici-builder-public` runner
   (hand-installed Go, no `make`), asserting that `scripts/build-windows.ps1`'s declared target set

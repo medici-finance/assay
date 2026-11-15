@@ -15,6 +15,8 @@ import (
 )
 
 func TestIntakeHandoffDisposition(t *testing.T) {
+	// The replay bound has its own knob; an exported value must not bend these subtests.
+	unsetEnv(t, "INTAKE_REPLAY_CAP")
 	t.Run("production run retains quiet work", func(t *testing.T) {
 		state := isolatedDeskHome(t)
 		if err := os.WriteFile(filepath.Join(state, "roster.env"), []byte(fixtureRoster+"\nASSAY_REPO_FORGES=medici-finance/assay=github\n"), 0600); err != nil {
