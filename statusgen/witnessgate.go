@@ -361,9 +361,10 @@ const crossRepoRemedy = "Name the deliverable checkout in DESK_ROOTS (or --sibli
 
 // crossRepoPostMergeRemedy is what it asks for when the deliverable merge-base
 // is the attested source itself: origin/main already holds the change, so no
-// base can show a row failing without it. It is the hint verifyrun's
-// cross-repository resolver gives for the same case (merge-base == HEAD), word
-// for word: a cross-repository run accepts no other base, so there is no
+// base can show a row failing without it. It is word for word the hint the
+// cross-repository runner proposed in #5550 gives for its own case
+// (merge-base == HEAD); that runner refusal is owned by #5550 and is not
+// claimed here. A cross-repository run accepts no other base, so there is no
 // --base to suggest.
 const crossRepoPostMergeRemedy = "A cross-repository run accepts no other base, so no --base can fix this; run from a deliverable clone whose HEAD is the delivering change and whose origin/main does not yet hold it (binding the base to the delivering change is #2721)"
 
@@ -386,8 +387,7 @@ type ffCrossAnchor struct {
 // crossDeliverableMergeBase is the deliverable merge-base of a
 // cross-repository run: the one merge-base of the attested source and the
 // deliverable checkout's origin/main, resolved exactly (exactRefCommit) and
-// asked of git as object ids only (flipMergeBases). It is the same merge-base
-// verifyrun's cross-repository resolver binds the base to, asked of the
+// asked of git as object ids only (flipMergeBases). It is asked of the
 // attested source rather than the checkout's HEAD, because the operator's
 // checkout need not be at the source. why is non-empty, and mergeBase "",
 // when origin/main is absent, the checkout lacks the source, git cannot
@@ -475,13 +475,14 @@ var failFirstDeliverableRoot = func(repo string) (path, why string) {
 // a PROBLEM, when the Evidence names a cross-repository run the gate cannot
 // bind (selectedRunCrossBinding's refusals), when the binding is not for the
 // brief at path (crossBindingBriefIdentity, the identity checks the
-// brief-version read applies), when the deliverable repository
+// brief-version read applies), when the attested source is not a commit
+// object in the deliverable checkout (a tag id would never equal the peeled
+// merge-base and so would skip the post-merge refusal), when the deliverable repository
 // has no configured checkout (or more than one), when the deliverable
 // merge-base cannot be resolved there, or when that merge-base is the attested
 // source itself. The last is the post-merge case: origin/main already holds the
 // change, so the only base the rule accepts is the changed tree, where a green
-// says nothing and a red would be false credit; verifyrun's cross-repository
-// resolver refuses the same case (merge-base == HEAD). Without a base the rule
+// says nothing and a red would be false credit. Without a base the rule
 // can honestly accept, the base cannot be checked, which is never a pass.
 // remedy is the step the PROBLEM asks for: crossRepoBindingRemedy when the
 // attestation itself is refused, crossRepoPostMergeRemedy after the merge,
@@ -511,6 +512,15 @@ func failFirstCrossAnchor(path, evidence string) (anchor *ffCrossAnchor, why, re
 	mergeBase, mbWhy := crossDeliverableMergeBase(root, b.source)
 	if mbWhy != "" {
 		return nil, "could not check: the deliverable merge-base cannot be resolved: " + mbWhy, crossRepoRemedy
+	}
+	// git merge-base peels a tag to its commit, so the merge-base is always a
+	// commit id. The post-merge comparison below is only sound when source= is
+	// that commit's own id: an annotated tag's id would never equal it and
+	// would skip the refusal. A source= that is not a commit object is refused
+	// here, after the merge-base step, so a checkout lacking the source keeps
+	// the merge-base reason.
+	if peeled, err := resolveCommit(root, b.source); err != nil || peeled != b.source {
+		return nil, "its cross-repository attestation cannot be bound: the attested source " + b.source[:12] + " is not a commit object in the configured deliverable checkout (a tag or other object id never stands for the delivering commit)", crossRepoBindingRemedy
 	}
 	if mergeBase == b.source {
 		return nil, "could not check: the deliverable merge-base of the attested source and origin/main is the source itself (" + b.source[:12] + "): origin/main already holds this change, so the base rows would run on the changed tree and cannot show it failing", crossRepoPostMergeRemedy

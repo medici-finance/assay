@@ -54,6 +54,12 @@
       "file": "witnessgate.go",
       "old": "\tcase 1:\n\t\treturn path, \"\"\n\t}",
       "new": "\tdefault:\n\t\treturn path, \"\"\n\t}"
+    },
+    {
+      "name": "cross anchor: an attested source that is a tag object (not a commit) is accepted and skips the post-merge refusal (TestFFCrossRepoTagSource)",
+      "file": "witnessgate.go",
+      "old": "err != nil || peeled != b.source {",
+      "new": "err != nil && peeled != b.source {"
     }
   ]
 }

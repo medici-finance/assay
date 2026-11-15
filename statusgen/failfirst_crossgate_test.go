@@ -312,9 +312,9 @@ func TestFFCrossRepoNoMergeBase(t *testing.T) {
 // source itself, and the only base the exact rule could accept is the changed
 // tree, where a red is false credit. The gate refuses that case on every
 // risk-bearing row, on both callers, whatever base the cell records: the
-// source itself and the pre-merge merge-base alike. verifyrun's
-// cross-repository resolver refuses the same case (merge-base == HEAD), and
-// the PROBLEM gives its hint, with no --base suggestion.
+// source itself and the pre-merge merge-base alike. The PROBLEM gives the hint
+// #5550's runner gives for its merge-base == HEAD case, with no --base
+// suggestion.
 func TestFFCrossRepoPostMerge(t *testing.T) {
 	withBase(t, true)
 	deliverable, _, base, source, later, _ := ffCrossRepo(t)
@@ -340,6 +340,45 @@ func TestFFCrossRepoPostMerge(t *testing.T) {
 				briefArtifacts{Verify: verify, Evidence: evidence, Path: path})
 			if err == nil || !strings.Contains(err.Error(), "is the source itself") {
 				t.Errorf("%s: selected closure: want the post-merge refusal, got %v", name, err)
+			}
+		}
+	}
+}
+
+// regression: #5553
+// TestFFCrossRepoTagSource: git merge-base peels a tag, so the deliverable
+// merge-base is always a commit id. An attested source= naming an annotated
+// tag on the delivering commit would never equal it, skip the post-merge
+// refusal, and let a Base cell naming the delivering commit close. The gate
+// refuses a source= that is not a commit object, before or after the merge,
+// on both callers, and never credits the red.
+func TestFFCrossRepoTagSource(t *testing.T) {
+	withBase(t, true)
+	deliverable, _, base, source, _, _ := ffCrossRepo(t)
+	gitRun(t, deliverable, "tag", "-a", "-m", "delivered", "delivered", source)
+	tag := gitOutT(t, deliverable, "rev-parse", "refs/tags/delivered")
+	if tag == source || !isObjectID(tag) {
+		t.Fatalf("fixture: want an annotated tag object distinct from the source, got %s", tag)
+	}
+	t.Setenv("DESK_ROOTS", "example-org/two="+deliverable)
+	tracking := ffCrossTracking(t)
+	path := filepath.Join(tracking, "docs", "streams", "ff", "brief-01-ff.md")
+	for _, mainAt := range []struct{ name, rev string }{{"origin/main at the source", source}, {"origin/main before the source", base}} {
+		gitRun(t, deliverable, "update-ref", "refs/remotes/origin/main", mainAt.rev)
+		for _, b := range []struct{ name, rev string }{{"red at the delivering commit", source}, {"red at the pre-merge merge-base", base}} {
+			name := mainAt.name + ", " + b.name
+			problems, _ := failFirstGateChecks(tracking, ffStream(t, tracking, ffCrossEvidence(b.rev, tag, nil)))
+			if !containsSub(problems, "is not a commit object") || !containsSub(problems, crossRepoBindingRemedy) {
+				t.Errorf("%s: want the tag-source PROBLEM with the binding remedy; problems=%v", name, problems)
+			}
+			verify, evidence, err := briefSections(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = checkSelectedClosure(tracking, "ff/01", "verified", "2026-10-08 human:fixture",
+				briefArtifacts{Verify: verify, Evidence: evidence, Path: path})
+			if err == nil || !strings.Contains(err.Error(), "is not a commit object") {
+				t.Errorf("%s: selected closure: want the tag-source refusal, got %v", name, err)
 			}
 		}
 	}
