@@ -8,7 +8,7 @@ unblocks: []
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
-gate-why: "These two reads start returning planning rows from every configured cell, private cells included, through a network-facing route and an agent tool that today return nothing. The human confirms that rows are filtered to the caller's cell and repositories before any count is computed, and chooses how the service module obtains the library, since one of the options changes how the service image is built."
+gate-why: "These two reads start returning planning rows from every configured cell, private cells included, through a network-facing route and an agent tool that today return nothing. The human confirms three boundaries: an agent caller is held to its own cell, a web viewer is held to the repositories that viewer may read, and the two tools are removed from the question-answering feature so no row reaches a model backend. In each case rows are filtered before any count is computed. The human also chooses how the service module obtains the library, since one of the options changes how the service image is built."
 decision-trigger: start
 issues: []
 schema: brief-v2
@@ -26,7 +26,8 @@ exec-tier-why: "The module-resolution route is not specified by the facts, and c
 domain: complicated
 outcome: none
 consumers:
-  - "deskd/internal/boardread (planned), deskd/internal/serve/v1.go, deskd/internal/serve/server.go, deskd/internal/mcp/query.go, deskd/internal/contract/openapi.yaml, deskd/internal/contract/client.go, deskd/cockpit/src/client/v1.d.ts, deskd/web/templates/roadmap.html, deskd/go.mod, deskd/go.sum, deskd/README.md: follow-up cell-api/10"
+  - "deskd/internal/boardread (planned), deskd/internal/serve/v1.go, deskd/internal/serve/server.go, deskd/internal/mcp/query.go, deskd/internal/contract/openapi.yaml, deskd/internal/contract/client.go, deskd/cockpit/src/client/v1.d.ts, deskd/web/panes.go, deskd/web/templates/roadmap.html, deskd/go.mod, deskd/go.sum, deskd/README.md: follow-up cell-api/10"
+  - "deskd/internal/chat/binding.go (the question-answering feature's tool allow-list, which binds desk__roadmap and desk__portfolio today): follow-up cell-api/10 (Task step 6 removes both tools from that allow-list; its tool call carries no caller identity and its answers come from a configured model backend, so returning planning rows through it needs a separate ruling)"
   - "desk__team_view and the scoped roll-ups of desk__metrics_query: out-of-scope (the board view carries no owning-team dimension and no delivery percentiles; both keep their could-not-check answer)"
   - "a tree source that reads a cell's repository through the forge instead of a local directory: out-of-scope (this brief ships the directory source only; a cell with no configured directory stays could-not-check, and a forge-backed source is a separate brief once a deployment needs it)"
   - "the public service composition of cell-api/02: out-of-scope (it composes existing readers at its own planned path; the package this brief adds is written to be moved there unchanged, and that brief is not edited here)"
@@ -37,7 +38,7 @@ consumers:
 
 ## Context
 
-files: `deskd/internal/boardread/` (planned: `source.go`, `read.go`, `map.go` and tests), `deskd/internal/serve/v1.go`, `deskd/internal/serve/server.go`, `deskd/internal/mcp/query.go`, `deskd/internal/contract/openapi.yaml`, `deskd/internal/contract/client.go`, `deskd/cockpit/src/client/v1.d.ts`, `deskd/web/templates/roadmap.html`, `deskd/cmd/deskd/main.go`, `deskd/go.mod`, `deskd/go.sum`, `deskd/README.md`, `deskd/testdata/boardread/` (planned: two fixture trees), `changelog/deskd-board-reads.md` (planned).
+files: `deskd/internal/boardread/` (planned: `source.go`, `read.go`, `map.go` and tests), `deskd/internal/serve/v1.go`, `deskd/internal/serve/server.go`, `deskd/internal/mcp/query.go`, `deskd/internal/contract/openapi.yaml`, `deskd/internal/contract/client.go`, `deskd/cockpit/src/client/v1.d.ts`, `deskd/web/panes.go`, `deskd/web/templates/roadmap.html`, `deskd/internal/chat/binding.go`, `deskd/cmd/deskd/main.go`, `deskd/go.mod`, `deskd/go.sum`, `deskd/README.md`, `deskd/testdata/boardread/` (planned: two fixture trees), `changelog/deskd-board-reads.md` (planned).
 
 facts (876ca4bca, 14 November 2026):
 - `desk__roadmap` and `desk__portfolio` are registered with `Scope: ScopeNone` and the handler
@@ -52,6 +53,20 @@ facts (876ca4bca, 14 November 2026):
   asserts that (`deskd/internal/mcp/authz.go:20-31`). A tool that returns rows must be
   `ScopeCell`: the call names a configured cell, the caller is a loop of that cell, and any
   repository it names belongs to that cell.
+- That scope is an agent-tool dispatch check only. The HTTP routes (`deskd/internal/serve/v1.go:86-87`),
+  the un-versioned roadmap route (`deskd/internal/serve/server.go:56`) and the roadmap page
+  (`deskd/web/web.go:133`, `deskd/web/panes.go:75-88`) take no cell argument and do not pass
+  through it. On those surfaces read access is the viewer's per-repository authorizer
+  (`SurfaceAuthorizer`, `deskd/internal/serve/server.go:70-72`), applied by `cellAuthorized` and
+  `itemAuthorized` (`deskd/internal/serve/v1.go:405-437`). With no authorizer wired, every cell
+  is served and the surface login gate is the only front.
+- The question-answering feature binds both tools in its allow-list
+  (`deskd/internal/chat/binding.go:77-84`). Its tool call carries no caller identity
+  (`deskd/internal/chat/chat.go:15-21`), and its answers come from a configured model backend.
+  It is off by default and enabled per cell in configuration (`deskd/web/web.go:75-80`). While
+  the tools return a fixed verdict this is harmless.
+- A filesystem built from a directory path follows symbolic links, so a link planted in a
+  configured tree can point outside it.
 - Each cell declares `repos` and a required `streams_root` (`deskd/config/schema/cells.go:422-423`,
   `:666`). Nothing reads `streams_root` at run time, and the service holds no checkout: its data
   comes from polling the forge into a SQLite index.
@@ -80,11 +95,16 @@ authorization. The package imports the board library and the service's own domai
 nothing else from the service, so the planned public composition can move it unchanged. Task
 steps 2 to 4 build it; Verify row 6 checks its imports.
 
-single point of failure: a caller seeing another cell's rows. Two independent layers stand in the
-way: the existing cell scope refuses a call for a cell the caller is not a loop of, before the
-handler runs (row 3); and the mapping takes the allowed repository set as an argument and drops
-every row outside it before counting, so a handler that forgot the scope still returns nothing
-for a foreign repository (row 4).
+single point of failure: a caller seeing rows from a repository it may not read. There are two
+kinds of caller and each has its own first layer. An agent tool call is refused by the existing
+cell scope when the caller is not a loop of the named cell, before the handler runs (row 3). An
+HTTP or page request has no cell scope: its handler builds the allowed repository set from the
+viewer's per-repository authorizer, the same check `cellAuthorized` uses (row 13). Behind both
+sits one independent second layer: the mapping takes the allowed set as an argument and drops
+every row outside it before counting, so a handler that skipped its check still returns nothing
+for a foreign repository (row 4). Row 13 exists because rows 3 and 4 alone would pass a handler
+that handed the mapping the wrong set. A third route, the question-answering feature, is closed
+rather than scoped: both tools leave its allow-list (row 14).
 
 design-fit:
   owner: statusgen
@@ -103,8 +123,18 @@ the service image is built. A way to obtain it has to be chosen, and the choice 
 because one option changes how the released service image is built.
 
 Separately, once wired, these two questions return planning rows from every configured cell,
-including private ones. Rows are filtered to the asking caller's cell and repositories before
-any count is made. Confirming that boundary is part of this sign-off.
+including private ones. This sign-off also confirms three boundaries:
+
+- An agent asking through the tool interface gets rows only for a cell it is a loop of.
+- A person asking through the web interface gets rows only for repositories that person is
+  authorized to read. Where the service runs with no per-person authorization configured, the
+  sign-in gate in front of it is the only protection, exactly as for its other reads today.
+- The service has an optional question-answering feature that can ask these two questions and
+  pass the answers to a configured language-model backend. The two questions are removed from
+  that feature by this work, so no planning row reaches a model backend. Putting them back
+  would need its own decision.
+
+In every case rows are filtered before any count is made.
 
 Options:
 1. **Pin by commit.** The service names the library module, and each sibling module the library
@@ -136,7 +166,10 @@ task step succeeds, and 2 when it does not.
 
 - Isolated branch and draft PR. No push to main, no merge, no release, no workflow trigger.
 - Read-only. The service gains no write path, no new credential and no process launch. The
-  package reads files under the configured directories and nothing else.
+  package reads files under the configured directories and nothing else: each directory is
+  opened through a root that refuses a path, or a symbolic link, leaving it.
+- No planning row goes to a model backend. Do not scope the question-answering feature's use of
+  these two tools; remove them from its allow-list.
 - Do Task step 1 first and stop there if it fails. Do not change the image build, the release
   workflow or any other module's manifest to make it pass; that is option 2 of the human
   decision, and it is not this brief's to take.
@@ -157,8 +190,9 @@ task step succeeds, and 2 when it does not.
    the result on the brief's decision issue. If it fails, STOP: report the exact resolution
    error and wait for the human decision.
 2. **Tree source.** Add a `--roots` flag taking the same `<owner>/<repo>=<path>` list the desk
-   tools use. The source maps each configured cell repository to a filesystem rooted at that
-   directory, or to "not configured". It reads the map at start and on each poll cycle.
+   tools use. The source maps each configured cell repository to a filesystem confined to that
+   directory, or to "not configured". A symbolic link that leaves the directory is refused, and
+   the file behind it is reported unreadable. It reads the map at start and on each poll cycle.
 3. **One loader, refreshed on the poll cycle.** Hold one board loader for the process. On each
    poll cycle load every cell's configured repositories once and keep the resulting view in
    memory; requests are served from that view and never trigger a load. Memory is bounded by the
@@ -171,13 +205,24 @@ task step succeeds, and 2 when it does not.
    - Portfolio: per repository, the same counts summed, the count of awaiting rows whose class is
      a human action, and each stream's declared model routing. Last-record age is reported as
      could-not-check: the view does not carry it.
-5. **Serve.** `GET /v1/roadmap`, `GET /v1/portfolio`, the un-versioned roadmap handler and the
-   two agent tools return the mapped rows with an assessment that names the directory and the
-   load time. Change the two tools to cell scope and update their descriptions. Regenerate
-   `openapi.yaml` and the typed client declarations with the existing generator. Render the rows
-   in the roadmap page.
-6. **Documents.** Describe the flag, the directory source and its limits in `deskd/README.md`.
-   Add the changelog fragment.
+5. **Serve.** `GET /v1/roadmap`, `GET /v1/portfolio`, the un-versioned roadmap handler, the
+   roadmap page and the two agent tools return the mapped rows with an assessment that names the
+   directory and the load time. Each surface derives the allowed repository set itself and hands
+   it to the mapping:
+   - The two agent tools change to cell scope. Their allowed set is the repositories of the cell
+     the scope admitted. Update their descriptions.
+   - Each HTTP and page handler builds its allowed set from the viewer's per-repository
+     authorizer, asking it about every repository of every configured cell, the same check
+     `cellAuthorized` makes. With no authorizer wired, the set is every configured repository,
+     as for the service's other reads. No handler passes "every repository" for any other reason.
+   - An error on these surfaces names no stream, repository or path outside the allowed set.
+   Regenerate `openapi.yaml` and the typed client declarations with the existing generator.
+6. **Close the model-backend route.** Remove `desk__roadmap` and `desk__portfolio` from the
+   question-answering feature's tool allow-list in `deskd/internal/chat/binding.go` and add both
+   names to its forbidden list, so a later registry cannot bind them back without a code change.
+7. **Documents.** Describe the flag, the directory source and its limits, the three
+   authorization boundaries and the removed chat binding in `deskd/README.md`. Add the changelog
+   fragment.
 
 ## Interface contract
 
@@ -206,7 +251,7 @@ the exact PASS line, so a selector that matches nothing fails the row.
 | 2 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadRows$" ./internal/boardread/ > "$check_output" && grep -F -- "--- PASS: TestBoardReadRows " "$check_output")` | exit 0; PASS line printed. Over two fixture trees the roadmap rows carry each stream's counts by lifecycle state and its Next-up rows, the portfolio rows carry the summed counts and the human-action count, and last-record age is could-not-check |
 | 3 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestEveryDataToolIsCellScoped$" ./internal/mcp/ > "$check_output" && grep -F -- "--- PASS: TestEveryDataToolIsCellScoped " "$check_output")` | exit 0; PASS line printed. The two tools now return rows and are cell-scoped; a call naming a cell the caller is not a loop of is refused before the handler runs |
 | 4 | check:ci +mutation | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadFiltersFirst$" ./internal/boardread/ > "$check_output" && grep -F -- "--- PASS: TestBoardReadFiltersFirst " "$check_output")` | exit 0; PASS line printed. With the handler's scope check bypassed in the test, the mapping given cell A's repository set returns no row, count or stream name from cell B's tree; with the filter removed by the test hook the same assertion fails |
-| 5 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadUnknown$" ./internal/boardread/ ./internal/serve/ > "$check_output" && grep -F -- "--- PASS: TestBoardReadUnknown " "$check_output")` | exit 0; PASS line printed. A cell with no configured directory, an unreadable directory and a partial view each answer could-not-check with a reason and never an empty list; a request between poll cycles does not trigger a load |
+| 5 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadUnknown$" ./internal/boardread/ ./internal/serve/ > "$check_output" && grep -F -- "--- PASS: TestBoardReadUnknown " "$check_output")` | exit 0; PASS line printed. A cell with no configured directory, an unreadable directory and a partial view each answer could-not-check with a reason and never an empty list; a symbolic link inside a configured tree that points outside it is refused and the bytes behind it never appear in a row; a request between poll cycles does not trigger a load |
 | 6 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadImports$" ./internal/boardread/ > "$check_output" && grep -F -- "--- PASS: TestBoardReadImports " "$check_output")` | exit 0; PASS line printed. The package imports the board library and the service's domain package and no other service package, launches no process and opens no network connection |
 | 7 | check:ci +neighbour | tree | `(cd deskd && GOWORK=off go test -count=1 ./...)` | exit 0; every existing service test passes, including the authority test that keeps the human-answer and adopt tools absent, the route allow-list test and the generated-schema drift test |
 | 8 | check +flow +dereference | host | `(cd deskd && GOWORK=off go build -o "${TMPDIR:-/tmp}/deskd-10" ./cmd/deskd) && (cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && DESKD_BIN="${TMPDIR:-/tmp}/deskd-10" DESKD_ROOT="$(cd .. && pwd)" GOWORK=off go test -count=1 -v -run "^TestRoadmapFlowRealTree$" ./cmd/deskd/ > "$check_output" && grep -F -- "--- PASS: TestRoadmapFlowRealTree " "$check_output")` | exit 0; PASS line printed (a skipped test prints no PASS line and fails the row). The built service, started on loopback with this repository as the one configured root, answers the roadmap route with a row for the `cell-api` stream whose brief counts equal the counts in that stream's own README table (flow row: flag, source, loader, mapping, route) |
@@ -214,11 +259,16 @@ the exact PASS line, so a selector that matches nothing fails the row.
 | 10 | gate:model +dereference | tree | `grep -n -F -e "--roots" deskd/README.md && grep -n -F -e "roadmap" deskd/internal/contract/openapi.yaml` | exit 0; the reviewer then reads the matched sections: the README states the directory source, that a working tree is not the remote, and what stays could-not-check; the schema describes typed rows and no longer says "until wired" |
 | 11 | check | tree | `(cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg-ca10" .) && "${TMPDIR:-/tmp}/sg-ca10" --root . --lint` | exit 0; output contains "LINT: PASS" |
 | 12 | check +flow | tree | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && "${TMPDIR:-/tmp}/sg-ca10" --root . --consumers --brief cell-api/10 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0, post-merge: `ASSAY_DELIVERY_SHA` is the merged delivery commit and `ASSAY_DELIVERY_BASE_SHA` its first parent. The report corroborates each `consumers:` line above with no unchecked obligation; record its exact counts |
+| 13 | check:ci +mutation | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestBoardReadSurfacesDeny$" ./internal/serve/ ./web/ > "$check_output" && test "$(grep -c -F -- "--- PASS: TestBoardReadSurfacesDeny " "$check_output")" -eq 2)` | exit 0; the PASS line is printed once for each of the two packages. With trees configured for cells A and B and an authorizer wired that denies cell B's repository, `GET /v1/roadmap`, `GET /v1/portfolio`, the un-versioned roadmap route and the roadmap page each return cell A's rows and no row, count, stream name or error text from cell B's tree; a handler variant that hands the mapping every configured repository fails the same assertion |
+| 14 | check:ci | tree | `(cd deskd && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestChatBindingNoBoardReads$" ./internal/chat/ > "$check_output" && grep -F -- "--- PASS: TestChatBindingNoBoardReads " "$check_output")` | exit 0; PASS line printed. Neither `desk__roadmap` nor `desk__portfolio` is in the question-answering feature's allow-list, both are in its forbidden list, and a registry that advertises them cannot be bound |
 
 | Failure mode of the work | Caught by |
 |---|---|
 | The module cannot be resolved from the service's own build, found late | row 1, and Task step 1 runs before any other step |
-| A caller sees another cell's rows or counts | row 3 (scope) and row 4 (filter, with the scope bypassed) |
+| An agent caller sees another cell's rows or counts | row 3 (scope) and row 4 (filter, with the scope bypassed) |
+| A web viewer sees rows from a repository they may not read, because a handler built the wrong allowed set | row 13, across all four HTTP and page surfaces |
+| Planning rows reach a model backend through the question-answering feature | row 14 |
+| A symbolic link in a configured tree exposes a file outside it | row 5 |
 | An unconfigured or unreadable tree is served as "no work" | row 5 |
 | A request triggers a full load and the service stalls | row 5 |
 | The package grows a dependency that blocks moving it to the public composition | row 6 |
@@ -231,6 +281,6 @@ the exact PASS line, so a selector that matches nothing fails the row.
      (command, exit code, output line(s) or hash, date, runner). -->
 
 ## Review
-Gate: human (from frontmatter — sensitive-data is yes). The sign-off confirms the filter-first
-boundary shown by rows 3 and 4 and records which option of the human decision was taken.
+Gate: human (from frontmatter — sensitive-data is yes). The sign-off confirms the three
+boundaries shown by rows 3, 4, 13 and 14 and records which option of the human decision was taken.
 Reviewer records verdict + date in the stream README table.

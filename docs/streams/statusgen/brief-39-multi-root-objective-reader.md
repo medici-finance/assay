@@ -145,8 +145,10 @@ design-fit:
    state from the `statusgen/streamview` vocabulary.
 3. **Effectful loader, `statusgen/board/tree`.** Provide `Load(ctx, roots, options)` returning a
    view. A root is a repository identity plus an `fs.FS`; a helper builds one from a directory
-   path. A loader value owns every memo; memos are bounded and are not shared between loader
-   values. The two board packages import no sibling module other than `deskcore`. No package-level mutable state, no environment read (roots and options are
+   path, confined to that directory so that a path or symbolic link leaving it is refused. A
+   loader value owns every memo; memos are bounded and are not shared between loader values.
+   The two board packages import no sibling module other than `deskcore`. No package-level
+   mutable state, no environment read (roots and options are
    arguments; parsing `DESK_ROOTS` stays in the command package), no write to standard output or
    error, no process exit. Two loads may run at once, and a second load after a file changes
    sees the change.
