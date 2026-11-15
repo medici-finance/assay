@@ -31,7 +31,7 @@ func (s Store) MarkerPath(id string) string { return filepath.Join(s.Dir, "consu
 
 func checkID(id string) error {
 	if !idRE.MatchString(id) {
-		return fmt.Errorf("%w: plan id %q is not 24 lowercase hex characters", ErrInvalid, id)
+		return fmt.Errorf("%w: plan id %q is not a plan id (word-word, or 24 lowercase hex characters)", ErrInvalid, id)
 	}
 	return nil
 }

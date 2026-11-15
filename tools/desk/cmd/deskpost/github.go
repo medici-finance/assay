@@ -466,6 +466,10 @@ type prInfo struct {
 	// desk-decided condition's two halves (label and block) come from one read and cannot
 	// disagree by timing (#1694).
 	Labels []prLabel `json:"labels"`
+	// MergeableState is GitHub's merge verdict for the PR (REST `mergeable_state`, the
+	// lower-case rendering of GraphQL mergeStateStatus). Only `ready`'s post-flip backstop
+	// reads it (#6242): ready means mergeable per the forge.
+	MergeableState string `json:"mergeable_state"`
 }
 
 // prLabel is one entry of the REST PR payload's `labels` array.
@@ -1147,7 +1151,8 @@ func trustGate(c postBackend, k targetKind, n int, authorLogin string, authorID 
 
 // markReadyForReview flips a draft PR to ready via the GraphQL mutation (the only GitHub
 // API for this transition; `gh pr ready` uses the same). This is deskpost's SOLE
-// mutating verb beyond review/comment — there is no un-ready, merge, close, or edit.
+// mutating verb beyond review/comment — there is no merge, close, or edit, and no un-ready
+// except convertToDraft below, which only the post-flip backstop calls.
 func (c *ghClient) markReadyForReview(nodeID string) error {
 	q := `mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft}}}`
 	in := map[string]any{"query": q, "variables": map[string]any{"id": nodeID}}
@@ -1161,6 +1166,27 @@ func (c *ghClient) markReadyForReview(nodeID string) error {
 	}
 	if len(out.Errors) > 0 {
 		return deskkit.Unverifiable("markPullRequestReadyForReview GraphQL error: "+out.Errors[0].Message, nil)
+	}
+	return nil
+}
+
+// convertToDraft returns a ready PR to draft via the GraphQL mutation. Its ONE caller is
+// `ready`'s post-flip backstop (#6242), after the forge reports the just-flipped PR BLOCKED
+// or DIRTY; it is never a verb of its own. Ruling:
+// https://github.com/medici-finance/assay/issues/6242#issuecomment-6812384155
+func (c *ghClient) convertToDraft(nodeID string) error {
+	q := `mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id}){pullRequest{isDraft}}}`
+	in := map[string]any{"query": q, "variables": map[string]any{"id": nodeID}}
+	var out struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := c.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
+		return err
+	}
+	if len(out.Errors) > 0 {
+		return deskkit.Unverifiable("convertPullRequestToDraft GraphQL error: "+out.Errors[0].Message, nil)
 	}
 	return nil
 }
